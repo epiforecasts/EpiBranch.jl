@@ -200,8 +200,17 @@ _uses_batch_hook(cc::CapacityConstrained) = _uses_batch_hook(cc.intervention)
 # `CapacityConstrained` always has its own `intervention_actions` method, to
 # add the `capacity_key` check above, so asking `iv` directly would credit
 # every instance with discovering actions whether or not the one it wraps
-# does.
-_discovers_actions(cc::CapacityConstrained) = _discovers_actions(cc.intervention)
+# does. Unwrapping through `_hook_owner`, as `_generation_hooks` does for
+# `keep_active`/`continuous_actions`/`on_infection_settled!`, reaches past
+# any further `InterventionWrapper` nested inside (`Scheduled`, say) to the
+# intervention that would actually answer `intervention_actions`.
+function _discovers_actions(cc::CapacityConstrained)
+    return _has_own_method(
+        intervention_actions,
+        typeof(_hook_owner(intervention_actions, cc.intervention)),
+        AbstractIntervention
+    )
+end
 function apply_post_transmission!(cc::CapacityConstrained, state, new_contacts)
     actions = intervention_actions(cc, state, new_contacts)
     if actions !== nothing

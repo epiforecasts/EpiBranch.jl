@@ -435,6 +435,19 @@ end
         cc_trace = CapacityConstrained(DoseSettleAndTrace(); budget_per_period = 1.0)
         @test !EpiBranch._sellke_honours(prog_pool, cc_trace)
         @test EpiBranch._unhonoured_hooks(prog_pool, cc_trace) == [:keep_active]
+        # Nesting `Scheduled` inside `CapacityConstrained` must not be mistaken
+        # for an action producer: `Scheduled`'s own `intervention_actions`
+        # method is only the blanket forwarding every `InterventionWrapper`
+        # inherits, so discovery must unwrap past it to `Isolation`, which has
+        # no such method at all.
+        cc_scheduled = CapacityConstrained(
+            Scheduled(
+                Isolation(onset_to_isolation_delay = 1.0, duration = 5.0);
+                start_time = 1.0
+            );
+            budget_per_period = 1.0
+        )
+        @test !EpiBranch._discovers_actions(cc_scheduled)
         # An intervention reached only through the action-producer path is
         # still named, rather than reported with an empty hook list, since the
         # pool cannot name contacts for `intervention_actions` to act on.
