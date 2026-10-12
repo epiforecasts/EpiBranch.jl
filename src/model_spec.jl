@@ -46,9 +46,11 @@ end
 # these can have no effect on a simulation or on the likelihood; see
 # `_warn_inert_interventions`. `susceptibility_components` is on the list
 # because an intervention whose effect is declared for the likelihood alone,
-# as the extending guide's `Prophylaxis` is, reaches the model through it. A
-# function rather than a constant, since `susceptibility_components` is
-# defined in a file loaded after this one.
+# as the extending guide's `Prophylaxis` is, reaches the model through it, and
+# `analytic_offspring_effect` because an intervention that acts on the
+# offspring law in closed form reaches the analytical results through that one
+# and nothing else. A function rather than a constant, since
+# `susceptibility_components` is defined in a file loaded after this one.
 _effect_hooks() = (
     (initialise_individual!, 3, "initialise_individual!(intervention, individual, state)"),
     (resolve_individual!, 3, "resolve_individual!(intervention, individual, state)"),
@@ -72,6 +74,10 @@ _effect_hooks() = (
     (
         susceptibility_components, 2,
         "susceptibility_components(intervention, host)",
+    ),
+    (
+        analytic_offspring_effect, 2,
+        "analytic_offspring_effect(intervention, offspring)",
     ),
 )
 
@@ -314,11 +320,11 @@ function simulate(
         stopping_rules
     )
     _validate_initial_cases(spec.process, sim_opts)
-    return _simulate(
-        spec.process, sim_opts; interventions = spec.interventions,
-        attributes = spec.attributes, progression = spec.progression,
-        observation = spec.observation, recorder = spec.recorder, rng, condition,
-        max_attempts
+    return _run_once_or_retry(
+        spec.process, sim_opts, condition, max_attempts;
+        interventions = spec.interventions, attributes = spec.attributes,
+        progression = spec.progression, observation = spec.observation,
+        recorder = spec.recorder, rng
     )
 end
 
@@ -348,6 +354,19 @@ function simulate(
         progression = spec.progression, observation = spec.observation,
         recorder = spec.recorder, rng, parallel
     )
+end
+
+# ── Interventions in the analytical functions ────────────────────────
+#
+# Each analytical function reads the offspring distribution and passes it
+# through every intervention the model holds, on a spec or on a process that
+# stores its own, via `analytic_offspring_effect`. An intervention without a
+# method reaches the generic one, which throws.
+function _offspring_through_interventions(model, offspring)
+    for iv in interventions(model)
+        offspring = analytic_offspring_effect(iv, offspring)
+    end
+    return offspring
 end
 
 function Base.show(io::IO, s::ModelSpec)

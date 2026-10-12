@@ -46,6 +46,20 @@ using Dates
         @test 0 < n_reported < state.cumulative_cases    # some, not all, reported
     end
 
+    @testset "weekly_incidence by=:reporting counts PerCaseObservation reports" begin
+        # PerCaseObservation shares :reporting_time with the Reporting
+        # transition, so by=:reporting must count reports from either route.
+        rng = StableRNG(1)
+        model = BranchingProcess(Poisson(0.9), Exponential(5.0))
+        obs = PerCaseObservation(detection_prob = 0.5, delay = Exponential(2.0))
+        state = simulate(ModelSpec(model; observation = obs); n_initial = 20, rng = rng)
+        df = weekly_incidence(state; by = :reporting)
+        @test df isa DataFrame
+        n_reported = count(ind -> get(ind.state, :reported, false), state.individuals)
+        @test sum(df.cases) == n_reported
+        @test 0 < n_reported < state.cumulative_cases    # some, not all, reported
+    end
+
     @testset "simulate with condition" begin
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(1.2), Exponential(5.0))
