@@ -17,7 +17,10 @@ they are used for. Most analyses need only a few of them:
 
 Delays and times are in whatever unit the delay distributions use; the
 documentation uses days throughout. Names written as `EpiBranch.name` are not
-made available by `using EpiBranch` and have to be written in full. A function
+made available by `using EpiBranch` and have to be written in full. The
+network and household names, such as [`NetworkProcess`](@ref) and
+[`HouseholdProcess`](@ref), come from the satellite packages and need `using
+EpiNetwork` or `using EpiHouseholds`. A function
 whose name ends in `!` changes one of its arguments in place: for the
 extension hooks that is the simulation state or the person being resolved,
 while the first argument is the intervention, step or action the method is
