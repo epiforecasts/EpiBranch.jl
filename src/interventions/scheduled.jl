@@ -136,18 +136,29 @@ end
 is_triggered!(t::Infections, state::SimulationState) = state.cumulative_cases >= t.n
 trigger_can_lapse(::Infections) = false
 
-# The count of reports dated by `state.max_infection_time`. Recomputed from
-# `state.individuals` on every call rather than cached: an individual is
-# appended to `state.individuals` by `make_contact!` as soon as it is
-# created, before its clinical transitions run. `Reporting`, which sets
+# Whether at least `n` reports are dated by `state.max_infection_time`.
+# Recomputed from `state.individuals` on every call rather than cached: an
+# individual is appended to `state.individuals` by `make_contact!` as soon as
+# it is created, before its clinical transitions run. `Reporting`, which sets
 # `:reported` and `:reporting_time`, is one of those transitions and can
-# resolve several calls later. A cache that marked the individual "seen"
-# on an earlier call would miss the report once it lands.
-function _reported_cases_due(state::SimulationState)
+# resolve several calls later. A cache that marked the individual "seen" on
+# an earlier call would miss the report once it lands.
+#
+# The gate is asked once per active host per generation, and again per
+# candidate pair, so each call stops at `n` rather than counting the whole
+# population: the trigger never needs the exact total, and walking all of it
+# makes a run quadratic in the number of individuals.
+function _reported_cases_due(state::SimulationState, n::Int)
     now = state.max_infection_time
-    return count(state.individuals) do ind
-        get(ind.state, :reported, false) && get(ind.state, :reporting_time, Inf) <= now
+    due = 0
+    for ind in state.individuals
+        if get(ind.state, :reported, false) &&
+                get(ind.state, :reporting_time, Inf) <= now
+            due += 1
+            due >= n && return true
+        end
     end
+    return false
 end
 
 """
@@ -162,7 +173,7 @@ model's `progression`, which sets `:reported` and `:reporting_time`.
 struct ReportedCases <: AbstractTrigger
     n::Int
 end
-is_triggered!(t::ReportedCases, state::SimulationState) = _reported_cases_due(state) >= t.n
+is_triggered!(t::ReportedCases, state::SimulationState) = _reported_cases_due(state, t.n)
 
 # ── Keyword convenience constructor ──────────────────────────────────
 
