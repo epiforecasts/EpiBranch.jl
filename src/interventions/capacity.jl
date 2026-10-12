@@ -6,12 +6,15 @@ Limit admissions to an intervention using a shared resource budget. Ring,
 group and mass vaccination expose their candidate actions before admission;
 group candidates include every eligible member of a triggered group. External
 producers implement `intervention_actions` and the `capacity_key` protocol.
-Legacy batch interventions still receive admitted candidates one at a time.
+An intervention still on the batch hook `apply_post_transmission!` receives
+admitted candidates one at a time.
 
-Candidates are ordered by `priority(individual, state)`, lower first, with
-stable ties. The default uses trace time; candidates without one retain their
-incoming order. Priority is evaluated once per candidate. A rejected action
-uses no budget, and a completed action is not charged again.
+Both engines admit one case's actions at a time, in the order they settle
+cases, with the clock at that case's infection time. A case's candidates are
+ordered by `priority(individual, state)`, lower first, with stable ties. The
+default uses trace time; candidates without one retain their incoming order.
+Priority is evaluated once per candidate. A rejected action uses no budget,
+and a completed action is not charged again.
 
 `budget_per_period` becomes available every `period` units on the admission
 clock, `state.max_infection_time`. With `carry_over=true`, unused allowances
@@ -190,6 +193,7 @@ end
 # without using a dose; this keeps offering the budget to the next-ranked
 # candidate instead of stopping after a fixed count, which would otherwise
 # leave it under-used.
+_uses_batch_hook(cc::CapacityConstrained) = _uses_batch_hook(cc.intervention)
 function apply_post_transmission!(cc::CapacityConstrained, state, new_contacts)
     actions = intervention_actions(cc, state, new_contacts)
     if actions !== nothing

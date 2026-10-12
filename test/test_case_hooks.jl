@@ -24,6 +24,15 @@ function EpiBranch.keep_active(::_RecordCaseHooks, state, targets, is_new)
     return ()
 end
 
+# Doses every contact it is offered at a fixed time, through actions alone.
+struct _ActionsOnly <: AbstractIntervention end
+function EpiBranch.intervention_actions(::_ActionsOnly, state, candidates)
+    return [
+        EpiBranch.InterventionAction(c, 3.0, (ind, at, st) -> ind.state[:_served_at] = at)
+            for c in candidates
+    ]
+end
+
 _case_hook_model(ivs) = ModelSpec(
     BranchingProcess(Poisson(2.0), Exponential(3.0)); interventions = ivs
 )
@@ -74,5 +83,15 @@ _case_hook_model(ivs) = ModelSpec(
             ind -> haskey(ind.state, :_offered_by) == (infected_from(ind) >= 5.0),
             contacts
         )
+    end
+
+    @testset "An intervention with only intervention_actions acts" begin
+        state = simulate(
+            _case_hook_model([_ActionsOnly()]);
+            max_cases = 50, max_generations = 4, rng = StableRNG(12)
+        )
+        contacts = filter(ind -> ind.parent_id != 0, state.individuals)
+        @test !isempty(contacts)
+        @test all(ind -> get(ind.state, :_served_at, nothing) == 3.0, contacts)
     end
 end

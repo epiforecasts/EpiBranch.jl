@@ -125,11 +125,18 @@ function _has_own_method(f, T::Type, base::Type)
     end
 end
 
-# Whether an intervention implements a hook that only the generation engine calls.
+# Whether an intervention reaches its targets through a hook the race calls only
+# from inside a tracing walk (`keep_active`), or not at all (the deprecated
+# batch hook).
 function _has_generation_hook(iv::AbstractIntervention)
-    T = typeof(iv)
-    return _has_own_method(apply_post_transmission!, T, AbstractIntervention) ||
-        _has_own_method(keep_active, T, AbstractIntervention)
+    return _uses_batch_hook(iv) ||
+        _has_own_method(keep_active, typeof(iv), AbstractIntervention)
+end
+
+# Whether an intervention discovers actions of its own, which the race delivers
+# only for one declaring `continuous_actions`.
+function _discovers_actions(iv::AbstractIntervention)
+    return _has_own_method(intervention_actions, typeof(iv), AbstractIntervention)
 end
 
 # One case's window on one route: who it is, which route, and when that window
@@ -601,31 +608,33 @@ end
 # whenever the wrapped intervention is.
 
 #
-# What has no continuous-time representation is a *generation-shaped* hook.
-# `apply_post_transmission!` acts on a batch of freshly created contact objects,
-# and a race that settles one pre-existing node at a time never builds those.
-# `keep_active` is read, but only from inside a tracing walk (`_trace_from!`
-# asks it which contacts the ring grows from), so an intervention that answers
-# it and does not trace has nothing to call it. So an intervention with a method
-# of its own for either hook is taken to reach its targets that way, and
-# reported as unhonoured, unless it
-# also traces contacts: `trace_contacts!` is then its continuous-time
-# counterpart, which needs a model that can name a case's contacts. The check
-# reads the methods themselves, so an intervention written outside the package
-# is reported without declaring anything. `MassVaccination`'s rollout, for one,
-# doses each new contact as the generation engine creates it, so on the
-# continuous-time path nobody is ever dosed and the efficacy risk it contributes
-# never blocks; `GroupVaccination` doses whole groups as their members are
-# created, and goes the same way.
+# The per-case hooks the generation engine also calls reach the race only in
+# part. The deprecated `apply_post_transmission!` acts on a batch of freshly
+# created contact objects, and a race that settles one pre-existing node at a
+# time never builds those. `keep_active` is read, but only from inside a tracing
+# walk (`_trace_from!` asks it which contacts the ring grows from), so an
+# intervention that answers it and does not trace has nothing to call it. So an
+# intervention with a method of its own for either hook is taken to reach its
+# targets that way, and reported as unhonoured, unless it also traces contacts.
+# Actions from `intervention_actions` are discovered on the race only for an
+# intervention declaring `continuous_actions`, because the race offers them to
+# pending members whose infection times it does not know yet; one that does not
+# declare it is reported. The checks read the methods themselves, so an
+# intervention written outside the package is reported without declaring
+# anything. `MassVaccination`'s rollout, for one, doses each contact a case
+# makes, which the race would have to offer the whole pending population, so on
+# the continuous-time path nobody is ever dosed and the efficacy risk it
+# contributes never blocks.
 #
 # Tracing needs one thing more: the model has to be able to name the contacts a
 # case reached, which is what `supplies_contacts` reports. A graph names a node's
 # neighbours and a household its members, but mass action names no contacts, so
 # tracing has nothing to act along there and stays unhonoured. Supported
 # candidate actions run after tracing through the shared admission protocol;
-# legacy batch-only delivery remains unsupported.
+# batch-only delivery remains unsupported.
 function _sellke_honours(model, iv::AbstractIntervention)
     continuous_actions(iv) && return supplies_contacts(model)
+    _discovers_actions(iv) && return false
     _has_generation_hook(iv) || return true
     return traces_contacts(iv) && supplies_contacts(model)
 end
@@ -655,7 +664,7 @@ supplies_contacts(::TransmissionModel) = false
 # A ring (`ContactTracing(depth = 2)` and beyond) grows through uninfected
 # contacts too. On the generation engine an intervention asks for that through
 # `keep_active`, which keeps such a contact exposing for one more generation so
-# `apply_post_transmission!` reaches its own contacts in turn. The race has no
+# `trace_contacts!` reaches its own contacts in turn. The race has no
 # generations to keep a node alive for, so it walks the model's own contact
 # structure breadth-first instead, and asks the same hook which contacts the
 # next hop starts from. The depth semantics and the `:_ring_remaining` budget
@@ -736,9 +745,9 @@ function _warn_unhonoured_interventions(model, interventions)
     )
     isempty(unhonoured) && return nothing
     @warn "$(nameof(typeof(model))) is a continuous-time model that settles one " *
-        "pre-existing case at a time, so it never creates the batches of new " *
-        "contacts the generation engine's post-transmission hooks act on; it " *
-        "does not honour these, which will have no effect: " *
+        "pre-existing case at a time, and cannot offer these interventions the " *
+        "contacts or actions they act through; it does not honour them, and " *
+        "they will have no effect: " *
         "$(join(unhonoured, ", ")). Express such control as a removal " *
         "`Transition` in the progression, or through an intervention that acts " *
         "when each individual is initialised, resolved, or traced."
