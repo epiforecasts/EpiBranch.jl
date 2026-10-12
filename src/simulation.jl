@@ -347,8 +347,9 @@ the time they would be infected, as `(contact, infection_time)` pairs.
 Only needed when writing a new transmission model that spreads over a fixed
 set of people, such as a contact network (the case's network neighbours) or
 households (the other household members). Such a model defines this function
-for its own type and uses [`gather_by_target`](@ref), so that a person
-exposed by several cases in one generation is infected at most once.
+for its own type, and a [`collect_exposures`](@ref) method that returns
+[`gather_by_target`](@ref), so that a person exposed by several cases in one
+generation is infected at most once.
 
 Models in which every contact is a new person, such as a branching process,
 define [`generate_offspring`](@ref) instead. In both cases the simulation
@@ -393,9 +394,9 @@ The default suits models in which every contact is a new person: it asks
 each infectious case how many contacts it makes via
 [`generate_offspring`](@ref), then creates and times that many contacts.
 Models whose contacts are people who already exist and can be exposed by
-more than one case in a generation (networks, households) use
-[`gather_by_target`](@ref) instead, which calls [`contacts_of`](@ref) and
-groups the exposures by person.
+more than one case in a generation (networks, households) define a method of
+this function that returns [`gather_by_target`](@ref), which calls
+[`contacts_of`](@ref) and groups the exposures by person.
 """
 function collect_exposures(model::TransmissionModel, state::SimulationState)
     pre = length(state.individuals)   # contacts created this step get id > pre

@@ -54,8 +54,8 @@ does not create people, time infections or apply interventions. The built-in
 branching process draws its counts from its offspring distribution directly.
 
 Models whose contacts are people who already exist (a contact network,
-households) define [`contacts_of`](@ref) and use [`gather_by_target`](@ref)
-instead.
+households) define [`contacts_of`](@ref) and a [`collect_exposures`](@ref)
+method that returns [`gather_by_target`](@ref) instead.
 """
 function generate_offspring end
 
