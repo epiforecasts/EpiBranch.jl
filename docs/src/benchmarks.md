@@ -11,8 +11,8 @@ The Julia benchmarks run on the copy of EpiBranch in the repository folder and n
 ```julia
 using Pkg
 env = joinpath(homedir(), "epibranch-benchmarks")
-Pkg.activate(env)  # creates the project folder if it is not there
-Pkg.develop(path = ".")  # use the EpiBranch in this folder
+Pkg.activate(env)
+Pkg.develop(path = ".")  # use the EpiBranch in this folder, creating the project
 Pkg.add(["BenchmarkTools", "Distributions", "Optim", "StableRNGs"])
 ```
 
