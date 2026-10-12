@@ -128,7 +128,7 @@ function risk_offspring(rng, ind)
     return rand(rng, Poisson(R))
 end
 
-model_risk = ModelSpec(BranchingProcess(risk_offspring, Exponential(5.0); n_types = 1);
+model_risk = ModelSpec(BranchingProcess(risk_offspring, Exponential(5.0));
     attributes = risk_group!)
 results = simulate(model_risk, 200; max_cases = 500, rng = StableRNG(42))
 containment_probability(results)
@@ -146,7 +146,7 @@ function waning_offspring(rng, ind)
     return rand(rng, Poisson(R))
 end
 
-model_waning = BranchingProcess(waning_offspring, Exponential(5.0); n_types = 1)
+model_waning = BranchingProcess(waning_offspring, Exponential(5.0))
 results = simulate(model_waning, 200; max_cases = 500, rng = StableRNG(42))
 containment_probability(results)
 ```
