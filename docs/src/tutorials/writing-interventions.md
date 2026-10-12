@@ -467,8 +467,12 @@ your own should not apply susceptibility or infectiousness a second time.
 `HostSusceptibility` and `InfectorInfectiousness` apply on branching processes.
 The continuous-time models apply the same two values as multipliers on the rate
 of transmission instead (see [Continuous-time models: further details](@ref)),
-so they do not decide them contact by contact. Every other risk, yours
-included, applies there as it does on a branching process.
+so they do not decide them contact by contact. Of the remaining four, only
+`AbortedInfection` is resolved there: the end of an infectiousness window is
+enforced by the window closing, the race proposes only from cases that have
+settled and are infected by construction, and `HostImmunity` is not applied at
+all, because the race has nowhere to put a second episode. A risk of your own
+applies there as it does on a branching process.
 
 ## Following up contacts who were not infected
 
