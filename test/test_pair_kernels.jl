@@ -452,7 +452,8 @@ function stateful_test_race(
         state, collect(1:n), rng;
         seed! = (best, members, r) -> copyto!(best, initial_times),
         targets, from = :infection, until = (:recovered,), interventions,
-        introduction, watches = (EpiBranch.watched_records(kernel),)
+        introduction, watches = (EpiBranch.watched_records(kernel),),
+        projections = (EpiBranch.kernel_projection(kernel),)
     )
     return state
 end
@@ -623,6 +624,25 @@ end
     @test all(i -> 1.0 <= i.infection_time <= 3.0, cases)
 end
 
+@testset "An undeclared read is caught rather than drawn from stale" begin
+    # Same projection and the same policy-writing intervention as the
+    # properly-declared kernel above, but `watches = ()` claims the
+    # projection reads nothing: the race catches the broken claim as soon as
+    # `:policy_time` is written, rather than keeping host 3's pending
+    # contact at the rate it was drawn at.
+    project(ind) = (date = get(ind.state, :policy_time, Inf)::Float64,)
+    callback = function (c, a, b)
+        (c.infector, c.susceptible) == (1, 2) && return Dirac(1.0)
+        (c.infector, c.susceptible) == (1, 3) &&
+            return state_policy_law(0.1, 1.0, b.date)
+        return Dirac(20.0)
+    end
+    undeclared = PairKernel(callback; state = project, watches = ())
+    @test_throws "watches" stateful_test_race(
+        undeclared, [0.0, Inf, Inf]; interventions = [RecordKernelPolicy()]
+    )
+end
+
 @testset "Moved records redraw pending contacts in a shared race" begin
     # Host 2 comes before host 3, so when host 3 settles at t = 1 every contact
     # to host 2 at t = 1 has been resolved; the redraw must not offer it again.
@@ -665,6 +685,17 @@ end
     @test EpiBranch.watched_records(Exponential(1.0)) == ()
     @test EpiBranch.watched_records([Exponential(1.0), live]) == (:tick,)
     @test_throws ArgumentError EpiBranch.pair_kernel(live, 1, 2, 0.0)
+
+    # A per-edge vector of identical kernels shares the projection behind them;
+    # one with no projection to share at all gives nothing to check.
+    @test EpiBranch.kernel_projection(live) === tick_state
+    @test EpiBranch.kernel_projection([live, live]) === tick_state
+    other_tick = ind -> (tick = get(ind.state, :tick, 0)::Int,)
+    mismatched = PairKernel(
+        (c, a, b) -> Exponential(1.0); state = other_tick, watches = (:tick,)
+    )
+    @test EpiBranch.kernel_projection([live, mismatched]) === nothing
+    @test EpiBranch.kernel_projection([Exponential(1.0), live]) === nothing
 
     # A projection has to declare what it reads, and a kernel with nothing to
     # read has nothing to declare.

@@ -379,9 +379,9 @@ The hooks above are not all available everywhere, because the engines are
 built differently. The generation-based engine creates a fresh `Individual`
 for every contact, infected or not. The continuous-time (Sellke) models have no
 such objects: every node exists from the start and the simulation only settles
-*when* each is infected, by a race between contact-interval draws. What they do
-have is the potential infection itself, a drawn time for a named pair, so a
-`Risk` has a place there too, alongside the infectious window.
+*when* each is infected, by a race between contact-interval draws. They do
+have the potential infection itself, though, a drawn time for a named pair, so
+a `Risk` has a place there too, alongside the infectious window.
 
 | Hook | Generation engine | Continuous-time race (network, household, homogeneous) |
 |---|---|---|

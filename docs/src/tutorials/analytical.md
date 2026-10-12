@@ -1,11 +1,11 @@
 # Analytical functions
 
-How likely is one introduced case to start a large outbreak, how much of
-transmission comes from the most infectious cases, and how large do chains get
-when R < 1? For a branching process these have exact answers in terms of R and
-the dispersion k, with no simulation needed. Throughout, `NegBin(R, k)` is a
-negative binomial offspring distribution with mean R and dispersion k: smaller k
-means more superspreading, and k = 1 gives a geometric distribution.
+For a branching process, the extinction and epidemic probabilities, the share
+of transmission from the most infectious cases, and the distribution of chain
+sizes when R < 1 all have exact answers in terms of R and the dispersion k,
+with no simulation needed. Throughout, `NegBin(R, k)` is a negative binomial
+offspring distribution with mean R and dispersion k: smaller k means more
+superspreading, and k = 1 gives a geometric distribution.
 
 ## Extinction and epidemic probability
 
