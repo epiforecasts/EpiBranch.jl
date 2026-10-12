@@ -7,7 +7,7 @@
 # pair costs a draw per pair on every opening: O(N) per case. Only the pairs
 # whose first contact falls inside the infector's window lead to a proposal, and
 # with an exponential interval each pair does so independently, with probability
-# `1 - exp(-r·L)` over a window of length `L`. So a mass-action route samples
+# `1 - exp(-r·L)` over a window of length `L`, so a mass-action route samples
 # just those pairs, by geometric skips through each group, and draws each one's
 # contact time from the exponential conditioned on falling inside the window.
 # That is the same process as drawing every pair and discarding the late ones,
