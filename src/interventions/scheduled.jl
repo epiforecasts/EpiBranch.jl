@@ -149,6 +149,27 @@ trigger_can_lapse(::Infections) = false
 _report_due(st, now) =
     get(st, :reported, false) && get(st, :reporting_time, Inf) <= now
 
+_report_time(st) = get(st, :reporting_time, Inf)
+
+# The reports one host holds that are dated by `now`, over its archived
+# episodes and its live state.
+#
+# A reinfection archives the episode as a copy of the live state and only
+# clears the live `:reported` later, when the new infection's transitions are
+# initialised (`close_episode!` in `_resolve!`, then `resolve_transitions!`).
+# In between, the newest episode and the live state are one report, so the
+# live one is counted only when its date differs from that episode's.
+function _host_reports_due(ind, now)
+    due = 0
+    for episode in ind.episodes
+        _report_due(episode.state, now) && (due += 1)
+    end
+    _report_due(ind.state, now) || return due
+    isempty(ind.episodes) && return due + 1
+    archived = _report_time(last(ind.episodes).state)
+    return archived == _report_time(ind.state) ? due : due + 1
+end
+
 # The reports the population holds that are dated by
 # `state.max_infection_time`, counting every episode of a host infected more
 # than once: a reinfection resets the live `:reported` flag and archives the
@@ -173,10 +194,7 @@ function _reported_cases_due(state::SimulationState)
     now = state.max_infection_time
     due = 0
     for ind in state.individuals
-        _report_due(ind.state, now) && (due += 1)
-        for episode in ind.episodes
-            _report_due(episode.state, now) && (due += 1)
-        end
+        due += _host_reports_due(ind, now)
     end
     return due
 end

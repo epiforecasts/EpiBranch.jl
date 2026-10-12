@@ -2989,10 +2989,18 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             # Without the archived episodes this host would hold one report
             # however many times it had been reported.
             episode = EpiBranch.InfectionEpisode(inds[1])
+            EpiBranch.close_episode!(inds[1], episode)
+            # The engine archives the episode as a copy of the live state and
+            # clears the live report only when the new infection's transitions
+            # are initialised. In between, the two are one report and must be
+            # counted once: two reports are due here, not three.
+            @test EpiBranch.is_triggered!(ReportedCases(2), state)
+            @test !EpiBranch.is_triggered!(ReportedCases(3), state)
+            # Once the live report is cleared the archived one still counts.
             inds[1].state[:reported] = false
             inds[1].state[:reporting_time] = Inf
-            EpiBranch.close_episode!(inds[1], episode)
             @test EpiBranch.is_triggered!(ReportedCases(2), state)
+            @test !EpiBranch.is_triggered!(ReportedCases(3), state)
             # The clock the count is read against is not monotone: admitting a
             # scheduled action asks the gate with the action's own time, so
             # the trigger keeps the conservative default.
@@ -3279,8 +3287,8 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
 
         # `Scheduled` reads `can_lapse` from the trigger. `Infections` counts
         # something that can only rise, so it does not make the schedule
-        # lapse; `ReportedCases` reads a count that falls when a host is
-        # reinfected, and a trigger with no opinion is conservative.
+        # lapse; `ReportedCases` dates its count against a clock that is not
+        # monotone, and a trigger with no opinion is conservative.
         @test !Scheduled(iso; start_after = Infections(10)).can_lapse
         @test Scheduled(iso; start_after = ReportedCases(10)).can_lapse
         @test Scheduled(iso; start_after = _AlwaysOpenTrigger()).can_lapse

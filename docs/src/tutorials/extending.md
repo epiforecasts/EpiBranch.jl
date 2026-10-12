@@ -714,9 +714,11 @@ change to `Scheduled`. One method is required and one trait has a default:
   costs nothing.
 - **`trigger_can_lapse(trigger)`** — whether the condition, once
   true, can turn false again. The default is the conservative `true`. Return
-  `false` only for a quantity that cannot fall, as `Infections` does for
-  `cumulative_cases`; a count read back from the population can fall when a
-  host is reinfected, which is why `ReportedCases` keeps the default.
+  `false` only for a condition that cannot turn false again, as `Infections`
+  does for `cumulative_cases`. A monotone quantity is not enough on its own:
+  `ReportedCases` keeps the default because the clock it dates reports
+  against is not monotone, admitting a scheduled action asking the gate with
+  the action's own time in place of the simulation clock.
 
 ```julia
 struct TwentyOnsets <: EpiBranch.AbstractTrigger end
