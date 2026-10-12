@@ -93,10 +93,16 @@ function _hook_arities()
 end
 
 # Whether the author's own module holds a function of the hook's name that is
-# not the package's, with a method for this intervention: what a hook defined
-# without the `EpiBranch.` prefix leaves behind. Looked for in
+# not the package's, carrying a method that was written to be this hook: what
+# a hook defined without the `EpiBranch.` prefix leaves behind. Looked for in
 # `parentmodule(T)`, since the hook and the type are written together.
-function _shadowing_hook(f, T::Type)
+#
+# The method has to look like the hook and not merely share its name: an
+# intervention type first, and one of the arities the engine calls. Without
+# both, an author's own helper that happens to be called `trace_contacts!`
+# is reported as a mis-written hook, and the advice to add the `EpiBranch.`
+# prefix would break it.
+function _shadowing_hook(f, T::Type, arities)
     name = nameof(f)
     mod = parentmodule(T)
     isdefined(mod, name) || return false
@@ -105,9 +111,15 @@ function _shadowing_hook(f, T::Type)
     return any(methods(g)) do mm
         params = Base.unwrap_unionall(mm.sig).parameters
         length(params) < 2 && return false
+        if Base.isvarargtype(params[end])
+            any(n -> n + 1 >= length(params) - 1, arities) || return false
+        else
+            (length(params) - 1) in arities || return false
+        end
         p = params[2]
         p isa TypeVar && (p = p.ub)
-        p isa Type && T <: p
+        p isa Type || return false
+        p !== AbstractIntervention && p <: AbstractIntervention && T <: p
     end
 end
 
@@ -126,7 +138,7 @@ function _warn_hook_mistakes(T::Type)
                 "at no number of arguments the engine calls it with, so the " *
                 "method is never reached and the no-op default runs in its " *
                 "place. The engine calls: $(join(sigs, ", "))." intervention = T
-        elseif _shadowing_hook(f, T)
+        elseif _shadowing_hook(f, T, arities)
             found += 1
             @warn "$(parentmodule(T)) defines a method of $(nameof(f)) for " *
                 "$(nameof(T)), but on its own function of that name rather " *
@@ -137,17 +149,21 @@ function _warn_hook_mistakes(T::Type)
     return found
 end
 
-# Each intervention type is examined once: the answer depends only on the
-# type and the methods written for it, and `ModelSpec` is built inside an
-# inference loop in the documented Turing recipe, where repeating the method
-# scans costs far more than the checks are worth.
-const _CHECKED_INTERVENTIONS = Set{Type}()
+# Each intervention type is examined once per state of the method tables: the
+# answer depends only on the type and the methods written for it, and
+# `ModelSpec` is built inside an inference loop in the documented Turing
+# recipe, where repeating the method scans costs far more than the checks are
+# worth. Such a loop defines no methods, so the world counter holds still and
+# each type is scanned once; a later definition, from an editor reload or a
+# hook rewritten in the REPL, advances it and arms the check again.
+const _CHECKED_INTERVENTIONS = Dict{Type, UInt}()
 const _CHECKED_INTERVENTIONS_LOCK = ReentrantLock()
 
 function _first_sight(T::Type)
+    world = Base.get_world_counter()
     return lock(_CHECKED_INTERVENTIONS_LOCK) do
-        T in _CHECKED_INTERVENTIONS && return false
-        push!(_CHECKED_INTERVENTIONS, T)
+        get(_CHECKED_INTERVENTIONS, T, nothing) == world && return false
+        _CHECKED_INTERVENTIONS[T] = world
         return true
     end
 end

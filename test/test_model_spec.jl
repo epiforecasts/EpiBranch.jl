@@ -41,6 +41,27 @@ EpiBranch.initialise_individual!(::MixedPrefix, ind, state) =
     (ind.state[:flagged] = true; nothing)
 competing_risk(::MixedPrefix, parent, contact, state) = Risk(block_probability = 1.0)
 
+# A correct intervention written in a module that also holds the author's own
+# helper of a hook's name. The helper takes an intervention first but at an
+# arity no call uses, so it is not a mis-written hook and must not be
+# reported as one: writing it as `EpiBranch.trace_contacts!` would break it.
+module _OwnHelpers
+    using EpiBranch
+    using EpiBranch: AbstractIntervention, Risk
+    struct HasHelper <: AbstractIntervention
+        traced::Vector{Int}
+    end
+    EpiBranch.competing_risk(::HasHelper, parent, contact, state) =
+        Risk(block_probability = 1.0)
+    trace_contacts!(h::HasHelper, ids) = append!(h.traced, ids)
+    keep_active(a, b) = nothing
+    struct NoHooks <: AbstractIntervention end
+end
+
+# Never passed to `ModelSpec`, so the cache's own behaviour can be read
+# without another construction having examined the type first.
+struct _CacheProbe <: AbstractIntervention end
+
 # Implements only the least common of `_effect_hooks()`, to check the full set
 # is read rather than a subset headlined by `competing_risk`.
 struct _ActionsOnly <: AbstractIntervention end
@@ -294,9 +315,23 @@ _all_variadic(args...) = nothing
         ) match_mode = :any ModelSpec(
             bp; interventions = [Scheduled(WrappedWrongArity(); start_time = 1.0)]
         )
-        # A type is examined once per session, so building a second spec with
-        # the same intervention does not repeat the warning.
-        @test_logs ModelSpec(bp; interventions = [BlockWrongArity()])
+        # A type is examined once for a given state of the method tables, and
+        # defining any method advances the world counter, which arms the
+        # check again: a hook rewritten in the REPL is examined afresh.
+        @test EpiBranch._first_sight(_CacheProbe)
+        @test !EpiBranch._first_sight(_CacheProbe)
+        @eval _world_bump() = nothing
+        @test EpiBranch._first_sight(_CacheProbe)
+        # The author's own helper of a hook's name is not a mis-written hook,
+        # and an intervention in that module with no hooks at all still gets
+        # the general message rather than a diagnosis of the helper.
+        @test_logs ModelSpec(
+            bp; interventions = [_OwnHelpers.HasHelper(Int[])]
+        )
+        @test_logs (
+            :warn,
+            r"NoHooks has a method of its own for none of the hooks",
+        ) match_mode = :any ModelSpec(bp; interventions = [_OwnHelpers.NoHooks()])
         # A hook outside `competing_risk`, at the right arity, is enough to
         # stay silent: the check reads the full set, not just `competing_risk`.
         @test_logs ModelSpec(bp; interventions = [_ActionsOnly()])
