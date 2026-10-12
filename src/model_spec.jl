@@ -75,6 +75,43 @@ _effect_hooks() = (
     ),
 )
 
+# The arities the engine calls each hook with, gathered per hook, in the
+# order `_effect_hooks()` lists them (`trace_contacts!` is the one hook with
+# two).
+function _hook_arities()
+    out = Tuple{Any, Vector{Int}, Vector{String}}[]
+    for (f, n, sig) in _effect_hooks()
+        i = findfirst(entry -> entry[1] === f, out)
+        if i === nothing
+            push!(out, (f, [n], [sig]))
+        else
+            push!(out[i][2], n)
+            push!(out[i][3], sig)
+        end
+    end
+    return out
+end
+
+# Warn when an intervention has a method of its own for a hook but at no
+# number of arguments the engine calls that hook with. The engine calls each
+# hook at a fixed arity, so such a method is never the one a call resolves to
+# and the no-op default runs instead: the hook is written, reads correctly,
+# and does nothing. This is the shape a dropped argument takes on an
+# intervention that implements several hooks, which
+# `_warn_inert_interventions` cannot see, since one correct hook is enough to
+# make the intervention reachable.
+function _warn_misaritied_hooks(T::Type)
+    for (f, arities, sigs) in _hook_arities()
+        _has_own_method(f, T, AbstractIntervention) || continue
+        any(n -> _has_own_method(f, T, AbstractIntervention, n), arities) && continue
+        @warn "$(nameof(T)) has a method of its own for $(nameof(f)), but " *
+            "at no number of arguments the engine calls it with, so the " *
+            "method is never reached and the no-op default runs in its " *
+            "place. The engine calls: $(join(sigs, ", "))." intervention = T
+    end
+    return nothing
+end
+
 # Warn when a composed intervention has a method of its own for none of
 # `_effect_hooks()`, at the right arity: a hook written with the wrong number
 # of arguments, or defined without the `EpiBranch.` qualification needed to
@@ -86,9 +123,13 @@ _effect_hooks() = (
 function _warn_inert_interventions(interventions)
     for iv in interventions
         T = typeof(_unwrap_scheduled(iv))
-        any(_effect_hooks()) do (f, n, _)
+        reachable = any(_effect_hooks()) do (f, n, _)
             _has_own_method(f, T, AbstractIntervention, n)
-        end && continue
+        end
+        if reachable
+            _warn_misaritied_hooks(T)
+            continue
+        end
         @warn "$(nameof(T)) has a method of its own for none of the hooks the " *
             "package calls, so it can have no effect on the simulation or on " *
             "the likelihood: " *

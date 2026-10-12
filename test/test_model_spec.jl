@@ -48,6 +48,14 @@ struct _SusceptibilityOnly <: AbstractIntervention end
 EpiBranch.susceptibility_components(::_SusceptibilityOnly, host) =
     (1 => EpiBranch.HazardScaling(2.0, 0.5),)
 
+# One hook written correctly and one with an argument dropped: the shape a
+# real intervention takes when a hook is mistyped, where the intervention
+# itself is plainly not inert.
+struct BlockOneGoodOneShort <: AbstractIntervention end
+EpiBranch.initialise_individual!(::BlockOneGoodOneShort, ind, state) = nothing
+EpiBranch.competing_risk(::BlockOneGoodOneShort, parent, contact) =
+    Risk(block_probability = 1.0)
+
 @testset "ModelSpec" begin
     # A ModelSpec composes the modelling layers (progression, interventions,
     # attributes, observation) around a pure transmission process. The process
@@ -260,6 +268,13 @@ EpiBranch.susceptibility_components(::_SusceptibilityOnly, host) =
         # Naming the vararg's length leaves a type variable where a count
         # would be, which the check must not try to add to.
         @test_logs ModelSpec(bp; interventions = [BlockVariadicN()])
+        # A hook at an arity the engine never calls is reported even when the
+        # intervention has another hook that works, which is the shape a
+        # dropped argument takes in practice.
+        @test_logs (
+            :warn,
+            r"BlockOneGoodOneShort has a method of its own for competing_risk, but at no number of arguments",
+        ) match_mode = :any ModelSpec(bp; interventions = [BlockOneGoodOneShort()])
         # An effect declared for the likelihood alone is an effect.
         @test_logs ModelSpec(bp; interventions = [_SusceptibilityOnly()])
         # `Isolation` implements several hooks properly and stays silent too.
