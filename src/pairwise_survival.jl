@@ -375,7 +375,7 @@ end
 # makes the `simulate → loglikelihood` round trip exact.
 function _infection_layer_columns(state::SimulationState, model::ModelSpec)
     process = model.process
-    from = _resolve_infectious_from(process.from, model.progression)
+    from = something(process.from, infectious_from(model.progression))
     window = _shorthand_window(from, process.until)
     n = length(state.individuals)
     infection_time = fill(NaN, n)

@@ -6,6 +6,7 @@
 BranchingProcess
 Infectiousness
 HomogeneousProcess
+MixingProcess
 NetworkProcess
 RoutedNetwork
 HouseholdProcess
@@ -104,6 +105,7 @@ EpiBranch.honoured_without_should_stop
 
 ```@docs
 simulate
+EpiBranch.simulate_once
 EpiBranch.generate_offspring
 EpiBranch.contacts_of
 EpiBranch.collect_exposures
@@ -113,6 +115,8 @@ EpiBranch.transmission_risks
 EpiBranch.race_groups
 make_contact!
 susceptible_fraction
+EpiBranch.infectious_from
+EpiBranch.sellke_race!
 ```
 
 ### Building a model's starting population
@@ -248,6 +252,7 @@ terminal_target
 exclusive_probabilities
 EpiBranch.resolve_transitions!
 EpiBranch.transition_time
+EpiBranch.censor_after_outcome!
 progression_loglik
 EpiBranch.transition_loglik
 EpiBranch.transition_term
@@ -308,6 +313,7 @@ proportion_cases_individual
 proportion_cases_offspring
 proportion_cluster_size
 heterogeneous_contact_R
+EpiBranch.analytic_offspring_effect
 ```
 
 ### Chain-size distributions
@@ -464,5 +470,6 @@ EpiBranch._column_order
 EpiBranch._chain_length_ll_negbin
 EpiBranch._borel_logpdf
 EpiBranch._gammaborel_logpdf
+EpiBranch._chain_size_loglik
 EpiBranch._empirical_ll
 ```

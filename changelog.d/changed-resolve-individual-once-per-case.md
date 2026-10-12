@@ -10,9 +10,12 @@ values. On the generation engine this changes three things:
 - It is no longer called on uninfected contacts that `keep_active` keeps in
   the simulation to generate contacts of their own, such as the ring members of
   `ContactTracing(depth = 2)`.
-- A `Scheduled` gate is evaluated against the case's own infection time.
-  Before, it read the latest infection time of the case's whole generation, so
-  `Scheduled(iso; start_time = 10.0)` could isolate a case infected on day 9.
+- A `Scheduled` gate is evaluated against the case's own infection time and
+  its own place in the case count. Before, it read the latest infection time
+  and the case total of the case's whole generation. `Scheduled(iso;
+  start_time = 10.0)` could then isolate a case infected on day 9, and
+  `start_after_cases = 50` applied to every case of the generation that
+  crossed 50.
 
 On the continuous-time models the clinical transitions see the case's own
 clock and count. They used to see the previous case's. The state such a

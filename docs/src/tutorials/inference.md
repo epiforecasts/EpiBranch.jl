@@ -81,12 +81,13 @@ case under a model; [`chain_size_distribution`](@ref) and
 are used in the same place below.
 
 !!! warning "Offspring counts and interventions"
-    `offspring_distribution` describes secondary cases without interventions.
-    If you give it a model that includes interventions, they are ignored. If
-    your offspring counts come from a period with isolation or quarantine in
-    place, the R you estimate is the R under those interventions, not the R
-    without them (see
-    [issue #421](https://github.com/epiforecasts/epiBranch.jl/issues/421)).
+    `offspring_distribution` of a bare process describes secondary cases
+    without interventions. Given a [`ModelSpec`](@ref) with isolation or
+    quarantine it throws an error, since no built-in intervention has a
+    closed-form effect on the offspring distribution. If your offspring counts
+    come from a period with isolation or quarantine in place, the R you
+    estimate from the bare process is the R under those interventions, not the
+    R without them.
 
 ### Maximum likelihood
 

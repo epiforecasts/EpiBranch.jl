@@ -11,12 +11,13 @@ using Random
 # `Transition`, `Individual`, `linelist`, …) is exported by EpiBranch, and the
 # population/progression helpers are called qualified. The package also uses two
 # sets of EpiBranch internals on purpose: the shared continuous-time engine
-# (`EpiBranch._sellke_race!` used by the simulator, and the infection-layer reader
-# imported below) and the community-hazard helpers. Reusing them keeps the
-# household simulator and pairwise likelihood consistent with the shared engine.
+# (`EpiBranch._sellke_race!`, called directly rather than through the public
+# `sellke_race!` wrapper because the simulator reconciles once after racing each
+# household rather than after every race; see `household_simulate.jl`) and the
+# community-hazard helpers. Reusing them keeps the household simulator and
+# pairwise likelihood consistent with the shared engine.
 import EpiBranch: new_state, add_individuals!, apply_observation!,
-    _simulate, SimOpts, _resolve_infectious_from,
-    _retry_for_condition, _reconcile_sellke_bookkeeping!,
+    simulate_once, SimOpts, infectious_from,
     _honours_termination_controls, _validate_process_windows,
     _warn_uncovered_terminal_states, race_groups
 # The infection layer is built and read out of a simulation by EpiBranch's

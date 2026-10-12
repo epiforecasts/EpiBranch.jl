@@ -23,7 +23,9 @@ struct _CaseAnchor end
         for ind in state.individuals
             @test ind.state[:reported] == isodd(ind.id)
             offset = obs.from isa _CaseAnchor ? 5.0 : 0.0
-            @test ind.state[:report_time] == ind.infection_time + offset + ind.id
+            expected = ind.state[:reported] ?
+                ind.infection_time + offset + ind.id : Inf
+            @test ind.state[:reporting_time] == expected
         end
         @test_throws ArgumentError EpiBranch.scalar_detection_prob(obs)
     end
@@ -89,12 +91,12 @@ end
         )
         for ind in state.individuals
             expected_lag = ind.state[:age] >= 50 ? 1.0 : 7.0
-            @test ind.state[:report_time] ≈ ind.state[:onset_time] + expected_lag
+            @test ind.state[:reporting_time] ≈ ind.state[:onset_time] + expected_lag
         end
     end
 
     @testset "from anchor: infection time fallback for asymptomatic" begin
-        # Asymptomatic cases have NaN onset_time; report_time should fall
+        # Asymptomatic cases have NaN onset_time; reporting_time should fall
         # back to infection_time rather than NaN.
         attrs = [
             clinical_presentation(
@@ -111,8 +113,8 @@ end
             max_cases = 50, rng = rng
         )
         for ind in state.individuals
-            @test !isnan(ind.state[:report_time])
-            @test ind.state[:report_time] ≈ ind.infection_time + 2.0
+            @test !isnan(ind.state[:reporting_time])
+            @test ind.state[:reporting_time] ≈ ind.infection_time + 2.0
         end
     end
 
@@ -135,7 +137,7 @@ end
             max_cases = 50, rng = rng
         )
         for ind in state.individuals
-            @test ind.state[:report_time] ≈ ind.infection_time + 3.0
+            @test ind.state[:reporting_time] ≈ ind.infection_time + 3.0
         end
     end
 
@@ -183,6 +185,21 @@ end
             is_infected(ind)
                 for ind in state.individuals if get(ind.state, :reported, false)
         )
+    end
+
+    @testset "a progression transition recording :reported is rejected" begin
+        obs = PerCaseObservation(detection_prob = 0.9, delay = Exponential(1.0))
+        attrs = clinical_presentation(
+            incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0
+        )
+        model = BranchingProcess(Poisson(0.5), Exponential(5.0))
+        for t in (
+                Reporting(delay = LogNormal(1.0, 0.3), probability = 0.5),
+                Transition(:reported; delay = Exponential(1.0)),
+            )
+            spec = ModelSpec(model; progression = [t], attributes = attrs, observation = obs)
+            @test_throws ArgumentError simulate(spec; n_initial = 5, rng = StableRNG(5))
+        end
     end
 
     @testset "scalar_detection_prob rejects non-scalar fields" begin
