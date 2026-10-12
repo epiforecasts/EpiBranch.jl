@@ -78,6 +78,15 @@ function EpiBranch.apply_post_transmission!(::_BatchTracer, state, new_contacts)
     return nothing
 end
 
+# Traces and proposes actions, without declaring `continuous_actions`.
+struct _TraceAndAct <: AbstractIntervention end
+EpiBranch.trace_contacts!(::_TraceAndAct, state, infector, contacts) = nothing
+EpiBranch.intervention_actions(::_TraceAndAct, state, candidates) = nothing
+
+# A model that can name each case's contacts.
+struct _NamesContacts <: EpiBranch.TransmissionModel end
+EpiBranch.supplies_contacts(::_NamesContacts) = true
+
 _case_hook_model(ivs) = ModelSpec(
     BranchingProcess(Poisson(2.0), Exponential(3.0)); interventions = ivs
 )
@@ -154,6 +163,11 @@ _case_hook_model(ivs) = ModelSpec(
         )
         @test state.individuals[2].state[:_traced_from] == 1
         @test state.individuals[3].state[:_traced_from] == 2
+    end
+
+    @testset "A tracer that also proposes actions is honoured where contacts are named" begin
+        @test EpiBranch._sellke_honours(_NamesContacts(), _TraceAndAct())
+        @test !EpiBranch._sellke_honours(_NamesContacts(), _ActionsOnly())
     end
 
     @testset "An intervention with only intervention_actions acts" begin
