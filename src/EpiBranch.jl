@@ -53,9 +53,11 @@ contacts and times each from the model's generation time, so the model itself
 does not create people, time infections or apply interventions. The built-in
 branching process draws its counts from its offspring distribution directly.
 
-Models whose contacts are people who already exist (a contact network,
-households) define [`contacts_of`](@ref) and a [`collect_exposures`](@ref)
-method that returns [`gather_by_target`](@ref) instead.
+A model whose contacts are people who already exist, such as a contact
+network or households, defines [`contacts_of`](@ref) and a
+[`collect_exposures`](@ref) method that returns [`gather_by_target`](@ref)
+instead. No model in the package is written that way: the network and
+household models run the continuous-time race instead.
 """
 function generate_offspring end
 

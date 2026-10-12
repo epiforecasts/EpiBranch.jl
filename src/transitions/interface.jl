@@ -359,9 +359,10 @@ generator and the individual, `(rng, ind) -> ...`. `probability`, if given, is
 the chance the event happens (a number or such a function). When the starting
 event never happened (`start_time` is not finite) the result is `nothing`.
 
-Each supplied `probability` uses one random draw, even when it is 0 or 1, and
-`probability = nothing` uses none; keep this in mind if reproducing a run's
-random numbers matters. The caller records the returned time and decides which
+Each supplied `probability` uses one random draw, even when it is 0 or 1,
+and `probability = nothing` uses none. A case whose starting event never
+happened uses none either, the anchor being checked first; keep both in mind
+if reproducing a run's random numbers matters. The caller records the returned time and decides which
 of several terminal events comes first.
 """
 function transition_time(rng, individual, start_time, delay; probability = nothing)

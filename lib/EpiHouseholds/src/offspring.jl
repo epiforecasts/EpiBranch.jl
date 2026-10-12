@@ -131,9 +131,11 @@ overall distribution and R* average over all of them. The step from household
 epidemic to number of households infected is exact either way, so simulation
 error enters only through the within-household epidemic.
 
-With a shared kernel the mean is exact whenever the infectious period is a
-single delay in the progression, because the mean total time infectious is
-then the mean final size times the mean infectious period. The exception is a
+With a shared kernel and no interventions the mean is exact whenever the
+infectious period is a single delay in the progression, because the mean
+total time infectious is then the mean final size times the mean infectious
+period. An intervention cuts the window at a time that depends on the rest
+of the case's timeline, so with one in the model the mean is simulated. The exception is a
 large household with weak transmission and a random infectious period, where
 the exact calculation loses accuracy and the mean comes from the simulated
 households instead.

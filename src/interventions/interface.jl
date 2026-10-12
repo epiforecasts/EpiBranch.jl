@@ -60,8 +60,11 @@ otherwise; by default the five-argument method calls the four-argument one, so
 an intervention that does not time its action from the contact need not
 handle it.
 
-Define [`traces_contacts`](@ref EpiBranch.traces_contacts) as `true` too, or
-this method is not called.
+Contacts are collected only once some intervention in the stack returns
+`true` from [`traces_contacts`](@ref EpiBranch.traces_contacts). Once they
+are, this method is called on every intervention, so declaring `false` keeps
+the walk from starting but does not keep this method dormant in a stack that
+holds something which does trace.
 """
 trace_contacts!(::AbstractIntervention, state, infector, contacts) = nothing
 function trace_contacts!(iv::AbstractIntervention, state, infector, contacts, not_before)
