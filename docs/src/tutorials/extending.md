@@ -367,8 +367,9 @@ The generation engine used to hand a whole generation's contacts to
 with a method of its own for it is still handed the batch, with a deprecation
 warning, and its `keep_active` is then asked about the whole batch. It runs at
 its place in the list: the interventions before it have been through every
-case's hooks, and those after it see what it wrote. What it did to each contact moves to `trace_contacts!`,
-and any action with a delivery date to `intervention_actions`. Once it does,
+case's hooks, and those after it see what it wrote. Moving off it means writing
+its effect on each contact as `trace_contacts!`, and any action with a delivery
+date as `intervention_actions`. Once it does,
 its `keep_active` is asked per case, about that case's contacts, after its
 `trace_contacts!` and `intervention_actions` for the case have run.
 
