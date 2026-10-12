@@ -101,6 +101,10 @@ results = simulate(scenario([iso_leaky]), 200; max_cases = 500, rng = rng)
 println("Leaky isolation: $(round(containment_probability(results), digits=3))")
 ```
 
+That is well below the 0.185 the same isolation gives when it holds
+completely: a case that keeps even a third of its infectiousness is most of
+the way back to no isolation at all.
+
 ### Isolation duration
 
 `duration` sets how long a case stays isolated. It has no default, because
@@ -263,8 +267,13 @@ println("30% asymptomatic, 80% test sensitivity: $(round(containment_probability
 ```
 
 Containment is lower than with isolation and tracing when every case is
-symptomatic and detected, above: missed cases transmit unchecked, and their
-contacts are never traced.
+symptomatic and detected, above. A missed case keeps transmitting until
+something else reaches it, and tracing reaches some of them: a case
+quarantined as someone else's contact counts as isolated, which satisfies the
+default trigger, so its own contacts are traced after all. Here that happens
+to 38% of the symptomatic cases the test misses, and 37% of asymptomatic
+cases are quarantined too. The contacts left untraced are those of the cases
+tracing never reaches.
 
 ## Contact tracing workload
 
