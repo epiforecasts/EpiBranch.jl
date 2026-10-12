@@ -731,5 +731,7 @@ the days in between add nothing, and admissions can fall well below
 
 !!! note "Which models support capacity limits"
     On the network and household models, capacity limits work for ring and
-    group vaccination but not for mass vaccination. To limit an intervention
-    of your own, see [Extending EpiBranch](extending.md).
+    group vaccination. Mass vaccination does not reach anyone on those models
+    at all, with or without a limit, and `simulate` warns that it will have
+    no effect. To limit an intervention of your own, see
+    [Extending EpiBranch](extending.md).
