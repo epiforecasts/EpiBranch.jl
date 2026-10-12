@@ -431,9 +431,10 @@ given kernel. A new kernel type can define the method for a given model to
 choose a different split:
 
 ```julia
-EpiBranch.race_groups(model::HouseholdProcess, kernel) =
-    isempty(EpiBranch.watched_records(kernel)) ?
-    model.members : (collect(eachindex(model.household_of)),)
+# One race per household for your kernel, whatever it watches. Typing the
+# kernel is what makes this a method of your own rather than a replacement
+# for the one `HouseholdProcess` already has for every other kernel.
+EpiBranch.race_groups(model::HouseholdProcess, kernel::MyKernel) = model.members
 ```
 
 For the **analytical functions** that work from the offspring distribution
