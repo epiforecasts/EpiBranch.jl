@@ -630,9 +630,11 @@ println("Reached among willing people: $(round(campaign_reach, digits = 3)); ",
 ```
 
 Overall coverage is the share willing times the share of willing people
-reached. A person with `:willing == false` refuses throughout the campaign,
-and a willing person left unvaccinated was never reached. For a reach
-probability of zero, use `coverage = 0.0` directly. A single visit gives the
+reached. Those are the shares the parameters aim for; a run comes out a few
+points below them, for the reason in the limitations note. A person with
+`:willing == false` refuses throughout the campaign, and a willing person
+left unvaccinated was either never reached or never offered a dose. For a
+reach probability of zero, use `coverage = 0.0` directly. A single visit gives the
 usual campaign with one opportunity. Use a different `dose_label` for another
 dose; willingness can be shared across doses, as here, or stored separately
 for each.
@@ -644,6 +646,12 @@ for each.
     capacity or to how the outbreak develops, and failed visits are not
     recorded. Visits are assumed to reach people independently, with a fixed
     probability.
+
+    A group is also offered doses only in a generation in which it gains a
+    new member, so a group whose trigger arrives after its last new member,
+    or which grows after its visit, leaves those people unvaccinated. In this
+    model about 3% of willing people are never offered a dose, which puts
+    measured coverage a few points below the shares above.
 
 ## Limited vaccine supply
 
