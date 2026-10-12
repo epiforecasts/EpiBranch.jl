@@ -26,31 +26,10 @@ function Distributions.logpdf(
         d::_ChainSizeLaw, data::AbstractVector{<:Integer}
     )
     cs = _chain_sizes(data, d.seeds)
-    # The real-time `prob_concluded` mixture is only defined against the
-    # analytical chain-size distribution. If we were handed a transmission
-    # model, route `prob_concluded` through its offspring so the analytical
-    # multi-seed method picks it up instead of the simulation-based one (which
-    # has no `prob_concluded` path).
-    if d.prob_concluded === nothing
-        return loglikelihood(cs, d.model; d.kwargs...)
-    end
-    # A model carrying interventions has no closed form here: dropping to its
-    # bare offspring would silently ignore the interventions. Refuse rather
-    # than compute a wrong likelihood.
-    if d.model isa Union{TransmissionModel, ModelSpec} &&
-            !isempty(interventions(d.model))
-        throw(
-            ArgumentError(
-                "prob_concluded (the real-time per-cluster finished weight) has no " *
-                    "closed form when the model carries interventions; the simulation-" *
-                    "based likelihood has no prob_concluded path. Remove the interventions " *
-                    "or omit prob_concluded."
-            )
-        )
-    end
-    target = d.model isa Union{TransmissionModel, ModelSpec} ?
-        single_type_offspring(d.model) : d.model
-    return loglikelihood(cs, target; prob_concluded = d.prob_concluded, d.kwargs...)
+    # `loglikelihood(::ChainSizes, model)` itself picks the analytical or
+    # simulation-based route and, either way, now honours `prob_concluded`
+    # (the simulation-based route from its empirical tail).
+    return loglikelihood(cs, d.model; prob_concluded = d.prob_concluded, d.kwargs...)
 end
 
 function Distributions.loglikelihood(
@@ -128,13 +107,16 @@ directly; otherwise a wrapper that evaluates via `loglikelihood`, falling
 back to simulation for a multi-type or multi-window model rather than
 erroring. Keyword arguments:
 
-- `seeds`: per-cluster number of index cases, for multi-seed clusters.
+- `seeds`: per-cluster number of index cases, for multi-seed clusters. With
+  interventions, clusters are simulated grouped by seed count, one batch of
+  runs per distinct value in `seeds`.
 - `prob_concluded`: per-cluster probability the cluster is finished (its
   observed size is its final size), for real-time data with ongoing clusters —
-  see `end_of_outbreak_probability`. Defined only against the analytical law,
-  so it is not supported alongside interventions.
-- `n_sim`, `interventions`, …: forwarded to the underlying simulation-based
-  `loglikelihood` when the analytical fast path does not apply.
+  see `end_of_outbreak_probability`. With interventions, the mixture is taken
+  against the simulated clusters' empirical P(X ≥ x) rather than an
+  analytical tail.
+- `n_sim`, …: forwarded to the underlying simulation-based `loglikelihood`
+  when the analytical fast path does not apply.
 """
 function chain_size_distribution(
         model::TransmissionModel;
@@ -198,6 +180,7 @@ end
 
 """
     offspring_distribution(model)
+    offspring_distribution(spec::ModelSpec)
 
 Per-case offspring distribution of `model`. For a `BranchingProcess`
 this is the same `Distribution` you passed in as `offspring`.
@@ -208,8 +191,21 @@ this is the same `Distribution` you passed in as `offspring`.
     data ~ offspring_distribution(BranchingProcess(Poisson(R)))
 end
 ```
+
+For a `ModelSpec`, or a process that stores its own interventions, each
+intervention's [`EpiBranch.analytic_offspring_effect`](@ref) is applied to
+the offspring distribution first. If an intervention has no such method, this
+throws an error that names the simulation-based alternative.
 """
 function offspring_distribution(model::TransmissionModel)
+    return _offspring_through_interventions(model, _per_case_offspring(model))
+end
+
+function offspring_distribution(spec::ModelSpec)
+    return _offspring_through_interventions(spec, _per_case_offspring(spec.process))
+end
+
+function _per_case_offspring(model::TransmissionModel)
     off = single_type_offspring(model)
     # `single_type_offspring` may return a spec that has a chain-size law
     # but no per-individual offspring `Distribution` (e.g. `ClusterMixed`,
@@ -225,5 +221,3 @@ function offspring_distribution(model::TransmissionModel)
     )
     return off
 end
-
-offspring_distribution(spec::ModelSpec) = offspring_distribution(spec.process)
