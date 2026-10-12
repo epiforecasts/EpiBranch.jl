@@ -150,8 +150,8 @@ Some quantities have closed-form solutions and need no simulation. These
 functions take a spec's interventions into account only when an
 intervention's effect on the offspring distribution is exact in closed form.
 `spec` above includes `Isolation`, whose effect on R depends on how its timing
-overlaps the generation-time distribution, so on `spec` they throw an error.
-Here they are applied to `model`, which has no interventions:
+overlaps the generation-time distribution. They throw an error on `spec`, and
+here they are applied to `model`, which has no interventions:
 
 ```@example gettingstarted
 println("P(extinction): $(round(extinction_probability(model), digits=3))")

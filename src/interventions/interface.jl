@@ -334,9 +334,9 @@ being removed before transmitting at all gives a mixture with `Dirac(0)` (what
 [`probability_contain`](@ref)'s `ind_control` expresses).
 
 An effect that depends on how the intervention's timing overlaps the
-generation-time distribution has no such form. Isolation's effect on R is one,
-so `Isolation` has no method. The generic method throws an error, and so
-[`extinction_probability`](@ref), [`epidemic_probability`](@ref),
+generation-time distribution has no such form. Isolation's effect on R is one
+of these, and `Isolation` has no method. The generic method throws an error,
+which makes [`extinction_probability`](@ref), [`epidemic_probability`](@ref),
 [`probability_contain`](@ref), [`reproduction_number`](@ref),
 [`proportion_transmission`](@ref) and [`offspring_distribution`](@ref) throw
 too when called on a [`ModelSpec`](@ref) with an intervention that has no

@@ -287,7 +287,7 @@ Define `analytic_offspring_effect` only for an intervention whose effect on
 the offspring distribution is exact in closed form on its own, such as a
 population-level thinning, or a mixture with `Dirac(0)` for a per-case removal
 probability. Most interventions have no such form. Isolation's effect on R
-depends on how its timing overlaps the generation-time distribution, so
+depends on how its timing overlaps the generation-time distribution, and
 `Isolation` has no method. On a spec that includes it, the analytical functions
 above throw an error that points to
 `probability_contain(R, k; ind_control, pop_control)` for an approximation and
