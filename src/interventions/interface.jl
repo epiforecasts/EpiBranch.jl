@@ -86,16 +86,16 @@ function _uses_batch_hook(iv::AbstractIntervention)
     return _has_own_method(apply_post_transmission!, typeof(iv), AbstractIntervention)
 end
 
+# Logged once per intervention type, so each one still on the hook is named.
 function _warn_batch_hook(iv::AbstractIntervention)
-    Base.depwarn(
-        "$(nameof(typeof(_unwrap_scheduled(iv)))) implements " *
-            "`apply_post_transmission!`, which is deprecated. Implement " *
-            "`trace_contacts!(intervention, state, infector, contacts)` for what " *
-            "it does to the contacts a case reached, and " *
-            "`intervention_actions(intervention, state, candidates)` for actions " *
-            "with a delivery time; both engines call these once per case.",
-        :apply_post_transmission!; force = true
-    )
+    T = typeof(_unwrap_scheduled(iv))
+    msg = "$(nameof(T)) implements `apply_post_transmission!`, which is " *
+        "deprecated. Implement `trace_contacts!(intervention, state, infector, " *
+        "contacts)` for what it does to the contacts a case reached, and " *
+        "`intervention_actions(intervention, state, candidates)` for actions " *
+        "with a delivery time; both engines call these once per case."
+    id = (:apply_post_transmission!, T)
+    @warn msg maxlog = 1 _id = id _group = :depwarn
     return nothing
 end
 

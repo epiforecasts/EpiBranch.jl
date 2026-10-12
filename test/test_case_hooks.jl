@@ -190,6 +190,17 @@ _case_hook_model(ivs) = ModelSpec(
         @test all(ind -> get(ind.state, :_batch_seen, false), contacts)
     end
 
+    @testset "Each batch-hook intervention is named in its own warning" begin
+        @test_logs (:warn, r"^_BatchOnly") (:warn, r"^_BatchTracer") begin
+            for iv in (_BatchOnly(), _BatchTracer()), seed in 1:2
+                simulate(
+                    _case_hook_model([iv]); max_cases = 10, max_generations = 2,
+                    rng = StableRNG(seed)
+                )
+            end
+        end
+    end
+
     @testset "keep_active of a batch-hook intervention sees its batch writes" begin
         state = @test_logs (:warn,) match_mode = :any simulate(
             _case_hook_model([_BatchRing()]);
