@@ -125,6 +125,23 @@ EpiBranch.competing_risk(::_ExtraOverload, parent, contact, state) =
     Risk(block_probability = 1.0)
 EpiBranch.competing_risk(::_ExtraOverload, contact) = Risk(block_probability = 1.0)
 
+# A correct intervention in a module that also holds a variadic helper of a
+# hook's name, and an intervention in the same module with no hooks at all.
+# The helper is reachable at every arity, so an arity test alone cannot tell
+# it from a hook; writing it as `EpiBranch.trace_contacts!` would have it
+# answer the engine's four-argument call with `state` where it wants ids.
+module _VariadicHelpers
+    using EpiBranch
+    using EpiBranch: AbstractIntervention, Risk
+    struct HasVariadicHelper <: AbstractIntervention
+        traced::Vector{Int}
+    end
+    EpiBranch.competing_risk(::HasVariadicHelper, parent, contact, state) =
+        Risk(block_probability = 1.0)
+    trace_contacts!(h::HasVariadicHelper, args...) = append!(h.traced, args[1])
+    struct OnlyVariadicHelper <: AbstractIntervention end
+    keep_active(iv::OnlyVariadicHelper, args...) = nothing
+end
 
 @testset "ModelSpec" begin
     # A ModelSpec composes the modelling layers (progression, interventions,
@@ -397,6 +414,18 @@ EpiBranch.competing_risk(::_ExtraOverload, contact) = Risk(block_probability = 1
         # A convenience overload of a hook for the same type is not a
         # mis-written hook, since the type's own hook answers the call.
         @test_logs ModelSpec(bp; interventions = [_ExtraOverload()])
+        # A variadic helper of a hook's name is not a mis-written hook
+        # either, and an intervention whose only such method is that helper
+        # gets the general message rather than advice that would break it.
+        @test_logs ModelSpec(
+            bp; interventions = [_VariadicHelpers.HasVariadicHelper(Int[])]
+        )
+        @test_logs (
+            :warn,
+            r"OnlyVariadicHelper has a method of its own for none of the hooks",
+        ) match_mode = :any ModelSpec(
+            bp; interventions = [_VariadicHelpers.OnlyVariadicHelper()]
+        )
         # An effect declared for the likelihood alone is an effect.
         @test_logs ModelSpec(bp; interventions = [_SusceptibilityOnly()])
         # `Isolation` implements several hooks properly and stays silent too.

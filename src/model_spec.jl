@@ -98,10 +98,13 @@ end
 # `parentmodule(T)`, since the hook and the type are written together.
 #
 # The method has to look like the hook and not merely share its name: an
-# intervention type first, and one of the arities the engine calls. Without
-# both, an author's own helper that happens to be called `trace_contacts!`
-# is reported as a mis-written hook, and the advice to add the `EpiBranch.`
-# prefix would break it.
+# intervention type first, and exactly one of the arities the engine calls.
+# Without both, an author's own helper that happens to be called
+# `trace_contacts!` is reported as a mis-written hook, and the advice to add
+# the `EpiBranch.` prefix would break it. A variadic method is left out for
+# the same reason: it answers every arity, so it is a helper far more often
+# than a hook, and prefixing one would have it answer calls its author never
+# wrote it for.
 function _shadowing_hook(f, T::Type, arities)
     name = nameof(f)
     mod = parentmodule(T)
@@ -111,11 +114,8 @@ function _shadowing_hook(f, T::Type, arities)
     return any(methods(g)) do mm
         params = Base.unwrap_unionall(mm.sig).parameters
         length(params) < 2 && return false
-        if Base.isvarargtype(params[end])
-            any(n -> n + 1 >= length(params) - 1, arities) || return false
-        else
-            (length(params) - 1) in arities || return false
-        end
+        Base.isvarargtype(params[end]) && return false
+        (length(params) - 1) in arities || return false
         p = params[2]
         p isa TypeVar && (p = p.ub)
         p isa Type || return false
