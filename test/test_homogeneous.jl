@@ -56,6 +56,11 @@ EpiBranch.on_infection_settled!(::DoseSettleAndTrace, ind, state, rng) = nothing
 EpiBranch.keep_active(::DoseSettleAndTrace, state, targets, is_new) = ()
 EpiBranch.traces_contacts(::DoseSettleAndTrace) = true
 EpiBranch.trace_contacts!(::DoseSettleAndTrace, state, infector, contacts) = nothing
+# Reaches its targets only through the action-producer path: `continuous_actions`
+# opts in, and it defines neither `apply_post_transmission!` nor `keep_active`
+# of its own, so `_generation_hooks` has nothing to name.
+struct DoseThroughActions <: EpiBranch.AbstractIntervention end
+EpiBranch.continuous_actions(::DoseThroughActions) = true
 
 # The same leaky vaccine with its arguments typed, as the style guide asks for.
 struct LeakyVaccineTyped <: EpiBranch.AbstractIntervention
@@ -414,6 +419,16 @@ end
         cc_trace = CapacityConstrained(DoseSettleAndTrace(); budget_per_period = 1.0)
         @test !EpiBranch._sellke_honours(prog_pool, cc_trace)
         @test EpiBranch._unhonoured_hooks(prog_pool, cc_trace) == [:keep_active]
+        # An intervention reached only through the action-producer path is
+        # still named, rather than reported with an empty hook list, since the
+        # pool cannot name contacts for `intervention_actions` to act on.
+        @test !EpiBranch._sellke_honours(prog_pool, DoseThroughActions())
+        @test EpiBranch._unhonoured_hooks(prog_pool, DoseThroughActions()) ==
+            [:intervention_actions]
+        @test_logs (:warn, r"intervention_actions"i) match_mode = :any simulate(
+            ModelSpec(prog_pool; progression = prog, interventions = [DoseThroughActions()]);
+            rng = StableRNG(1), n_initial = 2
+        )
         # The package's own interventions that the pool honours warn about nothing.
         onsets = clinical_presentation(
             incubation_period = LogNormal(-1.0, 0.3),
