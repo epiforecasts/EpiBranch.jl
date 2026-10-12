@@ -247,9 +247,10 @@ function keep_active(cc::CapacityConstrained, state, targets, is_new)
     return keep_active(cc.intervention, state, targets, is_new)
 end
 
-# The continuous-time race has no batch of competing contacts to ration, so
-# passing its tracing through would let the wrapped intervention act with no
-# budget at all. Opting out keeps the documented "no effect" there.
+# Tracing records no resource use for the budget to count, so passing it
+# through would let the wrapped intervention act with no budget at all. Opting
+# out leaves the tracing undone; on the generation engine a wrapped intervention
+# without a `capacity_key` fails instead, when its actions are first sought.
 traces_contacts(::CapacityConstrained) = false
 trace_contacts!(::CapacityConstrained, state, infector, contacts) = nothing
 

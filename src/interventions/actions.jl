@@ -33,6 +33,12 @@ intervention_actions(::AbstractIntervention, state, candidates) = nothing
 function intervention_actions(w::InterventionWrapper, state, candidates)
     return intervention_actions(w.intervention, state, candidates)
 end
+# Asking for the resource key first makes a wrapped intervention that has none,
+# and so cannot be rationed, fail when its actions are first sought.
+function intervention_actions(cc::CapacityConstrained, state, candidates)
+    capacity_key(cc.intervention)
+    return intervention_actions(cc.intervention, state, candidates)
+end
 
 """
     _action_cache(individual)

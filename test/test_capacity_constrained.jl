@@ -180,6 +180,17 @@ end
         @test EpiBranch.trace_contacts!(cc, state, infector, [contact]) === nothing
         @test EpiBranch.trace_contacts!(cc, state, infector, [contact], [-Inf]) === nothing
         @test !haskey(contact.state, :traced)
+
+        # Tracing has nothing to ration, so a run that would silently drop it
+        # fails instead.
+        model = ModelSpec(
+            BranchingProcess(Poisson(2.0), Exponential(5.0));
+            interventions = [
+                Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf), cc,
+            ],
+            attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
+        )
+        @test_throws ArgumentError simulate(model; max_cases = 20, rng = StableRNG(2))
     end
 
     @testset "Group actions ration actual members" begin
