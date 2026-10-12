@@ -612,8 +612,9 @@ EpiHouseholds.condition_mask
 
 ### Internal functions
 
-These are not part of the public interface and are documented for people
-working on the package itself.
+These are documented for people working on the package itself. Some of them,
+such as `EpiBranch.population_size` and `EpiBranch.required_fields`, are also
+seams an extension can define a method of; their own docstrings say so.
 
 ```@docs
 EpiBranch.get_generation_time
