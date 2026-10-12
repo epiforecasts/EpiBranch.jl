@@ -69,14 +69,18 @@ BenchmarkTools.DEFAULT_PARAMETERS.samples = 20
 println("6. Line list generation (from a 200 to 260 case state)")
 model_ll = BranchingProcess(Poisson(2.0), LogNormal(1.6, 0.5))
 clinical = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
-# The cap sets the size of the state and `condition` rejects the runs that die
-# out before reaching it, so the row names the size that was timed whatever
-# the draw order does. A seed alone does not pin it: about one run in five
-# from this process dies out, and which run a given seed produces moves with
-# any change upstream of the first draw. The accepted state is a run stopped
-# at the cap rather than a finished outbreak, which is what a line list of a
-# given size needs; a conditioned run meant to give a final size wants a cap
-# above the range instead.
+# `condition` holds the state to a window, which is the most that is available
+# here: the cap does not set the size, because the generation that crosses it
+# completes, and a capped run of this process lands anywhere from 220 to about
+# 490 cases, median around 310. So of the runs rejected, three in five are for
+# overshooting 260 and one in five for dying out before 200, and nothing lands
+# between 200 and 219 at all. A seed on its own would pin nothing: which run a
+# given seed produces moves with any change upstream of the first draw, and
+# the row would then name a size the state no longer has.
+#
+# The accepted state is a capped run rather than a finished outbreak, which is
+# what a line list of a given size needs; a conditioned run meant to give a
+# final size wants a cap above the range instead.
 ll_state = simulate(
     ModelSpec(model_ll; attributes = clinical);
     max_cases = 220,
@@ -132,7 +136,10 @@ end
 fit_data = OffspringCounts(fit_counts[1:1000])
 nll(theta) = -loglikelihood(fit_data, NegBin(exp(theta[1]), exp(theta[2])))
 BenchmarkTools.DEFAULT_PARAMETERS.samples = 100
-b = @benchmark optimize($nll, [log(0.7), log(0.5)])
+# Started away from the data-generating values: starting at them finds the
+# optimum in about two thirds of the iterations, which is not the cost of the
+# fit the row names.
+b = @benchmark optimize($nll, [log(1.0), log(1.0)])
 println("   Median: $(round(median(b.times) / 1.0e6, digits = 3)) ms\n")
 
 println("=== Done ===")

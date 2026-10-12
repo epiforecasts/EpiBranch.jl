@@ -30,6 +30,8 @@ Pkg.activate("my-analysis")  # a project for this analysis, as above
 Pkg.add(
     PackageSpec(url = "https://github.com/epiforecasts/EpiBranch.jl", rev = "main")
 )
+# The examples in these pages also use these two
+Pkg.add(["Distributions", "StableRNGs"])
 ```
 
 !!! warning "The registered version is older than these pages"
@@ -57,6 +59,8 @@ Pkg.add([
     PackageSpec(url = repo, rev = rev, subdir = "lib/EpiHouseholds"),
     PackageSpec(url = repo, rev = rev, subdir = "lib/EpiNetwork"),
 ])
+# The examples in these pages also use these two
+Pkg.add(["Distributions", "StableRNGs"])
 ```
 
 `PackageSpec` says where to install a package from: here the GitHub repository,
