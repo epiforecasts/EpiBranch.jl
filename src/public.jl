@@ -20,6 +20,7 @@ public infectious_removal_time
 public risk_applies
 public reads_population_state
 public standing_block
+public analytic_offspring_effect
 # End an infection early from any intervention hook, and read when it ended.
 public abort_infection!
 public infection_aborted_time
