@@ -85,6 +85,12 @@ derived via Lagrange inversion.
 For `R > 1` (supercritical) the PMF is still valid at each `n`, but its
 total mass is less than 1: chains are infinite with positive
 probability.
+
+`R == 0` is allowed as the degenerate boundary (no onward transmission,
+chain size is always 1): `mean(NegativeBinomial)` rounds to exactly 0 once
+`k` is large enough that it swamps `R` in floating point, and chain-size
+fitting over `log k` must still get a finite (`R > 0`) or well-defined
+degenerate (`R == 0`) distribution rather than throwing.
 """
 struct GammaBorel{T <: Real} <: DiscreteUnivariateDistribution
     k::T
@@ -92,7 +98,7 @@ struct GammaBorel{T <: Real} <: DiscreteUnivariateDistribution
 
     function GammaBorel(k::Real, R::Real)
         k > 0 || throw(ArgumentError("k must be positive, got $k"))
-        R > 0 || throw(ArgumentError("R must be positive, got $R"))
+        R >= 0 || throw(ArgumentError("R must be non-negative, got $R"))
         T = promote_type(typeof(k), typeof(R))
         return new{T}(T(k), T(R))
     end
@@ -113,14 +119,24 @@ https://github.com/epiverse-trace/epichains, MIT).
 """
 function _gammaborel_logpdf(k, R, x::Integer, s::Integer = 1)
     (s < 1 || x < s) && return oftype(float(k), -Inf)
+    kx = k * x
+    # Grouped as `kx + (x - s)` rather than `(kx + x) - s`: at `x == s` this is
+    # exactly `kx`, so the two logabsgamma terms below cancel to exactly 0 even
+    # when `k` is so small that `kx` alone would sit at the Gamma pole. Left to
+    # right, `(k * x + x) - s` instead adds the tiny `kx` into `x` first, losing
+    # it, and leaves a spurious 0 where `kx` belongs.
+    gamma_term = logabsgamma(kx + (x - s))[1] - logabsgamma(kx)[1]
+    # `(x - s) * log(R / (k + R))` is always multiplied by zero at `x == s`,
+    # including when `k` is so large relative to `R` that `R / (k + R)` has
+    # underflowed to 0: skip the term outright rather than let `0 * -Inf`
+    # give `NaN`.
+    tail_term = x == s ? zero(gamma_term) : (x - s) * log(R / (k + R))
     return (
         log(s) - log(x)
-            + logabsgamma(k * x + x - s)[1]
-            - logabsgamma(k * x)[1]
-            -
-            logabsgamma(x - s + 1)[1]
-            + k * x * log(k / (k + R))
-            + (x - s) * log(R / (k + R))
+            + gamma_term
+            - logabsgamma(x - s + 1)[1]
+            + kx * log(k / (k + R))
+            + tail_term
     )
 end
 
@@ -278,6 +294,42 @@ function _chain_size_right_tail_logprob(d, x::Integer, s::Integer)
 end
 
 """
+    _chain_size_cdf(d, n::Integer)
+
+Internal: single-seed CDF of a chain size distribution `d`, `P(X ≤ n)`,
+computed by summing the PMF from `minimum(d)` to `n`. Shared by the `cdf`
+methods of the chain-size distributions defined here and in
+`cluster_mixed.jl` and `observation.jl`, none of which Distributions.jl
+knows how to evaluate on its own (see the `cdf`/`logccdf` methods below for
+why that otherwise overflows the stack).
+"""
+function _chain_size_cdf(d, n::Integer)
+    lo = minimum(d)
+    n < lo && return 0.0
+    return sum(pdf(d, j) for j in lo:n)
+end
+
+# Distributions.jl's fallback for a `DiscreteUnivariateDistribution` routes
+# `cdf(d, ::Real)` through `cdf(d, floor(Int, x))`, which without a
+# dedicated `cdf(d, ::Integer)` method calls straight back into that same
+# fallback and overflows the stack. Defining `cdf` here breaks the cycle
+# and, through Distributions' own `ccdf`/`logcdf` defaults, gives those for
+# free; `logccdf` is reused from `_chain_size_right_tail_logprob`, already
+# written to avoid cancellation in the tail.
+Distributions.cdf(d::Borel, n::Integer) = _chain_size_cdf(d, n)
+Distributions.logccdf(d::Borel, n::Integer) = _chain_size_right_tail_logprob(d, n + 1, 1)
+
+Distributions.cdf(d::GammaBorel, n::Integer) = _chain_size_cdf(d, n)
+function Distributions.logccdf(d::GammaBorel, n::Integer)
+    return _chain_size_right_tail_logprob(d, n + 1, 1)
+end
+
+Distributions.cdf(d::PoissonGammaChainSize, n::Integer) = _chain_size_cdf(d, n)
+function Distributions.logccdf(d::PoissonGammaChainSize, n::Integer)
+    return _chain_size_right_tail_logprob(d, n + 1, 1)
+end
+
+"""
     chain_size_distribution(offspring::Poisson)
 
 Analytical chain size distribution for Poisson offspring.
@@ -364,6 +416,11 @@ end
 
 Distributions.pdf(d::IndexChainSize, n::Integer) = exp(logpdf(d, n))
 
+Distributions.cdf(d::IndexChainSize, n::Integer) = _chain_size_cdf(d, n)
+function Distributions.logccdf(d::IndexChainSize, n::Integer)
+    return _chain_size_right_tail_logprob(d, n + 1, 1)
+end
+
 # E[N] = P(J=0)·1 + Σ_{j≥1} P(J=j)·E[1 + size(j seeds)]
 #      = 1 + E[J]·E[dist], since a j-seed chain's expected size is j·E[dist].
 # An index case with E[J] = 0 never seeds later cases, so N ≡ 1 regardless
@@ -424,4 +481,9 @@ function _chain_size_right_tail_logprob(d::TruncatedChainSize, x::Integer, s::In
     x <= d.min_size && return zero(denom)
     isfinite(denom) || return oftype(denom, -Inf)
     return _chain_size_right_tail_logprob(d.base, max(x, d.min_size), s) - denom
+end
+
+Distributions.cdf(d::TruncatedChainSize, n::Integer) = _chain_size_cdf(d, n)
+function Distributions.logccdf(d::TruncatedChainSize, n::Integer)
+    return _chain_size_right_tail_logprob(d, n + 1, 1)
 end

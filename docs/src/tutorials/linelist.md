@@ -1,19 +1,34 @@
 # Line lists and contacts
 
-[`linelist`](@ref) gives you a DataFrame with one row per infected
-case. The core columns (`id`, `parent_id`, `generation`, `chain_id`,
-`date_infection`) are always there; anything else on the individual —
-typed fields or `state` dict entries — shows up as a column too. Keys
-ending in `_time` become date columns, so `:onset_time` becomes
-`date_onset`.
+What would the surveillance data from a simulated outbreak look like?
+[`linelist`](@ref) turns a simulation into a line list: a table (a
+DataFrame, the Julia counterpart of an R data.frame) with one row per case,
+in the format of the simulist R package. [`contacts`](@ref) gives the
+matching table of contacts, infected or not.
 
-To get a new column, write the field during the simulation. Whatever
-ends up on `state` ends up in the DataFrame.
+Every line list has the columns `id`, `parent_id` (the infector's `id`),
+`generation`, `chain_id` and `date_infection`. Anything else the simulation
+records about a case, such as symptom onset, age or outcome, becomes a column
+as well. A recorded time whose name ends in `_time` becomes a date column, so
+`onset_time` appears as `date_onset`. A model with isolation or quarantine
+adds `isolated` and `date_isolation`, and when they last a finite time (a
+finite `duration`) also `date_isolation_release`, the date the person was
+released. To get a new column, record that value on
+each case during the simulation, for example as a population characteristic
+(see the [clinical transitions tutorial](transitions.md)).
 
 ## Line list
 
-A simulation state is converted to a DataFrame with one row per
-infected case using [`linelist`](@ref):
+The model below has a negative binomial offspring distribution with R = 1.5 and
+dispersion k = 0.5 (`NegBin(R, k)`; smaller k means more superspreading) and a
+log-normal generation time. All delays are in days. `LogNormal(μ, σ)` takes the
+mean and standard deviation of the log: `LogNormal(1.5, 0.5)` is an
+incubation period with a median of about 4.5 days. `Exponential(θ)` has mean θ.
+
+After symptom onset each case is reported (mean 3 days after onset), admitted
+to hospital with probability 0.2, and is due to die with probability 0.05.
+Every case also gets a recovery time. Death and recovery are competing
+outcomes: whichever comes first ends the case's course.
 
 ```@example linelist
 using EpiBranch
@@ -31,27 +46,34 @@ progression = [
     Recovery(delay = Exponential(14.0)),
 ]
 
+# Secondary cases: NegBin(R = 1.5, k = 0.5); generation time: LogNormal (days)
 model = ModelSpec(BranchingProcess(NegBin(1.5, 0.5), LogNormal(1.6, 0.5));
     progression = progression, attributes = attrs)
 
-rng = StableRNG(42)
+rng = StableRNG(42)  # a fixed seed makes the results reproducible
 state = simulate(model; condition = 50:200, max_cases = 200, rng = rng)
 
 ll = linelist(state; reference_date = Date(2024, 1, 1))
 first(ll, 5)
 ```
 
-Columns appear only when the relevant state keys are set. Drop the
-`Hospitalisation` transition and `date_admission` disappears from the
-output. Drop `clinical_presentation` and `date_onset`, `date_reporting`,
-`date_admission`, `date_outcome` and `outcome` all disappear — the
-transitions can't anchor on a missing onset.
+`condition = 50:200` repeats the simulation until it produces an outbreak of
+between 50 and 200 cases (both ends included), and `max_cases` stops an outbreak
+that keeps growing. Conditioning on size mimics an observed outbreak of known
+size, but the outbreaks you get are a selected subset: their R and timing are
+not representative of all outbreaks the model produces. `reference_date` is the
+calendar date of time 0, from which all dates are counted.
+
+A column appears only if the simulation recorded that information. Drop the
+`Hospitalisation` step and `date_admission` disappears. Drop
+`clinical_presentation` and there is no symptom onset. The reporting,
+admission and outcome delays are measured from onset, so `simulate` then stops
+with an error asking for `clinical_presentation`.
 
 ## Demographics
 
-Demographics are an attribute, set at simulation time via the
-[`demographics`](@ref) builder. They appear in the line list as `age`
-and `sex` columns:
+[`demographics`](@ref) assigns each case an age (in years) and a sex when it is
+created. They appear in the line list as `age` and `sex` columns:
 
 ```@example linelist
 attrs_demo = [
@@ -70,10 +92,13 @@ println("Age range: $(minimum(ll.age)) - $(maximum(ll.age))")
 println("Female: $(round(count(==("female"), ll.sex) / nrow(ll) * 100, digits=1))%")
 ```
 
-## Age-stratified risks
+The proportion female should be close to the 55% asked for.
 
-Age-conditional case fatality risk is expressed as a closure on the
-`Death` transition's `probability`, reading `ind.state[:age]`:
+## Age-specific case fatality risk
+
+To make the case fatality risk depend on age, give `Death` a function that
+returns each case's probability of death. The function below uses risks of
+0.1% under 15, 1% from 15 to 64 and 15% at 65 and over:
 
 ```@example linelist
 attrs_demo = [
@@ -81,14 +106,19 @@ attrs_demo = [
     demographics(age_distribution = Uniform(0, 90)),
 ]
 
-cfr_by_age = ind -> begin
+function cfr_by_age(rng, ind)
     age = ind.state[:age]
-    age <= 14 ? 0.001 : age <= 64 ? 0.01 : 0.15
+    if age < 15
+        return 0.001
+    elseif age < 65
+        return 0.01
+    else
+        return 0.15
+    end
 end
 
 age_stratified = [
-    Death(delay = Exponential(14.0),
-        probability = (rng, ind) -> cfr_by_age(ind)),
+    Death(delay = Exponential(14.0), probability = cfr_by_age),
     Recovery(delay = Exponential(14.0)),
 ]
 
@@ -100,26 +130,50 @@ state = simulate(model; condition = 100:500, max_cases = 500, rng = rng)
 
 ll = linelist(state; reference_date = Date(2024, 1, 1))
 
+# Cases and deaths in each age band
 for (lo, hi) in [(0, 14), (15, 64), (65, 90)]
-    group = filter(r -> lo <= r.age <= hi, ll)
+    group = filter(row -> lo <= row.age <= hi, ll)
     n_died = count(==("died"), group.outcome)
     pct = nrow(group) > 0 ? round(n_died / nrow(group) * 100, digits=1) : 0.0
     println("Age $lo-$hi: $(nrow(group)) cases, $n_died deaths ($pct%)")
 end
 ```
 
-The same closure pattern covers risk groups, comorbidities, or any
-state field set by your attributes function. See the
-[transitions tutorial](transitions.md) for the full menu.
+EpiBranch calls the function with two arguments: the random number generator
+`rng` and the case `ind`. `cfr_by_age` does not use `rng`, but it must accept
+it. `ind.state[:age]` is the age that `demographics` gave the case.
+
+The proportion dying rises with age, but in the oldest band it falls well
+short of 15%.
+
+!!! warning "The probability of death is not the case fatality risk"
+    `probability` on `Death` is the chance that a case is due to die. Recovery
+    still competes with it: a case due to die whose recovery time comes first
+    recovers. Here death and recovery have the same delay distribution. About
+    half the cases due to die therefore recover, and the proportion who die is
+    about half of `probability`. For a fixed case fatality risk, use
+    [`exclusive_probabilities`](@ref) to make death and recovery mutually
+    exclusive, as shown in the [clinical transitions tutorial](transitions.md).
+
+The same approach works for any characteristic you assign to cases, such as a
+risk group or a comorbidity. See the
+[clinical transitions tutorial](transitions.md) for the other steps a case can
+go through.
 
 ## The whole population
 
-`linelist` gives cases only by default. Pass `infected_only = false` to get
-every individual in the population, as needed for a test-negative design, an
-attack rate by covariate, or an exposed/unexposed comparison. It is most
-useful for a structure-driven model such as
-[`HomogeneousProcess`](@ref), `NetworkProcess` or `HouseholdProcess`, whose
-population exists in full from the start:
+`linelist` lists cases only by default. Pass `infected_only = false` to list
+everyone in the population, as needed for a test-negative design, an attack
+rate by exposure, or an exposed/unexposed comparison. This fits models that
+simulate a fixed population from the start: random mixing
+([`HomogeneousProcess`](@ref)), networks (`NetworkProcess`) and households
+(`HouseholdProcess`).
+
+The model below has 200 people mixing at random. `transmission_rate` is the
+rate per day at which each infectious person makes infectious contacts, spread
+evenly over the population, and each infected person recovers after an
+exponentially distributed time with a mean of 5 days, which ends their
+infectiousness:
 
 ```@example linelist
 pool = ModelSpec(HomogeneousProcess(; transmission_rate = 0.6, population_size = 200);
@@ -134,56 +188,44 @@ println("Population: $(nrow(pop)), infected: $(count(pop.infected))")
 first(pop, 5)
 ```
 
-On an offspring-driven model such as `BranchingProcess` the rows are the
-cases plus every contact they exposed who was not infected.
+In a [`BranchingProcess`](@ref) model the rows are the cases plus the contacts
+they exposed who were not infected.
 
 An uninfected row has `missing` for `date_infection` and for every date that
-follows from an infection: `date_onset`, reporting, admission and outcome
-dates, and any date from your own `_time` fields. The dates of events that
+follows from an infection: `date_onset`, the reporting, admission and outcome
+dates, and any date from your own `_time` values. Dates of events that can
 happen to a person whether or not they are infected are kept:
 
 - `date_trace`, when the contact was traced;
 - `date_vaccination` and `date_immunity`;
-- `date_isolation`, when it is a quarantine on tracing. An isolation that
-  `Isolation` derived from the contact's provisional onset is `missing`, and
-  if it replaced an earlier quarantine the quarantine's date is shown.
+- `date_isolation`, when the contact was quarantined on being traced, and
+  `date_isolation_release`, when that quarantine ended. If a traced contact
+  was later due to be isolated at what would have been their symptom onset,
+  that isolation is not shown (they were never infected, so never had an
+  onset): both columns give the earlier quarantine if there was one, and are
+  `missing` otherwise.
 
-Columns that are not dates, such as `asymptomatic`, `traced` or
-`vaccinated`, are reported as stored.
+Columns that are not dates, such as `asymptomatic`, `traced` or `vaccinated`,
+are shown unchanged.
 
 ## Contacts table
 
-All contacts (infected and non-infected) are returned by
-[`contacts`](@ref), with an `infected` flag:
+[`contacts`](@ref) returns one row per contact: the case (`from`), the
+contact (`to`), whether the contact was infected (`infected`), and the
+contact's generation and infection date:
 
 ```@example linelist
 ct = contacts(state; reference_date = Date(2024, 1, 1))
-println("Total: $(nrow(ct)), Infected: $(count(ct.infected)), Not infected: $(count(.!ct.infected))")
+println("Total: $(nrow(ct)), Infected: $(count(ct.infected)), Not infected: $(nrow(ct) - count(ct.infected))")
 first(ct, 5)
 ```
 
-On a continuous-time (`HouseholdProcess`, `NetworkProcess`, `RoutedNetwork`)
-model, a pair that a certain, non-fading block has settled for good (see
-[`EpiBranch.standing_block`](@ref)) — an all-or-nothing vaccine responder,
-say, or an aborted infection's infector — stops being drawn once that block
-is seen, rather than being redrawn towards an answer the race already has.
-This leaves the pair's standing relationship untouched, so this table
-and the tracing and ring construction built on it stay unaffected: a vaccinated
-pair appears here exactly as an unprotected one would. It leaves out
-event-level counting, though — how many contact events the pair actually had, and
-when — since the race stops generating the later ones. An output that needs
-that count attaches a [`ContactRecorder`](@ref) to the model's `recorder`, which
-asks the race to keep drawing; see [Recording every contact
-event](@ref "Recording every contact event") in the extending guide.
+Contacts who were not infected appear when something stopped transmission,
+such as isolation, quarantine or vaccination. This model has no interventions:
+every contact was infected.
 
-## Conditioned simulation
-
-Generate outbreaks of a specific size range:
-
-```@example linelist
-plain = ModelSpec(BranchingProcess(NegBin(1.5, 0.5), LogNormal(1.6, 0.5)); attributes = attrs)
-
-rng = StableRNG(42)
-state = simulate(plain; condition = 100:150, max_cases = 200, rng = rng)
-println("Outbreak size: $(state.cumulative_cases) (target: 100-150)")
-```
+!!! warning "Fixed-population models"
+    For models that simulate a fixed population (`HomogeneousProcess`,
+    `HouseholdProcess`, `NetworkProcess`, `RoutedNetwork`), `contacts`
+    currently returns an empty table. Who infected whom is in the line list's
+    `parent_id` column.

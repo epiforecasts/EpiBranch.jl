@@ -191,13 +191,6 @@ function competing_risk(iso::Isolation, parent, contact, state)
     return _removal_risks(parent, 1.0 - iso.post_isolation_transmission)
 end
 
-# A finite duration leaves the window open and blocks each contact against the
-# infector's own isolated stretch. The block then depends on the infector
-# whatever the residual is.
-function risk_depends_on_infector(iso::Isolation)
-    return iso.post_isolation_transmission > 0 || !(iso.duration === Inf)
-end
-
 # The likelihood reads the stretch a lapsing isolation removed the host for.
 # A duration of `Inf` leaves no stretch to read, the window closing at the
 # isolation's own start, and the layer records nothing extra for it.

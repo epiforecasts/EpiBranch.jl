@@ -2234,7 +2234,17 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                 @test !haskey(st, :outcome) && !haskey(st, :outcome_time)
 
                 control = course(false)
-                @test control[:hospitalised] && control[:died]
+                # The unconditional Death fires at 6.0, before the
+                # hospitalisation at 7.0 it is timed independently of;
+                # censor_after_outcome! undoes that non-terminal event too,
+                # the same "stands only before the outcome" rule as the
+                # aborted case above. The :died Transition is itself
+                # terminal, so it is exempt from that rule: it keeps the
+                # hospitalised_time anchor it read during its own
+                # resolve_individual! pass, even though Death's earlier
+                # candidate wins the outcome.
+                @test !control[:hospitalised] && control[:hospitalised_time] == Inf
+                @test control[:died] && control[:died_time] == 8.0
                 @test control[:outcome] == :died && control[:outcome_time] == 6.0
             end
 
@@ -3084,19 +3094,10 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         @test all(r -> r.block_probability == 1.0, risks)
         @test EpiBranch.infectious_removal_time(quarantining, lapsing) == Inf
 
-        # A tracing action that quarantines nobody reads no stretch, and a
-        # quarantine with no release is honoured by the window instead of by a
-        # risk a fixed-size pool cannot take.
+        # A tracing action that quarantines nobody reads no stretch.
         @test isempty(EpiBranch.removal_gap_host_times(FlagOnly()))
         @test isempty(EpiBranch.removal_gap_host_times(plain))
         @test EpiBranch.removal_gap_host_times(quarantining) == (key,)
-        @test !EpiBranch.risk_depends_on_infector(plain)
-        @test !EpiBranch.risk_depends_on_infector(
-            ContactTracing(
-                TraceEveryone(), 1.0, Exponential(1.0), Quarantine(duration = Inf)
-            )
-        )
-        @test EpiBranch.risk_depends_on_infector(quarantining)
     end
 
     @testset "reads_population_state" begin
