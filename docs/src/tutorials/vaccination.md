@@ -583,9 +583,12 @@ infected after being traced (see the warning in
 [Ring vaccination](@ref)). Even under `ct_onset`, where infections do
 follow the trace, they follow within days. Both doses here start protecting
 weeks after the trace, too late for those infections (see
-[Delay to immunity](@ref)). Removing the boost and re-running is not a
-controlled comparison either. The two runs use different random draws, and
-their containment can differ by chance in either direction (see the note on
+[Delay to immunity](@ref)). The 0.255 above is not comparable with the 0.27
+printed for isolation and tracing alone: each dose's `coverage` is drawn,
+which shifts the random stream, and setting both efficacies to zero gives
+0.255 as well. Removing the boost and re-running is not a controlled
+comparison either. The two runs use different random draws, and their
+containment can differ by chance in either direction (see the note on
 comparing many replicates above).
 
 ## Repeat campaign visits
