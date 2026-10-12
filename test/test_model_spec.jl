@@ -56,6 +56,11 @@ EpiBranch.initialise_individual!(::BlockOneGoodOneShort, ind, state) = nothing
 EpiBranch.competing_risk(::BlockOneGoodOneShort, parent, contact) =
     Risk(block_probability = 1.0)
 
+# A hook written with every argument variadic, which names no intervention
+# type at all. Defined on a function of its own rather than on one of the
+# package's, so that the rest of the suite does not inherit it.
+_all_variadic(args...) = nothing
+
 @testset "ModelSpec" begin
     # A ModelSpec composes the modelling layers (progression, interventions,
     # attributes, observation) around a pure transmission process. The process
@@ -275,6 +280,14 @@ EpiBranch.competing_risk(::BlockOneGoodOneShort, parent, contact) =
             :warn,
             r"BlockOneGoodOneShort has a method of its own for competing_risk, but at no number of arguments",
         ) match_mode = :any ModelSpec(bp; interventions = [BlockOneGoodOneShort()])
+        # A hook written with every argument variadic leaves a `Vararg` where
+        # the check looks for the intervention's type. It names no
+        # intervention, so the answer is "no method of its own", and neither
+        # overload may throw on it.
+        @test !EpiBranch._has_own_method(_all_variadic, BlockVariadic, AbstractIntervention)
+        @test !EpiBranch._has_own_method(
+            _all_variadic, BlockVariadic, AbstractIntervention, 3
+        )
         # An effect declared for the likelihood alone is an effect.
         @test_logs ModelSpec(bp; interventions = [_SusceptibilityOnly()])
         # `Isolation` implements several hooks properly and stays silent too.

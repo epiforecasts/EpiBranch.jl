@@ -129,6 +129,7 @@ function _has_own_method(f, T::Type, base::Type)
     return any(methods(f, Tuple{T, Vararg{Any}})) do mm
         p = Base.unwrap_unionall(mm.sig).parameters[2]
         p isa TypeVar && (p = p.ub)
+        p isa Type || return false
         p !== base && p <: base
     end
 end
@@ -142,22 +143,20 @@ end
 function _has_own_method(f, T::Type, base::Type, n::Int)
     return any(methods(f, Tuple{T, Vararg{Any}})) do mm
         params = Base.unwrap_unionall(mm.sig).parameters
-        last = params[end]
-        if Base.isvarargtype(last)
-            fixed = length(params) - 1
-            # `Vararg{Any, N} where {N}` has an `N` that is a `TypeVar` rather
-            # than a count, and is reachable at any arity its fixed arguments
-            # allow, as a bare `args...` is.
-            if isdefined(last, :N) && last.N isa Int
-                n + 1 == fixed + last.N || return false
-            else
-                n + 1 >= fixed || return false
-            end
+        if Base.isvarargtype(params[end])
+            # A trailing `Vararg` in a method signature is always open-ended:
+            # Julia expands a counted one, so `f(x::Int, ::Vararg{Any, 2})`
+            # has three fixed parameters and no vararg at all. Such a method
+            # is reachable at any arity its fixed arguments allow.
+            n + 1 >= length(params) - 1 || return false
         else
             length(params) == n + 1 || return false
         end
         p = params[2]
         p isa TypeVar && (p = p.ub)
+        # A hook written with every argument variadic leaves a `Vararg` here
+        # rather than a type, and says nothing about any one intervention.
+        p isa Type || return false
         p !== base && p <: base
     end
 end
