@@ -707,7 +707,11 @@ change to `Scheduled`. One method is required and one trait has a default:
 - **`is_triggered!(trigger, state)`** — whether the condition holds
   now. The same trigger object is reused across the repeated runs of
   `simulate(model, n)`, so keep no state on it between calls and derive any
-  running count from `state` afresh.
+  running count from `state` afresh. The engine asks the gate about 1.7 times
+  per individual, so a count that walks the population on every call, as
+  `ReportedCases` has to, makes a run quadratic in the number of individuals;
+  a count the engine already keeps, as `Infections` reads `cumulative_cases`,
+  costs nothing.
 - **`trigger_can_lapse(trigger)`** — whether the condition, once
   true, can turn false again. The default is the conservative `true`. Return
   `false` only for a quantity that cannot fall, as `Infections` does for

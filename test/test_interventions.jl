@@ -2962,6 +2962,11 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             @test !EpiBranch.is_triggered!(Infections(4), state)
             @test !EpiBranch.trigger_can_lapse(Infections(3))
 
+            # A threshold of zero is met before any report exists, as
+            # `Infections(0)` is, rather than waiting for a first report.
+            @test EpiBranch.is_triggered!(ReportedCases(0), state)
+            @test EpiBranch.is_triggered!(Infections(0), state)
+
             # Two reports dated at or before the clock (10.0), one dated after
             # it, and one case never reported.
             inds[1].state[:reported] = true
@@ -2974,8 +2979,23 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
 
             @test EpiBranch.is_triggered!(ReportedCases(2), state)
             @test !EpiBranch.is_triggered!(ReportedCases(3), state)
-            # A reinfected host has its report flag cleared, so the count can
-            # fall and the trigger keeps the conservative default.
+            # Moving the clock brings the later report into the count.
+            state.max_infection_time = 20.0
+            @test EpiBranch.is_triggered!(ReportedCases(3), state)
+            state.max_infection_time = 10.0
+            @test !EpiBranch.is_triggered!(ReportedCases(3), state)
+            # A report made before a reinfection is archived with its
+            # episode, and the health system has still made it, so it counts.
+            # Without the archived episodes this host would hold one report
+            # however many times it had been reported.
+            episode = EpiBranch.InfectionEpisode(inds[1])
+            inds[1].state[:reported] = false
+            inds[1].state[:reporting_time] = Inf
+            EpiBranch.close_episode!(inds[1], episode)
+            @test EpiBranch.is_triggered!(ReportedCases(2), state)
+            # The clock the count is read against is not monotone: admitting a
+            # scheduled action asks the gate with the action's own time, so
+            # the trigger keeps the conservative default.
             @test EpiBranch.trigger_can_lapse(ReportedCases(2))
 
             # The count reads the report time it needs rather than indexing

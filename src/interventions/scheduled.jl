@@ -104,9 +104,14 @@ abstract type AbstractTrigger end
 Whether `trigger`'s condition holds now. The same trigger object is reused
 across the repeated simulations of `simulate(model, n)` (serially, or
 across threads under `parallel = true`), so a trigger must keep no state
-of its own between calls; read [`CapacityConstrained`](@ref)'s
-`_capacity_usage` for the precedent of deriving a running count fresh
-from `state` on every call instead.
+of its own between calls: derive what it needs from `state`, or keep working
+values in `state.scratch`, which belongs to the run.
+
+The engine asks the gate about 1.7 times per individual, so a trigger that
+walks the population on every call makes a run quadratic in the number of
+individuals, as [`ReportedCases`](@ref) does. A trigger that can read a
+running total the engine already keeps, as [`Infections`](@ref) reads
+`cumulative_cases`, costs nothing by comparison.
 """
 function is_triggered! end
 
@@ -118,8 +123,9 @@ default is the conservative `true`: a trigger written outside the package
 is assumed able to close again until it says otherwise, as an opaque
 [`Scheduled`](@ref) predicate already is. [`Infections`](@ref) returns
 `false`, since `cumulative_cases` only ever rises. [`ReportedCases`](@ref)
-keeps the default: a host that is reinfected has its report flag cleared when
-its transitions are initialised again, so the count it reads can fall.
+keeps the default: the report count only rises, but the clock it is counted
+against does not, since admitting a scheduled action asks the gate with the
+action's own time in place of the simulation clock.
 """
 trigger_can_lapse(::AbstractTrigger) = true
 
@@ -137,29 +143,42 @@ end
 is_triggered!(t::Infections, state::SimulationState) = state.cumulative_cases >= t.n
 trigger_can_lapse(::Infections) = false
 
-# Whether at least `n` reports are dated by `state.max_infection_time`.
-# Recomputed from `state.individuals` on every call rather than cached: an
-# individual is appended to `state.individuals` by `make_contact!` as soon as
-# it is created, before its clinical transitions run. `Reporting`, which sets
-# `:reported` and `:reporting_time`, is one of those transitions and can
-# resolve several calls later. A cache that marked the individual "seen" on
-# an earlier call would miss the report once it lands.
+# Whether a report in `st` is dated by the clock reading `now`. Read with
+# `get` rather than indexed: a `:reported` flag set by something other than
+# the `Reporting` transition need not come with a `:reporting_time`.
+_report_due(st, now) =
+    get(st, :reported, false) && get(st, :reporting_time, Inf) <= now
+
+# The reports the population holds that are dated by
+# `state.max_infection_time`, counting every episode of a host infected more
+# than once: a reinfection resets the live `:reported` flag and archives the
+# episode carrying it, and a report the health system has made does not stop
+# having been made.
 #
-# The gate is asked once per active host per generation, and again per
-# candidate pair, so each call stops at `n` rather than counting the whole
-# population: the trigger never needs the exact total, and walking all of it
-# makes a run quadratic in the number of individuals.
-function _reported_cases_due(state::SimulationState, n::Int)
+# Derived from `state.individuals` rather than kept as a running total, since
+# `make_contact!` appends an individual before its clinical transitions run
+# and `Reporting` is one of those, so a host counted on an earlier call
+# cannot be taken as finished with.
+#
+# Counted on every call, and the engine asks the gate about 1.7 times per
+# individual, so a run with this trigger is quadratic in the number of
+# individuals: about 0.02 s at 1,000 of them and 190 s at 57,000. Caching the
+# count against the clock is not available, because `resolve_transitions!`
+# sets `:reported` on each newly infected case as the generation resolves,
+# while the clock the count is read against moves only between generations.
+# Making it cheap needs the count maintained where the reports are written,
+# or the gate asked once a generation rather than once a pair, neither of
+# which a trigger can reach from outside the engine.
+function _reported_cases_due(state::SimulationState)
     now = state.max_infection_time
     due = 0
     for ind in state.individuals
-        if get(ind.state, :reported, false) &&
-                get(ind.state, :reporting_time, Inf) <= now
-            due += 1
-            due >= n && return true
+        _report_due(ind.state, now) && (due += 1)
+        for episode in ind.episodes
+            _report_due(episode.state, now) && (due += 1)
         end
     end
-    return false
+    return due
 end
 
 """
@@ -174,7 +193,7 @@ model's `progression`, which sets `:reported` and `:reporting_time`.
 struct ReportedCases <: AbstractTrigger
     n::Int
 end
-is_triggered!(t::ReportedCases, state::SimulationState) = _reported_cases_due(state, t.n)
+is_triggered!(t::ReportedCases, state::SimulationState) = _reported_cases_due(state) >= t.n
 
 # ── Keyword convenience constructor ──────────────────────────────────
 
