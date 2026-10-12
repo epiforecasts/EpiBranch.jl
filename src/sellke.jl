@@ -612,19 +612,19 @@ end
 # part. The deprecated `apply_post_transmission!` acts on a batch of freshly
 # created contact objects, and a race that settles one pre-existing node at a
 # time never builds those. `keep_active` is read, but only from inside a tracing
-# walk (`_trace_from!` asks it which contacts the ring grows from), so an
-# intervention that answers it and does not trace has nothing to call it. So an
-# intervention with a method of its own for either hook is taken to reach its
-# targets that way, and reported as unhonoured, unless it also traces contacts.
-# Actions from `intervention_actions` are discovered on the race only for an
-# intervention declaring `continuous_actions`, because the race offers them to
-# pending members whose infection times it does not know yet; one that does not
-# declare it is reported. The checks read the methods themselves, so an
+# walk (`_trace_from!` asks it which contacts the ring grows from); an
+# intervention that answers it without tracing has nothing to call it. An
+# intervention with a method of its own for either hook is therefore taken to
+# reach its targets that way, and reported as unhonoured, unless it also traces
+# contacts. Actions from `intervention_actions` are discovered on the race only
+# for an intervention declaring `continuous_actions`, because the race offers
+# them to pending members whose infection times it does not know yet; one that
+# does not declare it is reported. The checks read the methods themselves, so an
 # intervention written outside the package is reported without declaring
 # anything. `MassVaccination`'s rollout, for one, doses each contact a case
-# makes, which the race would have to offer the whole pending population, so on
-# the continuous-time path nobody is ever dosed and the efficacy risk it
-# contributes never blocks.
+# makes, which the race would have to offer the whole pending population; on
+# the continuous-time path nobody is therefore ever dosed, and the efficacy
+# risk it contributes never blocks.
 #
 # Tracing needs one thing more: the model has to be able to name the contacts a
 # case reached, which is what `supplies_contacts` reports. A graph names a node's
