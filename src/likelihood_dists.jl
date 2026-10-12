@@ -130,7 +130,8 @@ function chain_size_distribution(
             isempty(interventions(model))
         return observe(
             _fold_reporting(
-                _progression(model), chain_size_distribution(single_type_offspring(model))
+                _progression(model), chain_size_distribution(single_type_offspring(model)),
+                observation(model)
             ),
             observation(model)
         )
@@ -146,7 +147,8 @@ function chain_size_distribution(
             isempty(interventions(spec))
         return observe(
             _fold_reporting(
-                _progression(spec), chain_size_distribution(single_type_offspring(spec.process))
+                _progression(spec), chain_size_distribution(single_type_offspring(spec.process)),
+                observation(spec)
             ),
             observation(spec)
         )

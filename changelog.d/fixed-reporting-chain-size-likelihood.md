@@ -6,3 +6,8 @@ chain-size likelihood as one with full reporting: the closed form ignored
 `Reporting` entirely, and the simulation-based route counted every case
 regardless of whether it was reported. `end_of_outbreak_probability` treated
 it as fully reported too, since its closed form assumes `ρ = 1`.
+
+One more gap in that fix is closed here. The closed-form chain-size
+likelihood thinned by a `Reporting` step and then, for a model also carrying
+a `PerCaseObservation`, thinned a second time, rather than refusing the
+combination the way `simulate` already does.

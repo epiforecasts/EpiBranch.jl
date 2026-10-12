@@ -218,10 +218,21 @@ Thin `base` by a `Reporting` step's detection probability, read straight from
 `progression`, so the closed-form chain-size law and `chain_size_distribution`
 read the same source `simulate` and [`progression_loglik`](@ref) do. Returns
 `base` unchanged when `progression` has no `Reporting` step, or one with
-probability `1`.
+probability `1`. Throws the same `ArgumentError` `simulate` does (via
+`apply_observation!`) when `obs` is a `PerCaseObservation` and `progression`
+also has a `Reporting` step, rather than silently thinning by both.
 """
-function _fold_reporting(progression, base)
+function _fold_reporting(progression, base, obs)
     ρ = _reporting_probability(progression)
-    (ρ === nothing || ρ == 1.0) && return base
+    ρ === nothing && return base
+    obs isa PerCaseObservation && throw(
+        ArgumentError(
+            "PerCaseObservation cannot be combined with a progression " *
+                "transition that records `:reported`, such as `Reporting`: " *
+                "both would write the case's report. Report cases with one " *
+                "of them."
+        )
+    )
+    ρ == 1.0 && return base
     return ThinnedChainSize(base, ρ)
 end

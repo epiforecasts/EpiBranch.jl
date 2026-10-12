@@ -317,7 +317,9 @@ function _chain_size_model_loglik(
     if isempty(ivs)
         try
             d = observe(
-                _fold_reporting(prog, chain_size_distribution(single_type_offspring(process))),
+                _fold_reporting(
+                    prog, chain_size_distribution(single_type_offspring(process)), obs
+                ),
                 obs
             )
             return _chain_size_loglik(d, data; prob_concluded)
