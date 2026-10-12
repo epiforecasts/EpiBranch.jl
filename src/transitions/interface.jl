@@ -6,8 +6,11 @@ Base type for clinical-state transitions. Subtypes implement
 A transition writes its outcome to one or more keys on `individual.state`,
 under names it owns. Other transitions and the line-list projection read
 from these keys. Transitions are composable: stack them in a vector and
-the engine applies them in order at case-creation time, after attributes
-and interventions have run.
+the engine applies them in order once for each infection, when the case is
+settled, before the interventions' [`resolve_individual!`](@ref). They see
+the same state the interventions do: `state.max_infection_time` at the case's
+infection time, `state.current_generation` at its generation and
+`state.cumulative_cases` counting the cases settled up to and including it.
 
 Terminal transitions — those that end the case — declare themselves by
 returning `true` from [`is_terminal`](@ref) and implement

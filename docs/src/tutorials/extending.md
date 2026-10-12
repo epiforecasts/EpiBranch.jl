@@ -273,7 +273,7 @@ ones your intervention needs (all default to no-ops).
 | Hook | Called | Receives | Must return |
 |---|---|---|---|
 | `initialise_individual!(iv, individual, state)` | Once when each individual is created | An `Individual` whose typed fields are set but whose `state` dict is empty | `nothing` (mutate `individual.state` in place) |
-| `resolve_individual!(iv, individual, state)` | Once per active individual at the start of each generation, before offspring are drawn | The parent for the upcoming step | `nothing` (mutate `individual.state` in place) |
+| `resolve_individual!(iv, individual, state)` | Once for each infection, when the case is settled: after its clinical transitions, before it infects anyone (see below) | The case, with `state.max_infection_time` at its infection time | `nothing` (mutate `individual.state` in place) |
 | `apply_post_transmission!(iv, state, new_contacts)` | Once per generation after all contacts for that generation have been created (across every active parent) | A `Vector{Individual}` of the new contacts | `nothing` (mutate any of the contacts' `state` in place) |
 | `competing_risk(iv, parent, contact, state)` | Per `(parent, contact)` pair: on the generation engine during infection resolution, after `apply_post_transmission!` has run; on the continuous-time models as each infection is proposed | The parent and a single contact | `nothing`, a single [`Risk`](@ref), or an `NTuple{N, Risk}` for interventions that gate transmission via more than one mechanism |
 | `keep_active(iv, state, targets, is_new)` | Once per generation after infection is resolved, while the engine builds the next active set | This generation's `targets` and an `is_new` flag per target | An iterable of contact ids to keep generating contacts into the next generation (default: none) |
@@ -294,6 +294,35 @@ tests a running case count, or any other state beyond the individual being
 resolved, declares `true` for itself, which lifts its owner with it. A
 function-valued parameter has nothing to declare, so such a test belongs in a
 component.
+
+### When `resolve_individual!` runs
+
+Both engines call `resolve_individual!` once for each infection, as the case
+is settled. By then its infection time is fixed and the clinical transitions in
+the `progression` have written its natural history (onset, outcome and the rest),
+and it has not yet infected anyone. The hook never sees an uninfected
+individual, even a contact that `keep_active` keeps in the simulation to
+generate contacts of its own.
+
+The hook sees the simulation state as it stands at that case:
+
+- `state.max_infection_time` is the case's infection time,
+- `state.current_generation` is the case's generation,
+- `state.cumulative_cases` counts the case and every case settled before it.
+
+A [`Scheduled`](@ref) gate reads these values. On either engine,
+`Scheduled(iso; start_time = 10.0)` isolates the cases infected from day 10
+onwards, and `start_after_cases = 50` the 50th case and after. The clinical
+transitions see the same values while they run.
+
+The continuous-time models settle cases in order of infection time, and the case
+count is the case's place in that order. The generation engine settles a
+generation's cases together, once its infections are decided. A case there
+counts the cases of earlier generations and those of its own generation infected
+no later than it. A case in a later generation is not counted even when it was
+infected earlier, because the engine has not drawn it yet. Once the
+generation's cases are settled, the clock and count return to the generation's
+latest infection time and total. The stopping rules read those.
 
 ### Which hooks run on which engine
 
@@ -432,26 +461,22 @@ What this means in practice:
   A graph names a node's neighbours and a household its members; mass action
   (`HomogeneousProcess`) names no contacts, so tracing stays unhonoured there.
 
-Two ordering differences follow from this, and they matter when you write an
-intervention that has to work on both:
+Both engines trace a contact when its *infector* settles, which is before the
+contact settles anything of its own. An intervention that writes onto a contact
+must therefore not assume the contact is unwritten, and one that reads a
+contact's own state must not assume it is already set. `Isolation` deals with this by
+treating a standing quarantine as a competing pathway and keeping whichever
+isolation time comes first.
 
-- On the generation engine, a contact resolves its own state
-  (`resolve_individual!`) **before** tracing runs. On the continuous-time
-  models the order inverts: a contact is traced when its *infector* settles,
-  which is before the contact settles anything of its own. An intervention
-  that writes onto a contact must therefore not assume the contact is
-  unwritten, and one that reads a contact's own state must not assume it is
-  already set. This is why `Isolation` treats a standing quarantine as a
-  competing pathway and keeps the earliest time, instead of returning early.
-- Tracing on the continuous-time path reaches only contacts that have not
-  themselves settled. Settling a case fixes its window and its onward
-  proposals, so a trace arriving afterwards has nothing left to shorten.
-  Tracing *backwards*, to the already-settled neighbour a case was infected
-  by, is not supported on either engine.
+Tracing on the continuous-time path reaches only contacts that have not
+themselves settled. Settling a case fixes its window and its onward proposals,
+so a trace arriving afterwards has nothing left to shorten. Tracing
+*backwards*, to the already-settled neighbour a case was infected by, is not
+supported on either engine.
 
 Ordering guarantees:
 
-- `resolve_individual!` runs strictly before any `competing_risk` call for that generation, so a competing risk can read whatever `resolve_individual!` wrote on the parent.
+- `resolve_individual!` runs on a case before it makes any contact. A competing risk can read whatever `resolve_individual!` wrote on the infector.
 - `apply_post_transmission!` runs strictly before any `competing_risk` call, so a competing risk can read whatever post-transmission hook wrote on the contact (e.g. `:vaccination_time`).
 - `keep_active` runs after infection is resolved, so it can read each target's `:infected` and anything `apply_post_transmission!` wrote on it this generation.
 - Interventions are applied in the order they appear in `interventions = [...]`. For `apply_post_transmission!` and `competing_risk`, every intervention sees the state written by earlier interventions in the same generation.
@@ -475,7 +500,7 @@ function initialise_individual!(::ContactTracing, individual, state)
 end
 ```
 
-**`resolve_individual!`** — `Isolation` computes the isolation time for the upcoming generation's parent from the individual's onset time plus a sampled delay, and folds in any earlier trace-driven isolation time that `ContactTracing` may have written on a previous generation:
+**`resolve_individual!`** — `Isolation` computes a case's isolation time from its onset time plus a sampled delay, and folds in any earlier trace-driven isolation time that `ContactTracing` wrote when the case was traced as a contact:
 
 ```julia
 function resolve_individual!(iso::Isolation, individual, state)
@@ -1463,11 +1488,11 @@ Return the number of *potential* contacts, and don't pre-filter by
 parent intervention state (`:isolated`, `:vaccinated`, …). The engine's
 competing-risks resolution decides afterwards which contacts are
 infected, and that is the only place intervention effects on
-transmission apply. The engine also runs `resolve_individual!` on each
-parent first, then `initialise_individual!` and
-`apply_post_transmission!` on the new contacts, the clinical
-transitions, and the bookkeeping fields (`cumulative_cases`,
-`current_generation`, `active_ids`, `extinct`, `max_infection_time`).
+transmission apply. The engine also runs `initialise_individual!` and
+`apply_post_transmission!` on the new contacts, runs the clinical
+transitions and `resolve_individual!` on each new case, and updates the
+bookkeeping fields (`cumulative_cases`, `current_generation`, `active_ids`,
+`extinct`, `max_infection_time`).
 
 A **structure-driven** model produces candidates a count can't name: a
 contact network, or a household/metapopulation process where a

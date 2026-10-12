@@ -19,7 +19,28 @@ abstract type AbstractIntervention end
 """Set up intervention-specific fields on a newly created individual. Default: no-op."""
 initialise_individual!(::AbstractIntervention, individual, state) = nothing
 
-"""Determine intervention state before transmission. Default: no-op."""
+"""
+    resolve_individual!(intervention, case, state)
+
+Set the intervention's state on a case before it transmits. `Isolation`, for
+example, records when the case isolates. Default: no-op.
+
+Both engines call it once for each infection, as the case is settled: after
+its infection time is fixed and its clinical transitions have run, and before
+it infects anyone. It is never called on an uninfected individual, even a
+contact that `keep_active` keeps in the simulation to generate contacts of
+its own. While it runs,
+`state.max_infection_time` is the case's infection time,
+`state.current_generation` is the case's generation and
+`state.cumulative_cases` counts the case and every case settled before it. A
+[`Scheduled`](@ref) gate is evaluated against these values.
+
+The continuous-time models settle cases in order of infection time. The
+generation engine settles a generation's cases together, once its infections
+are decided. There `state.cumulative_cases` counts the cases of earlier
+generations and those of the case's own generation infected no later than it;
+a case of a later generation is not counted, even one infected earlier.
+"""
 resolve_individual!(::AbstractIntervention, individual, state) = nothing
 
 """Act on contacts after creation. All contacts are received. Default: no-op."""

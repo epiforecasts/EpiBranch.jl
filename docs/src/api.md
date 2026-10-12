@@ -449,7 +449,9 @@ developers extending the package.
 EpiBranch.MultiTypeOffspring
 EpiBranch.get_generation_time
 EpiBranch._advance_generation!
-EpiBranch._prepare_parents!
+EpiBranch._settle_generation!
+EpiBranch._settle_case!
+EpiBranch._at_case!
 EpiBranch._intervene!
 EpiBranch._resolve!
 EpiBranch._decide_infected
