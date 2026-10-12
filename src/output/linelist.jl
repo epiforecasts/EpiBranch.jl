@@ -72,7 +72,8 @@ information: for example `date_onset` and `asymptomatic` from
 [`clinical_presentation`](@ref), `age` and `sex` from [`demographics`](@ref),
 `isolated` and `date_isolation` from [`Isolation`](@ref) (with
 `date_isolation_release` when isolation or quarantine has a finite
-`duration`), `date_reporting` from [`Reporting`](@ref), and `outcome` and
+`duration`), `date_reporting` from [`Reporting`](@ref) or [`PerCaseObservation`](@ref),
+and `outcome` and
 `date_outcome` from [`Death`](@ref) and [`Recovery`](@ref). Any time recorded under a name ending
 in `_time` becomes a `date_` column (`:onset_time` becomes `date_onset`);
 other information appears as recorded. Names starting with an underscore are

@@ -149,8 +149,9 @@ simulation day 0) and `cases`. Weeks with no cases are left out.
   `clinical_presentation`) is placed by its infection time.
 - `:infection`: infection time. This is not observed in real surveillance,
   and the curve comes out earlier by roughly one incubation period.
-- `:reporting`: reporting time, set by [`Reporting`](@ref). Cases never
-  reported are left out.
+- `:reporting`: reporting time, set by [`Reporting`](@ref) or by
+  [`PerCaseObservation`](@ref), whichever the model uses. Cases never reported
+  are left out.
 - any other recorded time, such as `:admission_time`.
 """
 function weekly_incidence(
