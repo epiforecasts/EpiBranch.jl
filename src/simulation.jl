@@ -580,7 +580,8 @@ given a provisional parent (its earliest exposing edge); then each individual
 of the active set is offered the contacts it reached, through the per-case
 hooks ([`_act_per_case!`](@ref)), before infection is resolved. An
 intervention still implementing the deprecated batch hook
-[`apply_post_transmission!`](@ref) is handed the whole batch after that.
+[`apply_post_transmission!`](@ref) is handed the whole batch after that, and
+then asked [`keep_active`](@ref) about the whole batch.
 Returns the ids the interventions asked to keep active."""
 function _intervene!(
         state::SimulationState,
@@ -609,6 +610,8 @@ function _intervene!(
         _uses_batch_hook(intervention) || continue
         _warn_batch_hook(intervention)
         apply_post_transmission!(intervention, state, targets)
+        # Asked after the batch hook, which may write what it reads.
+        append!(kept, keep_active(intervention, state, targets, is_new))
     end
     return kept
 end
@@ -670,6 +673,7 @@ function _case_hooks!(state::SimulationState, case, interventions, contacts, is_
         actions === nothing || _admit_actions!(intervention, state, actions)
     end
     for intervention in interventions
+        _uses_batch_hook(intervention) && continue
         append!(kept, keep_active(intervention, state, contacts, is_new))
     end
     return nothing

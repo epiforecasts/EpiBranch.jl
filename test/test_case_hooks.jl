@@ -42,6 +42,22 @@ function EpiBranch.apply_post_transmission!(::_BatchOnly, state, new_contacts)
     return nothing
 end
 
+# A ring written against the batch hook: it keeps active the contacts its own
+# batch hook marked.
+struct _BatchRing <: AbstractIntervention end
+function EpiBranch.apply_post_transmission!(::_BatchRing, state, new_contacts)
+    for c in new_contacts
+        c.state[:_batch_marked] = true
+    end
+    return nothing
+end
+function EpiBranch.keep_active(::_BatchRing, state, targets, is_new)
+    return [t.id for t in targets if get(t.state, :_batch_marked, false)]
+end
+# Leaves half the contacts uninfected, so there is someone to keep active.
+EpiBranch.competing_risk(::_BatchRing, parent, contact, state) =
+    Risk(block_probability = 0.5)
+
 _case_hook_model(ivs) = ModelSpec(
     BranchingProcess(Poisson(2.0), Exponential(3.0)); interventions = ivs
 )
@@ -112,6 +128,19 @@ _case_hook_model(ivs) = ModelSpec(
         contacts = filter(ind -> ind.parent_id != 0, state.individuals)
         @test !isempty(contacts)
         @test all(ind -> get(ind.state, :_batch_seen, false), contacts)
+    end
+
+    @testset "keep_active of a batch-hook intervention sees its batch writes" begin
+        state = @test_logs (:warn,) match_mode = :any simulate(
+            _case_hook_model([_BatchRing()]);
+            max_cases = 10_000, max_generations = 3, rng = StableRNG(16)
+        )
+        # Every contact, infected or not, stays active and makes contacts.
+        uninfected = filter(
+            ind -> !is_infected(ind) && ind.generation < 3, state.individuals
+        )
+        @test !isempty(uninfected)
+        @test any(ind -> !isempty(ind.secondary_case_ids), uninfected)
     end
 
     @testset "Calling the batch hook on a built-in warns and still acts" begin
