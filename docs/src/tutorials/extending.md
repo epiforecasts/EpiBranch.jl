@@ -82,33 +82,32 @@ downstream packages should pick names that do not collide.
 | `:_isolation_release_time_before_isolation` | `Float64` | — | `Isolation` | `resolve_individual!`; internal. The release time of the standing isolation held before this one |
 | `:_isolation_unrecorded_before_isolation` | `Bool` | — | `Isolation` | `resolve_individual!`; internal |
 | `:test_positive` | `Bool` | `false` | `Isolation` | `resolve_individual!` |
-| `:traced` | `Bool` | `false` | `ContactTracing` | `apply_post_transmission!` / `trace_contacts!` |
-| `:quarantined` | `Bool` | `false` | `ContactTracing` | `apply_post_transmission!` / `trace_contacts!` |
+| `:traced` | `Bool` | `false` | `ContactTracing` | `trace_contacts!` |
+| `:quarantined` | `Bool` | `false` | `ContactTracing` | `trace_contacts!` |
 | `:_traced_isolation_time` | `Float64` | `Inf` | `ContactTracing` → `Isolation` | Internal handoff; may precede onset, so hold it back to onset |
-| `:trace_time` | `Float64` | — | `ContactTracing` | `apply_post_transmission!` / `trace_contacts!` |
-| `:_ring_remaining` | `Int` | `0` | `ContactTracing` (`depth > 1`) | `apply_post_transmission!` / `trace_contacts!`; internal |
+| `:trace_time` | `Float64` | — | `ContactTracing` | `trace_contacts!` |
+| `:_ring_remaining` | `Int` | `0` | `ContactTracing` (`depth > 1`) | `trace_contacts!`; internal |
 | `:_ring_propagated` | `Bool` | `false` | `ContactTracing` (`depth > 1`) | `trace_contacts!`; internal |
-| `:traced_by` | `Int` | — | `ContactTracing` | `apply_post_transmission!` / `trace_contacts!` |
+| `:traced_by` | `Int` | — | `ContactTracing` | `trace_contacts!` |
 | `:trace_level` | `Int` | — | `compute_trace_level!` | Post-simulation |
-| `:vaccinated[_<label>]` | `Bool` | `false` | `AbstractVaccination` | Init / `apply_post_transmission!` |
-| `:vaccination_time[_<label>]` | `Float64` | `Inf` | `AbstractVaccination` | `apply_post_transmission!` |
-| `:vaccine_efficacy[_<label>]` | `Float64` | — | `AbstractVaccination` | Init / `apply_post_transmission!` |
-| `:post_exposure_efficacy[_<label>]` | `Float64` | — | `RingVaccination` (varying `post_exposure_efficacy`) | `apply_post_transmission!` |
-| `:onward_efficacy[_<label>]` | `Float64` | — | `RingVaccination` (varying `onward_efficacy`) | `apply_post_transmission!` |
-| `:immunity_time[_<label>]` | `Float64` | — | `AbstractVaccination` | `apply_post_transmission!` |
-| `:severity_efficacy[_<label>]` | `Float64` | — | `AbstractVaccination` | `apply_post_transmission!` |
-| `:coverage_declined[_<label>]` | `Bool` | `false` | `GroupVaccination` | `apply_post_transmission!` |
+| `:vaccinated[_<label>]` | `Bool` | `false` | `AbstractVaccination` | Init / `intervention_actions` |
+| `:vaccination_time[_<label>]` | `Float64` | `Inf` | `AbstractVaccination` | `intervention_actions` |
+| `:vaccine_efficacy[_<label>]` | `Float64` | — | `AbstractVaccination` | Init / `intervention_actions` |
+| `:post_exposure_efficacy[_<label>]` | `Float64` | — | `RingVaccination` (varying `post_exposure_efficacy`) | `intervention_actions` |
+| `:onward_efficacy[_<label>]` | `Float64` | — | `RingVaccination` (varying `onward_efficacy`) | `intervention_actions` |
+| `:immunity_time[_<label>]` | `Float64` | — | `AbstractVaccination` | `intervention_actions` |
+| `:severity_efficacy[_<label>]` | `Float64` | — | `AbstractVaccination` | `intervention_actions` |
+| `:coverage_declined[_<label>]` | `Bool` | `false` | `GroupVaccination` | `intervention_actions` |
 | `:infection_aborted_time` | `Float64` | — | Engine, written through `abort_infection!` (e.g. by `RingVaccination`'s `post_exposure_efficacy`) | Any intervention hook |
-| `:capacity_admission_time_<capacity_key>` | `Float64` | — | `CapacityConstrained` | `apply_post_transmission!` |
-| `:reporting_time` | `Float64` | `Inf` | `Reporting` transition | `resolve_individual!` |
-| `:admitted` | `Bool` | `false` | `Hospitalisation` transition | `resolve_individual!` |
-| `:admission_time` | `Float64` | `Inf` | `Hospitalisation` transition | `resolve_individual!` |
+| `:capacity_admission_time_<capacity_key>` | `Float64` | — | `CapacityConstrained` | Action admission |
+| `:reporting_time` | `Float64` | `Inf` | `Reporting` transition *or* `PerCaseObservation` | `resolve_individual!` / Post-simulation projection; reset to `Inf` by `censor_after_outcome!` if it falls after `:outcome_time` |
+| `:admitted` | `Bool` | `false` | `Hospitalisation` transition | `resolve_individual!`; reset to `false` by `censor_after_outcome!` if `:admission_time` falls after `:outcome_time` |
+| `:admission_time` | `Float64` | `Inf` | `Hospitalisation` transition | `resolve_individual!`; reset to `Inf` by `censor_after_outcome!` if it falls after `:outcome_time` |
 | `:death_candidate_time` | `Float64` | `Inf` | `Outcome` transition | `resolve_individual!` |
 | `:recovery_candidate_time` | `Float64` | `Inf` | `Outcome` transition | `resolve_individual!` |
 | `:outcome` | `Symbol` | — | `Outcome` transition | `resolve_individual!` (terminal) |
 | `:outcome_time` | `Float64` | — | `Outcome` transition | `resolve_individual!` (terminal) |
-| `:reported` | `Bool` | `false` | `PerCaseObservation` *or* `Reporting` transition | Post-simulation projection / `resolve_individual!` |
-| `:report_time` | `Float64` | — | `PerCaseObservation` | Post-simulation projection |
+| `:reported` | `Bool` | `false` | `PerCaseObservation` *or* `Reporting` transition | Post-simulation projection / `resolve_individual!`; reset to `false` by `censor_after_outcome!` if `:reporting_time` falls after `:outcome_time` |
 | `:cluster_theta` | `Float64` | — | `ClusterMixed` analytics | First simulation read |
 | `:vaccine_acceptance` | `Float64` | — | `vaccine_acceptance` | Init (default key; customisable) |
 | `:infectious_time` | `Float64` | `Inf` | `Transition(:infectious, …)` | `resolve_individual!` |
@@ -158,9 +157,9 @@ is undone and the keys it wrote are restored, so no hospitalisation, death or
 the `_time` keys a transition writes, so it covers a custom transition that
 records when it happens under a `_time` key, as the built-ins do.
 
-On the generation-based engine `apply_post_transmission!` runs before infection
-is resolved. An abort recorded there is set against a contact's provisional
-infection time, its earliest exposure. The engine removes the key and restores
+On the generation-based engine `trace_contacts!` and admitted actions run before
+infection is resolved. An abort recorded there is set against a contact's
+provisional infection time, its earliest exposure. The engine removes the key and restores
 the onset when resolution does not confirm an infection that started before the
 abort: on a contact the exposure did not infect, and on one infected through a
 later exposure at or after the abort time. The key is therefore only present on an
@@ -171,10 +170,15 @@ infects it. On the continuous-time models the infection time is final by the
 time `on_infection_settled!` runs, and an abort recorded there needs no such
 check.
 
-`:reported` is shared between the `Reporting` clinical transition (which
-sets it from a probability gate) and `PerCaseObservation` (which sets it
-post-simulation from a detection-probability draw). Composing both in the
-same simulation is not supported, because they will overwrite each other.
+`:reported` and `:reporting_time` are shared between the `Reporting`
+clinical transition (which sets them from a probability gate during the
+run) and `PerCaseObservation` (which sets them post-simulation from a
+detection-probability draw). Both routes leave `:reporting_time` at `Inf`
+for a case that was not reported, so [`weekly_incidence`](@ref)'s
+`by = :reporting` counts reported cases the same way whichever route
+produced them. A model can use only one of them: `simulate` throws an
+`ArgumentError` when `PerCaseObservation` finds `:reported` already
+recorded by a progression transition.
 
 Isolation is recorded under `:isolation_time`, with `:isolation_release_time`
 alongside it for when the block lapses; `set_isolated!` takes that release as
@@ -199,18 +203,16 @@ describes a detection that did not happen; it then sets
 that call through [`EpiBranch.records_isolation`](@ref): override it for a
 policy that does record a late detection, such as a death found at burial.
 
-The tracing keys name two hooks because the two engines reach them
-differently: `apply_post_transmission!` on the generation-based engine, and
-`trace_contacts!` on the continuous-time models. Both funnel through the same
-per-pair policy, so the keys and their meanings are identical either way; see
+Both engines write the tracing keys through `trace_contacts!`, once per case,
+so the keys and their meanings are the same either way; see
 [Which hooks run on which engine](#which-hooks-run-on-which-engine).
 
-`:traced_by` is the source a node was traced from — the *first*,
-earliest-exposure tracer, since the engine makes one trace attempt per node.
+`:traced_by` is the source a node was traced from: the latest case whose trace
+reached it. On a tree each contact has one infector, so that is its parent.
 `compute_trace_level!` walks it back to the index case post-simulation to set
 `:trace_level` (distance from the index, anchor `0`). On a tree the level is
-exact; on a cyclic `NetworkProcess` it is the depth along the first-traced
-path, **not** a guaranteed shortest distance to the nearest index — do not
+exact; on a cyclic `NetworkProcess` it is the depth along the path a node was
+last traced on, **not** a guaranteed shortest distance to the nearest index — do not
 read it as one.
 
 Built-in keys use short bare names like `:isolated`, `:traced`, `:age`, and
@@ -271,18 +273,30 @@ ones your intervention needs (all default to no-ops).
 | Hook | Called | Receives | Must return |
 |---|---|---|---|
 | `initialise_individual!(iv, individual, state)` | Once when each individual is created | An `Individual` whose typed fields are set but whose `state` dict is empty | `nothing` (mutate `individual.state` in place) |
-| `resolve_individual!(iv, individual, state)` | Once per active individual at the start of each generation, before offspring are drawn | The parent for the upcoming step | `nothing` (mutate `individual.state` in place) |
-| `apply_post_transmission!(iv, state, new_contacts)` | Once per generation after all contacts for that generation have been created (across every active parent) | A `Vector{Individual}` of the new contacts | `nothing` (mutate any of the contacts' `state` in place) |
-| `competing_risk(iv, parent, contact, state)` | Per `(parent, contact)` pair: on the generation engine during infection resolution, after `apply_post_transmission!` has run; on the continuous-time models as each infection is proposed | The parent and a single contact | `nothing`, a single [`Risk`](@ref), or an `NTuple{N, Risk}` for interventions that gate transmission via more than one mechanism |
-| `keep_active(iv, state, targets, is_new)` | Once per generation after infection is resolved, while the engine builds the next active set | This generation's `targets` and an `is_new` flag per target | An iterable of contact ids to keep generating contacts into the next generation (default: none) |
-| `trace_contacts!(iv, state, infector, contacts[, not_before])` | Continuous-time models only: once per case, when the race settles it | The case, the contacts it reached that are not yet settled, and, from a model whose contacts can come about after the case's infection, when each became a contact (the four-argument method is called when the model gives no times, and by default for interventions that ignore them) | `nothing` (mutate the contacts' `state` in place) |
-| `traces_contacts(iv)` | Whenever a continuous-time model decides whether to gather contacts at all | Nothing | `true` if this intervention implements `trace_contacts!` (default `false`) |
+| `resolve_individual!(iv, individual, state)` | Once for each infection, when the case is settled: after its clinical transitions, before it infects anyone (see below) | The case, with `state.max_infection_time` at its infection time | `nothing` (mutate `individual.state` in place) |
+| `trace_contacts!(iv, state, infector, contacts[, not_before])` | Once per case, before any of its contacts is decided infected or not (see below) | The case, the contacts it reached that it can still affect, and, from a model whose contacts can come about after the case's infection, when each became a contact (the four-argument method is called when the model gives no times, and by default for interventions that ignore them) | `nothing` (mutate the contacts' `state` in place) |
+| `intervention_actions(iv, state, candidates)` | Once per case, after every intervention's `trace_contacts!` for it | The people the case can still affect | `nothing`, or a vector of [`EpiBranch.InterventionAction`](@ref)s for the engine to admit (see [Intervention actions](@ref)) |
+| `keep_active(iv, state, targets, is_new)` | Once per case, after its actions | The contacts passed to `trace_contacts!` and an `is_new` flag for each | An iterable of the ids of uninfected contacts that should go on generating contacts (default: none) |
+| `competing_risk(iv, parent, contact, state)` | Per `(parent, contact)` pair, after the parent's per-case hooks: on the generation engine during infection resolution, on the continuous-time models as each infection is proposed | The parent and a single contact | `nothing`, a single [`Risk`](@ref), or an `NTuple{N, Risk}` for interventions that gate transmission via more than one mechanism |
+| `traces_contacts(iv)` | Whenever a continuous-time model decides whether to gather contacts at all | Nothing | `true` if this intervention implements `trace_contacts!` (the default reads whether its type has a method of its own) |
 | `infectious_removal_time(iv, individual)` | Continuous-time models only: when a case's infectious window is closed | An individual | The time this intervention takes it out of onward transmission (default `Inf`) |
 | `on_infection_settled!(iv, individual, state, rng)` | Continuous-time models only: once the race fixes a case's infection time, before its onset or transitions read it | The case, and the race's own `rng` | `nothing` (mutate the case's `state` in place; default no-op) |
 | `risk_applies(iv, route)` | Continuous-time models selecting risks for a route (`nothing` for an external introduction) | Nothing | `Bool`; defaults to `true` |
 | `standing_block(iv)` | Continuous-time models deciding whether a certain block has settled a pair for good | Nothing | `Bool`; defaults to `false` |
-| `risk_depends_on_infector(iv)` | Before a fixed-size pool with more than one mixing group runs | Nothing | `Bool`: whether `competing_risk` can block a contact differently depending on its infector (default `true` when the type has its own `competing_risk`) |
 | `reads_population_state(iv)` | Before a structure-driven model (e.g. `HouseholdProcess`) decides whether to race each clique separately or put every clique on one shared clock | Nothing | `Bool`: whether delivery can depend on population-wide state such as a running case count or a shared capacity budget (default `true`, conservative) |
+| `analytic_offspring_effect(iv, offspring)` | By `extinction_probability`, `epidemic_probability`, `probability_contain`, `reproduction_number`, `proportion_transmission`, `proportion_cases_individual`, `proportion_cases_offspring`, `proportion_cluster_size`, `end_of_outbreak_probability` and `offspring_distribution`, when called on a `ModelSpec`, or a process that stores its own interventions, holding `iv` | The offspring `Distribution` a bare process would use | The `Distribution` a case under `iv` draws from instead. The generic method throws an error (see below) |
+
+Define `analytic_offspring_effect` only for an intervention whose effect on
+the offspring distribution is exact in closed form on its own, and return a
+law the analytical functions take: a `Poisson` or `NegativeBinomial` for a
+single-type process. A population-level reduction of R by a factor `p`, for
+example, turns `NegBin(R, k)` into `NegBin(p * R, k)`. Most interventions have
+no such form. Isolation's effect on R depends on how its timing overlaps the
+generation-time distribution, and `Isolation` has no method. On a spec that
+includes it, the analytical functions above throw an error that points to
+simulating the spec. For containment it names
+`containment_probability(simulate(spec, n))` for the simulated answer and
+`probability_contain(R, k; ind_control, pop_control)` for an approximation.
 
 `reads_population_state` covers whatever an intervention delegates to: a
 component or callable you supply counts as part of its owner's answer. A
@@ -294,27 +308,93 @@ resolved, declares `true` for itself, which lifts its owner with it. A
 function-valued parameter has nothing to declare, so such a test belongs in a
 component.
 
+### When `resolve_individual!` runs
+
+Both engines call `resolve_individual!` once for each infection, as the case
+is settled. By then its infection time is fixed and the clinical transitions in
+the `progression` have written its natural history (onset, outcome and the rest),
+and it has not yet infected anyone. The hook never sees an uninfected
+individual, even a contact that `keep_active` keeps in the simulation to
+generate contacts of its own.
+
+The hook sees the simulation state as it stands at that case:
+
+- `state.max_infection_time` is the case's infection time,
+- `state.current_generation` is the case's generation,
+- `state.cumulative_cases` counts the case and every case settled before it.
+
+A [`Scheduled`](@ref) gate reads these values. On either engine,
+`Scheduled(iso; start_time = 10.0)` isolates the cases infected from day 10
+onwards, and `start_after_cases = 50` the 50th case and after. The clinical
+transitions see the same values while they run.
+
+The continuous-time models settle cases in order of infection time, and the case
+count is the case's place in that order. The generation engine settles a
+generation's cases together, once its infections are decided. A case there
+counts the cases of earlier generations and those of its own generation infected
+no later than it. A case in a later generation is not counted even when it was
+infected earlier, because the engine has not drawn it yet. Once the
+generation's cases are settled, the clock and count return to the generation's
+latest infection time and total. The stopping rules read those.
+
+### When the per-case hooks run
+
+`trace_contacts!`, `intervention_actions` and `keep_active` act on the people a
+case reached. Both engines call them once per case, in that order: every
+intervention's `trace_contacts!`, then every intervention's
+`intervention_actions`, whose actions are admitted through any `Scheduled` or
+`CapacityConstrained` wrapper, then every intervention's `keep_active`. They
+see the state as `resolve_individual!` did, with the clock at the case's
+infection time. None of the contacts has been decided infected or not, so a
+`competing_risk` can read whatever these hooks wrote.
+
+The engines differ in which people they pass:
+
+- The continuous-time models call the hooks as the race settles the case. The
+  contacts are its neighbours or household members that the race has not
+  settled yet, with no infection time of their own. Actions are discovered only
+  for an intervention that declares
+  [`continuous_actions`](@ref EpiBranch.continuous_actions), and the case is
+  passed with them.
+- The generation engine calls the hooks for each case of the previous
+  generation, in order of infection time, once this generation's contacts have
+  been drawn. The contacts are the ones the case made, each with its
+  provisional infection time, and a contact several cases reached is passed to
+  each of them. Actions are discovered for every intervention. An uninfected
+  contact that `keep_active` kept is passed its own contacts in the next
+  generation, with the clock and count the generation left.
+
+The generation engine used to hand a whole generation's contacts to
+`apply_post_transmission!` instead. That hook is deprecated. An intervention
+with a method of its own for it is still handed the batch, with a deprecation
+warning, and its `keep_active` is then asked about the whole batch. It runs at
+its place in the list: the interventions before it have been through every
+case's hooks, and those after it see what it wrote. What it did to each contact moves to `trace_contacts!`,
+and any action with a delivery date to `intervention_actions`. Once it does,
+its `keep_active` is asked per case, about that case's contacts, after its
+`trace_contacts!` and `intervention_actions` for the case have run.
+
 ### Which hooks run on which engine
 
 The hooks above are not all available everywhere, because the engines are
 built differently. The generation-based engine creates a fresh `Individual`
-for every contact, infected or not, so it can hand you a batch of contact
-objects. The continuous-time (Sellke) models have no such objects: every node
-exists from the start and the simulation only settles *when* each is infected,
-by a race between contact-interval draws. What they do have is the potential
-infection itself — a drawn time for a named pair — so a `Risk` has somewhere to
-hang after all, alongside the infectious window.
+for every contact, infected or not. The continuous-time (Sellke) models have no
+such objects: every node exists from the start and the simulation only settles
+*when* each is infected, by a race between contact-interval draws. What they do
+have is the potential infection itself, a drawn time for a named pair, so a
+`Risk` has a place there too, alongside the infectious window.
 
-| Hook | Generation engine | Network / household (Sellke race) | Homogeneous pool |
-|---|---|---|---|
-| `initialise_individual!` | yes | yes | yes |
-| `resolve_individual!` | yes | yes | yes |
-| `competing_risk` | yes | yes | yes |
-| `infectious_removal_time` | not read | yes | yes |
-| `on_infection_settled!` | not called | yes | not called |
-| `trace_contacts!` | not called | yes | no contact set |
-| `apply_post_transmission!` | yes | not called | not called |
-| `keep_active` | yes | not called | not called |
+| Hook | Generation engine | Continuous-time race (network, household, homogeneous) |
+|---|---|---|
+| `initialise_individual!` | yes | yes |
+| `resolve_individual!` | yes | yes |
+| `competing_risk` | yes | yes |
+| `infectious_removal_time` | not read | yes |
+| `on_infection_settled!` | not called | yes |
+| `trace_contacts!` | yes | yes, where the model names contacts (not homogeneous) |
+| `intervention_actions` | yes | where the model names contacts, for an intervention declaring `continuous_actions` |
+| `keep_active` | yes | from inside a tracing walk |
+| `apply_post_transmission!` (deprecated) | yes, with a warning | not called |
 
 What this means in practice:
 
@@ -327,29 +407,24 @@ What this means in practice:
   infectiousness, which ride the same surface. The continuous-time models put
   each potential infection to the composed risks at the moment they propose it,
   against the time they propose it for. A blocked contact does not transmit and
-  the contact process carries on: on a graph the pair's next contact is drawn
-  from its own hazard conditioned on falling later, and in the mass-action pool
-  the susceptible waits for the next contact with a fresh resistance. Blocking
-  each contact with probability `p` therefore thins the force of infection to
-  `(1 - p)` of it on both, so the two agree — a two-person clique with a
-  one-day mean contact interval and a two-day infectious period is the same
-  process as a pool of two at `β = 2`, and at efficacy 0.5 both infect
-  `1 - exp(-1) = 0.63` of the time.
+  the contact process carries on: the pair's next contact is drawn from its own
+  hazard conditioned on falling later. Blocking each contact with probability
+  `p` therefore thins the force of infection to `(1 - p)` of it, so a pair with
+  a one-day mean contact interval and a two-day infectious period infects
+  `1 - exp(-1) = 0.63` of the time at efficacy 0.5.
 - Per-individual susceptibility and infectiousness reach the same thinning by a
   shorter route. They are constants of the two people rather than something that
   arrives at a time, so the models fold them into the draw: a multiplier `m`
-  turns a pair's contact-interval survival `S(t)` into `S(t)^m`, the pool scales
-  each susceptible's threshold and weights each infective's share of the force,
-  and a community introduction's hazard is scaled the same way. A multiplier of
+  turns a pair's contact-interval survival `S(t)` into `S(t)^m`, and a
+  community introduction's hazard is scaled the same way. A multiplier of
   0 never transmits and draws nothing. Static proportional effects can use these
   traits or an effective kernel directly, avoiding repeated rejected contacts.
 - Repeated-contact sampling after a blocked proposal requires finite remaining
   integrated hazard. A race rejects a continuation if the kernel's survival is
   zero at the end of its window, including an unbounded Exponential window or a
-  continuous bounded kernel whose support ends inside the window. A pool
-  requires finite removal times for all active sources when a contact is
-  blocked. These cases raise `ArgumentError`, even for a risk that might later
-  permit infection: an opaque callback cannot establish eventual termination.
+  continuous bounded kernel whose support ends inside the window. These cases
+  raise `ArgumentError`, even for a risk that might later permit infection: an
+  opaque callback cannot establish eventual termination.
   Supply a finite infectious/introduction window with nonzero kernel survival
   at its end, or represent static protection through host traits or the kernel.
   A `Dirac` kernel has no contact after its atom and needs no continuation.
@@ -414,18 +489,20 @@ What this means in practice:
   EpiBranch.risk_applies(::MyLeakyQuarantine, route) =
       route !== nothing && EpiBranch.INTERVENTION_REMOVAL in route.until
   ```
-- An intervention that reaches its targets through `apply_post_transmission!`
-  or `keep_active` — `MassVaccination`'s rollout doses each new contact as the
-  engine creates it — has nothing to act on when no contacts are created. You
-  need not declare this: when your type has a method of its own for either hook,
-  the continuous-time models name it in their warning. The exception is an
-  intervention that also traces contacts (`traces_contacts` returns `true`),
-  whose `trace_contacts!` is taken as the continuous-time counterpart of those
-  hooks; it is honoured on a model that can name a case's contacts and reported
-  on one that cannot, such as the mass-action pool.
+- An intervention whose actions come from `intervention_actions` is honoured on
+  the continuous-time models only if it declares `continuous_actions`.
+  `MassVaccination`'s rollout doses each contact a case makes, which the race
+  would have to offer the whole pending population, so it does not declare it
+  and is reported there. One that reaches its targets through `keep_active`,
+  or through the deprecated `apply_post_transmission!`, is reported too. You
+  need not declare any of this: when your type has a method of its own for one
+  of these hooks, the continuous-time models name it in their warning. The
+  exception is an intervention that also traces contacts (`traces_contacts`
+  returns `true`); it is honoured on a model that can name a case's contacts
+  and reported on one that cannot, such as `HomogeneousProcess`.
 - **Contact tracing** spans the two. Its action is a removal, so it applies
   on both, but it needs to know who a case's contacts were. The generation
-  engine reads that off each contact's `parent_id`; the continuous-time
+  engine knows that from the contacts each case made; the continuous-time
   models get it from the process, which must report
   `EpiBranch.supplies_contacts(model) = true` and pass a `contacts` closure.
   The closure yields contact ids, or `(id, time)` pairs when some contacts come
@@ -433,34 +510,29 @@ What this means in practice:
   (`contacts_from = :died` on a `RoutedNetwork` route). `time` is when each
   person became a contact, and `ContactTracing` runs that contact's trace delay
   from no earlier than it.
-  A graph names a node's neighbours and a household its members; the
-  homogeneous pool is mass-action and has no pairwise contact structure, so
-  tracing stays unhonoured there.
+  A graph names a node's neighbours and a household its members; mass action
+  (`HomogeneousProcess`) names no contacts, so tracing stays unhonoured there.
 
-Two ordering differences follow from this, and they matter when you write an
-intervention that has to work on both:
+Both engines trace a contact when its *infector* settles, which is before the
+contact settles anything of its own. An intervention that writes onto a contact
+must therefore not assume the contact is unwritten, and one that reads a
+contact's own state must not assume it is already set. `Isolation` deals with this by
+treating a standing quarantine as a competing pathway and keeping whichever
+isolation time comes first.
 
-- On the generation engine, a contact resolves its own state
-  (`resolve_individual!`) **before** tracing runs. On the continuous-time
-  models the order inverts: a contact is traced when its *infector* settles,
-  which is before the contact settles anything of its own. An intervention
-  that writes onto a contact must therefore not assume the contact is
-  unwritten, and one that reads a contact's own state must not assume it is
-  already set. This is why `Isolation` treats a standing quarantine as a
-  competing pathway and keeps the earliest time, instead of returning early.
-- Tracing on the continuous-time path reaches only contacts that have not
-  themselves settled. Settling a case fixes its window and its onward
-  proposals, so a trace arriving afterwards has nothing left to shorten.
-  Tracing *backwards*, to the already-settled neighbour a case was infected
-  by, is not supported on either engine.
+Tracing on the continuous-time path reaches only contacts that have not
+themselves settled. Settling a case fixes its window and its onward proposals,
+so a trace arriving afterwards has nothing left to shorten. Tracing
+*backwards*, to the already-settled neighbour a case was infected by, is not
+supported on either engine.
 
 Ordering guarantees:
 
-- `resolve_individual!` runs strictly before any `competing_risk` call for that generation, so a competing risk can read whatever `resolve_individual!` wrote on the parent.
-- `apply_post_transmission!` runs strictly before any `competing_risk` call, so a competing risk can read whatever post-transmission hook wrote on the contact (e.g. `:vaccination_time`).
-- `keep_active` runs after infection is resolved, so it can read each target's `:infected` and anything `apply_post_transmission!` wrote on it this generation.
-- Interventions are applied in the order they appear in `interventions = [...]`. For `apply_post_transmission!` and `competing_risk`, every intervention sees the state written by earlier interventions in the same generation.
-- On the continuous-time models the counterpart holds through tracing: a case is traced when it settles, before it proposes any infection of its own, so a risk can read what `trace_contacts!` wrote on a contact. Supported ring and group actions are discovered after tracing and admitted through their schedule and capacity wrappers.
+- `resolve_individual!` runs on a case before it makes any contact. A competing risk can read whatever `resolve_individual!` wrote on the infector.
+- A case's `trace_contacts!`, `intervention_actions` and `keep_active` run before any of its contacts is decided infected or not, so a competing risk can read whatever they wrote on the contact (e.g. `:vaccination_time`).
+- Every intervention's `trace_contacts!` for a case runs before any intervention's `intervention_actions` for it, so an action producer such as `RingVaccination` reads what tracing wrote, whatever the order of the stack.
+- Otherwise interventions are applied in the order they appear in `interventions = [...]`, and each sees the state written by earlier interventions for the same case.
+- `keep_active` runs before the contacts are decided infected or not. A contact it returns that is then infected is active as a case anyway.
 
 A `Risk` applies to a contact when `event_time <= contact.infection_time`; in that case transmission is blocked with probability `block_probability`. On the continuous-time models the transmission time it is compared against is the candidate infection time the race has just drawn for that pair. Returning multiple risks (as a tuple) lets one intervention gate transmission through several mechanisms: `RingVaccination` returns a susceptibility risk on the contact alongside a risk on the parent for reduced onward infectiousness.
 
@@ -480,7 +552,7 @@ function initialise_individual!(::ContactTracing, individual, state)
 end
 ```
 
-**`resolve_individual!`** — `Isolation` computes the isolation time for the upcoming generation's parent from the individual's onset time plus a sampled delay, and folds in any earlier trace-driven isolation time that `ContactTracing` may have written on a previous generation:
+**`resolve_individual!`** — `Isolation` computes a case's isolation time from its onset time plus a sampled delay, and folds in any earlier trace-driven isolation time that `ContactTracing` wrote when the case was traced as a contact:
 
 ```julia
 function resolve_individual!(iso::Isolation, individual, state)
@@ -502,18 +574,16 @@ function resolve_individual!(iso::Isolation, individual, state)
 end
 ```
 
-**`apply_post_transmission!`** — `ContactTracing` walks the new contacts, looks up each contact's parent, and applies the configured trace action (`Quarantine` or `FlagOnly`) when the eligibility and rate traits both pass. The trace is timed from [`trigger_time`](@ref EpiBranch.trigger_time), which for an isolation-based policy is the recorded isolation, so an isolation that counts as no detection starts no trace:
+**`trace_contacts!`** — `ContactTracing` walks the contacts a case reached and applies the configured trace action (`Quarantine` or `FlagOnly`) when the eligibility and rate traits both pass. The trace is timed from [`trigger_time`](@ref EpiBranch.trigger_time), which for an isolation-based policy is the recorded isolation, so an isolation that counts as no detection starts no trace. Leaving out the ring depth and the contacts' `not_before` times, it reads:
 
 ```julia
-function apply_post_transmission!(ct::ContactTracing, state, new_contacts)
+function trace_contacts!(ct::ContactTracing, state, infector, contacts)
     rng = state.rng
-    for ind in new_contacts
-        ind.parent_id == 0 && continue
-        parent = state.individuals[ind.parent_id]
-        is_eligible(ct.eligibility, parent, ind, state) || continue
-        traces(ct.trace_rate, parent, ind, state, rng) || continue
-        trace_delay = draw_trace_delay(ct.isolation_to_trace_delay, parent, ind, state, rng)
-        trace_time = trigger_time(ct.eligibility, parent, ind, state) + trace_delay
+    for ind in contacts
+        is_eligible(ct.eligibility, infector, ind, state) || continue
+        traces(ct.trace_rate, infector, ind, state, rng) || continue
+        trace_delay = draw_trace_delay(ct.isolation_to_trace_delay, infector, ind, state, rng)
+        trace_time = trigger_time(ct.eligibility, infector, ind, state) + trace_delay
         apply_trace!(ct.action, ind, state, trace_time, rng)
     end
     return nothing
@@ -526,7 +596,7 @@ end
 
 The engine never errors when a hook is missing — every hook has a no-op default. That is convenient for partial implementations but means that *forgotten* hooks fail silently. Quick checks:
 
-- Run a tiny simulation (`max_cases = 50`) with and without your intervention in the stack. If the outcome looks the same in both, your `competing_risk` or `apply_post_transmission!` is probably not being called for the cases you think.
+- Run a tiny simulation (`max_cases = 50`) with and without your intervention in the stack. If the outcome looks the same in both, your `competing_risk` or `trace_contacts!` is probably not being called for the cases you think.
 - Override `required_fields` (see below) so the engine fails at simulation start when an upstream attributes function hasn't set a field your intervention needs.
 - Inspect `state.individuals[1].state` after a small run to confirm your hook actually wrote the keys downstream code reads.
 
@@ -575,14 +645,16 @@ struct Antiviral <: AbstractIntervention
 end
 
 function treat!(av::Antiviral, ind)
+    isfinite(ind.infection_time) || return nothing
     incubation = get(ind.state, :incubation_period, NaN)
     ends = ind.infection_time + av.delay
     isnan(incubation) || ends < ind.infection_time + incubation || return nothing
     return EpiBranch.abort_infection!(ind, ends)
 end
 
-# Generation-based engine: contacts, at their provisional exposure.
-function EpiBranch.apply_post_transmission!(av::Antiviral, state, contacts)
+# Generation-based engine: contacts, at their provisional exposure. A contact
+# on a network or household race has no infection time yet and is left alone.
+function EpiBranch.trace_contacts!(av::Antiviral, state, infector, contacts)
     foreach(c -> treat!(av, c), contacts)
     return nothing
 end
@@ -639,9 +711,11 @@ included, is resolved there as it is here.
 By default the only nodes that carry into the next generation are the
 cases infected this generation: they stay active and generate their own
 contacts, and an uninfected contact is a dead end. `keep_active` lets an
-intervention keep other nodes active. Return the ids of this generation's
-targets that should keep generating contacts, and the engine unions them
-into the next active set.
+intervention keep other nodes active. It is asked once per case, with the
+contacts that case reached. Return the ids of those that should keep
+generating contacts, and the engine adds the ones that stay uninfected to
+the next active set. The continuous-time race asks the same question as it
+walks a ring outwards from a settled case.
 
 The case that needs it is contact tracing to a depth beyond direct
 contacts. To reach contacts-of-contacts, the engine has to grow the
@@ -651,10 +725,10 @@ were never infected. Keep them active here, and pair that with the
 second wave of infections:
 
 ```julia
-struct KeepUninfectedActive <: AbstractIntervention end
+struct KeepEveryContactActive <: AbstractIntervention end
 
-function EpiBranch.keep_active(::KeepUninfectedActive, state, targets, is_new)
-    [t.id for t in targets if !is_infected(t)]
+function EpiBranch.keep_active(::KeepEveryContactActive, state, targets, is_new)
+    [t.id for t in targets]
 end
 ```
 
@@ -710,9 +784,9 @@ Ring, group and mass vaccination use their dose-label keys.
 
 Action discovery exposes every proposed recipient before admission, including
 members found by a group-wide search. See [Intervention actions](@ref) for the
-producer contract and timing rules. A legacy batch intervention can still use
-the capacity keys, provided its batch hook affects only the individuals it
-receives.
+producer contract and timing rules. An intervention still on the deprecated
+batch hook can use the capacity keys too, provided that hook affects only the
+individuals it receives.
 
 ### Requiring fields on individuals
 
@@ -727,7 +801,7 @@ EpiBranch.required_fields(::MyIntervention) = [:onset_time, :asymptomatic]
 ### Composing with built-in interventions
 
 Custom interventions compose naturally with the built-in ones. The
-engine applies all interventions in order each generation. Building on
+engine applies all interventions in order for each case. Building on
 the `BorderClosure` above (interpreted here as everyone being in one
 region so closure does nothing — illustrative only):
 
@@ -770,9 +844,8 @@ It adds an `intervention_actions` method choosing whom to vaccinate and when,
 returning one `EpiBranch.dose_action(v, ind, time)` per candidate it will
 dose — the same action protocol the built-in vaccinations use, so
 [`Scheduled`](@ref) and [`CapacityConstrained`](@ref) wrap this vaccination
-exactly as they wrap a [`MassVaccination`](@ref). `apply_post_transmission!`
-then only has to admit the discovered actions, through `EpiBranch.apply_actions!`.
-A dose admitted this way writes the per-dose keys listed under
+exactly as they wrap a [`MassVaccination`](@ref). The engine admits the
+discovered actions itself. A dose admitted this way writes the per-dose keys listed under
 [Reserved keys](#Reserved-keys) and draws `efficacy`, `severity_efficacy` and
 `delay_to_immunity` for that individual, whichever of the `Real`,
 `Distribution` and function forms they were given in. Here, a campaign on day
@@ -802,10 +875,6 @@ function EpiBranch.intervention_actions(v::OlderAdultVaccination, state, candida
         push!(actions, EpiBranch.dose_action(v, ind, v.campaign_time))
     end
     return actions
-end
-
-function EpiBranch.apply_post_transmission!(v::OlderAdultVaccination, state, new_contacts)
-    return EpiBranch.apply_actions!(v, state, new_contacts)
 end
 
 older = OlderAdultVaccination(min_age = 60, campaign_time = 10.0,
@@ -1377,8 +1446,8 @@ A process also passes `watches`: one tuple of
 Ask each route's own kernel for it:
 
 ```julia
-EpiBranch._sellke_race!(
-    state, members, rng;
+EpiBranch.sellke_race!(
+    state, members, rng, sim_opts;
     routes = routes, interventions = interventions, seed!,
     watches = Tuple(EpiBranch.watched_records(w.kernel) for w in windows),
 )
@@ -1468,11 +1537,11 @@ Return the number of *potential* contacts, and don't pre-filter by
 parent intervention state (`:isolated`, `:vaccinated`, …). The engine's
 competing-risks resolution decides afterwards which contacts are
 infected, and that is the only place intervention effects on
-transmission apply. The engine also runs `resolve_individual!` on each
-parent first, then `initialise_individual!` and
-`apply_post_transmission!` on the new contacts, the clinical
-transitions, and the bookkeeping fields (`cumulative_cases`,
-`current_generation`, `active_ids`, `extinct`, `max_infection_time`).
+transmission apply. The engine also runs `initialise_individual!` on the new
+contacts and the per-case intervention hooks on each parent's contacts, runs
+the clinical transitions and `resolve_individual!` on each new case, and
+updates the bookkeeping fields (`cumulative_cases`, `current_generation`,
+`active_ids`, `extinct`, `max_infection_time`).
 
 A **structure-driven** model produces candidates a count can't name: a
 contact network, or a household/metapopulation process where a
@@ -1496,11 +1565,11 @@ probability, a metapopulation coupling), don't filter on it in
 by overriding
 [`transmission_risks`](@ref EpiBranch.transmission_risks)`(model)` to return
 a risk source with a `competing_risk` method. The contact is then still
-produced and seen by `apply_post_transmission!` (so contact tracing and ring
+produced and passed to the per-case hooks (so contact tracing and ring
 vaccination work), and the probability is weighed against susceptibility,
 infectiousness and interventions together. Everything else — gathering
-the exposures, `initialise_individual!` and `apply_post_transmission!` on
-new contacts, competing risks, clinical transitions, and bookkeeping — is
+the exposures, `initialise_individual!` on new contacts, the per-case
+hooks, competing risks, clinical transitions, and bookkeeping — is
 the shared engine. A structure-driven model also defines
 [`initialise_state`](@ref EpiBranch.initialise_state) to set up its fixed
 population, building it with the public helpers
@@ -1524,7 +1593,7 @@ continuous-time household and network processes, which step cases in
 infection-time order instead of by generation, are the worked examples.
 
 A model with more than one natural partition of its population into
-independent races over `EpiBranch._sellke_race!` — a household process,
+independent races over [`EpiBranch.sellke_race!`](@ref) — a household process,
 over its households — defines
 [`EpiBranch.race_groups`](@ref)`(model, kernel)` to say how it splits for a
 given kernel, rather than have a shared simulation loop decide for it. A new
@@ -1621,12 +1690,16 @@ that accessor is what the engine calls.
 A **structure-driven** model that runs its own simulation loop (in
 infection-time order, rather than the generation-based engine) receives the
 composed layers as arguments instead: define
-`EpiBranch._simulate(m::MyModel, sim_opts; interventions, attributes,
-progression, observation, rng, condition, max_attempts)`, read the layers off
-the arguments, and derive any window state you need (the infectious-window
-`from`, say) from the `progression` there. The continuous-time household and
-network processes are the worked examples; `ModelSpec` routes `simulate` and
-`loglikelihood` to that method for you.
+[`EpiBranch.simulate_once`](@ref)`(m::MyModel, sim_opts; interventions,
+attributes, progression, observation, recorder, rng)`, read the layers off the
+arguments, and derive any window state you need — the infectious window's
+`from`, say, via [`EpiBranch.infectious_from`](@ref)`(progression)` — there.
+`simulate` calls this once, or repeatedly when a `condition` is given, so your
+method takes no `condition`/`max_attempts` of its own. Drive the race with
+[`EpiBranch.sellke_race!`](@ref), passing it `sim_opts` so it resolves
+`max_time` and reconciles the run's aggregate bookkeeping for you. The
+continuous-time household and network processes are the worked examples;
+`ModelSpec` routes `simulate` and `loglikelihood` to `simulate_once` for you.
 
 ### Minimal sketch
 
@@ -1673,126 +1746,83 @@ simulate(ModelSpec(MyModel(...); observation = PerCaseObservation(detection_prob
 The engine applies the observation after the run, and `loglikelihood(data,
 spec)` reads it off the spec — the same path `BranchingProcess` takes.
 
-## A fixed-size population on the Sellke pool
+## A fixed-size population with structured mixing
 
 The built-in [Homogeneous models](homogeneous.md) tutorial covers
 `HomogeneousProcess`, a closed population where everyone mixes with everyone else
 at the same rate. Mixing is often uneven, though: age bands, sex, income strata
-or spatial patches contact each other at different rates, so susceptibles in
-different groups feel a different force of infection. You can build a model like
-that on the same pool without touching the simulation itself. Only one thing
-changes from the homogeneous case: how the force of infection depends on which
-group a susceptible belongs to. You supply it as two pieces:
+or spatial patches contact each other at different rates. [`MixingProcess`](@ref)
+builds a model like that on the same continuous-time race as `HomogeneousProcess`,
+as mass action between groups, with no simulation code of your own. You supply
+it as two pieces:
 
-1. **Which attributes define the mixing groups** — `mixing_by`, a tuple of
+1. **Which attributes define the mixing groups**: `mixing_by`, a tuple of
    attribute keys each individual already carries (`:age_band`, `:ses`, `:patch`;
-   real attributes, not a synthetic group index). A susceptible's group is the
-   tuple of those attribute values. With `mixing_by = ()` everyone lands in one
-   group, which recovers the homogeneous case.
-2. **The force of infection** `force(group, counts)` — the hazard on a
-   susceptible in a given group. `counts` is a `Dict` mapping each mixing group to
-   the infectiousness-weighted number currently infectious in it, each case
-   contributing its own `infectiousness` (1 by default). Homogeneous mixing is
-   `β/N` times the total of those counts; structured mixing applies a contact
-   matrix to the per-group prevalence.
+   real attributes, set by the composed `attributes`, not a synthetic group
+   index). A member's group is the tuple of those attribute values. With
+   `mixing_by = ()` everyone lands in one group, which recovers
+   `HomogeneousProcess`.
+2. **The pair contact rate** `rate(infector_group, target_group)`: the rate at
+   which one infective in the first group contacts one member of the second.
+   Homogeneous mixing is `β/N` for every pair. With a contact matrix `M[b, a]`
+   giving the rate at which one infective in group `a` contacts the `n[b]`
+   members of group `b` between them, each pair meets at `M[b, a]/n[b]`.
 
-A mixing group is always the *tuple* of `mixing_by` values, so it stays a tuple
-even when there is a single attribute. Under `mixing_by = (:age_band,)` a
-susceptible in band `b` has group `(b,)`, not bare `b`. Inside `force` you
-therefore read the band out with `group[1]` and key `counts` by `(h,)`. That one
-wrinkle is what usually trips people up on a first read.
+A group is always the *tuple* of `mixing_by` values, so it stays a tuple even
+when there is a single attribute. Under `mixing_by = (:age_band,)` a member of
+band `b` has group `(b,)`, not bare `b`, so inside `rate` you read the band out
+with `group[1]`. That one wrinkle is what usually trips people up on a first
+read.
 
 ### A worked age-structured example
 
 Below is a two-age-band population with an asymmetric contact matrix, where the
-younger, more socially active band mixes more than the older band. It drives the
-pool through `EpiBranch._sellke_pool!`. That function is internal for now: the
-underscore means it is not part of the public API and may be renamed or given a
-public wrapper in a later release. The `mixing_by`/`force` contract shown here is
-the stable part and will carry over; only the call site would change. If you
-build on it, pin your package version.
+younger, more socially active band mixes more than the older band. `MixingProcess`
+is a transmission process like any other, composed with a `ModelSpec` and run
+with `simulate`; the `:age_band` tag is an ordinary attribute.
 
 ```julia
 using EpiBranch, Distributions, Random
 
-# A closed population of N split into two age bands of equal size. Band 1 is the
-# more socially active one; `band_of` reads an individual's band off its id.
+# A closed population of N split into two age bands of equal size.
 N = 2000
 n = [N ÷ 2, N ÷ 2]                     # band sizes
-band_of = i -> (i <= n[1] ? 1 : 2)
+band = (rng, ind) -> (ind.state[:age_band] = ind.id <= n[1] ? 1 : 2)
 
-# A 2×2 contact matrix: M[b, h] is the mean rate at which one infectious
-# individual in band h contacts a susceptible in band b. Band 1 mixes far more.
+# A 2×2 contact matrix: M[b, a] is the mean rate at which one infectious
+# individual in band a contacts the members of band b. Band 1 mixes far more.
 M = [3.0 0.5;
      0.5 0.5]
 
-# Force of infection on a susceptible in mixing group `group`, given `counts`.
-# A group is the tuple of :age_band values, so band b is `(b,)`: read the band
-# with group[1] and index counts by (h,). This sums, over bands h, the contact
-# rate M[b, h] times band h's prevalence counts[(h,)] / n[h].
-force = (group, counts) -> begin
-    b = group[1]
-    sum(M[b, h] * get(counts, (h,), 0) / n[h] for h in 1:2)
-end
+# The rate at which one infective in `from` contacts one member of `to`. A group
+# is the tuple of :age_band values, so band a is `(a,)`: read it with group[1].
+rate = (from, to) -> M[to[1], from[1]] / n[to[1]]
 
-# A HomogeneousProcess supplies only the fixed pool and its removal states; the
-# force above replaces its transmission rate, so any placeholder value does. The
-# natural history (progression) and the empty forcing layers are handed to the
-# pool directly. Tag each individual's :age_band as it is created; any attribute
-# works, including the built-in demographics (:age, :sex, :risk_group).
-carrier = HomogeneousProcess(; transmission_rate = 1.0, population_size = N)
-progression = [Transition(:recovered; from = :infection,
-    delay = Exponential(1.0), terminal = true)]
-rng = MersenneTwister(1)
-state = EpiBranch.new_state(carrier, progression, NoAttributes(), rng)
-EpiBranch.add_individuals!(state, N, AbstractIntervention[];
-    setup = (ind, i) -> (ind.state[:age_band] = band_of(i)))
-
-# Run the Sellke pool. `mixing_by = (:age_band,)` names the attribute that groups
-# individuals; each group is read from it, and the model supplies only the force.
-EpiBranch._sellke_pool!(state, collect(1:N), rng; mixing_by = (:age_band,),
-    force = force, n_initial = 5,
-    from = EpiBranch._resolve_infectious_from(carrier.from, progression),
-    until = carrier.until)
-
+model = ModelSpec(
+    MixingProcess(; population_size = N, mixing_by = (:age_band,), rate);
+    progression = [
+        Transition(:recovered; from = :infection, delay = Exponential(1.0), terminal = true),
+    ],
+    attributes = band
+)
+state = simulate(model; n_initial = 5, rng = MersenneTwister(1))
 linelist(state)
 ```
 
-Band-1 susceptibles feel a higher force and reach a higher attack rate. To check
-the wiring, set `M` uniform: the two bands should collapse back to a single
-homogeneous pool with the SIR final size. The same pattern extends to further
-strata. Give individuals a `:ses` attribute and pass
-`mixing_by = (:age_band, :ses)`, and `force` now receives a `(band, ses)` tuple
-as its group and a `counts` Dict keyed by `(band, ses)` pairs. From there you can
-write whatever contact structure you want: a full matrix over every
-`(band, ses)` combination, or a factorised one where band and SES contacts
+Band-1 members are contacted more often and reach a higher attack rate. To check
+the wiring, give every pair the same rate: the two bands should collapse back to
+a single homogeneous population with the SIR final size. The same pattern extends
+to further strata. Give individuals a `:ses` attribute and pass
+`mixing_by = (:age_band, :ses)`, and `rate` now receives `(band, ses)` tuples.
+From there you can write whatever contact structure you want: a full matrix over
+every `(band, ses)` combination, or a factorised one where band and SES contacts
 multiply independently.
 
-Competing risks carry over with one restriction. The pool attributes each
-contact to an infector drawn in proportion to infectiousness, which is a uniform
-draw while every infective is at the default, because `force` does not say how
-much each infective contributes to it. With more than one mixing group that
-attribution is not weighted by the contact matrix, so a risk that depends on who
-the infector is would be applied against the wrong infectors. The pool therefore
-refuses, with an error, any intervention for which
-[`EpiBranch.risk_depends_on_infector`](@ref) is `true`: a leaky `Isolation`, a
-`RingVaccination` with an onward effect, and by default any intervention with
-its own `competing_risk`. An intervention whose risk reads only the contact
-declares so and is then accepted:
-
-```julia
-struct MyProphylaxis <: AbstractIntervention
-    efficacy::Float64
-end
-EpiBranch.competing_risk(p::MyProphylaxis, parent, contact, state) =
-    Risk(block_probability = p.efficacy)
-EpiBranch.risk_depends_on_infector(::MyProphylaxis) = false
-```
-
-Per-individual infectiousness is not refused: it reaches the force through the
-weighted counts, so it needs no attribution to be exact. Risks on the contact
-alone, such as a per-individual susceptibility, apply exactly. Differences in infectiousness
-between groups belong in `force`.
+Every contact is a contact between two named people, so competing risks,
+per-individual susceptibility and infectiousness, and risks that read the
+infector, such as a leaky isolation, all apply as they do on any other route of
+the race. The rate is fixed for the run; a force of infection that is not linear
+in the number infectious has no pairwise form and cannot be written this way.
 
 The natural history, isolation and line-list output are all unchanged from
 `HomogeneousProcess`. Internally these map to the engine's build, time, intervene
@@ -1927,12 +1957,19 @@ See `src/analytical/cluster_mixed.jl` for the full pattern, including how `Clust
 ## Adding per-observation metadata
 
 [`ChainSizes`](@ref) carries one per-observation field, `seeds` (the number
-of index cases in each multi-seed cluster). A cluster's real-time "is it
-finished?" weight is a second analyst decision, but it is supplied at
-likelihood time through the `prob_concluded` keyword of `loglikelihood` rather
-than stored on the data — the mixture it drives is only defined against the
-analytical chain-size law. These two show the pattern for any per-cluster
-information.
+of index cases in each multi-seed cluster), and needs no further method for it:
+
+```@example extending
+using EpiBranch, Distributions
+off = NegBin(0.8, 0.3)
+loglikelihood(ChainSizes([4]; seeds = [2]), off)
+```
+
+A cluster's real-time "is it finished?" weight is a second analyst decision,
+but it is supplied at likelihood time through the `prob_concluded` keyword of
+`loglikelihood` rather than stored on the data — the mixture it drives is only
+defined against the analytical chain-size law. These two show the pattern for
+any per-cluster information.
 
 If your analysis needs different or richer per-cluster information, you
 have two options.
@@ -1968,35 +2005,40 @@ collapse it into an existing flag), define a new struct and a
 struct MultiTypeChainSizes
     data::Vector{Int}
     type::Vector{Int}   # which strain/patch/group
+    seeds::Vector{Int}  # index cases in each cluster
 end
 
-# Different offspring distribution per type; pick by observation.
+# Different offspring distribution per type; pick by observation. Grouping by
+# type and delegating to `ChainSizes` gives multi-seed support for free, rather
+# than re-deriving it.
 function Distributions.loglikelihood(data::MultiTypeChainSizes,
         offsprings::Vector{<:Distribution})
     total = 0.0
-    for i in eachindex(data.data)
-        d = chain_size_distribution(offsprings[data.type[i]])
-        total += logpdf(d, data.data[i])
+    for t in unique(data.type)
+        rows = data.type .== t
+        total += loglikelihood(
+            ChainSizes(data.data[rows]; seeds = data.seeds[rows]), offsprings[t]
+        )
     end
     return total
 end
 ```
 
-The internal `EpiBranch._chain_size_logpdf(d, x, s)` is the reusable
-piece — call it from your method if you need multi-seed support, and
-your new data type inherits the same closed forms for `Borel`,
-`GammaBorel`, `PoissonGammaChainSize` as the built-in `ChainSizes` uses.
+Your new data type inherits the same closed forms for `Borel`, `GammaBorel`,
+`PoissonGammaChainSize` as the built-in `ChainSizes` uses. Reach for the
+internal `EpiBranch._chain_size_logpdf(d, x, s)` directly only when a row's
+likelihood can't be expressed as a `ChainSizes` call at all.
 
 ## Summary of extension points
 
 | Extension point | Mechanism | When called |
 |---|---|---|
-| Custom intervention | Struct `<: AbstractIntervention` + hook methods | Each generation |
+| Custom intervention | Struct `<: AbstractIntervention` + hook methods | Per case, and per contact for `competing_risk` |
 | Ending an infection early | `EpiBranch.abort_infection!(ind, time)` from an intervention hook | That hook |
-| Custom vaccination | Struct `<: AbstractVaccination` holding a `VaccineEffect` + `vaccine_effect` + `apply_post_transmission!` | Each generation |
+| Custom vaccination | Struct `<: AbstractVaccination` holding a `VaccineEffect` + `vaccine_effect` + `intervention_actions` | Once per case |
 | Custom effect mode | Struct `<: AbstractEffectMode` + `realised_efficacy`; `realise_prior_dose!` only to change what a dose recorded before the run gets | Dose recording / individual creation |
 | Time-dependent intervention | `Scheduled(iv; start_time = ...)` + `intervention_time`, `reset!` on `iv` | After each hook |
-| Capacity-constrained intervention | `CapacityConstrained(iv; budget_per_period = ...)` + `capacity_key`, `capacity_time_key` on `iv` | `apply_post_transmission!` |
+| Capacity-constrained intervention | `CapacityConstrained(iv; budget_per_period = ...)` + `capacity_key`, `capacity_time_key` on `iv` | Action admission, once per case |
 | Custom stopping rule | Struct `<: AbstractStoppingRule` + `should_stop` | Each step |
 | Contact recorder | Struct `<: ContactRecorder` + `records_contacts` | Continuous-time race, per standing-blocked proposal |
 | Terminal clinical transition | Struct `<: AbstractClinicalTransition` + `is_terminal`, `terminal_event`, `terminal_target` | Case creation |
@@ -2007,14 +2049,14 @@ your new data type inherits the same closed forms for `Borel`,
 | Custom offspring (type) | Struct + `draw_offspring`, `chain_size_distribution` | Offspring draw + analytics |
 | Custom transmission model | Struct `<: TransmissionModel` + `generate_offspring` (offspring-driven) or `initialise_state` + `contacts_of` + `gather_by_target` (structure-driven); optional `single_type_offspring`, accessors | Simulation + analytics |
 | Transmission route | `RouteWindow(name; from, until, kernel, reach)` on a process that reads them | Continuous-time race, per case |
-| Structured fixed-size pool | Reuse the Sellke pool: name the mixing attributes with `mixing_by` (a tuple of attribute keys) and supply a `force(group, counts)` | Simulation |
+| Structured fixed-size population | `MixingProcess(; population_size, mixing_by, rate)`: name the mixing attributes with `mixing_by` (a tuple of attribute keys) and supply the pair rate `rate(infector_group, target_group)` | Simulation |
 | Custom clinical transition | Struct `<: AbstractClinicalTransition` + `initialise_individual!`, `resolve_individual!`; `is_terminal`/`terminal_event`/`terminal_target` if terminal; `transition_loglik` to evaluate it | Case creation |
 | Calendar schedule for a pair kernel | Struct + `calendar_multiplier`, and `next_calendar_break` or `calendar_shape(::YourSchedule) = SmoothCalendar()` | Simulation + likelihood |
 | Pairwise likelihood for a structure | Struct `<: InfectionLayer` + `contact_structure`; `compile_contact_pairs` and `pairwise_surv_loglik` then apply | Likelihood evaluation |
 | Pairwise likelihood row grouping | Struct `<: EpiBranch.PairwiseReduction` + `EpiBranch.ngroups`, `EpiBranch.group`; run with `EpiBranch.pairwise_reduce` | Likelihood evaluation |
 | Progression likelihood | `progression_loglik(spec, individuals)`; built-in transitions work out of the box, a custom one needs `transition_loglik` | Likelihood evaluation |
 | Custom observation model | Struct `<: ObservationModel` + `observe(base, ::YourObs)` (analytics) and/or `apply_observation!(::YourObs, state, rng)` (simulation) | Analytics / inference |
-| Per-observation metadata | Either pre-compute into existing `ChainSizes` fields, or define a new data type with a `loglikelihood` method that calls `_chain_size_logpdf` | Likelihood evaluation |
+| Per-observation metadata | Either pre-compute into existing `ChainSizes` fields (`seeds` included), or define a new data type with a `loglikelihood` method that delegates to `ChainSizes` per group | Likelihood evaluation |
 | Sim ↔ analytical test | `generative_model`, `observe_chain_sizes` | Regression test |
 
 ### Callable rules in branching processes
@@ -2436,10 +2478,6 @@ function EpiBranch.intervention_actions(visit::ClinicAppointment, state, candida
      for person in candidates if !get(person.state, :attended, false)]
 end
 
-function EpiBranch.apply_post_transmission!(visit::ClinicAppointment, state, candidates)
-    EpiBranch.apply_actions!(visit, state, candidates)
-end
-
 EpiBranch.capacity_key(::ClinicAppointment) = :attended
 EpiBranch.capacity_time_key(::ClinicAppointment) = :appointment_time
 
@@ -2468,7 +2506,7 @@ An action producer implements `EpiBranch.intervention_actions(iv, state, candida
 and returns `EpiBranch.InterventionAction(individual, time, effect!)` values.
 `effect!(individual, time, state)` records an admitted action. Discovery can expand
 its input, as group vaccination does when it finds every member of a triggered
-group. Its generation hook calls `EpiBranch.apply_actions!`.
+group. Both engines call it once per case and admit what it returns.
 
 `Scheduled` tests the proposed action time before delivery. A predicate sees that
 time as `state.max_infection_time`, with the current case count and generation.
@@ -2523,7 +2561,7 @@ case. External producers opt in with `EpiBranch.continuous_actions(iv) = true`.
 They must work without a pending contact's infection time. Ring delivery supports
 an infinite eligibility window and zero post-exposure efficacy; group delivery
 uses known triggering cases. Schedules and capacity wrappers use the same action
-contract as the generation engine. Mass vaccination and the homogeneous pool
+contract as the generation engine. Mass vaccination and `HomogeneousProcess`
 remain unsupported on this path. With several households, capacity requires
 `period = Inf` for a shared lifetime budget. Finite periods are rejected because
 the simulator completes each household separately and resets its clock for the
