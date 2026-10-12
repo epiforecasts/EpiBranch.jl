@@ -752,9 +752,11 @@ function _warn_unhonoured_interventions(model, interventions)
     isempty(unhonoured) && return nothing
     @warn "$(nameof(typeof(model))) is a continuous-time model that settles one " *
         "pre-existing case at a time, and cannot offer these interventions the " *
-        "contacts or actions they act through; it does not honour them, and " *
-        "they will have no effect: " *
-        "$(join(unhonoured, ", ")). Express such control as a removal " *
+        "contacts or actions they act through: " *
+        "$(join(unhonoured, ", ")). It does not honour what they do through " *
+        "those hooks, which will have no effect; what they do as each " *
+        "individual is initialised or resolved, and the risks they put on " *
+        "each contact, still apply. Express such control as a removal " *
         "`Transition` in the progression, or through an intervention that acts " *
         "when each individual is initialised, resolved, or traced."
     return nothing
