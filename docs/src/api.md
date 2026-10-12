@@ -510,7 +510,6 @@ EpiBranch.AbortedInfection
 EpiBranch.HostImmunity
 EpiBranch.infectious_removal_time
 EpiBranch.risk_applies
-EpiBranch.risk_depends_on_infector
 EpiBranch.standing_block
 intervention_time
 EpiBranch.reset!
@@ -562,6 +561,7 @@ EpiBranch.capacity_time_key
 ```@docs
 EpiBranch.resolve_transitions!
 EpiBranch.transition_time
+EpiBranch.censor_after_outcome!
 EpiBranch.transition_loglik
 EpiBranch.transition_term
 ```
@@ -634,5 +634,6 @@ EpiBranch._column_order
 EpiBranch._chain_length_ll_negbin
 EpiBranch._borel_logpdf
 EpiBranch._gammaborel_logpdf
+EpiBranch._chain_size_loglik
 EpiBranch._empirical_ll
 ```

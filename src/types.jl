@@ -133,8 +133,8 @@ contact they exposed; for models with a fixed population, anyone in it.
 
 In the continuous-time models ([`HomogeneousProcess`](@ref),
 `NetworkProcess`, `RoutedNetwork`, `HouseholdProcess`),
-`susceptibility` and `infectiousness` instead multiply the rate of
-transmission. They then lower the chance of infection only over an
+`susceptibility` and `infectiousness` instead multiply the rate at which a
+pair meets. They then lower the chance of infection only over an
 infectious period of limited length: if the infectious period never ends,
 any positive value leads to infection eventually, only later on average, and
 a contact certain to fall within the infectious period (a fixed delay such as

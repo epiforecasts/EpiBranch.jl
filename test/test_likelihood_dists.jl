@@ -37,15 +37,15 @@
             prob_concluded = pc
         )
 
-        # prob_concluded has no closed form under interventions: refuse rather
-        # than silently drop them.
+        # With interventions, prob_concluded routes through the
+        # simulation-based likelihood.
         clinical = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
         iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
         d_iv = chain_size_distribution(
             ModelSpec(bp; interventions = [iso], attributes = clinical);
-            seeds = seeds, prob_concluded = pc
+            seeds = seeds, prob_concluded = pc, n_sim = 500, rng = StableRNG(1)
         )
-        @test_throws ArgumentError logpdf(d_iv, data)
+        @test isfinite(logpdf(d_iv, data))
     end
 
     @testset "chain_length_distribution" begin

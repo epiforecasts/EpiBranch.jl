@@ -231,26 +231,6 @@ itself or contacts in a branching process.
 """
 risk_applies(::AbstractIntervention, route) = true
 
-"""
-    risk_depends_on_infector(intervention) -> Bool
-
-Whether this intervention's protection against an infection can depend on
-who the infector is (for example an isolated infector). A
-[`HomogeneousProcess`](@ref) with more than one mixing type picks each
-infection's infector in proportion to infectiousness, which is exact only for
-protection that ignores the infector, so it refuses an intervention for which
-this is `true`. Other models ignore it.
-
-The default is `true` for an intervention with its own
-[`competing_risk`](@ref EpiBranch.competing_risk) method and `false` otherwise.
-Return `false` when the protection depends only on the person exposed, such
-as a vaccine's. [`Scheduled`](@ref) and [`CapacityConstrained`](@ref) answer
-for the intervention they contain.
-"""
-function risk_depends_on_infector(iv::AbstractIntervention)
-    return _has_own_method(competing_risk, typeof(iv), AbstractIntervention)
-end
-
 # A removal's duration, drawn or given. A negative or `NaN` one puts the
 # release before its own start, which the generation engine reads as no removal
 # and the continuous-time engines as a permanent one, so it is refused here

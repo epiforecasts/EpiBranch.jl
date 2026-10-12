@@ -18,7 +18,6 @@ public reset!
 public required_fields
 public infectious_removal_time
 public risk_applies
-public risk_depends_on_infector
 public reads_population_state
 public standing_block
 # End an infection early from any intervention hook, and read when it ended.
@@ -68,6 +67,7 @@ public transmission_time
 public transition_time
 public resolve_transitions!
 public transition_loglik, transition_term
+public censor_after_outcome!
 
 # Apply the model's observation to a finished state (the simulation side of the
 # observation protocol; `observe` is the exported analytical side). The engine

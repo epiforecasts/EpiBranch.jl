@@ -14,6 +14,10 @@ Interventions are the policy applied to a case ([`AbstractIntervention`](@ref));
 progression steps are the biology that happens to it. Writing a new kind of
 step, such as loss to follow-up, needs the methods below.
 
+Once a case has reached its outcome, an event one of the other steps recorded
+for a later time is reset to "did not happen", since nothing more happens to a
+case that has died or recovered.
+
 # For extension authors
 
 A new step defines `initialise_individual!` (set default state on a new case)
@@ -75,6 +79,38 @@ terminal_event(::AbstractClinicalTransition, individual) = nothing
 
 """Case information a step needs set by the model's `attributes` (for example `:onset_time`). None by default."""
 required_fields(::AbstractClinicalTransition) = Symbol[]
+
+"""
+    censor_after_outcome!(transition::AbstractClinicalTransition, individual)
+
+Reset `transition`'s own event to "did not occur" if the time it recorded
+falls after `individual`'s `:outcome_time`: once a case has died or
+recovered, nothing else can happen to it. Default: no-op.
+
+Called once the simulation engine has resolved every transition for an
+individual, for every transition with `is_terminal(transition) == false`,
+right after `:outcome`/`:outcome_time` are set — a terminal transition's own
+candidate is exactly what decided the outcome (or lost to an earlier one),
+so it is never censored this way. The
+built-ins ([`Hospitalisation`](@ref), [`Reporting`](@ref), and a non-terminal
+[`Transition`](@ref)) reset their own flag to `false` and time to `Inf`,
+which is what [`transition_loglik`](@ref EpiBranch.transition_loglik) then
+reads as a censored (rather than occurred) event, keeping a simulated
+individual's state and its likelihood in agreement. A custom non-terminal
+transition overrides this alongside the flag/time keys its own
+`resolve_individual!` writes.
+"""
+censor_after_outcome!(::AbstractClinicalTransition, individual) = nothing
+
+# Reset a non-terminal transition's own flag/time pair when the recorded time
+# falls after the case's outcome. An event that never occurred has `time ==
+# Inf`, which is never after a finite outcome, so this is a no-op for it.
+function _censor_event!(individual, flag_key::Symbol, time_key::Symbol)
+    individual.state[time_key] > individual.state[:outcome_time] || return nothing
+    individual.state[flag_key] = false
+    individual.state[time_key] = Inf
+    return nothing
+end
 
 # ── Heterogeneity helpers ───────────────────────────────────────────
 #
@@ -172,7 +208,7 @@ function _probability_loglik(probability, passed, ind)
 end
 
 """
-    transition_term(probability, delay, individual, anchor, occurred)
+    transition_term(probability, delay, individual, anchor, occurred; censor = infection_aborted_time(individual))
 
 The log-probability that a step happened or did not happen to a case, for use
 inside [`transition_loglik`](@ref EpiBranch.transition_loglik); when it
@@ -184,35 +220,38 @@ in two cases a custom step would otherwise get wrong: outcomes split with
 outcome the case drew, and steps undone because the infection was stopped
 early (for example by post-exposure prophylaxis), which count as not yet
 having happened by the time the infection was stopped
-([`infection_aborted_time`](@ref EpiBranch.infection_aborted_time)).
+([`infection_aborted_time`](@ref EpiBranch.infection_aborted_time)). A step
+that does not end the case passes its own `censor`, which also covers the
+case's outcome time, so an event that had not happened by the time the case
+died or recovered counts as censored there too.
 """
-function transition_term(probability, delay, ind, anchor, occurred)
+function transition_term(probability, delay, ind, anchor, occurred; censor = infection_aborted_time(ind))
     occurred && return _probability_loglik(probability, true, ind)
-    abort = infection_aborted_time(ind)
-    isinf(abort) && return _probability_loglik(probability, false, ind)
-    return _censored_loglik(probability, delay, ind, anchor, abort)
+    isinf(censor) && return _probability_loglik(probability, false, ind)
+    return _censored_loglik(probability, delay, ind, anchor, censor)
 end
 
-# A transition an abort undid: `_resolve_before_abort!` restored its flag and
-# cleared its time, so what the individual records is that the transition would
-# have taken effect at or after the abort. Its contribution is the probability
-# of exactly that — the gate failing, or the gate passing and the delay landing
-# no earlier than the abort — which censors the transition at the abort instead
-# of reading an undone transition as a gate that failed.
-function _censored_loglik(probability, delay, ind, anchor, abort)
+# A transition an abort undid (or a non-terminal one the outcome overtook):
+# `_resolve_before_abort!`/`censor_after_outcome!` restored its flag and
+# cleared its time, so what the individual records is that the transition
+# would have taken effect at or after `censor`. Its contribution is the
+# probability of exactly that — the gate failing, or the gate passing and the
+# delay landing no earlier than `censor` — rather than reading it as a gate
+# that failed.
+function _censored_loglik(probability, delay, ind, anchor, censor)
     p = _probability_value(probability, ind)
-    elapsed = abort - anchor
+    elapsed = censor - anchor
     isone(p) && return _delay_logccdf(delay, elapsed)
     return log1p(-p * _delay_cdf(delay, elapsed))
 end
 
 # A shared draw decides the group once, so the censored term reads the draw
 # rather than the gate's own 0 or 1: the bucket it selected keeps its width and
-# censors its delay at the abort, and a bucket it passed over says what it says
+# censors its delay at `censor`, and a bucket it passed over says what it says
 # in any other case.
-function _censored_loglik(g::_ExclusiveGate, delay, ind, anchor, abort)
+function _censored_loglik(g::_ExclusiveGate, delay, ind, anchor, censor)
     _exclusive_selected(g, ind) || return _probability_loglik(g, false, ind)
-    return log(g.hi - g.lo) + _delay_logccdf(delay, abort - anchor)
+    return log(g.hi - g.lo) + _delay_logccdf(delay, censor - anchor)
 end
 
 _delay_cdf(d::Distribution, t) = cdf(d, t)
@@ -411,6 +450,11 @@ _from_required(_) = Symbol[]
 After all `resolve_individual!`s have run, collect terminal candidates
 across all terminal transitions and set `:outcome` and `:outcome_time`
 to the earliest. If no terminal transition occurs, neither key is set.
+
+Once the outcome is set, [`censor_after_outcome!`](@ref
+EpiBranch.censor_after_outcome!) runs on every non-terminal transition: a
+non-terminal event recorded after the outcome describes something that could
+not have happened to this individual.
 """
 function _finalise_terminal!(individual, transitions)
     best_time = Inf
@@ -430,6 +474,9 @@ function _finalise_terminal!(individual, transitions)
     if has_any
         individual.state[:outcome_time] = best_time
         individual.state[:outcome] = best_label
+        for t in transitions
+            is_terminal(t) || censor_after_outcome!(t, individual)
+        end
     end
     return nothing
 end

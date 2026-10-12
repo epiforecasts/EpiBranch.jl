@@ -2,8 +2,40 @@
     CapacityConstrained(intervention; budget_per_period, period=Inf,
                         carry_over=true, priority=default_capacity_priority)
 
-Limit how many people an intervention can reach, such as a fixed number of
-vaccine doses per day: `budget_per_period` people every `period` days.
+Limit admissions to an intervention using a shared resource budget. Ring,
+group and mass vaccination expose their candidate actions before admission;
+group candidates include every eligible member of a triggered group. External
+producers implement `intervention_actions` and the `capacity_key` protocol.
+Legacy batch interventions still receive admitted candidates one at a time.
+
+Candidates are ordered by `priority(individual, state)`, lower first, with
+stable ties. The default uses trace time; candidates without one retain their
+incoming order. Priority is evaluated once per candidate. A rejected action
+uses no budget, and a completed action is not charged again.
+
+`budget_per_period` becomes available every `period` units on the admission
+clock, `state.max_infection_time`. With `carry_over=true`, unused allowances
+accumulate. Otherwise each period has a separate allowance. `period=Inf` is a
+single lifetime budget. Fractional remaining capacity cannot admit a whole
+action.
+
+This budget counts admissions. An admitted action can have a future delivery
+date, so it may be recorded in a different calendar period. Usage from another
+intervention with the same `capacity_key` counts against the shared budget;
+when it has no admission stamp, its delivery time determines the period.
+Use distinct dose labels for independent budgets. [`capacity_usage`](@ref)
+reports the used and available allowances.
+
+[`Scheduled`](@ref) and this wrapper compose in either order. For action
+producers, the schedule tests each candidate's action time while the budget
+uses the admission clock. Candidates denied admission are not queued, but
+later discovery may offer them again with their cached draws.
+
+Network and household races execute supported ring and group actions through
+this protocol. Mass vaccination and legacy batch-only interventions remain
+unsupported there. Ring delivery on these races requires an infinite eligibility
+window and zero post-exposure efficacy; pending infection times are unknown.
+`HomogeneousProcess` has no contact-tracing action path.
 
 # Examples
 ```julia
