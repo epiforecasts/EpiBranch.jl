@@ -46,11 +46,14 @@ function loglikelihood(data::OffspringCounts, offspring::AbstractVector{<:Distri
 end
 
 """
-    loglikelihood(data::ChainSizes, offspring::Distribution; prob_concluded = nothing)
+    loglikelihood(data::ChainSizes, offspring::Poisson; prob_concluded = nothing)
+    loglikelihood(data::ChainSizes, offspring::NegativeBinomial; prob_concluded = nothing)
 
 Log-likelihood of observed chain sizes under the exact chain-size distribution
-for the offspring distribution `offspring`. Clusters with several index cases
-are handled through the `seeds` of [`ChainSizes`](@ref).
+for Poisson or negative binomial offspring, the two families whose chain-size
+law is known in closed form. Clusters with several index cases are handled
+through the `seeds` of [`ChainSizes`](@ref). For a mixture across clusters,
+pass a [`ClusterMixed`](@ref) instead.
 
 By default every cluster is assumed to be over, and each contributes the
 probability of its final size, `log P(X = x_i | seeds_i)`.
