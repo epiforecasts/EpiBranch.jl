@@ -210,7 +210,7 @@ reached it. On a tree each contact has one infector, so that is its parent.
 `compute_trace_level!` walks it back to the index case post-simulation to set
 `:trace_level` (distance from the index, anchor `0`). On a tree the level is
 exact; on a cyclic `NetworkProcess` it is the depth along the path a node was
-last traced on, **not** a guaranteed shortest distance to the nearest index — do not
+last traced on, **not** a guaranteed shortest distance to the nearest index. Do not
 read it as one.
 
 Built-in keys use short bare names like `:isolated`, `:traced`, `:age`, and
@@ -367,10 +367,11 @@ The generation engine used to hand a whole generation's contacts to
 with a method of its own for it is still handed the batch, with a deprecation
 warning, and its `keep_active` is then asked about the whole batch. It runs at
 its place in the list: the interventions before it have been through every
-case's hooks, and those after it see what it wrote. What it did to each contact moves to `trace_contacts!`,
-and any action with a delivery date to `intervention_actions`. Once it does,
-its `keep_active` is asked per case, about that case's contacts, after its
-`trace_contacts!` and `intervention_actions` for the case have run.
+case's hooks, and those after it see what it wrote. Moving its per-contact
+effects into `trace_contacts!`, and any action with a delivery date into
+`intervention_actions`, lets its `keep_active` be asked per case, about that
+case's contacts, after its `trace_contacts!` and `intervention_actions` for
+the case have run.
 
 ### Which hooks run on which engine
 
@@ -528,7 +529,7 @@ Ordering guarantees:
 
 - `resolve_individual!` runs on a case before it makes any contact. A competing risk can read whatever `resolve_individual!` wrote on the infector.
 - A case's `trace_contacts!`, `intervention_actions` and `keep_active` run before any of its contacts is decided infected or not, so a competing risk can read whatever they wrote on the contact (e.g. `:vaccination_time`).
-- Every intervention's `trace_contacts!` for a case runs before any intervention's `intervention_actions` for it, so an action producer such as `RingVaccination` reads what tracing wrote, whatever the order of the stack.
+- Every intervention's `trace_contacts!` for a case runs before any intervention's `intervention_actions` for it; an action producer such as `RingVaccination` therefore reads what tracing wrote, whatever the order of the stack.
 - Otherwise interventions are applied in the order they appear in `interventions = [...]`, and each sees the state written by earlier interventions for the same case.
 - `keep_active` runs before the contacts are decided infected or not. A contact it returns that is then infected is active as a case anyway.
 
@@ -1690,11 +1691,11 @@ infection-time order, rather than the generation-based engine) receives the
 composed layers as arguments instead: define
 [`EpiBranch.simulate_once`](@ref)`(m::MyModel, sim_opts; interventions,
 attributes, progression, observation, recorder, rng)`, read the layers off the
-arguments, and derive any window state you need — the infectious window's
-`from`, say, via [`EpiBranch.infectious_from`](@ref)`(progression)` — there.
+arguments, and derive any window state you need (the infectious window's
+`from`, say, via [`EpiBranch.infectious_from`](@ref)`(progression)`) there.
 `simulate` calls this once, or repeatedly when a `condition` is given, so your
 method takes no `condition`/`max_attempts` of its own. Drive the race with
-[`EpiBranch.sellke_race!`](@ref), passing it `sim_opts` so it resolves
+[`EpiBranch.sellke_race!`](@ref) and pass it `sim_opts`; it resolves
 `max_time` and reconciles the run's aggregate bookkeeping for you. The
 continuous-time household and network processes are the worked examples;
 `ModelSpec` routes `simulate` and `loglikelihood` to `simulate_once` for you.
