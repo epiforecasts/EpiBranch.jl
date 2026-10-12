@@ -23,7 +23,8 @@ on infecting the people they live with.
 
 Households as fully connected groups, community contact as a sparser network
 over the same people. Self-isolation ends community transmission and leaves the
-household route running:
+household route running. In this example `household_adjacency` and
+`community_adjacency` are contact lists, one vector of people per person:
 
 ```julia
 using EpiNetwork, EpiBranch, Distributions
