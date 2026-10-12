@@ -686,6 +686,17 @@ end
     @test EpiBranch.watched_records([Exponential(1.0), live]) == (:tick,)
     @test_throws ArgumentError EpiBranch.pair_kernel(live, 1, 2, 0.0)
 
+    # A per-edge vector of identical kernels shares the projection behind them;
+    # one with no projection to share at all gives nothing to check.
+    @test EpiBranch.kernel_projection(live) === tick_state
+    @test EpiBranch.kernel_projection([live, live]) === tick_state
+    other_tick = ind -> (tick = get(ind.state, :tick, 0)::Int,)
+    mismatched = PairKernel(
+        (c, a, b) -> Exponential(1.0); state = other_tick, watches = (:tick,)
+    )
+    @test EpiBranch.kernel_projection([live, mismatched]) === nothing
+    @test EpiBranch.kernel_projection([Exponential(1.0), live]) === nothing
+
     # A projection has to declare what it reads, and a kernel with nothing to
     # read has nothing to declare.
     @test_throws "must declare every" PairKernel((c, a, b) -> Exponential(1.0); state = tick_state)
