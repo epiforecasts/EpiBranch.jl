@@ -458,6 +458,7 @@ EpiBranch._settle_generation!
 EpiBranch._settle_case!
 EpiBranch._at_case!
 EpiBranch._intervene!
+EpiBranch._act_per_case!
 EpiBranch._resolve!
 EpiBranch._decide_infected
 EpiBranch.population_size
