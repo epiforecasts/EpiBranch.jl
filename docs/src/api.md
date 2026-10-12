@@ -1,7 +1,7 @@
 # API reference
 
-This page documents every function and type in EpiBranch, grouped by what it
-is used for. Most analyses need only a few of them:
+This page documents the functions and types of EpiBranch, grouped by what
+they are used for. Most analyses need only a few of them:
 
 - describe transmission with [`BranchingProcess`](@ref) and combine it with the
   natural history, interventions and population characteristics in a
@@ -248,6 +248,7 @@ containment_probability
 is_extinct
 generation_R
 weekly_incidence
+scenario_sweep
 ```
 
 ## Closed-form results
