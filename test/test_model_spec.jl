@@ -42,6 +42,12 @@ struct BlockVariadicN <: AbstractIntervention end
 EpiBranch.competing_risk(::BlockVariadicN, args::Vararg{Any, N}) where {N} =
     Risk(block_probability = 1.0)
 
+# An intervention whose only declared effect is on the likelihood, as the
+# extending guide's `Prophylaxis` is.
+struct _SusceptibilityOnly <: AbstractIntervention end
+EpiBranch.susceptibility_components(::_SusceptibilityOnly, host) =
+    (1 => EpiBranch.HazardScaling(2.0, 0.5),)
+
 @testset "ModelSpec" begin
     # A ModelSpec composes the modelling layers (progression, interventions,
     # attributes, observation) around a pure transmission process. The process
@@ -254,6 +260,8 @@ EpiBranch.competing_risk(::BlockVariadicN, args::Vararg{Any, N}) where {N} =
         # Naming the vararg's length leaves a type variable where a count
         # would be, which the check must not try to add to.
         @test_logs ModelSpec(bp; interventions = [BlockVariadicN()])
+        # An effect declared for the likelihood alone is an effect.
+        @test_logs ModelSpec(bp; interventions = [_SusceptibilityOnly()])
         # `Isolation` implements several hooks properly and stays silent too.
         iso = Isolation(
             onset_to_isolation_delay = Exponential(1.0), duration = Inf

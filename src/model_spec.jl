@@ -43,8 +43,13 @@ end
 # the signature the engine calls each with (`trace_contacts!` has two, the
 # four-argument one being what the five-argument fallback calls in turn). An
 # intervention with no method of its own, at the right arity, for any of
-# these can have no effect on a simulation; see `_warn_inert_interventions`.
-const _EFFECT_HOOKS = (
+# these can have no effect on a simulation or on the likelihood; see
+# `_warn_inert_interventions`. `susceptibility_components` is on the list
+# because an intervention whose effect is declared for the likelihood alone,
+# as the extending guide's `Prophylaxis` is, reaches the model through it. A
+# function rather than a constant, since `susceptibility_components` is
+# defined in a file loaded after this one.
+_effect_hooks() = (
     (initialise_individual!, 3, "initialise_individual!(intervention, individual, state)"),
     (resolve_individual!, 3, "resolve_individual!(intervention, individual, state)"),
     (
@@ -64,10 +69,14 @@ const _EFFECT_HOOKS = (
     ),
     (infectious_removal_time, 2, "infectious_removal_time(intervention, individual)"),
     (intervention_actions, 3, "intervention_actions(intervention, state, candidates)"),
+    (
+        susceptibility_components, 2,
+        "susceptibility_components(intervention, host)",
+    ),
 )
 
 # Warn when a composed intervention has a method of its own for none of
-# `_EFFECT_HOOKS`, at the right arity: a hook written with the wrong number
+# `_effect_hooks()`, at the right arity: a hook written with the wrong number
 # of arguments, or defined without the `EpiBranch.` qualification needed to
 # add a method rather than shadow it, leaves only the `AbstractIntervention`
 # fallback reachable, and the intervention does nothing with no sign that
@@ -77,12 +86,13 @@ const _EFFECT_HOOKS = (
 function _warn_inert_interventions(interventions)
     for iv in interventions
         T = typeof(_unwrap_scheduled(iv))
-        any(_EFFECT_HOOKS) do (f, n, _)
+        any(_effect_hooks()) do (f, n, _)
             _has_own_method(f, T, AbstractIntervention, n)
         end && continue
         @warn "$(nameof(T)) has a method of its own for none of the hooks the " *
-            "engine calls, so it can have no effect on the simulation: " *
-            "$(join((sig for (_, _, sig) in _EFFECT_HOOKS), ", ")). This is usually " *
+            "package calls, so it can have no effect on the simulation or on " *
+            "the likelihood: " *
+            "$(join((sig for (_, _, sig) in _effect_hooks()), ", ")). This is usually " *
             "a hook defined with the wrong number of arguments, or without the " *
             "`EpiBranch.` prefix needed to add a method to the package's " *
             "function instead of defining a new one of the same name." intervention = T
