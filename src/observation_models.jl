@@ -32,7 +32,8 @@ probability `detection_prob`, `delay` days after symptom onset (or after
 - `detection_prob`: the probability a case is reported, a number, a
   distribution, or a function of the random number generator and the
   individual, `(rng, ind) -> ...` (for example to make reporting depend on
-  age).
+  age). It must be above 0 and at most 1; leave the observation model out
+  rather than setting it to 0.
 - `delay`: days from `from` to report, as a number, distribution or such a
   function.
 - `from`: the time reporting is measured from. Symptom onset by default,
@@ -110,7 +111,8 @@ end
     MinimumSize(min_size)
 
 Only chains of at least `min_size` cases are recorded, as when only clusters
-of two or more cases are investigated. The exact likelihood conditions chain
+of two or more cases are investigated. `min_size` is at least 1. The exact
+likelihood conditions chain
 sizes on being at least `min_size` ([`TruncatedChainSize`](@ref)), and the
 simulation-based likelihood leaves out simulated chains below it, so both
 describe the same recorded data. [`simulate`](@ref) and

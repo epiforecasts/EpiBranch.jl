@@ -67,7 +67,7 @@ end
 # ── BranchingProcess type and constructors ──────────────────────────
 
 """
-    BranchingProcess(offspring, generation_time; population_size)
+    BranchingProcess(offspring, generation_time; population_size = NoPopulation())
     BranchingProcess(offspring)
     BranchingProcess(windows::Infectiousness...)
 

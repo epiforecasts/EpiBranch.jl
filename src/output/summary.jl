@@ -1,5 +1,5 @@
 """
-    containment_probability(states::Vector{<:SimulationState}; max_cases=nothing)
+    containment_probability(states::Vector{<:SimulationState}; max_cases=NoCases())
 
 Containment probability: the proportion of simulated outbreaks that died out,
 from a vector of simulations such as `simulate(model, n)`. An outbreak still
@@ -45,7 +45,7 @@ _check_max_cases(::SimulationState, ::NoCases) = false
 _check_max_cases(state::SimulationState, cap::Int) = state.cumulative_cases >= cap
 
 """
-    is_extinct(state::SimulationState; by_week=nothing, max_cases=nothing)
+    is_extinct(state::SimulationState; by_week=nothing, max_cases=NoCases())
 
 Whether one simulated outbreak died out.
 
