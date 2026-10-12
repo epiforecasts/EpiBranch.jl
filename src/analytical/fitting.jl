@@ -227,24 +227,31 @@ function _sim_loglikelihood(
     return _empirical_ll(observed, sim_values; min_val, censored, cap)
 end
 
-# Observed chain sizes for one simulated state. With `NoObservation` and no
-# `Reporting` step in `progression`, detection is not thinned at all, so
-# every infected case counts. Otherwise only the cases marked `:reported`
-# count, written by `Reporting` during the progression pass, by
-# `apply_observation!` afterwards for an observation model, or both.
-function _sim_chain_sizes(state, obs::MinimumSize, progression)
-    return filter(>=(obs.min_size), chain_statistics(state).size)
-end
-function _sim_chain_sizes(state, obs, progression)
-    if obs isa NoObservation && !any(t -> t isa Reporting, progression)
-        return chain_statistics(state).size
-    end
+# Chain sizes counted from each case's `:reported` flag, written by
+# `Reporting` during the progression pass, by `apply_observation!`
+# afterwards for an observation model, or both.
+function _reported_chain_sizes(state)
     counts = Dict{Int, Int}()
     for ind in state.individuals
         (is_infected(ind) && get(ind.state, :reported, false)) || continue
         counts[ind.chain_id] = get(counts, ind.chain_id, 0) + 1
     end
     return collect(values(counts))
+end
+
+# Observed chain sizes for one simulated state. With `NoObservation` and no
+# `Reporting` step in `progression`, detection is not thinned at all, so
+# every infected case counts; otherwise only `:reported` cases do.
+function _sim_chain_sizes(state, obs::MinimumSize, progression)
+    sizes = any(t -> t isa Reporting, progression) ?
+        _reported_chain_sizes(state) : chain_statistics(state).size
+    return filter(>=(obs.min_size), sizes)
+end
+function _sim_chain_sizes(state, obs, progression)
+    if obs isa NoObservation && !any(t -> t isa Reporting, progression)
+        return chain_statistics(state).size
+    end
+    return _reported_chain_sizes(state)
 end
 
 # The smallest size an observation could have recorded, which the empirical
