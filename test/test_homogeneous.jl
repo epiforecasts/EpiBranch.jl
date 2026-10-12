@@ -61,6 +61,14 @@ EpiBranch.trace_contacts!(::DoseSettleAndTrace, state, infector, contacts) = not
 # of its own, so `_generation_hooks` has nothing to name.
 struct DoseThroughActions <: EpiBranch.AbstractIntervention end
 EpiBranch.continuous_actions(::DoseThroughActions) = true
+# Discovers its own actions, like `MassVaccination`, but without declaring
+# `continuous_actions`: the race never delivers what it discovers, and
+# `_generation_hooks` has nothing to name either, since it defines neither
+# `apply_post_transmission!` nor `keep_active` of its own.
+struct DiscoverWithoutContinuous <: EpiBranch.AbstractIntervention end
+function EpiBranch.intervention_actions(::DiscoverWithoutContinuous, state, candidates)
+    return EpiBranch.InterventionAction[]
+end
 
 # The same leaky vaccine with its arguments typed, as the style guide asks for.
 struct LeakyVaccineTyped <: EpiBranch.AbstractIntervention
@@ -427,6 +435,20 @@ end
             [:intervention_actions]
         @test_logs (:warn, r"intervention_actions"i) match_mode = :any simulate(
             ModelSpec(prog_pool; progression = prog, interventions = [DoseThroughActions()]);
+            rng = StableRNG(1), n_initial = 2
+        )
+        # An intervention that discovers its own actions without declaring
+        # `continuous_actions`, like `MassVaccination`, is unhonoured for the
+        # same reason and must be named the same way, not reported with an
+        # empty hook list.
+        @test !EpiBranch._sellke_honours(prog_pool, DiscoverWithoutContinuous())
+        @test EpiBranch._unhonoured_hooks(prog_pool, DiscoverWithoutContinuous()) ==
+            [:intervention_actions]
+        @test_logs (:warn, r"intervention_actions"i) match_mode = :any simulate(
+            ModelSpec(
+                prog_pool; progression = prog,
+                interventions = [DiscoverWithoutContinuous()]
+            );
             rng = StableRNG(1), n_initial = 2
         )
         # The package's own interventions that the pool honours warn about nothing.

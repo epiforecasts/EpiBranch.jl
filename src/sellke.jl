@@ -715,6 +715,13 @@ function _unhonoured_hooks(model, iv::AbstractIntervention)
         # not reported with an empty hook list.
         return isempty(hooks) ? [:intervention_actions] : hooks
     end
+    # An intervention that discovers its own actions without declaring
+    # `continuous_actions` has no generation hook to name either, but is
+    # still unhonoured unless tracing reaches it, so it needs the same
+    # `intervention_actions` naming as the branch above.
+    _discovers_actions(iv) &&
+        return traces_contacts(iv) && supplies_contacts(model) ? Symbol[] :
+               [:intervention_actions]
     isempty(hooks) && return hooks
     cont_T = typeof(_hook_owner(continuous_actions, iv))
     settled_T = typeof(_hook_owner(on_infection_settled!, iv))
