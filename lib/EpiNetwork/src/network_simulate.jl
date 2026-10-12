@@ -51,7 +51,8 @@ function simulate_once(
         state, collect(1:n), rng, sim_opts;
         from = from, until = model.until, interventions = interventions,
         risks = EpiBranch.transmission_risks(model),
-        watches = (EpiBranch.watched_records(model.edge_kernel),), recorder = recorder,
+        watches = (EpiBranch.watched_records(model.edge_kernel),),
+        projections = (EpiBranch.kernel_projection(model.edge_kernel),), recorder = recorder,
         seed! = (best, members, r) -> _seed_network!(
             best, members, state, model.external_hazard, n_initial, Tobs, r;
             initial_cases = sim_opts.initial_cases

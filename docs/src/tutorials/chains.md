@@ -4,8 +4,8 @@ How large do transmission chains get, and what do observed chain sizes say
 about R? A transmission chain (or cluster) is the set of cases that descend from
 one index case. This page computes chain sizes and lengths from simulations,
 evaluates the likelihood of observed chain sizes, offspring counts and chain
-lengths, and fits R to them. Exact formulae are used where they exist;
-otherwise EpiBranch simulates the model. The [inference tutorial](inference.md)
+lengths, and fits R to them. EpiBranch uses exact formulae where they exist,
+and simulates the model otherwise. The [inference tutorial](inference.md)
 covers estimation in more depth.
 
 ## Chain statistics

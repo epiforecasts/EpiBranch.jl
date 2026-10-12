@@ -1,9 +1,8 @@
 # Clinical transitions
 
-What happens to each case after infection: when do symptoms start, when is the
-case reported, is it admitted to hospital, and does it recover or die? Each
-case follows a disease timeline of events, each happening a delay after an
-earlier one. You describe the timeline as a list of events called
+Each case follows a disease timeline after infection: symptom onset, reporting,
+maybe admission to hospital, and recovery or death. Each event happens a delay
+after an earlier one. You describe the timeline as a list of events called
 `progression` and give it to a [`ModelSpec`](@ref) alongside the transmission
 process. Control measures (isolation, contact tracing, vaccination) go in the
 model's `interventions`; the course of disease goes in its `progression`.

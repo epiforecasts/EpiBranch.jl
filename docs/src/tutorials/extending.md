@@ -367,11 +367,11 @@ The generation engine used to hand a whole generation's contacts to
 with a method of its own for it is still handed the batch, with a deprecation
 warning, and its `keep_active` is then asked about the whole batch. It runs at
 its place in the list: the interventions before it have been through every
-case's hooks, and those after it see what it wrote. Moving its per-contact
-effects into `trace_contacts!`, and any action with a delivery date into
-`intervention_actions`, lets its `keep_active` be asked per case, about that
-case's contacts, after its `trace_contacts!` and `intervention_actions` for
-the case have run.
+case's hooks, and those after it see what it wrote. Its effect on each contact
+moves to `trace_contacts!`, and any action with a delivery date moves to
+`intervention_actions`. Once it does,
+its `keep_active` is asked per case, about that case's contacts, after its
+`trace_contacts!` and `intervention_actions` for the case have run.
 
 ### Which hooks run on which engine
 
@@ -379,9 +379,9 @@ The hooks above are not all available everywhere, because the engines are
 built differently. The generation-based engine creates a fresh `Individual`
 for every contact, infected or not. The continuous-time (Sellke) models have no
 such objects: every node exists from the start and the simulation only settles
-*when* each is infected, by a race between contact-interval draws. What they do
-have is the potential infection itself, a drawn time for a named pair, so a
-`Risk` has a place there too, alongside the infectious window.
+*when* each is infected, by a race between contact-interval draws. They do
+have the potential infection itself, though, a drawn time for a named pair, so
+a `Risk` has a place there too, alongside the infectious window.
 
 | Hook | Generation engine | Continuous-time race (network, household, homogeneous) |
 |---|---|---|
