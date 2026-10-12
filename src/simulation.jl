@@ -984,14 +984,24 @@ when it is created; interventions act on it later in the generation.
 
 Only needed when writing a new transmission model. The simulation calls it
 for every contact drawn from a branching process's offspring distribution, or
-from [`generate_offspring`](@ref) in a model that defines it. A model
-that creates new people inside its [`contacts_of`](@ref) calls it directly,
-returning each contact with its infection time:
+from [`generate_offspring`](@ref) in a model that defines it. A model that
+creates new people inside its [`contacts_of`](@ref) calls it directly,
+returning each contact with its infection time. Such a model also needs a
+[`collect_exposures`](@ref) method that returns [`gather_by_target`](@ref):
+without one the simulation asks it for `generate_offspring` and never reaches
+`contacts_of`. A model whose contacts are all new and share one generation
+time is simpler written as `generate_offspring`; `contacts_of` earns its
+keep where the model times each contact itself, as here, where every route
+out of a case has its own delay:
 
 ```julia
-function contacts_of(m::MyModel, parent, state)
-    map(1:rand(state.rng, m.offspring)) do _
-        t = parent.infection_time + rand(state.rng, m.generation_time)
+function EpiBranch.collect_exposures(m::MyModel, state::SimulationState)
+    return gather_by_target(m, state)
+end
+
+function EpiBranch.contacts_of(m::MyModel, parent, state::SimulationState)
+    map(m.routes) do route
+        t = parent.infection_time + rand(state.rng, route.delay)
         (make_contact!(state, parent, t), t)
     end
 end
