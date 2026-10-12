@@ -489,6 +489,10 @@ results = simulate(scenario([mv_age], attrs), 200; max_cases = 500, rng = rng)
 println("Age-stratified rollout: $(round(containment_probability(results), digits=3))")
 ```
 
+Containment is at the no-intervention baseline again: the older group is
+protected from day 44 and everyone else from day 104, and an outbreak that
+takes off has reached the case cap well before either.
+
 ### Efficacy that varies between people
 
 `efficacy` can be one number for everyone, a distribution (people differ at
@@ -522,6 +526,9 @@ rng = StableRNG(42)
 results = simulate(scenario([prime, boost]), 200; max_cases = 500, rng = rng)
 println("Two-dose rollout: $(round(containment_probability(results), digits=3))")
 ```
+
+This is the baseline again, for the same reason: the prime protects from day
+44 and the boost from day 74, by which time the outbreak has reached the cap.
 
 !!! warning "Enter the efficacy each dose adds"
     Doses protect independently: an exposure is blocked unless every dose
