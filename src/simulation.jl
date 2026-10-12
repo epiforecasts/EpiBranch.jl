@@ -1650,8 +1650,9 @@ For example, share a reporting probability within each household:
 attributes = [groups(50; key = :household),
     group_attribute(:reporting_probability; value = Beta(6, 4),
         group_key = :household)]
-observation = PerCaseObservation(
-    detection_prob = (rng, ind) -> ind.state[:reporting_probability])
+progression = [Reporting(
+    delay = Exponential(2.0),
+    probability = (rng, ind) -> ind.state[:reporting_probability])]
 ```
 
 [`vaccine_acceptance`](@ref) is a convenience constructor for this operation.
