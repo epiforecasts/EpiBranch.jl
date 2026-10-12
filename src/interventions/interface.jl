@@ -143,8 +143,10 @@ EpiBranch.trace_contacts!). The continuous-time race gathers a case's
 reachable contacts only when some intervention says `true`, so an
 intervention that does not trace costs nothing. The default reads the methods
 themselves: `true` for a type with a `trace_contacts!` method of its own, so an
-intervention written outside the package need not declare it. A type whose
-method only opts out, as [`CapacityConstrained`](@ref)'s does, returns `false`.
+intervention written outside the package need not declare it. A type with a
+`trace_contacts!` method that should not count, such as one that only opts out
+of tracing as [`CapacityConstrained`](@ref)'s does, defines
+`traces_contacts(::T) = false` itself.
 """
 function traces_contacts(iv::AbstractIntervention)
     return _has_own_method(trace_contacts!, typeof(iv), AbstractIntervention)
