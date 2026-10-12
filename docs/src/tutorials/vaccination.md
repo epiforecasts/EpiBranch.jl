@@ -659,9 +659,10 @@ for each.
     probability.
 
     A group is also offered doses only in a generation in which it gains a
-    new member, so a group whose trigger arrives after its last new member,
-    or which grows after its visit, leaves those people unvaccinated. In this
-    model about 3% of willing people are never offered a dose, which puts
+    new member, so a group whose trigger arrives after its last new member
+    leaves those members unvaccinated. A group that grows later is reached
+    again, each new member bringing their group with them. In this model a
+    few per cent of willing people are never offered a dose, which puts
     measured coverage a few points below the shares above.
 
 ## Limited vaccine supply
