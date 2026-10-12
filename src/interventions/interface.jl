@@ -23,12 +23,13 @@ initialise_individual!(::AbstractIntervention, individual, state) = nothing
     resolve_individual!(intervention, case, state)
 
 Set the intervention's state on a case before it transmits. `Isolation`, for
-one, writes when the case isolates. Default: no-op.
+example, records when the case isolates. Default: no-op.
 
 Both engines call it once for each infection, as the case is settled: after
 its infection time is fixed and its clinical transitions have run, and before
-it infects anyone. It is not called on an uninfected individual, including a
-contact that `keep_active` keeps generating contacts. While it runs,
+it infects anyone. It is never called on an uninfected individual, even a
+contact that `keep_active` keeps in the simulation to generate contacts of
+its own. While it runs,
 `state.max_infection_time` is the case's infection time,
 `state.current_generation` is the case's generation and
 `state.cumulative_cases` counts the case and every case settled before it. A

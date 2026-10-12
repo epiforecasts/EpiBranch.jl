@@ -7,14 +7,15 @@ values. On the generation engine this changes three things:
 
 - Cases of the last generation are resolved too. Before, a run stopped by
   `max_generations` or `max_cases` left them without an isolation time.
-- Uninfected contacts that `keep_active` keeps generating contacts, such as
-  the ring members of `ContactTracing(depth = 2)`, are no longer passed to it.
+- It is no longer called on uninfected contacts that `keep_active` keeps in
+  the simulation to generate contacts of their own, such as the ring members of
+  `ContactTracing(depth = 2)`.
 - A `Scheduled` gate is evaluated against the case's own infection time.
   Before, it read the latest infection time of the case's whole generation, so
   `Scheduled(iso; start_time = 10.0)` could isolate a case infected on day 9.
 
-On the continuous-time models the clinical transitions now see the case's
-clock and count, where they saw those of the previous case. The state such a
+On the continuous-time models the clinical transitions see the case's own
+clock and count. They used to see the previous case's. The state such a
 model returns has `current_generation` set to the latest generation reached,
 where it was left at 0.
 

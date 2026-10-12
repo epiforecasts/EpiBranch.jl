@@ -296,8 +296,9 @@ component.
 Both engines call `resolve_individual!` once for each infection, as the case
 is settled. By then its infection time is fixed and the clinical transitions in
 the `progression` have written its natural history (onset, outcome and the rest),
-and it has not yet infected anyone. An uninfected individual is never passed to
-it, including a contact that `keep_active` keeps generating contacts of its own.
+and it has not yet infected anyone. The hook never sees an uninfected
+individual, even a contact that `keep_active` keeps in the simulation to
+generate contacts of its own.
 
 The hook sees the simulation state as it stands at that case:
 
@@ -459,9 +460,9 @@ What this means in practice:
 Both engines trace a contact when its *infector* settles, which is before the
 contact settles anything of its own. An intervention that writes onto a contact
 must therefore not assume the contact is unwritten, and one that reads a
-contact's own state must not assume it is already set. This is why `Isolation`
-treats a standing quarantine as a competing pathway and keeps the earliest
-time, instead of returning early.
+contact's own state must not assume it is already set. `Isolation` deals with this by
+treating a standing quarantine as a competing pathway and keeping whichever
+isolation time comes first.
 
 Tracing on the continuous-time path reaches only contacts that have not
 themselves settled. Settling a case fixes its window and its onward proposals,
@@ -471,7 +472,7 @@ supported on either engine.
 
 Ordering guarantees:
 
-- `resolve_individual!` runs on a case before it makes any contact. A competing risk can read whatever `resolve_individual!` wrote on the parent.
+- `resolve_individual!` runs on a case before it makes any contact. A competing risk can read whatever `resolve_individual!` wrote on the infector.
 - `apply_post_transmission!` runs strictly before any `competing_risk` call, so a competing risk can read whatever post-transmission hook wrote on the contact (e.g. `:vaccination_time`).
 - `keep_active` runs after infection is resolved, so it can read each target's `:infected` and anything `apply_post_transmission!` wrote on it this generation.
 - Interventions are applied in the order they appear in `interventions = [...]`. For `apply_post_transmission!` and `competing_risk`, every intervention sees the state written by earlier interventions in the same generation.
@@ -1484,9 +1485,10 @@ parent intervention state (`:isolated`, `:vaccinated`, …). The engine's
 competing-risks resolution decides afterwards which contacts are
 infected, and that is the only place intervention effects on
 transmission apply. The engine also runs `initialise_individual!` and
-`apply_post_transmission!` on the new contacts, the clinical transitions
-and `resolve_individual!` on each new case, and the bookkeeping fields (`cumulative_cases`,
-`current_generation`, `active_ids`, `extinct`, `max_infection_time`).
+`apply_post_transmission!` on the new contacts, runs the clinical
+transitions and `resolve_individual!` on each new case, and updates the
+bookkeeping fields (`cumulative_cases`, `current_generation`, `active_ids`,
+`extinct`, `max_infection_time`).
 
 A **structure-driven** model produces candidates a count can't name: a
 contact network, or a household/metapopulation process where a
