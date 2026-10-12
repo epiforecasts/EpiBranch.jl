@@ -77,10 +77,11 @@ struct Scheduled{I <: AbstractIntervention, F} <: InterventionWrapper
     # Whether `condition` can read population-wide state (a case count) rather
     # than only the time of the case being resolved. See `reads_population_state`.
     population_dependent::Bool
-    # Whether the active window can close again once open. Every condition the
-    # keyword constructor builds is monotone in the state except `end_time`, so
-    # only that one can withdraw an effect already delivered. An opaque
-    # predicate is assumed to.
+    # Whether the active window can close again once open. Of the conditions
+    # the keyword constructor builds, `start_time` and `start_after_cases`
+    # only ever open; `end_time`, and a `start_after` trigger whose
+    # `trigger_can_lapse` is `true`, can withdraw an effect already
+    # delivered. An opaque predicate is assumed to.
     can_lapse::Bool
 end
 
@@ -305,9 +306,9 @@ function removal_gap_host_times(s::Scheduled)
     return removal_gap_host_times(s.intervention)
 end
 
-# A count-gated `start_after_cases` reads the running case count, a
-# population-wide read; a `start_time`/`end_time`-only schedule compares
-# against the time of the case being resolved and is not.
+# A `start_after_cases` count, or a `start_after` trigger, reads state the
+# whole population contributes to; a `start_time`/`end_time`-only schedule
+# compares against the time of the case being resolved and does not.
 function reads_population_state(s::Scheduled)
     return s.population_dependent || reads_population_state(s.intervention)
 end
