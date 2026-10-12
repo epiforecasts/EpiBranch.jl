@@ -32,11 +32,14 @@ Pkg.activate("my-analysis")  # a project for this analysis, as above
 Pkg.add(
     PackageSpec(url = "https://github.com/epiforecasts/EpiBranch.jl", rev = "main")
 )
-# The examples in these pages also use these two
-Pkg.add(["Distributions", "StableRNGs"])
+# The examples in these pages also use these
+Pkg.add(["Distributions", "StableRNGs", "DataFrames"])
 
 using EpiBranch
 ```
+
+A few later pages need more: Graphs for the network models, and Turing,
+OptimizationOptimJL and ProfileLikelihood for the pages on fitting.
 
 !!! warning "The registered version is older than these pages"
     The registered version (0.1.0) does not run the examples in these pages,
@@ -63,8 +66,8 @@ Pkg.add([
     PackageSpec(url = repo, rev = rev, subdir = "lib/EpiHouseholds"),
     PackageSpec(url = repo, rev = rev, subdir = "lib/EpiNetwork"),
 ])
-# The examples in these pages also use these two
-Pkg.add(["Distributions", "StableRNGs"])
+# The examples in these pages also use these
+Pkg.add(["Distributions", "StableRNGs", "DataFrames"])
 ```
 
 `PackageSpec` says where to install a package from: here the GitHub repository,
