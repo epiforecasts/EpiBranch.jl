@@ -76,6 +76,7 @@ underscore are internal.
 | `:infection_aborted_time` | `Float64` | — | Simulation, through `abort_infection!` (for example by `RingVaccination`'s `post_exposure_efficacy`) | Any intervention hook |
 | `:capacity_admission_time_<capacity_key>` | `Float64` | — | `CapacityConstrained` | `apply_post_transmission!` |
 | `:_settled` | `Bool` | `false` | Simulation (continuous-time action delivery) | Once a case's own round of action discovery has run; internal, read through `is_settled` |
+| `:_intervention_actions` | `Dict` | `Dict()` | Any intervention using the action protocol | `action_draw!`; internal. Each intervention's own draws for this person, so a draw is made once and reread |
 | `:reporting_time` | `Float64` | `Inf` | `Reporting` transition | `resolve_individual!` |
 | `:admitted` | `Bool` | `false` | `Hospitalisation` transition | `resolve_individual!` |
 | `:admission_time` | `Float64` | `Inf` | `Hospitalisation` transition | `resolve_individual!` |
@@ -119,8 +120,11 @@ for everyone and is read from the intervention.
 
 `:immunity_time` and `:severity_efficacy` let a clinical transition read a
 vaccine's effect on severity (mortality, or any other outcome a `progression`
-transition decides) without affecting transmission. Neither is used by
-`competing_risk`. A transition's `probability` reads them through the
+transition decides). `:severity_efficacy` is severity only, and
+`competing_risk` never reads it. `:immunity_time` is read there too, whenever
+`delay_to_immunity` is a distribution or a function: the stored time is then
+where the vaccine's risk starts, so overwriting the key moves the start of
+the block. A transition's `probability` reads them through the
 [`immunity_time`](@ref) and [`severity_efficacy`](@ref) accessors, and checks
 the immunity time so that a dose whose immunity has not developed by the time
 of the outcome gives no protection.

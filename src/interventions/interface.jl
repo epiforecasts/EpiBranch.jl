@@ -11,8 +11,8 @@ for interventions whose effect time is always considered "now".
 Tree-shaping interventions (a hard cap on offspring per parent,
 gathering-size limits, etc.) are expressed by passing a state-aware
 function-form offspring distribution to [`BranchingProcess`](@ref) —
-not via the intervention protocol. See the
-[Extending guide](@ref "Extending EpiBranch") for an example.
+not via the intervention protocol. See
+[Change how many people each case infects](@ref) for an example.
 """
 abstract type AbstractIntervention end
 
