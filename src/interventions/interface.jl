@@ -153,7 +153,9 @@ of their own although they are not infected. Default: none.
 
 Both engines ask it once per case, right after the case's
 [`trace_contacts!`](@ref) and [`intervention_actions`](@ref), with the same
-contacts and the same state. An intervention that grows its reach through
+contacts and the same state. An intervention still implementing the deprecated
+[`apply_post_transmission!`](@ref) is asked instead once per generation, about
+the whole batch, after that hook has run. An intervention that grows its reach through
 uninfected people, such as contact tracing reaching contacts-of-contacts,
 returns those people's ids here. The generation engine keeps them active for
 one more generation, so their contacts are offered to them through the same

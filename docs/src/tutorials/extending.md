@@ -348,9 +348,11 @@ The engines differ in which people they pass:
 The generation engine used to hand a whole generation's contacts to
 `apply_post_transmission!` instead. That hook is deprecated. An intervention
 with a method of its own for it is still handed the batch, after every case's
-per-case hooks, with a deprecation warning; what it did to each contact moves
-to `trace_contacts!`, and any action with a delivery date to
-`intervention_actions`.
+per-case hooks, with a deprecation warning, and its `keep_active` is then asked
+about the whole batch. What it did to each contact moves to `trace_contacts!`,
+and any action with a delivery date to `intervention_actions`. Once it does,
+its `keep_active` is asked per case, about that case's contacts, after its
+`trace_contacts!` and `intervention_actions` for the case have run.
 
 ### Which hooks run on which engine
 
