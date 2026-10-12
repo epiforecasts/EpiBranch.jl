@@ -66,14 +66,20 @@ BenchmarkTools.DEFAULT_PARAMETERS.samples = 20
 
 # ── 6. Line list simulation ─────────────────────────────────────────
 
-println("6. Line list generation (from 200-case state)")
+println("6. Line list generation (from a 180 to 220 case state)")
 model_ll = BranchingProcess(Poisson(2.0), LogNormal(1.6, 0.5))
 clinical = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
+# `condition` repeats the run until the outbreak lands in the range, so the
+# state holds the number of cases the row names whatever the draw order does.
+# A seed alone does not: most outbreaks from this process die out early, and
+# a change anywhere upstream of the first draw moves which one this seed gets.
 ll_state = simulate(
     ModelSpec(model_ll; attributes = clinical);
-    max_cases = 200,
+    max_cases = 220,
+    condition = 180:220,
     rng = StableRNG(42)
 )
+println("   Cases in the state: $(ll_state.cumulative_cases)")
 BenchmarkTools.DEFAULT_PARAMETERS.samples = 50
 b = @benchmark linelist($ll_state; reference_date = Date(2024, 1, 1))
 println("   Median: $(round(median(b.times) / 1.0e6, digits = 3)) ms\n")

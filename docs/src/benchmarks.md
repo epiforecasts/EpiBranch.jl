@@ -61,12 +61,12 @@ Simulating 500 outbreaks with R = 2.5 and dispersion k = 0.16 (`NegBin(2.5, 0.16
 
 | Scenario | Julia (EpiBranch) |
 |---|---|
-| Line list generation (200 cases) | 0.017 ms |
-| NegBin fit from 1000 offspring counts | 2.8 ms |
+| Line list generation (220 cases) | 0.07 ms |
+| NegBin fit from 1000 offspring counts | 2.7 ms |
 
 These two rows were measured together, in October 2026, on different hardware from the comparison tables above, so compare them with each other rather than with the rows above.
 
-The fit is a maximum-likelihood search, EpiBranch's `loglikelihood` paired with an optimiser, since a negative binomial has no closed-form fit. It is timed on 1,000 counts; the 1,000 simulated chains hold more than that, and the script cuts them so the size the row names is the size that was timed.
+Both rows name the size that was timed, and the script holds them to it rather than trusting a seed. The line list is built from a state `simulate`'s `condition` keeps between 180 and 220 cases, which was 220 in this run; most outbreaks from that process die out early, so without the condition the seed can leave a state of one case. The fit is a maximum-likelihood search, EpiBranch's `loglikelihood` paired with an optimiser, since a negative binomial has no closed-form fit, and the script cuts the counts the 1,000 simulated chains hold down to the 1,000 the row names.
 
 No direct R comparison is included for line list generation (simulist requires epiparameter database setup) or offspring fitting.
 
