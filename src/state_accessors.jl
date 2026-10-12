@@ -159,7 +159,7 @@ clinical transition that would take effect at or after `time` is undone (see
 [`resolve_transitions!`](@ref EpiBranch.resolve_transitions!)).
 
 On the generation-based engine an intervention acting before infection is
-resolved, in `apply_post_transmission!`, sees each contact's provisional
+resolved, in `trace_contacts!` or an admitted action, sees each contact's provisional
 infection time, its earliest exposure. If resolution leaves the contact
 uninfected, or infected at or after `time`, the abort did not end that
 infection and the engine discards it, restoring the onset.

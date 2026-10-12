@@ -554,8 +554,8 @@ function _advance_generation!(
     # unconditionally, on a pre-existing node offered again just as much as on
     # a fresh one.
     reinfections = _reinfection_episodes(targets, is_new)
-    _intervene!(state, interventions, targets, edges, minted)
-    _resolve!(model, state, interventions, targets, edges, is_new, reinfections)
+    kept = _intervene!(state, interventions, targets, edges, minted, is_new)
+    _resolve!(model, state, interventions, targets, edges, is_new, reinfections, kept)
     return nothing
 end
 
@@ -576,14 +576,17 @@ end
 
 """Phase 2 — contact-level interventions act on this generation's exposures.
 Newly minted contacts get their intervention state initialised; each target is
-given a provisional parent (its earliest exposing edge) so contact-level
-interventions (tracing, ring vaccination) act on the exposed target before
-infection is resolved; then the interventions act."""
+given a provisional parent (its earliest exposing edge); then each individual
+of the active set is offered the contacts it reached, through the per-case
+hooks ([`_act_per_case!`](@ref)), before infection is resolved. An
+intervention still implementing the deprecated batch hook
+[`apply_post_transmission!`](@ref) is handed the whole batch after that.
+Returns the ids the interventions asked to keep active."""
 function _intervene!(
         state::SimulationState,
         interventions::Vector{<:AbstractIntervention},
         targets::Vector{<:Individual}, edges::Vector{<:Vector{<:Tuple}},
-        minted
+        minted, is_new
     )
     # Newly created contacts (already appended to state by make_contact!)
     # get their intervention state initialised.
@@ -601,8 +604,72 @@ function _intervene!(
         targets[i].parent_id, targets[i].infection_time = es[1]
     end
 
+    kept = _act_per_case!(state, interventions, targets, edges, is_new)
     for intervention in interventions
+        _uses_batch_hook(intervention) || continue
         apply_post_transmission!(intervention, state, targets)
+    end
+    return kept
+end
+
+"""
+    _act_per_case!(state, interventions, targets, edges, is_new) -> Vector{Int}
+
+Offer each individual of the active set the contacts it reached this
+generation, through the same per-case hooks the continuous-time race calls when
+it settles a case: every intervention's [`trace_contacts!`](@ref), then every
+intervention's [`intervention_actions`](@ref), admitted through its wrappers,
+then [`keep_active`](@ref), whose answers are returned. A target reached by
+several individuals is offered to each of them, as a neighbour is on the race.
+
+Cases are visited in order of infection time, each with the state its settling
+hooks saw ([`_at_case!`](@ref)): the clock at its infection time and its place
+in the case count. An uninfected individual kept active by `keep_active` sees
+the state as the generation left it. The state is restored afterwards.
+"""
+function _act_per_case!(state::SimulationState, interventions, targets, edges, is_new)
+    kept = Int[]
+    isempty(targets) && return kept
+    reached = Dict{Int, Vector{Int}}()
+    for i in eachindex(targets), (pid, _) in edges[i]
+        idx = get!(Vector{Int}, reached, pid)
+        (isempty(idx) || last(idx) != i) && push!(idx, i)
+    end
+    clock, count, generation = state.max_infection_time, state.cumulative_cases,
+        state.current_generation
+    sources = [state.individuals[id] for id in state.active_ids]
+    cases = filter(is_infected, sources)
+    sort!(cases; by = case -> case.infection_time)
+    seen = count - length(cases)
+    for source in Iterators.flatten((cases, Iterators.filter(!is_infected, sources)))
+        if is_infected(source)
+            seen += 1
+            _at_case!(state, source, seen)
+        else
+            state.max_infection_time, state.cumulative_cases = clock, count
+            state.current_generation = generation
+        end
+        idx = get(reached, source.id, nothing)
+        idx === nothing && continue
+        _case_hooks!(state, source, interventions, targets[idx], is_new[idx], kept)
+    end
+    state.max_infection_time, state.cumulative_cases = clock, count
+    state.current_generation = generation
+    return kept
+end
+
+function _case_hooks!(state::SimulationState, case, interventions, contacts, is_new, kept)
+    for intervention in interventions
+        _uses_batch_hook(intervention) && continue
+        trace_contacts!(intervention, state, case, contacts)
+    end
+    for intervention in interventions
+        _uses_batch_hook(intervention) && continue
+        actions = intervention_actions(intervention, state, contacts)
+        actions === nothing || _admit_actions!(intervention, state, actions)
+    end
+    for intervention in interventions
+        append!(kept, keep_active(intervention, state, contacts, is_new))
     end
     return nothing
 end
@@ -621,7 +688,7 @@ function _resolve!(
         model::TransmissionModel, state::SimulationState,
         interventions::Vector{<:AbstractIntervention},
         targets::Vector{<:Individual}, edges::Vector{<:Vector{<:Tuple}},
-        is_new, reinfections = Dict{Int, InfectionEpisode}()
+        is_new, reinfections = Dict{Int, InfectionEpisode}(), kept = Int[]
     )
     model_risks = transmission_risks(model)
     infected_so_far = 0
@@ -690,12 +757,13 @@ function _resolve!(
     state.current_generation += 1
 
     # Next active set: the cases that transmit, plus any nodes an
-    # intervention asks to keep active (`keep_active`), such as uninfected
+    # intervention asked to keep active (`keep_active`), such as uninfected
     # contacts a tracing depth wants to keep growing. Who stays active is
-    # not a special built-in rule.
+    # not a special built-in rule. It was asked before infection was decided,
+    # so a kept contact that went on to be infected is already in the set.
     next_active = [target.id for target in newly_infected]
-    for intervention in interventions
-        append!(next_active, keep_active(intervention, state, targets, is_new))
+    for id in unique(kept)
+        is_infected(state.individuals[id]) || push!(next_active, id)
     end
     state.active_ids = next_active
     state.extinct = isempty(next_active)
@@ -1031,8 +1099,9 @@ function contacts_of(m::MyModel, parent, state)
 end
 ```
 
-The engine handles every other side effect: `initialise_individual!` and
-`apply_post_transmission!` on the new contacts after collection,
+The engine handles every other side effect: `initialise_individual!` on the
+new contacts after collection, the per-case hooks (`trace_contacts!`,
+`intervention_actions`, `keep_active`) on each parent's contacts,
 competing-risks resolution that sets `:infected`, clinical transitions and
 `resolve_individual!` on each new case, and per-step bookkeeping (`cumulative_cases`, `active_ids`, `max_infection_time`,
 …).
@@ -1321,7 +1390,7 @@ Risk sources the *model* contributes to competing-risks resolution, on the same
 structure-driven model whose transmission probability is a property of the
 *edge* — a metapopulation's coupling, say — returns a source here so that
 probability is a competing risk on every potential
-contact (the contact is still produced and seen by `apply_post_transmission!`),
+contact (the contact is still produced and passed to `trace_contacts!`),
 rather than a filter that drops contacts before they reach the engine. Defaults
 to none, so offspring-driven models are unaffected.
 """

@@ -1,7 +1,7 @@
 """
 Base type for all interventions. Subtypes implement one or more of:
-`initialise_individual!`, `resolve_individual!`, `apply_post_transmission!`,
-`competing_risk`.
+`initialise_individual!`, `resolve_individual!`, `trace_contacts!`,
+`intervention_actions`, `competing_risk`.
 
 To support time-based scheduling (`Scheduled(iv; start_time=...)`), also
 implement [`intervention_time`](@ref) and [`reset!`](@ref). The default
@@ -45,18 +45,32 @@ resolve_individual!(::AbstractIntervention, individual, state) = nothing
 """Act on contacts after creation. All contacts are received. Default: no-op."""
 apply_post_transmission!(::AbstractIntervention, state, new_contacts) = nothing
 
+# Whether the generation engine should hand `iv` a whole generation's contacts
+# through the batch hook `apply_post_transmission!` rather than call its
+# per-case hooks: true for an intervention with a method of its own for it.
+# The built-in wrappers keep a method for wrapping such an intervention, so
+# they answer for the one they wrap.
+function _uses_batch_hook(iv::AbstractIntervention)
+    return _has_own_method(apply_post_transmission!, typeof(iv), AbstractIntervention)
+end
+
 """
     trace_contacts!(intervention, state, infector, contacts[, not_before])
 
-Act on the `contacts` that `infector` reaches, on the continuous-time (Sellke)
-path. The counterpart of [`apply_post_transmission!`](@ref), which the
-generation engine calls with freshly created contact individuals whose
-`parent_id` names their infector. The continuous-time models have no such
-objects: every node exists from the start and the race only settles when each
-is infected, so the infector has to be passed explicitly.
+Act on the `contacts` that `infector` reached and that it can still affect.
+Default: no-op.
 
-Called once per case, when the race finalises it and its timeline is therefore
-known, with the contacts it can still affect. Default: no-op.
+Both engines call it once per case, after the case is settled and before any
+of these contacts is decided infected or not, and before any intervention's
+[`intervention_actions`](@ref) for the same case. While it runs,
+`state.max_infection_time` is the infector's infection time, as in
+[`resolve_individual!`](@ref). The continuous-time models call it as the race
+settles the case, with its neighbours or household members not yet settled.
+The generation engine calls it for each case of the previous generation, with
+the contacts it made in this one. A contact several cases reached is passed to
+each of them. The generation engine also calls it on an uninfected individual
+that [`keep_active`](@ref) kept generating contacts, with the state as the
+generation left it.
 
 `not_before[i]`, when given, is the earliest time `contacts[i]` can be sought:
 when that person became a contact of `infector`. A contact met only at a
@@ -89,20 +103,21 @@ traces_contacts(::AbstractIntervention) = false
 """
     keep_active(intervention, state, targets, is_new) -> iterable of Int
 
-The ids of this generation's contacts that should stay *active* into the
-next generation (keep generating contacts of their own), beyond the newly
-infected cases, which always do. Default: none.
+The ids of the `targets` a case reached that should go on generating contacts
+of their own although they are not infected. Default: none.
 
-The engine unions these into the next active set, so who keeps generating
-contacts is not a special built-in rule. An intervention that needs the
-engine to keep growing contacts from *uninfected* nodes, such as contact
-tracing reaching contacts-of-contacts, returns those nodes' ids here. Pair
-it with the `InfectiousSource` risk source (a default) so those uninfected
-nodes generate contacts without infecting them.
+Both engines ask it once per case, right after the case's
+[`trace_contacts!`](@ref) and [`intervention_actions`](@ref), with the same
+contacts and the same state. An intervention that grows its reach through
+uninfected people, such as contact tracing reaching contacts-of-contacts,
+returns those people's ids here. The generation engine keeps them active for
+one more generation, so their contacts are offered to them through the same
+hooks in turn, and the `InfectiousSource` risk source (a default) stops them
+infecting anyone. The continuous-time race walks the model's contact structure
+from them instead.
 
-`targets` are this generation's contacts and `is_new[i]` flags which were
-freshly created. Return ids of nodes that are *not* already infected; the
-infected ones stay active anyway."""
+`is_new[i]` flags which of `targets` were freshly created. A contact returned
+here that turns out to be infected is active as a case anyway."""
 keep_active(::AbstractIntervention, state, targets, is_new) = ()
 
 """Whether an intervention is currently active given the simulation state. Default: always."""
@@ -161,13 +176,13 @@ sees the contact itself. Return `nothing` when `parent === contact` if that is
 not what your risk means, as [`RingVaccination`](@ref)'s onward-transmission
 risk does.
 
-On the generation-based engine, resolution happens after
-`apply_post_transmission!` so that risks can read state that other
-interventions have written on the contact (e.g. `:vaccination_time`
-set by tracing-driven vaccination). The continuous-time models resolve
-the same risks against each infection they propose, after the infector
-has been traced, which is where their own tracing-driven state is
-written.
+Both engines resolve risks after the infector's [`trace_contacts!`](@ref)
+and [`intervention_actions`](@ref) have run, so a risk can read state that
+other interventions have written on the contact (e.g. `:vaccination_time` set
+by tracing-driven vaccination). The generation engine resolves a generation's
+contacts once every case of the previous generation has been through those
+hooks; the continuous-time models resolve each infection as they propose
+it.
 """
 competing_risk(::AbstractIntervention, parent, contact, state) = nothing
 
