@@ -309,10 +309,10 @@ reads_population_state(::AbstractIntervention) = true
 Return the offspring distribution a case draws from under `intervention`, given
 the one a bare process would use (a `Distribution` for a single-type process, a
 [`MultiTypeOffspring`](@ref) for a multi-type one). Define a method only when
-the effect is exact in closed form on its own. A population-level reduction in
-R gives a thinned distribution, for example, and a per-case probability of
-being removed before transmitting at all gives a mixture with `Dirac(0)` (what
-[`probability_contain`](@ref)'s `ind_control` expresses).
+the effect is exact in closed form on its own, and return a law the analytical
+functions take: a `Poisson` or `NegativeBinomial` for a single-type process.
+A population-level reduction of R by a factor `p`, for example, turns
+`NegBin(R, k)` into `NegBin(p * R, k)`.
 
 An effect that depends on how the intervention's timing overlaps the
 generation-time distribution has no such form. Isolation's effect on R is one

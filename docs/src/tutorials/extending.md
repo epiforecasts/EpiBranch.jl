@@ -283,11 +283,12 @@ ones your intervention needs (all default to no-ops).
 | `analytic_offspring_effect(iv, offspring)` | By `extinction_probability`, `epidemic_probability`, `probability_contain`, `reproduction_number`, `proportion_transmission`, `proportion_cases_individual`, `proportion_cases_offspring`, `proportion_cluster_size`, `end_of_outbreak_probability` and `offspring_distribution`, when called on a `ModelSpec` holding `iv` | The offspring `Distribution` a bare process would use | The `Distribution` a case under `iv` draws from instead. The generic method throws an error (see below) |
 
 Define `analytic_offspring_effect` only for an intervention whose effect on
-the offspring distribution is exact in closed form on its own, such as a
-population-level thinning, or a mixture with `Dirac(0)` for a per-case removal
-probability. Most interventions have no such form. Isolation's effect on R
-depends on how its timing overlaps the generation-time distribution, and
-`Isolation` has no method. On a spec that includes it, the analytical functions
+the offspring distribution is exact in closed form on its own, and return a
+law the analytical functions take: a `Poisson` or `NegativeBinomial` for a
+single-type process. A population-level reduction of R by a factor `p`, for
+example, turns `NegBin(R, k)` into `NegBin(p * R, k)`. Most interventions have
+no such form. Isolation's effect on R depends on how its timing overlaps the
+generation-time distribution, and `Isolation` has no method. On a spec that includes it, the analytical functions
 above throw an error that points to
 `probability_contain(R, k; ind_control, pop_control)` for an approximation and
 `containment_probability(simulate(spec, n))` for the simulated answer.
