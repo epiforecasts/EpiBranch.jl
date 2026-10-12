@@ -102,9 +102,9 @@ is_active(::AbstractIntervention, ::SimulationState) = true
 
 How an intervention can prevent one infection: from `event_time` until
 `release_time` (days), an infection that would happen is prevented with
-probability `block_probability`. A contact is infected only if no
-intervention prevents it; each intervention's chance acts independently, so
-whichever applies first (competing risks) decides.
+probability `block_probability`. Every risk in force at the time of the
+infection is drawn independently, and the contact is infected only if none of
+them prevents it.
 
 Each field is a number or a function `(rng, parent, contact, state) -> Real`,
 for example vaccine efficacy that depends on age, or a quarantine's duration.
