@@ -715,9 +715,9 @@ end
 Settle a generation's new `cases`: every case's clinical transitions
 ([`resolve_transitions!`](@ref)), then every case's intervention hooks
 ([`resolve_individual!`](@ref)). The generation engine has no time order beyond
-the generation, so each case sees the clock at its own infection time and, as
-its case count, the `cases_before` cases of earlier generations plus those of
-its own generation infected no later than it. Cases sharing an infection time
+the generation. Each case sees the clock at its own infection time and, as its
+case count, the `cases_before` cases of earlier generations plus those of its
+own generation infected no later than it. Cases sharing an infection time
 are counted in the order they appear in `cases`. The clock, count and
 generation are restored to the generation's totals afterwards, which is what
 the stopping rules read.
