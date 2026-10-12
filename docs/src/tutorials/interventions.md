@@ -941,7 +941,10 @@ progression = [
     Recovery(delay = LogNormal(2.0, 0.4)),
 ]
 ct_on_reports = Scheduled(
-    ContactTracing(probability = 0.7, isolation_to_trace_delay = Exponential(1.0));
+    ContactTracing(
+        probability = 0.7, isolation_to_trace_delay = Exponential(1.0),
+        action = Quarantine(duration = Inf)
+    );
     start_after = ReportedCases(20),
 )
 model = ModelSpec(
