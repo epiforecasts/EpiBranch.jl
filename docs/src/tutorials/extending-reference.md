@@ -39,6 +39,7 @@ underscore are internal.
 | `:type` | `Int` | `1` | Simulation (multi-type) | When the contact is created |
 | `:onset_time` | `Float64` | `NaN` | `clinical_presentation` | Creation |
 | `:asymptomatic` | `Bool` | `false` | `clinical_presentation` | Creation |
+| `:incubation_period` | `Float64` | — | `clinical_presentation` | Creation; `NaN` for an asymptomatic case |
 | `:age` | `Real` | — | `demographics` | Creation |
 | `:sex` | `Symbol` | — | `demographics` | Creation |
 | `:group` | `Int` | — | `groups` | Creation |
@@ -71,6 +72,7 @@ underscore are internal.
 | `:coverage_declined[_<label>]` | `Bool` | `false` | `GroupVaccination` | `apply_post_transmission!` |
 | `:infection_aborted_time` | `Float64` | — | Simulation, through `abort_infection!` (for example by `RingVaccination`'s `post_exposure_efficacy`) | Any intervention hook |
 | `:capacity_admission_time_<capacity_key>` | `Float64` | — | `CapacityConstrained` | `apply_post_transmission!` |
+| `:_settled` | `Bool` | `false` | Simulation (continuous-time action delivery) | Once a case's own round of action discovery has run; internal, read through `is_settled` |
 | `:reporting_time` | `Float64` | `Inf` | `Reporting` transition | `resolve_individual!` |
 | `:admitted` | `Bool` | `false` | `Hospitalisation` transition | `resolve_individual!` |
 | `:admission_time` | `Float64` | `Inf` | `Hospitalisation` transition | `resolve_individual!` |
