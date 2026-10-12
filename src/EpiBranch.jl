@@ -91,9 +91,9 @@ include("route_window.jl")
 # models over a finite, depleting set of nodes, e.g. household cliques).
 include("sellke.jl")
 
-# Sellke fixed-size population pool (homogeneously-mixing closed population) and
-# its first user, HomogeneousProcess.
-include("sellke_pool.jl")
+# Mass-action contacts as a route of the race, and the closed population that
+# mixes that way, HomogeneousProcess.
+include("mass_action.jl")
 include("models/homogeneous.jl")
 
 # ModelSpec: compose a process with its forcing/observation layers.
@@ -164,8 +164,8 @@ export NoAgeDistribution, NoCases
 # Exports — accessors
 export onset_time, incubation_period, outcome_time, is_isolated, isolation_time,
     isolation_release_time, is_traced, is_quarantined
-export is_vaccinated, immunity_time, severity_efficacy, is_asymptomatic, is_test_positive,
-    is_infected, susceptible_again_time
+export is_vaccinated, immunity_time, severity_efficacy, vaccine_efficacy, is_asymptomatic,
+    is_test_positive, is_infected, susceptible_again_time
 export individual_type, set_isolated!, clear_isolated!
 
 # Exports — distributions
@@ -208,7 +208,7 @@ export ClusterMixed, ChainSizeMixture
 # Real-time mixture: per-cluster "is finished?" weight
 export end_of_outbreak_probability
 # Pairwise survival likelihood over a contact structure
-export PairKernel, PairContext, Steps, record_kernel, LayerHost
+export PairKernel, PairContext, Steps, Seasonal, record_kernel, LayerHost
 export InfectionLayer, PairwiseSurvivalData, ContactPairsLayout
 export compile_contact_pairs, pairwise_surv_loglik, pairwise_surv_loglik_by_component
 # Progression (natural-history) likelihood

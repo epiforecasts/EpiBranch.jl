@@ -29,6 +29,7 @@ household_final_size
 PairKernel
 EpiBranch.watched_records
 Steps
+Seasonal
 EpiBranch.calendar_multiplier
 EpiBranch.next_calendar_break
 EpiBranch.calendar_shape
@@ -209,7 +210,6 @@ EpiBranch.keep_active
 EpiBranch.competing_risk
 EpiBranch.infectious_removal_time
 EpiBranch.risk_applies
-EpiBranch.risk_depends_on_infector
 EpiBranch.standing_block
 EpiBranch.intervention_time
 EpiBranch.reset!
@@ -248,6 +248,7 @@ terminal_target
 exclusive_probabilities
 EpiBranch.resolve_transitions!
 EpiBranch.transition_time
+EpiBranch.censor_after_outcome!
 progression_loglik
 EpiBranch.transition_loglik
 EpiBranch.transition_term
@@ -461,5 +462,6 @@ EpiBranch._column_order
 EpiBranch._chain_length_ll_negbin
 EpiBranch._borel_logpdf
 EpiBranch._gammaborel_logpdf
+EpiBranch._chain_size_loglik
 EpiBranch._empirical_ll
 ```

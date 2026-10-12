@@ -112,6 +112,14 @@
             @test d.R == 0.8
             @test_throws ArgumentError GammaBorel(-1.0, 0.5)
             @test_throws ArgumentError GammaBorel(0.5, -0.5)
+
+            # R == 0 is the degenerate "no onward transmission" boundary,
+            # reached when k swamps R in floating point (see the extreme
+            # dispersion regression tests below).
+            d_degenerate = GammaBorel(0.5, 0.0)
+            @test d_degenerate.R == 0.0
+            @test pdf(d_degenerate, 1) == 1.0
+            @test pdf(d_degenerate, 2) == 0.0
         end
 
         @testset "PMF sums to ≈ 1 for subcritical" begin
@@ -167,6 +175,67 @@
         @testset "NegBin offspring → GammaBorel" begin
             d = chain_size_distribution(NegBin(0.8, 0.5))
             @test d isa GammaBorel
+        end
+    end
+
+    @testset "cdf of chain-size distributions" begin
+        # Regression: none of these defined a `cdf`/`cdf(d, ::Integer)`
+        # method, so Distributions.jl's discrete fallback called itself
+        # until the stack overflowed.
+        @testset "Borel" begin
+            d = Borel(0.5)
+            @test cdf(d, 3) ≈ sum(pdf(d, n) for n in 1:3)
+            @test cdf(d, 3) + ccdf(d, 3) ≈ 1.0
+            @test cdf(d, 0) == 0.0
+            @test logccdf(d, 3) ≈ log(ccdf(d, 3))
+        end
+
+        @testset "GammaBorel (the issue's reproduction)" begin
+            d = chain_size_distribution(NegBin(0.8, 0.5))
+            @test cdf(d, 3) ≈ sum(pdf(d, n) for n in 1:3)
+            @test cdf(d, 3) + ccdf(d, 3) ≈ 1.0
+            @test logccdf(d, 3) ≈ log(ccdf(d, 3))
+        end
+
+        @testset "PoissonGammaChainSize" begin
+            d = PoissonGammaChainSize(0.5, 0.8)
+            @test cdf(d, 5) ≈ sum(pdf(d, n) for n in 1:5)
+            @test cdf(d, 5) + ccdf(d, 5) ≈ 1.0
+            @test logccdf(d, 5) ≈ log(ccdf(d, 5))
+        end
+
+        @testset "IndexChainSize" begin
+            d = IndexChainSize(Poisson(0.4), NegBin(0.6, 0.5))
+            @test cdf(d, 5) ≈ sum(pdf(d, n) for n in 1:5)
+            @test cdf(d, 5) + ccdf(d, 5) ≈ 1.0
+            @test logccdf(d, 5) ≈ log(ccdf(d, 5))
+        end
+
+        @testset "TruncatedChainSize" begin
+            base = chain_size_distribution(NegBin(0.8, 0.5))
+            d = observe(base, MinimumSize(2))
+            @test cdf(d, 1) == 0.0  # below min_size has no mass
+            @test cdf(d, 5) ≈ sum(pdf(d, n) for n in 2:5)
+            @test cdf(d, 5) + ccdf(d, 5) ≈ 1.0
+            @test logccdf(d, 5) ≈ log(ccdf(d, 5))
+        end
+
+        @testset "ChainSizeMixture" begin
+            cm = ClusterMixed(R -> NegBin(R, 0.5), Gamma(2.0, 0.3))
+            d = chain_size_distribution(cm)
+            @test d isa ChainSizeMixture
+            @test cdf(d, 5) ≈ sum(pdf(d, n) for n in 1:5)
+            @test cdf(d, 5) + ccdf(d, 5) ≈ 1.0
+            @test logccdf(d, 5) ≈ log(ccdf(d, 5))
+        end
+
+        @testset "ThinnedChainSize" begin
+            base = chain_size_distribution(NegBin(0.8, 0.5))
+            d = observe(base, PerCaseObservation(0.7, Dirac(0.0)))
+            @test d isa ThinnedChainSize
+            @test cdf(d, 5) ≈ sum(pdf(d, n) for n in 1:5)
+            @test cdf(d, 5) + ccdf(d, 5) ≈ 1.0
+            @test logccdf(d, 5) ≈ log(ccdf(d, 5))
         end
     end
 
@@ -267,6 +336,35 @@
             @test isfinite(ll)
         end
 
+        @testset "Extreme dispersion stays finite" begin
+            # Regression: k ≳ 1e16·R swamps R in the floating-point sum
+            # k + R inside NegBin's p = k / (k + R), so R rounds to exactly 0
+            # and GammaBorel(k, 0) — the degenerate "no onward transmission"
+            # law — is the best the stored NegativeBinomial can give. The
+            # likelihood must land there rather than throwing, returning NaN,
+            # or silently falling back to simulation.
+            data = ChainSizes([1, 2, 3])
+            huge_k = NegBin(0.5, 1.0e16)
+            @test loglikelihood(data, huge_k) == -Inf
+            @test loglikelihood(ChainSizes([1]), huge_k) == 0.0
+            d_huge = chain_size_distribution(huge_k)
+            @test d_huge isa GammaBorel && d_huge.k == 1.0e16 && d_huge.R == 0.0
+            @test loglikelihood(data, BranchingProcess(huge_k)) == -Inf
+
+            # Regression: k ≲ 1e-16·R previously hit a spurious Gamma-function
+            # pole from catastrophic cancellation in k * x + x - s at x == s,
+            # giving +Inf instead of a finite log-likelihood.
+            tiny_k = NegBin(0.5, 1.0e-17)
+            @test isfinite(loglikelihood(data, tiny_k))
+
+            # Well before that floating-point boundary, large k must still
+            # approach the Poisson/Borel limit rather than jump straight from
+            # "matches Poisson" to "degenerate".
+            data2 = ChainSizes([1, 2, 3, 1, 4])
+            @test loglikelihood(data2, NegBin(0.5, 1.0e8)) ≈
+                loglikelihood(data2, Poisson(0.5)) atol = 1.0e-4
+        end
+
         @testset "Supercritical Poisson uses the actual mean (no clamp)" begin
             # The Poisson mean must not be clamped to the critical value 1:
             # evaluate the defective Borel PMF at the true μ, so the likelihood
@@ -314,6 +412,46 @@
                 )
             )
             @test ll_with_delay ≈ ll_no_delay atol = 1.0e-12
+        end
+
+        @testset "ThinnedChainSize conditions on at least one detection" begin
+            # A chain with no detected case leaves no trace in the data, so
+            # the law of observed sizes (n >= 1) must sum to 1, not to
+            # P(at least one detection).
+            d = ThinnedChainSize(chain_size_distribution(Poisson(0.5)), 0.5)
+            @test sum(pdf(d, n) for n in 1:500) ≈ 1.0 atol = 1.0e-6
+
+            # Conditioned pdf(d, 1) matches size-1's share of simulated
+            # chains with at least one reported case.
+            model = ModelSpec(
+                BranchingProcess(Poisson(0.5));
+                observation = PerCaseObservation(detection_prob = 0.5)
+            )
+            rng = StableRNG(1)
+            sizes = Int[]
+            for _ in 1:50_000
+                state = simulate(model; rng)
+                n = count(
+                    ind -> EpiBranch.is_infected(ind) &&
+                        ind.state[:reported],
+                    state.individuals
+                )
+                n > 0 && push!(sizes, n)
+            end
+            @test pdf(d, 1) ≈ mean(==(1), sizes) atol = 0.01
+
+            # The documented ten-chain Poisson(0.9) example: conditioning
+            # raises the log-likelihood at detection 0.7 above full detection.
+            data = ChainSizes([1, 1, 2, 1, 3, 1, 1, 5, 1, 2])
+            mk09(p) = ModelSpec(
+                BranchingProcess(Poisson(0.9));
+                observation = PerCaseObservation(detection_prob = p)
+            )
+            ll_full = loglikelihood(data, mk09(1.0))
+            ll_07 = loglikelihood(data, mk09(0.7))
+            @test ll_full ≈ -14.987159110200091 atol = 1.0e-6
+            @test ll_07 ≈ -14.67 atol = 0.01
+            @test ll_07 > ll_full
         end
 
         @testset "Cluster-level heterogeneity" begin
@@ -916,6 +1054,65 @@
                 rng = StableRNG(42)
             )
             @test isfinite(ll)
+        end
+
+        @testset "Honours seeds (regression for issue #447)" begin
+            # Previously every simulation drew `n_initial = 1` seed and
+            # compared each seed's own chain against the data, so a 3-seed
+            # cluster's observed size was scored as if it were a single-seed
+            # chain. A 3-seed cluster reaching a given total size needs far
+            # less onward transmission than a single-seed chain reaching the
+            # same size, so once `seeds` is honoured the two must differ, and
+            # the multi-seed reading must be the more probable one.
+            iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = 7.0)
+            spec = ModelSpec(
+                BranchingProcess(Poisson(0.5), Exponential(5.0));
+                interventions = [iso],
+                attributes = clinical_presentation(
+                    incubation_period = LogNormal(1.0, 0.3)
+                )
+            )
+            sizes = [3, 4, 5]
+            one_seed = ChainSizes(sizes)
+            three_seeds = ChainSizes(sizes; seeds = [3, 3, 3])
+            ll_one = loglikelihood(one_seed, spec; n_sim = 20_000, rng = StableRNG(1))
+            ll_three = loglikelihood(three_seeds, spec; n_sim = 20_000, rng = StableRNG(1))
+            @test isfinite(ll_one)
+            @test isfinite(ll_three)
+            @test ll_three > ll_one
+
+            # n_initial no longer stands in as a substitute for seeds: the
+            # number of index cases per simulated cluster comes from
+            # `data.seeds` alone.
+            @test_throws MethodError loglikelihood(
+                three_seeds, spec; n_initial = 3, n_sim = 100
+            )
+        end
+
+        @testset "prob_concluded no longer refused under interventions (regression for issue #447)" begin
+            iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = 7.0)
+            spec = ModelSpec(
+                BranchingProcess(Poisson(0.5), Exponential(5.0));
+                interventions = [iso],
+                attributes = clinical_presentation(
+                    incubation_period = LogNormal(1.0, 0.3)
+                )
+            )
+            data = ChainSizes([3, 4, 5])
+            ll_concluded = loglikelihood(data, spec; n_sim = 20_000, rng = StableRNG(1))
+            ll_mixed = loglikelihood(
+                data, spec; prob_concluded = [1.0, 0.5, 0.5],
+                n_sim = 20_000, rng = StableRNG(1)
+            )
+            @test isfinite(ll_mixed)
+            # Mixing in P(X ≥ x), a superset of P(X = x), can only raise the
+            # per-cluster likelihood relative to treating every cluster as
+            # concluded.
+            @test ll_mixed >= ll_concluded
+
+            @test_throws ArgumentError loglikelihood(
+                data, spec; prob_concluded = [0.5, 0.5], n_sim = 100
+            )
         end
     end
 
