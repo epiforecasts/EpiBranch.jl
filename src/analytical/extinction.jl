@@ -208,7 +208,8 @@ function probability_contain(
 end
 
 """
-    probability_contain(d::Distribution; n_initial=1, ind_control=0.0, pop_control=0.0)
+    probability_contain(d::Poisson; n_initial=1, ind_control=0.0, pop_control=0.0)
+    probability_contain(d::NegativeBinomial; n_initial=1, ind_control=0.0, pop_control=0.0)
 
 Closed-form containment probability for a Poisson or negative binomial
 offspring distribution, with the same keywords as

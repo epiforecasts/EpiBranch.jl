@@ -186,7 +186,8 @@ end
 
 # AD-compatible chain length: Poisson — PGF iteration on G(s) = exp(λ(s − 1)).
 """
-    loglikelihood(data::ChainLengths, offspring::Distribution)
+    loglikelihood(data::ChainLengths, offspring::Poisson)
+    loglikelihood(data::ChainLengths, offspring::NegativeBinomial)
 
 Log-likelihood of observed chain lengths under the exact chain-length
 distribution for Poisson or negative binomial offspring. Only defined when R
