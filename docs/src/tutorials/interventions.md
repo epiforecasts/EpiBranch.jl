@@ -998,10 +998,16 @@ struct GatheringLimit <: AbstractIntervention
 end
 
 function EpiBranch.trace_contacts!(gl::GatheringLimit, state, infector, contacts)
-    # Mark the contacts beyond the limit as not infected
+    # Mark the contacts beyond the limit
     for c in contacts[(gl.max_contacts + 1):end]
-        c.state[:infected] = false
+        c.state[:beyond_gathering_limit] = true
     end
+end
+
+# and block transmission to them
+function EpiBranch.competing_risk(::GatheringLimit, parent, contact, state)
+    get(contact.state, :beyond_gathering_limit, false) || return nothing
+    return Risk(block_probability = 1.0)
 end
 
 # Test it
