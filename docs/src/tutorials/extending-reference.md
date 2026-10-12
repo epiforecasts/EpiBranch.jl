@@ -18,7 +18,7 @@ named values (keys) there. The reasons for this split are in [Notes for
 contributors](@ref "Why individual state is an open dictionary").
 
 Read a value with a one-line accessor that supplies a default when the value is
-missing, such as `is_isolated(ind) = get(ind.state, :isolated, false)::Bool`.
+missing, such as `is_traced(ind) = get(ind.state, :traced, false)::Bool`.
 `get(dict, key, default)` returns `default` when `key` is absent, and `::Bool`
 asserts the type. For a time, keep the accessor generic in the number type so
 that likelihoods can be differentiated through it:
