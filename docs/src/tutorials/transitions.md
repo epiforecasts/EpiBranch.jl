@@ -61,7 +61,7 @@ of about 2.8 days. `Exponential(θ)` has mean θ days. Each row of the line list
 is a case, with the date of each event it reached and its final outcome.
 
 `Reporting` and `Hospitalisation` draw their own time independently of
-`Death` and `Recovery`, so a draw can fall after the case's outcome — a
+`Death` and `Recovery`, so a draw can fall after the case's outcome, although a
 report or an admission cannot happen to a person who has already died or
 recovered. The engine resets such an event to "did not occur"
 (`:reported`/`:admitted` back to `false`, their time back to `Inf`): see
@@ -84,8 +84,9 @@ model = ModelSpec(
 state = simulate(model; max_cases = 200, rng = StableRNG(42))
 ```
 
-A case not admitted still recovers from onset as before; `Death`'s own
-anchor is simply unreached for it, so it never enters that race.
+A case not admitted still recovers from onset as before: `Death` is
+chained from `:admission_time`, which that case never reaches, so it never
+enters that race.
 
 ## Asymptomatic cases
 
@@ -506,10 +507,9 @@ function EpiBranch.censor_after_outcome!(::AntiviralTreatment, ind)
 end
 ```
 
-That's the whole extension surface. Three ingredients (the shared
-`ind.state` dict, callable probability/delay, optional terminal
-arbitration) are enough for the cases covered here: independent
-parallel draws, sequential chains, treatment-conditional outcomes,
+The shared `ind.state` dict, a callable probability or delay, and optional
+terminal arbitration cover the patterns shown here: independent parallel
+draws, sequential chains, treatment-conditional outcomes, and
 capacity-dependent rates.
 
 To write your own kind of event, with its own likelihood, see

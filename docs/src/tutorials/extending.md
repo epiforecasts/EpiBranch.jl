@@ -212,7 +212,7 @@ reached it. On a tree each contact has one infector, so that is its parent.
 `compute_trace_level!` walks it back to the index case post-simulation to set
 `:trace_level` (distance from the index, anchor `0`). On a tree the level is
 exact; on a cyclic `NetworkProcess` it is the depth along the path a node was
-last traced on, **not** a guaranteed shortest distance to the nearest index — do not
+last traced on, **not** a guaranteed shortest distance to the nearest index: do not
 read it as one.
 
 Built-in keys use short bare names like `:isolated`, `:traced`, `:age`, and
@@ -1694,8 +1694,8 @@ infection-time order, rather than the generation-based engine) receives the
 composed layers as arguments instead: define
 [`EpiBranch.simulate_once`](@ref)`(m::MyModel, sim_opts; interventions,
 attributes, progression, observation, recorder, rng)`, read the layers off the
-arguments, and derive any window state you need — the infectious window's
-`from`, say, via [`EpiBranch.infectious_from`](@ref)`(progression)` — there.
+arguments, and derive any window state you need (the infectious window's
+`from`, say, via [`EpiBranch.infectious_from`](@ref)`(progression)`) there.
 `simulate` calls this once, or repeatedly when a `condition` is given, so your
 method takes no `condition`/`max_attempts` of its own. Drive the race with
 [`EpiBranch.sellke_race!`](@ref), passing it `sim_opts` so it resolves
