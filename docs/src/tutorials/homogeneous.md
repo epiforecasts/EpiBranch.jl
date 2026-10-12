@@ -211,7 +211,7 @@ rate. For transmission that differs between age groups or other groups, see
 [Multi-type models](multi-type.md); for contact networks and households, see
 [Network models](networks.md) and [Household models](households.md). Writing
 your own mixing structure for a closed population is covered in
-[Extending EpiBranch](extending.md).
+[Age- or group-structured mixing in a closed population](@ref).
 
 !!! note "How the simulation works"
     The simulation gives the exact stochastic SIR final-size distribution in

@@ -403,5 +403,5 @@ contribute nothing.
     no density, and `progression_loglik` throws an error on it. To use the
     likelihood, give each delay as a distribution or a fixed number of days.
 
-To write your own kind of event, with its own likelihood, see
-[Extending EpiBranch](extending.md).
+To write your own kind of event, see [Custom clinical transitions](@ref),
+and [The likelihood of a custom transition](@ref) for its likelihood.
