@@ -109,6 +109,9 @@ function _admit_actions!(cc::CapacityConstrained, state, actions)
     already_used = filter(a -> get(a.individual.state, key, false), actions)
     candidates = filter(a -> !get(a.individual.state, key, false), actions)
     _admit_actions!(cc.intervention, state, already_used)
+    # The usage count scans the whole population, which only a call with
+    # someone to admit needs.
+    isempty(candidates) && return nothing
     order = sortperm([cc.priority(a.individual, state) for a in candidates]; alg = MergeSort)
     usage = _capacity_usage(cc, state)
     used = usage.used
