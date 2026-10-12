@@ -96,8 +96,8 @@ end
 """
     generation_R(state::SimulationState)
 
-Not Rt: the ratio of the number of cases in each generation to the number in
-the generation before, in one simulated outbreak. Returns a DataFrame with
+The ratio of the number of cases in each generation to the number in the
+generation before, in one simulated outbreak. Returns a DataFrame with
 columns `generation` (`g`) and `offspring_ratio` (cases in generation `g + 1`
 divided by cases in generation `g`).
 
@@ -215,7 +215,6 @@ returned DataFrame holds one combination of the listed values and its
 `:attributes` and `:population_size`. Other settings are rejected, since they
 would not change the simulation. Settings that apply to every run, such as
 `max_cases`, are passed once as keywords.
-
 """
 function scenario_sweep(
         params::Dict{Symbol, <:AbstractVector};
