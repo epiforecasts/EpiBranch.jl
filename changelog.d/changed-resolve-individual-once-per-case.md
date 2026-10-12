@@ -14,6 +14,8 @@ values. On the generation engine this changes three things:
   `Scheduled(iso; start_time = 10.0)` could isolate a case infected on day 9.
 
 On the continuous-time models the clinical transitions now see the case's
-clock and count, where they saw those of the previous case. A seeded run on
+clock and count, where they saw those of the previous case. The state such a
+model returns has `current_generation` set to the latest generation reached,
+where it was left at 0. A seeded run on
 the generation engine with tracing deeper than one generation can draw a
 different trajectory than before.
