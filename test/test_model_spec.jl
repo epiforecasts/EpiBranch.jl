@@ -25,7 +25,7 @@ EpiBranch.competing_risk(::BlockWrongArity, parent, contact) = Risk(block_probab
 struct BlockUnqualified <: AbstractIntervention end
 competing_risk(::BlockUnqualified, parent, contact, state) = Risk(block_probability = 1.0)
 
-# Implements only the least common of `_EFFECT_HOOKS`, to check the full set
+# Implements only the least common of `_effect_hooks()`, to check the full set
 # is read rather than a subset headlined by `competing_risk`.
 struct _ActionsOnly <: AbstractIntervention end
 EpiBranch.intervention_actions(::_ActionsOnly, state, candidates) = nothing
@@ -35,6 +35,12 @@ EpiBranch.intervention_actions(::_ActionsOnly, state, candidates) = nothing
 # two rather than four.
 struct BlockVariadic <: AbstractIntervention end
 EpiBranch.competing_risk(::BlockVariadic, args...) = Risk(block_probability = 1.0)
+
+# The same hook with the vararg's length named: `Vararg{Any, N} where {N}`
+# carries an `N` that is a type variable rather than a count.
+struct BlockVariadicN <: AbstractIntervention end
+EpiBranch.competing_risk(::BlockVariadicN, args::Vararg{Any, N}) where {N} =
+    Risk(block_probability = 1.0)
 
 @testset "ModelSpec" begin
     # A ModelSpec composes the modelling layers (progression, interventions,
@@ -245,6 +251,9 @@ EpiBranch.competing_risk(::BlockVariadic, args...) = Risk(block_probability = 1.
         # A trailing `args...` is reachable at the call's arity even though
         # `methods` reports its own arity as something other than `n`.
         @test_logs ModelSpec(bp; interventions = [BlockVariadic()])
+        # Naming the vararg's length leaves a type variable where a count
+        # would be, which the check must not try to add to.
+        @test_logs ModelSpec(bp; interventions = [BlockVariadicN()])
         # `Isolation` implements several hooks properly and stays silent too.
         iso = Isolation(
             onset_to_isolation_delay = Exponential(1.0), duration = Inf

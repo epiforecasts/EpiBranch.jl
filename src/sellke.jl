@@ -145,7 +145,10 @@ function _has_own_method(f, T::Type, base::Type, n::Int)
         last = params[end]
         if Base.isvarargtype(last)
             fixed = length(params) - 1
-            if isdefined(last, :N)
+            # `Vararg{Any, N} where {N}` has an `N` that is a `TypeVar` rather
+            # than a count, and is reachable at any arity its fixed arguments
+            # allow, as a bare `args...` is.
+            if isdefined(last, :N) && last.N isa Int
                 n + 1 == fixed + last.N || return false
             else
                 n + 1 >= fixed || return false
