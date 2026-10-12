@@ -2234,7 +2234,17 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                 @test !haskey(st, :outcome) && !haskey(st, :outcome_time)
 
                 control = course(false)
-                @test control[:hospitalised] && control[:died]
+                # The unconditional Death fires at 6.0, before the
+                # hospitalisation at 7.0 it is timed independently of;
+                # censor_after_outcome! undoes that non-terminal event too,
+                # the same "stands only before the outcome" rule as the
+                # aborted case above. The :died Transition is itself
+                # terminal, so it is exempt from that rule: it keeps the
+                # hospitalised_time anchor it read during its own
+                # resolve_individual! pass, even though Death's earlier
+                # candidate wins the outcome.
+                @test !control[:hospitalised] && control[:hospitalised_time] == Inf
+                @test control[:died] && control[:died_time] == 8.0
                 @test control[:outcome] == :died && control[:outcome_time] == 6.0
             end
 

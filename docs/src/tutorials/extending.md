@@ -98,14 +98,14 @@ downstream packages should pick names that do not collide.
 | `:coverage_declined[_<label>]` | `Bool` | `false` | `GroupVaccination` | `apply_post_transmission!` |
 | `:infection_aborted_time` | `Float64` | — | Engine, written through `abort_infection!` (e.g. by `RingVaccination`'s `post_exposure_efficacy`) | Any intervention hook |
 | `:capacity_admission_time_<capacity_key>` | `Float64` | — | `CapacityConstrained` | `apply_post_transmission!` |
-| `:reporting_time` | `Float64` | `Inf` | `Reporting` transition | `resolve_individual!` |
-| `:admitted` | `Bool` | `false` | `Hospitalisation` transition | `resolve_individual!` |
-| `:admission_time` | `Float64` | `Inf` | `Hospitalisation` transition | `resolve_individual!` |
+| `:reporting_time` | `Float64` | `Inf` | `Reporting` transition | `resolve_individual!`; reset to `Inf` by `censor_after_outcome!` if it falls after `:outcome_time` |
+| `:admitted` | `Bool` | `false` | `Hospitalisation` transition | `resolve_individual!`; reset to `false` by `censor_after_outcome!` if `:admission_time` falls after `:outcome_time` |
+| `:admission_time` | `Float64` | `Inf` | `Hospitalisation` transition | `resolve_individual!`; reset to `Inf` by `censor_after_outcome!` if it falls after `:outcome_time` |
 | `:death_candidate_time` | `Float64` | `Inf` | `Outcome` transition | `resolve_individual!` |
 | `:recovery_candidate_time` | `Float64` | `Inf` | `Outcome` transition | `resolve_individual!` |
 | `:outcome` | `Symbol` | — | `Outcome` transition | `resolve_individual!` (terminal) |
 | `:outcome_time` | `Float64` | — | `Outcome` transition | `resolve_individual!` (terminal) |
-| `:reported` | `Bool` | `false` | `PerCaseObservation` *or* `Reporting` transition | Post-simulation projection / `resolve_individual!` |
+| `:reported` | `Bool` | `false` | `PerCaseObservation` *or* `Reporting` transition | Post-simulation projection / `resolve_individual!`; reset to `false` by `censor_after_outcome!` if `:reporting_time` falls after `:outcome_time` |
 | `:report_time` | `Float64` | — | `PerCaseObservation` | Post-simulation projection |
 | `:cluster_theta` | `Float64` | — | `ClusterMixed` analytics | First simulation read |
 | `:vaccine_acceptance` | `Float64` | — | `vaccine_acceptance` | Init (default key; customisable) |
