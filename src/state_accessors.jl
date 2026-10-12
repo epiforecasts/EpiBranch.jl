@@ -104,8 +104,8 @@ given `dose_label`, as sampled when the dose was given — a per-exposure block
 probability under `LeakyMode`, a responder status of `1.0` or `0.0` under
 `AllOrNothingMode` — or `nothing` if no dose with that label has been
 recorded. Unlike [`severity_efficacy`](@ref), there is no default of `0.0`:
-`nothing` is what distinguishes an individual with no such dose from one
-given a dose with `efficacy = 0.0`."""
+`nothing` distinguishes an individual with no such dose from one given a
+dose with `efficacy = 0.0`."""
 function vaccine_efficacy(ind::Individual; dose_label::Symbol = :default)
     return get(ind.state, _vaccine_efficacy_key(dose_label), nothing)
 end
