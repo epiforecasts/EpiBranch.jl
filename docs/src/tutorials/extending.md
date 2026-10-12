@@ -284,6 +284,19 @@ ones your intervention needs (all default to no-ops).
 | `risk_applies(iv, route)` | Continuous-time models selecting risks for a route (`nothing` for an external introduction) | Nothing | `Bool`; defaults to `true` |
 | `standing_block(iv)` | Continuous-time models deciding whether a certain block has settled a pair for good | Nothing | `Bool`; defaults to `false` |
 | `reads_population_state(iv)` | Before a structure-driven model (e.g. `HouseholdProcess`) decides whether to race each clique separately or put every clique on one shared clock | Nothing | `Bool`: whether delivery can depend on population-wide state such as a running case count or a shared capacity budget (default `true`, conservative) |
+| `analytic_offspring_effect(iv, offspring)` | By `extinction_probability`, `epidemic_probability`, `probability_contain`, `reproduction_number`, `proportion_transmission`, `proportion_cases_individual`, `proportion_cases_offspring`, `proportion_cluster_size`, `end_of_outbreak_probability` and `offspring_distribution`, when called on a `ModelSpec`, or a process that stores its own interventions, holding `iv` | The offspring `Distribution` a bare process would use | The `Distribution` a case under `iv` draws from instead. The generic method throws an error (see below) |
+
+Define `analytic_offspring_effect` only for an intervention whose effect on
+the offspring distribution is exact in closed form on its own, and return a
+law the analytical functions take: a `Poisson` or `NegativeBinomial` for a
+single-type process. A population-level reduction of R by a factor `p`, for
+example, turns `NegBin(R, k)` into `NegBin(p * R, k)`. Most interventions have
+no such form. Isolation's effect on R depends on how its timing overlaps the
+generation-time distribution, and `Isolation` has no method. On a spec that
+includes it, the analytical functions above throw an error that points to
+simulating the spec. For containment it names
+`containment_probability(simulate(spec, n))` for the simulated answer and
+`probability_contain(R, k; ind_control, pop_control)` for an approximation.
 
 `reads_population_state` covers whatever an intervention delegates to: a
 component or callable you supply counts as part of its owner's answer. A

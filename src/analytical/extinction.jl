@@ -105,6 +105,7 @@ end
 
 """
     extinction_probability(model::TransmissionModel; kwargs...)
+    extinction_probability(spec::ModelSpec; kwargs...)
 
 Extinction probability for a transmission model, computed from the model's
 offspring specification. For a single-type model the result is a number,
@@ -112,9 +113,15 @@ computed from the law returned by `single_type_offspring`; this covers
 `BranchingProcess` and wrappers that delegate that accessor (e.g. `Observed`).
 For a multi-type model built from an offspring matrix the result is a vector
 with one entry per type of index case.
+
+For a `ModelSpec`, or a process that stores its own interventions, each
+intervention's [`EpiBranch.analytic_offspring_effect`](@ref) is applied to
+the offspring distribution first. If an intervention has no such method, this
+throws an error that names the simulation-based alternative.
 """
 function extinction_probability(model::Union{TransmissionModel, ModelSpec}; kwargs...)
-    return extinction_probability(_analytic_offspring(model); kwargs...)
+    off = _offspring_through_interventions(model, _analytic_offspring(model))
+    return extinction_probability(off; kwargs...)
 end
 
 # ── Containment probability (analytical) ─────────────────────────────
@@ -198,11 +205,18 @@ end
 
 """
     probability_contain(model::TransmissionModel; kwargs...)
+    probability_contain(spec::ModelSpec; kwargs...)
 
 Containment probability for a single-type transmission model. Delegates
 through `single_type_offspring`, so wrappers such as `Observed`
 work too.
+
+For a `ModelSpec`, or a process that stores its own interventions, each
+intervention's [`EpiBranch.analytic_offspring_effect`](@ref) is applied to
+the offspring distribution first. If an intervention has no such method, this
+throws an error that names the simulation-based alternative.
 """
 function probability_contain(model::Union{TransmissionModel, ModelSpec}; kwargs...)
-    return probability_contain(single_type_offspring(model); kwargs...)
+    off = _offspring_through_interventions(model, single_type_offspring(model))
+    return probability_contain(off; kwargs...)
 end
