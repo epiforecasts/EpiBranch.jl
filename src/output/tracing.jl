@@ -9,12 +9,12 @@ traced contacts, 2 for contacts of contacts, and so on. People never traced
 level to each person's record. [`linelist`](@ref) then shows it as a
 `trace_level` column.
 
-!!! note "Level along the first tracing path, not the shortest"
-    Each person is traced at most once, from the earliest exposure that led to
-    them. In a `BranchingProcess` that is their infector, so the level is
-    exact. On a `NetworkProcess`, where a person can have several infectious
-    neighbours, it is the depth along the path by which they were first
-    traced, which may be longer than the shortest path to an index case.
+!!! note "Level along the last tracing path, not the shortest"
+    Every case whose tracing reaches a person records itself as their tracer,
+    so the level is counted along the path of the last one to reach them. In a
+    `BranchingProcess` that is their infector, so the level is exact. On a
+    `NetworkProcess`, where a person can have several infectious neighbours,
+    it may be longer than the shortest path to an index case.
 """
 function compute_trace_level!(state::SimulationState)
     individuals = state.individuals

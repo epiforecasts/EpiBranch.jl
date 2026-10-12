@@ -56,12 +56,17 @@ end
 
 """
     proportion_transmission(model::BranchingProcess; prop_cases=0.2)
+    proportion_transmission(spec::ModelSpec; prop_cases=0.2)
 
 Proportion of transmission caused by the most infectious fraction
 `prop_cases` of cases, using the model's offspring distribution, which must
-be negative binomial (or Poisson). Interventions and population
-characteristics in a `ModelSpec` are ignored; for transmission under control
-measures, simulate and count secondary cases instead.
+be negative binomial (or Poisson). Population characteristics in a
+`ModelSpec` are ignored.
+
+For a `ModelSpec`, or a process that stores its own interventions, each
+intervention's [`EpiBranch.analytic_offspring_effect`](@ref) is applied to
+the offspring distribution first. If an intervention has no such method, this
+throws an error that names the simulation-based alternative.
 """
 function proportion_transmission(d::NegativeBinomial; prop_cases::Real = 0.2)
     return proportion_transmission(mean(d), d.r; prop_cases)
@@ -75,11 +80,9 @@ function proportion_transmission(d::Distribution; prop_cases::Real = 0.2)
     throw(ArgumentError("proportion_transmission not defined for $(typeof(d)). Use NegativeBinomial or Poisson."))
 end
 
-function proportion_transmission(
-        model::Union{TransmissionModel, ModelSpec};
-        prop_cases::Real = 0.2
-    )
-    return proportion_transmission(single_type_offspring(model); prop_cases)
+function proportion_transmission(model::Union{TransmissionModel, ModelSpec}; prop_cases::Real = 0.2)
+    off = _offspring_through_interventions(model, single_type_offspring(model))
+    return proportion_transmission(off; prop_cases)
 end
 
 # ── Proportion of cases responsible for a share of transmission ──────
@@ -136,16 +139,20 @@ end
 
 """
     proportion_cases_individual(model::BranchingProcess; prop_transmission=0.8)
+    proportion_cases_individual(spec::ModelSpec; prop_transmission=0.8)
 
 Proportion of cases responsible for a share `prop_transmission` of
 transmission, ranking by individual reproduction number, using the model's
 offspring distribution (negative binomial or Poisson).
+
+For a `ModelSpec`, or a process that stores its own interventions, each
+intervention's [`EpiBranch.analytic_offspring_effect`](@ref) is applied to
+the offspring distribution first. If an intervention has no such method, this
+throws an error that names the simulation-based alternative.
 """
-function proportion_cases_individual(
-        model::Union{TransmissionModel, ModelSpec};
-        prop_transmission::Real = 0.8
-    )
-    return proportion_cases_individual(single_type_offspring(model); prop_transmission)
+function proportion_cases_individual(model::Union{TransmissionModel, ModelSpec}; prop_transmission::Real = 0.8)
+    off = _offspring_through_interventions(model, single_type_offspring(model))
+    return proportion_cases_individual(off; prop_transmission)
 end
 
 """
@@ -207,16 +214,20 @@ end
 
 """
     proportion_cases_offspring(model::BranchingProcess; prop_transmission=0.8)
+    proportion_cases_offspring(spec::ModelSpec; prop_transmission=0.8)
 
 Proportion of cases responsible for a share `prop_transmission` of
 transmission, ranking by number of people infected, using the model's
 offspring distribution.
+
+For a `ModelSpec`, or a process that stores its own interventions, each
+intervention's [`EpiBranch.analytic_offspring_effect`](@ref) is applied to
+the offspring distribution first. If an intervention has no such method, this
+throws an error that names the simulation-based alternative.
 """
-function proportion_cases_offspring(
-        model::Union{TransmissionModel, ModelSpec};
-        prop_transmission::Real = 0.8
-    )
-    return proportion_cases_offspring(single_type_offspring(model); prop_transmission)
+function proportion_cases_offspring(model::Union{TransmissionModel, ModelSpec}; prop_transmission::Real = 0.8)
+    off = _offspring_through_interventions(model, single_type_offspring(model))
+    return proportion_cases_offspring(off; prop_transmission)
 end
 
 # ── Proportion of cases from large clusters ──────────────────────────
@@ -264,15 +275,22 @@ end
 
 """
     proportion_cluster_size(model::BranchingProcess; cluster_size=10)
+    proportion_cluster_size(spec::ModelSpec; cluster_size=10)
 
 Proportion of secondary cases caused by cases who each infected at least
 `cluster_size` people, using the model's offspring distribution.
+
+For a `ModelSpec`, or a process that stores its own interventions, each
+intervention's [`EpiBranch.analytic_offspring_effect`](@ref) is applied to
+the offspring distribution first. If an intervention has no such method, this
+throws an error that names the simulation-based alternative.
 """
-function proportion_cluster_size(
-        model::Union{TransmissionModel, ModelSpec};
-        cluster_size::Int = 10
-    )
-    d = single_type_offspring(model)
+function proportion_cluster_size(model::Union{TransmissionModel, ModelSpec}; cluster_size::Int = 10)
+    off = _offspring_through_interventions(model, single_type_offspring(model))
+    return _proportion_cluster_size(off, cluster_size)
+end
+
+function _proportion_cluster_size(d, cluster_size)
     d isa NegativeBinomial || throw(
         ArgumentError(
             "proportion_cluster_size requires NegativeBinomial offspring"

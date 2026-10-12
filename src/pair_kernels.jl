@@ -408,6 +408,42 @@ function watched_records(ks::AbstractVector)
     return Tuple(keys)
 end
 
+"""
+    kernel_projection(kernel)
+
+The projection a live [`PairKernel`](@ref) reads a host's record through, or
+`nothing` for a kernel with no such projection: one with no `state`, a vector
+of already-recorded states, or any other kernel type. A per-edge vector
+reports the projection its entries share, or `nothing` if they don't share
+one.
+
+A continuous-time race uses this alongside [`watched_records`](@ref
+EpiBranch.watched_records) to check a kernel's declaration against what it
+actually reads: after a case settles, it re-projects every host a pending or
+future draw still reads and compares the result against what the projection
+read last, throwing when a record it reads has changed without any of the
+declared `watches` moving.
+"""
+kernel_projection(kernel) = nothing
+kernel_projection(k::PairKernel) = k.state
+# Neither a vector of records nor no `state` at all has anything live to
+# re-project; `watched_records` refuses `watches` on both for the same reason.
+kernel_projection(::PairKernel{F, Nothing}) where {F} = nothing
+kernel_projection(::PairKernel{F, <:AbstractVector}) where {F} = nothing
+# A per-edge collection has one projection to check only when every entry
+# shares it, the common case of a route built from the same live `PairKernel`
+# repeated along each edge; a mix of projections cannot be checked without
+# resolving the edge, so it is `nothing` like any other kernel type.
+function kernel_projection(ks::AbstractVector)
+    isempty(ks) && return nothing
+    proj = kernel_projection(first(ks))
+    proj === nothing && return nothing
+    for k in ks
+        kernel_projection(k) === proj || return nothing
+    end
+    return proj
+end
+
 # Evaluate a PairKernel's callback for an ordered pair, given whatever host
 # records `state` selects. `Nothing` state is the contextual case (the callback
 # takes only the context); an `AbstractVector` state is already recorded and

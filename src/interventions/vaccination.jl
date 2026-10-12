@@ -1046,10 +1046,6 @@ _dose_offset(rv::RingVaccination) = rv.dose_delay
 # The intervention inside a wrapper; `InterventionWrapper` adds a method.
 _unwrap_scheduled(iv) = iv
 
-function apply_post_transmission!(rv::RingVaccination, state, new_contacts)
-    return apply_actions!(rv, state, new_contacts)
-end
-
 # ── GroupVaccination ─────────────────────────────────────────────────
 
 """
@@ -1208,18 +1204,6 @@ function _group_trigger_time(gv::GroupVaccination, state, group)
     return t
 end
 
-# Two things can happen to a group in a single generation: a member created
-# earlier newly meets `eligibility` (the group's first trigger), or a member
-# is created into a group that already triggered in an earlier generation.
-# Recomputing the trigger time for every group touched by `new_contacts` and
-# visiting that group's members (via the index) against it handles both in
-# one pass: a fresh trigger reaches members already present, and a standing
-# one reaches a member only now created. Groups untouched this generation are
-# left alone, so nobody outside a triggered group is ever visited.
-function apply_post_transmission!(gv::GroupVaccination, state, new_contacts)
-    return apply_actions!(gv, state, new_contacts)
-end
-
 # ── MassVaccination ──────────────────────────────────────────────────
 
 """
@@ -1313,7 +1297,3 @@ Base.propertynames(mv::MassVaccination, ::Bool = false) = _effect_propertynames(
 Base.show(io::IO, mv::MassVaccination) = _show_keywords(io, mv)
 
 required_fields(::MassVaccination) = Symbol[]
-
-function apply_post_transmission!(mv::MassVaccination, state, new_contacts)
-    return apply_actions!(mv, state, new_contacts)
-end

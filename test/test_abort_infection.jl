@@ -12,7 +12,7 @@ function _end_after!(e::EndAfter, ind)
     isnan(incubation) || ends < ind.infection_time + incubation || return nothing
     return EpiBranch.abort_infection!(ind, ends)
 end
-function EpiBranch.apply_post_transmission!(e::EndAfter, state, contacts)
+function EpiBranch.trace_contacts!(e::EndAfter, state, infector, contacts)
     foreach(c -> _end_after!(e, c), contacts)
     return nothing
 end

@@ -2,8 +2,8 @@
 Parent type of the steps in a case's natural history: [`Transition`](@ref),
 [`Reporting`](@ref), [`Hospitalisation`](@ref), [`Recovery`](@ref) and
 [`Death`](@ref). List several in a model's `progression`; each case passes
-through them in order when it is created, after its population
-characteristics and interventions have been set.
+through them in order as it is settled, after its population characteristics
+are set and before the interventions act on it.
 
 Steps that end a case, such as death or recovery, are called terminal. When a
 case could reach several terminal steps, the earliest one becomes its outcome
@@ -26,6 +26,11 @@ the result to `individual.state` under keys it owns). A terminal step also
 returns `true` from [`is_terminal`](@ref), implements
 [`terminal_event`](@ref), and should implement [`terminal_target`](@ref) so the
 check that every infectious window closes can see the new end state.
+
+While a step resolves, it sees the same simulation state the interventions
+do: `state.max_infection_time` at the case's infection time,
+`state.current_generation` at its generation, and `state.cumulative_cases`
+counting the cases settled up to and including it.
 """
 AbstractClinicalTransition
 

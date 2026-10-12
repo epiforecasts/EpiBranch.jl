@@ -178,7 +178,8 @@ after `time` are undone (see
 [`resolve_transitions!`](@ref EpiBranch.resolve_transitions!)).
 
 In a branching process, an intervention acting on contacts before it is
-decided whether they are infected (in `apply_post_transmission!`) sees each
+decided whether they are infected (in [`trace_contacts!`](@ref
+EpiBranch.trace_contacts!), or in an action it has admitted) sees each
 contact's earliest exposure time as its provisional infection time. If the
 contact turns out not to be infected, or to be infected only at or after
 `time`, the stop has no effect and the onset is restored.

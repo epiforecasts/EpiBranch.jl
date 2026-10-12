@@ -41,6 +41,7 @@ BranchingProcess
 Infectiousness
 EpiBranch.MultiTypeOffspring
 HomogeneousProcess
+MixingProcess
 NetworkProcess
 RoutedNetwork
 HouseholdProcess
@@ -276,6 +277,7 @@ proportion_cases_individual
 proportion_cases_offspring
 proportion_cluster_size
 heterogeneous_contact_R
+EpiBranch.analytic_offspring_effect
 ```
 
 ### Chain-size distributions
@@ -464,8 +466,15 @@ A transmission model defines [`initialise_state`](@ref EpiBranch.initialise_stat
 to set up its starting population. The helpers listed after it create the
 `SimulationState` and add the index cases.
 
+A model that runs its own simulation loop has two more to build on.
+[`simulate_once`](@ref EpiBranch.simulate_once) runs one outbreak with the
+modelling layers passed in rather than read off the model, and
+[`sellke_race!`](@ref EpiBranch.sellke_race!) settles one continuous-time race
+and brings the state's running totals back into line afterwards.
+
 ```@docs
 EpiBranch.draw_offspring
+EpiBranch.simulate_once
 generate_offspring
 contacts_of
 collect_exposures
@@ -473,6 +482,8 @@ gather_by_target
 EpiBranch.model_generation_time
 EpiBranch.transmission_risks
 EpiBranch.race_groups
+EpiBranch.sellke_race!
+EpiBranch.infectious_from
 make_contact!
 susceptible_fraction
 EpiBranch.initialise_state
@@ -621,8 +632,11 @@ helpers the package may change at any time.
 ```@docs
 EpiBranch.get_generation_time
 EpiBranch._advance_generation!
-EpiBranch._prepare_parents!
+EpiBranch._settle_generation!
+EpiBranch._settle_case!
+EpiBranch._at_case!
 EpiBranch._intervene!
+EpiBranch._act_per_case!
 EpiBranch._resolve!
 EpiBranch._decide_infected
 EpiBranch.population_size

@@ -21,20 +21,29 @@ end
     intervention_actions(intervention, state, candidates)
 
 The actions (such as doses) an intervention proposes for `candidates`, as
-[`InterventionAction`](@ref EpiBranch.InterventionAction)s, so that
-[`Scheduled`](@ref) and [`CapacityConstrained`](@ref) can check each one
-before it happens. An intervention may widen the candidates, for example to
-everyone in their groups.
+[`InterventionAction`](@ref EpiBranch.InterventionAction)s, so that each one
+can be checked before it happens. An intervention may widen the candidates,
+for example to everyone in their groups. Return `nothing`, the default, when
+the intervention has no actions.
 
-For extension authors: return `nothing` (the default) to have the
-intervention's own [`apply_post_transmission!`](@ref EpiBranch.apply_post_transmission!)
-called instead. An intervention defining this method calls
-[`apply_actions!`](@ref EpiBranch.apply_actions!) from its
-`apply_post_transmission!`.
+Both engines call it once per case, after every intervention's
+[`trace_contacts!`](@ref) for that case, so a producer can read what tracing
+wrote. The generation engine passes the contacts the case made and admits
+every action with a finite time. The network and household races pass the case
+and the members it can still reach, for an intervention that declares
+[`continuous_actions`](@ref), and admit only actions dated no earlier than the
+case's infection time. [`Scheduled`](@ref) and [`CapacityConstrained`](@ref)
+admit the actions through their own gates.
 """
 intervention_actions(::AbstractIntervention, state, candidates) = nothing
 function intervention_actions(w::InterventionWrapper, state, candidates)
     return intervention_actions(w.intervention, state, candidates)
+end
+# Asking for the resource key first makes a wrapped intervention that has none,
+# and so cannot be rationed, fail when its actions are first sought.
+function intervention_actions(cc::CapacityConstrained, state, candidates)
+    capacity_key(cc.intervention)
+    return intervention_actions(cc.intervention, state, candidates)
 end
 
 """
@@ -108,6 +117,9 @@ function _admit_actions!(cc::CapacityConstrained, state, actions)
     already_used = filter(a -> get(a.individual.state, key, false), actions)
     candidates = filter(a -> !get(a.individual.state, key, false), actions)
     _admit_actions!(cc.intervention, state, already_used)
+    # The usage count scans the whole population, which only a call with
+    # someone to admit needs.
+    isempty(candidates) && return nothing
     order = sortperm([cc.priority(a.individual, state) for a in candidates]; alg = MergeSort)
     usage = _capacity_usage(cc, state)
     used = usage.used
@@ -133,7 +145,7 @@ recorded as vaccinated under `v`'s own `dose_label`, and reconsidering a
 post-exposure abort ([`RingVaccination`](@ref)'s `post_exposure_efficacy`)
 against the dose just given. The action protocol calls this through
 [`dose_action`](@ref); call it directly to record a dose outside that
-protocol, for example from a custom `apply_post_transmission!` or when
+protocol, for example from a custom `trace_contacts!` or when
 seeding a dose before a run starts.
 """
 function record_dose!(v::AbstractVaccination, person, at, rng)

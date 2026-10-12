@@ -26,8 +26,10 @@ CapacityConstrained(GroupVaccination(efficacy = 0.8); budget_per_period = 200.0)
   [`default_capacity_priority`](@ref), serves traced contacts in the order
   they were traced.
 
-People turned away use no capacity and are not queued, though they may be
-offered the intervention again if reached again later. Only whole people are
+Each case's actions are offered together, in the order the engine settles
+cases, with the clock at that case's infection time. People turned away use no
+capacity and are not queued, though they may be offered the intervention again
+if reached again later. Only whole people are
 served, so a fraction of remaining capacity serves nobody. Capacity is
 counted when a person is accepted, which can be before the dose is given (for
 example after a delay), so it may fall in an earlier period than the dose.
@@ -173,12 +175,15 @@ function _capacity_usage(cc::CapacityConstrained, state)
         time_key = capacity_time_key(cc.intervention)
         admission_key = _capacity_admission_key(key)
         period_start = isinf(cc.period) ? 0.0 : floor(t / cc.period) * cc.period
+        period_end = period_start + cc.period
         available = cc.budget_per_period
+        # Bounded above as well, since the generation engine admits a later
+        # generation's earlier cases after an earlier generation's later ones.
         used = count(state.individuals) do ind
             get(ind.state, key, false) || return false
             used_at = get(ind.state, admission_key, nothing)
             isnothing(used_at) && (used_at = get(ind.state, time_key, -Inf))
-            return used_at >= period_start
+            return period_start <= used_at < period_end
         end
     end
     return (used = used, available = available)
@@ -202,6 +207,7 @@ end
 # without using a dose; this keeps offering the budget to the next-ranked
 # candidate instead of stopping after a fixed count, which would otherwise
 # leave it under-used.
+_uses_batch_hook(cc::CapacityConstrained) = _uses_batch_hook(cc.intervention)
 function apply_post_transmission!(cc::CapacityConstrained, state, new_contacts)
     actions = intervention_actions(cc, state, new_contacts)
     if actions !== nothing
@@ -252,9 +258,10 @@ function keep_active(cc::CapacityConstrained, state, targets, is_new)
     return keep_active(cc.intervention, state, targets, is_new)
 end
 
-# The continuous-time race has no batch of competing contacts to ration, so
-# passing its tracing through would let the wrapped intervention act with no
-# budget at all. Opting out keeps the documented "no effect" there.
+# Tracing records no resource use for the budget to count, so passing it
+# through would let the wrapped intervention act with no budget at all. Opting
+# out leaves the tracing undone; on the generation engine a wrapped intervention
+# without a `capacity_key` fails instead, when its actions are first sought.
 traces_contacts(::CapacityConstrained) = false
 trace_contacts!(::CapacityConstrained, state, infector, contacts) = nothing
 

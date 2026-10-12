@@ -86,46 +86,53 @@ function simulate(
         stopping_rules
     )
     _validate_initial_cases(model, sim_opts)
-    return _simulate(
-        model, sim_opts; interventions = interventions(model),
-        attributes = attributes(model), progression = _progression(model),
-        observation = observation(model), recorder = recorder(model), rng,
-        condition, max_attempts
+    return _run_once_or_retry(
+        model, sim_opts, condition, max_attempts;
+        interventions = interventions(model), attributes = attributes(model),
+        progression = _progression(model), observation = observation(model),
+        recorder = recorder(model), rng
     )
 end
 
-# Internal single run against a built `SimOpts`. The forcing layers
-# (interventions, attributes, progression, observation, recorder) are passed
-# in explicitly, so a `ModelSpec` can supply its own while the process stays
-# the dispatched model. The public methods read them off a bare process, or
-# off the spec. `recorder` is read only by the continuous-time (Sellke) race;
-# the generation-based engine below never drops a pair for a standing block,
-# so it has nothing to ask one.
-function _simulate(
-        model::TransmissionModel, sim_opts::SimOpts;
-        interventions, attributes, progression, observation, recorder, rng,
-        condition, max_attempts
-    )
-    if condition !== nothing
-        for _ in 1:max_attempts
-            state = _simulate(
-                model, sim_opts; interventions, attributes,
-                progression, observation, recorder, rng, condition = nothing,
-                max_attempts
-            )
-            state.cumulative_cases in condition && return state
-        end
-        throw(
-            ErrorException(
-                "No simulation produced an outbreak of size $condition within $max_attempts attempts"
-            )
-        )
-    end
+# Shared by both `simulate` methods (a bare process and a `ModelSpec`): run
+# `simulate_once` once, or repeat it through `_retry_for_condition` when a
+# `condition` is set. Pulled out so the two entry points don't each duplicate
+# the retry branch.
+function _run_once_or_retry(model, sim_opts, condition, max_attempts; kwargs...)
+    run = () -> simulate_once(model, sim_opts; kwargs...)
+    condition === nothing && return run()
+    return _retry_for_condition(run, condition, max_attempts)
+end
 
+"""
+    simulate_once(model, sim_opts; interventions, attributes, progression,
+                  observation, recorder, rng)
+
+Run a single outbreak simulation against a built [`SimOpts`](@ref), with the
+modelling layers (`interventions`, `attributes`, `progression`, `observation`,
+`recorder`) supplied explicitly rather than read off `model`. `simulate` reads
+them off a bare process, or off a [`ModelSpec`](@ref), and wraps this in a
+retry loop when a `condition` is given; this method itself takes no
+`condition`.
+
+The default method runs the generation-based engine. A model with its own
+simulation loop — one driven by a continuous-time race rather than stepping
+generation by generation, such as the network, household and homogeneous-pool
+processes — defines its own method instead, reading the layers off the
+arguments and deriving any window state it needs (the infectious window's
+`from`, say, via [`infectious_from`](@ref)) from the composed `progression`.
+`recorder` is read only by the continuous-time (Sellke) race; the
+generation-based engine never drops a pair for a standing block, so it has
+nothing to ask one.
+"""
+function simulate_once(
+        model::TransmissionModel, sim_opts::SimOpts;
+        interventions, attributes, progression, observation, recorder, rng
+    )
     state = initialise_state(
         model, sim_opts, interventions, progression, attributes, rng
     )
-    _resolve_new_transitions!(state, 0)
+    _settle_generation!(state, interventions, _seed_cases(state), 0)
 
     while !should_terminate(state, sim_opts)
         _advance_generation!(model, state, interventions)
@@ -198,19 +205,17 @@ function _simulate_n(
         results = Vector{SimulationState}(undef, n)
         Threads.@threads for i in 1:n
             local_rng = Random.Xoshiro(seeds[i])
-            results[i] = _simulate(
+            results[i] = simulate_once(
                 model, sim_opts; interventions, attributes,
-                progression, observation, recorder, rng = local_rng,
-                condition = nothing, max_attempts = 10_000
+                progression, observation, recorder, rng = local_rng
             )
         end
         return results
     else
         return [
-            _simulate(
+            simulate_once(
                 model, sim_opts; interventions, attributes, progression,
-                observation, recorder, rng, condition = nothing,
-                max_attempts = 10_000
+                observation, recorder, rng
             )
                 for _ in 1:n
         ]
@@ -218,10 +223,13 @@ function _simulate_n(
 end
 
 # ── Shared helpers for the structure-driven (continuous-time) models ────
-# The homogeneous, household and network `_simulate` methods run their own
-# Sellke loop rather than the generation engine, so they share the same two
-# concerns: retrying until a `condition` is met, and reconciling the aggregate
-# bookkeeping the engine would otherwise maintain.
+# The homogeneous, household and network `simulate_once` methods run their own
+# Sellke loop rather than the generation engine, so they share one concern:
+# reconciling the aggregate bookkeeping the engine would otherwise maintain. A
+# single-race model gets this from the public `sellke_race!` wrapper; a model
+# with several independent races (a household process, over its households)
+# reconciles once after its own loop instead, directly through
+# `_reconcile_sellke_bookkeeping!` below.
 
 # Whether a model's simulation honours the termination controls (`max_cases`,
 # `max_generations`, `max_time`, `stopping_rules`). The generation-based engine
@@ -292,7 +300,8 @@ end
 """
     _reconcile_sellke_bookkeeping!(state, extinct) -> state
 
-Set `cumulative_cases` and `max_infection_time` from the per-individual state a
+Set `cumulative_cases`, `max_infection_time` and `current_generation` (the
+latest generation reached) from the per-individual state a
 continuous-time (Sellke) loop writes directly, and `extinct` to the given
 `extinct`, keeping the returned state consistent with the generation engine's
 bookkeeping. `extinct` is whether the Sellke loop(s) that built `state` ran
@@ -309,6 +318,10 @@ function _reconcile_sellke_bookkeeping!(state::SimulationState, extinct::Bool)
                 for ind in state.individuals if get(ind.state, :infected, false)
         );
         init = 0.0
+    )
+    state.current_generation = maximum(
+        (ind.generation for ind in state.individuals if get(ind.state, :infected, false));
+        init = 0
     )
     state.extinct = extinct
     return state
@@ -564,26 +577,25 @@ function gather_by_target(model::TransmissionModel, state::SimulationState)
     return targets, edges, minted, is_new
 end
 
-"""Simulate one generation of transmission. Case-level interventions such as
-isolation act on the infectious cases ([`_prepare_parents!`](@ref)); contacts
-are made and timed ([`collect_exposures`](@ref)); tracing and vaccination act
-on those contacts ([`_intervene!`](@ref)); then each contact is infected or
-not, and the natural history of the new cases is drawn ([`_resolve!`](@ref)).
-In a branching process a contact is created together with its infection
-time; in a fixed population the contacts already exist."""
+"""Simulate one generation of transmission. Contacts are made and timed
+([`collect_exposures`](@ref)); tracing and vaccination act on those contacts
+([`_intervene!`](@ref)); then each contact is infected or not, and each new
+case is settled, which draws its natural history and lets the interventions
+act on it ([`_resolve!`](@ref), [`_settle_generation!`](@ref)). In a branching
+process a contact is created together with its infection time; in a fixed
+population the contacts already exist."""
 function _advance_generation!(
         model::TransmissionModel,
         state::SimulationState, interventions::Vector{<:AbstractIntervention}
     )
-    _prepare_parents!(state, interventions)
     targets, edges, minted, is_new = collect_exposures(model, state)
     # Snapshotted before anything below moves a live field: `_intervene!`'s
     # provisional parent assignment overwrites `parent_id`/`infection_time`
     # unconditionally, on a pre-existing node offered again just as much as on
     # a fresh one.
     reinfections = _reinfection_episodes(targets, is_new)
-    _intervene!(state, interventions, targets, edges, minted)
-    _resolve!(model, state, interventions, targets, edges, is_new, reinfections)
+    kept = _intervene!(state, interventions, targets, edges, minted, is_new)
+    _resolve!(model, state, interventions, targets, edges, is_new, reinfections, kept)
     return nothing
 end
 
@@ -602,31 +614,20 @@ function _reinfection_episodes(targets, is_new)
     return episodes
 end
 
-"""Step 1 of a generation: interventions act on the infectious cases (for
-example, isolating them) before they transmit."""
-function _prepare_parents!(
-        state::SimulationState,
-        interventions::Vector{<:AbstractIntervention}
-    )
-    for idx in state.active_ids
-        individual = state.individuals[idx]
-        for intervention in interventions
-            resolve_individual!(intervention, individual, state)
-        end
-    end
-    return nothing
-end
-
-"""Step 3 of a generation: interventions act on the people exposed in this
-generation, before it is decided whether they are infected. Each new contact
-is set up for every intervention, and each exposed person is provisionally
-assigned to the case that exposed them earliest, so that tracing and ring
-vaccination can reach them."""
+"""Phase 2 — contact-level interventions act on this generation's exposures.
+Newly minted contacts get their intervention state initialised; each target is
+given a provisional parent (its earliest exposing edge); then each individual
+of the active set is offered the contacts it reached, through the per-case
+hooks ([`_act_per_case!`](@ref)), before infection is resolved. An
+intervention still implementing the deprecated batch hook
+[`apply_post_transmission!`](@ref) is handed the whole batch instead, at its
+place in the list, and then asked [`keep_active`](@ref) about the whole batch.
+Returns the ids the interventions asked to keep active."""
 function _intervene!(
         state::SimulationState,
         interventions::Vector{<:AbstractIntervention},
         targets::Vector{<:Individual}, edges::Vector{<:Vector{<:Tuple}},
-        minted
+        minted, is_new
     )
     # Newly created contacts (already appended to state by make_contact!)
     # get their intervention state initialised.
@@ -644,13 +645,89 @@ function _intervene!(
         targets[i].parent_id, targets[i].infection_time = es[1]
     end
 
+    # Each stretch of per-case interventions runs case by case, and a batch-hook
+    # intervention at its own place in the list, so what one writes reaches
+    # those listed after it.
+    kept = Int[]
+    stretch = similar(interventions, 0)
     for intervention in interventions
-        apply_post_transmission!(intervention, state, targets)
+        if _uses_batch_hook(intervention)
+            append!(kept, _act_per_case!(state, stretch, targets, edges, is_new))
+            empty!(stretch)
+            _warn_batch_hook(intervention)
+            apply_post_transmission!(intervention, state, targets)
+            # Asked after the batch hook, which may write what it reads.
+            append!(kept, keep_active(intervention, state, targets, is_new))
+        else
+            push!(stretch, intervention)
+        end
+    end
+    append!(kept, _act_per_case!(state, stretch, targets, edges, is_new))
+    return kept
+end
+
+"""
+    _act_per_case!(state, interventions, targets, edges, is_new) -> Vector{Int}
+
+Offer each individual of the active set the contacts it reached this
+generation, through the per-case hooks the continuous-time race calls when it
+settles a case: every one of `interventions`' [`trace_contacts!`](@ref), then
+their [`intervention_actions`](@ref), admitted through their wrappers, then
+their [`keep_active`](@ref), whose answers are returned. The caller leaves out
+interventions on the deprecated batch hook. A target reached by
+several individuals is offered to each of them, as a neighbour is on the race.
+
+Cases are visited in order of infection time, each with the state its settling
+hooks saw ([`_at_case!`](@ref)): the clock at its infection time and its place
+in the case count. An uninfected individual kept active by `keep_active` sees
+the state as the generation left it. The state is restored afterwards.
+"""
+function _act_per_case!(state::SimulationState, interventions, targets, edges, is_new)
+    kept = Int[]
+    (isempty(targets) || isempty(interventions)) && return kept
+    reached = Dict{Int, Vector{Int}}()
+    for i in eachindex(targets), (pid, _) in edges[i]
+        idx = get!(Vector{Int}, reached, pid)
+        (isempty(idx) || last(idx) != i) && push!(idx, i)
+    end
+    clock, count, generation = state.max_infection_time, state.cumulative_cases,
+        state.current_generation
+    sources = [state.individuals[id] for id in state.active_ids]
+    cases = filter(is_infected, sources)
+    sort!(cases; by = case -> case.infection_time)
+    seen = count - length(cases)
+    for source in Iterators.flatten((cases, Iterators.filter(!is_infected, sources)))
+        if is_infected(source)
+            seen += 1
+            _at_case!(state, source, seen)
+        else
+            state.max_infection_time, state.cumulative_cases = clock, count
+            state.current_generation = generation
+        end
+        idx = get(reached, source.id, nothing)
+        idx === nothing && continue
+        _case_hooks!(state, source, interventions, targets[idx], is_new[idx], kept)
+    end
+    state.max_infection_time, state.cumulative_cases = clock, count
+    state.current_generation = generation
+    return kept
+end
+
+function _case_hooks!(state::SimulationState, case, interventions, contacts, is_new, kept)
+    for intervention in interventions
+        trace_contacts!(intervention, state, case, contacts)
+    end
+    for intervention in interventions
+        actions = intervention_actions(intervention, state, contacts)
+        actions === nothing || _admit_actions!(intervention, state, actions)
+    end
+    for intervention in interventions
+        append!(kept, keep_active(intervention, state, contacts, is_new))
     end
     return nothing
 end
 
-"""Step 4 of a generation: decide which exposed people are infected, and
+"""Step 3 of a generation: decide which exposed people are infected, and
 record the new cases. An exposure need not lead to infection. The infector's
 infectiousness, the contact's susceptibility, anything the model adds and any
 interventions can each prevent it, whichever acts first. A person exposed by
@@ -663,7 +740,7 @@ function _resolve!(
         model::TransmissionModel, state::SimulationState,
         interventions::Vector{<:AbstractIntervention},
         targets::Vector{<:Individual}, edges::Vector{<:Vector{<:Tuple}},
-        is_new, reinfections = Dict{Int, InfectionEpisode}()
+        is_new, reinfections = Dict{Int, InfectionEpisode}(), kept = Int[]
     )
     model_risks = transmission_risks(model)
     infected_so_far = 0
@@ -723,6 +800,7 @@ function _resolve!(
         _drop_stale_abort!(target)
     end
 
+    cases_before = state.cumulative_cases
     for target in newly_infected
         target.infection_time > state.max_infection_time &&
             (state.max_infection_time = target.infection_time)
@@ -731,20 +809,91 @@ function _resolve!(
     state.current_generation += 1
 
     # Next active set: the cases that transmit, plus any nodes an
-    # intervention asks to keep active (`keep_active`), such as uninfected
+    # intervention asked to keep active (`keep_active`), such as uninfected
     # contacts a tracing depth wants to keep growing. Who stays active is
-    # not a special built-in rule.
+    # not a special built-in rule. It was asked before infection was decided,
+    # so a kept contact that went on to be infected is already in the set.
     next_active = [target.id for target in newly_infected]
-    for intervention in interventions
-        append!(next_active, keep_active(intervention, state, targets, is_new))
+    for id in unique(kept)
+        is_infected(state.individuals[id]) || push!(next_active, id)
     end
     state.active_ids = next_active
     state.extinct = isempty(next_active)
 
-    if !isempty(state.transitions)
-        for target in newly_infected
-            resolve_transitions!(state, target)
-        end
+    _settle_generation!(state, interventions, newly_infected, cases_before)
+    return nothing
+end
+
+# The seed cases a model's `initialise_state` infected.
+function _seed_cases(state::SimulationState)
+    return filter(ind -> get(ind.state, :infected, false), state.individuals)
+end
+
+"""
+    _settle_generation!(state, interventions, cases, cases_before)
+
+Settle a generation's new `cases`: every case's clinical transitions
+([`resolve_transitions!`](@ref)), then every case's intervention hooks
+([`resolve_individual!`](@ref)). The generation engine has no time order beyond
+the generation. Each case sees the clock at its own infection time and, as its
+case count, the `cases_before` cases of earlier generations plus those of its
+own generation infected no later than it. Cases sharing an infection time
+are counted in the order they appear in `cases`. The clock, count and
+generation are restored to the generation's totals afterwards, which is what
+the stopping rules read.
+"""
+function _settle_generation!(state::SimulationState, interventions, cases, cases_before)
+    isempty(cases) && return nothing
+    clock, count, generation = state.max_infection_time, state.cumulative_cases,
+        state.current_generation
+    rank = invperm(sortperm([case.infection_time for case in cases]))
+    for (i, case) in enumerate(cases)
+        _at_case!(state, case, cases_before + rank[i])
+        resolve_transitions!(state, case)
+    end
+    for (i, case) in enumerate(cases)
+        _at_case!(state, case, cases_before + rank[i])
+        _resolve_interventions!(state, case, interventions)
+    end
+    state.max_infection_time, state.cumulative_cases = clock, count
+    state.current_generation = generation
+    return nothing
+end
+
+"""
+    _settle_case!(state, case, interventions, count)
+
+Run the hooks that settle one case on the continuous-time race, once its
+infection time is fixed and before it transmits: its clinical transitions
+([`resolve_transitions!`](@ref)), then each intervention's
+[`resolve_individual!`](@ref), with the state at the case as
+[`_at_case!`](@ref) sets it.
+"""
+function _settle_case!(state::SimulationState, case, interventions, count)
+    _at_case!(state, case, count)
+    resolve_transitions!(state, case)
+    _resolve_interventions!(state, case, interventions)
+    return nothing
+end
+
+"""
+    _at_case!(state, case, count)
+
+Set the state a case's settling hooks read: the clock
+(`state.max_infection_time`) at the case's infection time,
+`state.cumulative_cases` to `count` and `state.current_generation` to the case's
+generation.
+"""
+function _at_case!(state::SimulationState, case, count)
+    state.max_infection_time = case.infection_time
+    state.cumulative_cases = count
+    state.current_generation = case.generation
+    return nothing
+end
+
+function _resolve_interventions!(state::SimulationState, case, interventions)
+    for intervention in interventions
+        resolve_individual!(intervention, case, state)
     end
     return nothing
 end
@@ -1337,7 +1486,7 @@ interval, so blocking a fraction of the contacts thins the hazard by the same
 fraction. `builtin_blocks` is where the two part company, dropping
 four of the five built-in sources on a continuous-time model: two that cannot
 apply there, and the per-individual susceptibility and infectiousness, which
-those models already carry in the contact-interval draw.
+those models already fold into the contact-interval draw.
 Nothing is drawn from the rng unless a risk actually applies."""
 function _composed_risks_block(
         state::SimulationState, parent, contact,
@@ -1353,22 +1502,6 @@ function _composed_risks_block(
             return true
     end
     return false
-end
-
-"""Sweep newly added infected individuals (those at indices
-`from_index+1:end`) and run clinical transitions on each. Called by
-[`simulate`](@ref) after `initialise_state` to resolve transitions on
-the seed cases; per-generation resolution happens inside
-[`_advance_generation!`](@ref)."""
-function _resolve_new_transitions!(state::SimulationState, from_index::Int)
-    isempty(state.transitions) && return nothing
-    @inbounds for i in (from_index + 1):length(state.individuals)
-        ind = state.individuals[i]
-        if get(ind.state, :infected, false)
-            resolve_transitions!(state, ind)
-        end
-    end
-    return nothing
 end
 
 """Apply attributes function to an individual. No-op for NoAttributes."""

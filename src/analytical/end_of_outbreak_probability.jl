@@ -76,6 +76,7 @@ end
 
 """
     end_of_outbreak_probability(model::BranchingProcess, τ)
+    end_of_outbreak_probability(spec::ModelSpec, τ)
 
 End-of-outbreak probability using the offspring and generation time
 distributions of a `BranchingProcess`, `τ` days after the most recent case.
@@ -84,14 +85,18 @@ This assumes every case is reported. Under-reporting (a model with a
 [`PerCaseObservation`](@ref)) needs the recursion of Thompson, Morgan &
 Jansen (2019), which is not implemented, and gives an error; use a model
 without an observation model for the full-reporting value.
+
+For a `ModelSpec`, or a process that stores its own interventions, each
+intervention's [`EpiBranch.analytic_offspring_effect`](@ref) is applied to
+the offspring distribution first. If an intervention has no such method, this
+throws an error that names the simulation-based alternative.
 """
 function end_of_outbreak_probability(model::Union{BranchingProcess, ModelSpec}, τ::Real)
     # Refuse under per-case under-reporting rather than silently using
     # the bare offspring: makes the missing `ρ < 1` case discoverable.
     _eoo_assert_full_reporting(observation(model))
-    return end_of_outbreak_probability(
-        single_type_offspring(model), _single_kernel(model), τ
-    )
+    off = _offspring_through_interventions(model, single_type_offspring(model))
+    return end_of_outbreak_probability(off, _single_kernel(model), τ)
 end
 
 _eoo_assert_full_reporting(::NoObservation) = nothing

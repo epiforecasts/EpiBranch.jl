@@ -27,7 +27,7 @@ end
         new_contacts = [confirmed, other_a, another_a, b1, b2]
         append!(state.individuals, new_contacts)
 
-        EpiBranch.apply_post_transmission!(gv, state, new_contacts)
+        EpiBranch.apply_actions!(gv, state, new_contacts)
 
         @test is_vaccinated(confirmed)
         @test is_vaccinated(other_a)
@@ -52,7 +52,7 @@ end
         new_contacts = [confirmed, member]
         append!(state.individuals, new_contacts)
 
-        EpiBranch.apply_post_transmission!(gv, state, new_contacts)
+        EpiBranch.apply_actions!(gv, state, new_contacts)
 
         # The trigger occurs at the confirmed case's isolation time (the
         # default trigger time for a policy that does not override it), so
@@ -77,7 +77,7 @@ end
         new_contacts = [confirmed; members]
         append!(state.individuals, new_contacts)
 
-        EpiBranch.apply_post_transmission!(gv, state, new_contacts)
+        EpiBranch.apply_actions!(gv, state, new_contacts)
 
         vacc_times = [m.state[:vaccination_time] for m in new_contacts]
         @test all(t -> 7.0 <= t <= 10.0, vacc_times)
@@ -104,7 +104,7 @@ end
         new_contacts = [confirmed, member]
         append!(state.individuals, new_contacts)
 
-        EpiBranch.apply_post_transmission!(gv, state, new_contacts)
+        EpiBranch.apply_actions!(gv, state, new_contacts)
 
         for ind in new_contacts
             @test severity_efficacy(ind) == 0.4
@@ -130,7 +130,7 @@ end
         new_contacts = [confirmed, member]
         append!(state.individuals, new_contacts)
 
-        EpiBranch.apply_post_transmission!(gv, state, new_contacts)
+        EpiBranch.apply_actions!(gv, state, new_contacts)
 
         # Vaccinated at 2 + 1 = 3, immune from 3 + 5 = 8.
         risk = EpiBranch._susceptibility_risk(gv, member)
@@ -159,7 +159,7 @@ end
         set_isolated!(confirmed, 4.0; release_time = Inf)
         first_gen = [confirmed]
         append!(state.individuals, first_gen)
-        EpiBranch.apply_post_transmission!(gv, state, first_gen)
+        EpiBranch.apply_actions!(gv, state, first_gen)
         @test is_vaccinated(confirmed)
 
         # A member of the same group appearing only in a later generation
@@ -168,7 +168,7 @@ end
         latecomer = _group_member(gv, 2, :A, test_positive = false)
         second_gen = [latecomer]
         append!(state.individuals, second_gen)
-        EpiBranch.apply_post_transmission!(gv, state, second_gen)
+        EpiBranch.apply_actions!(gv, state, second_gen)
 
         @test is_vaccinated(latecomer)
         @test latecomer.state[:vaccination_time] == confirmed.state[:vaccination_time]
@@ -193,7 +193,7 @@ end
         member = _group_member(gv, 2, :A, test_positive = false)
         first_gen = [confirmed, member]
         append!(state.individuals, first_gen)
-        EpiBranch.apply_post_transmission!(gv, state, first_gen)
+        EpiBranch.apply_actions!(gv, state, first_gen)
         @test member.state[:vaccination_time] == 5.0
 
         # A later generation's own case is confirmed earlier (isolated at 1),
@@ -202,7 +202,7 @@ end
         set_isolated!(earlier_confirmed, 1.0; release_time = Inf)
         second_gen = [earlier_confirmed]
         append!(state.individuals, second_gen)
-        EpiBranch.apply_post_transmission!(gv, state, second_gen)
+        EpiBranch.apply_actions!(gv, state, second_gen)
 
         @test member.state[:vaccination_time] == 5.0
     end
@@ -265,7 +265,7 @@ end
 
         members = [_group_member(gv, i, :A, test_positive = false) for i in 1:3]
         append!(state.individuals, members)
-        EpiBranch.apply_post_transmission!(gv, state, members)
+        EpiBranch.apply_actions!(gv, state, members)
 
         @test !any(is_vaccinated, members)
     end
@@ -289,7 +289,7 @@ end
         member = _group_member(gv, 2, :A, test_positive = false)
         new_contacts = [confirmed, member]
         append!(state.individuals, new_contacts)
-        EpiBranch.apply_post_transmission!(gv, state, new_contacts)
+        EpiBranch.apply_actions!(gv, state, new_contacts)
 
         # Trigger at 10, dose at 12, immunity at 12 + 5 = 17.
         risk = EpiBranch.competing_risk(gv, confirmed, member, state)
@@ -404,7 +404,7 @@ end
         members = [_group_member(gv, i, :A, test_positive = false) for i in 2:201]
         append!(state.individuals, [confirmed; members])
 
-        EpiBranch.apply_post_transmission!(gv, state, [confirmed])
+        EpiBranch.apply_actions!(gv, state, [confirmed])
         first_round = Set(ind.id for ind in members if is_vaccinated(ind))
         # Half of 200 members, up to the sampling noise of a fair coin.
         @test 70 < length(first_round) < 130
@@ -412,7 +412,7 @@ end
         # The group comes back in each later round, once for every member that
         # turns up among the new contacts. Nobody who declined is asked again.
         for _ in 1:10
-            EpiBranch.apply_post_transmission!(gv, state, [members[1]])
+            EpiBranch.apply_actions!(gv, state, [members[1]])
         end
         @test Set(ind.id for ind in members if is_vaccinated(ind)) == first_round
     end
@@ -442,7 +442,7 @@ end
         )
         campaign_state.individuals[1].state[:test_positive] = true
         set_isolated!(campaign_state.individuals[1], 5.0; release_time = Inf)
-        EpiBranch.apply_post_transmission!(gv, campaign_state, campaign_state.individuals)
+        EpiBranch.apply_actions!(gv, campaign_state, campaign_state.individuals)
         return campaign_state
     end
 
@@ -476,7 +476,7 @@ end
     original = outcomes(state)
     @test isequal(outcomes(campaign(19)), original)
     for _ in 1:5
-        EpiBranch.apply_post_transmission!(gv, state, state.individuals)
+        EpiBranch.apply_actions!(gv, state, state.individuals)
     end
     @test isequal(outcomes(state), original)
 
@@ -485,7 +485,7 @@ end
     for ind in state.individuals
         EpiBranch.initialise_individual!(boost, ind, state)
     end
-    EpiBranch.apply_post_transmission!(boost, state, state.individuals)
+    EpiBranch.apply_actions!(boost, state, state.individuals)
     @test all(ind -> is_vaccinated(ind; dose_label = :boost), refused)
     @test isequal(outcomes(state), original)
 end

@@ -121,33 +121,24 @@ function Base.show(io::IO, m::HomogeneousProcess)
 end
 
 """
-    _simulate(model::HomogeneousProcess, sim_opts; interventions, attributes,
-              progression, observation, recorder, rng, condition, max_attempts)
+    simulate_once(model::HomogeneousProcess, sim_opts; interventions, attributes,
+                  progression, observation, recorder, rng)
 
 Simulate the homogeneous population on the continuous-time race, as mass action
 among its members (`_MassAction`), with the modelling layers supplied by the
 caller (a bare process, or a `ModelSpec`). The infectious window's `from` state
 is resolved here from the composed `progression`.
 """
-function _simulate(
+function simulate_once(
         model::HomogeneousProcess, sim_opts::SimOpts;
-        interventions, attributes, progression, observation, recorder, rng,
-        condition, max_attempts
+        interventions, attributes, progression, observation, recorder, rng
     )
-    condition !== nothing && return _retry_for_condition(
-        () -> _simulate(
-            model, sim_opts; interventions, attributes, progression,
-            observation, recorder, rng, condition = nothing, max_attempts
-        ),
-        condition, max_attempts
-    )
-
     n_initial = sim_opts.n_initial
     n_initial >= 1 || throw(ArgumentError("n_initial must be ≥ 1"))
     n_initial <= model.population_size ||
         throw(ArgumentError("n_initial cannot exceed population_size"))
 
-    from = _resolve_infectious_from(model.from, progression)
+    from = something(model.from, infectious_from(progression))
     β = model.transmission_rate
 
     state = new_state(model, progression, attributes, rng)
@@ -160,15 +151,14 @@ function _simulate(
     # β/N, scaled by the two members' infectiousness and susceptibility.
     N = model.population_size
     members = collect(1:N)
-    extinct = _sellke_race!(
-        state, members, rng;
+    sellke_race!(
+        state, members, rng, sim_opts;
         seed! = (best, _, r) -> (best[randperm(r, N)[1:n_initial]] .= 0),
         targets = _MassAction(state, members; rate = (_, _) -> β / N),
         from = from, until = model.until, interventions,
-        risks = transmission_risks(model), max_time = _max_time(sim_opts), recorder
+        risks = transmission_risks(model), recorder
     )
 
-    _reconcile_sellke_bookkeeping!(state, extinct)
     apply_observation!(observation, state, rng)
     return state
 end
@@ -177,12 +167,16 @@ end
 # Shared by the structure-driven models: the infectious window's `from` state is
 # read from the composed progression when the model is simulated.
 
-# The state the infectious window opens at: :infectious when the progression
-# produces it (a latent period), otherwise :infection. An explicit `from`
-# overrides the derivation.
-_resolve_infectious_from(from::Symbol, progression) = from
-_resolve_infectious_from(::Nothing, progression) = _infectious_from(progression)
-function _infectious_from(progression)
+"""
+    infectious_from(progression) -> Symbol
+
+The state a case's infectious window opens at, derived from `progression`:
+`:infectious` when the progression produces it (a latent period), otherwise
+`:infection`. A model whose `from` field can override the derivation reads
+that first and falls back to this only when it is `nothing`, as
+`something(model.from, infectious_from(progression))`.
+"""
+function infectious_from(progression)
     return any(
             t -> hasproperty(t, :state) && getfield(t, :state) === :infectious,
             progression

@@ -722,9 +722,7 @@ function initialise_individual!(::ContactTracing, individual, state)
     return nothing
 end
 
-# One trace attempt for a single infector → contact pair. Both engines funnel
-# through this, so the generation-based and continuous-time paths apply exactly
-# the same eligibility, rate, delay and action policy.
+# One trace attempt for a single infector → contact pair.
 function _trace_pair!(ct::ContactTracing, state, infector, ind, rng; not_before = -Inf)
     # A contact enters the ring two ways. As a *seed*, when its
     # infector is an infected case meeting the eligibility condition
@@ -761,11 +759,9 @@ function _trace_pair!(ct::ContactTracing, state, infector, ind, rng; not_before 
     trace_time = max(base, not_before) + trace_delay
     apply_trace!(ct.action, ind, state, trace_time, rng)
 
-    # Record the source this contact was traced from. The engine makes
-    # one trace attempt per node, from the earliest-exposure infector, so
-    # this is the *first* tracer: exact (the parent) on a tree,
-    # first-reached on a cyclic network. `compute_trace_level!` walks it
-    # back to the index case post-run; see issue #150.
+    # Record the source this contact was traced from: the latest case whose
+    # trace reached it, which on a tree is its parent. `compute_trace_level!`
+    # walks it back to the index case post-run.
     ind.state[:traced_by] = infector.id
 
     # When the contact was reached. Interventions that act on a traced
@@ -786,30 +782,24 @@ function _trace_pair!(ct::ContactTracing, state, infector, ind, rng; not_before 
 
     # Record how far the ring can still grow from this contact, so a
     # contact-of-contact one hop further out can time its own trace from
-    # here. Only `depth > 1` rings expand.
+    # here. Only `depth > 1` rings expand. A node several cases reach keeps
+    # the widest budget any of them gave it.
     if ct.depth > 1
-        ind.state[:_ring_remaining] = seed ? ct.depth - 1 :
+        remaining = seed ? ct.depth - 1 :
             get(infector.state, :_ring_remaining, 0)::Int - 1
-    end
-    return nothing
-end
-
-function apply_post_transmission!(ct::ContactTracing, state, new_contacts)
-    rng = state.rng
-    for ind in new_contacts
-        ind.parent_id == 0 && continue
-        ind.parent_id > length(state.individuals) && continue
-        _trace_pair!(ct, state, state.individuals[ind.parent_id], ind, rng)
+        ind.state[:_ring_remaining] = max(
+            get(ind.state, :_ring_remaining, 0)::Int, remaining
+        )
     end
     return nothing
 end
 
 traces_contacts(::ContactTracing) = true
 
-"""Trace the contacts of `infector` in a continuous-time model, applying the
-same eligibility, probability, delay and action as in a branching process.
-Each contact is traced no earlier than its `not_before` time when one is
-given."""
+"""Trace the contacts of `infector`, applying the same eligibility,
+probability, delay and action to each pair. Each contact is traced no earlier
+than its `not_before` time when one is given. Both engines call this once per
+case."""
 function trace_contacts!(
         ct::ContactTracing, state, infector, contacts, not_before = nothing
     )

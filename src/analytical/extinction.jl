@@ -121,17 +121,22 @@ end
 
 """
     extinction_probability(model::TransmissionModel; kwargs...)
+    extinction_probability(spec::ModelSpec; kwargs...)
 
 Probability that transmission from a single introduced case dies out, from
-the model's offspring distribution. Interventions, population characteristics
-and the observation model are ignored; use [`probability_contain`](@ref) for
-simple control measures, or simulate and use
-[`containment_probability`](@ref). For a single-type model the
-result is one number; for a multi-type model built from an offspring matrix it
-has one value per type of index case.
+the model's offspring distribution. Population characteristics and the
+observation model are ignored. For a single-type model the result is one
+number; for a multi-type model built from an offspring matrix it has one value
+per type of index case.
+
+For a `ModelSpec`, or a process that stores its own interventions, each
+intervention's [`EpiBranch.analytic_offspring_effect`](@ref) is applied to
+the offspring distribution first. If an intervention has no such method, this
+throws an error that names the simulation-based alternative.
 """
 function extinction_probability(model::Union{TransmissionModel, ModelSpec}; kwargs...)
-    return extinction_probability(_analytic_offspring(model); kwargs...)
+    off = _offspring_through_interventions(model, _analytic_offspring(model))
+    return extinction_probability(off; kwargs...)
 end
 
 # ── Containment probability (analytical) ─────────────────────────────
@@ -230,12 +235,17 @@ end
 
 """
     probability_contain(model::TransmissionModel; kwargs...)
+    probability_contain(spec::ModelSpec; kwargs...)
 
 Closed-form containment probability for a single-type model, from its
 offspring distribution, with the same keywords as `probability_contain(R, k)`.
-The model's own interventions are not included; express control through
-`ind_control` and `pop_control`.
+
+For a `ModelSpec`, or a process that stores its own interventions, each
+intervention's [`EpiBranch.analytic_offspring_effect`](@ref) is applied to
+the offspring distribution first. If an intervention has no such method, this
+throws an error that names the simulation-based alternative.
 """
 function probability_contain(model::Union{TransmissionModel, ModelSpec}; kwargs...)
-    return probability_contain(single_type_offspring(model); kwargs...)
+    off = _offspring_through_interventions(model, single_type_offspring(model))
+    return probability_contain(off; kwargs...)
 end

@@ -11,8 +11,8 @@
 # that `linelist` renders.
 
 """
-    _simulate(model::NetworkProcess, sim_opts; interventions, attributes,
-              progression, observation, recorder, rng, condition, max_attempts)
+    simulate_once(model::NetworkProcess, sim_opts; interventions, attributes,
+                  progression, observation, recorder, rng)
 
 Simulate a network outbreak exactly in continuous time, with the natural
 history and interventions supplied by the caller (a bare process, or a
@@ -28,20 +28,11 @@ be finite (otherwise everyone would eventually be infected from outside).
 Chosen `initial_cases` are infected at day 0 regardless, and any external
 hazard still acts on everyone else from day 0.
 """
-function _simulate(
+function simulate_once(
         model::NetworkProcess, sim_opts::SimOpts;
-        interventions, attributes, progression, observation, recorder, rng,
-        condition, max_attempts
+        interventions, attributes, progression, observation, recorder, rng
     )
-    condition !== nothing && return _retry_for_condition(
-        () -> _simulate(
-            model, sim_opts; interventions, attributes, progression,
-            observation, recorder, rng, condition = nothing, max_attempts
-        ),
-        condition, max_attempts
-    )
-
-    from = _resolve_infectious_from(model.from, progression)
+    from = something(model.from, infectious_from(progression))
     Tobs = model.obs_end
     n_initial = sim_opts.n_initial
 
@@ -58,12 +49,12 @@ function _simulate(
                 "the whole network); build the process with e.g. `obs_end = 30.0`"
         )
     )
-    extinct = EpiBranch._sellke_race!(
-        state, collect(1:n), rng;
+    EpiBranch.sellke_race!(
+        state, collect(1:n), rng, sim_opts;
         from = from, until = model.until, interventions = interventions,
-        max_time = EpiBranch._max_time(sim_opts),
         risks = EpiBranch.transmission_risks(model),
-        watches = (EpiBranch.watched_records(model.edge_kernel),), recorder = recorder,
+        watches = (EpiBranch.watched_records(model.edge_kernel),),
+        projections = (EpiBranch.kernel_projection(model.edge_kernel),), recorder = recorder,
         seed! = (best, members, r) -> _seed_network!(
             best, members, state, model.external_hazard, n_initial, Tobs, r;
             initial_cases = sim_opts.initial_cases
@@ -80,7 +71,6 @@ function _simulate(
         contacts = (inf, st) -> model.adjacency[inf]
     )
 
-    _reconcile_sellke_bookkeeping!(state, extinct)
     # Apply the observation model (under-reporting, report delays), as core
     # `simulate` does. A no-op for the default `NoObservation`.
     apply_observation!(observation, state, rng)

@@ -136,6 +136,9 @@ function resolve_individual!(s::Scheduled, ind, state)
     return nothing
 end
 
+# Kept for wrapping an intervention that still implements the deprecated batch
+# hook; the engine hands the batch here only when the wrapped one does.
+_uses_batch_hook(s::Scheduled) = _uses_batch_hook(s.intervention)
 function apply_post_transmission!(s::Scheduled, state, new_contacts)
     actions = intervention_actions(s, state, new_contacts)
     if actions !== nothing
@@ -228,8 +231,7 @@ function keep_active(s::Scheduled, state, targets, is_new)
     return keep_active(s.intervention, state, targets, is_new)
 end
 
-# Tracing on the continuous-time path, gated by the schedule exactly as
-# `apply_post_transmission!` is on the generation-based one.
+# Tracing, gated by the schedule at the infector's clock.
 function trace_contacts!(s::Scheduled, state, infector, contacts, not_before = nothing)
     is_active(s, state) || return nothing
     if not_before === nothing

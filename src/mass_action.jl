@@ -7,7 +7,7 @@
 # pair costs a draw per pair on every opening: O(N) per case. Only the pairs
 # whose first contact falls inside the infector's window lead to a proposal, and
 # with an exponential interval each pair does so independently, with probability
-# `1 - exp(-r·L)` over a window of length `L`. So a mass-action route samples
+# `1 - exp(-r·L)` over a window of length `L`, so a mass-action route samples
 # just those pairs, by geometric skips through each group, and draws each one's
 # contact time from the exponential conditioned on falling inside the window.
 # That is the same process as drawing every pair and discarding the late ones,
@@ -103,7 +103,7 @@ function _pair_kernel(m::_MassAction, infector_id, target_id, state)
 end
 
 function _propose_along!(
-        m::_MassAction, race, infector_id, opening_id, open_t, close_t, traits, live
+        m::_MassAction, race, infector_id, opening_id, open_t, close_t, traits, live, ri
     )
     live && throw(
         ArgumentError("a mass-action route reads no host records, so none can be watched")
