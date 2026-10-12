@@ -661,11 +661,9 @@ end
 # `continuous_actions`: that already answers, for its own configuration,
 # whether `apply_post_transmission!`'s mechanism has a continuous-time
 # counterpart, and a settled hook written for an unrelated feature must not
-# override it. `RingVaccination`'s settled hook, for one, only ever
-# reconsiders a post-exposure dose, never the ring dosing
-# `apply_post_transmission!` performs, so a finite `eligibility_window` —
-# which makes its own `continuous_actions` false — must still leave the ring
-# dosing unhonoured. Both checks are judged against `_hook_owner`, not `iv`
+# override it. So an intervention with its own `continuous_actions` method
+# forgoes the shortcut whatever that method returns for a given
+# configuration. Both checks are judged against `_hook_owner`, not `iv`
 # itself: a wrapper such as `CapacityConstrained`, which leaves
 # `continuous_actions` and `on_infection_settled!` to `InterventionWrapper`'s
 # forwarding, is judged by the intervention it wraps, while its own override
