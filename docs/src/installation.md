@@ -35,14 +35,15 @@ it with `using EpiBranch`, as you would `library()` a package in R.
 
 The household and network packages (EpiHouseholds and EpiNetwork) need a newer
 version of EpiBranch (0.2) than the one registered (0.1.0). Until 0.2 is
-released, install all three from GitHub at the same commit:
+released, install all three from the development version on GitHub (the
+`main` branch):
 
 ```julia
 using Pkg
 Pkg.activate("my-analysis")
 repo = "https://github.com/epiforecasts/EpiBranch.jl"
-# A commit on which the three packages work together
-rev = "9e1c3be3505202fce50679ee43cd10efd66a8690"
+# The development version, which these pages describe
+rev = "main"
 Pkg.add([
     PackageSpec(url = repo, rev = rev),
     PackageSpec(url = repo, rev = rev, subdir = "lib/EpiHouseholds"),
@@ -51,10 +52,11 @@ Pkg.add([
 ```
 
 `PackageSpec` says where to install a package from: here the GitHub repository,
-a commit (`rev`), and for the two companion packages the folder within the
-repository that holds them (`subdir`). To use a newer version, replace `rev`
-with the full identifier (hash) of a later commit from the
+a branch or commit (`rev`), and for the two companion packages the folder within
+the repository that holds them (`subdir`). Running `Pkg.update()` later brings
+all three up to the latest development version. To fix an analysis to one
+version instead, set `rev` to the full identifier (hash) of a commit from the
 [commit list on GitHub](https://github.com/epiforecasts/EpiBranch.jl/commits/main),
-and use the same one for all three packages.
+the same one for all three packages.
 
 Once EpiBranch 0.2 is released this becomes an ordinary `Pkg.add`.

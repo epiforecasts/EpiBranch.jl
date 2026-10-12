@@ -47,6 +47,7 @@ makedocs(;
             ],
         ],
         "Design" => "design.md",
+        "Benchmarks" => "benchmarks.md",
         "Glossary" => "glossary.md",
         "Notes for contributors" => "contributing.md",
         "API reference" => "api.md",

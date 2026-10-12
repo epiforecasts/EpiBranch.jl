@@ -42,13 +42,14 @@ and quarantines them, also for good.
 ## How a dose protects
 
 A dose protects from `delay_to_immunity` days after it is given (0 by
-default). It has up to three effects, each a probability; the last two,
+default). It has up to four effects, each a probability; two of them,
 `onward_efficacy` and `post_exposure_efficacy`, are only on
 [`RingVaccination`](@ref):
 
 | Parameter | What it prevents | Acts if protection starts |
 |---|---|---|
 | `efficacy` | the vaccinated person being infected | before the exposure |
+| `severity_efficacy` | a severe outcome, such as death, in a vaccinated person who is infected anyway | before that outcome would take effect |
 | `onward_efficacy` | the vaccinated person infecting others | before each of their transmissions |
 | `post_exposure_efficacy` | an infection the person already has | before symptom onset (if before the exposure, it blocks the infection itself) |
 
@@ -58,6 +59,19 @@ proportion of vaccinated people fully protected and leaves the rest
 unprotected. In a branching process every exposure is a different person, and
 the two give the same results on average. They differ in models where a
 person can be exposed more than once, such as households and networks.
+
+`severity_efficacy` is the one effect the model does not apply on its own. It
+reaches the outbreak only through a clinical step in the model's `progression`
+(see [Clinical transitions](transitions.md)), such as [`Death`](@ref) or
+[`Hospitalisation`](@ref), whose `probability` reads
+[`severity_efficacy`](@ref) and [`immunity_time`](@ref) for the person:
+
+```julia
+Death(delay = LogNormal(2.5, 0.4),
+      probability = (rng, ind) ->
+          immunity_time(ind) <= onset_time(ind) ?
+              0.7 * (1 - severity_efficacy(ind)) : 0.7)
+```
 
 !!! note "Compare many replicates"
     Every scenario uses its own random draws. Two scenarios run once each
@@ -267,6 +281,7 @@ onset, and the incubation period here averages about five days:
 
 ```@example vaccination
 for days in [0.0, 2.0, 5.0, 21.0]
+    # `let` keeps the loop's own `rng` apart from the one above.
     let pep = RingVaccination(efficacy = 0.0, post_exposure_efficacy = 0.9,
             delay_to_immunity = days),
         rng = StableRNG(42)
@@ -442,8 +457,10 @@ println("Mass vaccination from day 30: $(round(containment_probability(results),
 ```
 
 With R = 3, an outbreak that takes off reaches the case cap well before
-protection starts on day 44. Containment stays close to the baseline without
-interventions.
+protection starts on day 44. Containment stays level with the baseline
+without interventions: at 200 outbreaks the standard error on each estimate
+is about 0.015, so the gap between the two printed numbers is simulation
+error.
 
 For a gradual rollout in which each person becomes eligible at a random
 time, pass a distribution. `Exponential(60.0)` makes the mean wait 60 days:
@@ -452,6 +469,7 @@ time, pass a distribution. `Exponential(60.0)` makes the mean wait 60 days:
 mv_random = MassVaccination(efficacy = 0.85,
     eligibility_time = Exponential(60.0),
     delay_to_immunity = 14.0)
+nothing # hide
 ```
 
 For a rollout by age, pass a function of the individual. This needs ages: add
@@ -472,6 +490,10 @@ results = simulate(scenario([mv_age], attrs), 200; max_cases = 500, rng = rng)
 println("Age-stratified rollout: $(round(containment_probability(results), digits=3))")
 ```
 
+Containment is at the no-intervention baseline again: the older group is
+protected from day 44 and everyone else from day 104, and an outbreak that
+takes off has reached the case cap well before either.
+
 ### Efficacy that varies between people
 
 `efficacy` can be one number for everyone, a distribution (people differ at
@@ -485,6 +507,7 @@ mv_heterogeneous = MassVaccination(
     eligibility_time = (rng, ind) -> ind.state[:age] >= 65 ? 30.0 : 90.0,
     delay_to_immunity = 14.0,
 )
+nothing # hide
 ```
 
 ## Multi-dose schedules
@@ -504,6 +527,9 @@ rng = StableRNG(42)
 results = simulate(scenario([prime, boost]), 200; max_cases = 500, rng = rng)
 println("Two-dose rollout: $(round(containment_probability(results), digits=3))")
 ```
+
+This is the baseline again, for the same reason: the prime protects from day
+44 and the boost from day 74, by which time the outbreak has reached the cap.
 
 !!! warning "Enter the efficacy each dose adds"
     Doses protect independently: an exposure is blocked unless every dose
@@ -565,9 +591,12 @@ infected after being traced (see the warning in
 [Ring vaccination](@ref)). Even under `ct_onset`, where infections do
 follow the trace, they follow within days. Both doses here start protecting
 weeks after the trace, too late for those infections (see
-[Delay to immunity](@ref)). Removing the boost and re-running is not a
-controlled comparison either. The two runs use different random draws, and
-their containment can differ by chance in either direction (see the note on
+[Delay to immunity](@ref)). The 0.255 above is not comparable with the 0.27
+printed for isolation and tracing alone: each dose's `coverage` is drawn,
+which shifts the random stream, and setting both efficacies to zero gives
+0.255 as well. Removing the boost and re-running is not a controlled
+comparison either. The two runs use different random draws, and their
+containment can differ by chance in either direction (see the note on
 comparing many replicates above).
 
 ## Repeat campaign visits
@@ -612,9 +641,11 @@ println("Reached among willing people: $(round(campaign_reach, digits = 3)); ",
 ```
 
 Overall coverage is the share willing times the share of willing people
-reached. A person with `:willing == false` refuses throughout the campaign,
-and a willing person left unvaccinated was never reached. For a reach
-probability of zero, use `coverage = 0.0` directly. A single visit gives the
+reached. Those are the shares the parameters aim for; a run comes out a few
+points below them, for the reason in the limitations note. A person with
+`:willing == false` refuses throughout the campaign, and a willing person
+left unvaccinated was either never reached or never offered a dose. For a
+reach probability of zero, use `coverage = 0.0` directly. A single visit gives the
 usual campaign with one opportunity. Use a different `dose_label` for another
 dose; willingness can be shared across doses, as here, or stored separately
 for each.
@@ -626,6 +657,13 @@ for each.
     capacity or to how the outbreak develops, and failed visits are not
     recorded. Visits are assumed to reach people independently, with a fixed
     probability.
+
+    A group is also offered doses only in a generation in which it gains a
+    new member, so a group whose trigger arrives after its last new member
+    leaves those members unvaccinated. A group that grows later is reached
+    again, each new member bringing their group with them. In this model a
+    few per cent of willing people are never offered a dose, which puts
+    measured coverage a few points below the shares above.
 
 ## Limited vaccine supply
 
