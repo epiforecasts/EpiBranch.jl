@@ -228,11 +228,12 @@ function _sim_loglikelihood(
 end
 
 # Observed chain sizes for one simulated state. With `NoObservation` and no
-# `Reporting` step in `progression`, nothing thins detection: every infected
-# case counts. Otherwise only the cases marked `:reported` count — written by
-# `Reporting` during the progression pass, or by `apply_observation!`
-# afterwards for an observation model (`ModelSpec` refuses to carry both, see
-# its constructor, so only one of the two ever sets the flag).
+# `Reporting` step in `progression`, detection is not thinned at all, so
+# every infected case counts. Otherwise only the cases marked `:reported`
+# count. That flag is set either by `Reporting` during the progression pass,
+# or by `apply_observation!` afterwards for an observation model; since
+# `ModelSpec`'s constructor refuses a model that specifies both, only one of
+# the two ever sets it.
 function _sim_chain_sizes(state, obs::MinimumSize, progression)
     return filter(>=(obs.min_size), chain_statistics(state).size)
 end

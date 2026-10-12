@@ -42,9 +42,9 @@ end
 # A `Reporting` step in `progression` and a per-case `observation` both
 # describe the same reporting process: `simulate` resolves `Reporting` during
 # the progression pass and then lets `apply_observation!` overwrite
-# `:reported` with the observation's own independent draw, so carrying both
-# would silently discard `Reporting`'s result rather than combine with it.
-# Refuse the combination instead of guessing which one the caller meant.
+# `:reported` with the observation's own independent draw. Specifying both
+# would silently discard `Reporting`'s result rather than combine with it, so
+# refuse the combination instead of guessing which one the caller meant.
 function _validate_single_reporting_source(progression, observation)
     observation isa NoObservation && return nothing
     any(t -> t isa Reporting, progression) || return nothing

@@ -199,8 +199,9 @@ end
 
     @testset "Reporting and a per-case observation cannot both be set" begin
         # A `Reporting` step in `progression` and a per-case `observation`
-        # both describe case reporting; carrying both would leave `simulate`
-        # silently letting the observation's draw overwrite `Reporting`'s.
+        # both describe case reporting; specifying both would leave
+        # `simulate` silently letting the observation's draw overwrite
+        # `Reporting`'s.
         bp = BranchingProcess(Poisson(1.5), Exponential(5.0))
         rep = Reporting(delay = Dirac(0.0), probability = 0.5)
         @test_throws ArgumentError ModelSpec(

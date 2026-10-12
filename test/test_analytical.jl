@@ -436,8 +436,8 @@
             ll_observation = loglikelihood(data, by_observation)
             @test ll_transition ≈ ll_observation
             # Thinning at 0.5 must differ from the unthinned, full-reporting
-            # likelihood — both routes have to apply the probability, not
-            # silently skip it.
+            # likelihood: both routes have to apply the probability instead
+            # of silently skipping it.
             @test ll_transition != loglikelihood(data, ModelSpec(proc))
         end
 
@@ -1085,8 +1085,8 @@
 
         @testset "A Reporting step thins the simulated chain sizes too" begin
             # Regression: with interventions present (forcing the simulation
-            # path), a `Reporting` step in `progression` used to be ignored —
-            # every infected case counted, as if detection were perfect.
+            # path), a `Reporting` step in `progression` used to be ignored,
+            # so every infected case counted as if detection were perfect.
             iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
             clinical = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
             mk(progression) = ModelSpec(

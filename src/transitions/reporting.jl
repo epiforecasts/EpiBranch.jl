@@ -27,7 +27,7 @@ time and the transition skips, which is the correct behaviour.
 (`loglikelihood(::ChainSizes, ...)`, `chain_size_distribution`) all read this
 step's detection probability. Describes the same reporting process as
 [`PerCaseObservation`](@ref), an observation model: `ModelSpec` refuses a
-model that carries both.
+model that specifies both.
 """
 Base.@kwdef struct Reporting{D, P, F} <: AbstractClinicalTransition
     delay::D

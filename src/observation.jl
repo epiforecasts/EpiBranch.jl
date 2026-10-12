@@ -178,11 +178,11 @@ end
 
 """
 Fold a `Reporting` step in `progression` into `obs`, so the closed-form
-chain-size law reads the same detection probability `simulate` and
-[`progression_loglik`](@ref) already do. `ModelSpec` refuses to carry both a
-`Reporting` step and a non-`NoObservation` observation (see its constructor),
-so `obs` here is always `NoObservation` whenever a `Reporting` step is
-present; returns `obs` unchanged when `progression` carries none.
+chain-size law reads the same detection probability as `simulate` and
+[`progression_loglik`](@ref). `ModelSpec`'s constructor refuses a model that
+specifies both a `Reporting` step and a non-`NoObservation` observation;
+`obs` here is therefore always `NoObservation` whenever a `Reporting` step is
+present. Returns `obs` unchanged when `progression` has none.
 """
 function _reporting_observation(progression, obs)
     reporting = filter(t -> t isa Reporting, progression)
