@@ -100,6 +100,8 @@ EpiBranch.analytic_offspring_effect(::_HalfThinning, d::NegativeBinomial) =
         for f in (
                 extinction_probability, epidemic_probability, probability_contain,
                 reproduction_number, proportion_transmission, offspring_distribution,
+                proportion_cases_individual, proportion_cases_offspring,
+                proportion_cluster_size, spec -> end_of_outbreak_probability(spec, 7.0),
             )
             @test_throws r"Isolation" f(spec)
             @test_throws r"probability_contain\(R, k; ind_control, pop_control\)" f(spec)
@@ -124,6 +126,9 @@ EpiBranch.analytic_offspring_effect(::_HalfThinning, d::NegativeBinomial) =
         @test epidemic_probability(spec) == epidemic_probability(halved)
         @test probability_contain(spec) == probability_contain(halved)
         @test proportion_transmission(spec) == proportion_transmission(halved)
+        @test proportion_cases_individual(spec) == proportion_cases_individual(halved)
+        @test proportion_cases_offspring(spec) == proportion_cases_offspring(halved)
+        @test proportion_cluster_size(spec) == proportion_cluster_size(halved)
     end
 
     @testset "analytical chain likelihood ignores non-transmission layers" begin

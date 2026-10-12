@@ -156,11 +156,9 @@ end
 
 # ── Interventions in the analytical functions ────────────────────────
 #
-# `extinction_probability`, `epidemic_probability`, `probability_contain`,
-# `reproduction_number`, `proportion_transmission` and `offspring_distribution`
-# each read an offspring distribution from a spec and pass it through every
-# intervention's `analytic_offspring_effect`. An intervention without a method
-# reaches the generic one, which throws.
+# Each analytical function on a spec reads the offspring distribution and
+# passes it through every intervention's `analytic_offspring_effect`. An
+# intervention without a method reaches the generic one, which throws.
 function _offspring_through_interventions(spec::ModelSpec, offspring)
     for iv in interventions(spec)
         offspring = analytic_offspring_effect(iv, offspring)

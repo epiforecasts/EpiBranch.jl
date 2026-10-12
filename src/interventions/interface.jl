@@ -319,7 +319,9 @@ generation-time distribution has no such form. Isolation's effect on R is one
 of these, and `Isolation` has no method. The generic method throws an error,
 which makes [`extinction_probability`](@ref), [`epidemic_probability`](@ref),
 [`probability_contain`](@ref), [`reproduction_number`](@ref),
-[`proportion_transmission`](@ref) and [`offspring_distribution`](@ref) throw
+[`proportion_transmission`](@ref), [`proportion_cases_individual`](@ref),
+[`proportion_cases_offspring`](@ref), [`proportion_cluster_size`](@ref),
+`end_of_outbreak_probability` and [`offspring_distribution`](@ref) throw
 too when called on a [`ModelSpec`](@ref) with an intervention that has no
 method.
 """

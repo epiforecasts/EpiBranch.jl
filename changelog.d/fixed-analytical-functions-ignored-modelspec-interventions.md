@@ -1,6 +1,8 @@
 `extinction_probability`, `epidemic_probability`, `probability_contain`,
-`reproduction_number`, `proportion_transmission` and `offspring_distribution`
-read only the offspring distribution of a `ModelSpec`'s process, so a spec with
+`reproduction_number`, `proportion_transmission`,
+`proportion_cases_individual`, `proportion_cases_offspring`,
+`proportion_cluster_size`, `end_of_outbreak_probability` and
+`offspring_distribution` read only the offspring distribution of a `ModelSpec`'s process, so a spec with
 interventions gave the same answer as one without them. They now apply each
 intervention's closed-form effect on the offspring distribution, declared
 through the new `EpiBranch.analytic_offspring_effect`. On a spec with an
