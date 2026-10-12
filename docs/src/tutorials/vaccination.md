@@ -456,8 +456,10 @@ println("Mass vaccination from day 30: $(round(containment_probability(results),
 ```
 
 With R = 3, an outbreak that takes off reaches the case cap well before
-protection starts on day 44. Containment stays close to the baseline without
-interventions.
+protection starts on day 44. Containment stays level with the baseline
+without interventions: at 200 outbreaks the standard error on each estimate
+is about 0.015, so the gap between the two printed numbers is simulation
+error.
 
 For a gradual rollout in which each person becomes eligible at a random
 time, pass a distribution. `Exponential(60.0)` makes the mean wait 60 days:
