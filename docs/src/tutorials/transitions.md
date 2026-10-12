@@ -1,9 +1,8 @@
 # Clinical transitions
 
-What happens to each case after infection: when do symptoms start, when is the
-case reported, is it admitted to hospital, and does it recover or die? Each
-case follows a disease timeline of events, each happening a delay after an
-earlier one. You describe the timeline as a list of events called
+Each case follows a disease timeline after infection: symptom onset, reporting,
+maybe admission to hospital, and recovery or death. Each event happens a delay
+after an earlier one. You describe the timeline as a list of events called
 `progression` and give it to a [`ModelSpec`](@ref) alongside the transmission
 process. Control measures (isolation, contact tracing, vaccination) go in the
 model's `interventions`; the course of disease goes in its `progression`.
@@ -61,12 +60,32 @@ the delay in days, not of the delay itself: `LogNormal(1.0, 0.3)` has a mean
 of about 2.8 days. `Exponential(θ)` has mean θ days. Each row of the line list
 is a case, with the date of each event it reached and its final outcome.
 
-!!! note "Events are drawn separately"
-    Each event is drawn on its own. An admission date can therefore fall after
-    the date of recovery. To tie one event to another, make its probability
-    depend on the earlier event (see
-    [Events that depend on an earlier event](@ref)) or time it from that
-    event (see [Measuring delays from an earlier event](@ref)).
+`Reporting` and `Hospitalisation` draw their own time independently of
+`Death` and `Recovery`, so a draw can fall after the case's outcome — a
+report or an admission cannot happen to a person who has already died or
+recovered. The engine resets such an event to "did not occur"
+(`:reported`/`:admitted` back to `false`, their time back to `Inf`): see
+[`censor_after_outcome!`](@ref EpiBranch.censor_after_outcome!).
+
+Where admission is meant to change the outcome rather than sit alongside
+it, chain `Death`/`Recovery` onto `Hospitalisation` with `from =
+:admission_time` instead, so the outcome delay is measured from admission:
+
+```@example transitions
+progression_post_admission = [
+    Hospitalisation(delay = LogNormal(2.0, 0.5), probability = 0.2),
+    Death(delay = LogNormal(1.5, 0.4), probability = 0.1, from = :admission_time),
+    Recovery(delay = LogNormal(2.0, 0.4)),
+]
+model = ModelSpec(
+    BranchingProcess(Poisson(2.0), Exponential(5.0));
+    progression = progression_post_admission, attributes = clinical
+)
+state = simulate(model; max_cases = 200, rng = StableRNG(42))
+```
+
+A case not admitted still recovers from onset as before; `Death`'s own
+anchor is simply unreached for it, so it never enters that race.
 
 ## Asymptomatic cases
 
@@ -398,6 +417,96 @@ contribute nothing.
     A delay given as a function `(rng, ind) -> ...` can be simulated but has
     no density, and `progression_loglik` throws an error on it. To use the
     likelihood, give each delay as a distribution or a fixed number of days.
+
+## Writing a non-terminal custom transition
+
+Non-terminal transitions follow the same pattern minus `is_terminal`
+and `terminal_event`. They mark milestones on the timeline that other
+transitions or downstream observation can read:
+
+```@example transitions
+struct AntiviralTreatment <: AbstractClinicalTransition
+    delay::Distribution
+    probability::Float64
+end
+
+EpiBranch.required_fields(::AntiviralTreatment) = [:onset_time]
+
+function EpiBranch.initialise_individual!(::AntiviralTreatment, ind, state)
+    ind.state[:treated] = false
+    ind.state[:treatment_time] = Inf
+    return nothing
+end
+
+function EpiBranch.resolve_individual!(t::AntiviralTreatment, ind, state)
+    ot = onset_time(ind)
+    isnan(ot) && return nothing
+    # Only treat reported cases (read upstream state).
+    get(ind.state, :reported, false) || return nothing
+    rand(state.rng) < t.probability || return nothing
+    ind.state[:treated] = true
+    ind.state[:treatment_time] = ot + rand(state.rng, t.delay)
+    return nothing
+end
+```
+
+A downstream `Death` transition can read `ind.state[:treated]` in its
+own callable probability to encode "treated cases have lower mortality":
+
+```julia
+Death(
+    delay = LogNormal(2.5, 0.4),
+    probability = (rng, ind) -> ind.state[:treated] ? 0.02 : 0.08,
+)
+```
+
+`AntiviralTreatment` has no [`EpiBranch.transition_loglik`](@ref) method of
+its own, so [`progression_loglik`](@ref) throws on a progression that includes
+it. Give it one, reading back the same `:treated`/`:treatment_time` keys
+`resolve_individual!` writes:
+
+```julia
+function EpiBranch.transition_loglik(t::AntiviralTreatment, ind)
+    ot = onset_time(ind)
+    isnan(ot) && return 0.0
+    get(ind.state, :reported, false) || return 0.0
+    flag = ind.state[:treated]
+    time = flag ? ind.state[:treatment_time] : Inf
+    occurred = flag && time <= outcome_time(ind)
+    ll = EpiBranch.transition_term(
+        t.probability, t.delay, ind, ot, occurred;
+        censor = min(EpiBranch.infection_aborted_time(ind), outcome_time(ind))
+    )
+    occurred || return ll
+    return ll + logpdf(t.delay, time - ot)
+end
+```
+
+[`EpiBranch.transition_term`](@ref) gives the gate's contribution. Reading
+`t.probability` directly would be wrong for a gate built by
+[`exclusive_probabilities`](@ref), whose siblings share one draw, and for a
+case whose infection was aborted before the transition could take effect; the
+[extending guide](@ref "Extending EpiBranch") spells both out.
+
+Alongside a terminal transition, `AntiviralTreatment` should also implement
+[`EpiBranch.censor_after_outcome!`](@ref) so a treatment drawn after the case's
+outcome reads as not having happened, the same way the built-ins do:
+
+```julia
+function EpiBranch.censor_after_outcome!(::AntiviralTreatment, ind)
+    if ind.state[:treatment_time] > ind.state[:outcome_time]
+        ind.state[:treated] = false
+        ind.state[:treatment_time] = Inf
+    end
+    return nothing
+end
+```
+
+That's the whole extension surface. Three ingredients (the shared
+`ind.state` dict, callable probability/delay, optional terminal
+arbitration) are enough for the cases covered here: independent
+parallel draws, sequential chains, treatment-conditional outcomes,
+capacity-dependent rates.
 
 To write your own kind of event, with its own likelihood, see
 [Extending EpiBranch](extending.md).

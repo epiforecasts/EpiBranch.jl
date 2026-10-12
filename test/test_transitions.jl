@@ -172,6 +172,25 @@ EpiBranch.observation(m::SingleSpawnModel) = m.observation
         @test all(!isfinite(ind.state[:reporting_time]) for ind in state.individuals)
     end
 
+    @testset "A non-terminal event after the outcome is censored" begin
+        # Admission delay (10 days) outlasts recovery (2 days) for every case,
+        # so every admission this would otherwise record falls after the
+        # outcome that ends the case's clinical course.
+        rng = StableRNG(10)
+        model = BranchingProcess(Poisson(1.5), Exponential(5.0))
+        hosp = Hospitalisation(delay = (rng, ind) -> 10.0, probability = 1.0)
+        recovery = Recovery(delay = (rng, ind) -> 2.0)
+        state = tsim(
+            model; attributes = clinical, transitions = [hosp, recovery],
+            max_cases = 50, rng = rng
+        )
+        for ind in state.individuals
+            @test ind.state[:outcome] == :recovered
+            @test ind.state[:admitted] == false
+            @test ind.state[:admission_time] == Inf
+        end
+    end
+
     @testset "Death/Recovery: terminal arbitration sets :outcome" begin
         rng = StableRNG(7)
         model = BranchingProcess(Poisson(1.5), Exponential(5.0))
@@ -257,7 +276,9 @@ EpiBranch.observation(m::SingleSpawnModel) = m.observation
         hosp_infection = Hospitalisation(
             delay = (rng, ind) -> 1.0, probability = 1.0, from = :infection
         )
-        rec_infection = Recovery(delay = (rng, ind) -> 1.0, from = :infection)
+        # Recovery's delay is kept well past the other two so its outcome
+        # time never censors them (see `censor_after_outcome!`).
+        rec_infection = Recovery(delay = (rng, ind) -> 1000.0, from = :infection)
         state = tsim(
             model; attributes = clinical,
             transitions = [rep_onset, hosp_infection, rec_infection],
@@ -268,7 +289,7 @@ EpiBranch.observation(m::SingleSpawnModel) = m.observation
             @test ind.state[:reporting_time] ≈ onset_time(ind) + 1.0
             @test ind.state[:admitted]
             @test ind.state[:admission_time] ≈ ind.infection_time + 1.0
-            @test ind.state[:recovery_candidate_time] ≈ ind.infection_time + 1.0
+            @test ind.state[:recovery_candidate_time] ≈ ind.infection_time + 1000.0
         end
 
         rep_infection = Reporting(delay = (rng, ind) -> 1.0, from = :infection)
