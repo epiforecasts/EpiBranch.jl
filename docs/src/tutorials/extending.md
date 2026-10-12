@@ -288,10 +288,11 @@ law the analytical functions take: a `Poisson` or `NegativeBinomial` for a
 single-type process. A population-level reduction of R by a factor `p`, for
 example, turns `NegBin(R, k)` into `NegBin(p * R, k)`. Most interventions have
 no such form. Isolation's effect on R depends on how its timing overlaps the
-generation-time distribution, and `Isolation` has no method. On a spec that includes it, the analytical functions
-above throw an error that points to
-`probability_contain(R, k; ind_control, pop_control)` for an approximation and
-`containment_probability(simulate(spec, n))` for the simulated answer.
+generation-time distribution, and `Isolation` has no method. On a spec that
+includes it, the analytical functions above throw an error that points to
+simulating the spec. For containment it names
+`containment_probability(simulate(spec, n))` for the simulated answer and
+`probability_contain(R, k; ind_control, pop_control)` for an approximation.
 
 `reads_population_state` covers whatever an intervention delegates to: a
 component or callable you supply counts as part of its owner's answer. A

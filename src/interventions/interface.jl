@@ -330,10 +330,10 @@ function analytic_offspring_effect(iv::AbstractIntervention, offspring)
         ArgumentError(
             "$(typeof(iv)) has no closed-form effect on the offspring distribution " *
                 "(no `analytic_offspring_effect` method), so this analytical function " *
-                "cannot account for it. Use " *
-                "probability_contain(R, k; ind_control, pop_control) for an " *
-                "approximation, or containment_probability(simulate(spec, n)) for " *
-                "the simulated answer."
+                "cannot account for it. Compute the quantity from simulated outbreaks, " *
+                "simulate(spec, n), instead. For containment, " *
+                "containment_probability(simulate(spec, n)) gives the simulated answer " *
+                "and probability_contain(R, k; ind_control, pop_control) an approximation."
         )
     )
 end

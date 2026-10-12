@@ -104,6 +104,7 @@ EpiBranch.analytic_offspring_effect(::_HalfThinning, d::NegativeBinomial) =
                 proportion_cluster_size, spec -> end_of_outbreak_probability(spec, 7.0),
             )
             @test_throws r"Isolation" f(spec)
+            @test_throws r"from simulated outbreaks, simulate\(spec, n\)" f(spec)
             @test_throws r"probability_contain\(R, k; ind_control, pop_control\)" f(spec)
             @test_throws r"containment_probability\(simulate\(spec, n\)\)" f(spec)
         end
