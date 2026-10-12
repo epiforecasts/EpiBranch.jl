@@ -26,8 +26,7 @@ the first group contacts one member of the second. Homogeneous mixing is
 `β/N` for every pair; a contact matrix `M[b, a]` giving the rate at which one
 infective in group `a` contacts the `n[b]` members of group `b` between them
 gives `M[b, a]/n[b]`. It is simulated as mass action on the same
-continuous-time race as `HomogeneousProcess`; see
-[`EpiBranch._MassAction`](@ref) for the full contract.
+continuous-time race as `HomogeneousProcess`.
 
 The process describes the transmission alone. The natural history is a
 `progression` of [`Transition`](@ref)s attached with a [`ModelSpec`](@ref),
