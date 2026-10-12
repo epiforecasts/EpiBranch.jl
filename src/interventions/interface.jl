@@ -325,34 +325,29 @@ reads_population_state(::AbstractIntervention) = true
 """
     analytic_offspring_effect(intervention, offspring) -> offspring
 
-The effect `intervention` has on a case's offspring specification (a
-`Distribution` for a single-type process, a [`MultiTypeOffspring`](@ref) for
-a multi-type one), when that effect is exact in closed form on its own — not
-an approximation, and not one that depends on how the intervention's own
-event times interact with the model's generation-time distribution, which
-the offspring draw does not capture and is generally not integrable in closed
-form at all (isolation's effect on R, for one, depends on exactly that
-overlap, so `Isolation` has no method here). Given the offspring
-specification a bare process would use, returns the one a case under
-`intervention` draws from instead: a thinned distribution for a
-population-level reduction in R, or a mixture with `Dirac(0)` for a per-case
-probability of being removed before transmitting at all (what
+Return the offspring distribution a case draws from under `intervention`, given
+the one a bare process would use (a `Distribution` for a single-type process, a
+[`MultiTypeOffspring`](@ref) for a multi-type one). Define a method only when
+the effect is exact in closed form on its own. A population-level reduction in
+R gives a thinned distribution, for example, and a per-case probability of
+being removed before transmitting at all gives a mixture with `Dirac(0)` (what
 [`probability_contain`](@ref)'s `ind_control` expresses).
 
-No default: an intervention without a method of its own falls through to the
-generic method below, which refuses. [`extinction_probability`](@ref),
-[`epidemic_probability`](@ref), [`probability_contain`](@ref),
-[`reproduction_number`](@ref), [`proportion_transmission`](@ref) and
-[`offspring_distribution`](@ref), called on a [`ModelSpec`](@ref) that
-has such an intervention, therefore refuse too rather than return a
-number that silently ignores it.
+An effect that depends on how the intervention's timing overlaps the
+generation-time distribution has no such form. Isolation's effect on R is one,
+so `Isolation` has no method. The generic method throws an error, and so
+[`extinction_probability`](@ref), [`epidemic_probability`](@ref),
+[`probability_contain`](@ref), [`reproduction_number`](@ref),
+[`proportion_transmission`](@ref) and [`offspring_distribution`](@ref) throw
+too when called on a [`ModelSpec`](@ref) with an intervention that has no
+method.
 """
 function analytic_offspring_effect(iv::AbstractIntervention, offspring)
     throw(
         ArgumentError(
             "$(typeof(iv)) has no closed-form effect on the offspring distribution " *
-                "(no `analytic_offspring_effect` method of its own), so this analytical " *
-                "function would otherwise ignore it. Use " *
+                "(no `analytic_offspring_effect` method), so this analytical function " *
+                "cannot account for it. Use " *
                 "probability_contain(R, k; ind_control, pop_control) for an " *
                 "approximation, or containment_probability(simulate(spec, n)) for " *
                 "the simulated answer."

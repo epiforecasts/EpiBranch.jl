@@ -178,11 +178,8 @@ function reproduction_number(model::TransmissionModel)
     return reproduction_number(_analytic_offspring(model))
 end
 
-# For a `ModelSpec`, the offspring law is folded through every intervention's
-# `analytic_offspring_effect` first; a spec with an intervention that has
-# none throws, naming the simulation-based alternative, rather than returning
-# the bare process's reproduction number as if the interventions were not
-# there.
+# For a `ModelSpec`, each intervention's `analytic_offspring_effect` is applied
+# to the offspring distribution first; an intervention without one throws.
 function reproduction_number(spec::ModelSpec)
     off = _offspring_through_interventions(spec, _analytic_offspring(spec))
     return reproduction_number(off)

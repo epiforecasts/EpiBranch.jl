@@ -114,11 +114,10 @@ computed from the law returned by `single_type_offspring`; this covers
 For a multi-type model built from an offspring matrix the result is a vector
 with one entry per type of index case.
 
-For a `ModelSpec`, the offspring law is folded through every intervention's
-[`EpiBranch.analytic_offspring_effect`](@ref) first; a spec with an
-intervention that has none throws, naming the simulation-based alternative,
-rather than returning the bare process's extinction probability as if the
-interventions were not there.
+For a `ModelSpec`, each intervention's
+[`EpiBranch.analytic_offspring_effect`](@ref) is applied to the offspring
+distribution first. If an intervention has no such method, this throws an
+error that names the simulation-based alternative.
 """
 function extinction_probability(model::TransmissionModel; kwargs...)
     return extinction_probability(_analytic_offspring(model); kwargs...)
@@ -216,11 +215,10 @@ Containment probability for a single-type transmission model. Delegates
 through `single_type_offspring`, so wrappers such as `Observed`
 work too.
 
-For a `ModelSpec`, the offspring law is folded through every intervention's
-[`EpiBranch.analytic_offspring_effect`](@ref) first; a spec with an
-intervention that has none throws, naming the simulation-based alternative,
-rather than returning the bare process's containment probability as if the
-interventions were not there.
+For a `ModelSpec`, each intervention's
+[`EpiBranch.analytic_offspring_effect`](@ref) is applied to the offspring
+distribution first. If an intervention has no such method, this throws an
+error that names the simulation-based alternative.
 """
 function probability_contain(model::TransmissionModel; kwargs...)
     return probability_contain(single_type_offspring(model); kwargs...)

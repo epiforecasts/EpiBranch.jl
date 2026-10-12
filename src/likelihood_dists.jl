@@ -207,11 +207,10 @@ this is the same `Distribution` you passed in as `offspring`.
 end
 ```
 
-For a `ModelSpec`, the offspring law is folded through every intervention's
-[`EpiBranch.analytic_offspring_effect`](@ref) first; a spec with an
-intervention that has none throws, naming the simulation-based alternative,
-rather than returning the bare process's offspring distribution as if the
-interventions were not there.
+For a `ModelSpec`, each intervention's
+[`EpiBranch.analytic_offspring_effect`](@ref) is applied to the offspring
+distribution first. If an intervention has no such method, this throws an
+error that names the simulation-based alternative.
 """
 function offspring_distribution(model::TransmissionModel)
     off = single_type_offspring(model)
