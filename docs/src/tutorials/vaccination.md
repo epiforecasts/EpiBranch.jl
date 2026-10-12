@@ -466,6 +466,7 @@ time, pass a distribution. `Exponential(60.0)` makes the mean wait 60 days:
 mv_random = MassVaccination(efficacy = 0.85,
     eligibility_time = Exponential(60.0),
     delay_to_immunity = 14.0)
+nothing # hide
 ```
 
 For a rollout by age, pass a function of the individual. This needs ages: add
@@ -499,6 +500,7 @@ mv_heterogeneous = MassVaccination(
     eligibility_time = (rng, ind) -> ind.state[:age] >= 65 ? 30.0 : 90.0,
     delay_to_immunity = 14.0,
 )
+nothing # hide
 ```
 
 ## Multi-dose schedules
