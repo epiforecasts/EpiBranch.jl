@@ -21,7 +21,11 @@ order. Four things change:
   the budget read at that case's infection time. It used to rank a whole
   generation's candidates together and read the budget at the latest
   infection time so far. That could admit more doses in a generation. The
-  continuous-time models already admitted one case at a time.
+  continuous-time models already admitted one case at a time. Because a later
+  generation can hold cases infected before some of the previous one's, with
+  `carry_over = false` a period's budget now counts only doses admitted within
+  that period, and with `carry_over = true` every dose admitted so far still
+  counts against the allowance.
 - Every intervention's `trace_contacts!` for a case runs before any
   intervention's actions for it. `RingVaccination` listed before
   `ContactTracing` now doses the contacts traced for the same case.

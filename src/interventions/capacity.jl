@@ -164,12 +164,15 @@ function _capacity_usage(cc::CapacityConstrained, state)
         time_key = capacity_time_key(cc.intervention)
         admission_key = _capacity_admission_key(key)
         period_start = isinf(cc.period) ? 0.0 : floor(t / cc.period) * cc.period
+        period_end = period_start + cc.period
         available = cc.budget_per_period
+        # Bounded above as well, since the generation engine admits a later
+        # generation's earlier cases after an earlier generation's later ones.
         used = count(state.individuals) do ind
             get(ind.state, key, false) || return false
             used_at = get(ind.state, admission_key, nothing)
             isnothing(used_at) && (used_at = get(ind.state, time_key, -Inf))
-            return used_at >= period_start
+            return period_start <= used_at < period_end
         end
     end
     return (used = used, available = available)

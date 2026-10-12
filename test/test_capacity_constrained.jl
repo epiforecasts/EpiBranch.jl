@@ -410,6 +410,11 @@ end
         usage = capacity_usage(cc, state)
         @test usage.available == 2.0
         @test usage.used == 2
+
+        # A dose admitted in a later period does not use an earlier period's
+        # budget when admission returns to an earlier clock.
+        state.max_infection_time = 3.0
+        @test capacity_usage(cc, state).used == 1
     end
 
     @testset "carry_over = false binds across calls in the same period" begin
