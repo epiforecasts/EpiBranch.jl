@@ -114,7 +114,7 @@ transmission dies out ([`Extinction`](@ref)). `max_cases`,
 matching rules; they are ignored when `stopping_rules` is given.
 
 ```julia
-SimOpts(max_cases = 500)               # [Extinction(), MaxCases(500)]
+SimOpts(max_cases = 500)   # [Extinction(), MaxCases(500), MaxGenerations(100)]
 SimOpts(max_generations = 20, max_time = 90.0)
 SimOpts(stopping_rules = [MaxCases(1000), MyCustomRule()])
 ```
