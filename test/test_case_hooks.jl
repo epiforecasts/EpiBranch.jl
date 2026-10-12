@@ -110,6 +110,22 @@ _case_hook_model(ivs) = ModelSpec(
         )
     end
 
+    @testset "Writing trace_contacts! is enough for the race to gather contacts" begin
+        @test EpiBranch.traces_contacts(_RecordCaseHooks())
+        @test !EpiBranch.traces_contacts(_ActionsOnly())
+        # Mass action names no contacts, so the race says it cannot honour it.
+        model = ModelSpec(
+            HomogeneousProcess(; transmission_rate = 1.5, population_size = 100);
+            progression = [
+                Transition(:recovered; from = :infection, delay = 2.0, terminal = true),
+            ],
+            interventions = [_RecordCaseHooks()]
+        )
+        @test_logs (:warn, r"does not honour.*_RecordCaseHooks"is) match_mode = :any simulate(
+            model; rng = StableRNG(17), n_initial = 2
+        )
+    end
+
     @testset "An intervention with only intervention_actions acts" begin
         state = simulate(
             _case_hook_model([_ActionsOnly()]);

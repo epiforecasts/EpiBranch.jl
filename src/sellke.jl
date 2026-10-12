@@ -635,6 +635,7 @@ end
 function _sellke_honours(model, iv::AbstractIntervention)
     continuous_actions(iv) && return supplies_contacts(model)
     _discovers_actions(iv) && return false
+    traces_contacts(iv) && !supplies_contacts(model) && return false
     _has_generation_hook(iv) || return true
     return traces_contacts(iv) && supplies_contacts(model)
 end
