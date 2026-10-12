@@ -28,6 +28,9 @@ time and the transition skips, which is the correct behaviour.
 `end_of_outbreak_probability` all read this step's detection probability: it
 is the one per-case reporting route, replacing the deprecated
 [`PerCaseObservation`](@ref) observation model.
+
+A report drawn after the case's outcome (death or recovery) is reset to "did
+not occur": see [`censor_after_outcome!`](@ref EpiBranch.censor_after_outcome!).
 """
 Base.@kwdef struct Reporting{D, P, F} <: AbstractClinicalTransition
     delay::D
@@ -55,11 +58,21 @@ function resolve_individual!(r::Reporting, individual, state)
     return nothing
 end
 
+function censor_after_outcome!(::Reporting, individual)
+    _censor_event!(individual, :reported, :reporting_time)
+    return nothing
+end
+
 function transition_loglik(r::Reporting, individual::Individual)
     anchor = _resolve_anchor(r.from, individual)
     _anchor_ok(anchor) || return 0.0
-    occurred = individual.state[:reported]::Bool
-    ll = transition_term(r.probability, r.delay, individual, anchor, occurred)
+    flag = individual.state[:reported]::Bool
+    time = flag ? individual.state[:reporting_time] : Inf
+    occurred = flag && time <= outcome_time(individual)
+    ll = transition_term(
+        r.probability, r.delay, individual, anchor, occurred;
+        censor = min(infection_aborted_time(individual), outcome_time(individual))
+    )
     occurred || return ll
-    return ll + _delay_loglik(r.delay, individual.state[:reporting_time] - anchor)
+    return ll + _delay_loglik(r.delay, time - anchor)
 end

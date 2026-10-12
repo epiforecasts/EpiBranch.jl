@@ -1114,10 +1114,6 @@ _dose_offset(rv::RingVaccination) = rv.dose_delay
 # The intervention inside a wrapper; `InterventionWrapper` adds a method.
 _unwrap_scheduled(iv) = iv
 
-function apply_post_transmission!(rv::RingVaccination, state, new_contacts)
-    return apply_actions!(rv, state, new_contacts)
-end
-
 # ── GroupVaccination ─────────────────────────────────────────────────
 
 """
@@ -1180,9 +1176,9 @@ e.g. `:test_positive` for the default `OnLabConfirmation()`.
 
 !!! note "Seed cases on the generation engine"
     Like [`RingVaccination`](@ref) and [`MassVaccination`](@ref),
-    `GroupVaccination` acts through `apply_post_transmission!`, which the
-    engine calls only on newly created contacts. A run's seed cases are
-    created directly, not through that hook, so a seed is reached only once
+    `GroupVaccination` acts through `intervention_actions`, to which the
+    generation engine offers the contacts each case makes. A run's seed cases
+    are created directly, not as anyone's contacts, so a seed is reached only once
     another member of its group is created later and re-triggers the sweep;
     a seed whose chain goes extinct without ever sharing a group with a
     later case is not vaccinated even if it is itself confirmed.
@@ -1284,18 +1280,6 @@ function _group_trigger_time(gv::GroupVaccination, state, group)
         t = min(t, tt)
     end
     return t
-end
-
-# Two things can happen to a group in a single generation: a member created
-# earlier newly meets `eligibility` (the group's first trigger), or a member
-# is created into a group that already triggered in an earlier generation.
-# Recomputing the trigger time for every group touched by `new_contacts` and
-# visiting that group's members (via the index) against it handles both in
-# one pass: a fresh trigger reaches members already present, and a standing
-# one reaches a member only now created. Groups untouched this generation are
-# left alone, so nobody outside a triggered group is ever visited.
-function apply_post_transmission!(gv::GroupVaccination, state, new_contacts)
-    return apply_actions!(gv, state, new_contacts)
 end
 
 # ── MassVaccination ──────────────────────────────────────────────────
@@ -1403,7 +1387,3 @@ Base.propertynames(mv::MassVaccination, ::Bool = false) = _effect_propertynames(
 Base.show(io::IO, mv::MassVaccination) = _show_keywords(io, mv)
 
 required_fields(::MassVaccination) = Symbol[]
-
-function apply_post_transmission!(mv::MassVaccination, state, new_contacts)
-    return apply_actions!(mv, state, new_contacts)
-end

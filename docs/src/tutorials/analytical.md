@@ -1,11 +1,11 @@
 # Analytical functions
 
-How likely is one introduced case to start a large outbreak, how much of
-transmission comes from the most infectious cases, and how large do chains get
-when R < 1? For a branching process these have exact answers in terms of R and
-the dispersion k, with no simulation needed. Throughout, `NegBin(R, k)` is a
-negative binomial offspring distribution with mean R and dispersion k: smaller k
-means more superspreading, and k = 1 gives a geometric distribution.
+For a branching process, the extinction and epidemic probabilities, the share
+of transmission from the most infectious cases, and the distribution of chain
+sizes when R < 1 all have exact answers in terms of R and the dispersion k,
+with no simulation needed. Throughout, `NegBin(R, k)` is a negative binomial
+offspring distribution with mean R and dispersion k: smaller k means more
+superspreading, and k = 1 gives a geometric distribution.
 
 ## Extinction and epidemic probability
 
@@ -67,18 +67,19 @@ println("Model:          P(ext) = $(round(extinction_probability(model), digits=
 The model's answer depends only on its offspring distribution and matches
 `extinction_probability(2.5, 0.16)`; the generation time does not change it.
 
-!!! warning "Interventions are not included"
+!!! warning "Interventions in a `ModelSpec`"
     `extinction_probability`, `epidemic_probability`, `proportion_transmission`
-    and the `proportion_cases_*` functions also accept a [`ModelSpec`](@ref),
-    but they read only its offspring distribution. Isolation, contact tracing
-    or vaccination in the model are left out, so the answer is for the outbreak
-    without any of them
-    (see [issue #421](https://github.com/epiforecasts/epiBranch.jl/issues/421)).
-    For the chance of containing an outbreak under interventions, simulate the
-    model and use [`containment_probability`](@ref), as in
-    [Interventions](interventions.md). `chain_size_distribution` is different:
-    given a model with interventions, it estimates chain sizes by simulating
-    the model (see [Chain statistics](chains.md)).
+    and the `proportion_cases_*` functions also accept a [`ModelSpec`](@ref).
+    They apply an intervention only if it declares a closed-form effect on the
+    offspring distribution through `EpiBranch.analytic_offspring_effect`, and
+    no built-in intervention does yet. For a spec with isolation, contact
+    tracing or vaccination they throw an error. Call them on the process itself
+    for the outbreak without interventions. For the chance of containing an
+    outbreak under interventions, simulate the model and use
+    [`containment_probability`](@ref), as in [Interventions](interventions.md).
+    `chain_size_distribution` is different: given a model with interventions,
+    it estimates chain sizes by simulating the model (see
+    [Chain statistics](chains.md)).
 
 ## Superspreading: proportion of transmission
 

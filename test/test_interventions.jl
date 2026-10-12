@@ -555,23 +555,20 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
     end
 
     @testset "An unrecorded isolation still removes the case as before" begin
-        # Case counts and removals were computed on the main branch before
-        # isolation after the outcome stopped counting as a detection. Only
-        # the detection record may differ.
+        # Every case is test-positive, so each one is removed, including those
+        # isolating after their outcome. Only the detection record may differ.
         removed(s) = count(i -> isfinite(isolation_time(i)), s.individuals)
         configs = (
             (
                 Recovery(delay = Gamma(2.0, 3.0)), 7,
-                [124, 1, 5, 1, 2, 132, 107, 17, 10, 1],
-                [97, 1, 5, 1, 2, 96, 85, 17, 10, 1],
+                [124, 1, 1, 15, 135, 113, 104, 120, 113, 1],
             ),
             (
                 Death(delay = 0.0, probability = 1.0), 11,
-                [3, 1, 111, 1, 1, 1, 119, 130, 1, 1],
-                [3, 1, 84, 1, 1, 1, 86, 93, 1, 1],
+                [3, 1, 111, 107, 121, 14, 124, 109, 4, 2],
             ),
         )
-        for (outcome, seed, cases, removals) in configs
+        for (outcome, seed, cases) in configs
             model = ModelSpec(
                 BranchingProcess(Poisson(2.0), Gamma(2.0, 3.0));
                 attributes = clinical_presentation(incubation_period = LogNormal(1.6, 0.4)),
@@ -580,9 +577,8 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             )
             results = simulate(model, 10; max_cases = 100, rng = StableRNG(seed))
             @test [s.cumulative_cases for s in results] == cases
-            @test [removed(s) for s in results] == removals
-            @test sum(s -> count(is_isolated, s.individuals), results) <
-                sum(removals)
+            @test [removed(s) for s in results] == cases
+            @test sum(s -> count(is_isolated, s.individuals), results) < sum(cases)
         end
     end
 
@@ -1842,7 +1838,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                 contact = Individual(id = 2, parent_id = 1, infection_time = 0.0)
                 contact.state[:traced] = true
                 contact.state[:trace_time] = Inf
-                EpiBranch.apply_post_transmission!(rv, state, [contact])
+                EpiBranch.apply_actions!(rv, state, [contact])
                 @test !is_vaccinated(contact)
                 @test rand(state.rng) == rand(StableRNG(7))
             end
@@ -2234,7 +2230,17 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                 @test !haskey(st, :outcome) && !haskey(st, :outcome_time)
 
                 control = course(false)
-                @test control[:hospitalised] && control[:died]
+                # The unconditional Death fires at 6.0, before the
+                # hospitalisation at 7.0 it is timed independently of;
+                # censor_after_outcome! undoes that non-terminal event too,
+                # the same "stands only before the outcome" rule as the
+                # aborted case above. The :died Transition is itself
+                # terminal, so it is exempt from that rule: it keeps the
+                # hospitalised_time anchor it read during its own
+                # resolve_individual! pass, even though Death's earlier
+                # candidate wins the outcome.
+                @test !control[:hospitalised] && control[:hospitalised_time] == Inf
+                @test control[:died] && control[:died_time] == 8.0
                 @test control[:outcome] == :died && control[:outcome_time] == 6.0
             end
 

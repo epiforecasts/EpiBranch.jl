@@ -21,7 +21,7 @@
 
 Simulation side of the observation protocol: apply `obs` to a finished
 `SimulationState` in place (e.g. mark `:reported` cases and set
-`:report_time`). Called by [`simulate`](@ref) after the run. The default
+`:reporting_time`). Called by [`simulate`](@ref) after the run. The default
 [`NoObservation`](@ref) leaves the latent cases untouched.
 """
 apply_observation!(::NoObservation, state, rng) = state
@@ -35,11 +35,24 @@ function apply_observation!(o::PerCaseObservation, state, rng)
         # (kept for the contact-tracing table) so no RNG is spent on non-cases
         # and no `:reported` flag lands on a record that isn't a case.
         is_infected(ind) || continue
+        # A progression transition (such as `Reporting`) that records
+        # `:reported` owns that key, and its likelihood reads what it wrote.
+        haskey(ind.state, :reported) && throw(
+            ArgumentError(
+                "PerCaseObservation cannot be combined with a progression " *
+                    "transition that records `:reported`, such as `Reporting`: " *
+                    "both would write the case's report. Report cases with one " *
+                    "of them."
+            )
+        )
         ρ = _sample_value(o.detection_prob, rng, ind)
         d = _sample_value(o.delay, rng, ind)
         anchor = _percase_anchor(o.from, ind)
-        ind.state[:reported] = rand(rng) < ρ
-        ind.state[:report_time] = anchor + d
+        reported = rand(rng) < ρ
+        ind.state[:reported] = reported
+        # Shares :reporting_time with the Reporting transition, which leaves
+        # it at Inf for a case that was never reported.
+        ind.state[:reporting_time] = reported ? anchor + d : Inf
     end
     return state
 end
@@ -69,8 +82,8 @@ so this composes without specialised methods. `P(0 detected)` depends
 only on `base` and `detection_prob`, which lets it be computed once
 at construction rather than on every `logpdf` call. It is stored with
 whatever element type `base`'s parameters give `logpdf`, rather than
-fixed to `Float64`, so differentiating through `base` (e.g. fitting an
-offspring parameter with `ForwardDiff`) passes a `Dual` through this
+fixed to `Float64`: differentiating through `base` (e.g. fitting an
+offspring parameter with `ForwardDiff`) then passes a `Dual` through this
 field instead of hitting a conversion error.
 """
 struct ThinnedChainSize{D <: DiscreteUnivariateDistribution, T <: Real} <:
