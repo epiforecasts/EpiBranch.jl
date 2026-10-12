@@ -225,6 +225,31 @@ _case_hook_model(ivs) = ModelSpec(
         @test all(is_vaccinated, contacts)
     end
 
+    @testset "A node reached by a case and a ring member keeps the wider ring" begin
+        state = EpiBranch.new_state(
+            BranchingProcess(Poisson(1.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(20)
+        )
+        case = Individual(id = 1, infection_time = 0.0)
+        case.state[:onset_time] = 1.0
+        case.state[:asymptomatic] = false
+        set_isolated!(case, 2.0; release_time = Inf)
+        member = Individual(id = 2, parent_id = 1, infection_time = 1.0)
+        node = Individual(id = 3, parent_id = 1, infection_time = 3.0)
+        append!(state.individuals, [case, member, node])
+        ct = ContactTracing(
+            probability = 1.0, isolation_to_trace_delay = Dirac(0.5),
+            action = FlagOnly(), depth = 2
+        )
+        EpiBranch.initialise_individual!(ct, member, state)
+        EpiBranch.initialise_individual!(ct, node, state)
+        EpiBranch.trace_contacts!(ct, state, case, [member, node])
+        member.state[:infected] = false
+        @test node.state[:_ring_remaining] == 1
+        EpiBranch.trace_contacts!(ct, state, member, [node])
+        @test node.state[:_ring_remaining] == 1
+    end
+
     @testset "Calling the batch hook on a built-in warns and still acts" begin
         state = EpiBranch.new_state(
             BranchingProcess(Poisson(1.0)),

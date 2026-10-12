@@ -777,10 +777,14 @@ function _trace_pair!(ct::ContactTracing, state, infector, ind, rng; not_before 
 
     # Record how far the ring can still grow from this contact, so a
     # contact-of-contact one hop further out can time its own trace from
-    # here. Only `depth > 1` rings expand.
+    # here. Only `depth > 1` rings expand. A node several cases reach keeps
+    # the widest budget any of them gave it.
     if ct.depth > 1
-        ind.state[:_ring_remaining] = seed ? ct.depth - 1 :
+        remaining = seed ? ct.depth - 1 :
             get(infector.state, :_ring_remaining, 0)::Int - 1
+        ind.state[:_ring_remaining] = max(
+            get(ind.state, :_ring_remaining, 0)::Int, remaining
+        )
     end
     return nothing
 end
