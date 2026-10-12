@@ -755,7 +755,7 @@ end
         ]
         # The infectious window is derived to open at :infectious (a latent period
         # produces it).
-        @test EpiBranch._resolve_infectious_from(nothing, progression) === :infectious
+        @test EpiBranch.infectious_from(progression) === :infectious
         m = ModelSpec(
             HomogeneousProcess(; transmission_rate = 5.0, population_size = N);
             progression = progression
@@ -808,7 +808,7 @@ end
                 terminal = true
             ),
         ]
-        @test EpiBranch._resolve_infectious_from(nothing, progression) === :infectious
+        @test EpiBranch.infectious_from(progression) === :infectious
         m = ModelSpec(
             HomogeneousProcess(; transmission_rate = 2.0, population_size = 500);
             progression = progression

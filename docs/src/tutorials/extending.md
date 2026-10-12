@@ -284,6 +284,19 @@ ones your intervention needs (all default to no-ops).
 | `risk_applies(iv, route)` | Continuous-time models selecting risks for a route (`nothing` for an external introduction) | Nothing | `Bool`; defaults to `true` |
 | `standing_block(iv)` | Continuous-time models deciding whether a certain block has settled a pair for good | Nothing | `Bool`; defaults to `false` |
 | `reads_population_state(iv)` | Before a structure-driven model (e.g. `HouseholdProcess`) decides whether to race each clique separately or put every clique on one shared clock | Nothing | `Bool`: whether delivery can depend on population-wide state such as a running case count or a shared capacity budget (default `true`, conservative) |
+| `analytic_offspring_effect(iv, offspring)` | By `extinction_probability`, `epidemic_probability`, `probability_contain`, `reproduction_number`, `proportion_transmission`, `proportion_cases_individual`, `proportion_cases_offspring`, `proportion_cluster_size`, `end_of_outbreak_probability` and `offspring_distribution`, when called on a `ModelSpec`, or a process that stores its own interventions, holding `iv` | The offspring `Distribution` a bare process would use | The `Distribution` a case under `iv` draws from instead. The generic method throws an error (see below) |
+
+Define `analytic_offspring_effect` only for an intervention whose effect on
+the offspring distribution is exact in closed form on its own, and return a
+law the analytical functions take: a `Poisson` or `NegativeBinomial` for a
+single-type process. A population-level reduction of R by a factor `p`, for
+example, turns `NegBin(R, k)` into `NegBin(p * R, k)`. Most interventions have
+no such form. Isolation's effect on R depends on how its timing overlaps the
+generation-time distribution, and `Isolation` has no method. On a spec that
+includes it, the analytical functions above throw an error that points to
+simulating the spec. For containment it names
+`containment_probability(simulate(spec, n))` for the simulated answer and
+`probability_contain(R, k; ind_control, pop_control)` for an approximation.
 
 `reads_population_state` covers whatever an intervention delegates to: a
 component or callable you supply counts as part of its owner's answer. A
@@ -1408,8 +1421,8 @@ A process also passes `watches`: one tuple of
 Ask each route's own kernel for it:
 
 ```julia
-EpiBranch._sellke_race!(
-    state, members, rng;
+EpiBranch.sellke_race!(
+    state, members, rng, sim_opts;
     routes = routes, interventions = interventions, seed!,
     watches = Tuple(EpiBranch.watched_records(w.kernel) for w in windows),
 )
@@ -1555,7 +1568,7 @@ continuous-time household and network processes, which step cases in
 infection-time order instead of by generation, are the worked examples.
 
 A model with more than one natural partition of its population into
-independent races over `EpiBranch._sellke_race!` — a household process,
+independent races over [`EpiBranch.sellke_race!`](@ref) — a household process,
 over its households — defines
 [`EpiBranch.race_groups`](@ref)`(model, kernel)` to say how it splits for a
 given kernel, rather than have a shared simulation loop decide for it. A new
@@ -1652,12 +1665,16 @@ that accessor is what the engine calls.
 A **structure-driven** model that runs its own simulation loop (in
 infection-time order, rather than the generation-based engine) receives the
 composed layers as arguments instead: define
-`EpiBranch._simulate(m::MyModel, sim_opts; interventions, attributes,
-progression, observation, rng, condition, max_attempts)`, read the layers off
-the arguments, and derive any window state you need (the infectious-window
-`from`, say) from the `progression` there. The continuous-time household and
-network processes are the worked examples; `ModelSpec` routes `simulate` and
-`loglikelihood` to that method for you.
+[`EpiBranch.simulate_once`](@ref)`(m::MyModel, sim_opts; interventions,
+attributes, progression, observation, recorder, rng)`, read the layers off the
+arguments, and derive any window state you need — the infectious window's
+`from`, say, via [`EpiBranch.infectious_from`](@ref)`(progression)` — there.
+`simulate` calls this once, or repeatedly when a `condition` is given, so your
+method takes no `condition`/`max_attempts` of its own. Drive the race with
+[`EpiBranch.sellke_race!`](@ref), passing it `sim_opts` so it resolves
+`max_time` and reconciles the run's aggregate bookkeeping for you. The
+continuous-time household and network processes are the worked examples;
+`ModelSpec` routes `simulate` and `loglikelihood` to `simulate_once` for you.
 
 ### Minimal sketch
 
@@ -1709,15 +1726,17 @@ spec)` reads it off the spec — the same path `BranchingProcess` takes.
 The built-in [Homogeneous models](homogeneous.md) tutorial covers
 `HomogeneousProcess`, a closed population where everyone mixes with everyone else
 at the same rate. Mixing is often uneven, though: age bands, sex, income strata
-or spatial patches contact each other at different rates. You can build a model
-like that on the same continuous-time race without touching the simulation
-itself, as mass action between groups. You supply two pieces:
+or spatial patches contact each other at different rates. [`MixingProcess`](@ref)
+builds a model like that on the same continuous-time race as `HomogeneousProcess`,
+as mass action between groups, with no simulation code of your own. You supply
+it as two pieces:
 
 1. **Which attributes define the mixing groups**: `mixing_by`, a tuple of
    attribute keys each individual already carries (`:age_band`, `:ses`, `:patch`;
-   real attributes, not a synthetic group index). An individual's group is the
-   tuple of those attribute values. With `mixing_by = ()` everyone lands in one
-   group, which recovers the homogeneous case.
+   real attributes, set by the composed `attributes`, not a synthetic group
+   index). A member's group is the tuple of those attribute values. With
+   `mixing_by = ()` everyone lands in one group, which recovers
+   `HomogeneousProcess`.
 2. **The pair contact rate** `rate(infector_group, target_group)`: the rate at
    which one infective in the first group contacts one member of the second.
    Homogeneous mixing is `β/N` for every pair. With a contact matrix `M[b, a]`
@@ -1733,21 +1752,17 @@ read.
 ### A worked age-structured example
 
 Below is a two-age-band population with an asymmetric contact matrix, where the
-younger, more socially active band mixes more than the older band. It drives the
-race through `EpiBranch._sellke_race!` with an `EpiBranch._MassAction` route.
-Both are internal for now: the underscore means they are not part of the public
-API and may be renamed or given a public wrapper in a later release. The
-`mixing_by`/`rate` contract shown here is the stable part and will carry over;
-only the call site would change. If you build on it, pin your package version.
+younger, more socially active band mixes more than the older band. `MixingProcess`
+is a transmission process like any other, composed with a `ModelSpec` and run
+with `simulate`; the `:age_band` tag is an ordinary attribute.
 
 ```julia
 using EpiBranch, Distributions, Random
 
-# A closed population of N split into two age bands of equal size. Band 1 is the
-# more socially active one; `band_of` reads an individual's band off its id.
+# A closed population of N split into two age bands of equal size.
 N = 2000
 n = [N ÷ 2, N ÷ 2]                     # band sizes
-band_of = i -> (i <= n[1] ? 1 : 2)
+band = (rng, ind) -> (ind.state[:age_band] = ind.id <= n[1] ? 1 : 2)
 
 # A 2×2 contact matrix: M[b, a] is the mean rate at which one infectious
 # individual in band a contacts the members of band b. Band 1 mixes far more.
@@ -1758,27 +1773,14 @@ M = [3.0 0.5;
 # is the tuple of :age_band values, so band a is `(a,)`: read it with group[1].
 rate = (from, to) -> M[to[1], from[1]] / n[to[1]]
 
-# A HomogeneousProcess supplies only the population and its removal states; the
-# rate above replaces its transmission rate, so any placeholder value does. Tag
-# each individual's :age_band as it is created; any attribute works, including
-# the built-in demographics (:age, :sex, :risk_group).
-carrier = HomogeneousProcess(; transmission_rate = 1.0, population_size = N)
-progression = [Transition(:recovered; from = :infection,
-    delay = Exponential(1.0), terminal = true)]
-rng = MersenneTwister(1)
-state = EpiBranch.new_state(carrier, progression, NoAttributes(), rng)
-EpiBranch.add_individuals!(state, N, AbstractIntervention[];
-    setup = (ind, i) -> (ind.state[:age_band] = band_of(i)))
-
-# Run the race from five index cases at time 0, with mass action between the
-# bands as its one route.
-members = collect(1:N)
-EpiBranch._sellke_race!(state, members, rng;
-    seed! = (best, _, r) -> (best[randperm(r, N)[1:5]] .= 0),
-    targets = EpiBranch._MassAction(state, members; mixing_by = (:age_band,), rate),
-    from = EpiBranch._resolve_infectious_from(carrier.from, progression),
-    until = carrier.until)
-
+model = ModelSpec(
+    MixingProcess(; population_size = N, mixing_by = (:age_band,), rate);
+    progression = [
+        Transition(:recovered; from = :infection, delay = Exponential(1.0), terminal = true),
+    ],
+    attributes = band
+)
+state = simulate(model; n_initial = 5, rng = MersenneTwister(1))
 linelist(state)
 ```
 
@@ -1930,12 +1932,19 @@ See `src/analytical/cluster_mixed.jl` for the full pattern, including how `Clust
 ## Adding per-observation metadata
 
 [`ChainSizes`](@ref) carries one per-observation field, `seeds` (the number
-of index cases in each multi-seed cluster). A cluster's real-time "is it
-finished?" weight is a second analyst decision, but it is supplied at
-likelihood time through the `prob_concluded` keyword of `loglikelihood` rather
-than stored on the data — the mixture it drives is only defined against the
-analytical chain-size law. These two show the pattern for any per-cluster
-information.
+of index cases in each multi-seed cluster), and needs no further method for it:
+
+```@example extending
+using EpiBranch, Distributions
+off = NegBin(0.8, 0.3)
+loglikelihood(ChainSizes([4]; seeds = [2]), off)
+```
+
+A cluster's real-time "is it finished?" weight is a second analyst decision,
+but it is supplied at likelihood time through the `prob_concluded` keyword of
+`loglikelihood` rather than stored on the data — the mixture it drives is only
+defined against the analytical chain-size law. These two show the pattern for
+any per-cluster information.
 
 If your analysis needs different or richer per-cluster information, you
 have two options.
@@ -1971,24 +1980,29 @@ collapse it into an existing flag), define a new struct and a
 struct MultiTypeChainSizes
     data::Vector{Int}
     type::Vector{Int}   # which strain/patch/group
+    seeds::Vector{Int}  # index cases in each cluster
 end
 
-# Different offspring distribution per type; pick by observation.
+# Different offspring distribution per type; pick by observation. Grouping by
+# type and delegating to `ChainSizes` gives multi-seed support for free, rather
+# than re-deriving it.
 function Distributions.loglikelihood(data::MultiTypeChainSizes,
         offsprings::Vector{<:Distribution})
     total = 0.0
-    for i in eachindex(data.data)
-        d = chain_size_distribution(offsprings[data.type[i]])
-        total += logpdf(d, data.data[i])
+    for t in unique(data.type)
+        rows = data.type .== t
+        total += loglikelihood(
+            ChainSizes(data.data[rows]; seeds = data.seeds[rows]), offsprings[t]
+        )
     end
     return total
 end
 ```
 
-The internal `EpiBranch._chain_size_logpdf(d, x, s)` is the reusable
-piece — call it from your method if you need multi-seed support, and
-your new data type inherits the same closed forms for `Borel`,
-`GammaBorel`, `PoissonGammaChainSize` as the built-in `ChainSizes` uses.
+Your new data type inherits the same closed forms for `Borel`, `GammaBorel`,
+`PoissonGammaChainSize` as the built-in `ChainSizes` uses. Reach for the
+internal `EpiBranch._chain_size_logpdf(d, x, s)` directly only when a row's
+likelihood can't be expressed as a `ChainSizes` call at all.
 
 ## Summary of extension points
 
@@ -2010,14 +2024,14 @@ your new data type inherits the same closed forms for `Borel`,
 | Custom offspring (type) | Struct + `draw_offspring`, `chain_size_distribution` | Offspring draw + analytics |
 | Custom transmission model | Struct `<: TransmissionModel` + `generate_offspring` (offspring-driven) or `initialise_state` + `contacts_of` + `gather_by_target` (structure-driven); optional `single_type_offspring`, accessors | Simulation + analytics |
 | Transmission route | `RouteWindow(name; from, until, kernel, reach)` on a process that reads them | Continuous-time race, per case |
-| Structured fixed-size population | Mass action on the race: name the mixing attributes with `mixing_by` (a tuple of attribute keys) and supply the pair rate `rate(infector_group, target_group)` | Simulation |
+| Structured fixed-size population | `MixingProcess(; population_size, mixing_by, rate)`: name the mixing attributes with `mixing_by` (a tuple of attribute keys) and supply the pair rate `rate(infector_group, target_group)` | Simulation |
 | Custom clinical transition | Struct `<: AbstractClinicalTransition` + `initialise_individual!`, `resolve_individual!`; `is_terminal`/`terminal_event`/`terminal_target` if terminal; `transition_loglik` to evaluate it | Case creation |
 | Calendar schedule for a pair kernel | Struct + `calendar_multiplier`, and `next_calendar_break` or `calendar_shape(::YourSchedule) = SmoothCalendar()` | Simulation + likelihood |
 | Pairwise likelihood for a structure | Struct `<: InfectionLayer` + `contact_structure`; `compile_contact_pairs` and `pairwise_surv_loglik` then apply | Likelihood evaluation |
 | Pairwise likelihood row grouping | Struct `<: EpiBranch.PairwiseReduction` + `EpiBranch.ngroups`, `EpiBranch.group`; run with `EpiBranch.pairwise_reduce` | Likelihood evaluation |
 | Progression likelihood | `progression_loglik(spec, individuals)`; built-in transitions work out of the box, a custom one needs `transition_loglik` | Likelihood evaluation |
 | Custom observation model | Struct `<: ObservationModel` + `observe(base, ::YourObs)` (analytics) and/or `apply_observation!(::YourObs, state, rng)` (simulation) | Analytics / inference |
-| Per-observation metadata | Either pre-compute into existing `ChainSizes` fields, or define a new data type with a `loglikelihood` method that calls `_chain_size_logpdf` | Likelihood evaluation |
+| Per-observation metadata | Either pre-compute into existing `ChainSizes` fields (`seeds` included), or define a new data type with a `loglikelihood` method that delegates to `ChainSizes` per group | Likelihood evaluation |
 | Sim ↔ analytical test | `generative_model`, `observe_chain_sizes` | Regression test |
 
 ### Callable rules in branching processes

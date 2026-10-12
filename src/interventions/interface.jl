@@ -323,3 +323,38 @@ state declares `true` for itself, which lifts the intervention holding it. Wrapp
 they wrap.
 """
 reads_population_state(::AbstractIntervention) = true
+
+"""
+    analytic_offspring_effect(intervention, offspring) -> offspring
+
+Return the offspring distribution a case draws from under `intervention`, given
+the one a bare process would use (a `Distribution` for a single-type process, a
+[`MultiTypeOffspring`](@ref) for a multi-type one). Define a method only when
+the effect is exact in closed form on its own, and return a law the analytical
+functions take: a `Poisson` or `NegativeBinomial` for a single-type process.
+A population-level reduction of R by a factor `p`, for example, turns
+`NegBin(R, k)` into `NegBin(p * R, k)`.
+
+An effect that depends on how the intervention's timing overlaps the
+generation-time distribution has no such form. Isolation's effect on R is one
+of these, and `Isolation` has no method. The generic method throws an error,
+which makes [`extinction_probability`](@ref), [`epidemic_probability`](@ref),
+[`probability_contain`](@ref), [`reproduction_number`](@ref),
+[`proportion_transmission`](@ref), [`proportion_cases_individual`](@ref),
+[`proportion_cases_offspring`](@ref), [`proportion_cluster_size`](@ref),
+`end_of_outbreak_probability` and [`offspring_distribution`](@ref) throw
+too when called on a [`ModelSpec`](@ref), or a process that stores its own
+interventions, holding an intervention that has no method.
+"""
+function analytic_offspring_effect(iv::AbstractIntervention, offspring)
+    throw(
+        ArgumentError(
+            "$(typeof(iv)) has no closed-form effect on the offspring distribution " *
+                "(no `analytic_offspring_effect` method), so this analytical function " *
+                "cannot account for it. Compute the quantity from simulated outbreaks, " *
+                "simulate(spec, n), instead. For containment, " *
+                "containment_probability(simulate(spec, n)) gives the simulated answer " *
+                "and probability_contain(R, k; ind_control, pop_control) an approximation."
+        )
+    )
+end
