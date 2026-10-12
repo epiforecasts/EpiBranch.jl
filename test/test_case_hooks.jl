@@ -24,6 +24,15 @@ function EpiBranch.keep_active(::_RecordCaseHooks, state, targets, is_new)
     return ()
 end
 
+# Records on each contact the infector that traced it, and nothing else.
+struct _TraceOnly <: AbstractIntervention end
+function EpiBranch.trace_contacts!(::_TraceOnly, state, infector, contacts)
+    for c in contacts
+        c.state[:_traced_from] = infector.id
+    end
+    return nothing
+end
+
 # Doses every contact it is offered at a fixed time, through actions alone.
 struct _ActionsOnly <: AbstractIntervention end
 function EpiBranch.intervention_actions(::_ActionsOnly, state, candidates)
@@ -110,20 +119,30 @@ _case_hook_model(ivs) = ModelSpec(
         )
     end
 
-    @testset "Writing trace_contacts! is enough for the race to gather contacts" begin
-        @test EpiBranch.traces_contacts(_RecordCaseHooks())
+    @testset "Writing trace_contacts! is enough for the race to call it" begin
+        @test EpiBranch.traces_contacts(_TraceOnly())
         @test !EpiBranch.traces_contacts(_ActionsOnly())
-        # Mass action names no contacts, so the race says it cannot honour it.
-        model = ModelSpec(
-            HomogeneousProcess(; transmission_rate = 1.5, population_size = 100);
-            progression = [
-                Transition(:recovered; from = :infection, delay = 2.0, terminal = true),
-            ],
-            interventions = [_RecordCaseHooks()]
+        # Node 1 is seeded at 0 and reaches node 2 at 1, which reaches node 3.
+        interventions = AbstractIntervention[_TraceOnly()]
+        rng = StableRNG(18)
+        state = EpiBranch.new_state(
+            BranchingProcess(Poisson(1.0), Exponential(1.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), rng
         )
-        @test_logs (:warn, r"does not honour.*_RecordCaseHooks"is) match_mode = :any simulate(
-            model; rng = StableRNG(17), n_initial = 2
+        EpiBranch.add_individuals!(state, 3, interventions)
+        neighbours = Dict(1 => [2], 2 => [1, 3], 3 => [2])
+        targets(inf, st) = (
+            (to, Dirac(1.0)) for to in neighbours[inf]
+                if !get(st.individuals[to].state, :infected, false)
         )
+        EpiBranch._sellke_race!(
+            state, [1, 2, 3], rng;
+            routes = ((RouteWindow(:one; kernel = Dirac(1.0)), targets),),
+            interventions, contacts = (inf, st) -> neighbours[inf],
+            seed! = (best, members, r) -> (best[1] = 0.0)
+        )
+        @test state.individuals[2].state[:_traced_from] == 1
+        @test state.individuals[3].state[:_traced_from] == 2
     end
 
     @testset "An intervention with only intervention_actions acts" begin
