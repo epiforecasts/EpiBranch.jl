@@ -21,8 +21,10 @@ explains the syntax used in these pages.
 
 ## The core package only
 
-EpiBranch is in the General registry, Julia's equivalent of CRAN, and you load
-it with `using EpiBranch`, as you would `library()` a package in R:
+EpiBranch is in the General registry, Julia's equivalent of CRAN, but the
+registered version is behind these pages, so install the development version
+from GitHub for now. You load it with `using EpiBranch`, as you would
+`library()` a package in R:
 
 ```julia
 using Pkg
@@ -32,6 +34,8 @@ Pkg.add(
 )
 # The examples in these pages also use these two
 Pkg.add(["Distributions", "StableRNGs"])
+
+using EpiBranch
 ```
 
 !!! warning "The registered version is older than these pages"
