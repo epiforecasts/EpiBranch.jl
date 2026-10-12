@@ -462,5 +462,6 @@ EpiBranch._column_order
 EpiBranch._chain_length_ll_negbin
 EpiBranch._borel_logpdf
 EpiBranch._gammaborel_logpdf
+EpiBranch._chain_size_loglik
 EpiBranch._empirical_ll
 ```
