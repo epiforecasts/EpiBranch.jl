@@ -775,10 +775,11 @@ whether a dose already admitted under `prior_trigger` may move to
 `new_trigger`. The default is `false` (an admitted dose keeps its date), and
 group vaccination defines it to allow a genuine improvement. An intervention of
 your own wanting the same behaviour defines this method for its type.
-`EpiBranch.is_settled(state, ind)` says whether a person can still be moved:
-`true` once a continuous-time model has finished its own round of proposals for
-`ind`, `false` for a person whose infection is not yet final (and for the case
-being made final, during its own round).
+`EpiBranch.is_settled(state, ind)` says whether a person's fate is already
+fixed: `true` once a continuous-time model has finished its own round of
+proposals for `ind`, so nothing later can move it, and `false` for a person
+whose infection is not yet final (and for the case being made final, during
+its own round).
 
 ## Rules as types with parameters
 
