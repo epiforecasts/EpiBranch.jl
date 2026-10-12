@@ -196,4 +196,21 @@ end
         @test ismissing(EpiBranch.terminal_certainty(AlwaysOccursRule(0.0)))
         @test_logs ModelSpec(bp; progression = [AlwaysOccursRule(0.0)])
     end
+
+    @testset "Reporting and a per-case observation cannot both be set" begin
+        # A `Reporting` step in `progression` and a per-case `observation`
+        # both describe case reporting; carrying both would leave `simulate`
+        # silently letting the observation's draw overwrite `Reporting`'s.
+        bp = BranchingProcess(Poisson(1.5), Exponential(5.0))
+        rep = Reporting(delay = Dirac(0.0), probability = 0.5)
+        @test_throws ArgumentError ModelSpec(
+            bp; progression = [rep],
+            observation = PerCaseObservation(detection_prob = 0.5)
+        )
+        # `Reporting` alone, or an observation alone, are both fine.
+        @test ModelSpec(bp; progression = [rep]) isa ModelSpec
+        @test ModelSpec(
+            bp; observation = PerCaseObservation(detection_prob = 0.5)
+        ) isa ModelSpec
+    end
 end
