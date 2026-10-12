@@ -36,6 +36,8 @@ underscore are internal.
 |---|---|---|---|---|
 | `:infected` | `Bool` | `true` | Simulation | When infection is decided |
 | `:infection_route` | `Symbol` | — | Simulation (models with routes) | When infection is decided |
+| `:censor_until` | `Tuple` | `()` | Simulation (models with routes) | When a contact is created on a window with `until` states, which it names |
+| `:index` | `Bool` | `false` | Simulation (continuous-time models) | When the case's infector is fixed; `true` for a case infected from outside the population |
 | `:type` | `Int` | `1` | Simulation (multi-type) | When the contact is created |
 | `:onset_time` | `Float64` | `NaN` | `clinical_presentation` | Creation |
 | `:asymptomatic` | `Bool` | `false` | `clinical_presentation` | Creation |
@@ -43,6 +45,7 @@ underscore are internal.
 | `:age` | `Real` | — | `demographics` | Creation |
 | `:sex` | `Symbol` | — | `demographics` | Creation |
 | `:group` | `Int` | — | `groups` | Creation |
+| `:household` | `Int` | — | `HouseholdProcess` | Creation |
 | `:isolated` | `Bool` | `false` | `Isolation` | `resolve_individual!` |
 | `:isolation_time` | `Float64` | `Inf` | `Isolation` | `resolve_individual!` |
 | `:isolation_release_time` | `Float64` | `Inf` | `Isolation`, `ContactTracing`'s `Quarantine` | `resolve_individual!` / `apply_trace!`; when the block ends |
