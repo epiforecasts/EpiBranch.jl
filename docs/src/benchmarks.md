@@ -6,11 +6,12 @@ These timings are indicative only. Both the R and Julia implementations are unde
 
 ## How to run
 
-The Julia benchmarks run on the copy of EpiBranch in the repository folder and need four other packages. Start Julia in that folder and set up a project for them once:
+The Julia benchmarks run on the copy of EpiBranch in the repository folder and need four other packages. Start Julia in that folder and set up a project for them once, outside the repository so that it leaves nothing behind in your checkout:
 
 ```julia
 using Pkg
-Pkg.activate("benchmarks-env")  # create the project folder benchmarks-env
+env = joinpath(homedir(), "epibranch-benchmarks")
+Pkg.activate(env)  # creates the project folder if it is not there
 Pkg.develop(path = ".")  # use the EpiBranch in this folder
 Pkg.add(["BenchmarkTools", "Distributions", "Optim", "StableRNGs"])
 ```
@@ -18,7 +19,7 @@ Pkg.add(["BenchmarkTools", "Distributions", "Optim", "StableRNGs"])
 then run, from a terminal in the repository folder:
 
 ```bash
-julia --project=benchmarks-env benchmarks/benchmark_julia.jl
+julia --project=~/epibranch-benchmarks benchmarks/benchmark_julia.jl
 ```
 
 R benchmarks (requires [epichains](https://github.com/epiverse-trace/epichains) and [ringbp](https://github.com/epiforecasts/ringbp)):
