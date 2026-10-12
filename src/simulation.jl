@@ -605,9 +605,10 @@ function _intervene!(
         targets[i].parent_id, targets[i].infection_time = es[1]
     end
 
-    kept = _act_per_case!(state, interventions, targets, edges, is_new)
-    for intervention in interventions
-        _uses_batch_hook(intervention) || continue
+    batch = filter(_uses_batch_hook, interventions)
+    per_case = filter(!_uses_batch_hook, interventions)
+    kept = _act_per_case!(state, per_case, targets, edges, is_new)
+    for intervention in batch
         _warn_batch_hook(intervention)
         apply_post_transmission!(intervention, state, targets)
         # Asked after the batch hook, which may write what it reads.
@@ -620,10 +621,11 @@ end
     _act_per_case!(state, interventions, targets, edges, is_new) -> Vector{Int}
 
 Offer each individual of the active set the contacts it reached this
-generation, through the same per-case hooks the continuous-time race calls when
-it settles a case: every intervention's [`trace_contacts!`](@ref), then every
-intervention's [`intervention_actions`](@ref), admitted through its wrappers,
-then [`keep_active`](@ref), whose answers are returned. A target reached by
+generation, through the per-case hooks the continuous-time race calls when it
+settles a case: every one of `interventions`' [`trace_contacts!`](@ref), then
+their [`intervention_actions`](@ref), admitted through their wrappers, then
+their [`keep_active`](@ref), whose answers are returned. The caller leaves out
+interventions on the deprecated batch hook. A target reached by
 several individuals is offered to each of them, as a neighbour is on the race.
 
 Cases are visited in order of infection time, each with the state its settling
@@ -664,16 +666,13 @@ end
 
 function _case_hooks!(state::SimulationState, case, interventions, contacts, is_new, kept)
     for intervention in interventions
-        _uses_batch_hook(intervention) && continue
         trace_contacts!(intervention, state, case, contacts)
     end
     for intervention in interventions
-        _uses_batch_hook(intervention) && continue
         actions = intervention_actions(intervention, state, contacts)
         actions === nothing || _admit_actions!(intervention, state, actions)
     end
     for intervention in interventions
-        _uses_batch_hook(intervention) && continue
         append!(kept, keep_active(intervention, state, contacts, is_new))
     end
     return nothing
