@@ -6,13 +6,13 @@ These timings are indicative only. Both the R and Julia implementations are unde
 
 ## How to run
 
-The Julia benchmarks run on the copy of EpiBranch in the repository folder and need three other packages. Start Julia in that folder and set up a project for them once:
+The Julia benchmarks run on the copy of EpiBranch in the repository folder and need four other packages. Start Julia in that folder and set up a project for them once:
 
 ```julia
 using Pkg
 Pkg.activate("benchmarks-env")  # create the project folder benchmarks-env
 Pkg.develop(path = ".")  # use the EpiBranch in this folder
-Pkg.add(["BenchmarkTools", "Distributions", "StableRNGs"])
+Pkg.add(["BenchmarkTools", "Distributions", "Optim", "StableRNGs"])
 ```
 
 then run, from a terminal in the repository folder:
@@ -60,8 +60,12 @@ Simulating 500 outbreaks with R = 2.5 and dispersion k = 0.16 (`NegBin(2.5, 0.16
 
 | Scenario | Julia (EpiBranch) |
 |---|---|
-| Line list generation (200 cases) | 0.008 ms |
-| NegBin fit from 1000 offspring counts | 0.71 ms |
+| Line list generation (200 cases) | 0.017 ms |
+| NegBin fit from 1000 offspring counts | 2.8 ms |
+
+These two rows were measured together, in October 2026, on different hardware from the comparison tables above, so compare them with each other rather than with the rows above.
+
+The fit is a maximum-likelihood search, EpiBranch's `loglikelihood` paired with an optimiser, since a negative binomial has no closed-form fit. It is timed on 1,000 counts; the 1,000 simulated chains hold more than that, and the script cuts them so the size the row names is the size that was timed.
 
 No direct R comparison is included for line list generation (simulist requires epiparameter database setup) or offspring fitting.
 
@@ -72,4 +76,4 @@ No direct R comparison is included for line list generation (simulist requires e
 - All timings are medians from multiple runs
 - Hardware differences will affect absolute numbers; ratios are more informative
 - Neither implementation is specifically optimised for speed
-- Last run: April 2026
+- Last run: the comparison tables April 2026, the "Other benchmarks" table October 2026

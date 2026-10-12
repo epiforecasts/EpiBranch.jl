@@ -155,17 +155,34 @@ typeof(NegBin(2.5, 0.16))
 
 Every Julia value has a type, and `x::Type` says that `x` must have that type.
 `NegBin(2.5, 0.16)` returns a `NegativeBinomial` from the Distributions package.
-You will mostly see `::` in function definitions, as in the next section.
+You will mostly see `::` in function definitions, as under [Adding a method
+to an EpiBranch function](#Adding-a-method-to-an-EpiBranch-function) below.
 
 ## Functions ending in `!`
 
 ```@example juliar
-compute_trace_level!(outbreak)
+traced = simulate(
+    ModelSpec(
+        model;
+        interventions = [
+            Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf),
+            ContactTracing(
+                probability = 0.8, isolation_to_trace_delay = Exponential(1.5),
+                action = Quarantine(duration = Inf)
+            ),
+        ],
+        attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
+    );
+    n_initial = 20, max_cases = 500, rng = StableRNG(3)
+)
+compute_trace_level!(traced)
+count(ind -> haskey(ind.state, :trace_level), traced.individuals)
 ```
 
-`compute_trace_level!(outbreak)` records, for each traced person, how many
+`compute_trace_level!(traced)` records, for each traced person, how many
 tracing steps it took to reach them from the case where tracing started, and
-stores it in `outbreak` itself. By convention a function whose name ends in `!` changes one
+stores it in `traced` itself: the count above reads a key that was not there
+before the call. By convention a function whose name ends in `!` changes one
 of its arguments. R functions usually return a modified copy and leave the
 original alone.
 
