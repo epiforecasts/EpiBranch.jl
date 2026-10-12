@@ -38,7 +38,7 @@ should also be able to end such a run overrides
 reaching that bound is the whole of what the rule tests, it also declares
 [`honoured_without_should_stop`](@ref EpiBranch.honoured_without_should_stop),
 so such a run does not report it as ignored.
-See the Extending guide for a worked example.
+See [Stopping rules](@ref) for a worked example.
 """
 abstract type AbstractStoppingRule end
 
