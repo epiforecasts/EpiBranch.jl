@@ -6,11 +6,12 @@ These timings are indicative only. Both the R and Julia implementations are unde
 
 ## How to run
 
-The Julia benchmarks run on the copy of EpiBranch in the repository folder and need four other packages. Start Julia in that folder and set up a project for them once:
+The Julia benchmarks run on the copy of EpiBranch in the repository folder and need four other packages. Start Julia in that folder and set up a project for them once, outside the repository so that it leaves nothing behind in your checkout:
 
 ```julia
 using Pkg
-Pkg.activate("benchmarks-env")  # create the project folder benchmarks-env
+env = joinpath(homedir(), "epibranch-benchmarks")
+Pkg.activate(env)  # creates the project folder if it is not there
 Pkg.develop(path = ".")  # use the EpiBranch in this folder
 Pkg.add(["BenchmarkTools", "Distributions", "Optim", "StableRNGs"])
 ```
@@ -18,7 +19,7 @@ Pkg.add(["BenchmarkTools", "Distributions", "Optim", "StableRNGs"])
 then run, from a terminal in the repository folder:
 
 ```bash
-julia --project=benchmarks-env benchmarks/benchmark_julia.jl
+julia --project=~/epibranch-benchmarks benchmarks/benchmark_julia.jl
 ```
 
 R benchmarks (requires [epichains](https://github.com/epiverse-trace/epichains) and [ringbp](https://github.com/epiforecasts/ringbp)):
@@ -56,16 +57,19 @@ Simulating 500 outbreaks with R = 2.5 and dispersion k = 0.16 (`NegBin(2.5, 0.16
 !!! note "One Julia scenario against three R scenarios"
     The Julia column repeats one timing, for isolation plus 50% contact tracing (scenario 7 in `benchmark_julia.jl`), against all three ringbp scenarios. The models also differ: ringbp links each generation time to the case's incubation period and sets the fraction of transmission before symptoms, which the EpiBranch run does not. Read these as order-of-magnitude comparisons only.
 
+!!! warning "The Julia figure here is not reproducible by the current script"
+    The 707 ms dates from April 2026, from an engine and a version of the script that have both moved on, and it cannot be reproduced by the script this page tells you to run: that gives about 2,500 ms. Hardware does not account for it, since every other Julia row in these tables comes out 1.7 to 2.8 times its published value on the same machine. What does account for it is not identifiable from here, so treat the ratio in this table as not yet re-measured; putting it right needs the R column run again alongside the Julia one, which needs ringbp.
+
 ## Other benchmarks
 
 | Scenario | Julia (EpiBranch) |
 |---|---|
-| Line list generation (200 cases) | 0.017 ms |
-| NegBin fit from 1000 offspring counts | 2.8 ms |
+| Line list generation (200 to 260 cases) | 0.08 ms |
+| NegBin fit from 1000 offspring counts | 4.2 ms |
 
 These two rows were measured together, in October 2026, on different hardware from the comparison tables above, so compare them with each other rather than with the rows above.
 
-The fit is a maximum-likelihood search, EpiBranch's `loglikelihood` paired with an optimiser, since a negative binomial has no closed-form fit. It is timed on 1,000 counts; the 1,000 simulated chains hold more than that, and the script cuts them so the size the row names is the size that was timed.
+Both rows name the size that was timed, and the script holds them to it rather than trusting a seed. The line list is built from a state `condition` holds between 200 and 260 cases. A window is the most that is available: the cap does not set the size, because the generation that crosses it completes, so a capped run of this process lands anywhere between 220 and about 490 cases. Three in four of the rejected runs overshoot 260 and the rest die out before 200. A seed on its own would pin nothing, since which run it produces moves with any change upstream of the first draw. The fit is a maximum-likelihood search, EpiBranch's `loglikelihood` paired with an optimiser, since a negative binomial has no closed-form fit, and the script cuts the counts the 1,000 simulated chains hold down to the 1,000 the row names. The search starts away from the values the data were drawn from: starting at them reaches the optimum in about two thirds of the iterations, which is not the cost of fitting.
 
 No direct R comparison is included for line list generation (simulist requires epiparameter database setup) or offspring fitting.
 

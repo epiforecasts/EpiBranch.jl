@@ -21,15 +21,29 @@ explains the syntax used in these pages.
 
 ## The core package only
 
-EpiBranch is in the General registry, Julia's equivalent of CRAN, and you load
-it with `using EpiBranch`, as you would `library()` a package in R.
+EpiBranch is in the General registry, Julia's equivalent of CRAN, but the
+registered version is behind these pages, so install the development version
+from GitHub for now. You load it with `using EpiBranch`, as you would
+`library()` a package in R:
+
+```julia
+using Pkg
+Pkg.activate("my-analysis")  # a project for this analysis, as above
+Pkg.add(
+    PackageSpec(url = "https://github.com/epiforecasts/EpiBranch.jl", rev = "main")
+)
+# The examples in these pages also use these two
+Pkg.add(["Distributions", "StableRNGs"])
+
+using EpiBranch
+```
 
 !!! warning "The registered version is older than these pages"
     The registered version (0.1.0) does not run the examples in these pages,
     which describe version 0.2: setting how long isolation or quarantine lasts
-    (`duration`), for example, fails with an error. Until 0.2 is released,
-    install EpiBranch from GitHub as in the next section, leaving out the
-    household and network packages if you do not need them.
+    (`duration`), for example, fails with an error. The block above
+    therefore installs the development version from GitHub rather than
+    `Pkg.add("EpiBranch")`, which would fetch 0.1.0.
 
 ## With the household and network packages
 
@@ -49,6 +63,8 @@ Pkg.add([
     PackageSpec(url = repo, rev = rev, subdir = "lib/EpiHouseholds"),
     PackageSpec(url = repo, rev = rev, subdir = "lib/EpiNetwork"),
 ])
+# The examples in these pages also use these two
+Pkg.add(["Distributions", "StableRNGs"])
 ```
 
 `PackageSpec` says where to install a package from: here the GitHub repository,

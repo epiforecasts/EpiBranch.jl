@@ -88,6 +88,7 @@ in the middle: `0:7:28` is R's `seq(0, 28, by = 7)`.
 
 ```@example juliar
 prob_asymptomatic = (rng, ind) -> 0.3
+nothing # hide
 ```
 
 `(rng, ind) -> 0.3` is a function without a name, like `function(rng, ind) 0.3`
@@ -99,6 +100,7 @@ person (`ind`), and returns the value for that person.
 
 ```@example juliar
 by_age = (rng, ind) -> ind.state[:age] < 18 ? 0.6 : 0.2
+nothing # hide
 ```
 
 `c ? a : b` is `if (c) a else b` in R: here 0.6 for children and 0.2 for
