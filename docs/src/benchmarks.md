@@ -58,7 +58,7 @@ Simulating 500 outbreaks with R = 2.5 and dispersion k = 0.16 (`NegBin(2.5, 0.16
     The Julia column repeats one timing, for isolation plus 50% contact tracing (scenario 7 in `benchmark_julia.jl`), against all three ringbp scenarios. The models also differ: ringbp links each generation time to the case's incubation period and sets the fraction of transmission before symptoms, which the EpiBranch run does not. Read these as order-of-magnitude comparisons only.
 
 !!! warning "The Julia figure here is not reproducible by the current script"
-    The 707 ms dates from April 2026, from an engine and a version of the script that have both moved on, and it cannot be reproduced by the script this page tells you to run: that gives about 2,500 ms. Hardware does not account for it, since every other Julia row in these tables comes out 1.7 to 2.8 times its published value on the same machine. What does account for it is not identifiable from here, so treat the ratio in this table as not yet re-measured; putting it right needs the R column run again alongside the Julia one, which needs ringbp.
+    The 707 ms dates from April 2026, from an engine and a version of the script that have both moved on, and it cannot be reproduced by the script this page tells you to run: that gives several times as long, by a factor that moves with the machine and with what else it is doing. Treat the ratio in this table as not yet re-measured.
 
 ## Other benchmarks
 
