@@ -98,6 +98,34 @@ EpiBranch.competing_risk(::BlockOneGoodOneShort, parent, contact) =
 # package's, so that the rest of the suite does not inherit it.
 _all_variadic(args...) = nothing
 
+# A family of interventions whose hook is written once on the abstract parent,
+# with a child whose override drops an argument. The parent's method answers
+# the call, so the child's total block never applies: the check has to ask per
+# method, since asking per hook finds the parent's and falls silent.
+abstract type _Family <: AbstractIntervention end
+EpiBranch.competing_risk(::_Family, parent, contact, state) =
+    Risk(block_probability = 0.0)
+struct _FamilyShort <: _Family end
+EpiBranch.competing_risk(::_FamilyShort, parent, contact) =
+    Risk(block_probability = 1.0)
+
+# The other way round: the short method is the parent's and the child's is
+# correct, so the child reaches its own and nothing is wrong with it.
+abstract type _FamilyB <: AbstractIntervention end
+EpiBranch.competing_risk(::_FamilyB, parent, contact) = Risk(block_probability = 1.0)
+struct _FamilyBOK <: _FamilyB end
+EpiBranch.competing_risk(::_FamilyBOK, parent, contact, state) =
+    Risk(block_probability = 1.0)
+
+# A correct hook alongside a convenience overload of it for the same type: the
+# shorter one is unreachable from the engine, but the type's own hook answers
+# the call, so there is nothing to report.
+struct _ExtraOverload <: AbstractIntervention end
+EpiBranch.competing_risk(::_ExtraOverload, parent, contact, state) =
+    Risk(block_probability = 1.0)
+EpiBranch.competing_risk(::_ExtraOverload, contact) = Risk(block_probability = 1.0)
+
+
 @testset "ModelSpec" begin
     # A ModelSpec composes the modelling layers (progression, interventions,
     # attributes, observation) around a pure transmission process. The process
@@ -356,6 +384,19 @@ _all_variadic(args...) = nothing
         @test !EpiBranch._has_own_method(
             _all_variadic, BlockVariadic, AbstractIntervention, 3
         )
+        # A child of an abstract intervention whose override drops an
+        # argument: the parent's correct method answers the call, so the
+        # child's block never applies, and the warning names the child.
+        @test_logs (
+            :warn,
+            r"_FamilyShort has a method of its own for competing_risk, but at no number of arguments",
+        ) match_mode = :any ModelSpec(bp; interventions = [_FamilyShort()])
+        # The same family the other way round is fine: the child's own method
+        # is the one a four-argument call reaches.
+        @test_logs ModelSpec(bp; interventions = [_FamilyBOK()])
+        # A convenience overload of a hook for the same type is not a
+        # mis-written hook, since the type's own hook answers the call.
+        @test_logs ModelSpec(bp; interventions = [_ExtraOverload()])
         # An effect declared for the likelihood alone is an effect.
         @test_logs ModelSpec(bp; interventions = [_SusceptibilityOnly()])
         # `Isolation` implements several hooks properly and stays silent too.

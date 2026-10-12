@@ -123,6 +123,39 @@ function _shadowing_hook(f, T::Type, arities)
     end
 end
 
+# The type a method of `f` was written for, where that method is one `T` can
+# never reach: written at an arity the engine does not call, with no method at
+# a called arity written for a type at least as specific to stand in for it.
+# `nothing` when every method `T` has is either reachable or covered that way.
+#
+# Asked per method rather than per hook, because a correct method on an
+# abstract intervention parent would otherwise excuse a child's broken
+# override: the parent's method answers the call, so the child's own block
+# never applies, which is the mistake this check exists to name.
+function _unreachable_own_method(f, T::Type, base::Type, arities)
+    own = Tuple{Type, Bool}[]
+    for mm in methods(f, Tuple{T, Vararg{Any}})
+        params = Base.unwrap_unionall(mm.sig).parameters
+        length(params) < 2 && continue
+        p = params[2]
+        p isa TypeVar && (p = p.ub)
+        p isa Type || continue
+        (p !== base && p <: base) || continue
+        called = if Base.isvarargtype(params[end])
+            any(n -> n + 1 >= length(params) - 1, arities)
+        else
+            (length(params) - 1) in arities
+        end
+        push!(own, (p, called))
+    end
+    for (p, called) in own
+        called && continue
+        any(entry -> entry[2] && entry[1] <: p, own) && continue
+        return p
+    end
+    return nothing
+end
+
 # Warn, per hook, about a method an intervention meant as that hook which the
 # engine will never call: one written at an arity no call uses, or one added
 # without the `EpiBranch.` prefix and so belonging to a new function of the
@@ -131,14 +164,17 @@ end
 function _warn_hook_mistakes(T::Type)
     found = 0
     for (f, arities, sigs) in _hook_arities()
-        if _has_own_method(f, T, AbstractIntervention)
-            any(n -> _has_own_method(f, T, AbstractIntervention, n), arities) && continue
+        unreachable = _unreachable_own_method(f, T, AbstractIntervention, arities)
+        if unreachable !== nothing
             found += 1
-            @warn "$(nameof(T)) has a method of its own for $(nameof(f)), but " *
-                "at no number of arguments the engine calls it with, so the " *
-                "method is never reached and the no-op default runs in its " *
-                "place. The engine calls: $(join(sigs, ", "))." intervention = T
-        elseif _shadowing_hook(f, T, arities)
+            @warn "$(nameof(unreachable)) has a method of its own for " *
+                "$(nameof(f)), but at no number of arguments the engine calls " *
+                "it with, so that method is never reached: the engine uses the " *
+                "next one that applies to $(nameof(T)), which is the no-op " *
+                "default unless a wider intervention type supplies one. The " *
+                "engine calls: $(join(sigs, ", "))." intervention = T
+        elseif !_has_own_method(f, T, AbstractIntervention) &&
+                _shadowing_hook(f, T, arities)
             found += 1
             @warn "$(parentmodule(T)) defines a method of $(nameof(f)) for " *
                 "$(nameof(T)), but on its own function of that name rather " *
