@@ -50,10 +50,9 @@ per-individual reporting.
 `detection_prob = 1.0, delay = D` ↔ full reporting with delay `D`.
 `detection_prob = ρ, delay = Dirac(0.0)` ↔ binomial thinning, no delay.
 
-In a model that also has a `Reporting` clinical transition,
-`apply_observation!` replaces that transition's `:reported` and
-`:reporting_time` with its own draw after the run, because the
-likelihood thins chain sizes by `detection_prob`.
+A model cannot combine `PerCaseObservation` with a progression transition
+that records `:reported`, such as `Reporting`: `simulate` throws an
+`ArgumentError`, since both would write each case's report.
 """
 struct PerCaseObservation{P, D, F} <: ObservationModel
     detection_prob::P

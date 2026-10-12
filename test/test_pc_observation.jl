@@ -187,38 +187,19 @@ end
         )
     end
 
-    @testset "observation's draw applies alongside a Reporting transition" begin
-        # The likelihood thins chain sizes by detection_prob, so the
-        # simulation must report by detection_prob too, whatever a Reporting
-        # transition drew during the run.
-        rep = Reporting(delay = LogNormal(1.0, 0.3), probability = 0.5)
+    @testset "a progression transition recording :reported is rejected" begin
         obs = PerCaseObservation(detection_prob = 0.9, delay = Exponential(1.0))
         attrs = clinical_presentation(
             incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0
         )
-        rng = StableRNG(5)
-        model = BranchingProcess(Poisson(0.0), Exponential(5.0))
-        state = simulate(
-            ModelSpec(model; progression = [rep], attributes = attrs, observation = obs);
-            n_initial = 300, rng = rng
-        )
-        for ind in state.individuals
-            @test ind.state[:reported] == isfinite(ind.state[:reporting_time])
+        model = BranchingProcess(Poisson(0.5), Exponential(5.0))
+        for t in (
+                Reporting(delay = LogNormal(1.0, 0.3), probability = 0.5),
+                Transition(:reported; delay = Exponential(1.0)),
+            )
+            spec = ModelSpec(model; progression = [t], attributes = attrs, observation = obs)
+            @test_throws ArgumentError simulate(spec; n_initial = 5, rng = StableRNG(5))
         end
-        frac_reported = count(ind -> ind.state[:reported], state.individuals) /
-            length(state.individuals)
-        @test 0.82 <= frac_reported <= 0.97
-    end
-
-    @testset "a generic :reported transition does not suppress reports" begin
-        m = ModelSpec(
-            BranchingProcess(Poisson(0.0), Exponential(5.0));
-            progression = [Transition(:reported; delay = Exponential(1.0))],
-            observation = PerCaseObservation(detection_prob = 1.0)
-        )
-        state = simulate(m; n_initial = 50, rng = StableRNG(3))
-        @test all(isfinite(ind.state[:reporting_time]) for ind in state.individuals)
-        @test sum(weekly_incidence(state; by = :reporting).cases) == 50
     end
 
     @testset "scalar_detection_prob rejects non-scalar fields" begin

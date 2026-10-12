@@ -174,10 +174,9 @@ run) and `PerCaseObservation` (which sets them post-simulation from a
 detection-probability draw). Both routes leave `:reporting_time` at `Inf`
 for a case that was not reported, so [`weekly_incidence`](@ref)'s
 `by = :reporting` counts reported cases the same way whichever route
-produced them. In a model with both, `PerCaseObservation` replaces the
-transition's report with its own draw after the run, so the simulated
-reports match the `detection_prob` that the likelihood thins by. A
-layer that reads `:reported` during the run sees the transition's value.
+produced them. A model can use only one of them: `simulate` throws an
+`ArgumentError` when `PerCaseObservation` finds `:reported` already
+recorded by a progression transition.
 
 Isolation is recorded under `:isolation_time`, with `:isolation_release_time`
 alongside it for when the block lapses; `set_isolated!` takes that release as

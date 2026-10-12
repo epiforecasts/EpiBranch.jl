@@ -7,6 +7,6 @@ than getting a report time regardless of detection.
 all for a simulation using `PerCaseObservation`; it now counts the
 reported cases from either route.
 
-In a model combining a `Reporting` transition with `PerCaseObservation`,
-the observation's draw replaces the transition's report after the run,
-so the simulated reports follow `detection_prob` as the likelihood does.
+A model combining `PerCaseObservation` with a progression transition that
+records `:reported`, such as `Reporting`, had the two overwrite each
+other's report; `simulate` now throws an `ArgumentError` for it.
