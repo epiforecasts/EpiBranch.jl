@@ -22,7 +22,7 @@
 Mark which simulated cases are reported, and when, under an observation
 model. [`simulate`](@ref) calls it once the outbreak has been simulated; it
 changes `state` in place. Under [`PerCaseObservation`](@ref) each case
-records `:reported` (`true`/`false`) and `:report_time`.
+records `:reported` (`true`/`false`) and `:reporting_time`.
 [`NoObservation`](@ref) and [`MinimumSize`](@ref) leave the cases unchanged.
 
 To add a new observation model, define this together with [`observe`](@ref).
@@ -38,11 +38,24 @@ function apply_observation!(o::PerCaseObservation, state, rng)
         # (kept for the contact-tracing table) so no RNG is spent on non-cases
         # and no `:reported` flag lands on a record that isn't a case.
         is_infected(ind) || continue
+        # A progression transition (such as `Reporting`) that records
+        # `:reported` owns that key, and its likelihood reads what it wrote.
+        haskey(ind.state, :reported) && throw(
+            ArgumentError(
+                "PerCaseObservation cannot be combined with a progression " *
+                    "transition that records `:reported`, such as `Reporting`: " *
+                    "both would write the case's report. Report cases with one " *
+                    "of them."
+            )
+        )
         ρ = _sample_value(o.detection_prob, rng, ind)
         d = _sample_value(o.delay, rng, ind)
         anchor = _percase_anchor(o.from, ind)
-        ind.state[:reported] = rand(rng) < ρ
-        ind.state[:report_time] = anchor + d
+        reported = rand(rng) < ρ
+        ind.state[:reported] = reported
+        # Shares :reporting_time with the Reporting transition, which leaves
+        # it at Inf for a case that was never reported.
+        ind.state[:reporting_time] = reported ? anchor + d : Inf
     end
     return state
 end

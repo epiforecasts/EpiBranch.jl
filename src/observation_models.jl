@@ -27,7 +27,7 @@ abstract type ObservationModel end
 
 Under-reporting and reporting delay: each case is reported independently with
 probability `detection_prob`, `delay` days after symptom onset (or after
-`from`). Each simulated case records `:reported` and `:report_time`.
+`from`). Each simulated case records `:reported` and `:reporting_time`.
 
 - `detection_prob`: the probability a case is reported, a number, a
   distribution, or a function of the random number generator and the
@@ -58,6 +58,10 @@ alone.
 # 60% of cases reported, on average 3 days after onset
 PerCaseObservation(detection_prob = 0.6, delay = Gamma(3.0, 1.0))
 ```
+
+Report cases with this or with a [`Reporting`](@ref) step in the progression,
+not both: they would each write the case's report, and `simulate` stops with
+an error if a model has both.
 """
 struct PerCaseObservation{P, D, F} <: ObservationModel
     detection_prob::P
