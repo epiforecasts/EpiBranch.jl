@@ -1838,7 +1838,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                 contact = Individual(id = 2, parent_id = 1, infection_time = 0.0)
                 contact.state[:traced] = true
                 contact.state[:trace_time] = Inf
-                EpiBranch.apply_post_transmission!(rv, state, [contact])
+                EpiBranch.apply_actions!(rv, state, [contact])
                 @test !is_vaccinated(contact)
                 @test rand(state.rng) == rand(StableRNG(7))
             end

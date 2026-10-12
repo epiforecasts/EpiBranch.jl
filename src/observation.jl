@@ -82,7 +82,7 @@ so this composes without specialised methods. `P(0 detected)` depends
 only on `base` and `detection_prob`, which lets it be computed once
 at construction rather than on every `logpdf` call. It is stored with
 whatever element type `base`'s parameters give `logpdf`, rather than
-fixed to `Float64`; differentiating through `base` (e.g. fitting an
+fixed to `Float64`: differentiating through `base` (e.g. fitting an
 offspring parameter with `ForwardDiff`) then passes a `Dual` through this
 field instead of hitting a conversion error.
 """

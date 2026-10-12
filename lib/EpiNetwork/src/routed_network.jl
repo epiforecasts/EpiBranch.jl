@@ -255,21 +255,13 @@ function Base.show(io::IO, m::RoutedNetwork)
     )
 end
 
-function _simulate(
+function simulate_once(
         model::RoutedNetwork, sim_opts::SimOpts; interventions, attributes,
-        progression, observation, recorder, rng, condition, max_attempts
+        progression, observation, recorder, rng
     )
-    condition !== nothing && return _retry_for_condition(
-        () -> _simulate(
-            model, sim_opts; interventions, attributes, progression,
-            observation, recorder, rng, condition = nothing, max_attempts
-        ),
-        condition, max_attempts
-    )
-
     # Every route that did not name its own start takes the model's, or the one
     # the progression implies, so a latent period delays all of them together.
-    derived = _resolve_infectious_from(model.from, progression)
+    derived = something(model.from, infectious_from(progression))
     Tobs = model.obs_end
 
     state = new_state(model, progression, attributes, rng)
@@ -286,11 +278,10 @@ function _simulate(
     windows = [_start_unset(w, derived) for w in model.windows]
     routes = Tuple((w, _route_targets(w)) for w in windows)
 
-    extinct = EpiBranch._sellke_race!(
-        state, collect(1:model.n), rng;
+    EpiBranch.sellke_race!(
+        state, collect(1:model.n), rng, sim_opts;
         routes = routes, interventions = interventions,
         watches = Tuple(EpiBranch.watched_records(w.kernel) for w in windows),
-        max_time = EpiBranch._max_time(sim_opts),
         risks = EpiBranch.transmission_risks(model), recorder = recorder,
         seed! = (best, members, r) -> _seed_network!(
             best, members, state, model.external_hazard, sim_opts.n_initial, Tobs, r;
@@ -303,7 +294,6 @@ function _simulate(
         )
     )
 
-    _reconcile_sellke_bookkeeping!(state, extinct)
     apply_observation!(observation, state, rng)
     return state
 end

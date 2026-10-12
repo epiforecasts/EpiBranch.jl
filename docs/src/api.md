@@ -6,6 +6,7 @@
 BranchingProcess
 Infectiousness
 HomogeneousProcess
+MixingProcess
 NetworkProcess
 RoutedNetwork
 HouseholdProcess
@@ -104,6 +105,7 @@ EpiBranch.honoured_without_should_stop
 
 ```@docs
 simulate
+EpiBranch.simulate_once
 EpiBranch.generate_offspring
 EpiBranch.contacts_of
 EpiBranch.collect_exposures
@@ -113,6 +115,8 @@ EpiBranch.transmission_risks
 EpiBranch.race_groups
 make_contact!
 susceptible_fraction
+EpiBranch.infectious_from
+EpiBranch.sellke_race!
 ```
 
 ### Building a model's starting population
@@ -309,6 +313,7 @@ proportion_cases_individual
 proportion_cases_offspring
 proportion_cluster_size
 heterogeneous_contact_R
+EpiBranch.analytic_offspring_effect
 ```
 
 ### Chain-size distributions
@@ -453,6 +458,7 @@ EpiBranch._settle_generation!
 EpiBranch._settle_case!
 EpiBranch._at_case!
 EpiBranch._intervene!
+EpiBranch._act_per_case!
 EpiBranch._resolve!
 EpiBranch._decide_infected
 EpiBranch.population_size

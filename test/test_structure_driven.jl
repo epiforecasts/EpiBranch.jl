@@ -224,16 +224,21 @@ end
 end
 
 # Records the generation of each node's latest exposure and of the first one in
-# which it was found vaccinated. Listed after the ring vaccination, so a node
-# dosed at an exposure records that exposure's generation.
+# which it was found vaccinated. Listed after the ring vaccination, and recorded
+# as an action, so a node dosed at an exposure records that exposure's
+# generation.
 struct ExposureGenerations <: AbstractIntervention end
-function EpiBranch.apply_post_transmission!(::ExposureGenerations, state, targets)
-    for t in targets
-        t.state[:exposure_generation] = state.current_generation
-        get(t.state, :vaccinated, false) || continue
-        get!(t.state, :vaccination_generation, state.current_generation)
-    end
+function _record_exposure_generation!(t, at, state)
+    t.state[:exposure_generation] = state.current_generation
+    get(t.state, :vaccinated, false) || return nothing
+    get!(t.state, :vaccination_generation, state.current_generation)
     return nothing
+end
+function EpiBranch.intervention_actions(::ExposureGenerations, state, targets)
+    return [
+        EpiBranch.InterventionAction(t, state.max_infection_time, _record_exposure_generation!)
+            for t in targets
+    ]
 end
 
 @testset "A dose given at an earlier exposure can abort the infecting one" begin

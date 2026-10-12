@@ -125,11 +125,18 @@ function _has_own_method(f, T::Type, base::Type)
     end
 end
 
-# Whether an intervention implements a hook that only the generation engine calls.
+# Whether an intervention reaches its targets through a hook the race calls only
+# from inside a tracing walk (`keep_active`), or not at all (the deprecated
+# batch hook).
 function _has_generation_hook(iv::AbstractIntervention)
-    T = typeof(iv)
-    return _has_own_method(apply_post_transmission!, T, AbstractIntervention) ||
-        _has_own_method(keep_active, T, AbstractIntervention)
+    return _uses_batch_hook(iv) ||
+        _has_own_method(keep_active, typeof(iv), AbstractIntervention)
+end
+
+# Whether an intervention discovers actions of its own, which the race delivers
+# only for one declaring `continuous_actions`.
+function _discovers_actions(iv::AbstractIntervention)
+    return _has_own_method(intervention_actions, typeof(iv), AbstractIntervention)
 end
 
 # One case's window on one route: who it is, which route, and when that window
@@ -601,31 +608,35 @@ end
 # wherever the wrapped intervention takes effect.
 
 #
-# What has no continuous-time representation is a *generation-shaped* hook.
-# `apply_post_transmission!` acts on a batch of freshly created contact objects,
-# and a race that settles one pre-existing node at a time never builds those.
-# `keep_active` is read, but only from inside a tracing walk (`_trace_from!`
-# asks it which contacts the ring grows from), so an intervention that answers
-# it and does not trace has nothing to call it. So an intervention with a method
-# of its own for either hook is taken to reach its targets that way, and
-# reported as unhonoured, unless it
-# also traces contacts: `trace_contacts!` is then its continuous-time
-# counterpart, which needs a model that can name a case's contacts. The check
-# reads the methods themselves, so an intervention written outside the package
-# is reported without declaring anything. `MassVaccination`'s rollout, for one,
-# doses each new contact as the generation engine creates it, so on the
-# continuous-time path nobody is ever dosed and the efficacy risk it contributes
-# never blocks; `GroupVaccination` doses whole groups as their members are
-# created, and goes the same way.
+# The per-case hooks the generation engine also calls reach the race only in
+# part. The deprecated `apply_post_transmission!` acts on a batch of freshly
+# created contact objects, and a race that settles one pre-existing node at a
+# time never builds those. `keep_active` is read, but only from inside a tracing
+# walk (`_trace_from!` asks it which contacts the ring grows from), so an
+# intervention that answers it and does not trace has nothing to call it. So an
+# intervention with a method of its own for either hook is taken to reach its
+# targets that way, and reported as unhonoured, unless it also traces contacts.
+# Actions from `intervention_actions` are discovered on the race only for an
+# intervention declaring `continuous_actions`, because the race offers them to
+# pending members whose infection times it does not know yet; one that does not
+# declare it is reported. The checks read the methods themselves, so an
+# intervention written outside the package is reported without declaring
+# anything. `MassVaccination`'s rollout, for one, doses each contact a case
+# makes, which the race would have to offer the whole pending population, so on
+# the continuous-time path nobody is ever dosed and the efficacy risk it
+# contributes never blocks.
 #
 # Tracing needs one thing more: the model has to be able to name the contacts a
 # case reached, which is what `supplies_contacts` reports. A graph names a node's
 # neighbours and a household its members, but mass action names no contacts, so
 # tracing has nothing to act along there and stays unhonoured. Supported
 # candidate actions run after tracing through the shared admission protocol;
-# legacy batch-only delivery remains unsupported.
+# batch-only delivery remains unsupported.
 function _sellke_honours(model, iv::AbstractIntervention)
     continuous_actions(iv) && return supplies_contacts(model)
+    # Its actions go undelivered, but tracing still reaches a model that names
+    # contacts.
+    _discovers_actions(iv) && return traces_contacts(iv) && supplies_contacts(model)
     _has_generation_hook(iv) || return true
     return traces_contacts(iv) && supplies_contacts(model)
 end
@@ -655,7 +666,7 @@ supplies_contacts(::TransmissionModel) = false
 # A ring (`ContactTracing(depth = 2)` and beyond) grows through uninfected
 # contacts too. On the generation engine an intervention asks for that through
 # `keep_active`, which keeps such a contact exposing for one more generation so
-# `apply_post_transmission!` reaches its own contacts in turn. The race has no
+# `trace_contacts!` reaches its own contacts in turn. The race has no
 # generations to keep a node alive for, so it walks the model's own contact
 # structure breadth-first instead, and asks the same hook which contacts the
 # next hop starts from. The depth semantics and the `:_ring_remaining` budget
@@ -669,9 +680,13 @@ supplies_contacts(::TransmissionModel) = false
 # its own right, seeds its own fresh full-radius ring when the race settles it,
 # which is the contract `ContactTracing` documents. Whether that second attempt
 # happens at all is the eligibility policy's call, not this loop's.
-function _trace_from!(state, infector, interventions, contacts, pos, processed)
+# `tracing` is whether any intervention traces, which the race works out once.
+function _trace_from!(
+        state, infector, interventions, contacts, pos, processed,
+        tracing = any(traces_contacts, interventions)
+    )
     contacts === nothing && return nothing
-    any(traces_contacts, interventions) || return nothing
+    tracing || return nothing
     return _walk_ring!(state, infector, interventions, contacts, pos, processed)
 end
 
@@ -736,10 +751,12 @@ function _warn_unhonoured_interventions(model, interventions)
     )
     isempty(unhonoured) && return nothing
     @warn "$(nameof(typeof(model))) is a continuous-time model that settles one " *
-        "pre-existing case at a time, so it never creates the batches of new " *
-        "contacts the generation engine's post-transmission hooks act on; it " *
-        "does not honour these, which will have no effect: " *
-        "$(join(unhonoured, ", ")). Express such control as a removal " *
+        "pre-existing case at a time, and cannot offer these interventions the " *
+        "contacts or actions they act through: " *
+        "$(join(unhonoured, ", ")). It does not honour what they do through " *
+        "those hooks, which will have no effect; what they do as each " *
+        "individual is initialised or resolved, and the risks they put on " *
+        "each contact, still apply. Express such control as a removal " *
         "`Transition` in the progression, or through an intervention that acts " *
         "when each individual is initialised, resolved, or traced."
     return nothing
@@ -858,9 +875,9 @@ function _sellke_race!(
         rts = routes
     end
     m = length(members)
-    # Candidate times are held at the state's timing type (a dual under
-    # automatic differentiation), so a gradient with respect to a transmission
-    # parameter flows through the contact draws into the infection times.
+    # Candidate times share the state's timing type (a dual under automatic
+    # differentiation), so a gradient with respect to a transmission parameter
+    # flows through the contact draws into the infection times.
     best = fill(_timetype(state)(Inf), m)
     processed = falses(m)
     pos = Dict{Int, Int}(id => k for (k, id) in enumerate(members))
@@ -942,6 +959,7 @@ function _sellke_race!(
             AbstractIntervention
         ), interventions
     )
+    tracing = any(traces_contacts, interventions)
     openings = _RouteOpening{T}[] # one per case and route it transmits along
     proposals = _Pending{T}[]  # every proposal made, when something can block
     head = zeros(Int, may_block ? m : 0)  # first proposal to each member
@@ -1092,7 +1110,9 @@ function _sellke_race!(
         # time is the clock, and it is the next case in sequence. The post-loop
         # reconcile (`_reconcile_sellke_bookkeeping!`) sets the final values.
         _settle_case!(state, ind, interventions, state.cumulative_cases + 1)
-        traced = _trace_from!(state, ind, interventions, contacts, pos, processed)
+        traced = _trace_from!(
+            state, ind, interventions, contacts, pos, processed, tracing
+        )
         contacts === nothing ||
             _apply_continuous_actions!(
             state, ind, interventions, members, processed, contacts, pos, traced
@@ -1189,6 +1209,36 @@ function _propose!(race, k, opening_id, t)
         race.pending, race.proposals, race.head, race.best, race.represents,
         k, opening_id, t, race.may_block
     )
+end
+
+"""
+    sellke_race!(state, members, rng, sim_opts; kwargs...) -> state
+
+Public wrapper around `_sellke_race!`: resolves the race's
+`max_time` from `sim_opts`'s stopping rules, then reconciles `state`'s
+aggregate bookkeeping (`cumulative_cases`, `max_infection_time`, `extinct`)
+from the per-individual state the race wrote directly, before returning
+`state`. A model with its own simulation loop calls this rather than
+`_sellke_race!` itself, so it never has to resolve `max_time` or reconcile the
+bookkeeping by hand. `kwargs` are `_sellke_race!`'s own — `seed!`, `targets` or
+`routes`, `from`, `until`, `interventions`, `contacts`, `risks`,
+`introduction`, `watches`, `recorder` — everything but `max_time`, which this
+wrapper sets.
+
+A model with more than one natural race partition (a household process, over
+its households, via [`race_groups`](@ref)) calls `_sellke_race!` directly in
+its own loop instead, with `max_time` resolved once outside it, and reconciles
+`state` once after the loop: this wrapper's per-call reconciliation scans
+every individual, which would cost O(races × population) run inside such a
+loop rather than the O(population) a single-race model gets from calling this
+once. See `HouseholdProcess` in the `EpiHouseholds` package.
+"""
+function sellke_race!(
+        state::SimulationState, members::AbstractVector{Int},
+        rng::AbstractRNG, sim_opts::SimOpts; kwargs...
+    )
+    extinct = _sellke_race!(state, members, rng; max_time = _max_time(sim_opts), kwargs...)
+    return _reconcile_sellke_bookkeeping!(state, extinct)
 end
 
 """
