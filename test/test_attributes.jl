@@ -334,7 +334,7 @@ end
                 set_isolated!(ind, 2.0; release_time = Inf)
             end
 
-            EpiBranch.apply_post_transmission!(gv, state, people)
+            EpiBranch.apply_actions!(gv, state, people)
 
             accepting = filter(ind -> ind.state[:group] == 1, people)
             declining = filter(ind -> ind.state[:group] == 2, people)

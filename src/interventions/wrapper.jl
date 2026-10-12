@@ -2,9 +2,8 @@
 # (when it may act) or `CapacityConstrained` (how many it may reach). A
 # subtype stores the wrapped intervention in an `intervention` field and
 # inherits the plain delegation of every hook below, then overrides only the
-# hooks it gates. `apply_post_transmission!`, `keep_active` and
-# `trace_contacts!` have no default here, so each wrapper states what it does
-# with them.
+# hooks it gates. `keep_active` and `trace_contacts!` have no default here, so
+# each wrapper states what it does with them.
 abstract type InterventionWrapper <: AbstractIntervention end
 
 function initialise_individual!(w::InterventionWrapper, ind, state)
@@ -45,7 +44,6 @@ _unwrap_scheduled(w::InterventionWrapper) = _unwrap_scheduled(w.intervention)
 
 binding_release(w::InterventionWrapper) = binding_release(w.intervention)
 risk_applies(w::InterventionWrapper, route) = risk_applies(w.intervention, route)
-risk_depends_on_infector(w::InterventionWrapper) = risk_depends_on_infector(w.intervention)
 reads_population_state(w::InterventionWrapper) = reads_population_state(w.intervention)
 # A wrapper that can withdraw the inner block part-way through a stretch
 # already recorded cannot have those stretches read back: one per-host record
