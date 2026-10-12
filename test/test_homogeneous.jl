@@ -61,6 +61,14 @@ EpiBranch.trace_contacts!(::DoseSettleAndTrace, state, infector, contacts) = not
 # of its own, so `_generation_hooks` has nothing to name.
 struct DoseThroughActions <: EpiBranch.AbstractIntervention end
 EpiBranch.continuous_actions(::DoseThroughActions) = true
+# The same action-producer path as `DoseThroughActions`, but also defines
+# `apply_post_transmission!` of its own. `_generation_hooks` has something to
+# name here, but naming only that would miss `intervention_actions`, the hook
+# this branch is actually reached for.
+struct DoseThroughActionsAndSettle <: EpiBranch.AbstractIntervention end
+EpiBranch.continuous_actions(::DoseThroughActionsAndSettle) = true
+EpiBranch.apply_post_transmission!(::DoseThroughActionsAndSettle, state, new_contacts) =
+    nothing
 # Discovers its own actions, like `MassVaccination`, but without declaring
 # `continuous_actions`: the race never delivers what it discovers, and
 # `_generation_hooks` has nothing to name either, since it defines neither
@@ -435,6 +443,20 @@ end
             [:intervention_actions]
         @test_logs (:warn, r"intervention_actions"i) match_mode = :any simulate(
             ModelSpec(prog_pool; progression = prog, interventions = [DoseThroughActions()]);
+            rng = StableRNG(1), n_initial = 2
+        )
+        # Defining `apply_post_transmission!` alongside the action-producer
+        # path must not crowd `intervention_actions` out of the naming: the
+        # pool still cannot name contacts for it to act on, whatever else
+        # `_generation_hooks` finds.
+        @test !EpiBranch._sellke_honours(prog_pool, DoseThroughActionsAndSettle())
+        @test EpiBranch._unhonoured_hooks(prog_pool, DoseThroughActionsAndSettle()) ==
+            [:intervention_actions, :apply_post_transmission!]
+        @test_logs (:warn, r"intervention_actions"i) match_mode = :any simulate(
+            ModelSpec(
+                prog_pool; progression = prog,
+                interventions = [DoseThroughActionsAndSettle()]
+            );
             rng = StableRNG(1), n_initial = 2
         )
         # An intervention that discovers its own actions without declaring

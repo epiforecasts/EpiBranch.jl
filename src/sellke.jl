@@ -707,11 +707,11 @@ function _unhonoured_hooks(model, iv::AbstractIntervention)
     hooks = _generation_hooks(iv)
     if continuous_actions(iv)
         supplies_contacts(model) && return Symbol[]
-        # `intervention_actions` only ever runs where a case's contacts can be
-        # named, independently of whatever generation hooks `iv` also defines;
-        # name it so an intervention that reaches its targets only this way is
-        # not reported with an empty hook list.
-        return isempty(hooks) ? [:intervention_actions] : hooks
+        # `intervention_actions` is what this branch is reached for,
+        # independently of whatever generation hooks `iv` also defines; name
+        # it alongside them rather than letting it go unnamed whenever `iv`
+        # happens to define one too.
+        return [:intervention_actions; hooks]
     end
     # An intervention that discovers its own actions without declaring
     # `continuous_actions` has no generation hook to name either, but is
