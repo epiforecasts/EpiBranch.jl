@@ -64,6 +64,12 @@ using Dates
             ismissing(row.date_reporting) || @test row.date_reporting >= row.date_onset
             ismissing(row.date_admission) || @test row.date_admission >= row.date_onset
         end
+        # A non-terminal event cannot postdate the outcome that ends the case.
+        for row in eachrow(df)
+            ismissing(row.date_outcome) && continue
+            ismissing(row.date_reporting) || @test row.date_reporting <= row.date_outcome
+            ismissing(row.date_admission) || @test row.date_admission <= row.date_outcome
+        end
     end
 
     @testset "linelist with demographics from attributes" begin

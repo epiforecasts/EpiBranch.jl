@@ -45,6 +45,33 @@ SUITE["simulation: network, shared kernel"] = @benchmarkable simulate(
     $(network_model(Exponential(1.2))); initial_cases = [1], rng = StableRNG(1)
 )
 
+# Mass action samples only the pairs with a contact, so a run costs per contact
+# rather than per pair; per-individual traits must keep it that way.
+homogeneous_model(attributes) = ModelSpec(
+    HomogeneousProcess(; transmission_rate = 2.5, population_size = 20_000);
+    progression = PROGRESSION, attributes
+)
+
+SUITE["simulation: homogeneous"] = @benchmarkable simulate(
+    $(homogeneous_model(NoAttributes())); n_initial = 20, rng = StableRNG(1)
+)
+
+SUITE["simulation: homogeneous, susceptibility trait"] = @benchmarkable simulate(
+    $(homogeneous_model(transmission_traits(susceptibility = 0.9)));
+    n_initial = 20, rng = StableRNG(1)
+)
+
+# A window that never closes would have each case contact every member; the
+# time limit bounds the window the pairs are sampled over.
+SUITE["simulation: homogeneous SI, max_time"] = @benchmarkable simulate(
+    $(
+        ModelSpec(
+            HomogeneousProcess(; transmission_rate = 2.0, population_size = 50_000);
+            progression = Transition[]
+        )
+    ); n_initial = 50, rng = StableRNG(1), max_time = 3.0
+)
+
 SUITE["simulation: households"] = @benchmarkable simulate(
     $(
         ModelSpec(

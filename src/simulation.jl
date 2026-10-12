@@ -99,7 +99,7 @@ function _simulate(
     state = initialise_state(
         model, sim_opts, interventions, progression, attributes, rng
     )
-    _resolve_new_transitions!(state, 0)
+    _settle_generation!(state, interventions, _seed_cases(state), 0)
 
     while !should_terminate(state, sim_opts)
         _advance_generation!(model, state, interventions)
@@ -201,8 +201,8 @@ _rule_names(rules) = join([string(nameof(typeof(r))) for r in rules], ", ")
 
 # Warn when a termination control is set on a model that ignores it, so the
 # silent no-op is discoverable. Compares against the keyword defaults, so only
-# an explicitly-set control triggers the warning; `simulate` on a pool with no
-# termination keywords stays quiet.
+# an explicitly-set control triggers the warning; `simulate` on a fixed
+# population with no termination keywords stays quiet.
 function _warn_ignored_termination(
         model, max_cases, max_generations, max_time, stopping_rules
     )
@@ -253,7 +253,8 @@ end
 """
     _reconcile_sellke_bookkeeping!(state, extinct) -> state
 
-Set `cumulative_cases` and `max_infection_time` from the per-individual state a
+Set `cumulative_cases`, `max_infection_time` and `current_generation` (the
+latest generation reached) from the per-individual state a
 continuous-time (Sellke) loop writes directly, and `extinct` to the given
 `extinct`, keeping the returned state consistent with the generation engine's
 bookkeeping. `extinct` is whether the Sellke loop(s) that built `state` ran
@@ -270,6 +271,10 @@ function _reconcile_sellke_bookkeeping!(state::SimulationState, extinct::Bool)
                 for ind in state.individuals if get(ind.state, :infected, false)
         );
         init = 0.0
+    )
+    state.current_generation = maximum(
+        (ind.generation for ind in state.individuals if get(ind.state, :infected, false));
+        init = 0
     )
     state.extinct = extinct
     return state
@@ -532,19 +537,17 @@ function gather_by_target(model::TransmissionModel, state::SimulationState)
 end
 
 """Advance the simulation by one generation through the unified engine, as
-four phases: interventions act on the active infectives ([`_prepare_parents!`](@ref)),
-the exposure phase ([`collect_exposures`](@ref)) builds and times this
-generation's contacts, contact-level interventions act on the exposed
+three phases: the exposure phase ([`collect_exposures`](@ref)) builds and times
+this generation's contacts, contact-level interventions act on the exposed
 ([`_intervene!`](@ref)), and the resolve phase ([`_resolve!`](@ref)) decides
-infection under competing risks and updates bookkeeping and clinical
-transitions. In the growing tree the build and time steps are fused in
+infection under competing risks, updates bookkeeping and settles each new case
+([`_settle_generation!`](@ref)). In the growing tree the build and time steps are fused in
 `collect_exposures` (a contact is minted with its infection time); they
 separate only in the fixed-population path, where contacts pre-exist."""
 function _advance_generation!(
         model::TransmissionModel,
         state::SimulationState, interventions::Vector{<:AbstractIntervention}
     )
-    _prepare_parents!(state, interventions)
     targets, edges, minted, is_new = collect_exposures(model, state)
     # Snapshotted before anything below moves a live field: `_intervene!`'s
     # provisional parent assignment overwrites `parent_id`/`infection_time`
@@ -571,21 +574,7 @@ function _reinfection_episodes(targets, is_new)
     return episodes
 end
 
-"""Phase 1 — interventions act on the active infectives before they transmit."""
-function _prepare_parents!(
-        state::SimulationState,
-        interventions::Vector{<:AbstractIntervention}
-    )
-    for idx in state.active_ids
-        individual = state.individuals[idx]
-        for intervention in interventions
-            resolve_individual!(intervention, individual, state)
-        end
-    end
-    return nothing
-end
-
-"""Phase 3 — contact-level interventions act on this generation's exposures.
+"""Phase 2 — contact-level interventions act on this generation's exposures.
 Newly minted contacts get their intervention state initialised; each target is
 given a provisional parent (its earliest exposing edge) so contact-level
 interventions (tracing, ring vaccination) act on the exposed target before
@@ -618,7 +607,7 @@ function _intervene!(
     return nothing
 end
 
-"""Phase 4 — decide infection under competing risks and update bookkeeping.
+"""Phase 3 — decide infection under competing risks and update bookkeeping.
 Exposure is not infection. Each contact exposed this generation is decided
 infected-or-not: the infector's infectiousness, the contact's susceptibility,
 any risks the model contributes and any interventions all act as competing
@@ -692,6 +681,7 @@ function _resolve!(
         _drop_stale_abort!(target)
     end
 
+    cases_before = state.cumulative_cases
     for target in newly_infected
         target.infection_time > state.max_infection_time &&
             (state.max_infection_time = target.infection_time)
@@ -710,10 +700,80 @@ function _resolve!(
     state.active_ids = next_active
     state.extinct = isempty(next_active)
 
-    if !isempty(state.transitions)
-        for target in newly_infected
-            resolve_transitions!(state, target)
-        end
+    _settle_generation!(state, interventions, newly_infected, cases_before)
+    return nothing
+end
+
+# The seed cases a model's `initialise_state` infected.
+function _seed_cases(state::SimulationState)
+    return filter(ind -> get(ind.state, :infected, false), state.individuals)
+end
+
+"""
+    _settle_generation!(state, interventions, cases, cases_before)
+
+Settle a generation's new `cases`: every case's clinical transitions
+([`resolve_transitions!`](@ref)), then every case's intervention hooks
+([`resolve_individual!`](@ref)). The generation engine has no time order beyond
+the generation. Each case sees the clock at its own infection time and, as its
+case count, the `cases_before` cases of earlier generations plus those of its
+own generation infected no later than it. Cases sharing an infection time
+are counted in the order they appear in `cases`. The clock, count and
+generation are restored to the generation's totals afterwards, which is what
+the stopping rules read.
+"""
+function _settle_generation!(state::SimulationState, interventions, cases, cases_before)
+    isempty(cases) && return nothing
+    clock, count, generation = state.max_infection_time, state.cumulative_cases,
+        state.current_generation
+    rank = invperm(sortperm([case.infection_time for case in cases]))
+    for (i, case) in enumerate(cases)
+        _at_case!(state, case, cases_before + rank[i])
+        resolve_transitions!(state, case)
+    end
+    for (i, case) in enumerate(cases)
+        _at_case!(state, case, cases_before + rank[i])
+        _resolve_interventions!(state, case, interventions)
+    end
+    state.max_infection_time, state.cumulative_cases = clock, count
+    state.current_generation = generation
+    return nothing
+end
+
+"""
+    _settle_case!(state, case, interventions, count)
+
+Run the hooks that settle one case on the continuous-time race, once its
+infection time is fixed and before it transmits: its clinical transitions
+([`resolve_transitions!`](@ref)), then each intervention's
+[`resolve_individual!`](@ref), with the state at the case as
+[`_at_case!`](@ref) sets it.
+"""
+function _settle_case!(state::SimulationState, case, interventions, count)
+    _at_case!(state, case, count)
+    resolve_transitions!(state, case)
+    _resolve_interventions!(state, case, interventions)
+    return nothing
+end
+
+"""
+    _at_case!(state, case, count)
+
+Set the state a case's settling hooks read: the clock
+(`state.max_infection_time`) at the case's infection time,
+`state.cumulative_cases` to `count` and `state.current_generation` to the case's
+generation.
+"""
+function _at_case!(state::SimulationState, case, count)
+    state.max_infection_time = case.infection_time
+    state.cumulative_cases = count
+    state.current_generation = case.generation
+    return nothing
+end
+
+function _resolve_interventions!(state::SimulationState, case, interventions)
+    for intervention in interventions
+        resolve_individual!(intervention, case, state)
     end
     return nothing
 end
@@ -971,11 +1031,10 @@ function contacts_of(m::MyModel, parent, state)
 end
 ```
 
-The engine handles every other side effect: `resolve_individual!` on
-each parent before collection, `initialise_individual!` and
-`apply_post_transmission!` on the new contacts after, competing-risks
-resolution that sets `:infected`, clinical transitions, and per-step
-bookkeeping (`cumulative_cases`, `active_ids`, `max_infection_time`,
+The engine handles every other side effect: `initialise_individual!` and
+`apply_post_transmission!` on the new contacts after collection,
+competing-risks resolution that sets `:infected`, clinical transitions and
+`resolve_individual!` on each new case, and per-step bookkeeping (`cumulative_cases`, `active_ids`, `max_infection_time`,
 …).
 """
 function make_contact!(
@@ -1307,14 +1366,12 @@ generation engine on each contact it created, the continuous-time models on
 each candidate infection time they propose — so an intervention writes one
 [`Risk`](@ref) for both. What that risk does to the epidemic still differs: the
 generation engine blocks a contact and loses it, while on a continuous-time
-model the contact comes round again — the race redraws the pair's contact
-interval, the pool gives the susceptible a fresh resistance above the pressure
-it has absorbed — so blocking a fraction of the contacts thins the hazard by
-the same fraction. `builtin_blocks` is where the two part company, dropping
+model the contact comes round again, as the race redraws the pair's contact
+interval, so blocking a fraction of the contacts thins the hazard by the same
+fraction. `builtin_blocks` is where the two part company, dropping
 four of the five built-in sources on a continuous-time model: two that cannot
 apply there, and the per-individual susceptibility and infectiousness, which
-those models already carry in the contact-interval draw and in the pool's
-threshold and force.
+those models already carry in the contact-interval draw.
 Nothing is drawn from the rng unless a risk actually applies."""
 function _composed_risks_block(
         state::SimulationState, parent, contact,
@@ -1330,22 +1387,6 @@ function _composed_risks_block(
             return true
     end
     return false
-end
-
-"""Sweep newly added infected individuals (those at indices
-`from_index+1:end`) and run clinical transitions on each. Called by
-[`simulate`](@ref) after `initialise_state` to resolve transitions on
-the seed cases; per-generation resolution happens inside
-[`_advance_generation!`](@ref)."""
-function _resolve_new_transitions!(state::SimulationState, from_index::Int)
-    isempty(state.transitions) && return nothing
-    @inbounds for i in (from_index + 1):length(state.individuals)
-        ind = state.individuals[i]
-        if get(ind.state, :infected, false)
-            resolve_transitions!(state, ind)
-        end
-    end
-    return nothing
 end
 
 """Apply attributes function to an individual. No-op for NoAttributes."""

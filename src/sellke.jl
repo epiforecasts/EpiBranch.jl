@@ -15,9 +15,20 @@ function _window_open(ind::Individual{T}, from::Symbol) where {T}
 end
 
 # Earliest of the `until` removal states' times (Inf if none reached).
-function _window_close(ind::Individual{T}, until::Tuple) where {T}
-    return isempty(until) ? T(Inf) :
-        minimum(convert(T, get(ind.state, Symbol(s, :_time), T(Inf))) for s in until)
+_window_close(ind::Individual, until::Tuple) = _close_at(ind, _time_keys(until))
+
+# The state keys holding the times of `states`. Building a key concatenates two
+# names, which costs more than reading it, so a loop that closes many windows on
+# the same states builds the keys once.
+_time_keys(states::Tuple) = map(s -> Symbol(s, :_time), states)
+
+# Earliest of the times held under `keys` (Inf if none is set).
+function _close_at(ind::Individual{T}, keys::Tuple) where {T}
+    t = T(Inf)
+    for key in keys
+        t = min(t, convert(T, get(ind.state, key, T(Inf))))
+    end
+    return t
 end
 
 # ── Interventions on the continuous-time (Sellke) models ─────────────
@@ -25,29 +36,12 @@ end
 # the engine's per-generation hook passes never run. Two seams carry an
 # intervention's effect instead. The first is the infectious window: an
 # intervention that removes a case from onward transmission (isolation)
-# shortens it. After a case's natural history is stamped, run each
-# intervention's per-individual resolution (so `Isolation` writes its isolation
-# time), then close the window at the earliest removal across interventions as
-# well as the `until` states. The second is the per-contact competing risk,
-# resolved against each candidate infection time the race proposes — see the
-# next block.
-
-# Run each intervention's per-individual resolution on a freshly-stamped case.
-function _resolve_interventions!(state::SimulationState, ind, interventions)
-    isempty(interventions) && return nothing
-    # Expose the running simulation clock and case count so a `Scheduled`
-    # intervention's `start_time` / `end_time` / `start_after_cases` gate
-    # evaluates correctly during the continuous-time loop. Cases are processed in
-    # increasing infection time, so this case's infection time is the current
-    # clock and it is the next case in sequence; the post-loop reconcile
-    # (`_reconcile_sellke_bookkeeping!`) sets the final values.
-    state.max_infection_time = ind.infection_time
-    state.cumulative_cases += 1
-    for iv in interventions
-        resolve_individual!(iv, ind, state)
-    end
-    return nothing
-end
+# shortens it. Each case is settled as the race pops it (`_settle_case!`): its
+# natural history first, then each intervention's `resolve_individual!`, which
+# is where `Isolation` writes its isolation time. Its window is then closed at
+# the earliest removal across interventions as well as the `until` states. The
+# second is the per-contact competing risk, resolved against each candidate
+# infection time the race proposes (see the next block).
 
 # ── Per-contact competing risks on the continuous-time path ──────────
 #
@@ -68,9 +62,7 @@ end
 # with probability `p` thins that hazard to `(1-p)·h(t)` and the first contact
 # that gets through arrives with survival `S(t)^(1-p)`. That is the per-exposure
 # reading of a leaky vaccine and the rate-multiplier reading of a relative
-# susceptibility, and it is what the mass-action pool does with the stream of
-# contacts it delivers: a clique of this race and an equivalent pool are then the
-# same process. A degenerate kernel (`Dirac`) has one contact and no more, so a
+# susceptibility. A degenerate kernel (`Dirac`) has one contact and no more, so a
 # block ends that pair.
 # Rejection continuations require finite remaining integrated hazard; otherwise
 # an opaque risk could reject contacts forever and the model is refused.
@@ -603,8 +595,8 @@ const INTERVENTION_REMOVAL = :intervention_removal
 # abort undoes (see `resolve_transitions!`) never closes, and the rejection
 # sampler that redraws a blocked pair's next contact has no bound to redraw
 # within.
-function _route_close(ind, w::RouteWindow, interventions)
-    t = _window_close(ind, w.until)
+function _route_close(ind, w::RouteWindow, interventions, keys = _time_keys(w.until))
+    t = _close_at(ind, keys)
     if INTERVENTION_REMOVAL in w.until
         t = min(t, _intervention_removal_time(ind, interventions))
     end
@@ -628,9 +620,9 @@ end
 # shortens the window), a per-contact block (leaky isolation, a vaccine's
 # efficacy), or per-individual state written as each individual is initialised or
 # as each case is resolved. That covers most of what an intervention does.
-# `Scheduled` delegates to its wrapped intervention — the loop exposes the running
-# clock/count (see `_resolve_interventions!`), so its time/count gate is honoured
-# whenever the wrapped intervention is.
+# `Scheduled` delegates to its wrapped intervention. The loop exposes the running
+# clock and count (see `_settle_case!`), which its time and count gates read
+# wherever the wrapped intervention takes effect.
 
 #
 # What has no continuous-time representation is a *generation-shaped* hook.
@@ -675,10 +667,10 @@ end
 #
 # Tracing needs one thing more: the model has to be able to name the contacts a
 # case reached, which is what `supplies_contacts` reports. A graph names a node's
-# neighbours and a household its members, but the mass-action pool has no
-# pairwise contact structure, so tracing has nothing to act along there and stays
-# unhonoured. Supported candidate actions run after tracing through the shared
-# admission protocol; legacy batch-only delivery remains unsupported.
+# neighbours and a household its members, but mass action names no contacts, so
+# tracing has nothing to act along there and stays unhonoured. Supported
+# candidate actions run after tracing through the shared admission protocol;
+# legacy batch-only delivery remains unsupported.
 function _sellke_honours(model, iv::AbstractIntervention)
     continuous_actions(iv) && return supplies_contacts(model)
     hooks = _generation_hooks(iv)
@@ -721,7 +713,7 @@ Whether a continuous-time model can name the contacts each case reached, so
 that [`trace_contacts!`](@ref EpiBranch.trace_contacts!) has something to act
 on. True for the structure-driven processes, whose contacts are a node's
 neighbours or a household's members; false by default, and in particular for
-the mass-action pool, which has no pairwise contact structure. A model that
+`HomogeneousProcess`, whose mass action names no contacts. A model that
 returns `true` must pass a `contacts` closure to `_sellke_race!`.
 """
 supplies_contacts(::TransmissionModel) = false
@@ -891,7 +883,10 @@ are put to no risk at all. An introduced case's `:infection_route` is
 
 `max_time` ends the race at that time: individuals whose infection would fall
 later are left uninfected, and the state is exactly the full run's state
-restricted to infections up to `max_time`. Returns `true` when the race ran
+restricted to infections up to `max_time`. The exception is a mass-action route
+(`_MassAction`) whose infectious window never closes, which samples its contacts
+only up to `max_time`: there the cut run is a draw of the same process rather
+than the same draw. Returns `true` when the race ran
 until no candidate infection remained (the population reached extinction) and
 `false` when it was cut off at `max_time` with candidates still pending.
 
@@ -941,7 +936,10 @@ function _sellke_race!(
         rts = routes
     end
     m = length(members)
-    best = fill(Inf, m)
+    # Candidate times carry the state's timing type (a dual under automatic
+    # differentiation), so a gradient with respect to a transmission parameter
+    # flows through the contact draws into the infection times.
+    best = fill(_timetype(state)(Inf), m)
     processed = falses(m)
     pos = Dict{Int, Int}(id => k for (k, id) in enumerate(members))
     # A route the interventions cannot cut is not cut by the per-contact risks
@@ -956,6 +954,7 @@ function _sellke_race!(
         filter(iv -> risk_applies(iv, w), interventions)
             for (w, _) in rts
     ]
+    close_keys = map(((w, _),) -> _time_keys(w.until), rts)
 
     seed!(best, members, rng)
     # The host state each route's kernel reads, as the keys it declares through
@@ -1042,6 +1041,12 @@ function _sellke_race!(
     # For a live kernel, which hosts' records a pending or future draw reads.
     # Empty and unused otherwise.
     watch = _LiveWatch(live ? m : 0, length(rts))
+    # What a route needs to propose from an opening (see `_propose_along!`).
+    # Every field is bound once and only mutated in place.
+    race = (;
+        pending, proposals, head, best, represents, processed, pos, state, rng,
+        watch, snapshot, watched_keys, may_block, max_time,
+    )
     for k in 1:m
         best[k] < Inf || continue
         seeded = best[k]
@@ -1160,8 +1165,10 @@ function _sellke_race!(
         # Derive the onset from the infection time before transitions and
         # interventions, such as onset-triggered isolation, read it.
         _set_onset_from_incubation!(ind)
-        resolve_transitions!(state, ind)
-        _resolve_interventions!(state, ind, interventions)
+        # Cases are popped in increasing infection time: this case's infection
+        # time is the clock, and it is the next case in sequence. The post-loop
+        # reconcile (`_reconcile_sellke_bookkeeping!`) sets the final values.
+        _settle_case!(state, ind, interventions, state.cumulative_cases + 1)
         traced = _trace_from!(state, ind, interventions, contacts, pos, processed)
         contacts === nothing ||
             _apply_continuous_actions!(
@@ -1196,43 +1203,69 @@ function _sellke_race!(
         for (ri, (w, route_targets)) in enumerate(rts)
             open_t = window_open(ind, w)
             isfinite(open_t) || continue
-            close_t = _route_close(ind, w, interventions)
+            close_t = _route_close(ind, w, interventions, close_keys[ri])
             push!(openings, _RouteOpening(members[j], ri, open_t, close_t))
             opening_id = length(openings)
             live && _watch_opening!(watch, j, live_route[ri])
-
-            for (target_id, kernel) in route_targets(members[j], state)
-                k = get(pos, target_id, 0)
-                (k == 0 || processed[k]) && continue
-                if live_route[ri]
-                    # This opening's draws come from the target's record as it
-                    # stands now, which is what later comparisons start from.
-                    _watch_target!(watch, opening_id, k)
-                    _refresh_host!(
-                        snapshot, watched_keys, state.individuals[target_id], k
-                    )
-                end
-                # Both per-individual traits are rate multipliers on this
-                # pair's contact interval, folded into the draw rather than
-                # resolved contact by contact. A pair at the default 1 draws
-                # exactly as it did before they were honoured here.
-                dt = traits ?
-                    _traits_scaled_draw(
-                        rng, kernel,
-                        ind.infectiousness *
-                        state.individuals[target_id].susceptibility
-                    ) :
-                    rand(rng, kernel)
-                cand = open_t + dt
-                cand <= close_t || continue
-                _propose!(
-                    pending, proposals, head, best, represents, k, opening_id,
-                    cand, may_block
-                )
-            end
+            _propose_along!(
+                route_targets, race, members[j], opening_id, open_t, close_t,
+                traits, live_route[ri]
+            )
         end
     end
-    return true
+    return !any(((_, route_targets),) -> _pending_beyond(route_targets, race), rts)
+end
+
+# Whether a route left contacts past the time limit that it never proposed, so
+# that a race which ran out of candidates was cut off rather than extinct. A
+# route that proposes every contact it draws leaves none.
+_pending_beyond(route_targets, race) = false
+
+# Propose the infections one case's window on one route leads to. The default
+# asks the route for every susceptible target and its pair kernel, and draws one
+# contact per pair, keeping those inside the window. A route that can find the
+# pairs with a contact inside the window without drawing every pair, such as
+# mass action (`_MassAction`), has a method of its own.
+function _propose_along!(
+        route_targets, race, infector_id, opening_id, open_t, close_t, traits, live
+    )
+    (; state, rng, pos, processed, watch, snapshot, watched_keys) = race
+    infector = state.individuals[infector_id]
+    for (target_id, kernel) in route_targets(infector_id, state)
+        k = get(pos, target_id, 0)
+        (k == 0 || processed[k]) && continue
+        if live
+            # This opening's draws come from the target's record as it
+            # stands now, which is what later comparisons start from.
+            _watch_target!(watch, opening_id, k)
+            _refresh_host!(
+                snapshot, watched_keys, state.individuals[target_id], k
+            )
+        end
+        # Both per-individual traits are rate multipliers on this
+        # pair's contact interval, folded into the draw rather than
+        # resolved contact by contact. A pair at the default 1 draws
+        # exactly as it did before they were honoured here.
+        dt = traits ?
+            _traits_scaled_draw(
+                rng, kernel,
+                infector.infectiousness *
+                state.individuals[target_id].susceptibility
+            ) :
+            rand(rng, kernel)
+        cand = open_t + dt
+        cand <= close_t || continue
+        _propose!(race, k, opening_id, cand)
+    end
+    return nothing
+end
+
+# Record a proposal through the race's own queues.
+function _propose!(race, k, opening_id, t)
+    return _propose!(
+        race.pending, race.proposals, race.head, race.best, race.represents,
+        k, opening_id, t, race.may_block
+    )
 end
 
 """
