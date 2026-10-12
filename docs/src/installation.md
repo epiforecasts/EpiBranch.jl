@@ -26,6 +26,7 @@ it with `using EpiBranch`, as you would `library()` a package in R:
 
 ```julia
 using Pkg
+Pkg.activate("my-analysis")  # a project for this analysis, as above
 Pkg.add(
     PackageSpec(url = "https://github.com/epiforecasts/EpiBranch.jl", rev = "main")
 )

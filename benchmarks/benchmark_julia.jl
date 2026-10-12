@@ -66,17 +66,21 @@ BenchmarkTools.DEFAULT_PARAMETERS.samples = 20
 
 # ── 6. Line list simulation ─────────────────────────────────────────
 
-println("6. Line list generation (from a 180 to 220 case state)")
+println("6. Line list generation (from a 200 to 260 case state)")
 model_ll = BranchingProcess(Poisson(2.0), LogNormal(1.6, 0.5))
 clinical = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
-# `condition` repeats the run until the outbreak lands in the range, so the
-# state holds the number of cases the row names whatever the draw order does.
-# A seed alone does not: most outbreaks from this process die out early, and
-# a change anywhere upstream of the first draw moves which one this seed gets.
+# The cap sets the size of the state and `condition` rejects the runs that die
+# out before reaching it, so the row names the size that was timed whatever
+# the draw order does. A seed alone does not pin it: about one run in five
+# from this process dies out, and which run a given seed produces moves with
+# any change upstream of the first draw. The accepted state is a run stopped
+# at the cap rather than a finished outbreak, which is what a line list of a
+# given size needs; a conditioned run meant to give a final size wants a cap
+# above the range instead.
 ll_state = simulate(
     ModelSpec(model_ll; attributes = clinical);
     max_cases = 220,
-    condition = 180:220,
+    condition = 200:260,
     rng = StableRNG(42)
 )
 println("   Cases in the state: $(ll_state.cumulative_cases)")
