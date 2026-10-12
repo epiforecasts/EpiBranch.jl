@@ -148,9 +148,12 @@ without interventions. It is not the time-varying reproduction number Rt.
 - Single-type model: the mean of the offspring distribution.
 - [`ClusterMixed`](@ref) offspring: that mean averaged over the chains'
   mixing distribution.
-- Multi-type model built from a next-generation matrix `M` (`M[i, j]` is the
-  expected number of type-`i` cases infected by one type-`j` case): R*, the
-  largest eigenvalue of `M`.
+- Multi-type model built from a next-generation matrix: R*, the largest
+  eigenvalue of the mean next-generation matrix, whose `[i, j]` entry is the
+  expected number of type-`i` cases infected by one type-`j` case. That is
+  the matrix the model draws from, which matches the matrix supplied only if
+  each type's offspring distribution takes its column sum as its mean (see
+  [`BranchingProcess`](@ref)).
 
 For single-type and multi-type models, an outbreak can grow only if the
 reproduction number exceeds 1. The `ClusterMixed` average is not such a
