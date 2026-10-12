@@ -3035,6 +3035,9 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             @test EpiBranch.required_transitions(ReportedCases(5)) == (Reporting,)
             @test EpiBranch.required_transitions(Infections(5)) == ()
             @test EpiBranch.required_transitions(_AlwaysOpenTrigger()) == ()
+            # `ReportedCases(0)` opens before any report exists, so it needs
+            # no `Reporting` and must not be warned about.
+            @test EpiBranch.required_transitions(ReportedCases(0)) == ()
 
             @test_logs (:warn, r"ReportedCases needs a Reporting transition") match_mode = :any ModelSpec(
                 bp; progression = no_report,
@@ -3056,6 +3059,14 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             @test_logs ModelSpec(
                 bp; progression = no_report,
                 interventions = [Scheduled(iso; start_after_cases = 5)],
+                attributes = clinical
+            )
+            # A threshold of nought opens at once, whatever the progression
+            # holds, so the warning that the schedule never opens would be
+            # false.
+            @test_logs ModelSpec(
+                bp; progression = no_report,
+                interventions = [Scheduled(iso; start_after = ReportedCases(0))],
                 attributes = clinical
             )
             # Found through a wrapper around the schedule.

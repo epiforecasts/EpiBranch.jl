@@ -724,7 +724,9 @@ change to `Scheduled`. One method is required and two traits have defaults:
   the model's `progression` to hold, `()` by default. `ModelSpec` warns, naming
   the trigger, when a model does not hold one: without the transition that
   writes the state the trigger reads, the gate stays shut for the whole run.
-  `ReportedCases` names `Reporting`.
+  `ReportedCases` names `Reporting`, and answers `()` at `n = 0`, where the
+  gate opens before any report exists. Answer per instance where the
+  threshold decides it, as that does.
 
 ```julia
 struct TwentyOnsets <: EpiBranch.AbstractTrigger end

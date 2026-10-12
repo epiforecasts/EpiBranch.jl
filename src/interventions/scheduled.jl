@@ -243,13 +243,16 @@ A [`Scheduled`](@ref) `start_after` trigger that opens once `n` cases have
 been reported *as of the simulation clock* (`state.max_infection_time`):
 unlike [`Infections`](@ref), a case whose `:reporting_time` lies after the
 current time does not count yet. Needs a `Reporting` transition in the
-model's `progression`, which sets `:reported` and `:reporting_time`.
+model's `progression`, which sets `:reported` and `:reporting_time`, except
+at `n = 0`, which opens before any report exists.
 """
 struct ReportedCases <: AbstractTrigger
     n::Int
 end
 is_triggered!(t::ReportedCases, state::SimulationState) = _reported_cases_due(state) >= t.n
-required_transitions(::ReportedCases) = (Reporting,)
+# `n = 0` opens before any report exists, so nothing in the progression is
+# needed for the gate to open.
+required_transitions(t::ReportedCases) = t.n > 0 ? (Reporting,) : ()
 # Reports already due never stop being due: a report written for an earlier
 # episode is counted from the archive once the host is reinfected, and the
 # accepted clock only rises.
