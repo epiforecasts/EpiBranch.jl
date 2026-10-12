@@ -607,6 +607,7 @@ function _intervene!(
     kept = _act_per_case!(state, interventions, targets, edges, is_new)
     for intervention in interventions
         _uses_batch_hook(intervention) || continue
+        _warn_batch_hook(intervention)
         apply_post_transmission!(intervention, state, targets)
     end
     return kept

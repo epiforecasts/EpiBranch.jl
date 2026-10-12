@@ -33,6 +33,15 @@ function EpiBranch.intervention_actions(::_ActionsOnly, state, candidates)
     ]
 end
 
+# Written against the deprecated batch hook only.
+struct _BatchOnly <: AbstractIntervention end
+function EpiBranch.apply_post_transmission!(::_BatchOnly, state, new_contacts)
+    for c in new_contacts
+        c.state[:_batch_seen] = true
+    end
+    return nothing
+end
+
 _case_hook_model(ivs) = ModelSpec(
     BranchingProcess(Poisson(2.0), Exponential(3.0)); interventions = ivs
 )
@@ -93,5 +102,38 @@ _case_hook_model(ivs) = ModelSpec(
         contacts = filter(ind -> ind.parent_id != 0, state.individuals)
         @test !isempty(contacts)
         @test all(ind -> get(ind.state, :_served_at, nothing) == 3.0, contacts)
+    end
+
+    @testset "An intervention with only the batch hook works, with a warning" begin
+        model = _case_hook_model([_BatchOnly()])
+        state = @test_logs (:warn, r"_BatchOnly.*apply_post_transmission!.*deprecated"s) match_mode = :any simulate(
+            model; max_cases = 50, max_generations = 4, rng = StableRNG(13)
+        )
+        contacts = filter(ind -> ind.parent_id != 0, state.individuals)
+        @test !isempty(contacts)
+        @test all(ind -> get(ind.state, :_batch_seen, false), contacts)
+    end
+
+    @testset "Calling the batch hook on a built-in warns and still acts" begin
+        state = EpiBranch.new_state(
+            BranchingProcess(Poisson(1.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(14)
+        )
+        infector = Individual(id = 1, infection_time = 0.0)
+        infector.state[:onset_time] = 1.0
+        infector.state[:asymptomatic] = false
+        set_isolated!(infector, 2.0; release_time = Inf)
+        contact = Individual(id = 2, parent_id = 1, infection_time = 3.0)
+        append!(state.individuals, [infector, contact])
+        ct = ContactTracing(
+            probability = 1.0, isolation_to_trace_delay = Dirac(0.5),
+            action = FlagOnly()
+        )
+        EpiBranch.initialise_individual!(ct, contact, state)
+        @test_logs (:warn, r"apply_post_transmission!.*deprecated"s) EpiBranch.apply_post_transmission!(
+            ct, state, [contact]
+        )
+        @test is_traced(contact)
+        @test contact.state[:trace_time] == 2.5
     end
 end

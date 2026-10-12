@@ -6,7 +6,7 @@ Limit admissions to an intervention using a shared resource budget. Ring,
 group and mass vaccination expose their candidate actions before admission;
 group candidates include every eligible member of a triggered group. External
 producers implement `intervention_actions` and the `capacity_key` protocol.
-An intervention still on the batch hook `apply_post_transmission!` receives
+An intervention still on the deprecated `apply_post_transmission!` receives
 admitted candidates one at a time.
 
 Both engines admit one case's actions at a time, in the order they settle
