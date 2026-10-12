@@ -84,8 +84,8 @@ model = ModelSpec(
 state = simulate(model; max_cases = 200, rng = StableRNG(42))
 ```
 
-A case not admitted still recovers from onset as before; `Death`'s own
-anchor is simply unreached for it, so it never enters that race.
+A case not admitted still recovers from onset as before; `Death`'s delay
+never gets a start time to measure from, so it never enters that race.
 
 ## Asymptomatic cases
 
@@ -506,10 +506,9 @@ function EpiBranch.censor_after_outcome!(::AntiviralTreatment, ind)
 end
 ```
 
-That's the whole extension surface. Three ingredients (the shared
-`ind.state` dict, callable probability/delay, optional terminal
-arbitration) are enough for the cases covered here: independent
-parallel draws, sequential chains, treatment-conditional outcomes,
+The shared `ind.state` dict, a callable probability/delay, and optional
+terminal arbitration cover every case shown here: independent parallel
+draws, sequential chains, treatment-conditional outcomes, and
 capacity-dependent rates.
 
 To write your own kind of event, with its own likelihood, see
