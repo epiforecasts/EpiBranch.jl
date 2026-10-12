@@ -422,10 +422,11 @@ for (label, interventions) in (
 end
 ```
 
-Vaccinating about half the traced contacts raises containment a little. The
-gap between clustered and independent refusal is within the Monte Carlo error
-(the standard error of a difference between two scenarios is about 1.4 times
-that of each). These runs cannot tell the two apart.
+Vaccinating about half the traced contacts raises containment a little, and
+clustered refusal comes out about 0.015 below independent refusal. The
+standard error of a difference between two scenarios is about 1.4 times that
+of each, so that gap is around two and a half standard errors: small, and more
+than the noise of these runs.
 
 Clustering has little effect here because `groups(20)` puts each person in a
 community independently of who infected them. A case's contacts are spread
