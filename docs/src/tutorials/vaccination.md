@@ -645,12 +645,24 @@ println("Reached among willing people: $(round(campaign_reach, digits = 3)); ",
 ```
 
 Overall coverage is the share willing times the share of willing people
-reached. Those are the shares the parameters aim for; a run comes out a few
-points below them, for the reason in the limitations note. A person with
-`:willing == false` refuses throughout the campaign, and a willing person
-left unvaccinated was either never reached or never offered a dose. For a
-reach probability of zero, use `coverage = 0.0` directly. A single visit gives the
-usual campaign with one opportunity. Use a different `dose_label` for another
+reached. Those are the shares the parameters aim for. What a run delivers is
+lower:
+
+```@example vaccination
+campaign_runs = simulate(campaign_model, 200; max_cases = 300, rng = StableRNG(42))
+people = [ind for s in campaign_runs for ind in s.individuals]
+willing_people = filter(ind -> get(ind.state, :willing, false), people)
+println("Measured: among willing people ",
+    round(count(is_vaccinated, willing_people) / length(willing_people), digits = 3),
+    ", overall ", round(count(is_vaccinated, people) / length(people), digits = 3))
+```
+
+Both come out about three points below what the parameters aim for, for the
+reason in the limitations note. A person with `:willing == false` refuses
+throughout the campaign, and a willing person left unvaccinated was either
+never reached or never offered a dose. For a reach probability of zero, use
+`coverage = 0.0` directly. A single visit gives the usual campaign with one
+opportunity. Use a different `dose_label` for another
 dose; willingness can be shared across doses, as here, or stored separately
 for each.
 
@@ -666,8 +678,8 @@ for each.
     new member, so a group whose trigger arrives after its last new member
     leaves those members unvaccinated. A group that grows later is reached
     again, each new member bringing their group with them. In this model a
-    few per cent of willing people are never offered a dose, which puts
-    measured coverage a few points below the shares above.
+    few per cent of willing people are never offered a dose, which is what
+    puts the measured coverage below the shares the parameters aim for.
 
 ## Limited vaccine supply
 
