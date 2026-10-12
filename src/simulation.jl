@@ -580,8 +580,8 @@ given a provisional parent (its earliest exposing edge); then each individual
 of the active set is offered the contacts it reached, through the per-case
 hooks ([`_act_per_case!`](@ref)), before infection is resolved. An
 intervention still implementing the deprecated batch hook
-[`apply_post_transmission!`](@ref) is handed the whole batch after that, and
-then asked [`keep_active`](@ref) about the whole batch.
+[`apply_post_transmission!`](@ref) is handed the whole batch instead, at its
+place in the list, and then asked [`keep_active`](@ref) about the whole batch.
 Returns the ids the interventions asked to keep active."""
 function _intervene!(
         state::SimulationState,
@@ -605,15 +605,24 @@ function _intervene!(
         targets[i].parent_id, targets[i].infection_time = es[1]
     end
 
-    batch = filter(_uses_batch_hook, interventions)
-    per_case = filter(!_uses_batch_hook, interventions)
-    kept = _act_per_case!(state, per_case, targets, edges, is_new)
-    for intervention in batch
-        _warn_batch_hook(intervention)
-        apply_post_transmission!(intervention, state, targets)
-        # Asked after the batch hook, which may write what it reads.
-        append!(kept, keep_active(intervention, state, targets, is_new))
+    # Each stretch of per-case interventions runs case by case, and a batch-hook
+    # intervention at its own place in the list, so what one writes reaches
+    # those listed after it.
+    kept = Int[]
+    stretch = similar(interventions, 0)
+    for intervention in interventions
+        if _uses_batch_hook(intervention)
+            append!(kept, _act_per_case!(state, stretch, targets, edges, is_new))
+            empty!(stretch)
+            _warn_batch_hook(intervention)
+            apply_post_transmission!(intervention, state, targets)
+            # Asked after the batch hook, which may write what it reads.
+            append!(kept, keep_active(intervention, state, targets, is_new))
+        else
+            push!(stretch, intervention)
+        end
     end
+    append!(kept, _act_per_case!(state, stretch, targets, edges, is_new))
     return kept
 end
 
@@ -635,7 +644,7 @@ the state as the generation left it. The state is restored afterwards.
 """
 function _act_per_case!(state::SimulationState, interventions, targets, edges, is_new)
     kept = Int[]
-    isempty(targets) && return kept
+    (isempty(targets) || isempty(interventions)) && return kept
     reached = Dict{Int, Vector{Int}}()
     for i in eachindex(targets), (pid, _) in edges[i]
         idx = get!(Vector{Int}, reached, pid)

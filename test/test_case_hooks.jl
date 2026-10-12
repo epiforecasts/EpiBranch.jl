@@ -67,6 +67,17 @@ end
 EpiBranch.competing_risk(::_BatchRing, parent, contact, state) =
     Risk(block_probability = 0.5)
 
+# A tracer written against the batch hook, marking contacts as traced.
+struct _BatchTracer <: AbstractIntervention end
+EpiBranch.initialise_individual!(::_BatchTracer, ind, state) = (ind.state[:traced] = false)
+function EpiBranch.apply_post_transmission!(::_BatchTracer, state, new_contacts)
+    for c in new_contacts
+        c.state[:traced] = true
+        c.state[:trace_time] = c.infection_time
+    end
+    return nothing
+end
+
 _case_hook_model(ivs) = ModelSpec(
     BranchingProcess(Poisson(2.0), Exponential(3.0)); interventions = ivs
 )
@@ -176,6 +187,17 @@ _case_hook_model(ivs) = ModelSpec(
         )
         @test !isempty(uninfected)
         @test any(ind -> !isempty(ind.secondary_case_ids), uninfected)
+    end
+
+    @testset "A batch-hook intervention feeds the interventions after it" begin
+        rv = RingVaccination(efficacy = 0.9)
+        state = @test_logs (:warn,) match_mode = :any simulate(
+            _case_hook_model([_BatchTracer(), rv]);
+            max_cases = 50, max_generations = 3, rng = StableRNG(19)
+        )
+        contacts = filter(ind -> ind.parent_id != 0, state.individuals)
+        @test !isempty(contacts)
+        @test all(is_vaccinated, contacts)
     end
 
     @testset "Calling the batch hook on a built-in warns and still acts" begin
