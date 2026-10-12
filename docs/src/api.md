@@ -612,9 +612,11 @@ EpiHouseholds.condition_mask
 
 ### Internal functions
 
-These are documented for people working on the package itself. Some are also
-seams an extension can define a method of, and say so in their own
-docstrings: `EpiBranch.susceptible_fraction` is one.
+These are documented for people working on the package itself. Three of them
+are part of the extension surface rather than internals, and are declared
+`public` in Julia's sense: `EpiBranch.get_generation_time`,
+`EpiBranch.population_size` and `EpiBranch.required_fields`. The rest are
+helpers the package may change at any time.
 
 ```@docs
 EpiBranch.get_generation_time
