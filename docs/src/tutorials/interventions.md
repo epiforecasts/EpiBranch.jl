@@ -276,9 +276,9 @@ with its symptoms satisfies the default trigger, so its own contacts are
 traced after all. Here that happens to 37% of the symptomatic cases the test
 misses. Asymptomatic cases are quarantined at the same rate, which stops them
 transmitting but never starts tracing from them, since the default trigger
-asks for symptoms as well as isolation. They are the largest
-block of untraced contacts on this run: tracing reached the case and still
-had nothing to follow.
+asks for symptoms as well as isolation. Not one contact of an asymptomatic
+case is traced on this run, quarantined or not, and together they are the
+largest block of untraced contacts: 55,911 of 106,280.
 
 ## Contact tracing workload
 
