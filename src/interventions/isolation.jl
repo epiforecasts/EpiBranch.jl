@@ -261,11 +261,9 @@ end
 
 function resolve_individual!(iso::Isolation, individual, state)
     # An isolation already standing on the individual is a quarantine written by
-    # `ContactTracing`. On the generation-based path that cannot happen here,
-    # because isolation resolves before tracing runs; on the continuous-time
-    # path it routinely does, because a case's contacts are traced when the
-    # *infector* is finalised, which is before the contact itself resolves. The
-    # quarantine is then a competing pathway rather than a reason to stop:
+    # `ContactTracing`: a case's contacts are traced when the *infector* is
+    # settled, which is before the contact itself resolves. The quarantine is
+    # then a competing pathway rather than a reason to stop:
     # without this the contact would keep a trace time later than the onset it
     # would have self-reported on, and tracing would delay isolation instead of
     # advancing it.
