@@ -28,6 +28,10 @@ the earliest terminal that happened. This generalises [`Reporting`](@ref),
 [`Death`](@ref) and the rest, which are this transition with a fixed state
 and bespoke key names.
 
+A non-terminal transition (`terminal = false`, the default) that resolves
+after the case's outcome is reset to "did not occur": see
+[`censor_after_outcome!`](@ref EpiBranch.censor_after_outcome!).
+
 # Examples
 
 ```julia
@@ -112,11 +116,24 @@ function terminal_event(t::Transition, individual::Individual{T}) where {T}
     return isfinite(tm) ? (tm, t.state) : nothing
 end
 
+function censor_after_outcome!(t::Transition, individual)
+    t.terminal && return nothing
+    _censor_event!(individual, t.state, t.time_key)
+    return nothing
+end
+
 function transition_loglik(t::Transition, individual::Individual)
     anchor = _state_time(individual, t.from)
     _anchor_ok(anchor) || return 0.0
-    occurred = individual.state[t.state]::Bool
-    ll = transition_term(t.probability, t.delay, individual, anchor, occurred)
+    flag = individual.state[t.state]::Bool
+    time = flag ? individual.state[t.time_key] : Inf
+    censor = infection_aborted_time(individual)
+    occurred = flag
+    if !t.terminal
+        occurred = flag && time <= outcome_time(individual)
+        censor = min(censor, outcome_time(individual))
+    end
+    ll = transition_term(t.probability, t.delay, individual, anchor, occurred; censor = censor)
     occurred || return ll
-    return ll + _delay_loglik(t.delay, individual.state[t.time_key] - anchor)
+    return ll + _delay_loglik(t.delay, time - anchor)
 end

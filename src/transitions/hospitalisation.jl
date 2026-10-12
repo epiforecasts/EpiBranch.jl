@@ -24,6 +24,12 @@ Hospitalisation(
 The same idiom covers any composite condition; no per-prerequisite
 field is needed.
 
+An admission drawn after the case's outcome (death or recovery) is reset to
+"did not occur": see [`censor_after_outcome!`](@ref
+EpiBranch.censor_after_outcome!). Chain `from = :admission_time` on a
+terminal transition if admission should instead delay or otherwise change
+the outcome.
+
 Initialises: `:admitted = false`, `:admission_time = Inf`.
 """
 Base.@kwdef struct Hospitalisation{D, P, F} <: AbstractClinicalTransition
@@ -52,11 +58,21 @@ function resolve_individual!(h::Hospitalisation, individual, state)
     return nothing
 end
 
+function censor_after_outcome!(::Hospitalisation, individual)
+    _censor_event!(individual, :admitted, :admission_time)
+    return nothing
+end
+
 function transition_loglik(h::Hospitalisation, individual::Individual)
     anchor = _resolve_anchor(h.from, individual)
     _anchor_ok(anchor) || return 0.0
-    occurred = individual.state[:admitted]::Bool
-    ll = transition_term(h.probability, h.delay, individual, anchor, occurred)
+    flag = individual.state[:admitted]::Bool
+    time = flag ? individual.state[:admission_time] : Inf
+    occurred = flag && time <= outcome_time(individual)
+    ll = transition_term(
+        h.probability, h.delay, individual, anchor, occurred;
+        censor = min(infection_aborted_time(individual), outcome_time(individual))
+    )
     occurred || return ll
-    return ll + _delay_loglik(h.delay, individual.state[:admission_time] - anchor)
+    return ll + _delay_loglik(h.delay, time - anchor)
 end

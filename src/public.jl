@@ -18,7 +18,6 @@ public reset!
 public required_fields
 public infectious_removal_time
 public risk_applies
-public risk_depends_on_infector
 public reads_population_state
 public standing_block
 # End an infection early from any intervention hook, and read when it ended.
@@ -70,6 +69,7 @@ public transmission_time
 public transition_time
 public resolve_transitions!
 public transition_loglik, transition_term
+public censor_after_outcome!
 
 # Apply the model's observation to a finished state (the simulation side of the
 # observation protocol; `observe` is the exported analytical side). The engine
@@ -116,6 +116,19 @@ public pairwise_reduce
 # `realise_prior_dose!` only to change what a dose recorded before the run gets.
 public realised_efficacy
 public realise_prior_dose!
+
+# Custom vaccinations: every `AbstractVaccination` defines `vaccine_effect`.
+# `dose_action` is the `InterventionAction` a custom `intervention_actions`
+# method returns per candidate; `record_dose!` records a dose directly,
+# outside the action protocol. `record_effect_draws!` is the hook for an
+# effect only some vaccinations have, drawing and storing it through
+# `store_draw!` and reading it back through `dose_value`.
+public vaccine_effect
+public dose_action
+public record_dose!
+public record_effect_draws!
+public store_draw!
+public dose_value
 
 # Stopping rules: a rule bounds a structure-driven run through `time_bound`,
 # and says through `honoured_without_should_stop` whether such a run, which
