@@ -281,6 +281,7 @@ onset, and the incubation period here averages about five days:
 
 ```@example vaccination
 for days in [0.0, 2.0, 5.0, 21.0]
+    # `let` keeps the loop's own `rng` apart from the one above.
     let pep = RingVaccination(efficacy = 0.0, post_exposure_efficacy = 0.9,
             delay_to_immunity = days),
         rng = StableRNG(42)

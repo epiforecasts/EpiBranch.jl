@@ -75,6 +75,7 @@ secondary cases are infected. Varying the mean delay:
 
 ```@example interventions
 for d in [0.5, 2.0, 10.0]
+    # `let` keeps the loop's own `iso` and `rng` apart from the ones above.
     let iso = Isolation(onset_to_isolation_delay = Exponential(d), duration = 7.0),
         rng = StableRNG(42)
         results = simulate(scenario([iso]), 200; max_cases = 500, rng = rng)
