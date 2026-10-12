@@ -3021,6 +3021,57 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             @test EpiBranch.trigger_can_lapse(_AlwaysOpenTrigger())
         end
 
+        @testset "a trigger names the transitions it needs" begin
+            # The keys a trigger reads are written by the progression, so a
+            # model without the transition leaves the gate shut for the whole
+            # run. `ModelSpec` asks the trigger and warns.
+            bp = BranchingProcess(Poisson(1.5), Exponential(5.0))
+            iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = Inf)
+            no_report = [Recovery(delay = Exponential(5.0))]
+            with_report = [
+                Reporting(delay = Exponential(2.0), probability = 0.5),
+                Recovery(delay = Exponential(5.0)),
+            ]
+
+            @test EpiBranch.required_transitions(ReportedCases(5)) == (Reporting,)
+            @test EpiBranch.required_transitions(Infections(5)) == ()
+            @test EpiBranch.required_transitions(_AlwaysOpenTrigger()) == ()
+
+            @test_logs (:warn, r"ReportedCases needs a Reporting transition") match_mode = :any ModelSpec(
+                bp; progression = no_report,
+                interventions = [Scheduled(iso; start_after = ReportedCases(5))],
+                attributes = clinical
+            )
+            # Silent once the model holds it, and silent for a trigger that
+            # needs nothing, including the `start_after_cases` shorthand.
+            @test_logs ModelSpec(
+                bp; progression = with_report,
+                interventions = [Scheduled(iso; start_after = ReportedCases(5))],
+                attributes = clinical
+            )
+            @test_logs ModelSpec(
+                bp; progression = no_report,
+                interventions = [Scheduled(iso; start_after = Infections(5))],
+                attributes = clinical
+            )
+            @test_logs ModelSpec(
+                bp; progression = no_report,
+                interventions = [Scheduled(iso; start_after_cases = 5)],
+                attributes = clinical
+            )
+            # Found through a wrapper around the schedule.
+            @test_logs (:warn, r"ReportedCases needs a Reporting transition") match_mode = :any ModelSpec(
+                bp; progression = no_report,
+                interventions = [
+                    CapacityConstrained(
+                        Scheduled(iso; start_after = ReportedCases(5));
+                        budget_per_period = 5
+                    ),
+                ],
+                attributes = clinical
+            )
+        end
+
         @testset "start_after = ReportedCases matches start_after_cases under certain, instant reporting" begin
             # With every case reported at its own infection time, a
             # report-gated and a case-gated trigger see the same count at

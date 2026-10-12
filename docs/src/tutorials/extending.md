@@ -702,7 +702,7 @@ Scheduled(BorderClosure(0.0, 0.05); start_time = 10.0)
 `start_after` opens the schedule on a condition rather than a date, and takes
 any subtype of [`AbstractTrigger`](@ref). The built-in [`Infections`](@ref)
 and [`ReportedCases`](@ref) are two; a trigger of your own works without any
-change to `Scheduled`. One method is required and one trait has a default:
+change to `Scheduled`. One method is required and two traits have defaults:
 
 - **`is_triggered!(trigger, state)`** — whether the condition holds
   now. The same trigger object is reused across the repeated runs of
@@ -719,6 +719,11 @@ change to `Scheduled`. One method is required and one trait has a default:
   `ReportedCases` keeps the default because the clock it dates reports
   against is not monotone, admitting a scheduled action asking the gate with
   the action's own time in place of the simulation clock.
+- **`required_transitions(trigger)`** — the transition types the trigger needs
+  the model's `progression` to hold, `()` by default. `ModelSpec` warns, naming
+  the trigger, when a model does not hold one: without the transition that
+  writes the state the trigger reads, the gate stays shut for the whole run.
+  `ReportedCases` names `Reporting`.
 
 ```julia
 struct TwentyOnsets <: EpiBranch.AbstractTrigger end
@@ -735,14 +740,17 @@ Scheduled(BorderClosure(0.0, 0.05); start_after = TwentyOnsets())
 `TwentyOnsets` keeps the default `trigger_can_lapse`, because an onset time is
 drawn again when a host is reinfected and the count can therefore fall.
 
-!!! warning "A trigger cannot declare what it reads"
-    A trigger that reads a key from `Individual.state` has no way to say so.
-    `Scheduled` declares the keys its wrapped intervention needs, through
-    `required_fields`, and does not keep the trigger to ask it as well. A
-    model that never supplies the key is not rejected: `TwentyOnsets` above,
-    on a model built without `clinical_presentation`, reads `NaN` from every
-    `onset_time`, counts nobody and leaves the border open for the whole run.
-    Check for the key in `is_triggered!` if you want to hear about it.
+!!! warning "What a trigger can and cannot declare"
+    `required_transitions` covers the progression, not the population
+    characteristics. `TwentyOnsets` above reads `:onset_time`, which
+    [`clinical_presentation`](@ref) supplies, and there is no way to name
+    that: on a model built without it the trigger reads `NaN` from every
+    `onset_time`, counts nobody and leaves the border open for the whole run,
+    with nothing to say so. Nor can a trigger use `required_fields`, which
+    `Scheduled` answers for the intervention it wraps and which is checked
+    against the keys attributes put on the seed case, before any transition
+    has run. Check for the key in `is_triggered!` if you want to hear about
+    it.
 
 ### Making the intervention capacity-constrained
 

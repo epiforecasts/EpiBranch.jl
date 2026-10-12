@@ -70,7 +70,7 @@ The predicate form does not perform per-individual reset (there is no
 `start_time` to compare against). Use the keyword form when you need
 that behaviour.
 """
-struct Scheduled{I <: AbstractIntervention, F} <: InterventionWrapper
+struct Scheduled{I <: AbstractIntervention, F, T <: Tuple} <: InterventionWrapper
     intervention::I
     condition::F
     start_time::Float64
@@ -83,6 +83,21 @@ struct Scheduled{I <: AbstractIntervention, F} <: InterventionWrapper
     # `trigger_can_lapse` is `true`, can withdraw an effect already
     # delivered. An opaque predicate is assumed to.
     can_lapse::Bool
+    # The `start_after` triggers, kept so that the composition checks can ask
+    # each what it needs of the progression; see `required_transitions`. The
+    # condition itself is a closure, which nothing can look inside. Empty for
+    # every other form.
+    triggers::T
+end
+
+# Pre-existing callers build a `Scheduled` without the trigger record.
+function Scheduled(
+        intervention::AbstractIntervention, condition, start_time::Float64,
+        population_dependent::Bool, can_lapse::Bool
+    )
+    return Scheduled(
+        intervention, condition, start_time, population_dependent, can_lapse, ()
+    )
 end
 
 """
@@ -128,6 +143,23 @@ against does not, since admitting a scheduled action asks the gate with the
 action's own time in place of the simulation clock.
 """
 trigger_can_lapse(::AbstractTrigger) = true
+
+"""
+    required_transitions(trigger) -> Tuple of transition types
+
+The transition types a trigger needs the model's `progression` to hold.
+Default: `()`, nothing required.
+
+A trigger reads `Individual.state`, and the keys it reads are written by the
+progression, so a model composed without the transition that writes them
+leaves the gate shut for the whole run. [`ModelSpec`](@ref) asks this of every
+`start_after` trigger and warns when the model does not hold what the trigger
+names. [`ReportedCases`](@ref) names [`Reporting`](@ref).
+
+A key an attributes function supplies, such as `:onset_time` from
+[`clinical_presentation`](@ref), cannot be named this way.
+"""
+required_transitions(::AbstractTrigger) = ()
 
 """
     Infections(n)
@@ -212,6 +244,7 @@ struct ReportedCases <: AbstractTrigger
     n::Int
 end
 is_triggered!(t::ReportedCases, state::SimulationState) = _reported_cases_due(state) >= t.n
+required_transitions(::ReportedCases) = (Reporting,)
 
 # ── Keyword convenience constructor ──────────────────────────────────
 
@@ -251,7 +284,10 @@ function Scheduled(
     population_dependent = start_after_cases !== nothing || start_after !== nothing
     can_lapse = end_time !== nothing ||
         (start_after !== nothing && trigger_can_lapse(start_after))
-    return Scheduled(intervention, condition, t, population_dependent, can_lapse)
+    triggers = start_after === nothing ? () : (start_after,)
+    return Scheduled(
+        intervention, condition, t, population_dependent, can_lapse, triggers
+    )
 end
 
 # Predicate constructor: no individual-level reset. The predicate is opaque, so

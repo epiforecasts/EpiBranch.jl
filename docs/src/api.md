@@ -182,6 +182,7 @@ Scheduled
 AbstractTrigger
 is_triggered!
 trigger_can_lapse
+required_transitions
 Infections
 ReportedCases
 CapacityConstrained
