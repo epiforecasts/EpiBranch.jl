@@ -209,15 +209,11 @@ first(linelist(state)[:, [:id, :date_onset, :tested, :date_tested, :date_reporti
 Cases without a test have no report. In each row, the test date follows
 onset and the report date follows the test.
 
-!!! warning "`from` takes an event for `Transition` and a time for the others"
-    `Transition` takes the name of the earlier event (`from = :onset`,
-    `from = :tested`). `Reporting`, `Hospitalisation`, `Death` and `Recovery`
-    take the name of its recorded time (`from = :onset_time`,
-    `from = :tested_time`). A mix-up gives no error:
-    `Transition(...; from = :tested_time)` never happens, and
-    `Reporting(...; from = :tested)` reads the yes/no record as day 0 or
-    day 1, so every case is reported as if timed from the start of the
-    outbreak.
+!!! note "`from` accepts either the event or its recorded time"
+    `Transition`, `Reporting`, `Hospitalisation`, `Death` and `Recovery`
+    resolve `from` the same way: `from = :onset` and `from = :onset_time`
+    both read `:onset_time`; `from = :infection` reads the case's
+    infection time.
 
 The general `Transition` covers any event in the timeline: it takes the name
 of the event, `from` (the earlier event it is timed from, by default
@@ -506,11 +502,9 @@ function EpiBranch.censor_after_outcome!(::AntiviralTreatment, ind)
 end
 ```
 
-That's the whole extension surface. Three ingredients (the shared
-`ind.state` dict, callable probability/delay, optional terminal
-arbitration) are enough for the cases covered here: independent
-parallel draws, sequential chains, treatment-conditional outcomes,
-capacity-dependent rates.
+The shared `ind.state` dict, callable probability/delay, and optional
+terminal arbitration cover independent parallel draws, sequential chains,
+treatment-conditional outcomes, and capacity-dependent rates.
 
 To write your own kind of event, with its own likelihood, see
 [Extending EpiBranch](extending.md).
