@@ -2236,9 +2236,9 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                 # the same "stands only before the outcome" rule as the
                 # aborted case above. The :died Transition is itself
                 # terminal, so it is exempt from that rule: it keeps the
-                # hospitalised_time anchor it read during its own
-                # resolve_individual! pass, even though Death's earlier
-                # candidate wins the outcome.
+                # hospitalised_time it read as its own reference point
+                # during its own resolve_individual! pass, even though
+                # Death's earlier candidate wins the outcome.
                 @test !control[:hospitalised] && control[:hospitalised_time] == Inf
                 @test control[:died] && control[:died_time] == 8.0
                 @test control[:outcome] == :died && control[:outcome_time] == 6.0
