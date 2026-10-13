@@ -128,13 +128,19 @@ function chain_size_distribution(
     # observation is applied analytically via `observe`.
     if seeds === nothing && prob_concluded === nothing && isempty(kwargs) &&
             isempty(interventions(model))
-        return observe(
-            _fold_reporting(
-                _progression(model), chain_size_distribution(single_type_offspring(model)),
+        base = chain_size_distribution(single_type_offspring(model))
+        # Only the `Reporting`-reading step can fail here (a callable
+        # per-individual probability, for instance); fall through to the
+        # simulation-based wrapper rather than crash the primary `~` entry
+        # point, matching `_chain_size_model_loglik`.
+        try
+            return observe(
+                _fold_reporting(_progression(model), base, observation(model)),
                 observation(model)
-            ),
-            observation(model)
-        )
+            )
+        catch e
+            (e isa MethodError || e isa ArgumentError) || rethrow()
+        end
     end
     return _ChainSizeLaw(model, seeds, prob_concluded, NamedTuple(kwargs))
 end
@@ -145,13 +151,15 @@ function chain_size_distribution(
     )
     if seeds === nothing && prob_concluded === nothing && isempty(kwargs) &&
             isempty(interventions(spec))
-        return observe(
-            _fold_reporting(
-                _progression(spec), chain_size_distribution(single_type_offspring(spec.process)),
+        base = chain_size_distribution(single_type_offspring(spec.process))
+        try
+            return observe(
+                _fold_reporting(_progression(spec), base, observation(spec)),
                 observation(spec)
-            ),
-            observation(spec)
-        )
+            )
+        catch e
+            (e isa MethodError || e isa ArgumentError) || rethrow()
+        end
     end
     return _ChainSizeLaw(spec, seeds, prob_concluded, NamedTuple(kwargs))
 end
