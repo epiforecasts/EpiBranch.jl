@@ -497,8 +497,8 @@ What this means in practice:
   contacts and reported on one that cannot, such as `HomogeneousProcess`, even
   though the undeclared actions themselves still go undelivered.
 - An intervention that reaches its targets through `apply_post_transmission!`
-  or `keep_active` — `MassVaccination`'s rollout doses each new contact as the
-  engine creates it — has nothing to act on when no contacts are created. You
+  or `keep_active` (`MassVaccination`'s rollout doses each new contact as the
+  engine creates it) has nothing to act on when no contacts are created. You
   need not declare this: when your type has a method of its own for either
   hook, the continuous-time models name it in their warning, unless your type
   also defines that hook's continuous-time counterpart and leaves
