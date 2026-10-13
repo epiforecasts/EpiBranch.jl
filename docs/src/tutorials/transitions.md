@@ -84,8 +84,8 @@ model = ModelSpec(
 state = simulate(model; max_cases = 200, rng = StableRNG(42))
 ```
 
-A case not admitted still recovers from onset as before; `Death`'s delay
-never gets a start time to measure from, so it never enters that race.
+A case not admitted still recovers from onset as before; `Death`'s own
+anchor is unreached for it, so it never enters that race.
 
 ## Asymptomatic cases
 

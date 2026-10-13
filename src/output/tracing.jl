@@ -19,8 +19,8 @@ deliberate post-run step, so the cost stays out of the hot loop.
     the record. On a tree (`BranchingProcess`) that is the unique parent, so
     the level is exact. On a cyclic `NetworkProcess` it is the depth along
     the path a node was last traced on, which is
-    **not** guaranteed to be the shortest distance to the nearest index —
-    do not read it as one. (A true nearest-index distance would need the
+    **not** guaranteed to be the shortest distance to the nearest index.
+    Do not read it as one. (A true nearest-index distance would need the
     engine to record every successful tracer; see issue #150.)
 """
 function compute_trace_level!(state::SimulationState)

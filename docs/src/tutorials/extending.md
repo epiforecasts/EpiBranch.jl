@@ -210,7 +210,7 @@ reached it. On a tree each contact has one infector, so that is its parent.
 `compute_trace_level!` walks it back to the index case post-simulation to set
 `:trace_level` (distance from the index, anchor `0`). On a tree the level is
 exact; on a cyclic `NetworkProcess` it is the depth along the path a node was
-last traced on, **not** a guaranteed shortest distance to the nearest index — do not
+last traced on, **not** a guaranteed shortest distance to the nearest index. Do not
 read it as one.
 
 Built-in keys use short bare names like `:isolated`, `:traced`, `:age`, and
@@ -408,7 +408,7 @@ What this means in practice:
   against the time they propose it for. A blocked contact does not transmit and
   the contact process carries on: the pair's next contact is drawn from its own
   hazard conditioned on falling later. Blocking each contact with probability
-  `p` therefore thins the force of infection to `(1 - p)` of it, so a pair with
+  `p` thins the force of infection to `(1 - p)` of it, so a pair with
   a one-day mean contact interval and a two-day infectious period infects
   `1 - exp(-1) = 0.63` of the time at efficacy 0.5.
 - Per-individual susceptibility and infectiousness reach the same thinning by a
@@ -529,7 +529,7 @@ Ordering guarantees:
 
 - `resolve_individual!` runs on a case before it makes any contact. A competing risk can read whatever `resolve_individual!` wrote on the infector.
 - A case's `trace_contacts!`, `intervention_actions` and `keep_active` run before any of its contacts is decided infected or not, so a competing risk can read whatever they wrote on the contact (e.g. `:vaccination_time`).
-- Every intervention's `trace_contacts!` for a case runs before any intervention's `intervention_actions` for it, so an action producer such as `RingVaccination` reads what tracing wrote, whatever the order of the stack.
+- Every intervention's `trace_contacts!` for a case runs before any intervention's `intervention_actions` for it; an action producer such as `RingVaccination` therefore reads what tracing wrote, whatever the order of the stack.
 - Otherwise interventions are applied in the order they appear in `interventions = [...]`, and each sees the state written by earlier interventions for the same case.
 - `keep_active` runs before the contacts are decided infected or not. A contact it returns that is then infected is active as a case anyway.
 
@@ -1701,11 +1701,11 @@ infection-time order, rather than the generation-based engine) receives the
 composed layers as arguments instead: define
 [`EpiBranch.simulate_once`](@ref)`(m::MyModel, sim_opts; interventions,
 attributes, progression, observation, recorder, rng)`, read the layers off the
-arguments, and derive any window state you need — the infectious window's
-`from`, say, via [`EpiBranch.infectious_from`](@ref)`(progression)` — there.
+arguments, and derive any window state you need (the infectious window's
+`from`, say, via [`EpiBranch.infectious_from`](@ref)`(progression)`) there.
 `simulate` calls this once, or repeatedly when a `condition` is given, so your
 method takes no `condition`/`max_attempts` of its own. Drive the race with
-[`EpiBranch.sellke_race!`](@ref), passing it `sim_opts` so it resolves
+[`EpiBranch.sellke_race!`](@ref) and pass it `sim_opts`; it resolves
 `max_time` and reconciles the run's aggregate bookkeeping for you. The
 continuous-time household and network processes are the worked examples;
 `ModelSpec` routes `simulate` and `loglikelihood` to `simulate_once` for you.
@@ -1779,7 +1779,7 @@ it as two pieces:
 
 A group is always the *tuple* of `mixing_by` values, so it stays a tuple even
 when there is a single attribute. Under `mixing_by = (:age_band,)` a member of
-band `b` has group `(b,)`, not bare `b`, so inside `rate` you read the band out
+band `b` has group `(b,)`, not bare `b`; inside `rate` you read the band out
 with `group[1]`. That one wrinkle is what usually trips people up on a first
 read.
 

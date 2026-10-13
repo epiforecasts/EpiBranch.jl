@@ -2,8 +2,8 @@
 #
 # A closed population of fixed size N, split into mixing groups that contact
 # each other at different rates: age bands, sex, income strata, spatial
-# patches. It reuses the same mass-action route as `HomogeneousProcess` — the
-# homogeneous case is the one-group special case, `mixing_by = ()` — so the
+# patches. It reuses the same mass-action route as `HomogeneousProcess` (the
+# homogeneous case is the one-group special case, `mixing_by = ()`), so the
 # only thing a user supplies beyond the population size is the pair contact
 # rate between groups. It describes the transmission alone: the natural
 # history (progression), interventions, attributes and observation are
