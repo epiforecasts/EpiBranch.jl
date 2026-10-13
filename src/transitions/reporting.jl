@@ -21,7 +21,7 @@ Initialises: `:reported = false`, `:reporting_time = Inf`.
 The simulation start-up validator requires the resolved `from` key to be
 either an existing key (typically set by `attributes`) or one that a step
 in `progression` produces. A `from` that names neither raises an error
-at start-up, since the step it anchors would otherwise be silently
+at start-up, since the step timed from it would otherwise be silently
 skipped for every case.
 
 `simulate`, [`progression_loglik`](@ref), the chain-size likelihood

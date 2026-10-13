@@ -74,8 +74,8 @@ clinical = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
 # completes, and a capped run of this process lands anywhere from 220 to about
 # 490 cases, median around 310. So of the runs rejected, three in four are for
 # overshooting 260 and the rest for dying out before 200, and nothing lands
-# between 200 and 219 at all. A seed on its own would pin nothing: which run a
-# given seed produces moves with any change upstream of the first draw, and
+# between 200 and 219 at all. A seed on its own would pin nothing: the run a
+# given seed produces changes with any change upstream of the first draw, and
 # the row would then name a size the state no longer has.
 #
 # The accepted state is a capped run rather than a finished outbreak, which is
