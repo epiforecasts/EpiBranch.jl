@@ -24,7 +24,7 @@ EpiBranch.should_stop(r::MaxChainLength, state::SimulationState) =
     maximum(ind.generation for ind in state.individuals; init = 0) >= r.n
 ```
 
-The homogeneous, network and household models run until transmission dies
+The mass-action, network and household models run until transmission dies
 out or a time limit, and do not check `should_stop`. A rule that should also
 end those runs defines [`time_bound`](@ref EpiBranch.time_bound), as
 [`MaxTime`](@ref) does; if the time limit is all the rule checks, it also
@@ -76,7 +76,7 @@ should_stop(r::MaxTime, state::SimulationState) = state.max_infection_time >= r.
     time_bound(rule::AbstractStoppingRule) -> Real
 
 The time limit (days) a stopping rule sets, or `Inf` if it sets none (the
-default). The homogeneous, network and household models do not check
+default). The mass-action, network and household models do not check
 [`should_stop`](@ref); they run until transmission dies out or until this
 time. Define it alongside `should_stop` for a rule that, like
 [`MaxTime`](@ref), should also end those runs.
@@ -87,7 +87,7 @@ time_bound(r::MaxTime) = r.t
 """
     honoured_without_should_stop(rule::AbstractStoppingRule) -> Bool
 
-Whether the homogeneous, network and household models apply `rule` in full.
+Whether the mass-action, network and household models apply `rule` in full.
 They do not check [`should_stop`](@ref) and stop only when transmission dies
 out or at a time limit, so they fully apply only [`Extinction`](@ref) and
 [`MaxTime`](@ref) (through its [`time_bound`](@ref EpiBranch.time_bound)).

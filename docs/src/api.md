@@ -32,7 +32,8 @@ write a new model, intervention or observation model.
 A transmission model says who infects whom and when. [`BranchingProcess`](@ref)
 is the offspring-distribution model used by epichains and ringbp, optionally
 with several types of case. [`HomogeneousProcess`](@ref) is a stochastic
-SIR/SEIR epidemic in a closed population. [`NetworkProcess`](@ref),
+SIR/SEIR epidemic in a closed population. [`MixingProcess`](@ref) is the same
+in a population that mixes by group. [`NetworkProcess`](@ref),
 [`RoutedNetwork`](@ref) and [`HouseholdProcess`](@ref) spread infection over a
 fixed set of contacts. [`ModelSpec`](@ref) adds the rest of the scenario.
 
@@ -198,8 +199,9 @@ InfectionEpisode
 
 ## Recording contacts
 
-The continuous-time models (networks, households and
-[`HomogeneousProcess`](@ref)) stop simulating contacts with a person an
+The continuous-time models (networks, households,
+[`HomogeneousProcess`](@ref) and [`MixingProcess`](@ref)) stop simulating
+contacts with a person an
 intervention has protected for good, such as a vaccinated contact. A contact
 recorder, a type you write with
 [`records_contacts`](@ref EpiBranch.records_contacts), keeps simulating them

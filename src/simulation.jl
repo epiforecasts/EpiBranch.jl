@@ -43,8 +43,8 @@ a constant or a function of the random number generator and the individual,
 `(rng, ind) -> value`, so rates and delays can depend on age or risk group.
 
 !!! note
-    [`HomogeneousProcess`](@ref), `NetworkProcess`,
-    `RoutedNetwork` and `HouseholdProcess` run over a fixed
+    [`HomogeneousProcess`](@ref), [`MixingProcess`](@ref),
+    `NetworkProcess`, `RoutedNetwork` and `HouseholdProcess` run over a fixed
     population until transmission
     dies out or `max_time` is reached. They ignore `max_cases`,
     `max_generations` and most stopping rules, and warn when one is set.
@@ -1746,7 +1746,8 @@ Give each person a susceptibility and an infectiousness. Pass the result as
   infected leads to infection, so 0.5 halves the number they infect.
 
 Both default to 1 (no change). In the continuous-time models
-([`HomogeneousProcess`](@ref), network and household models) both instead
+([`HomogeneousProcess`](@ref), [`MixingProcess`](@ref), network and household
+models) both instead
 multiply the rate of transmission, which lowers the chance of infection only
 over an infectious period of limited length.
 

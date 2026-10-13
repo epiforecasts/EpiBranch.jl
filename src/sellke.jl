@@ -360,7 +360,8 @@ end
 For intervention authors: whether a block that is certain for an infector and
 contact (probability 1) stays in force for good once it applies, for example
 permanent immunity. When it does, a continuous-time simulation (households,
-networks, `HomogeneousProcess`) stops proposing further contacts between the
+networks, `HomogeneousProcess`, `MixingProcess`) stops proposing further
+contacts between the
 pair. `false` by default.
 
 The [`Risk`](@ref) a source returns cannot say this itself. `competing_risk`
@@ -393,7 +394,8 @@ on a [`Risk`](@ref) can be relied on. A block it says ends on day `t` is not
 still in force after `t`, and a block it reports as never ending has not lifted
 by the next contact. The default is `false`, the cautious answer.
 
-A continuous-time simulation (households, networks, `HomogeneousProcess`) asks
+A continuous-time simulation (households, networks, `HomogeneousProcess`,
+`MixingProcess`) asks
 this where a pair could go on having contacts indefinitely, to tell a block
 that ends the pair's
 transmission from one it must keep testing contacts against. Without the

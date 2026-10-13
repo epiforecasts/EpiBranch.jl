@@ -34,7 +34,7 @@ abstract type AbstractClinicalTransition end
 
 """
 The parent type of all transmission models: [`BranchingProcess`](@ref),
-[`HomogeneousProcess`](@ref), `NetworkProcess`,
+[`HomogeneousProcess`](@ref), [`MixingProcess`](@ref), `NetworkProcess`,
 `RoutedNetwork` and `HouseholdProcess`. Needed only to write
 a new kind of model; the Extending EpiBranch guide lists what a new model
 defines.
@@ -132,7 +132,8 @@ contact they exposed; for models with a fixed population, anyone in it.
   reinfects anyone, so this is empty there.
 
 In the continuous-time models ([`HomogeneousProcess`](@ref),
-`NetworkProcess`, `RoutedNetwork`, `HouseholdProcess`),
+[`MixingProcess`](@ref), `NetworkProcess`, `RoutedNetwork`,
+`HouseholdProcess`),
 `susceptibility` and `infectiousness` instead multiply the rate at which a
 pair meets. They then lower the chance of infection only over an
 infectious period of limited length: if the infectious period never ends,

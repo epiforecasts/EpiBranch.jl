@@ -154,7 +154,8 @@ infection. Filter on `infected` to keep only the transmission tree.
 
 Only the generation-based models, such as [`BranchingProcess`](@ref), record
 exposures. The continuous-time models (`HomogeneousProcess`,
-`NetworkProcess`, `RoutedNetwork`, `HouseholdProcess`) return an empty table;
+`MixingProcess`, `NetworkProcess`, `RoutedNetwork`, `HouseholdProcess`) return
+an empty table;
 for them, who infected whom is the `parent_id` column of [`linelist`](@ref).
 
 Columns: `from` (`id` of the case), `to` (`id` of the person exposed),

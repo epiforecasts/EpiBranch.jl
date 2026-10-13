@@ -266,8 +266,9 @@ intervention_time(::AbstractIntervention, ::Individual) = -Inf
     infectious_removal_time(intervention, individual) -> Real
 
 The time (days) at which this intervention ends `individual`'s infectious
-period for good. Continuous-time models ([`HomogeneousProcess`](@ref) and the
-network and household models) end a case's infectious period at the earliest
+period for good. Continuous-time models ([`HomogeneousProcess`](@ref),
+[`MixingProcess`](@ref) and the network and household models) end a case's
+infectious period at the earliest
 such time across interventions: `Isolation` at the isolation time (perfect
 isolation only, `post_isolation_transmission = 0`) and `ContactTracing` at a
 quarantined contact's trace time, when the isolation or quarantine has no end
