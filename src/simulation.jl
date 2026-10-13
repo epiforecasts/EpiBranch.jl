@@ -90,9 +90,9 @@ retry loop when a `condition` is given; this method itself takes no
 `condition`.
 
 The default method runs the generation-based engine. A model with its own
-simulation loop — one driven by a continuous-time race rather than stepping
+simulation loop (one driven by a continuous-time race rather than stepping
 generation by generation, such as the network, household and homogeneous-pool
-processes — defines its own method instead, reading the layers off the
+processes) defines its own method instead, reading the layers off the
 arguments and deriving any window state it needs (the infectious window's
 `from`, say, via [`infectious_from`](@ref)) from the composed `progression`.
 `recorder` is read only by the continuous-time (Sellke) race; the
@@ -988,12 +988,30 @@ function seed!(state::SimulationState, ids, interventions, transitions)
     if !isempty(ids)
         first_ind = state.individuals[first(ids)]
         _validate_required_fields(first_ind, interventions)
-        _validate_required_fields(first_ind, transitions)
+        _validate_required_fields(_transition_probe(first_ind, transitions, state), transitions)
     end
     state.cumulative_cases = length(ids)
     state.active_ids = collect(ids)
     state.extinct = isempty(ids)
     return state
+end
+
+# A throwaway individual that holds the first seed case's attribute-derived
+# state plus every transition's own `initialise_individual!` keys. A `from`
+# anchored on another transition's output is not yet written on any real
+# individual at seed time, because the transitions themselves haven't run
+# yet. `_validate_required_fields` is checked against this probe instead,
+# which makes every step's own keys visible without running any step for
+# real.
+function _transition_probe(first_ind, transitions, state)
+    probe = Individual(;
+        id = first_ind.id, infection_time = first_ind.infection_time,
+        state = copy(first_ind.state)
+    )
+    for transition in transitions
+        initialise_individual!(transition, probe, state)
+    end
+    return probe
 end
 
 """
@@ -1888,5 +1906,9 @@ function _field_hint(field::Symbol)
         :age => "Provide attributes = demographics(age_distribution = ...).",
         :sex => "Provide attributes = demographics(...)."
     )
-    return get(hints, field, "Set this field via an attributes function.")
+    return get(
+        hints, field,
+        "Set this field via an attributes function, or add the step that " *
+            "produces it to `progression`."
+    )
 end

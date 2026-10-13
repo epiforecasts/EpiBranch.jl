@@ -1140,7 +1140,7 @@
             # cluster's observed size was scored as if it were a single-seed
             # chain. A 3-seed cluster reaching a given total size needs far
             # less onward transmission than a single-seed chain reaching the
-            # same size, so once `seeds` is honoured the two must differ, and
+            # same size; once `seeds` is honoured the two must differ, and
             # the multi-seed reading must be the more probable one.
             iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = 7.0)
             spec = ModelSpec(

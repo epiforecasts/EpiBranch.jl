@@ -772,6 +772,16 @@ end
         @test :date_recovered in propertynames(ll)
     end
 
+    @testset "contacts() lists every infector-infectee pair the race settled" begin
+        m = ModelSpec(HomogeneousProcess(; transmission_rate = 2.0, population_size = 200))
+        state = simulate(m; rng = StableRNG(1), n_initial = 5)
+        df = contacts(state)
+        @test size(df, 1) == count(!=(0), linelist(state).parent_id)
+        @test all(df.infected)
+        expected = Set((ind.parent_id, ind.id) for ind in state.individuals if ind.parent_id != 0)
+        @test Set(zip(df.from, df.to)) == expected
+    end
+
     @testset "transmission_rate is the transmission parameter" begin
         # β is the per-infective rate, stored and used directly (no R0 map).
         p = HomogeneousProcess(; transmission_rate = 2.0, population_size = 100)
