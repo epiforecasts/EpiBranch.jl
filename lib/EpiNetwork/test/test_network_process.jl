@@ -382,6 +382,16 @@ end
         @test :date_recovered in propertynames(df)      # the removal transition
     end
 
+    @testset "contacts() lists every infector-infectee pair the race settled" begin
+        m = ModelSpec(NetworkProcess(ring_adjacency(20), Exponential(1.0)))
+        state = simulate(m; rng = StableRNG(4))
+        df = contacts(state)
+        @test size(df, 1) == count(!=(0), linelist(state).parent_id)
+        @test all(df.infected)
+        expected = Set((ind.parent_id, ind.id) for ind in state.individuals if ind.parent_id != 0)
+        @test Set(zip(df.from, df.to)) == expected
+    end
+
     @testset "external force of infection introduces community cases" begin
         n = 50
         m = ModelSpec(

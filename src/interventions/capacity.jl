@@ -197,6 +197,20 @@ end
 # candidate instead of stopping after a fixed count, which would otherwise
 # leave it under-used.
 _uses_batch_hook(cc::CapacityConstrained) = _uses_batch_hook(cc.intervention)
+# `CapacityConstrained` always has its own `intervention_actions` method, to
+# add the `capacity_key` check above, so asking `iv` directly would credit
+# every instance with discovering actions whether or not the one it wraps
+# does. Unwrapping through `_hook_owner`, as `_generation_hooks` already does
+# for `keep_active`/`continuous_actions`/`on_infection_settled!`, reaches past
+# any further `InterventionWrapper` nested inside (`Scheduled`, say) to the
+# intervention that would answer `intervention_actions`.
+function _discovers_actions(cc::CapacityConstrained)
+    return _has_own_method(
+        intervention_actions,
+        typeof(_hook_owner(intervention_actions, cc.intervention)),
+        AbstractIntervention
+    )
+end
 function apply_post_transmission!(cc::CapacityConstrained, state, new_contacts)
     actions = intervention_actions(cc, state, new_contacts)
     if actions !== nothing
@@ -245,10 +259,8 @@ end
 
 # ── Delegation of every other hook ────────────────────────────────────
 
-# The remaining hooks are inherited from `InterventionWrapper`.
-function keep_active(cc::CapacityConstrained, state, targets, is_new)
-    return keep_active(cc.intervention, state, targets, is_new)
-end
+# `keep_active` is inherited from `InterventionWrapper`'s plain forwarding:
+# a ring's growth spends no budget, so capacity has nothing to gate there.
 
 # Tracing records no resource use for the budget to count, so passing it
 # through would let the wrapped intervention act with no budget at all. Opting

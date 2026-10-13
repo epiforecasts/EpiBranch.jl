@@ -7,6 +7,7 @@ using Dates
 using Distributions
 using BenchmarkTools
 using StableRNGs
+using Optim
 
 BenchmarkTools.DEFAULT_PARAMETERS.samples = 20
 
@@ -65,17 +66,30 @@ BenchmarkTools.DEFAULT_PARAMETERS.samples = 20
 
 # ── 6. Line list simulation ─────────────────────────────────────────
 
-println("6. Line list generation (from 200-case state)")
+println("6. Line list generation (from a 200 to 260 case state)")
 model_ll = BranchingProcess(Poisson(2.0), LogNormal(1.6, 0.5))
 clinical = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
+# `condition` holds the state to a window, which is the most that is available
+# here: the cap does not set the size, because the generation that crosses it
+# completes, and a capped run of this process lands anywhere from 220 to about
+# 490 cases, median around 310. So of the runs rejected, three in four are for
+# overshooting 260 and the rest for dying out before 200, and nothing lands
+# between 200 and 219 at all. A seed on its own would pin nothing: which run a
+# given seed produces moves with any change upstream of the first draw, and
+# the row would then name a size the state no longer has.
+#
+# The accepted state is a capped run rather than a finished outbreak, which is
+# what a line list of a given size needs; a conditioned run meant to give a
+# final size wants a cap above the range instead.
 ll_state = simulate(
-    model_ll;
-    attributes = clinical,
-    max_cases = 200,
+    ModelSpec(model_ll; attributes = clinical);
+    max_cases = 220,
+    condition = 200:260,
     rng = StableRNG(42)
 )
+println("   Cases in the state: $(ll_state.cumulative_cases)")
 BenchmarkTools.DEFAULT_PARAMETERS.samples = 50
-b = @benchmark linelist($ll_state; reference_date = Date(2024, 1, 1), rng = StableRNG(99))
+b = @benchmark linelist($ll_state; reference_date = Date(2024, 1, 1))
 println("   Median: $(round(median(b.times) / 1.0e6, digits = 3)) ms\n")
 BenchmarkTools.DEFAULT_PARAMETERS.samples = 20
 
@@ -89,9 +103,9 @@ ct = ContactTracing(
     probability = 0.5, isolation_to_trace_delay = Exponential(2.0),
     action = Quarantine(duration = Inf)
 )
+spec_int = ModelSpec(model_int; interventions = [iso, ct], attributes = clinical)
 b = @benchmark simulate(
-    $model_int, 500;
-    interventions = [$iso, $ct], attributes = $clinical,
+    $spec_int, 500;
     max_cases = 5000, max_generations = 50,
     rng = StableRNG(42)
 )
@@ -99,18 +113,33 @@ println("   Median: $(round(median(b.times) / 1.0e6, digits = 1)) ms\n")
 
 # ── 8. Chain-size fitting ────────────────────────────────────────────
 
-println("8. Fit NegBin offspring distribution from 1000 chain sizes")
+println("8. Fit NegBin offspring distribution from 1000 offspring counts")
 rng = StableRNG(42)
 fit_model = BranchingProcess(NegBin(0.7, 0.5))
 fit_states = simulate(fit_model, 1000; rng = rng)
-fit_sizes = Int[]
+fit_counts = Int[]
 for s in fit_states
-    cs = chain_statistics(s)
-    append!(fit_sizes, cs.size)
+    tally = Dict{Int, Int}()
+    for ind in s.individuals
+        is_infected(ind) || continue
+        tally[ind.id] = get(tally, ind.id, 0)
+        ind.parent_id == 0 && continue
+        tally[ind.parent_id] = get(tally, ind.parent_id, 0) + 1
+    end
+    append!(fit_counts, values(tally))
 end
-fit_data = ChainSizes(fit_sizes)
+# A negative binomial has no closed-form maximum-likelihood fit, so this is
+# the route the documentation gives: EpiBranch's `loglikelihood` paired with an
+# optimiser. The counts are cut to 1,000 so that the timing is for a dataset of
+# a stated size, comparable with an R implementation on the same number of
+# counts; 1,000 chains of mean size about 3.3 give more than that.
+fit_data = OffspringCounts(fit_counts[1:1000])
+nll(theta) = -loglikelihood(fit_data, NegBin(exp(theta[1]), exp(theta[2])))
 BenchmarkTools.DEFAULT_PARAMETERS.samples = 100
-b = @benchmark fit(NegativeBinomial, $fit_data)
+# Started away from the data-generating values, because starting at them finds
+# the optimum in about two thirds of the iterations and would understate what
+# the fit costs.
+b = @benchmark optimize($nll, [log(1.0), log(1.0)])
 println("   Median: $(round(median(b.times) / 1.0e6, digits = 3)) ms\n")
 
 println("=== Done ===")
