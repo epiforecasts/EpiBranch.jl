@@ -512,7 +512,7 @@ record_effect_draws!(::AbstractVaccination, contact, label, rng) = nothing
 Vaccinate the contacts found by [`ContactTracing`](@ref) (ring vaccination),
 including post-exposure prophylaxis (PEP, as in
 [pepbp](https://github.com/sophiemeakin/pepbp)). Needs `ContactTracing`
-among the interventions, listed first.
+among the interventions.
 
 # Examples
 ```julia
