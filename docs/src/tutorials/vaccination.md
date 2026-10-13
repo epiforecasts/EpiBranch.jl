@@ -495,8 +495,8 @@ Containment is at the no-intervention baseline again: the older group is
 protected from day 44 and everyone else from day 104, and an outbreak that
 takes off has reached the case cap well before either. The printed 0.07 and
 0.04 are two noisy estimates of the same quantity, as the standard error
-above suggests; runs of 3,000 put them within one standard error of each
-other.
+above suggests; runs of 3,000 give 0.065 and 0.057, a gap of under one and a
+half standard errors of the difference.
 
 ### Efficacy that varies between people
 
