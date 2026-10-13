@@ -98,10 +98,11 @@ function _hook_arities()
     return out
 end
 
-# Whether the author's own module holds a function of the hook's name that is
-# not the package's, carrying a method that was written to be this hook: what
-# a hook defined without the `EpiBranch.` prefix leaves behind. Looked for in
-# `parentmodule(T)`, since the hook and the type are written together.
+# The type a shadowing method of the hook's name was written for, where that
+# name resolves in the author's own module to a function that is not the
+# package's: what a hook defined without the `EpiBranch.` prefix leaves
+# behind. `nothing` when there is none. Looked for in `parentmodule(T)`,
+# since the hook and the type are written together.
 #
 # The method has to look like the hook and not merely share its name: an
 # intervention type first, and exactly one of the arities the engine calls.
@@ -114,18 +115,43 @@ end
 function _shadowing_hook(f, T::Type, arities)
     name = nameof(f)
     mod = parentmodule(T)
-    isdefined(mod, name) || return false
+    isdefined(mod, name) || return nothing
     g = getglobal(mod, name)
-    (g isa Function && g !== f) || return false
-    return any(methods(g)) do mm
+    (g isa Function && g !== f) || return nothing
+    for mm in methods(g)
+        params = Base.unwrap_unionall(mm.sig).parameters
+        length(params) < 2 && continue
+        Base.isvarargtype(params[end]) && continue
+        (length(params) - 1) in arities || continue
+        p = params[2]
+        p isa TypeVar && (p = p.ub)
+        p isa Type || continue
+        p === AbstractIntervention && continue
+        p <: AbstractIntervention && T <: p && return p
+    end
+    return nothing
+end
+
+# Whether `T` reaches a method of `f` at an arity the engine calls, written
+# for a type at least as specific as `bound`: the method that would stand in
+# for one of `T`'s own. Asked with the shadowing method's own first parameter
+# as `bound`, so a hook inherited from an abstract intervention parent does
+# not excuse a missing prefix on the child's override, the same reasoning
+# `_unreachable_own_method` is asked per method for.
+function _reaches_own_method(f, T::Type, bound::Type, arities)
+    return any(methods(f, Tuple{T, Vararg{Any}})) do mm
         params = Base.unwrap_unionall(mm.sig).parameters
         length(params) < 2 && return false
-        Base.isvarargtype(params[end]) && return false
-        (length(params) - 1) in arities || return false
+        called = if Base.isvarargtype(params[end])
+            any(n -> n + 1 >= length(params) - 1, arities)
+        else
+            (length(params) - 1) in arities
+        end
+        called || return false
         p = params[2]
         p isa TypeVar && (p = p.ub)
         p isa Type || return false
-        p !== AbstractIntervention && p <: AbstractIntervention && T <: p
+        return p <: bound
     end
 end
 
@@ -179,14 +205,16 @@ function _warn_hook_mistakes(T::Type)
                 "next one that applies to $(nameof(T)), which is the no-op " *
                 "default unless a wider intervention type supplies one. The " *
                 "engine calls: $(join(sigs, ", "))." intervention = T
-        elseif !_has_own_method(f, T, AbstractIntervention) &&
-                _shadowing_hook(f, T, arities)
-            found += 1
-            @warn "$(parentmodule(T)) defines a method of $(nameof(f)) for " *
-                "$(nameof(T)), but on its own function of that name rather " *
-                "than the package's, so the engine never calls it. Write it " *
-                "as `EpiBranch.$(nameof(f))(...)`." intervention = T
+            continue
         end
+        shadowed = _shadowing_hook(f, T, arities)
+        shadowed === nothing && continue
+        _reaches_own_method(f, T, shadowed, arities) && continue
+        found += 1
+        @warn "$(parentmodule(T)) defines a method of $(nameof(f)) for " *
+            "$(nameof(T)), but on its own function of that name rather " *
+            "than the package's, so the engine never calls it. Write it " *
+            "as `EpiBranch.$(nameof(f))(...)`." intervention = T
     end
     return found
 end

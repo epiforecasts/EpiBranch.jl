@@ -125,6 +125,32 @@ EpiBranch.competing_risk(::_ExtraOverload, parent, contact, state) =
     Risk(block_probability = 1.0)
 EpiBranch.competing_risk(::_ExtraOverload, contact) = Risk(block_probability = 1.0)
 
+# A family whose hook is written once on the abstract parent, with a child
+# whose own override is written without the `EpiBranch.` prefix. The parent's
+# method answers the call and the child's total block never applies, so asking
+# whether the hook has an own method at all finds the parent's and falls
+# silent: the question has to be whether a method at least as specific as the
+# stray one answers.
+abstract type _FamilyC <: AbstractIntervention end
+EpiBranch.competing_risk(::_FamilyC, parent, contact, state) =
+    Risk(block_probability = 0.0)
+struct _FamilyUnqualified <: _FamilyC end
+competing_risk(::_FamilyUnqualified, parent, contact, state) =
+    Risk(block_probability = 1.0)
+
+# The same family with the child's override written correctly.
+struct _FamilyQualified <: _FamilyC end
+EpiBranch.competing_risk(::_FamilyQualified, parent, contact, state) =
+    Risk(block_probability = 1.0)
+
+# A stray unprefixed method alongside a correct one for the same type: the
+# type's own hook answers the call, so the stray function is a leftover rather
+# than a mistake to report.
+struct _BothPrefixes <: AbstractIntervention end
+competing_risk(::_BothPrefixes, parent, contact, state) = Risk(block_probability = 1.0)
+EpiBranch.competing_risk(::_BothPrefixes, parent, contact, state) =
+    Risk(block_probability = 1.0)
+
 # A correct intervention in a module that also holds a variadic helper of a
 # hook's name, and an intervention in the same module with no hooks at all.
 # The helper is reachable at every arity, so an arity test alone cannot tell
@@ -493,6 +519,18 @@ EpiBranch.interventions(m::_ProcessWithInterventions) = m.interventions
         # A convenience overload of a hook for the same type is not a
         # mis-written hook, since the type's own hook answers the call.
         @test_logs ModelSpec(bp; interventions = [_ExtraOverload()])
+        # A child of an abstract intervention whose own override forgets
+        # the prefix: the parent's method answers the call, so the child's
+        # block never applies and the missing prefix has to be named.
+        @test_logs (
+            :warn,
+            r"defines a method of competing_risk for _FamilyUnqualified",
+        ) match_mode = :any ModelSpec(bp; interventions = [_FamilyUnqualified()])
+        # The same family with the override written correctly is silent.
+        @test_logs ModelSpec(bp; interventions = [_FamilyQualified()])
+        # A stray unprefixed method alongside a correct one for the same type
+        # is a leftover rather than a mistake.
+        @test_logs ModelSpec(bp; interventions = [_BothPrefixes()])
         # A variadic helper of a hook's name is not a mis-written hook
         # either, and an intervention whose only such method is that helper
         # gets the general message rather than advice that would break it.
