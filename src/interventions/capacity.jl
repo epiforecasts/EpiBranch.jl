@@ -47,8 +47,10 @@ simulation clock.
     capacity-limited, but ring vaccination then needs an infinite
     `eligibility_window`. Mass vaccination does not reach anyone in those
     models at all, with or without a limit, and `simulate` warns that it will
-    have no effect; the same holds for an intervention written without
-    [`intervention_actions`](@ref EpiBranch.intervention_actions). A
+    have no effect. The same warning covers an intervention whose actions are
+    delivered through the deprecated
+    [`apply_post_transmission!`](@ref EpiBranch.apply_post_transmission!)
+    batch hook, which these models never call. A
     [`HomogeneousProcess`](@ref) does not trace contacts, so ring vaccination
     cannot act in it. Contact tracing itself cannot be capacity-limited in any
     model.
