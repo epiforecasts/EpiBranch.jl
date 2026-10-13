@@ -133,8 +133,8 @@ function chain_size_distribution(
         # per-individual probability); fall through to the simulation-based
         # wrapper rather than crash the primary `~` entry point.
         # `_chain_size_model_loglik` does the same. A failure from `observe`
-        # itself (e.g. a non-scalar `PerCaseObservation`) is a user error to
-        # report, not something to paper over.
+        # itself (e.g. a non-scalar `PerCaseObservation`) is a user error,
+        # and should propagate rather than be swallowed here.
         folded = try
             _fold_reporting(_progression(model), base, observation(model))
         catch e
