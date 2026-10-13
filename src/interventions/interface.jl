@@ -55,7 +55,7 @@ contacts at once. It still does for an intervention that defines a method of
 its own, with a deprecation warning, so an intervention written against it
 keeps working there. Called on an intervention without one, it traces each
 contact from its `parent_id` and then admits the intervention's actions for
-the batch, which is what the built-in methods it replaces did.
+the batch, as the built-in methods it replaces did.
 """
 function apply_post_transmission!(iv::AbstractIntervention, state, new_contacts)
     Base.depwarn(
