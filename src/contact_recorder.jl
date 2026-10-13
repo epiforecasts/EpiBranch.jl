@@ -8,9 +8,10 @@
 # seam for recovering them.
 
 """
-Asks the network and household models to keep
-simulating contacts between an infector and a person whom an intervention
-has protected for good, such as a vaccinated contact. By default those
+Asks the continuous-time models (networks, households and
+[`HomogeneousProcess`](@ref)) to keep simulating contacts between an infector
+and a person whom an intervention has protected for good, such as a
+vaccinated contact. By default those
 contacts are no longer simulated, since they can no longer cause infection;
 keep them when you want every contact event recorded. Tracing and ring
 vaccination do not depend on it.

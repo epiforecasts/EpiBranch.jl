@@ -198,7 +198,8 @@ InfectionEpisode
 
 ## Recording contacts
 
-Network and household models stop simulating contacts with a person an
+The continuous-time models (networks, households and
+[`HomogeneousProcess`](@ref)) stop simulating contacts with a person an
 intervention has protected for good, such as a vaccinated contact. A contact
 recorder, a type you write with
 [`records_contacts`](@ref EpiBranch.records_contacts), keeps simulating them
