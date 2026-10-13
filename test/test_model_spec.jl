@@ -192,6 +192,18 @@ EpiBranch.competing_risk(::_RankFam, parent, contact, state) =
     Risk(block_probability = 0.0)
 EpiBranch.competing_risk(::_RankKid, parent, contact) = Risk(block_probability = 1.0)
 
+# A parametric intervention family, which is how the package's own
+# interventions are written, with the dropped-argument method on one
+# instantiation and the live one on the family. The two differ only in the
+# parameters, so a name without them would read as the same type twice.
+struct _ParamIv{D} <: AbstractIntervention
+    delay::D
+end
+EpiBranch.competing_risk(::_ParamIv, parent, contact, state) =
+    Risk(block_probability = 0.1)
+EpiBranch.competing_risk(::_ParamIv{Float64}, parent, contact) =
+    Risk(block_probability = 1.0)
+
 # A correct intervention in a module that also holds a variadic helper of a
 # hook's name, and an intervention in the same module with no hooks at all.
 # The helper is reachable at every arity, so an arity test alone cannot tell
@@ -591,6 +603,12 @@ EpiBranch.interventions(m::_ProcessWithInterventions) = m.interventions
             :warn,
             r"_RankKid has a method of its own for competing_risk.*the engine uses _RankFam's method instead",
         ) match_mode = :any ModelSpec(bp; interventions = [_RankKid()])
+        # A parametric family keeps its parameters in the warning, so the
+        # dead method and the standing-in one can be told apart.
+        @test_logs (
+            :warn,
+            r"_ParamIv\{Float64\} has a method of its own for competing_risk.*the engine uses _ParamIv's method instead",
+        ) match_mode = :any ModelSpec(bp; interventions = [_ParamIv(2.0)])
         # A variadic helper of a hook's name is not a mis-written hook
         # either, and an intervention whose only such method is that helper
         # gets the general message rather than advice that would break it.

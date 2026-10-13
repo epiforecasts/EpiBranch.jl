@@ -110,10 +110,14 @@ function _covers(p::Type, bound::Type)
     end
 end
 
-# A name for a method's first parameter in a warning. `nameof` has no method
-# for a `Union`, which a hook shared by two intervention types leaves here, so
-# anything that is not a single type is spelled out in full.
-_hook_type_name(p::Type) = p isa DataType ? string(nameof(p)) : string(p)
+# A name for a method's first parameter in a warning. Only a plain type gets
+# the short `nameof`: `nameof` has no method for a `Union`, which a hook shared
+# by two intervention types leaves here, and it strips the parameters from a
+# parametric type, which would print `Shield{Float64}` and `Shield` alike and
+# leave the warning naming the same type twice.
+function _hook_type_name(p::Type)
+    return p isa DataType && isempty(p.parameters) ? string(nameof(p)) : string(p)
+end
 
 # The type a shadowing method of the hook's name was written for, where that
 # name resolves in the author's own module to a function that is not the
