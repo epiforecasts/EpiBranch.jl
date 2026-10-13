@@ -50,10 +50,10 @@ Each case draws a number of potential secondary cases from the offspring
 distribution: the people it would infect if nothing intervened. Each potential
 infection then gets a time from the generation time distribution. Isolation,
 quarantine, vaccination, a contact's reduced susceptibility or a finite
-population can each prevent it, and whichever happens first decides whether
-that person is infected (survival analysis calls this competing risks). With
-none of these in the model, every potential secondary case is infected, so the
-mean of the offspring distribution is R.
+population can each prevent it, and the infection happens only if none of
+them does (survival analysis calls these competing risks). With none of these
+in the model, every potential secondary case is infected; the mean of the
+offspring distribution is then R.
 
 !!! note "Generation times and the number of secondary cases"
     By default each generation time is drawn independently of how many
