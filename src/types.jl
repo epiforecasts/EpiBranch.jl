@@ -87,9 +87,9 @@ multi-type/multi-window model or an offspring with no closed form.
 
 The default calls `single_type_offspring` and conservatively reports `false`
 (fall back to simulation) for anything it throws an `ArgumentError` or
-`MethodError` over, and likewise checks `chain_size_distribution` has a
-method for the result, so a custom `TransmissionModel` need not specialise
-this to get correct, if not always fastest, behaviour.
+`MethodError` over, and likewise checks whether `chain_size_distribution`
+has a method for the result, so a custom `TransmissionModel` need not
+specialise this to get correct, if not always fastest, behaviour.
 """
 function has_single_type_law(model::TransmissionModel)
     try
