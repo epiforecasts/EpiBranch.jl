@@ -53,10 +53,10 @@ simulation clock.
     batch hook, which these models never call, or through a
     [`keep_active`](@ref EpiBranch.keep_active) method of its own, which they
     read only while walking a case's contacts: either way it is honoured only
-    if it traces contacts as well. A
-    [`HomogeneousProcess`](@ref) does not trace contacts, so ring vaccination
-    cannot act in it. Contact tracing itself cannot be capacity-limited in any
-    model.
+    if it traces contacts as well. The mass-action models,
+    [`HomogeneousProcess`](@ref) and [`MixingProcess`](@ref), do not trace
+    contacts, so ring vaccination cannot act in either. Contact tracing itself
+    cannot be capacity-limited in any model.
 
 For extension authors: a new intervention can be capacity-limited by defining
 [`intervention_actions`](@ref EpiBranch.intervention_actions) and

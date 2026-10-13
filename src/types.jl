@@ -53,11 +53,13 @@ such as `NegBin(R, k)`, or anything else [`chain_size_distribution`](@ref)
 accepts, such as [`ClusterMixed`](@ref). Raises an error for a multi-type
 model.
 
-The closed-form results ([`extinction_probability`](@ref),
+The closed-form results read the offspring distribution through this
+function, so a new transmission model that defines it can use all of them:
+[`reproduction_number`](@ref), [`extinction_probability`](@ref),
 [`epidemic_probability`](@ref), [`probability_contain`](@ref),
-[`proportion_transmission`](@ref), [`chain_size_distribution`](@ref)) read
-the offspring distribution through this function, so a new transmission
-model that defines it can use all of them.
+[`proportion_transmission`](@ref), [`proportion_cases_individual`](@ref),
+[`proportion_cases_offspring`](@ref), [`proportion_cluster_size`](@ref) and
+[`chain_size_distribution`](@ref).
 """
 function single_type_offspring(model::TransmissionModel)
     hasproperty(model, :offspring) || throw(

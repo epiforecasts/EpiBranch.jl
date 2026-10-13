@@ -46,7 +46,7 @@ everyone vaccinated. `AllOrNothingMode` cannot yet be combined with `waning`
 !!! note "The two modes differ only with repeated exposure"
     In a branching process each contact is a separate person exposed once,
     so the two modes give the same infection probability per contact
-    (though not the same random draws). They differ in the homogeneous,
+    (though not the same random draws). They differ in the mass-action,
     household and network models, where a person can be exposed more than
     once: under all-or-nothing a protected person stays protected against
     every exposure, while a leaky vaccine is worn down by repeated

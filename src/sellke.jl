@@ -650,8 +650,9 @@ _sellke_honours(model, s::Scheduled) = _sellke_honours(model, s.intervention)
 Whether a continuous-time model knows each case's contacts (household members
 or network neighbours), so that contact tracing has people to act on (see
 [`trace_contacts!`](@ref EpiBranch.trace_contacts!)). True for the household
-and network processes; false by default, and for `HomogeneousProcess`, whose
-random mixing has no list of contacts. A model returning `true` must pass a
+and network processes; false by default, and for the mass-action models
+(`HomogeneousProcess`, `MixingProcess`), whose random mixing has no list of
+contacts. A model returning `true` must pass a
 `contacts` function to `_sellke_race!`.
 """
 supplies_contacts(::TransmissionModel) = false
