@@ -22,8 +22,8 @@ explains the syntax used in these pages.
 ## The core package only
 
 EpiBranch is in the General registry, Julia's equivalent of CRAN, but the
-registered version is behind these pages, so install the development version
-from GitHub for now. You load it with `using EpiBranch`, as you would
+registered version is behind these pages. Install the development version from
+GitHub for now. You load it with `using EpiBranch`, as you would
 `library()` a package in R:
 
 ```julia
@@ -44,10 +44,10 @@ that page needs.
 
 !!! warning "The registered version is older than these pages"
     The registered version (0.1.0) does not run the examples in these pages,
-    which describe version 0.2: setting how long isolation or quarantine lasts
-    (`duration`), for example, fails with an error. The block above
-    therefore installs the development version from GitHub rather than
-    `Pkg.add("EpiBranch")`, which would fetch 0.1.0.
+    which describe version 0.2. Setting how long isolation or quarantine lasts
+    (`duration`), for example, fails with an error. The block above installs
+    the development version from GitHub for that reason;
+    `Pkg.add("EpiBranch")` would fetch 0.1.0.
 
 ## With the household and network packages
 

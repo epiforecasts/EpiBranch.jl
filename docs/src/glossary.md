@@ -91,10 +91,9 @@ from simulations and includes every intervention in the model.
 case dies out, calculated exactly from the offspring distribution by
 [`extinction_probability`](@ref). It ignores the population characteristics in
 a model. An intervention with no closed-form effect on the offspring
-distribution stops it with an error instead of being left out quietly, and
-that is every intervention in the package, so run it on the process without
-interventions and compare the answer with the containment probability from
-simulations to see what control adds. Its complement is
+distribution stops it with an error, and that is every intervention in the
+package. To see what control adds, run it on the process without interventions
+and compare the answer with the containment probability from simulations. Its complement is
 [`epidemic_probability`](@ref). See
 [Analytical functions](tutorials/analytical.md).
 

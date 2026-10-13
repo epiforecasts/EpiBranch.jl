@@ -58,7 +58,7 @@ Simulating 500 outbreaks with R = 2.5 and dispersion k = 0.16 (`NegBin(2.5, 0.16
     The Julia column repeats one timing, for isolation plus 50% contact tracing (scenario 7 in `benchmark_julia.jl`), against all three ringbp scenarios. The models also differ: ringbp links each generation time to the case's incubation period and sets the fraction of transmission before symptoms, which the EpiBranch run does not. Read these as order-of-magnitude comparisons only.
 
 !!! warning "The Julia figure here is not reproducible by the current script"
-    The 707 ms dates from April 2026, from an engine and a version of the script that have both moved on, and it cannot be reproduced by the script this page tells you to run: that gives several times as long, by a factor that moves with the machine and with what else it is doing. Treat the ratio in this table as not yet re-measured.
+    The 707 ms dates from April 2026, from an engine and a version of the script that have both moved on. It cannot be reproduced by the script this page tells you to run: that gives several times as long, by a factor that moves with the machine and with what else it is doing. Treat the ratio in this table as not yet re-measured.
 
 ## Other benchmarks
 
@@ -67,9 +67,11 @@ Simulating 500 outbreaks with R = 2.5 and dispersion k = 0.16 (`NegBin(2.5, 0.16
 | Line list generation (200 to 260 cases) | 0.08 ms |
 | NegBin fit from 1000 offspring counts | 4.2 ms |
 
-These two rows were measured together, in October 2026, on different hardware from the comparison tables above, so compare them with each other rather than with the rows above.
+These two rows were measured together, in October 2026, on different hardware from the comparison tables above. They are therefore comparable with each other but not with the rows above.
 
-Both rows name the size that was timed, and the script holds them to it rather than trusting a seed. The line list is built from a state `condition` holds between 200 and 260 cases. A window is the most that is available: the cap does not set the size, because the generation that crosses it completes, so a capped run of this process lands anywhere between 220 and about 490 cases. Three in four of the rejected runs overshoot 260 and the rest die out before 200. A seed on its own would pin nothing, since which run it produces moves with any change upstream of the first draw. The fit is a maximum-likelihood search, EpiBranch's `loglikelihood` paired with an optimiser, since a negative binomial has no closed-form fit, and the script cuts the counts the 1,000 simulated chains hold down to the 1,000 the row names. The search starts away from the values the data were drawn from: starting at them reaches the optimum in about two thirds of the iterations, which is not the cost of fitting.
+The script holds both rows to the size they name. The line list is built from a state `condition` holds between 200 and 260 cases. That window is the narrowest the size can be pinned here. The cap does not set the size, because the generation that crosses it completes: a capped run of this process lands anywhere between 220 and about 490 cases. Three in four of the rejected runs overshoot 260; the rest die out before 200. A seed would be weaker, because which run it produces moves with any change upstream of the first draw.
+
+The fit is a maximum-likelihood search, EpiBranch's `loglikelihood` paired with an optimiser, because a negative binomial has no closed-form fit. The script cuts the counts the 1,000 simulated chains hold down to the 1,000 the row names, and starts the search away from the values the data were drawn from. Starting at them reaches the optimum in about two thirds of the iterations, which would understate what fitting costs.
 
 No direct R comparison is included for line list generation (simulist requires epiparameter database setup) or offspring fitting.
 

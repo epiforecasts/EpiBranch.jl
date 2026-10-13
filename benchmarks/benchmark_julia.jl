@@ -128,17 +128,17 @@ for s in fit_states
     end
     append!(fit_counts, values(tally))
 end
-# There is no closed-form maximum-likelihood fit for a negative binomial, so
-# this is the route the documentation gives: EpiBranch's `loglikelihood` paired
-# with an optimiser. The counts are cut to 1,000 so that the timing is for a
-# dataset of a stated size, comparable with an R implementation on the same
-# number of counts; 1,000 chains of mean size about 3.3 give more than that.
+# A negative binomial has no closed-form maximum-likelihood fit, so this is
+# the route the documentation gives: EpiBranch's `loglikelihood` paired with an
+# optimiser. The counts are cut to 1,000 so that the timing is for a dataset of
+# a stated size, comparable with an R implementation on the same number of
+# counts; 1,000 chains of mean size about 3.3 give more than that.
 fit_data = OffspringCounts(fit_counts[1:1000])
 nll(theta) = -loglikelihood(fit_data, NegBin(exp(theta[1]), exp(theta[2])))
 BenchmarkTools.DEFAULT_PARAMETERS.samples = 100
-# Started away from the data-generating values: starting at them finds the
-# optimum in about two thirds of the iterations, which is not the cost of the
-# fit the row names.
+# Started away from the data-generating values, because starting at them finds
+# the optimum in about two thirds of the iterations and would understate what
+# the fit costs.
 b = @benchmark optimize($nll, [log(1.0), log(1.0)])
 println("   Median: $(round(median(b.times) / 1.0e6, digits = 3)) ms\n")
 

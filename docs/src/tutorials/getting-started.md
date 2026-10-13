@@ -221,10 +221,10 @@ also jumps about from one generation to the next.
 ## Exact results
 
 Some quantities can be calculated exactly from the offspring distribution,
-without simulation. They are applied to `model` here rather than to `spec`,
-because `spec` includes `Isolation`, whose effect on R depends on how its
-timing overlaps the generation time. There is no closed form for that, and
-these functions stop with an error rather than quietly leaving it out:
+without simulation. The functions below are given `model`, the process on its
+own. Passing `spec` stops with an error, because it includes `Isolation`,
+whose effect on R depends on how its timing overlaps the generation time, and
+there is no closed form for that:
 
 ```@example gettingstarted
 println("P(extinction): $(round(extinction_probability(model), digits=3))")
@@ -234,7 +234,7 @@ println("Top 20% cause $(round(proportion_transmission(model; prop_cases=0.2) * 
 
 !!! warning "These describe the outbreak without control"
     `extinction_probability`, `epidemic_probability` and
-    `proportion_transmission` use only the offspring distribution, so the
+    `proportion_transmission` use only the offspring distribution. The
     extinction probability printed here is the chance that an outbreak dies
     out with no control at all. Compare it with the containment probability
     simulated above to see what the interventions add. For a closed-form
