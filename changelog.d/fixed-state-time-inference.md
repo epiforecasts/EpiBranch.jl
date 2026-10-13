@@ -1,5 +1,4 @@
-Simulating a `BranchingProcess` is about 1.6 times faster. Reading a time out
-of `Individual.state` returned `Any` to the compiler, so the engine's hot path
-boxed a float on every window it opened and every transition it settled; the
-reads now assert the element type, as the accessors in `state_accessors.jl`
-already did.
+Simulations run faster: about a fifth on a network model, under a tenth on a
+`BranchingProcess`. Reading a time out of an individual's state returned a
+value the compiler could not type, so the engine boxed a float on every window
+it opened and every transition it settled.
