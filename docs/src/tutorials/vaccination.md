@@ -736,10 +736,9 @@ nothing # hide
 
 With a finite `period`, `carry_over = true` (the default) adds a day's unused
 allowance to the next day's; `carry_over = false` discards it, so only that
-day's own `budget_per_period` is ever available. A generation of cases can
-span several days but draws on a single day's allowance, so without carry-over
-the days in between add nothing, and admissions can fall well below
-`budget_per_period` a day.
+day's own `budget_per_period` is ever available. Carry-over lets admissions
+bunch: a quiet spell builds an allowance that a later day can spend at once,
+well above `budget_per_period` in a day.
 
 !!! note "Which models support capacity limits"
     On the network and household models, capacity limits work for ring and
