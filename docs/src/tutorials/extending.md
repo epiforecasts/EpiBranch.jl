@@ -367,9 +367,9 @@ The generation engine used to hand a whole generation's contacts to
 with a method of its own for it is still handed the batch, with a deprecation
 warning, and its `keep_active` is then asked about the whole batch. It runs at
 its place in the list: the interventions before it have been through every
-case's hooks, and those after it see what it wrote. Its effect on each contact
-moves to `trace_contacts!`, and any action with a delivery date moves to
-`intervention_actions`. Once it does,
+case's hooks, and those after it see what it wrote. Moving off it means writing
+its effect on each contact as `trace_contacts!`, and any action with a delivery
+date as `intervention_actions`. Once it does,
 its `keep_active` is asked per case, about that case's contacts, after its
 `trace_contacts!` and `intervention_actions` for the case have run.
 
@@ -379,9 +379,9 @@ The hooks above are not all available everywhere, because the engines are
 built differently. The generation-based engine creates a fresh `Individual`
 for every contact, infected or not. The continuous-time (Sellke) models have no
 such objects: every node exists from the start and the simulation only settles
-*when* each is infected, by a race between contact-interval draws. They do
-have the potential infection itself, though, a drawn time for a named pair, so
-a `Risk` has a place there too, alongside the infectious window.
+*when* each is infected, by a race between contact-interval draws. They still
+have the potential infection itself: a drawn time for a named pair, so a
+`Risk` has a place there too, alongside the infectious window.
 
 | Hook | Generation engine | Continuous-time race (network, household, homogeneous) |
 |---|---|---|
@@ -492,13 +492,26 @@ What this means in practice:
   the continuous-time models only if it declares `continuous_actions`.
   `MassVaccination`'s rollout doses each contact a case makes, which the race
   would have to offer the whole pending population, so it does not declare it
-  and is reported there. One that reaches its targets through `keep_active`,
-  or through the deprecated `apply_post_transmission!`, is reported too. You
-  need not declare any of this: when your type has a method of its own for one
-  of these hooks, the continuous-time models name it in their warning. The
-  exception is an intervention that also traces contacts (`traces_contacts`
-  returns `true`); it is honoured on a model that can name a case's contacts
-  and reported on one that cannot, such as `HomogeneousProcess`.
+  and is reported there, unless it also traces contacts (`traces_contacts`
+  returns `true`): it is then honoured on a model that can name a case's
+  contacts and reported on one that cannot, such as `HomogeneousProcess`, even
+  though the undeclared actions themselves still go undelivered.
+- An intervention that reaches its targets through `apply_post_transmission!`
+  or `keep_active` — `MassVaccination`'s rollout doses each new contact as the
+  engine creates it — has nothing to act on when no contacts are created. You
+  need not declare this: when your type has a method of its own for either
+  hook, the continuous-time models name it in their warning, unless your type
+  also defines that hook's continuous-time counterpart and leaves
+  `continuous_actions` at its default. `on_infection_settled!` is taken as
+  `apply_post_transmission!`'s counterpart; [Ending an infection
+  early](#Ending-an-infection-early) below defines the two together, to treat
+  the same case the moment each engine can reach it. A type that also defines
+  its own `continuous_actions` forgoes that counterpart, whatever the method
+  returns for a given configuration: the warning depends on whether the type
+  defines its own method, not on what that method returns.
+  `trace_contacts!` is taken as `keep_active`'s counterpart the same way, but
+  needs a model that can name a case's contacts: it is honoured on a model
+  that can and reported on one that cannot, such as `HomogeneousProcess`.
 - **Contact tracing** spans the two. Its action is a removal, so it applies
   on both, but it needs to know who a case's contacts were. The generation
   engine knows that from the contacts each case made; the continuous-time
