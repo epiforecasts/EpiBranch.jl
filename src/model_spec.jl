@@ -39,8 +39,8 @@ function _warn_incomplete_terminal_coverage(progression)
     return nothing
 end
 
-# The hooks whose default on `AbstractIntervention` is a no-op, together with
-# the signature the engine calls each with (`trace_contacts!` has two, the
+# The hooks the engine dispatches on an intervention, together with the
+# signature it calls each with (`trace_contacts!` has two, the
 # four-argument one being what the five-argument fallback calls in turn). An
 # intervention with no method of its own, at the right arity, for any of
 # these can have no effect on a simulation or on the likelihood; see
@@ -119,11 +119,14 @@ function _hook_type_name(p::Type)
     return p isa DataType && isempty(p.parameters) ? string(nameof(p)) : string(p)
 end
 
-# The type a shadowing method of the hook's name was written for, where that
-# name resolves in the author's own module to a function that is not the
-# package's: what a hook defined without the `EpiBranch.` prefix leaves
-# behind. `nothing` when there is none. Looked for in `parentmodule(T)`,
-# since the hook and the type are written together.
+# The type a shadowing method of the hook's name was written for, and the
+# module it was written in, where that name resolves in the author's own
+# module to a function that is not the package's: what a hook defined without
+# the `EpiBranch.` prefix leaves behind. `nothing` when there is none. Looked
+# for in `parentmodule(T)`, since the hook and the type are written together,
+# but reported against the method's own module, which is where the line to fix
+# is: a family in a base module and its concrete types in a sibling put the
+# two in different places.
 #
 # The method has to look like the hook and not merely share its name: an
 # intervention type first, and exactly one of the arities the engine calls.
@@ -148,7 +151,7 @@ function _shadowing_hook(f, T::Type, arities)
         p isa TypeVar && (p = p.ub)
         p isa Type || continue
         p === AbstractIntervention && continue
-        p <: AbstractIntervention && T <: p && return p
+        p <: AbstractIntervention && T <: p && return (p, mm.module)
     end
     return nothing
 end
@@ -245,7 +248,9 @@ end
 # Warn, per hook, about a method an intervention meant as that hook which the
 # engine will never call: one written at an arity no call uses, or one added
 # without the `EpiBranch.` prefix and so belonging to a new function of the
-# same name. Either way the hook reads correctly and the no-op default runs.
+# same name. Either way the hook reads correctly and the package's own default
+# runs: a no-op for most of them, an error for `analytic_offspring_effect`,
+# and the deprecated batch path for `apply_post_transmission!`.
 # Returns how many it found, so the caller can tell a diagnosis from silence.
 function _warn_hook_mistakes(T::Type)
     found = 0
@@ -254,7 +259,8 @@ function _warn_hook_mistakes(T::Type)
         if unreachable !== nothing
             found += 1
             standin = _standin_own_method(f, T, AbstractIntervention, arities)
-            instead = standin === nothing ? "the no-op default" :
+            instead = standin === nothing ?
+                "the package's own default for $(nameof(f))" :
                 "$(_hook_type_name(standin))'s method"
             @warn "$(_hook_type_name(unreachable)) has a method of its own for " *
                 "$(nameof(f)), but at no number of arguments the engine calls " *
@@ -263,11 +269,12 @@ function _warn_hook_mistakes(T::Type)
                 "$(join(sigs, ", "))." intervention = T
             continue
         end
-        shadowed = _shadowing_hook(f, T, arities)
-        shadowed === nothing && continue
+        stray = _shadowing_hook(f, T, arities)
+        stray === nothing && continue
+        shadowed, stray_module = stray
         _reaches_own_method(f, T, shadowed, arities) && continue
         found += 1
-        @warn "$(parentmodule(T)) defines a method of $(nameof(f)) for " *
+        @warn "$(stray_module) defines a method of $(nameof(f)) for " *
             "$(_hook_type_name(shadowed)), but on its own function of that " *
             "name rather than the package's, so the engine never calls it. " *
             "Write it as `EpiBranch.$(nameof(f))(...)`." intervention = T

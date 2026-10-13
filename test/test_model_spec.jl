@@ -222,6 +222,31 @@ EpiBranch.competing_risk(::_ParamStray{Int}, parent, contact, state) =
 competing_risk(::_ParamStray{Float64}, parent, contact, state) =
     Risk(block_probability = 1.0)
 
+# An intervention family in a base module with its concrete types in a
+# sibling, which is how the extending guide teaches subtyping: the stray
+# method is written where the family is, not where the type is, so the module
+# to report is the method's own.
+module _StrayHome
+    using EpiBranch
+    using EpiBranch: AbstractIntervention, Risk
+    export competing_risk
+    abstract type _StrayFam <: AbstractIntervention end
+    competing_risk(::_StrayFam, parent, contact, state) =
+        Risk(block_probability = 1.0)
+end
+module _StrayUser
+    using EpiBranch
+    using .._StrayHome
+    using .._StrayHome: _StrayFam
+    struct _StrayKid <: _StrayFam end
+end
+
+# A hook whose default is not a no-op: `analytic_offspring_effect` throws, so
+# the warning cannot claim the engine carries on without the intervention.
+struct _AnalyticOnly <: AbstractIntervention end
+EpiBranch.initialise_individual!(::_AnalyticOnly, ind, state) = nothing
+EpiBranch.analytic_offspring_effect(::_AnalyticOnly, offspring, state) = offspring
+
 # A correct intervention in a module that also holds a variadic helper of a
 # hook's name, and an intervention in the same module with no hooks at all.
 # The helper is reachable at every arity, so an arity test alone cannot tell
@@ -512,7 +537,7 @@ EpiBranch.interventions(m::_ProcessWithInterventions) = m.interventions
         # rather than every hook being listed.
         @test_logs (
             :warn,
-            r"BlockWrongArity has a method of its own for competing_risk, but at no number of arguments the engine calls it with, so that method is never reached: the engine uses the no-op default instead",
+            r"BlockWrongArity has a method of its own for competing_risk, but at no number of arguments the engine calls it with, so that method is never reached: the engine uses the package's own default for competing_risk instead",
         ) match_mode = :any ModelSpec(bp; interventions = [BlockWrongArity()])
         # Unqualified: the method belongs to a different function entirely,
         # which is found in the module the intervention was written in.
@@ -639,6 +664,18 @@ EpiBranch.interventions(m::_ProcessWithInterventions) = m.interventions
             :warn,
             r"defines a method of competing_risk for _ParamStray\{Float64\}",
         ) match_mode = :any ModelSpec(bp; interventions = [_ParamStray(2.0)])
+        # The module named is the one the stray method was written in, not
+        # the one the intervention type lives in.
+        @test_logs (
+            :warn,
+            r"_StrayHome defines a method of competing_risk for _StrayFam",
+        ) match_mode = :any ModelSpec(bp; interventions = [_StrayUser._StrayKid()])
+        # `analytic_offspring_effect`'s default throws rather than doing
+        # nothing, so the message names the default without describing it.
+        @test_logs (
+            :warn,
+            r"_AnalyticOnly has a method of its own for analytic_offspring_effect.*the package's own default for analytic_offspring_effect instead",
+        ) match_mode = :any ModelSpec(bp; interventions = [_AnalyticOnly()])
         # A variadic helper of a hook's name is not a mis-written hook
         # either, and an intervention whose only such method is that helper
         # gets the general message rather than advice that would break it.
