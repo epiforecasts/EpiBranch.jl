@@ -61,6 +61,19 @@
         @test ll_direct ≈ ll_via_distribution
     end
 
+    @testset "chain_size_distribution — single-type offspring with no closed-form law falls back" begin
+        # Binomial offspring has a single-type law but no `chain_size_distribution`
+        # method; this must fall back to simulation rather than throwing a
+        # bare MethodError from inside the analytical fast path.
+        bp = BranchingProcess(Binomial(5, 0.3))
+        data = [1, 2, 3]
+        @test chain_size_distribution(bp; n_sim = 500, rng = StableRNG(1)) isa
+            Distribution
+        @test isfinite(
+            loglikelihood(ChainSizes(data), bp; n_sim = 500, rng = StableRNG(1))
+        )
+    end
+
     @testset "chain_length_distribution" begin
         bp = BranchingProcess(Poisson(0.5))
         d = chain_length_distribution(bp)
