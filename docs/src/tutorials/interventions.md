@@ -104,8 +104,8 @@ println("Leaky isolation: $(round(containment_probability(results), digits=3))")
 That falls between the 0.04 with no isolation and the 0.135 the same isolation
 gives when it holds completely. All three numbers are noisy at 200 outbreaks;
 runs of 5,000 put leaky isolation at about 60% of the benefit complete
-isolation buys. So keeping a third of a case's infectiousness costs a good
-part of what isolation achieves without undoing it.
+isolation buys. Keeping a third of a case's infectiousness costs a good part
+of what isolation achieves without undoing it.
 
 ### Isolation duration
 
@@ -314,8 +314,8 @@ in this section go back to the 7-day isolation from the start of the page,
 and compare with its result.
 
 Two checks decide whether a scheduled isolation or contact tracing reaches a
-case, and both read that case's own times. Its infection time must fall within
-the schedule, and the action's own time must then also fall on or after the
+case. Both read that case's own times: its infection time must fall within the
+schedule, and the action's own time must then also fall on or after the
 start day. With testing from day 10, someone whose isolation would fall on day
 9 is never isolated. Nor is someone infected on day 8, even with symptom onset
 on day 9 and a 2-day delay putting their isolation on day 11: they were

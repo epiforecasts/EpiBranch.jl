@@ -736,9 +736,9 @@ nothing # hide
 
 With a finite `period`, `carry_over = true` (the default) adds a day's unused
 allowance to the next day's; `carry_over = false` discards it, so only that
-day's own `budget_per_period` is ever available. Carry-over lets admissions
-bunch: a quiet spell builds an allowance that a later day can spend at once,
-well above `budget_per_period` in a day.
+day's own `budget_per_period` is ever available. With `carry_over = true`
+admissions can bunch: a quiet spell builds an allowance that a later day
+spends at once, well above `budget_per_period` in a day.
 
 !!! note "Which models support capacity limits"
     On the network and household models, capacity limits work for ring and
