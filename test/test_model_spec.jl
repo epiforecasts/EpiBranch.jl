@@ -441,7 +441,7 @@ EpiBranch.interventions(m::_ProcessWithInterventions) = m.interventions
         # rather than every hook being listed.
         @test_logs (
             :warn,
-            r"BlockWrongArity has a method of its own for competing_risk, but at no number of arguments",
+            r"BlockWrongArity has a method of its own for competing_risk, but at no number of arguments the engine calls it with, so that method is never reached: the engine uses the no-op default instead",
         ) match_mode = :any ModelSpec(bp; interventions = [BlockWrongArity()])
         # Unqualified: the method belongs to a different function entirely,
         # which is found in the module the intervention was written in.
@@ -511,7 +511,7 @@ EpiBranch.interventions(m::_ProcessWithInterventions) = m.interventions
         # child's block never applies, and the warning names the child.
         @test_logs (
             :warn,
-            r"_FamilyShort has a method of its own for competing_risk, but at no number of arguments",
+            r"_FamilyShort has a method of its own for competing_risk, but at no number of arguments the engine calls it with, so that method is never reached: the engine uses _Family's method instead",
         ) match_mode = :any ModelSpec(bp; interventions = [_FamilyShort()])
         # The same family the other way round is fine: the child's own method
         # is the one a four-argument call reaches.

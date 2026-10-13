@@ -188,6 +188,33 @@ function _unreachable_own_method(f, T::Type, base::Type, arities)
     return nothing
 end
 
+# The most specific type whose own method of `f` the engine does call, where
+# `T` has one: the method that stands in for a method of `T`'s own that no
+# call reaches. `nothing` when nothing between `T` and `base` supplies one, so
+# the no-op default is what runs. Collected the same way as above, so the
+# warning can name what the engine uses rather than hedge about it.
+function _standin_own_method(f, T::Type, base::Type, arities)
+    standin = nothing
+    for mm in methods(f, Tuple{T, Vararg{Any}})
+        params = Base.unwrap_unionall(mm.sig).parameters
+        length(params) < 2 && continue
+        p = params[2]
+        p isa TypeVar && (p = p.ub)
+        p isa Type || continue
+        (p !== base && p <: base) || continue
+        called = if Base.isvarargtype(params[end])
+            any(n -> n + 1 >= length(params) - 1, arities)
+        else
+            (length(params) - 1) in arities
+        end
+        called || continue
+        if standin === nothing || p <: standin
+            standin = p
+        end
+    end
+    return standin
+end
+
 # Warn, per hook, about a method an intervention meant as that hook which the
 # engine will never call: one written at an arity no call uses, or one added
 # without the `EpiBranch.` prefix and so belonging to a new function of the
@@ -199,12 +226,14 @@ function _warn_hook_mistakes(T::Type)
         unreachable = _unreachable_own_method(f, T, AbstractIntervention, arities)
         if unreachable !== nothing
             found += 1
+            standin = _standin_own_method(f, T, AbstractIntervention, arities)
+            instead = standin === nothing ? "the no-op default" :
+                "$(nameof(standin))'s method"
             @warn "$(nameof(unreachable)) has a method of its own for " *
                 "$(nameof(f)), but at no number of arguments the engine calls " *
-                "it with, so that method is never reached: the engine uses the " *
-                "next one that applies to $(nameof(T)), which is the no-op " *
-                "default unless a wider intervention type supplies one. The " *
-                "engine calls: $(join(sigs, ", "))." intervention = T
+                "it with, so that method is never reached: the engine uses " *
+                "$(instead) instead. The engine calls: " *
+                "$(join(sigs, ", "))." intervention = T
             continue
         end
         shadowed = _shadowing_hook(f, T, arities)
