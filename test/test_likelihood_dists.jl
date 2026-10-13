@@ -70,8 +70,8 @@
     end
 
     @testset "chain_size_distribution — callable Reporting probability falls back to simulation" begin
-        # A callable `Reporting` probability has no scalar the analytical
-        # fast path can read; it must fall through to the simulation-based
+        # A callable `Reporting` probability has no scalar for the analytical
+        # fast path to read, so it must fall through to the simulation-based
         # wrapper instead of throwing, as `loglikelihood` already does.
         model = ModelSpec(
             BranchingProcess(NegBin(1.5, 0.5));

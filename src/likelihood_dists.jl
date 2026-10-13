@@ -129,10 +129,10 @@ function chain_size_distribution(
     if seeds === nothing && prob_concluded === nothing && isempty(kwargs) &&
             isempty(interventions(model))
         base = chain_size_distribution(single_type_offspring(model))
-        # Only the `Reporting`-reading step can fail here (a callable
-        # per-individual probability, for instance); fall through to the
-        # simulation-based wrapper rather than crash the primary `~` entry
-        # point, matching `_chain_size_model_loglik`.
+        # Only the `Reporting`-reading step can fail here (e.g. a callable
+        # per-individual probability); fall through to the simulation-based
+        # wrapper rather than crash the primary `~` entry point.
+        # `_chain_size_model_loglik` does the same.
         try
             return observe(
                 _fold_reporting(_progression(model), base, observation(model)),
