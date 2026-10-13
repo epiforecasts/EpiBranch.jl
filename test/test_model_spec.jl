@@ -151,6 +151,33 @@ competing_risk(::_BothPrefixes, parent, contact, state) = Risk(block_probability
 EpiBranch.competing_risk(::_BothPrefixes, parent, contact, state) =
     Risk(block_probability = 1.0)
 
+# A hook shared by two intervention types through a `Union` first parameter,
+# which answers a call for either of them. `nameof` has no method for a
+# `Union`, and `<:` makes a union a subtype of neither member, so both the
+# naming and the specificity questions have to cope with one. Here with a
+# convenience overload alongside, as `_ExtraOverload` has, so there is nothing
+# to report and nothing to name.
+struct _UnionShare <: AbstractIntervention end
+struct _UnionShareB <: AbstractIntervention end
+EpiBranch.competing_risk(::Union{_UnionShare, _UnionShareB}, parent, contact, state) =
+    Risk(block_probability = 0.5)
+EpiBranch.competing_risk(::_UnionShare, contact) = Risk(block_probability = 0.5)
+
+# `BlockWrongArity`'s mistake written once for two types: there is something to
+# report, and the union is what it has to be reported against.
+struct _UnionShort <: AbstractIntervention end
+struct _UnionShortB <: AbstractIntervention end
+EpiBranch.competing_risk(::Union{_UnionShort, _UnionShortB}, parent, contact) =
+    Risk(block_probability = 1.0)
+
+# A correct hook written for a union, with an unprefixed leftover for one of
+# its members: the union covers that member, so the leftover is a leftover.
+struct _UnionBoth <: AbstractIntervention end
+struct _UnionBothB <: AbstractIntervention end
+EpiBranch.competing_risk(::Union{_UnionBoth, _UnionBothB}, parent, contact, state) =
+    Risk(block_probability = 1.0)
+competing_risk(::_UnionBoth, parent, contact, state) = Risk(block_probability = 1.0)
+
 # A correct intervention in a module that also holds a variadic helper of a
 # hook's name, and an intervention in the same module with no hooks at all.
 # The helper is reachable at every arity, so an arity test alone cannot tell
@@ -531,6 +558,19 @@ EpiBranch.interventions(m::_ProcessWithInterventions) = m.interventions
         # A stray unprefixed method alongside a correct one for the same type
         # is a leftover rather than a mistake.
         @test_logs ModelSpec(bp; interventions = [_BothPrefixes()])
+        # A hook shared by two types through a `Union` first parameter, with
+        # a convenience overload alongside: nothing to report, and the check
+        # must not fail trying to name the union.
+        @test_logs ModelSpec(bp; interventions = [_UnionShare()])
+        # The wrong-arity mistake written once for two types is reported
+        # against the union it was written for.
+        @test_logs (
+            :warn,
+            r"Union\{.*_UnionShortB.*\} has a method of its own for competing_risk",
+        ) match_mode = :any ModelSpec(bp; interventions = [_UnionShort()])
+        # A correct hook written for a union covers each of its members, so an
+        # unprefixed leftover for one of them is not the mistake.
+        @test_logs ModelSpec(bp; interventions = [_UnionBoth()])
         # A variadic helper of a hook's name is not a mis-written hook
         # either, and an intervention whose only such method is that helper
         # gets the general message rather than advice that would break it.

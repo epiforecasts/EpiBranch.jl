@@ -98,6 +98,23 @@ function _hook_arities()
     return out
 end
 
+# A hook written for a `Union` of intervention types answers a call for each
+# of its members, so the specificity questions below treat it as written
+# separately for each: a union that names the type covers it the way a method
+# for the type itself would. `<:` alone says the opposite, since a union is a
+# subtype of neither member.
+_member_types(p::Type) = p isa Union ? Base.uniontypes(p) : (p,)
+function _covers(p::Type, bound::Type)
+    return any(_member_types(p)) do u
+        any(b -> u <: b, _member_types(bound))
+    end
+end
+
+# A name for a method's first parameter in a warning. `nameof` has no method
+# for a `Union`, which a hook shared by two intervention types leaves here, so
+# anything that is not a single type is spelled out in full.
+_hook_type_name(p::Type) = p isa DataType ? string(nameof(p)) : string(p)
+
 # The type a shadowing method of the hook's name was written for, where that
 # name resolves in the author's own module to a function that is not the
 # package's: what a hook defined without the `EpiBranch.` prefix leaves
@@ -151,7 +168,7 @@ function _reaches_own_method(f, T::Type, bound::Type, arities)
         p = params[2]
         p isa TypeVar && (p = p.ub)
         p isa Type || return false
-        return p <: bound
+        return _covers(p, bound)
     end
 end
 
@@ -182,7 +199,7 @@ function _unreachable_own_method(f, T::Type, base::Type, arities)
     end
     for (p, called) in own
         called && continue
-        any(entry -> entry[2] && entry[1] <: p, own) && continue
+        any(entry -> entry[2] && _covers(entry[1], p), own) && continue
         return p
     end
     return nothing
@@ -208,7 +225,7 @@ function _standin_own_method(f, T::Type, base::Type, arities)
             (length(params) - 1) in arities
         end
         called || continue
-        if standin === nothing || p <: standin
+        if standin === nothing || _covers(p, standin)
             standin = p
         end
     end
@@ -228,8 +245,8 @@ function _warn_hook_mistakes(T::Type)
             found += 1
             standin = _standin_own_method(f, T, AbstractIntervention, arities)
             instead = standin === nothing ? "the no-op default" :
-                "$(nameof(standin))'s method"
-            @warn "$(nameof(unreachable)) has a method of its own for " *
+                "$(_hook_type_name(standin))'s method"
+            @warn "$(_hook_type_name(unreachable)) has a method of its own for " *
                 "$(nameof(f)), but at no number of arguments the engine calls " *
                 "it with, so that method is never reached: the engine uses " *
                 "$(instead) instead. The engine calls: " *
