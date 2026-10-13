@@ -90,9 +90,9 @@ retry loop when a `condition` is given; this method itself takes no
 `condition`.
 
 The default method runs the generation-based engine. A model with its own
-simulation loop — one driven by a continuous-time race rather than stepping
+simulation loop (one driven by a continuous-time race rather than stepping
 generation by generation, such as the network, household and homogeneous-pool
-processes — defines its own method instead, reading the layers off the
+processes) defines its own method instead, reading the layers off the
 arguments and deriving any window state it needs (the infectious window's
 `from`, say, via [`infectious_from`](@ref)) from the composed `progression`.
 `recorder` is read only by the continuous-time (Sellke) race; the

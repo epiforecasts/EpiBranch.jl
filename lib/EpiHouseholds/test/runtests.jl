@@ -116,6 +116,16 @@ struct _MaskLessRule <: EpiHouseholds.ConditionOn end
         @test issubset((:date_infection, :household, :index), propertynames(df))
     end
 
+    @testset "contacts() lists every infector-infectee pair the race settled" begin
+        m = ModelSpec(HouseholdProcess(fill(4, 50), Weibull(1.3, 2.0)); progression = _sir(6.0))
+        state = simulate(m; rng = StableRNG(1))
+        df = contacts(state)
+        @test size(df, 1) == count(!=(0), linelist(state).parent_id)
+        @test all(df.infected)
+        expected = Set((ind.parent_id, ind.id) for ind in state.individuals if ind.parent_id != 0)
+        @test Set(zip(df.from, df.to)) == expected
+    end
+
     @testset "the timeline is stamped through the progression (line-list columns)" begin
         # a latent period and an infectious period give onset and recovery dates
         m = ModelSpec(

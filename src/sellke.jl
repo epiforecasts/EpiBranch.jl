@@ -1111,6 +1111,7 @@ function _sellke_race!(
             ind.parent_id = infector.id
             ind.generation = infector.generation + 1
             ind.chain_id = infector.chain_id
+            push!(infector.secondary_case_ids, ind.id)
             # Only a model with named routes reports one. The single-window
             # shorthand has one window covering the whole model, so its name
             # identifies the model, where `:infection_route` is meant to
@@ -1256,9 +1257,9 @@ aggregate bookkeeping (`cumulative_cases`, `max_infection_time`, `extinct`)
 from the per-individual state the race wrote directly, before returning
 `state`. A model with its own simulation loop calls this rather than
 `_sellke_race!` itself, so it never has to resolve `max_time` or reconcile the
-bookkeeping by hand. `kwargs` are `_sellke_race!`'s own — `seed!`, `targets` or
+bookkeeping by hand. `kwargs` are `_sellke_race!`'s own (`seed!`, `targets` or
 `routes`, `from`, `until`, `interventions`, `contacts`, `risks`,
-`introduction`, `watches`, `recorder` — everything but `max_time`, which this
+`introduction`, `watches`, `recorder`), everything but `max_time`, which this
 wrapper sets.
 
 A model with more than one natural race partition (a household process, over
