@@ -730,12 +730,12 @@ end
 """Step 3 of a generation: decide which exposed people are infected, and
 record the new cases. An exposure need not lead to infection. The infector's
 infectiousness, the contact's susceptibility, anything the model adds and any
-interventions can each prevent it, whichever acts first. A person exposed by
-several cases is infected if any of the exposures transmits, at the time of
-the earliest one that does. When someone who was infected before is
-reinfected (possible only once their immunity has waned, see
-[`HostImmunity`](@ref EpiBranch.HostImmunity)), the earlier infection is kept
-as a past episode; see [`close_episode!`](@ref)."""
+interventions can each prevent it, and infection follows only if none of them
+does. A person exposed by several cases is infected if any of the exposures
+transmits, at the time of the earliest one that does. When someone who was
+infected before is reinfected (possible only once their immunity has waned,
+see [`HostImmunity`](@ref EpiBranch.HostImmunity)), the earlier infection is
+kept as a past episode; see [`close_episode!`](@ref)."""
 function _resolve!(
         model::TransmissionModel, state::SimulationState,
         interventions::Vector{<:AbstractIntervention},
