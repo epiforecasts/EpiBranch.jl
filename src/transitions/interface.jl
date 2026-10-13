@@ -454,7 +454,7 @@ end
 # anchors). Returning `NaN` signals "no anchor" and the transition is
 # skipped.
 function _resolve_anchor(s::Symbol, ind::Individual{T}) where {T}
-    return convert(T, get(ind.state, s, T(NaN)))
+    return convert(T, get(ind.state, s, T(NaN)))::T
 end
 _resolve_anchor(f, ind) = float(f(ind))
 
