@@ -178,6 +178,20 @@ EpiBranch.competing_risk(::Union{_UnionBoth, _UnionBothB}, parent, contact, stat
     Risk(block_probability = 1.0)
 competing_risk(::_UnionBoth, parent, contact, state) = Risk(block_probability = 1.0)
 
+# A child whose override drops an argument, under both a parent hook and a
+# wider union hook that covers the parent as well. The engine reaches the
+# parent's method, so that is the one to name, and which of the two the method
+# list offers first differs between Julia versions, so the choice cannot rest
+# on that order.
+abstract type _RankFam <: AbstractIntervention end
+struct _RankKid <: _RankFam end
+struct _RankOther <: AbstractIntervention end
+EpiBranch.competing_risk(::Union{_RankFam, _RankOther}, parent, contact, state) =
+    Risk(block_probability = 0.25)
+EpiBranch.competing_risk(::_RankFam, parent, contact, state) =
+    Risk(block_probability = 0.0)
+EpiBranch.competing_risk(::_RankKid, parent, contact) = Risk(block_probability = 1.0)
+
 # A correct intervention in a module that also holds a variadic helper of a
 # hook's name, and an intervention in the same module with no hooks at all.
 # The helper is reachable at every arity, so an arity test alone cannot tell
@@ -571,6 +585,12 @@ EpiBranch.interventions(m::_ProcessWithInterventions) = m.interventions
         # A correct hook written for a union covers each of its members, so an
         # unprefixed leftover for one of them is not the mistake.
         @test_logs ModelSpec(bp; interventions = [_UnionBoth()])
+        # With both a parent hook and a wider union hook in reach, the
+        # warning names the one dispatch picks.
+        @test_logs (
+            :warn,
+            r"_RankKid has a method of its own for competing_risk.*the engine uses _RankFam's method instead",
+        ) match_mode = :any ModelSpec(bp; interventions = [_RankKid()])
         # A variadic helper of a hook's name is not a mis-written hook
         # either, and an intervention whose only such method is that helper
         # gets the general message rather than advice that would break it.
