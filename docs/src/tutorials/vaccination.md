@@ -701,13 +701,12 @@ println("Doses with at most 5 people admitted a day: $(count(is_vaccinated, stat
 ```
 
 !!! warning "The limit is on people admitted each day"
-    The simulation selects everyone traced from one generation of cases at
-    once, and charges them to the allowance of the day it has reached: the
-    date of the latest infection so far. The doses themselves are dated at
-    each trace plus `dose_delay`, so they can fall on other days than the one
-    whose allowance paid for them. One day can see several times
-    `budget_per_period` doses given: the limit does not cap the doses given
-    per day.
+    The simulation offers one case's traced contacts at a time, in the order
+    it settles cases, and charges them to the allowance of the day that case
+    was infected. The doses themselves are dated at each trace plus
+    `dose_delay`, so they can fall on other days than the one whose allowance
+    paid for them. One day can see several times `budget_per_period` doses
+    given: the limit does not cap the doses given per day.
 
 [`capacity_usage`](@ref) reports how much of the allowance a simulated
 outbreak had used, and how much was available, by the time it stopped:
