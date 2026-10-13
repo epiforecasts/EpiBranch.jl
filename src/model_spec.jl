@@ -268,9 +268,9 @@ function _warn_hook_mistakes(T::Type)
         _reaches_own_method(f, T, shadowed, arities) && continue
         found += 1
         @warn "$(parentmodule(T)) defines a method of $(nameof(f)) for " *
-            "$(nameof(T)), but on its own function of that name rather " *
-            "than the package's, so the engine never calls it. Write it " *
-            "as `EpiBranch.$(nameof(f))(...)`." intervention = T
+            "$(_hook_type_name(shadowed)), but on its own function of that " *
+            "name rather than the package's, so the engine never calls it. " *
+            "Write it as `EpiBranch.$(nameof(f))(...)`." intervention = T
     end
     return found
 end
@@ -313,9 +313,9 @@ function _warn_inert_interventions(interventions)
         # which lists every hook and has to guess at the cause.
         named = _warn_hook_mistakes(T)
         (reachable || named > 0) && continue
-        @warn "$(nameof(T)) has a method of its own for none of the hooks the " *
-            "package calls, so it can have no effect on the simulation or on " *
-            "the likelihood: " *
+        @warn "$(_hook_type_name(T)) has a method of its own for none of the " *
+            "hooks the package calls, so it can have no effect on the " *
+            "simulation or on the likelihood: " *
             "$(join((sig for (_, _, sig) in _effect_hooks()), ", ")). This is usually " *
             "a hook defined with the wrong number of arguments, or without the " *
             "`EpiBranch.` prefix needed to add a method to the package's " *
