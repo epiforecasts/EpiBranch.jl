@@ -2,7 +2,8 @@
 
 If you only want to *use* the interventions, attributes and models that ship
 with EpiBranch, you don't need this page — start with
-[Interventions](interventions.md) and the other tutorials. This page is for
+[Isolation and contact tracing](interventions.md),
+[Vaccination](vaccination.md) and the other tutorials. This page is for
 writing new pieces in Julia.
 
 ## Extension points
@@ -13,7 +14,8 @@ much you write:
 - **Configure a built-in intervention** — add an existing control measure
   (`Isolation`, `ContactTracing`, `RingVaccination`, `MassVaccination`) to a
   model by keyword. This is applied, end-user work and lives in
-  [Interventions](interventions.md), not here.
+  [Isolation and contact tracing](interventions.md) and
+  [Vaccination](vaccination.md), not here.
 - **Write a custom intervention** — subtype `AbstractIntervention` and implement
   its hooks to add a risk the built-ins don't cover. A new *behaviour* on an
   existing process. Covered below.

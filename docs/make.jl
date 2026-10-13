@@ -21,7 +21,10 @@ makedocs(;
         "Julia for R users" => "julia-for-r-users.md",
         "Tutorials" => [
             "Getting started" => "tutorials/getting-started.md",
-            "Interventions" => "tutorials/interventions.md",
+            "Interventions" => [
+                "Isolation and contact tracing" => "tutorials/interventions.md",
+                "Vaccination" => "tutorials/vaccination.md",
+            ],
             "Clinical transitions" => "tutorials/transitions.md",
             "Transmission models" => [
                 "Multi-type models" => "tutorials/multi-type.md",

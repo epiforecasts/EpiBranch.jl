@@ -76,7 +76,8 @@ The model's answer depends only on its offspring distribution and matches
     tracing or vaccination they throw an error. Call them on the process itself
     for the outbreak without interventions. For the chance of containing an
     outbreak under interventions, simulate the model and use
-    [`containment_probability`](@ref), as in [Interventions](interventions.md).
+    [`containment_probability`](@ref), as in
+    [Isolation and contact tracing](interventions.md).
     `chain_size_distribution` is different: given a model with interventions,
     it estimates chain sizes by simulating the model (see
     [Chain statistics](chains.md)).
