@@ -95,6 +95,22 @@
         @test logpdf(d, data) ≈ loglikelihood(ChainSizes(data), obs)
     end
 
+    @testset "chain_size_distribution — callable Reporting probability falls back to simulation" begin
+        # A callable `Reporting` probability has no scalar for the analytical
+        # fast path to read, so it must fall through to the simulation-based
+        # wrapper instead of throwing, as `loglikelihood` already does.
+        model = ModelSpec(
+            BranchingProcess(NegBin(1.5, 0.5));
+            progression = [
+                Reporting(
+                    delay = Dirac(0.0), probability = (rng, ind) -> 0.5,
+                    from = ind -> ind.infection_time
+                ),
+            ]
+        )
+        @test chain_size_distribution(model) isa Distribution
+    end
+
     @testset "rand draws chain sizes from the underlying model" begin
         bp = BranchingProcess(Poisson(0.5), Exponential(5.0))
         d = chain_size_distribution(bp)

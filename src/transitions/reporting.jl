@@ -21,8 +21,14 @@ Initialises: `:reported = false`, `:reporting_time = Inf`.
 The simulation start-up validator requires the resolved `from` key to be
 either an existing key (typically set by `attributes`) or one that a step
 in `progression` produces. A `from` that names neither raises an error
-at start-up, since the step it anchors would otherwise be silently
+at start-up, since the step timed from it would otherwise be silently
 skipped for every case.
+
+`simulate`, [`progression_loglik`](@ref), the chain-size likelihood
+(`loglikelihood(::ChainSizes, ...)`, `chain_size_distribution`) and
+`end_of_outbreak_probability` all read this step's detection probability: it
+is the one per-case reporting route, replacing the deprecated
+[`PerCaseObservation`](@ref) observation model.
 
 A report drawn after the case's outcome (death or recovery) is reset to "did
 not occur": see [`censor_after_outcome!`](@ref EpiBranch.censor_after_outcome!).

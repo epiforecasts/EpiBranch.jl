@@ -170,13 +170,15 @@ check.
 
 `:reported` and `:reporting_time` are shared between the `Reporting`
 clinical transition (which sets them from a probability gate during the
-run) and `PerCaseObservation` (which sets them post-simulation from a
-detection-probability draw). Both routes leave `:reporting_time` at `Inf`
-for a case that was not reported, so [`weekly_incidence`](@ref)'s
-`by = :reporting` counts reported cases the same way whichever route
-produced them. A model can use only one of them: `simulate` throws an
-`ArgumentError` when `PerCaseObservation` finds `:reported` already
-recorded by a progression transition.
+run) and the deprecated `PerCaseObservation` (which sets them
+post-simulation from a detection-probability draw). `Reporting` is the one
+per-case reporting route: the chain-size likelihood, `chain_size_distribution`
+and `end_of_outbreak_probability` all read it directly. Both routes leave
+`:reporting_time` at `Inf` for a case that was not reported, so
+[`weekly_incidence`](@ref)'s `by = :reporting` counts reported cases the same
+way whichever route produced them. A model can use only one of them:
+`simulate` throws an `ArgumentError` when `PerCaseObservation` finds
+`:reported` already recorded by a progression transition.
 
 Isolation is recorded under `:isolation_time`, with `:isolation_release_time`
 alongside it for when the block lapses; `set_isolated!` takes that release as
@@ -785,6 +787,64 @@ Then a user schedules the intervention like:
 Scheduled(BorderClosure(0.0, 0.05); start_time = 10.0)
 ```
 
+#### A custom trigger
+
+`start_after` opens the schedule on a condition rather than a date, and takes
+any subtype of [`AbstractTrigger`](@ref). The built-in [`Infections`](@ref)
+and [`ReportedCases`](@ref) are two; a trigger of your own works without any
+change to `Scheduled`. One method is required and two traits have defaults:
+
+- **`is_triggered!(trigger, state)`** — whether the condition holds
+  now. The same trigger object is reused across the repeated runs of
+  `simulate(model, n)`, so keep no state on it between calls and derive any
+  running count from `state` afresh. The engine asks the gate about 1.7 times
+  per individual, so a count that walks the population on every call, as
+  `ReportedCases` has to, makes a run quadratic in the number of individuals;
+  a count the engine already keeps, as `Infections` reads `cumulative_cases`,
+  costs nothing.
+- **`trigger_can_lapse(trigger)`** — whether the condition, once
+  true, can turn false again as the clock advances. The default is the
+  conservative `true`. Return `false` for a condition that holds for good, as
+  `Infections` and `ReportedCases` both do: neither the case count nor the
+  number of reports already due can fall. The default is not free, so answer
+  it rather than leaving it: a schedule that can close speaks for none of the
+  isolation releases its intervention recorded, and the likelihood loses
+  them.
+- **`required_transitions(trigger)`** — the transition types the trigger needs
+  the model's `progression` to hold, `()` by default. `ModelSpec` warns, naming
+  the trigger, when a model does not hold one: without the transition that
+  writes the state the trigger reads, the gate stays shut for the whole run.
+  `ReportedCases` names `Reporting`, and answers `()` at `n = 0`, where the
+  gate opens before any report exists. Answer per instance where the
+  threshold decides it, as that does.
+
+```julia
+struct TwentyOnsets <: EpiBranch.AbstractTrigger end
+
+function EpiBranch.is_triggered!(::TwentyOnsets, state)
+    return count(
+        ind -> onset_time(ind) <= state.max_infection_time, state.individuals
+    ) >= 20
+end
+
+Scheduled(BorderClosure(0.0, 0.05); start_after = TwentyOnsets())
+```
+
+`TwentyOnsets` keeps the default `trigger_can_lapse`, because an onset time is
+drawn again when a host is reinfected and the count can therefore fall.
+
+!!! warning "What a trigger can and cannot declare"
+    `required_transitions` covers the progression, not the population
+    characteristics. `TwentyOnsets` above reads `:onset_time`, which
+    [`clinical_presentation`](@ref) supplies, and there is no way to name
+    that: on a model built without it the trigger reads `NaN` from every
+    `onset_time`, counts nobody and leaves the border open for the whole run,
+    with nothing to say so. Nor can a trigger use `required_fields`, which
+    `Scheduled` answers for the intervention it wraps and which is checked
+    against the keys attributes put on the seed case, before any transition
+    has run. Check for the key in `is_triggered!` if you want to hear about
+    it.
+
 ### Making the intervention capacity-constrained
 
 [`CapacityConstrained`](@ref) admits candidate actions against a shared resource
@@ -1053,10 +1113,10 @@ struct AgeDetection
     minimum_age::Float64
 end
 (rule::AgeDetection)(rng, ind) = ind.state[:age] >= rule.minimum_age ? 1.0 : 0.0
-age_observation = PerCaseObservation(detection_prob = AgeDetection(50.0))
+age_reporting = Reporting(delay = Dirac(0.0), probability = AgeDetection(50.0))
 ```
 
-A callable observation anchor takes only `ind`, and a callable `Scheduled`
+A callable `Reporting` anchor (`from`) takes only `ind`, and a callable `Scheduled`
 predicate takes the simulation state. Scalar and distribution inputs retain
 their usual meanings wherever those forms are supported.
 
@@ -1096,9 +1156,10 @@ reporting_attributes = [groups(50; key = :household),
         group_key = :household)]
 reporting_model = ModelSpec(BranchingProcess(Poisson(0.5), Exponential(5.0));
     attributes = reporting_attributes,
-    observation = PerCaseObservation(
-        detection_prob = (rng, ind) -> ind.state[:reporting_probability],
-        from = :infection_time))
+    progression = [Reporting(
+        delay = Dirac(0.0),
+        probability = (rng, ind) -> ind.state[:reporting_probability],
+        from = ind -> ind.infection_time)])
 reporting_state = simulate(reporting_model; n_initial = 10, rng = StableRNG(42))
 ```
 
@@ -1762,7 +1823,7 @@ An observation model is composed onto your process with a `ModelSpec`, like any
 other layer — your model stores nothing and defines nothing:
 
 ```julia
-simulate(ModelSpec(MyModel(...); observation = PerCaseObservation(detection_prob = 0.7)))
+simulate(ModelSpec(MyModel(...); observation = MinimumSize(2)))
 ```
 
 The engine applies the observation after the run, and `loglikelihood(data,
