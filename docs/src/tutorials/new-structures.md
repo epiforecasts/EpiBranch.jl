@@ -398,15 +398,9 @@ created and passed to the interventions' hooks for its infector, where contact
 tracing and ring vaccination reach it, and the probability is weighed together with
 susceptibility, infectiousness and interventions. The example below does this.
 
-A model that runs **its own simulation loop**, such as the continuous-time
-household and network models, which step through cases in order of infection
-time instead of by generation, works out each case's natural history by calling
-[`resolve_transitions!`](@ref EpiBranch.resolve_transitions!)`(state, individual)`
-once per case, after its population characteristics and intervention values are
-set. This runs the clinical transitions (placed on the state by
-[`new_state`](@ref EpiBranch.new_state)) and records the timeline values
-(`:onset_time`, `:outcome_time`, ...) that the line list and the likelihoods
-read. Such a model receives the other model parts as arguments: define
+A model can also run **its own simulation loop**, as the continuous-time
+household and network models do, stepping through cases in order of infection
+time instead of by generation. Such a model receives the other model parts as arguments: define
 [`EpiBranch.simulate_once`](@ref)`(m::MyModel, sim_opts; interventions,
 attributes, progression, observation, recorder, rng)`, read the parts from the
 arguments, and work out anything you need there from `progression`, such as
@@ -415,7 +409,14 @@ the start of the infectious period with
 or again until the outcome matches a `condition`; the method itself takes no
 `condition`. Run the continuous-time simulation with
 [`EpiBranch.sellke_race!`](@ref), passing it `sim_opts`: it applies the
-`max_time` limit and updates the running totals for you. `ModelSpec` passes
+`max_time` limit, settles each case as it is infected (its clinical
+transitions and the interventions' `resolve_individual!`), and updates the
+running totals for you. A loop that does not use the race instead calls
+[`resolve_transitions!`](@ref EpiBranch.resolve_transitions!)`(state, individual)`
+once per case, after its population characteristics and intervention values
+are set. This runs the clinical transitions and records the timeline values
+(`:onset_time`, `:outcome_time`, ...) that the line list and the likelihoods
+read. `ModelSpec` passes
 `simulate` and `loglikelihood` to `simulate_once`.
 
 A model whose population splits naturally into groups that can be simulated
