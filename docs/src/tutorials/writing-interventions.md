@@ -90,6 +90,7 @@ many people each case infects](@ref).
 | `keep_active(iv, state, targets, is_new)` | Once per case, after its actions; on network and household models during tracing, straight after `trace_contacts!` | The contacts `trace_contacts!` received, and an `is_new` flag for each (all `false` on network and household models) | The ids of the contacts that should go on generating contacts if they are not infected or, when tracing, that the ring is traced onward from (default: none) |
 | `competing_risk(iv, parent, contact, state)` | Per infector–contact pair, after the infector's own hooks: on branching processes when infection is decided, on continuous-time models as each infection is proposed | The infector and one contact | `nothing`, one [`Risk`](@ref), or a tuple of `Risk`s for an intervention that blocks transmission in more than one way |
 | `traces_contacts(iv)` | Whenever a continuous-time model decides whether to collect a case's contacts at all | Nothing | `true` if this intervention traces. The default is `true` for a type with a `trace_contacts!` method of its own; you need not write it |
+| `has_effect(iv)` | Once per intervention type, when a `ModelSpec` is built | Nothing | `Bool`: whether the intervention can change a simulation or a likelihood. The default is `true` for a type with a method of its own, with the right number of arguments, for a hook it can act through, such as `competing_risk` or `trace_contacts!`; `ModelSpec` warns on `false` |
 | `infectious_removal_time(iv, individual)` | Continuous-time models only: when a case's infectious period is closed | A person | The time this intervention removes them from onward transmission (default `Inf`) |
 | `on_infection_settled!(iv, individual, state, rng)` | Continuous-time models only: once a case's infection time is fixed, before its onset or clinical transitions read it | The case, and the random number generator to use | `nothing`; sets values on the case (default: does nothing) |
 | `risk_applies(iv, route)` | Continuous-time models choosing the risks for a route | The route's `RouteWindow`, or `nothing` for an introduction from outside | `Bool`; default `true` |
@@ -313,10 +314,18 @@ end
 
 ## Checking your intervention
 
-A missing hook raises no error in a simulation, because each one does nothing
-by default.
-That makes partial interventions easy to write, but a forgotten or misnamed
-method fails silently. Three checks:
+Every hook has a default, so an intervention defines only the hooks it needs.
+Building a `ModelSpec` warns, naming the hook where it can, about a method
+written with a number of arguments no call uses, and about one written without
+the `EpiBranch.` prefix, which defines a new function of the same name instead
+of a method of the package's own. An intervention with no hook method at all
+gets a warning listing every hook. One that acts through something the check
+does not read, such as a function of your own package, defines
+`EpiBranch.has_effect(::MyIntervention) = true` to silence it. The warning
+appears once for each intervention type and set of methods.
+
+None of this can tell an intervention that leaves a hook out on purpose from one
+missing a hook it needs. Three checks for the rest:
 
 - Run a small simulation (`max_cases = 50`) with and without your intervention.
   If the results look the same, your `competing_risk` or `trace_contacts!` is

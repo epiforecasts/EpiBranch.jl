@@ -1,16 +1,14 @@
 """
     realised_generation_interval(ind::Individual, state::SimulationState)
 
-The realised forward generation interval for `ind`: the time from its
-infector's infection to its own, `ind.infection_time -
-parent.infection_time`. Index cases and individuals that were never
-infected return `NaN`.
+The realised generation interval of one case: the days from its infector's
+infection to its own. Index cases and people who were never infected return
+`NaN`.
 
 The interval is shaped by the epidemic. Susceptible depletion and
 interventions decide which transmissions happen, so realised intervals
 are distributed differently from the intrinsic `generation_time` you
-give the model. This is the per-individual counterpart of
-[`onset_time`](@ref).
+give the model.
 """
 function realised_generation_interval(ind::Individual, state::SimulationState)
     (is_infected(ind) && ind.parent_id != 0) || return NaN
@@ -21,14 +19,23 @@ end
 """
     realised_generation_intervals(state::SimulationState)
 
-The realised forward generation intervals of every infected non-index
-case in one simulation, as a `Vector{Float64}`. See
+The realised generation intervals (days) of every case in one simulation
+except the index cases, as a vector. See
 [`realised_generation_interval`](@ref).
 
 For a model with a fixed `generation_time`, the intrinsic interval is
 that distribution itself. For a state-dependent `generation_time`, run
 the model without interventions and the realised intervals coincide
 with the intrinsic ones, since nothing blocks transmission.
+
+# Examples
+
+```julia
+using Statistics
+state = simulate(ModelSpec(BranchingProcess(Poisson(2.0), Gamma(2.0, 3.0)));
+    n_initial = 5, max_cases = 500)
+mean(realised_generation_intervals(state))   # compare with mean(Gamma(2.0, 3.0)) = 6
+```
 """
 function realised_generation_intervals(state::SimulationState)
     gts = Float64[]
@@ -43,8 +50,8 @@ end
 """
     realised_generation_intervals(states::Vector{<:SimulationState})
 
-The realised forward generation intervals across several simulations,
-flattened into one `Vector{Float64}`.
+The realised generation intervals (days) across several simulations, pooled
+into one vector.
 """
 function realised_generation_intervals(states::Vector{<:SimulationState})
     return reduce(

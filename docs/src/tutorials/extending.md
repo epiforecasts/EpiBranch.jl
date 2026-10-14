@@ -419,11 +419,13 @@ stop with an error on `closed_border`, because the closure has no exact effect
 on the offspring distribution for them to use; see [All hooks](@ref) for the
 rare intervention that has one.
 
-!!! warning "A missing method fails silently"
-    A simulation hook you write no method for leaves the run unchanged. A typo in a
-    method name, or a method written for the wrong type, gives results that
-    look like no intervention at all. Compare a small simulation with and
-    without your intervention, as above, before relying on it.
+!!! warning "Check that your intervention acts"
+    Building a `ModelSpec` warns when your intervention has no method of any
+    hook, when a method takes a number of arguments no call uses, or when it
+    was written without the `EpiBranch.` prefix. It cannot tell an
+    intervention that leaves out a hook on purpose from one missing a hook it
+    needs, so compare a small simulation with and without your intervention,
+    as above, before relying on it.
 
 ## Where next
 
