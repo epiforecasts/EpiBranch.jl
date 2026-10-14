@@ -57,7 +57,7 @@ _triggers_of(s::Scheduled) = (s.triggers..., _triggers_of(s.intervention)...)
 # Warn when a trigger needs a transition the model's `progression` does not
 # hold. The keys a trigger reads are written by the progression, so without
 # the transition the gate stays shut for the whole run and the intervention
-# never acts, with nothing to say so.
+# never acts, with nothing to flag it.
 function _warn_unmet_trigger_requirements(interventions, progression)
     for iv in interventions
         for trigger in _triggers_of(iv)

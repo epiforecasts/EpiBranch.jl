@@ -3007,12 +3007,12 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             inds[1].state[:reporting_time] = Inf
             @test EpiBranch.is_triggered!(ReportedCases(2), state)
             @test !EpiBranch.is_triggered!(ReportedCases(3), state)
-            # Reports already due never stop being due, so the gate holds
-            # once it opens and the schedule it starts cannot close.
+            # Reports already due stay due, so the gate holds once it opens
+            # and the schedule it starts cannot close.
             @test !EpiBranch.trigger_can_lapse(ReportedCases(2))
 
             # The count reads the report time it needs rather than indexing
-            # it, so a `:reported` flag from anywhere else does not throw.
+            # it: a `:reported` flag from anywhere else does not throw.
             # `PerCaseObservation` sets one, with `:report_time` and no
             # `:reporting_time`; it runs after the simulation, so a trigger
             # never meets it mid-run, and its reports are not what this
@@ -3125,7 +3125,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         end
 
         @testset "start_after = ReportedCases delays activation past Infections" begin
-            # Only a fifth of cases are ever reported, each after a delay, so a
+            # Only a fifth of cases are ever reported, each after a delay: a
             # report-gated schedule opens later than a case-gated one and
             # isolates a smaller share of the cases. The share is the measure,
             # not the count: a schedule that opens later controls less, so its

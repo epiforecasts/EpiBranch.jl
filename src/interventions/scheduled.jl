@@ -54,9 +54,9 @@ Scheduled(iso; start_after=ReportedCases(20))
 `start_after_cases = n` is shorthand for `start_after = Infections(n)`: it
 counts every infection as soon as it occurs, including one never reported
 or reported only after the date it opens on. [`ReportedCases`](@ref) counts
-only reports dated by the simulation clock instead, which is what a
-reactive policy triggered by surveillance needs. `start_after` takes any
-[`AbstractTrigger`](@ref EpiBranch.AbstractTrigger), so a user-defined count
+only reports dated by the simulation clock instead, which a policy that
+reacts to surveillance needs. `start_after` takes any
+[`AbstractTrigger`](@ref EpiBranch.AbstractTrigger); a user-defined count
 works the same way without editing `Scheduled`.
 
 # Predicate constructor
@@ -86,8 +86,7 @@ struct Scheduled{I <: AbstractIntervention, F, T <: Tuple} <: InterventionWrappe
     can_lapse::Bool
     # The `start_after` triggers, kept so that the composition checks can ask
     # each what it needs of the progression; see `required_transitions`. The
-    # condition itself is a closure, which nothing can look inside. Empty for
-    # every other form.
+    # condition itself is an opaque closure. Empty for every other form.
     triggers::T
 end
 
@@ -117,16 +116,16 @@ abstract type AbstractTrigger end
 """
     is_triggered!(trigger, state::SimulationState) -> Bool
 
-Whether `trigger`'s condition holds now. The same trigger object is reused
-across the repeated simulations of `simulate(model, n)` (serially, or
-across threads under `parallel = true`), so a trigger must keep no state
-of its own between calls: derive what it needs from `state`, or keep working
+Whether `trigger`'s condition holds now. A trigger must keep no state of its
+own between calls, because the same trigger object is reused across the
+repeated simulations of `simulate(model, n)` (serially, or across threads
+under `parallel = true`): derive what it needs from `state`, or keep working
 values in `state.scratch`, which belongs to the run.
 
-The engine asks the gate about 1.7 times per individual, so a trigger that
+The engine asks the gate about 1.7 times per individual: a trigger that
 walks the population on every call makes a run quadratic in the number of
-individuals, as [`ReportedCases`](@ref) does. A trigger that can read a
-running total the engine already keeps, as [`Infections`](@ref) reads
+individuals, as [`ReportedCases`](@ref) does; one that can read a running
+total the engine already keeps, as [`Infections`](@ref) reads
 `cumulative_cases`, costs nothing by comparison.
 """
 function is_triggered! end
@@ -145,7 +144,7 @@ Answer about the accepted timeline. Admitting a scheduled action asks the gate
 with that action's own time in place of the simulation clock, which settles
 whether that action is admitted rather than whether the window closes. The
 distinction is worth the care: a schedule that can close speaks for none of
-the isolation releases its intervention recorded, so `true` where `false`
+the isolation releases its intervention recorded; `true` where `false`
 belongs costs a likelihood term rather than buying safety.
 """
 trigger_can_lapse(::AbstractTrigger) = true
@@ -157,7 +156,7 @@ The transition types a trigger needs the model's `progression` to hold.
 Default: `()`, nothing required.
 
 A trigger reads `Individual.state`, and the keys it reads are written by the
-progression, so a model composed without the transition that writes them
+progression: a model composed without the transition that writes them
 leaves the gate shut for the whole run. [`ModelSpec`](@ref) asks this of every
 `start_after` trigger and warns when the model does not hold what the trigger
 names. [`ReportedCases`](@ref) names [`Reporting`](@ref).
@@ -195,7 +194,7 @@ _report_time(st) = get(st, :reporting_time, Inf)
 # A reinfection archives the episode as a copy of the live state and only
 # clears the live `:reported` later, when the new infection's transitions are
 # initialised (`close_episode!` in `_resolve!`, then `resolve_transitions!`).
-# In between, the newest episode and the live state are one report, so the
+# In between, the newest episode and the live state are one report: the
 # live one is counted only when its date differs from that episode's.
 function _host_reports_due(ind, now)
     due = 0
@@ -211,15 +210,14 @@ end
 # The reports the population holds that are dated by
 # `state.max_infection_time`, counting every episode of a host infected more
 # than once: a reinfection resets the live `:reported` flag and archives the
-# episode carrying it, and a report the health system has made does not stop
-# having been made.
+# episode carrying it, and a report the health system has made stays made.
 #
-# Derived from `state.individuals` rather than kept as a running total, since
+# Derived from `state.individuals` rather than kept as a running total:
 # `make_contact!` appends an individual before its clinical transitions run
 # and `Reporting` is one of those, so a host counted on an earlier call
 # cannot be taken as finished with.
 #
-# Counted on every call, and the engine asks the gate about 1.7 times per
+# Counted on every call; the engine asks the gate about 1.7 times per
 # individual, so a run with this trigger is quadratic in the number of
 # individuals: about 0.02 s at 1,000 of them and 190 s at 57,000. Caching the
 # count against the clock is not available, because `resolve_transitions!`
@@ -254,9 +252,9 @@ is_triggered!(t::ReportedCases, state::SimulationState) = _reported_cases_due(st
 # `n = 0` opens before any report exists, so nothing in the progression is
 # needed for the gate to open.
 required_transitions(t::ReportedCases) = t.n > 0 ? (Reporting,) : ()
-# Reports already due never stop being due: a report written for an earlier
-# episode is counted from the archive once the host is reinfected, and the
-# accepted clock only rises.
+# Reports already due stay due: a report written for an earlier episode is
+# counted from the archive once the host is reinfected, and the accepted
+# clock only rises.
 trigger_can_lapse(::ReportedCases) = false
 
 # ── Keyword convenience constructor ──────────────────────────────────

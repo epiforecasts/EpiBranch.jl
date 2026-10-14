@@ -930,7 +930,7 @@ println("Tracing after 20 cases: $(round(containment_probability(results), digit
 `start_after_cases` counts every infection the moment it occurs, including
 one never reported or reported only after the date it opens on. A policy
 that reacts to surveillance (for example, "once the health system has
-confirmed 20 cases") wants [`ReportedCases`](@ref) instead, passed through
+confirmed 20 cases") needs [`ReportedCases`](@ref) instead, passed through
 `start_after`: it opens only once that many cases have a [`Reporting`](@ref)
 report dated by the simulation clock.
 
@@ -960,10 +960,10 @@ reported = count(
 println("Cumulative cases: $(state.cumulative_cases), reports by the end: $(reported)")
 ```
 
-With only a fifth of cases ever reported, after a delay, far fewer reports
-accumulate than infections. `ReportedCases(20)` needs the health system to
-have actually confirmed 20 cases, which takes substantially longer than 20
-infections to happen. `start_after` takes any [`AbstractTrigger`](@ref
+With only a fifth of cases ever reported, and only after a delay, far fewer
+reports accumulate than infections. `ReportedCases(20)` needs the health
+system to have actually confirmed 20 cases, which takes substantially longer
+than 20 infections to happen. `start_after` takes any [`AbstractTrigger`](@ref
 EpiBranch.AbstractTrigger); [`Infections`](@ref) is `start_after_cases`'s own
 count, also available this way, and a trigger written outside the package
 works the same way without editing `Scheduled`.
