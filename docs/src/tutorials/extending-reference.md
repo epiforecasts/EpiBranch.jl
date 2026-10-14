@@ -389,8 +389,8 @@ compatible with these likelihoods. The built-in parts declare:
 | `Transition`, `Reporting`, `Hospitalisation`, `Recovery`, `Death` | yes |
 | `Isolation` | only with `post_isolation_transmission = 0` (complete isolation) |
 | `ContactTracing` with `Quarantine` or `FlagOnly` | yes |
-| `MassVaccination`, `GroupVaccination` | only with the default `dose_label` |
-| `RingVaccination` | only with the default `dose_label`, and no `onward_efficacy` or `post_exposure_efficacy` |
+| `MassVaccination`, `GroupVaccination` | only with the default `dose_label` and a fixed (numeric) `efficacy` |
+| `RingVaccination` | only with the default `dose_label`, a fixed (numeric) `efficacy`, and no `onward_efficacy` or `post_exposure_efficacy` |
 | `Scheduled`, `CapacityConstrained` | as the intervention they hold |
 | Interventions and transitions of your own | no, unless declared |
 
