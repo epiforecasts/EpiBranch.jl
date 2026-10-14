@@ -20,6 +20,11 @@ abstract type ObservationModel end
     PerCaseObservation(; detection_prob = 1.0, delay = Dirac(0.0),
                        from = :onset_time)
 
+Deprecated: use a [`Reporting`](@ref) `progression` step instead, which
+`simulate`, [`progression_loglik`](@ref), the chain-size likelihood and
+`end_of_outbreak_probability` all read directly, rather than splitting the
+same reporting process across a `progression` step and an observation model.
+
 Independent per-case observation: each case is reported with
 probability `detection_prob`, and reports lag the anchor time given by
 `from` by an independent draw from `delay`. `from` defaults to
@@ -64,6 +69,13 @@ function PerCaseObservation(;
         detection_prob = 1.0,
         delay = Dirac(0.0),
         from = :onset_time
+    )
+    Base.depwarn(
+        "`PerCaseObservation` is deprecated; use a `Reporting` progression " *
+            "step instead, which `simulate`, `progression_loglik`, the " *
+            "chain-size likelihood and `end_of_outbreak_probability` all read " *
+            "directly.",
+        :PerCaseObservation; force = true
     )
     if detection_prob isa Real
         0.0 < detection_prob <= 1.0 || throw(

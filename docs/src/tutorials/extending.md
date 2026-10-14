@@ -170,13 +170,15 @@ check.
 
 `:reported` and `:reporting_time` are shared between the `Reporting`
 clinical transition (which sets them from a probability gate during the
-run) and `PerCaseObservation` (which sets them post-simulation from a
-detection-probability draw). Both routes leave `:reporting_time` at `Inf`
-for a case that was not reported, so [`weekly_incidence`](@ref)'s
-`by = :reporting` counts reported cases the same way whichever route
-produced them. A model can use only one of them: `simulate` throws an
-`ArgumentError` when `PerCaseObservation` finds `:reported` already
-recorded by a progression transition.
+run) and the deprecated `PerCaseObservation` (which sets them
+post-simulation from a detection-probability draw). `Reporting` is the one
+per-case reporting route: the chain-size likelihood, `chain_size_distribution`
+and `end_of_outbreak_probability` all read it directly. Both routes leave
+`:reporting_time` at `Inf` for a case that was not reported, so
+[`weekly_incidence`](@ref)'s `by = :reporting` counts reported cases the same
+way whichever route produced them. A model can use only one of them:
+`simulate` throws an `ArgumentError` when `PerCaseObservation` finds
+`:reported` already recorded by a progression transition.
 
 Isolation is recorded under `:isolation_time`, with `:isolation_release_time`
 alongside it for when the block lapses; `set_isolated!` takes that release as
@@ -1053,10 +1055,10 @@ struct AgeDetection
     minimum_age::Float64
 end
 (rule::AgeDetection)(rng, ind) = ind.state[:age] >= rule.minimum_age ? 1.0 : 0.0
-age_observation = PerCaseObservation(detection_prob = AgeDetection(50.0))
+age_reporting = Reporting(delay = Dirac(0.0), probability = AgeDetection(50.0))
 ```
 
-A callable observation anchor takes only `ind`, and a callable `Scheduled`
+A callable `Reporting` anchor (`from`) takes only `ind`, and a callable `Scheduled`
 predicate takes the simulation state. Scalar and distribution inputs retain
 their usual meanings wherever those forms are supported.
 
@@ -1096,9 +1098,10 @@ reporting_attributes = [groups(50; key = :household),
         group_key = :household)]
 reporting_model = ModelSpec(BranchingProcess(Poisson(0.5), Exponential(5.0));
     attributes = reporting_attributes,
-    observation = PerCaseObservation(
-        detection_prob = (rng, ind) -> ind.state[:reporting_probability],
-        from = :infection_time))
+    progression = [Reporting(
+        delay = Dirac(0.0),
+        probability = (rng, ind) -> ind.state[:reporting_probability],
+        from = ind -> ind.infection_time)])
 reporting_state = simulate(reporting_model; n_initial = 10, rng = StableRNG(42))
 ```
 
@@ -1752,7 +1755,7 @@ An observation model is composed onto your process with a `ModelSpec`, like any
 other layer — your model stores nothing and defines nothing:
 
 ```julia
-simulate(ModelSpec(MyModel(...); observation = PerCaseObservation(detection_prob = 0.7)))
+simulate(ModelSpec(MyModel(...); observation = MinimumSize(2)))
 ```
 
 The engine applies the observation after the run, and `loglikelihood(data,

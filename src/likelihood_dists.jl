@@ -128,10 +128,20 @@ function chain_size_distribution(
     # observation is applied analytically via `observe`.
     if seeds === nothing && prob_concluded === nothing && isempty(kwargs) &&
             isempty(interventions(model))
-        return observe(
-            chain_size_distribution(single_type_offspring(model)),
-            observation(model)
-        )
+        base = chain_size_distribution(single_type_offspring(model))
+        # Only the `Reporting`-reading step can fail here (e.g. a callable
+        # per-individual probability); fall through to the simulation-based
+        # wrapper rather than crash the primary `~` entry point.
+        # `_chain_size_model_loglik` does the same. A failure from `observe`
+        # itself (e.g. a non-scalar `PerCaseObservation`) is a user error,
+        # and should propagate rather than be swallowed here.
+        folded = try
+            _fold_reporting(_progression(model), base, observation(model))
+        catch e
+            (e isa MethodError || e isa ArgumentError) || rethrow()
+            nothing
+        end
+        folded !== nothing && return observe(folded, observation(model))
     end
     return _ChainSizeLaw(model, seeds, prob_concluded, NamedTuple(kwargs))
 end
@@ -142,10 +152,14 @@ function chain_size_distribution(
     )
     if seeds === nothing && prob_concluded === nothing && isempty(kwargs) &&
             isempty(interventions(spec))
-        return observe(
-            chain_size_distribution(single_type_offspring(spec.process)),
-            observation(spec)
-        )
+        base = chain_size_distribution(single_type_offspring(spec.process))
+        folded = try
+            _fold_reporting(_progression(spec), base, observation(spec))
+        catch e
+            (e isa MethodError || e isa ArgumentError) || rethrow()
+            nothing
+        end
+        folded !== nothing && return observe(folded, observation(spec))
     end
     return _ChainSizeLaw(spec, seeds, prob_concluded, NamedTuple(kwargs))
 end

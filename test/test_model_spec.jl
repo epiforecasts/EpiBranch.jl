@@ -275,4 +275,15 @@ EpiBranch.interventions(m::_ProcessWithInterventions) = m.interventions
         @test ismissing(EpiBranch.terminal_certainty(AlwaysOccursRule(0.0)))
         @test_logs ModelSpec(bp; progression = [AlwaysOccursRule(0.0)])
     end
+
+    @testset "A Reporting step and an observation model can both be set" begin
+        # `Reporting` is the one per-case reporting route; a non-per-case
+        # observation model, such as `MinimumSize`, composes with it freely.
+        bp = BranchingProcess(Poisson(1.5), Exponential(5.0))
+        rep = Reporting(delay = Dirac(0.0), probability = 0.5)
+        @test ModelSpec(bp; progression = [rep]) isa ModelSpec
+        @test ModelSpec(
+            bp; progression = [rep], observation = MinimumSize(2)
+        ) isa ModelSpec
+    end
 end
