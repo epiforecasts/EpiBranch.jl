@@ -761,9 +761,9 @@ subtyping `ObservationModel` with up to two methods:
    distribution of true chain sizes. This is often a small new
    `DiscreteUnivariateDistribution`.
 2. `apply_observation!(::YourObservation, state, rng)`, for simulation: mark
-   the observed cases on a finished simulation. Every simulation calls it, so
-   an observation that changes nothing on the simulated cases returns `state`
-   unchanged.
+   the observed cases on a finished simulation, by setting `:reported` on each
+   case. Every simulation calls it, and the chain sizes of a simulation count
+   only the cases it marks.
 
 Here chains larger than a cap are never observed, so the observed sizes follow
 the true chain-size distribution truncated at the cap and renormalised. This is
@@ -790,8 +790,18 @@ function Distributions.logpdf(d::CappedChainSize, n::Integer)
 end
 
 EpiBranch.observe(base, o::TruncatedAtSize) = CappedChainSize(base, o.cap)
-# The cap selects whole chains, which the chain-size comparison applies itself.
-EpiBranch.apply_observation!(::TruncatedAtSize, state, rng) = state
+# A simulated case is observed if its whole chain is no larger than the cap.
+function EpiBranch.apply_observation!(o::TruncatedAtSize, state, rng)
+    cases = filter(is_infected, state.individuals)
+    chain_size = Dict{Int, Int}()
+    for case in cases
+        chain_size[case.chain_id] = get(chain_size, case.chain_id, 0) + 1
+    end
+    for case in cases
+        case.state[:reported] = chain_size[case.chain_id] <= o.cap
+    end
+    return state
+end
 
 sizes = ChainSizes([1, 2, 3, 1, 5])
 process = BranchingProcess(NegBin(0.8, 0.5))
