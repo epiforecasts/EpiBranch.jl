@@ -108,10 +108,12 @@ Probability that a single introduced case leads to a major epidemic: one
 minus [`extinction_probability`](@ref), for an offspring distribution or a
 model. For a multi-type model there is one value per type of index case.
 
-Given a model, only its offspring distribution is used: interventions,
-population characteristics and the observation model are ignored. Use
-[`probability_contain`](@ref) for simple control measures, or simulate and
-use [`containment_probability`](@ref).
+Given a model, population characteristics and the observation model are
+ignored. Each of its interventions changes the offspring distribution first,
+through [`EpiBranch.analytic_offspring_effect`](@ref); an intervention without
+one raises an error. For control measures with no such effect, use
+[`probability_contain`](@ref), or simulate and use
+[`containment_probability`](@ref).
 """
 function epidemic_probability(offspring; kwargs...)
     return 1.0 .- extinction_probability(offspring; kwargs...)
