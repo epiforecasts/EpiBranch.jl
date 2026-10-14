@@ -422,10 +422,11 @@ for (label, interventions) in (
 end
 ```
 
-Vaccinating about half the traced contacts raises containment a little. The
-gap between clustered and independent refusal is within the Monte Carlo error
-(the standard error of a difference between two scenarios is about 1.4 times
-that of each). These runs cannot tell the two apart.
+Vaccinating about half the traced contacts raises containment a little, and
+clustered refusal comes out about 0.015 below independent refusal. The
+standard error of a difference between two scenarios is about 1.4 times that
+of each, so that gap is around two and a half standard errors: small, and more
+than the noise of these runs.
 
 Clustering has little effect here because `groups(20)` puts each person in a
 community independently of who infected them. A case's contacts are spread
@@ -492,7 +493,10 @@ println("Age-stratified rollout: $(round(containment_probability(results), digit
 
 Containment is at the no-intervention baseline again: the older group is
 protected from day 44 and everyone else from day 104, and an outbreak that
-takes off has reached the case cap well before either.
+takes off has reached the case cap well before either. The printed 0.07 and
+0.04 are two noisy estimates of the same quantity, as the standard error
+above suggests; runs of 3,000 give 0.065 and 0.057, a gap of under one and a
+half standard errors of the difference.
 
 ### Efficacy that varies between people
 
@@ -591,10 +595,10 @@ infected after being traced (see the warning in
 [Ring vaccination](@ref)). Even under `ct_onset`, where infections do
 follow the trace, they follow within days. Both doses here start protecting
 weeks after the trace, too late for those infections (see
-[Delay to immunity](@ref)). The 0.255 above is not comparable with the 0.27
+[Delay to immunity](@ref)). The 0.305 above is not comparable with the 0.255
 printed for isolation and tracing alone: each dose's `coverage` is drawn,
 which shifts the random stream, and setting both efficacies to zero gives
-0.255 as well. Removing the boost and re-running is not a controlled
+0.305 as well. Removing the boost and re-running is not a controlled
 comparison either. The two runs use different random draws, and their
 containment can differ by chance in either direction (see the note on
 comparing many replicates above).
@@ -641,12 +645,24 @@ println("Reached among willing people: $(round(campaign_reach, digits = 3)); ",
 ```
 
 Overall coverage is the share willing times the share of willing people
-reached. Those are the shares the parameters aim for; a run comes out a few
-points below them, for the reason in the limitations note. A person with
-`:willing == false` refuses throughout the campaign, and a willing person
-left unvaccinated was either never reached or never offered a dose. For a
-reach probability of zero, use `coverage = 0.0` directly. A single visit gives the
-usual campaign with one opportunity. Use a different `dose_label` for another
+reached. Those are the shares the parameters aim for. What a run delivers is
+lower:
+
+```@example vaccination
+campaign_runs = simulate(campaign_model, 200; max_cases = 300, rng = StableRNG(42))
+people = [ind for s in campaign_runs for ind in s.individuals]
+willing_people = filter(ind -> get(ind.state, :willing, false), people)
+println("Measured: among willing people ",
+    round(count(is_vaccinated, willing_people) / length(willing_people), digits = 3),
+    ", overall ", round(count(is_vaccinated, people) / length(people), digits = 3))
+```
+
+Both come out about three points below what the parameters aim for, for the
+reason in the limitations note. A person with `:willing == false` refuses
+throughout the campaign, and a willing person left unvaccinated was either
+never reached or never offered a dose. For a reach probability of zero, use
+`coverage = 0.0` directly. A single visit gives the usual campaign with one
+opportunity. Use a different `dose_label` for another
 dose; willingness can be shared across doses, as here, or stored separately
 for each.
 
@@ -662,8 +678,8 @@ for each.
     new member, so a group whose trigger arrives after its last new member
     leaves those members unvaccinated. A group that grows later is reached
     again, each new member bringing their group with them. In this model a
-    few per cent of willing people are never offered a dose, which puts
-    measured coverage a few points below the shares above.
+    few per cent of willing people are never offered a dose, which is what
+    puts the measured coverage below the shares the parameters aim for.
 
 ## Limited vaccine supply
 
@@ -685,13 +701,12 @@ println("Doses with at most 5 people admitted a day: $(count(is_vaccinated, stat
 ```
 
 !!! warning "The limit is on people admitted each day"
-    The simulation selects everyone traced from one generation of cases at
-    once, and charges them to the allowance of the day it has reached: the
-    date of the latest infection so far. The doses themselves are dated at
-    each trace plus `dose_delay`, so they can fall on other days than the one
-    whose allowance paid for them. One day can see several times
-    `budget_per_period` doses given: the limit does not cap the doses given
-    per day.
+    The simulation offers one case's traced contacts at a time, in the order
+    it settles cases, and charges them to the allowance of the day that case
+    was infected. The doses themselves are dated at each trace plus
+    `dose_delay`, so they can fall on other days than the one whose allowance
+    paid for them. One day can see several times `budget_per_period` doses
+    given: the limit does not cap the doses given per day.
 
 [`capacity_usage`](@ref) reports how much of the allowance a simulated
 outbreak had used, and how much was available, by the time it stopped:
@@ -721,12 +736,12 @@ nothing # hide
 
 With a finite `period`, `carry_over = true` (the default) adds a day's unused
 allowance to the next day's; `carry_over = false` discards it, so only that
-day's own `budget_per_period` is ever available. A generation of cases can
-span several days but draws on a single day's allowance, so without carry-over
-the days in between add nothing, and admissions can fall well below
-`budget_per_period` a day.
+day's own `budget_per_period` is ever available. With `carry_over = true`
+admissions can bunch: a quiet spell builds an allowance that a later day
+spends at once, well above `budget_per_period` in a day.
 
 !!! note "Which models support capacity limits"
     On the network and household models, capacity limits work for ring and
-    group vaccination but not for mass vaccination. To limit an intervention
-    of your own, see [Capacity limits](@ref).
+    group vaccination. Mass vaccination does not reach anyone on those models
+    at all, with or without a limit, and `simulate` warns that it will have
+    no effect. To limit an intervention of your own, see [Capacity limits](@ref).

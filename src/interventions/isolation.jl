@@ -191,13 +191,6 @@ function competing_risk(iso::Isolation, parent, contact, state)
     return _removal_risks(parent, 1.0 - iso.post_isolation_transmission)
 end
 
-# A finite duration leaves the window open and blocks each contact against the
-# infector's own isolated stretch. The block then depends on the infector
-# whatever the residual is.
-function risk_depends_on_infector(iso::Isolation)
-    return iso.post_isolation_transmission > 0 || !(iso.duration === Inf)
-end
-
 # The likelihood reads the stretch a lapsing isolation removed the host for.
 # A duration of `Inf` leaves no stretch to read, the window closing at the
 # isolation's own start, and the layer records nothing extra for it.
@@ -268,12 +261,10 @@ end
 
 function resolve_individual!(iso::Isolation, individual, state)
     # An isolation already standing on the individual is a quarantine written by
-    # `ContactTracing`. On the generation-based path that cannot happen here,
-    # because isolation resolves before tracing runs; on the continuous-time
-    # path it routinely does, because a case's contacts are traced when the
-    # *infector* is finalised, which is before the contact itself resolves. The
-    # quarantine is then a competing pathway rather than a reason to stop:
-    # without this the contact would keep a trace time later than the onset it
+    # `ContactTracing`: a case's contacts are traced when the *infector* is
+    # settled, which is before the contact itself resolves. The quarantine then
+    # competes with self-isolation and the earlier time wins. Returning early
+    # here would leave the contact with a trace time later than the onset it
     # would have self-reported on, and tracing would delay isolation instead of
     # advancing it.
     if _isolation_in_force(individual)

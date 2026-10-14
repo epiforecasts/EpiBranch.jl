@@ -104,8 +104,8 @@ given `dose_label`, as sampled when the dose was given — a per-exposure block
 probability under `LeakyMode`, a responder status of `1.0` or `0.0` under
 `AllOrNothingMode` — or `nothing` if no dose with that label has been
 recorded. Unlike [`severity_efficacy`](@ref), there is no default of `0.0`:
-`nothing` is what distinguishes an individual with no such dose from one
-given a dose with `efficacy = 0.0`."""
+`nothing` distinguishes an individual with no such dose from one given a
+dose with `efficacy = 0.0`."""
 function vaccine_efficacy(ind::Individual; dose_label::Symbol = :default)
     return get(ind.state, _vaccine_efficacy_key(dose_label), nothing)
 end
@@ -159,7 +159,7 @@ clinical transition that would take effect at or after `time` is undone (see
 [`resolve_transitions!`](@ref EpiBranch.resolve_transitions!)).
 
 On the generation-based engine an intervention acting before infection is
-resolved, in `apply_post_transmission!`, sees each contact's provisional
+resolved, in `trace_contacts!` or an admitted action, sees each contact's provisional
 infection time, its earliest exposure. If resolution leaves the contact
 uninfected, or infected at or after `time`, the abort did not end that
 infection and the engine discards it, restoring the onset.

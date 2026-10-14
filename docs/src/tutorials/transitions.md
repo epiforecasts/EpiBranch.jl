@@ -61,12 +61,32 @@ the delay in days, not of the delay itself: `LogNormal(1.0, 0.3)` has a mean
 of about 2.8 days. `Exponential(θ)` has mean θ days. Each row of the line list
 is a case, with the date of each event it reached and its final outcome.
 
-!!! note "Events are drawn separately"
-    Each event is drawn on its own. An admission date can therefore fall after
-    the date of recovery. To tie one event to another, make its probability
-    depend on the earlier event (see
-    [Events that depend on an earlier event](@ref)) or time it from that
-    event (see [Measuring delays from an earlier event](@ref)).
+`Reporting` and `Hospitalisation` draw their own time independently of
+`Death` and `Recovery`, so a draw can fall after the case's outcome — a
+report or an admission cannot happen to a person who has already died or
+recovered. The engine resets such an event to "did not occur"
+(`:reported`/`:admitted` back to `false`, their time back to `Inf`): see
+[`censor_after_outcome!`](@ref EpiBranch.censor_after_outcome!).
+
+Where admission is meant to change the outcome rather than sit alongside
+it, chain `Death`/`Recovery` onto `Hospitalisation` with `from =
+:admission_time` instead, so the outcome delay is measured from admission:
+
+```@example transitions
+progression_post_admission = [
+    Hospitalisation(delay = LogNormal(2.0, 0.5), probability = 0.2),
+    Death(delay = LogNormal(1.5, 0.4), probability = 0.1, from = :admission_time),
+    Recovery(delay = LogNormal(2.0, 0.4)),
+]
+model = ModelSpec(
+    BranchingProcess(Poisson(2.0), Exponential(5.0));
+    progression = progression_post_admission, attributes = clinical
+)
+state = simulate(model; max_cases = 200, rng = StableRNG(42))
+```
+
+A case not admitted still recovers from onset as before; `Death`'s own
+anchor is simply unreached for it, so it never enters that race.
 
 ## Asymptomatic cases
 

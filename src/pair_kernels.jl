@@ -143,8 +143,8 @@ Used as the `calendar` a [`PairKernel`](@ref) multiplies its contact-interval
 hazard by, on the calendar-time axis. It declares
 [`EpiBranch.SmoothCalendar`](@ref), so its cumulative hazard is integrated by
 quadrature rather than exactly as [`Steps`](@ref)'s is. `amplitude` and
-`peak_day` share a type parameter so the likelihood can be differentiated with
-respect to either.
+`peak_day` share a type parameter, which lets the likelihood be
+differentiated with respect to either.
 """
 struct Seasonal{T <: Real}
     amplitude::T

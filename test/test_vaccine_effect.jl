@@ -15,14 +15,8 @@ struct _TestThresholdMode <: AbstractEffectMode
 end
 EpiBranch.realised_efficacy(mode::_TestThresholdMode, eff, rng) =
     eff >= mode.threshold ? 1.0 : 0.0
-function EpiBranch.apply_post_transmission!(
-        v::_TestCampaignVaccination, state,
-        new_contacts
-    )
-    for ind in new_contacts
-        EpiBranch._record_vaccination!(v, ind, v.campaign_time, state.rng)
-    end
-    return nothing
+function EpiBranch.intervention_actions(v::_TestCampaignVaccination, state, candidates)
+    return [EpiBranch.dose_action(v, ind, v.campaign_time) for ind in candidates]
 end
 
 # A third effect mode defined outside the package, as all-or-nothing as
@@ -199,9 +193,6 @@ EpiBranch.realised_efficacy(::_TestBlockedMode, eff, rng) =
 
     @testset "A user-defined vaccination uses the public action protocol" begin
         v = _TestCampaignVaccination(VaccineEffect(efficacy = 0.7), 5.0)
-        function EpiBranch.intervention_actions(v::_TestCampaignVaccination, state, candidates)
-            return [EpiBranch.dose_action(v, ind, v.campaign_time) for ind in candidates]
-        end
         EpiBranch.capacity_key(v::_TestCampaignVaccination) = EpiBranch._vaccinated_key(:default)
         function EpiBranch.capacity_time_key(v::_TestCampaignVaccination)
             return EpiBranch._vaccination_time_key(:default)

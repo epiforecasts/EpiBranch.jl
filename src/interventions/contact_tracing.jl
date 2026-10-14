@@ -717,9 +717,7 @@ function initialise_individual!(::ContactTracing, individual, state)
     return nothing
 end
 
-# One trace attempt for a single infector → contact pair. Both engines funnel
-# through this, so the generation-based and continuous-time paths apply exactly
-# the same eligibility, rate, delay and action policy.
+# One trace attempt for a single infector → contact pair.
 function _trace_pair!(ct::ContactTracing, state, infector, ind, rng; not_before = -Inf)
     # A contact enters the ring two ways. As a *seed*, when its
     # infector is an infected case meeting the eligibility condition
@@ -756,11 +754,9 @@ function _trace_pair!(ct::ContactTracing, state, infector, ind, rng; not_before 
     trace_time = max(base, not_before) + trace_delay
     apply_trace!(ct.action, ind, state, trace_time, rng)
 
-    # Record the source this contact was traced from. The engine makes
-    # one trace attempt per node, from the earliest-exposure infector, so
-    # this is the *first* tracer: exact (the parent) on a tree,
-    # first-reached on a cyclic network. `compute_trace_level!` walks it
-    # back to the index case post-run; see issue #150.
+    # Record the source this contact was traced from: the latest case whose
+    # trace reached it, which on a tree is its parent. `compute_trace_level!`
+    # walks it back to the index case post-run.
     ind.state[:traced_by] = infector.id
 
     # When the contact was reached. Interventions that act on a traced
@@ -781,31 +777,23 @@ function _trace_pair!(ct::ContactTracing, state, infector, ind, rng; not_before 
 
     # Record how far the ring can still grow from this contact, so a
     # contact-of-contact one hop further out can time its own trace from
-    # here. Only `depth > 1` rings expand.
+    # here. Only `depth > 1` rings expand. A node several cases reach keeps
+    # the widest budget any of them gave it.
     if ct.depth > 1
-        ind.state[:_ring_remaining] = seed ? ct.depth - 1 :
+        remaining = seed ? ct.depth - 1 :
             get(infector.state, :_ring_remaining, 0)::Int - 1
-    end
-    return nothing
-end
-
-function apply_post_transmission!(ct::ContactTracing, state, new_contacts)
-    rng = state.rng
-    for ind in new_contacts
-        ind.parent_id == 0 && continue
-        ind.parent_id > length(state.individuals) && continue
-        _trace_pair!(ct, state, state.individuals[ind.parent_id], ind, rng)
+        ind.state[:_ring_remaining] = max(
+            get(ind.state, :_ring_remaining, 0)::Int, remaining
+        )
     end
     return nothing
 end
 
 traces_contacts(::ContactTracing) = true
 
-"""Trace the contacts a case reaches on the continuous-time path. The
-generation engine reads each contact's infector off its `parent_id`; here the
-nodes pre-exist and the infector is the case the race has just finalised, so it
-is passed in and the same per-pair policy applied, with each contact traced no
-earlier than its `not_before` time when one is given."""
+"""Trace the contacts a case reached, applying the per-pair policy to each,
+with each contact traced no earlier than its `not_before` time when one is
+given. Both engines call this once per case."""
 function trace_contacts!(
         ct::ContactTracing, state, infector, contacts, not_before = nothing
     )
@@ -869,16 +857,6 @@ function _trace_removal_keys(action::TraceAction)
     keys = removal_gap_host_times(action)
     return isempty(keys) ? (REMOVAL_STRETCHES_KEY,) : keys
 end
-
-# A quarantine's block is the quarantine's own, never the stretches some other
-# removal put this host in: a leaky `Isolation` composed with tracing would
-# otherwise become a perfect block over days the quarantine had nothing to do
-# with. A quarantine that never releases is honoured by the infectious window
-# instead, as a standing isolation is, which is what keeps it inside a
-# fixed-size pool's single clock.
-risk_depends_on_infector(ct::ContactTracing) = risk_depends_on_infector(ct.action)
-risk_depends_on_infector(::TraceAction) = false
-risk_depends_on_infector(q::Quarantine) = !(q.duration === Inf)
 
 # A quarantine that lapses leaves the window open above, and the stretches it
 # removed the case for are blocked per contact here instead. One with no

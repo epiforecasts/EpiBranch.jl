@@ -221,23 +221,25 @@ also jumps about from one generation to the next.
 ## Exact results
 
 Some quantities can be calculated exactly from the offspring distribution,
-without simulation:
+without simulation. The functions below are given `model`, the process on its
+own. Passing `spec` stops with an error, because it includes `Isolation`,
+whose effect on R depends on how its timing overlaps the generation time, and
+there is no closed form for that:
 
 ```@example gettingstarted
-println("P(extinction): $(round(extinction_probability(spec), digits=3))")
-println("P(epidemic):   $(round(epidemic_probability(spec), digits=3))")
-println("Top 20% cause $(round(proportion_transmission(spec; prop_cases=0.2) * 100, digits=1))% of transmission")
+println("P(extinction): $(round(extinction_probability(model), digits=3))")
+println("P(epidemic):   $(round(epidemic_probability(model), digits=3))")
+println("Top 20% cause $(round(proportion_transmission(model; prop_cases=0.2) * 100, digits=1))% of transmission")
 ```
 
-!!! warning "These ignore interventions"
+!!! warning "These describe the outbreak without control"
     `extinction_probability`, `epidemic_probability` and
-    `proportion_transmission` use only the offspring distribution of the model.
-    The isolation and tracing in `spec` are not included: the extinction
-    probability printed here is the chance that an outbreak dies out without
-    control. Compare it with the containment probability simulated above to see
-    what the interventions add. For a closed-form containment probability under
-    simple control, see [`probability_contain`](@ref) in
-    [Analytical functions](analytical.md).
+    `proportion_transmission` use only the offspring distribution. The
+    extinction probability printed here is the chance that an outbreak dies
+    out with no control at all. Compare it with the containment probability
+    simulated above to see what the interventions add. For a closed-form
+    containment probability under simple control, see
+    [`probability_contain`](@ref) in [Analytical functions](analytical.md).
 
 The first line is the probability that a single introduction dies out by
 chance. The last line is the share of all transmission caused by the 20% of

@@ -118,11 +118,11 @@ function simulate(
         stopping_rules
     )
     _validate_initial_cases(spec.process, sim_opts)
-    return _simulate(
-        spec.process, sim_opts; interventions = spec.interventions,
-        attributes = spec.attributes, progression = spec.progression,
-        observation = spec.observation, recorder = spec.recorder, rng, condition,
-        max_attempts
+    return _run_once_or_retry(
+        spec.process, sim_opts, condition, max_attempts;
+        interventions = spec.interventions, attributes = spec.attributes,
+        progression = spec.progression, observation = spec.observation,
+        recorder = spec.recorder, rng
     )
 end
 
@@ -152,6 +152,19 @@ function simulate(
         progression = spec.progression, observation = spec.observation,
         recorder = spec.recorder, rng, parallel
     )
+end
+
+# ── Interventions in the analytical functions ────────────────────────
+#
+# Each analytical function reads the offspring distribution and passes it
+# through every intervention the model holds, on a spec or on a process that
+# stores its own, via `analytic_offspring_effect`. An intervention without a
+# method reaches the generic one, which throws.
+function _offspring_through_interventions(model, offspring)
+    for iv in interventions(model)
+        offspring = analytic_offspring_effect(iv, offspring)
+    end
+    return offspring
 end
 
 function Base.show(io::IO, s::ModelSpec)

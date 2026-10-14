@@ -101,6 +101,12 @@ results = simulate(scenario([iso_leaky]), 200; max_cases = 500, rng = rng)
 println("Leaky isolation: $(round(containment_probability(results), digits=3))")
 ```
 
+That falls between the 0.04 with no isolation and the 0.135 the same isolation
+gives when it holds completely. All three numbers are noisy at 200 outbreaks;
+runs of 5,000 put leaky isolation at about 60% of the benefit complete
+isolation buys. Keeping a third of a case's infectiousness costs a good part
+of what isolation achieves without undoing it.
+
 ### Isolation duration
 
 `duration` sets how long a case stays isolated. It has no default, because
@@ -263,8 +269,16 @@ println("30% asymptomatic, 80% test sensitivity: $(round(containment_probability
 ```
 
 Containment is lower than with isolation and tracing when every case is
-symptomatic and detected, above: missed cases transmit unchecked, and their
-contacts are never traced.
+symptomatic and detected, above. A missed case keeps transmitting until
+something else reaches it, and tracing reaches some of them: a symptomatic
+case quarantined as someone else's contact counts as isolated, which together
+with its symptoms satisfies the default trigger, so its own contacts are
+traced after all. Here that happens to 37% of the symptomatic cases the test
+misses. Asymptomatic cases are quarantined at the same rate, which stops them
+transmitting but never starts tracing from them, since the default trigger
+asks for symptoms as well as isolation. Not one contact of an asymptomatic
+case is traced on this run, quarantined or not, and together they are the
+largest block of untraced contacts: 55,911 of 106,280.
 
 ## Contact tracing workload
 
@@ -300,22 +314,20 @@ in this section go back to the 7-day isolation from the start of the page,
 and compare with its result.
 
 Two checks decide whether a scheduled isolation or contact tracing reaches a
-case. The simulation sets up each case at the start of the generation in
-which they transmit, and the intervention applies to them only if some case
-in the outbreak has by then been infected on or after the start day. The action's
-own time must then also fall on or after the start day. With testing from
-day 10, someone whose isolation would fall on day 9 is never isolated.
-Someone infected on day 8 with symptom onset on day 9 and a 2-day delay would
-be isolated on day 11, which happens only if another case had been infected
-on or after day 10 by the time they were set up.
+case. Both read that case's own times: its infection time must fall within the
+schedule, and the action's own time must then also fall on or after the
+start day. With testing from day 10, someone whose isolation would fall on day
+9 is never isolated. Nor is someone infected on day 8, even with symptom onset
+on day 9 and a 2-day delay putting their isolation on day 11: they were
+infected before the policy began.
 
 !!! note "The earliest cases are missed"
-    Index cases are set up on day 0, so isolation or tracing scheduled to
-    start later never reaches them. The same holds for any case set up before the
-    outbreak's latest infection reaches the start day, even if their isolation
-    would fall after it. A scheduled [vaccination](vaccination.md) is checked
-    differently: each dose counts if its own date falls within the schedule,
-    whenever the case was set up.
+    Index cases are infected on day 0, so isolation or tracing scheduled to
+    start later never reaches them, and nor does it reach any case infected
+    before the start day, even if their isolation would fall after it. A
+    scheduled [vaccination](vaccination.md) is checked differently: each dose
+    counts if its own date falls within the schedule, whenever its case was
+    infected.
 
 ```@example interventions
 # Testing starts on day 10
@@ -364,11 +376,10 @@ iso_window = Scheduled(Isolation(onset_to_isolation_delay = Exponential(1.0), du
 nothing # hide
 ```
 
-The end is checked when each case is set up, against the outbreak's latest
-infection so far. Isolation reaches a case set up while that is still on or
-before day 30, even if their own isolation falls later, and misses a case set
-up after it, even if their isolation would fall earlier. A scheduled
-vaccination instead checks each dose's own date.
+The end is checked against the case's own infection time as well. Isolation
+reaches a case infected on or before day 30, even if their own isolation falls
+later, and misses a case infected after it, even if their isolation would fall
+earlier. A scheduled vaccination instead checks each dose's own date.
 
 For any other trigger, pass a function of the [`SimulationState`](@ref) that
 returns `true` while the intervention should be on. This one switches
