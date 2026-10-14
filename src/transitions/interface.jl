@@ -82,7 +82,14 @@ Only called for terminal steps, after every step has been drawn.
 """
 terminal_event(::AbstractClinicalTransition, individual) = nothing
 
-"""Case information a step needs set by the model's `attributes` (for example `:onset_time`). None by default."""
+"""
+    required_fields(transition::AbstractClinicalTransition) -> Vector{Symbol}
+
+Case information a step needs before it can run, for example `:onset_time`.
+Each must be set by the model's `attributes` or recorded by another step in its
+`progression`; if neither provides one, the simulation stops with an error when
+it starts. None by default.
+"""
 required_fields(::AbstractClinicalTransition) = Symbol[]
 
 """
