@@ -193,8 +193,8 @@ The model also passes `watches`: one tuple of
 taken from each route's own kernel:
 
 ```julia
-EpiBranch._sellke_race!(
-    state, members, rng;
+EpiBranch.sellke_race!(
+    state, members, rng, sim_opts;
     routes = routes, interventions = interventions, seed!,
     watches = Tuple(EpiBranch.watched_records(w.kernel) for w in windows),
 )
@@ -210,12 +210,6 @@ watches = (EpiBranch.watched_records(model.edge_kernel),)
 Without it, every route's rates are treated as fixed for the whole run, and a
 kernel that reads per-person records keeps contacts drawn before a record
 changed, without any warning.
-
-!!! note "This recipe uses an internal function"
-    `_sellke_race!` starts with an underscore: it is not part of the public
-    interface and may change in a later release. There is no public way yet to
-    run the continuous-time simulation from a model of your own. If you build
-    on it, fix the EpiBranch version your project uses.
 
 ## Seasonal or time-varying transmission
 
@@ -371,10 +365,10 @@ Return the number of contacts the case could infect if no control measures
 existed, without looking at whether the case is isolated or vaccinated.
 Interventions act afterwards, when the simulation decides which contacts are
 infected; that is the only place they affect transmission. The simulation also
-runs `resolve_individual!` on each case first, then `initialise_individual!`
-and `apply_post_transmission!` on the new contacts, the clinical transitions,
-and the running totals (`cumulative_cases`, `current_generation`,
-`active_ids`, `extinct`, `max_infection_time`).
+runs `initialise_individual!` on the new contacts and the interventions' hooks
+on each case's contacts, the clinical transitions and `resolve_individual!` on
+each new case, and keeps the running totals (`cumulative_cases`,
+`current_generation`, `active_ids`, `extinct`, `max_infection_time`).
 
 A **structure-driven** model has contacts a count cannot describe: a contact
 network, or a household or metapopulation model in which a susceptible can be
@@ -400,8 +394,8 @@ network, a coupling between patches), do not filter on it in `contacts_of`.
 Return the contact and let the probability decide infection through
 [`transmission_risks`](@ref EpiBranch.transmission_risks)`(model)`, which
 returns a risk with a `competing_risk` method. The contact is then still
-created and seen by `apply_post_transmission!`, where contact tracing and ring
-vaccination reach it, and the probability is weighed together with
+created and passed to the interventions' hooks for its infector, where contact
+tracing and ring vaccination reach it, and the probability is weighed together with
 susceptibility, infectiousness and interventions. The example below does this.
 
 A model that runs **its own simulation loop**, such as the continuous-time
@@ -413,16 +407,16 @@ set. This runs the clinical transitions (placed on the state by
 [`new_state`](@ref EpiBranch.new_state)) and records the timeline values
 (`:onset_time`, `:outcome_time`, ...) that the line list and the likelihoods
 read. Such a model receives the other model parts as arguments: define
-`EpiBranch._simulate(m::MyModel, sim_opts; interventions, attributes,
-progression, observation, recorder, rng, condition, max_attempts)`, read the parts from
-the arguments, and work out anything you need (the start of the infectious
-period, say) from `progression` there. `ModelSpec` passes `simulate` and
-`loglikelihood` to that method.
-
-!!! note "Writing your own simulation loop uses internal functions"
-    `_simulate` and `_sellke_race!` start with an underscore: they are not part
-    of the public interface and may change in a later release. If you build on
-    them, fix the EpiBranch version your project uses.
+[`EpiBranch.simulate_once`](@ref)`(m::MyModel, sim_opts; interventions,
+attributes, progression, observation, recorder, rng)`, read the parts from the
+arguments, and work out anything you need there from `progression`, such as
+the start of the infectious period with
+[`EpiBranch.infectious_from`](@ref)`(progression)`. `simulate` calls it once,
+or again until the outcome matches a `condition`; the method itself takes no
+`condition`. Run the continuous-time simulation with
+[`EpiBranch.sellke_race!`](@ref), passing it `sim_opts`: it applies the
+`max_time` limit and updates the running totals for you. `ModelSpec` passes
+`simulate` and `loglikelihood` to `simulate_once`.
 
 A model whose population splits naturally into groups that can be simulated
 independently, as a household model splits into households, defines
@@ -638,7 +632,7 @@ An observation model is added to your model with a `ModelSpec`, like the other
 parts, and your model stores and defines nothing for it:
 
 ```julia
-simulate(ModelSpec(MyModel(...); observation = PerCaseObservation(detection_prob = 0.7)))
+simulate(ModelSpec(MyModel(...); observation = MinimumSize(2)))
 ```
 
 The observation is applied after the simulation, and `loglikelihood(data,
@@ -649,119 +643,76 @@ spec)` reads it from the `ModelSpec`, as for `BranchingProcess`.
 The [Homogeneous models](homogeneous.md) tutorial covers `HomogeneousProcess`,
 a closed population where everyone mixes with everyone else at the same rate.
 Mixing is often uneven: age bands, sex, income groups or spatial patches
-contact each other at different rates, so susceptibles in different groups
-experience a different force of infection. You can build such a model on the
-same simulation by supplying two things:
+contact each other at different rates. [`MixingProcess`](@ref) simulates such a
+population in the same way as `HomogeneousProcess`, with no simulation code of
+your own. You supply two things:
 
 1. **Which characteristics define the mixing groups**: `mixing_by`, a tuple of
    names of values each person already has (`:age_band`, `:ses`, `:patch`;
-   real characteristics, not an artificial group number). A susceptible's group
-   is the tuple of those values. With `mixing_by = ()` everyone is in one
-   group, which gives back the homogeneous model.
-2. **The force of infection** `force(group, counts)`: the rate of infection of
-   a susceptible in a given group. `counts` is a `Dict` giving, for each mixing
-   group, the number currently infectious, weighted by each case's
-   `infectiousness` (1 by default). Homogeneous mixing is `β/N` times the total
-   of those counts; structured mixing applies a contact matrix to the
-   prevalence in each group.
+   real characteristics set by the model's `attributes`, not an artificial
+   group number). A person's group is the tuple of those values. With
+   `mixing_by = ()` everyone is in one group, which gives back the homogeneous
+   model.
+2. **The contact rate between groups**, `rate(infector_group, target_group)`:
+   the rate at which one infectious person in the first group contacts one
+   person in the second. Homogeneous mixing is `β/N` for every pair. With a
+   contact matrix `M[b, a]`, the rate at which one infectious person in group
+   `a` contacts the `n[b]` people of group `b` between them, each pair meets at
+   rate `M[b, a] / n[b]`.
 
 !!! note "Groups are always tuples"
     A mixing group is the *tuple* of `mixing_by` values, even when there is a
-    single characteristic. Under `mixing_by = (:age_band,)` a susceptible in
-    band `b` has group `(b,)`, not `b`. Inside `force`, read the band with
-    `group[1]` and look up `counts` with `(h,)`.
+    single characteristic. Under `mixing_by = (:age_band,)` a person in band
+    `b` has group `(b,)`, not `b`. Inside `rate`, read the band with
+    `group[1]`.
 
 Below is a population in two age bands with an asymmetric contact matrix: the
-younger, more socially active band mixes more than the older one.
+younger, more socially active band mixes more than the older one. The
+`:age_band` value is an ordinary population characteristic:
 
-!!! note "This recipe uses internal functions"
-    `_sellke_pool!` and `_resolve_infectious_from` start with an underscore:
-    they are not part of the public interface and may be renamed or given a
-    public replacement in a later release. The `mixing_by` and `force` inputs
-    are the stable part and will stay. If you build on this, fix the EpiBranch
-    version your project uses.
-
-```@example pool
+```@example mixing
 using EpiBranch, Distributions, Random
 
-# A closed population of N in two age bands of equal size. Band 1 is the more
-# socially active one; `band_of` gives a person's band from their id.
+# A closed population of N in two age bands of equal size.
 N = 2000
 n = [N ÷ 2, N ÷ 2]                     # band sizes
-band_of = i -> (i <= n[1] ? 1 : 2)
+band = (rng, ind) -> (ind.state[:age_band] = ind.id <= n[1] ? 1 : 2)
 
-# M[b, h] is the mean rate at which one infectious person in band h contacts a
-# susceptible in band b. Band 1 mixes far more.
+# M[b, a] is the mean rate at which one infectious person in band a contacts
+# the people of band b. Band 1 mixes far more.
 M = [3.0 0.5;
      0.5 0.5]
 
-# Force of infection on a susceptible in group `group`: the sum over bands h
-# of the contact rate M[b, h] times band h's prevalence counts[(h,)] / n[h].
-force = (group, counts) -> begin
-    b = group[1]
-    sum(M[b, h] * get(counts, (h,), 0) / n[h] for h in 1:2)
-end
+# The rate at which one infectious person in group `from` contacts one person
+# in group `to`. A group is a tuple of :age_band values: read the band with [1].
+rate = (from, to) -> M[to[1], from[1]] / n[to[1]]
 
-# The HomogeneousProcess provides the fixed population and its removal states;
-# `force` replaces its transmission rate, so any value will do here. Each
-# person's :age_band is set as they are created; any characteristic works,
-# including the built-in demographics (:age, :sex).
-carrier = HomogeneousProcess(; transmission_rate = 1.0, population_size = N)
-progression = [Transition(:recovered; from = :infection,
-    delay = Exponential(1.0), terminal = true)]
-rng = MersenneTwister(1)
-state = EpiBranch.new_state(carrier, progression, NoAttributes(), rng)
-EpiBranch.add_individuals!(state, N, AbstractIntervention[];
-    setup = (ind, i) -> (ind.state[:age_band] = band_of(i)))
+model = ModelSpec(
+    MixingProcess(; population_size = N, mixing_by = (:age_band,), rate);
+    progression = [Transition(:recovered; from = :infection,
+        delay = Exponential(1.0), terminal = true)],
+    attributes = band)
+state = simulate(model; n_initial = 5, rng = MersenneTwister(1))
 
-EpiBranch._sellke_pool!(state, collect(1:N), rng; mixing_by = (:age_band,),
-    force = force, n_initial = 5,
-    from = EpiBranch._resolve_infectious_from(carrier.from, progression),
-    until = carrier.until)
-
-attack_rate(band) = count(i -> is_infected(state.individuals[i]), findall(==(band), band_of.(1:N))) / n[band]
+attack_rate(b) = count(ind -> ind.state[:age_band] == b && is_infected(ind),
+    state.individuals) / n[b]
 (band_1 = attack_rate(1), band_2 = attack_rate(2))
 ```
 
-Susceptibles in band 1 experience a higher force of infection and have a
-higher attack rate. To check the set-up, make `M` uniform: the two bands should
-then behave as a single homogeneous population with the SIR final size. The
-same pattern extends to further groups: give people an `:ses` value and pass
-`mixing_by = (:age_band, :ses)`, and `force` then receives a `(band, ses)` tuple
-as its group and `counts` keyed by `(band, ses)` pairs. From there you can write
-any contact structure, such as a full matrix over every `(band, ses)`
-combination or one where band and SES contacts multiply independently.
+People in band 1 are contacted more often and have a higher attack rate. To
+check the set-up, give every pair the same rate: the two bands should then
+behave as a single homogeneous population with the SIR final size. The same
+pattern extends to further groups: give people an `:ses` value and pass
+`mixing_by = (:age_band, :ses)`, and `rate` then receives `(band, ses)` tuples.
+From there you can write any contact structure, such as a full matrix over
+every `(band, ses)` combination or one where band and SES contacts multiply
+independently.
 
-!!! warning "Interventions that depend on the infector are refused"
-    The model does not record who infected whom from the contact matrix: it
-    picks an infector for each infection in proportion to infectiousness,
-    which is uniform while every case has the default infectiousness. With
-    more than one mixing group that choice ignores the contact matrix, so a
-    risk that depends on the infector would be applied to the wrong
-    infectors. The simulation therefore stops with an error for any
-    intervention whose [`EpiBranch.risk_depends_on_infector`](@ref) is
-    `true`: an `Isolation` that is leaky or has a finite `duration`, a
-    `RingVaccination` with an onward effect, and by default any intervention
-    with its own `competing_risk`.
-
-An intervention whose risk reads only the contact declares so, and is then
-accepted:
-
-```julia
-struct MyProphylaxis <: AbstractIntervention
-    efficacy::Float64
-end
-EpiBranch.competing_risk(p::MyProphylaxis, parent, contact, state) =
-    Risk(block_probability = p.efficacy)
-EpiBranch.risk_depends_on_infector(::MyProphylaxis) = false
-```
-
-Per-person infectiousness is accepted: it enters the force through the weighted
-counts, so it is exact. Risks on the contact alone, such as a per-person
-susceptibility, also apply exactly. Differences in infectiousness between
-groups belong in `force`. The natural history and line-list output are the
-same as for `HomogeneousProcess`; with more than one mixing group, the only
-isolation accepted is complete isolation with `duration = Inf`.
+Because every contact is between two named people, interventions, per-person
+susceptibility and infectiousness, and risks that read the infector, such as a
+leaky isolation, apply as they do on the homogeneous model. The rate is fixed
+for the whole run: a force of infection that is not proportional to the number
+infectious cannot be written this way.
 
 ## Choosing initial cases in a fixed population
 
@@ -867,7 +818,14 @@ of the package.
 ## Extra information about each cluster
 
 [`ChainSizes`](@ref) has one value per cluster besides its size: `seeds`, the
-number of index cases in a cluster with several. A second per-cluster choice,
+number of index cases in a cluster with several. It needs nothing further:
+
+```@example clusters
+using EpiBranch, Distributions
+loglikelihood(ChainSizes([4]; seeds = [2]), NegBin(0.8, 0.3))
+```
+
+A second per-cluster choice,
 the probability that a cluster has finished growing, is passed when the
 likelihood is evaluated, through the `prob_concluded` keyword of
 `loglikelihood`, because the mixture it defines only exists for the
