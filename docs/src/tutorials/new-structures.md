@@ -402,7 +402,7 @@ its own probability of transmission per pair (a per-pair probability on a
 network, a coupling between patches), do not filter on it in `contacts_of`.
 Return the contact and let the probability decide infection through
 [`transmission_risks`](@ref EpiBranch.transmission_risks)`(model)`, which
-returns a risk with a `competing_risk` method. The contact is then still
+returns a tuple of risks, each with a `competing_risk` method. The contact is then still
 created and passed to the interventions' hooks for its infector, where contact
 tracing and ring vaccination reach it, and the probability is weighed together with
 susceptibility, infectiousness and interventions. The example below does this.
