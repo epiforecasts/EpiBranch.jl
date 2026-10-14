@@ -12,6 +12,281 @@ function EpiBranch.terminal_event(r::AlwaysOccursRule, individual)
     return (individual.infection_time + 1.0, r.probability > 0.5 ? :died : :recovered)
 end
 
+# Two interventions meant to block every transmission, each written so that
+# the engine never reaches the method: `BlockWrongArity`'s `competing_risk`
+# is missing its `state` argument, and `BlockUnqualified`'s is defined
+# without the `EpiBranch.` prefix, which gives this module a new function of
+# the same name rather than a method on the package's own. Both therefore
+# fall back to the no-op default. Defined at module scope for the same
+# reason as `AlwaysOccursRule` above.
+struct BlockWrongArity <: AbstractIntervention end
+EpiBranch.competing_risk(::BlockWrongArity, parent, contact) = Risk(block_probability = 1.0)
+
+# The same mistake on a second type, for the wrapper check: a type is
+# examined once per session, so re-checking `BlockWrongArity` inside a
+# wrapper would find it already seen.
+struct WrappedWrongArity <: AbstractIntervention end
+EpiBranch.competing_risk(::WrappedWrongArity, parent, contact) =
+    Risk(block_probability = 1.0)
+
+struct BlockUnqualified <: AbstractIntervention end
+competing_risk(::BlockUnqualified, parent, contact, state) = Risk(block_probability = 1.0)
+
+# One hook written correctly and one written without the `EpiBranch.` prefix,
+# so the second lands on the test module's own `competing_risk` above. The
+# intervention is reachable through the first, so only a per-hook check sees
+# the second.
+struct MixedPrefix <: AbstractIntervention end
+EpiBranch.initialise_individual!(::MixedPrefix, ind, state) =
+    (ind.state[:flagged] = true; nothing)
+competing_risk(::MixedPrefix, parent, contact, state) = Risk(block_probability = 1.0)
+
+# A correct intervention written in a module that also holds the author's own
+# helper of a hook's name. The helper takes an intervention first but at an
+# arity no call uses, so it is not a mis-written hook and must not be
+# reported as one: writing it as `EpiBranch.trace_contacts!` would break it.
+module _OwnHelpers
+    using EpiBranch
+    using EpiBranch: AbstractIntervention, Risk
+    struct HasHelper <: AbstractIntervention
+        traced::Vector{Int}
+    end
+    EpiBranch.competing_risk(::HasHelper, parent, contact, state) =
+        Risk(block_probability = 1.0)
+    trace_contacts!(h::HasHelper, ids) = append!(h.traced, ids)
+    keep_active(a, b) = nothing
+    struct NoHooks <: AbstractIntervention end
+end
+
+# Acts through no hook the package knows of, standing for one that reaches the
+# model through a seam of its own package, and says so through `has_effect`.
+struct _OwnSeam <: AbstractIntervention end
+EpiBranch.has_effect(::_OwnSeam) = true
+
+# Never passed to `ModelSpec`, so the cache's own behaviour can be read
+# without another construction having examined the type first.
+struct _CacheProbe <: AbstractIntervention end
+
+# Implements only the least common of `_effect_hooks()`, to check the full set
+# is read rather than a subset headlined by `competing_risk`.
+struct _ActionsHookOnly <: AbstractIntervention end
+EpiBranch.intervention_actions(::_ActionsHookOnly, state, candidates) = nothing
+
+# A `competing_risk` hook written with a trailing `args...`: a method a
+# four-argument call does reach, despite `methods` listing its own arity as
+# two rather than four.
+struct BlockVariadic <: AbstractIntervention end
+EpiBranch.competing_risk(::BlockVariadic, args...) = Risk(block_probability = 1.0)
+
+# The same hook with the vararg's length named: `Vararg{Any, N} where {N}`
+# carries an `N` that is a type variable rather than a count.
+struct BlockVariadicN <: AbstractIntervention end
+EpiBranch.competing_risk(::BlockVariadicN, args::Vararg{Any, N}) where {N} =
+    Risk(block_probability = 1.0)
+
+# An intervention whose only declared effect is on the likelihood, as the
+# extending guide's `Prophylaxis` is.
+struct _SusceptibilityOnly <: AbstractIntervention end
+EpiBranch.susceptibility_components(::_SusceptibilityOnly, host) =
+    (1 => EpiBranch.HazardScaling(2.0, 0.5),)
+
+# One hook written correctly and one with an argument dropped: the shape a
+# real intervention takes when a hook is mistyped, where the intervention
+# itself is plainly not inert.
+struct BlockOneGoodOneShort <: AbstractIntervention end
+EpiBranch.initialise_individual!(::BlockOneGoodOneShort, ind, state) = nothing
+EpiBranch.competing_risk(::BlockOneGoodOneShort, parent, contact) =
+    Risk(block_probability = 1.0)
+
+# A hook written with every argument variadic, which names no intervention
+# type at all. Defined on a function of its own rather than on one of the
+# package's, so that the rest of the suite does not inherit it.
+_all_variadic(args...) = nothing
+
+# A family of interventions whose hook is written once on the abstract parent,
+# with a child whose override drops an argument. The parent's method answers
+# the call, so the child's total block never applies: the check has to ask per
+# method, since asking per hook finds the parent's and falls silent.
+abstract type _Family <: AbstractIntervention end
+EpiBranch.competing_risk(::_Family, parent, contact, state) =
+    Risk(block_probability = 0.0)
+struct _FamilyShort <: _Family end
+EpiBranch.competing_risk(::_FamilyShort, parent, contact) =
+    Risk(block_probability = 1.0)
+
+# The other way round: the short method is the parent's and the child's is
+# correct, so the child reaches its own and nothing is wrong with it.
+abstract type _FamilyB <: AbstractIntervention end
+EpiBranch.competing_risk(::_FamilyB, parent, contact) = Risk(block_probability = 1.0)
+struct _FamilyBOK <: _FamilyB end
+EpiBranch.competing_risk(::_FamilyBOK, parent, contact, state) =
+    Risk(block_probability = 1.0)
+
+# A correct hook alongside a convenience overload of it for the same type: the
+# shorter one is unreachable from the engine, but the type's own hook answers
+# the call, so there is nothing to report.
+struct _ExtraOverload <: AbstractIntervention end
+EpiBranch.competing_risk(::_ExtraOverload, parent, contact, state) =
+    Risk(block_probability = 1.0)
+EpiBranch.competing_risk(::_ExtraOverload, contact) = Risk(block_probability = 1.0)
+
+# A family whose hook is written once on the abstract parent, with a child
+# whose own override is written without the `EpiBranch.` prefix. The parent's
+# method answers the call and the child's total block never applies, so asking
+# whether the hook has an own method at all finds the parent's and falls
+# silent: the question has to be whether a method at least as specific as the
+# stray one answers.
+abstract type _FamilyC <: AbstractIntervention end
+EpiBranch.competing_risk(::_FamilyC, parent, contact, state) =
+    Risk(block_probability = 0.0)
+struct _FamilyUnqualified <: _FamilyC end
+competing_risk(::_FamilyUnqualified, parent, contact, state) =
+    Risk(block_probability = 1.0)
+
+# The same family with the child's override written correctly.
+struct _FamilyQualified <: _FamilyC end
+EpiBranch.competing_risk(::_FamilyQualified, parent, contact, state) =
+    Risk(block_probability = 1.0)
+
+# A stray unprefixed method alongside a correct one for the same type: the
+# type's own hook answers the call, so the stray function is a leftover rather
+# than a mistake to report.
+struct _BothPrefixes <: AbstractIntervention end
+competing_risk(::_BothPrefixes, parent, contact, state) = Risk(block_probability = 1.0)
+EpiBranch.competing_risk(::_BothPrefixes, parent, contact, state) =
+    Risk(block_probability = 1.0)
+
+# A hook shared by two intervention types through a `Union` first parameter,
+# which answers a call for either of them. `nameof` has no method for a
+# `Union`, and `<:` makes a union a subtype of neither member, so both the
+# naming and the specificity questions have to cope with one. Here with a
+# convenience overload alongside, as `_ExtraOverload` has, so there is nothing
+# to report and nothing to name.
+struct _UnionShare <: AbstractIntervention end
+struct _UnionShareB <: AbstractIntervention end
+EpiBranch.competing_risk(::Union{_UnionShare, _UnionShareB}, parent, contact, state) =
+    Risk(block_probability = 0.5)
+EpiBranch.competing_risk(::_UnionShare, contact) = Risk(block_probability = 0.5)
+
+# `BlockWrongArity`'s mistake written once for two types: there is something to
+# report, and the union is what it has to be reported against.
+struct _UnionShort <: AbstractIntervention end
+struct _UnionShortB <: AbstractIntervention end
+EpiBranch.competing_risk(::Union{_UnionShort, _UnionShortB}, parent, contact) =
+    Risk(block_probability = 1.0)
+
+# A correct hook written for a union, with an unprefixed leftover for one of
+# its members: the union covers that member, so the leftover is a leftover.
+struct _UnionBoth <: AbstractIntervention end
+struct _UnionBothB <: AbstractIntervention end
+EpiBranch.competing_risk(::Union{_UnionBoth, _UnionBothB}, parent, contact, state) =
+    Risk(block_probability = 1.0)
+competing_risk(::_UnionBoth, parent, contact, state) = Risk(block_probability = 1.0)
+
+# A child whose override drops an argument, under both a parent hook and a
+# wider union hook that covers the parent as well. The engine reaches the
+# parent's method, so that is the one to name, and which of the two the method
+# list offers first differs between Julia versions, so the choice cannot rest
+# on that order.
+abstract type _RankFam <: AbstractIntervention end
+struct _RankKid <: _RankFam end
+struct _RankOther <: AbstractIntervention end
+EpiBranch.competing_risk(::Union{_RankFam, _RankOther}, parent, contact, state) =
+    Risk(block_probability = 0.25)
+EpiBranch.competing_risk(::_RankFam, parent, contact, state) =
+    Risk(block_probability = 0.0)
+EpiBranch.competing_risk(::_RankKid, parent, contact) = Risk(block_probability = 1.0)
+
+# A parametric intervention family, which is how the package's own
+# interventions are written, with the dropped-argument method on one
+# instantiation and the live one on the family. The two differ only in the
+# parameters, so a name without them would read as the same type twice.
+struct _ParamIv{D} <: AbstractIntervention
+    delay::D
+end
+EpiBranch.competing_risk(::_ParamIv, parent, contact, state) =
+    Risk(block_probability = 0.1)
+EpiBranch.competing_risk(::_ParamIv{Float64}, parent, contact) =
+    Risk(block_probability = 1.0)
+
+# A parametric family whose only hook is written for another instantiation, so
+# the composed value reaches none of its own methods, and one whose stray
+# unprefixed method is on a different instantiation from its correct one. Both
+# messages have to name the instantiation to say anything true.
+struct _ParamInert{D} <: AbstractIntervention
+    delay::D
+end
+EpiBranch.competing_risk(::_ParamInert{Float64}, parent, contact, state) =
+    Risk(block_probability = 1.0)
+
+struct _ParamStray{D} <: AbstractIntervention
+    delay::D
+end
+EpiBranch.competing_risk(::_ParamStray{Int}, parent, contact, state) =
+    Risk(block_probability = 1.0)
+competing_risk(::_ParamStray{Float64}, parent, contact, state) =
+    Risk(block_probability = 1.0)
+
+# The same two mistakes with the hooks written `where {D}`, which leaves each
+# method's first parameter holding a type variable of its own.
+struct _WhereStray{D} <: AbstractIntervention
+    delay::D
+end
+EpiBranch.initialise_individual!(::_WhereStray{D}, ind, state) where {D} = nothing
+competing_risk(::_WhereStray{D}, parent, contact, state) where {D} =
+    Risk(block_probability = 1.0)
+
+struct _WhereOverload{D} <: AbstractIntervention
+    delay::D
+end
+EpiBranch.competing_risk(::_WhereOverload{D}, parent, contact, state) where {D} =
+    Risk(block_probability = 1.0)
+EpiBranch.competing_risk(::_WhereOverload{D}, parent, contact) where {D} =
+    Risk(block_probability = 1.0)
+
+# An intervention family in a base module with its concrete types in a
+# sibling, which is how the extending guide teaches subtyping: the stray
+# method is written where the family is, not where the type is, so the module
+# to report is the method's own.
+module _StrayHome
+    using EpiBranch
+    using EpiBranch: AbstractIntervention, Risk
+    export competing_risk
+    abstract type _StrayFam <: AbstractIntervention end
+    competing_risk(::_StrayFam, parent, contact, state) =
+        Risk(block_probability = 1.0)
+end
+module _StrayUser
+    using EpiBranch
+    using .._StrayHome
+    using .._StrayHome: _StrayFam
+    struct _StrayKid <: _StrayFam end
+end
+
+# A hook whose default is not a no-op: `analytic_offspring_effect` throws, so
+# the warning cannot claim the engine carries on without the intervention.
+struct _AnalyticOnly <: AbstractIntervention end
+EpiBranch.initialise_individual!(::_AnalyticOnly, ind, state) = nothing
+EpiBranch.analytic_offspring_effect(::_AnalyticOnly, offspring, state) = offspring
+
+# A correct intervention in a module that also holds a variadic helper of a
+# hook's name, and an intervention in the same module with no hooks at all.
+# The helper is reachable at every arity, so an arity test alone cannot tell
+# it from a hook; writing it as `EpiBranch.trace_contacts!` would have it
+# answer the engine's four-argument call with `state` where it wants ids.
+module _VariadicHelpers
+    using EpiBranch
+    using EpiBranch: AbstractIntervention, Risk
+    struct HasVariadicHelper <: AbstractIntervention
+        traced::Vector{Int}
+    end
+    EpiBranch.competing_risk(::HasVariadicHelper, parent, contact, state) =
+        Risk(block_probability = 1.0)
+    trace_contacts!(h::HasVariadicHelper, args...) = append!(h.traced, args[1])
+    struct OnlyVariadicHelper <: AbstractIntervention end
+    keep_active(iv::OnlyVariadicHelper, args...) = nothing
+end
+
 # A minimal intervention declaring a closed-form effect on the offspring law
 # (halving R), used below to check that the analytical functions on a
 # ModelSpec apply a declared effect instead of refusing. Defined at module
@@ -274,6 +549,189 @@ EpiBranch.interventions(m::_ProcessWithInterventions) = m.interventions
         # transition is skipped rather than misjudged from its field layout.
         @test ismissing(EpiBranch.terminal_certainty(AlwaysOccursRule(0.0)))
         @test_logs ModelSpec(bp; progression = [AlwaysOccursRule(0.0)])
+    end
+
+    @testset "an intervention with no reachable hook warns" begin
+        bp = BranchingProcess(Poisson(1.5), Exponential(5.0))
+
+        # Wrong arity: the method exists but is never the one a four-argument
+        # call to `competing_risk` resolves to. The hook at fault is named,
+        # rather than every hook being listed.
+        @test_logs (
+            :warn,
+            r"BlockWrongArity has a method of its own for competing_risk, but at no number of arguments the engine calls it with, so that method is never reached: the engine uses the package's own default for competing_risk instead",
+        ) match_mode = :any ModelSpec(bp; interventions = [BlockWrongArity()])
+        # Unqualified: the method belongs to a different function entirely,
+        # which is found in the module the intervention was written in.
+        @test_logs (
+            :warn,
+            r"defines a method of competing_risk for BlockUnqualified, but on its own function",
+        ) match_mode = :any ModelSpec(bp; interventions = [BlockUnqualified()])
+        # A missing prefix on one hook of an intervention whose other hooks
+        # are fine: the intervention is reachable, so only the per-hook
+        # check can see it.
+        @test_logs (
+            :warn,
+            r"defines a method of competing_risk for MixedPrefix, but on its own function",
+        ) match_mode = :any ModelSpec(bp; interventions = [MixedPrefix()])
+        # Wrapping does not hide it: the check reads the wrapped type, since
+        # a wrapper such as `Scheduled` always has its own delegating methods
+        # whatever it wraps.
+        @test_logs (
+            :warn,
+            r"WrappedWrongArity has a method of its own for competing_risk",
+        ) match_mode = :any ModelSpec(
+            bp; interventions = [Scheduled(WrappedWrongArity(); start_time = 1.0)]
+        )
+        # A type is examined once for a given state of the method tables, and
+        # defining any method advances the world counter, which arms the
+        # check again: a hook rewritten in the REPL is examined afresh.
+        @test EpiBranch._first_sight(_CacheProbe)
+        @test !EpiBranch._first_sight(_CacheProbe)
+        @eval _world_bump() = nothing
+        @test EpiBranch._first_sight(_CacheProbe)
+        # The author's own helper of a hook's name is not a mis-written hook,
+        # and an intervention in that module with no hooks at all still gets
+        # the general message rather than a diagnosis of the helper.
+        @test_logs ModelSpec(
+            bp; interventions = [_OwnHelpers.HasHelper(Int[])]
+        )
+        @test_logs (
+            :warn,
+            r"NoHooks has a method of its own for none of the hooks.*`EpiBranch\.has_effect\(::NoHooks\) = true`"s,
+        ) match_mode = :any ModelSpec(bp; interventions = [_OwnHelpers.NoHooks()])
+        # A hook outside `competing_risk`, at the right arity, is enough to
+        # stay silent: the check reads the full set, not just `competing_risk`.
+        @test_logs ModelSpec(bp; interventions = [_ActionsHookOnly()])
+        # A trailing `args...` is reachable at the call's arity even though
+        # `methods` reports its own arity as something other than `n`.
+        @test_logs ModelSpec(bp; interventions = [BlockVariadic()])
+        # Naming the vararg's length leaves a type variable where a count
+        # would be, which the check must not try to add to.
+        @test_logs ModelSpec(bp; interventions = [BlockVariadicN()])
+        # A hook at an arity the engine never calls is reported even when the
+        # intervention has another hook that works, which is the shape a
+        # dropped argument takes in practice.
+        @test_logs (
+            :warn,
+            r"BlockOneGoodOneShort has a method of its own for competing_risk, but at no number of arguments",
+        ) match_mode = :any ModelSpec(bp; interventions = [BlockOneGoodOneShort()])
+        # A hook written with every argument variadic leaves a `Vararg` where
+        # the check looks for the intervention's type. It names no
+        # intervention, so the answer is "no method of its own", and neither
+        # overload may throw on it.
+        @test !EpiBranch._has_own_method(_all_variadic, BlockVariadic, AbstractIntervention)
+        @test !EpiBranch._has_own_method(
+            _all_variadic, BlockVariadic, AbstractIntervention, 3
+        )
+        # A child of an abstract intervention whose override drops an
+        # argument: the parent's correct method answers the call, so the
+        # child's block never applies, and the warning names the child.
+        @test_logs (
+            :warn,
+            r"_FamilyShort has a method of its own for competing_risk, but at no number of arguments the engine calls it with, so that method is never reached: the engine uses _Family's method instead",
+        ) match_mode = :any ModelSpec(bp; interventions = [_FamilyShort()])
+        # The same family the other way round is fine: the child's own method
+        # is the one a four-argument call reaches.
+        @test_logs ModelSpec(bp; interventions = [_FamilyBOK()])
+        # A convenience overload of a hook for the same type is not a
+        # mis-written hook, since the type's own hook answers the call.
+        @test_logs ModelSpec(bp; interventions = [_ExtraOverload()])
+        # A child of an abstract intervention whose own override forgets
+        # the prefix: the parent's method answers the call, so the child's
+        # block never applies and the missing prefix has to be named.
+        @test_logs (
+            :warn,
+            r"defines a method of competing_risk for _FamilyUnqualified",
+        ) match_mode = :any ModelSpec(bp; interventions = [_FamilyUnqualified()])
+        # The same family with the override written correctly is silent.
+        @test_logs ModelSpec(bp; interventions = [_FamilyQualified()])
+        # A stray unprefixed method alongside a correct one for the same type
+        # is a leftover rather than a mistake.
+        @test_logs ModelSpec(bp; interventions = [_BothPrefixes()])
+        # A hook shared by two types through a `Union` first parameter, with
+        # a convenience overload alongside: nothing to report, and the check
+        # must not fail trying to name the union.
+        @test_logs ModelSpec(bp; interventions = [_UnionShare()])
+        # The wrong-arity mistake written once for two types is reported
+        # against the union it was written for.
+        @test_logs (
+            :warn,
+            r"Union\{.*_UnionShortB.*\} has a method of its own for competing_risk",
+        ) match_mode = :any ModelSpec(bp; interventions = [_UnionShort()])
+        # A correct hook written for a union covers each of its members, so an
+        # unprefixed leftover for one of them is not the mistake.
+        @test_logs ModelSpec(bp; interventions = [_UnionBoth()])
+        # With both a parent hook and a wider union hook in reach, the
+        # warning names the one dispatch picks.
+        @test_logs (
+            :warn,
+            r"_RankKid has a method of its own for competing_risk.*the engine uses _RankFam's method instead",
+        ) match_mode = :any ModelSpec(bp; interventions = [_RankKid()])
+        # A parametric family keeps its parameters in the warning, so the
+        # dead method and the standing-in one can be told apart.
+        @test_logs (
+            :warn,
+            r"_ParamIv\{Float64\} has a method of its own for competing_risk.*the engine uses _ParamIv's method instead",
+        ) match_mode = :any ModelSpec(bp; interventions = [_ParamIv(2.0)])
+        # The inert message names the instantiation that reaches nothing,
+        # since the family does have a method of its own.
+        @test_logs (
+            :warn,
+            r"_ParamInert\{Int64\} has a method of its own for none of the hooks",
+        ) match_mode = :any ModelSpec(bp; interventions = [_ParamInert(2)])
+        # The missing-prefix message names the instantiation the stray method
+        # was written for, not the composed type.
+        @test_logs (
+            :warn,
+            r"defines a method of competing_risk for _ParamStray\{Float64\}",
+        ) match_mode = :any ModelSpec(bp; interventions = [_ParamStray(2.0)])
+        # Written `where {D}`, the unprefixed hook is still found, and a
+        # convenience overload is still covered by the type's own hook.
+        @test_logs (
+            :warn,
+            r"defines a method of competing_risk for _WhereStray",
+        ) match_mode = :any ModelSpec(bp; interventions = [_WhereStray(2.0)])
+        @test_logs ModelSpec(bp; interventions = [_WhereOverload(2.0)])
+        # The module named is the one the stray method was written in, not
+        # the one the intervention type lives in.
+        @test_logs (
+            :warn,
+            r"_StrayHome defines a method of competing_risk for _StrayFam",
+        ) match_mode = :any ModelSpec(bp; interventions = [_StrayUser._StrayKid()])
+        # `analytic_offspring_effect`'s default throws rather than doing
+        # nothing, so the message names the default without describing it.
+        @test_logs (
+            :warn,
+            r"_AnalyticOnly has a method of its own for analytic_offspring_effect.*the package's own default for analytic_offspring_effect instead",
+        ) match_mode = :any ModelSpec(bp; interventions = [_AnalyticOnly()])
+        # A variadic helper of a hook's name is not a mis-written hook
+        # either, and an intervention whose only such method is that helper
+        # gets the general message rather than advice that would break it.
+        @test_logs ModelSpec(
+            bp; interventions = [_VariadicHelpers.HasVariadicHelper(Int[])]
+        )
+        @test_logs (
+            :warn,
+            r"OnlyVariadicHelper has a method of its own for none of the hooks",
+        ) match_mode = :any ModelSpec(
+            bp; interventions = [_VariadicHelpers.OnlyVariadicHelper()]
+        )
+        # An effect declared for the likelihood alone is an effect, and so is
+        # one declared for the closed-form results alone.
+        @test_logs ModelSpec(bp; interventions = [_SusceptibilityOnly()])
+        @test_logs ModelSpec(bp; interventions = [_HalfThinning()])
+        # An intervention acting through a seam the check does not read says
+        # so through `has_effect`, which the general warning names.
+        @test_logs ModelSpec(bp; interventions = [Scheduled(_OwnSeam(); start_time = 1.0)])
+        @test_logs ModelSpec(bp; interventions = [_OwnSeam()])
+        @test !EpiBranch.has_effect(_OwnHelpers.NoHooks())
+        @test EpiBranch.has_effect(_ActionsHookOnly())
+        # `Isolation` implements several hooks properly and stays silent too.
+        iso = Isolation(
+            onset_to_isolation_delay = Exponential(1.0), duration = Inf
+        )
+        @test_logs ModelSpec(bp; interventions = [iso])
     end
 
     @testset "A Reporting step and an observation model can both be set" begin

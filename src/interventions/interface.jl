@@ -431,3 +431,25 @@ function analytic_offspring_effect(iv::AbstractIntervention, offspring)
         )
     )
 end
+
+"""
+    has_effect(intervention) -> Bool
+
+Whether `intervention` can change a simulation or a likelihood. [`ModelSpec`](@ref)
+asks this of each intervention it is given and warns about one that answers
+`false`, since such an intervention runs without any sign that it does nothing.
+
+The default reads the method tables: `true` for a type with a method of its own,
+at the number of arguments the engine calls it with, for one of the hooks the
+package dispatches on an intervention. An intervention that reaches the model
+some other way, through a seam a package of its own defines for instance,
+defines `EpiBranch.has_effect(::MyIntervention) = true` to say so. The question
+is asked once per intervention type, so the answer should not depend on the
+instance.
+"""
+function has_effect(iv::AbstractIntervention)
+    T = typeof(iv)
+    return any(_effect_hooks()) do (f, n, _)
+        _has_own_method(f, T, AbstractIntervention, n)
+    end
+end
