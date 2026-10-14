@@ -411,11 +411,32 @@ more than one case in a generation (networks, households) define a method of
 this function that returns [`gather_by_target`](@ref), which calls
 [`contacts_of`](@ref) and groups the exposures by person.
 """
+# Every target flagged new, as a vector without storing one: the tree case.
+struct _AllNew <: AbstractVector{Bool}
+    n::Int
+end
+Base.size(a::_AllNew) = (a.n,)
+Base.@propagate_inbounds function Base.getindex(a::_AllNew, i::Int)
+    @boundscheck checkbounds(a, i)
+    return true
+end
+
+# The one edge reaching a contact no other parent shares, as a vector of one
+# without allocating one: the tree case, where every contact is fresh.
+struct _OneEdge{T} <: AbstractVector{Tuple{Int, T}}
+    edge::Tuple{Int, T}
+end
+Base.size(::_OneEdge) = (1,)
+Base.@propagate_inbounds function Base.getindex(e::_OneEdge, i::Int)
+    @boundscheck checkbounds(e, i)
+    return e.edge
+end
+
 function collect_exposures(model::TransmissionModel, state::SimulationState)
     pre = length(state.individuals)   # contacts created this step get id > pre
     T = _timetype(state)
     targets = Individual{T}[]
-    edges = Vector{Tuple{Int, T}}[]
+    edges = _OneEdge{T}[]
     for idx in state.active_ids
         parent = state.individuals[idx]
         offspring = generate_offspring(model, parent, state)
@@ -425,7 +446,7 @@ function collect_exposures(model::TransmissionModel, state::SimulationState)
         _materialise_offspring!(targets, edges, offspring, parent, state, gt_dist)
     end
     minted = view(state.individuals, (pre + 1):length(state.individuals))
-    return targets, edges, minted, trues(length(targets))
+    return targets, edges, minted, _AllNew(length(targets))
 end
 
 # Engine half of the offspring-driven contract: the model returns a count
@@ -442,7 +463,7 @@ function _materialise_offspring!(
     for _ in 1:n_contacts
         t = transmission_time(gt_dist, parent, state)
         push!(targets, make_contact!(state, parent, t))
-        push!(edges, Tuple{Int, T}[(parent.id, t)])
+        push!(edges, _OneEdge{T}((parent.id, t)))
     end
     return nothing
 end
@@ -457,7 +478,7 @@ function _materialise_offspring!(
         for _ in 1:n
             t = transmission_time(gt_dist, parent, state)
             push!(targets, make_contact!(state, parent, t; type_idx))
-            push!(edges, Tuple{Int, T}[(parent.id, t)])
+            push!(edges, _OneEdge{T}((parent.id, t)))
         end
     end
     return nothing
@@ -472,7 +493,7 @@ function collect_exposures(model::BranchingProcess, state::SimulationState)
     pre = length(state.individuals)
     T = _timetype(state)
     targets = Individual{T}[]
-    edges = Vector{Tuple{Int, T}}[]
+    edges = _OneEdge{T}[]
     for idx in state.active_ids
         parent = state.individuals[idx]
         for window in model.infectiousness
@@ -486,7 +507,7 @@ function collect_exposures(model::BranchingProcess, state::SimulationState)
         end
     end
     minted = view(state.individuals, (pre + 1):length(state.individuals))
-    return targets, edges, minted, trues(length(targets))
+    return targets, edges, minted, _AllNew(length(targets))
 end
 
 # A contact's infection time is the window's `from`-state time plus a draw
@@ -514,7 +535,7 @@ function _materialise_window!(
         contact = make_contact!(state, parent, t)
         _tag_window!(contact, until)
         push!(targets, contact)
-        push!(edges, Tuple{Int, T}[(parent.id, t)])
+        push!(edges, _OneEdge{T}((parent.id, t)))
     end
     return nothing
 end
@@ -531,7 +552,7 @@ function _materialise_window!(
             contact = make_contact!(state, parent, t; type_idx)
             _tag_window!(contact, until)
             push!(targets, contact)
-            push!(edges, Tuple{Int, T}[(parent.id, t)])
+            push!(edges, _OneEdge{T}((parent.id, t)))
         end
     end
     return nothing
@@ -626,7 +647,7 @@ Returns the ids the interventions asked to keep active."""
 function _intervene!(
         state::SimulationState,
         interventions::Vector{<:AbstractIntervention},
-        targets::Vector{<:Individual}, edges::Vector{<:Vector{<:Tuple}},
+        targets::Vector{<:Individual}, edges::AbstractVector{<:AbstractVector{<:Tuple}},
         minted, is_new
     )
     # Newly created contacts (already appended to state by make_contact!)
@@ -739,7 +760,7 @@ kept as a past episode; see [`close_episode!`](@ref)."""
 function _resolve!(
         model::TransmissionModel, state::SimulationState,
         interventions::Vector{<:AbstractIntervention},
-        targets::Vector{<:Individual}, edges::Vector{<:Vector{<:Tuple}},
+        targets::Vector{<:Individual}, edges::AbstractVector{<:AbstractVector{<:Tuple}},
         is_new, reinfections = Dict{Int, InfectionEpisode}(), kept = Int[]
     )
     newly_infected = _infect_targets!(
