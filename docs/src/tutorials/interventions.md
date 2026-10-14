@@ -406,8 +406,9 @@ nothing # hide
 
 The end is checked against the case's own infection time as well: a case
 infected after day 30 is not isolated. The end also stops isolations already
-under way. Once the simulation passes day 30, isolation no longer blocks any
-transmission, including from a case isolated on day 28. A scheduled vaccination
+under way. Once the simulation's clock, the latest infection so far, passes
+day 30, isolation no longer blocks any transmission, including from a case
+isolated on day 28. A scheduled vaccination
 instead checks each dose's own date, and a dose given keeps protecting after
 the schedule ends.
 
