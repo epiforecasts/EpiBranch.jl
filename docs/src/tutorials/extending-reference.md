@@ -35,7 +35,7 @@ underscore are internal.
 | Key | Type | Default | Set by | When set |
 |---|---|---|---|---|
 | `:infected` | `Bool` | `true` | Simulation | When infection is decided |
-| `:infection_route` | `Symbol` | — | Simulation (models with routes) | When infection is decided |
+| `:infection_route` | `Symbol` | — | Simulation (models with routes; `:external` for a case introduced from outside on any continuous-time model) | When infection is decided |
 | `:censor_until` | `Tuple` | `()` | Simulation (`BranchingProcess` with `Infectiousness` windows that name `until` states) | When a contact is created on a window with `until` states, which it names |
 | `:index` | `Bool` | `false` | Simulation (continuous-time models) | When the case's infector is fixed; `true` for a case infected from outside the population |
 | `:type` | `Int` | `1` | Simulation (multi-type) | When the contact is created |
