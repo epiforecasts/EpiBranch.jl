@@ -588,7 +588,7 @@ perfect isolation takes the case out of transmission entirely, whereas leaky
 isolation only reduces it. Listing `INTERVENTION_REMOVAL` asks each
 intervention when it removes the case (through `infectious_removal_time`).
 
-This is what makes routes worth separating. A community route lists it, so
+This is why routes are worth separating. A community route lists it, so
 isolating a case ends their community transmission; a household route does
 not, so the case goes on infecting the people they live with. The same applies
 to the reduction from leaky isolation, but not to a vaccine's protection, which
