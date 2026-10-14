@@ -69,8 +69,8 @@ struct _CacheProbe <: AbstractIntervention end
 
 # Implements only the least common of `_effect_hooks()`, to check the full set
 # is read rather than a subset headlined by `competing_risk`.
-struct _ActionsOnly <: AbstractIntervention end
-EpiBranch.intervention_actions(::_ActionsOnly, state, candidates) = nothing
+struct _ActionsHookOnly <: AbstractIntervention end
+EpiBranch.intervention_actions(::_ActionsHookOnly, state, candidates) = nothing
 
 # A `competing_risk` hook written with a trailing `args...`: a method a
 # four-argument call does reach, despite `methods` listing its own arity as
@@ -602,7 +602,7 @@ EpiBranch.interventions(m::_ProcessWithInterventions) = m.interventions
         ) match_mode = :any ModelSpec(bp; interventions = [_OwnHelpers.NoHooks()])
         # A hook outside `competing_risk`, at the right arity, is enough to
         # stay silent: the check reads the full set, not just `competing_risk`.
-        @test_logs ModelSpec(bp; interventions = [_ActionsOnly()])
+        @test_logs ModelSpec(bp; interventions = [_ActionsHookOnly()])
         # A trailing `args...` is reachable at the call's arity even though
         # `methods` reports its own arity as something other than `n`.
         @test_logs ModelSpec(bp; interventions = [BlockVariadic()])
@@ -726,7 +726,7 @@ EpiBranch.interventions(m::_ProcessWithInterventions) = m.interventions
         @test_logs ModelSpec(bp; interventions = [Scheduled(_OwnSeam(); start_time = 1.0)])
         @test_logs ModelSpec(bp; interventions = [_OwnSeam()])
         @test !EpiBranch.has_effect(_OwnHelpers.NoHooks())
-        @test EpiBranch.has_effect(_ActionsOnly())
+        @test EpiBranch.has_effect(_ActionsHookOnly())
         # `Isolation` implements several hooks properly and stays silent too.
         iso = Isolation(
             onset_to_isolation_delay = Exponential(1.0), duration = Inf
