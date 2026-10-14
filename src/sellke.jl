@@ -11,7 +11,7 @@
 # time itself when the kernel times from :infection, otherwise a state key).
 function _window_open(ind::Individual{T}, from::Symbol) where {T}
     return from === :infection ? ind.infection_time :
-        convert(T, get(ind.state, Symbol(from, :_time), T(Inf)))
+        convert(T, get(ind.state, Symbol(from, :_time), T(Inf)))::T
 end
 
 # Earliest of the `until` removal states' times (Inf if none reached).
@@ -26,7 +26,7 @@ _time_keys(states::Tuple) = map(s -> Symbol(s, :_time), states)
 function _close_at(ind::Individual{T}, keys::Tuple) where {T}
     t = T(Inf)
     for key in keys
-        t = min(t, convert(T, get(ind.state, key, T(Inf))))
+        t = min(t, convert(T, get(ind.state, key, T(Inf)))::T)
     end
     return t
 end
