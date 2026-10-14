@@ -706,8 +706,10 @@ defines `EpiBranch.intervention_actions(iv, state, candidates)` and returns
 `EpiBranch.InterventionAction(individual, time, effect!)` values.
 `effect!(individual, time, state)` records an action once admitted. Proposing
 can add people beyond the input, as group vaccination does when it finds every
-member of a group in which a case was found. Both kinds of model call it once
-per case and put what it returns through the schedule and capacity limits.
+member of a group in which a case was found. Branching processes call it once
+per case for every intervention, the continuous-time models only for one that
+opts in (see below), and both put what it returns through the schedule and
+capacity limits.
 
 `Scheduled` checks the proposed action time before delivery. A condition
 function sees that time as `state.max_infection_time`, with the current case
