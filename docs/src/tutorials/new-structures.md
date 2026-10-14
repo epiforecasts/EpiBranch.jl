@@ -638,7 +638,10 @@ simulate(ModelSpec(MyModel(...); observation = MinimumSize(2)))
 ```
 
 The observation is applied after the simulation, and `loglikelihood(data,
-spec)` reads it from the `ModelSpec`, as for `BranchingProcess`.
+spec)` reads it from the `ModelSpec`, as for `BranchingProcess`. A model with
+its own `simulate_once` is the exception: it calls
+`EpiBranch.apply_observation!(observation, state, rng)` itself at the end of
+the run, as `MixingProcess` does.
 
 ## Age- or group-structured mixing in a closed population
 
