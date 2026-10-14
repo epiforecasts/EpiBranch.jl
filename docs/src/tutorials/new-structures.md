@@ -89,7 +89,8 @@ state and is ended by its own `until` states. Two limits:
 
 ## Transmission routes
 
-On the continuous-time models a case can transmit over several routes at once,
+On a `RoutedNetwork`, or a continuous-time model of your own that passes
+routes to the simulation, a case can transmit over several routes at once,
 each open over a different stretch of its natural history and each ended by
 different events: a household route that lasts the whole infectious period, a
 community route cut short by isolation, a funeral route. A
