@@ -416,9 +416,11 @@ transitions and the interventions' `resolve_individual!`), and updates the
 running totals for you. A loop that does not use the race instead calls
 [`resolve_transitions!`](@ref EpiBranch.resolve_transitions!)`(state, individual)`
 once per case, after its population characteristics and intervention values
-are set. This runs the clinical transitions and records the timeline values
-(`:onset_time`, `:outcome_time`, ...) that the line list and the likelihoods
-read. `simulate` and `loglikelihood` on a `ModelSpec` call `simulate_once`
+are set, and then each intervention's
+[`resolve_individual!`](@ref EpiBranch.resolve_individual!)`(intervention,
+individual, state)`. The first runs the clinical transitions and records the
+timeline values (`:onset_time`, `:outcome_time`, ...) that the line list, the
+likelihoods and interventions such as `Isolation` read. `simulate` and `loglikelihood` on a `ModelSpec` call `simulate_once`
 with the spec's parts.
 
 A model whose population splits naturally into groups that can be simulated
