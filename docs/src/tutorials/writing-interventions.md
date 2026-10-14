@@ -188,8 +188,9 @@ In practice:
   declares `EpiBranch.continuous_actions(iv) = true`, and then only on a model
   that can name contacts. Such actions must work without knowing a contact's
   infection time, which is not yet drawn. Group vaccination declares it, and
-  so does ring vaccination unless it has a finite `eligibility_window`. [`MassVaccination`](@ref) does not: its rollout vaccinates each contact a
-  case makes, which on these models would mean offering a dose to the whole
+  so does ring vaccination when its `eligibility_window` is left at the
+  default. [`MassVaccination`](@ref) does not: its rollout vaccinates each
+  contact a case makes, which on these models would mean offering a dose to the whole
   population not yet infected. The simulation names an intervention it cannot
   honour in a warning, with the hooks it skips, and an intervention of your own
   needs no declaration for this.
