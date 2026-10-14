@@ -423,7 +423,8 @@ transitions and the interventions' `resolve_individual!`), and updates the
 running totals for you. For contact tracing and ring or group vaccination to
 act, the model also declares `EpiBranch.supplies_contacts(::MyModel) = true`
 and passes `sellke_race!` a `contacts` function naming each case's contacts;
-without them those interventions are reported as having no effect. A loop that does not use the race instead calls
+without them those interventions have no effect, and nothing warns about it.
+A loop that does not use the race instead calls
 [`resolve_transitions!`](@ref EpiBranch.resolve_transitions!)`(state, individual)`
 once per case, after its population characteristics and intervention values
 are set, and then each intervention's
