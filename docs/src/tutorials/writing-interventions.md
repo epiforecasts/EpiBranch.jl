@@ -43,11 +43,13 @@ generation:
 
 The index cases are settled in the same way before the first generation.
 
-The network, household and homogeneous models (the continuous-time models) have
+The network, household, homogeneous and mixing models (the continuous-time
+models) have
 no generations: they settle one case at a time, in order of infection time.
 Once a case's infection time is fixed, `on_infection_settled!` runs, then its
 clinical transitions and `resolve_individual!`. On a model that can name a
-case's contacts (a network or household model, not the homogeneous one),
+case's contacts (a network or household model, not the homogeneous or mixing
+one),
 `trace_contacts!`, `keep_active` and `intervention_actions` then act on the
 contacts not yet infected. The case then makes its potential infections, and
 `competing_risk` is asked about each as it is made.
@@ -133,19 +135,19 @@ remaining details for the continuous-time models.
 
 Not every hook is called by every model. A branching process creates a new
 `Individual` for every contact, infected or not. The continuous-time models
-(network, household, homogeneous) create everyone at the start and only work
+(network, household, homogeneous, mixing) create everyone at the start and only work
 out *when* each person is infected, from draws of the contact interval. What
 they do have is each potential infection, a drawn time for a named pair, and a
 `Risk` can act on that, as can the end of the infectious period.
 
-| Hook | Branching process | Continuous-time models (network, household, homogeneous) |
+| Hook | Branching process | Continuous-time models (network, household, homogeneous, mixing) |
 |---|---|---|
 | `initialise_individual!` | yes | yes |
 | `resolve_individual!` | yes | yes |
 | `competing_risk` | yes | yes |
 | `infectious_removal_time` | not read | yes |
 | `on_infection_settled!` | not called | yes |
-| `trace_contacts!` | yes | yes, where the model can name contacts (not homogeneous) |
+| `trace_contacts!` | yes | yes, where the model can name contacts (not homogeneous or mixing) |
 | `intervention_actions` | yes | where the model can name contacts, for an intervention that declares `continuous_actions` |
 | `keep_active` | yes | during tracing: chooses which traced contacts a ring grows from |
 | `apply_post_transmission!` (deprecated) | yes, with a warning | not called |
@@ -200,8 +202,8 @@ In practice:
   such as at a funeral (`contacts_from = :died` on a `RoutedNetwork` route).
   `time` is when each person became a contact, and `ContactTracing` starts that
   contact's trace delay no earlier than then. A network names a person's
-  neighbours and a household its members; the homogeneous model has no list of
-  who met whom, so tracing does not happen there.
+  neighbours and a household its members; the homogeneous and mixing models
+  have no list of who met whom, so tracing does not happen there.
 
 ### Order of steps on the two kinds of model
 

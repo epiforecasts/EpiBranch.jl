@@ -257,7 +257,7 @@ infection, instead of leaving them out.
 
 ## Continuous-time models: further details
 
-These points concern the network, household and homogeneous models, which
+These points concern the network, household, homogeneous and mixing models, which
 simulate a fixed population in continuous time (see [Which hooks run on which
 model](@ref)).
 

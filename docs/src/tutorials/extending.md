@@ -47,7 +47,7 @@ plain meaning here.
 | state | Each simulated person (`ind`, an [`Individual`](@ref)) has a dictionary `ind.state` of named values, such as `ind.state[:age]` or `ind.state[:isolated]`. The whole outbreak so far is a [`SimulationState`](@ref), usually called `state`. |
 | model (`ModelSpec`) | A transmission model together with its natural history (`progression`), population characteristics (`attributes`), interventions and observation. This is what you pass to `simulate` and `loglikelihood`. |
 | transmission model | Who can infect whom, and when: a branching process, a network, a household model. |
-| generation-based and continuous-time models | Branching processes are simulated one generation at a time. The network, household and homogeneous models simulate a fixed population in continuous time: everyone exists from the start, and the simulation works out when each person is infected (by the Sellke construction). Some hooks are called by only one kind. |
+| generation-based and continuous-time models | Branching processes are simulated one generation at a time. The network, household, homogeneous and structured-mixing (`MixingProcess`) models simulate a fixed population in continuous time: everyone exists from the start, and the simulation works out when each person is infected (by the Sellke construction). Some hooks are called by only one kind. |
 | contact interval (`kernel` in code) | The time from the start of a case's infectiousness to a contact that would infect if nothing intervened. |
 | `!` at the end of a name | The function changes its argument in place, as `abort_infection!(ind, t)` changes `ind`. |
 
@@ -343,7 +343,7 @@ Type the state argument as `state::SimulationState`, as above, so your method
 does not clash with the package's default one.
 
 !!! note "Stopping rules on continuous-time models"
-    The network, household and homogeneous models do not check `should_stop`
+    The network, household, homogeneous and mixing models do not check `should_stop`
     as they go: they run until transmission dies out or a time limit is
     reached. A rule
     that should be able to end such a run also defines
