@@ -428,9 +428,11 @@ independently, as a household model splits into households, defines
 [`EpiBranch.race_groups`](@ref)`(model, kernel)` to say how it splits for a
 given kernel, and its `simulate_once` runs one race per group. Each
 `sellke_race!` call sets `state.extinct` from its own group alone, so such a
-loop keeps whether every group died out and sets `state.extinct` to that after
-the last race; `HouseholdProcess` in the `EpiHouseholds` package is the worked
-example. A new kernel type can define the method for a given model to choose a
+loop reads `state.extinct` after each call, keeps whether every group died out
+(`extinct &= sellke_race!(...).extinct`), and sets `state.extinct = extinct`
+after the last race. `HouseholdProcess` in the `EpiHouseholds` package does
+the same through the internal `_sellke_race!`, which skips the per-call
+bookkeeping. A new kernel type can define the method for a given model to choose a
 different split:
 
 ```julia
