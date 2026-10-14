@@ -192,13 +192,16 @@ model that passes no routes gets one window, ended by intervention removal.
 
 The model also passes `watches`: one tuple of
 [`watched_records`](@ref EpiBranch.watched_records) per route, in route order,
-taken from each route's own kernel:
+taken from each route's own kernel, and `projections`, each route kernel's
+[`kernel_projection`](@ref EpiBranch.kernel_projection), which lets the
+simulation check that a kernel's rates move only when a record it watches does:
 
 ```julia
 EpiBranch.sellke_race!(
     state, members, rng, sim_opts;
     routes = routes, interventions = interventions, seed!,
     watches = Tuple(EpiBranch.watched_records(w.kernel) for (w, _) in routes),
+    projections = Tuple(EpiBranch.kernel_projection(w.kernel) for (w, _) in routes),
 )
 ```
 
