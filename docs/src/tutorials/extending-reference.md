@@ -72,7 +72,7 @@ underscore are internal.
 | `:onward_efficacy[_<label>]` | `Float64` | — | `RingVaccination` (varying `onward_efficacy`) | When a dose is admitted |
 | `:immunity_time[_<label>]` | `Float64` | — | `AbstractVaccination` | When a dose is admitted |
 | `:severity_efficacy[_<label>]` | `Float64` | — | `AbstractVaccination` | When a dose is admitted |
-| `:coverage_declined[_<label>]` | `Bool` | `false` | `GroupVaccination` | When a dose is admitted |
+| `:coverage_declined[_<label>]` | `Bool` | `false` | `GroupVaccination` | When a dose is offered and declined |
 | `:infection_aborted_time` | `Float64` | — | Simulation, through `abort_infection!` (for example by `RingVaccination`'s `post_exposure_efficacy`) | Any intervention hook |
 | `:capacity_admission_time_<capacity_key>` | `Float64` | — | `CapacityConstrained` | When an action is admitted |
 | `:_settled` | `Bool` | `false` | Simulation (continuous-time action delivery) | Once a case's own round of action discovery has run; internal, read through `is_settled` |
