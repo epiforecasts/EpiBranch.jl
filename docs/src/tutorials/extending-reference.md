@@ -57,35 +57,34 @@ underscore are internal.
 | `:_isolation_release_time_before_isolation` | `Float64` | — | `Isolation` | `resolve_individual!`; internal. The release time of an isolation already in place before this one |
 | `:_isolation_unrecorded_before_isolation` | `Bool` | — | `Isolation` | `resolve_individual!`; internal |
 | `:test_positive` | `Bool` | `false` | `Isolation` | `resolve_individual!` |
-| `:traced` | `Bool` | `false` | `ContactTracing` | `apply_post_transmission!` / `trace_contacts!` |
-| `:quarantined` | `Bool` | `false` | `ContactTracing` | `apply_post_transmission!` / `trace_contacts!` |
+| `:traced` | `Bool` | `false` | `ContactTracing` | `trace_contacts!` |
+| `:quarantined` | `Bool` | `false` | `ContactTracing` | `trace_contacts!` |
 | `:_traced_isolation_time` | `Float64` | `Inf` | `ContactTracing` → `Isolation` | Internal hand-over; may precede onset, so `Isolation` holds it back to onset |
-| `:trace_time` | `Float64` | — | `ContactTracing` | `apply_post_transmission!` / `trace_contacts!` |
-| `:_ring_remaining` | `Int` | `0` | `ContactTracing` (`depth > 1`) | `apply_post_transmission!` / `trace_contacts!`; internal |
+| `:trace_time` | `Float64` | — | `ContactTracing` | `trace_contacts!` |
+| `:_ring_remaining` | `Int` | `0` | `ContactTracing` (`depth > 1`) | `trace_contacts!`; internal |
 | `:_ring_propagated` | `Bool` | `false` | `ContactTracing` (`depth > 1`) | `trace_contacts!`; internal |
-| `:traced_by` | `Int` | — | `ContactTracing` | `apply_post_transmission!` / `trace_contacts!` |
+| `:traced_by` | `Int` | — | `ContactTracing` | `trace_contacts!` |
 | `:trace_level` | `Int` | — | `compute_trace_level!` | After the simulation |
-| `:vaccinated[_<label>]` | `Bool` | `false` | `AbstractVaccination` | Creation / `apply_post_transmission!` |
-| `:vaccination_time[_<label>]` | `Float64` | `Inf` | `AbstractVaccination` | `apply_post_transmission!` |
-| `:vaccine_efficacy[_<label>]` | `Float64` | — | `AbstractVaccination` | Creation / `apply_post_transmission!` |
-| `:post_exposure_efficacy[_<label>]` | `Float64` | — | `RingVaccination` (varying `post_exposure_efficacy`) | `apply_post_transmission!` |
-| `:onward_efficacy[_<label>]` | `Float64` | — | `RingVaccination` (varying `onward_efficacy`) | `apply_post_transmission!` |
-| `:immunity_time[_<label>]` | `Float64` | — | `AbstractVaccination` | `apply_post_transmission!` |
-| `:severity_efficacy[_<label>]` | `Float64` | — | `AbstractVaccination` | `apply_post_transmission!` |
-| `:coverage_declined[_<label>]` | `Bool` | `false` | `GroupVaccination` | `apply_post_transmission!` |
+| `:vaccinated[_<label>]` | `Bool` | `false` | `AbstractVaccination` | Creation / when a dose is admitted |
+| `:vaccination_time[_<label>]` | `Float64` | `Inf` | `AbstractVaccination` | When a dose is admitted |
+| `:vaccine_efficacy[_<label>]` | `Float64` | — | `AbstractVaccination` | Creation / when a dose is admitted |
+| `:post_exposure_efficacy[_<label>]` | `Float64` | — | `RingVaccination` (varying `post_exposure_efficacy`) | When a dose is admitted |
+| `:onward_efficacy[_<label>]` | `Float64` | — | `RingVaccination` (varying `onward_efficacy`) | When a dose is admitted |
+| `:immunity_time[_<label>]` | `Float64` | — | `AbstractVaccination` | When a dose is admitted |
+| `:severity_efficacy[_<label>]` | `Float64` | — | `AbstractVaccination` | When a dose is admitted |
+| `:coverage_declined[_<label>]` | `Bool` | `false` | `GroupVaccination` | When a dose is admitted |
 | `:infection_aborted_time` | `Float64` | — | Simulation, through `abort_infection!` (for example by `RingVaccination`'s `post_exposure_efficacy`) | Any intervention hook |
-| `:capacity_admission_time_<capacity_key>` | `Float64` | — | `CapacityConstrained` | `apply_post_transmission!` |
+| `:capacity_admission_time_<capacity_key>` | `Float64` | — | `CapacityConstrained` | When an action is admitted |
 | `:_settled` | `Bool` | `false` | Simulation (continuous-time action delivery) | Once a case's own round of action discovery has run; internal, read through `is_settled` |
 | `:_intervention_actions` | `Dict` | `Dict()` | Any intervention using the action protocol | `action_draw!`; internal. Each intervention's own draws for this person, so a draw is made once and reread |
-| `:reporting_time` | `Float64` | `Inf` | `Reporting` transition | `resolve_individual!` |
-| `:admitted` | `Bool` | `false` | `Hospitalisation` transition | `resolve_individual!` |
-| `:admission_time` | `Float64` | `Inf` | `Hospitalisation` transition | `resolve_individual!` |
+| `:reporting_time` | `Float64` | `Inf` | `Reporting` transition *or* `PerCaseObservation` | `resolve_individual!` / after the simulation; reset to `Inf` by `censor_after_outcome!` if it falls after `:outcome_time` |
+| `:admitted` | `Bool` | `false` | `Hospitalisation` transition | `resolve_individual!`; reset to `false` by `censor_after_outcome!` if `:admission_time` falls after `:outcome_time` |
+| `:admission_time` | `Float64` | `Inf` | `Hospitalisation` transition | `resolve_individual!`; reset to `Inf` by `censor_after_outcome!` if it falls after `:outcome_time` |
 | `:death_candidate_time` | `Float64` | `Inf` | `Death` transition | `resolve_individual!` |
 | `:recovery_candidate_time` | `Float64` | `Inf` | `Recovery` transition | `resolve_individual!` |
 | `:outcome` | `Symbol` | — | Any terminal transition (`Death`, `Recovery`, `Transition(...; terminal = true)`, your own) | `resolve_individual!` (terminal) |
 | `:outcome_time` | `Float64` | — | Any terminal transition (`Death`, `Recovery`, `Transition(...; terminal = true)`, your own) | `resolve_individual!` (terminal) |
-| `:reported` | `Bool` | `false` | `PerCaseObservation` *or* `Reporting` transition | After the simulation / `resolve_individual!` |
-| `:report_time` | `Float64` | — | `PerCaseObservation` | After the simulation |
+| `:reported` | `Bool` | `false` | `Reporting` transition *or* `PerCaseObservation` | `resolve_individual!` / after the simulation; reset to `false` by `censor_after_outcome!` if `:reporting_time` falls after `:outcome_time` |
 | `:cluster_theta` | `Float64` | — | `ClusterMixed` | First read in a simulation |
 | `:vaccine_acceptance` | `Float64` | — | `vaccine_acceptance` | Creation (default key; can be changed) |
 | `:infectious_time` | `Float64` | `Inf` | `Transition(:infectious, …)` | `resolve_individual!` |
@@ -93,10 +92,16 @@ underscore are internal.
 | `:susceptible_again_time` | `Float64` | `Inf` | `Transition(:susceptible_again, …)` | `resolve_individual!` |
 
 !!! warning "Reporting transition and per-case observation clash"
-    `:reported` is written both by the `Reporting` clinical transition (from
-    its probability) and by `PerCaseObservation` (after the simulation, from
-    its detection probability). Using both in the same simulation is not
-    supported, because each overwrites the other.
+    `:reported` and `:reporting_time` are written both by the `Reporting`
+    clinical transition, from its probability during the simulation, and by
+    the deprecated `PerCaseObservation`, from its detection probability after
+    the simulation. `Reporting` is the one the chain-size likelihood,
+    `chain_size_distribution` and `end_of_outbreak_probability` read. Both
+    leave `:reporting_time` at `Inf` for a case not reported, so
+    [`weekly_incidence`](@ref) with `by = :reporting` counts reported cases
+    the same way whichever wrote them. A model can use only one of them:
+    `simulate` stops with an error when `PerCaseObservation` finds `:reported`
+    already written by a transition.
 
 ### Vaccination keys
 
@@ -148,8 +153,8 @@ earlier stand. The check reads the `_time` keys a transition writes, so it
 covers a custom transition that records its time under a `_time` key, as the
 built-in ones do.
 
-On branching processes `apply_post_transmission!` runs before infection is
-decided, so an abort recorded there is set against a contact's provisional
+On branching processes `trace_contacts!` and admitted actions run before
+infection is decided, so an abort recorded there is set against a contact's provisional
 infection time, its earliest exposure. The key is removed and the onset
 restored when the contact turns out not to have been infected by an exposure
 before the abort: when no exposure infected it, or when it was infected by a
@@ -188,18 +193,17 @@ does record a late detection, such as a death found at burial.
 
 ### Tracing keys
 
-The tracing keys are written by two hooks, because the two kinds of model reach
-contacts differently: `apply_post_transmission!` on branching processes and
-`trace_contacts!` on the continuous-time models. Both use the same per-pair
-policy, so the keys and their meanings are the same either way; see [Which
-hooks run on which model](@ref).
+Both kinds of model write the tracing keys through `trace_contacts!`, once per
+case, so the keys and their meanings are the same either way; see [Which hooks
+run on which model](@ref).
 
-`:traced_by` is the person a contact was traced from: the *first*, from the
-earliest exposure, since each person is traced at most once.
+`:traced_by` is the person a contact was traced from: the latest case whose
+trace reached it. On a tree each contact has one infector, so that is the
+person who infected it.
 `compute_trace_level!` follows it back to the index case after the simulation
 to set `:trace_level` (the distance from the index case, which has level `0`).
 On a tree the level is exact. On a `NetworkProcess` with cycles it is the
-depth along the path by which the person was first traced, and **not**
+depth along the path by which the person was last traced, and **not**
 necessarily the shortest distance to the nearest index case; do not read it as
 one.
 
@@ -260,10 +264,8 @@ model](@ref)).
 - **Susceptibility and infectiousness.** These are fixed properties of the two
   people rather than events at a time, so the models build them into the
   timing of contacts: a multiplier `m` turns a pair's contact-interval survival
-  `S(t)` into `S(t)^m`, the homogeneous pool scales each susceptible's
-  resistance and weights each infectious person's share of the force of
-  infection, and the rate of introductions from outside is scaled the same
-  way. A multiplier of 0 never transmits and draws nothing. A fixed
+  `S(t)` into `S(t)^m`, and the rate of introductions from outside is scaled
+  the same way. A multiplier of 0 never transmits and draws nothing. A fixed
   proportional effect can use these per-person values, or an adjusted
   contact-interval distribution, instead of a risk, which avoids drawing
   contacts only to block them.
@@ -272,9 +274,8 @@ model](@ref)).
   which needs the window's remaining cumulative rate to be finite. A model
   stops with an `ArgumentError` when the contact-interval survival is zero at
   the end of the window: an unbounded window with an exponential contact
-  interval, or a bounded contact interval that ends inside the window. The
-  homogeneous pool needs finite removal times for every infectious person
-  when a contact is blocked. This happens even for a risk that might later let
+  interval, or a bounded contact interval that ends inside the window. This
+  happens even for a risk that might later let
   infection through, since the simulation cannot tell from a risk function
   whether contacts will ever stop. Give the infectious or introduction window a
   finite end with nonzero contact-interval survival at that end, or express a
@@ -605,6 +606,12 @@ have happened no earlier than the abort,
 matters most for a transition timed from before onset, since an infection
 ended early has no onset to time from.
 
+A transition that does not end the case is cut off by the case's outcome in the
+same way: [`EpiBranch.censor_after_outcome!`](@ref) undoes an event drawn after
+the case died or recovered. Such a transition passes
+`censor = min(infection_aborted_time(ind), outcome_time(ind))` to
+`transition_term`, so the term is censored at whichever came first.
+
 The second is a probability from [`exclusive_probabilities`](@ref). Its
 alternatives share one draw, so each returns the 0 or 1 that draw produced,
 while the likelihood needs the probability of the alternative the draw chose.
@@ -698,8 +705,8 @@ defines `EpiBranch.intervention_actions(iv, state, candidates)` and returns
 `EpiBranch.InterventionAction(individual, time, effect!)` values.
 `effect!(individual, time, state)` records an action once admitted. Proposing
 can add people beyond the input, as group vaccination does when it finds every
-member of a group in which a case was found. The intervention's generation hook
-calls `EpiBranch.apply_actions!`.
+member of a group in which a case was found. Both kinds of model call it once
+per case and put what it returns through the schedule and capacity limits.
 
 `Scheduled` checks the proposed action time before delivery. A condition
 function sees that time as `state.max_infection_time`, with the current case
@@ -754,7 +761,8 @@ case is traced. Interventions of your own opt in with
 `EpiBranch.continuous_actions(iv) = true`, and must work without the infection
 time of a contact whose infection is not yet final. Ring delivery supports an
 eligibility window with no end; group delivery uses known triggering cases. Scheduling and capacity work as on branching
-processes. Mass vaccination and the homogeneous pool are not supported here.
+processes. Mass vaccination is not supported here, and nor is
+`HomogeneousProcess`, which names no contacts.
 With several households, capacity needs `period = Inf` for one budget over the
 whole run. Finite periods are refused because each household is simulated
 separately, with its clock reset for the next. A single household supports
@@ -820,12 +828,14 @@ works for simulation has no closed form.
 
 | To add | You write | Used |
 |---|---|---|
-| An intervention | A type `<: AbstractIntervention` and hook methods | Each generation |
+| An intervention | A type `<: AbstractIntervention` and hook methods | Once per case, and per infector–contact pair for `competing_risk` |
 | Ending an infection early | `EpiBranch.abort_infection!(ind, time)` from an intervention hook | In that hook |
-| A vaccination | A type `<: AbstractVaccination` holding a `VaccineEffect`, with `vaccine_effect` and `apply_post_transmission!` | Each generation |
+| A vaccination | A type `<: AbstractVaccination` holding a `VaccineEffect`, with `vaccine_effect` and `intervention_actions` | Once per case |
 | A vaccine effect mode | A type `<: AbstractEffectMode` and `realised_efficacy`; `realise_prior_dose!` only to change what a dose recorded before the run gets | When a dose is recorded, or when a person is created |
 | A start date for an intervention | `Scheduled(iv; start_time = ...)`, with `intervention_time` and `reset!` for `iv` | After each hook |
-| A capacity limit | `CapacityConstrained(iv; budget_per_period = ...)`, with `capacity_key` and `capacity_time_key` for `iv` | `apply_post_transmission!` |
+| A condition that starts a schedule | A type `<: AbstractTrigger` with `is_triggered!`; `trigger_can_lapse` and `required_transitions` if the defaults do not fit | Each time the schedule is checked |
+| A capacity limit | `CapacityConstrained(iv; budget_per_period = ...)`, with `capacity_key` and `capacity_time_key` for `iv` | When actions are admitted, once per case |
+| An exact effect on the offspring distribution | `analytic_offspring_effect` for an intervention | Closed-form results on a `ModelSpec` |
 | A stopping rule | A type `<: AbstractStoppingRule` and `should_stop` | Each step |
 | A contact recorder | A type `<: ContactRecorder` and `records_contacts` | Continuous-time models, each proposal on a permanently blocked pair |
 | A terminal clinical transition | A type `<: AbstractClinicalTransition` with `is_terminal`, `terminal_event`, `terminal_target` | When a case is created |
@@ -836,7 +846,7 @@ works for simulation has no closed form.
 | An offspring specification | A type with `draw_offspring` and `chain_size_distribution` | Offspring draw and closed-form results |
 | A transmission model | A type `<: TransmissionModel` with `generate_offspring` (offspring-driven) or `initialise_state`, `contacts_of` and `collect_exposures` returning `gather_by_target` (structure-driven); optionally `single_type_offspring` and accessors | Simulation and closed-form results |
 | A transmission route | `RouteWindow(name; from, until, kernel, reach)` on a model that reads routes | Continuous-time models, each case |
-| Structured mixing in a closed population | `mixing_by` (a tuple of characteristic names) and `force(group, counts)` for the internal `_sellke_pool!` | Simulation |
+| Structured mixing in a closed population | `MixingProcess(; population_size, mixing_by, rate)`: the characteristics that define the groups, and the contact rate between one person in each of two groups | Simulation |
 | A clinical transition | A type `<: AbstractClinicalTransition` with `initialise_individual!` and `resolve_individual!`; `is_terminal`, `terminal_event` and `terminal_target` if terminal; `transition_loglik` to evaluate it | When a case is created |
 | A calendar schedule for a contact interval | A type with `calendar_multiplier`, and `next_calendar_break` or `calendar_shape(::YourSchedule) = SmoothCalendar()` | Simulation and likelihood |
 | A pairwise likelihood for a contact structure | A type `<: InfectionLayer` with `contact_structure`; `compile_contact_pairs` and `pairwise_surv_loglik` then apply | Likelihood |
