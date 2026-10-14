@@ -554,9 +554,10 @@ end
 ```
 
 [`ContactTracing`](@ref) with `depth > 1` is the built-in intervention that
-uses this: it keeps the uninfected members of a ring in the simulation for as
-many steps as the ring's depth, so a second-level ring reaches the contacts of
-contacts that ring vaccination then targets.
+uses this: it keeps the uninfected members of a ring in the simulation for one
+generation fewer than the ring's depth (one more generation at `depth = 2`),
+so a second-level ring reaches the contacts of contacts that ring vaccination
+then targets.
 
 ## Scheduling an intervention
 
