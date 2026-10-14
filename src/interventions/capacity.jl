@@ -96,7 +96,7 @@ come, first served by the day they were traced. Someone who was not traced
 comes last, after everyone traced at the same point of the simulation.
 """
 function default_capacity_priority(individual, state)
-    t = get(individual.state, :trace_time, NaN)
+    t = _state_real(individual.state, :trace_time, NaN)
     return isnan(t) ? Inf : t
 end
 

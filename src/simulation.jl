@@ -1122,7 +1122,8 @@ function _create_individual(
         chain_id::Int, next_id::Int, inf_time::Real
     )
     T = _timetype(state)
-    s = Dict{Symbol, Any}(:infected => false)
+    s = IndividualState{T}()
+    s[:infected] = false
 
     # Build `Individual{T}` directly (not the keyword constructor) so the type
     # matches `state.individuals`, whatever `T` is: seed cases pass a plain
@@ -1664,7 +1665,7 @@ present on the individual.
 """
 function _set_onset_from_incubation!(ind::Individual)
     haskey(ind.state, :incubation_period) || return nothing
-    inc = ind.state[:incubation_period]
+    inc = _state_real(ind.state, :incubation_period, NaN)
     ind.state[:onset_time] = isnan(inc) || _infection_aborted(ind) ? NaN :
         ind.infection_time + inc
     return nothing

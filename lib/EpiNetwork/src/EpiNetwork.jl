@@ -13,7 +13,7 @@ using Random
 import EpiBranch: population_size, new_state, add_individuals!, apply_observation!,
     simulate_once, SimOpts, infectious_from,
     _honours_termination_controls, _validate_process_windows,
-    _warn_uncovered_terminal_states
+    _warn_uncovered_terminal_states, _state_real
 # The infection layer is built and read out of a simulation by EpiBranch's
 # helpers, which close each node's window where the simulator's race does. The
 # simulator and the likelihood share EpiBranch's community-hazard helpers as

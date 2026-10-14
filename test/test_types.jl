@@ -15,7 +15,51 @@
         @test ind.susceptibility == 1.0
         @test ind.infectiousness == 1.0
         @test isempty(ind.secondary_case_ids)
-        @test ind.state isa Dict{Symbol, Any}
+        @test ind.state isa AbstractDict{Symbol, Any}
+    end
+
+    @testset "Individual state store" begin
+        s = EpiBranch.IndividualState{Float64}()
+        s[:onset_time] = 2.5
+        s[:age] = 30
+        s[:traced] = true
+        s[:label] = "a"
+        # Each value comes back as the type it was stored as.
+        @test s[:onset_time] === 2.5
+        @test s[:age] === 30
+        @test s[:traced] === true
+        @test s[:label] == "a"
+        @test length(s) == 4
+        @test collect(keys(s)) == [:onset_time, :age, :traced, :label]
+        # Overwriting moves a key between a time and any other value.
+        s[:onset_time] = missing
+        @test s[:onset_time] === missing
+        s[:age] = 31.0
+        @test s[:age] === 31.0
+        @test get(s, :absent, :none) === :none
+        @test get(() -> 0, s, :absent) == 0
+        @test get!(s, :count, 1) == 1 && s[:count] == 1
+        @test get!(() -> 2, s, :count) == 1
+        @test_throws KeyError s[:absent]
+        @test pop!(s, :count) == 1 && !haskey(s, :count)
+        @test pop!(s, :absent, nothing) === nothing
+        delete!(s, :label)
+        @test !haskey(s, :label) && length(s) == 3
+        # A copy is independent of the original.
+        c = copy(s)
+        c[:age] = 0.0
+        @test s[:age] === 31.0
+        @test isequal(Dict(s), Dict{Symbol, Any}(:onset_time => missing, :age => 31.0, :traced => true))
+        empty!(s)
+        @test isempty(s)
+        # A value of another number type keeps its own type.
+        d = EpiBranch.IndividualState{Float32}()
+        d[:t] = 1.0
+        @test d[:t] === 1.0
+        d[:t] = 1.0f0
+        @test d[:t] === 1.0f0
+        @test EpiBranch._state_real(d, :t, Inf) === 1.0f0
+        @test EpiBranch._state_real(d, :absent, Inf) === Inf32
     end
 
     @testset "Individual with state" begin

@@ -828,7 +828,7 @@ end
 # unconditional call would dispatch dynamically for every vaccinated
 # contact of a dose that cannot abort.
 function _abort_infection!(rv::RingVaccination, contact, vacc_t, rng)
-    incubation = get(contact.state, :incubation_period, NaN)
+    incubation = _state_real(contact.state, :incubation_period, NaN)
     isnan(incubation) && return nothing
     post = _post_exposure_efficacy(rv, contact)
     post > 0.0 || return nothing
