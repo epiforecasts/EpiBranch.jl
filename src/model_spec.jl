@@ -103,7 +103,11 @@ end
 # separately for each: a union that names the type covers it the way a method
 # for the type itself would. `<:` alone says the opposite, since a union is a
 # subtype of neither member.
-_member_types(p::Type) = p isa Union ? Base.uniontypes(p) : (p,)
+function _member_types(p::Type)
+    body = Base.unwrap_unionall(p)
+    body isa Union || return (p,)
+    return map(u -> Base.rewrap_unionall(u, p), Base.uniontypes(body))
+end
 function _covers(p::Type, bound::Type)
     return any(_member_types(p)) do u
         any(b -> u <: b, _member_types(bound))
@@ -114,9 +118,25 @@ end
 # the short `nameof`: `nameof` has no method for a `Union`, which a hook shared
 # by two intervention types leaves here, and it strips the parameters from a
 # parametric type, which would print `Shield{Float64}` and `Shield` alike and
-# leave the warning naming the same type twice.
+# leave the warning naming the same type twice. A whole parametric family,
+# `Shield` for every `T`, is named the same way as a plain type.
 function _hook_type_name(p::Type)
-    return p isa DataType && isempty(p.parameters) ? string(nameof(p)) : string(p)
+    body = Base.unwrap_unionall(p)
+    return body isa DataType && p === body.name.wrapper ? string(nameof(body)) :
+        string(p)
+end
+
+# The intervention type a hook method was written for: its first parameter,
+# with the method's own type variables kept. Unwrapping the signature alone
+# leaves `Shield{T}` with `T` free, which no `Shield{Float64}` is a subtype of,
+# so a hook written `where {T}` would match nothing and two such methods would
+# never cover each other. `nothing` where that parameter is not a type, as
+# with a hook written with every argument variadic.
+function _hook_param(mm::Method)
+    p = Base.unwrap_unionall(mm.sig).parameters[2]
+    p isa TypeVar && (p = p.ub)
+    p isa Type || return nothing
+    return Base.rewrap_unionall(p, mm.sig)
 end
 
 # The type a shadowing method of the hook's name was written for, and the
@@ -147,9 +167,8 @@ function _shadowing_hook(f, T::Type, arities)
         length(params) < 2 && continue
         Base.isvarargtype(params[end]) && continue
         (length(params) - 1) in arities || continue
-        p = params[2]
-        p isa TypeVar && (p = p.ub)
-        p isa Type || continue
+        p = _hook_param(mm)
+        p === nothing && continue
         p === AbstractIntervention && continue
         p <: AbstractIntervention && T <: p && return (p, mm.module)
     end
@@ -172,9 +191,8 @@ function _reaches_own_method(f, T::Type, bound::Type, arities)
             (length(params) - 1) in arities
         end
         called || return false
-        p = params[2]
-        p isa TypeVar && (p = p.ub)
-        p isa Type || return false
+        p = _hook_param(mm)
+        p === nothing && return false
         return _covers(p, bound)
     end
 end
@@ -193,9 +211,8 @@ function _unreachable_own_method(f, T::Type, base::Type, arities)
     for mm in methods(f, Tuple{T, Vararg{Any}})
         params = Base.unwrap_unionall(mm.sig).parameters
         length(params) < 2 && continue
-        p = params[2]
-        p isa TypeVar && (p = p.ub)
-        p isa Type || continue
+        p = _hook_param(mm)
+        p === nothing && continue
         (p !== base && p <: base) || continue
         called = if Base.isvarargtype(params[end])
             any(n -> n + 1 >= length(params) - 1, arities)
@@ -228,9 +245,8 @@ function _standin_own_method(f, T::Type, base::Type, arities)
     for mm in methods(f, Tuple{T, Vararg{Any}})
         params = Base.unwrap_unionall(mm.sig).parameters
         length(params) < 2 && continue
-        p = params[2]
-        p isa TypeVar && (p = p.ub)
-        p isa Type || continue
+        p = _hook_param(mm)
+        p === nothing && continue
         (p !== base && p <: base) || continue
         called = if Base.isvarargtype(params[end])
             any(n -> n + 1 >= length(params) - 1, arities)

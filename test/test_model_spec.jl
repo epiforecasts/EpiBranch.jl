@@ -222,6 +222,23 @@ EpiBranch.competing_risk(::_ParamStray{Int}, parent, contact, state) =
 competing_risk(::_ParamStray{Float64}, parent, contact, state) =
     Risk(block_probability = 1.0)
 
+# The same two mistakes with the hooks written `where {D}`, which leaves each
+# method's first parameter holding a type variable of its own.
+struct _WhereStray{D} <: AbstractIntervention
+    delay::D
+end
+EpiBranch.initialise_individual!(::_WhereStray{D}, ind, state) where {D} = nothing
+competing_risk(::_WhereStray{D}, parent, contact, state) where {D} =
+    Risk(block_probability = 1.0)
+
+struct _WhereOverload{D} <: AbstractIntervention
+    delay::D
+end
+EpiBranch.competing_risk(::_WhereOverload{D}, parent, contact, state) where {D} =
+    Risk(block_probability = 1.0)
+EpiBranch.competing_risk(::_WhereOverload{D}, parent, contact) where {D} =
+    Risk(block_probability = 1.0)
+
 # An intervention family in a base module with its concrete types in a
 # sibling, which is how the extending guide teaches subtyping: the stray
 # method is written where the family is, not where the type is, so the module
@@ -664,6 +681,13 @@ EpiBranch.interventions(m::_ProcessWithInterventions) = m.interventions
             :warn,
             r"defines a method of competing_risk for _ParamStray\{Float64\}",
         ) match_mode = :any ModelSpec(bp; interventions = [_ParamStray(2.0)])
+        # Written `where {D}`, the unprefixed hook is still found, and a
+        # convenience overload is still covered by the type's own hook.
+        @test_logs (
+            :warn,
+            r"defines a method of competing_risk for _WhereStray",
+        ) match_mode = :any ModelSpec(bp; interventions = [_WhereStray(2.0)])
+        @test_logs ModelSpec(bp; interventions = [_WhereOverload(2.0)])
         # The module named is the one the stray method was written in, not
         # the one the intervention type lives in.
         @test_logs (
