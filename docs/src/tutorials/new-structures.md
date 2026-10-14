@@ -766,8 +766,9 @@ subtyping `ObservationModel` with up to two methods:
    `DiscreteUnivariateDistribution`.
 2. `apply_observation!(::YourObservation, state, rng)`, for simulation: mark
    the observed cases on a finished simulation, by setting `:reported` on each
-   case. Every simulation calls it, and the chain sizes of a simulation count
-   only the cases it marks.
+   case. Every simulation calls it, and the simulation-based chain-size
+   likelihood counts only the cases it marks (`chain_statistics` still
+   reports every infected case).
 
 Here chains larger than a cap are never observed, so the observed sizes follow
 the true chain-size distribution truncated at the cap and renormalised. This is
