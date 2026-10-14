@@ -214,7 +214,7 @@ function _route_contacts(
         if w.contacts_from === :infection
             t = T(-Inf)
         else
-            t = convert(T, get(ind.state, Symbol(w.contacts_from, :_time), T(Inf)))
+            t = convert(T, get(ind.state, Symbol(w.contacts_from, :_time), T(Inf)))::T
             (isfinite(t) && window_close(ind, w, interventions) > t) || continue
         end
         for nb in w.reach[i]
@@ -282,6 +282,7 @@ function simulate_once(
         state, collect(1:model.n), rng, sim_opts;
         routes = routes, interventions = interventions,
         watches = Tuple(EpiBranch.watched_records(w.kernel) for w in windows),
+        projections = Tuple(EpiBranch.kernel_projection(w.kernel) for w in windows),
         risks = EpiBranch.transmission_risks(model), recorder = recorder,
         seed! = (best, members, r) -> _seed_network!(
             best, members, state, model.external_hazard, sim_opts.n_initial, Tobs, r;

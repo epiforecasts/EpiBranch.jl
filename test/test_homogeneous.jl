@@ -41,6 +41,42 @@ struct DoseAndTrace <: EpiBranch.AbstractIntervention end
 EpiBranch.apply_post_transmission!(::DoseAndTrace, state, new_contacts) = nothing
 EpiBranch.traces_contacts(::DoseAndTrace) = true
 EpiBranch.trace_contacts!(::DoseAndTrace, state, infector, contacts) = nothing
+# Written for both engines: `apply_post_transmission!` for the generation
+# engine, `on_infection_settled!` for the continuous-time race. Neither traces,
+# so this is honoured through the settled hook alone.
+struct DoseAndSettle <: EpiBranch.AbstractIntervention end
+EpiBranch.apply_post_transmission!(::DoseAndSettle, state, new_contacts) = nothing
+EpiBranch.on_infection_settled!(::DoseAndSettle, ind, state, rng) = nothing
+# Written for both engines like `DoseAndSettle`, but also grows a ring through
+# `keep_active`. That hook's own counterpart is `trace_contacts!`, so the
+# settled hook must not paper over a ring the pool cannot grow.
+struct DoseSettleAndTrace <: EpiBranch.AbstractIntervention end
+EpiBranch.apply_post_transmission!(::DoseSettleAndTrace, state, new_contacts) = nothing
+EpiBranch.on_infection_settled!(::DoseSettleAndTrace, ind, state, rng) = nothing
+EpiBranch.keep_active(::DoseSettleAndTrace, state, targets, is_new) = ()
+EpiBranch.traces_contacts(::DoseSettleAndTrace) = true
+EpiBranch.trace_contacts!(::DoseSettleAndTrace, state, infector, contacts) = nothing
+# Reaches its targets only through the action-producer path: `continuous_actions`
+# opts in, and it defines neither `apply_post_transmission!` nor `keep_active`
+# of its own, so `_generation_hooks` has nothing to name.
+struct DoseThroughActions <: EpiBranch.AbstractIntervention end
+EpiBranch.continuous_actions(::DoseThroughActions) = true
+# The same action-producer path as `DoseThroughActions`, but also defines
+# `apply_post_transmission!` of its own. `_generation_hooks` has something to
+# name here, but naming only that would miss `intervention_actions`, which
+# this branch always reaches.
+struct DoseThroughActionsAndSettle <: EpiBranch.AbstractIntervention end
+EpiBranch.continuous_actions(::DoseThroughActionsAndSettle) = true
+EpiBranch.apply_post_transmission!(::DoseThroughActionsAndSettle, state, new_contacts) =
+    nothing
+# Discovers its own actions, like `MassVaccination`, but without declaring
+# `continuous_actions`: the race never delivers what it discovers, and
+# `_generation_hooks` has nothing to name either, since it defines neither
+# `apply_post_transmission!` nor `keep_active` of its own.
+struct DiscoverWithoutContinuous <: EpiBranch.AbstractIntervention end
+function EpiBranch.intervention_actions(::DiscoverWithoutContinuous, state, candidates)
+    return EpiBranch.InterventionAction[]
+end
 
 # The same leaky vaccine with its arguments typed, as the style guide asks for.
 struct LeakyVaccineTyped <: EpiBranch.AbstractIntervention
@@ -365,6 +401,91 @@ end
                 rng = StableRNG(1), n_initial = 2
             )
         end
+        # A method of its own for `on_infection_settled!` is `apply_post_transmission!`'s
+        # continuous-time counterpart, so this is honoured and warns about nothing,
+        # even though the pool still never calls `apply_post_transmission!` itself.
+        @test EpiBranch._sellke_honours(prog_pool, DoseAndSettle())
+        @test_logs min_level = Base.CoreLogging.Warn simulate(
+            ModelSpec(prog_pool; progression = prog, interventions = [DoseAndSettle()]);
+            rng = StableRNG(1), n_initial = 2
+        )
+        # The settled hook covers only `apply_post_transmission!`; `keep_active`
+        # still needs its own counterpart, `trace_contacts!`, honoured, and the
+        # pool cannot do that, so this stays unhonoured despite the settled hook.
+        @test !EpiBranch._sellke_honours(prog_pool, DoseSettleAndTrace())
+        @test_logs (:warn, r"DoseSettleAndTrace"i) match_mode = :any simulate(
+            ModelSpec(prog_pool; progression = prog, interventions = [DoseSettleAndTrace()]);
+            rng = StableRNG(1), n_initial = 2
+        )
+        # Naming is scoped to the hook the race actually skips: the settled
+        # hook still reaches `apply_post_transmission!`, so only `keep_active`
+        # is named rather than the whole intervention.
+        @test EpiBranch._unhonoured_hooks(prog_pool, DoseSettleAndTrace()) == [:keep_active]
+        # Wrapping in `CapacityConstrained` must not lose the settled-hook
+        # exemption: the wrapper only overrides `apply_post_transmission!`
+        # itself, forwarding `continuous_actions`, `on_infection_settled!` and
+        # `keep_active` unchanged, so the wrapped intervention is still
+        # honoured through its own settled hook.
+        cc = CapacityConstrained(DoseAndSettle(); budget_per_period = 1.0)
+        @test EpiBranch._sellke_honours(prog_pool, cc)
+        @test EpiBranch._unhonoured_hooks(prog_pool, cc) == Symbol[]
+        # Wrapping `DoseSettleAndTrace` keeps it unhonoured for the right
+        # reason: its `keep_active`, forwarded unchanged, still needs
+        # `trace_contacts!`, which the pool cannot supply.
+        cc_trace = CapacityConstrained(DoseSettleAndTrace(); budget_per_period = 1.0)
+        @test !EpiBranch._sellke_honours(prog_pool, cc_trace)
+        @test EpiBranch._unhonoured_hooks(prog_pool, cc_trace) == [:keep_active]
+        # Nesting `Scheduled` inside `CapacityConstrained` must not be mistaken
+        # for an action producer: `Scheduled`'s own `intervention_actions`
+        # method is only the blanket forwarding every `InterventionWrapper`
+        # inherits, so discovery must unwrap past it to `Isolation`, which has
+        # no such method at all.
+        cc_scheduled = CapacityConstrained(
+            Scheduled(
+                Isolation(onset_to_isolation_delay = 1.0, duration = 5.0);
+                start_time = 1.0
+            );
+            budget_per_period = 1.0
+        )
+        @test !EpiBranch._discovers_actions(cc_scheduled)
+        # An intervention reached only through the action-producer path is
+        # still named, rather than reported with an empty hook list, since the
+        # pool cannot name contacts for `intervention_actions` to act on.
+        @test !EpiBranch._sellke_honours(prog_pool, DoseThroughActions())
+        @test EpiBranch._unhonoured_hooks(prog_pool, DoseThroughActions()) ==
+            [:intervention_actions]
+        @test_logs (:warn, r"intervention_actions"i) match_mode = :any simulate(
+            ModelSpec(prog_pool; progression = prog, interventions = [DoseThroughActions()]);
+            rng = StableRNG(1), n_initial = 2
+        )
+        # Defining `apply_post_transmission!` alongside the action-producer
+        # path must not crowd `intervention_actions` out of the naming: the
+        # pool still cannot name contacts for it to act on, whatever else
+        # `_generation_hooks` finds.
+        @test !EpiBranch._sellke_honours(prog_pool, DoseThroughActionsAndSettle())
+        @test EpiBranch._unhonoured_hooks(prog_pool, DoseThroughActionsAndSettle()) ==
+            [:intervention_actions, :apply_post_transmission!]
+        @test_logs (:warn, r"intervention_actions"i) match_mode = :any simulate(
+            ModelSpec(
+                prog_pool; progression = prog,
+                interventions = [DoseThroughActionsAndSettle()]
+            );
+            rng = StableRNG(1), n_initial = 2
+        )
+        # An intervention that discovers its own actions without declaring
+        # `continuous_actions`, like `MassVaccination`, is unhonoured for the
+        # same reason and must be named the same way, not reported with an
+        # empty hook list.
+        @test !EpiBranch._sellke_honours(prog_pool, DiscoverWithoutContinuous())
+        @test EpiBranch._unhonoured_hooks(prog_pool, DiscoverWithoutContinuous()) ==
+            [:intervention_actions]
+        @test_logs (:warn, r"intervention_actions"i) match_mode = :any simulate(
+            ModelSpec(
+                prog_pool; progression = prog,
+                interventions = [DiscoverWithoutContinuous()]
+            );
+            rng = StableRNG(1), n_initial = 2
+        )
         # The package's own interventions that the pool honours warn about nothing.
         onsets = clinical_presentation(
             incubation_period = LogNormal(-1.0, 0.3),
@@ -770,6 +891,16 @@ end
         @test EpiBranch._timetype(state) === Float64
         @test :date_infectious in propertynames(ll)
         @test :date_recovered in propertynames(ll)
+    end
+
+    @testset "contacts() lists every infector-infectee pair the race settled" begin
+        m = ModelSpec(HomogeneousProcess(; transmission_rate = 2.0, population_size = 200))
+        state = simulate(m; rng = StableRNG(1), n_initial = 5)
+        df = contacts(state)
+        @test size(df, 1) == count(!=(0), linelist(state).parent_id)
+        @test all(df.infected)
+        expected = Set((ind.parent_id, ind.id) for ind in state.individuals if ind.parent_id != 0)
+        @test Set(zip(df.from, df.to)) == expected
     end
 
     @testset "transmission_rate is the transmission parameter" begin

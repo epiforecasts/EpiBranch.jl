@@ -356,6 +356,33 @@ struct ModelSpec{P <: TransmissionModel, A, O, C}
     recorder::C
 end
 
+# The `start_after` triggers a composed intervention holds, looked for through
+# any wrapper around it.
+_triggers_of(::AbstractIntervention) = ()
+_triggers_of(w::InterventionWrapper) = _triggers_of(w.intervention)
+_triggers_of(s::Scheduled) = (s.triggers..., _triggers_of(s.intervention)...)
+
+# Warn when a trigger needs a transition the model's `progression` does not
+# hold. The keys a trigger reads are written by the progression, so without
+# the transition the gate stays shut for the whole run and the intervention
+# never acts, with nothing to say so.
+function _warn_unmet_trigger_requirements(interventions, progression)
+    for iv in interventions
+        for trigger in _triggers_of(iv)
+            for needed in required_transitions(trigger)
+                any(t -> t isa needed, progression) && continue
+                @warn "$(nameof(typeof(trigger))) needs a " *
+                    "$(nameof(needed)) transition in `progression` to read " *
+                    "the state it counts, and this model has none, so the " *
+                    "schedule it starts will never open and the " *
+                    "intervention it wraps will never act." trigger =
+                    typeof(trigger) required = needed
+            end
+        end
+    end
+    return nothing
+end
+
 """
     ModelSpec(process; progression, interventions, attributes, observation, recorder)
 
@@ -384,6 +411,7 @@ function ModelSpec(
     _warn_incomplete_terminal_coverage(prog)
     ivs = _intervention_vector(interventions)
     _validate_dose_schedule(ivs)
+    _warn_unmet_trigger_requirements(ivs, prog)
     _warn_inert_interventions(ivs)
     return ModelSpec(process, prog, ivs, attributes, observation, recorder)
 end

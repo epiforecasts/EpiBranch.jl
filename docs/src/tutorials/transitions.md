@@ -1,9 +1,8 @@
 # Clinical transitions
 
-What happens to each case after infection: when do symptoms start, when is the
-case reported, is it admitted to hospital, and does it recover or die? Each
-case follows a disease timeline of events, each happening a delay after an
-earlier one. You describe the timeline as a list of events called
+Each case follows a disease timeline after infection: symptom onset, reporting,
+maybe admission to hospital, and recovery or death. Each event happens a delay
+after an earlier one. You describe the timeline as a list of events called
 `progression` and give it to a [`ModelSpec`](@ref) alongside the transmission
 process. Control measures (isolation, contact tracing, vaccination) go in the
 model's `interventions`; the course of disease goes in its `progression`.
@@ -62,7 +61,7 @@ of about 2.8 days. `Exponential(θ)` has mean θ days. Each row of the line list
 is a case, with the date of each event it reached and its final outcome.
 
 `Reporting` and `Hospitalisation` draw their own time independently of
-`Death` and `Recovery`, so a draw can fall after the case's outcome — a
+`Death` and `Recovery`, so a draw can fall after the case's outcome, although a
 report or an admission cannot happen to a person who has already died or
 recovered. The engine resets such an event to "did not occur"
 (`:reported`/`:admitted` back to `false`, their time back to `Inf`): see
@@ -85,8 +84,9 @@ model = ModelSpec(
 state = simulate(model; max_cases = 200, rng = StableRNG(42))
 ```
 
-A case not admitted still recovers from onset as before; `Death`'s own
-anchor is simply unreached for it, so it never enters that race.
+A case not admitted still recovers from onset as before: `Death` is
+chained from `:admission_time`, which that case never reaches, so it never
+enters that race.
 
 ## Asymptomatic cases
 
@@ -210,15 +210,11 @@ first(linelist(state)[:, [:id, :date_onset, :tested, :date_tested, :date_reporti
 Cases without a test have no report. In each row, the test date follows
 onset and the report date follows the test.
 
-!!! warning "`from` takes an event for `Transition` and a time for the others"
-    `Transition` takes the name of the earlier event (`from = :onset`,
-    `from = :tested`). `Reporting`, `Hospitalisation`, `Death` and `Recovery`
-    take the name of its recorded time (`from = :onset_time`,
-    `from = :tested_time`). A mix-up gives no error:
-    `Transition(...; from = :tested_time)` never happens, and
-    `Reporting(...; from = :tested)` reads the yes/no record as day 0 or
-    day 1, so every case is reported as if timed from the start of the
-    outbreak.
+!!! note "`from` accepts either the event or its recorded time"
+    `Transition`, `Reporting`, `Hospitalisation`, `Death` and `Recovery`
+    resolve `from` the same way: `from = :onset` and `from = :onset_time`
+    both read `:onset_time`; `from = :infection` reads the case's
+    infection time.
 
 The general `Transition` covers any event in the timeline: it takes the name
 of the event, `from` (the earlier event it is timed from, by default
@@ -507,10 +503,9 @@ function EpiBranch.censor_after_outcome!(::AntiviralTreatment, ind)
 end
 ```
 
-That's the whole extension surface. Three ingredients (the shared
-`ind.state` dict, callable probability/delay, optional terminal
-arbitration) are enough for the cases covered here: independent
-parallel draws, sequential chains, treatment-conditional outcomes,
+The shared `ind.state` dict, a callable probability or delay, and optional
+terminal arbitration cover the patterns shown here: independent parallel
+draws, sequential chains, treatment-conditional outcomes, and
 capacity-dependent rates.
 
 To write your own kind of event, with its own likelihood, see

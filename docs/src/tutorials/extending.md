@@ -170,13 +170,15 @@ check.
 
 `:reported` and `:reporting_time` are shared between the `Reporting`
 clinical transition (which sets them from a probability gate during the
-run) and `PerCaseObservation` (which sets them post-simulation from a
-detection-probability draw). Both routes leave `:reporting_time` at `Inf`
-for a case that was not reported, so [`weekly_incidence`](@ref)'s
-`by = :reporting` counts reported cases the same way whichever route
-produced them. A model can use only one of them: `simulate` throws an
-`ArgumentError` when `PerCaseObservation` finds `:reported` already
-recorded by a progression transition.
+run) and the deprecated `PerCaseObservation` (which sets them
+post-simulation from a detection-probability draw). `Reporting` is the one
+per-case reporting route: the chain-size likelihood, `chain_size_distribution`
+and `end_of_outbreak_probability` all read it directly. Both routes leave
+`:reporting_time` at `Inf` for a case that was not reported, so
+[`weekly_incidence`](@ref)'s `by = :reporting` counts reported cases the same
+way whichever route produced them. A model can use only one of them:
+`simulate` throws an `ArgumentError` when `PerCaseObservation` finds
+`:reported` already recorded by a progression transition.
 
 Isolation is recorded under `:isolation_time`, with `:isolation_release_time`
 alongside it for when the block lapses; `set_isolated!` takes that release as
@@ -210,7 +212,7 @@ reached it. On a tree each contact has one infector, so that is its parent.
 `compute_trace_level!` walks it back to the index case post-simulation to set
 `:trace_level` (distance from the index, anchor `0`). On a tree the level is
 exact; on a cyclic `NetworkProcess` it is the depth along the path a node was
-last traced on, **not** a guaranteed shortest distance to the nearest index — do not
+last traced on, **not** a guaranteed shortest distance to the nearest index. Do not
 read it as one.
 
 Built-in keys use short bare names like `:isolated`, `:traced`, `:age`, and
@@ -367,8 +369,9 @@ The generation engine used to hand a whole generation's contacts to
 with a method of its own for it is still handed the batch, with a deprecation
 warning, and its `keep_active` is then asked about the whole batch. It runs at
 its place in the list: the interventions before it have been through every
-case's hooks, and those after it see what it wrote. What it did to each contact moves to `trace_contacts!`,
-and any action with a delivery date to `intervention_actions`. Once it does,
+case's hooks, and those after it see what it wrote. Moving off it means writing
+its effect on each contact as `trace_contacts!`, and any action with a delivery
+date as `intervention_actions`. Once it does,
 its `keep_active` is asked per case, about that case's contacts, after its
 `trace_contacts!` and `intervention_actions` for the case have run.
 
@@ -378,8 +381,8 @@ The hooks above are not all available everywhere, because the engines are
 built differently. The generation-based engine creates a fresh `Individual`
 for every contact, infected or not. The continuous-time (Sellke) models have no
 such objects: every node exists from the start and the simulation only settles
-*when* each is infected, by a race between contact-interval draws. What they do
-have is the potential infection itself, a drawn time for a named pair, so a
+*when* each is infected, by a race between contact-interval draws. They still
+have the potential infection itself: a drawn time for a named pair, so a
 `Risk` has a place there too, alongside the infectious window.
 
 | Hook | Generation engine | Continuous-time race (network, household, homogeneous) |
@@ -407,7 +410,7 @@ What this means in practice:
   against the time they propose it for. A blocked contact does not transmit and
   the contact process carries on: the pair's next contact is drawn from its own
   hazard conditioned on falling later. Blocking each contact with probability
-  `p` therefore thins the force of infection to `(1 - p)` of it, so a pair with
+  `p` thins the force of infection to `(1 - p)` of it, so a pair with
   a one-day mean contact interval and a two-day infectious period infects
   `1 - exp(-1) = 0.63` of the time at efficacy 0.5.
 - Per-individual susceptibility and infectiousness reach the same thinning by a
@@ -491,13 +494,26 @@ What this means in practice:
   the continuous-time models only if it declares `continuous_actions`.
   `MassVaccination`'s rollout doses each contact a case makes, which the race
   would have to offer the whole pending population, so it does not declare it
-  and is reported there. One that reaches its targets through `keep_active`,
-  or through the deprecated `apply_post_transmission!`, is reported too. You
-  need not declare any of this: when your type has a method of its own for one
-  of these hooks, the continuous-time models name it in their warning. The
-  exception is an intervention that also traces contacts (`traces_contacts`
-  returns `true`); it is honoured on a model that can name a case's contacts
-  and reported on one that cannot, such as `HomogeneousProcess`.
+  and is reported there, unless it also traces contacts (`traces_contacts`
+  returns `true`): it is then honoured on a model that can name a case's
+  contacts and reported on one that cannot, such as `HomogeneousProcess`, even
+  though the undeclared actions themselves still go undelivered.
+- An intervention that reaches its targets through `apply_post_transmission!`
+  or `keep_active` — `MassVaccination`'s rollout doses each new contact as the
+  engine creates it — has nothing to act on when no contacts are created. You
+  need not declare this: when your type has a method of its own for either
+  hook, the continuous-time models name it in their warning, unless your type
+  also defines that hook's continuous-time counterpart and leaves
+  `continuous_actions` at its default. `on_infection_settled!` is taken as
+  `apply_post_transmission!`'s counterpart; [Ending an infection
+  early](#Ending-an-infection-early) below defines the two together, to treat
+  the same case the moment each engine can reach it. A type that also defines
+  its own `continuous_actions` forgoes that counterpart, whatever the method
+  returns for a given configuration: the warning depends on whether the type
+  defines its own method, not on what that method returns.
+  `trace_contacts!` is taken as `keep_active`'s counterpart the same way, but
+  needs a model that can name a case's contacts: it is honoured on a model
+  that can and reported on one that cannot, such as `HomogeneousProcess`.
 - **Contact tracing** spans the two. Its action is a removal, so it applies
   on both, but it needs to know who a case's contacts were. The generation
   engine knows that from the contacts each case made; the continuous-time
@@ -528,7 +544,7 @@ Ordering guarantees:
 
 - `resolve_individual!` runs on a case before it makes any contact. A competing risk can read whatever `resolve_individual!` wrote on the infector.
 - A case's `trace_contacts!`, `intervention_actions` and `keep_active` run before any of its contacts is decided infected or not, so a competing risk can read whatever they wrote on the contact (e.g. `:vaccination_time`).
-- Every intervention's `trace_contacts!` for a case runs before any intervention's `intervention_actions` for it, so an action producer such as `RingVaccination` reads what tracing wrote, whatever the order of the stack.
+- Every intervention's `trace_contacts!` for a case runs before any intervention's `intervention_actions` for it; an action producer such as `RingVaccination` therefore reads what tracing wrote, whatever the order of the stack.
 - Otherwise interventions are applied in the order they appear in `interventions = [...]`, and each sees the state written by earlier interventions for the same case.
 - `keep_active` runs before the contacts are decided infected or not. A contact it returns that is then infected is active as a case anyway.
 
@@ -770,6 +786,64 @@ Then a user schedules the intervention like:
 # Activate border closure on day 10
 Scheduled(BorderClosure(0.0, 0.05); start_time = 10.0)
 ```
+
+#### A custom trigger
+
+`start_after` opens the schedule on a condition rather than a date, and takes
+any subtype of [`AbstractTrigger`](@ref). The built-in [`Infections`](@ref)
+and [`ReportedCases`](@ref) are two; a trigger of your own works without any
+change to `Scheduled`. One method is required and two traits have defaults:
+
+- **`is_triggered!(trigger, state)`** — whether the condition holds
+  now. The same trigger object is reused across the repeated runs of
+  `simulate(model, n)`, so keep no state on it between calls and derive any
+  running count from `state` afresh. The engine asks the gate about 1.7 times
+  per individual, so a count that walks the population on every call, as
+  `ReportedCases` has to, makes a run quadratic in the number of individuals;
+  a count the engine already keeps, as `Infections` reads `cumulative_cases`,
+  costs nothing.
+- **`trigger_can_lapse(trigger)`** — whether the condition, once
+  true, can turn false again as the clock advances. The default is the
+  conservative `true`. Return `false` for a condition that holds for good, as
+  `Infections` and `ReportedCases` both do: neither the case count nor the
+  number of reports already due can fall. The default is not free, so answer
+  it rather than leaving it: a schedule that can close speaks for none of the
+  isolation releases its intervention recorded, and the likelihood loses
+  them.
+- **`required_transitions(trigger)`** — the transition types the trigger needs
+  the model's `progression` to hold, `()` by default. `ModelSpec` warns, naming
+  the trigger, when a model does not hold one: without the transition that
+  writes the state the trigger reads, the gate stays shut for the whole run.
+  `ReportedCases` names `Reporting`, and answers `()` at `n = 0`, where the
+  gate opens before any report exists. Answer per instance where the
+  threshold decides it, as that does.
+
+```julia
+struct TwentyOnsets <: EpiBranch.AbstractTrigger end
+
+function EpiBranch.is_triggered!(::TwentyOnsets, state)
+    return count(
+        ind -> onset_time(ind) <= state.max_infection_time, state.individuals
+    ) >= 20
+end
+
+Scheduled(BorderClosure(0.0, 0.05); start_after = TwentyOnsets())
+```
+
+`TwentyOnsets` keeps the default `trigger_can_lapse`, because an onset time is
+drawn again when a host is reinfected and the count can therefore fall.
+
+!!! warning "What a trigger can and cannot declare"
+    `required_transitions` covers the progression, not the population
+    characteristics. `TwentyOnsets` above reads `:onset_time`, which
+    [`clinical_presentation`](@ref) supplies, and there is no way to name
+    that: on a model built without it the trigger reads `NaN` from every
+    `onset_time`, counts nobody and leaves the border open for the whole run,
+    with nothing to say so. Nor can a trigger use `required_fields`, which
+    `Scheduled` answers for the intervention it wraps and which is checked
+    against the keys attributes put on the seed case, before any transition
+    has run. Check for the key in `is_triggered!` if you want to hear about
+    it.
 
 ### Making the intervention capacity-constrained
 
@@ -1039,10 +1113,10 @@ struct AgeDetection
     minimum_age::Float64
 end
 (rule::AgeDetection)(rng, ind) = ind.state[:age] >= rule.minimum_age ? 1.0 : 0.0
-age_observation = PerCaseObservation(detection_prob = AgeDetection(50.0))
+age_reporting = Reporting(delay = Dirac(0.0), probability = AgeDetection(50.0))
 ```
 
-A callable observation anchor takes only `ind`, and a callable `Scheduled`
+A callable `Reporting` anchor (`from`) takes only `ind`, and a callable `Scheduled`
 predicate takes the simulation state. Scalar and distribution inputs retain
 their usual meanings wherever those forms are supported.
 
@@ -1082,9 +1156,10 @@ reporting_attributes = [groups(50; key = :household),
         group_key = :household)]
 reporting_model = ModelSpec(BranchingProcess(Poisson(0.5), Exponential(5.0));
     attributes = reporting_attributes,
-    observation = PerCaseObservation(
-        detection_prob = (rng, ind) -> ind.state[:reporting_probability],
-        from = :infection_time))
+    progression = [Reporting(
+        delay = Dirac(0.0),
+        probability = (rng, ind) -> ind.state[:reporting_probability],
+        from = ind -> ind.infection_time)])
 reporting_state = simulate(reporting_model; n_initial = 10, rng = StableRNG(42))
 ```
 
@@ -1690,11 +1765,11 @@ infection-time order, rather than the generation-based engine) receives the
 composed layers as arguments instead: define
 [`EpiBranch.simulate_once`](@ref)`(m::MyModel, sim_opts; interventions,
 attributes, progression, observation, recorder, rng)`, read the layers off the
-arguments, and derive any window state you need — the infectious window's
-`from`, say, via [`EpiBranch.infectious_from`](@ref)`(progression)` — there.
+arguments, and derive any window state you need (the infectious window's
+`from`, say, via [`EpiBranch.infectious_from`](@ref)`(progression)`) there.
 `simulate` calls this once, or repeatedly when a `condition` is given, so your
 method takes no `condition`/`max_attempts` of its own. Drive the race with
-[`EpiBranch.sellke_race!`](@ref), passing it `sim_opts` so it resolves
+[`EpiBranch.sellke_race!`](@ref) and pass it `sim_opts`; it resolves
 `max_time` and reconciles the run's aggregate bookkeeping for you. The
 continuous-time household and network processes are the worked examples;
 `ModelSpec` routes `simulate` and `loglikelihood` to `simulate_once` for you.
@@ -1738,7 +1813,7 @@ An observation model is composed onto your process with a `ModelSpec`, like any
 other layer — your model stores nothing and defines nothing:
 
 ```julia
-simulate(ModelSpec(MyModel(...); observation = PerCaseObservation(detection_prob = 0.7)))
+simulate(ModelSpec(MyModel(...); observation = MinimumSize(2)))
 ```
 
 The engine applies the observation after the run, and `loglikelihood(data,
@@ -1768,7 +1843,7 @@ it as two pieces:
 
 A group is always the *tuple* of `mixing_by` values, so it stays a tuple even
 when there is a single attribute. Under `mixing_by = (:age_band,)` a member of
-band `b` has group `(b,)`, not bare `b`, so inside `rate` you read the band out
+band `b` has group `(b,)`, not bare `b`; inside `rate` you read the band out
 with `group[1]`. That one wrinkle is what usually trips people up on a first
 read.
 

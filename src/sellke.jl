@@ -11,7 +11,7 @@
 # time itself when the kernel times from :infection, otherwise a state key).
 function _window_open(ind::Individual{T}, from::Symbol) where {T}
     return from === :infection ? ind.infection_time :
-        convert(T, get(ind.state, Symbol(from, :_time), T(Inf)))
+        convert(T, get(ind.state, Symbol(from, :_time), T(Inf)))::T
 end
 
 # Earliest of the `until` removal states' times (Inf if none reached).
@@ -26,7 +26,7 @@ _time_keys(states::Tuple) = map(s -> Symbol(s, :_time), states)
 function _close_at(ind::Individual{T}, keys::Tuple) where {T}
     t = T(Inf)
     for key in keys
-        t = min(t, convert(T, get(ind.state, key, T(Inf))))
+        t = min(t, convert(T, get(ind.state, key, T(Inf)))::T)
     end
     return t
 end
@@ -153,12 +153,36 @@ function _has_own_method(f, T::Type, base::Type, n::Int)
     end
 end
 
-# Whether an intervention reaches its targets through a hook the race calls only
-# from inside a tracing walk (`keep_active`), or not at all (the deprecated
-# batch hook).
-function _has_generation_hook(iv::AbstractIntervention)
-    return _uses_batch_hook(iv) ||
-        _has_own_method(keep_active, typeof(iv), AbstractIntervention)
+# The intervention whose own method for `f` would actually run: an
+# `InterventionWrapper` that does not override `f` only inherits its blanket
+# forwarding to `w.intervention` (that method is declared on
+# `InterventionWrapper` itself, not the concrete wrapper). Judging ownership
+# against the wrapper's type would therefore credit it with a method it never
+# wrote. `CapacityConstrained` overrides `apply_post_transmission!` to gate it
+# on its budget, but leaves `continuous_actions`, `on_infection_settled!` and
+# `keep_active` to that forwarding; unwrapping for those three hooks reaches
+# the wrapped intervention's own method instead.
+function _hook_owner(f, iv::AbstractIntervention)
+    while iv isa InterventionWrapper && !_has_own_method(f, typeof(iv), InterventionWrapper)
+        iv = iv.intervention
+    end
+    return iv
+end
+
+# The generation-only hooks an intervention implements a method of its own
+# for, named so a warning can say exactly which ones the race skips rather
+# than claiming the intervention itself does nothing. `apply_post_transmission!`
+# goes through `_uses_batch_hook` rather than `_hook_owner`, since
+# `CapacityConstrained` always defines its own method for it (to gate the batch
+# hook when its wrapped intervention is still on it), and `_uses_batch_hook`
+# already asks the wrapped intervention instead of crediting that gate to it.
+function _generation_hooks(iv::AbstractIntervention)
+    hooks = Symbol[]
+    _uses_batch_hook(iv) && push!(hooks, :apply_post_transmission!)
+    _has_own_method(
+        keep_active, typeof(_hook_owner(keep_active, iv)), AbstractIntervention
+    ) && push!(hooks, :keep_active)
+    return hooks
 end
 
 # Whether an intervention discovers actions of its own, which the race delivers
@@ -640,19 +664,44 @@ end
 # part. The deprecated `apply_post_transmission!` acts on a batch of freshly
 # created contact objects, and a race that settles one pre-existing node at a
 # time never builds those. `keep_active` is read, but only from inside a tracing
-# walk (`_trace_from!` asks it which contacts the ring grows from), so an
-# intervention that answers it and does not trace has nothing to call it. So an
-# intervention with a method of its own for either hook is taken to reach its
-# targets that way, and reported as unhonoured, unless it also traces contacts.
-# Actions from `intervention_actions` are discovered on the race only for an
-# intervention declaring `continuous_actions`, because the race offers them to
-# pending members whose infection times it does not know yet; one that does not
-# declare it is reported. The checks read the methods themselves, so an
-# intervention written outside the package is reported without declaring
-# anything. `MassVaccination`'s rollout, for one, doses each contact a case
-# makes, which the race would have to offer the whole pending population, so on
-# the continuous-time path nobody is ever dosed and the efficacy risk it
-# contributes never blocks.
+# walk (`_trace_from!` asks it which contacts the ring grows from); an
+# intervention that answers it without tracing has nothing to call it. An
+# intervention with a method of its own for either hook is therefore taken to
+# reach its targets that way, and reported as unhonoured, unless it has a
+# continuous-time counterpart: a method of its own for `on_infection_settled!`,
+# called once a case's infection time is fixed, stands in for
+# `apply_post_transmission!`, which an intervention written for both engines
+# defines alongside it to treat the same case the moment each engine can;
+# `trace_contacts!` stands in for `keep_active` the same way, but needs a model
+# that can name a case's contacts as well. Actions from `intervention_actions`
+# are discovered on the race only for an intervention declaring
+# `continuous_actions`, because the race offers them to pending members whose
+# infection times it does not know yet; one that does not declare it is
+# reported, unless it also traces contacts, since tracing still reaches a model
+# that names contacts even though its actions go undelivered. The checks read
+# the methods themselves, so an intervention written outside the package is
+# reported without declaring anything. `MassVaccination`'s rollout, for one,
+# doses each contact a case makes, which the race would have to offer the whole
+# pending population; on the continuous-time path nobody is therefore ever
+# dosed, and the efficacy risk it contributes never blocks.
+#
+# The settled-hook shortcut yields to a method of the intervention's own for
+# `continuous_actions`: that already answers, for its own configuration,
+# whether `apply_post_transmission!`'s mechanism has a continuous-time
+# counterpart, and a settled hook written for an unrelated feature must not
+# override it. An intervention with its own `continuous_actions` method
+# forgoes the shortcut, whatever that method returns for a given
+# configuration. Both checks are judged against `_hook_owner`, not `iv`
+# itself: a wrapper such as `CapacityConstrained`, which leaves
+# `continuous_actions` and `on_infection_settled!` to `InterventionWrapper`'s
+# forwarding, is judged by the intervention it wraps, while its own override
+# of `apply_post_transmission!` still counts as its own.
+#
+# The settled hook stands in only for `apply_post_transmission!`; `keep_active`
+# still needs its own counterpart, `trace_contacts!`. An intervention that doses
+# through a settled hook and *also* grows a ring through `keep_active` is
+# therefore unhonoured wherever that ring cannot trace, even though its dosing
+# alone would pass.
 #
 # Tracing needs one thing more: the model has to be able to name the contacts a
 # case reached, which is what `supplies_contacts` reports. A graph names a node's
@@ -665,10 +714,52 @@ function _sellke_honours(model, iv::AbstractIntervention)
     # Its actions go undelivered, but tracing still reaches a model that names
     # contacts.
     _discovers_actions(iv) && return traces_contacts(iv) && supplies_contacts(model)
-    _has_generation_hook(iv) || return true
+    hooks = _generation_hooks(iv)
+    isempty(hooks) && return true
+    cont_T = typeof(_hook_owner(continuous_actions, iv))
+    settled_T = typeof(_hook_owner(on_infection_settled!, iv))
+    if !_has_own_method(continuous_actions, cont_T, AbstractIntervention) &&
+            _has_own_method(on_infection_settled!, settled_T, AbstractIntervention)
+        :keep_active in hooks || return true
+    end
     return traces_contacts(iv) && supplies_contacts(model)
 end
 _sellke_honours(model, s::Scheduled) = _sellke_honours(model, s.intervention)
+
+# The hooks of `iv` the continuous-time race actually skips, for naming in
+# `_warn_unhonoured_interventions`: the same shortcuts `_sellke_honours` takes
+# drop a hook from this list the moment its counterpart covers it, so an
+# intervention honoured through `on_infection_settled!` never gets
+# `apply_post_transmission!` named, since it already reaches that hook.
+function _unhonoured_hooks(model, iv::AbstractIntervention)
+    hooks = _generation_hooks(iv)
+    if continuous_actions(iv)
+        supplies_contacts(model) && return Symbol[]
+        # This branch always reaches `intervention_actions`, independently of
+        # whatever generation hooks `iv` also defines; name it alongside them
+        # rather than letting it go unnamed whenever `iv` happens to define
+        # one too.
+        return [:intervention_actions; hooks]
+    end
+    # An intervention that discovers its own actions without declaring
+    # `continuous_actions` has no generation hook to name either, but is
+    # still unhonoured unless tracing reaches it, so it needs the same
+    # `intervention_actions` naming as the branch above.
+    _discovers_actions(iv) &&
+        return traces_contacts(iv) && supplies_contacts(model) ? Symbol[] :
+        [:intervention_actions]
+    isempty(hooks) && return hooks
+    cont_T = typeof(_hook_owner(continuous_actions, iv))
+    settled_T = typeof(_hook_owner(on_infection_settled!, iv))
+    if !_has_own_method(continuous_actions, cont_T, AbstractIntervention) &&
+            _has_own_method(on_infection_settled!, settled_T, AbstractIntervention)
+        hooks = filter(!=(:apply_post_transmission!), hooks)
+    end
+    traces_contacts(iv) && supplies_contacts(model) &&
+        (hooks = filter(!=(:keep_active), hooks))
+    return hooks
+end
+_unhonoured_hooks(model, s::Scheduled) = _unhonoured_hooks(model, s.intervention)
 
 """
     supplies_contacts(model) -> Bool
@@ -768,25 +859,28 @@ end
 # Warn once (per `simulate` call) when a continuous-time model is handed
 # interventions it cannot honour, so the limitation is loud rather than silent.
 # Gated on `_honours_termination_controls`, which is `false` for exactly the
-# structure-driven models that run their own Sellke loop.
+# structure-driven models that run their own Sellke loop. Names the hooks the
+# race skips rather than the intervention itself, since an intervention
+# reported here may still act through `competing_risk`, `resolve_individual!`,
+# `infectious_removal_time` or `on_infection_settled!`.
 function _warn_unhonoured_interventions(model, interventions)
     _honours_termination_controls(model) && return nothing
     unhonoured = unique(
         String[
-            string(nameof(typeof(iv)))
+            "$(nameof(typeof(iv))) ($(join(_unhonoured_hooks(model, iv), ", ")))"
                 for iv in interventions if !_sellke_honours(model, iv)
         ]
     )
     isempty(unhonoured) && return nothing
     @warn "$(nameof(typeof(model))) is a continuous-time model that settles one " *
-        "pre-existing case at a time, and cannot offer these interventions the " *
-        "contacts or actions they act through: " *
-        "$(join(unhonoured, ", ")). It does not honour what they do through " *
-        "those hooks, which will have no effect; what they do as each " *
-        "individual is initialised or resolved, and the risks they put on " *
-        "each contact, still apply. Express such control as a removal " *
+        "pre-existing case at a time, so it never creates the batches of new " *
+        "contacts the generation engine's post-transmission hooks act on; it " *
+        "does not honour the named hooks, which will have no effect: " *
+        "$(join(unhonoured, ", ")). What they do as each individual is " *
+        "initialised or resolved, and the risks they put on each contact, " *
+        "still apply. Express such control as a removal " *
         "`Transition` in the progression, or through an intervention that acts " *
-        "when each individual is initialised, resolved, or traced."
+        "when each individual is initialised, resolved, settled, or traced."
     return nothing
 end
 
@@ -835,6 +929,16 @@ single-window shorthand has no named route and writes nothing.
 watches nothing draws from hazards fixed for the run and its contacts are never
 redrawn; `nothing`, the default, is a model with no such kernel at all.
 
+`projections` names each route's projection in the same order, as
+[`kernel_projection`](@ref EpiBranch.kernel_projection) reports it, or
+`nothing` for a route with no live kernel. A route with a projection is
+tracked even when it watches nothing: after a case's interventions resolve,
+the race re-projects every host a pending or future draw still reads and
+compares the result against what it read last, throwing when it has changed
+without any of the route's declared `watches` moving — the declaration is
+checked rather than trusted. `nothing`, the default, is a model with no such
+kernel at all.
+
 `introduction`, when given, is the `(kernel, until)` of the community hazard the
 model seeded its members from: the contact-interval distribution of an
 introduction from outside the population, and the time the introduction window
@@ -876,8 +980,8 @@ function _sellke_race!(
         rng::AbstractRNG; seed!, targets = nothing,
         from::Union{Symbol, Nothing} = nothing, until::Union{Tuple, Nothing} = nothing,
         routes = nothing, interventions = (), contacts = nothing, risks = (),
-        introduction = nothing, watches = nothing, max_time = Inf,
-        recorder::ContactRecorder = NoContactRecorder()
+        introduction = nothing, watches = nothing, projections = nothing,
+        max_time = Inf, recorder::ContactRecorder = NoContactRecorder()
     )
     # A model either passes `routes`, a collection of `(RouteWindow, targets)`
     # pairs, or the single-route shorthand `from`/`until`/`targets`. The
@@ -932,8 +1036,17 @@ function _sellke_race!(
     # own kernel reads it.
     route_keys = _route_watch_keys(watches, length(rts))
     watched_keys = _watched_union(route_keys)
-    live = !isempty(watched_keys)
-    live_route = Bool[!isempty(keys) for keys in route_keys]
+    # A route with a live projection is tracked even when it watches nothing:
+    # declaring no key is a claim that nothing can move its hazard, and the
+    # race holds the kernel to that claim (`_check_undeclared_read!`) rather
+    # than drawing from it unchecked.
+    route_projections = _route_projections(projections, length(rts))
+    route_names = Tuple(w.name for (w, _) in rts)
+    live_route = Bool[
+        !isempty(route_keys[ri]) || route_projections[ri] !== nothing
+            for ri in eachindex(route_keys)
+    ]
+    live = any(live_route)
     key_routes = [
         [ri for ri in eachindex(route_keys) if key in route_keys[ri]]
             for key in watched_keys
@@ -946,6 +1059,11 @@ function _sellke_race!(
             _remember(_watched_value(state.individuals[id], key))
             for key in watched_keys, id in members
         ] : Matrix{Any}(undef, 0, 0)
+    # The full record each route's projection read last from a host with a
+    # pending or future draw, kept only for a route that has one.
+    full_snapshot = [
+        proj === nothing ? Any[] : Any[nothing for _ in 1:m] for proj in route_projections
+    ]
 
     T = eltype(best)
     # A popped entry is final unless the risks block it: every other pending
@@ -1014,6 +1132,7 @@ function _sellke_race!(
     race = (;
         pending, proposals, head, best, represents, processed, pos, state, rng,
         watch, snapshot, watched_keys, may_block, max_time,
+        route_projections, full_snapshot,
     )
     for k in 1:m
         best[k] < Inf || continue
@@ -1114,6 +1233,7 @@ function _sellke_race!(
             ind.parent_id = infector.id
             ind.generation = infector.generation + 1
             ind.chain_id = infector.chain_id
+            push!(infector.secondary_case_ids, ind.id)
             # Only a model with named routes reports one. The single-window
             # shorthand has one window covering the whole model, so its name
             # identifies the model, where `:infection_route` is meant to
@@ -1154,7 +1274,8 @@ function _sellke_race!(
         # inline below, from the records as they now stand.
         if live && _records_changed!(
                 snapshot, watched_keys, key_routes, state, members,
-                j, bt, watch, openings, processed
+                j, bt, watch, openings, processed,
+                full_snapshot, route_projections, route_names
             )
             orphans += _redraw_moved!(
                 pending, proposals, head, best, represents,
@@ -1177,9 +1298,13 @@ function _sellke_race!(
             push!(openings, _RouteOpening(members[j], ri, open_t, close_t))
             opening_id = length(openings)
             live && _watch_opening!(watch, j, live_route[ri])
+            if live_route[ri]
+                proj = route_projections[ri]
+                proj === nothing || (full_snapshot[ri][j] = _remember(proj(ind)))
+            end
             _propose_along!(
                 route_targets, race, members[j], opening_id, open_t, close_t,
-                traits, live_route[ri]
+                traits, live_route[ri], ri
             )
         end
     end
@@ -1197,10 +1322,14 @@ _pending_beyond(route_targets, race) = false
 # pairs with a contact inside the window without drawing every pair, such as
 # mass action (`_MassAction`), has a method of its own.
 function _propose_along!(
-        route_targets, race, infector_id, opening_id, open_t, close_t, traits, live
+        route_targets, race, infector_id, opening_id, open_t, close_t, traits, live, ri
     )
-    (; state, rng, pos, processed, watch, snapshot, watched_keys) = race
+    (;
+        state, rng, pos, processed, watch, snapshot, watched_keys,
+        route_projections, full_snapshot,
+    ) = race
     infector = state.individuals[infector_id]
+    proj = route_projections[ri]
     for (target_id, kernel) in route_targets(infector_id, state)
         k = get(pos, target_id, 0)
         (k == 0 || processed[k]) && continue
@@ -1210,6 +1339,9 @@ function _propose_along!(
             _watch_target!(watch, opening_id, k)
             _refresh_host!(
                 snapshot, watched_keys, state.individuals[target_id], k
+            )
+            proj === nothing || (
+                full_snapshot[ri][k] = _remember(proj(state.individuals[target_id]))
             )
         end
         # Both per-individual traits are rate multipliers on this
@@ -1247,9 +1379,9 @@ aggregate bookkeeping (`cumulative_cases`, `max_infection_time`, `extinct`)
 from the per-individual state the race wrote directly, before returning
 `state`. A model with its own simulation loop calls this rather than
 `_sellke_race!` itself, so it never has to resolve `max_time` or reconcile the
-bookkeeping by hand. `kwargs` are `_sellke_race!`'s own — `seed!`, `targets` or
+bookkeeping by hand. `kwargs` are `_sellke_race!`'s own (`seed!`, `targets` or
 `routes`, `from`, `until`, `interventions`, `contacts`, `risks`,
-`introduction`, `watches`, `recorder` — everything but `max_time`, which this
+`introduction`, `watches`, `recorder`), everything but `max_time`, which this
 wrapper sets.
 
 A model with more than one natural race partition (a household process, over
@@ -1334,6 +1466,22 @@ function _watched_union(route_keys)
     return declared
 end
 
+# The projection each route's kernel reads through, one per route in route
+# order, or `nothing` for a route with no live kernel. Mirrors
+# `_route_watch_keys`, since the race checks a kernel's `watches` against what
+# its own projection actually reads.
+function _route_projections(projections, nroutes::Int)
+    projections === nothing && return fill(nothing, nroutes)
+    projs = collect(projections)
+    length(projs) == nroutes || throw(
+        ArgumentError(
+            "`projections` must name the projection of each of the $nroutes " *
+                "routes (got $(length(projs)))"
+        )
+    )
+    return projs
+end
+
 # The hosts whose records a pending or future draw of a live kernel reads: the
 # infectors of openings still open and the unsettled members those openings
 # reach. Only these are compared after a case settles, each once however many
@@ -1380,8 +1528,9 @@ function _untrack_at!(w::_LiveWatch, idx)
 end
 
 # Every opening takes a slot, so an opening's position in `openings` is its
-# position here. A route that watches nothing takes its slot and no more: its
-# contacts are never redrawn, so nothing reads its hosts.
+# position here. A route neither watching a key nor holding a projection
+# takes its slot and no more: its contacts are never redrawn and nothing of
+# its hosts is read.
 function _watch_opening!(w::_LiveWatch, infector, watched::Bool)
     push!(w.source, infector)
     push!(w.reach, Int[])
@@ -1407,7 +1556,8 @@ end
 # check.
 function _records_changed!(
         snapshot, watched_keys, key_routes, state, members, case, now,
-        w::_LiveWatch, openings, processed
+        w::_LiveWatch, openings, processed,
+        full_snapshot = nothing, route_projections = nothing, route_names = nothing
     )
     _refresh_host!(snapshot, watched_keys, state.individuals[members[case]], case)
     kept = 0
@@ -1436,6 +1586,10 @@ function _records_changed!(
             continue
         end
         ind = state.individuals[members[k]]
+        # The routes this host's own moved keys already explain, so the
+        # undeclared-read check below compares only a route none of them
+        # cover.
+        host_moved = Int[]
         for (ki, key) in enumerate(watched_keys)
             current = _watched_value(ind, key)
             isequal(snapshot[ki, k], current) && continue
@@ -1446,11 +1600,67 @@ function _records_changed!(
             for ri in key_routes[ki]
                 list = w.moved[ri]
                 (isempty(list) || last(list) != k) && push!(list, k)
+                ri in host_moved || push!(host_moved, ri)
             end
         end
+        _check_undeclared_read!(
+            full_snapshot, route_projections, route_names, w, openings,
+            ind, k, now, processed, host_moved
+        )
         idx += 1
     end
     return any_moved
+end
+
+# The live routes currently reading `k`'s record: those of an open opening it
+# is the infector of, and, while it has not settled, those of an open opening
+# that reached it. A route not in this list has nothing of its projection to
+# compare here.
+function _live_routes(w::_LiveWatch, openings, k, now, processed)
+    routes = Int[]
+    for oi in w.opened_by[k]
+        openings[oi].close_t >= now || continue
+        openings[oi].route in routes || push!(routes, openings[oi].route)
+    end
+    if !processed[k]
+        for oi in w.reached_by[k]
+            openings[oi].close_t >= now || continue
+            openings[oi].route in routes || push!(routes, openings[oi].route)
+        end
+    end
+    return routes
+end
+
+# A kernel's `watches` is a claim that nothing else its projection reads can
+# move. Re-project every live route still reading `k` and compare against
+# what it read last; a route whose own declared keys (`host_moved`) already
+# cover `k` is skipped, since it redraws regardless, but a mismatch on any
+# other route means the claim was false, and the race throws naming it rather
+# than drawing from a hazard that went stale unnoticed.
+function _check_undeclared_read!(
+        full_snapshot, route_projections, route_names, w::_LiveWatch, openings,
+        ind, k, now, processed, host_moved
+    )
+    route_projections === nothing && return nothing
+    for ri in _live_routes(w, openings, k, now, processed)
+        proj = route_projections[ri]
+        proj === nothing && continue
+        # Resynced on every pass, whether this route redraws `k` or not, so a
+        # later pass compares against what the route last read rather than
+        # what it read when it first drew from this host.
+        current = _remember(proj(ind))
+        previous = full_snapshot[ri][k]
+        full_snapshot[ri][k] = current
+        (ri in host_moved || isequal(previous, current)) && continue
+        on_route = route_names === nothing ? "" : " on route :$(route_names[ri])"
+        throw(
+            ArgumentError(
+                "a PairKernel$on_route reads a record that changed although " *
+                    "none of its declared `watches` did; declare the key it reads"
+            )
+        )
+    end
+    return nothing
 end
 
 _link(p::_Pending, chain) = _Pending(p.opening, chain, p.time, p.queued)
