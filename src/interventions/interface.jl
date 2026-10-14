@@ -383,8 +383,9 @@ person at a time. `GroupVaccination` returns `true`, since a
 group's trigger is the earliest eligible time among members who may live
 anywhere in the population. `CapacityConstrained` returns `true`, because
 whether a person is served depends on how much of the shared capacity others
-have used. A `Scheduled` built with `start_after_cases` returns `true`, the
-case count being exactly such a read; one built with only
+have used. A `Scheduled` built with `start_after_cases` or `start_after`
+returns `true`, the case count or trigger being exactly such a read; one built
+with only
 `start_time`/`end_time` compares against the time of the case concerned
 and answers for the intervention it contains.
 

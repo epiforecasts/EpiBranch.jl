@@ -305,7 +305,7 @@ EpiBranch.observation(m::SingleSpawnModel) = m.observation
 
     @testset "Required-field validation catches an unresolvable from" begin
         # `from = :nonsense` names neither a state any step or attribute
-        # produces nor an existing key, so the step it anchors would be
+        # produces nor an existing key, so the step timed from it would be
         # skipped for every case: this must error at start-up rather than
         # silently produce an empty column.
         model = BranchingProcess(Poisson(1.5), Exponential(5.0))

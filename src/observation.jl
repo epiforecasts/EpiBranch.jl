@@ -180,8 +180,8 @@ is itself a distribution, so it can be used in a likelihood in place of the
 true one.
 
 - [`NoObservation`](@ref): returned unchanged.
-- [`PerCaseObservation`](@ref): under-reporting, each case detected with
-  probability `detection_prob` ([`ThinnedChainSize`](@ref)).
+- [`PerCaseObservation`](@ref) (deprecated): under-reporting, each case
+  detected with probability `detection_prob` ([`ThinnedChainSize`](@ref)).
 - [`MinimumSize`](@ref): only chains of at least `min_size` cases are
   recorded ([`TruncatedChainSize`](@ref)).
 
@@ -191,7 +191,8 @@ To add a new observation model, define this together with
 # Examples
 
 ```julia
-observe(chain_size_distribution(NegBin(0.8, 0.5)), PerCaseObservation(detection_prob = 0.6))
+# only chains of at least 2 cases are recorded
+observe(chain_size_distribution(NegBin(0.8, 0.5)), MinimumSize(2))
 ```
 """
 observe(base, ::NoObservation) = base
@@ -201,4 +202,52 @@ function observe(base, o::PerCaseObservation)
     # ρ = 1 is a no-op; skip the wrap so multi-seed likelihoods route
     # directly to the base distribution's own multi-seed implementation.
     return p == 1.0 ? base : ThinnedChainSize(base, p)
+end
+
+"""
+Scalar detection probability from a model's `Reporting` step in
+`progression`, or `nothing` when it has none. Shared by the closed-form
+chain-size law, `chain_size_distribution` and `end_of_outbreak_probability`,
+which all read the same per-case reporting source.
+"""
+function _reporting_probability(progression)
+    reporting = filter(t -> t isa Reporting, progression)
+    isempty(reporting) && return nothing
+    length(reporting) == 1 || throw(
+        ArgumentError(
+            "at most one `Reporting` step in `progression` is supported here; " *
+                "got $(length(reporting))"
+        )
+    )
+    p = only(reporting).probability
+    p isa Real || throw(
+        ArgumentError(
+            "a scalar `Reporting` probability is needed here; got $(typeof(p))"
+        )
+    )
+    return float(p)
+end
+
+"""
+Thin `base` by a `Reporting` step's detection probability, read straight from
+`progression`, so the closed-form chain-size law and `chain_size_distribution`
+read the same source `simulate` and [`progression_loglik`](@ref) do. Returns
+`base` unchanged when `progression` has no `Reporting` step, or one with
+probability `1`. Throws the same `ArgumentError` `simulate` does (via
+`apply_observation!`) when `obs` is a `PerCaseObservation` and `progression`
+also has a `Reporting` step, rather than silently thinning by both.
+"""
+function _fold_reporting(progression, base, obs)
+    ρ = _reporting_probability(progression)
+    ρ === nothing && return base
+    obs isa PerCaseObservation && throw(
+        ArgumentError(
+            "PerCaseObservation cannot be combined with a progression " *
+                "transition that records `:reported`, such as `Reporting`: " *
+                "both would write the case's report. Report cases with one " *
+                "of them."
+        )
+    )
+    ρ == 1.0 && return base
+    return ThinnedChainSize(base, ρ)
 end

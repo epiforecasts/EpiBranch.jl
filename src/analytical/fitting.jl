@@ -234,19 +234,10 @@ function _sim_loglikelihood(
     return _empirical_ll(observed, sim_values; min_val, censored, cap)
 end
 
-# Observed chain sizes for one simulated state. Dispatch on the model's
-# observation: with `NoObservation` every infected case counts;
-# otherwise only the cases the observation marked `:reported`.
-_sim_chain_sizes(state, ::NoObservation) = chain_statistics(state).size
-function _sim_chain_sizes(state, o::MinimumSize)
-    return filter(>=(o.min_size), chain_statistics(state).size)
-end
-
-# The smallest size an observation could have recorded, which the empirical
-# likelihood bins from.
-_observed_min_size(::ObservationModel) = 1
-_observed_min_size(o::MinimumSize) = o.min_size
-function _sim_chain_sizes(state, ::ObservationModel)
+# Chain sizes counted from each case's `:reported` flag, written by
+# `Reporting` during the progression pass, by `apply_observation!`
+# afterwards for an observation model, or both.
+function _reported_chain_sizes(state)
     counts = Dict{Int, Int}()
     for ind in state.individuals
         (is_infected(ind) && get(ind.state, :reported, false)) || continue
@@ -255,15 +246,36 @@ function _sim_chain_sizes(state, ::ObservationModel)
     return collect(values(counts))
 end
 
+# Observed chain sizes for one simulated state. With `NoObservation` and no
+# `Reporting` step in `progression`, detection is not thinned at all, so
+# every infected case counts; otherwise only `:reported` cases do.
+function _sim_chain_sizes(state, obs::MinimumSize, progression)
+    sizes = any(t -> t isa Reporting, progression) ?
+        _reported_chain_sizes(state) : chain_statistics(state).size
+    return filter(>=(obs.min_size), sizes)
+end
+function _sim_chain_sizes(state, obs, progression)
+    if obs isa NoObservation && !any(t -> t isa Reporting, progression)
+        return chain_statistics(state).size
+    end
+    return _reported_chain_sizes(state)
+end
+
+# The smallest size an observation could have recorded, which the empirical
+# likelihood bins from.
+_observed_min_size(::ObservationModel) = 1
+_observed_min_size(o::MinimumSize) = o.min_size
+
 """
     loglikelihood(data::ChainSizes, model::TransmissionModel; kwargs...)
     loglikelihood(data::ChainSizes, spec::ModelSpec; kwargs...)
 
 Log-likelihood of observed chain sizes. With no interventions and a
 single-type offspring law, uses the analytical chain-size distribution
-transformed by the observation ([`observe`](@ref)); otherwise simulates
-and compares the reported chain sizes against the data, honouring
-`data.seeds` and `prob_concluded` as described below. The interventions,
+thinned by a `Reporting` step's detection probability and transformed by the
+observation ([`observe`](@ref)); otherwise simulates and compares the
+reported chain sizes against the data, honouring `data.seeds` and
+`prob_concluded` as described below. The interventions, progression,
 attributes and observation come from the process for a bare model, or from
 the spec for a [`ModelSpec`](@ref).
 
@@ -318,7 +330,12 @@ function _chain_size_model_loglik(
     # `single_type_offspring` throws and the evaluation falls through to simulation.
     if isempty(ivs)
         try
-            d = observe(chain_size_distribution(single_type_offspring(process)), obs)
+            d = observe(
+                _fold_reporting(
+                    prog, chain_size_distribution(single_type_offspring(process)), obs
+                ),
+                obs
+            )
             return _chain_size_loglik(d, data; prob_concluded)
         catch e
             (e isa MethodError || e isa ArgumentError) || rethrow()
@@ -346,7 +363,7 @@ function _chain_size_model_loglik(
             # A multi-seed cluster is one simulation: its chains (one per
             # seed) are summed to the cluster's total observed size, rather
             # than reported as separate single-seed sizes.
-            vals = _sim_chain_sizes(state, obs)
+            vals = _sim_chain_sizes(state, obs, prog)
             isempty(vals) && continue
             push!(sim_values, sum(vals))
             push!(censored, !state.extinct && state.cumulative_cases >= cap)

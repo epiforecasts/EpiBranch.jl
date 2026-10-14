@@ -159,6 +159,9 @@ people it can reach in each period.
 ```@docs
 Scheduled
 is_active
+AbstractTrigger
+Infections
+ReportedCases
 CapacityConstrained
 capacity_usage
 default_capacity_priority
@@ -568,6 +571,14 @@ EpiBranch.is_settled
 EpiBranch.persistent_competing_risks
 EpiBranch.capacity_key
 EpiBranch.capacity_time_key
+```
+
+#### Start triggers
+
+```@docs
+is_triggered!
+trigger_can_lapse
+required_transitions
 ```
 
 ### Writing a transition

@@ -87,7 +87,7 @@ end
 # function is evaluated directly.
 function _state_time(ind::Individual{T}, from::Symbol) where {T}
     from === :infection && return ind.infection_time
-    return convert(T, get(ind.state, _resolved_key(from), T(NaN)))
+    return convert(T, get(ind.state, _resolved_key(from), T(NaN)))::T
 end
 _state_time(ind, from) = float(from(ind))
 
@@ -113,7 +113,7 @@ terminal_target(t::Transition) = t.terminal ? t.state : nothing
 terminal_certainty(t::Transition) = t.terminal ? _certain_probability(t.probability) : missing
 function terminal_event(t::Transition, individual::Individual{T}) where {T}
     t.terminal || return nothing
-    tm = convert(T, get(individual.state, t.time_key, T(Inf)))
+    tm = convert(T, get(individual.state, t.time_key, T(Inf)))::T
     return isfinite(tm) ? (tm, t.state) : nothing
 end
 

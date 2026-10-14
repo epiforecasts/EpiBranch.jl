@@ -10,9 +10,9 @@
 How true cases become observed data: which cases are detected, how long
 reporting takes, or which outbreaks are recorded at all. Pass one to a model
 as `observation = ...`. Built in: [`NoObservation`](@ref) (every case seen),
-[`PerCaseObservation`](@ref) (each case detected with some probability, after
-a reporting delay) and [`MinimumSize`](@ref) (only chains of at least a
-given size are recorded).
+[`MinimumSize`](@ref) (only chains of at least a given size are recorded)
+and the deprecated [`PerCaseObservation`](@ref) (each case detected with some
+probability, after a reporting delay; use a [`Reporting`](@ref) step instead).
 
 To write a new one, define [`observe`](@ref) (for the likelihood) and
 [`apply_observation!`](@ref EpiBranch.apply_observation!) (for simulation)
@@ -24,6 +24,11 @@ abstract type ObservationModel end
 """
     PerCaseObservation(; detection_prob = 1.0, delay = Dirac(0.0),
                        from = :onset_time)
+
+Deprecated: report cases with a [`Reporting`](@ref) step in the model's
+`progression` instead. `simulate`, [`progression_loglik`](@ref), the chain-size
+likelihood and [`end_of_outbreak_probability`](@ref) all read the reporting
+probability from that step.
 
 Under-reporting and reporting delay: each case is reported independently with
 probability `detection_prob`, `delay` days after symptom onset (or after
@@ -73,6 +78,13 @@ function PerCaseObservation(;
         detection_prob = 1.0,
         delay = Dirac(0.0),
         from = :onset_time
+    )
+    Base.depwarn(
+        "`PerCaseObservation` is deprecated; use a `Reporting` progression " *
+            "step instead, which `simulate`, `progression_loglik`, the " *
+            "chain-size likelihood and `end_of_outbreak_probability` all read " *
+            "directly.",
+        :PerCaseObservation; force = true
     )
     if detection_prob isa Real
         0.0 < detection_prob <= 1.0 || throw(

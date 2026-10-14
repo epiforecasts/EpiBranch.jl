@@ -210,7 +210,7 @@ function _route_contacts(
         if w.contacts_from === :infection
             t = T(-Inf)
         else
-            t = convert(T, get(ind.state, Symbol(w.contacts_from, :_time), T(Inf)))
+            t = convert(T, get(ind.state, Symbol(w.contacts_from, :_time), T(Inf)))::T
             (isfinite(t) && window_close(ind, w, interventions) > t) || continue
         end
         for nb in w.reach[i]

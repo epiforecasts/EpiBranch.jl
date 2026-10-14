@@ -23,6 +23,10 @@ checks this when it starts, and stops with an error if neither does. A report
 drawn for a time after the case has died or recovered is reset to "not
 reported".
 
+`simulate`, [`progression_loglik`](@ref), the chain-size likelihood and
+[`end_of_outbreak_probability`](@ref) all read this step's reporting
+probability. It replaces the deprecated [`PerCaseObservation`](@ref).
+
 # Examples
 
 ```julia
