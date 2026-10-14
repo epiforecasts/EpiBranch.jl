@@ -236,7 +236,7 @@ it is:
   [`next_calendar_break`](@ref EpiBranch.next_calendar_break), the first time
   strictly after `t` at which the multiplier changes (`Inf` if none). The
   cumulative rate is then summed exactly, one constant stretch at a time.
-- **Smooth**: declare `calendar_shape(::YourSchedule) = EpiBranch.SmoothCalendar()`,
+- **Smooth**: declare `EpiBranch.calendar_shape(::YourSchedule) = EpiBranch.SmoothCalendar()`,
   and the cumulative rate is integrated numerically.
 
 A schedule of your own is for a shape neither built-in one gives. This one has
