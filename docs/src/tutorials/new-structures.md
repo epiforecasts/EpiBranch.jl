@@ -426,8 +426,12 @@ with the spec's parts.
 A model whose population splits naturally into groups that can be simulated
 independently, as a household model splits into households, defines
 [`EpiBranch.race_groups`](@ref)`(model, kernel)` to say how it splits for a
-given kernel, and its `simulate_once` runs one race per group. A new kernel type can define the method for a given model to
-choose a different split:
+given kernel, and its `simulate_once` runs one race per group. Each
+`sellke_race!` call sets `state.extinct` from its own group alone, so such a
+loop keeps whether every group died out and sets `state.extinct` to that after
+the last race; `HouseholdProcess` in the `EpiHouseholds` package is the worked
+example. A new kernel type can define the method for a given model to choose a
+different split:
 
 ```julia
 # One race per household for your kernel, whatever it watches. Typing the
