@@ -663,8 +663,8 @@ time draws a new onset, so the count can fall.
 ## Capacity limits
 
 [`CapacityConstrained`](@ref) limits how many actions an intervention can take
-per period, such as the doses available or the number of contacts tracers can
-reach. Your intervention defines `EpiBranch.capacity_key(iv)`, the name of the
+per period, such as the doses available or the appointments a clinic can offer.
+Contact tracing itself cannot be limited this way. Your intervention defines `EpiBranch.capacity_key(iv)`, the name of the
 `true`/`false` value recording that a person used the resource, and
 `EpiBranch.capacity_time_key(iv)`, the name of the value recording when. The
 time places use by other interventions within a period when
