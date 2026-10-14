@@ -741,7 +741,8 @@ admissions can bunch: a quiet spell builds an allowance that a later day
 spends at once, well above `budget_per_period` in a day.
 
 !!! note "Which models support capacity limits"
-    On the network and household models, capacity limits work for ring and
-    group vaccination. Mass vaccination does not reach anyone on those models
+    On the network and household models, capacity limits work for group
+    vaccination, and for ring vaccination with its default, infinite
+    `eligibility_window`. Mass vaccination does not reach anyone on those models
     at all, with or without a limit, and `simulate` warns that it will have
     no effect. To limit an intervention of your own, see [Capacity limits](@ref).
