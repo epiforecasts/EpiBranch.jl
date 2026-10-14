@@ -20,7 +20,8 @@ Infectiousness(offspring; from = :infection, until = (), kernel = NoGenerationTi
 ```
 
 - `offspring`: how many contacts this source makes (a `Distribution`, or a
-  function for a multi-type model).
+  function `(rng, ind) -> n` of the case, giving one count per type in a
+  multi-type model).
 - `from`: the state at which the window opens. `:infection` (the default) is
   the infection time; any other state `s` is read from the person's
   `<s>_time` value, so `from = :infectious` reads `:infectious_time`. The window
