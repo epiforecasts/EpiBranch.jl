@@ -1,37 +1,38 @@
 """
-Cases are reported with probability `probability` after a `delay`
-drawn per case, measured from `from`. `from` defaults to `:onset_time`.
-`:infection` resolves to the individual's infection time; any other
-`Symbol` names a state and resolves to its `:*_time` key (`from =
-:onset` reads `:onset_time`, `from = :test` reads `:test_time`), unless
-it already ends in `_time`, in which case it is looked up as-is (`from =
-:test_time` also works). A `Function (ind) -> Real` is also accepted,
-for composite anchors. If the anchor is not finite, the transition is
-skipped: either the `from` state was never reached (its `:*_time` key
-still at its `Inf` default), or the anchor is `NaN`,
-most commonly an asymptomatic case under [`clinical_presentation`](@ref)
-whose `:onset_time` is `NaN`.
+    Reporting(; delay, probability = 1.0, from = :onset_time)
 
-`probability` is a `Real` or a `Function (rng, ind) -> Real` for
-per-individual heterogeneity (e.g. risk-group-specific detection).
-`delay` is a `Distribution` or a `Function (rng, ind) -> Real`.
+Case reporting: each case is reported with probability `probability`, `delay`
+days after symptom onset (or after `from`, if given). Each case records
+`:reported` (`true`/`false`) and `:reporting_time` (`Inf` if never reported).
 
-Initialises: `:reported = false`, `:reporting_time = Inf`.
+- `delay`: a distribution, a fixed number of days, or a function of the random
+  number generator and the individual, `(rng, ind) -> ...`.
+- `probability`: the chance a case is reported, a number or a function
+  `(rng, ind) -> ...` (for example a different detection probability per risk
+  group).
+- `from`: the time the delay is measured from. Symptom onset by default;
+  another recorded time such as `:test_time` (`:test` works too) or
+  `:admission_time`; or a function of the individual, such as
+  `ind -> ind.infection_time`.
 
-The simulation start-up validator requires the resolved `from` key to be
-either an existing key (typically set by `attributes`) or one that a step
-in `progression` produces. A `from` that names neither raises an error
-at start-up, since the step timed from it would otherwise be silently
-skipped for every case.
+Cases that never reached `from` are not reported. With the default `from`,
+this includes asymptomatic cases from [`clinical_presentation`](@ref), whose
+onset time is `NaN`. The time measured from must be one that the model's
+`attributes` set or that a step in its `progression` records; the simulation
+checks this when it starts, and stops with an error if neither does. A report
+drawn for a time after the case has died or recovered is reset to "not
+reported".
 
-`simulate`, [`progression_loglik`](@ref), the chain-size likelihood
-(`loglikelihood(::ChainSizes, ...)`, `chain_size_distribution`) and
-`end_of_outbreak_probability` all read this step's detection probability: it
-is the one per-case reporting route, replacing the deprecated
-[`PerCaseObservation`](@ref) observation model.
+`simulate`, [`progression_loglik`](@ref), the chain-size likelihood and
+[`end_of_outbreak_probability`](@ref) all read this step's reporting
+probability. It replaces the deprecated [`PerCaseObservation`](@ref).
 
-A report drawn after the case's outcome (death or recovery) is reset to "did
-not occur": see [`censor_after_outcome!`](@ref EpiBranch.censor_after_outcome!).
+# Examples
+
+```julia
+# report 80% of symptomatic cases, on average 3 days after onset
+Reporting(delay = Gamma(2.0, 1.5), probability = 0.8)
+```
 """
 Base.@kwdef struct Reporting{D, P, F} <: AbstractClinicalTransition
     delay::D

@@ -99,6 +99,25 @@
         @test logpdf(d, data) ≈ loglikelihood(ChainSizes(data), obs)
     end
 
+    @testset "prob_concluded keeps the model's observation" begin
+        # With every cluster marked concluded, the mixture must reduce to
+        # the plain closed form under the observation, not to the bare
+        # offspring law with no observation applied.
+        bp = BranchingProcess(NegBin(0.6, 0.5))
+        data = [2, 3, 7]
+        pc = fill(1.0, length(data))
+        specs = (
+            ModelSpec(bp; observation = MinimumSize(2)),
+            ModelSpec(bp; observation = PerCaseObservation(; detection_prob = 0.5)),
+            ModelSpec(bp; progression = [Reporting(delay = Dirac(0.0), probability = 0.5)]),
+        )
+        for spec in specs
+            closed_form = sum(logpdf(chain_size_distribution(spec), n) for n in data)
+            d_pc = chain_size_distribution(spec; prob_concluded = pc)
+            @test logpdf(d_pc, data) ≈ closed_form
+        end
+    end
+
     @testset "chain_size_distribution — callable Reporting probability falls back to simulation" begin
         # A callable `Reporting` probability has no scalar for the analytical
         # fast path to read, so it must fall through to the simulation-based

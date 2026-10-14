@@ -21,20 +21,17 @@ same rate, which reproduces the exact stochastic SIR final-size law.
 Transmission is the per-infective rate `transmission_rate` (β, so β/N to each
 susceptible).
 
-The process describes the transmission alone. The natural history is a
-`progression` of [`Transition`](@ref)s attached with a [`ModelSpec`](@ref),
-exactly as for [`BranchingProcess`](@ref): a latent period is a transition to
-`:infectious`, an infectious period a terminal removal transition (to
-`:recovered`, say). `from` is the state the infectious window opens at; left as
-`nothing` it is derived from the progression (`:infectious` when a latent period
-produces it, otherwise `:infection`). `until` names the removal states that
-close the window.
+The natural history comes from the `progression` of a [`ModelSpec`](@ref),
+as for a [`BranchingProcess`](@ref). With only a recovery step,
+`Transition(:recovered; rate = γ, terminal = true)`, this is an SIR model;
+adding a latent period (a step to `:infectious`) makes it SEIR. Further steps
+(onset, hospitalisation, death) appear in the line list.
 
-How detailed the course of infection is is up to you: with just a recovery
-transition this is an SIR model; adding a latent transition makes it SEIR, and
-onset, hospitalisation and death come from further transitions in the
-progression and appear in the line list. The model holds to two assumptions: a
-closed population, and one infection per person.
+- `from`: the state at which a case becomes infectious. Left as `nothing`, it
+  is `:infectious` when the progression has a latent period, otherwise
+  `:infection`.
+- `until`: the states that end infectiousness, by default
+  `(:recovered, :died, :isolated)`.
 
 Interventions attach through two seams. An intervention that removes a case from
 transmission, such as `Isolation`, shortens its infectious window and curtails
@@ -43,11 +40,14 @@ vaccine's efficacy, is resolved against each contact a pair makes, and a
 blocked contact leaves the pair to meet again, so blocking a fraction of the
 contacts thins the force of infection by the same fraction. Per-individual
 susceptibility and infectiousness reach that thinning directly: they scale the
-rate at which each pair meets. An intervention that finds its targets only among
-newly created contacts — `MassVaccination`'s rollout, `GroupVaccination`, or
-`ContactTracing`, which has no contacts to act along under mass action — is
-reported with a warning rather than applied. Control expressed as a removal
-`Transition` in the progression always applies.
+rate at which each pair meets. Four interventions are reported with a warning
+rather than applied, because mass action settles one case at a time and never
+produces the batches of new contacts their dosing and tracing act on:
+`MassVaccination`'s rollout, `GroupVaccination`, `RingVaccination` and
+`ContactTracing`, which has no contacts to trace under random mixing anyway.
+Doses a person already holds when the outbreak starts still protect them,
+since what is dropped is the dosing during the run. Control expressed as a
+removal `Transition` in the progression always applies.
 
 The population is simulated until extinction or `max_time`, whichever comes
 first; with `max_time`, individuals whose infection would fall later stay

@@ -91,21 +91,27 @@ end
     chain_size_distribution(model; seeds=nothing, prob_concluded=nothing, kwargs...)
     chain_size_distribution(spec::ModelSpec; seeds=nothing, prob_concluded=nothing, kwargs...)
 
-Distribution over observed chain (cluster) sizes under `model`, the primary
-entry point for Bayesian inference on chain-size data with Turing's `~`:
+Distribution of observed chain sizes (the number of cases in a cluster) under
+`model`, including its interventions and observation model. Use it to fit a
+model to cluster-size data, for example in Turing.jl, where `sizes ~ ...`
+says the observed sizes follow this distribution:
 
 ```julia
-@model function fit(sizes)
+@model function chain_model(sizes)
     R ~ Gamma(2, 1)
     sizes ~ chain_size_distribution(BranchingProcess(NegBin(R, 0.5)))
 end
 ```
 
-With no keyword arguments, no interventions and a single-type offspring law,
-the analytical chain-size distribution (`Borel` / `GammaBorel`) is returned
-directly; otherwise a wrapper that evaluates via `loglikelihood`, falling
-back to simulation for a multi-type or multi-window model rather than
-erroring. Keyword arguments:
+Without interventions, and with a single-type offspring distribution, this is
+the exact chain-size distribution (`Borel` or `GammaBorel`, adjusted for the
+observation model). It stays exact with `prob_concluded`, and with `seeds`
+unless the observation model also under-reports: there is no closed form for
+several index cases under under-reporting, so that one combination is
+estimated from simulated outbreaks and its value moves from one call to the
+next. With interventions, or with a multi-type or multi-window model (no
+single-type offspring law to fall back on), the probability of the data is
+estimated from simulated outbreaks instead. Keyword arguments:
 
 - `seeds`: per-cluster number of index cases, for multi-seed clusters. With
   interventions, clusters are simulated grouped by seed count, one batch of
@@ -170,19 +176,21 @@ end
 """
     chain_length_distribution(model; kwargs...)
 
-Distribution over observed chain lengths under `model`. Use with
-Turing's `~`:
+Distribution of observed chain lengths (generations of onward transmission
+in a cluster, 0 for a single case) under `model`. Use it to fit a model to
+chain-length data, for example in Turing.jl:
 
 ```julia
-@model function fit(data)
+@model function chain_model(lengths)
     R ~ Beta(1, 1)
-    data ~ chain_length_distribution(BranchingProcess(Poisson(R)))
+    lengths ~ chain_length_distribution(BranchingProcess(Poisson(R)))
 end
 ```
 
-`kwargs` are forwarded to the underlying
-`loglikelihood(::ChainLengths, model)` call (e.g. `n_sim`,
-`interventions` for the simulation-based path).
+Keywords `n_sim`, `n_initial`, `max_cases`, `max_generations`, `max_time`,
+`stopping_rules` and `rng` control the simulation used when no exact formula
+exists. Interventions come from the model; add them with a
+[`ModelSpec`](@ref). See [`ChainLengths`](@ref) for the length convention.
 """
 function chain_length_distribution(model::TransmissionModel; kwargs...)
     return _ChainLengthLaw(model, NamedTuple(kwargs))
@@ -196,13 +204,15 @@ end
     offspring_distribution(model)
     offspring_distribution(spec::ModelSpec)
 
-Per-case offspring distribution of `model`. For a `BranchingProcess`
-this is the same `Distribution` you passed in as `offspring`.
+Offspring distribution of `model`: the distribution of the number of secondary
+cases per case. For a `BranchingProcess` it is the distribution you gave as
+`offspring`. Use it to fit a model to counts of secondary cases, for example
+in Turing.jl:
 
 ```julia
-@model function fit(data)
+@model function offspring_model(counts)
     R ~ Beta(1, 1)
-    data ~ offspring_distribution(BranchingProcess(Poisson(R)))
+    counts ~ offspring_distribution(BranchingProcess(Poisson(R)))
 end
 ```
 

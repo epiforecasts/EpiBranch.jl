@@ -19,10 +19,13 @@
 """
     apply_observation!(obs::ObservationModel, state, rng)
 
-Simulation side of the observation protocol: apply `obs` to a finished
-`SimulationState` in place (e.g. mark `:reported` cases and set
-`:reporting_time`). Called by [`simulate`](@ref) after the run. The default
-[`NoObservation`](@ref) leaves the latent cases untouched.
+Mark which simulated cases are reported, and when, under an observation
+model. [`simulate`](@ref) calls it once the outbreak has been simulated; it
+changes `state` in place. Under [`PerCaseObservation`](@ref) each case
+records `:reported` (`true`/`false`) and `:reporting_time`.
+[`NoObservation`](@ref) and [`MinimumSize`](@ref) leave the cases unchanged.
+
+To add a new observation model, define this together with [`observe`](@ref).
 """
 apply_observation!(::NoObservation, state, rng) = state
 # A minimum recorded size selects whole clusters, which the analytical and
@@ -69,22 +72,23 @@ end
 """
     ThinnedChainSize(base, detection_prob)
 
-Distribution of observed chain sizes when each case in a `base` chain
-is detected with probability `detection_prob`, conditioned on at least
-one case being detected: a chain with no detected case leaves no trace
-in the data, so it cannot be one of the observed sizes.
+Distribution of observed chain sizes under under-reporting: each case in a
+chain whose true size follows `base` is detected independently with
+probability `detection_prob`, and the observed size is the number detected.
+A chain with nobody detected leaves no trace in the data, so the distribution
+is conditioned on at least one case being detected. Usually built for you by
+[`observe`](@ref) with a [`PerCaseObservation`](@ref).
 
-`logpdf(d, obs)` sums `logpdf(base, n) + logpdf(Binomial(n, p), obs)`
-over `n >= obs` until the tail is negligible, then subtracts
-`log(1 - P(0 detected))`, with `P(0 detected) = Σ_n P(base = n) (1 - p)^n`
-summed the same way. The computation only needs `logpdf` on the base,
-so this composes without specialised methods. `P(0 detected)` depends
-only on `base` and `detection_prob`, which lets it be computed once
-at construction rather than on every `logpdf` call. It is stored with
-whatever element type `base`'s parameters give `logpdf`, rather than
-fixed to `Float64`: differentiating through `base` (e.g. fitting an
-offspring parameter with `ForwardDiff`) then passes a `Dual` through this
-field instead of hitting a conversion error.
+`logpdf(d, obs)` adds `logpdf(base, n) + logpdf(Binomial(n, p), obs)` over
+`n >= obs` until the remaining tail is negligible, then subtracts
+`log(1 - P(0 detected))`, where `P(0 detected) = Σ_n P(base = n) (1 - p)^n` is
+summed the same way. Only `logpdf` on the base is needed, so any base
+distribution works without a method of its own. `P(0 detected)` depends on
+`base` and `detection_prob` alone, so it is worked out once when the
+distribution is built. Its field takes whatever element type `base`'s
+parameters give `logpdf`, rather than `Float64`, so a `Dual` can pass through
+it when something differentiates through `base`, such as fitting an offspring
+parameter with `ForwardDiff`.
 """
 struct ThinnedChainSize{D <: DiscreteUnivariateDistribution, T <: Real} <:
     DiscreteUnivariateDistribution
@@ -170,15 +174,26 @@ end
 """
     observe(base_distribution, obs::ObservationModel)
 
-Analytical side of the observation protocol: transform the latent
-`base_distribution` (e.g. a chain-size distribution) into the
-distribution of the *observed* quantity under `obs`, returning a
-`Distribution`. Because the result is itself a distribution, it slots
-into the same likelihood machinery as the latent law (see the design
-notes on why observation models return distributions). The default
-[`NoObservation`](@ref) returns the base unchanged;
-[`PerCaseObservation`](@ref) thins it with [`ThinnedChainSize`](@ref), and
-[`MinimumSize`](@ref) conditions it with [`TruncatedChainSize`](@ref).
+Turn the true distribution of chain sizes into the distribution a
+surveillance system would see under the observation model `obs`. The result
+is itself a distribution, so it can be used in a likelihood in place of the
+true one.
+
+- [`NoObservation`](@ref): returned unchanged.
+- [`PerCaseObservation`](@ref) (deprecated): under-reporting, each case
+  detected with probability `detection_prob` ([`ThinnedChainSize`](@ref)).
+- [`MinimumSize`](@ref): only chains of at least `min_size` cases are
+  recorded ([`TruncatedChainSize`](@ref)).
+
+To add a new observation model, define this together with
+[`apply_observation!`](@ref EpiBranch.apply_observation!).
+
+# Examples
+
+```julia
+# only chains of at least 2 cases are recorded
+observe(chain_size_distribution(NegBin(0.8, 0.5)), MinimumSize(2))
+```
 """
 observe(base, ::NoObservation) = base
 observe(base, o::MinimumSize) = TruncatedChainSize(base, o.min_size)

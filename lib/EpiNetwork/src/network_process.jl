@@ -20,37 +20,46 @@
                    until = (:recovered, :died, :isolated), external_hazard = 0.0,
                    obs_end = Inf)
 
-Rate-based transmission over a fixed contact network. `adjacency[i]` lists
-the graph neighbours of node `i` (1-based); the graph is the population.
-`kernel` is the **contact interval** — the one required input — a continuous
-`Distributions.jl` distribution shared by every edge, a callable
-`(infector, susceptible) -> Distribution` for covariate models, a
-[`PairKernel`](@ref) that also reads the infector's infection time and,
-with sampled attributes and dated histories, each node's record, or a
-per-edge vector of distributions parallel to `adjacency`
-(`kernel[i][k]` for node `i`'s `k`-th listed neighbour). The kernel times
-each infectious contact from the infector's `from` state.
+Transmission over a fixed contact network: who can infect whom is set by the
+network, and each infectious person infects a neighbour after a random delay,
+provided they are still infectious by then. Ending someone's infectious period
+early (recovery, isolation) therefore cuts their onward transmission.
 
-The process describes the transmission alone. The natural history is a
-`progression` of EpiBranch `Transition`s attached with a [`ModelSpec`](@ref),
-exactly as for `HouseholdProcess`: a latent period is
-`Transition(:infectious; from = :infection, delay = …)`, an infectious period
-a terminal removal transition, and onset, testing and the rest are further
-transitions the line list reads. `from` is the state the kernel times contacts
-from; left as `nothing` it is derived from the progression (`:infectious` when
-a latent period produces it, otherwise `:infection`); `until` names the removal
-states that close the window. Adding a `Transition(:isolated, …)` closes the
-window early and so cuts onward transmission.
+The network is the whole population. `adjacency[i]` lists the people person
+`i` is in contact with (numbered from 1).
 
-`external_hazard` is the community force of infection — a scalar for a constant
-hazard or a calendar-time distribution — and `obs_end` bounds the window
-`[0, obs_end]` over which those community introductions emerge.
+`kernel` is the **contact interval**, the delay in days from a person becoming
+infectious to their infecting contact with a neighbour. It can be:
+
+- one continuous distribution shared by every contact, such as
+  `Exponential(2.0)` (mean 2 days);
+- a function `(infector, susceptible) -> Distribution` of the two people's
+  numbers, for covariates that change transmission between particular pairs;
+- a [`PairKernel`](@ref), which can also use the infector's infection time
+  (for calendar-time effects) and each person's attributes and history;
+- a vector of vectors parallel to `adjacency`, with `kernel[i][k]` the
+  distribution for person `i`'s `k`-th listed neighbour.
+
+The natural history is a `progression` of `Transition`s attached with a
+[`ModelSpec`](@ref), as for `HouseholdProcess`. A latent period is
+`Transition(:infectious; from = :infection, delay = …)` and the infectious
+period ends with a terminal removal transition; onset, testing and the rest are
+further transitions that the line list reports. `from` is the state from which
+the contact interval is measured. Left as `nothing`, it is `:infectious` when a
+latent period produces that state and `:infection` otherwise. `until` names
+the states that end the infectious period, so adding a
+`Transition(:isolated, …)` cuts onward transmission.
+
+`external_hazard` adds infections from outside the network: a constant rate
+per person per day, or a continuous distribution of the time (in days) at which
+each person would be infected from outside. These introductions happen only in
+the first `obs_end` days, which must be finite when `external_hazard` is used.
 
 # Example
 
 ```julia
 using EpiNetwork, EpiBranch, Distributions
-adjacency = [[2, 5], [1, 3], [2, 4], [3, 5], [4, 1]]   # ring of 5
+adjacency = [[2, 5], [1, 3], [2, 4], [3, 5], [4, 1]]   # ring of 5 people
 model = ModelSpec(NetworkProcess(adjacency, Exponential(2.0));
     progression = [Transition(:recovered; from = :infection, delay = 6.0, terminal = true)])
 ```
@@ -93,8 +102,9 @@ end
     NetworkProcess(A::AbstractMatrix, kernel; kwargs...)
 
 Build a `NetworkProcess` from an adjacency matrix: a nonzero `A[i, j]`
-means an (undirected) edge between `i` and `j`. Every edge shares `kernel`
-(the matrix marks graph structure only, not per-edge rates).
+means persons `i` and `j` are in contact (in both directions). Every contact
+shares `kernel`; the matrix records only who is in contact, and its values do
+not set per-contact rates.
 """
 function NetworkProcess(A::AbstractMatrix, kernel; kwargs...)
     n = size(A, 1)

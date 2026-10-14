@@ -1,27 +1,20 @@
 """
     compute_trace_level!(state::SimulationState) -> state
 
-Post-run enrichment: walk each individual's `:traced_by` back to the index
-case and stamp `:trace_level` (distance from the index case) onto its
-`state`. The ring anchor — the seeded, eligible case a trace started from —
-is level `0`; its directly traced contacts are `1`, contacts-of-contacts
-`2`, and so on. Cases that were never traced (and never anchored a realised
-ring) are left without a `:trace_level`.
+Record how far along a chain of contact tracing each traced person was found:
+`trace_level` 0 for the case a round of tracing started from, 1 for its
+traced contacts, 2 for contacts of contacts, and so on. People never traced
+(and cases from which no tracing started) get no level. Call it after
+[`simulate`](@ref); the `!` means it changes `state` in place, adding the
+level to each person's record. [`linelist`](@ref) then shows it as a
+`trace_level` column.
 
-`:trace_level` then flows into [`linelist`](@ref) automatically, and any
-other `state` consumer can read it with `get(ind.state, :trace_level,
-missing)`. The engine carries no level during simulation — this is a
-deliberate post-run step, so the cost stays out of the hot loop.
-
-!!! note "Last traced, not nearest"
-    `:traced_by` records the latest case whose trace reached a node: every
-    case that reaches a node traces it, and each successful trace overwrites
-    the record. On a tree (`BranchingProcess`) that is the unique parent, so
-    the level is exact. On a cyclic `NetworkProcess` it is the depth along
-    the path a node was last traced on, which is
-    **not** guaranteed to be the shortest distance to the nearest index.
-    Do not read it as one. (A true nearest-index distance would need the
-    engine to record every successful tracer; see issue #150.)
+!!! note "Level along the last tracing path, not the shortest"
+    Every case whose tracing reaches a person records itself as their tracer,
+    so the level is counted along the path of the last one to reach them. In a
+    `BranchingProcess` that is their infector, so the level is exact. On a
+    `NetworkProcess`, where a person can have several infectious neighbours,
+    it may be longer than the shortest path to an index case.
 """
 function compute_trace_level!(state::SimulationState)
     individuals = state.individuals
@@ -73,8 +66,8 @@ end
 """
     compute_trace_level!(states::AbstractVector{<:SimulationState}) -> states
 
-Apply [`compute_trace_level!`](@ref) to each state in turn (mirrors
-`chain_statistics` over a batch of runs).
+Add trace levels to each of several simulated outbreaks, as
+[`compute_trace_level!`](@ref) does for one.
 """
 function compute_trace_level!(states::AbstractVector{<:SimulationState})
     for state in states
