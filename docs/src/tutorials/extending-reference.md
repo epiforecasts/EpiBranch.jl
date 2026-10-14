@@ -360,7 +360,8 @@ function EpiBranch.records_contacts(r::CountingRecorder, parent, contact, state,
 end
 ```
 
-Usage: `ModelSpec(HouseholdProcess(...); recorder = CountingRecorder())`. Every
+Usage: `rec = CountingRecorder()`, then
+`ModelSpec(HouseholdProcess(...); recorder = rec)`. Every
 later proposal on a permanently blocked pair is logged before the simulation is
 told to continue, so `rec.events` ends up with every contact event of every
 such pair.
