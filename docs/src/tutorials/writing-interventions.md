@@ -264,15 +264,18 @@ lasts from its `duration` and passes the end to `set_isolated!` as
 
 ```julia
 function resolve_individual!(iso::Isolation, individual, state)
-    is_test_positive(individual) || return nothing
-
-    iso_delay = _sample_value(iso.onset_to_isolation_delay, state.rng, individual)
-    iso_time = onset_time(individual) + iso_delay
-
+    onset = onset_time(individual)
+    # Self-isolation after a positive test.
+    test_time = if is_test_positive(individual)
+        onset + _sample_value(iso.onset_to_isolation_delay, state.rng, individual)
+    else
+        Inf
+    end
     # A contact traced before its onset was known has only the bare trace
     # time, so hold it back to the onset.
-    traced_time = max(get(individual.state, :_traced_isolation_time, Inf), onset_time(individual))
-    start = min(iso_time, traced_time)
+    traced_time = max(get(individual.state, :_traced_isolation_time, Inf), onset)
+    start = min(test_time, traced_time)
+    isfinite(start) || return nothing
     duration = _removal_duration(
         iso.duration, state.rng, individual, "`Isolation`'s `duration`"
     )
