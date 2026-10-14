@@ -85,8 +85,11 @@ are:
 - a probability of transmission that belongs to the pair rather than to either
   person, such as the transmission probability of a network contact.
 
-Susceptibility and infectiousness are checked in the same way as interventions,
-with no special treatment, and so is the end of an infectious period.
+On a branching process, susceptibility and infectiousness are checked in the
+same way as interventions, with no special treatment, and so is the end of an
+infectious period. The continuous-time models apply susceptibility and
+infectiousness as multipliers on the rate of transmission instead, and end the
+infectious period by closing it.
 
 Contacts who were exposed but not infected are kept in the output, because
 contact tracing and vaccination reach them too. This is also how the number of
