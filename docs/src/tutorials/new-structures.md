@@ -197,7 +197,7 @@ taken from each route's own kernel:
 EpiBranch.sellke_race!(
     state, members, rng, sim_opts;
     routes = routes, interventions = interventions, seed!,
-    watches = Tuple(EpiBranch.watched_records(w.kernel) for w in windows),
+    watches = Tuple(EpiBranch.watched_records(w.kernel) for (w, _) in routes),
 )
 ```
 
