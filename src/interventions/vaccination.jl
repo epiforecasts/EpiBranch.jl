@@ -334,8 +334,8 @@ end
 
 Read a per-dose effect `x` for `ind`: a scalar `x` is the same for every
 individual and is read straight off the vaccination, with no dictionary
-lookup and no per-contact state (so no extra line-list column, and a value
-carrying a derivative reaches its reader unchanged); a `Distribution` or
+lookup and no per-contact state (so no extra line-list column, and a `Dual`
+reaches its reader with its derivative intact); a `Distribution` or
 `Function` was drawn once when the dose was given, via [`store_draw!`](@ref),
 and that stored draw is read back here. `key(label)` names the per-contact
 state the varying branch reads, e.g. [`RingVaccination`](@ref)'s

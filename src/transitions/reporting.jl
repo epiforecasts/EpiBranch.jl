@@ -11,14 +11,16 @@ days after symptom onset (or after `from`, if given). Each case records
   `(rng, ind) -> ...` (for example a different detection probability per risk
   group).
 - `from`: the time the delay is measured from. Symptom onset by default;
-  another recorded time such as `:test_time` or `:admission_time`; or a
-  function of the individual, such as `ind -> ind.infection_time`.
+  another recorded time such as `:test_time` (`:test` works too) or
+  `:admission_time`; or a function of the individual, such as
+  `ind -> ind.infection_time`.
 
 Cases that never reached `from` are not reported. With the default `from`,
 this includes asymptomatic cases from [`clinical_presentation`](@ref), whose
-onset time is `NaN`. Measuring from onset requires the model's `attributes`
-to set onset times, and the simulation checks for this when it starts. A
-report drawn for a time after the case has died or recovered is reset to "not
+onset time is `NaN`. The time measured from must be one that the model's
+`attributes` set or that a step in its `progression` records; the simulation
+checks this when it starts, and stops with an error if neither does. A report
+drawn for a time after the case has died or recovered is reset to "not
 reported".
 
 # Examples
@@ -43,7 +45,7 @@ function initialise_individual!(::Reporting, individual, state)
 end
 
 function resolve_individual!(r::Reporting, individual, state)
-    anchor = _resolve_anchor(r.from, individual)
+    anchor = _state_time(individual, r.from)
     time = transition_time(
         state.rng, individual, anchor, r.delay;
         probability = r.probability
@@ -60,7 +62,7 @@ function censor_after_outcome!(::Reporting, individual)
 end
 
 function transition_loglik(r::Reporting, individual::Individual)
-    anchor = _resolve_anchor(r.from, individual)
+    anchor = _state_time(individual, r.from)
     _anchor_ok(anchor) || return 0.0
     flag = individual.state[:reported]::Bool
     time = flag ? individual.state[:reporting_time] : Inf

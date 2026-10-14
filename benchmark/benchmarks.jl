@@ -81,6 +81,37 @@ SUITE["simulation: households"] = @benchmarkable simulate(
     ); rng = StableRNG(1)
 )
 
+# The generation-based engine that `BranchingProcess` drives, distinct from
+# the continuous-time race the processes above run on. Timed with and
+# without interventions, since an intervention adds a state read and a
+# policy check to every case the engine advances.
+const BP_OFFSPRING = NegBin(2.5, 0.16)
+const BP_GT = LogNormal(1.6, 0.5)
+
+SUITE["simulation: branching process"] = @benchmarkable simulate(
+    $(ModelSpec(BranchingProcess(BP_OFFSPRING, BP_GT); progression = PROGRESSION));
+    n_initial = 5, max_cases = 2000, rng = StableRNG(1)
+)
+
+const BP_CLINICAL = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
+const BP_ISOLATION = Isolation(
+    onset_to_isolation_delay = LogNormal(1.0, 0.5), duration = Inf
+)
+const BP_CONTACT_TRACING = ContactTracing(
+    probability = 0.5, isolation_to_trace_delay = Exponential(2.0),
+    action = Quarantine(duration = Inf)
+)
+
+SUITE["simulation: branching process, interventions"] = @benchmarkable simulate(
+    $(
+        ModelSpec(
+            BranchingProcess(BP_OFFSPRING, BP_GT); progression = PROGRESSION,
+            interventions = [BP_ISOLATION, BP_CONTACT_TRACING],
+            attributes = BP_CLINICAL
+        )
+    ); n_initial = 5, max_cases = 2000, rng = StableRNG(1)
+)
+
 # A `PairKernel` with a projection re-reads host records as the outbreak runs.
 # Its cost depends on how often a record moves, so it is benchmarked with and
 # without an intervention that moves one.

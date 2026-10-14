@@ -10,9 +10,11 @@ case never reached `from`, the case simply never reaches `state`.
 - `from`: the earlier state the delay is measured from. `:infection` (the
   default) is the time of infection; `from = :onset` measures from symptom
   onset, and in general `from = :s` measures from the time recorded for state
-  `s`. A function of the individual returning a time is also accepted. If the
-  case never reached `from` (including asymptomatic cases, whose onset time is
-  `NaN`), the step is skipped.
+  `s` (`from = :onset_time` works too). A function of the individual returning
+  a time is also accepted. If the case never reached `from` (including
+  asymptomatic cases, whose onset time is `NaN`), the step is skipped. If no
+  attribute or other step records that state at all, the simulation stops
+  with an error when it starts.
 - `delay` or `rate` (give exactly one): `delay` is a fixed number of days, a
   distribution, or a function of the random number generator and the
   individual, `(rng, ind) -> ...`, drawn for each case. `rate = r` is the
@@ -80,19 +82,16 @@ function _transition_delay(delay, rate)
 end
 
 # Time of the `from` state for this individual. `:infection` is the
-# infection time (a field, not a state key); any other state name `s` is
-# `Symbol(s, :_time)` in `ind.state`; a function is evaluated directly.
+# infection time (a field, not a state key); any other state name `s`
+# resolves via `_resolved_key` to its `:*_time` key in `ind.state`; a
+# function is evaluated directly.
 function _state_time(ind::Individual{T}, from::Symbol) where {T}
     from === :infection && return ind.infection_time
-    return convert(T, get(ind.state, Symbol(from, :_time), T(NaN)))
+    return convert(T, get(ind.state, _resolved_key(from), T(NaN)))
 end
 _state_time(ind, from) = float(from(ind))
 
-# `from` states other than `:infection` are usually produced by an upstream
-# transition rather than by `attributes`, so the start-up validator cannot
-# see them; an unreached state simply yields a non-finite time and the
-# transition skips. So no fields are required up front.
-required_fields(::Transition) = Symbol[]
+required_fields(t::Transition) = _from_required(t.from)
 
 function initialise_individual!(t::Transition, individual, state)
     individual.state[t.state] = false

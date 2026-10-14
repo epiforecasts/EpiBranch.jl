@@ -36,7 +36,7 @@ function initialise_individual!(::Recovery, individual, state)
 end
 
 function resolve_individual!(r::Recovery, individual, state)
-    anchor = _resolve_anchor(r.from, individual)
+    anchor = _state_time(individual, r.from)
     time = transition_time(state.rng, individual, anchor, r.delay)
     time === nothing && return nothing
     individual.state[:recovery_candidate_time] = time
@@ -52,7 +52,7 @@ end
 # time is drawn unconditionally, so a non-finite candidate there is
 # impossible under the model.
 function transition_loglik(r::Recovery, individual::Individual)
-    anchor = _resolve_anchor(r.from, individual)
+    anchor = _state_time(individual, r.from)
     _anchor_ok(anchor) || return 0.0
     t = individual.state[:recovery_candidate_time]
     if !isfinite(t)
@@ -142,7 +142,7 @@ function initialise_individual!(::Death, individual, state)
 end
 
 function resolve_individual!(d::Death, individual, state)
-    anchor = _resolve_anchor(d.from, individual)
+    anchor = _state_time(individual, d.from)
     time = transition_time(
         state.rng, individual, anchor, d.delay;
         probability = d.probability
@@ -158,7 +158,7 @@ function terminal_event(::Death, individual::Individual{T}) where {T}
 end
 
 function transition_loglik(d::Death, individual::Individual)
-    anchor = _resolve_anchor(d.from, individual)
+    anchor = _state_time(individual, d.from)
     _anchor_ok(anchor) || return 0.0
     t = individual.state[:death_candidate_time]
     candidate = isfinite(t)
