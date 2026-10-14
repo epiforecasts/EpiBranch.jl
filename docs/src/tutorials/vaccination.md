@@ -674,10 +674,10 @@ for each.
     recorded. Visits are assumed to reach people independently, with a fixed
     probability.
 
-    A group is also offered doses only in a generation in which it gains a
-    new member, so a group whose trigger arrives after its last new member
-    leaves those members unvaccinated. A group that grows later is reached
-    again, each new member bringing their group with them. In this model a
+    A group is also offered doses only when a case makes a contact who
+    belongs to it, so a group whose trigger arrives after the last such
+    contact leaves its members unvaccinated. A group that gains another
+    contact later is offered doses again. In this model a
     few per cent of willing people are never offered a dose, which is what
     puts the measured coverage below the shares the parameters aim for.
 
