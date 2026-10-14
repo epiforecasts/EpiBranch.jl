@@ -205,16 +205,19 @@ EpiBranch.sellke_race!(
 )
 ```
 
-A model with one kernel passes a tuple with one entry, matching the
+A model with one kernel passes a tuple with one entry for each, matching the
 single-window form:
 
 ```julia
 watches = (EpiBranch.watched_records(model.edge_kernel),)
+projections = (EpiBranch.kernel_projection(model.edge_kernel),)
 ```
 
-Without it, every route's rates are treated as fixed for the whole run, and a
-kernel that reads per-person records keeps contacts drawn before a record
-changed, without any warning.
+Without `watches`, every route's rates are treated as fixed for the whole run.
+A kernel that reads per-person records then keeps contacts drawn before a
+record changed, without any warning if `projections` is left out too; with
+`projections`, the simulation stops with an error when a record the kernel
+reads changes without being declared.
 
 ## Seasonal or time-varying transmission
 
