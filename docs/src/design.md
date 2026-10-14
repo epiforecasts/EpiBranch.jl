@@ -56,7 +56,7 @@ a population in continuous time, working out when each person is infected from
 the contacts between pairs. A structure-driven model can also list the people
 each infectious person is in contact with in each generation, and a person
 exposed by several cases in the same generation is then considered once, with
-all of those exposures; the hospital ward in [New transmission
+all of those exposures; the hospital bay in [New transmission
 structures](tutorials/new-structures.md) is an example. Either way the model
 only says who is in contact with whom.
 
