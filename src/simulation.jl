@@ -626,14 +626,20 @@ end
 # `contacts_of`) ever populates this; empty for every other model, which is
 # every built-in one today.
 function _reinfection_episodes(targets, is_new)
-    episodes = Dict{Int, InfectionEpisode}()
+    episodes = _NO_REINFECTIONS
     for i in eachindex(targets)
         is_new[i] && continue
         target = targets[i]
-        is_infected(target) && (episodes[i] = InfectionEpisode(target))
+        is_infected(target) || continue
+        episodes === _NO_REINFECTIONS && (episodes = Dict{Int, InfectionEpisode}())
+        episodes[i] = InfectionEpisode(target)
     end
     return episodes
 end
+
+# Shared by every generation with no reinfection, and only ever read.
+const _NO_REINFECTIONS = Dict{Int, InfectionEpisode}()
+const _NO_KEPT = Int[]
 
 """Phase 2 — contact-level interventions act on this generation's exposures.
 Newly minted contacts get their intervention state initialised; each target is
@@ -665,6 +671,8 @@ function _intervene!(
         length(es) > 1 && sort!(es, by = last)
         targets[i].parent_id, targets[i].infection_time = es[1]
     end
+
+    isempty(interventions) && return _NO_KEPT
 
     # Each stretch of per-case interventions runs case by case, and a batch-hook
     # intervention at its own place in the list, so what one writes reaches
@@ -852,7 +860,7 @@ function _account_generation!(state, interventions, newly_infected, kept)
     # not a special built-in rule. It was asked before infection was decided,
     # so a kept contact that went on to be infected is already in the set.
     next_active = [target.id for target in newly_infected]
-    for id in unique(kept)
+    isempty(kept) || for id in unique(kept)
         is_infected(state.individuals[id]) || push!(next_active, id)
     end
     state.active_ids = next_active
@@ -884,19 +892,28 @@ function _settle_generation!(state::SimulationState, interventions, cases, cases
     isempty(cases) && return nothing
     clock, count, generation = state.max_infection_time, state.cumulative_cases,
         state.current_generation
-    rank = invperm(sortperm([case.infection_time for case in cases]))
+    rank = _infection_ranks(cases)
     for (i, case) in enumerate(cases)
-        _at_case!(state, case, cases_before + rank[i])
+        _at_case!(state, case, cases_before + _rank(rank, i))
         resolve_transitions!(state, case)
     end
     for (i, case) in enumerate(cases)
-        _at_case!(state, case, cases_before + rank[i])
+        _at_case!(state, case, cases_before + _rank(rank, i))
         _resolve_interventions!(state, case, interventions)
     end
     state.max_infection_time, state.cumulative_cases = clock, count
     state.current_generation = generation
     return nothing
 end
+
+# Each case's place among `cases` by infection time; `nothing` when they are
+# already in that order, as a generation of one always is.
+function _infection_ranks(cases)
+    issorted(cases; by = case -> case.infection_time) && return nothing
+    return invperm(sortperm([case.infection_time for case in cases]))
+end
+_rank(::Nothing, i) = i
+_rank(rank, i) = rank[i]
 
 """
     _settle_case!(state, case, interventions, count)
