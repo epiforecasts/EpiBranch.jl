@@ -59,6 +59,10 @@
             chain_size_distribution(bp_mt; n_sim = 10_000, rng = StableRNG(1)), data
         )
         @test ll_direct ≈ ll_via_distribution
+
+        # A `ModelSpec` wrapping a multi-type process, with no interventions,
+        # takes the same fallback via `has_single_type_law(::ModelSpec)`.
+        @test chain_size_distribution(ModelSpec(bp_mt)) isa Distribution
     end
 
     @testset "chain_size_distribution — single-type offspring with no closed-form law falls back" begin
