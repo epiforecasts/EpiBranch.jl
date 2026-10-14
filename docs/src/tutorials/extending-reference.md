@@ -761,8 +761,8 @@ case is traced. Interventions of your own opt in with
 `EpiBranch.continuous_actions(iv) = true`, and must work without the infection
 time of a contact whose infection is not yet final. Ring delivery supports an
 eligibility window with no end; group delivery uses known triggering cases. Scheduling and capacity work as on branching
-processes. Mass vaccination is not supported here, and nor is
-`HomogeneousProcess`, which names no contacts.
+processes. Mass vaccination is not supported here, and nor are
+`HomogeneousProcess` and `MixingProcess`, which name no contacts.
 On a household model a capacity limit puts every household on one shared
 clock, so a budget with a finite `period` is counted in calendar order across
 households.
