@@ -423,7 +423,7 @@ read. `ModelSpec` passes
 A model whose population splits naturally into groups that can be simulated
 independently, as a household model splits into households, defines
 [`EpiBranch.race_groups`](@ref)`(model, kernel)` to say how it splits for a
-given kernel. A new kernel type can define the method for a given model to
+given kernel, and its `simulate_once` runs one race per group. A new kernel type can define the method for a given model to
 choose a different split:
 
 ```julia
