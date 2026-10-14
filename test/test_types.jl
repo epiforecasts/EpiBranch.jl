@@ -1,5 +1,5 @@
 # A model whose `single_type_offspring` raises something other than
-# `ArgumentError`/`MethodError`, so `has_single_type_law` must not swallow it.
+# `ArgumentError`/`MethodError`, to check that `has_single_type_law` lets it through.
 struct _BrokenOffspringModel <: EpiBranch.TransmissionModel end
 EpiBranch.single_type_offspring(::_BrokenOffspringModel) = error("broken")
 
@@ -62,7 +62,7 @@ EpiBranch.single_type_offspring(::_BrokenOffspringModel) = error("broken")
         )
         @test !EpiBranch.has_single_type_law(multi_type_model)
 
-        # Any other exception from `single_type_offspring` is not swallowed.
+        # Any other exception from `single_type_offspring` propagates unchanged.
         @test_throws ErrorException EpiBranch.has_single_type_law(
             _BrokenOffspringModel()
         )
