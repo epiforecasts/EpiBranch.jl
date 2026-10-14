@@ -119,7 +119,8 @@ dictionary for everything else. The core holds its place in the transmission
 tree, its infection time, and the two universal modifiers (susceptibility and
 infectiousness). The dictionary is the deliberate extension point:
 interventions, attribute builders, clinical transitions, and observation
-models each own a small set of keys, and the engine never inspects them.
+models each own a small set of keys, which the engine is meant to leave alone
+(see the note on engine loops above for where it does not yet).
 
 A typed core would couple the struct to every intervention's state shape and
 would break the dose-label namespacing that lets multi-dose vaccination
