@@ -227,19 +227,10 @@ function _sim_loglikelihood(
     return _empirical_ll(observed, sim_values; min_val, censored, cap)
 end
 
-# Observed chain sizes for one simulated state. Dispatch on the model's
-# observation: with `NoObservation` every infected case counts;
-# otherwise only the cases the observation marked `:reported`.
-_sim_chain_sizes(state, ::NoObservation) = chain_statistics(state).size
-function _sim_chain_sizes(state, o::MinimumSize)
-    return filter(>=(o.min_size), chain_statistics(state).size)
-end
-
-# The smallest size an observation could have recorded, which the empirical
-# likelihood bins from.
-_observed_min_size(::ObservationModel) = 1
-_observed_min_size(o::MinimumSize) = o.min_size
-function _sim_chain_sizes(state, ::ObservationModel)
+# Chain sizes counted from each case's `:reported` flag, written by
+# `Reporting` during the progression pass, by `apply_observation!`
+# afterwards for an observation model, or both.
+function _reported_chain_sizes(state)
     counts = Dict{Int, Int}()
     for ind in state.individuals
         (is_infected(ind) && get(ind.state, :reported, false)) || continue
@@ -248,16 +239,47 @@ function _sim_chain_sizes(state, ::ObservationModel)
     return collect(values(counts))
 end
 
+# Observed chain sizes for one simulated state. With `NoObservation` and no
+# `Reporting` step in `progression`, detection is not thinned at all, so
+# every infected case counts; otherwise only `:reported` cases do.
+function _sim_chain_sizes(state, obs::MinimumSize, progression)
+    sizes = any(t -> t isa Reporting, progression) ?
+        _reported_chain_sizes(state) : chain_statistics(state).size
+    return filter(>=(obs.min_size), sizes)
+end
+function _sim_chain_sizes(state, obs, progression)
+    if obs isa NoObservation && !any(t -> t isa Reporting, progression)
+        return chain_statistics(state).size
+    end
+    return _reported_chain_sizes(state)
+end
+
+# The smallest size an observation could have recorded, which the empirical
+# likelihood bins from.
+_observed_min_size(::ObservationModel) = 1
+_observed_min_size(o::MinimumSize) = o.min_size
+
 """
     loglikelihood(data::ChainSizes, model::TransmissionModel; kwargs...)
     loglikelihood(data::ChainSizes, spec::ModelSpec; kwargs...)
 
 Log-likelihood of observed chain sizes. With no interventions and a
 single-type offspring law, uses the analytical chain-size distribution
-transformed by the observation ([`observe`](@ref)); otherwise simulates
-and compares the reported chain sizes against the data. The interventions,
+thinned by a `Reporting` step's detection probability and transformed by the
+observation ([`observe`](@ref)); otherwise simulates and compares the
+reported chain sizes against the data, honouring `data.seeds` and
+`prob_concluded` as described below. The interventions, progression,
 attributes and observation come from the process for a bare model, or from
 the spec for a [`ModelSpec`](@ref).
+
+On the simulation path, clusters are drawn grouped by seed count: for each
+distinct value in `data.seeds`, `n_sim` simulations are run with that many
+index cases, and each simulation's chains are summed to a single cluster
+size (as [`chain_size_distribution`](@ref)'s `rand` does), so a multi-seed
+cluster is compared against simulated clusters with the same number of
+seeds rather than against single-seed ones. `prob_concluded`, when given, is
+the real-time per-cluster mixture `π_i · P(X = x_i) + (1 − π_i) · P(X ≥ x_i)`
+taken against the simulated clusters' empirical distribution.
 """
 function loglikelihood(data::ChainSizes, model::TransmissionModel; kwargs...)
     return _chain_size_model_loglik(
@@ -277,14 +299,22 @@ end
 # supplies the spec's.
 function _chain_size_model_loglik(
         data::ChainSizes, process, ivs, attrs, prog, obs, rec;
-        n_initial::Int = 1,
         max_cases::Union{Int, Nothing} = 10_000,
         max_generations::Union{Int, Nothing} = 100,
         max_time::Union{Real, Nothing} = nothing,
         stopping_rules::Union{Vector{<:AbstractStoppingRule}, Nothing} = nothing,
         n_sim::Int = 10_000,
-        rng::AbstractRNG = Random.default_rng()
+        rng::AbstractRNG = Random.default_rng(),
+        prob_concluded::Union{Nothing, AbstractVector{<:Real}} = nothing
     )
+    if prob_concluded !== nothing && length(prob_concluded) != length(data.data)
+        throw(
+            ArgumentError(
+                "prob_concluded must have the same length as data " *
+                    "($(length(data.data))); got $(length(prob_concluded))"
+            )
+        )
+    end
     # Chain size depends only on the offspring law (and the observation), so the
     # analytical form is exact whenever the offspring is the single-type one and
     # nothing thins transmission. Interventions thin it, hence the `ivs` check;
@@ -293,34 +323,52 @@ function _chain_size_model_loglik(
     # `single_type_offspring` throws and the evaluation falls through to simulation.
     if isempty(ivs)
         try
-            d = observe(chain_size_distribution(single_type_offspring(process)), obs)
-            return _chain_size_loglik(d, data)
+            d = observe(
+                _fold_reporting(
+                    prog, chain_size_distribution(single_type_offspring(process)), obs
+                ),
+                obs
+            )
+            return _chain_size_loglik(d, data; prob_concluded)
         catch e
             (e isa MethodError || e isa ArgumentError) || rethrow()
         end
     end
-    sim_opts = SimOpts(;
-        n_initial, max_cases, max_generations, max_time,
-        stopping_rules
-    )
-    states = _simulate_n(
-        process, n_sim, sim_opts;
-        interventions = ivs, attributes = attrs,
-        progression = prog, observation = obs, recorder = rec, rng
-    )
-    sim_values = Int[]
-    censored = Bool[]
-    cap = _case_cap(sim_opts)
-    for state in states
-        hit_cap = !state.extinct && state.cumulative_cases >= cap
-        for v in _sim_chain_sizes(state, obs)
-            push!(sim_values, v)
-            push!(censored, hit_cap)
+    # No closed form: simulate clusters grouped by seed count, one batch of
+    # `n_sim` runs per distinct value in `data.seeds`, so a k-seed cluster is
+    # compared against simulated clusters that also start from k index cases
+    # rather than against single-seed ones.
+    total = 0.0
+    for k in sort(unique(data.seeds))
+        group = findall(==(k), data.seeds)
+        sim_opts = SimOpts(;
+            n_initial = k, max_cases, max_generations, max_time, stopping_rules
+        )
+        states = _simulate_n(
+            process, n_sim, sim_opts;
+            interventions = ivs, attributes = attrs,
+            progression = prog, observation = obs, recorder = rec, rng
+        )
+        cap = _case_cap(sim_opts)
+        sim_values = Int[]
+        censored = Bool[]
+        for state in states
+            # A multi-seed cluster is one simulation: its chains (one per
+            # seed) are summed to the cluster's total observed size, rather
+            # than reported as separate single-seed sizes.
+            vals = _sim_chain_sizes(state, obs, prog)
+            isempty(vals) && continue
+            push!(sim_values, sum(vals))
+            push!(censored, !state.extinct && state.cumulative_cases >= cap)
         end
+        group_prob_concluded = prob_concluded === nothing ? nothing : prob_concluded[group]
+        total += _empirical_ll(
+            data.data[group], sim_values;
+            min_val = _observed_min_size(obs), censored, cap,
+            prob_concluded = group_prob_concluded
+        )
     end
-    return _empirical_ll(
-        data.data, sim_values; min_val = _observed_min_size(obs), censored, cap
-    )
+    return total
 end
 
 """
@@ -390,12 +438,18 @@ end
 When `censored` is provided, simulated values flagged as censored contribute
 to P(size >= cap) rather than P(size = cap). Observed values at or above
 `cap` are evaluated as P(size >= cap).
+
+`prob_concluded`, when given (one value per observation, in `[0, 1]`), mixes
+each observation's point mass with its right tail under the same simulated
+empirical law, exactly as the analytical [`_chain_size_loglik`](@ref)
+mixture does: `π_i · P(X = x_i) + (1 − π_i) · P(X ≥ x_i)`.
 """
 function _empirical_ll(
         observed, simulated;
         min_val::Int = 0,
         censored::Vector{Bool} = Bool[],
-        cap::Int = typemax(Int)
+        cap::Int = typemax(Int),
+        prob_concluded::Union{Nothing, AbstractVector{<:Real}} = nothing
     )
     isempty(simulated) && return -Inf
     n_total = length(simulated)
@@ -412,20 +466,42 @@ function _empirical_ll(
         end
     end
     n_unique = length(counts) + (n_censored > 0 ? 1 : 0)
+    denom = n_total + n_unique
+
+    # Right-censored draws are size ≥ cap, so they belong to the tail of
+    # every bin at or below the cap.
+    log_right_tail(idx) = log(
+        (
+            sum(@view counts[idx:end]) + (length(counts) - idx + 1) +
+                (n_censored > 0 ? n_censored + 1 : 0)
+        ) / denom
+    )
 
     ll = 0.0
-    for obs in observed
-        if obs >= cap && n_censored > 0
-            # Right-censored: P(size >= cap)
-            prob = (n_censored + 1) / (n_total + n_unique)
+    for (i, x) in enumerate(observed)
+        at_cap = x >= cap && n_censored > 0
+        if at_cap
+            lc = log((n_censored + 1) / denom)
         else
-            idx = obs - min_val + 1
-            if idx < 1 || idx > length(counts)
-                return -Inf
-            end
-            prob = (counts[idx] + 1) / (n_total + n_unique)
+            idx = x - min_val + 1
+            (idx < 1 || idx > length(counts)) && return -Inf
+            lc = log((counts[idx] + 1) / denom)
         end
-        ll += log(prob)
+        if prob_concluded === nothing
+            ll += lc
+            continue
+        end
+        π_i = prob_concluded[i]
+        (0 <= π_i <= 1) ||
+            throw(ArgumentError("prob_concluded[$i] = $(π_i) is not in [0, 1]"))
+        if π_i >= one(π_i)
+            ll += lc
+        elseif at_cap
+            ll += lc
+        else
+            lo = log_right_tail(x - min_val + 1)
+            ll += π_i <= zero(π_i) ? lo : _logsumexp2(log(π_i) + lc, log1p(-π_i) + lo)
+        end
     end
     return ll
 end

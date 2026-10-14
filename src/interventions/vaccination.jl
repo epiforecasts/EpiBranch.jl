@@ -374,8 +374,8 @@ end
 
 Read a per-dose effect `x` for `ind`: a scalar `x` is the same for every
 individual and is read straight off the vaccination, with no dictionary
-lookup and no per-contact state (so no extra line-list column, and a value
-carrying a derivative reaches its reader unchanged); a `Distribution` or
+lookup and no per-contact state (so no extra line-list column, and a `Dual`
+reaches its reader with its derivative intact); a `Distribution` or
 `Function` was drawn once when the dose was given, via [`store_draw!`](@ref),
 and that stored draw is read back here. `key(label)` names the per-contact
 state the varying branch reads, e.g. [`RingVaccination`](@ref)'s
@@ -487,12 +487,6 @@ end
 
 function competing_risk(v::AbstractVaccination, parent, contact, state)
     return _susceptibility_risk(v, contact)
-end
-
-# The protection above reads only the contact. A subtype with a risk of its own
-# is taken to read the infector, as any other intervention is.
-function risk_depends_on_infector(v::AbstractVaccination)
-    return _has_own_method(competing_risk, typeof(v), AbstractVaccination)
 end
 
 """
@@ -958,9 +952,6 @@ function competing_risk(rv::RingVaccination, parent, contact, state)
     return (exposure, onward)
 end
 
-# Only the onward risk reads the infector.
-risk_depends_on_infector(rv::RingVaccination) = rv.onward_efficacy > 0
-
 # A ring doses the infector's own traced contacts: delivery depends on the
 # individual being resolved. A shared budget wrapped around one is
 # `CapacityConstrained`'s own declaration.
@@ -1123,10 +1114,6 @@ _dose_offset(rv::RingVaccination) = rv.dose_delay
 # The intervention inside a wrapper; `InterventionWrapper` adds a method.
 _unwrap_scheduled(iv) = iv
 
-function apply_post_transmission!(rv::RingVaccination, state, new_contacts)
-    return apply_actions!(rv, state, new_contacts)
-end
-
 # ── GroupVaccination ─────────────────────────────────────────────────
 
 """
@@ -1189,9 +1176,9 @@ e.g. `:test_positive` for the default `OnLabConfirmation()`.
 
 !!! note "Seed cases on the generation engine"
     Like [`RingVaccination`](@ref) and [`MassVaccination`](@ref),
-    `GroupVaccination` acts through `apply_post_transmission!`, which the
-    engine calls only on newly created contacts. A run's seed cases are
-    created directly, not through that hook, so a seed is reached only once
+    `GroupVaccination` acts through `intervention_actions`, to which the
+    generation engine offers the contacts each case makes. A run's seed cases
+    are created directly, not as anyone's contacts, so a seed is reached only once
     another member of its group is created later and re-triggers the sweep;
     a seed whose chain goes extinct without ever sharing a group with a
     later case is not vaccinated even if it is itself confirmed.
@@ -1293,18 +1280,6 @@ function _group_trigger_time(gv::GroupVaccination, state, group)
         t = min(t, tt)
     end
     return t
-end
-
-# Two things can happen to a group in a single generation: a member created
-# earlier newly meets `eligibility` (the group's first trigger), or a member
-# is created into a group that already triggered in an earlier generation.
-# Recomputing the trigger time for every group touched by `new_contacts` and
-# visiting that group's members (via the index) against it handles both in
-# one pass: a fresh trigger reaches members already present, and a standing
-# one reaches a member only now created. Groups untouched this generation are
-# left alone, so nobody outside a triggered group is ever visited.
-function apply_post_transmission!(gv::GroupVaccination, state, new_contacts)
-    return apply_actions!(gv, state, new_contacts)
 end
 
 # ── MassVaccination ──────────────────────────────────────────────────
@@ -1412,7 +1387,3 @@ Base.propertynames(mv::MassVaccination, ::Bool = false) = _effect_propertynames(
 Base.show(io::IO, mv::MassVaccination) = _show_keywords(io, mv)
 
 required_fields(::MassVaccination) = Symbol[]
-
-function apply_post_transmission!(mv::MassVaccination, state, new_contacts)
-    return apply_actions!(mv, state, new_contacts)
-end

@@ -1,7 +1,7 @@
 """
 Base type for all interventions. Subtypes implement one or more of:
-`initialise_individual!`, `resolve_individual!`, `apply_post_transmission!`,
-`competing_risk`.
+`initialise_individual!`, `resolve_individual!`, `trace_contacts!`,
+`intervention_actions`, `competing_risk`.
 
 To support time-based scheduling (`Scheduled(iv; start_time=...)`), also
 implement [`intervention_time`](@ref) and [`reset!`](@ref). The default
@@ -19,24 +19,103 @@ abstract type AbstractIntervention end
 """Set up intervention-specific fields on a newly created individual. Default: no-op."""
 initialise_individual!(::AbstractIntervention, individual, state) = nothing
 
-"""Determine intervention state before transmission. Default: no-op."""
+"""
+    resolve_individual!(intervention, case, state)
+
+Set the intervention's state on a case before it transmits. `Isolation`, for
+example, records when the case isolates. Default: no-op.
+
+Both engines call it once for each infection, as the case is settled: after
+its infection time is fixed and its clinical transitions have run, and before
+it infects anyone. It is never called on an uninfected individual, even a
+contact that `keep_active` keeps in the simulation to generate contacts of
+its own. While it runs,
+`state.max_infection_time` is the case's infection time,
+`state.current_generation` is the case's generation and
+`state.cumulative_cases` counts the case and every case settled before it. A
+[`Scheduled`](@ref) gate is evaluated against these values.
+
+The continuous-time models settle cases in order of infection time. The
+generation engine settles a generation's cases together, once its infections
+are decided. There `state.cumulative_cases` counts the cases of earlier
+generations and those of the case's own generation infected no later than it;
+a case of a later generation is not counted, even one infected earlier.
+"""
 resolve_individual!(::AbstractIntervention, individual, state) = nothing
 
-"""Act on contacts after creation. All contacts are received. Default: no-op."""
-apply_post_transmission!(::AbstractIntervention, state, new_contacts) = nothing
+"""
+    apply_post_transmission!(intervention, state, new_contacts)
+
+Deprecated: implement [`trace_contacts!`](@ref) for what an intervention does
+to the contacts a case reached, and [`intervention_actions`](@ref) for actions
+with a delivery time. Both engines call those once per case.
+
+The generation engine used to hand this hook a whole generation's new
+contacts at once. It still does for an intervention that defines a method of
+its own, with a deprecation warning, so an intervention written against it
+keeps working there. Called on an intervention without one, it traces each
+contact from its `parent_id` and then admits the intervention's actions for
+the batch, as the built-in methods it replaces did.
+"""
+function apply_post_transmission!(iv::AbstractIntervention, state, new_contacts)
+    Base.depwarn(
+        "`apply_post_transmission!` is deprecated. Call `trace_contacts!` with " *
+            "each infector and the contacts it reached, and `apply_actions!` for " *
+            "an intervention's actions.",
+        :apply_post_transmission!; force = true
+    )
+    by_infector = Dict{Int, Vector{eltype(new_contacts)}}()
+    for contact in new_contacts
+        1 <= contact.parent_id <= length(state.individuals) || continue
+        push!(get!(Vector{eltype(new_contacts)}, by_infector, contact.parent_id), contact)
+    end
+    for pid in sort!(collect(keys(by_infector)))
+        trace_contacts!(iv, state, state.individuals[pid], by_infector[pid])
+    end
+    actions = intervention_actions(iv, state, new_contacts)
+    actions === nothing || _admit_actions!(iv, state, actions)
+    return nothing
+end
+
+# Whether the generation engine should hand `iv` a whole generation's contacts
+# through the deprecated `apply_post_transmission!` rather than call its
+# per-case hooks: true for an intervention with a method of its own for it.
+# The built-in wrappers keep a method for wrapping such an intervention, so
+# they answer for the one they wrap.
+function _uses_batch_hook(iv::AbstractIntervention)
+    return _has_own_method(apply_post_transmission!, typeof(iv), AbstractIntervention)
+end
+
+# Logged once per intervention type, so each one still on the hook is named.
+function _warn_batch_hook(iv::AbstractIntervention)
+    T = typeof(_unwrap_scheduled(iv))
+    msg = "$(nameof(T)) implements `apply_post_transmission!`, which is " *
+        "deprecated. Implement `trace_contacts!(intervention, state, infector, " *
+        "contacts)` for what it does to the contacts a case reached, and " *
+        "`intervention_actions(intervention, state, candidates)` for actions " *
+        "with a delivery time; both engines call these once per case."
+    id = (:apply_post_transmission!, T)
+    @warn msg maxlog = 1 _id = id _group = :depwarn
+    return nothing
+end
 
 """
     trace_contacts!(intervention, state, infector, contacts[, not_before])
 
-Act on the `contacts` that `infector` reaches, on the continuous-time (Sellke)
-path. The counterpart of [`apply_post_transmission!`](@ref), which the
-generation engine calls with freshly created contact individuals whose
-`parent_id` names their infector. The continuous-time models have no such
-objects: every node exists from the start and the race only settles when each
-is infected, so the infector has to be passed explicitly.
+Act on the `contacts` that `infector` reached and that it can still affect.
+Default: no-op.
 
-Called once per case, when the race finalises it and its timeline is therefore
-known, with the contacts it can still affect. Default: no-op.
+Both engines call it once per case, after the case is settled and before any
+of these contacts is decided infected or not, and before any intervention's
+[`intervention_actions`](@ref) for the same case. While it runs,
+`state.max_infection_time` is the infector's infection time, as in
+[`resolve_individual!`](@ref). The continuous-time models call it as the race
+settles the case, with its neighbours or household members not yet settled.
+The generation engine calls it for each case of the previous generation, with
+the contacts it made in this one. A contact several cases reached is passed to
+each of them. The generation engine also calls it on an uninfected individual
+that [`keep_active`](@ref) kept generating contacts, with the state as the
+generation left it.
 
 `not_before[i]`, when given, is the earliest time `contacts[i]` can be sought:
 when that person became a contact of `infector`. A contact met only at a
@@ -62,27 +141,37 @@ end
 Whether `intervention` implements [`trace_contacts!`](@ref
 EpiBranch.trace_contacts!). The continuous-time race gathers a case's
 reachable contacts only when some intervention says `true`, so an
-intervention that does not trace costs nothing. Default: `false`.
+intervention that does not trace costs nothing. The default reads the methods
+themselves: `true` for a type with a `trace_contacts!` method of its own, so an
+intervention written outside the package need not declare it. A type with a
+`trace_contacts!` method that should not count, such as one that only opts out
+of tracing as [`CapacityConstrained`](@ref)'s does, defines
+`traces_contacts(::T) = false` itself.
 """
-traces_contacts(::AbstractIntervention) = false
+function traces_contacts(iv::AbstractIntervention)
+    return _has_own_method(trace_contacts!, typeof(iv), AbstractIntervention)
+end
 
 """
     keep_active(intervention, state, targets, is_new) -> iterable of Int
 
-The ids of this generation's contacts that should stay *active* into the
-next generation (keep generating contacts of their own), beyond the newly
-infected cases, which always do. Default: none.
+The ids of the `targets` a case reached that should go on generating contacts
+of their own although they are not infected. Default: none.
 
-The engine unions these into the next active set, so who keeps generating
-contacts is not a special built-in rule. An intervention that needs the
-engine to keep growing contacts from *uninfected* nodes, such as contact
-tracing reaching contacts-of-contacts, returns those nodes' ids here. Pair
-it with the `InfectiousSource` risk source (a default) so those uninfected
-nodes generate contacts without infecting them.
+Both engines ask it once per case, right after the case's
+[`trace_contacts!`](@ref) and [`intervention_actions`](@ref), with the same
+contacts and the same state. An intervention still implementing the deprecated
+[`apply_post_transmission!`](@ref) is asked instead once per generation, about
+the whole batch, after that hook has run. An intervention that grows its reach through
+uninfected people, such as contact tracing reaching contacts-of-contacts,
+returns those people's ids here. The generation engine keeps them active for
+one more generation, so their contacts are offered to them through the same
+hooks in turn, and the `InfectiousSource` risk source (a default) stops them
+infecting anyone. The continuous-time race walks the model's contact structure
+from them instead.
 
-`targets` are this generation's contacts and `is_new[i]` flags which were
-freshly created. Return ids of nodes that are *not* already infected; the
-infected ones stay active anyway."""
+`is_new[i]` flags which of `targets` were freshly created. A contact returned
+here that turns out to be infected is active as a case anyway."""
 keep_active(::AbstractIntervention, state, targets, is_new) = ()
 
 """Whether an intervention is currently active given the simulation state. Default: always."""
@@ -141,13 +230,13 @@ sees the contact itself. Return `nothing` when `parent === contact` if that is
 not what your risk means, as [`RingVaccination`](@ref)'s onward-transmission
 risk does.
 
-On the generation-based engine, resolution happens after
-`apply_post_transmission!` so that risks can read state that other
-interventions have written on the contact (e.g. `:vaccination_time`
-set by tracing-driven vaccination). The continuous-time models resolve
-the same risks against each infection they propose, after the infector
-has been traced, which is where their own tracing-driven state is
-written.
+Both engines resolve risks after the infector's [`trace_contacts!`](@ref)
+and [`intervention_actions`](@ref) have run, so a risk can read state that
+other interventions have written on the contact (e.g. `:vaccination_time` set
+by tracing-driven vaccination). The generation engine resolves a generation's
+contacts once every case of the previous generation has been through those
+hooks; the continuous-time models resolve each infection as they propose
+it.
 """
 competing_risk(::AbstractIntervention, parent, contact, state) = nothing
 
@@ -213,7 +302,7 @@ reset!(::AbstractIntervention, ::Individual) = nothing
 Whether an intervention's [`competing_risk`](@ref) applies to a continuous-time
 route. `route` is the existing [`RouteWindow`](@ref), or `nothing` for a
 community introduction whose source is outside the population. Models using
-the single-route shorthand, including the homogeneous pool, supply a window
+the single-route shorthand, including `HomogeneousProcess`, supply a window
 named `:transmission`. The default is
 `true`, so protection follows a person across routes. Wrappers delegate to their
 wrapped intervention.
@@ -225,25 +314,6 @@ property. This predicate does not filter model-provided risk sources or the
 generation-based engine's contacts.
 """
 risk_applies(::AbstractIntervention, route) = true
-
-"""
-    risk_depends_on_infector(intervention) -> Bool
-
-Whether an intervention's [`competing_risk`](@ref) can block a contact
-differently depending on who infected it. A fixed-size pool with more than one
-mixing group draws each contact's infector in proportion to infectiousness,
-without regard to which groups mix with which. That draw is exact only for
-risks that ignore the infector, and the pool refuses an intervention for which
-this is `true`. Every other engine ignores it.
-
-The default is `true` for an intervention with a `competing_risk` method of its
-own and `false` for one without. Return `false` from an intervention whose risk
-reads only the contact, such as a vaccine's protection of the person exposed.
-Wrappers delegate to their wrapped intervention.
-"""
-function risk_depends_on_infector(iv::AbstractIntervention)
-    return _has_own_method(competing_risk, typeof(iv), AbstractIntervention)
-end
 
 # A removal's duration, drawn or given. A negative or `NaN` one puts the
 # release before its own start, which the generation engine reads as no removal
@@ -307,11 +377,11 @@ against the individual it resolves. `GroupVaccination` returns `true`, since a
 group's trigger is the earliest eligible time among members who may live
 anywhere in the population. `CapacityConstrained` returns `true`, because its
 admission decision reads how much of the shared budget every other individual
-has used. A `Scheduled` built with `start_after_cases` returns `true`, the
-case count being exactly such a read; one built with only
-`start_time`/`end_time` compares against the time of the case being resolved
-and answers for the intervention it wraps, returning `false` only while that
-intervention does.
+has used. A `Scheduled` built with `start_after_cases` or `start_after`
+returns `true`, the case count or trigger being exactly such a read; one
+built with only `start_time`/`end_time` compares against the time of the case
+being resolved and answers for the intervention it wraps, returning `false`
+only while that intervention does.
 
 `Isolation` and `ContactTracing` answer for the components they are given —
 `ContactTracing` its eligibility, rate, delay and action, `Isolation` its
@@ -321,3 +391,38 @@ state declares `true` for itself, which lifts the intervention holding it. Wrapp
 they wrap.
 """
 reads_population_state(::AbstractIntervention) = true
+
+"""
+    analytic_offspring_effect(intervention, offspring) -> offspring
+
+Return the offspring distribution a case draws from under `intervention`, given
+the one a bare process would use (a `Distribution` for a single-type process, a
+[`MultiTypeOffspring`](@ref) for a multi-type one). Define a method only when
+the effect is exact in closed form on its own, and return a law the analytical
+functions take: a `Poisson` or `NegativeBinomial` for a single-type process.
+A population-level reduction of R by a factor `p`, for example, turns
+`NegBin(R, k)` into `NegBin(p * R, k)`.
+
+An effect that depends on how the intervention's timing overlaps the
+generation-time distribution has no such form. Isolation's effect on R is one
+of these, and `Isolation` has no method. The generic method throws an error,
+which makes [`extinction_probability`](@ref), [`epidemic_probability`](@ref),
+[`probability_contain`](@ref), [`reproduction_number`](@ref),
+[`proportion_transmission`](@ref), [`proportion_cases_individual`](@ref),
+[`proportion_cases_offspring`](@ref), [`proportion_cluster_size`](@ref),
+`end_of_outbreak_probability` and [`offspring_distribution`](@ref) throw
+too when called on a [`ModelSpec`](@ref), or a process that stores its own
+interventions, holding an intervention that has no method.
+"""
+function analytic_offspring_effect(iv::AbstractIntervention, offspring)
+    throw(
+        ArgumentError(
+            "$(typeof(iv)) has no closed-form effect on the offspring distribution " *
+                "(no `analytic_offspring_effect` method), so this analytical function " *
+                "cannot account for it. Compute the quantity from simulated outbreaks, " *
+                "simulate(spec, n), instead. For containment, " *
+                "containment_probability(simulate(spec, n)) gives the simulated answer " *
+                "and probability_contain(R, k; ind_control, pop_control) an approximation."
+        )
+    )
+end

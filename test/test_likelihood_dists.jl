@@ -37,21 +37,15 @@
             prob_concluded = pc
         )
 
-        # prob_concluded has no closed form under interventions: refuse rather
-        # than silently drop them.
+        # With interventions, prob_concluded routes through the
+        # simulation-based likelihood.
         clinical = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
         iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
         d_iv = chain_size_distribution(
             ModelSpec(bp; interventions = [iso], attributes = clinical);
-            seeds = seeds, prob_concluded = pc
+            seeds = seeds, prob_concluded = pc, n_sim = 500, rng = StableRNG(1)
         )
-        @test_throws ArgumentError logpdf(d_iv, data)
-
-        # prob_concluded's mixture has no path for other kwargs either: an
-        # unsupported one like n_sim must still raise rather than be
-        # silently dropped.
-        d_extra = chain_size_distribution(bp; prob_concluded = pc, n_sim = 5)
-        @test_throws ArgumentError logpdf(d_extra, data)
+        @test isfinite(logpdf(d_iv, data))
     end
 
     @testset "chain_length_distribution" begin
@@ -82,12 +76,32 @@
         bp = BranchingProcess(NegBin(0.6, 0.5))
         data = [2, 3, 7]
         pc = fill(1.0, length(data))
-        for obs in (MinimumSize(2), PerCaseObservation(; detection_prob = 0.5))
-            spec = ModelSpec(bp; observation = obs)
+        specs = (
+            ModelSpec(bp; observation = MinimumSize(2)),
+            ModelSpec(bp; observation = PerCaseObservation(; detection_prob = 0.5)),
+            ModelSpec(bp; progression = [Reporting(delay = Dirac(0.0), probability = 0.5)]),
+        )
+        for spec in specs
             closed_form = sum(logpdf(chain_size_distribution(spec), n) for n in data)
             d_pc = chain_size_distribution(spec; prob_concluded = pc)
             @test logpdf(d_pc, data) ≈ closed_form
         end
+    end
+
+    @testset "chain_size_distribution — callable Reporting probability falls back to simulation" begin
+        # A callable `Reporting` probability has no scalar for the analytical
+        # fast path to read, so it must fall through to the simulation-based
+        # wrapper instead of throwing, as `loglikelihood` already does.
+        model = ModelSpec(
+            BranchingProcess(NegBin(1.5, 0.5));
+            progression = [
+                Reporting(
+                    delay = Dirac(0.0), probability = (rng, ind) -> 0.5,
+                    from = ind -> ind.infection_time
+                ),
+            ]
+        )
+        @test chain_size_distribution(model) isa Distribution
     end
 
     @testset "rand draws chain sizes from the underlying model" begin

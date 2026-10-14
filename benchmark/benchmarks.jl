@@ -45,6 +45,33 @@ SUITE["simulation: network, shared kernel"] = @benchmarkable simulate(
     $(network_model(Exponential(1.2))); initial_cases = [1], rng = StableRNG(1)
 )
 
+# Mass action samples only the pairs with a contact, so a run costs per contact
+# rather than per pair; per-individual traits must keep it that way.
+homogeneous_model(attributes) = ModelSpec(
+    HomogeneousProcess(; transmission_rate = 2.5, population_size = 20_000);
+    progression = PROGRESSION, attributes
+)
+
+SUITE["simulation: homogeneous"] = @benchmarkable simulate(
+    $(homogeneous_model(NoAttributes())); n_initial = 20, rng = StableRNG(1)
+)
+
+SUITE["simulation: homogeneous, susceptibility trait"] = @benchmarkable simulate(
+    $(homogeneous_model(transmission_traits(susceptibility = 0.9)));
+    n_initial = 20, rng = StableRNG(1)
+)
+
+# A window that never closes would have each case contact every member; the
+# time limit bounds the window the pairs are sampled over.
+SUITE["simulation: homogeneous SI, max_time"] = @benchmarkable simulate(
+    $(
+        ModelSpec(
+            HomogeneousProcess(; transmission_rate = 2.0, population_size = 50_000);
+            progression = Transition[]
+        )
+    ); n_initial = 50, rng = StableRNG(1), max_time = 3.0
+)
+
 SUITE["simulation: households"] = @benchmarkable simulate(
     $(
         ModelSpec(
@@ -52,6 +79,37 @@ SUITE["simulation: households"] = @benchmarkable simulate(
             progression = PROGRESSION
         )
     ); rng = StableRNG(1)
+)
+
+# The generation-based engine that `BranchingProcess` drives, distinct from
+# the continuous-time race the processes above run on. Timed with and
+# without interventions, since an intervention adds a state read and a
+# policy check to every case the engine advances.
+const BP_OFFSPRING = NegBin(2.5, 0.16)
+const BP_GT = LogNormal(1.6, 0.5)
+
+SUITE["simulation: branching process"] = @benchmarkable simulate(
+    $(ModelSpec(BranchingProcess(BP_OFFSPRING, BP_GT); progression = PROGRESSION));
+    n_initial = 5, max_cases = 2000, rng = StableRNG(1)
+)
+
+const BP_CLINICAL = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
+const BP_ISOLATION = Isolation(
+    onset_to_isolation_delay = LogNormal(1.0, 0.5), duration = Inf
+)
+const BP_CONTACT_TRACING = ContactTracing(
+    probability = 0.5, isolation_to_trace_delay = Exponential(2.0),
+    action = Quarantine(duration = Inf)
+)
+
+SUITE["simulation: branching process, interventions"] = @benchmarkable simulate(
+    $(
+        ModelSpec(
+            BranchingProcess(BP_OFFSPRING, BP_GT); progression = PROGRESSION,
+            interventions = [BP_ISOLATION, BP_CONTACT_TRACING],
+            attributes = BP_CLINICAL
+        )
+    ); n_initial = 5, max_cases = 2000, rng = StableRNG(1)
 )
 
 # A `PairKernel` with a projection re-reads host records as the outbreak runs.

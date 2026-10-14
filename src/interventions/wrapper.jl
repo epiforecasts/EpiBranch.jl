@@ -2,9 +2,11 @@
 # (when it may act) or `CapacityConstrained` (how many it may reach). A
 # subtype stores the wrapped intervention in an `intervention` field and
 # inherits the plain delegation of every hook below, then overrides only the
-# hooks it gates. `apply_post_transmission!`, `keep_active` and
-# `trace_contacts!` have no default here, so each wrapper states what it does
-# with them.
+# hooks it gates. `apply_post_transmission!` and `trace_contacts!` have no
+# default here, so each wrapper states what it does with them. `keep_active`
+# does default to plain forwarding below, for a wrapper with nothing of its
+# own to gate there; a wrapper that does gate it overrides the default just
+# like the others.
 abstract type InterventionWrapper <: AbstractIntervention end
 
 function initialise_individual!(w::InterventionWrapper, ind, state)
@@ -41,11 +43,13 @@ traces_contacts(w::InterventionWrapper) = traces_contacts(w.intervention)
 function on_infection_settled!(w::InterventionWrapper, ind, state, rng)
     return on_infection_settled!(w.intervention, ind, state, rng)
 end
+function keep_active(w::InterventionWrapper, state, targets, is_new)
+    return keep_active(w.intervention, state, targets, is_new)
+end
 _unwrap_scheduled(w::InterventionWrapper) = _unwrap_scheduled(w.intervention)
 
 binding_release(w::InterventionWrapper) = binding_release(w.intervention)
 risk_applies(w::InterventionWrapper, route) = risk_applies(w.intervention, route)
-risk_depends_on_infector(w::InterventionWrapper) = risk_depends_on_infector(w.intervention)
 reads_population_state(w::InterventionWrapper) = reads_population_state(w.intervention)
 # A wrapper that can withdraw the inner block part-way through a stretch
 # already recorded cannot have those stretches read back: one per-host record

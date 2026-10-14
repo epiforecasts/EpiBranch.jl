@@ -12,6 +12,23 @@ function EpiBranch.terminal_event(r::AlwaysOccursRule, individual)
     return (individual.infection_time + 1.0, r.probability > 0.5 ? :died : :recovered)
 end
 
+# A minimal intervention declaring a closed-form effect on the offspring law
+# (halving R), used below to check that the analytical functions on a
+# ModelSpec apply a declared effect instead of refusing. Defined at module
+# scope for the same reason as AlwaysOccursRule above.
+struct _HalfThinning <: AbstractIntervention end
+EpiBranch.analytic_offspring_effect(::_HalfThinning, d::NegativeBinomial) =
+    NegBin(mean(d) / 2, d.r)
+
+# A process that stores its own interventions, as a custom process may, to
+# check the analytical functions apply those as well.
+struct _ProcessWithInterventions <: EpiBranch.TransmissionModel
+    offspring::NegativeBinomial{Float64}
+    interventions::Vector{AbstractIntervention}
+end
+EpiBranch.single_type_offspring(m::_ProcessWithInterventions) = m.offspring
+EpiBranch.interventions(m::_ProcessWithInterventions) = m.interventions
+
 @testset "ModelSpec" begin
     # A ModelSpec composes the modelling layers (progression, interventions,
     # attributes, observation) around a pure transmission process. The process
@@ -77,6 +94,68 @@ end
             loglikelihood(ChainLengths([0, 1, 0]), subc)
         # batch simulation through a spec
         @test length(simulate(spec, 20; max_cases = 100, rng = StableRNG(3))) == 20
+    end
+
+    @testset "analytical functions refuse to ignore interventions" begin
+        # An intervention without a declared closed-form offspring effect (every
+        # built-in one, Isolation included: its effect on R depends on how its
+        # timing overlaps the generation-time distribution, which has no closed
+        # form here) must make every analytical function on the spec refuse,
+        # rather than silently answer as if it were not there.
+        bp = BranchingProcess(NegativeBinomial(2.5, 0.5), Gamma(4.0, 1.25))
+        iso = Isolation(onset_to_isolation_delay = 0.0, duration = Inf)
+        spec = ModelSpec(bp; interventions = [iso])
+
+        for f in (
+                extinction_probability, epidemic_probability, probability_contain,
+                reproduction_number, proportion_transmission, offspring_distribution,
+                proportion_cases_individual, proportion_cases_offspring,
+                proportion_cluster_size, spec -> end_of_outbreak_probability(spec, 7.0),
+            )
+            @test_throws r"Isolation" f(spec)
+            @test_throws r"from simulated outbreaks, simulate\(spec, n\)" f(spec)
+            @test_throws r"probability_contain\(R, k; ind_control, pop_control\)" f(spec)
+            @test_throws r"containment_probability\(simulate\(spec, n\)\)" f(spec)
+        end
+
+        # A spec with no interventions is unaffected.
+        bare = ModelSpec(bp)
+        @test extinction_probability(bare) == extinction_probability(bp)
+    end
+
+    @testset "a process's own interventions are applied too" begin
+        iso = Isolation(onset_to_isolation_delay = 0.0, duration = Inf)
+        isolated = _ProcessWithInterventions(NegBin(2.5, 0.5), [iso])
+        for f in (
+                extinction_probability, epidemic_probability, probability_contain,
+                reproduction_number, proportion_transmission, offspring_distribution,
+                proportion_cases_individual, proportion_cases_offspring,
+                proportion_cluster_size,
+            )
+            @test_throws r"Isolation" f(isolated)
+        end
+
+        thinned = _ProcessWithInterventions(NegBin(2.5, 0.5), [_HalfThinning()])
+        @test offspring_distribution(thinned) == NegBin(1.25, 0.5)
+        @test reproduction_number(thinned) ≈ 1.25
+    end
+
+    @testset "a declared offspring effect is applied analytically" begin
+        # `_HalfThinning` (defined at module scope above) declares a closed-form
+        # effect, so the analytical functions apply it instead of refusing.
+        bp = BranchingProcess(NegativeBinomial(2.5, 0.5))
+        spec = ModelSpec(bp; interventions = [_HalfThinning()])
+        halved = NegBin(reproduction_number(bp) / 2, single_type_offspring(bp).r)
+
+        @test offspring_distribution(spec) == halved
+        @test reproduction_number(spec) == reproduction_number(halved)
+        @test extinction_probability(spec) == extinction_probability(halved)
+        @test epidemic_probability(spec) == epidemic_probability(halved)
+        @test probability_contain(spec) == probability_contain(halved)
+        @test proportion_transmission(spec) == proportion_transmission(halved)
+        @test proportion_cases_individual(spec) == proportion_cases_individual(halved)
+        @test proportion_cases_offspring(spec) == proportion_cases_offspring(halved)
+        @test proportion_cluster_size(spec) == proportion_cluster_size(halved)
     end
 
     @testset "analytical chain likelihood ignores non-transmission layers" begin
@@ -195,5 +274,16 @@ end
         # transition is skipped rather than misjudged from its field layout.
         @test ismissing(EpiBranch.terminal_certainty(AlwaysOccursRule(0.0)))
         @test_logs ModelSpec(bp; progression = [AlwaysOccursRule(0.0)])
+    end
+
+    @testset "A Reporting step and an observation model can both be set" begin
+        # `Reporting` is the one per-case reporting route; a non-per-case
+        # observation model, such as `MinimumSize`, composes with it freely.
+        bp = BranchingProcess(Poisson(1.5), Exponential(5.0))
+        rep = Reporting(delay = Dirac(0.0), probability = 0.5)
+        @test ModelSpec(bp; progression = [rep]) isa ModelSpec
+        @test ModelSpec(
+            bp; progression = [rep], observation = MinimumSize(2)
+        ) isa ModelSpec
     end
 end

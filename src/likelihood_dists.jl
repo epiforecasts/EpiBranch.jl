@@ -26,46 +26,10 @@ function Distributions.logpdf(
         d::_ChainSizeLaw, data::AbstractVector{<:Integer}
     )
     cs = _chain_sizes(data, d.seeds)
-    # The real-time `prob_concluded` mixture is only defined against the
-    # analytical chain-size distribution, so it has no simulation-based path.
-    if d.prob_concluded === nothing
-        return loglikelihood(cs, d.model; d.kwargs...)
-    end
-    # A model carrying interventions has no closed form here: dropping to its
-    # bare offspring would silently ignore the interventions. Refuse rather
-    # than compute a wrong likelihood.
-    if d.model isa Union{TransmissionModel, ModelSpec} &&
-            !isempty(interventions(d.model))
-        throw(
-            ArgumentError(
-                "prob_concluded (the real-time per-cluster finished weight) has no " *
-                    "closed form when the model carries interventions; the simulation-" *
-                    "based likelihood has no prob_concluded path. Remove the interventions " *
-                    "or omit prob_concluded."
-            )
-        )
-    end
-    # The analytical mixture below only ever consumes `prob_concluded`; any
-    # other kwarg (e.g. `n_sim`) would be silently ignored rather than
-    # applied. Refuse rather than pretend to honour it.
-    if !isempty(d.kwargs)
-        throw(
-            ArgumentError(
-                "prob_concluded (the real-time per-cluster finished weight) has no " *
-                    "closed form that accepts $(keys(d.kwargs)); these kwargs have no " *
-                    "effect on this path. Remove them or omit prob_concluded."
-            )
-        )
-    end
-    # The mixture is defined against the *observed* chain-size law, the same
-    # one `chain_size_distribution` and `loglikelihood(::ChainSizes, ...)`
-    # build on every other route; evaluating it against the bare offspring
-    # would silently drop `MinimumSize` / `PerCaseObservation`.
-    observed = observe(
-        chain_size_distribution(single_type_offspring(d.model)),
-        observation(d.model)
-    )
-    return _chain_size_loglik(observed, cs; prob_concluded = d.prob_concluded)
+    # `loglikelihood(::ChainSizes, model)` itself picks the analytical or
+    # simulation-based route and, either way, now honours `prob_concluded`
+    # (the simulation-based route from its empirical tail).
+    return loglikelihood(cs, d.model; prob_concluded = d.prob_concluded, d.kwargs...)
 end
 
 function Distributions.loglikelihood(
@@ -142,13 +106,16 @@ the analytical chain-size distribution (`Borel` / `GammaBorel`) is returned
 directly; otherwise a wrapper that evaluates via `loglikelihood`. Keyword
 arguments:
 
-- `seeds`: per-cluster number of index cases, for multi-seed clusters.
+- `seeds`: per-cluster number of index cases, for multi-seed clusters. With
+  interventions, clusters are simulated grouped by seed count, one batch of
+  runs per distinct value in `seeds`.
 - `prob_concluded`: per-cluster probability the cluster is finished (its
   observed size is its final size), for real-time data with ongoing clusters —
-  see `end_of_outbreak_probability`. Defined only against the analytical law,
-  so it is not supported alongside interventions.
-- `n_sim`, `interventions`, …: forwarded to the underlying simulation-based
-  `loglikelihood` when the analytical fast path does not apply.
+  see `end_of_outbreak_probability`. With interventions, the mixture is taken
+  against the simulated clusters' empirical P(X ≥ x) rather than an
+  analytical tail.
+- `n_sim`, …: forwarded to the underlying simulation-based `loglikelihood`
+  when the analytical fast path does not apply.
 """
 function chain_size_distribution(
         model::TransmissionModel;
@@ -161,10 +128,20 @@ function chain_size_distribution(
     # observation is applied analytically via `observe`.
     if seeds === nothing && prob_concluded === nothing && isempty(kwargs) &&
             isempty(interventions(model))
-        return observe(
-            chain_size_distribution(single_type_offspring(model)),
-            observation(model)
-        )
+        base = chain_size_distribution(single_type_offspring(model))
+        # Only the `Reporting`-reading step can fail here (e.g. a callable
+        # per-individual probability); fall through to the simulation-based
+        # wrapper rather than crash the primary `~` entry point.
+        # `_chain_size_model_loglik` does the same. A failure from `observe`
+        # itself (e.g. a non-scalar `PerCaseObservation`) is a user error,
+        # and should propagate rather than be swallowed here.
+        folded = try
+            _fold_reporting(_progression(model), base, observation(model))
+        catch e
+            (e isa MethodError || e isa ArgumentError) || rethrow()
+            nothing
+        end
+        folded !== nothing && return observe(folded, observation(model))
     end
     return _ChainSizeLaw(model, seeds, prob_concluded, NamedTuple(kwargs))
 end
@@ -175,10 +152,14 @@ function chain_size_distribution(
     )
     if seeds === nothing && prob_concluded === nothing && isempty(kwargs) &&
             isempty(interventions(spec))
-        return observe(
-            chain_size_distribution(single_type_offspring(spec.process)),
-            observation(spec)
-        )
+        base = chain_size_distribution(single_type_offspring(spec.process))
+        folded = try
+            _fold_reporting(_progression(spec), base, observation(spec))
+        catch e
+            (e isa MethodError || e isa ArgumentError) || rethrow()
+            nothing
+        end
+        folded !== nothing && return observe(folded, observation(spec))
     end
     return _ChainSizeLaw(spec, seeds, prob_concluded, NamedTuple(kwargs))
 end
@@ -210,6 +191,7 @@ end
 
 """
     offspring_distribution(model)
+    offspring_distribution(spec::ModelSpec)
 
 Per-case offspring distribution of `model`. For a `BranchingProcess`
 this is the same `Distribution` you passed in as `offspring`.
@@ -220,8 +202,21 @@ this is the same `Distribution` you passed in as `offspring`.
     data ~ offspring_distribution(BranchingProcess(Poisson(R)))
 end
 ```
+
+For a `ModelSpec`, or a process that stores its own interventions, each
+intervention's [`EpiBranch.analytic_offspring_effect`](@ref) is applied to
+the offspring distribution first. If an intervention has no such method, this
+throws an error that names the simulation-based alternative.
 """
 function offspring_distribution(model::TransmissionModel)
+    return _offspring_through_interventions(model, _per_case_offspring(model))
+end
+
+function offspring_distribution(spec::ModelSpec)
+    return _offspring_through_interventions(spec, _per_case_offspring(spec.process))
+end
+
+function _per_case_offspring(model::TransmissionModel)
     off = single_type_offspring(model)
     # `single_type_offspring` may return a spec that has a chain-size law
     # but no per-individual offspring `Distribution` (e.g. `ClusterMixed`,
@@ -237,5 +232,3 @@ function offspring_distribution(model::TransmissionModel)
     )
     return off
 end
-
-offspring_distribution(spec::ModelSpec) = offspring_distribution(spec.process)

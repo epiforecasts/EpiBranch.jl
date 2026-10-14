@@ -6,12 +6,15 @@ Limit admissions to an intervention using a shared resource budget. Ring,
 group and mass vaccination expose their candidate actions before admission;
 group candidates include every eligible member of a triggered group. External
 producers implement `intervention_actions` and the `capacity_key` protocol.
-Legacy batch interventions still receive admitted candidates one at a time.
+An intervention still on the deprecated `apply_post_transmission!` receives
+admitted candidates one at a time.
 
-Candidates are ordered by `priority(individual, state)`, lower first, with
-stable ties. The default uses trace time; candidates without one retain their
-incoming order. Priority is evaluated once per candidate. A rejected action
-uses no budget, and a completed action is not charged again.
+Both engines admit one case's actions at a time, in the order they settle
+cases, with the clock at that case's infection time. A case's candidates are
+ordered by `priority(individual, state)`, lower first, with stable ties. The
+default uses trace time; candidates without one retain their incoming order.
+Priority is evaluated once per candidate. A rejected action uses no budget,
+and a completed action is not charged again.
 
 `budget_per_period` becomes available every `period` units on the admission
 clock, `state.max_infection_time`. With `carry_over=true`, unused allowances
@@ -35,7 +38,7 @@ Network and household races execute supported ring and group actions through
 this protocol. Mass vaccination and legacy batch-only interventions remain
 unsupported there. Ring delivery on these races requires an infinite eligibility
 window and zero post-exposure efficacy; pending infection times are unknown.
-The homogeneous pool has no contact-tracing action path.
+`HomogeneousProcess` has no contact-tracing action path.
 
 ```julia
 CapacityConstrained(RingVaccination(efficacy = 0.8);
@@ -161,12 +164,15 @@ function _capacity_usage(cc::CapacityConstrained, state)
         time_key = capacity_time_key(cc.intervention)
         admission_key = _capacity_admission_key(key)
         period_start = isinf(cc.period) ? 0.0 : floor(t / cc.period) * cc.period
+        period_end = period_start + cc.period
         available = cc.budget_per_period
+        # Bounded above as well, since the generation engine admits a later
+        # generation's earlier cases after an earlier generation's later ones.
         used = count(state.individuals) do ind
             get(ind.state, key, false) || return false
             used_at = get(ind.state, admission_key, nothing)
             isnothing(used_at) && (used_at = get(ind.state, time_key, -Inf))
-            return used_at >= period_start
+            return period_start <= used_at < period_end
         end
     end
     return (used = used, available = available)
@@ -190,6 +196,21 @@ end
 # without using a dose; this keeps offering the budget to the next-ranked
 # candidate instead of stopping after a fixed count, which would otherwise
 # leave it under-used.
+_uses_batch_hook(cc::CapacityConstrained) = _uses_batch_hook(cc.intervention)
+# `CapacityConstrained` always has its own `intervention_actions` method, to
+# add the `capacity_key` check above, so asking `iv` directly would credit
+# every instance with discovering actions whether or not the one it wraps
+# does. Unwrapping through `_hook_owner`, as `_generation_hooks` already does
+# for `keep_active`/`continuous_actions`/`on_infection_settled!`, reaches past
+# any further `InterventionWrapper` nested inside (`Scheduled`, say) to the
+# intervention that would answer `intervention_actions`.
+function _discovers_actions(cc::CapacityConstrained)
+    return _has_own_method(
+        intervention_actions,
+        typeof(_hook_owner(intervention_actions, cc.intervention)),
+        AbstractIntervention
+    )
+end
 function apply_post_transmission!(cc::CapacityConstrained, state, new_contacts)
     actions = intervention_actions(cc, state, new_contacts)
     if actions !== nothing
@@ -238,14 +259,13 @@ end
 
 # ── Delegation of every other hook ────────────────────────────────────
 
-# The remaining hooks are inherited from `InterventionWrapper`.
-function keep_active(cc::CapacityConstrained, state, targets, is_new)
-    return keep_active(cc.intervention, state, targets, is_new)
-end
+# `keep_active` is inherited from `InterventionWrapper`'s plain forwarding:
+# a ring's growth spends no budget, so capacity has nothing to gate there.
 
-# The continuous-time race has no batch of competing contacts to ration, so
-# passing its tracing through would let the wrapped intervention act with no
-# budget at all. Opting out keeps the documented "no effect" there.
+# Tracing records no resource use for the budget to count, so passing it
+# through would let the wrapped intervention act with no budget at all. Opting
+# out leaves the tracing undone; on the generation engine a wrapped intervention
+# without a `capacity_key` fails instead, when its actions are first sought.
 traces_contacts(::CapacityConstrained) = false
 trace_contacts!(::CapacityConstrained, state, infector, contacts) = nothing
 

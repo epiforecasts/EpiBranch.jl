@@ -13,13 +13,14 @@ other `state` consumer can read it with `get(ind.state, :trace_level,
 missing)`. The engine carries no level during simulation — this is a
 deliberate post-run step, so the cost stays out of the hot loop.
 
-!!! note "First-traced, not nearest"
-    `:traced_by` records the *first / earliest-exposure* tracer, because the
-    engine makes one trace attempt per node. On a tree (`BranchingProcess`)
-    that is the unique parent, so the level is exact. On a cyclic
-    `NetworkProcess` it is the depth along the first-traced path, which is
-    **not** guaranteed to be the shortest distance to the nearest index —
-    do not read it as one. (A true nearest-index distance would need the
+!!! note "Last traced, not nearest"
+    `:traced_by` records the latest case whose trace reached a node: every
+    case that reaches a node traces it, and each successful trace overwrites
+    the record. On a tree (`BranchingProcess`) that is the unique parent, so
+    the level is exact. On a cyclic `NetworkProcess` it is the depth along
+    the path a node was last traced on, which is
+    **not** guaranteed to be the shortest distance to the nearest index.
+    Do not read it as one. (A true nearest-index distance would need the
     engine to record every successful tracer; see issue #150.)
 """
 function compute_trace_level!(state::SimulationState)

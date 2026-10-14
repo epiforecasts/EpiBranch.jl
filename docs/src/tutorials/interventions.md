@@ -869,16 +869,15 @@ only that day's own `budget_per_period` admissions are ever available.
 
 ### Scope
 
-`CapacityConstrained` rations `apply_post_transmission!`, the one hook the
-engine calls with a whole generation's contacts at once, since that is the
-only point where several individuals compete for the same resource in the
-same call. That is where a dose is recorded, so it is what this wrapper can
-ration. [`GroupVaccination`](@ref) vaccinates a triggered group by scanning
-the whole population rather than the generation's batch, so it raises an
-error rather than silently doing nothing; a custom intervention becomes
-capacity-constrained the same way `RingVaccination` and `MassVaccination`
-are by defining [`capacity_key`](@ref EpiBranch.capacity_key) for itself —
-see [Extending EpiBranch](extending.md).
+`CapacityConstrained` rations the doses an intervention proposes for each
+case, ranked by `priority` among that case's candidates, and the budget is
+read at the case's infection time. Cases are admitted one at a time in the
+order the engine settles them, so a dose that an earlier case used is gone for
+a later one. For [`GroupVaccination`](@ref) the candidates are every member of
+a triggered group. A custom intervention becomes capacity-constrained the same
+way `RingVaccination` and `MassVaccination` are, by defining
+[`capacity_key`](@ref EpiBranch.capacity_key) for itself; see
+[Extending EpiBranch](extending.md).
 
 ## Time-dependent policies
 
@@ -928,6 +927,47 @@ results = simulate(scenario([iso, ct_triggered]), 200; max_cases = 500, rng = rn
 println("Tracing after 20 cases: $(round(containment_probability(results), digits=3))")
 ```
 
+`start_after_cases` counts every infection the moment it occurs, including
+one never reported or reported only after the date it opens on. A policy
+that reacts to surveillance (for example, "once the health system has
+confirmed 20 cases") wants [`ReportedCases`](@ref) instead, passed through
+`start_after`: it opens only once that many cases have a [`Reporting`](@ref)
+report dated by the simulation clock.
+
+```@example interventions
+progression = [
+    Reporting(delay = LogNormal(1.0, 0.3), probability = 0.2),
+    Recovery(delay = LogNormal(2.0, 0.4)),
+]
+ct_on_reports = Scheduled(
+    ContactTracing(
+        probability = 0.7, isolation_to_trace_delay = Exponential(1.0),
+        action = Quarantine(duration = Inf)
+    );
+    start_after = ReportedCases(20),
+)
+model = ModelSpec(
+    BranchingProcess(Poisson(3.0), Exponential(5.0));
+    progression, interventions = [iso, ct_on_reports], attributes = clinical
+)
+
+rng = StableRNG(42)
+state = simulate(model; max_cases = 500, rng = rng)
+reported = count(
+    ind -> get(ind.state, :reporting_time, Inf) <= state.max_infection_time,
+    state.individuals
+)
+println("Cumulative cases: $(state.cumulative_cases), reports by the end: $(reported)")
+```
+
+With only a fifth of cases ever reported, after a delay, far fewer reports
+accumulate than infections. `ReportedCases(20)` needs the health system to
+have actually confirmed 20 cases, which takes substantially longer than 20
+infections to happen. `start_after` takes any [`AbstractTrigger`](@ref
+EpiBranch.AbstractTrigger); [`Infections`](@ref) is `start_after_cases`'s own
+count, also available this way, and a trigger written outside the package
+works the same way without editing `Scheduled`.
+
 Conditions can be combined:
 
 ```@example interventions
@@ -949,8 +989,9 @@ iso_gen3 = Scheduled(
 ### How `Scheduled` enforces `start_time`
 
 `Scheduled` enforces start times at two levels. The population gate
-(`is_active`) skips the inner `resolve_individual!` and
-`apply_post_transmission!` until the condition turns true. Once active,
+(`is_active`) skips the inner `resolve_individual!` and `trace_contacts!`
+until the condition turns true, and actions are admitted only once their own
+delivery time is inside the schedule. Once active,
 the wrapper also performs individual-level reset: after each per-individual
 hook runs, if [`intervention_time`](@ref) for that individual falls
 before `start_time`, `Scheduled` calls [`reset!`](@ref EpiBranch.reset!)
@@ -971,7 +1012,8 @@ Custom interventions are defined as structs subtyping [`AbstractIntervention`](@
 One or more of the following methods should be implemented:
 - `initialise_individual!` — set up fields on new contacts
 - `resolve_individual!` — determine state before transmission
-- `apply_post_transmission!` — act on contacts after creation
+- `trace_contacts!` — act on the contacts a case reached
+- `intervention_actions` — propose actions, such as doses, with a delivery time
 
 To make the intervention schedulable via `Scheduled(...; start_time = ...)`,
 also implement:
@@ -996,16 +1038,17 @@ struct GatheringLimit <: AbstractIntervention
     max_contacts::Int
 end
 
-function EpiBranch.apply_post_transmission!(gl::GatheringLimit, state, new_contacts)
-    # Count contacts per parent, mark excess as not infected
-    parent_counts = Dict{Int, Int}()
-    for c in new_contacts
-        count = get(parent_counts, c.parent_id, 0) + 1
-        parent_counts[c.parent_id] = count
-        if count > gl.max_contacts
-            c.state[:infected] = false
-        end
+function EpiBranch.trace_contacts!(gl::GatheringLimit, state, infector, contacts)
+    # Mark the contacts beyond the limit
+    for c in contacts[(gl.max_contacts + 1):end]
+        c.state[:beyond_gathering_limit] = true
     end
+end
+
+# and block transmission to them
+function EpiBranch.competing_risk(::GatheringLimit, parent, contact, state)
+    get(contact.state, :beyond_gathering_limit, false) || return nothing
+    return Risk(block_probability = 1.0)
 end
 
 # Test it

@@ -5,6 +5,11 @@ struct _PolicyEnabled
 end
 (p::_PolicyEnabled)(state) = p.enabled
 
+# A `Scheduled` trigger written outside the package, declaring nothing: used
+# to check `trigger_can_lapse`'s conservative default.
+struct _AlwaysOpenTrigger <: EpiBranch.AbstractTrigger end
+EpiBranch.is_triggered!(::_AlwaysOpenTrigger, state) = true
+
 # An isolation eligibility that records a detection arriving after the case's
 # outcome, which the default declines.
 struct _DetectAfterOutcome <: EpiBranch.IsolationEligibility end
@@ -555,23 +560,20 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
     end
 
     @testset "An unrecorded isolation still removes the case as before" begin
-        # Case counts and removals were computed on the main branch before
-        # isolation after the outcome stopped counting as a detection. Only
-        # the detection record may differ.
+        # Every case is test-positive, so each one is removed, including those
+        # isolating after their outcome. Only the detection record may differ.
         removed(s) = count(i -> isfinite(isolation_time(i)), s.individuals)
         configs = (
             (
                 Recovery(delay = Gamma(2.0, 3.0)), 7,
-                [124, 1, 5, 1, 2, 132, 107, 17, 10, 1],
-                [97, 1, 5, 1, 2, 96, 85, 17, 10, 1],
+                [124, 1, 1, 15, 135, 113, 104, 120, 113, 1],
             ),
             (
                 Death(delay = 0.0, probability = 1.0), 11,
-                [3, 1, 111, 1, 1, 1, 119, 130, 1, 1],
-                [3, 1, 84, 1, 1, 1, 86, 93, 1, 1],
+                [3, 1, 111, 107, 121, 14, 124, 109, 4, 2],
             ),
         )
-        for (outcome, seed, cases, removals) in configs
+        for (outcome, seed, cases) in configs
             model = ModelSpec(
                 BranchingProcess(Poisson(2.0), Gamma(2.0, 3.0));
                 attributes = clinical_presentation(incubation_period = LogNormal(1.6, 0.4)),
@@ -580,9 +582,8 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             )
             results = simulate(model, 10; max_cases = 100, rng = StableRNG(seed))
             @test [s.cumulative_cases for s in results] == cases
-            @test [removed(s) for s in results] == removals
-            @test sum(s -> count(is_isolated, s.individuals), results) <
-                sum(removals)
+            @test [removed(s) for s in results] == cases
+            @test sum(s -> count(is_isolated, s.individuals), results) < sum(cases)
         end
     end
 
@@ -1842,7 +1843,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                 contact = Individual(id = 2, parent_id = 1, infection_time = 0.0)
                 contact.state[:traced] = true
                 contact.state[:trace_time] = Inf
-                EpiBranch.apply_post_transmission!(rv, state, [contact])
+                EpiBranch.apply_actions!(rv, state, [contact])
                 @test !is_vaccinated(contact)
                 @test rand(state.rng) == rand(StableRNG(7))
             end
@@ -2234,7 +2235,17 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                 @test !haskey(st, :outcome) && !haskey(st, :outcome_time)
 
                 control = course(false)
-                @test control[:hospitalised] && control[:died]
+                # The unconditional Death occurs at 6.0, before the
+                # hospitalisation at 7.0 it is timed independently of;
+                # censor_after_outcome! undoes that non-terminal event too,
+                # the same "stands only before the outcome" rule as the
+                # aborted case above. The :died Transition is itself
+                # terminal, so it is exempt from that rule: it keeps the
+                # hospitalised_time it read as its own reference point
+                # during its own resolve_individual! pass, even though
+                # Death's earlier candidate wins the outcome.
+                @test !control[:hospitalised] && control[:hospitalised_time] == Inf
+                @test control[:died] && control[:died_time] == 8.0
                 @test control[:outcome] == :died && control[:outcome_time] == 6.0
             end
 
@@ -2944,6 +2955,223 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                 containment_probability(results_scheduled)
         end
 
+        @testset "Infections and ReportedCases triggers" begin
+            inds = [Individual(id = i) for i in 1:5]
+            state = SimulationState(
+                inds, Int[], 0, StableRNG(1), 3, false, nothing, 10.0, nothing,
+                AbstractClinicalTransition[]
+            )
+
+            # `Infections` reads the running case count directly, exactly as
+            # `start_after_cases` does.
+            @test EpiBranch.is_triggered!(Infections(3), state)
+            @test !EpiBranch.is_triggered!(Infections(4), state)
+            @test !EpiBranch.trigger_can_lapse(Infections(3))
+
+            # A threshold of zero is met before any report exists, as
+            # `Infections(0)` is, rather than waiting for a first report.
+            @test EpiBranch.is_triggered!(ReportedCases(0), state)
+            @test EpiBranch.is_triggered!(Infections(0), state)
+
+            # Two reports dated at or before the clock (10.0), one dated after
+            # it, and one case never reported.
+            inds[1].state[:reported] = true
+            inds[1].state[:reporting_time] = 2.0
+            inds[2].state[:reported] = true
+            inds[2].state[:reporting_time] = 9.0
+            inds[3].state[:reported] = true
+            inds[3].state[:reporting_time] = 15.0
+            inds[4].state[:reported] = false
+
+            @test EpiBranch.is_triggered!(ReportedCases(2), state)
+            @test !EpiBranch.is_triggered!(ReportedCases(3), state)
+            # Moving the clock brings the later report into the count.
+            state.max_infection_time = 20.0
+            @test EpiBranch.is_triggered!(ReportedCases(3), state)
+            state.max_infection_time = 10.0
+            @test !EpiBranch.is_triggered!(ReportedCases(3), state)
+            # A report made before a reinfection is archived with its
+            # episode, and the health system has still made it, so it counts.
+            # Without the archived episodes this host would hold one report
+            # however many times it had been reported.
+            episode = EpiBranch.InfectionEpisode(inds[1])
+            EpiBranch.close_episode!(inds[1], episode)
+            # The engine archives the episode as a copy of the live state and
+            # clears the live report only when the new infection's transitions
+            # are initialised. In between, the two are one report and must be
+            # counted once: two reports are due here, not three.
+            @test EpiBranch.is_triggered!(ReportedCases(2), state)
+            @test !EpiBranch.is_triggered!(ReportedCases(3), state)
+            # Once the live report is cleared the archived one still counts.
+            inds[1].state[:reported] = false
+            inds[1].state[:reporting_time] = Inf
+            @test EpiBranch.is_triggered!(ReportedCases(2), state)
+            @test !EpiBranch.is_triggered!(ReportedCases(3), state)
+            # Reports already due never stop being due, so the gate holds
+            # once it opens and the schedule it starts cannot close.
+            @test !EpiBranch.trigger_can_lapse(ReportedCases(2))
+
+            # The count reads the report time it needs rather than indexing
+            # it, so a `:reported` flag from anywhere else does not throw.
+            # `PerCaseObservation` sets one, with `:report_time` and no
+            # `:reporting_time`; it runs after the simulation, so a trigger
+            # never meets it mid-run, and its reports are not what this
+            # trigger counts either way.
+            inds[5].state[:reported] = true
+            @test EpiBranch.is_triggered!(ReportedCases(2), state)
+            @test !EpiBranch.is_triggered!(ReportedCases(3), state)
+
+            # A user's own trigger is conservatively assumed able to lapse,
+            # exactly as an opaque `Scheduled` predicate is.
+            @test EpiBranch.trigger_can_lapse(_AlwaysOpenTrigger())
+        end
+
+        @testset "a trigger names the transitions it needs" begin
+            # The keys a trigger reads are written by the progression, so a
+            # model without the transition leaves the gate shut for the whole
+            # run. `ModelSpec` asks the trigger and warns.
+            bp = BranchingProcess(Poisson(1.5), Exponential(5.0))
+            iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = Inf)
+            no_report = [Recovery(delay = Exponential(5.0))]
+            with_report = [
+                Reporting(delay = Exponential(2.0), probability = 0.5),
+                Recovery(delay = Exponential(5.0)),
+            ]
+
+            @test EpiBranch.required_transitions(ReportedCases(5)) == (Reporting,)
+            @test EpiBranch.required_transitions(Infections(5)) == ()
+            @test EpiBranch.required_transitions(_AlwaysOpenTrigger()) == ()
+            # `ReportedCases(0)` opens before any report exists, so it needs
+            # no `Reporting` and must not be warned about.
+            @test EpiBranch.required_transitions(ReportedCases(0)) == ()
+
+            @test_logs (:warn, r"ReportedCases needs a Reporting transition") match_mode = :any ModelSpec(
+                bp; progression = no_report,
+                interventions = [Scheduled(iso; start_after = ReportedCases(5))],
+                attributes = clinical
+            )
+            # Silent once the model holds it, and silent for a trigger that
+            # needs nothing, including the `start_after_cases` shorthand.
+            @test_logs ModelSpec(
+                bp; progression = with_report,
+                interventions = [Scheduled(iso; start_after = ReportedCases(5))],
+                attributes = clinical
+            )
+            @test_logs ModelSpec(
+                bp; progression = no_report,
+                interventions = [Scheduled(iso; start_after = Infections(5))],
+                attributes = clinical
+            )
+            @test_logs ModelSpec(
+                bp; progression = no_report,
+                interventions = [Scheduled(iso; start_after_cases = 5)],
+                attributes = clinical
+            )
+            # A threshold of nought opens at once, whatever the progression
+            # holds, so the warning that the schedule never opens would be
+            # false.
+            @test_logs ModelSpec(
+                bp; progression = no_report,
+                interventions = [Scheduled(iso; start_after = ReportedCases(0))],
+                attributes = clinical
+            )
+            # Found through a wrapper around the schedule.
+            @test_logs (:warn, r"ReportedCases needs a Reporting transition") match_mode = :any ModelSpec(
+                bp; progression = no_report,
+                interventions = [
+                    CapacityConstrained(
+                        Scheduled(iso; start_after = ReportedCases(5));
+                        budget_per_period = 5
+                    ),
+                ],
+                attributes = clinical
+            )
+        end
+
+        @testset "start_after = ReportedCases matches start_after_cases under certain, instant reporting" begin
+            # With every case reported at its own infection time, a
+            # report-gated and a case-gated trigger see the same count at
+            # every step.
+            progression = [
+                Reporting(delay = Dirac(0.0), probability = 1.0, from = ind -> ind.infection_time),
+                Recovery(delay = Dirac(5.0)),
+            ]
+            iso_cases = Scheduled(
+                Isolation(onset_to_isolation_delay = Dirac(0.0), duration = Inf);
+                start_after_cases = 10
+            )
+            iso_reports = Scheduled(
+                Isolation(onset_to_isolation_delay = Dirac(0.0), duration = Inf);
+                start_after = ReportedCases(10)
+            )
+
+            results_cases = simulate(
+                ModelSpec(
+                    BranchingProcess(Poisson(3.0), Exponential(5.0));
+                    progression, interventions = [iso_cases], attributes = clinical
+                ),
+                50; max_cases = 100, rng = StableRNG(11)
+            )
+            results_reports = simulate(
+                ModelSpec(
+                    BranchingProcess(Poisson(3.0), Exponential(5.0));
+                    progression, interventions = [iso_reports], attributes = clinical
+                ),
+                50; max_cases = 100, rng = StableRNG(11)
+            )
+
+            @test containment_probability(results_cases) ==
+                containment_probability(results_reports)
+        end
+
+        @testset "start_after = ReportedCases delays activation past Infections" begin
+            # Only a fifth of cases are ever reported, each after a delay, so a
+            # report-gated schedule opens later than a case-gated one and
+            # isolates a smaller share of the cases. The share is the measure,
+            # not the count: a schedule that opens later controls less, so its
+            # outbreaks are larger and can carry more isolations in total.
+            progression = [
+                Reporting(delay = Exponential(2.0), probability = 0.2),
+                Recovery(delay = Exponential(5.0)),
+            ]
+            iso = Isolation(onset_to_isolation_delay = Dirac(0.0), duration = Inf)
+            function isolated_share(trigger)
+                results = simulate(
+                    ModelSpec(
+                        BranchingProcess(NegBin(2.0, 0.5), Exponential(5.0));
+                        progression, attributes = clinical,
+                        interventions = [Scheduled(iso; start_after = trigger)]
+                    ),
+                    50; max_cases = 300, rng = StableRNG(3)
+                )
+                isolated = sum(s -> count(is_isolated, s.individuals), results)
+                return isolated / sum(s -> length(s.individuals), results)
+            end
+            # 0.36 of cases isolated against 0.47 over these 50 outbreaks.
+            @test isolated_share(ReportedCases(20)) < isolated_share(Infections(20))
+
+            # The reason: at the moment `Infections(n)` opens (the n'th
+            # infection's own time), fewer than `n` reports are dated by that
+            # clock yet.
+            state = simulate(
+                ModelSpec(
+                    BranchingProcess(NegBin(2.0, 0.5), Exponential(5.0));
+                    progression, attributes = clinical
+                );
+                max_cases = 300, rng = StableRNG(3)
+            )
+            n = 10
+            infection_times = sort(
+                [ind.infection_time for ind in state.individuals if is_infected(ind)]
+            )
+            @test length(infection_times) >= n
+            reported_due = count(
+                ind -> get(ind.state, :reporting_time, Inf) <= infection_times[n],
+                state.individuals
+            )
+            @test reported_due < n
+        end
+
         @testset "custom predicate" begin
             iso = Scheduled(
                 Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf),
@@ -3084,19 +3312,10 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         @test all(r -> r.block_probability == 1.0, risks)
         @test EpiBranch.infectious_removal_time(quarantining, lapsing) == Inf
 
-        # A tracing action that quarantines nobody reads no stretch, and a
-        # quarantine with no release is honoured by the window instead of by a
-        # risk a fixed-size pool cannot take.
+        # A tracing action that quarantines nobody reads no stretch.
         @test isempty(EpiBranch.removal_gap_host_times(FlagOnly()))
         @test isempty(EpiBranch.removal_gap_host_times(plain))
         @test EpiBranch.removal_gap_host_times(quarantining) == (key,)
-        @test !EpiBranch.risk_depends_on_infector(plain)
-        @test !EpiBranch.risk_depends_on_infector(
-            ContactTracing(
-                TraceEveryone(), 1.0, Exponential(1.0), Quarantine(duration = Inf)
-            )
-        )
-        @test EpiBranch.risk_depends_on_infector(quarantining)
     end
 
     @testset "reads_population_state" begin
@@ -3120,8 +3339,32 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         @test !reads(Scheduled(iso; start_time = 5.0))
         @test !reads(Scheduled(iso; end_time = 20.0))
         @test reads(Scheduled(iso; start_after_cases = 10))
+        @test reads(Scheduled(iso; start_after = ReportedCases(10)))
         # An opaque predicate could read anything, so it stays conservative.
         @test reads(Scheduled(iso, state -> true))
+
+        # `Scheduled` reads `can_lapse` from the trigger. `Infections` and
+        # `ReportedCases` both count something that can only rise, so neither
+        # makes the schedule lapse; a trigger with no opinion is conservative.
+        @test !Scheduled(iso; start_after = Infections(10)).can_lapse
+        @test !Scheduled(iso; start_after = ReportedCases(10)).can_lapse
+        @test Scheduled(iso; start_after = _AlwaysOpenTrigger()).can_lapse
+
+        # What `can_lapse` buys: a schedule that cannot close speaks for the
+        # isolation releases its intervention recorded, so a report-gated
+        # schedule hands the likelihood the same stretches as the case-gated
+        # one it matches. With `can_lapse` these come back empty and the
+        # likelihood charges each pair for the time the host was isolated.
+        iso7 = Isolation(
+            onset_to_isolation_delay = Exponential(1.0), duration = 7.0
+        )
+        by_cases = Scheduled(iso7; start_after_cases = 10)
+        by_reports = Scheduled(iso7; start_after = ReportedCases(10))
+        @test !isempty(EpiBranch.removal_gap_host_times(by_cases))
+        @test EpiBranch.removal_gap_host_times(by_reports) ==
+            EpiBranch.removal_gap_host_times(by_cases)
+        @test EpiBranch.binding_release(by_reports) ==
+            EpiBranch.binding_release(by_cases)
 
         # A shared budget is read across every individual.
         @test reads(CapacityConstrained(ring; budget_per_period = 5.0))

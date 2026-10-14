@@ -58,7 +58,7 @@ struct _MaskLessRule <: EpiHouseholds.ConditionOn end
         @test m.external_hazard == 0.0
 
         # with no latent transition the window opens at :infection
-        @test EpiBranch._resolve_infectious_from(m.from, _sir(6.0)) === :infection
+        @test EpiBranch.infectious_from(_sir(6.0)) === :infection
 
         # a latent transition anchors the window at :infectious
         seir = [
@@ -68,7 +68,7 @@ struct _MaskLessRule <: EpiHouseholds.ConditionOn end
                 terminal = true
             ),
         ]
-        @test EpiBranch._resolve_infectious_from(nothing, seir) === :infectious
+        @test EpiBranch.infectious_from(seir) === :infectious
 
         # a scalar and a distribution external hazard are both accepted
         @test HouseholdProcess([2], Exponential(1.0); external_hazard = 0.05) isa
@@ -114,6 +114,16 @@ struct _MaskLessRule <: EpiHouseholds.ConditionOn end
         @test count(df.index) == 100              # one index per household
         @test 100 <= size(df, 1) <= 400           # indexes plus within-household spread
         @test issubset((:date_infection, :household, :index), propertynames(df))
+    end
+
+    @testset "contacts() lists every infector-infectee pair the race settled" begin
+        m = ModelSpec(HouseholdProcess(fill(4, 50), Weibull(1.3, 2.0)); progression = _sir(6.0))
+        state = simulate(m; rng = StableRNG(1))
+        df = contacts(state)
+        @test size(df, 1) == count(!=(0), linelist(state).parent_id)
+        @test all(df.infected)
+        expected = Set((ind.parent_id, ind.id) for ind in state.individuals if ind.parent_id != 0)
+        @test Set(zip(df.from, df.to)) == expected
     end
 
     @testset "the timeline is stamped through the progression (line-list columns)" begin

@@ -91,10 +91,11 @@ include("route_window.jl")
 # models over a finite, depleting set of nodes, e.g. household cliques).
 include("sellke.jl")
 
-# Sellke fixed-size population pool (homogeneously-mixing closed population) and
-# its first user, HomogeneousProcess.
-include("sellke_pool.jl")
+# Mass-action contacts as a route of the race, and the closed population that
+# mixes that way, HomogeneousProcess.
+include("mass_action.jl")
 include("models/homogeneous.jl")
+include("models/mixing.jl")
 
 # ModelSpec: compose a process with its forcing/observation layers.
 include("model_spec.jl")
@@ -130,7 +131,8 @@ include("pairwise_survival.jl")
 include("progression_likelihood.jl")
 
 # Exports — types
-export TransmissionModel, BranchingProcess, Infectiousness, HomogeneousProcess, ModelSpec
+export TransmissionModel, BranchingProcess, Infectiousness, HomogeneousProcess,
+    MixingProcess, ModelSpec
 export Individual, InfectionEpisode, close_episode!, SimulationState
 export SimOpts
 export AbstractStoppingRule, Extinction, MaxCases, MaxGenerations, MaxTime, should_stop
@@ -148,6 +150,8 @@ export AbstractVaccination, VaccineEffect, RingVaccination, MassVaccination,
     GroupVaccination
 export AbstractEffectMode, LeakyMode, AllOrNothingMode
 export Scheduled, Risk
+export AbstractTrigger, is_triggered!, trigger_can_lapse, required_transitions,
+    Infections, ReportedCases
 export CapacityConstrained, capacity_usage, default_capacity_priority
 export RouteWindow, window_open, window_close
 export is_active, intervention_time
