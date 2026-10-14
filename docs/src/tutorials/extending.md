@@ -42,7 +42,7 @@ plain meaning here.
 |---|---|
 | type (`struct`) | A named record holding the parameters of something you add, such as a border closure's leakage. `struct BorderClosure <: AbstractIntervention ... end` declares one; `<: AbstractIntervention` tells the package it is an intervention and where to use it. |
 | method | One version of a package function, written for your type. `EpiBranch.competing_risk(bc::BorderClosure, ...) = ...` tells the package's `competing_risk` what a border closure does. Writing methods like this is how you extend EpiBranch: you never edit its source. |
-| hook | A package function the simulation calls at a fixed step: when a person is created, before a case's contacts are drawn, when a transmission is about to happen. You write a method of it for your intervention. A hook you leave out does nothing. |
+| hook | A package function the simulation calls at a fixed step: when a person is created, before a case's contacts are drawn, when a transmission is about to happen. You write a method of it for your intervention. A hook you leave out leaves the simulation unchanged. |
 | risk (`Risk`) | Something that can stop one transmission from a given time on, with a given probability. Isolation on day 5 is a risk with probability 1 from day 5. |
 | state | Each simulated person (`ind`, an [`Individual`](@ref)) has a dictionary `ind.state` of named values, such as `ind.state[:age]` or `ind.state[:isolated]`. The whole outbreak so far is a [`SimulationState`](@ref), usually called `state`. |
 | model (`ModelSpec`) | A transmission model together with its natural history (`progression`), population characteristics (`attributes`), interventions and observation. This is what you pass to `simulate` and `loglikelihood`. |
@@ -269,9 +269,10 @@ reporting_attributes = [groups(50; key = :household),
         group_key = :household)]
 reporting_model = ModelSpec(BranchingProcess(Poisson(0.5), Exponential(5.0));
     attributes = reporting_attributes,
-    observation = PerCaseObservation(
-        detection_prob = (rng, ind) -> ind.state[:reporting_probability],
-        from = :infection_time))
+    progression = [Reporting(
+        delay = Dirac(0.0),
+        probability = (rng, ind) -> ind.state[:reporting_probability],
+        from = :infection)])
 reporting_state = simulate(reporting_model; n_initial = 10, rng = StableRNG(42))
 ```
 
@@ -281,10 +282,10 @@ simulations run in parallel.
 
 ### Rules with parameters of their own
 
-Observation parameters, the parameters of population characteristics and the
-conditions of interventions accept a type with parameters wherever they accept a
-function, called with the same arguments. A detection rule can then keep its
-threshold as a parameter. `(rule::AgeDetection)(rng, ind) = ...` makes an
+The probabilities and delays of clinical transitions, the parameters of
+population characteristics and the conditions of interventions accept a type
+with parameters wherever they accept a function, called with the same
+arguments. A reporting rule can then keep its age threshold as a parameter. `(rule::AgeDetection)(rng, ind) = ...` makes an
 `AgeDetection` usable as a function:
 
 ```@example extending
@@ -292,10 +293,10 @@ struct AgeDetection
     minimum_age::Float64
 end
 (rule::AgeDetection)(rng, ind) = ind.state[:age] >= rule.minimum_age ? 1.0 : 0.0
-age_observation = PerCaseObservation(detection_prob = AgeDetection(50.0))
+age_reporting = Reporting(delay = Dirac(0.0), probability = AgeDetection(50.0))
 ```
 
-An observation's reference time (`from`) takes only `ind`, and a condition for
+A reference time given to `Reporting` as a function (`from`) takes only `ind`, and a condition for
 [`Scheduled`](@ref) takes the simulation state. Numbers and distributions keep
 their usual meaning wherever those are accepted.
 
@@ -413,9 +414,13 @@ nearly every outbreak dies out.
 
 Your intervention combines with the built-in ones: pass
 `interventions = [Isolation(...), BorderClosure(10.0, 0.05)]` and both apply.
+The [analytical functions](analytical.md), such as `extinction_probability`,
+stop with an error on `closed_border`, because the closure has no exact effect
+on the offspring distribution for them to use; see [All hooks](@ref) for the
+rare intervention that has one.
 
 !!! warning "A missing method fails silently"
-    Every hook does nothing unless you write a method for it. A typo in a
+    A simulation hook you write no method for leaves the run unchanged. A typo in a
     method name, or a method written for the wrong type, gives results that
     look like no intervention at all. Compare a small simulation with and
     without your intervention, as above, before relying on it.
