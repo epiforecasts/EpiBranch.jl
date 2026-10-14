@@ -402,8 +402,8 @@ susceptibility, infectiousness and interventions. The example below does this.
 
 A model can also run **its own simulation loop**, as the continuous-time
 household and network models do, stepping through cases in order of infection
-time instead of by generation. Such a model receives the other model parts as arguments: define
-[`EpiBranch.simulate_once`](@ref)`(m::MyModel, sim_opts; interventions,
+time instead of by generation. Such a model receives the other model parts as
+arguments: define [`EpiBranch.simulate_once`](@ref)`(m::MyModel, sim_opts; interventions,
 attributes, progression, observation, recorder, rng)`, read the parts from the
 arguments, and work out anything you need there from `progression`, such as
 the start of the infectious period with
@@ -418,8 +418,8 @@ running totals for you. A loop that does not use the race instead calls
 once per case, after its population characteristics and intervention values
 are set. This runs the clinical transitions and records the timeline values
 (`:onset_time`, `:outcome_time`, ...) that the line list and the likelihoods
-read. `ModelSpec` passes
-`simulate` and `loglikelihood` to `simulate_once`.
+read. `simulate` and `loglikelihood` on a `ModelSpec` call `simulate_once`
+with the spec's parts.
 
 A model whose population splits naturally into groups that can be simulated
 independently, as a household model splits into households, defines
