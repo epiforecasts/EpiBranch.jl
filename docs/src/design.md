@@ -161,9 +161,9 @@ This is step 3 above.
 Interventions are applied in the order they are listed. A policy that starts on
 a given date, or stops after a number of cases, is described by wrapping the
 intervention in [`Scheduled`](@ref) instead of giving every intervention its
-own start date. With isolation starting on day 14, the policy acts once the
-outbreak has reached day 14, and an isolation that would have started before
-day 14 is then undone.
+own start date. With isolation starting on day 14, the policy acts on cases
+infected from day 14 onwards, and an isolation that would have started before
+day 14 is undone.
 How to write an intervention is in [Writing an
 intervention](tutorials/writing-interventions.md).
 
@@ -247,7 +247,11 @@ with the part you want changed.
 ### Exact results and simulation
 
 Where a closed form exists, EpiBranch uses it; simulation covers the rest, and
-the two give the same answers.
+the two give the same answers. Most interventions, isolation among them, change
+outbreaks in ways that depend on timing and have no closed form. The exact
+results are refused for a model that includes one, and the answer comes from
+simulating it. An intervention whose effect on the offspring distribution is
+exact can say so and is then included.
 
 New simulation behaviour comes from new interventions and transmission models.
 On the closed-form side, two kinds of addition fit in:
