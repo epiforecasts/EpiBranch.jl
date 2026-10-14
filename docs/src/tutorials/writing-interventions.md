@@ -11,30 +11,58 @@ at, and what each is for. The [words used in these pages](@ref "Words used in
 these pages") are defined in that guide.
 
 An intervention is a `struct` that subtypes `AbstractIntervention`. You write
-methods only for the hooks it needs; every other hook does nothing.
+methods only for the hooks it needs; every other hook leaves the simulation
+unchanged.
 
-## What happens in one generation
+## What happens to each case
 
-On a branching process, each generation of the simulation runs these steps in
-order, and each step calls one hook on every intervention:
+On a branching process the simulation works one generation at a time. In each
+generation:
 
-1. Each case about to transmit is prepared with `resolve_individual!`. This is
-   where `Isolation` works out when a case is isolated, from its onset time.
-2. The transmission model gives each case its potential secondary cases and a
-   potential transmission time for each.
-3. Each new person is created, and `initialise_individual!` sets the values the
-   intervention keeps for them (`ContactTracing` sets `:traced` to `false`).
-4. Once the whole generation's contacts exist, `apply_post_transmission!`
-   receives them all. Contact tracing and vaccination of contacts happen here.
-5. For each pair of infector and contact, `competing_risk` says whether
+1. The transmission model gives each case of the previous generation its
+   potential secondary cases, its contacts, each with a potential infection
+   time. Each new person is created, and `initialise_individual!` sets the
+   values the intervention keeps for them (`ContactTracing` sets `:traced` to
+   `false`).
+2. The cases are then taken one at a time, in order of infection time. Every
+   intervention's `trace_contacts!` receives the contacts that case made;
+   contact tracing happens here. Every intervention's `intervention_actions`
+   then proposes actions on those contacts, such as doses of a vaccine, which
+   go ahead only if their schedule and capacity limits allow. Last,
+   `keep_active` can keep contacts who end up not infected in the simulation,
+   so that their own contacts are generated too (needed for tracing contacts of
+   contacts).
+3. For each pair of infector and contact, `competing_risk` says whether
    anything stops the transmission. The contact is infected only if nothing
    does.
-6. `keep_active` can keep contacts who were not infected in the simulation, so
-   their own contacts are generated too (needed for tracing contacts of
-   contacts).
+4. Each newly infected contact is settled: its clinical transitions run
+   (onset, reporting, outcome), and then every intervention's
+   `resolve_individual!`. This is where `Isolation` works out when a case is
+   isolated, from its onset time. These cases make the contacts of the next
+   generation.
+
+The index cases are settled in the same way before the first generation.
+
+The network, household and homogeneous models (the continuous-time models) have
+no generations: they settle one case at a time, in order of infection time.
+Once a case's infection time is fixed, `on_infection_settled!` runs, then its
+clinical transitions and `resolve_individual!`. On a model that can name a
+case's contacts (a network or household model, not the homogeneous one),
+`trace_contacts!`, `keep_active` and `intervention_actions` then act on the
+contacts not yet infected. The case then makes its potential infections, and
+`competing_risk` is asked about each as it is made.
+
+While a case's own hooks run, `state.max_infection_time` is that case's
+infection time and `state.cumulative_cases` counts the case and those settled
+before it. A [`Scheduled`](@ref) condition reads these:
+`Scheduled(iso; start_time = 10.0)` isolates the cases infected from day 10
+onwards, on every model. On a branching process the count includes the cases
+of earlier generations and those of the same generation infected no later than
+the case; a case of a later generation is not counted even if it was infected
+earlier, because it has not been drawn yet.
 
 Interventions are applied in the order they appear in `interventions = [...]`,
-and each sees what earlier ones wrote in the same generation.
+and each sees what earlier ones wrote for the same case.
 
 A [`Risk`](@ref) is what `competing_risk` returns.
 `Risk(event_time = t, block_probability = p)` blocks a transmission happening
@@ -54,18 +82,18 @@ many people each case infects](@ref).
 | Hook | Called | Receives | Returns |
 |---|---|---|---|
 | `initialise_individual!(iv, individual, state)` | Once, when each person is created | An `Individual` whose `state` holds `:infected = false`, the values its population characteristics set and any the model sets, such as `:type` or `:household`; use `get!` for a key that may already be set | `nothing`; sets values in `individual.state` |
-| `resolve_individual!(iv, individual, state)` | Once per active case at the start of each generation, before its contacts are drawn | The infector for the coming step | `nothing`; sets values in `individual.state` |
-| `apply_post_transmission!(iv, state, new_contacts)` | Once per generation, after every active case's contacts for that generation exist | A `Vector{Individual}` of the new contacts | `nothing`; sets values on any of the contacts |
-| `competing_risk(iv, parent, contact, state)` | Per infector–contact pair: on branching processes when infection is decided, after `apply_post_transmission!`; on continuous-time models as each infection is proposed | The infector and one contact | `nothing`, one [`Risk`](@ref), or a tuple of `Risk`s for an intervention that blocks transmission in more than one way |
-| `keep_active(iv, state, targets, is_new)` | On branching processes, once per generation after infection is decided, while the next generation's active people are chosen; on network and household models, during a tracing walk, with `is_new` all `false` | On branching processes, this generation's contacts; when tracing on network and household models, one person's contacts whose infection is not yet final (the case's first, then those of each ring member the ring grows from); and an `is_new` flag for each | The ids of contacts that should keep generating contacts in the next generation or, when tracing, that the ring is traced onward from (default: none) |
-| `trace_contacts!(iv, state, infector, contacts[, not_before])` | Continuous-time models only: once per case, when its infection time is final, and then once per ring member the ring grows from | The case or ring member, the contacts it reached whose infection is not yet final, and, from a model whose contacts can arise after the case's infection, when each became a contact (the four-argument method is called when the model gives no times, and by default for interventions that ignore them) | `nothing`; sets values on the contacts |
-| `traces_contacts(iv)` | Whenever a continuous-time model decides whether to collect a case's contacts at all | Nothing | `true` if this intervention has a `trace_contacts!` method. The default is `false` and nothing derives it from your methods, so without this one your `trace_contacts!` is never called and nothing warns |
+| `resolve_individual!(iv, individual, state)` | Once per case, when it is settled: after its clinical transitions, before it infects anyone. Never for a person who is not infected | The case, with `state.max_infection_time` at its infection time | `nothing`; sets values in `individual.state` |
+| `trace_contacts!(iv, state, infector, contacts[, not_before])` | Once per case, after it is settled and before any of its contacts is known to be infected or not; on network and household models also once per ring member a ring of contact tracing grows from | The case, the contacts it reached that it can still affect, and, from a model whose contacts can arise after the case's infection, when each became a contact (the four-argument method is called when the model gives no times, and by default for interventions that ignore them) | `nothing`; sets values on the contacts |
+| `intervention_actions(iv, state, candidates)` | Once per case, after every intervention's `trace_contacts!` for it | The people the case can still affect | `nothing`, or a vector of [`EpiBranch.InterventionAction`](@ref)s to put through the schedule and capacity limits (see [Intervention actions](@ref)) |
+| `keep_active(iv, state, targets, is_new)` | Once per case, after its actions; on network and household models during tracing, straight after `trace_contacts!` | The contacts `trace_contacts!` received, and an `is_new` flag for each (all `false` on network and household models) | The ids of the contacts that should go on generating contacts if they are not infected or, when tracing, that the ring is traced onward from (default: none) |
+| `competing_risk(iv, parent, contact, state)` | Per infector–contact pair, after the infector's own hooks: on branching processes when infection is decided, on continuous-time models as each infection is proposed | The infector and one contact | `nothing`, one [`Risk`](@ref), or a tuple of `Risk`s for an intervention that blocks transmission in more than one way |
+| `traces_contacts(iv)` | Whenever a continuous-time model decides whether to collect a case's contacts at all | Nothing | `true` if this intervention traces. The default is `true` for a type with a `trace_contacts!` method of its own; you need not write it |
 | `infectious_removal_time(iv, individual)` | Continuous-time models only: when a case's infectious period is closed | A person | The time this intervention removes them from onward transmission (default `Inf`) |
-| `on_infection_settled!(iv, individual, state, rng)` | Network and household models only: once a case's infection time is final, before its onset or clinical transitions read it | The case, and the random number generator to use | `nothing`; sets values on the case (default: does nothing) |
+| `on_infection_settled!(iv, individual, state, rng)` | Continuous-time models only: once a case's infection time is fixed, before its onset or clinical transitions read it | The case, and the random number generator to use | `nothing`; sets values on the case (default: does nothing) |
 | `risk_applies(iv, route)` | Continuous-time models choosing the risks for a route (`nothing` for an introduction from outside) | Nothing | `Bool`; default `true` |
 | `standing_block(iv)` | Continuous-time models deciding whether a certain block ends a pair's contacts for good | Nothing | `Bool`; default `false` |
-| `risk_depends_on_infector(iv)` | Before a closed population with more than one mixing group runs | Nothing | `Bool`: whether `competing_risk` can block a contact differently depending on its infector (default `true` when the type has its own `competing_risk`) |
 | `reads_population_state(iv)` | Before a structure-driven model (such as `HouseholdProcess`) decides whether to simulate each household separately or all on one shared clock | Nothing | `Bool`: whether what the intervention does can depend on population-wide quantities such as a running case count or a shared budget (default `true`, the safe choice) |
+| `analytic_offspring_effect(iv, offspring)` | When an analytical function such as [`extinction_probability`](@ref) is called on a `ModelSpec` holding the intervention | The offspring distribution without the intervention | The offspring distribution a case has under the intervention. Without a method the function stops with an error |
 
 `reads_population_state` covers everything an intervention hands work to: a
 component or function you supply counts towards its owner's answer. A built-in
@@ -77,6 +105,26 @@ case count, or anything else beyond the person being considered, declares
 passed as a parameter has nowhere to declare this, and such a test belongs in a
 component type.
 
+`analytic_offspring_effect` is for the rare intervention whose effect on the
+offspring distribution is exact in closed form. One that cuts every case's R
+by a fixed proportion `p` turns `NegBin(R, k)` into `NegBin((1 - p) * R, k)`,
+and its method returns that; return a `Poisson` or a negative binomial, the
+forms the analytical functions accept. Most interventions have no such form:
+the effect of isolation on R depends on how its timing overlaps the generation
+time, and `Isolation` has no method. [`extinction_probability`](@ref),
+[`epidemic_probability`](@ref), [`probability_contain`](@ref) and the other
+[analytical functions](analytical.md) stop with an error on a `ModelSpec` that
+holds an intervention without one, and their error points to simulating the
+model instead. The border closure from [Extending EpiBranch](@ref "A custom
+intervention: closing a border") is one of these.
+
+!!! note "`apply_post_transmission!` is deprecated"
+    Older interventions acted on a whole generation's contacts at once through
+    `apply_post_transmission!`. Branching processes still call a method of it,
+    with a deprecation warning, and the continuous-time models never do. Write
+    what it did to each contact as `trace_contacts!`, and any action with a
+    delivery date as `intervention_actions`.
+
 The [`AbstractIntervention`](@ref) docstring and the
 [Extension reference](@ref "Continuous-time models: further details") have the
 remaining details for the continuous-time models.
@@ -84,23 +132,23 @@ remaining details for the continuous-time models.
 ## Which hooks run on which model
 
 Not every hook is called by every model. A branching process creates a new
-`Individual` for every contact, infected or not, and can hand an intervention
-a batch of contacts. The continuous-time models (network, household and the
-homogeneous pool) create everyone at the start and only work out *when* each
-person is infected, from draws of the contact interval. What they do have is
-each potential infection, a drawn time for a named pair, and a `Risk` can act
-on that, as can the end of the infectious period.
+`Individual` for every contact, infected or not. The continuous-time models
+(network, household, homogeneous) create everyone at the start and only work
+out *when* each person is infected, from draws of the contact interval. What
+they do have is each potential infection, a drawn time for a named pair, and a
+`Risk` can act on that, as can the end of the infectious period.
 
-| Hook | Branching process | Network / household | Homogeneous pool |
-|---|---|---|---|
-| `initialise_individual!` | yes | yes | yes |
-| `resolve_individual!` | yes | yes | yes |
-| `competing_risk` | yes | yes | yes |
-| `infectious_removal_time` | not read | yes | yes |
-| `on_infection_settled!` | not called | yes | not called |
-| `trace_contacts!` | not called | yes | no contacts to trace |
-| `apply_post_transmission!` | yes | not called | not called |
-| `keep_active` | yes | when tracing: chooses which traced contacts a ring grows from | not called |
+| Hook | Branching process | Continuous-time models (network, household, homogeneous) |
+|---|---|---|
+| `initialise_individual!` | yes | yes |
+| `resolve_individual!` | yes | yes |
+| `competing_risk` | yes | yes |
+| `infectious_removal_time` | not read | yes |
+| `on_infection_settled!` | not called | yes |
+| `trace_contacts!` | yes | yes, where the model can name contacts (not homogeneous) |
+| `intervention_actions` | yes | where the model can name contacts, for an intervention that declares `continuous_actions` |
+| `keep_active` | yes | during tracing: chooses which traced contacts a ring grows from |
+| `apply_post_transmission!` (deprecated) | yes, with a warning | not called |
 
 In practice:
 
@@ -112,20 +160,18 @@ In practice:
   per-person susceptibility and infectiousness. The continuous-time models put
   each potential infection to the risks when they propose it, at the time
   proposed. A blocked contact does not transmit, and the pair keeps meeting:
-  on a network the pair's next contact is drawn later, and in the homogeneous
-  pool the susceptible waits for its next contact.
+  the pair's next contact is drawn later.
 
 !!! warning "The same efficacy means different things on the two kinds of model"
     On a continuous-time model a pair that escapes infection keeps meeting, so
     blocking each contact with probability `p` multiplies the rate of infection
-    by `1 - p`. A two-person household with a one-day mean contact interval
-    and a two-day infectious period behaves like a homogeneous pool of two at
-    `β = 2`, and at efficacy 0.5 both infect `1 - exp(-1) = 0.63` of the time.
-    On a branching process a case's contacts are a fixed set of draws, so a
-    blocked contact is a transmission lost, and the same efficacy of 0.5
-    halves that pair's chance of transmission (0.43 in this example, against
-    0.63). The per-exposure reading on continuous-time models is what a leaky
-    vaccine means there; check which one your scenario needs.
+    by `1 - p`. A pair with a one-day mean contact interval and a two-day
+    infectious period then infects `1 - exp(-1) = 0.63` of the time at
+    efficacy 0.5. On a branching process a case's contacts are a fixed set of
+    draws, so a blocked contact is a transmission lost, and the same efficacy
+    of 0.5 halves that pair's chance of transmission (0.43 in this example,
+    against 0.63). The per-exposure reading on continuous-time models is what a
+    leaky vaccine means there; check which one your scenario needs.
 
 - On a network or household model, `loglikelihood(data, spec)` refuses any
   part of `spec` the likelihood cannot represent: a partial block that starts
@@ -136,70 +182,59 @@ In practice:
   when the fit is given the same `spec` as the simulation. Fitting with the
   bare model, or with a `spec` that leaves the intervention out, gives no error
   and disagrees with the simulation.
-- An intervention that reaches people only through `apply_post_transmission!`
-  or `keep_active` (`MassVaccination`'s rollout vaccinates each new contact as
-  it is created) has nothing to act on in a model that creates no contacts. You
-  need not declare this: when your type has its own method for either hook,
-  the continuous-time models name it in their warning. The exception is an
-  intervention that also traces contacts (`traces_contacts` returns `true`),
-  whose `trace_contacts!` is taken as the continuous-time version of those
-  hooks. It is honoured on a model that can name a case's contacts and
-  reported on one that cannot, such as the homogeneous pool.
+- An intervention's actions reach the continuous-time models only if it
+  declares `EpiBranch.continuous_actions(iv) = true`, and then only on a model
+  that can name contacts. Such actions must work without knowing a contact's
+  infection time, which is not yet drawn. Ring and group vaccination declare
+  it. [`MassVaccination`](@ref) does not: its rollout vaccinates each contact a
+  case makes, which on these models would mean offering a dose to the whole
+  population not yet infected. The simulation names an intervention it cannot
+  honour in a warning, with the hooks it skips, and an intervention of your own
+  needs no declaration for this.
 - **Contact tracing** needs both: its action is a removal, so it applies on
   every model, but it has to know who a case's contacts were. A branching
-  process reads that from each contact's `parent_id`. A continuous-time model
-  must supply it: the model reports `EpiBranch.supplies_contacts(model) = true`
+  process knows the contacts each case made. A continuous-time model must
+  supply them: the model reports `EpiBranch.supplies_contacts(model) = true`
   and passes a `contacts` function. That function returns contact ids, or
   `(id, time)` pairs when some contacts arise only after the case's infection,
   such as at a funeral (`contacts_from = :died` on a `RoutedNetwork` route).
   `time` is when each person became a contact, and `ContactTracing` starts that
   contact's trace delay no earlier than then. A network names a person's
-  neighbours and a household its members; the homogeneous pool has no list of
+  neighbours and a household its members; the homogeneous model has no list of
   who met whom, so tracing does not happen there.
 
 ### Order of steps on the two kinds of model
 
-Two differences in order matter when your intervention has to work on both:
+On both kinds of model a contact is traced when its *infector* is settled,
+before the contact's own clinical transitions and `resolve_individual!` run. An
+intervention that writes onto a contact must therefore not assume the contact
+has nothing written yet, and one that reads a contact's own values must not
+assume they are already set. On the continuous-time models even the contact's
+infection time and onset are not yet known. `Isolation` therefore treats a
+quarantine already in place as a competing route to isolation and keeps the
+earlier time.
 
-- On both kinds of model a contact is traced before its own
-  `resolve_individual!` runs. On a branching process the contact's population
-  characteristics and onset are already set when it is traced, and its
-  `resolve_individual!` runs in the next generation. On the continuous-time
-  models a contact is traced when its *infector*'s infection becomes final,
-  before the contact's own infection time, and so its onset, is final. An
-  intervention that writes onto a contact must therefore not assume the contact
-  has nothing written yet, and one that reads a contact's own values must not
-  assume they are already set. This is why `Isolation` treats a
-  quarantine already in place as a competing route to isolation and keeps the
-  earliest time.
-- On the continuous-time models tracing reaches only contacts whose own
-  infection is not yet final. Once a case's infection is final, its infectious
-  period and onward transmissions are fixed, so a trace arriving afterwards has
-  nothing left to shorten. Backward tracing, to the person who infected a case,
-  is not supported on either kind of model.
+On the continuous-time models tracing reaches only contacts whose own infection
+is not yet settled. Once a case is settled, its infectious period and onward
+transmissions are fixed, so a trace arriving afterwards has nothing left to
+shorten. Backward tracing, to the person who infected a case, is not supported
+on either kind of model.
 
 What an intervention can rely on:
 
-- `resolve_individual!` runs before any `competing_risk` call in that
-  generation, so a risk can read what `resolve_individual!` wrote on the
-  infector.
-- `apply_post_transmission!` runs before any `competing_risk` call, so a risk
-  can read what it wrote on the contact (for example `:vaccination_time`).
-- On branching processes `keep_active` runs after infection is decided, so it
-  can read each contact's `:infected` and anything `apply_post_transmission!`
-  wrote this generation. On network and household models it runs during
-  tracing, straight after `trace_contacts!` on the contacts of one person in
-  the ring. None of those contacts' infections is final yet, so all of them read as not
-  infected: choose by what tracing wrote, as `ContactTracing` does, not by
-  `:infected`.
-- Interventions apply in the order of `interventions = [...]`. For
-  `apply_post_transmission!` and `competing_risk`, each sees what earlier
-  interventions wrote in the same generation.
-- On the continuous-time models a case's contacts are traced when the case's
-  infection becomes final, before it proposes any infection of its own, so a
-  risk can read what `trace_contacts!` wrote on a contact. Ring and group vaccination actions are
-  found after tracing and then pass through their scheduling and capacity
-  limits.
+- `resolve_individual!` runs on a case before it infects anyone, so a risk can
+  read what `resolve_individual!` wrote on the infector.
+- A case's `trace_contacts!`, `intervention_actions` and `keep_active` run
+  before any of its contacts is known to be infected or not, so a risk can read
+  what they wrote on the contact (for example `:vaccination_time`).
+- Every intervention's `trace_contacts!` for a case runs before any
+  intervention's `intervention_actions` for it, so ring vaccination reads what
+  tracing wrote, whatever the order of the list.
+- Otherwise interventions apply in the order of `interventions = [...]`, and
+  each sees what earlier interventions wrote for the same case.
+- `keep_active` runs before its contacts are known to be infected, so choose by
+  what tracing wrote, as `ContactTracing` does, not by `:infected`. A contact
+  it keeps that is then infected goes on as a case anyway.
 
 On the continuous-time models, the transmission time a `Risk` is compared with
 is the potential infection time just drawn for that pair.
@@ -221,12 +256,11 @@ function initialise_individual!(::ContactTracing, individual, state)
 end
 ```
 
-`resolve_individual!`: `Isolation` works out when the case about to transmit
-is isolated, from its onset time plus a sampled delay, and takes an earlier
-isolation time if contact tracing found the case first. It then draws how
-long the isolation lasts from its `duration` and passes the end to
-`set_isolated!` as `release_time`. `x || return nothing`
-means "stop here unless `x` is true".
+`resolve_individual!`: `Isolation` works out when the case is isolated, from
+its onset time plus a sampled delay, and takes an earlier isolation time if
+contact tracing found the case first. It then draws how long the isolation
+lasts from its `duration` and passes the end to `set_isolated!` as
+`release_time`. `x || return nothing` means "stop here unless `x` is true".
 
 ```julia
 function resolve_individual!(iso::Isolation, individual, state)
@@ -247,23 +281,22 @@ function resolve_individual!(iso::Isolation, individual, state)
 end
 ```
 
-`apply_post_transmission!`: `ContactTracing` goes through the new contacts,
-looks up each one's infector, and applies its trace action (`Quarantine` or
-`FlagOnly`) when the contact is eligible and is reached. The trace is timed
-from [`trigger_time`](@ref EpiBranch.trigger_time), which for a policy based on
+`trace_contacts!`: `ContactTracing` goes through the contacts a case reached
+and applies its trace action (`Quarantine` or `FlagOnly`) when the contact is
+eligible and is reached. The trace is timed from
+[`trigger_time`](@ref EpiBranch.trigger_time), which for a policy based on
 isolation is the recorded isolation, so an isolation that does not count as a
-detection starts no trace.
+detection starts no trace. Leaving out the depth of the ring and the contacts'
+`not_before` times, it reads:
 
 ```julia
-function apply_post_transmission!(ct::ContactTracing, state, new_contacts)
+function trace_contacts!(ct::ContactTracing, state, infector, contacts)
     rng = state.rng
-    for ind in new_contacts
-        ind.parent_id == 0 && continue
-        parent = state.individuals[ind.parent_id]
-        is_eligible(ct.eligibility, parent, ind, state) || continue
-        traces(ct.trace_rate, parent, ind, state, rng) || continue
-        trace_delay = draw_trace_delay(ct.isolation_to_trace_delay, parent, ind, state, rng)
-        trace_time = trigger_time(ct.eligibility, parent, ind, state) + trace_delay
+    for ind in contacts
+        is_eligible(ct.eligibility, infector, ind, state) || continue
+        traces(ct.trace_rate, infector, ind, state, rng) || continue
+        trace_delay = draw_trace_delay(ct.isolation_to_trace_delay, infector, ind, state, rng)
+        trace_time = trigger_time(ct.eligibility, infector, ind, state) + trace_delay
         apply_trace!(ct.action, ind, state, trace_time, rng)
     end
     return nothing
@@ -274,14 +307,14 @@ end
 
 ## Checking your intervention
 
-A missing hook raises no error, because every hook does nothing by default.
+A missing hook raises no error in a simulation, because each one does nothing
+by default.
 That makes partial interventions easy to write, but a forgotten or misnamed
 method fails silently. Three checks:
 
 - Run a small simulation (`max_cases = 50`) with and without your intervention.
-  If the results look the same, your `competing_risk` or
-  `apply_post_transmission!` is probably not being called for the people you
-  expect.
+  If the results look the same, your `competing_risk` or `trace_contacts!` is
+  probably not being called for the people you expect.
 - Declare the values your intervention needs with `required_fields` (see
   [Requiring values on each person](@ref)), so the simulation stops with an
   error at the start when nothing sets them.
@@ -394,6 +427,7 @@ struct Antiviral <: AbstractIntervention
 end
 
 function treat!(av::Antiviral, ind)
+    isfinite(ind.infection_time) || return nothing   # not infected yet
     incubation = get(ind.state, :incubation_period, NaN)
     ends = ind.infection_time + av.delay
     if !isnan(incubation) && ends >= ind.infection_time + incubation
@@ -403,24 +437,25 @@ function treat!(av::Antiviral, ind)
 end
 
 # Branching processes: each contact, at its potential exposure time.
-function EpiBranch.apply_post_transmission!(av::Antiviral, state, contacts)
+function EpiBranch.trace_contacts!(av::Antiviral, state, infector, contacts)
     foreach(c -> treat!(av, c), contacts)
     return nothing
 end
 
-# Network and household models: each case once its infection time is final.
+# Continuous-time models: each case once its infection time is fixed.
 function EpiBranch.on_infection_settled!(av::Antiviral, ind, state, rng)
     return treat!(av, ind)
 end
 ```
 
 Two methods are needed because the two kinds of model reach a new case at
-different steps: branching processes through the batch of new contacts, the
-network and household models through each case once its infection time is
-final. On those models the simulation still warns that `Antiviral` "will have
-no effect", because the check reads `apply_post_transmission!` and
-`keep_active` and nothing else; `on_infection_settled!` does the work there,
-so the warning can be ignored.
+different steps. A branching process passes each contact to `trace_contacts!`
+with its potential infection time, before the contact is known to be infected.
+An infection that turns out to start later than that, or not at all, keeps no
+record of the treatment. The continuous-time models pass contacts to
+`trace_contacts!` before their infection time is drawn, and `treat!` therefore
+skips a person with no infection time; `on_infection_settled!` reaches each
+case there once its infection time is fixed.
 
 ## Susceptibility and infectiousness are risks too
 
@@ -478,22 +513,25 @@ applies there as it does on a branching process.
 
 By default only the people infected in a generation go on to the next one and
 generate their own contacts; a contact who was not infected goes no further.
-`keep_active` lets an intervention keep other contacts in the simulation:
-return the ids of this generation's contacts that should keep generating
-contacts, and they are added to the next generation.
+`keep_active` lets an intervention keep other contacts in the simulation. It is
+asked once per case, about the contacts that case reached: return the ids of
+those that should keep generating contacts, and the ones not infected are added
+to the next generation. On the network and household models it is asked during
+tracing instead, about which traced contacts the ring grows from.
 
 This is needed for contact tracing beyond direct contacts. To reach the
 contacts of contacts, the simulation has to generate the contacts of an
 infected case's contacts even when those contacts were never infected. Keep
 them here, and the built-in `InfectiousSource` risk lets them generate contacts
-without infecting anyone. `[t.id for t in targets if !is_infected(t)]` collects
-the ids of the contacts that were not infected:
+without infecting anyone. The contacts are not yet known to be infected when
+`keep_active` is asked, so here every one is kept, and those that are infected
+go on as cases anyway:
 
 ```julia
-struct KeepUninfectedActive <: AbstractIntervention end
+struct KeepEveryContactActive <: AbstractIntervention end
 
-function EpiBranch.keep_active(::KeepUninfectedActive, state, targets, is_new)
-    [t.id for t in targets if !is_infected(t)]
+function EpiBranch.keep_active(::KeepEveryContactActive, state, targets, is_new)
+    [t.id for t in targets]
 end
 ```
 
@@ -508,13 +546,13 @@ contacts that ring vaccination then targets.
 `Scheduled(iv; start_time = ...)`. Built-in interventions have no start-time
 field of their own.
 
-For an intervention that acts on each case as it is set up, `Scheduled` makes
-two checks. It applies only once some case in the outbreak has been infected on
-or after the start day, and then it checks the time at which the intervention
-would act on each person. When that time would fall before the start,
-`Scheduled` undoes the action. Cases set up before the outbreak reaches the
-start day, such as index cases, are therefore missed even when their action
-would fall after it (see [Interventions that start or stop during the
+For an intervention that acts on each case, `Scheduled` makes two checks. It
+applies to a case only if the case's own infection time falls within the
+schedule (see [What happens to each case](@ref)), and it then checks the time
+at which the intervention would act on each person. When that time would fall
+before the start, `Scheduled` undoes the action. Index cases, infected on day 0,
+are therefore missed by a policy that starts later, even when their action
+would fall after the start (see [Interventions that start or stop during the
 outbreak](@ref)). An intervention that proposes actions (see [Proposing actions
 of your own](@ref)) is instead checked against each action's own date, so an
 action dated on or after the start goes ahead even for the earliest cases.
@@ -547,6 +585,61 @@ The border closure's own `start_time` is compared with each transmission time.
 `Scheduled` instead switches the whole policy on when the simulation reaches
 day 10, which is how built-in interventions are started.
 
+### A trigger of your own
+
+`start_after` opens a schedule on a condition instead of a date, and takes any
+subtype of [`AbstractTrigger`](@ref EpiBranch.AbstractTrigger). The built-in
+[`Infections`](@ref) and [`ReportedCases`](@ref) are two; a trigger of your own
+works without any change to `Scheduled`. It needs one method, and has two
+traits with defaults:
+
+- `EpiBranch.is_triggered!(trigger, state)` says whether the condition holds
+  now. The same trigger is reused across the runs of `simulate(model, n)`, so
+  keep nothing on it between calls and work out any count from `state` each
+  time. It is asked about 1.7 times per person, so a count that goes through
+  the whole population on every call, as `ReportedCases` does, makes a run
+  take time that grows with the square of the number of people. A count the
+  simulation already keeps, as `Infections` reads `state.cumulative_cases`,
+  costs nothing.
+- `EpiBranch.trigger_can_lapse(trigger)` says whether the condition, once true,
+  can turn false again. The default is `true`, the safe choice. Return `false`
+  for a condition that holds for good once met, as both built-in triggers do:
+  neither the case count nor the number of reports already made can fall. The
+  answer matters for fitting: a schedule that can close again gives up the
+  isolation releases the likelihood would otherwise use.
+- `EpiBranch.required_transitions(trigger)` names the clinical transitions the
+  model's `progression` must include for the trigger to work, `()` by default.
+  Building a `ModelSpec` without one of them gives a warning naming the
+  trigger, because without the transition that writes what the trigger reads
+  the schedule never opens. `ReportedCases` names `Reporting`, except at
+  `n = 0`, when the schedule opens before any report exists.
+
+Here the border closes once 20 cases have had symptom onset:
+
+```julia
+struct TwentyOnsets <: EpiBranch.AbstractTrigger end
+
+function EpiBranch.is_triggered!(::TwentyOnsets, state)
+    return count(
+        ind -> onset_time(ind) <= state.max_infection_time, state.individuals
+    ) >= 20
+end
+
+Scheduled(BorderClosure(0.0, 0.05); start_after = TwentyOnsets())
+```
+
+`TwentyOnsets` keeps the default `trigger_can_lapse`: a person infected a second
+time draws a new onset, so the count can fall.
+
+!!! warning "A trigger cannot declare the population characteristics it reads"
+    `required_transitions` covers the `progression` only. `TwentyOnsets` reads
+    `:onset_time`, which [`clinical_presentation`](@ref) sets, and has no way
+    to say so. On a model built without it every `onset_time` is `NaN`, the
+    trigger counts nobody, and the border stays open for the whole run with
+    nothing to say why. `required_fields` does not help either: `Scheduled`
+    answers it for the intervention it wraps. Check for the value in
+    `is_triggered!` if you want to hear about it.
+
 ## Capacity limits
 
 [`CapacityConstrained`](@ref) limits how many actions an intervention can take
@@ -561,9 +654,9 @@ names.
 
 Every proposed recipient is known before admission, including group members
 found by searching a whole group. See [Intervention actions](@ref) for how to
-propose actions and the rules on timing. An older intervention that acts on a
-batch of people can still use the capacity names, provided its batch hook only
-changes the people it receives.
+propose actions and the rules on timing. An intervention still on the
+deprecated `apply_post_transmission!` can use the capacity names too, provided
+that method changes only the people it receives.
 
 ## Requiring values on each person
 
@@ -598,8 +691,8 @@ It adds an `intervention_actions` method choosing whom to vaccinate and when,
 returning one `EpiBranch.dose_action(v, ind, time)` for each person it will
 dose. That is the same action protocol the built-in vaccinations use, so
 [`Scheduled`](@ref) and [`CapacityConstrained`](@ref) wrap your vaccination
-exactly as they wrap a [`MassVaccination`](@ref). `apply_post_transmission!`
-then only has to admit the actions, through `EpiBranch.apply_actions!`. A dose
+exactly as they wrap a [`MassVaccination`](@ref). The simulation puts the
+actions through those limits itself. A dose
 admitted this way writes the per-dose values listed in [Individual state and
 reserved keys](@ref) and draws `efficacy`, `severity_efficacy` and
 `delay_to_immunity` for that person, whether they were given as numbers,
@@ -632,10 +725,6 @@ function EpiBranch.intervention_actions(v::OlderAdultVaccination, state, candida
         push!(actions, EpiBranch.dose_action(v, ind, v.campaign_time))
     end
     return actions
-end
-
-function EpiBranch.apply_post_transmission!(v::OlderAdultVaccination, state, new_contacts)
-    return EpiBranch.apply_actions!(v, state, new_contacts)
 end
 
 older = OlderAdultVaccination(min_age = 60, campaign_time = 10.0,
@@ -785,10 +874,6 @@ end
 function EpiBranch.intervention_actions(visit::ClinicAppointment, state, candidates)
     [EpiBranch.InterventionAction(person, visit.time, record_attendance!)
      for person in candidates if !get(person.state, :attended, false)]
-end
-
-function EpiBranch.apply_post_transmission!(visit::ClinicAppointment, state, candidates)
-    EpiBranch.apply_actions!(visit, state, candidates)
 end
 
 EpiBranch.capacity_key(::ClinicAppointment) = :attended
@@ -997,10 +1082,15 @@ function EpiBranch.transition_loglik(t::AntiviralTreatment, ind)
     ot = onset_time(ind)
     isnan(ot) && return 0.0
     get(ind.state, :reported, false) || return 0.0
-    occurred = ind.state[:treated]
-    ll = EpiBranch.transition_term(t.probability, t.delay, ind, ot, occurred)
+    treated = ind.state[:treated]
+    time = treated ? ind.state[:treatment_time] : Inf
+    occurred = treated && time <= outcome_time(ind)
+    ll = EpiBranch.transition_term(
+        t.probability, t.delay, ind, ot, occurred;
+        censor = min(EpiBranch.infection_aborted_time(ind), outcome_time(ind))
+    )
     occurred || return ll
-    return ll + logpdf(t.delay, ind.state[:treatment_time] - ot)
+    return ll + logpdf(t.delay, time - ot)
 end
 
 treated = ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0));
@@ -1017,3 +1107,20 @@ probability built by [`exclusive_probabilities`](@ref), whose alternatives
 share one random draw, and a case whose infection ended early, before the
 transition could take effect. [The likelihood of a custom transition](@ref)
 explains both.
+
+A treatment drawn after the case has died or recovered did not happen. The
+`censor` passed to `transition_term` above reads it that way, and the
+transition says so on the case too with a
+[`EpiBranch.censor_after_outcome!`](@ref) method, as the built-in `Reporting`
+and `Hospitalisation` do. The package calls it once the case's outcome is
+known:
+
+```@example transitions_dev
+function EpiBranch.censor_after_outcome!(::AntiviralTreatment, ind)
+    if ind.state[:treatment_time] > outcome_time(ind)
+        ind.state[:treated] = false
+        ind.state[:treatment_time] = Inf
+    end
+    return nothing
+end
+```
