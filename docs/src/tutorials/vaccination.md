@@ -49,7 +49,7 @@ default). It has up to four effects, each a probability; two of them,
 | Parameter | What it prevents | Acts if protection starts |
 |---|---|---|
 | `efficacy` | the vaccinated person being infected | before the exposure |
-| `severity_efficacy` | a severe outcome, such as death, in a vaccinated person who is infected anyway | before that outcome would take effect |
+| `severity_efficacy` | a severe outcome, such as death, in a vaccinated person who is infected anyway | when the clinical step that reads it says so (before symptom onset in the example below) |
 | `onward_efficacy` | the vaccinated person infecting others | before each of their transmissions |
 | `post_exposure_efficacy` | an infection the person already has | before symptom onset (if before the exposure, it blocks the infection itself) |
 
