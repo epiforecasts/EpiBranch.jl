@@ -866,10 +866,12 @@ end
 # window to close.
 function competing_risk(ct::ContactTracing, parent, contact, state)
     get(parent.state, :quarantined, false) || return nothing
-    risks = ()
-    for key in _trace_removal_keys(ct.action)
+    keys = _trace_removal_keys(ct.action)
+    length(keys) == 1 && return _removal_risks(parent, 1.0, only(keys))
+    risks = Risk[]
+    for key in keys
         more = _removal_risks(parent, 1.0, key)
-        more === nothing || (risks = (risks..., more...))
+        more === nothing || append!(risks, more)
     end
     return isempty(risks) ? nothing : risks
 end

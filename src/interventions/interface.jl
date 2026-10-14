@@ -343,12 +343,34 @@ end
 # One risk per stretch a removal took the host out for, a release of `Inf`
 # standing for a removal that never ends. A likelihood takes the same
 # stretches out of each pair's exposure, which is what keeps the two in step.
-function _removal_risks(parent, block_probability, key = REMOVAL_STRETCHES_KEY)
-    stretches = removal_stretches(parent, key)
-    isempty(stretches) && return nothing
-    return Tuple(
-        Risk(event_time = a, block_probability = block_probability, release_time = b)
-            for (a, b) in stretches
+function _removal_risks(
+        parent::Individual{T}, block_probability, key = REMOVAL_STRETCHES_KEY
+    ) where {T}
+    stretches = get(parent.state, key, nothing)
+    # Recorded in the host's own number type, as `record_removal!` does, the
+    # stretches are walked without dispatching on each; anything else is
+    # walked as `Any`.
+    if stretches isa Vector{Tuple{T, T}}
+        return isempty(stretches) ? nothing : _StretchRisks(stretches, block_probability)
+    end
+    (stretches === nothing || isempty(stretches)) && return nothing
+    return _StretchRisks(collect(Any, stretches)::Vector{Any}, block_probability)
+end
+
+# The risks of `_removal_risks`, made one at a time as they are iterated
+# rather than gathered into a collection first.
+struct _StretchRisks{V, P}
+    stretches::V
+    block_probability::P
+end
+Base.length(r::_StretchRisks) = length(r.stretches)
+Base.isempty(r::_StretchRisks) = isempty(r.stretches)
+function Base.iterate(r::_StretchRisks, i::Int = 1)
+    i > length(r.stretches) && return nothing
+    a, b = r.stretches[i]
+    return (
+        Risk(event_time = a, block_probability = r.block_probability, release_time = b),
+        i + 1,
     )
 end
 
