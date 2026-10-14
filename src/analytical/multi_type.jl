@@ -141,9 +141,13 @@ end
     reproduction_number(model)
     reproduction_number(offspring)
 
-Basic reproduction number implied by the model's offspring distribution: the
-mean number of secondary cases per case in a fully susceptible population
-without interventions. It is not the time-varying reproduction number Rt.
+Reproduction number implied by the model's offspring distribution: the mean
+number of secondary cases per case in a fully susceptible population. It is
+not the time-varying reproduction number Rt. Given a model, each of its
+interventions changes the offspring distribution first, through
+[`EpiBranch.analytic_offspring_effect`](@ref), so the result is the basic
+reproduction number only when the model has none; an intervention without
+such an effect raises an error.
 
 - Single-type model: the mean of the offspring distribution.
 - [`ClusterMixed`](@ref) offspring: that mean averaged over the chains'
