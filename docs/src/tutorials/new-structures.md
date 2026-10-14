@@ -85,7 +85,8 @@ state and is ended by its own `until` states. Two limits:
   contacts for those who die) with no closed form, so such models are for
   simulation only.
 - If no transition records a window's `from` state, the window never opens.
-  The constructor warns when it can detect this.
+  Building the `ModelSpec`, or simulating the bare process, warns when this
+  can be detected.
 
 ## Transmission routes
 
