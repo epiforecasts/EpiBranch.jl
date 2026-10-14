@@ -48,14 +48,17 @@ between types.
 
 This is the only step a transmission model defines, and it does so in one of
 two ways. A branching process and its variants (**offspring-driven** models)
-draw a number of potential secondary cases for each case. Network, household
-and metapopulation models (**structure-driven** models) cannot, because a
-susceptible can be exposed by several infectious neighbours at once and
-infections use up a fixed population. They list instead the people each
-infectious person is in contact with, and a person exposed by several cases in
-the same generation is considered once, with all of those exposures. The
-companion `EpiNetwork.jl` package's network model is an example. Either way the
-model only says who is in contact with whom.
+draw a number of potential secondary cases for each case. Models of a fixed
+population (**structure-driven** models) cannot, because a susceptible can be
+exposed by several infectious people at once and infections use up the
+population. The network, household, homogeneous and mixing models simulate such
+a population in continuous time, working out when each person is infected from
+the contacts between pairs. A structure-driven model can also list the people
+each infectious person is in contact with in each generation, and a person
+exposed by several cases in the same generation is then considered once, with
+all of those exposures; the hospital ward in [New transmission
+structures](tutorials/new-structures.md) is an example. Either way the model
+only says who is in contact with whom.
 
 ### 2. When (the same for every model)
 
