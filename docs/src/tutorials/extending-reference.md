@@ -385,7 +385,7 @@ compatible with these likelihoods. The built-in parts declare:
 | Model part | Fitted exactly by the infection likelihood |
 |---|---|
 | `clinical_presentation`, no population characteristics | yes |
-| Other population characteristics (your own functions) | no, unless declared |
+| Other population characteristics (`demographics`, `groups`, `transmission_traits`, `vaccine_acceptance`, and your own functions) | no, unless declared |
 | `Transition`, `Reporting`, `Hospitalisation`, `Recovery`, `Death` | yes |
 | `Isolation` | only with `post_isolation_transmission = 0` (complete isolation) |
 | `ContactTracing` with `Quarantine` or `FlagOnly` | yes |
