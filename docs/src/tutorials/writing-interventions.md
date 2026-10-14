@@ -708,9 +708,10 @@ The new type then gets, without further code:
 It adds an `intervention_actions` method choosing whom to vaccinate and when,
 returning one `EpiBranch.dose_action(v, ind, time)` for each person it will
 dose. That is the same action protocol the built-in vaccinations use, so
-[`Scheduled`](@ref) and [`CapacityConstrained`](@ref) wrap your vaccination
-exactly as they wrap a [`MassVaccination`](@ref). The simulation puts the
-actions through those limits itself. A dose
+[`Scheduled`](@ref) wraps your vaccination as it wraps a
+[`MassVaccination`](@ref), and [`CapacityConstrained`](@ref) does once the type
+defines the two keys described in [Capacity limits](@ref). The simulation puts
+the actions through those limits itself. A dose
 admitted this way writes the per-dose values listed in [Individual state and
 reserved keys](@ref) and draws `efficacy`, `severity_efficacy` and
 `delay_to_immunity` for that person, whether they were given as numbers,
