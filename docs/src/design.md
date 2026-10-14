@@ -135,11 +135,10 @@ transmission model.
 
 The parts depend on each other. Population characteristics affect
 transmission, disease and who interventions reach; the infectious period is
-defined by the disease states; and a transmission rate given as a reproduction
-number depends on the mean infectious period. These links are worked out when
-a model is simulated or evaluated, and each part is specified only once. A network or
-household model, for example, takes the start of infectiousness, and its rate
-when given as a reproduction number, from the disease part of the model.
+defined by the disease states. These links are worked out when a model is
+simulated or evaluated, and each part is specified only once. A network or
+household model, for example, takes the start of infectiousness from the
+disease part of the model.
 
 ### Who each person is
 
