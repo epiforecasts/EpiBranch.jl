@@ -640,7 +640,8 @@ struct TwentyOnsets <: EpiBranch.AbstractTrigger end
 
 function EpiBranch.is_triggered!(::TwentyOnsets, state)
     return count(
-        ind -> onset_time(ind) <= state.max_infection_time, state.individuals
+        ind -> is_infected(ind) && onset_time(ind) <= state.max_infection_time,
+        state.individuals
     ) >= 20
 end
 
