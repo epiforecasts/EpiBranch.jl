@@ -22,9 +22,27 @@
 """
     end_of_outbreak_probability(R, k, generation_time::Distribution, τ::Real)
 
-Probability that a cluster has finished, given the most recent case
-was observed `τ` time units ago, under NegBin(R, k) offspring and
-full reporting. Returns a value in `[0, 1]`.
+Probability that a cluster is over, so no further cases will occur, given
+that its most recent case was `τ` days ago. Assumes `NegBin(R, k)` offspring,
+a generation time distribution `generation_time` (days) and that every case
+is reported. Following Thompson, Morgan & Jansen (2019, Phil Trans B), it is
+
+    ((k + R · (1 − S(τ))) / (k + R))^k
+
+where `S(τ)` is the probability that a generation time exceeds `τ`. It rises
+from the probability of a case infecting nobody at `τ = 0` towards 1 as `τ`
+grows.
+
+Use it as `prob_concluded` in `loglikelihood(::ChainSizes, ...)` or
+[`chain_size_distribution`](@ref) for real-time cluster data, where some
+clusters may still be growing.
+
+# Examples
+
+```julia
+# 14 days since the last case, generation time with mean 6 days
+end_of_outbreak_probability(0.8, 0.5, Gamma(2.0, 3.0), 14.0)
+```
 """
 function end_of_outbreak_probability(R::Real, k::Real, generation_time::Distribution, τ::Real)
     isinf(τ) && return one(float(R))
@@ -37,9 +55,9 @@ end
     end_of_outbreak_probability(offspring::NegativeBinomial, generation_time, τ)
     end_of_outbreak_probability(offspring::Poisson, generation_time, τ)
 
-Convenience overloads that read `R` (and `k` when applicable) directly
-from a `Distributions` offspring object. The Poisson form uses the
-`k → ∞` limit `π(τ) = exp(−R · S(τ))`.
+End-of-outbreak probability with the offspring distribution given directly,
+such as `NegBin(0.8, 0.5)` or `Poisson(0.8)`. For Poisson offspring (no
+superspreading) it is `exp(−R · S(τ))`.
 """
 function end_of_outbreak_probability(
         offspring::NegativeBinomial, generation_time::Distribution,
@@ -60,12 +78,14 @@ end
     end_of_outbreak_probability(model::BranchingProcess, τ)
     end_of_outbreak_probability(spec::ModelSpec, τ)
 
-Convenience that reads the offspring and generation-time distributions
-straight off a `BranchingProcess`. Assumes full reporting: a model whose
-`Reporting` step (or deprecated [`PerCaseObservation`](@ref)) reports less
-than every case means under-reporting (`ρ < 1`), which needs the Volterra
-recursion of Thompson, Morgan & Jansen (2019) and is not implemented here.
-Evaluate on a model with full reporting to get the `ρ = 1` value.
+End-of-outbreak probability using the offspring and generation time
+distributions of a `BranchingProcess`, `τ` days after the most recent case.
+
+This assumes every case is reported. Under-reporting (a [`Reporting`](@ref)
+step with a probability below 1, or any deprecated
+[`PerCaseObservation`](@ref)) needs the recursion of Thompson, Morgan & Jansen
+(2019), which is not implemented, and gives an error; use a model that reports
+every case for the full-reporting value.
 
 For a `ModelSpec`, or a process that stores its own interventions, each
 intervention's [`EpiBranch.analytic_offspring_effect`](@ref) is applied to
@@ -109,11 +129,11 @@ function _eoo_assert_full_reporting(obs, progression)
 end
 
 """
-    end_of_outbreak_probability.(R, k, gt, τs::AbstractVector)
+    end_of_outbreak_probability(R, k, gt, τs::AbstractVector)
 
-Element-wise broadcast for a vector of τ values, returning a `Vector`
-of the same length. Useful as the per-cluster `prob_concluded` argument
-to `loglikelihood(::ChainSizes, …)`.
+End-of-outbreak probability for each of several clusters, given the days
+since each cluster's most recent case. Returns one value per cluster, ready
+to pass as `prob_concluded` to `loglikelihood(::ChainSizes, ...)`.
 """
 function end_of_outbreak_probability(
         R::Real, k::Real, generation_time::Distribution,

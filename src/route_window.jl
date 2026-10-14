@@ -20,27 +20,29 @@
     RouteWindow(name; from = nothing, until, kernel, reach = name,
                 contacts_from = :infection, traceable = 1.0)
 
-One transmission route, open over part of a case's natural history.
+A route of transmission, such as community, household or funeral, with its
+own start, end and timing over a case's natural history. Used with
+`RoutedNetwork` (in `EpiNetwork`), where each route reaches a different set of
+people in the network.
 
 - `name` labels the route (`:community`, `:household`, `:funeral`, …).
 - `from` is the state at which this route's infectiousness begins. `:infection`
   opens it at the infection time itself; any other state opens it at that
   state's time, following the `<state>_time` convention that
-  [`Transition`](@ref) writes. The default, `nothing`, takes the start the
-  model derives from its progression, as the continuous-time processes do for
-  their own `from`: `:infectious` when a transition writes it, otherwise the
-  infection time.
-- `until` is the tuple of states that end the route. The window closes at the
-  earliest of their times. A state that no window lists never censors
-  anything, and a state listed by one window and not another censors only the
-  first — which is how a control measure cuts one route and leaves another.
-  List [`EpiBranch.INTERVENTION_REMOVAL`](@ref) for a route that the composed
-  interventions (isolation, quarantine on being traced) should end.
-- `kernel` is the route's contact-interval distribution, measured from the
-  window opening. A model reads it when it resolves `reach` into the route's
-  contacts.
-- `reach` tags who the route reaches, for the model to resolve. Defaults to
-  `name`, which is usually what a model keys its structure on.
+  [`Transition`](@ref) writes. The default, `nothing`, opens it at
+  `:infectious` when the natural history has a step to it, otherwise at
+  infection.
+- `until` is the tuple of states that end the route; it closes at the
+  earliest of them. A state ends only the routes that list it, so a control
+  measure can end one route and leave another open. List
+  [`EpiBranch.INTERVENTION_REMOVAL`](@ref) for a route that the model's
+  interventions (isolation, or quarantine after being traced) should end.
+- `kernel` is the contact interval on this route: the time in days from the
+  route opening to a contact that would infect if the route were still open.
+- `reach` tells the model who the route reaches. `RoutedNetwork`
+  needs the route's contact list here (`reach[i]` lists the people `i` can
+  infect on this route); a model of your own can read another value, such as
+  the default, `name`.
 - `contacts_from` is the state from which the people the route reaches are the
   case's contacts, which is what contact tracing acts on. The default,
   `:infection`, suits a route over standing relationships such as a household,
@@ -64,14 +66,18 @@ One transmission route, open over part of a case's natural history.
 
 # Examples
 
+In these examples `community_contacts`, `household_contacts` and
+`funeral_contacts` are contact lists, one vector of people per person.
+
 A case that stops mixing in the community when it isolates but keeps infecting
 the people it lives with:
 
 ```julia
 community = RouteWindow(:community; from = :infectious,
-    until = (:recovered, EpiBranch.INTERVENTION_REMOVAL), kernel = Exponential(4.0))
+    until = (:recovered, EpiBranch.INTERVENTION_REMOVAL), kernel = Exponential(4.0),
+    reach = community_contacts)
 household = RouteWindow(:household; from = :infectious,
-    until = (:recovered,), kernel = Weibull(1.5, 3.0))
+    until = (:recovered,), kernel = Weibull(1.5, 3.0), reach = household_contacts)
 ```
 
 Ebola transmission at funerals, a route that only opens once the case has died
@@ -79,13 +85,12 @@ and closes at burial:
 
 ```julia
 funeral = RouteWindow(:funeral; from = :died, until = (:buried,),
-    kernel = Exponential(1.0), contacts_from = :died)
+    kernel = Exponential(1.0), contacts_from = :died, reach = funeral_contacts)
 ```
 
-Because the window contributes contacts only once its `from` state has
-occurred, a case that recovers never opens the funeral route at all, so nothing
-is created only to be censored. `contacts_from = :died` tells contact tracing
-the same: the survivor had no funeral contacts to trace.
+A case that recovers never opens the funeral route, and with
+`contacts_from = :died` contact tracing also treats a survivor as having no
+funeral contacts.
 
 A community route whose contacts are mostly strangers, of whom a case can name
 one in five:
@@ -93,7 +98,7 @@ one in five:
 ```julia
 community = RouteWindow(:community;
     until = (:recovered, EpiBranch.INTERVENTION_REMOVAL),
-    kernel = Exponential(4.0), traceable = 0.2)
+    kernel = Exponential(4.0), traceable = 0.2, reach = community_contacts)
 ```
 """
 struct RouteWindow{K, R}
@@ -144,12 +149,10 @@ end
 """
     window_open(individual, window)
 
-Time at which `window` opens for `individual`, or `Inf` if its `from` state has
-not been reached. A route that never opened transmits nothing.
-
-A window with `from = nothing` opens at the individual's `:infectious_time` when
-it has one and at its infection time otherwise, which is the start a model
-derives from a progression with or without an `:infectious` transition.
+Time (days) at which transmission by route `window` starts for a case, or
+`Inf` if the case never reaches its `from` state, in which case the route
+transmits nothing. A route with `from = nothing` opens when the case becomes
+infectious if the natural history has that step, otherwise at infection.
 """
 window_open(ind::Individual, w::RouteWindow) = _window_open(ind, _open_state(ind, w.from))
 
@@ -161,13 +164,15 @@ end
 """
     window_close(individual, window, interventions = ())
 
-Time at which `window` closes for `individual`: the earliest of its `until`
-states' times, or `Inf` if none has been reached. Censoring is per window, so
-the same removal can end one route and leave another running.
+Time (days) at which transmission by route `window` stops for a case: the
+earliest of its `until` states, or `Inf` if none has been reached. Each route
+is ended separately, so the same event can end one route and leave another
+open.
 
-A window listing [`EpiBranch.INTERVENTION_REMOVAL`](@ref) also closes when the
-composed `interventions` remove the case. Pass the interventions the simulation
-used to get the same closing time as the simulation.
+A route listing [`EpiBranch.INTERVENTION_REMOVAL`](@ref) also closes when the
+`interventions` remove the case for good (perfect isolation, or quarantine,
+with no end); leaky or time-limited isolation acts on each contact instead. Pass the interventions the
+simulation used to get the same closing time as the simulation.
 """
 function window_close(ind::Individual, w::RouteWindow, interventions = ())
     return _route_close(ind, w, interventions)

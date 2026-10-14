@@ -15,11 +15,13 @@
 """
     PairwiseSurvivalData(sus, start, stop, event)
 
-Counting-process rows for [`pairwise_surv_loglik`](@ref). Row `r` is an ordered
-at-risk interval `(start[r], stop[r]]` for susceptible `sus[r]`, with `event[r]`
-true if an infectious contact occurred at `stop[r]`. A susceptible has one row
-per possible infector. The rows record only at-risk intervals and events, with
-no spatial structure and no infection order.
+Exposure data in survival-analysis form for [`pairwise_surv_loglik`](@ref): one
+row per susceptible person and possible infector, giving the time over which
+the person was exposed to that infector and whether they were infected at the
+end of it. Row `r` covers the exposure interval `(start[r], stop[r]]` (days)
+for susceptible person `sus[r]`, and `event[r]` is true if they were infected
+at `stop[r]`. The rows record only exposure and infection, without who lives
+where or the order of infections.
 """
 struct PairwiseSurvivalData{T <: Real}
     sus::Vector{Int}
@@ -61,19 +63,20 @@ end
 """
     pairwise_surv_loglik(kernel, data::PairwiseSurvivalData) -> Float64
 
-Marginal pairwise survival log-likelihood on counting-process rows. Each
-susceptible contributes the log of its summed hazard over its event rows (its
-possible infectors), minus the cumulative hazard every row accrues over its
-at-risk interval:
+Log-likelihood of exposure data in survival form, summed over who could have
+infected whom: use it to estimate the contact interval from rows of
+[`PairwiseSurvivalData`](@ref). Each infected person contributes the log of
+the total hazard from their possible infectors at their infection time, and
+every row subtracts the cumulative hazard over its exposure interval:
 
     ll = Σ_susceptible log Σ_{event rows} hazard(stop)
          − Σ_rows [cumhazard(stop) − cumhazard(start)]
 
-Right-censoring is built in: a susceptible that never had an event contributes
-only the escaped cumulative hazard. `kernel` is a `Distributions.jl`
-distribution shared by every row, or a callable `r -> Distribution` for
-covariates. The result is differentiable in the kernel's parameters and can be
-optimised with Optim or added to a Turing model with `@addlogprob!`.
+People never infected are right-censored: they contribute only the probability
+of escaping infection. `kernel` is the contact-interval distribution shared by
+every row, or a function `r -> Distribution` of the row number for covariates.
+The result is differentiable in the kernel's parameters, so it can be maximised
+with Optim.jl or added to a Turing model with `@addlogprob!`.
 """
 function pairwise_surv_loglik(kernel, data::PairwiseSurvivalData)
     groups = Dict{Int, Vector{Int}}()
@@ -98,58 +101,62 @@ end
 """
     InfectionLayer
 
-Supertype for an outbreak's infection layer together with the contact structure
-it spread over. The pairwise likelihood is a density over this data. A subtype
-holds, per host `i` (numbered `1:n`):
+The record of who was infected when in an outbreak, together with who could
+have infected whom (household members, or neighbours in a contact network).
+This is the data [`pairwise_surv_loglik`](@ref) scores to estimate the contact
+interval. A subtype holds, for each person `i` (numbered `1:n`):
 
-- `infection_time[i]`: the infection time, `NaN` if never infected;
-- `infectious_time[i]`: when the infectious window opens;
-- `removal_time[i]`: when it closes;
-- `is_index[i]`: whether the host was introduced from outside the structure;
+- `infection_time[i]`: the infection time in days, `NaN` if never infected;
+- `infectious_time[i]`: when they became infectious;
+- `removal_time[i]`: when they stopped being infectious (recovery, death or
+  isolation);
+- `is_index[i]`: whether they were infected from outside the households or
+  network;
 
-and a scalar `obs_end`, the time community introductions stop (only read when
-there is a community hazard). Spread along the contact structure continues after
-it. A subtype may also hold `host_times`, a named tuple of further per-host time
-vectors such as `onset_time`, which a live [`PairKernel`](@ref) or a
-susceptibility effect reads in the
-likelihood as it reads host state in simulation. `missing` marks a host without
-that time; a `NaN` entry is a recorded value, as simulation stores the onset of
-an asymptomatic case.
+and `obs_end`, the day after which no more infections from outside arrive (only
+used when there is a community hazard); spread within the households or network
+continues after it. A subtype may also hold `host_times`, a named tuple of
+further per-person time vectors such as `onset_time`, which a
+[`PairKernel`](@ref) `state` function or a vaccine effect reads in the
+likelihood as it reads `individual.state` in simulation. `missing` marks a
+person without that time; `NaN` is a recorded value, as for the onset of an
+asymptomatic case in a simulation.
 
-Observed data stop at the end of follow-up, which
-[`followup_end`](@ref EpiBranch.followup_end) gives: a `followup_end` field when
-the subtype has one, and `Inf` otherwise. The likelihood ignores everything after
-it. A host infected later counts as escaped until then, and exposure to a
-possible infector stops there. A case still infectious at the end of follow-up
-can therefore keep a removal time of `Inf`. Simulated outbreaks run to completion
-and need no end of follow-up. A subtype also defines
-[`contact_structure`](@ref EpiBranch.contact_structure), which says who could
-have infected whom. [`compile_contact_pairs`](@ref) and
-[`pairwise_surv_loglik`](@ref) then work on it with no further methods.
-`HouseholdInfections` (in `EpiHouseholds`) and `NetworkInfections` (in
-`EpiNetwork`) are the worked examples.
+Follow-up ends at [`followup_end`](@ref EpiBranch.followup_end): a
+`followup_end` field when the subtype has one, and `Inf` otherwise. The
+likelihood ignores everything after it. A person infected later counts as
+uninfected until then, exposure stops there, and a case still infectious at the
+end of follow-up can keep a removal time of `Inf`. Simulated outbreaks run to
+the end and need no end of follow-up.
 
-The infection layer is latent: it is known exactly after a simulation and
-augmented in inference. Observables such as onsets and tests are outputs of the
-progression and are conditioned on separately — [`progression_loglik`](@ref)
-evaluates that term, so the sum of the two is the full log-likelihood of the
-augmented data. There is no likelihood of the onsets alone, since the latent
-infections cannot be marginalised in closed form.
+In real data the infection times are usually unobserved; they are known
+exactly after a simulation and imputed (data augmentation) in inference. What
+is observed, such as onsets and test results, comes from the natural history
+and is scored separately by [`progression_loglik`](@ref); the sum of the two is
+the full log-likelihood of the augmented data. There is no closed-form
+likelihood of the onsets alone, because the unobserved infection times cannot
+be integrated out exactly.
 
-A companion package reads a simulated outbreak back into its layer
-(`household_infections`, `network_infections`). Each infected host's window
-opens at the process's `from` state and closes at the earliest of its `until`
-states and the time the model's interventions take the host out of transmission,
-such as by isolation or quarantine after tracing. These are the windows the
-simulation used. Exact evaluation also requires the kernel to include every
-other hazard modification, apart from changes to a host's own susceptibility,
-which the composed components declare through
-[`susceptibility_components`](@ref EpiBranch.susceptibility_components) from the
-host times they read. Structured `loglikelihood(data, spec)` methods check the
-composed components using [`infection_likelihood_compatible`](@ref). Use
-`pairwise_surv_loglik` with an explicit effective kernel when additional effects
-must be represented. Passing a reader the `followup_end` keyword evaluates the
-outbreak as if observation had stopped at that time.
+`household_infections` (in `EpiHouseholds`) and `network_infections` (in
+`EpiNetwork`) read a simulated outbreak into an `InfectionLayer`. Each infected
+person's infectious period starts at the process's `from` state and ends at
+the earliest of its `until` states and the time the model's interventions take
+them out of transmission, such as isolation or quarantine after tracing; these
+are the same periods the simulation used. Any other change to transmission
+must be built into the kernel passed to the likelihood, except changes to a
+person's own susceptibility, which the model's interventions declare through
+[`susceptibility_components`](@ref EpiBranch.susceptibility_components).
+`loglikelihood(data, model)` for households and networks checks the model's
+interventions with [`infection_likelihood_compatible`](@ref); where it
+refuses, call `pairwise_surv_loglik` with a kernel that includes the extra
+effects. Passing `followup_end` to `household_infections` or
+`network_infections` evaluates the outbreak as if observation had stopped then.
+
+To define a new kind of contact structure, a subtype also defines
+[`contact_structure`](@ref EpiBranch.contact_structure);
+[`compile_contact_pairs`](@ref) and [`pairwise_surv_loglik`](@ref) then work
+on it with no further methods. `HouseholdInfections` and `NetworkInfections`
+are the worked examples.
 """
 abstract type InfectionLayer end
 
@@ -157,9 +164,9 @@ abstract type InfectionLayer end
     contact_structure(data::InfectionLayer)
 
 Who could have infected whom in `data`, in a form
-[`compile_contact_pairs`](@ref) accepts: a membership vector (hosts sharing a
-label can all infect one another, as in a household partition) or an adjacency
-list (`contacts[i]` lists the hosts `i` can infect, as in a directed contact
+[`compile_contact_pairs`](@ref) accepts: a membership vector (people sharing a
+label can all infect one another, as in households) or a list of contacts
+(`contacts[i]` lists the people `i` can infect, as in a directed contact
 network). An [`InfectionLayer`](@ref) subtype defines this.
 """
 function contact_structure(data::InfectionLayer)
@@ -174,11 +181,11 @@ end
 """
     followup_end(data::InfectionLayer)
 
-The end of follow-up of `data`, the time its observation stops. The pairwise
-likelihood covers the infection layer up to it and ignores infections and
-exposure after it. The default reads a `followup_end` field when the
-[`InfectionLayer`](@ref) subtype has one, and is `Inf` otherwise; a subtype that
-stores it elsewhere defines a method.
+The day observation of `data` stopped. The pairwise likelihood covers
+infections and exposure up to it and ignores everything after it. The default
+reads a `followup_end` field when the [`InfectionLayer`](@ref) subtype has
+one, and is `Inf` otherwise; a subtype that stores it elsewhere defines a
+method.
 """
 function followup_end(data::InfectionLayer)
     return hasproperty(data, :followup_end) ?
@@ -188,12 +195,13 @@ end
 """
     host_times(data::InfectionLayer)
 
-The per-host times of `data` beyond its infectious windows, as a named tuple of
-vectors (such as `onset_time`), `missing` marking a host without that time. A
-live [`PairKernel`](@ref) or a susceptibility effect reads these in the
-likelihood as it reads host state in simulation. The default reads a
-`host_times` field when the [`InfectionLayer`](@ref) subtype has one, and is
-empty otherwise; a subtype that stores them elsewhere defines a method.
+Each person's recorded event times in `data` beyond the start and end of their
+infectious period (such as `onset_time`), as a named tuple of vectors, with
+`missing` for a person without that time. A [`PairKernel`](@ref) `state`
+function or a vaccine effect reads these in the likelihood as it reads
+`individual.state` in simulation. The default reads a `host_times` field when
+the [`InfectionLayer`](@ref) subtype has one, and is empty otherwise; a
+subtype that stores them elsewhere defines a method.
 """
 function host_times(data::InfectionLayer)
     return hasproperty(data, :host_times) ? data.host_times : (;)
@@ -213,24 +221,25 @@ end
 """
     removal_gap_host_times(component) -> Tuple of Symbol
 
-The `individual.state` keys under which `component` records the stretches it
-removed a host for and handed back. `household_infections` and
-`network_infections` add them to the infection layer's `host_times`, and the
-likelihood takes every stretch recorded there out of the exposure of each pair
-the host could have infected. The default is `()`, for a component that never
-hands a host back.
+For an intervention that removes a case from transmission for a while and then
+releases them (isolation that ends, quarantine that expires): the
+`individual.state` keys under which it records those periods.
+`household_infections` and `network_infections` add them to the infection
+record's `host_times`, and the likelihood removes each recorded period from
+the exposure of everyone the case could have infected. The default is `()`,
+for an intervention that never releases anyone.
 
-Both built-in removals record through
-[`record_removal!`](@ref EpiBranch.record_removal!): [`Isolation`](@ref) names
-the reserved `:_removal_stretches` for a perfect removal with a duration that
-can lapse, and [`ContactTracing`](@ref) names the quarantine's own key for any
-[`Quarantine`](@ref), whatever its duration. A stretch that never releases is
-read from either, the exposure ending where it starts. A removal of your own names the key it recorded
+Both built-in removals record through [`record_removal!`](@ref
+EpiBranch.record_removal!): [`Isolation`](@ref) uses the reserved
+`:_removal_stretches` key for perfect isolation with a duration that can end,
+and [`ContactTracing`](@ref) uses the quarantine's own key for any
+[`Quarantine`](@ref), whatever its duration. A period with no release ends the
+exposure where it starts. An intervention of your own names the key it records
 under, whose value is a vector of `(start, release)` pairs. A wrapper that can
-withdraw the block part-way through a stretch, such as a [`Scheduled`](@ref)
-with an end, names none; the window then narrows only to a wrapped stretch
-that never releases on its own, since a releasing one is still read by the
-per-contact competing risk.
+lift the removal part-way through a period, such as a [`Scheduled`](@ref) with
+an end time, names none. The infectious period then ends at the first removal
+only if that removal never releases. A removal with a release is left out of
+the record, and in simulation acts contact by contact instead.
 """
 removal_gap_host_times(component) = ()
 
@@ -395,18 +404,20 @@ end
 """
     infection_likelihood_compatible(component) -> Bool
 
-Declare that a composed component's effects on infection hazards are fully
-represented by the infectious opening and removal times in an [`InfectionLayer`](@ref).
-The default is `false`. External components may opt in when they change only
-these times, change a host's susceptibility only through
-[`susceptibility_components`](@ref EpiBranch.susceptibility_components), or have
-no effect on infection hazards. Partial blocking, infectiousness multipliers, and
-altered contact kernels require an explicitly effective kernel instead.
+Whether the pairwise likelihood can account for this intervention (or other
+model component) from the recorded infectious periods alone: `true` when it
+changes transmission only by starting or ending people's infectious periods,
+changes a person's susceptibility only through [`susceptibility_components`](@ref
+EpiBranch.susceptibility_components), or does not affect infection at all. The
+default is `false`, so `loglikelihood(data, model)` refuses a model with an
+intervention that has not declared this. Partial blocking (leaky isolation),
+changes to infectiousness, and changes to the contact interval need a kernel
+that includes them, passed to `pairwise_surv_loglik` directly.
 
-This declaration is a modelling contract. It does not evaluate callbacks or
-verify their side effects. The infection likelihood conditions on the supplied
-infection layer; it excludes the probability of clinical outcomes, intervention
-assignment, attribute draws and observations.
+Declaring `true` is a promise by the intervention's author; nothing checks it.
+The infection likelihood takes the infection record as given and does not
+include the probability of clinical outcomes, of who received interventions,
+of people's characteristics, or of observation.
 """
 infection_likelihood_compatible(component) = false
 infection_likelihood_compatible(::NoAttributes) = true
@@ -444,14 +455,15 @@ end
 """
     HazardScaling(start, factor)
 
-A modifier of one susceptible's infection hazard, from every possible infector
-and the community alike: from calendar time `start` on, each hazard is
-multiplied by `factor`. `factor` is a non-negative `Real`, or a function
-`dt -> Real` of the time since `start` for a multiplier that changes over time,
-such as protection that wanes. Before `start` the hazard is unchanged.
+A change in one person's risk of infection from a given day, such as protection
+from a vaccine: from day `start` on, every hazard of infection they face, from
+each possible infector and from the community alike, is multiplied by
+`factor`. `factor` is a non-negative number, or a function `dt -> Real` of the
+days since `start` for protection that changes over time, such as waning.
+Before `start` the hazard is unchanged.
 
-A component of a [`susceptibility_components`](@ref
-EpiBranch.susceptibility_components) mixture.
+One component of what [`susceptibility_components`](@ref
+EpiBranch.susceptibility_components) returns.
 """
 struct HazardScaling{S <: Real, F}
     start::S
@@ -490,37 +502,35 @@ end
 """
     susceptibility_components(effect, host) -> components or nothing
 
-How `effect` modifies the infection hazard of one susceptible `host` of an
-[`InfectionLayer`](@ref), for [`pairwise_surv_loglik`](@ref)'s `susceptibility`
-keyword. `host` is a [`LayerHost`](@ref): its `id`, `infection_time`, and the
-layer's `host_times` under `host.state`, read as a live [`PairKernel`](@ref)
-projection reads them.
+How an intervention such as vaccination changes one person's risk of infection
+in the pairwise likelihood (the `susceptibility` keyword of
+[`pairwise_surv_loglik`](@ref)). `host` is a [`LayerHost`](@ref): the person's
+`id`, `infection_time`, and the recorded event times under `host.state`.
 
-The return value is `nothing`, the default, when `effect` leaves the host's
-hazard as it is. Otherwise it is a collection of `weight => modifier` pairs: the
-host's contribution to the likelihood is the mixture over them, each weight
-times the likelihood of the host's escapes and infection with every hazard it
-faces modified by that component's [`HazardScaling`](@ref EpiBranch.HazardScaling)
-(or `nothing` for no modification). The weights are probabilities summing to
-one. One component describes an effect every exposure shares; several describe
-a host-level state that is drawn once and is not observed, which then governs
-all of that host's exposures together.
+It returns `nothing`, the default, when `effect` leaves the person's risk
+unchanged. Otherwise it returns `weight => modifier` pairs, each modifier a
+[`HazardScaling`](@ref EpiBranch.HazardScaling) or `nothing` (no change), with
+weights that are probabilities summing to one. The person's likelihood
+contribution is the weighted mixture of the likelihood of their escapes and
+infection under each modifier. One component describes an effect every
+exposure shares; several describe an unobserved state drawn once per person
+that then governs all their exposures together.
 
-A vaccination's `VaccineEffect` gives one component under `LeakyMode`,
-`1 => HazardScaling(τ, 1 - efficacy)` from the host's immunity time `τ` (with
-`waning`, the factor is `dt -> 1 - efficacy * waning(dt)`). Under
-`AllOrNothingMode` it gives two: `efficacy => HazardScaling(τ, 0.0)` for a
-responder and `1 - efficacy => nothing` for a non-responder. The immunity time
-is read from the host time `:immunity_time` (`:immunity_time_<label>` for a
-labelled dose), and a host without one is unmodified. Every
-`AbstractVaccination` answers with its `VaccineEffect`, and an
-`InterventionWrapper` with the intervention it wraps.
+For a vaccination's `VaccineEffect` under `LeakyMode` this is one component,
+`1 => HazardScaling(τ, 1 - efficacy)` from the person's immunity time `τ`
+(with `waning`, the factor is `dt -> 1 - efficacy * waning(dt)`). Under
+`AllOrNothingMode` it is two: `efficacy => HazardScaling(τ, 0.0)` for someone
+the vaccine fully protects and `1 - efficacy => nothing` for someone it does
+not. The immunity time is read from `:immunity_time` (`:immunity_time_<label>`
+for a labelled dose), and a person without one is unchanged. Every
+`AbstractVaccination` returns its `VaccineEffect`'s answer, and an
+`InterventionWrapper` that of the intervention it wraps.
 
-A collection of components, such as a model's interventions, gives the one
-non-`nothing` answer among them, and raises an `ArgumentError` if more than one
-component modifies the same host. Define a method for a new effect type, and
-[`susceptibility_host_times`](@ref EpiBranch.susceptibility_host_times) for the
-host times it reads.
+For a collection, such as a model's interventions, the one non-`nothing`
+answer among them is used, and an `ArgumentError` is raised if more than one
+changes the same person. To support a new kind of effect, define a method for
+it and [`susceptibility_host_times`](@ref EpiBranch.susceptibility_host_times)
+for the event times it reads.
 """
 susceptibility_components(effect, host) = nothing
 
@@ -612,10 +622,11 @@ end
 """
     susceptibility_host_times(component) -> Tuple of Symbols
 
-The per-host times `component`'s [`susceptibility_components`](@ref
-EpiBranch.susceptibility_components) reads, which
-`household_infections` and `network_infections` record in the infection layer's
-`host_times` whenever the model composes `component`. The default is `()`. An
+The event times (keys of `individual.state`) that `component`'s
+[`susceptibility_components`](@ref EpiBranch.susceptibility_components) reads,
+such as a vaccinee's immunity time. `household_infections` and
+`network_infections` record them in the infection record's `host_times`
+whenever the model includes `component`. The default is `()`. An
 `AbstractVaccination` reads its dose's immunity time, and an
 `InterventionWrapper` the times of the intervention it wraps.
 """
@@ -688,19 +699,20 @@ end
 """
     ContactPairsLayout
 
-The static row structure the pairwise likelihood is evaluated on. Each row is
-one ordered (susceptible, possible infector) pair, plus, when a community hazard
-is modelled, one row per susceptible for the community hazard. Rows whose times
-do not overlap are kept and skipped at evaluation. One layout then works for
-every configuration of latent times with the same structure and infected set.
+The list of who could have infected whom that the pairwise likelihood is
+evaluated over, built once with [`compile_contact_pairs`](@ref) and reused
+while infection times change during inference. Each row is one ordered
+(susceptible, possible infector) pair, plus, when there is a community hazard,
+one row per person for infection from outside. Rows whose exposure periods do
+not overlap are kept and skipped when evaluating, so one layout works for every
+set of infection times with the same contact structure and the same people
+infected.
 
-`component` gives each host's connected component of the contact structure (a
-household on a household partition, or a connected component of a contact
-network), numbered `1:ncomponents`. [`pairwise_surv_loglik_by_component`](@ref)
-reads it to attribute the likelihood to the groups a sampler updating the
-infection layer group by group accepts or rejects separately.
-
-Build it with [`compile_contact_pairs`](@ref).
+`component` gives each person's group in the contact structure (their
+household, or their connected part of a contact network), numbered
+`1:ncomponents`. [`pairwise_surv_loglik_by_component`](@ref) uses it to split
+the likelihood by group, for a sampler that updates infection times one group
+at a time.
 """
 struct ContactPairsLayout
     sus::Vector{Int}                       # row r → susceptible host id
@@ -808,24 +820,25 @@ end
     compile_contact_pairs(contacts::AbstractVector{<:AbstractVector{<:Integer}}, is_index, infected; external = false)
     compile_contact_pairs(data::InfectionLayer; external = false)
 
-Enumerate the (susceptible, possible infector) rows of the pairwise likelihood
-once, as a [`ContactPairsLayout`](@ref) to reuse across evaluations.
+List once who could have infected whom, as a [`ContactPairsLayout`](@ref) to
+reuse across likelihood evaluations during inference.
 
-The contact structure is either a membership vector, where hosts sharing a label
-can all infect one another (a partition into cliques, such as households), or an
-adjacency list, where `contacts[i]` lists the hosts `i` can infect (a directed
-network; list each edge both ways for an undirected one). A host's possible
-infectors are then its group-mates or its in-neighbours. An edge listed twice is
-two contact processes and contributes two rows.
+The contact structure is either a membership vector, where people sharing a
+label can all infect one another (such as households), or a list of contacts,
+where `contacts[i]` lists the people `i` can infect (a directed network; list
+each contact both ways for an undirected one). A person's possible infectors
+are their household members or the people listing them. A contact listed twice
+counts as two separate contacts.
 
-`infected` is the static at-risk mask: true for a host that is infected in every
-configuration the layout will evaluate (its infection time may still be augmented).
-Only infected hosts can be infectors. `is_index` marks hosts introduced from
-outside; without a community hazard they are conditioned on and appear only as
-infectors. With `external = true` every host is explained, and each gets an
-extra row for the community hazard. The single-argument form reads the structure
-off `data` with [`contact_structure`](@ref EpiBranch.contact_structure) and the
-mask as `.!isnan.(data.infection_time)`.
+`infected` is true for each person infected in every set of infection times
+the layout will be used with (their infection time may still be imputed). Only
+infected people can infect others. `is_index` marks people infected from
+outside: without a community hazard the likelihood conditions on them and they
+appear only as infectors. With `external = true` every infection is explained,
+and each person gets an extra row for infection from outside. The
+single-argument form reads the contact structure from `data` with
+[`contact_structure`](@ref EpiBranch.contact_structure) and takes as infected
+everyone with a non-`NaN` `infection_time`.
 """
 function compile_contact_pairs(
         membership::AbstractVector{<:Integer},
@@ -1076,84 +1089,6 @@ function _kernel_partype(kernel, layout, data, ::Type{T}) where {T}
     return T
 end
 
-"""
-    pairwise_surv_loglik(kernel, data::InfectionLayer, layout::ContactPairsLayout;
-                         external_hazard = 0.0, susceptibility = nothing) -> Real
-    pairwise_surv_loglik(kernel, data::InfectionLayer; external_hazard = 0.0,
-                         susceptibility = nothing) -> Real
-
-The contact-process log-density of the infection layer `data` under a
-contact-interval `kernel`, marginal over who infected whom. Each susceptible
-accrues cumulative hazard from every possible infector over the overlap of that
-infector's infectious window with its own time at risk, and each infected one
-adds the log of the summed hazard at its infection time. An infected host that
-is not conditioned on and has no positive hazard at its infection time, such as
-one infected when none of its possible infectors is infectious, makes the whole
-configuration impossible, and the density is `-Inf` with a zero gradient.
-
-`kernel` is a `Distributions.jl` distribution shared by every pair, a callable
-`(infector, susceptible) -> Distribution` for covariates, a [`PairKernel`](@ref)
-that also receives the infector's infection time (and, with host state, each
-host's record), or a per-edge vector parallel to an adjacency list
-(`kernel[i][k]` for host `i`'s `k`-th listed contact). `external_hazard` is a community hazard (a positive rate or a
-calendar-time distribution) that introduces cases over `[0, data.obs_end]`. With
-one, index cases are explained like any other case; without one they are
-conditioned on. Each host accrues the community hazard until the earlier of its
-infection and `data.obs_end`. A host infected after `obs_end` can only have
-been infected by a possible infector. Spread along the contact structure
-continues after `obs_end`: a host that is never infected accrues hazard over
-each possible infector's whole infectious window.
-
-`susceptibility` is an effect on the susceptibles' own hazards, such as a
-candidate [`VaccineEffect`](@ref) or a model's interventions, and `nothing`
-(the default) leaves every hazard as the kernel gives it. The effect says, per
-host and through [`susceptibility_components`](@ref
-EpiBranch.susceptibility_components), how it scales every hazard that host
-faces, from its possible infectors and the community alike. A `VaccineEffect`
-reads each host's immunity time from the layer's `host_times`, which
-[`household_infections`](@ref EpiBranch.household_infections) and
-[`network_infections`](@ref EpiBranch.network_infections) record for a model
-that composes a vaccination; its `efficacy` must be a `Real`. Under
-[`LeakyMode`](@ref), a vaccinated host's hazards from its immunity time on are
-multiplied by `1 - efficacy`, or by `1 - efficacy * waning(dt)` with `waning`.
-Under [`AllOrNothingMode`](@ref), its contribution is the mixture `efficacy *
-Lᵖ + (1 - efficacy) * Lᵘ` over responder status: `Lᵖ` the likelihood of its
-escapes and infection while fully protected from its immunity time on (zero if
-it was infected after that time), and `Lᵘ` the unprotected one. Responder status
-is drawn once per host and governs every exposure it faces, so the escape from
-all of its possible infectors sits inside the mixture. Both are differentiable
-in `efficacy`.
-
-Everything is cut at [`followup_end(data)`](@ref EpiBranch.followup_end): a host
-infected after it is treated as escaped until then, and no exposure accrues past
-it. Evaluating data with an end of follow-up gives the same value as first
-truncating the data there: later infections unobserved, and removal times and
-`obs_end` capped at it.
-
-Use the layout form in inference: compile the layout once with
-[`compile_contact_pairs`](@ref) and reuse it while the latent times move. Its
-`external` setting must agree with `external_hazard`. The two-argument form
-compiles a layout on each call. Both are generic in the number type: the
-kernel's parameters can be ForwardDiff or reverse-mode AD values. A `Gamma` is
-the exception, whether it is the kernel or the community hazard: its cumulative
-hazard calls `SpecialFunctions._gamma_inc`, which has no `ForwardDiff.Dual`
-method. Fit a `Gamma` with a reverse-mode backend such as Mooncake. `Weibull`
-and `Exponential` differentiate under either mode.
-
-!!! warning "A vanishing community hazard is not the no-community case"
-    The two are different conditionings, and the density jumps between them at
-    `α = 0`. With `external_hazard = α > 0` an index case infected at time `t`
-    contributes `log(α) − αt`, which falls to `-Inf` as `α → 0`, because a model
-    that admits community introductions has to explain the ones it saw. At exactly `external_hazard = 0` index cases are instead
-    conditioned on and contribute nothing, leaving a finite value. A likelihood
-    ratio between "some community transmission" and "none" therefore cannot be
-    read off by letting `α` approach zero: evaluate the two models separately.
-
-    The discontinuity is at that one point. Approaching it, the log-density is
-    `k log α − αT` up to terms free of `α`, where `k` counts the cases the
-    community alone can explain and `T` is the total time hosts are exposed to
-    it. In `log α` this is a straight line of slope `k`.
-"""
 # Validation and type promotion shared by the layout-based forms of
 # `pairwise_surv_loglik`: the community-hazard survival distribution, the time
 # to truncate at, and the number type the reduction runs in, promoted against
@@ -1194,6 +1129,109 @@ function _pairwise_setup(kernel, data, layout::ContactPairsLayout, external_haza
     return extdist, convert(Tdata, tfollow), T
 end
 
+"""
+    pairwise_surv_loglik(kernel, data::InfectionLayer, layout::ContactPairsLayout;
+                         external_hazard = 0.0, susceptibility = nothing) -> Real
+    pairwise_surv_loglik(kernel, data::InfectionLayer; external_hazard = 0.0,
+                         susceptibility = nothing) -> Real
+
+Log-likelihood of an outbreak in households or on a contact network, given who
+was infected when and who could have infected whom: use it to estimate the
+contact interval (and so the transmission rate) from such data. The data are
+an [`InfectionLayer`](@ref), for example from `household_infections` or
+`network_infections`. The likelihood sums over who infected whom, so the
+transmission tree need not be known.
+
+Each person accumulates hazard from every possible infector while that
+infector is infectious and they are still uninfected, and each infected person
+adds the log of the total hazard at their infection time. If an infected person
+(other than one the likelihood conditions on) faces zero total hazard at their
+infection time, because no possible infector can infect them then and there is
+no infection from outside, the infection times are impossible under the model
+and the result is `-Inf`.
+
+`kernel` is the contact interval, in days from the start of the infector's
+infectious period. It can be one distribution shared by every pair, a function
+`(infector, susceptible) -> Distribution` of the two people's numbers for
+covariates, a [`PairKernel`](@ref) that also uses the infector's infection time
+(and, with a `state`, each person's record), or a vector of vectors parallel to
+a contact list (`kernel[i][k]` for person `i`'s `k`-th listed contact).
+
+`external_hazard` is infection from outside the households or network: a
+constant rate per person per day, or a distribution of the time of infection
+from outside. Such infections happen only in the first `data.obs_end` days.
+With an external hazard, index cases are explained like any other case;
+without one, the likelihood conditions on them. Each person is exposed to the
+external hazard until the earlier of their infection and `data.obs_end`, so a
+person infected after `obs_end` must have been infected by a possible infector.
+Spread within households or the network continues after `obs_end`: a person
+never infected is exposed over each possible infector's whole infectious
+period.
+
+`susceptibility` is an effect on people's own risk of infection, such as a
+candidate [`VaccineEffect`](@ref) or a model's interventions; `nothing` (the
+default) leaves every hazard as the kernel gives it. Through
+[`susceptibility_components`](@ref EpiBranch.susceptibility_components) the
+effect says how it scales every hazard a person faces, from possible infectors
+and from outside alike. A `VaccineEffect` reads each person's immunity time
+from the record's `host_times`, which `household_infections` (in
+`EpiHouseholds`) and `network_infections` (in `EpiNetwork`) record for a model
+with vaccination; its
+`efficacy` must be a number. Under [`LeakyMode`](@ref), a vaccinated person's
+hazards from their immunity time on are multiplied by `1 - efficacy`, or by
+`1 - efficacy * waning(dt)` with `waning`. Under [`AllOrNothingMode`](@ref),
+their contribution is the mixture `efficacy * Lᵖ + (1 - efficacy) * Lᵘ`: `Lᵖ`
+the likelihood of their escapes and infection if fully protected from their
+immunity time on (zero if they were infected after it), and `Lᵘ` if
+unprotected. Whether the vaccine protects someone is decided once per person
+and holds for all their exposures, so the escape from all their possible
+infectors sits inside the mixture.
+
+Everything is cut at [`followup_end(data)`](@ref EpiBranch.followup_end): a
+person infected after it counts as uninfected until then, and no exposure
+counts after it. This gives the same value as first cutting the data there:
+later infections unobserved, and removal times and `obs_end` capped at it.
+
+In inference, build the layout once with [`compile_contact_pairs`](@ref) and
+reuse it while the imputed infection times change; its `external` setting must
+agree with `external_hazard`. The two-argument form builds a layout on each
+call.
+
+# Example
+
+Estimate the mean contact interval from a simulated household outbreak:
+
+```julia
+using EpiBranch, EpiHouseholds, Distributions, StableRNGs
+truth = ModelSpec(HouseholdProcess(fill(4, 500), Exponential(4.0));
+    progression = [Transition(:recovered; from = :infection, delay = 6.0, terminal = true)])
+data = household_infections(simulate(truth; rng = StableRNG(3)), truth)
+ll(scale) = pairwise_surv_loglik(Exponential(scale), data)
+grid = 2.0:0.5:6.0
+grid[argmax(ll.(grid))]   # close to the true mean of 4 days
+```
+
+!!! note "Gradients"
+    The likelihood is differentiable in the kernel's parameters. A `Gamma`
+    kernel or community hazard needs a reverse-mode automatic differentiation
+    backend such as Mooncake, because ForwardDiff cannot differentiate its
+    cumulative hazard. `Weibull` and `Exponential` work with either.
+
+!!! warning "A vanishing community hazard is not the no-community case"
+    The two condition on different things, and the log-likelihood jumps
+    between them at `α = 0`. With `external_hazard = α > 0` an index case
+    infected at time `t` contributes `log(α) − αt`, which falls to `-Inf` as
+    `α → 0`, because a model that allows infection from outside has to explain
+    the index cases it saw. At exactly `external_hazard = 0` index cases are
+    conditioned on and contribute nothing, leaving a finite value. A likelihood
+    ratio between "some community transmission" and "none" therefore cannot be
+    read off by letting `α` approach zero: evaluate the two models separately.
+
+    The jump is at that one point. Near it, the log-likelihood is
+    `k log α − αT` up to terms free of `α`, where `k` counts the cases only the
+    community can explain and `T` is the total time people are exposed to it.
+    In `log α` this is a straight line of slope `k`.
+"""
 function pairwise_surv_loglik(
         kernel, data::InfectionLayer, layout::ContactPairsLayout;
         external_hazard = 0.0, susceptibility = nothing
@@ -1379,23 +1417,23 @@ end
 """
     PairwiseReduction
 
-Supertype for how the two accumulation passes behind [`pairwise_surv_loglik`](@ref)
-group rows into a result. [`ngroups`](@ref EpiBranch.ngroups) gives how many
-groups a subtype has and [`group`](@ref EpiBranch.group) which group a host's
-rows belong to; a subtype needs only these two methods; the passes themselves
-do not change. [`pairwise_surv_loglik`](@ref) puts every row into the one
-group its scalar result is; [`pairwise_surv_loglik_by_component`](@ref) groups
-by the contact structure's connected components. A grouping by stratum or by
-spatial patch is written the same way, from outside the package, and run with
-[`pairwise_reduce`](@ref EpiBranch.pairwise_reduce).
+How the pairwise likelihood is split into groups, for example by household,
+age stratum or spatial patch, so that each group's log-likelihood is reported
+separately. A subtype defines [`ngroups`](@ref EpiBranch.ngroups) (how many
+groups) and [`group`](@ref EpiBranch.group) (which group a person's terms add
+into), and nothing else. [`pairwise_surv_loglik`](@ref) puts everything into
+one group; [`pairwise_surv_loglik_by_component`](@ref) groups by household or
+connected part of the network. A new grouping is written the same way from
+outside the package and evaluated with [`pairwise_reduce`](@ref
+EpiBranch.pairwise_reduce).
 """
 abstract type PairwiseReduction end
 
 """
     ngroups(reduction::PairwiseReduction) -> Int
 
-How many groups `reduction` sums rows into. A [`PairwiseReduction`](@ref)
-subtype defines this.
+How many groups `reduction` splits the pairwise likelihood into. A
+[`PairwiseReduction`](@ref) subtype defines this.
 """
 function ngroups(reduction::PairwiseReduction)
     throw(
@@ -1409,8 +1447,8 @@ end
 """
     group(reduction::PairwiseReduction, host::Int) -> Int
 
-Which of `reduction`'s `1:ngroups(reduction)` groups `host`'s rows add into.
-A [`PairwiseReduction`](@ref) subtype defines this.
+Which of `reduction`'s `1:ngroups(reduction)` groups the likelihood terms of
+person `host` add into. A [`PairwiseReduction`](@ref) subtype defines this.
 """
 function group(reduction::PairwiseReduction, host)
     throw(
@@ -1485,13 +1523,13 @@ _result(::_TotalLogLik, totals::_GroupTotals) = totals.ll[1]
                      layout::ContactPairsLayout; external_hazard = 0.0,
                      susceptibility = nothing) -> Vector{<:Real}
 
-Run the two accumulation passes behind [`pairwise_surv_loglik`](@ref) and
-[`pairwise_surv_loglik_by_component`](@ref) under `reduction`, a
-[`PairwiseReduction`](@ref), returning its `ngroups(reduction)` group
-log-likelihoods. A new grouping (by stratum, by spatial patch) calls this
-directly with its own `PairwiseReduction` subtype; `pairwise_surv_loglik` and
-`pairwise_surv_loglik_by_component` are this call under their own built-in
-groupings. Arguments are otherwise as in `pairwise_surv_loglik`.
+The pairwise log-likelihood split into the groups of `reduction`, a
+[`PairwiseReduction`](@ref): returns one log-likelihood per group,
+`ngroups(reduction)` in all. [`pairwise_surv_loglik`](@ref) and
+[`pairwise_surv_loglik_by_component`](@ref) are this call with their own
+groupings; a new grouping (by stratum, by spatial patch) calls it directly with
+its own `PairwiseReduction` subtype. The other arguments are as in
+`pairwise_surv_loglik`.
 """
 function pairwise_reduce(
         reduction::PairwiseReduction, kernel, data::InfectionLayer,
@@ -1661,23 +1699,19 @@ end
                                       external_hazard = 0.0,
                                       susceptibility = nothing) -> Vector{<:Real}
 
-The per-component breakdown of [`pairwise_surv_loglik`](@ref): entry `c` sums
-every term whose susceptible and infector lie in component `c` of `layout` (a
-household on a household partition, or a connected component of a contact
-network), with `sum(pairwise_surv_loglik_by_component(...)) ==
-pairwise_surv_loglik(...)`. `layout.component` gives each host's component and
-`layout.ncomponents` their count.
+[`pairwise_surv_loglik`](@ref) split by household (or by connected part of a
+contact network): entry `c` is the log-likelihood of group `c` of `layout`,
+and `sum(pairwise_surv_loglik_by_component(...)) == pairwise_surv_loglik(...)`.
+`layout.component` gives each person's group and `layout.ncomponents` their
+number.
 
-A component with an infected host that no possible infector can explain gets
-`-Inf`, as does the total; unlike the total, the other components keep their
-finite value, so a sampler that updates the infection layer component by
-component can accept or reject each move on its own entry without recompiling
-the layout.
+A group containing an infected person whom no possible infector can explain
+gets `-Inf`, as does the total, but the other groups keep their finite values.
+A sampler that imputes infection times one household at a time can therefore
+accept or reject each proposal on its own entry without rebuilding the layout.
 
-Arguments, community-hazard handling and `susceptibility` are otherwise as in
-[`pairwise_surv_loglik`](@ref), which this shares the [`PairwiseReduction`](@ref)
-machinery with: the only difference is grouping by component instead of into
-one total.
+The arguments are as in [`pairwise_surv_loglik`](@ref); see also
+[`PairwiseReduction`](@ref) for other groupings.
 """
 function pairwise_surv_loglik_by_component(
         kernel, data::InfectionLayer, layout::ContactPairsLayout;

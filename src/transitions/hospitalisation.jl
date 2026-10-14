@@ -1,18 +1,24 @@
 """
-Cases are admitted to hospital with probability `probability` after a
-`delay` drawn per case, measured from `from`. `from` defaults to
-`:onset_time` but accepts any `Symbol` (state-dict key) or
-`Function (ind) -> Real` — see [`Reporting`](@ref) for the anchor
-semantics. If the anchor is not finite, the case is skipped.
+    Hospitalisation(; delay, probability = 0.2, from = :onset_time)
 
-Both `probability` and `delay` accept the heterogeneity shapes shared
-across transitions: `Real`/`Distribution` for constants,
-`Function (rng, ind) -> Real` for per-individual rules.
+Hospital admission: each case is admitted with probability `probability`
+(default 0.2), `delay` days after symptom onset (or after `from`). Each case
+records `:admitted` (`true`/`false`) and `:admission_time` (`Inf` if never
+admitted). `delay`, `probability` and `from` take the same forms as in
+[`Reporting`](@ref); cases that never reached `from` are not admitted.
 
-For *prerequisite-gated* admission (e.g. admit only cases that have
-been reported, tested, contact-traced, vaccinated, or that satisfy any
-other predicate on `ind.state`), express the gate inside the
-`probability` function — return `0.0` when the gate is closed:
+# Examples
+
+```julia
+# 20% admitted, a median of about 7 days after onset
+Hospitalisation(delay = LogNormal(2.0, 0.5), probability = 0.2)
+```
+
+To admit only cases that meet some other condition (reported, traced,
+vaccinated, ...), return `0.0` from a `probability` function when the
+condition does not hold. Here only reported cases can be admitted; list
+[`Reporting`](@ref) before `Hospitalisation` in the `progression` so reporting
+is drawn first:
 
 ```julia
 Hospitalisation(
@@ -21,16 +27,9 @@ Hospitalisation(
 )
 ```
 
-The same idiom covers any composite condition; no per-prerequisite
-field is needed.
-
-An admission drawn after the case's outcome (death or recovery) is reset to
-"did not occur": see [`censor_after_outcome!`](@ref
-EpiBranch.censor_after_outcome!). Chain `from = :admission_time` on a
-terminal transition if admission should instead delay or otherwise change
-the outcome.
-
-Initialises: `:admitted = false`, `:admission_time = Inf`.
+An admission drawn for a time after the case has died or recovered is reset to
+"not admitted". To have admission change the outcome instead of being dropped,
+give the terminal step `from = :admission_time`.
 """
 Base.@kwdef struct Hospitalisation{D, P, F} <: AbstractClinicalTransition
     delay::D
