@@ -50,7 +50,6 @@ household_sizes
 ModelSpec
 single_type_offspring
 EpiBranch.has_single_type_law
-EpiBranch.draw_offspring
 ```
 
 ## Population characteristics
