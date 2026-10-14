@@ -847,7 +847,7 @@ works for simulation has no closed form.
 | A transmission route | `RouteWindow(name; from, until, kernel, reach)` on a model that reads routes | Continuous-time models, each case |
 | Structured mixing in a closed population | `MixingProcess(; population_size, mixing_by, rate)`: the characteristics that define the groups, and the contact rate between one person in each of two groups | Simulation |
 | A clinical transition | A type `<: AbstractClinicalTransition` with `initialise_individual!` and `resolve_individual!`; `is_terminal`, `terminal_event` and `terminal_target` if terminal; `transition_loglik` to evaluate it | When a case is created |
-| A calendar schedule for a contact interval | A type with `calendar_multiplier`, and `next_calendar_break` or `calendar_shape(::YourSchedule) = SmoothCalendar()` | Simulation and likelihood |
+| A calendar schedule for a contact interval | A type with `calendar_multiplier`, and `next_calendar_break` or `EpiBranch.calendar_shape(::YourSchedule) = EpiBranch.SmoothCalendar()` | Simulation and likelihood |
 | A pairwise likelihood for a contact structure | A type `<: InfectionLayer` with `contact_structure`; `compile_contact_pairs` and `pairwise_surv_loglik` then apply | Likelihood |
 | A grouping of pairwise likelihood terms | A type `<: EpiBranch.PairwiseReduction` with `EpiBranch.ngroups` and `EpiBranch.group`, run with `EpiBranch.pairwise_reduce` | Likelihood |
 | The likelihood of the natural history | `progression_loglik(spec, individuals)`; built-in transitions work as they are, one of your own needs `transition_loglik` | Likelihood |
