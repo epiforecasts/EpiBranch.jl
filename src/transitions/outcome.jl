@@ -1,19 +1,23 @@
 """
-Terminal transition: the case recovers. A candidate recovery time is
-drawn from `delay` and added to the value of `from`. `from` defaults
-to `:onset_time` but accepts any `Symbol` (state-dict key) or
-`Function (ind) -> Real` — see [`Reporting`](@ref) for the anchor
-semantics. If the anchor is not finite, no recovery candidate is produced.
+    Recovery(; delay, from = :onset_time)
 
-`delay` is a `Distribution` or a `Function (rng, ind) -> Real` for
-per-individual heterogeneity (e.g. age-conditional recovery delay).
+Recovery, a step that ends the case: every case that reaches `from` (symptom
+onset by default) recovers `delay` days later, unless an earlier terminal step
+such as [`Death`](@ref) ends the case first. The earliest terminal step
+becomes the case's `:outcome` and `:outcome_time`.
 
-Initialises `:recovery_candidate_time = Inf`.
+`delay` is a distribution, a fixed number of days or a function of the random
+number generator and the individual, `(rng, ind) -> ...` (for example a
+recovery delay that depends on age). `from` takes the same forms as in
+[`Reporting`](@ref); cases that never reached it get no recovery time.
+`Recovery` has no `probability`: it always happens once `from` is reached.
 
-`Recovery` and [`Death`](@ref) compose as competing terminal events:
-whichever has the earliest candidate time becomes the case's `:outcome`.
-Other user-defined terminal transitions (with `is_terminal = true` and
-a `terminal_event` method) participate in the same arbitration.
+# Examples
+
+```julia
+# recover a mean of 10 days after onset, unless death comes first
+Recovery(delay = Gamma(4.0, 2.5))
+```
 """
 Base.@kwdef struct Recovery{D, F} <: AbstractClinicalTransition
     delay::D
@@ -61,30 +65,52 @@ function transition_loglik(r::Recovery, individual::Individual)
 end
 
 """
-Terminal transition: the case dies. When death is drawn, a candidate
-death time is produced by adding a sample from `delay` to the value of
-`from`. `from` defaults to `:onset_time` but accepts any `Symbol` or
-`Function (ind) -> Real` — see [`Reporting`](@ref) for the anchor
-semantics.
+    Death(; delay, probability, from = :onset_time)
 
-`probability` is required (no default) and accepts a `Real`, a
-`Distribution`, or a `Function (rng, ind) -> Real`. The probability is
-too pathogen-specific for a sensible default — pass an explicit value,
-even if it is `0.0`. Use the function form for age- or risk-conditional
-rates:
+Death, a step that ends the case: a case dies with probability `probability`,
+`delay` days after symptom onset (or after `from`), unless an earlier terminal
+step ends the case first.
+
+!!! warning "The realised case fatality ratio can be lower than `probability`"
+    `Death` competes with other terminal steps, and the earliest wins. With a
+    competing [`Recovery`](@ref), a case drawn to die still recovers if its
+    recovery time comes first, so fewer than `probability` of cases die (with
+    equal delays, about half as many). For an exact case fatality ratio,
+    replace `Recovery` with a terminal [`Transition`](@ref) and split the two
+    outcomes with [`exclusive_probabilities`](@ref), so each case gets
+    exactly one:
+
+    ```julia
+    death_p, recovered_p = exclusive_probabilities([0.64, 0.36])
+    progression = [
+        Death(delay = LogNormal(2.5, 0.4), probability = death_p),
+        Transition(:recovered, from = :onset, delay = LogNormal(2.0, 0.4),
+            probability = recovered_p, terminal = true),
+    ]
+    ```
+
+    Giving death and recovery independent probabilities `CFR` and `1 - CFR`
+    does not work: about `CFR * (1 - CFR)` of cases would qualify for both and
+    another `CFR * (1 - CFR)` for neither, leaving them with no outcome. The
+    alternative is to make the delay to death reliably shorter than any
+    competing delay.
+
+`probability` has no default, because the case fatality ratio is too
+disease-specific for one; pass it explicitly, even if it is `0.0`. It is a
+number or a function of the random number generator and the individual,
+`(rng, ind) -> ...`, for example to make it depend on age:
 
 ```julia
 Death(delay = LogNormal(2.5, 0.4),
       probability = (rng, ind) -> ind.state[:age] >= 80 ? 0.3 : 0.02)
 ```
 
-`delay` accepts a `Distribution` or `Function (rng, ind) -> Real`,
-making time-to-death heterogeneity available the same way.
+`delay` is a distribution, a fixed number of days or such a function. `from`
+takes the same forms as in [`Reporting`](@ref).
 
-A vaccine that lowers mortality rather than blocking transmission (a
-[`RingVaccination`](@ref) or [`MassVaccination`](@ref) with a
-`severity_efficacy`) is read the same way, via the
-[`severity_efficacy`](@ref) and [`immunity_time`](@ref) accessors:
+A vaccine that lowers mortality (a [`RingVaccination`](@ref) or
+[`MassVaccination`](@ref) with `severity_efficacy`) acts through the same
+function, using [`severity_efficacy`](@ref) and [`immunity_time`](@ref):
 
 ```julia
 Death(delay = LogNormal(2.5, 0.4),
@@ -93,29 +119,11 @@ Death(delay = LogNormal(2.5, 0.4),
               0.7 * (1 - severity_efficacy(ind)) : 0.7)
 ```
 
-`immunity_time(ind) <= onset_time(ind)` is what makes a dose whose
-immunity has not yet developed by onset confer no protection; comparing
-against `is_vaccinated(ind)` alone would count it as protective anyway.
-It composes with an age-conditional CFR the same way: multiply whatever
-base probability applies by `1 - severity_efficacy(ind)` once immune.
-
-Initialises `:death_candidate_time = Inf`.
-
-`Death` and [`Recovery`](@ref) compose as competing terminal events, resolved
-by earliest candidate time. `probability` is the probability death *enters*
-that race, so the realised fraction dying equals it only when death's candidate
-time reliably precedes any competing recovery/removal — otherwise the realised
-case-fatality is lower (with equal delays and a competing `Recovery`, roughly
-halved). Gating `Death` and a second terminal transition independently — say
-at `CFR` and `1 - CFR` — does not fix this either: each draws its own
-Bernoulli, so both occur (resolved by whichever candidate time is earlier) on
-about `CFR * (1 - CFR)` of cases, and neither occurs — leaving `:outcome`
-unset — on another `CFR * (1 - CFR)`. `Recovery` has no `probability` of its own
-to gate this way in any case — it always occurs once its anchor is reached.
-For an exact CFR, replace the competing `Recovery` with a `Transition`
-carrying its own `probability`, and build both probabilities with
-[`exclusive_probabilities`](@ref), which shares one draw between the two so
-exactly one of them occurs; or make death's delay dominate the competing one.
+Comparing `immunity_time(ind)` with `onset_time(ind)` means a dose whose
+protection had not developed by symptom onset gives none; testing
+`is_vaccinated(ind)` alone would count it as protective. Combine it with an
+age-dependent case fatality ratio by multiplying that ratio by
+`1 - severity_efficacy(ind)` once the case is immune.
 """
 Base.@kwdef struct Death{D, P, F} <: AbstractClinicalTransition
     delay::D

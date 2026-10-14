@@ -1,15 +1,25 @@
 # ── Data wrapper types for unified likelihood/fitting interface ────────
 
 """
-Observed secondary case counts -- the number of individuals each case
-infected.  Used with `loglikelihood` and `fit`.
+    OffspringCounts(data)
+
+Observed numbers of secondary cases: how many people each case infected, one
+count per case. Pass it to `loglikelihood` with an offspring distribution,
+such as `NegBin(R, k)`, to estimate R and the dispersion k.
 
 # Examples
 
 ```julia
-data = OffspringCounts([0, 1, 2, 0, 3, 1, 0])
+data = OffspringCounts([0, 1, 2, 0, 3, 1, 0, 0, 5, 0])
 loglikelihood(data, NegBin(0.8, 0.5))
+
+# maximum-likelihood estimate of R for fixed k = 0.5, over a grid
+Rs = 0.05:0.05:3.0
+R_hat = Rs[argmax([loglikelihood(data, NegBin(R, 0.5)) for R in Rs])]
 ```
+
+For R and k together, maximise `loglikelihood` with an optimiser such as
+Optim.jl, or fit in Turing.jl with [`offspring_distribution`](@ref).
 """
 struct OffspringCounts
     data::Vector{Int}
@@ -23,15 +33,13 @@ end
 """
     OffspringCounts(infector, infectee; unlinked = 0)
 
-Build offspring counts from a table of infector–infectee pairs:
-`infector[i]` transmitted to `infectee[i]`. Only confirmed transmissions
-belong here: from [`contacts`](@ref), that means rows filtered to
-`infected == true`, since `contacts` also reports exposure events that did
-not result in infection. Every case appearing in either vector gets one
-count, the number of times it appears in `infector` (zero for a case
-identified only as an infectee). `unlinked` adds that many extra cases
-with no identified transmission link at all, each with an offspring count
-of zero.
+Offspring counts from a list of who infected whom: `infector[i]` infected
+`infectee[i]`. List only confirmed transmissions; from [`contacts`](@ref),
+keep the rows with `infected == true`, since `contacts` also lists exposures
+that did not lead to infection. Each case in either vector gets one count,
+the number of people it infected (zero for a case that appears only as an
+infectee). `unlinked` adds that many cases with no known transmission link,
+each counted as infecting nobody.
 
 # Examples
 
@@ -74,37 +82,36 @@ function OffspringCounts(
 end
 
 """
-Observed transmission chain sizes (total number of cases per chain).
-Used with `loglikelihood` and `fit`.
+    ChainSizes(data; seeds = ones(Int, length(data)))
 
-Fields:
+Observed chain sizes: the total number of cases in each transmission chain
+(cluster). Pass it to `loglikelihood` with an offspring distribution or a
+model, or fit in Turing.jl with [`chain_size_distribution`](@ref).
 
-- `data::Vector{Int}` — observed cluster sizes.
-- `seeds::Vector{Int}` — number of independent index cases per cluster
-  (default `1`).
+- `data`: the size of each cluster.
+- `seeds`: the number of index cases (separate introductions) in each
+  cluster, 1 by default.
 
-By default every cluster is treated as concluded (final-size
-likelihood). For real-time data with still-active clusters, pass a
-per-cluster `prob_concluded` vector of "is finished" probabilities to
-`loglikelihood`; see the `prob_concluded` kwarg on
-`loglikelihood(::ChainSizes, ::Distribution)`.
-
-Data recorded only once a cluster reaches a given size (for example, only
-groups of two or more cases) are evaluated against a [`MinimumSize`](@ref)
-observation, which conditions the likelihood on `N ≥ min_size`.
+Every cluster is assumed to be over, so its size is its final size. For
+real-time data where some clusters may still grow, pass `prob_concluded` (the
+probability each cluster is over) to `loglikelihood`; see
+[`end_of_outbreak_probability`](@ref). For data recorded only once a cluster
+reaches a given size (for example only clusters of two or more cases), use a
+[`MinimumSize`](@ref) observation model.
 
 # Examples
 
 ```julia
-# Standard case: all single-seed.
+# one index case per cluster
 data = ChainSizes([1, 1, 3, 1, 5])
+loglikelihood(data, NegBin(0.8, 0.5))
 
-# Multi-seed clusters.
+# clusters with several introductions
 data = ChainSizes([3, 5, 10, 2]; seeds = [1, 2, 1, 1])
 
-# Only clusters of two or more cases are recorded.
+# only clusters of two or more cases are recorded
 data = ChainSizes([2, 3, 5, 2])
-loglikelihood(data, observe(chain_size_distribution(off), MinimumSize(2)))
+loglikelihood(data, observe(chain_size_distribution(NegBin(0.8, 0.5)), MinimumSize(2)))
 ```
 """
 struct ChainSizes
@@ -127,17 +134,14 @@ end
 """
     ChainSizes(; membership, singletons = 0)
 
-Build chain sizes from a vector of cluster memberships, the inverse of
-grouping by `chain_id` in [`linelist`](@ref): cases sharing a label in
-`membership` belong to the same chain, and the size recorded for that
-chain is how many cases share it. `singletons` adds that many extra
-chains of size 1, for cases identified as having no cluster at all.
+Chain sizes from the cluster each case belongs to, such as the `chain_id`
+column of a [`linelist`](@ref): cases with the same label in `membership` are
+in the same chain, and each chain's size is the number of cases sharing its
+label. `singletons` adds that many chains of one case, for cases not linked
+to any cluster.
 
-`membership` is keyword-only: it has the same `AbstractVector{<:Integer}`
-shape as the already-tallied sizes taken by `ChainSizes(data; seeds)`
-above, and Julia dispatches on positional argument types rather than on
-which keyword is supplied, so a positional `membership` vector of
-integers would be ambiguous with `data`.
+`membership` must be given by name, `ChainSizes(; membership = ...)`, since
+`ChainSizes(x)` reads `x` as the sizes themselves.
 
 # Examples
 
@@ -158,8 +162,17 @@ function ChainSizes(; membership::AbstractVector{<:Integer}, singletons::Integer
 end
 
 """
-Observed transmission chain lengths (number of generations).
-Used with `loglikelihood` and `fit`.
+    ChainLengths(data)
+
+Observed chain lengths: the number of generations of onward transmission in
+each chain, 0 for a chain of a single case. Pass it to `loglikelihood` with an
+offspring distribution or a model, or fit in Turing.jl with
+[`chain_length_distribution`](@ref).
+
+!!! note "Chain length is one less than in epichains"
+    epichains' `chain_length` counts generations including the index case, so
+    a single-case chain has length 1 there and 0 here. Subtract 1 from
+    epichains chain lengths before using them here.
 
 # Examples
 
