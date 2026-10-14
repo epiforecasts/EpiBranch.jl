@@ -329,7 +329,7 @@ case with something that is not a single distribution.
 vary from chain to chain, as when R differs between clusters. A new
 specification needs:
 
-1. For simulation, a method `draw_offspring(rng, offspring, individual, state)`
+1. For simulation, a method `EpiBranch.draw_offspring(rng, offspring, individual, state)`
    returning the number of secondary cases.
 2. For closed-form results (optional but recommended),
    `chain_size_distribution(offspring)` returning the chain-size distribution.
