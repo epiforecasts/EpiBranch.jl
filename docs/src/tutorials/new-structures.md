@@ -193,7 +193,7 @@ model that passes no routes gets one window, ended by intervention removal.
 The model also passes `watches`: one tuple of
 [`watched_records`](@ref EpiBranch.watched_records) per route, in route order,
 taken from each route's own kernel, and `projections`, each route kernel's
-[`kernel_projection`](@ref EpiBranch.kernel_projection), which lets the
+`EpiBranch.kernel_projection`, which lets the
 simulation check that a kernel's rates move only when a record it watches does:
 
 ```julia
