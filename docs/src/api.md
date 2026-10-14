@@ -46,6 +46,7 @@ MixingProcess
 NetworkProcess
 RoutedNetwork
 HouseholdProcess
+household_sizes
 ModelSpec
 single_type_offspring
 ```
@@ -459,6 +460,20 @@ scale_distribution
 incubation_linked_generation_time
 ```
 
+## Default placeholders
+
+The values shown as defaults in signatures when a setting is left out, such as
+`max_cases = NoCases()`.
+
+```@docs
+NoPopulation
+NoAttributes
+NoTypeLabels
+NoAgeDistribution
+NoCases
+EpiBranch.NoGenerationTime
+```
+
 ## For extension authors
 
 The entries below are for writing a new transmission model, intervention,
@@ -479,6 +494,7 @@ modelling layers passed in rather than read off the model, and
 and brings the state's running totals back into line afterwards.
 
 ```@docs
+TransmissionModel
 EpiBranch.draw_offspring
 EpiBranch.simulate_once
 generate_offspring
