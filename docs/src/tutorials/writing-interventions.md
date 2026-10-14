@@ -187,8 +187,8 @@ In practice:
 - An intervention's actions reach the continuous-time models only if it
   declares `EpiBranch.continuous_actions(iv) = true`, and then only on a model
   that can name contacts. Such actions must work without knowing a contact's
-  infection time, which is not yet drawn. Ring and group vaccination declare
-  it. [`MassVaccination`](@ref) does not: its rollout vaccinates each contact a
+  infection time, which is not yet drawn. Group vaccination declares it, and
+  so does ring vaccination unless it has a finite `eligibility_window`. [`MassVaccination`](@ref) does not: its rollout vaccinates each contact a
   case makes, which on these models would mean offering a dose to the whole
   population not yet infected. The simulation names an intervention it cannot
   honour in a warning, with the hooks it skips, and an intervention of your own
