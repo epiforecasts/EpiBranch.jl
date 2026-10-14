@@ -56,7 +56,7 @@ underscore are internal.
 | `:_isolation_time_before_isolation` | `Float64` | — | `Isolation` | `resolve_individual!`; internal. The time of an isolation already in place before this one |
 | `:_isolation_release_time_before_isolation` | `Float64` | — | `Isolation` | `resolve_individual!`; internal. The release time of an isolation already in place before this one |
 | `:_isolation_unrecorded_before_isolation` | `Bool` | — | `Isolation` | `resolve_individual!`; internal |
-| `:test_positive` | `Bool` | `false` | `Isolation` | `resolve_individual!` |
+| `:test_positive` | `Bool` | `false` | `Isolation` | `initialise_individual!` |
 | `:traced` | `Bool` | `false` | `ContactTracing` | `trace_contacts!` |
 | `:quarantined` | `Bool` | `false` | `ContactTracing` | `trace_contacts!` |
 | `:_traced_isolation_time` | `Float64` | `Inf` | `ContactTracing` → `Isolation` | Internal hand-over; may precede onset, so `Isolation` holds it back to onset |
