@@ -856,8 +856,8 @@ loglikelihood(ChainSizes([4]; seeds = [2]), NegBin(0.8, 0.3))
 A second per-cluster choice,
 the probability that a cluster has finished growing, is passed when the
 likelihood is evaluated, through the `prob_concluded` keyword of
-`loglikelihood`, because the mixture it defines only exists for the
-closed-form chain-size distribution. Other per-cluster information follows one
+`loglikelihood`, because it is decided at that point and not stored on the
+data. Other per-cluster information follows one
 of two patterns.
 
 ### Compute it in advance
