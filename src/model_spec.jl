@@ -214,8 +214,8 @@ end
 
 # The type whose own method of `f` the engine reaches, where `T` has a method
 # of its own that no call does: the method that stands in for it. `nothing`
-# when nothing between `T` and `base` supplies one, so the no-op default is
-# what runs. Collected the same way as above, so the warning can name what the
+# when nothing between `T` and `base` supplies one, so the package's own
+# default is what runs. Collected the same way as above, so the warning can name what the
 # engine uses rather than hedge about it.
 #
 # Ranked by `Base.morespecific`, the rule dispatch itself uses, rather than by
