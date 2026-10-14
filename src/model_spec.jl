@@ -43,8 +43,8 @@ end
 # signature it calls each with (`trace_contacts!` has two, the
 # four-argument one being what the five-argument fallback calls in turn). An
 # intervention with no method of its own, at the right arity, for any of
-# these can have no effect on a simulation or on the likelihood; see
-# `_warn_inert_interventions`. `susceptibility_components` is on the list
+# these can have no effect on a simulation or on the likelihood, which is what
+# the default `has_effect` answers from. `susceptibility_components` is on the list
 # because an intervention whose effect is declared for the likelihood alone,
 # as the extending guide's `Prophylaxis` is, reaches the model through it, and
 # `analytic_offspring_effect` because an intervention that acts on the
@@ -317,32 +317,32 @@ function _first_sight(T::Type)
     end
 end
 
-# Warn when a composed intervention has a method of its own for none of
-# `_effect_hooks()`, at the right arity: a hook written with the wrong number
-# of arguments, or defined without the `EpiBranch.` qualification needed to
-# add a method rather than shadow it, leaves only the `AbstractIntervention`
-# fallback reachable, and the intervention does nothing with no sign that
-# anything is missing. Checked on the type an intervention wraps, if any,
-# since a wrapper such as `Scheduled` always has its own delegating methods
-# whatever it wraps.
+# Warn when a composed intervention answers `has_effect` with `false`, which by
+# default means it has a method of its own for none of `_effect_hooks()` at the
+# right arity: a hook written with the wrong number of arguments, or defined
+# without the `EpiBranch.` qualification needed to add a method rather than
+# shadow it, leaves only the `AbstractIntervention` fallback reachable, and the
+# intervention does nothing with no sign that anything is missing. Checked on
+# the intervention a wrapper holds, if any, since a wrapper such as `Scheduled`
+# always has its own delegating methods whatever it wraps.
 function _warn_inert_interventions(interventions)
     for iv in interventions
-        T = typeof(_unwrap_scheduled(iv))
+        inner = _unwrap_scheduled(iv)
+        T = typeof(inner)
         _first_sight(T) || continue
-        reachable = any(_effect_hooks()) do (f, n, _)
-            _has_own_method(f, T, AbstractIntervention, n)
-        end
         # A diagnosis of the hook at fault stands in for the general message,
         # which lists every hook and has to guess at the cause.
         named = _warn_hook_mistakes(T)
-        (reachable || named > 0) && continue
+        (named > 0 || has_effect(inner)) && continue
         @warn "$(_hook_type_name(T)) has a method of its own for none of the " *
             "hooks the package calls, so it can have no effect on the " *
             "simulation or on the likelihood: " *
             "$(join((sig for (_, _, sig) in _effect_hooks()), ", ")). This is usually " *
             "a hook defined with the wrong number of arguments, or without the " *
             "`EpiBranch.` prefix needed to add a method to the package's " *
-            "function instead of defining a new one of the same name." intervention = T
+            "function instead of defining a new one of the same name. An " *
+            "intervention that acts through some other seam says so with " *
+            "`EpiBranch.has_effect(::$(_hook_type_name(T))) = true`." intervention = T
     end
     return nothing
 end

@@ -58,6 +58,11 @@ module _OwnHelpers
     struct NoHooks <: AbstractIntervention end
 end
 
+# Acts through no hook the package knows of, standing for one that reaches the
+# model through a seam of its own package, and says so through `has_effect`.
+struct _OwnSeam <: AbstractIntervention end
+EpiBranch.has_effect(::_OwnSeam) = true
+
 # Never passed to `ModelSpec`, so the cache's own behaviour can be read
 # without another construction having examined the type first.
 struct _CacheProbe <: AbstractIntervention end
@@ -593,7 +598,7 @@ EpiBranch.interventions(m::_ProcessWithInterventions) = m.interventions
         )
         @test_logs (
             :warn,
-            r"NoHooks has a method of its own for none of the hooks",
+            r"NoHooks has a method of its own for none of the hooks.*`EpiBranch\.has_effect\(::NoHooks\) = true`"s,
         ) match_mode = :any ModelSpec(bp; interventions = [_OwnHelpers.NoHooks()])
         # A hook outside `competing_risk`, at the right arity, is enough to
         # stay silent: the check reads the full set, not just `competing_risk`.
@@ -716,6 +721,12 @@ EpiBranch.interventions(m::_ProcessWithInterventions) = m.interventions
         # one declared for the closed-form results alone.
         @test_logs ModelSpec(bp; interventions = [_SusceptibilityOnly()])
         @test_logs ModelSpec(bp; interventions = [_HalfThinning()])
+        # An intervention acting through a seam the check does not read says
+        # so through `has_effect`, which the general warning names.
+        @test_logs ModelSpec(bp; interventions = [Scheduled(_OwnSeam(); start_time = 1.0)])
+        @test_logs ModelSpec(bp; interventions = [_OwnSeam()])
+        @test !EpiBranch.has_effect(_OwnHelpers.NoHooks())
+        @test EpiBranch.has_effect(_ActionsOnly())
         # `Isolation` implements several hooks properly and stays silent too.
         iso = Isolation(
             onset_to_isolation_delay = Exponential(1.0), duration = Inf
