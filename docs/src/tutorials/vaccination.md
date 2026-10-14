@@ -438,8 +438,8 @@ the same average coverage. Measure the effect in the model you are using.
 
 ## Mass vaccination
 
-[`MassVaccination`](@ref) offers vaccine to everyone in the model regardless
-of tracing. `eligibility_time` is the day a person can be vaccinated, and
+[`MassVaccination`](@ref) offers vaccine to every contact the outbreak
+generates, whether traced or not; index cases are not vaccinated. `eligibility_time` is the day a person can be vaccinated, and
 protection starts `delay_to_immunity` days later; a person is protected
 against an exposure only if both have passed by then. Here everyone becomes
 eligible on day 30 and protection starts 14 days later:
