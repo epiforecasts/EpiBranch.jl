@@ -127,8 +127,8 @@ supports_waning(::AllOrNothingMode) = false
 What a vaccine dose does once given, whoever receives it and whenever: the
 effects shared by every vaccination intervention. The built-in vaccinations
 take these as keywords and build the `VaccineEffect` themselves; build one
-directly only when writing a new vaccination intervention (see "A custom
-vaccination" in the Extending EpiBranch guide).
+directly only when writing a new vaccination intervention (see
+[A custom vaccination](@ref)).
 
 - `efficacy`: for a leaky vaccine, the probability that each exposure is
   prevented once immune; for an all-or-nothing vaccine, the probability of
