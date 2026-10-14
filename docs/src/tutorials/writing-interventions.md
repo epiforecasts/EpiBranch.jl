@@ -57,9 +57,11 @@ ring and group vaccination narrow that to the people they reach. The case then m
 infection time, with the state as it stands then: a dose or quarantine recorded
 on the contact since the infection time was drawn is in force.
 
-While a case's own hooks run, `state.max_infection_time` is that case's
-infection time and `state.cumulative_cases` counts the case and those settled
-before it. A [`Scheduled`](@ref) condition reads these:
+While a case's clinical transitions and intervention hooks run, from
+`resolve_individual!` on, `state.max_infection_time` is that case's infection
+time and `state.cumulative_cases` counts the case and those settled before it.
+`on_infection_settled!` runs before that, and still sees the previous case's
+values. A [`Scheduled`](@ref) condition reads these:
 `Scheduled(iso; start_time = 10.0)` isolates the cases infected from day 10
 onwards, on every model. On a branching process the count includes the cases
 of earlier generations and those of the same generation infected no later than
@@ -563,7 +565,9 @@ then targets.
 
 [`Scheduled`](@ref) starts any intervention on a given day:
 `Scheduled(iv; start_time = ...)`. Built-in interventions have no start-time
-field of their own.
+field of their own. `Scheduled` does not hold back `on_infection_settled!`: an
+intervention that acts through that hook acts from the start of the outbreak
+even when scheduled.
 
 For an intervention that acts on each case, `Scheduled` makes two checks. It
 applies to a case only if the case's own infection time falls within the
