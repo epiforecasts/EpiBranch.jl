@@ -289,32 +289,45 @@ likelihood then leaves out the same periods of exposure that the simulation
 blocked, so that `simulate` and `loglikelihood` agree.
 """
 function record_removal!(
-        ind::Individual, start::Real, release::Real;
+        ind::Individual{T}, start::Real, release::Real;
         key::Symbol = REMOVAL_STRETCHES_KEY
-    )
+    ) where {T}
     (isfinite(start) && release > start) || return nothing
     # The stretch keeps the individual's own number type, so that an AD dual
     # isolation time flows through as the time accessors promise.
-    stretch = promote(start, release)
-    stretches = get!(() -> typeof(stretch)[], ind.state, key)
-    push!(stretches, stretch)
-    sort!(stretches; by = first)
-    ind.state[key] = _merge_stretches(stretches)
+    S = promote_type(T, typeof(start), typeof(release))
+    stretch = (convert(S, start), convert(S, release))
+    old = get(ind.state, key, nothing)
+    # A fresh vector each time rather than one grown in place: an archived
+    # episode holds a copy of the state that shares the old one.
+    ind.state[key] = old === nothing ? [stretch] : _with_stretch(old, stretch)
     return nothing
 end
 
+function _with_stretch(old::Vector{E}, stretch) where {E}
+    new = Vector{E}(undef, length(old) + 1)
+    copyto!(new, old)
+    new[end] = stretch
+    sort!(new; by = first)
+    return _merge_stretches!(new)
+end
+_with_stretch(old, stretch) = _merge_stretches(sort!(push!(copy(old), stretch); by = first))
+
 # Overlapping and touching stretches folded into disjoint ones, so that no
 # stretch counts twice. `stretches` must already be sorted by its starts.
-function _merge_stretches(stretches)
-    merged = similar(stretches, 0)
+_merge_stretches(stretches) = _merge_stretches!(copy(stretches))
+
+function _merge_stretches!(stretches::AbstractVector)
+    n = 0
     for (a, b) in stretches
-        if !isempty(merged) && a <= last(merged)[2]
-            merged[end] = (last(merged)[1], max(last(merged)[2], b))
+        if n > 0 && a <= stretches[n][2]
+            stretches[n] = (stretches[n][1], max(stretches[n][2], b))
         else
-            push!(merged, (a, b))
+            n += 1
+            stretches[n] = (a, b)
         end
     end
-    return merged
+    return resize!(stretches, n)
 end
 
 """
