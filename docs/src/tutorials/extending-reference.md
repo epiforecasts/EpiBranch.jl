@@ -542,7 +542,8 @@ instead of ending a pair whose contacts could still transmit.
 
 The one part for which naming no key is right is one that holds another
 intervention and can withdraw its block partway through a recorded stretch: a
-[`Scheduled`](@ref) with an end does that. `InterventionWrapper` instead
+[`Scheduled`](@ref) that can end, through an `end_time` or a `start_after`
+trigger that can lapse, does that. `InterventionWrapper` instead
 narrows the infectious period to the first removal, but only when the
 intervention it holds never releases anyone by itself. One that does, such as an
 `Isolation` or `Quarantine` with a finite `duration`, stays a per-contact
