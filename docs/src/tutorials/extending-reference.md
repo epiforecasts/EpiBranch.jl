@@ -763,10 +763,9 @@ time of a contact whose infection is not yet final. Ring delivery supports an
 eligibility window with no end; group delivery uses known triggering cases. Scheduling and capacity work as on branching
 processes. Mass vaccination is not supported here, and nor is
 `HomogeneousProcess`, which names no contacts.
-With several households, capacity needs `period = Inf` for one budget over the
-whole run. Finite periods are refused because each household is simulated
-separately, with its clock reset for the next. A single household supports
-finite periods.
+On a household model a capacity limit puts every household on one shared
+clock, so a budget with a finite `period` is counted in calendar order across
+households.
 
 On continuous-time models, admission affects people whose infection is not yet
 final and the current case. Earlier cases and their clinical outcomes are not
