@@ -264,6 +264,58 @@ EpiBranch.observation(m::SingleSpawnModel) = m.observation
         )
     end
 
+    @testset "from = :onset and from = :infection resolve as state names" begin
+        # Previously Reporting/Hospitalisation/Death/Recovery read `from` as
+        # a raw state-dict key: `from = :onset` looked up `ind.state[:onset]`
+        # and `from = :infection` looked up `ind.state[:infection]`, neither
+        # of which is ever set, so the step was silently skipped for every
+        # case.
+        rng = StableRNG(21)
+        model = BranchingProcess(Poisson(1.5), Exponential(5.0))
+        rep_onset = Reporting(delay = (rng, ind) -> 1.0, from = :onset)
+        hosp_infection = Hospitalisation(
+            delay = (rng, ind) -> 1.0, probability = 1.0, from = :infection
+        )
+        # Recovery's delay is kept well past the other two so its outcome
+        # time never censors them (see `censor_after_outcome!`).
+        rec_infection = Recovery(delay = (rng, ind) -> 1000.0, from = :infection)
+        state = tsim(
+            model; attributes = clinical,
+            transitions = [rep_onset, hosp_infection, rec_infection],
+            max_cases = 50, rng = rng
+        )
+        for ind in state.individuals
+            @test ind.state[:reported]
+            @test ind.state[:reporting_time] ≈ onset_time(ind) + 1.0
+            @test ind.state[:admitted]
+            @test ind.state[:admission_time] ≈ ind.infection_time + 1.0
+            @test ind.state[:recovery_candidate_time] ≈ ind.infection_time + 1000.0
+        end
+
+        rep_infection = Reporting(delay = (rng, ind) -> 1.0, from = :infection)
+        state2 = tsim(
+            model; attributes = clinical, transitions = [rep_infection],
+            max_cases = 50, rng = StableRNG(22)
+        )
+        for ind in state2.individuals
+            @test ind.state[:reported]
+            @test ind.state[:reporting_time] ≈ ind.infection_time + 1.0
+        end
+    end
+
+    @testset "Required-field validation catches an unresolvable from" begin
+        # `from = :nonsense` names neither a state any step or attribute
+        # produces nor an existing key, so the step timed from it would be
+        # skipped for every case: this must error at start-up rather than
+        # silently produce an empty column.
+        model = BranchingProcess(Poisson(1.5), Exponential(5.0))
+        rep = Reporting(delay = LogNormal(1.0, 0.3), from = :nonsense)
+        @test_throws ErrorException tsim(
+            model; attributes = clinical, transitions = [rep],
+            max_cases = 5, rng = StableRNG(23)
+        )
+    end
+
     @testset "Heterogeneous probability via function" begin
         rng = StableRNG(11)
         # Demographics + clinical so :age and :onset_time are both set.

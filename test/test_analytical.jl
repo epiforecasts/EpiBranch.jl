@@ -414,6 +414,33 @@
             @test ll_with_delay ≈ ll_no_delay atol = 1.0e-12
         end
 
+        @testset "Reporting step gives the same likelihood as PerCaseObservation" begin
+            # A `Reporting` step in `progression` and a `PerCaseObservation`
+            # describe the same reporting process, so a model built either
+            # way must score identically.
+            proc = BranchingProcess(NegBin(0.8, 0.5))
+            data = ChainSizes([1, 1, 1, 2, 1, 3, 1, 1, 5, 1])
+            by_transition = ModelSpec(
+                proc;
+                progression = [
+                    Reporting(
+                        delay = Dirac(0.0), probability = 0.5,
+                        from = ind -> ind.infection_time
+                    ),
+                ]
+            )
+            by_observation = ModelSpec(
+                proc; observation = PerCaseObservation(detection_prob = 0.5)
+            )
+            ll_transition = loglikelihood(data, by_transition)
+            ll_observation = loglikelihood(data, by_observation)
+            @test ll_transition ≈ ll_observation
+            # Thinning at 0.5 must differ from the unthinned, full-reporting
+            # likelihood: both routes have to apply the probability instead
+            # of silently skipping it.
+            @test ll_transition != loglikelihood(data, ModelSpec(proc))
+        end
+
         @testset "ThinnedChainSize conditions on at least one detection" begin
             # A chain with no detected case leaves no trace in the data, so
             # the law of observed sizes (n >= 1) must sum to 1, not to
@@ -710,6 +737,21 @@
                 observation = PerCaseObservation(0.5, Dirac(0.0))
             )
             @test_throws ArgumentError end_of_outbreak_probability(om, 5.0)
+
+            # A `Reporting` step below certainty is under-reporting too, and
+            # must be refused the same way as `PerCaseObservation`.
+            rm = ModelSpec(
+                BranchingProcess(NegBin(R, k), GT);
+                progression = [Reporting(delay = Dirac(0.0), probability = 0.5)]
+            )
+            @test_throws ArgumentError end_of_outbreak_probability(rm, 5.0)
+            # A `Reporting` step at probability 1 is still full reporting.
+            full = ModelSpec(
+                BranchingProcess(NegBin(R, k), GT);
+                progression = [Reporting(delay = Dirac(0.0), probability = 1.0)]
+            )
+            @test end_of_outbreak_probability(full, 5.0) ≈
+                end_of_outbreak_probability(R, k, GT, 5.0)
 
             # Vector-of-τ overload returns same elements.
             πs_vec = end_of_outbreak_probability(R, k, GT, collect(taus))
@@ -1056,13 +1098,49 @@
             @test isfinite(ll)
         end
 
+        @testset "A Reporting step thins the simulated chain sizes too" begin
+            # Regression: with interventions present (forcing the simulation
+            # path), a `Reporting` step in `progression` used to be ignored,
+            # so every infected case counted as if detection were perfect.
+            iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
+            clinical = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
+            mk(progression) = ModelSpec(
+                BranchingProcess(NegBin(1.5, 0.5), Exponential(5.0));
+                progression, interventions = [iso], attributes = clinical
+            )
+            rep = Reporting(
+                delay = Dirac(0.0), probability = 0.4, from = ind -> ind.infection_time
+            )
+            data = ChainSizes([1, 1, 2, 1, 3])
+            ll_reported = loglikelihood(
+                data, mk([rep]); max_cases = 300, n_sim = 3000, rng = StableRNG(42)
+            )
+            ll_full = loglikelihood(
+                data, mk(AbstractClinicalTransition[]);
+                max_cases = 300, n_sim = 3000, rng = StableRNG(42)
+            )
+            @test isfinite(ll_reported)
+            @test ll_reported != ll_full
+
+            # Simulated chains under `Reporting` count only `:reported` cases,
+            # the same way an explicit `PerCaseObservation` does.
+            state = simulate(mk([rep]); max_cases = 300, rng = StableRNG(7))
+            sizes = EpiBranch._sim_chain_sizes(state, EpiBranch.NoObservation(), [rep])
+            counts = Dict{Int, Int}()
+            for ind in state.individuals
+                (is_infected(ind) && ind.state[:reported]) || continue
+                counts[ind.chain_id] = get(counts, ind.chain_id, 0) + 1
+            end
+            @test sort(sizes) == sort(collect(values(counts)))
+        end
+
         @testset "Honours seeds (regression for issue #447)" begin
             # Previously every simulation drew `n_initial = 1` seed and
             # compared each seed's own chain against the data, so a 3-seed
             # cluster's observed size was scored as if it were a single-seed
             # chain. A 3-seed cluster reaching a given total size needs far
             # less onward transmission than a single-seed chain reaching the
-            # same size, so once `seeds` is honoured the two must differ, and
+            # same size; once `seeds` is honoured the two must differ, and
             # the multi-seed reading must be the more probable one.
             iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = 7.0)
             spec = ModelSpec(

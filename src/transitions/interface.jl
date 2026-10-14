@@ -448,16 +448,10 @@ function _transition_selected(rng, individual, start_time, probability)
     return rand(rng) < p
 end
 
-# Anchor for a transition's `delay`. A `Symbol` is looked up in
-# `ind.state` (e.g. `:onset_time`, `:test_time`, `:admission_time`); a
-# `Function (ind) -> Real` is called directly (use this for fields on
-# `Individual` itself, e.g. `ind.infection_time`, or for composite
-# anchors). Returning `NaN` signals "no anchor" and the transition is
-# skipped.
-function _resolve_anchor(s::Symbol, ind::Individual{T}) where {T}
-    return convert(T, get(ind.state, s, T(NaN)))
-end
-_resolve_anchor(f, ind) = float(f(ind))
+# The state-dict key a `from` name resolves to: `:onset` names the state
+# and resolves to its `:onset_time` key, while `:onset_time` (the key
+# itself, kept for backward compatibility) resolves to itself.
+_resolved_key(s::Symbol) = endswith(String(s), "_time") ? s : Symbol(s, :_time)
 
 # A transition occurs only from a finite anchor. An anchor is missing (`NaN`)
 # when the `from` key was never written, and non-finite (`Inf`) when the
@@ -467,13 +461,15 @@ _resolve_anchor(f, ind) = float(f(ind))
 # `Transition` uses the same check.
 _anchor_ok(anchor) = isfinite(anchor)
 
-# By default each transition's `required_fields` returns `[:onset_time]`
-# so the simulation start-up validator catches missing
-# `clinical_presentation` setup. When the user overrides `from` to
-# anchor on something other than onset, the required field is the
-# user's responsibility — typically a downstream transition's output
-# key (e.g. `:test_time`) that isn't set by attributes anyway.
-_from_required(s::Symbol) = s === :onset_time ? [:onset_time] : Symbol[]
+# The key a transition's `required_fields` demands of its `from` anchor.
+# `:infection` is always available (the individual's own `infection_time`
+# field), so it demands nothing. Every other symbol demands its resolved
+# key: present already when `from` names an attribute-produced state
+# (`:onset_time`), or once the start-up validator has primed a probe
+# individual with every transition's own `initialise_individual!` (see
+# `_transition_probe` in simulation.jl) when `from` names another
+# transition's output instead.
+_from_required(s::Symbol) = s === :infection ? Symbol[] : [_resolved_key(s)]
 _from_required(_) = Symbol[]
 
 """

@@ -47,7 +47,7 @@ function initialise_individual!(::Hospitalisation, individual, state)
 end
 
 function resolve_individual!(h::Hospitalisation, individual, state)
-    anchor = _resolve_anchor(h.from, individual)
+    anchor = _state_time(individual, h.from)
     time = transition_time(
         state.rng, individual, anchor, h.delay;
         probability = h.probability
@@ -64,7 +64,7 @@ function censor_after_outcome!(::Hospitalisation, individual)
 end
 
 function transition_loglik(h::Hospitalisation, individual::Individual)
-    anchor = _resolve_anchor(h.from, individual)
+    anchor = _state_time(individual, h.from)
     _anchor_ok(anchor) || return 0.0
     flag = individual.state[:admitted]::Bool
     time = flag ? individual.state[:admission_time] : Inf

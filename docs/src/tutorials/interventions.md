@@ -362,10 +362,38 @@ it changes nothing in outbreaks that die out before reaching 20. The result
 is therefore close to 7-day isolation alone; with 200 simulations, a difference of
 a few percentage points either way is within simulation noise.
 
-!!! note "The case count includes undetected cases"
-    `start_after_cases` counts every infection in the simulation, including
-    asymptomatic and missed cases that a surveillance system would not see.
-    A programme triggered by reported cases starts later than this.
+`start_after_cases` counts every infection as it happens, including
+asymptomatic and missed cases that a surveillance system would not see. A
+programme that starts once the health system has confirmed 20 cases uses
+[`ReportedCases`](@ref) instead, passed as `start_after`. It counts only cases
+with a [`Reporting`](@ref) event dated on or before the current simulation
+day, so the model needs `Reporting` in its `progression`. Here a fifth of cases
+are reported, about 2.8 days after onset:
+
+```@example interventions
+progression = [
+    Reporting(delay = LogNormal(1.0, 0.3), probability = 0.2),
+    Recovery(delay = LogNormal(2.0, 0.4)),
+]
+ct_on_reports = Scheduled(
+    ContactTracing(probability = 0.7, isolation_to_trace_delay = Exponential(1.0),
+        action = Quarantine(duration = Inf));
+    start_after = ReportedCases(20),
+)
+model = ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
+    progression, interventions = [iso, ct_on_reports], attributes = clinical)
+
+state = simulate(model; max_cases = 500, rng = StableRNG(42))
+reported = count(
+    ind -> get(ind.state, :reporting_time, Inf) <= state.max_infection_time,
+    state.individuals)
+println("Cases: $(state.cumulative_cases), reported by the end: $(reported)")
+```
+
+Far fewer cases are reported than infected, so 20 reports take much longer to
+accumulate than 20 infections. [`Infections`](@ref) is the trigger
+`start_after_cases` builds, and a trigger of your own works the same way (see
+[A trigger of your own](@ref)).
 
 Start and end times can be combined:
 

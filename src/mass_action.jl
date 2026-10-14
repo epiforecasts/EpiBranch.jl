@@ -103,7 +103,7 @@ function _pair_kernel(m::_MassAction, infector_id, target_id, state)
 end
 
 function _propose_along!(
-        m::_MassAction, race, infector_id, opening_id, open_t, close_t, traits, live
+        m::_MassAction, race, infector_id, opening_id, open_t, close_t, traits, live, ri
     )
     live && throw(
         ArgumentError("a mass-action route reads no host records, so none can be watched")

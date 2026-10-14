@@ -55,7 +55,7 @@ contacts at once. It still does for an intervention that defines a method of
 its own, with a deprecation warning, so an intervention written against it
 keeps working there. Called on an intervention without one, it traces each
 contact from its `parent_id` and then admits the intervention's actions for
-the batch, which is what the built-in methods it replaces did.
+the batch, as the built-in methods it replaces did.
 """
 function apply_post_transmission!(iv::AbstractIntervention, state, new_contacts)
     Base.depwarn(
@@ -377,11 +377,11 @@ against the individual it resolves. `GroupVaccination` returns `true`, since a
 group's trigger is the earliest eligible time among members who may live
 anywhere in the population. `CapacityConstrained` returns `true`, because its
 admission decision reads how much of the shared budget every other individual
-has used. A `Scheduled` built with `start_after_cases` returns `true`, the
-case count being exactly such a read; one built with only
-`start_time`/`end_time` compares against the time of the case being resolved
-and answers for the intervention it wraps, returning `false` only while that
-intervention does.
+has used. A `Scheduled` built with `start_after_cases` or `start_after`
+returns `true`, the case count or trigger being exactly such a read; one
+built with only `start_time`/`end_time` compares against the time of the case
+being resolved and answers for the intervention it wraps, returning `false`
+only while that intervention does.
 
 `Isolation` and `ContactTracing` answer for the components they are given —
 `ContactTracing` its eligibility, rate, delay and action, `Isolation` its
