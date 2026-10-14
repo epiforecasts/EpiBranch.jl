@@ -742,7 +742,21 @@ function _resolve!(
         targets::Vector{<:Individual}, edges::Vector{<:Vector{<:Tuple}},
         is_new, reinfections = Dict{Int, InfectionEpisode}(), kept = Int[]
     )
-    model_risks = transmission_risks(model)
+    newly_infected = _infect_targets!(
+        state, transmission_risks(model), _as_tuple(interventions), targets, edges,
+        is_new, reinfections
+    )
+    _account_generation!(state, interventions, newly_infected, kept)
+    return nothing
+end
+
+_as_tuple(interventions) = isempty(interventions) ? () : Tuple(interventions)
+
+# Decides each target's infection. Takes the interventions as a tuple, so the
+# risk each one contributes per edge is a call resolved at compile time.
+function _infect_targets!(
+        state, model_risks, interventions::Tuple, targets, edges, is_new, reinfections
+    )
     infected_so_far = 0
     newly_infected = eltype(targets)[]
     for i in eachindex(targets)
@@ -799,7 +813,10 @@ function _resolve!(
         end
         _drop_stale_abort!(target)
     end
+    return newly_infected
+end
 
+function _account_generation!(state, interventions, newly_infected, kept)
     cases_before = state.cumulative_cases
     for target in newly_infected
         target.infection_time > state.max_infection_time &&
@@ -1434,8 +1451,15 @@ end
 return `true` if any active risk blocks it. Built-in risk sources and
 interventions share this single risk-evaluation path."""
 function _risk_blocks(source, parent, contact, state, transmission_time)
+    risks = _iter_risks(competing_risk(source, parent, contact, state))
+    return _risks_block(risks, parent, contact, state, transmission_time)
+end
+
+# A call per kind of answer `competing_risk` gives, so a source that answers
+# with one of a few types has each loop compiled for its own type.
+function _risks_block(risks, parent, contact, state, transmission_time)
     rng = state.rng
-    for risk in _iter_risks(competing_risk(source, parent, contact, state))
+    for risk in risks
         event_t = _sample_value(risk.event_time, rng, parent, contact, state)
         event_t > transmission_time && continue
         release_t = _sample_value(risk.release_time, rng, parent, contact, state)
@@ -1513,12 +1537,24 @@ function _composed_risks_block(
         builtin_blocks = _builtin_risk_blocks
     )
     builtin_blocks(parent, contact, state, transmission_time) && return true
-    for source in model_risks
+    _any_risk_blocks(model_risks, parent, contact, state, transmission_time) &&
+        return true
+    return _any_risk_blocks(interventions, parent, contact, state, transmission_time)
+end
+
+# The sources in order, the first to block winning. A tuple is walked
+# element by element so each call is resolved when the method is compiled;
+# a call through a vector of mixed types is resolved at run time instead,
+# which boxes `transmission_time` on every call.
+_any_risk_blocks(::Tuple{}, parent, contact, state, transmission_time) = false
+@inline function _any_risk_blocks(sources::Tuple, parent, contact, state, transmission_time)
+    _risk_blocks(first(sources), parent, contact, state, transmission_time) &&
+        return true
+    return _any_risk_blocks(Base.tail(sources), parent, contact, state, transmission_time)
+end
+function _any_risk_blocks(sources, parent, contact, state, transmission_time)
+    for source in sources
         _risk_blocks(source, parent, contact, state, transmission_time) && return true
-    end
-    for intervention in interventions
-        _risk_blocks(intervention, parent, contact, state, transmission_time) &&
-            return true
     end
     return false
 end
