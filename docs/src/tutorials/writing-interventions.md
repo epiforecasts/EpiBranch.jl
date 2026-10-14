@@ -469,8 +469,8 @@ end
 Two methods are needed because the two kinds of model reach a new case at
 different steps. A branching process passes each contact to `trace_contacts!`
 with its potential infection time, before the contact is known to be infected.
-An infection that turns out to start later than that, or not at all, keeps no
-record of the treatment. The continuous-time models pass contacts to
+An infection that turns out to start at or after the time the treatment ends
+it, or not at all, keeps no record of the treatment. The continuous-time models pass contacts to
 `trace_contacts!` before their infection time is drawn, and `treat!` therefore
 skips a person with no infection time; `on_infection_settled!` reaches each
 case there once its infection time is fixed.
