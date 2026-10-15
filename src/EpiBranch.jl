@@ -121,6 +121,8 @@ include("analytical/likelihood.jl")
 include("analytical/superspreading.jl")
 include("analytical/fitting.jl")
 include("analytical/cluster_mixed.jl")
+include("analytical/generating_function_offspring.jl")
+include("analytical/isolation_offspring.jl")
 include("analytical/end_of_outbreak_probability.jl")
 
 # Distribution wrappers so models work directly with Turing's `~`.
@@ -213,6 +215,7 @@ export OffspringCounts, ChainSizes, ChainLengths
 # Turing's `~`. `chain_size_distribution` is already exported above.
 export chain_length_distribution, offspring_distribution
 export ClusterMixed, ChainSizeMixture
+export GeneratingFunctionOffspring
 # Real-time mixture: per-cluster "is finished?" weight
 export end_of_outbreak_probability
 # Pairwise survival likelihood over a contact structure

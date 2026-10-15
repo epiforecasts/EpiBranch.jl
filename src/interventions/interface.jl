@@ -423,25 +423,35 @@ reads_population_state(::AbstractIntervention) = true
 
 """
     analytic_offspring_effect(intervention, offspring) -> offspring
+    analytic_offspring_effect(intervention, offspring, spec) -> offspring
 
 Return the offspring distribution a case draws from under `intervention`, given
 the one a bare process would use (a `Distribution` for a single-type process, a
 [`MultiTypeOffspring`](@ref) for a multi-type one). Define a method only when
 the effect is exact in closed form on its own, and return a law the analytical
-functions take: a `Poisson` or `NegativeBinomial` for a single-type process.
-A population-level reduction of R by a factor `p`, for example, turns
-`NegBin(R, k)` into `NegBin(p * R, k)`.
+functions take: a `Poisson`, a `NegativeBinomial`, or a
+[`GeneratingFunctionOffspring`](@ref) built from the offspring's generating
+function or probability mass function. A population-level reduction of R by a
+factor `p`, for example, turns `NegBin(R, k)` into `NegBin(p * R, k)`.
 
-An effect that depends on how the intervention's timing overlaps the
-generation-time distribution has no such form. Isolation's effect on R is one
-of these, and `Isolation` has no method. The generic method throws an error,
-which makes [`extinction_probability`](@ref), [`epidemic_probability`](@ref),
-[`probability_contain`](@ref), [`reproduction_number`](@ref),
-[`proportion_transmission`](@ref), [`proportion_cases_individual`](@ref),
-[`proportion_cases_offspring`](@ref), [`proportion_cluster_size`](@ref),
-`end_of_outbreak_probability` and [`offspring_distribution`](@ref) throw
-too when called on a [`ModelSpec`](@ref), or a process that stores its own
-interventions, holding an intervention that has no method.
+The three-argument form also receives the [`ModelSpec`](@ref) (or process that
+stores its own interventions), for an effect that needs more than the
+offspring law itself, such as the generation-time distribution or the
+incubation period. Its default falls back to the two-argument method, so an
+intervention whose effect does not depend on the rest of the model need only
+define that one; [`Isolation`](@ref) defines the three-argument form, since its
+effect on R depends on how its timing overlaps the generation time.
+
+An effect with no closed form at all, such as contact tracing's or ring and
+group vaccination's, has no method of either arity. The generic method throws
+an error, which makes [`extinction_probability`](@ref),
+[`epidemic_probability`](@ref), [`probability_contain`](@ref),
+[`reproduction_number`](@ref), [`proportion_transmission`](@ref),
+[`proportion_cases_individual`](@ref), [`proportion_cases_offspring`](@ref),
+[`proportion_cluster_size`](@ref), `end_of_outbreak_probability` and
+[`offspring_distribution`](@ref) throw too when called on a [`ModelSpec`](@ref),
+or a process that stores its own interventions, holding an intervention that
+has no method.
 """
 function analytic_offspring_effect(iv::AbstractIntervention, offspring)
     throw(
@@ -454,6 +464,10 @@ function analytic_offspring_effect(iv::AbstractIntervention, offspring)
                 "and probability_contain(R, k; ind_control, pop_control) an approximation."
         )
     )
+end
+
+function analytic_offspring_effect(iv::AbstractIntervention, offspring, spec)
+    return analytic_offspring_effect(iv, offspring)
 end
 
 """
