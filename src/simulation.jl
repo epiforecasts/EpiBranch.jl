@@ -923,8 +923,8 @@ end
 # Once `cases` are settled, offer each intervention declaring
 # `continuous_actions` its actions for the whole batch at once, rather than
 # per case: a group's trigger depends on every member's state, and every case
-# here has already had its own hooks run above, so there is nothing left for
-# calling per case to discover that a single batched call would not.
+# here has already had its own hooks run above, so a single batched call
+# finds everything a per-case call would.
 function _offer_continuous_actions!(state::SimulationState, interventions, cases)
     for iv in interventions
         continuous_actions(iv) || continue
