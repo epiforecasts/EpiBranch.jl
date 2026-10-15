@@ -71,6 +71,9 @@ function RoutedNetworkInfections(
     end
     host_times isa NamedTuple ||
         throw(ArgumentError("host_times must be a named tuple of per-host vectors"))
+    all(length(v) == n for v in values(host_times)) || throw(
+        ArgumentError("host_times columns must cover the same $n hosts as infection_time")
+    )
 
     T = promote_type(
         eltype(infection_time), typeof(obs_end), typeof(followup_end), Float64,
