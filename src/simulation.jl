@@ -392,25 +392,6 @@ for its own type instead of having a `generation_time` field.
 """
 model_generation_time(model::TransmissionModel) = model.generation_time
 
-"""
-    collect_exposures(model, state) -> (targets, edges, minted, is_new)
-
-The people each infectious case exposes in this generation, and when. Only
-needed when writing a new transmission model.
-
-Returns the distinct exposed people (`targets`); for each of them, the
-`(infector_id, infection_time)` exposures reaching them (`edges`) and whether
-they were created in this generation (`is_new`); and the contacts newly
-created in this generation (`minted`).
-
-The default suits models in which every contact is a new person: it asks
-each infectious case how many contacts it makes via
-[`generate_offspring`](@ref), then creates and times that many contacts.
-Models whose contacts are people who already exist and can be exposed by
-more than one case in a generation (networks, households) define a method of
-this function that returns [`gather_by_target`](@ref), which calls
-[`contacts_of`](@ref) and groups the exposures by person.
-"""
 # Every target flagged new, as a vector without storing one: the tree case.
 struct _AllNew <: AbstractVector{Bool}
     n::Int
@@ -432,6 +413,25 @@ Base.@propagate_inbounds function Base.getindex(e::_OneEdge, i::Int)
     return e.edge
 end
 
+"""
+    collect_exposures(model, state) -> (targets, edges, minted, is_new)
+
+The people each infectious case exposes in this generation, and when. Only
+needed when writing a new transmission model.
+
+Returns the distinct exposed people (`targets`); for each of them, the
+`(infector_id, infection_time)` exposures reaching them (`edges`) and whether
+they were created in this generation (`is_new`); and the contacts newly
+created in this generation (`minted`).
+
+The default suits models in which every contact is a new person: it asks
+each infectious case how many contacts it makes via
+[`generate_offspring`](@ref), then creates and times that many contacts.
+Models whose contacts are people who already exist and can be exposed by
+more than one case in a generation (networks, households) define a method of
+this function that returns [`gather_by_target`](@ref), which calls
+[`contacts_of`](@ref) and groups the exposures by person.
+"""
 function collect_exposures(model::TransmissionModel, state::SimulationState)
     pre = length(state.individuals)   # contacts created this step get id > pre
     T = _timetype(state)
