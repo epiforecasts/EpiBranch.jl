@@ -533,6 +533,7 @@ EpiBranch.apply_post_transmission!
 EpiBranch.on_infection_settled!
 EpiBranch.trace_contacts!
 EpiBranch.traces_contacts
+EpiBranch.has_effect
 EpiBranch.supplies_contacts
 EpiBranch.keep_active
 EpiBranch.competing_risk

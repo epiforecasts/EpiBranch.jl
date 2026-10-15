@@ -60,7 +60,7 @@ unless you set `n_initial`.
 ## Control
 
 **Isolation.** Removing a known case from transmission, usually some time after
-symptom onset. See [Interventions](tutorials/interventions.md).
+symptom onset. See [Isolation and contact tracing](tutorials/interventions.md).
 
 **Quarantine.** Removing a traced contact, who is not (yet) a known case, from
 transmission from the time they are traced. Quarantine reaches contacts before
@@ -79,7 +79,8 @@ duration is finite, the line list records the release date in
 ring and mass vaccination, post-exposure prophylaxis, and others. Each
 potential infection goes ahead only if no measure prevents it first; survival
 analysis calls this competing risks. See
-[Interventions](tutorials/interventions.md).
+[Isolation and contact tracing](tutorials/interventions.md) and
+[Vaccination](tutorials/vaccination.md).
 
 **Containment probability.** The proportion of simulated outbreaks in which
 transmission stopped before reaching the case cap (`max_cases`), the

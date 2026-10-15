@@ -63,7 +63,8 @@ offspring distribution is then R.
 
 [Design](design.md) describes how the package is organised, and
 [Extending EpiBranch](tutorials/extending.md) shows how to add your own
-intervention or transmission model.
+intervention, and [Adding a transmission model](@ref) how to add a process of
+your own.
 
 ## Quick start
 
