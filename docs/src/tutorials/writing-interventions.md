@@ -61,11 +61,12 @@ While a case's clinical transitions and intervention hooks run, from
 `resolve_individual!` on, `state.max_infection_time` is that case's infection
 time and `state.cumulative_cases` counts the case and those settled before it.
 `on_infection_settled!` runs before that, and still sees the previous case's
-values. A [`Scheduled`](@ref) condition reads these:
-`Scheduled(iso; start_time = 10.0)` isolates the cases infected from day 10
-onwards, on every model. On a branching process the count includes the cases
-of earlier generations and those of the same generation infected no later than
-the case; a case of a later generation is not counted even if it was infected
+values. A [`Scheduled`](@ref) condition reads these: `cumulative_cases` for a
+`start_after_cases` count. `start_time`/`end_time` are checked differently,
+against `isolation_time`/`intervention_time` rather than this clock — see
+below. On a branching process the count includes the cases of earlier
+generations and those of the same generation infected no later than the
+case; a case of a later generation is not counted even if it was infected
 earlier, because it has not been drawn yet.
 
 Interventions are applied in the order they appear in `interventions = [...]`,
@@ -569,18 +570,22 @@ field of their own. `Scheduled` does not hold back `on_infection_settled!`: an
 intervention that acts through that hook acts from the start of the outbreak
 even when scheduled.
 
-For an intervention that acts on each case, `Scheduled` makes two checks. It
-applies to a case only if the case's own infection time falls within the
-schedule (see [What happens to each case](@ref)), and it then checks the time
-at which the intervention would act on each person. When that time would fall
-before the start, `Scheduled` undoes the action. Index cases, infected on day 0,
-are therefore missed by a policy that starts later, even when their action
-would fall after the start (see [Interventions that start or stop during the
-outbreak](@ref)). An intervention that proposes actions (see [Proposing actions
-of your own](@ref)) is instead checked against each action's own date, so an
-action dated on or after the start goes ahead even for the earliest cases.
+For an intervention that acts on each case through `resolve_individual!` or
+`trace_contacts!` and defines its own `intervention_time`, `Scheduled` runs it
+whether or not the schedule is active at the case's or contact's own clock,
+then checks the schedule again at the time `intervention_time` reports and
+undoes the effect with `reset!` if that falls outside it. An index case,
+infected on day 0, is therefore still isolated by a policy starting on day 10
+once their own isolation, after onset and a delay, falls on or after it (see
+[Interventions that start or stop during the outbreak](@ref)). An intervention
+that proposes actions (see [Proposing actions of your own](@ref)) is checked
+against each action's own date the same way. One with no `intervention_time`
+of its own is instead gated before it runs, exactly as `Scheduled` always
+gated every hook: its default, `-Inf`, leaves `reset!` nothing to undo once
+the hook has already acted.
 
-For the second check on a case, the intervention defines two methods:
+To opt into the action's-own-time check, the intervention defines two
+methods:
 
 - `EpiBranch.intervention_time(intervention, individual)`: the time at which the
   intervention acts on the person (for example the isolation time).
