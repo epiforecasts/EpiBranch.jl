@@ -113,8 +113,8 @@ end
 Collect who was infected when from a routed-network outbreak simulated from
 `model`, with every route's own infectious window read back exactly as the
 race closed it, including a lapsing removal (such as an `Isolation` with a
-finite `duration`) carried in the record's `host_times` the same way
-[`network_infections`](@ref) carries it, for
+finite `duration`) stored in the record's `host_times` the same way
+[`network_infections`](@ref) stores it, for
 [`pairwise_surv_loglik`](@ref) to read back out on whichever routes list
 [`EpiBranch.INTERVENTION_REMOVAL`](@ref).
 """

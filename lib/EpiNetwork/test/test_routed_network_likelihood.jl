@@ -91,7 +91,7 @@ end
     @testset "a lapsing isolation gated to the community route leaves the household route alone" begin
         # `Isolation(duration = 7.0)` releases rather than permanently removing,
         # so the window stays open and the stretch is read from `host_times`;
-        # only the community route lists `INTERVENTION_REMOVAL`, so the
+        # since only the community route lists `INTERVENTION_REMOVAL`, the
         # household route's exposure must be unaffected by it.
         true_household, true_community = 3.0, 6.0
         hh, comm = _routed_adjacency(300, 4)
@@ -118,9 +118,9 @@ end
         data = routed_network_infections(state, m)
         @test haskey(data.host_times, EpiBranch.REMOVAL_STRETCHES_KEY)
         @test any(!ismissing, data.host_times[EpiBranch.REMOVAL_STRETCHES_KEY])
-        # a lapsing isolation never permanently closes a window (the stretch it
-        # records is what takes the exposure out instead), so both routes close
-        # at the same recovery time, whichever lists `INTERVENTION_REMOVAL`
+        # a lapsing isolation never permanently closes a window; the stretch it
+        # records takes the exposure out instead, so both routes close at the
+        # same recovery time, whichever lists `INTERVENTION_REMOVAL`
         infected = findall(!isnan, data.infection_time)
         @test data.removal_time[1][infected] == data.infection_time[infected] .+ 10.0
         @test data.removal_time[2][infected] == data.infection_time[infected] .+ 10.0
