@@ -154,7 +154,7 @@ they do have is each potential infection, a drawn time for a named pair, and a
 | `infectious_removal_time` | not read | yes |
 | `on_infection_settled!` | not called | yes |
 | `trace_contacts!` | yes | yes, where the model can name contacts (not homogeneous or mixing) |
-| `intervention_actions` | yes | where the model can name contacts, for an intervention that declares `continuous_actions` |
+| `intervention_actions` | yes; once a generation is settled, also once per settled case, for an intervention that declares `settles_generation_batch` | where the model can name contacts, for an intervention that declares `continuous_actions` |
 | `keep_active` | yes | during tracing: chooses which traced contacts a ring grows from |
 | `apply_post_transmission!` (deprecated) | yes, with a warning | not called |
 
@@ -636,6 +636,11 @@ traits with defaults:
   trigger, because without the transition that writes what the trigger reads
   the schedule never opens. `ReportedCases` names `Reporting`, except at
   `n = 0`, when the schedule opens before any report exists.
+- `EpiBranch.required_fields(trigger)` names the population characteristics
+  the trigger reads from `Individual.state`, `Symbol[]` by default.
+  `Scheduled` adds these to the fields it already requires of the
+  intervention it wraps (see [Requiring values on each person](@ref)), so the
+  simulation's startup check catches a model missing either.
 
 Here the border closes once 20 cases have had symptom onset:
 
@@ -648,21 +653,16 @@ function EpiBranch.is_triggered!(::TwentyOnsets, state)
         state.individuals
     ) >= 20
 end
+EpiBranch.required_fields(::TwentyOnsets) = [:onset_time]
 
 Scheduled(BorderClosure(0.0, 0.05); start_after = TwentyOnsets())
 ```
 
 `TwentyOnsets` keeps the default `trigger_can_lapse`: a person infected a second
-time draws a new onset, so the count can fall.
-
-!!! warning "A trigger cannot declare the population characteristics it reads"
-    `required_transitions` covers the `progression` only. `TwentyOnsets` reads
-    `:onset_time`, which [`clinical_presentation`](@ref) sets, and has no way
-    to say so. On a model built without it every `onset_time` is `NaN`, the
-    trigger counts nobody, and the border stays open for the whole run with
-    nothing to say why. `required_fields` does not help either: `Scheduled`
-    answers it for the intervention it wraps. Check for the value in
-    `is_triggered!` if you want to hear about it.
+time draws a new onset, so the count can fall. It reads `:onset_time`, which
+[`clinical_presentation`](@ref) sets, and names it with `required_fields`: a
+model built without that attribute now stops with a clear error at the start
+instead of leaving the border open for the whole run with nothing to say why.
 
 ## Capacity limits
 

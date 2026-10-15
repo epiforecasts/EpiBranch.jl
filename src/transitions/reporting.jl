@@ -57,6 +57,7 @@ function resolve_individual!(r::Reporting, individual, state)
     time === nothing && return nothing
     individual.state[:reported] = true
     individual.state[:reporting_time] = time
+    _log_report!(state, individual, time)
     return nothing
 end
 
@@ -77,4 +78,68 @@ function transition_loglik(r::Reporting, individual::Individual)
     )
     occurred || return ll
     return ll + _delay_loglik(r.delay, time - anchor)
+end
+
+# The reports `Reporting` has drawn in a run, so that `ReportedCases` can count
+# those due without walking the population. The first count builds the log from
+# the population, and `Reporting` adds each report it draws from then on. A
+# report is drawn before the case's outcome can censor it and before an abort can
+# undo it, so each one waits in `pending` until the next count reads the state it
+# was written to and keeps it in `times`, sorted, only if it stood. Each pending
+# report records the host's id, how many episodes it had archived when the
+# report was drawn (which finds that state again after a reinfection has
+# archived it) and the report time.
+struct _ReportLog{T <: Real}
+    pending::Vector{Tuple{Int, Int, T}}
+    times::Vector{T}
+end
+
+function _log_report!(state::SimulationState{T}, individual, time) where {T}
+    # Most runs keep nothing in `scratch`, and a run without a log has no
+    # count to keep it for.
+    isempty(state.scratch) && return nothing
+    log = get(state.scratch, (:report_log,), nothing)
+    log === nothing && return nothing
+    push!(
+        (log::_ReportLog{T}).pending,
+        (individual.id, length(individual.episodes), convert(T, time))
+    )
+    return nothing
+end
+_log_report!(state, individual, time) = nothing
+
+_report_time(st) =
+    get(st, :reported, false) ? get(st, :reporting_time, Inf) : Inf
+
+# Every report the population holds, over each host's archived episodes and its
+# live state. A reinfection archives the episode as a copy of the live state and
+# only clears the live `:reported` later, when the new infection's transitions
+# are initialised (`close_episode!` in `_resolve!`, then
+# `resolve_transitions!`). In between, the newest episode and the live state
+# are one report, so the live one is kept only when its time differs.
+function _report_log(state::SimulationState{T}) where {T}
+    times = T[]
+    for ind in state.individuals
+        for episode in ind.episodes
+            t = _report_time(episode.state)
+            isfinite(t) && push!(times, t)
+        end
+        t = _report_time(ind.state)
+        isfinite(t) || continue
+        isempty(ind.episodes) || t != _report_time(last(ind.episodes).state) ||
+            continue
+        push!(times, t)
+    end
+    return _ReportLog{T}(Tuple{Int, Int, T}[], sort!(times))
+end
+
+function _confirm_reports!(log::_ReportLog, individuals)
+    for (id, k, time) in log.pending
+        ind = individuals[id]
+        st = length(ind.episodes) == k ? ind.state : ind.episodes[k + 1].state
+        isequal(_report_time(st), time) || continue
+        insert!(log.times, searchsortedlast(log.times, time) + 1, time)
+    end
+    empty!(log.pending)
+    return log
 end
