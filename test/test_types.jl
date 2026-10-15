@@ -69,6 +69,21 @@
         firstread(EpiBranch.IndividualState{Float64}(:t => 0.5))
         @test firstread(r) <= sizeof(Float64) + 8
         @test reread(r) == 0
+        # The engine's own read stays as fast after one through the
+        # dictionary: the slow path dispatches at run time, about 25 times
+        # slower, without allocating.
+        function typedreads(s)
+            t = 0.0
+            for _ in 1:100_000
+                t += EpiBranch._state_real(s, :t, Inf)
+            end
+            return t
+        end
+        fresh = EpiBranch.IndividualState{Float64}()
+        fresh[:t] = 1.5
+        typedreads(fresh); typedreads(r)
+        best(s) = minimum(@elapsed(typedreads(s)) for _ in 1:5)
+        @test best(r) < 5 * best(fresh)
         @test r[:t] === 1.5 && EpiBranch._state_real(r, :t, Inf) === 1.5
         r[:t] = 2.5
         @test r[:t] === 2.5

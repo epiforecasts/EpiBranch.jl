@@ -158,7 +158,9 @@ Base.empty(::IndividualState{T}) where {T} = IndividualState{T}()
     i = _slot(s, k)
     i == 0 && return convert(T, default)::T
     slot = @inbounds s.slots[i]
-    slot.val === _IN_REALS && return slot.real
+    # A `T` value is always held in `real`, whether or not it has been boxed
+    # into `val` for a read through the dictionary.
+    (slot.val === _IN_REALS || slot.val isa T) && return slot.real
     return convert(T, slot.val)::T
 end
 _state_real(s::AbstractDict, k, default::T) where {T} = convert(T, get(s, k, default))::T
