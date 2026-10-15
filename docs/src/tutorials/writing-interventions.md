@@ -154,7 +154,7 @@ they do have is each potential infection, a drawn time for a named pair, and a
 | `infectious_removal_time` | not read | yes |
 | `on_infection_settled!` | not called | yes |
 | `trace_contacts!` | yes | yes, where the model can name contacts (not homogeneous or mixing) |
-| `intervention_actions` | yes | where the model can name contacts, for an intervention that declares `continuous_actions` |
+| `intervention_actions` | yes; once a generation is settled, also for the whole batch, for an intervention that declares `continuous_actions` | where the model can name contacts, for an intervention that declares `continuous_actions` |
 | `keep_active` | yes | during tracing: chooses which traced contacts a ring grows from |
 | `apply_post_transmission!` (deprecated) | yes, with a warning | not called |
 

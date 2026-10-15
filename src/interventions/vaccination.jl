@@ -1105,22 +1105,19 @@ did not:
 Needs the group characteristic and whatever `eligibility` needs, such as the
 test result from [`Isolation`](@ref) for the default `OnLabConfirmation()`.
 
-!!! note "Index cases in a branching process"
-    Like [`RingVaccination`](@ref) and [`MassVaccination`](@ref),
-    `GroupVaccination` acts on new contacts as they are made. In a
-    branching process the index cases are not contacts, so an index case
-    is vaccinated only once another member of its group appears later; an
-    index case whose chain dies out without anyone else in its group being
-    infected is not vaccinated, even if it is itself confirmed.
+Unlike [`RingVaccination`](@ref) and [`MassVaccination`](@ref), which act
+only on new contacts as they are made, `GroupVaccination` also checks a case's
+group once its own infection is settled, on every engine: an index case, or
+one whose own trigger (such as lab confirmation) only becomes true after it
+last made a contact, is still reached.
 
-In network and household models, a group is checked after each case's
-infection is settled, index cases included, and the dose can reach that case
-and members not yet infected, subject to scheduling and capacity. Cases there
-are settled in order of infection, not of eligibility, so a member can turn
-out eligible earlier than the person who infected them. A member whose
-infection is not yet settled has their dose moved earlier if an earlier
-trigger is found later; a member already settled keeps their dose date, as
-does a dose another vaccination already gave.
+In network and household models, the dose can also reach the settling case
+itself and members not yet infected, subject to scheduling and capacity.
+Cases there are settled in order of infection, not of eligibility, so a
+member can turn out eligible earlier than the person who infected them. A
+member whose infection is not yet settled has their dose moved earlier if an
+earlier trigger is found later; a member already settled keeps their dose
+date, as does a dose another vaccination already gave.
 
 For a campaign with repeat visits, `coverage` is the final probability of being
 reached, and `dose_delay` can describe the first successful visit. A person
