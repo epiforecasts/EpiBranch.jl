@@ -74,14 +74,26 @@ function _clinical_presentation(attrs::Union{Tuple, AbstractVector})
 end
 _clinical_presentation(::Any) = nothing
 
-# Expectation of `f` over a fixed value, or over a continuous or
-# discrete-nonparametric distribution (`_mixture_expectation`, shared with
-# `ClusterMixed`'s chain-level mixing). Isolation's own random quantities —
-# the incubation period, and the delay when given as a distribution — are one
-# of these in every documented use.
+# Expectation of `f` over a fixed value, over a continuous distribution or a
+# discrete-nonparametric one (`_mixture_expectation`, shared with
+# `ClusterMixed`'s chain-level mixing, and correct for an arbitrary, possibly
+# non-integer or non-contiguous support), over a point mass, or over any other
+# discrete distribution by summing its series (`_series_range`, shared with
+# the offspring laws' own mean and PGF, which assumes a contiguous integer
+# support starting at `minimum(d)` — true of a count-valued law such as
+# `Poisson` or `Geometric` but not of `Dirac`, whose single value need not be
+# an integer, so that case is its own method rather than going through the
+# series). Isolation's own random quantities — the incubation period, and the
+# delay when given as a distribution — are one of these in every documented
+# use, `Dirac` (the idiom for a fixed-but-distribution-typed delay) included.
 _closed_form_expectation(x::Real, f) = f(x)
 _closed_form_expectation(d::ContinuousUnivariateDistribution, f) = _mixture_expectation(f, d)
 _closed_form_expectation(d::DiscreteNonParametric, f) = _mixture_expectation(f, d)
+_closed_form_expectation(d::Dirac, f) = f(d.value)
+function _closed_form_expectation(d::DiscreteUnivariateDistribution, f)
+    lo, hi = _series_range(d)
+    return sum(pdf(d, x) * f(x) for x in lo:hi)
+end
 function _closed_form_expectation(x, f)
     throw(
         ArgumentError(

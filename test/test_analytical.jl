@@ -1514,6 +1514,89 @@
             @test EpiBranch._law_mean(law) ≈ mean_direct atol = 1.0e-8
         end
 
+        @testset "A Dirac delay matches the same fixed value" begin
+            # `Dirac` is the idiom for a fixed-but-distribution-typed delay
+            # throughout the test suite; its point mass must give the same
+            # answer as passing the value directly.
+            offspring = NegBin(2.0, 0.5)
+            gt = Exponential(5.0)
+            incubation = Gamma(2.0, 1.5)
+            spec_fixed = ModelSpec(
+                BranchingProcess(offspring, gt);
+                interventions = [Isolation(onset_to_isolation_delay = 1.5, duration = 7.0)],
+                attributes = clinical_presentation(incubation_period = incubation)
+            )
+            spec_dirac = ModelSpec(
+                BranchingProcess(offspring, gt);
+                interventions = [
+                    Isolation(onset_to_isolation_delay = Dirac(1.5), duration = 7.0),
+                ],
+                attributes = clinical_presentation(incubation_period = incubation)
+            )
+            law_fixed = EpiBranch.analytic_offspring_effect(
+                spec_fixed.interventions[1], offspring, spec_fixed
+            )
+            law_dirac = EpiBranch.analytic_offspring_effect(
+                spec_dirac.interventions[1], offspring, spec_dirac
+            )
+            @test EpiBranch._law_mean(law_dirac) ≈ EpiBranch._law_mean(law_fixed) atol = 1.0e-8
+            @test EpiBranch._pgf(law_dirac, 0.3) ≈ EpiBranch._pgf(law_fixed, 0.3) atol = 1.0e-8
+        end
+
+        @testset "A DiscreteNonParametric delay mixes over its own non-integer support" begin
+            # Its support need not be a contiguous integer range, unlike the
+            # series `_series_range` sums over for other discrete
+            # distributions, so this must go through `_mixture_expectation`
+            # directly rather than the generic discrete path.
+            offspring = NegBin(2.0, 0.5)
+            gt = Exponential(5.0)
+            incubation = Gamma(2.0, 1.5)
+            delay = DiscreteNonParametric([0.5, 3.2], [0.4, 0.6])
+            iso = Isolation(onset_to_isolation_delay = delay, duration = Inf)
+            spec = ModelSpec(
+                BranchingProcess(offspring, gt); interventions = [iso],
+                attributes = clinical_presentation(incubation_period = incubation)
+            )
+            law = EpiBranch.analytic_offspring_effect(iso, offspring, spec)
+
+            direct_mean = sum(
+                p * EpiBranch._law_mean(
+                    EpiBranch.analytic_offspring_effect(
+                        Isolation(onset_to_isolation_delay = b, duration = Inf),
+                        offspring, spec
+                    )
+                ) for (b, p) in zip(support(delay), probs(delay))
+            )
+            @test EpiBranch._law_mean(law) ≈ direct_mean atol = 1.0e-8
+        end
+
+        @testset "A discrete parametric delay mixes over its own pmf" begin
+            # Neither `ContinuousUnivariateDistribution` nor
+            # `DiscreteNonParametric`, so this exercises the generic discrete
+            # path (`_series_range`) rather than either special case.
+            offspring = Poisson(2.5)
+            gt = Exponential(4.0)
+            incubation = Gamma(2.0, 1.0)
+            delay = Poisson(1.0)
+            iso = Isolation(onset_to_isolation_delay = delay, duration = Inf)
+            spec = ModelSpec(
+                BranchingProcess(offspring, gt); interventions = [iso],
+                attributes = clinical_presentation(incubation_period = incubation)
+            )
+            law = EpiBranch.analytic_offspring_effect(iso, offspring, spec)
+
+            direct_mean = sum(
+                pdf(delay, b) *
+                    EpiBranch._law_mean(
+                    EpiBranch.analytic_offspring_effect(
+                        Isolation(onset_to_isolation_delay = float(b), duration = Inf),
+                        offspring, spec
+                    )
+                ) for b in 0:30
+            )
+            @test EpiBranch._law_mean(law) ≈ direct_mean atol = 1.0e-6
+        end
+
         @testset "Agrees with simulated secondary-case counts" begin
             # R clearly subcritical once isolated, so a chain almost never
             # reaches `max_cases`: a case near that cap would be cut off
