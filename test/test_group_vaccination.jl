@@ -256,6 +256,69 @@ end
         @test a.state[:vaccination_time] == 21.0
     end
 
+    @testset "An index case that never makes a contact is still vaccinated once settled" begin
+        # The index case's chain dies out before it makes any contact, so it
+        # is never offered as a candidate the old way (reading the contacts a
+        # case made): only the settled-case offer this adds reaches it.
+        clinical = clinical_presentation(
+            incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0
+        )
+        iso = Isolation(onset_to_isolation_delay = Exponential(0.5), duration = Inf)
+        gv = GroupVaccination(
+            efficacy = 0.9, eligibility = OnLabConfirmation(),
+            dose_delay = 1.0
+        )
+        state = simulate(
+            ModelSpec(
+                BranchingProcess(Poisson(0.0), Exponential(5.0));
+                interventions = [iso, gv], attributes = [clinical, groups(1)]
+            );
+            rng = StableRNG(1)
+        )
+
+        index = only(state.individuals)
+        @test index.parent_id == 0
+        @test is_vaccinated(index)
+    end
+
+    @testset "A case confirmed only after its own settlement still reaches its group" begin
+        # The group's trigger (the confirmed case's own isolation) is set by
+        # `resolve_individual!` during this same settlement, after the
+        # generation's contact-based offer to the group already ran and found
+        # nothing to trigger on.
+        gv = GroupVaccination(
+            efficacy = 0.9, eligibility = OnLabConfirmation(),
+            dose_delay = 1.0
+        )
+        state = EpiBranch.new_state(
+            BranchingProcess(Poisson(1.0), Exponential(5.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
+        )
+
+        confirmed = _group_member(gv, 1, :A, test_positive = false)
+        member = _group_member(gv, 2, :A, test_positive = false)
+        append!(state.individuals, [confirmed, member])
+
+        # The contact-based offer the generation engine already makes
+        # (`apply_actions!` on the contacts a case made) finds no trigger yet.
+        EpiBranch.apply_actions!(gv, state, [confirmed, member])
+        @test !is_vaccinated(confirmed)
+        @test !is_vaccinated(member)
+
+        # `confirmed` tests positive and is isolated only as part of settling
+        # this same generation, so its own lab confirmation becomes the
+        # group's trigger only once `_settle_generation!` reaches this point.
+        confirmed.state[:test_positive] = true
+        set_isolated!(confirmed, 3.0; release_time = Inf)
+        confirmed.infection_time = 3.0
+        EpiBranch._settle_generation!(state, [gv], [confirmed], 0)
+
+        @test is_vaccinated(confirmed)
+        @test is_vaccinated(member)
+        @test confirmed.state[:vaccination_time] == 4.0
+        @test member.state[:vaccination_time] == 4.0
+    end
+
     @testset "No triggering case leaves the group unvaccinated" begin
         gv = GroupVaccination(efficacy = 0.9, eligibility = OnLabConfirmation())
         state = EpiBranch.new_state(
