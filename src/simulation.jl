@@ -1079,7 +1079,11 @@ function seed!(state::SimulationState, ids, interventions, transitions)
     if !isempty(ids)
         first_ind = state.individuals[first(ids)]
         _validate_required_fields(first_ind, interventions)
-        _validate_required_fields(_transition_probe(first_ind, transitions, state), transitions)
+        # Building the probe costs a copy of the case's state on every outbreak,
+        # so it is built only when a transition has a field to check.
+        if any(t -> !isempty(required_fields(t)), transitions)
+            _validate_required_fields(_transition_probe(first_ind, transitions, state), transitions)
+        end
     end
     state.cumulative_cases = length(ids)
     state.active_ids = collect(ids)
