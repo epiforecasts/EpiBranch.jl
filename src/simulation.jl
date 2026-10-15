@@ -1147,9 +1147,20 @@ end
 
 function should_terminate(state::SimulationState, sim_opts::SimOpts)
     for rule in sim_opts.stopping_rules
-        should_stop(rule, state) && return true
+        _should_stop(rule, state) && return true
     end
     return false
+end
+
+# The rules a run has by default are tested for by type so their calls compile
+# statically; any other rule goes through dispatch as usual. Asked once per
+# generation, so on many small outbreaks a dynamic call here is a visible
+# share of the run.
+@inline function _should_stop(rule, state)
+    rule isa Extinction && return should_stop(rule, state)
+    rule isa MaxCases && return should_stop(rule, state)
+    rule isa MaxGenerations && return should_stop(rule, state)
+    return should_stop(rule, state)
 end
 
 """
