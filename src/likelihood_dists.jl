@@ -130,7 +130,7 @@ function chain_size_distribution(
     )
     # The analytical fast path is only valid when nothing perturbs the
     # bare offspring law, and the law itself has a closed form. A model
-    # that carries interventions must route through the simulation-based
+    # with interventions must route through the simulation-based
     # wrapper, even with no explicit kwargs, or its interventions would be
     # silently dropped; a multi-type or multi-window model has no
     # single-type law to fall back on in the first place. The model's
