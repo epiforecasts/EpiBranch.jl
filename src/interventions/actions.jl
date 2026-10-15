@@ -77,9 +77,10 @@ end
 
 Propose the intervention's actions for `candidates` and perform those that
 its [`Scheduled`](@ref) and [`CapacityConstrained`](@ref) settings accept.
-Schedules check each action's own day; capacity uses the simulation clock. A
-person turned down may be offered the action again later, with the same
-random draws. The intervention itself leaves out actions already performed.
+Both check each action's own day: a schedule against its start and end, and
+capacity against the budget of the period that day falls in. A person turned
+down may be offered the action again later, with the same random draws. The
+intervention itself leaves out actions already performed.
 """
 function apply_actions!(iv, state, candidates)
     actions = intervention_actions(iv, state, candidates)
@@ -112,27 +113,31 @@ function _admit_actions!(s::Scheduled, state, actions)
     return _admit_actions!(s.intervention, state, selected)
 end
 
+# Each candidate action already names the day its dose would fall on, so it
+# is checked against the budget of the period that day is in, not the clock
+# of whichever case's call proposes it: a dose for day 12 can be committed
+# before a case settled later asks for day 11, and either leaves the other's
+# own day's budget untouched. A period exhausted by an earlier candidate
+# therefore skips to the next-ranked one (`continue`, not `break`), which may
+# fall in a different, still-open period.
 function _admit_actions!(cc::CapacityConstrained, state, actions)
     key = capacity_key(cc.intervention)
     already_used = filter(a -> get(a.individual.state, key, false), actions)
     candidates = filter(a -> !get(a.individual.state, key, false), actions)
     _admit_actions!(cc.intervention, state, already_used)
-    # The usage count scans the whole population, which only a call with
+    # The usage scan covers the whole population, which only a call with
     # someone to admit needs.
     isempty(candidates) && return nothing
     order = sortperm([cc.priority(a.individual, state) for a in candidates]; alg = MergeSort)
-    usage = _capacity_usage(cc, state)
-    used = usage.used
-    admission_key = _capacity_admission_key(key)
+    times = _dose_times(cc, state)
+    extra = Float64[]
     for i in order
-        used + 1 <= usage.available || break
         action = candidates[i]
         get(action.individual.state, key, false) && continue
+        usage = _usage_at(cc, times, extra, action.time)
+        usage.used + 1 <= usage.available || continue
         _admit_actions!(cc.intervention, state, [action])
-        if get(action.individual.state, key, false)
-            action.individual.state[admission_key] = state.max_infection_time
-            used += 1
-        end
+        get(action.individual.state, key, false) && push!(extra, action.time)
     end
     return nothing
 end
