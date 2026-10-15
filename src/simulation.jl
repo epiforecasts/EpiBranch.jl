@@ -133,12 +133,17 @@ function simulate_once(
         model, sim_opts, interventions, progression, attributes, rng
     )
     _settle_generation!(state, interventions, _seed_cases(state), 0)
-
-    while !should_terminate(state, sim_opts)
-        _advance_generation!(model, state, interventions)
-    end
-
+    _run_generations!(model, state, sim_opts, interventions, _as_tuple(interventions))
     apply_observation!(observation, state, rng)
+    return state
+end
+
+# Takes the interventions as a tuple, so the calls made on every generation
+# are resolved once per outbreak rather than once per generation.
+function _run_generations!(model, state, sim_opts, interventions, intervention_tuple)
+    while !should_terminate(state, sim_opts)
+        _advance_generation!(model, state, interventions, intervention_tuple)
+    end
     return state
 end
 
@@ -392,6 +397,27 @@ for its own type instead of having a `generation_time` field.
 """
 model_generation_time(model::TransmissionModel) = model.generation_time
 
+# Every target flagged new, as a vector without storing one: the tree case.
+struct _AllNew <: AbstractVector{Bool}
+    n::Int
+end
+Base.size(a::_AllNew) = (a.n,)
+Base.@propagate_inbounds function Base.getindex(a::_AllNew, i::Int)
+    @boundscheck checkbounds(a, i)
+    return true
+end
+
+# The one edge reaching a contact no other parent shares, as a vector of one
+# without allocating one: the tree case, where every contact is fresh.
+struct _OneEdge{T} <: AbstractVector{Tuple{Int, T}}
+    edge::Tuple{Int, T}
+end
+Base.size(::_OneEdge) = (1,)
+Base.@propagate_inbounds function Base.getindex(e::_OneEdge, i::Int)
+    @boundscheck checkbounds(e, i)
+    return e.edge
+end
+
 """
     collect_exposures(model, state) -> (targets, edges, minted, is_new)
 
@@ -415,7 +441,7 @@ function collect_exposures(model::TransmissionModel, state::SimulationState)
     pre = length(state.individuals)   # contacts created this step get id > pre
     T = _timetype(state)
     targets = Individual{T}[]
-    edges = Vector{Tuple{Int, T}}[]
+    edges = _OneEdge{T}[]
     for idx in state.active_ids
         parent = state.individuals[idx]
         offspring = generate_offspring(model, parent, state)
@@ -425,7 +451,7 @@ function collect_exposures(model::TransmissionModel, state::SimulationState)
         _materialise_offspring!(targets, edges, offspring, parent, state, gt_dist)
     end
     minted = view(state.individuals, (pre + 1):length(state.individuals))
-    return targets, edges, minted, trues(length(targets))
+    return targets, edges, minted, _AllNew(length(targets))
 end
 
 # Engine half of the offspring-driven contract: the model returns a count
@@ -442,7 +468,7 @@ function _materialise_offspring!(
     for _ in 1:n_contacts
         t = transmission_time(gt_dist, parent, state)
         push!(targets, make_contact!(state, parent, t))
-        push!(edges, Tuple{Int, T}[(parent.id, t)])
+        push!(edges, _OneEdge{T}((parent.id, t)))
     end
     return nothing
 end
@@ -457,7 +483,7 @@ function _materialise_offspring!(
         for _ in 1:n
             t = transmission_time(gt_dist, parent, state)
             push!(targets, make_contact!(state, parent, t; type_idx))
-            push!(edges, Tuple{Int, T}[(parent.id, t)])
+            push!(edges, _OneEdge{T}((parent.id, t)))
         end
     end
     return nothing
@@ -472,7 +498,7 @@ function collect_exposures(model::BranchingProcess, state::SimulationState)
     pre = length(state.individuals)
     T = _timetype(state)
     targets = Individual{T}[]
-    edges = Vector{Tuple{Int, T}}[]
+    edges = _OneEdge{T}[]
     for idx in state.active_ids
         parent = state.individuals[idx]
         for window in model.infectiousness
@@ -486,7 +512,7 @@ function collect_exposures(model::BranchingProcess, state::SimulationState)
         end
     end
     minted = view(state.individuals, (pre + 1):length(state.individuals))
-    return targets, edges, minted, trues(length(targets))
+    return targets, edges, minted, _AllNew(length(targets))
 end
 
 # A contact's infection time is the window's `from`-state time plus a draw
@@ -514,7 +540,7 @@ function _materialise_window!(
         contact = make_contact!(state, parent, t)
         _tag_window!(contact, until)
         push!(targets, contact)
-        push!(edges, Tuple{Int, T}[(parent.id, t)])
+        push!(edges, _OneEdge{T}((parent.id, t)))
     end
     return nothing
 end
@@ -531,7 +557,7 @@ function _materialise_window!(
             contact = make_contact!(state, parent, t; type_idx)
             _tag_window!(contact, until)
             push!(targets, contact)
-            push!(edges, Tuple{Int, T}[(parent.id, t)])
+            push!(edges, _OneEdge{T}((parent.id, t)))
         end
     end
     return nothing
@@ -586,7 +612,8 @@ process a contact is created together with its infection time; in a fixed
 population the contacts already exist."""
 function _advance_generation!(
         model::TransmissionModel,
-        state::SimulationState, interventions::Vector{<:AbstractIntervention}
+        state::SimulationState, interventions::Vector{<:AbstractIntervention},
+        intervention_tuple = _as_tuple(interventions)
     )
     targets, edges, minted, is_new = collect_exposures(model, state)
     # Snapshotted before anything below moves a live field: `_intervene!`'s
@@ -595,7 +622,10 @@ function _advance_generation!(
     # a fresh one.
     reinfections = _reinfection_episodes(targets, is_new)
     kept = _intervene!(state, interventions, targets, edges, minted, is_new)
-    _resolve!(model, state, interventions, targets, edges, is_new, reinfections, kept)
+    _resolve!(
+        model, state, interventions, targets, edges, is_new, reinfections, kept;
+        intervention_tuple
+    )
     return nothing
 end
 
@@ -605,14 +635,20 @@ end
 # `contacts_of`) ever populates this; empty for every other model, which is
 # every built-in one today.
 function _reinfection_episodes(targets, is_new)
-    episodes = Dict{Int, InfectionEpisode}()
+    episodes = _NO_REINFECTIONS
     for i in eachindex(targets)
         is_new[i] && continue
         target = targets[i]
-        is_infected(target) && (episodes[i] = InfectionEpisode(target))
+        is_infected(target) || continue
+        episodes === _NO_REINFECTIONS && (episodes = Dict{Int, InfectionEpisode}())
+        episodes[i] = InfectionEpisode(target)
     end
     return episodes
 end
+
+# Shared by every generation with no reinfection, and only ever read.
+const _NO_REINFECTIONS = Dict{Int, InfectionEpisode}()
+const _NO_KEPT = Int[]
 
 """Phase 2 — contact-level interventions act on this generation's exposures.
 Newly minted contacts get their intervention state initialised; each target is
@@ -626,7 +662,7 @@ Returns the ids the interventions asked to keep active."""
 function _intervene!(
         state::SimulationState,
         interventions::Vector{<:AbstractIntervention},
-        targets::Vector{<:Individual}, edges::Vector{<:Vector{<:Tuple}},
+        targets::Vector{<:Individual}, edges::AbstractVector{<:AbstractVector{<:Tuple}},
         minted, is_new
     )
     # Newly created contacts (already appended to state by make_contact!)
@@ -644,6 +680,8 @@ function _intervene!(
         length(es) > 1 && sort!(es, by = last)
         targets[i].parent_id, targets[i].infection_time = es[1]
     end
+
+    isempty(interventions) && return _NO_KEPT
 
     # Each stretch of per-case interventions runs case by case, and a batch-hook
     # intervention at its own place in the list, so what one writes reaches
@@ -739,10 +777,25 @@ kept as a past episode; see [`close_episode!`](@ref)."""
 function _resolve!(
         model::TransmissionModel, state::SimulationState,
         interventions::Vector{<:AbstractIntervention},
-        targets::Vector{<:Individual}, edges::Vector{<:Vector{<:Tuple}},
-        is_new, reinfections = Dict{Int, InfectionEpisode}(), kept = Int[]
+        targets::Vector{<:Individual}, edges::AbstractVector{<:AbstractVector{<:Tuple}},
+        is_new, reinfections = Dict{Int, InfectionEpisode}(), kept = Int[];
+        intervention_tuple = _as_tuple(interventions)
     )
-    model_risks = transmission_risks(model)
+    newly_infected = _infect_targets!(
+        state, transmission_risks(model), intervention_tuple, targets, edges,
+        is_new, reinfections
+    )
+    _account_generation!(state, interventions, newly_infected, kept)
+    return nothing
+end
+
+_as_tuple(interventions) = isempty(interventions) ? () : Tuple(interventions)
+
+# Decides each target's infection. Takes the interventions as a tuple, so the
+# risk each one contributes per edge is a call resolved at compile time.
+function _infect_targets!(
+        state, model_risks, interventions::Tuple, targets, edges, is_new, reinfections
+    )
     infected_so_far = 0
     newly_infected = eltype(targets)[]
     for i in eachindex(targets)
@@ -799,7 +852,10 @@ function _resolve!(
         end
         _drop_stale_abort!(target)
     end
+    return newly_infected
+end
 
+function _account_generation!(state, interventions, newly_infected, kept)
     cases_before = state.cumulative_cases
     for target in newly_infected
         target.infection_time > state.max_infection_time &&
@@ -814,7 +870,7 @@ function _resolve!(
     # not a special built-in rule. It was asked before infection was decided,
     # so a kept contact that went on to be infected is already in the set.
     next_active = [target.id for target in newly_infected]
-    for id in unique(kept)
+    isempty(kept) || for id in unique(kept)
         is_infected(state.individuals[id]) || push!(next_active, id)
     end
     state.active_ids = next_active
@@ -846,19 +902,28 @@ function _settle_generation!(state::SimulationState, interventions, cases, cases
     isempty(cases) && return nothing
     clock, count, generation = state.max_infection_time, state.cumulative_cases,
         state.current_generation
-    rank = invperm(sortperm([case.infection_time for case in cases]))
+    rank = _infection_ranks(cases)
     for (i, case) in enumerate(cases)
-        _at_case!(state, case, cases_before + rank[i])
+        _at_case!(state, case, cases_before + _rank(rank, i))
         resolve_transitions!(state, case)
     end
     for (i, case) in enumerate(cases)
-        _at_case!(state, case, cases_before + rank[i])
+        _at_case!(state, case, cases_before + _rank(rank, i))
         _resolve_interventions!(state, case, interventions)
     end
     state.max_infection_time, state.cumulative_cases = clock, count
     state.current_generation = generation
     return nothing
 end
+
+# Each case's place among `cases` by infection time; `nothing` when they are
+# already in that order, as a generation of one always is.
+function _infection_ranks(cases)
+    issorted(cases; by = case -> case.infection_time) && return nothing
+    return invperm(sortperm([case.infection_time for case in cases]))
+end
+_rank(::Nothing, i) = i
+_rank(rank, i) = rank[i]
 
 """
     _settle_case!(state, case, interventions, count)
@@ -1024,7 +1089,11 @@ function seed!(state::SimulationState, ids, interventions, transitions)
     if !isempty(ids)
         first_ind = state.individuals[first(ids)]
         _validate_required_fields(first_ind, interventions)
-        _validate_required_fields(_transition_probe(first_ind, transitions, state), transitions)
+        # Building the probe costs a copy of the case's state on every outbreak,
+        # so it is built only when a transition has a field to check.
+        if any(t -> !isempty(required_fields(t)), transitions)
+            _validate_required_fields(_transition_probe(first_ind, transitions, state), transitions)
+        end
     end
     state.cumulative_cases = length(ids)
     state.active_ids = collect(ids)
@@ -1078,9 +1147,20 @@ end
 
 function should_terminate(state::SimulationState, sim_opts::SimOpts)
     for rule in sim_opts.stopping_rules
-        should_stop(rule, state) && return true
+        _should_stop(rule, state) && return true
     end
     return false
+end
+
+# The rules a run has by default are tested for by type so their calls compile
+# statically; any other rule goes through dispatch as usual. Asked once per
+# generation, so on many small outbreaks a dynamic call here is a visible
+# share of the run.
+@inline function _should_stop(rule, state)
+    rule isa Extinction && return should_stop(rule, state)
+    rule isa MaxCases && return should_stop(rule, state)
+    rule isa MaxGenerations && return should_stop(rule, state)
+    return should_stop(rule, state)
 end
 
 """
@@ -1122,7 +1202,8 @@ function _create_individual(
         chain_id::Int, next_id::Int, inf_time::Real
     )
     T = _timetype(state)
-    s = Dict{Symbol, Any}(:infected => false)
+    s = IndividualState{T}()
+    s[:infected] = false
 
     # Build `Individual{T}` directly (not the keyword constructor) so the type
     # matches `state.individuals`, whatever `T` is: seed cases pass a plain
@@ -1433,8 +1514,15 @@ end
 return `true` if any active risk blocks it. Built-in risk sources and
 interventions share this single risk-evaluation path."""
 function _risk_blocks(source, parent, contact, state, transmission_time)
+    risks = _iter_risks(competing_risk(source, parent, contact, state))
+    return _risks_block(risks, parent, contact, state, transmission_time)
+end
+
+# A call per kind of answer `competing_risk` gives, so a source that answers
+# with one of a few types has each loop compiled for its own type.
+function _risks_block(risks, parent, contact, state, transmission_time)
     rng = state.rng
-    for risk in _iter_risks(competing_risk(source, parent, contact, state))
+    for risk in risks
         event_t = _sample_value(risk.event_time, rng, parent, contact, state)
         event_t > transmission_time && continue
         release_t = _sample_value(risk.release_time, rng, parent, contact, state)
@@ -1512,12 +1600,24 @@ function _composed_risks_block(
         builtin_blocks = _builtin_risk_blocks
     )
     builtin_blocks(parent, contact, state, transmission_time) && return true
-    for source in model_risks
+    _any_risk_blocks(model_risks, parent, contact, state, transmission_time) &&
+        return true
+    return _any_risk_blocks(interventions, parent, contact, state, transmission_time)
+end
+
+# The sources in order, the first to block winning. A tuple is walked
+# element by element so each call is resolved when the method is compiled;
+# a call through a vector of mixed types is resolved at run time instead,
+# which boxes `transmission_time` on every call.
+_any_risk_blocks(::Tuple{}, parent, contact, state, transmission_time) = false
+@inline function _any_risk_blocks(sources::Tuple, parent, contact, state, transmission_time)
+    _risk_blocks(first(sources), parent, contact, state, transmission_time) &&
+        return true
+    return _any_risk_blocks(Base.tail(sources), parent, contact, state, transmission_time)
+end
+function _any_risk_blocks(sources, parent, contact, state, transmission_time)
+    for source in sources
         _risk_blocks(source, parent, contact, state, transmission_time) && return true
-    end
-    for intervention in interventions
-        _risk_blocks(intervention, parent, contact, state, transmission_time) &&
-            return true
     end
     return false
 end
@@ -1664,7 +1764,7 @@ present on the individual.
 """
 function _set_onset_from_incubation!(ind::Individual)
     haskey(ind.state, :incubation_period) || return nothing
-    inc = ind.state[:incubation_period]
+    inc = _state_real(ind.state, :incubation_period, NaN)
     ind.state[:onset_time] = isnan(inc) || _infection_aborted(ind) ? NaN :
         ind.infection_time + inc
     return nothing

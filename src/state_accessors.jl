@@ -29,7 +29,7 @@ onsets = [onset_time(i) for i in state.individuals if is_infected(i)]
 ```
 """
 function onset_time(ind::Individual{T}) where {T}
-    return convert(T, get(ind.state, :onset_time, T(NaN)))::T
+    return _state_real(ind.state, :onset_time, T(NaN))
 end
 
 """
@@ -50,7 +50,7 @@ case (see [`Transition`](@ref)). `Inf` if there is none yet, or if the
 natural history has no such step.
 """
 function outcome_time(ind::Individual{T}) where {T}
-    return convert(T, get(ind.state, :outcome_time, T(Inf)))::T
+    return _state_real(ind.state, :outcome_time, T(Inf))
 end
 
 """Whether the person was isolated in a way that counts as detecting them, so
@@ -64,7 +64,7 @@ is_isolated(ind::Individual) = _isolation_in_force(ind) && !_isolation_unrecorde
 days since the start of the outbreak (`Inf` if never), whether or not it
 counts as a detection (see [`is_isolated`](@ref))."""
 function isolation_time(ind::Individual{T}) where {T}
-    return convert(T, get(ind.state, :isolation_time, T(Inf)))::T
+    return _state_real(ind.state, :isolation_time, T(Inf))
 end
 
 """Time at which the isolation or quarantine that began at
@@ -74,7 +74,7 @@ if it never does). It is finite when [`Isolation`](@ref) or the
 quarantine that ended before the person was later infected does not stop
 their own onward transmission. Set by [`set_isolated!`](@ref)."""
 function isolation_release_time(ind::Individual{T}) where {T}
-    return convert(T, get(ind.state, :isolation_release_time, T(Inf)))::T
+    return _state_real(ind.state, :isolation_release_time, T(Inf))
 end
 
 
@@ -112,7 +112,7 @@ can compare it with the time an outcome would take effect (for example
 dose's [`severity_efficacy`](@ref) applies: immunity that develops later
 gives no protection."""
 function immunity_time(ind::Individual{T}; dose_label::Symbol = :default) where {T}
-    return convert(T, get(ind.state, _immunity_time_key(dose_label), T(Inf)))::T
+    return _state_real(ind.state, _immunity_time_key(dose_label), T(Inf))
 end
 
 """The full-strength efficacy against infection drawn for this person's dose
@@ -157,7 +157,7 @@ example by post-exposure vaccination, in days since the start of the outbreak
 [`abort_infection!`](@ref EpiBranch.abort_infection!).
 """
 function infection_aborted_time(ind::Individual{T}) where {T}
-    return convert(T, get(ind.state, :infection_aborted_time, T(Inf)))::T
+    return _state_real(ind.state, :infection_aborted_time, T(Inf))
 end
 
 """
@@ -194,7 +194,7 @@ function abort_infection!(ind::Individual, time::Real)
                 "$(ind.infection_time), abort time $time)"
         )
     )
-    incubation = get(ind.state, :incubation_period, NaN)
+    incubation = _state_real(ind.state, :incubation_period, NaN)
     isnan(incubation) || time < ind.infection_time + incubation || throw(
         ArgumentError(
             "an infection can only be aborted before symptom onset (onset " *
@@ -232,7 +232,7 @@ Set it with a step in the model's `progression`, timed from the state that
 starts waning, for example
 `Transition(:susceptible_again, from = :recovered, delay = Exponential(180))`."""
 function susceptible_again_time(ind::Individual{T}) where {T}
-    return convert(T, get(ind.state, :susceptible_again_time, T(Inf)))::T
+    return _state_real(ind.state, :susceptible_again_time, T(Inf))
 end
 
 """
@@ -289,32 +289,45 @@ likelihood then leaves out the same periods of exposure that the simulation
 blocked, so that `simulate` and `loglikelihood` agree.
 """
 function record_removal!(
-        ind::Individual, start::Real, release::Real;
+        ind::Individual{T}, start::Real, release::Real;
         key::Symbol = REMOVAL_STRETCHES_KEY
-    )
+    ) where {T}
     (isfinite(start) && release > start) || return nothing
     # The stretch keeps the individual's own number type, so that an AD dual
     # isolation time flows through as the time accessors promise.
-    stretch = promote(start, release)
-    stretches = get!(() -> typeof(stretch)[], ind.state, key)
-    push!(stretches, stretch)
-    sort!(stretches; by = first)
-    ind.state[key] = _merge_stretches(stretches)
+    S = promote_type(T, typeof(start), typeof(release))
+    stretch = (convert(S, start), convert(S, release))
+    old = get(ind.state, key, nothing)
+    # A fresh vector each time rather than one grown in place: an archived
+    # episode holds a copy of the state that shares the old one.
+    ind.state[key] = old === nothing ? [stretch] : _with_stretch(old, stretch)
     return nothing
 end
 
+function _with_stretch(old::Vector{E}, stretch) where {E}
+    new = Vector{E}(undef, length(old) + 1)
+    copyto!(new, old)
+    new[end] = stretch
+    sort!(new; by = first)
+    return _merge_stretches!(new)
+end
+_with_stretch(old, stretch) = _merge_stretches(sort!(push!(copy(old), stretch); by = first))
+
 # Overlapping and touching stretches folded into disjoint ones, so that no
 # stretch counts twice. `stretches` must already be sorted by its starts.
-function _merge_stretches(stretches)
-    merged = similar(stretches, 0)
+_merge_stretches(stretches) = _merge_stretches!(copy(stretches))
+
+function _merge_stretches!(stretches::AbstractVector)
+    n = 0
     for (a, b) in stretches
-        if !isempty(merged) && a <= last(merged)[2]
-            merged[end] = (last(merged)[1], max(last(merged)[2], b))
+        if n > 0 && a <= stretches[n][2]
+            stretches[n] = (stretches[n][1], max(stretches[n][2], b))
         else
-            push!(merged, (a, b))
+            n += 1
+            stretches[n] = (a, b)
         end
     end
-    return merged
+    return resize!(stretches, n)
 end
 
 """

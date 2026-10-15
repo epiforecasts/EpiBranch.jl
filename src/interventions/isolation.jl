@@ -225,9 +225,9 @@ function reset!(::Isolation, ind::Individual)
     # If this isolation was layered over a quarantine, restore that quarantine
     # rather than clearing the individual outright — undoing Isolation's own
     # effect must not also undo another intervention's.
-    previous = get(ind.state, :_isolation_time_before_isolation, Inf)
+    previous = _state_real(ind.state, :_isolation_time_before_isolation, Inf)
     if isfinite(previous)
-        previous_release = get(ind.state, :_isolation_release_time_before_isolation, Inf)
+        previous_release = _state_real(ind.state, :_isolation_release_time_before_isolation, Inf)
         # The recorded stretches are cleared and the quarantine's own re-recorded,
         # so this isolation's stretch is not left for a likelihood to take out of
         # an exposure the simulation never blocked. A quarantine keeps its own
@@ -303,7 +303,7 @@ function resolve_individual!(iso::Isolation, individual, state)
     # the recorded time is held back to the onset.
     onset = onset_time(individual)
     traced_time = isnan(onset) ? Inf :
-        max(get(individual.state, :_traced_isolation_time, Inf), onset)
+        max(_state_real(individual.state, :_traced_isolation_time, Inf), onset)
     test_time = if is_test_positive(individual)
         onset + _sample_value(iso.onset_to_isolation_delay, state.rng, individual)
     else
