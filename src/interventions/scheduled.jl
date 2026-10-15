@@ -124,11 +124,10 @@ repeated simulations of `simulate(model, n)` (serially, or across threads
 under `parallel = true`): derive what it needs from `state`, or keep working
 values in `state.scratch`, which belongs to the run.
 
-The engine asks the gate about 1.7 times per individual: a trigger that
+The engine asks the gate about 1.7 times per individual, so a trigger that
 walks the population on every call makes a run quadratic in the number of
-individuals, as [`ReportedCases`](@ref) does; one that can read a running
-total the engine already keeps, as [`Infections`](@ref) reads
-`cumulative_cases`, costs nothing by comparison.
+individuals. Read a running total instead, as [`Infections`](@ref) reads
+`cumulative_cases`.
 """
 function is_triggered! end
 
@@ -182,59 +181,18 @@ end
 is_triggered!(t::Infections, state::SimulationState) = state.cumulative_cases >= t.n
 trigger_can_lapse(::Infections) = false
 
-# Whether a report in `st` is dated by the clock reading `now`. Read with
-# `get` rather than indexed: a `:reported` flag set by something other than
-# the `Reporting` transition need not come with a `:reporting_time`.
-_report_due(st, now) =
-    get(st, :reported, false) && get(st, :reporting_time, Inf) <= now
-
-_report_time(st) = get(st, :reporting_time, Inf)
-
-# The reports one host holds that are dated by `now`, over its archived
-# episodes and its live state.
-#
-# A reinfection archives the episode as a copy of the live state and only
-# clears the live `:reported` later, when the new infection's transitions are
-# initialised (`close_episode!` in `_resolve!`, then `resolve_transitions!`).
-# In between, the newest episode and the live state are one report: the
-# live one is counted only when its date differs from that episode's.
-function _host_reports_due(ind, now)
-    due = 0
-    for episode in ind.episodes
-        _report_due(episode.state, now) && (due += 1)
+# The reports dated by `state.max_infection_time`, counting every episode of a
+# host infected more than once: a reinfection resets the live `:reported` flag
+# and archives the episode holding it, and a report the health system has made
+# stays made. Read from a log of the reports, so a call costs a binary search
+# however large the run.
+function _reported_cases_due(state::SimulationState{T}) where {T}
+    log = get(state.scratch, (:report_log,), nothing)
+    if log === nothing
+        log = state.scratch[(:report_log,)] = _report_log(state)
     end
-    _report_due(ind.state, now) || return due
-    isempty(ind.episodes) && return due + 1
-    archived = _report_time(last(ind.episodes).state)
-    return archived == _report_time(ind.state) ? due : due + 1
-end
-
-# The reports the population holds that are dated by
-# `state.max_infection_time`, counting every episode of a host infected more
-# than once: a reinfection resets the live `:reported` flag and archives the
-# episode carrying it, and a report the health system has made stays made.
-#
-# Derived from `state.individuals` rather than kept as a running total:
-# `make_contact!` appends an individual before its clinical transitions run
-# and `Reporting` is one of those, so a host counted on an earlier call
-# cannot be taken as finished with.
-#
-# Counted on every call; the engine asks the gate about 1.7 times per
-# individual, so a run with this trigger is quadratic in the number of
-# individuals: about 0.02 s at 1,000 of them and 190 s at 57,000. Caching the
-# count against the clock is not available, because `resolve_transitions!`
-# sets `:reported` on each newly infected case as the generation resolves,
-# while the clock the count is read against moves only between generations.
-# Making it cheap needs the count maintained where the reports are written,
-# or the gate asked once a generation rather than once a pair, neither of
-# which a trigger can reach from outside the engine.
-function _reported_cases_due(state::SimulationState)
-    now = state.max_infection_time
-    due = 0
-    for ind in state.individuals
-        due += _host_reports_due(ind, now)
-    end
-    return due
+    _confirm_reports!(log::_ReportLog{T}, state.individuals)
+    return searchsortedlast(log.times, state.max_infection_time)
 end
 
 """
