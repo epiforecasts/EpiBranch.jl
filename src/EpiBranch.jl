@@ -140,7 +140,7 @@ export TransmissionModel, BranchingProcess, Infectiousness, HomogeneousProcess,
 export Individual, InfectionEpisode, close_episode!, SimulationState
 export SimOpts
 export AbstractStoppingRule, Extinction, MaxCases, MaxGenerations, MaxTime, should_stop
-export AbstractIntervention, Isolation, ContactTracing
+export AbstractIntervention, Isolation, ContactTracing, SourceTracing
 export IsolationEligibility, SymptomaticOnly, AllCases
 export is_eligible_for_isolation
 export TraceEligibility, AlwaysEligible, SymptomaticParent
