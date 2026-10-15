@@ -29,11 +29,15 @@ the intervention has no actions.
 Both engines call it once per case, after every intervention's
 [`trace_contacts!`](@ref) for that case, so a producer can read what tracing
 wrote. The generation engine passes the contacts the case made and admits
-every action with a finite time. The network and household races pass the case
-and the members it can still reach, for an intervention that declares
-[`continuous_actions`](@ref), and admit only actions dated no earlier than the
-case's infection time. [`Scheduled`](@ref) and [`CapacityConstrained`](@ref)
-admit the actions through their own gates.
+every action with a finite time; once a generation's cases are settled, it
+also passes the whole batch to an intervention that declares
+[`continuous_actions`](@ref), so a trigger that only becomes true on
+settlement (such as a case's own lab confirmation) still reaches its group.
+The network and household races pass the case and the members it can still
+reach, for an intervention that declares [`continuous_actions`](@ref), and
+admit only actions dated no earlier than the case's infection time.
+[`Scheduled`](@ref) and [`CapacityConstrained`](@ref) admit the actions
+through their own gates.
 """
 intervention_actions(::AbstractIntervention, state, candidates) = nothing
 function intervention_actions(w::InterventionWrapper, state, candidates)
@@ -325,10 +329,12 @@ end
 """
     continuous_actions(intervention) -> Bool
 
-Whether this intervention can act in network and household models, by
-proposing its actions after each case's infection is settled. Return `true`
-only if proposing actions needs no infection time of a contact not yet
-infected and never changes a case already settled. The default is `false`.
+Whether this intervention can act once a case's infection is settled, rather
+than only when it makes a contact: on a network or household race, after each
+case's infection is settled, and on the generation engine, for the whole
+batch once a generation is settled. Return `true` only if proposing actions
+needs no infection time of a contact not yet infected and never changes a
+case already settled. The default is `false`.
 """
 continuous_actions(::AbstractIntervention) = false
 function continuous_actions(w::InterventionWrapper)
