@@ -214,9 +214,9 @@ with [`record_kernel`](@ref); the callback is the same in both.
 reads, as a tuple of `Symbol`s (see [`EpiBranch.watched_records`](@ref)).
 When one of these values changes for a person during a simulation, for example
 when they are vaccinated, the contacts not yet made that depend on them are
-redrawn under the new rate, so a key left out of `watches` is a change in
-transmission the simulation ignores. List every key the function reads, even if nothing in the current
-model sets it. `watches` is required when `state` is a function; pass `()`
+redrawn under the new rate. A change to a key the function reads but
+`watches` leaves out stops the simulation with an error. List every key the
+function reads, even if nothing in the current model sets it. `watches` is required when `state` is a function; pass `()`
 when the function reads no state key (for example one that looks people up by
 `ind.id`). Anything that can change during the outbreak must be read from
 `individual.state`, which is the only place changes are followed, and not from

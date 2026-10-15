@@ -312,14 +312,6 @@ isolated = ModelSpec(HouseholdProcess(fill(4, 300), Weibull(1.5, 3.0));
 Isolation brings R\* below 1. As the box at the top of the page says,
 isolation here also stops transmission to housemates.
 
-!!! warning "R\* with a finite isolation duration"
-    `household_offspring` counts each case's time in the community up to
-    recovery, or up to an isolation that never ends. It does not subtract the
-    time spent in an isolation with a finite `duration`, so R\* comes out too
-    high, even when isolation outlasts the infectious period. When isolation
-    lasts at least as long as cases stay infectious, use `duration = Inf` to
-    compute R\*.
-
 [`ContactTracing`](@ref) (see [Isolation and contact tracing](interventions.md)) also works on
 a household model, where a case's contacts are their housemates. Each
 housemate is traced separately, with the same probability and delay as any
