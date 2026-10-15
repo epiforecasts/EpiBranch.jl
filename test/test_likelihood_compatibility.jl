@@ -14,12 +14,21 @@
     @test compatible(Recovery(delay = 1.0))
     @test compatible(Death(delay = 1.0, probability = 0.1))
     @test compatible(iso)
-    @test !compatible(
+    # Leaky isolation blocks only a fraction of the hazard, declared through
+    # `removal_block_probability`, so it is compatible too.
+    @test compatible(
         Isolation(
             onset_to_isolation_delay = Exponential(1.0),
             post_isolation_transmission = 0.5, duration = Inf
         )
     )
+    @test EpiBranch.removal_block_probability(iso) == 1.0
+    @test EpiBranch.removal_block_probability(
+        Isolation(
+            onset_to_isolation_delay = Exponential(1.0),
+            post_isolation_transmission = 0.5, duration = Inf
+        )
+    ) == 0.5
     for quarantine in (false, true)
         @test compatible(
             ContactTracing(

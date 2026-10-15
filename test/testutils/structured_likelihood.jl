@@ -26,9 +26,16 @@ function test_structured_composition(make_process, extract)
         supported = ModelSpec(process; progression, attributes = clinical, interventions = [iso])
         sample = extract(simulate(supported; rng = StableRNG(45)), supported)
         @test isfinite(loglikelihood(sample, supported))
+        leaky = Isolation(
+            onset_to_isolation_delay = Exponential(0.2), post_isolation_transmission = 0.5,
+            duration = Inf
+        )
+        leaky_spec = ModelSpec(process; progression, attributes = clinical, interventions = [leaky])
+        leaky_sample = extract(simulate(leaky_spec; rng = StableRNG(45)), leaky_spec)
+        @test isfinite(loglikelihood(leaky_sample, leaky_spec))
         for bad in (
                 LikelihoodHazardChange(),
-                Isolation(onset_to_isolation_delay = Exponential(0.2), post_isolation_transmission = 0.5, duration = Inf),
+                RingVaccination(efficacy = 0.6, onward_efficacy = 0.3),
                 Scheduled(LikelihoodHazardChange(); start_time = 0.0),
             )
             @test_throws ArgumentError loglikelihood(
