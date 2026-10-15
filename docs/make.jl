@@ -21,7 +21,10 @@ makedocs(;
         "Julia for R users" => "julia-for-r-users.md",
         "Tutorials" => [
             "Getting started" => "tutorials/getting-started.md",
-            "Interventions" => "tutorials/interventions.md",
+            "Interventions" => [
+                "Isolation and contact tracing" => "tutorials/interventions.md",
+                "Vaccination" => "tutorials/vaccination.md",
+            ],
             "Clinical transitions" => "tutorials/transitions.md",
             "Transmission models" => [
                 "Multi-type models" => "tutorials/multi-type.md",
@@ -36,11 +39,17 @@ makedocs(;
                 "Analytical functions" => "tutorials/analytical.md",
                 "Inference" => "tutorials/inference.md",
             ],
-            "Extending EpiBranch" => "tutorials/extending.md",
+            "Extending EpiBranch" => [
+                "Extending EpiBranch" => "tutorials/extending.md",
+                "Writing an intervention" => "tutorials/writing-interventions.md",
+                "New transmission structures" => "tutorials/new-structures.md",
+                "Extension reference" => "tutorials/extending-reference.md",
+            ],
         ],
         "Design" => "design.md",
         "Benchmarks" => "benchmarks.md",
         "Glossary" => "glossary.md",
+        "Notes for contributors" => "contributing.md",
         "API reference" => "api.md",
     ]
 )

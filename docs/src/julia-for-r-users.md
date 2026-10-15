@@ -209,5 +209,4 @@ index cases are traced. The `EpiBranch.` prefix adds the method to the package's
 own function; without it you would define a separate function of the same
 name. In the definition, `::IndexCasesOnly` with no
 argument name means the method applies whenever that argument is of this type.
-[Extending EpiBranch](tutorials/extending.md) explains which functions you can
-add methods to.
+[All extension points](@ref) lists the functions you can add methods to.

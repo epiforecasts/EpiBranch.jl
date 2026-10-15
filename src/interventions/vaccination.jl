@@ -93,8 +93,7 @@ prevented with probability `efficacy`) or [`AllOrNothingMode`](@ref) (a share
 For extension authors: a new mode defines
 [`EpiBranch.realised_efficacy`](@ref), and
 [`EpiBranch.realise_prior_dose!`](@ref) only if a dose recorded before the
-simulation should be handled differently; see "A custom effect mode" in the
-Extending EpiBranch guide.
+simulation should be handled differently; see [A custom effect mode](@ref).
 """
 abstract type AbstractEffectMode end
 
@@ -128,8 +127,8 @@ supports_waning(::AllOrNothingMode) = false
 What a vaccine dose does once given, whoever receives it and whenever: the
 effects shared by every vaccination intervention. The built-in vaccinations
 take these as keywords and build the `VaccineEffect` themselves; build one
-directly only when writing a new vaccination intervention (see "A custom
-vaccination" in the Extending EpiBranch guide).
+directly only when writing a new vaccination intervention (see
+[A custom vaccination](@ref)).
 
 - `efficacy`: for a leaky vaccine, the probability that each exposure is
   prevented once immune; for an all-or-nothing vaccine, the probability of
