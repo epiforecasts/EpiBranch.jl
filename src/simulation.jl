@@ -891,15 +891,16 @@ end
 Settle a generation's new `cases`: every case's clinical transitions
 ([`resolve_transitions!`](@ref)), then every case's intervention hooks
 ([`resolve_individual!`](@ref)), then, once every case's own state is settled,
-each intervention declaring [`continuous_actions`](@ref) is offered the whole
-batch ([`_offer_continuous_actions!`](@ref)), so a trigger that only becomes
-true on settlement (such as a case's own lab confirmation) still reaches its
-group. The generation engine has no time order beyond the generation. Each
-case sees the clock at its own infection time and, as its case count, the
-`cases_before` cases of earlier generations plus those of its own generation
-infected no later than it. Cases sharing an infection time are counted in the
-order they appear in `cases`. The clock, count and generation are restored to
-the generation's totals afterwards, which is what the stopping rules read.
+each intervention declaring [`_settles_generation_batch`](@ref) is offered the
+whole batch ([`_offer_continuous_actions!`](@ref)), so a trigger that only
+becomes true on settlement (such as a case's own lab confirmation) still
+reaches its group. The generation engine has no time order beyond the
+generation. Each case sees the clock at its own infection time and, as its
+case count, the `cases_before` cases of earlier generations plus those of its
+own generation infected no later than it. Cases sharing an infection time are
+counted in the order they appear in `cases`. The clock, count and generation
+are restored to the generation's totals afterwards, which is what the
+stopping rules read.
 """
 function _settle_generation!(state::SimulationState, interventions, cases, cases_before)
     isempty(cases) && return nothing
@@ -921,13 +922,13 @@ function _settle_generation!(state::SimulationState, interventions, cases, cases
 end
 
 # Once `cases` are settled, offer each intervention declaring
-# `continuous_actions` its actions for the whole batch at once, rather than
-# per case: a group's trigger depends on every member's state, and every case
-# here has already had its own hooks run above, so a single batched call
+# `_settles_generation_batch` its actions for the whole batch at once, rather
+# than per case: a group's trigger depends on every member's state, and every
+# case here has already had its own hooks run above, so a single batched call
 # finds everything a per-case call would.
 function _offer_continuous_actions!(state::SimulationState, interventions, cases)
     for iv in interventions
-        continuous_actions(iv) || continue
+        _settles_generation_batch(iv) || continue
         actions = intervention_actions(iv, state, cases)
         actions === nothing || _admit_actions!(iv, state, actions)
     end
