@@ -64,9 +64,10 @@ _slot(::IndividualState, k) = 0
 @inline function _slot_value(s::IndividualState{T}, i::Int) where {T}
     slot = @inbounds s.slots[i]
     slot.val === _IN_REALS || return slot.val
-    boxed = slot.real::Any
-    @inbounds s.slots[i] = _Slot{T}(slot.key, boxed, slot.real)
-    return boxed
+    # Read back from the vector: returning the local would box it a second
+    # time, since the compiler still knows its concrete type.
+    @inbounds s.slots[i] = _Slot{T}(slot.key, slot.real, slot.real)
+    return (@inbounds s.slots[i]).val
 end
 
 @inline _make_slot(::Type{T}, k::Symbol, v) where {T} =
