@@ -290,7 +290,7 @@ blocked, so that `simulate` and `loglikelihood` agree. Every `key` that ever
 records a stretch with a finite `release` here is checked against
 [`removal_gap_host_times`](@ref EpiBranch.removal_gap_host_times) when the
 infection layer is built, and the likelihood stops with an error for one that
-is named by no component and withdrawn by none either.
+no component names or withdraws.
 """
 function record_removal!(
         ind::Individual{T}, start::Real, release::Real;
