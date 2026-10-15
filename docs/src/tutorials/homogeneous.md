@@ -190,8 +190,10 @@ An [`Isolation`](@ref) that leaves some transmission after isolating
 !!! warning "Contact tracing and vaccination do not apply"
     [`ContactTracing`](@ref) and [`RingVaccination`](@ref) need named
     contacts, which a well-mixed population does not have.
-    [`GroupVaccination`](@ref) offers doses to the people reached through a
-    case's contacts, and this model names none. [`MassVaccination`](@ref)
+    [`GroupVaccination`](@ref) doses the members of a case's group, but a
+    continuous-time model applies it only when it lists each case's
+    contacts, as the household and network models do, and this model lists
+    none. [`MassVaccination`](@ref)
     doses each contact as the branching process creates it, which no
     continuous-time model does. None of these is applied to a
     `HomogeneousProcess`, and
