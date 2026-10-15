@@ -319,6 +319,33 @@ end
         @test member.state[:vaccination_time] == 4.0
     end
 
+    @testset "A capacity-constrained settled-batch dose is billed to its own case's time" begin
+        # `unrelated`, infected much later in the same generation, pushes the
+        # generation's maximum infection time well past `confirmed`'s own: the
+        # dose the settled-batch offer admits for `confirmed`'s group must
+        # still be billed to time 2, not to `unrelated`'s time of 50.
+        gv = GroupVaccination(efficacy = 0.9, eligibility = OnLabConfirmation())
+        cc = CapacityConstrained(gv; budget_per_period = 1.0, period = 10.0, carry_over = false)
+        state = EpiBranch.new_state(
+            BranchingProcess(Poisson(1.0), Exponential(5.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
+        )
+
+        confirmed = _group_member(gv, 1, :A, test_positive = true)
+        set_isolated!(confirmed, 2.0; release_time = Inf)
+        confirmed.infection_time = 2.0
+        unrelated = Individual(id = 2, state = Dict{Symbol, Any}())
+        unrelated.infection_time = 50.0
+        append!(state.individuals, [confirmed, unrelated])
+        state.max_infection_time = 50.0
+
+        EpiBranch._settle_generation!(state, [cc], [confirmed, unrelated], 0)
+
+        @test is_vaccinated(confirmed)
+        admission_key = EpiBranch._capacity_admission_key(EpiBranch.capacity_key(gv))
+        @test confirmed.state[admission_key] == 2.0
+    end
+
     @testset "No triggering case leaves the group unvaccinated" begin
         gv = GroupVaccination(efficacy = 0.9, eligibility = OnLabConfirmation())
         state = EpiBranch.new_state(
