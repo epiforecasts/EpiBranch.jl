@@ -714,6 +714,10 @@ their [`intervention_actions`](@ref), admitted through their wrappers, then
 their [`keep_active`](@ref), whose answers are returned. The caller leaves out
 interventions on the deprecated batch hook. A target reached by
 several individuals is offered to each of them, as a neighbour is on the race.
+Each infected case is also offered to interventions declaring
+[`traces_source`](@ref EpiBranch.traces_source) (see [`trace_contacts!`](@ref)'s
+docstring), whether or not it reached any contact of its own this generation —
+unlike the forward hooks, which have nothing to act on when it did not.
 
 Cases are visited in order of infection time, each with the state its settling
 hooks saw ([`_at_case!`](@ref)): the clock at its infection time and its place
@@ -722,7 +726,7 @@ the state as the generation left it. The state is restored afterwards.
 """
 function _act_per_case!(state::SimulationState, interventions, targets, edges, is_new)
     kept = Int[]
-    (isempty(targets) || isempty(interventions)) && return kept
+    isempty(interventions) && return kept
     reached = Dict{Int, Vector{Int}}()
     for i in eachindex(targets), (pid, _) in edges[i]
         idx = get!(Vector{Int}, reached, pid)
@@ -730,6 +734,7 @@ function _act_per_case!(state::SimulationState, interventions, targets, edges, i
     end
     clock, count, generation = state.max_infection_time, state.cumulative_cases,
         state.current_generation
+    tracing_source = any(traces_source, interventions)
     sources = [state.individuals[id] for id in state.active_ids]
     cases = filter(is_infected, sources)
     sort!(cases; by = case -> case.infection_time)
@@ -738,6 +743,7 @@ function _act_per_case!(state::SimulationState, interventions, targets, edges, i
         if is_infected(source)
             seen += 1
             _at_case!(state, source, seen)
+            _trace_source!(state, source, interventions, tracing_source)
         else
             state.max_infection_time, state.cumulative_cases = clock, count
             state.current_generation = generation
@@ -749,6 +755,28 @@ function _act_per_case!(state::SimulationState, interventions, targets, edges, i
     state.max_infection_time, state.cumulative_cases = clock, count
     state.current_generation = generation
     return kept
+end
+
+# Offer `case`'s own infector to interventions tracing backward, as the sole
+# contact in `trace_contacts!`'s usual four-argument form. An index case or a
+# community introduction has no infector to offer. Shared with the
+# continuous-time race (sellke.jl), where it is called once a case is settled.
+# On the generation engine, called for every infected case regardless of
+# whether it made a forward contact this generation, unlike `_case_hooks!`,
+# which has nothing to do when it did not.
+function _trace_source!(
+        state::SimulationState, case, interventions,
+        tracing_source = any(traces_source, interventions)
+    )
+    tracing_source || return nothing
+    1 <= case.parent_id <= length(state.individuals) || return nothing
+    infector = state.individuals[case.parent_id]
+    contacts = (infector,)
+    for intervention in interventions
+        traces_source(intervention) || continue
+        trace_contacts!(intervention, state, case, contacts)
+    end
+    return nothing
 end
 
 """
