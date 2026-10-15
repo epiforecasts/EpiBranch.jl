@@ -133,12 +133,17 @@ function simulate_once(
         model, sim_opts, interventions, progression, attributes, rng
     )
     _settle_generation!(state, interventions, _seed_cases(state), 0)
-
-    while !should_terminate(state, sim_opts)
-        _advance_generation!(model, state, interventions)
-    end
-
+    _run_generations!(model, state, sim_opts, interventions, _as_tuple(interventions))
     apply_observation!(observation, state, rng)
+    return state
+end
+
+# Takes the interventions as a tuple, so the calls made on every generation
+# are resolved once per outbreak rather than once per generation.
+function _run_generations!(model, state, sim_opts, interventions, intervention_tuple)
+    while !should_terminate(state, sim_opts)
+        _advance_generation!(model, state, interventions, intervention_tuple)
+    end
     return state
 end
 
@@ -607,7 +612,8 @@ process a contact is created together with its infection time; in a fixed
 population the contacts already exist."""
 function _advance_generation!(
         model::TransmissionModel,
-        state::SimulationState, interventions::Vector{<:AbstractIntervention}
+        state::SimulationState, interventions::Vector{<:AbstractIntervention},
+        intervention_tuple = _as_tuple(interventions)
     )
     targets, edges, minted, is_new = collect_exposures(model, state)
     # Snapshotted before anything below moves a live field: `_intervene!`'s
@@ -616,7 +622,10 @@ function _advance_generation!(
     # a fresh one.
     reinfections = _reinfection_episodes(targets, is_new)
     kept = _intervene!(state, interventions, targets, edges, minted, is_new)
-    _resolve!(model, state, interventions, targets, edges, is_new, reinfections, kept)
+    _resolve!(
+        model, state, interventions, targets, edges, is_new, reinfections, kept;
+        intervention_tuple
+    )
     return nothing
 end
 
@@ -769,10 +778,11 @@ function _resolve!(
         model::TransmissionModel, state::SimulationState,
         interventions::Vector{<:AbstractIntervention},
         targets::Vector{<:Individual}, edges::AbstractVector{<:AbstractVector{<:Tuple}},
-        is_new, reinfections = Dict{Int, InfectionEpisode}(), kept = Int[]
+        is_new, reinfections = Dict{Int, InfectionEpisode}(), kept = Int[];
+        intervention_tuple = _as_tuple(interventions)
     )
     newly_infected = _infect_targets!(
-        state, transmission_risks(model), _as_tuple(interventions), targets, edges,
+        state, transmission_risks(model), intervention_tuple, targets, edges,
         is_new, reinfections
     )
     _account_generation!(state, interventions, newly_infected, kept)
