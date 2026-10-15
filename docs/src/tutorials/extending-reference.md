@@ -841,7 +841,7 @@ works for simulation has no closed form.
 | An exact effect on the offspring distribution | `analytic_offspring_effect` for an intervention | Closed-form results on a `ModelSpec` |
 | A stopping rule | A type `<: AbstractStoppingRule` and `should_stop` | Each step |
 | A contact recorder | A type `<: ContactRecorder` and `records_contacts` | Continuous-time models, each proposal on a permanently blocked pair |
-| A terminal clinical transition | A type `<: AbstractClinicalTransition` with `is_terminal`, `terminal_event`, `terminal_target` | When a case is created |
+| A terminal clinical transition | A type `<: AbstractClinicalTransition` with `is_terminal`, `terminal_event`, `terminal_target` | When a case is settled |
 | Population characteristics | A function `(rng, ind) -> nothing` | When a person is created |
 | Several population characteristics | `[f1, f2, ...]` | When a person is created |
 | Offspring as a function | A function `(rng, ind) -> Int` | Offspring draw |
@@ -850,7 +850,7 @@ works for simulation has no closed form.
 | A transmission model | A type `<: TransmissionModel` with `generate_offspring` (offspring-driven) or `initialise_state`, `contacts_of` and `collect_exposures` returning `gather_by_target` (structure-driven), or `EpiBranch.simulate_once` running `EpiBranch.sellke_race!` (its own continuous-time loop); optionally `single_type_offspring` and accessors | Simulation and closed-form results |
 | A transmission route | `RouteWindow(name; from, until, kernel, reach)` on a model that reads routes | Continuous-time models, each case |
 | Structured mixing in a closed population | `MixingProcess(; population_size, mixing_by, rate)`: the characteristics that define the groups, and the contact rate between one person in each of two groups | Simulation |
-| A clinical transition | A type `<: AbstractClinicalTransition` with `initialise_individual!` and `resolve_individual!`; `is_terminal`, `terminal_event` and `terminal_target` if terminal; `transition_loglik` to evaluate it | When a case is created |
+| A clinical transition | A type `<: AbstractClinicalTransition` with `initialise_individual!` and `resolve_individual!`; `is_terminal`, `terminal_event` and `terminal_target` if terminal; `transition_loglik` to evaluate it | When a case is settled |
 | A calendar schedule for a contact interval | A type with `calendar_multiplier`, and `next_calendar_break` or `EpiBranch.calendar_shape(::YourSchedule) = EpiBranch.SmoothCalendar()` | Simulation and likelihood |
 | A pairwise likelihood for a contact structure | A type `<: InfectionLayer` with `contact_structure`; `compile_contact_pairs` and `pairwise_surv_loglik` then apply | Likelihood |
 | A grouping of pairwise likelihood terms | A type `<: EpiBranch.PairwiseReduction` with `EpiBranch.ngroups` and `EpiBranch.group`, run with `EpiBranch.pairwise_reduce` | Likelihood |

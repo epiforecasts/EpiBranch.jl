@@ -932,8 +932,10 @@ death) is described by clinical transitions, given as the `progression` of a
 `ModelSpec`; the [Clinical transitions](transitions.md) tutorial covers the
 built-in ones. A transition of your own subtypes
 [`AbstractClinicalTransition`](@ref) and uses the same hooks as an
-intervention: `initialise_individual!` to set defaults on each new person, and
-`resolve_individual!` to work out what happens to the case and when.
+intervention, called once per case as it is settled: `initialise_individual!`
+to set defaults, then `resolve_individual!` to work out what happens to the
+case and when. A person who is never infected does not carry the transition's
+values, so code reading them uses `get` with a default.
 
 ### A milestone other transitions can use
 
