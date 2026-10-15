@@ -256,11 +256,14 @@ competing_risk(::AbstractIntervention, parent, contact, state) = nothing
     intervention_time(intervention, individual)
 
 Time (days) at which this intervention acts on a person, such as their
-isolation time. [`Scheduled`](@ref) uses it to enforce `start_time`: an
-effect timed before the start is undone with
-[`reset!`](@ref EpiBranch.reset!).
+isolation time. [`Scheduled`](@ref) runs an intervention that defines this
+whether or not its schedule is active at the case's or contact's own clock,
+checks the schedule again at `intervention_time`, and undoes the effect with
+[`reset!`](@ref EpiBranch.reset!) if that falls outside it.
 
-Default: `-Inf` (effect always applies).
+Default: `-Inf`. An intervention relying on the default is instead gated
+before it runs, since nothing names when its effect happened for `reset!` to
+undo afterwards.
 """
 intervention_time(::AbstractIntervention, ::Individual) = -Inf
 
