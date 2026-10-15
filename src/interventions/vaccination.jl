@@ -1341,11 +1341,6 @@ function _mass_vaccination_block(mv::MassVaccination)
     return mv.coverage * efficacy(mv)
 end
 
-function analytic_offspring_effect(mv::MassVaccination, offspring::NegativeBinomial)
-    R = mean(offspring) * (1 - _mass_vaccination_block(mv))
-    return NegBin(R, offspring.r)
-end
-
-function analytic_offspring_effect(mv::MassVaccination, offspring::Poisson)
-    return Poisson(mean(offspring) * (1 - _mass_vaccination_block(mv)))
+function analytic_offspring_effect(mv::MassVaccination, offspring::Union{NegativeBinomial, Poisson})
+    return scale_distribution(offspring, 1 - _mass_vaccination_block(mv))
 end

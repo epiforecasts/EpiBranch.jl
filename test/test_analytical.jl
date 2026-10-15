@@ -1470,6 +1470,20 @@
                 extinction_probability(Poisson(2.0 * (1 - c * e)))
         end
 
+        @testset "A fully effective, fully delivered campaign gives R = 0" begin
+            mv = MassVaccination(
+                efficacy = 1.0, eligibility_time = -100.0, coverage = 1.0
+            )
+            poisson_spec = ModelSpec(
+                BranchingProcess(Poisson(2.0)); interventions = [mv]
+            )
+            @test reproduction_number(poisson_spec) == 0.0
+            @test extinction_probability(poisson_spec) == 1.0
+
+            nb_spec = ModelSpec(BranchingProcess(NegBin(2.5, 0.5)); interventions = [mv])
+            @test reproduction_number(nb_spec) == 0.0
+        end
+
         @testset "A rollout still under way during the simulation has no closed form" begin
             mv = MassVaccination(efficacy = 0.6, eligibility_time = 30.0, coverage = 0.8)
             spec = ModelSpec(BranchingProcess(NegBin(2.5, 0.5)); interventions = [mv])
