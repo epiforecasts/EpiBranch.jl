@@ -312,12 +312,22 @@ end
 
 function intervention_actions(mv::MassVaccination, state, candidates)
     actions = InterventionAction[]
+    label = dose_label(mv)
     for ind in candidates
-        get(ind.state, _vaccinated_key(dose_label(mv)), false) && continue
+        get(ind.state, _vaccinated_key(label), false) && continue
+        get(ind.state, _coverage_declined_key(label), false) && continue
         time = action_draw!(ind, (mv, :time)) do
             _sample_value(mv.eligibility_time, state.rng, ind)
         end
-        isfinite(time) && push!(actions, dose_action(mv, ind, time))
+        isfinite(time) || continue
+        accepted = action_draw!(ind, (mv, :acceptance)) do
+            _covers(mv.coverage, ind, state.rng)
+        end
+        if accepted
+            push!(actions, dose_action(mv, ind, time))
+        else
+            ind.state[_coverage_declined_key(label)] = true
+        end
     end
     return actions
 end
