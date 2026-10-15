@@ -11,6 +11,7 @@ public apply_post_transmission!
 public on_infection_settled!
 public trace_contacts!
 public traces_contacts
+public traces_source
 public has_effect
 public supplies_contacts
 public competing_risk
