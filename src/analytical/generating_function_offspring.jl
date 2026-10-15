@@ -23,8 +23,8 @@ time: [`Isolation`](@ref) does this. [`extinction_probability`](@ref) and
 [`reproduction_number`](@ref). [`proportion_transmission`](@ref),
 [`proportion_cases_individual`](@ref), [`proportion_cases_offspring`](@ref)
 and `end_of_outbreak_probability` need a negative binomial or Poisson's own
-dispersion or rate, which a law known only through its generating function
-does not carry, and raise an `ArgumentError` pointing at simulation instead.
+dispersion or rate. A law known only through its generating function has
+none, so these raise an `ArgumentError` pointing at simulation instead.
 
 # Examples
 ```julia
@@ -125,16 +125,17 @@ function probability_contain(
     return q^n_initial
 end
 
-# ── What a law given only by its pgf and mean cannot do ──────────────
+# ── Functions a pgf-only law cannot support ───────────────────────────
 #
 # `extinction_probability`, `probability_contain` and `reproduction_number`
-# read a law through `_pgf` and `_law_mean` alone, so they work for any
+# read a law through `_pgf` and `_law_mean` alone and work for any
 # `GeneratingFunctionOffspring` above. The superspreading-ranking functions
-# instead need a negative binomial's own dispersion or a per-count pmf, and
-# `end_of_outbreak_probability` the same dispersion, none of which a law known
-# only through its generating function carries; refuse explicitly; otherwise
-# each would reach `_offspring_through_interventions`'s caller as a raw
-# `MethodError` instead of the usual pointer to simulation.
+# need a negative binomial's own dispersion or a per-count pmf instead, and
+# `end_of_outbreak_probability` needs the same dispersion. A law known only
+# through its generating function has none of that, so these refuse
+# explicitly rather than reaching `_offspring_through_interventions`'s caller
+# as a raw `MethodError` and leaving the user without the usual pointer to
+# simulation.
 function _no_dispersion(fn::AbstractString)
     throw(
         ArgumentError(

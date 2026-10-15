@@ -1675,7 +1675,7 @@
             # `reproduction_number` read through its pgf and mean alone, but
             # the superspreading-ranking functions and
             # `end_of_outbreak_probability` need a negative binomial's own
-            # dispersion or a Poisson's rate, which it does not carry.
+            # dispersion or a Poisson's rate, neither of which it has.
             offspring = NegBin(2.0, 0.5)
             gt = Exponential(5.0)
             iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
