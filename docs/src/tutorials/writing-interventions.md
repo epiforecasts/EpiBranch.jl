@@ -636,6 +636,11 @@ traits with defaults:
   trigger, because without the transition that writes what the trigger reads
   the schedule never opens. `ReportedCases` names `Reporting`, except at
   `n = 0`, when the schedule opens before any report exists.
+- `EpiBranch.required_fields(trigger)` names the population characteristics
+  the trigger reads from `Individual.state`, `Symbol[]` by default.
+  `Scheduled` adds these to the fields it already requires of the
+  intervention it wraps (see [Requiring values on each person](@ref)), so the
+  simulation's startup check catches a model missing either.
 
 Here the border closes once 20 cases have had symptom onset:
 
@@ -648,21 +653,16 @@ function EpiBranch.is_triggered!(::TwentyOnsets, state)
         state.individuals
     ) >= 20
 end
+EpiBranch.required_fields(::TwentyOnsets) = [:onset_time]
 
 Scheduled(BorderClosure(0.0, 0.05); start_after = TwentyOnsets())
 ```
 
 `TwentyOnsets` keeps the default `trigger_can_lapse`: a person infected a second
-time draws a new onset, so the count can fall.
-
-!!! warning "A trigger cannot declare the population characteristics it reads"
-    `required_transitions` covers the `progression` only. `TwentyOnsets` reads
-    `:onset_time`, which [`clinical_presentation`](@ref) sets, and has no way
-    to say so. On a model built without it every `onset_time` is `NaN`, the
-    trigger counts nobody, and the border stays open for the whole run with
-    nothing to say why. `required_fields` does not help either: `Scheduled`
-    answers it for the intervention it wraps. Check for the value in
-    `is_triggered!` if you want to hear about it.
+time draws a new onset, so the count can fall. It reads `:onset_time`, which
+[`clinical_presentation`](@ref) sets, and names it with `required_fields`: a
+model built without that attribute now stops with a clear error at the start
+instead of leaving the border open for the whole run with nothing to say why.
 
 ## Capacity limits
 
@@ -934,8 +934,8 @@ built-in ones. A transition of your own subtypes
 [`AbstractClinicalTransition`](@ref) and uses the same hooks as an
 intervention, called once per case as it is settled: `initialise_individual!`
 to set defaults, then `resolve_individual!` to work out what happens to the
-case and when. A person who is never infected does not carry the transition's
-values, so code reading them uses `get` with a default.
+case and when. A person who is never infected never has the transition's
+values set, so code reading them uses `get` with a default.
 
 ### A milestone other transitions can use
 

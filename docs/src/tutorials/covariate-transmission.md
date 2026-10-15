@@ -302,12 +302,11 @@ contacts. `watches` lists the person-level variables, by their names in
 that is `:contact_scale`, the one variable the `state` function reads.
 
 !!! warning "List every variable the `state` function reads in `watches`"
-    If a variable the `state` function reads is missing from `watches`, a
-    change to it during the outbreak does not update the contacts already
-    timed. The simulation then silently uses the old transmission rate. There
-    is no error or warning. List every variable the `state` function reads,
-    even one that nothing in your current model changes. When in doubt,
-    include it. A `state` function that reads none, such as one that looks
+    If a variable the `state` function reads is missing from `watches` and
+    changes during the outbreak, the simulation stops with an error naming
+    the route. List every variable the `state` function reads, even one that
+    nothing in your current model changes, so that adding an intervention
+    later does not stop the run. A `state` function that reads none, such as one that looks
     a value up by the person's number, takes `watches = ()`.
 
 The next rule shows `watches` at work. Its `state` function reads the

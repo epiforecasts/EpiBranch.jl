@@ -88,8 +88,7 @@ struct Scheduled{I <: AbstractIntervention, F, T <: Tuple} <: InterventionWrappe
     can_lapse::Bool
     # The `start_after` triggers, kept so that the composition checks can ask
     # each what it needs of the progression; see `required_transitions`. The
-    # condition itself is a closure, which nothing can look inside. Empty for
-    # every other form.
+    # condition itself is an opaque closure. Empty for every other form.
     triggers::T
 end
 
@@ -119,17 +118,16 @@ abstract type AbstractTrigger end
 """
     is_triggered!(trigger, state::SimulationState) -> Bool
 
-Whether `trigger`'s condition holds now. The same trigger object is reused
-across the repeated simulations of `simulate(model, n)` (serially, or
-across threads under `parallel = true`), so a trigger must keep no state
-of its own between calls: derive what it needs from `state`, or keep working
+Whether `trigger`'s condition holds now. A trigger must keep no state of its
+own between calls, because the same trigger object is reused across the
+repeated simulations of `simulate(model, n)` (serially, or across threads
+under `parallel = true`): derive what it needs from `state`, or keep working
 values in `state.scratch`, which belongs to the run.
 
 The engine asks the gate about 1.7 times per individual, so a trigger that
 walks the population on every call makes a run quadratic in the number of
-individuals, as [`ReportedCases`](@ref) does. A trigger that can read a
-running total the engine already keeps, as [`Infections`](@ref) reads
-`cumulative_cases`, costs nothing by comparison.
+individuals. Read a running total instead, as [`Infections`](@ref) reads
+`cumulative_cases`.
 """
 function is_triggered! end
 
@@ -147,7 +145,7 @@ Answer about the accepted timeline. Admitting a scheduled action asks the gate
 with that action's own time in place of the simulation clock, which settles
 whether that action is admitted rather than whether the window closes. The
 distinction is worth the care: a schedule that can close speaks for none of
-the isolation releases its intervention recorded, so `true` where `false`
+the isolation releases its intervention recorded; `true` where `false`
 belongs costs a likelihood term rather than buying safety.
 """
 trigger_can_lapse(::AbstractTrigger) = true
@@ -159,15 +157,27 @@ The transition types a trigger needs the model's `progression` to hold.
 Default: `()`, nothing required.
 
 A trigger reads `Individual.state`, and the keys it reads are written by the
-progression, so a model composed without the transition that writes them
+progression: a model composed without the transition that writes them
 leaves the gate shut for the whole run. [`ModelSpec`](@ref) asks this of every
 `start_after` trigger and warns when the model does not hold what the trigger
 names. [`ReportedCases`](@ref) names [`Reporting`](@ref).
 
 A key an attributes function supplies, such as `:onset_time` from
-[`clinical_presentation`](@ref), cannot be named this way.
+[`clinical_presentation`](@ref), cannot be named this way: declare it with
+[`required_fields`](@ref EpiBranch.required_fields) instead.
 """
 required_transitions(::AbstractTrigger) = ()
+
+"""
+    required_fields(trigger) -> Vector{Symbol}
+
+The population characteristics a trigger reads from `Individual.state`, such
+as `:onset_time` set by [`clinical_presentation`](@ref). Default: none.
+[`Scheduled`](@ref) adds these to the fields its wrapped intervention already
+requires, so [`ModelSpec`](@ref) catches a model missing them the same way it
+catches an intervention missing a field of its own.
+"""
+required_fields(::AbstractTrigger) = Symbol[]
 
 """
     Infections(n)
@@ -183,60 +193,18 @@ end
 is_triggered!(t::Infections, state::SimulationState) = state.cumulative_cases >= t.n
 trigger_can_lapse(::Infections) = false
 
-# Whether a report in `st` is dated by the clock reading `now`. Read with
-# `get` rather than indexed: a `:reported` flag set by something other than
-# the `Reporting` transition need not come with a `:reporting_time`.
-_report_due(st, now) =
-    get(st, :reported, false) && get(st, :reporting_time, Inf) <= now
-
-_report_time(st) = get(st, :reporting_time, Inf)
-
-# The reports one host holds that are dated by `now`, over its archived
-# episodes and its live state.
-#
-# A reinfection archives the episode as a copy of the live state and only
-# clears the live `:reported` later, when the new infection's transitions are
-# initialised (`close_episode!` in `_resolve!`, then `resolve_transitions!`).
-# In between, the newest episode and the live state are one report, so the
-# live one is counted only when its date differs from that episode's.
-function _host_reports_due(ind, now)
-    due = 0
-    for episode in ind.episodes
-        _report_due(episode.state, now) && (due += 1)
+# The reports dated by `state.max_infection_time`, counting every episode of a
+# host infected more than once: a reinfection resets the live `:reported` flag
+# and archives the episode holding it, and a report the health system has made
+# stays made. Read from a log of the reports, so a call costs a binary search
+# however large the run.
+function _reported_cases_due(state::SimulationState{T}) where {T}
+    log = get(state.scratch, (:report_log,), nothing)
+    if log === nothing
+        log = state.scratch[(:report_log,)] = _report_log(state)
     end
-    _report_due(ind.state, now) || return due
-    isempty(ind.episodes) && return due + 1
-    archived = _report_time(last(ind.episodes).state)
-    return archived == _report_time(ind.state) ? due : due + 1
-end
-
-# The reports the population holds that are dated by
-# `state.max_infection_time`, counting every episode of a host infected more
-# than once: a reinfection resets the live `:reported` flag and archives the
-# episode carrying it, and a report the health system has made does not stop
-# having been made.
-#
-# Derived from `state.individuals` rather than kept as a running total, since
-# `make_contact!` appends an individual before its clinical transitions run
-# and `Reporting` is one of those, so a host counted on an earlier call
-# cannot be taken as finished with.
-#
-# Counted on every call, and the engine asks the gate about 1.7 times per
-# individual, so a run with this trigger is quadratic in the number of
-# individuals: about 0.02 s at 1,000 of them and 190 s at 57,000. Caching the
-# count against the clock is not available, because `resolve_transitions!`
-# sets `:reported` on each newly infected case as the generation resolves,
-# while the clock the count is read against moves only between generations.
-# Making it cheap needs the count maintained where the reports are written,
-# or the gate asked once a generation rather than once a pair, neither of
-# which a trigger can reach from outside the engine.
-function _reported_cases_due(state::SimulationState)
-    now = state.max_infection_time
-    due = 0
-    for ind in state.individuals
-        due += _host_reports_due(ind, now)
-    end
-    return due
+    _confirm_reports!(log::_ReportLog{T}, state.individuals)
+    return searchsortedlast(log.times, state.max_infection_time)
 end
 
 """
@@ -255,9 +223,9 @@ is_triggered!(t::ReportedCases, state::SimulationState) = _reported_cases_due(st
 # `n = 0` opens before any report exists, so nothing in the progression is
 # needed for the gate to open.
 required_transitions(t::ReportedCases) = t.n > 0 ? (Reporting,) : ()
-# Reports already due never stop being due: a report written for an earlier
-# episode is counted from the archive once the host is reinfected, and the
-# accepted clock only rises.
+# Reports already due stay due: a report written for an earlier episode is
+# counted from the archive once the host is reinfected, and the accepted
+# clock only rises.
 trigger_can_lapse(::ReportedCases) = false
 
 # ── Keyword convenience constructor ──────────────────────────────────
@@ -313,6 +281,15 @@ end
 # ── Protocol delegation ──────────────────────────────────────────────
 
 is_active(s::Scheduled, state::SimulationState) = s.condition(state)
+
+# Overrides the plain forwarding from `InterventionWrapper`: a trigger's own
+# fields must be checked too, not only the wrapped intervention's.
+function required_fields(s::Scheduled)
+    return reduce(
+        union, (required_fields(t) for t in s.triggers);
+        init = required_fields(s.intervention)
+    )
+end
 
 # `initialise_individual!` is inherited ungated from `InterventionWrapper`:
 # fields must exist before the policy activates.

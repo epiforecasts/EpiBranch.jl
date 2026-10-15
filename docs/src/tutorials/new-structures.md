@@ -462,6 +462,16 @@ define one method:
   distribution (or anything with a `chain_size_distribution` method). The
   analytical functions then work for your model.
 
+If a model only sometimes has a closed-form law — a multi-type or
+multi-window model, say, or a single-type offspring with no closed-form
+`chain_size_distribution` method — the default
+[`has_single_type_law`](@ref EpiBranch.has_single_type_law) already handles
+this: it calls `single_type_offspring` and reports `false` when that throws
+or when the result has no `chain_size_distribution` method, so
+`chain_size_distribution` and `loglikelihood(ChainSizes, model)` fall back
+to simulation. Specialise it only if there is a cheaper way to know,
+without calling `single_type_offspring`, that no law is available.
+
 For **likelihoods** of data that do not go through the offspring
 distribution, define methods of `loglikelihood` directly.
 

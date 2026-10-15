@@ -79,7 +79,7 @@ struct BlockVariadic <: AbstractIntervention end
 EpiBranch.competing_risk(::BlockVariadic, args...) = Risk(block_probability = 1.0)
 
 # The same hook with the vararg's length named: `Vararg{Any, N} where {N}`
-# carries an `N` that is a type variable rather than a count.
+# has an `N` that is a type variable rather than a count.
 struct BlockVariadicN <: AbstractIntervention end
 EpiBranch.competing_risk(::BlockVariadicN, args::Vararg{Any, N}) where {N} =
     Risk(block_probability = 1.0)

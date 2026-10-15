@@ -365,7 +365,7 @@ _triggers_of(s::Scheduled) = (s.triggers..., _triggers_of(s.intervention)...)
 # Warn when a trigger needs a transition the model's `progression` does not
 # hold. The keys a trigger reads are written by the progression, so without
 # the transition the gate stays shut for the whole run and the intervention
-# never acts, with nothing to say so.
+# never acts, with nothing to flag it.
 function _warn_unmet_trigger_requirements(interventions, progression)
     for iv in interventions
         for trigger in _triggers_of(iv)
@@ -450,6 +450,7 @@ population_size(s::ModelSpec) = population_size(s.process)
 # helpers and the Turing `~` distribution wrappers treat a spec like the
 # process it wraps.
 single_type_offspring(s::ModelSpec) = single_type_offspring(s.process)
+has_single_type_law(s::ModelSpec) = has_single_type_law(s.process)
 _analytic_offspring(s::ModelSpec) = _analytic_offspring(s.process)
 n_types(s::ModelSpec) = n_types(s.process)
 _single_kernel(s::ModelSpec) = _single_kernel(s.process)

@@ -124,8 +124,8 @@ supports_waning(::AllOrNothingMode) = false
     VaccineEffect(; efficacy, severity_efficacy = 0.0, delay_to_immunity = 0.0,
         waning = nothing, mode = LeakyMode(), dose_label = :default)
 
-What a vaccine dose does once given, whoever receives it and whenever: the
-effects shared by every vaccination intervention. The built-in vaccinations
+The effects of a vaccine dose shared by every vaccination intervention,
+the same whoever receives it and whenever it is given. The built-in vaccinations
 take these as keywords and build the `VaccineEffect` themselves; build one
 directly only when writing a new vaccination intervention (see
 [A custom vaccination](@ref)).

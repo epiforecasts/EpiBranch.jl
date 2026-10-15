@@ -1,3 +1,8 @@
+# A model whose `single_type_offspring` raises something other than
+# `ArgumentError`/`MethodError`, to check that `has_single_type_law` lets it through.
+struct _BrokenOffspringModel <: EpiBranch.TransmissionModel end
+EpiBranch.single_type_offspring(::_BrokenOffspringModel) = error("broken")
+
 @testset "Types" begin
     @testset "NegBin convenience constructor" begin
         d = NegBin(2.5, 0.16)
@@ -101,6 +106,27 @@
         @test single_type_offspring(model) isa NegativeBinomial
         @test model.infectiousness[1].kernel isa Distribution
         @test model.population_size isa NoPopulation
+    end
+
+    @testset "has_single_type_law" begin
+        # A single-type offspring law with a `chain_size_distribution` method.
+        model = BranchingProcess(NegBin(2.5, 0.16), LogNormal(1.6, 0.5))
+        @test EpiBranch.has_single_type_law(model)
+
+        # A single-type law with no `chain_size_distribution` method.
+        no_law_model = BranchingProcess(Binomial(5, 0.3))
+        @test !EpiBranch.has_single_type_law(no_law_model)
+
+        # `single_type_offspring` throwing `ArgumentError` (multi-type offspring).
+        multi_type_model = BranchingProcess(
+            [0.4 0.2; 0.1 0.3], R -> Poisson(R), Exponential(5.0)
+        )
+        @test !EpiBranch.has_single_type_law(multi_type_model)
+
+        # Any other exception from `single_type_offspring` propagates unchanged.
+        @test_throws ErrorException EpiBranch.has_single_type_law(
+            _BrokenOffspringModel()
+        )
     end
 
     @testset "BranchingProcess with population_size" begin

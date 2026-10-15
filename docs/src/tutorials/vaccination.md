@@ -316,7 +316,9 @@ nothing is left.
     lower containment. A contact whose infection is stopped never develops
     symptoms, so they are never isolated and the people they infected before
     their dose are not traced from them. A programme that relies on symptom
-    onset to trigger tracing loses that trigger for treated contacts.
+    onset to trigger tracing loses that trigger for treated contacts. Tracing
+    with `depth = 2` reaches them instead, as contacts of contacts of the
+    original case.
 
 ## Clustered vaccine refusal
 
