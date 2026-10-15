@@ -20,7 +20,11 @@ Return one of these from [`EpiBranch.analytic_offspring_effect`](@ref) for an
 effect with no simpler closed form, such as a mixture over a random isolation
 time: [`Isolation`](@ref) does this. [`extinction_probability`](@ref) and
 [`probability_contain`](@ref) accept it directly, and so does
-[`reproduction_number`](@ref).
+[`reproduction_number`](@ref). [`proportion_transmission`](@ref),
+[`proportion_cases_individual`](@ref), [`proportion_cases_offspring`](@ref)
+and `end_of_outbreak_probability` need a negative binomial or Poisson's own
+dispersion or rate, which a law known only through its generating function
+does not carry, and raise an `ArgumentError` pointing at simulation instead.
 
 # Examples
 ```julia
@@ -120,3 +124,32 @@ function probability_contain(
     )
     return q^n_initial
 end
+
+# ── What a law given only by its pgf and mean cannot do ──────────────
+#
+# `extinction_probability`, `probability_contain` and `reproduction_number`
+# read a law through `_pgf` and `_law_mean` alone, so they work for any
+# `GeneratingFunctionOffspring` above. The superspreading-ranking functions
+# instead need a negative binomial's own dispersion or a per-count pmf, and
+# `end_of_outbreak_probability` the same dispersion, none of which a law known
+# only through its generating function carries; refuse explicitly; otherwise
+# each would reach `_offspring_through_interventions`'s caller as a raw
+# `MethodError` instead of the usual pointer to simulation.
+function _no_dispersion(fn::AbstractString)
+    throw(
+        ArgumentError(
+            "$fn needs a NegativeBinomial or Poisson offspring distribution; " *
+                "a GeneratingFunctionOffspring carries no such dispersion to use. " *
+                "Compute it from simulated outbreaks, simulate(spec, n), instead."
+        )
+    )
+end
+
+proportion_transmission(::GeneratingFunctionOffspring; prop_cases::Real = 0.2) =
+    _no_dispersion("proportion_transmission")
+proportion_cases_individual(::GeneratingFunctionOffspring; prop_transmission::Real = 0.8) =
+    _no_dispersion("proportion_cases_individual")
+proportion_cases_offspring(::GeneratingFunctionOffspring; prop_transmission::Real = 0.8) =
+    _no_dispersion("proportion_cases_offspring")
+end_of_outbreak_probability(::GeneratingFunctionOffspring, ::Distribution, ::Real) =
+    _no_dispersion("end_of_outbreak_probability")
