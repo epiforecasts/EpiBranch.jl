@@ -73,7 +73,7 @@ This holds on every axis:
   dispatched components (eligibility, rate, delay, effect), each a
   type with a method. The intervention body holds no hardcoded policy
   branching. Composition then works at two levels: between interventions
-  (the stack the model carries) and within each intervention (its pieces).
+  (the model's intervention stack) and within each intervention (its pieces).
 - **Output, observation, and outcome rules** follow the same shape:
   mortality, hospitalisation, reporting, stopping conditions, and line-list
   columns are typed objects with methods, not closed sets of fields.

@@ -436,8 +436,8 @@ end
     has_effect(intervention) -> Bool
 
 Whether `intervention` can change a simulation or a likelihood. [`ModelSpec`](@ref)
-asks this of each intervention it is given and warns about one that answers
-`false`, since such an intervention runs without any sign that it does nothing.
+asks this of each intervention it is given and warns when one answers `false`,
+so an inert intervention does not run unnoticed.
 
 The default reads the method tables: `true` for a type with a method of its own,
 at the number of arguments the engine calls it with, for one of the hooks the
