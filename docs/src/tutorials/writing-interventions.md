@@ -63,7 +63,7 @@ time and `state.cumulative_cases` counts the case and those settled before it.
 `on_infection_settled!` runs before that, and still sees the previous case's
 values. A [`Scheduled`](@ref) condition reads these: `cumulative_cases` for a
 `start_after_cases` count. `start_time`/`end_time` are checked differently,
-against `isolation_time`/`intervention_time` rather than this clock — see
+against `isolation_time`/`intervention_time` rather than this clock; see
 below. On a branching process the count includes the cases of earlier
 generations and those of the same generation infected no later than the
 case; a case of a later generation is not counted even if it was infected

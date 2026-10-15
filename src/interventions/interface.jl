@@ -262,8 +262,7 @@ checks the schedule again at `intervention_time`, and undoes the effect with
 [`reset!`](@ref EpiBranch.reset!) if that falls outside it.
 
 Default: `-Inf`. An intervention relying on the default is instead gated
-before it runs, since nothing names when its effect happened for `reset!` to
-undo afterwards.
+before it runs: with no named time, `reset!` has nothing to undo afterwards.
 """
 intervention_time(::AbstractIntervention, ::Individual) = -Inf
 

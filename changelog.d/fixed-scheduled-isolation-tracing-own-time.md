@@ -6,5 +6,5 @@ when its own isolation would have fallen inside the window; it now is.
 `start_after`, including the `ReportedCases` and `Infections` triggers, is
 checked at that later time too, so a trigger's reading of the population can
 differ slightly from a plain case count where it did not before. This
-changes which cases a `Scheduled` isolation or tracing policy reaches, and so
-the results of simulations using one.
+changes which cases a `Scheduled` isolation or tracing policy reaches, and
+with it the results of simulations using one.
