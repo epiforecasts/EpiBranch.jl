@@ -751,6 +751,15 @@ function _act_per_case!(state::SimulationState, interventions, targets, edges, i
     return kept
 end
 
+"""
+    _case_hooks!(state, case, interventions, contacts, is_new, kept)
+
+Offer `case`'s `contacts` to `interventions`' [`trace_contacts!`](@ref), then
+their [`intervention_actions`](@ref), admitted through their wrappers, then
+their [`keep_active`](@ref), appending its answers to `kept`. This is the
+per-case hook `_act_per_case!` calls for each source, and the one a
+continuous-time race calls when it settles a case.
+"""
 function _case_hooks!(state::SimulationState, case, interventions, contacts, is_new, kept)
     for intervention in interventions
         trace_contacts!(intervention, state, case, contacts)
@@ -922,14 +931,19 @@ function _settle_generation!(state::SimulationState, interventions, cases, cases
     return nothing
 end
 
-# Once `cases` are settled, offer each intervention declaring
-# `settles_generation_batch` its actions one case at a time, with the clock
-# at that case's own infection time, so a wrapper such as `CapacityConstrained`
-# bills capacity to the triggering case's own period rather than the
-# generation's. Each call is scoped to the single case: an intervention such
-# as `GroupVaccination` finds the rest of a triggered group through its own
-# population-wide index, not through the candidates it is passed, so a
-# single-case candidate still finds everything a whole-batch call would.
+"""
+    _offer_continuous_actions!(state, interventions, cases, cases_before, rank)
+
+Once `cases` are settled, offer each intervention declaring
+[`settles_generation_batch`](@ref) its actions one case at a time, with the
+clock at that case's own infection time, so a wrapper such as
+`CapacityConstrained` bills capacity to the triggering case's own period
+rather than the generation's. Each call is scoped to the single case: an
+intervention such as `GroupVaccination` finds the rest of a triggered group
+through its own population-wide index, not through the candidates it is
+passed, so a single-case candidate still finds everything a whole-batch call
+would.
+"""
 function _offer_continuous_actions!(state::SimulationState, interventions, cases, cases_before, rank)
     for (i, case) in enumerate(cases)
         _at_case!(state, case, cases_before + _rank(rank, i))
