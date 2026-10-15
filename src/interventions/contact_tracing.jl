@@ -955,7 +955,7 @@ Same as [`ContactTracing`](@ref): `eligibility` (which cases are traced back,
 default [`SymptomaticParent`](@ref)), `probability` (share of eligible cases
 whose infector is found), `isolation_to_trace_delay` and `action` (required).
 
-# What this changes
+# Engine differences
 
 By the time a case is itself confirmed and traced back, a branching process has
 usually already generated its infector's secondary cases in one step, together
@@ -984,7 +984,8 @@ infector found this way is marked traced (and quarantined, under
 [`Quarantine`](@ref)), with its `trace_time` and, under the key
 `:source_traced_by`, the id of the case whose tracing reached it — the reverse
 of [`ContactTracing`](@ref)'s `:traced_by`, which always names an earlier-
-infected node; a kept separate because it names a later one instead.
+infected node. `:source_traced_by` is kept separate because it names a later
+one instead.
 """
 struct SourceTracing{
         E <: TraceEligibility, F <: TraceRate, D <: TraceDelay, A <: TraceAction,
@@ -1031,8 +1032,8 @@ end
 
 # `trace_contacts!` below traces backward; the forward ring walk the race and
 # the generation engine build for `traces_contacts` has nothing for
-# `SourceTracing` to do, which `traces_source` asks them to call it through
-# instead (see `trace_contacts!`'s docstring).
+# `SourceTracing` to do. `traces_source` asks them to call it through a
+# second route instead (see `trace_contacts!`'s docstring).
 traces_contacts(::SourceTracing) = false
 traces_source(::SourceTracing) = true
 
