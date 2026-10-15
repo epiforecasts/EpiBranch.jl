@@ -13,6 +13,7 @@ using SurvivalDistributions: SurvivalDistributions, cumhazard, loghazard, hazard
 include("docstrings.jl")
 
 # Core types
+include("individual_state.jl")
 include("types.jl")
 include("state_accessors.jl")
 include("options.jl")

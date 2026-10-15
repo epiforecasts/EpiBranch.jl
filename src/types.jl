@@ -101,7 +101,7 @@ struct InfectionEpisode{T <: Real}
     generation::Int
     chain_id::Int
     secondary_case_ids::Vector{Int}
-    state::Dict{Symbol, Any}
+    state::IndividualState{T}
 end
 
 """
@@ -127,7 +127,8 @@ contact they exposed; for models with a fixed population, anyone in it.
   (`:onset_time`), `:asymptomatic`, `:age`, `:sex`, whether they were
   `:isolated`, `:traced`, `:quarantined` or `:vaccinated`, `:test_positive`,
   their `:type` in a multi-type model, whether they were `:infected`, and any
-  population characteristics you add.
+  population characteristics you add. It is read and written as a dictionary
+  (see [`EpiBranch.IndividualState`](@ref)).
 - `episodes`: past infections, oldest first, for a person who has been
   infected more than once (see [`close_episode!`](@ref)). The fields above
   describe the current or latest infection. None of the built-in models
@@ -172,7 +173,7 @@ mutable struct Individual{T <: Real}
     susceptibility::T
     infectiousness::T
     secondary_case_ids::Vector{Int}
-    state::Dict{Symbol, Any}
+    state::IndividualState{T}
     episodes::Vector{InfectionEpisode{T}}
 end
 
@@ -180,7 +181,7 @@ function Individual(;
         id::Int, parent_id::Int = 0, generation::Int = 0,
         chain_id::Int = 1, infection_time::Real = 0.0,
         susceptibility::Real = 1.0, infectiousness::Real = 1.0,
-        state::Dict{Symbol, Any} = Dict{Symbol, Any}()
+        state::AbstractDict = IndividualState{Float64}()
     )
     T = promote_type(
         typeof(infection_time), typeof(susceptibility),
@@ -188,7 +189,8 @@ function Individual(;
     )
     return Individual{T}(
         id, parent_id, generation, chain_id, convert(T, infection_time),
-        convert(T, susceptibility), convert(T, infectiousness), Int[], state,
+        convert(T, susceptibility), convert(T, infectiousness), Int[],
+        IndividualState{T}(state),
         InfectionEpisode{T}[]
     )
 end

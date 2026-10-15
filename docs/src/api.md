@@ -198,6 +198,7 @@ MaxGenerations
 MaxTime
 SimulationState
 Individual
+EpiBranch.IndividualState
 InfectionEpisode
 ```
 

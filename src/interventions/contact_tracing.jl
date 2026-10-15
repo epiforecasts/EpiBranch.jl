@@ -481,7 +481,7 @@ function apply_trace!(::FlagOnly, contact, state, trace_time, rng)
     ind_onset = onset_time(contact)
     traced_iso = isnan(ind_onset) ? trace_time : max(ind_onset, trace_time)
     contact.state[:_traced_isolation_time] = min(
-        get(contact.state, :_traced_isolation_time, Inf), traced_iso
+        _state_real(contact.state, :_traced_isolation_time, Inf), traced_iso
     )
     return nothing
 end
@@ -753,7 +753,7 @@ function _trace_pair!(ct::ContactTracing, state, infector, ind, rng; not_before 
         ct.isolation_to_trace_delay, infector, ind, state, rng
     )
     base = seed ? trigger_time(ct.eligibility, infector, ind, state) :
-        get(infector.state, :trace_time, _recorded_isolation_time(infector))
+        _state_real(infector.state, :trace_time, _recorded_isolation_time(infector))
     # A contact cannot be sought before it exists, such as a funeral contact
     # before the funeral, so the delay runs from whichever comes later.
     trace_time = max(base, not_before) + trace_delay
@@ -777,7 +777,7 @@ function _trace_pair!(ct::ContactTracing, state, infector, ind, rng; not_before 
     # propagates it, so it would overwrite a good time another tracing system
     # had already written. A custom `trigger_time` can return one.
     if !isnan(trace_time)
-        ind.state[:trace_time] = min(get(ind.state, :trace_time, Inf), trace_time)
+        ind.state[:trace_time] = min(_state_real(ind.state, :trace_time, Inf), trace_time)
     end
 
     # Record how far the ring can still grow from this contact, so a
@@ -866,10 +866,12 @@ end
 # window to close.
 function competing_risk(ct::ContactTracing, parent, contact, state)
     get(parent.state, :quarantined, false) || return nothing
-    risks = ()
-    for key in _trace_removal_keys(ct.action)
+    keys = _trace_removal_keys(ct.action)
+    length(keys) == 1 && return _removal_risks(parent, 1.0, only(keys))
+    risks = Risk[]
+    for key in keys
         more = _removal_risks(parent, 1.0, key)
-        more === nothing || (risks = (risks..., more...))
+        more === nothing || append!(risks, more)
     end
     return isempty(risks) ? nothing : risks
 end

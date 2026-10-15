@@ -223,7 +223,7 @@ Risk(event_time, block_probability) = Risk(event_time, block_probability, Inf)
 
 """
     competing_risk(intervention, parent, contact, state)
-        -> Union{Nothing, Risk, NTuple{N, Risk}}
+        -> Union{Nothing, Risk, collection of Risk}
 
 How this intervention can prevent the infection of `contact` by `parent`
 (the infector): one or more [`Risk`](@ref)s giving the probability and the
@@ -232,7 +232,9 @@ time window, or `nothing` if it has no effect on this infection. Default:
 
 An intervention that acts in more than one way, such as ring vaccination
 reducing both the contact's susceptibility and the infector's onward
-transmission, returns a tuple of risks, each applied independently.
+transmission, returns several risks, each applied independently: a tuple of
+them, or any other collection that can be iterated and indexed, as the
+built-in removals return a vector with one risk per stretch of removal.
 
 A community introduction on a continuous-time model has no infector, and the
 person being introduced stands in for one, so a risk that reads the infector
@@ -343,13 +345,35 @@ end
 # One risk per stretch a removal took the host out for, a release of `Inf`
 # standing for a removal that never ends. A likelihood takes the same
 # stretches out of each pair's exposure, which is what keeps the two in step.
-function _removal_risks(parent, block_probability, key = REMOVAL_STRETCHES_KEY)
-    stretches = removal_stretches(parent, key)
-    isempty(stretches) && return nothing
-    return Tuple(
-        Risk(event_time = a, block_probability = block_probability, release_time = b)
-            for (a, b) in stretches
-    )
+function _removal_risks(
+        parent::Individual{T}, block_probability, key = REMOVAL_STRETCHES_KEY
+    ) where {T}
+    stretches = get(parent.state, key, nothing)
+    # Recorded in the host's own number type, as `record_removal!` does, the
+    # stretches are walked without dispatching on each; anything else is
+    # walked as `Any`.
+    if stretches isa Vector{Tuple{T, T}}
+        return isempty(stretches) ? nothing : _StretchRisks(stretches, block_probability)
+    end
+    (stretches === nothing || isempty(stretches)) && return nothing
+    return _StretchRisks(collect(Any, stretches)::Vector{Any}, block_probability)
+end
+
+# The risks of `_removal_risks`, a vector of them made one at a time as they
+# are read rather than gathered first.
+struct _StretchRisks{R, V, P} <: AbstractVector{R}
+    stretches::V
+    block_probability::P
+end
+function _StretchRisks(stretches::Vector{Tuple{T, T}}, p::P) where {T, P}
+    return _StretchRisks{Risk{T, P, T}, typeof(stretches), P}(stretches, p)
+end
+_StretchRisks(stretches::Vector{Any}, p::P) where {P} =
+    _StretchRisks{Risk, Vector{Any}, P}(stretches, p)
+Base.size(r::_StretchRisks) = size(r.stretches)
+Base.@propagate_inbounds function Base.getindex(r::_StretchRisks, i::Int)
+    a, b = r.stretches[i]
+    return Risk(event_time = a, block_probability = r.block_probability, release_time = b)
 end
 
 # The start and release holding two removals at once. Where they overlap or
