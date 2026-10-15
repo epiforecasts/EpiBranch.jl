@@ -36,7 +36,9 @@ end
 function IndividualState{T}() where {T <: Real}
     # Room for the few keys every individual gets; a store that interventions
     # add more to doubles as it grows.
-    return IndividualState{T}(sizehint!(_Slot{T}[], 4))
+    # Allocated at full size and emptied: cheaper than `sizehint!` on an empty
+    # vector, which is a cost every individual pays.
+    return IndividualState{T}(resize!(Vector{_Slot{T}}(undef, 4), 0))
 end
 
 function IndividualState{T}(d::AbstractDict) where {T <: Real}
