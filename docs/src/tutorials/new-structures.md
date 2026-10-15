@@ -99,7 +99,7 @@ community route cut short by isolation, a funeral route. A
 [`RouteWindow`](@ref) describes one route:
 
 ```julia
-RouteWindow(name; from = nothing, until, kernel, reach = name,
+RouteWindow(name; from = nothing, until = (), kernel, reach = name,
             contacts_from = :infection, traceable = 1.0)
 ```
 

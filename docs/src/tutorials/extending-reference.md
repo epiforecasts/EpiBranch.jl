@@ -23,8 +23,8 @@ missing, such as `is_traced(ind) = get(ind.state, :traced, false)::Bool`.
 asserts the type. For a time, keep the accessor generic in the number type so
 that likelihoods can be differentiated through it:
 `onset_time(ind::Individual{T}) where {T} = convert(T, get(ind.state, :onset_time, T(NaN)))`.
-Code inside the package adds such accessors in `src/state_accessors.jl` rather
-than calling `get(ind.state, ...)` directly.
+New code inside the package adds such accessors in `src/state_accessors.jl`
+rather than calling `get(ind.state, ...)` directly.
 
 ### Reserved keys
 
