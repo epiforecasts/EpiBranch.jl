@@ -212,9 +212,9 @@ rate. For transmission that differs between age groups or other groups, see
 [Network models](networks.md) and [Household models](households.md). When
 mixing is uneven, for example age bands, spatial patches or demographic
 strata that contact each other at different rates, [`MixingProcess`](@ref)
-runs the same Sellke pool over a contact structure instead, with no
-simulation code of your own; the [Extending](extending.md) guide works
-through an age-structured example.
+runs the same simulation over a contact structure instead, with no
+simulation code of your own; [Age- or group-structured mixing in a closed
+population](@ref) works through an age-structured example.
 
 !!! note "How the simulation works"
     The simulation gives the exact stochastic SIR final-size distribution in

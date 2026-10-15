@@ -24,13 +24,18 @@ there; the seams it extends stay in core.
 
 ## Design
 
-The architecture lives in [`docs/src/design.md`](docs/src/design.md) — read it
-first. Keep it to high-level concepts: it names no hook signatures, and the
-concrete contracts (those signatures, the reserved keys table for
-`Individual.state`, worked examples) are in
-[`docs/src/tutorials/extending.md`](docs/src/tutorials/extending.md).
+The architecture lives in [`docs/src/design.md`](docs/src/design.md), and the
+design principles and extension rules in
+[`docs/src/contributing.md`](docs/src/contributing.md) — read both first. Keep
+design.md to high-level concepts: it names no hook signatures, and the concrete
+contracts (those signatures, the reserved keys table for `Individual.state`,
+worked examples) are in the extending guide under `docs/src/tutorials/`:
+[`writing-interventions.md`](docs/src/tutorials/writing-interventions.md),
+[`new-structures.md`](docs/src/tutorials/new-structures.md) and
+[`extending-reference.md`](docs/src/tutorials/extending-reference.md) (the
+reserved keys table).
 
-The rule that matters most, from design.md's "Extension by dispatch": new
+The rule that matters most, from contributing.md's "Extension by dispatch": new
 behaviour is added by defining a new type and a method, not by growing options
 on an existing struct. A `Union` field whose members trigger different
 branches, a `Symbol` that switches behaviour inside a function, or a `Bool`
@@ -65,7 +70,7 @@ engine loop, work through these:
    and why it did not fit. A new `Bool`, `Symbol` or `Union` field on a core
    type, or a new verb alongside an existing one, needs that justification.
 
-The test, as design.md puts it: can a plausible new variant be added without
+The test, as contributing.md puts it: can a plausible new variant be added without
 editing the component's source? If not, the varying part belongs in a
 dispatched-on trait.
 
