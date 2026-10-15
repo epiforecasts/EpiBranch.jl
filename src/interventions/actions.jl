@@ -31,7 +31,7 @@ Both engines call it once per case, after every intervention's
 wrote. The generation engine passes the contacts the case made and admits
 every action with a finite time; once a generation's cases are settled, it
 also passes the whole batch to an intervention that declares
-[`_settles_generation_batch`](@ref), so a trigger that only becomes true on
+[`settles_generation_batch`](@ref), so a trigger that only becomes true on
 settlement (such as a case's own lab confirmation) still reaches its group.
 The network and household races pass the case and the members it can still
 reach, for an intervention that declares [`continuous_actions`](@ref), and
@@ -332,7 +332,7 @@ end
 Whether this intervention can act once a case's infection is settled, rather
 than only when it makes a contact: on a network or household race, after each
 case's infection is settled, and, by default (see
-[`_settles_generation_batch`](@ref)), on the generation engine, for the whole
+[`settles_generation_batch`](@ref)), on the generation engine, for the whole
 batch once a generation is settled. Return `true` only if proposing actions
 needs no infection time of a contact not yet infected and never changes a
 case already settled. The default is `false`.
@@ -352,7 +352,7 @@ function continuous_actions(rv::RingVaccination)
 end
 
 """
-    _settles_generation_batch(intervention) -> Bool
+    settles_generation_batch(intervention) -> Bool
 
 Whether `_settle_generation!` should also offer `intervention`'s actions for
 the whole settled batch, on top of the contacts each source is already
@@ -364,11 +364,11 @@ exposure not yet complicated by that contact's own clinical resolution.
 Offering it again from the settled batch would reconsider a dose after this
 same round has already resolved the case's onset and isolation from it.
 """
-_settles_generation_batch(iv) = continuous_actions(iv)
-function _settles_generation_batch(w::InterventionWrapper)
-    return _settles_generation_batch(w.intervention)
+settles_generation_batch(iv) = continuous_actions(iv)
+function settles_generation_batch(w::InterventionWrapper)
+    return settles_generation_batch(w.intervention)
 end
-_settles_generation_batch(::RingVaccination) = false
+settles_generation_batch(::RingVaccination) = false
 
 # Whether `id` belongs to this race and the race has not finalised it yet, so
 # that an action may still reach it. `pos` is the race's id-to-index map into

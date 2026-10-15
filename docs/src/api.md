@@ -585,6 +585,7 @@ EpiBranch.action_draw!
 EpiBranch._action_cache
 EpiBranch.apply_actions!
 EpiBranch.continuous_actions
+EpiBranch.settles_generation_batch
 EpiBranch.may_revise
 EpiBranch.is_settled
 EpiBranch.persistent_competing_risks

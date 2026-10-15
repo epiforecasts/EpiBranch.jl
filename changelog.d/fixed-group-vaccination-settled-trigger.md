@@ -3,6 +3,6 @@ when a case made a contact in it, so a case whose own trigger (such as lab
 confirmation) arrived after its last contact, or an index case whose chain
 died out before making one, was never offered a dose even though it was
 itself eligible. Once a generation's cases are settled, the engine now also
-offers every intervention declaring `continuous_actions`, as
+offers every intervention declaring `settles_generation_batch`, as
 `GroupVaccination` does, its actions for the whole batch, matching what a
 network or household race already does after each case settles.
