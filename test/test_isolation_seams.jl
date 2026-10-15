@@ -237,8 +237,8 @@ EpiBranch.risk_applies(::ReopeningWard, route) = true
 
     @testset "A leaky isolation records its own stretch and keeps its window open" begin
         # Leaky isolation reduces each contact's hazard and removes nobody, so
-        # it has no window to close, but the likelihood still needs its
-        # stretch, recorded under its own key apart from a complete removal's
+        # it has no window to close. The likelihood still needs its stretch
+        # though, recorded under its own key, apart from a complete removal's,
         # so the two are never merged together. A wrapper that cannot read
         # stretches must not narrow the window for it either, which would turn
         # the reduction into a permanent, perfect removal.

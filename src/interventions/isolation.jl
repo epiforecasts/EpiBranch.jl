@@ -203,10 +203,10 @@ removal_block_probability(iso::Isolation) = 1.0 - iso.post_isolation_transmissio
 
 function removal_gap_host_times(iso::Isolation)
     # Leaky isolation never closes the window (its block is per contact
-    # regardless of duration), so it always has a stretch to read, recorded
-    # under its own key so a likelihood never mistakes it for a complete
-    # removal. Perfect isolation with a duration of `Inf` closes the window
-    # instead and has no stretch of its own to add.
+    # regardless of duration), so it always has a stretch to read. That
+    # stretch is recorded under its own key, keeping a likelihood from
+    # mistaking it for a complete removal. Perfect isolation with a duration
+    # of `Inf` closes the window instead and has no stretch of its own to add.
     iso.post_isolation_transmission == 0 || return (LEAKY_REMOVAL_STRETCHES_KEY,)
     iso.duration === Inf && return ()
     return (REMOVAL_STRETCHES_KEY,)
