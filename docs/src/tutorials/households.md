@@ -525,8 +525,7 @@ check convergence (for example the R-hat values in `summarize(chain)`).
     times. Unless you use `EarliestInfected()` (below), prepare the layout
     once with `compile_household_pairs`, outside the model, and reuse it: it
     stays valid as long as the households and the set of people ever
-    infected stay the same. There is no worked example of this
-    in the documentation yet.
+    infected stay the same. [An example follows below](#Fitting-with-unobserved-infection-times).
 
 !!! warning "Data that stop before the outbreak ends (right-censoring)"
     If your data stop at a date, outbreaks in some households may still be
@@ -555,6 +554,82 @@ check convergence (for example the R-hat values in `summarize(chain)`).
 If the log-likelihood is `-Inf`, the data contain a case the model cannot
 explain, such as someone infected when none of their housemates was infectious
 and there is no community hazard.
+
+### Fitting with unobserved infection times
+
+Simulate a household outbreak with a known incubation period, and keep only
+what a household study would record: who lives with whom, each case's
+symptom onset, and which case in each household was recruited first.
+Infection times, which `pairwise_surv_loglik` needs, are not among them:
+
+```@example households
+truth = ModelSpec(HouseholdProcess(fill(4, 20), Exponential(4.0));
+    progression = [Transition(:recovered; from = :infection, delay = 10.0, terminal = true)],
+    attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5)))
+full = household_infections(
+    simulate(truth; rng = StableRNG(5)), truth; host_times = (:onset_time,)
+)
+
+household_of = full.household_of
+onset = full.host_times.onset_time
+is_index = full.is_index
+infected = findall(x -> !ismissing(x) && !isnan(x), onset)
+nothing # hide
+```
+
+A candidate incubation delay for each case turns their onset into a
+candidate infection time, `onset[i] - delay[i]`, from which
+[`HouseholdInfections`](@ref) is rebuilt on every evaluation.
+`infectious_time` is the same as `infection_time` here, since
+`HouseholdProcess` starts the infectious period at infection, and
+`removal_time` follows from the known, fixed recovery delay:
+
+```@example households
+function augmented_infections(household_of, onset, is_index, infected, delay)
+    T = eltype(delay)
+    infection_time = fill(T(NaN), length(household_of))
+    infection_time[infected] .= onset[infected] .- delay
+    removal_time = infection_time .+ 10.0
+    return HouseholdInfections(
+        household_of, infection_time, infection_time, removal_time, is_index
+    )
+end
+nothing # hide
+```
+
+The model below puts the same prior on the contact rate as before, and the
+known incubation distribution on each case's delay. Because a housemate's
+candidate infection time can come before the recruited index case's,
+[`compile_household_pairs`](@ref) is rebuilt with
+[`EarliestInfected()`](@ref) at every evaluation, as the warning above says:
+
+```@example households
+@model function household_fit_augmented(household_of, onset, is_index, infected)
+    log_rate ~ Normal(-1, 1)
+    mean_interval = 1 / exp(log_rate)
+    delay ~ filldist(LogNormal(1.5, 0.5), length(infected))
+    data = augmented_infections(household_of, onset, is_index, infected, delay)
+    layout = compile_household_pairs(data; condition_on = EarliestInfected())
+    Turing.@addlogprob! pairwise_surv_loglik(Exponential(mean_interval), data, layout)
+end
+
+augmented_chain = sample(
+    StableRNG(6), household_fit_augmented(household_of, onset, is_index, infected),
+    NUTS(), 300; initial_params = InitFromPrior(), progress = false
+)
+
+mean_interval = exp.(-vec(augmented_chain[:log_rate]))
+quantile(mean_interval, [0.025, 0.5, 0.975])
+```
+
+The posterior median is close to the true 4 days, estimated with every
+case's infection time itself unobserved. `InitFromPrior()` draws each case's
+starting delay from its prior, because the default initialisation rarely
+finds a starting point where every case still has a possible infector:
+households vary enough in their members' incubation periods that a
+candidate infection time easily falls outside everyone's infectious window.
+The 10-day recovery delay above, longer than the 6 days used earlier on this
+page, leaves more room for that before the log-likelihood turns to `-Inf`.
 
 ### Fitting a community hazard
 
