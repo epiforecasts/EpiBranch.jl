@@ -128,10 +128,11 @@ end
 
 # As above, but also requiring the method to be callable with exactly `n`
 # arguments (the hook itself counted among them): a hook written for `T` with
-# the wrong arity turns up under `methods` here, same as a correctly aritied
-# one, but is never the method an exact-arity call resolves to, so it does not
-# count. A trailing `args...` is handled separately, since it is reachable at
-# any arity its minimum allows, rather than the one `methods` lists it under.
+# the wrong arity turns up under `methods` here, same as one with the right
+# arity, but is never the method an exact-arity call resolves to, so it does
+# not count. A trailing `args...` is handled separately, since it is reachable
+# at any arity its minimum allows, rather than the one `methods` lists it
+# under.
 function _has_own_method(f, T::Type, base::Type, n::Int)
     return any(methods(f, Tuple{T, Vararg{Any}})) do mm
         params = Base.unwrap_unionall(mm.sig).parameters
@@ -616,7 +617,7 @@ perfect isolation takes the case out of transmission entirely, whereas leaky
 isolation only reduces it. Listing `INTERVENTION_REMOVAL` asks each
 intervention when it removes the case (through `infectious_removal_time`).
 
-This is what makes routes worth separating. A community route lists it, so
+This is why routes are worth separating. A community route lists it, so
 isolating a case ends their community transmission; a household route does
 not, so the case goes on infecting the people they live with. The same applies
 to the reduction from leaky isolation, but not to a vaccine's protection, which

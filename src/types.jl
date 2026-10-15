@@ -75,6 +75,33 @@ function single_type_offspring(model::TransmissionModel)
     )
     return off
 end
+
+"""
+    has_single_type_law(model::TransmissionModel)
+
+Whether `single_type_offspring(model)` returns an offspring specification
+with a closed-form `chain_size_distribution` method, rather than
+`single_type_offspring` throwing or the offspring having no such method.
+`chain_size_distribution` and `loglikelihood(::ChainSizes, model)` check
+this before taking the analytical fast path, rather than each catching the
+errors `single_type_offspring` and `chain_size_distribution` throw for a
+multi-type/multi-window model or an offspring with no closed form.
+
+The default calls `single_type_offspring` and conservatively reports `false`
+(fall back to simulation) for anything it throws an `ArgumentError` or
+`MethodError` over, and likewise checks whether `chain_size_distribution`
+has a method for the result, so a custom `TransmissionModel` need not
+specialise this to get correct, if not always fastest, behaviour.
+"""
+function has_single_type_law(model::TransmissionModel)
+    try
+        off = single_type_offspring(model)
+        return hasmethod(chain_size_distribution, Tuple{typeof(off)})
+    catch e
+        (e isa ArgumentError || e isa MethodError) && return false
+        rethrow()
+    end
+end
 n_types(::TransmissionModel) = 1
 
 # The offspring specification the analytical helpers dispatch on. By default it

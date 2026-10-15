@@ -48,6 +48,36 @@
         @test isfinite(logpdf(d_iv, data))
     end
 
+    @testset "chain_size_distribution — multi-type model falls back without n_sim" begin
+        bp_mt = BranchingProcess(
+            [0.4 0.2; 0.1 0.3], R -> Poisson(R), Exponential(5.0)
+        )
+        data = [1, 2, 4]
+        @test chain_size_distribution(bp_mt) isa Distribution
+        ll_direct = loglikelihood(ChainSizes(data), bp_mt; rng = StableRNG(1))
+        ll_via_distribution = logpdf(
+            chain_size_distribution(bp_mt; n_sim = 10_000, rng = StableRNG(1)), data
+        )
+        @test ll_direct ≈ ll_via_distribution
+
+        # A `ModelSpec` wrapping a multi-type process, with no interventions,
+        # takes the same fallback via `has_single_type_law(::ModelSpec)`.
+        @test chain_size_distribution(ModelSpec(bp_mt)) isa Distribution
+    end
+
+    @testset "chain_size_distribution — single-type offspring with no closed-form law falls back" begin
+        # Binomial offspring has a single-type law but no `chain_size_distribution`
+        # method; this must fall back to simulation rather than throwing a
+        # bare MethodError from inside the analytical fast path.
+        bp = BranchingProcess(Binomial(5, 0.3))
+        data = [1, 2, 3]
+        @test chain_size_distribution(bp; n_sim = 500, rng = StableRNG(1)) isa
+            Distribution
+        @test isfinite(
+            loglikelihood(ChainSizes(data), bp; n_sim = 500, rng = StableRNG(1))
+        )
+    end
+
     @testset "chain_length_distribution" begin
         bp = BranchingProcess(Poisson(0.5))
         d = chain_length_distribution(bp)
@@ -149,7 +179,10 @@
             @test chain_size_distribution(bp) isa Distribution
             @test chain_size_distribution(bp_obs) isa Distribution
             @test chain_size_distribution(bp_cm) isa Distribution
-            @test_throws ArgumentError chain_size_distribution(bp_mt)
+            # A multi-type model has no closed-form chain-size law; this
+            # falls back to the simulation-based wrapper rather than
+            # erroring, as `loglikelihood(ChainSizes, ...)` already does.
+            @test chain_size_distribution(bp_mt) isa Distribution
         end
 
         @testset "chain_length_distribution" begin

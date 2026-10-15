@@ -168,8 +168,7 @@ a given date, or stops after a number of cases, is described by wrapping the
 intervention in [`Scheduled`](@ref) instead of giving every intervention its
 own start date. With isolation starting on day 14, the policy acts on cases
 infected from day 14 onwards, and an isolation that would have started before
-day 14 is undone.
-How to write an intervention is in [Writing an
+day 14 is undone. The hook contract and a worked example are in [Writing an
 intervention](tutorials/writing-interventions.md).
 
 ### Multi-type branching processes

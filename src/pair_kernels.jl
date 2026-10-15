@@ -540,8 +540,8 @@ kernel with the same callback and calendar whose `state` is the vector of each
 person's record at the end of `state`. Each record is copied, so later changes
 to the simulation do not alter it. Other kernels are returned unchanged.
 
-Only what the `state` function returns at the end of the run is kept, and
-values that were overwritten during the run are lost. Where rates change, the
+Only the record the `state` function returns at the end of the run is kept;
+values overwritten during the run are lost. Where rates change, the
 function must return event dates or full histories. The likelihood then gives
 the transmission part along these histories; the probabilities of the
 characteristics and intervention events themselves need their own terms if

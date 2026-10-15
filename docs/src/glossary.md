@@ -64,7 +64,7 @@ symptom onset. See [Isolation and contact tracing](tutorials/interventions.md).
 
 **Quarantine.** Removing a traced contact, who is not (yet) a known case, from
 transmission from the time they are traced. Quarantine reaches contacts before
-they have symptoms, and those who were never infected.
+they develop symptoms, including those who were never infected.
 
 **Isolation and quarantine duration.** How long isolation or quarantine lasts,
 set with `duration` on [`Isolation`](@ref) and [`Quarantine`](@ref): a number
@@ -91,10 +91,11 @@ from simulations and includes every intervention in the model.
 **Extinction probability.** The probability that transmission from one index
 case dies out, calculated exactly from the offspring distribution by
 [`extinction_probability`](@ref). It ignores the population characteristics in
-a model. An intervention with no closed-form effect on the offspring
-distribution stops it with an error, and that is every intervention in the
-package. To see what control adds, run it on the process without interventions
-and compare the answer with the containment probability from simulations. Its complement is
+a model. Any intervention with no closed-form effect on the offspring
+distribution stops it with an error, which today means every intervention in
+the package. To see what control adds, run it on the process without
+interventions and compare the answer with the containment probability from
+simulations. Its complement is
 [`epidemic_probability`](@ref). See
 [Analytical functions](tutorials/analytical.md).
 

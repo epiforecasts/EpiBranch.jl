@@ -109,11 +109,9 @@ observation model). It stays exact with `prob_concluded`, and with `seeds`
 unless the observation model also under-reports: there is no closed form for
 several index cases under under-reporting, so that one combination is
 estimated from simulated outbreaks and its value moves from one call to the
-next. With interventions, the probability of the data is
-estimated from simulated outbreaks. A model whose offspring distribution is
-not single-type (several types of case, or several routes of transmission)
-is simulated too. If such a model has no interventions, pass a simulation
-keyword such as `n_sim`: without any keyword, this function raises an error.
+next. With interventions, or with a multi-type or multi-window model (no
+single-type offspring law to fall back on), the probability of the data is
+estimated from simulated outbreaks instead. Keyword arguments:
 
 - `seeds`: per-cluster number of index cases, for multi-seed clusters. With
   interventions, clusters are simulated grouped by seed count, one batch of
@@ -131,12 +129,14 @@ function chain_size_distribution(
         seeds = nothing, prob_concluded = nothing, kwargs...
     )
     # The analytical fast path is only valid when nothing perturbs the
-    # bare offspring law. A model that carries interventions must route
-    # through the simulation-based wrapper, even with no explicit kwargs,
-    # or its interventions would be silently dropped. The model's
+    # bare offspring law, and the law itself has a closed form. A model
+    # that carries interventions must route through the simulation-based
+    # wrapper, even with no explicit kwargs, or its interventions would be
+    # silently dropped; a multi-type or multi-window model has no
+    # single-type law to fall back on in the first place. The model's
     # observation is applied analytically via `observe`.
     if seeds === nothing && prob_concluded === nothing && isempty(kwargs) &&
-            isempty(interventions(model))
+            isempty(interventions(model)) && has_single_type_law(model)
         base = chain_size_distribution(single_type_offspring(model))
         # Only the `Reporting`-reading step can fail here (e.g. a callable
         # per-individual probability); fall through to the simulation-based
@@ -160,7 +160,7 @@ function chain_size_distribution(
         prob_concluded = nothing, kwargs...
     )
     if seeds === nothing && prob_concluded === nothing && isempty(kwargs) &&
-            isempty(interventions(spec))
+            isempty(interventions(spec)) && has_single_type_law(spec)
         base = chain_size_distribution(single_type_offspring(spec.process))
         folded = try
             _fold_reporting(_progression(spec), base, observation(spec))

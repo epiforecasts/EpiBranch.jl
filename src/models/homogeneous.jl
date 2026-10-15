@@ -45,9 +45,9 @@ rather than applied, because mass action settles one case at a time and never
 produces the batches of new contacts their dosing and tracing act on:
 `MassVaccination`'s rollout, `GroupVaccination`, `RingVaccination` and
 `ContactTracing`, which has no contacts to trace under random mixing anyway.
-Doses a person already holds when the outbreak starts still protect them,
-since what is dropped is the dosing during the run. Control expressed as a
-removal `Transition` in the progression always applies.
+Doses a person already holds when the outbreak starts still protect them;
+only new dosing during the run is dropped. Control expressed as a removal
+`Transition` in the progression always applies.
 
 The population is simulated until extinction or `max_time`, whichever comes
 first; with `max_time`, individuals whose infection would fall later stay

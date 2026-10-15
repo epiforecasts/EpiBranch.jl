@@ -326,9 +326,9 @@ function _chain_size_model_loglik(
     # analytical form is exact whenever the offspring is the single-type one and
     # nothing thins transmission. Interventions thin it, hence the `ivs` check;
     # progression and attributes don't touch the offspring, so they need none.
-    # Structured/depleting models have no single-type offspring, so
-    # `single_type_offspring` throws and the evaluation falls through to simulation.
-    if isempty(ivs)
+    # Structured/depleting models have no single-type offspring, hence the
+    # `has_single_type_law` check, and the evaluation falls through to simulation.
+    if isempty(ivs) && has_single_type_law(process)
         try
             d = observe(
                 _fold_reporting(
