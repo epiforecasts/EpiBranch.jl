@@ -1413,6 +1413,25 @@
             @test extinction_probability(law) == 1.0
             @test probability_contain(law; pop_control = 0.6) == 1.0
         end
+
+        @testset "Iteration stopped early warns and returns an iterate" begin
+            # Same supercritical law as the pgf test above, but with too few
+            # iterations to reach the fixed point: both functions warn and
+            # return their last iterate rather than the converged root.
+            R, k = 2.0, 0.5
+            nb = NegBin(R, k)
+            law = GeneratingFunctionOffspring(s -> EpiBranch._pgf(nb, s), R)
+
+            early = @test_logs (:warn, r"without converging") match_mode = :any extinction_probability(
+                law; max_iter = 2
+            )
+            @test 0 < early < extinction_probability(law)
+
+            early_contain = @test_logs (:warn, r"without converging") match_mode = :any probability_contain(
+                law; ind_control = 0.3, max_iter = 2
+            )
+            @test 0 < early_contain < probability_contain(law; ind_control = 0.3)
+        end
     end
 
     @testset "Isolation's analytic offspring effect" begin
