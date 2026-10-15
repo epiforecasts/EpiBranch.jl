@@ -182,14 +182,16 @@ In practice:
     leaky vaccine means there; check which one your scenario needs.
 
 - On a network or household model, `loglikelihood(data, spec)` refuses any
-  part of `spec` the likelihood cannot represent: a partial block that starts
-  partway through the infectious period (a leaky isolation, say), or an effect
-  not declared through `infection_likelihood_compatible` or
-  `susceptibility_components`. Complete isolation is fitted exactly, and so is
-  vaccination within the limits listed in [Likelihood compatibility](@ref),
-  when the fit is given the same `spec` as the simulation. Fitting with the
-  bare model, or with a `spec` that leaves the intervention out, gives no error
-  and disagrees with the simulation.
+  part of `spec` the likelihood cannot represent: a per-contact block that
+  does not come from a recorded removal stretch (`RingVaccination`'s
+  `onward_efficacy`, say), or an effect not declared through
+  `infection_likelihood_compatible` or `susceptibility_components`. Complete
+  and leaky isolation are both fitted exactly (the latter through
+  [`EpiBranch.removal_block_probability`](@ref EpiBranch.removal_block_probability)),
+  and so is vaccination within the limits listed in [Likelihood
+  compatibility](@ref), when the fit is given the same `spec` as the
+  simulation. Fitting with the bare model, or with a `spec` that leaves the
+  intervention out, gives no error and disagrees with the simulation.
 - An intervention's actions reach the continuous-time models only if it
   declares `EpiBranch.continuous_actions(iv) = true`, and then only on a model
   that can name contacts. Such actions must work without knowing a contact's
