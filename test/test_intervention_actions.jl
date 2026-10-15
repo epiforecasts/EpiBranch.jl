@@ -443,7 +443,7 @@ end
     # Half of 200 candidates, up to the sampling noise of a fair coin.
     @test 70 < length(first_round) < 130
 
-    # Asking again draws nobody who already declined a fresh coin.
+    # Asking again does not redraw a coin for anyone who already declined.
     for _ in 1:10
         EpiBranch.apply_actions!(mv, state, candidates)
     end
