@@ -641,6 +641,7 @@ EpiBranch.susceptibility_components
 EpiBranch.susceptibility_host_times
 EpiBranch.binding_release
 EpiBranch.removal_gap_host_times
+EpiBranch.removal_gap_host_times_withdrawn
 EpiBranch.record_removal!
 EpiBranch.removal_stretches
 EpiBranch.HazardScaling

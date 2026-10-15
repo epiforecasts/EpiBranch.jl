@@ -534,16 +534,25 @@ to, so their releases are binding. A block that comes and goes with the state,
 such as a ward that reopens, is not, and the simulation stops with an error
 instead of ending a pair whose contacts could still transmit.
 
-!!! warning "Name the key, or the fit is biased"
+!!! warning "Name the key, or the likelihood stops with an error"
     A removal that declares `infection_likelihood_compatible` must name its key
-    with `removal_gap_host_times`. If it names none, nothing is recorded, and
-    the likelihood fits on the whole exposure while the simulation blocked part
-    of it. This biases the fit without any sign of it.
+    with `removal_gap_host_times`, or withdraw it on purpose with
+    [`removal_gap_host_times_withdrawn`](@ref
+    EpiBranch.removal_gap_host_times_withdrawn). `household_infections` and
+    `network_infections` throw for a key that any recorded stretch releases
+    and that neither names, since that stretch would otherwise drop out of the
+    infection layer with no sign that the fit now covers more exposure than
+    the simulation gave it.
 
 The one part for which naming no key is right is one that holds another
 intervention and can withdraw its block partway through a recorded stretch: a
 [`Scheduled`](@ref) that can end, through an `end_time` or a `start_after`
-trigger that can lapse, does that. `InterventionWrapper` instead
+trigger that can lapse, does that, and declares the keys it withdraws through
+`removal_gap_host_times_withdrawn` rather than leaving them silently unnamed.
+`InterventionWrapper` already defines a default for that trait, withdrawing
+whatever the intervention it holds would otherwise have named whenever the
+wrapper itself names nothing, so a wrapper of your own that forwards nothing
+need not repeat the declaration. `InterventionWrapper` also
 narrows the infectious period to the first removal, but only when the
 intervention it holds never releases anyone by itself. One that does, such as an
 `Isolation` or `Quarantine` with a finite `duration`, stays a per-contact
