@@ -90,11 +90,12 @@ many people each case infects](@ref).
 |---|---|---|---|
 | `initialise_individual!(iv, individual, state)` | Once, when each person is created | An `Individual` whose `state` holds `:infected = false`, the values its population characteristics set and any the model sets, such as `:type` or `:household`; use `get!` for a key that may already be set | `nothing`; sets values in `individual.state` |
 | `resolve_individual!(iv, individual, state)` | Once per case, when it is settled: after its clinical transitions, before it infects anyone. Never for a person who is not infected | The case, with `state.max_infection_time` at its infection time | `nothing`; sets values in `individual.state` |
-| `trace_contacts!(iv, state, infector, contacts[, not_before])` | Once per case, after it is settled and before any of its contacts is known to be infected or not; on network and household models also once per ring member a ring of contact tracing grows from | The case, the contacts it reached that it can still affect, and, from a model whose contacts can arise after the case's infection, when each became a contact (the four-argument method is called when the model gives no times, and by default for interventions that ignore them) | `nothing`; sets values on the contacts |
+| `trace_contacts!(iv, state, infector, contacts[, not_before])` | Once per case, after it is settled and before any of its contacts is known to be infected or not; on network and household models also once per ring member a ring of contact tracing grows from; a second time per case, for an intervention declaring `traces_source`, with the case's own infector | The case, the contacts it reached that it can still affect, and, from a model whose contacts can arise after the case's infection, when each became a contact (the four-argument method is called when the model gives no times, and by default for interventions that ignore them); on the second, backward call, `contacts` is the single-element `(source,)` | `nothing`; sets values on the contacts |
 | `intervention_actions(iv, state, candidates)` | Once per case, after every intervention's `trace_contacts!` for it | On branching processes the contacts the case made; on network and household models the case and everyone not yet infected, which the intervention narrows itself | `nothing`, or a vector of [`EpiBranch.InterventionAction`](@ref)s to put through the schedule and capacity limits (see [Intervention actions](@ref)) |
 | `keep_active(iv, state, targets, is_new)` | Once per case, after its actions; on network and household models during tracing, straight after `trace_contacts!` | The contacts `trace_contacts!` received, and an `is_new` flag for each (all `false` on network and household models) | The ids of the contacts that should go on generating contacts if they are not infected or, when tracing, that the ring is traced onward from (default: none) |
 | `competing_risk(iv, parent, contact, state)` | Per infector–contact pair, after the infector's own hooks: on branching processes when infection is decided, on continuous-time models when the simulation reaches each potential infection, in order of infection time | The infector and one contact | `nothing`, one [`Risk`](@ref), or a collection of them (a tuple, or any indexable iterable such as a vector) for an intervention that blocks transmission in more than one way |
 | `traces_contacts(iv)` | Whenever a continuous-time model decides whether to collect a case's contacts at all | Nothing | `true` if this intervention traces. The default is `true` for a type with a `trace_contacts!` method of its own; you need not write it |
+| `traces_source(iv)` | Whenever either engine decides whether to make the second, backward `trace_contacts!` call | Nothing | `true` if this intervention traces a case back to its own infector. Default `false`; [`SourceTracing`](@ref) declares it, since this is not inferred the way `traces_contacts` is |
 | `has_effect(iv)` | Once per intervention type, when a `ModelSpec` is built | Nothing | `Bool`: whether the intervention can change a simulation or a likelihood. The default is `true` for a type with a method of its own, with the right number of arguments, for a hook it can act through, such as `competing_risk` or `trace_contacts!`; `ModelSpec` warns on `false` |
 | `infectious_removal_time(iv, individual)` | Continuous-time models only: when a case's infectious period is closed | A person | The time this intervention removes them from onward transmission (default `Inf`) |
 | `on_infection_settled!(iv, individual, state, rng)` | Continuous-time models only: once a case's infection time is fixed, before its onset or clinical transitions read it | The case, and the random number generator to use | `nothing`; sets values on the case (default: does nothing) |
@@ -153,7 +154,8 @@ they do have is each potential infection, a drawn time for a named pair, and a
 | `competing_risk` | yes | yes |
 | `infectious_removal_time` | not read | yes |
 | `on_infection_settled!` | not called | yes |
-| `trace_contacts!` | yes | yes, where the model can name contacts (not homogeneous or mixing) |
+| `trace_contacts!` (forward) | yes | yes, where the model can name contacts (not homogeneous or mixing) |
+| `trace_contacts!` (backward, `traces_source`) | yes, recording only: a case's secondary cases are already drawn by the time it can itself be traced back | yes, everywhere, including homogeneous and mixing: the infector comes from the transmission tree, not the model's contact structure |
 | `intervention_actions` | yes; once a generation is settled, also once per settled case, for an intervention that declares `settles_generation_batch` | where the model can name contacts, for an intervention that declares `continuous_actions` |
 | `keep_active` | yes | during tracing: chooses which traced contacts a ring grows from |
 | `apply_post_transmission!` (deprecated) | yes, with a warning | not called |
@@ -169,6 +171,13 @@ In practice:
   each potential infection to the risks when they reach it, in order of
   infection time, at the time drawn for it. A blocked contact does not transmit, and the pair keeps meeting:
   the pair's next contact is drawn later.
+- [`SourceTracing`](@ref) quarantines whichever case it finds, so it is a
+  removal too, and reaches every continuous-time model, including the
+  mass-action pools [`ContactTracing`](@ref) cannot: a case's infector is read
+  off the transmission tree rather than the model's own contact structure. On
+  a branching process its secondary cases are already drawn by the time it can
+  itself be found and traced back, so there `SourceTracing` only records the
+  link.
 
 !!! warning "The same efficacy means different things on the two kinds of model"
     On a continuous-time model a pair that escapes infection keeps meeting, so
