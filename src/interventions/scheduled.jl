@@ -51,13 +51,12 @@ other action) would fall before `start_time` is not acted on, even if the
 case itself appears after the start. The `condition` form has no start time
 to compare against and does not do this check.
 
-What happens to isolation and quarantine already in place when the schedule
-ends (after `end_time`, or once `condition` returns `false`) depends on the
-model. On a branching process they run their full duration. On the
-mass-action, network and household models they end with the schedule, except
-a perfect isolation (`post_isolation_transmission = 0`) with no end
-(`duration = Inf`), or a quarantine with no end, which keeps the case out of
-transmission for good. Only protection the
+Isolation and quarantine already in place end when the schedule ends (after
+`end_time`, or once `condition` returns `false`). The exception is the
+mass-action, network and household models, where a perfect isolation
+(`post_isolation_transmission = 0`) with no end (`duration = Inf`), or a
+quarantine with no end, keeps the case out of transmission for good.
+Only protection the
 intervention keeps, such as vaccination, continues (see
 [`persistent_competing_risks`](@ref EpiBranch.persistent_competing_risks)).
 Everyone still records the intervention's starting information, such as "not

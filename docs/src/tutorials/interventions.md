@@ -135,14 +135,11 @@ With a finite duration, the line list from [`linelist`](@ref) gains a
 !!! note "Release on the network, household and homogeneous models"
     The network, household and homogeneous-mixing models (see
     [Networks](networks.md), [Households](households.md) and
-    [Homogeneous models](homogeneous.md)) release isolated cases in the same way.
-    An isolation switched on or off with [`Scheduled`](@ref), below, behaves
-    differently on the two kinds of model once the schedule ends. On the
-    network, household and homogeneous models the end of the schedule
-    withdraws an isolation with a finite `duration` that has already started,
-    while a complete isolation with `duration = Inf`, or a quarantine with no
-    end, stays in force. On a branching process an isolation that has started
-    runs its full duration either way.
+    [Homogeneous models](homogeneous.md)) release isolated cases in the same way. The
+    same holds for an isolation switched on or off with [`Scheduled`](@ref),
+    below, except that a complete isolation with `duration = Inf`, or a
+    quarantine with no end, stays in force on those models after the schedule
+    ends.
     A case isolated for a week part-way through a month of infectiousness
     transmits again for the rest of that month.
 
@@ -410,10 +407,10 @@ nothing # hide
 ```
 
 The end is checked against the case's own infection time as well: a case
-infected after day 30 is not isolated. On this branching process an isolation
-already under way runs its full duration, so a case isolated on day 28 stays
-isolated for its week. The network, household and homogeneous models differ,
-as the note on release earlier on this page describes. A scheduled vaccination
+infected after day 30 is not isolated. The end also stops isolations already
+under way. Once the simulation's clock, the latest infection so far, passes
+day 30, isolation no longer blocks any transmission, including from a case
+isolated on day 28. A scheduled vaccination
 instead checks each dose's own date, and a dose given keeps protecting after
 the schedule ends.
 
