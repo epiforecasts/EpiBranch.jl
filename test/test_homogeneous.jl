@@ -755,10 +755,11 @@ end
         @test occursin("exclusive_probabilities", err.msg)
     end
 
-    @testset "Scheduled interventions gate on the running clock on the pool" begin
-        # The loop exposes each case's infection time as the running clock, so a
-        # Scheduled(Isolation; start_time) isolates only cases infected at/after
-        # start_time — curtailing when it activates, and gating by time.
+    @testset "Scheduled interventions gate on the isolation's own time on the pool" begin
+        # The loop exposes each case's infection time as the running clock,
+        # but `Scheduled(Isolation; start_time)` checks the isolation's own
+        # time against it, so start_time curtails when the policy takes
+        # effect without needing a case's own infection to fall inside it.
         N = 1000
         prog = [
             Transition(:onset; from = :infection, delay = 0.1),
@@ -789,9 +790,14 @@ end
         @test mean_cc(mk(0.0)) < 0.1 * mean_cc(base)
         @test mean_cc(mk(1000.0)) > 0.5 * mean_cc(base)
 
-        # Mid start_time gates on the case's own infection time.
+        # Mid start_time gates on the isolation's own time, not the case's
+        # infection time: a case infected just before it can still be
+        # isolated once its own isolation falls after it.
         st = simulate(mk(3.0); rng = StableRNG(1), n_initial = 10)
-        @test !any(ind -> ind.infection_time < 3.0 && is_isolated(ind), st.individuals)
+        @test all(
+            ind -> !is_isolated(ind) || isolation_time(ind) >= 3.0, st.individuals
+        )
+        @test any(ind -> ind.infection_time < 3.0 && is_isolated(ind), st.individuals)
         @test any(ind -> ind.infection_time >= 3.0 && is_isolated(ind), st.individuals)
 
         # A Scheduled wrapping an unhonoured intervention still warns.

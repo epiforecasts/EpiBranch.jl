@@ -3088,40 +3088,59 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             )
         end
 
-        @testset "start_after = ReportedCases matches start_after_cases under certain, instant reporting" begin
-            # With every case reported at its own infection time, a
-            # report-gated and a case-gated trigger see the same count at
-            # every step.
-            progression = [
-                Reporting(delay = Dirac(0.0), probability = 1.0, from = ind -> ind.infection_time),
-                Recovery(delay = Dirac(5.0)),
-            ]
-            iso_cases = Scheduled(
-                Isolation(onset_to_isolation_delay = Dirac(0.0), duration = Inf);
-                start_after_cases = 10
+        @testset "start_after = ReportedCases and start_after_cases agree reading the same clock" begin
+            # With every case reported at its own infection time, the two
+            # triggers count the same thing when asked about the same `now`:
+            # ten reports due by `now` is the same fact as ten cumulative
+            # cases by `now`. (The two can still open at different cases in a
+            # full simulation, because `cumulative_cases` is a generation
+            # rank and `ReportedCases` a true clock reading, which disagree
+            # whenever a case of an earlier generation is infected later than
+            # one of a following generation.)
+            inds = [Individual(id = i, infection_time = Float64(i)) for i in 1:12]
+            for ind in inds
+                ind.state[:reported] = true
+                ind.state[:reporting_time] = ind.infection_time
+            end
+            state = SimulationState(
+                inds, Int[], 0, StableRNG(1), 0, false, nothing, 0.0, nothing,
+                AbstractClinicalTransition[]
             )
-            iso_reports = Scheduled(
-                Isolation(onset_to_isolation_delay = Dirac(0.0), duration = Inf);
-                start_after = ReportedCases(10)
-            )
+            iso = Isolation(onset_to_isolation_delay = Dirac(0.0), duration = Inf)
+            by_cases = Scheduled(iso; start_after_cases = 10)
+            by_reports = Scheduled(iso; start_after = ReportedCases(10))
+            for i in 1:12
+                state.max_infection_time = Float64(i)
+                state.cumulative_cases = i
+                @test EpiBranch.is_active(by_cases, state) ==
+                    EpiBranch.is_active(by_reports, state)
+            end
+        end
 
-            results_cases = simulate(
-                ModelSpec(
-                    BranchingProcess(Poisson(3.0), Exponential(5.0));
-                    progression, interventions = [iso_cases], attributes = clinical
-                ),
-                50; max_cases = 100, rng = StableRNG(11)
+        @testset "start_after reaches a case resolved before it, once its own action falls inside" begin
+            # As with `start_time`, a case can be resolved while the trigger
+            # is still shut and still be isolated: `_reset_unless_in_schedule!`
+            # checks the trigger again at the isolation's own time, by when
+            # another case's report may have brought it open.
+            iso = Scheduled(
+                Isolation(onset_to_isolation_delay = Dirac(0.0), duration = Inf);
+                start_after = ReportedCases(1)
             )
-            results_reports = simulate(
-                ModelSpec(
-                    BranchingProcess(Poisson(3.0), Exponential(5.0));
-                    progression, interventions = [iso_reports], attributes = clinical
-                ),
-                50; max_cases = 100, rng = StableRNG(11)
+            ind = Individual(id = 1, infection_time = 0.0)
+            ind.state[:onset_time] = 5.0
+            ind.state[:asymptomatic] = false
+            ind.state[:test_positive] = true
+            other = Individual(id = 2, infection_time = 0.0)
+            other.state[:reported] = true
+            other.state[:reporting_time] = 3.0 # between ind's infection and its own isolation
+            state = SimulationState(
+                [ind, other], Int[], 0, StableRNG(1), 0, false, nothing, 0.0, nothing,
+                AbstractClinicalTransition[]
             )
-
-            @test containment_probability(results_cases) ==
-                containment_probability(results_reports)
+            state.max_infection_time = ind.infection_time
+            EpiBranch.resolve_individual!(iso, ind, state)
+            @test is_isolated(ind)
+            @test isolation_time(ind) == 5.0
         end
 
         @testset "start_after = ReportedCases delays activation past Infections" begin
@@ -3256,6 +3275,52 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                     @test isolation_time(ind) >= 15.0
                 end
             end
+        end
+
+        @testset "start_time reaches a case infected before it, once its own isolation falls inside" begin
+            # Isolation that starts on day 10 must still reach someone
+            # infected on day 8 who develops symptoms on day 12: the case
+            # itself predates the policy, but its own isolation does not.
+            iso = Scheduled(
+                Isolation(onset_to_isolation_delay = Dirac(0.0), duration = Inf);
+                start_time = 10.0
+            )
+            ind = Individual(id = 1, infection_time = 8.0)
+            ind.state[:onset_time] = 12.0
+            ind.state[:asymptomatic] = false
+            ind.state[:test_positive] = true
+            state = SimulationState(
+                [ind], Int[], 0, StableRNG(1), 0, false, nothing, 0.0, nothing,
+                AbstractClinicalTransition[]
+            )
+            state.max_infection_time = ind.infection_time
+            EpiBranch.resolve_individual!(iso, ind, state)
+            @test is_isolated(ind)
+            @test isolation_time(ind) == 12.0
+        end
+
+        @testset "start_time reaches a contact traced before it, once the trace falls inside" begin
+            # The same check applies to tracing: the infector's own clock
+            # predates the policy, but the contact's own trace, after the
+            # tracing delay, does not.
+            ct = Scheduled(
+                ContactTracing(TraceEveryone(), 1.0, Dirac(7.0), Quarantine(duration = Inf));
+                start_time = 10.0
+            )
+            infector = Individual(id = 1, infection_time = 1.0)
+            infector.state[:infected] = true
+            infector.state[:onset_time] = 2.0
+            set_isolated!(infector, 4.0; release_time = Inf)
+            contact = Individual(id = 2, infection_time = 1.0)
+            state = SimulationState(
+                [infector, contact], Int[], 0, StableRNG(1), 0, false, nothing, 0.0, nothing,
+                AbstractClinicalTransition[]
+            )
+            EpiBranch.initialise_individual!(ct, contact, state)
+            state.max_infection_time = infector.infection_time
+            EpiBranch.trace_contacts!(ct, state, infector, [contact])
+            @test is_traced(contact)
+            @test isolation_time(contact) == 11.0 # infector's isolation (4.0) plus the 7-day delay
         end
 
         @testset "requires at least one condition" begin
