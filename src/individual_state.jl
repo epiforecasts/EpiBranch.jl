@@ -7,8 +7,9 @@ const _IN_REALS = _InReals()
 
 # One entry: its key, and its value either as stored or, for a value of the
 # individual's own number type, unboxed in `real` with `_IN_REALS` in `val`.
-# Immutable, so a vector of them holds them inline, one allocation for the
-# whole store.
+# Such a value is boxed only when it is first read back as `Any`, and the box
+# is kept in `val` so later reads reuse it, as a `Dict` does. Immutable, so a
+# vector of them holds them inline, one allocation for the whole store.
 struct _Slot{T <: Real}
     key::Symbol
     val::Any
@@ -60,9 +61,12 @@ Base.convert(::Type{IndividualState{T}}, s::IndividualState{T}) where {T} = s
 end
 _slot(::IndividualState, k) = 0
 
-@inline function _slot_value(s::IndividualState, i::Int)
+@inline function _slot_value(s::IndividualState{T}, i::Int) where {T}
     slot = @inbounds s.slots[i]
-    return slot.val === _IN_REALS ? slot.real : slot.val
+    slot.val === _IN_REALS || return slot.val
+    boxed = slot.real::Any
+    @inbounds s.slots[i] = _Slot{T}(slot.key, boxed, slot.real)
+    return boxed
 end
 
 @inline _make_slot(::Type{T}, k::Symbol, v) where {T} =

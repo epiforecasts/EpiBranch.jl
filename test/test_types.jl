@@ -60,6 +60,15 @@
         @test d[:t] === 1.0f0
         @test EpiBranch._state_real(d, :t, Inf) === 1.0f0
         @test EpiBranch._state_real(d, :absent, Inf) === Inf32
+        # A time is boxed at most once for reads through the dictionary
+        # interface, however often it is read.
+        reread(s) = (get(s, :t, 0.0)::Float64; @allocated get(s, :t, 0.0)::Float64)
+        r = EpiBranch.IndividualState{Float64}()
+        r[:t] = 1.5
+        @test reread(r) == 0
+        @test r[:t] === 1.5 && EpiBranch._state_real(r, :t, Inf) === 1.5
+        r[:t] = 2.5
+        @test r[:t] === 2.5
     end
 
     @testset "Individual with state" begin
