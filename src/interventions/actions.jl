@@ -30,7 +30,8 @@ Both engines call it once per case, after every intervention's
 [`trace_contacts!`](@ref) for that case, so a producer can read what tracing
 wrote. The generation engine passes the contacts the case made and admits
 every action with a finite time; once a generation's cases are settled, it
-also passes the whole batch to an intervention that declares
+also calls it again for each settled case in turn, with that case alone as
+the candidate, for an intervention that declares
 [`settles_generation_batch`](@ref), so a trigger that only becomes true on
 settlement (such as a case's own lab confirmation) still reaches its group.
 The network and household races pass the case and the members it can still
