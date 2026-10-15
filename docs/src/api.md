@@ -287,6 +287,7 @@ proportion_cases_offspring
 proportion_cluster_size
 heterogeneous_contact_R
 EpiBranch.analytic_offspring_effect
+GeneratingFunctionOffspring
 ```
 
 ### Chain-size distributions
