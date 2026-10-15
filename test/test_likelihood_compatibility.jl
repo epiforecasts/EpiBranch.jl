@@ -1,3 +1,14 @@
+# A component with no recorded stretch of its own, for the unnamed-key tests
+# below. It acts only through `removal_gap_host_times`, not any simulation
+# hook, which is what `has_effect` says.
+struct _Shield <: EpiBranch.AbstractIntervention end
+EpiBranch.has_effect(::_Shield) = true
+
+# As `_Shield`, but withdrawing the scratch key on purpose instead of naming
+# it.
+struct _WithdrawingShield <: EpiBranch.AbstractIntervention end
+EpiBranch.has_effect(::_WithdrawingShield) = true
+
 @testset "Infection likelihood compatibility" begin
     compatible = EpiBranch.infection_likelihood_compatible
     iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
@@ -98,5 +109,46 @@
         )
         @test EpiBranch._layer_host_time_keys(spec, (:onset_time, :immunity_time)) ==
             [:onset_time, :immunity_time, :immunity_time_boost]
+    end
+
+    @testset "A recorded removal must name its key or be withdrawn" begin
+        shield_key = :_scratch_shield_stretches
+        mini(inds) = SimulationState(
+            inds, Int[], 0, StableRNG(1), 0, false, nothing, Inf, nothing,
+            AbstractClinicalTransition[]
+        )
+        bare = ModelSpec(BranchingProcess(Poisson(0.0)))
+
+        # Nothing names the key and nothing withdraws it: the likelihood would
+        # otherwise fit on the whole exposure as if the stretch never happened.
+        lapsing = [Individual(id = 1)]
+        EpiBranch.record_removal!(lapsing[1], 2.0, 9.0; key = shield_key)
+        @test_throws ArgumentError EpiBranch._layer_host_times(mini(lapsing), bare, ())
+
+        # Naming the key lets the stretch through, merged into the layer's own
+        # removal column.
+        EpiBranch.removal_gap_host_times(::_Shield) = (shield_key,)
+        named = ModelSpec(
+            BranchingProcess(Poisson(0.0)); interventions = [_Shield()]
+        )
+        result = EpiBranch._layer_host_times(mini(lapsing), named, ())
+        @test result[shield_key] == [[(2.0, 9.0)]]
+        @test result[EpiBranch.REMOVAL_STRETCHES_KEY] == [[(2.0, 9.0)]]
+
+        # Declaring it withdrawn instead is just as good: another component
+        # means to leave it out, so it stays out of `host_times` rather than
+        # erroring.
+        EpiBranch.removal_gap_host_times_withdrawn(::_WithdrawingShield) = (shield_key,)
+        withdrawn = ModelSpec(
+            BranchingProcess(Poisson(0.0)); interventions = [_WithdrawingShield()]
+        )
+        @test EpiBranch._layer_host_times(mini(lapsing), withdrawn, ()) == (;)
+
+        # A stretch that never releases needs no declaration either: the
+        # infectious window closes there instead of this column holding it
+        # (see `infectious_removal_time`).
+        standing = [Individual(id = 1)]
+        EpiBranch.record_removal!(standing[1], 2.0, Inf; key = shield_key)
+        @test EpiBranch._layer_host_times(mini(standing), bare, ()) == (;)
     end
 end
