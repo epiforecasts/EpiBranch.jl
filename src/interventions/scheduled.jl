@@ -165,9 +165,21 @@ leaves the gate shut for the whole run. [`ModelSpec`](@ref) asks this of every
 names. [`ReportedCases`](@ref) names [`Reporting`](@ref).
 
 A key an attributes function supplies, such as `:onset_time` from
-[`clinical_presentation`](@ref), cannot be named this way.
+[`clinical_presentation`](@ref), cannot be named this way: declare it with
+[`required_fields`](@ref EpiBranch.required_fields) instead.
 """
 required_transitions(::AbstractTrigger) = ()
+
+"""
+    required_fields(trigger) -> Vector{Symbol}
+
+The population characteristics a trigger reads from `Individual.state`, such
+as `:onset_time` set by [`clinical_presentation`](@ref). Default: none.
+[`Scheduled`](@ref) adds these to the fields its wrapped intervention already
+requires, so [`ModelSpec`](@ref) catches a model missing them the same way it
+catches an intervention missing a field of its own.
+"""
+required_fields(::AbstractTrigger) = Symbol[]
 
 """
     Infections(n)
@@ -313,6 +325,15 @@ end
 # ── Protocol delegation ──────────────────────────────────────────────
 
 is_active(s::Scheduled, state::SimulationState) = s.condition(state)
+
+# Overrides the plain forwarding from `InterventionWrapper`: a trigger's own
+# fields must be checked too, not only the wrapped intervention's.
+function required_fields(s::Scheduled)
+    return reduce(
+        union, (required_fields(t) for t in s.triggers);
+        init = required_fields(s.intervention)
+    )
+end
 
 # `initialise_individual!` is inherited ungated from `InterventionWrapper`:
 # fields must exist before the policy activates.

@@ -14,6 +14,11 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
 
 ### Added
 
+- A `Scheduled` trigger can declare the population characteristics it reads
+  with `EpiBranch.required_fields`, alongside the transitions it already
+  declares with `required_transitions`, so a model missing one of them stops
+  with a clear error instead of leaving the schedule's gate shut with no
+  message.
 - `pairwise_surv_loglik_by_component` splits the pairwise survival
   log-likelihood by connected component of the contact structure (households,
   under a household partition), reusing one compiled `ContactPairsLayout` so

@@ -10,6 +10,11 @@ end
 struct _AlwaysOpenTrigger <: EpiBranch.AbstractTrigger end
 EpiBranch.is_triggered!(::_AlwaysOpenTrigger, state) = true
 
+# A trigger reading a population characteristic rather than a transition.
+struct _AgeTrigger <: EpiBranch.AbstractTrigger end
+EpiBranch.is_triggered!(::_AgeTrigger, state) = true
+EpiBranch.required_fields(::_AgeTrigger) = [:age]
+
 # An isolation eligibility that records a detection arriving after the case's
 # outcome, which the default declines.
 struct _DetectAfterOutcome <: EpiBranch.IsolationEligibility end
@@ -3086,6 +3091,29 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                 ],
                 attributes = clinical
             )
+        end
+
+        @testset "a trigger names the fields it reads" begin
+            iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = Inf)
+
+            # The default declares nothing, as `_AlwaysOpenTrigger` does.
+            @test EpiBranch.required_fields(_AlwaysOpenTrigger()) == Symbol[]
+            @test EpiBranch.required_fields(_AgeTrigger()) == [:age]
+
+            # `Scheduled` adds the trigger's fields to the wrapped
+            # intervention's own, so `_validate_required_fields` catches a
+            # model missing either.
+            scheduled = Scheduled(iso; start_after = _AgeTrigger())
+            @test :age in EpiBranch.required_fields(scheduled)
+            @test issubset(EpiBranch.required_fields(iso), EpiBranch.required_fields(scheduled))
+
+            # No trigger: forwards plainly to the wrapped intervention.
+            @test EpiBranch.required_fields(Scheduled(iso; start_time = 0.0)) ==
+                EpiBranch.required_fields(iso)
+
+            # Found through a wrapper around the schedule.
+            capped = CapacityConstrained(scheduled; budget_per_period = 5)
+            @test :age in EpiBranch.required_fields(capped)
         end
 
         @testset "start_after = ReportedCases matches start_after_cases under certain, instant reporting" begin
