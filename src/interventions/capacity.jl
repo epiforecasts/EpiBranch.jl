@@ -157,7 +157,7 @@ capacity_time_key(v::GroupVaccination) = _vaccination_time_key(dose_label(v))
 # admitted an individual: that legacy protocol proposes no dated action, so
 # it has nothing but its own clock to place the dose by. `_admit_actions!`,
 # which every action-based intervention goes through, never sets it, since
-# its candidates already carry the date the dose is to be given.
+# its candidates already name the date the dose is to be given.
 _capacity_admission_key(key::Symbol) = Symbol("capacity_admission_time_", key)
 
 # The start and end of the period containing `at`, in the scope `carry_over`

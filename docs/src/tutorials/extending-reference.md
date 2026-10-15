@@ -74,7 +74,7 @@ underscore are internal.
 | `:severity_efficacy[_<label>]` | `Float64` | — | `AbstractVaccination` | When a dose is admitted |
 | `:coverage_declined[_<label>]` | `Bool` | `false` | `GroupVaccination` | When a dose is offered and declined |
 | `:infection_aborted_time` | `Float64` | — | Simulation, through `abort_infection!` (for example by `RingVaccination`'s `post_exposure_efficacy`) | Any intervention hook |
-| `:capacity_admission_time_<capacity_key>` | `Float64` | — | `CapacityConstrained` | When an action admitted through the deprecated `apply_post_transmission!` batch hook, which proposes no dated action, is admitted |
+| `:capacity_admission_time_<capacity_key>` | `Float64` | — | `CapacityConstrained` | When an action is admitted through the deprecated `apply_post_transmission!` batch hook, which proposes no dated action |
 | `:_settled` | `Bool` | `false` | Simulation (continuous-time action delivery) | Once a case's own round of action discovery has run; internal, read through `is_settled` |
 | `:_intervention_actions` | `Dict` | `Dict()` | Any intervention using the action protocol | `action_draw!`; internal. Each intervention's own draws for this person, so a draw is made once and reread |
 | `:reporting_time` | `Float64` | `Inf` | `Reporting` transition *or* `PerCaseObservation` | `resolve_individual!` / after the simulation; reset to `Inf` by `censor_after_outcome!` if it falls after `:outcome_time` |
