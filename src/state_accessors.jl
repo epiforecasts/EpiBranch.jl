@@ -254,6 +254,12 @@ individual_type(ind::Individual) = get(ind.state, :type, 1)::Int
 # and names it from `removal_gap_host_times`.
 const REMOVAL_STRETCHES_KEY = :_removal_stretches
 
+# The key a removal that only blocks a fraction of the hazard (see
+# `removal_block_probability`) records its stretches under, apart from
+# `REMOVAL_STRETCHES_KEY`'s complete ones, so a likelihood never mistakes one
+# for the other. `Isolation` writes here for itself when leaky.
+const LEAKY_REMOVAL_STRETCHES_KEY = :_leaky_removal_stretches
+
 const _NO_STRETCHES = Tuple{Float64, Float64}[]
 
 """Record that a person is isolated from `time` (days) until `release_time`.
@@ -366,5 +372,8 @@ function clear_isolated!(ind::Individual)
     ind.state[:isolation_time] = Inf
     ind.state[:isolation_release_time] = Inf
     delete!(ind.state, REMOVAL_STRETCHES_KEY)
+    # Leaky isolation's own record, apart from the shared history above; only
+    # `Isolation` ever writes it, so clearing it unconditionally is safe.
+    delete!(ind.state, LEAKY_REMOVAL_STRETCHES_KEY)
     return nothing
 end
