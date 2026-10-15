@@ -56,3 +56,14 @@ reads_population_state(w::InterventionWrapper) = reads_population_state(w.interv
 # says nothing about when the gating closed. The default is therefore to
 # declare none, which narrows the infectious window instead (above), and a
 # wrapper whose gating cannot withdraw a block forwards the declaration.
+
+# A wrapper that declares no key of its own (the default above, or one that
+# only sometimes forwards, such as a lapsing `Scheduled`) is the one case
+# `removal_gap_host_times` leaves silent on purpose: whatever the intervention
+# it holds would have named, or already counts as withdrawn further down, is
+# withdrawn here too, so the gap stays unnamed without looking forgotten.
+function removal_gap_host_times_withdrawn(w::InterventionWrapper)
+    isempty(removal_gap_host_times(w)) || return ()
+    inner = removal_gap_host_times(w.intervention)
+    return isempty(inner) ? removal_gap_host_times_withdrawn(w.intervention) : inner
+end

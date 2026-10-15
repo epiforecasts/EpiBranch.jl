@@ -286,7 +286,11 @@ An intervention of your own that removes people in its own way passes its own
 `key`, and names it in
 [`removal_gap_host_times`](@ref EpiBranch.removal_gap_host_times). The
 likelihood then leaves out the same periods of exposure that the simulation
-blocked, so that `simulate` and `loglikelihood` agree.
+blocked, so that `simulate` and `loglikelihood` agree. Every `key` that ever
+records a stretch with a finite `release` here is checked against
+[`removal_gap_host_times`](@ref EpiBranch.removal_gap_host_times) when the
+infection layer is built, and the likelihood stops with an error for one that
+is named by no component and withdrawn by none either.
 """
 function record_removal!(
         ind::Individual{T}, start::Real, release::Real;
@@ -301,7 +305,30 @@ function record_removal!(
     # A fresh vector each time rather than one grown in place: an archived
     # episode holds a copy of the state that shares the old one.
     ind.state[key] = old === nothing ? [stretch] : _with_stretch(old, stretch)
+    # Only a stretch that releases its host needs a named key: one that never
+    # does closes the infectious window instead (see `infectious_removal_time`),
+    # which the likelihood already reads with no key of its own.
+    isfinite(release) && _note_lapsing_removal_key!(ind, key)
     return nothing
+end
+
+# The keys under which `ind` has had at least one releasing stretch recorded,
+# noted here so the likelihood can later tell a key nobody named from one
+# that simply never lapsed (see `removal_gap_host_times_withdrawn`).
+function _note_lapsing_removal_key!(ind::Individual, key::Symbol)
+    noted = get(ind.state, :_lapsing_removal_keys, ())::Tuple{Vararg{Symbol}}
+    key in noted || (ind.state[:_lapsing_removal_keys] = (noted..., key))
+    return nothing
+end
+
+# Every key noted by `_note_lapsing_removal_key!` across `state`'s
+# individuals, in first-seen order.
+function _lapsing_removal_keys(state::SimulationState)
+    keys = Symbol[]
+    for ind in state.individuals, key in get(ind.state, :_lapsing_removal_keys, ())
+        key in keys || push!(keys, key)
+    end
+    return keys
 end
 
 function _with_stretch(old::Vector{E}, stretch) where {E}

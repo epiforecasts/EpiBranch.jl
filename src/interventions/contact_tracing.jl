@@ -842,6 +842,14 @@ removal_gap_host_times(ct::ContactTracing) = removal_gap_host_times(ct.action)
 removal_gap_host_times(::TraceAction) = ()
 removal_gap_host_times(::Quarantine) = (QUARANTINE_STRETCHES_KEY,)
 
+removal_gap_host_times_withdrawn(ct::ContactTracing) = removal_gap_host_times_withdrawn(ct.action)
+removal_gap_host_times_withdrawn(::TraceAction) = ()
+# `apply_trace!` keeps the shared history `set_isolated!` writes as well as
+# its own key, so a releasing quarantine leaves a stretch on
+# `REMOVAL_STRETCHES_KEY` too; `QUARANTINE_STRETCHES_KEY` already names the
+# same days, so the shared one is withdrawn rather than read twice.
+removal_gap_host_times_withdrawn(::Quarantine) = (REMOVAL_STRETCHES_KEY,)
+
 # Where the action recorded the removals this tracing should honour. An action
 # written outside the package names its own key, as the built-in quarantine
 # does, and both the window and the per-contact risk read it. One that names
