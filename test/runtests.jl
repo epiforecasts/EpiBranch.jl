@@ -56,3 +56,4 @@ include("testutils/progression.jl")
 end
 
 include("test_pair_kernels.jl")
+include("test_event_queue.jl")

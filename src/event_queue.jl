@@ -13,26 +13,85 @@ end
 
 # Events fall due in time order. Ties break on the member, then on the
 # proposal's own number, which orders two proposals made to one member at the
-# same time by which was made first, so the order never depends on how the heap
-# happened to be built.
+# same time by which was made first, so the order never depends on how the
+# queue happened to be built.
 function Base.isless(a::_Event, b::_Event)
     a.time == b.time || return isless(a.time, b.time)
     a.member == b.member || return a.member < b.member
     return a.ref < b.ref
 end
 
-# A binary min-heap of events. Kept here rather than taken from
-# DataStructures, which would be a dependency for one small structure.
-struct _EventQueue{T <: Real}
-    heap::Vector{_Event{T}}
-end
-_EventQueue{T}() where {T} = _EventQueue{T}(_Event{T}[])
+# The queue starts as a binary min-heap. Once it holds more events than this it
+# moves them into a radix heap, whose cost per event does not grow with its size;
+# a binary heap of hundreds of thousands of events spends most of its time on
+# cache misses. Small queues, such as one per household or per small outbreak,
+# never pay for the radix heap's buckets.
+const _RADIX_THRESHOLD = 1024
 
-Base.isempty(q::_EventQueue) = isempty(q.heap)
-Base.empty!(q::_EventQueue) = (empty!(q.heap); q)
+# A radix heap orders events by an unsigned key that sorts like their time. Only
+# `Float64` times get one; other time types (a dual number under automatic
+# differentiation) stay on the binary heap.
+_radix_capable(::Type{Float64}) = true
+_radix_capable(::Type) = false
+
+# The bits of a non-negative time with the sign bit set, and of a negative time
+# with every bit flipped, order as the times do, negative ones included. Adding
+# zero turns a negative zero into a positive one first.
+@inline function _time_key(t::Float64)
+    bits = reinterpret(UInt64, t + 0.0)
+    return signbit(t + 0.0) ? ~bits : bits | (UInt64(1) << 63)
+end
+
+# Bucket 1 holds the events at the time last popped, as a binary heap ordered
+# by member and proposal: a large outbreak seeds every case at one time, and a
+# sorted vector would make those ties quadratic. Bucket `b > 1` holds events whose
+# time first differs from the last popped in bit `b - 2`, counted from the
+# lowest.
+@inline _bucket(key::UInt64, last::UInt64) =
+    key == last ? 1 : 65 - leading_zeros(key ⊻ last)
+
+mutable struct _EventQueue{T <: Real}
+    heap::Vector{_Event{T}}
+    buckets::Vector{Vector{_Event{T}}}
+    last::UInt64
+    n::Int
+end
+_EventQueue{T}() where {T} = _EventQueue{T}(_Event{T}[], Vector{_Event{T}}[], UInt64(0), 0)
+
+_radix(q::_EventQueue) = !isempty(q.buckets)
+
+Base.isempty(q::_EventQueue) = q.n == 0
+
+function Base.empty!(q::_EventQueue)
+    empty!(q.heap)
+    foreach(empty!, q.buckets)
+    q.last = UInt64(0)
+    q.n = 0
+    return q
+end
 
 function _enqueue!(q::_EventQueue{T}, e::_Event{T}) where {T}
-    h = q.heap
+    q.n += 1
+    if _radix(q)
+        _radix_push!(q, e)
+    else
+        _heap_push!(q.heap, e)
+        _radix_capable(T) && q.n > _RADIX_THRESHOLD && _to_radix!(q)
+    end
+    return q
+end
+
+# The earliest event, removed from the queue. Only called on a queue that is not
+# empty.
+function _dequeue!(q::_EventQueue)
+    q.n -= 1
+    _radix(q) && return _radix_pop!(q)
+    e = _heap_pop!(q.heap)
+    _radix_capable(typeof(e.time)) && (q.last = _time_key(e.time))
+    return e
+end
+
+function _heap_push!(h::Vector{E}, e::E) where {E <: _Event}
     push!(h, e)
     i = length(h)
     @inbounds while i > 1
@@ -41,13 +100,10 @@ function _enqueue!(q::_EventQueue{T}, e::_Event{T}) where {T}
         h[p], h[i] = h[i], h[p]
         i = p
     end
-    return q
+    return h
 end
 
-# The earliest event, removed from the queue. Only called on a queue that is not
-# empty.
-function _dequeue!(q::_EventQueue)
-    h = q.heap
+function _heap_pop!(h::Vector{<:_Event})
     n = length(h)
     @inbounds top = h[1]
     @inbounds last = h[n]
@@ -68,4 +124,46 @@ function _dequeue!(q::_EventQueue)
         end
     end
     return top
+end
+
+# Every queued event falls due at or after the last popped, since a proposal is
+# never made for a time before the clock; the radix heap relies on it.
+function _to_radix!(q::_EventQueue{T}) where {T}
+    q.buckets = [_Event{T}[] for _ in 1:65]
+    for e in q.heap
+        _radix_push!(q, e)
+    end
+    empty!(q.heap)
+    return q
+end
+
+function _radix_push!(q::_EventQueue, e::_Event)
+    key = _time_key(e.time)
+    key < q.last && throw(
+        ArgumentError(
+            "an event at time $(e.time) was queued before the last event taken from the queue"
+        )
+    )
+    b = _bucket(key, q.last)
+    b == 1 ? _heap_push!(q.buckets[1], e) : push!(q.buckets[b], e)
+    return q
+end
+
+function _radix_pop!(q::_EventQueue)
+    current = q.buckets[1]
+    if isempty(current)
+        b = 2
+        @inbounds while isempty(q.buckets[b])
+            b += 1
+        end
+        source = q.buckets[b]
+        q.last = minimum(e -> _time_key(e.time), source)
+        # Every event moves to a lower bucket, relative to the new last time.
+        for e in source
+            b = _bucket(_time_key(e.time), q.last)
+            b == 1 ? _heap_push!(current, e) : push!(q.buckets[b], e)
+        end
+        empty!(source)
+    end
+    return _heap_pop!(current)
 end

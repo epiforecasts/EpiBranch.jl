@@ -61,11 +61,12 @@ While a case's clinical transitions and intervention hooks run, from
 `resolve_individual!` on, `state.max_infection_time` is that case's infection
 time and `state.cumulative_cases` counts the case and those settled before it.
 `on_infection_settled!` runs before that, and still sees the previous case's
-values. A [`Scheduled`](@ref) condition reads these:
-`Scheduled(iso; start_time = 10.0)` isolates the cases infected from day 10
-onwards, on every model. On a branching process the count includes the cases
-of earlier generations and those of the same generation infected no later than
-the case; a case of a later generation is not counted even if it was infected
+values. A [`Scheduled`](@ref) condition reads these: `cumulative_cases` for a
+`start_after_cases` count. `start_time`/`end_time` are checked differently,
+against `isolation_time`/`intervention_time` rather than this clock; see
+below. On a branching process the count includes the cases of earlier
+generations and those of the same generation infected no later than the
+case; a case of a later generation is not counted even if it was infected
 earlier, because it has not been drawn yet.
 
 Interventions are applied in the order they appear in `interventions = [...]`,
@@ -95,6 +96,9 @@ many people each case infects](@ref).
 | `keep_active(iv, state, targets, is_new)` | Once per case, after its actions; on network and household models during tracing, straight after `trace_contacts!` | The contacts `trace_contacts!` received, and an `is_new` flag for each (all `false` on network and household models) | The ids of the contacts that should go on generating contacts if they are not infected or, when tracing, that the ring is traced onward from (default: none) |
 | `competing_risk(iv, parent, contact, state)` | Per infector–contact pair, after the infector's own hooks: on branching processes when infection is decided, on continuous-time models when the simulation reaches each potential infection, in order of infection time | The infector and one contact | `nothing`, one [`Risk`](@ref), or a collection of them (a tuple, or any indexable iterable such as a vector) for an intervention that blocks transmission in more than one way |
 | `traces_contacts(iv)` | Whenever a continuous-time model decides whether to collect a case's contacts at all | Nothing | `true` if this intervention traces. The default is `true` for a type with a `trace_contacts!` method of its own; you need not write it |
+| `continuous_actions(iv)` | Whenever a network or household race decides whether to offer this intervention's actions once a case settles | Nothing | `Bool`: whether proposing an action needs no infection time of a contact not yet infected and never changes a case already settled. Default `false` |
+| `acts_on_population(iv)` | Once, before a network or household race processes any case | Nothing | `Bool`: whether this intervention's actions belong to the whole population rather than a case's contacts or group, so `intervention_actions` is called once, upfront, with every member. Default `false`; [`MassVaccination`](@ref) declares it |
+| `needs_contacts(iv)` | Whenever a network or household race decides whether a `continuous_actions` intervention can be offered actions on a model that names no contacts | Nothing | `Bool`: whether this intervention's candidates come from the model's named contacts. Default `true`, the conservative choice; [`GroupVaccination`](@ref) declares `false`, since its candidates come from a case's group |
 | `has_effect(iv)` | Once per intervention type, when a `ModelSpec` is built | Nothing | `Bool`: whether the intervention can change a simulation or a likelihood. The default is `true` for a type with a method of its own, with the right number of arguments, for a hook it can act through, such as `competing_risk` or `trace_contacts!`; `ModelSpec` warns on `false` |
 | `infectious_removal_time(iv, individual)` | Continuous-time models only: when a case's infectious period is closed | A person | The time this intervention removes them from onward transmission (default `Inf`) |
 | `on_infection_settled!(iv, individual, state, rng)` | Continuous-time models only: once a case's infection time is fixed, before its onset or clinical transitions read it | The case, and the random number generator to use | `nothing`; sets values on the case (default: does nothing) |
@@ -162,7 +166,7 @@ they do have is each potential infection, a drawn time for a named pair, and a
 | `infectious_removal_time` | not read | yes |
 | `on_infection_settled!` | not called | yes |
 | `trace_contacts!` | yes | yes, where the model can name contacts (not homogeneous or mixing) |
-| `intervention_actions` | yes; once a generation is settled, also once per settled case, for an intervention that declares `settles_generation_batch` | where the model can name contacts, for an intervention that declares `continuous_actions` |
+| `intervention_actions` | yes; once a generation is settled, also once per settled case, for an intervention that declares `settles_generation_batch` | once per settled case, for an intervention that declares `continuous_actions` (narrowed to contacts the model can name, unless it also declares `needs_contacts = false`); once, upfront, for an intervention that declares `acts_on_population` |
 | `keep_active` | yes | during tracing: chooses which traced contacts a ring grows from |
 | `apply_post_transmission!` (deprecated) | yes, with a warning | not called |
 
@@ -200,20 +204,24 @@ In practice:
   compatibility](@ref), when the fit is given the same `spec` as the
   simulation. Fitting with the bare model, or with a `spec` that leaves the
   intervention out, gives no error and disagrees with the simulation.
-- An intervention's actions reach the continuous-time models only if it
-  declares `EpiBranch.continuous_actions(iv) = true`, and then only on a model
-  that can name contacts. Such actions must work without knowing a contact's
-  infection time, which is not yet drawn, and must not change a case already
-  settled. Group and ring vaccination both declare it: ring vaccination
-  admits a dose for a contact not yet exposed as though any
-  `eligibility_window` were open, and withdraws it through
-  `EpiBranch.on_infection_settled!` once that contact's own infection
-  settles and the window turns out not to cover it.
-  [`MassVaccination`](@ref) does not declare it: its rollout vaccinates each
-  contact a case makes, which on these models would mean offering a dose to the whole
-  population not yet infected. The simulation names an intervention it cannot
-  honour in a warning, with the hooks it skips, and an intervention of your own
-  needs no declaration for this.
+- An intervention's actions reach the continuous-time models through one of
+  two declarations. `EpiBranch.continuous_actions(iv) = true` offers them once
+  a case settles, narrowed to the case and the contacts it can still reach;
+  such actions must work without knowing a contact's infection time, which is
+  not yet drawn, and must not change a case already settled. That narrowing
+  needs a model that can name contacts, unless the intervention also declares
+  `EpiBranch.needs_contacts(iv) = false`, as group vaccination does, since its
+  candidates come from a case's group rather than its contacts. Ring
+  vaccination declares `continuous_actions` too: it admits a dose for a
+  contact not yet exposed as though any `eligibility_window` were open, and
+  withdraws it through `EpiBranch.on_infection_settled!` once that contact's
+  own infection settles and the window turns out not to cover it.
+  `EpiBranch.acts_on_population(iv) = true` instead offers the actions once,
+  before any case settles, to every member; [`MassVaccination`](@ref)
+  declares it, since its rollout depends on nothing about who infected whom.
+  The simulation names an intervention that declares neither in a warning,
+  with the hooks it skips, and an intervention of your own needs no
+  declaration for this.
 - **Contact tracing** needs both: its action is a removal, so it applies on
   every model, but it has to know who a case's contacts were. A branching
   process knows the contacts each case made. A continuous-time model must
@@ -583,18 +591,22 @@ field of their own. `Scheduled` does not hold back `on_infection_settled!`: an
 intervention that acts through that hook acts from the start of the outbreak
 even when scheduled.
 
-For an intervention that acts on each case, `Scheduled` makes two checks. It
-applies to a case only if the case's own infection time falls within the
-schedule (see [What happens to each case](@ref)), and it then checks the time
-at which the intervention would act on each person. When that time would fall
-before the start, `Scheduled` undoes the action. Index cases, infected on day 0,
-are therefore missed by a policy that starts later, even when their action
-would fall after the start (see [Interventions that start or stop during the
-outbreak](@ref)). An intervention that proposes actions (see [Proposing actions
-of your own](@ref)) is instead checked against each action's own date, so an
-action dated on or after the start goes ahead even for the earliest cases.
+For an intervention that acts on each case through `resolve_individual!` or
+`trace_contacts!` and defines its own `intervention_time`, `Scheduled` runs it
+whether or not the schedule is active at the case's or contact's own clock,
+then checks the schedule again at the time `intervention_time` reports and
+undoes the effect with `reset!` if that falls outside it. An index case,
+infected on day 0, is therefore still isolated by a policy starting on day 10
+once their own isolation, after onset and a delay, falls on or after it (see
+[Interventions that start or stop during the outbreak](@ref)). An intervention
+that proposes actions (see [Proposing actions of your own](@ref)) is checked
+against each action's own date the same way. One with no `intervention_time`
+of its own is instead gated before it runs, exactly as `Scheduled` always
+gated every hook: its default, `-Inf`, leaves `reset!` nothing to undo once
+the hook has already acted.
 
-For the second check on a case, the intervention defines two methods:
+To opt into the action's-own-time check, the intervention defines two
+methods:
 
 - `EpiBranch.intervention_time(intervention, individual)`: the time at which the
   intervention acts on the person (for example the isolation time).
@@ -675,8 +687,9 @@ Scheduled(BorderClosure(0.0, 0.05); start_after = TwentyOnsets())
 `TwentyOnsets` keeps the default `trigger_can_lapse`: a person infected a second
 time draws a new onset, so the count can fall. It reads `:onset_time`, which
 [`clinical_presentation`](@ref) sets, and names it with `required_fields`: a
-model built without that attribute now stops with a clear error at the start
-instead of leaving the border open for the whole run with nothing to say why.
+model built without that attribute now stops at the start with an error
+naming it, instead of leaving the border open for the whole run with nothing
+to say why.
 
 ## Capacity limits
 
@@ -684,17 +697,17 @@ instead of leaving the border open for the whole run with nothing to say why.
 per period, such as the doses available or the appointments a clinic can offer.
 Contact tracing itself cannot be limited this way. Your intervention defines `EpiBranch.capacity_key(iv)`, the name of the
 `true`/`false` value recording that a person used the resource, and
-`EpiBranch.capacity_time_key(iv)`, the name of the value recording when. The
-time places use by other interventions within a period when
-`carry_over = false`; actions admitted by `CapacityConstrained` itself use the
-time they were admitted. Ring, group and mass vaccination use their dose-label
-names.
+`EpiBranch.capacity_time_key(iv)`, the name of the value recording when. This
+places usage in the period its date falls in, whichever intervention sharing
+the same capacity gave it. Ring, group and mass vaccination use their
+dose-label names.
 
 Every proposed recipient is known before admission, including group members
 found by searching a whole group. See [Intervention actions](@ref) for how to
 propose actions and the rules on timing. An intervention still on the
-deprecated `apply_post_transmission!` can use the capacity names too, provided
-that method changes only the people it receives.
+deprecated `apply_post_transmission!` proposes no dated action, so a dose it
+gives is placed by the admitting call's own clock instead; it can still use
+the capacity names, provided that method changes only the people it receives.
 
 ## Requiring values on each person
 
@@ -886,10 +899,11 @@ This gives two cases and one dose: only one of the two contacts is protected.
 start_time = 10.0, end_time = 10.0)` gives the same result, because both orders
 check the proposed delivery date and count only doses that go ahead.
 
-Capacity counts decisions to admit actions. In this example the index case is
-processed at time zero, so the dose for day 10 uses the budget available at
-time zero, and `period = 7.0` would not move that charge into the second week.
-The default `period = Inf` gives one budget for the whole simulation.
+Capacity counts a dose against the budget of the day it is dated, not the
+clock of the case that proposes it. Here both contacts' doses are dated day
+10, so they draw on the same budget whatever day the index case was processed
+on; `period = 7.0` would charge the second week, `[7, 14)`, not the first. The
+default `period = Inf` gives one budget for the whole simulation.
 
 ### Proposing actions of your own
 

@@ -109,7 +109,7 @@ end
     end
 end
 
-@testset "Scheduled start_time gates on the case's infection time" begin
+@testset "Scheduled start_time gates on the isolation's own time, not the case's infection time" begin
     sch = Scheduled(
         Isolation(onset_to_isolation_delay = Dirac(0.0), duration = Inf);
         start_time = 10.0
@@ -118,23 +118,27 @@ end
     bp = BranchingProcess(Poisson(1.5), Exponential(8.0))
     hp = HomogeneousProcess(; transmission_rate = 1.5, population_size = 200)
     progression = [Transition(:recovered; delay = Exponential(1.0), terminal = true)]
+    reached_before_infection = false
     for (model, kw) in (
             (ModelSpec(bp; interventions = [sch], attributes), (; max_generations = 6)),
             (ModelSpec(hp; interventions = [sch], attributes, progression), (;)),
         )
-        before, after = 0, 0
         for seed in 1:100
             state = simulate(model; rng = StableRNG(seed), kw...)
             for ind in filter(is_infected, state.individuals)
                 isolated = isfinite(get(ind.state, :isolation_time, Inf))
-                if ind.infection_time < 10.0
-                    before += isolated
-                else
-                    after += !isolated
+                if isolated
+                    @test ind.state[:isolation_time] >= 10.0
+                    ind.infection_time < 10.0 && (reached_before_infection = true)
+                elseif !is_asymptomatic(ind)
+                    # Eligible but not isolated: its own isolation, half a
+                    # day after infection, must itself fall before the start.
+                    @test ind.infection_time + 0.5 < 10.0
                 end
             end
         end
-        @test before == 0
-        @test after == 0
     end
+    # A case infected just before day 10 is still isolated, once its own
+    # isolation, half a day later, falls inside the window.
+    @test reached_before_infection
 end

@@ -91,11 +91,12 @@ Interventions on this process:
   member's dose before their own infection time is known, and withdraws it
   once that infection settles and the window turns out not to cover it,
   freeing any capacity it used.
+- `MassVaccination` doses every household's members before its own race
+  starts, needing no household membership at all.
 - A removal `Transition` in the progression always applies.
 
 Limits:
 
-- `MassVaccination` is not supported.
 - Existing protection can instead be given through `transmission_traits`, a
   [`PairKernel`](@ref), or an intervention with its own `competing_risk`.
 
@@ -154,9 +155,10 @@ The size of each household in `model`.
 """
 household_sizes(m::HouseholdProcess) = length.(m.members)
 
-# Each household runs over its finite membership until extinction or
-# `max_time`; the other termination controls do not apply, and `simulate` warns
-# if any is set.
+# The race honours a `stopping_rules` entry, or a non-default `max_cases` or
+# `max_generations`, but leaves those two keywords' defaults off, so an
+# existing run over the fixed membership keeps going to extinction or
+# `max_time` unless a cap is explicitly asked for (`_drop_default_shortcuts`).
 _honours_termination_controls(::HouseholdProcess) = false
 
 # See `_warn_uncovered_terminal_states` in EpiBranch's branching_process.jl.
