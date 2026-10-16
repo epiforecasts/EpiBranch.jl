@@ -50,8 +50,10 @@ function RoutedNetworkInfections(
         obs_end = Inf, followup_end = Inf, host_times = (;)
     )
     n_routes = length(route_names)
-    (length(contacts) == n_routes && length(infectious_time) == n_routes &&
-        length(removal_time) == n_routes) || throw(
+    (
+        length(contacts) == n_routes && length(infectious_time) == n_routes &&
+            length(removal_time) == n_routes
+    ) || throw(
         ArgumentError(
             "route_names, contacts, infectious_time and removal_time must each " *
                 "have one entry per route"
@@ -62,8 +64,10 @@ function RoutedNetworkInfections(
         ArgumentError("infection_time and is_index must cover the same hosts")
     )
     for r in 1:n_routes
-        (length(contacts[r]) == n && length(infectious_time[r]) == n &&
-            length(removal_time[r]) == n) || throw(
+        (
+            length(contacts[r]) == n && length(infectious_time[r]) == n &&
+                length(removal_time[r]) == n
+        ) || throw(
             ArgumentError(
                 "route :$(route_names[r]) must cover the same $n hosts as infection_time"
             )
@@ -302,8 +306,8 @@ function EpiBranch.pairwise_surv_loglik(
             )
                 for r in 1:n_routes for (i, pos) in in_neighbours[r][j]
                 if isfinite(data.infectious_time[r][i]) &&
-                    data.infectious_time[r][i] < tj <= data.removal_time[r][i] &&
-                    (!gates[r] || !_removed_at(gaps, i, tj))
+                data.infectious_time[r][i] < tj <= data.removal_time[r][i] &&
+                (!gates[r] || !_removed_at(gaps, i, tj))
         ]
         ext_term = (external && 0 <= tj <= data.obs_end) ?
             [loghazard(extdist, tj)] : Float64[]
