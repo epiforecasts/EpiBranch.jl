@@ -102,15 +102,7 @@ function _admit_actions!(iv::AbstractIntervention, state, actions)
 end
 
 function _action_in_schedule(s::Scheduled, action, state)
-    # Predicates see the proposed action clock; restore the admission clock even
-    # if a user predicate throws. Each simulation owns its state.
-    previous_time = state.max_infection_time
-    try
-        state.max_infection_time = action.time
-        return action.time >= s.start_time && is_active(s, state)
-    finally
-        state.max_infection_time = previous_time
-    end
+    return action.time >= s.start_time && _active_at(s, action.time, state)
 end
 function _admit_actions!(s::Scheduled, state, actions)
     selected = filter(a -> isfinite(a.time) && _action_in_schedule(s, a, state), actions)
