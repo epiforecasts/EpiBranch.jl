@@ -203,11 +203,11 @@ end
 
     @testset "a structurally infeasible host has a zero gradient, not just -Inf" begin
         # host 1 infects host 2 on the only route, but closes before host 2's
-        # infection time, so host 2's survival accumulates hazard (depending on
-        # the kernel's rate) while its event term is empty and the likelihood is
-        # -Inf at every parameter value; its gradient must be the zero vector,
-        # not whatever host 2's discarded survival term leaves behind in the
-        # shared running total.
+        # infection time. Host 2's survival term then accumulates hazard
+        # (depending on the kernel's rate) while its event term stays empty,
+        # so the likelihood is -Inf at every parameter value. Its gradient
+        # must be the zero vector, not whatever host 2's discarded survival
+        # term would otherwise leave behind in the shared running total.
         reach = [[2], Int[]]
         data = RoutedNetworkInfections(
             [:community], [reach], [[0.0, 0.0]], [[2.0, Inf]],
