@@ -18,6 +18,14 @@ function EpiBranch.competing_risk(::ReopeningWard, parent, contact, state)
 end
 EpiBranch.risk_applies(::ReopeningWard, route) = true
 
+# A removal unrelated to isolation or quarantine, closing the window at a
+# fixed time with no `record_removal!` stretch behind it, used below to check
+# that a lapsing `Scheduled` leaves such a removal alone.
+struct FixedRemoval <: EpiBranch.AbstractIntervention
+    time::Float64
+end
+EpiBranch.infectious_removal_time(f::FixedRemoval, ::Individual) = f.time
+
 @testset "Isolation trait seams" begin
     clinical = clinical_presentation(
         incubation_period = LogNormal(1.5, 0.5),
@@ -285,6 +293,12 @@ EpiBranch.risk_applies(::ReopeningWard, route) = true
         # A host no removal reached has no permanent removal to narrow to.
         @test EpiBranch.permanent_removal_time(Individual(id = 3)) == Inf
         @test EpiBranch.infectious_removal_time(lapsing, Individual(id = 4)) == Inf
+
+        # A removal that does not go through `record_removal!`, such as a
+        # custom mortality intervention, has nothing a lapsing schedule could
+        # hand back: its own closing time stands even when wrapped.
+        fixed = Scheduled(FixedRemoval(20.0); start_time = 0.0, end_time = 100.0)
+        @test EpiBranch.infectious_removal_time(fixed, Individual(id = 5)) == 20.0
     end
 
     @testset "A lapsed isolation lets the case go again, on every engine" begin
