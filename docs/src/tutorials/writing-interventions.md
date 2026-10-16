@@ -666,8 +666,9 @@ Scheduled(BorderClosure(0.0, 0.05); start_after = TwentyOnsets())
 `TwentyOnsets` keeps the default `trigger_can_lapse`: a person infected a second
 time draws a new onset, so the count can fall. It reads `:onset_time`, which
 [`clinical_presentation`](@ref) sets, and names it with `required_fields`: a
-model built without that attribute now stops with a clear error at the start
-instead of leaving the border open for the whole run with nothing to say why.
+model built without that attribute now stops at the start with an error
+naming it, instead of leaving the border open for the whole run with nothing
+to say why.
 
 ## Capacity limits
 
