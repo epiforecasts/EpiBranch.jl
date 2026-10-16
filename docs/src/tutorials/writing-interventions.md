@@ -117,9 +117,11 @@ component type.
 offspring distribution is exact in closed form. One that cuts every case's R
 by a fixed proportion `p` turns `NegBin(R, k)` into `NegBin((1 - p) * R, k)`,
 and its method returns that; return a `Poisson` or a negative binomial, the
-forms the analytical functions accept. Most interventions have no such form:
-the effect of isolation on R depends on how its timing overlaps the generation
-time, and `Isolation` has no method. [`extinction_probability`](@ref),
+forms the analytical functions accept. [`MassVaccination`](@ref) has such a
+method for a campaign already complete before the simulation starts. Most
+interventions have no such form: the effect of isolation on R depends on how
+its timing overlaps the generation time, and `Isolation` has no method.
+[`extinction_probability`](@ref),
 [`epidemic_probability`](@ref), [`probability_contain`](@ref) and the other
 [analytical functions](analytical.md) stop with an error on a `ModelSpec` that
 holds an intervention without one, and their error points to simulating the
