@@ -637,9 +637,12 @@ grid2 = 15.0:2.5:45.0
 grid2[argmax(ll2.(grid2))]
 ```
 
-close to the 30-day mean `routes` simulated the community route with. A
-lapsing isolation, one with a finite `duration` such as `iso` above
-(`duration = 7.0`) rather than `iso2`'s permanent one, is taken out of each
+close to the 30-day mean `routes` simulated the community route with.
+
+`truth2` above has no interventions, so neither route loses exposure to
+isolation here. Had it been simulated with a lapsing isolation instead, one
+with a finite `duration` such as `iso` above (`duration = 7.0`) rather than
+`iso2`'s permanent one, `pairwise_surv_loglik` would take it out of each
 route's exposure the way the simulation applies it: only a route whose
 `until` lists `EpiBranch.INTERVENTION_REMOVAL` loses exposure during the
 stretch a case is isolated for, and has it back once released.
