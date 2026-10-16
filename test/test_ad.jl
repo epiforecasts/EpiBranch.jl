@@ -77,6 +77,15 @@ using StableRNGs
             (R, d) -> loglikelihood(IncidenceCounts(d), NegBin(R[1], 0.5), LogNormal(1.6, 0.5)),
             [1.2], incidence_data
         ),
+        # The reporting probability enters the same PGF, so it differentiates
+        # alongside the offspring parameter.
+        scenario(
+            (θ, d) -> loglikelihood(
+                IncidenceCounts(d), NegBin(θ[1], 0.5), LogNormal(1.6, 0.5);
+                reporting_probability = θ[2], reporting_delay = Gamma(2.0, 1.0)
+            ),
+            [1.2, 0.6], incidence_data
+        ),
     ]
 
     DIT.test_differentiation(

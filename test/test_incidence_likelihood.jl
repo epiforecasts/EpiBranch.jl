@@ -73,6 +73,103 @@
         @test maximum(abs.(emp_cov .- m.cov)) < 0.8
     end
 
+    @testset "Discretised reporting delay" begin
+        @test EpiBranch._discretize_report_delay(nothing) == [1.0]
+        d = EpiBranch._discretize_report_delay(Gamma(2.0, 1.5))
+        @test sum(d) ≈ 1.0
+        @test d[1] ≈ 0.0
+        # A fixed delay of two steps puts all its mass on lag 2.
+        d2 = EpiBranch._discretize_report_delay(2)
+        @test d2[3] ≈ 1.0
+        @test sum(d2) ≈ 1.0
+        @test EpiBranch._discretize_report_delay(0) == [1.0]
+        @test_throws ArgumentError EpiBranch._discretize_report_delay(Normal(1.0, 1.0))
+    end
+
+    @testset "Full reporting leaves the moments unchanged" begin
+        offspring, gt, n = NegBin(1.3, 0.5), LogNormal(1.0, 0.4), 7
+        m = incidence_moments(offspring, gt, n; seeds = 2)
+        m1 = incidence_moments(
+            offspring, gt, n; seeds = 2, reporting_probability = 1, reporting_delay = 0
+        )
+        @test m1.mean ≈ m.mean
+        @test m1.cov ≈ m.cov
+        @test_throws ArgumentError incidence_moments(
+            offspring, gt, n; reporting_probability = 0
+        )
+        @test_throws ArgumentError incidence_moments(
+            offspring, gt, n; reporting_probability = 1.2
+        )
+    end
+
+    @testset "Reported means thin and shift the infection means" begin
+        R, gt, n, seeds, ρ = 1.4, LogNormal(1.0, 0.4), 8, 3, 0.6
+        inf = incidence_moments(Poisson(R), gt, n; seeds)
+        thinned = incidence_moments(Poisson(R), gt, n; seeds, reporting_probability = ρ)
+        @test thinned.mean ≈ ρ .* inf.mean
+        # Binomial thinning: Var = ρ²·Var + ρ(1 - ρ)·mean, and covariances
+        # between steps scale by ρ².
+        @test [thinned.cov[t, t] for t in 1:n] ≈
+            ρ^2 .* [inf.cov[t, t] for t in 1:n] .+ ρ * (1 - ρ) .* inf.mean
+        @test thinned.cov[2, 5] ≈ ρ^2 * inf.cov[2, 5]
+
+        # A delay convolves the infection means, the seeds' own reports
+        # included once they land in an observed step.
+        delay = Gamma(2.0, 1.0)
+        d = EpiBranch._discretize_report_delay(delay)
+        delayed = incidence_moments(
+            Poisson(R), gt, n; seeds, reporting_probability = ρ, reporting_delay = delay
+        )
+        infected(t) = t == 0 ? Float64(seeds) : (t < 0 ? 0.0 : inf.mean[t])
+        expected = [
+            ρ * sum(d[l + 1] * infected(t - l) for l in 0:(length(d) - 1)) for t in 1:n
+        ]
+        @test delayed.mean ≈ expected
+    end
+
+    @testset "Reported moments match a discrete-time simulation with reporting" begin
+        R, gt, n, seeds, ρ = 1.4, LogNormal(1.0, 0.4), 6, 3, 0.6
+        delay = Gamma(2.0, 1.0)
+        w = EpiBranch._discretize_generation_interval(gt)
+        d = EpiBranch._discretize_report_delay(delay)
+        m = incidence_moments(
+            Poisson(R), gt, n; seeds, reporting_probability = ρ, reporting_delay = delay
+        )
+
+        function simulate_reported(rng, R, w, d, ρ, n, seeds)
+            cohort = Dict(0 => seeds)
+            reports = zeros(Int, n)
+            for k in 0:n
+                haskey(cohort, k) || continue
+                for _ in 1:cohort[k]
+                    if rand(rng) < ρ
+                        day = k + rand(rng, Categorical(d)) - 1
+                        1 <= day <= n && (reports[day] += 1)
+                    end
+                    k < n || continue
+                    for _ in 1:rand(rng, Poisson(R))
+                        day = k + rand(rng, Categorical(w))
+                        day <= n && (cohort[day] = get(cohort, day, 0) + 1)
+                    end
+                end
+            end
+            return reports
+        end
+
+        nsim = 8000
+        sims = reduce(
+            hcat, (simulate_reported(StableRNG(i), R, w, d, ρ, n, seeds) for i in 1:nsim)
+        )'
+        emp_mean = vec(sum(sims, dims = 1)) ./ nsim
+        emp_cov = [
+            sum((sims[:, t] .- emp_mean[t]) .* (sims[:, t′] .- emp_mean[t′])) / (nsim - 1)
+                for t in 1:n, t′ in 1:n
+        ]
+
+        @test maximum(abs.(emp_mean .- m.mean)) < 0.2
+        @test maximum(abs.(emp_cov .- m.cov)) < 0.5
+    end
+
     @testset "loglikelihood with offspring and generation time" begin
         data = IncidenceCounts([1, 2, 4, 5, 9, 12, 18]; seeds = 2)
         gt = LogNormal(1.6, 0.5)
@@ -91,6 +188,14 @@
         # unified offspring argument covers it too.
         gfo = GeneratingFunctionOffspring(s -> exp(1.3 * (s - 1)), 1.3)
         @test loglikelihood(data, gfo, gt) ≈ loglikelihood(data, Poisson(1.3), gt)
+
+        mr = incidence_moments(
+            offspring, gt, length(data.data); seeds = data.seeds,
+            reporting_probability = 0.6, reporting_delay = Gamma(2.0, 1.5)
+        )
+        @test loglikelihood(
+            data, offspring, gt; reporting_probability = 0.6, reporting_delay = Gamma(2.0, 1.5)
+        ) ≈ logpdf(MvNormal(mr.mean, mr.cov), data.data)
     end
 
     @testset "LognormalApproximation needs strictly positive counts" begin
