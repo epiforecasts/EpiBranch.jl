@@ -556,7 +556,12 @@ the dose is given. `dose_delay` is drawn once when the dose is scheduled.
 
 The window is checked on the day of vaccination, so a contact vaccinated just
 inside it with a long `delay_to_immunity` is still vaccinated, and whether
-immunity comes in time is then decided at each exposure.
+immunity comes in time is then decided at each exposure. On a network or
+household model, a contact not yet infected when the dose is due is
+vaccinated as though the window were open, since their own exposure is not
+yet known; once the race settles their infection, the dose is withdrawn if
+the window turns out not to cover it, counting against no capacity from then
+on.
 
 !!! warning "The window is measured to *this* dose, `dose_delay` included"
     A second dose is given `dose_delay` days after the trace, and the window
@@ -850,21 +855,51 @@ function _abort_infection!(rv::RingVaccination, contact, vacc_t, rng)
     return nothing
 end
 
+# Undoes exactly what `_record_vaccination!` and `record_effect_draws!` wrote,
+# leaving `ind` reading as never given this dose: `_dose_time`,
+# `vaccine_efficacy`, `immunity_time`, `severity_efficacy` and the per-dose
+# post-exposure and onward efficacies all fall back to their unvaccinated
+# defaults. `CapacityConstrained` counts usage by rescanning `_vaccinated_key`
+# on every call it admits, rather than keeping a running total, so clearing it
+# here is itself the refund: the next call sees one fewer dose used and can
+# spend it on another candidate.
+function _withdraw_dose!(rv::RingVaccination, ind)
+    label = dose_label(rv)
+    ind.state[_vaccinated_key(label)] = false
+    ind.state[_vaccination_time_key(label)] = Inf
+    delete!(ind.state, _vaccine_efficacy_key(label))
+    delete!(ind.state, _immunity_time_key(label))
+    delete!(ind.state, _severity_efficacy_key(label))
+    delete!(ind.state, _post_exposure_efficacy_key(label))
+    delete!(ind.state, _onward_efficacy_key(label))
+    return nothing
+end
+
 # A dose given to a pending, still-uninfected member of a continuous-time race
 # (household, network, routed network) is recorded on it before its own
-# infection is settled, so `_abort_infection!` finds nothing to check against
-# yet (`contact.infection_time` is still `NaN`) and does not draw. Once the
-# race settles that member's infection, this reconsiders the dose against the
-# now-final exposure, which suppresses onset and the clinical transitions
-# exactly as a dose given after the exposure does on the generation engine.
+# infection is settled, with the window assumed open and, for
+# `_abort_infection!`, nothing yet to check against
+# (`contact.infection_time` is still `NaN`, so it does not draw). Once the
+# race settles that member's infection, this reconsiders both against the
+# now-final exposure: a dose the window turns out not to cover is withdrawn
+# outright, and one it does cover has its post-exposure protection
+# reconsidered, which suppresses onset and the clinical transitions exactly as
+# a dose given after the exposure does on the generation engine.
 #
 # The protection derives from the recorded dose rather than from a schedule's
 # clock, as `persistent_competing_risks` says, so a `Scheduled` wrapper that
 # has since switched off does not withdraw it.
 function on_infection_settled!(rv::RingVaccination, ind, state, rng)
-    _maybe_positive(rv.post_exposure_efficacy) || return nothing
     vacc_t = _dose_time(dose_label(rv), ind)
     vacc_t === nothing && return nothing
+    window = action_draw!(ind, (rv, :eligibility_window)) do
+        _sample_value(rv.eligibility_window, rng, ind)
+    end
+    if !_within_window(window, ind, vacc_t)
+        _withdraw_dose!(rv, ind)
+        return nothing
+    end
+    _maybe_positive(rv.post_exposure_efficacy) || return nothing
     _abort_infection!(rv, ind, vacc_t, rng)
     return nothing
 end

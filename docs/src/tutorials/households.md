@@ -321,9 +321,10 @@ other contact. Tracing does not reach a whole household at once.
     - Mass vaccination is not supported. When a model has an intervention
       that the household model cannot apply, `simulate` warns and runs as if
       that intervention were absent.
-    - Ring vaccination works only without an `eligibility_window` (the
-      default). With a window set, `simulate` warns and ignores the ring
-      vaccination.
+    - Ring vaccination with an `eligibility_window` set vaccinates a contact
+      not yet exposed as though the window were open, since their infection
+      time is not yet known, and withdraws the dose once their infection
+      settles if the window turns out not to cover it.
     - Tracing is forward only. It can reach the housemates who had not been
       infected by the time the case was. Housemates infected before the case,
       including the case's own infector, are not reached: backward
