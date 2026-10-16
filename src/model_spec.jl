@@ -79,6 +79,10 @@ _effect_hooks() = (
         analytic_offspring_effect, 2,
         "analytic_offspring_effect(intervention, offspring)",
     ),
+    (
+        analytic_offspring_effect, 3,
+        "analytic_offspring_effect(intervention, offspring, spec)",
+    ),
 )
 
 # The arities the engine calls each hook with, gathered per hook, in the
@@ -518,11 +522,14 @@ end
 #
 # Each analytical function reads the offspring distribution and passes it
 # through every intervention the model holds, on a spec or on a process that
-# stores its own, via `analytic_offspring_effect`. An intervention without a
-# method reaches the generic one, which throws.
+# stores its own, via `analytic_offspring_effect`. The three-argument form
+# gives an intervention the model itself, for an effect that needs more than
+# the offspring law (Isolation's generation time and incubation period, say);
+# its default falls back to the two-argument one. An intervention with a
+# method of neither reaches the generic default, which throws.
 function _offspring_through_interventions(model, offspring)
     for iv in interventions(model)
-        offspring = analytic_offspring_effect(iv, offspring)
+        offspring = analytic_offspring_effect(iv, offspring, model)
     end
     return offspring
 end

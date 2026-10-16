@@ -258,6 +258,24 @@ this fraction when it works out a case's community-infectious person-time.
 """
 removal_block_fraction(component) = 1.0
 
+"""
+    removal_gap_host_times_withdrawn(component) -> Tuple of Symbol
+
+The keys [`removal_gap_host_times`](@ref) leaves unnamed on purpose, because
+`component` can withdraw the removal part-way through a stretch it (or the
+intervention it wraps) still records through [`record_removal!`](@ref
+EpiBranch.record_removal!) with a release that can lapse. The default is `()`:
+most components either name every key they record under or never record one
+with a release at all.
+
+Every key a running simulation ever records with a finite release is checked
+against the model's `removal_gap_host_times` and this trait when the infection
+layer is built; one named by neither raises an error, since nothing would
+otherwise say whether leaving it out was deliberate or a forgotten key (see
+the extending guide's `removal_gap_host_times` section).
+"""
+removal_gap_host_times_withdrawn(component) = ()
+
 # The keys every removal in `model` records its stretches under.
 function _removal_gap_keys(model::ModelSpec)
     keys = Symbol[]
@@ -265,6 +283,35 @@ function _removal_gap_keys(model::ModelSpec)
         key in keys || push!(keys, key)
     end
     return keys
+end
+
+# The keys some component in `model` withdraws on purpose.
+function _withdrawn_removal_gap_keys(model::ModelSpec)
+    keys = Symbol[]
+    for component in model.interventions, key in removal_gap_host_times_withdrawn(component)
+        key in keys || push!(keys, key)
+    end
+    return keys
+end
+
+# Every key a simulated `state` recorded a lapsing stretch under must be named
+# by some component or withdrawn by one, or the likelihood would silently fit
+# on the whole exposure where the simulation blocked part of it.
+function _validate_removal_gap_keys(state::SimulationState, model::ModelSpec)
+    lapsing = _lapsing_removal_keys(state)
+    isempty(lapsing) && return nothing
+    accounted = union(_removal_gap_keys(model), _withdrawn_removal_gap_keys(model))
+    unnamed = setdiff(lapsing, accounted)
+    isempty(unnamed) ||
+        throw(
+        ArgumentError(
+            "the simulation recorded a releasing removal under $(unnamed), " *
+                "which no component names through `removal_gap_host_times`. " *
+                "Name the key there, or through `removal_gap_host_times_withdrawn` " *
+                "if the component means to leave it out on purpose."
+        )
+    )
+    return nothing
 end
 
 # Every stretch each host was removed for, as one column of sorted disjoint
@@ -672,6 +719,7 @@ end
 # takes out of each exposure. A host removed by either of two removals is
 # removed, so the merge is their union.
 function _layer_host_times(state::SimulationState, model::ModelSpec, host_times)
+    _validate_removal_gap_keys(state, model)
     columns = _host_time_columns(state, _layer_host_time_keys(model, host_times))
     gap_keys = _removal_gap_keys(model)
     isempty(gap_keys) && return columns

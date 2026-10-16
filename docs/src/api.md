@@ -287,6 +287,7 @@ proportion_cases_offspring
 proportion_cluster_size
 heterogeneous_contact_R
 EpiBranch.analytic_offspring_effect
+GeneratingFunctionOffspring
 ```
 
 ### Chain-size distributions
@@ -642,6 +643,7 @@ EpiBranch.susceptibility_components
 EpiBranch.susceptibility_host_times
 EpiBranch.binding_release
 EpiBranch.removal_gap_host_times
+EpiBranch.removal_gap_host_times_withdrawn
 EpiBranch.removal_block_fraction
 EpiBranch.record_removal!
 EpiBranch.removal_stretches
