@@ -553,7 +553,7 @@ end
 
 # How much of `ind`'s community-infectious window its recorded removals take
 # out, weighted by each key's fraction. Keys sharing a fraction have their
-# stretches merged into one union first, the way `_layer_host_times` merges
+# stretches merged into a union first, the way `_layer_host_times` merges
 # removal keys for the likelihood: `ContactTracing`'s `Quarantine` always
 # records its own key and, through `set_isolated!`, the identical stretch
 # under the default key too, so summing the two keys' durations apart would
