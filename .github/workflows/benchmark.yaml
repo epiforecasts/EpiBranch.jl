@@ -67,8 +67,8 @@ jobs:
           version: '1'
       - uses: julia-actions/cache@9353db09a0f2bbbdec6f41791918c75d37391b36 # v3.5.0
       # A revision from before this directory existed has no suite to run, and
-      # the base of the pull request that adds it is one. That leg reports
-      # nothing and `compare` says so, rather than the job failing on a
+      # the base of the pull request that adds it is one. Its rounds are
+      # skipped and `compare` says so, rather than the job failing on a
       # `benchmark/` that was never there.
       - name: Is there a suite at each revision?
         id: suite
@@ -204,9 +204,9 @@ jobs:
       pull-requests: write
     steps:
       # PR checkout (no ref override, so this always runs the workflow's own
-      # commit): unlike the per-revision `benchmark` job above, this never
-      # runs against an old baseline, so it can safely depend on the
-      # kit-shipped `benchmark/compare.jl`.
+      # commit): unlike the `benchmark` job above, which also runs the base
+      # revision's checkout, this never runs against an old baseline, so it
+      # can safely depend on the kit-shipped `benchmark/compare.jl`.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: julia-actions/setup-julia@fa02766e078afaaf09b14210362cee14137e6a32 # v3.0.2
         with:
@@ -252,7 +252,7 @@ jobs:
               echo
               echo "Results are missing while the base revision does have a"
               echo "suite, so the comparison was skipped. Check the"
-              echo "Benchmark (main) leg and its artifact upload."
+              echo "Benchmark job's main rounds and the bench-main upload."
             } >> "$GITHUB_STEP_SUMMARY"
           fi
       - name: Build comparison comment
