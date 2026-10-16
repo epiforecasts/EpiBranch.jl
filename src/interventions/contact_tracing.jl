@@ -1085,6 +1085,7 @@ infectious_removal_time(st::SourceTracing, ind::Individual) = _trace_removal_tim
 binding_release(::SourceTracing) = true
 
 removal_gap_host_times(st::SourceTracing) = removal_gap_host_times(st.action)
+removal_gap_host_times_withdrawn(st::SourceTracing) = removal_gap_host_times_withdrawn(st.action)
 
 function competing_risk(st::SourceTracing, parent, contact, state)
     return _trace_competing_risk(st.action, parent)
