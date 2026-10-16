@@ -556,7 +556,12 @@ the dose is given. `dose_delay` is drawn once when the dose is scheduled.
 
 The window is checked on the day of vaccination, so a contact vaccinated just
 inside it with a long `delay_to_immunity` is still vaccinated, and whether
-immunity comes in time is then decided at each exposure.
+immunity comes in time is then decided at each exposure. On a network or
+household model, a contact not yet infected when the dose is due is
+vaccinated as though the window were open, since their own exposure is not
+yet known; once the race settles their infection, the dose is withdrawn if
+the window turns out not to cover it, counting against no capacity from then
+on.
 
 !!! warning "The window is measured to *this* dose, `dose_delay` included"
     A second dose is given `dose_delay` days after the trace, and the window
@@ -857,21 +862,51 @@ function _abort_infection!(rv::RingVaccination, contact, vacc_t, rng)
     return nothing
 end
 
+# Undoes exactly what `_record_vaccination!` and `record_effect_draws!` wrote,
+# leaving `ind` reading as never given this dose: `_dose_time`,
+# `vaccine_efficacy`, `immunity_time`, `severity_efficacy` and the per-dose
+# post-exposure and onward efficacies all fall back to their unvaccinated
+# defaults. `CapacityConstrained` counts usage by rescanning `_vaccinated_key`
+# on every call it admits, rather than keeping a running total, so clearing it
+# here is itself the refund: the next call sees one fewer dose used and can
+# spend it on another candidate.
+function _withdraw_dose!(rv::RingVaccination, ind)
+    label = dose_label(rv)
+    ind.state[_vaccinated_key(label)] = false
+    ind.state[_vaccination_time_key(label)] = Inf
+    delete!(ind.state, _vaccine_efficacy_key(label))
+    delete!(ind.state, _immunity_time_key(label))
+    delete!(ind.state, _severity_efficacy_key(label))
+    delete!(ind.state, _post_exposure_efficacy_key(label))
+    delete!(ind.state, _onward_efficacy_key(label))
+    return nothing
+end
+
 # A dose given to a pending, still-uninfected member of a continuous-time race
 # (household, network, routed network) is recorded on it before its own
-# infection is settled, so `_abort_infection!` finds nothing to check against
-# yet (`contact.infection_time` is still `NaN`) and does not draw. Once the
-# race settles that member's infection, this reconsiders the dose against the
-# now-final exposure, which suppresses onset and the clinical transitions
-# exactly as a dose given after the exposure does on the generation engine.
+# infection is settled, with the window assumed open and, for
+# `_abort_infection!`, nothing yet to check against
+# (`contact.infection_time` is still `NaN`, so it does not draw). Once the
+# race settles that member's infection, this reconsiders both against the
+# now-final exposure: a dose the window turns out not to cover is withdrawn
+# outright, and one it does cover has its post-exposure protection
+# reconsidered, which suppresses onset and the clinical transitions exactly as
+# a dose given after the exposure does on the generation engine.
 #
 # The protection derives from the recorded dose rather than from a schedule's
 # clock, as `persistent_competing_risks` says, so a `Scheduled` wrapper that
 # has since switched off does not withdraw it.
 function on_infection_settled!(rv::RingVaccination, ind, state, rng)
-    _maybe_positive(rv.post_exposure_efficacy) || return nothing
     vacc_t = _dose_time(dose_label(rv), ind)
     vacc_t === nothing && return nothing
+    window = action_draw!(ind, (rv, :eligibility_window)) do
+        _sample_value(rv.eligibility_window, rng, ind)
+    end
+    if !_within_window(window, ind, vacc_t)
+        _withdraw_dose!(rv, ind)
+        return nothing
+    end
+    _maybe_positive(rv.post_exposure_efficacy) || return nothing
     _abort_infection!(rv, ind, vacc_t, rng)
     return nothing
 end
@@ -1210,9 +1245,9 @@ end
 # ── MassVaccination ──────────────────────────────────────────────────
 
 """
-    MassVaccination(; efficacy, eligibility_time, severity_efficacy = 0.0,
-                    delay_to_immunity = 0.0, waning = nothing,
-                    mode = LeakyMode(), dose_label = :default)
+    MassVaccination(; efficacy, eligibility_time, coverage = 1.0,
+                    severity_efficacy = 0.0, delay_to_immunity = 0.0,
+                    waning = nothing, mode = LeakyMode(), dose_label = :default)
 
 Vaccinate the population on a schedule, independently of contact tracing.
 
@@ -1225,6 +1260,10 @@ Vaccinate the population on a schedule, independently of contact tracing.
   `(rng, ind) -> ind.state[:vaccine_acceptance] > 0.5 ? 30.0 : Inf` leaves out
   whole groups whose acceptance is at most 0.5, so uptake is
   `P(acceptance > 0.5)`.
+- `coverage`: probability that a person eligible at `eligibility_time` is
+  actually vaccinated (consent, absence, logistics). Default 1. A number, a
+  distribution or a function `(rng, ind) -> ...`, as for
+  [`RingVaccination`](@ref)'s `coverage`.
 - `efficacy`, `delay_to_immunity`, `severity_efficacy`: take the same forms,
   drawn once per vaccinated person, for example an age-dependent efficacy or
   immunity taking one to three weeks. See [`AbstractVaccination`](@ref).
@@ -1240,6 +1279,21 @@ Each contact's vaccination day is drawn when a branching process creates
 the contact (index cases are not vaccinated), and they count as vaccinated
 if it is finite. They are protected against an exposure only if their
 vaccination day plus `delay_to_immunity` comes before it.
+
+# Closed-form offspring distribution
+
+A campaign already complete before the simulation starts (`eligibility_time`
+a number with `eligibility_time + delay_to_immunity <= 0`) protects every
+case alike, so the effect on the offspring distribution has a closed form:
+each secondary case is prevented independently with probability
+`coverage * efficacy`, and a `NegativeBinomial(R, k)` offspring distribution
+becomes `NegativeBinomial(R * (1 - coverage * efficacy), k)` (a `Poisson`
+likewise, on its mean). `extinction_probability`, `probability_contain` and
+the other analytical functions use this when `coverage`, `efficacy` and
+`delay_to_immunity` are numbers and `waning === nothing`; a rollout still
+under way during the simulation changes each case's exposure to vaccinated
+contacts over time, which has no such form, and those functions raise an
+error instead.
 
 # Examples
 
@@ -1280,14 +1334,15 @@ Prime-and-boost schedule (two doses with different labels):
 ]
 ```
 """
-struct MassVaccination{V <: VaccineEffect, T} <: AbstractVaccination
+struct MassVaccination{V <: VaccineEffect, T, C} <: AbstractVaccination
     effect::V
     eligibility_time::T
+    coverage::C
 end
 
-function MassVaccination(; eligibility_time, effect...)
-    _check_effect_keywords(MassVaccination, (:eligibility_time,), effect)
-    return MassVaccination(VaccineEffect(; effect...), eligibility_time)
+function MassVaccination(; eligibility_time, coverage = 1.0, effect...)
+    _check_effect_keywords(MassVaccination, (:eligibility_time, :coverage), effect)
+    return MassVaccination(VaccineEffect(; effect...), eligibility_time, coverage)
 end
 
 vaccine_effect(mv::MassVaccination) = getfield(mv, :effect)
@@ -1300,3 +1355,31 @@ Base.propertynames(mv::MassVaccination, ::Bool = false) = _effect_propertynames(
 Base.show(io::IO, mv::MassVaccination) = _show_keywords(io, mv)
 
 required_fields(::MassVaccination) = Symbol[]
+
+# The per-contact probability a dose of `mv` blocks an exposure, for the
+# closed form below: `coverage * efficacy`, since a secondary case is
+# prevented independently of every other once immunity has already
+# developed when the simulation starts. Only then does blocking not depend on
+# when, in the simulation, the exposure happens, and the closed form needs
+# exactly that; see the "Closed-form offspring distribution" section of
+# `MassVaccination`'s docstring.
+function _mass_vaccination_block(mv::MassVaccination)
+    e_t = mv.eligibility_time
+    ready = e_t isa Real && delay_to_immunity(mv) isa Real && e_t + delay_to_immunity(mv) <= 0
+    ready && waning(mv) === nothing && mv.coverage isa Real && efficacy(mv) isa Real ||
+        throw(
+        ArgumentError(
+            "MassVaccination has no closed-form effect on the offspring " *
+                "distribution unless `eligibility_time` and `delay_to_immunity` are " *
+                "numbers with `eligibility_time + delay_to_immunity <= 0` (immunity " *
+                "already in place before the simulation starts), `coverage` and " *
+                "`efficacy` are numbers, and `waning` is `nothing`. Compute the " *
+                "quantity from simulated outbreaks, simulate(spec, n), instead."
+        )
+    )
+    return mv.coverage * efficacy(mv)
+end
+
+function analytic_offspring_effect(mv::MassVaccination, offspring::Union{NegativeBinomial, Poisson})
+    return scale_distribution(offspring, 1 - _mass_vaccination_block(mv))
+end

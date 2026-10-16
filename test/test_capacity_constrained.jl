@@ -114,6 +114,44 @@ end
         @test only(filter(is_vaccinated, contacts)).state[:trace_time] == 3.0
     end
 
+    @testset "A dose withdrawn for missing its window refunds its capacity" begin
+        # `_capacity_usage` rescans ring vaccination's own usage key
+        # (`:vaccinated`) on every call, rather than keeping a running total,
+        # so withdrawing a dose through `on_infection_settled!` is itself the
+        # refund: the next call sees one fewer dose used.
+        rv = RingVaccination(efficacy = 0.9, eligibility_window = 2.0)
+        cc = CapacityConstrained(rv; budget_per_period = 1.0)
+        state = EpiBranch.new_state(
+            BranchingProcess(Poisson(1.0), Exponential(5.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1)
+        )
+
+        # A finite window still admits a dose for a pending, not yet exposed
+        # contact (`infection_time = NaN`), as on a network or household race.
+        first = _traced_contact(rv, 1, 5.0)
+        first.infection_time = NaN
+        append!(state.individuals, [first])
+        state.max_infection_time = 5.0
+        EpiBranch.apply_actions!(cc, state, [first])
+        @test is_vaccinated(first)
+
+        second = _traced_contact(rv, 2, 6.0)
+        second.infection_time = NaN
+        append!(state.individuals, [second])
+        state.max_infection_time = 6.0
+        EpiBranch.apply_actions!(cc, state, [second])
+        @test !is_vaccinated(second)
+
+        # The race now learns `first`'s real infection time: its dose, given
+        # at day 5, falls outside the 2-day window and is withdrawn.
+        first.infection_time = 0.0
+        EpiBranch.on_infection_settled!(cc, first, state, state.rng)
+        @test !is_vaccinated(first)
+
+        EpiBranch.apply_actions!(cc, state, [second])
+        @test is_vaccinated(second)
+    end
+
     @testset "capacity_usage reports doses used against doses available" begin
         rv = RingVaccination(efficacy = 0.9)
         cc = CapacityConstrained(rv; budget_per_period = 2.0, period = 5.0)

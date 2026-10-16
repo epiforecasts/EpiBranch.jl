@@ -24,19 +24,24 @@ EpiBranch.should_stop(r::MaxChainLength, state::SimulationState) =
     maximum(ind.generation for ind in state.individuals; init = 0) >= r.n
 ```
 
-The mass-action, network and household models run until transmission dies
-out or a time limit, and do not check `should_stop`. A rule that should also
-end those runs defines [`time_bound`](@ref EpiBranch.time_bound), as
-[`MaxTime`](@ref) does; if the time limit is all the rule checks, it also
-defines [`honoured_without_should_stop`](@ref EpiBranch.honoured_without_should_stop)
-so those runs do not warn that it was ignored. The Extending EpiBranch guide
-has a worked example in its section on stopping rules.
+The mass-action, network and household models run a continuous-time race
+rather than stepping by generation; they poll `should_stop` after each
+settled case, for any rule whose effect is not already captured by
+[`time_bound`](@ref EpiBranch.time_bound) and
+[`generation_bound`](@ref EpiBranch.generation_bound) alone, as
+[`MaxTime`](@ref) and [`MaxGenerations`](@ref) are. A rule bounded this way
+also defines [`honoured_without_should_stop`](@ref EpiBranch.honoured_without_should_stop).
+The `max_cases` and `max_generations` keyword *defaults* have no effect on
+these models, so a run over a large fixed population is not capped unless you
+ask: give an explicit value, or a `stopping_rules` entry, to end such a run
+early. The Extending EpiBranch guide has a worked example in its section on
+stopping rules.
 """
 abstract type AbstractStoppingRule end
 
 # Default termination controls, named once so the public `simulate`
-# signatures, the `SimOpts` constructor, and the ignored-control warning share
-# a single source of truth (see `_warn_ignored_termination`).
+# signatures, the `SimOpts` constructor, and `_drop_default_shortcuts` share a
+# single source of truth.
 const _DEFAULT_MAX_CASES = 10_000
 const _DEFAULT_MAX_GENERATIONS = 100
 
@@ -76,28 +81,45 @@ should_stop(r::MaxTime, state::SimulationState) = state.max_infection_time >= r.
     time_bound(rule::AbstractStoppingRule) -> Real
 
 The time limit (days) a stopping rule sets, or `Inf` if it sets none (the
-default). The mass-action, network and household models do not check
-[`should_stop`](@ref); they run until transmission dies out or until this
-time. Define it alongside `should_stop` for a rule that, like
+default). The mass-action, network and household models end the whole run at
+the earliest such limit among its rules, before any candidate infection past
+it is drawn. Define it alongside `should_stop` for a rule that, like
 [`MaxTime`](@ref), should also end those runs.
 """
 time_bound(::AbstractStoppingRule) = Inf
 time_bound(r::MaxTime) = r.t
 
 """
+    generation_bound(rule::AbstractStoppingRule) -> Int
+
+The generation limit a stopping rule sets, or `typemax(Int)` if it sets none
+(the default). The mass-action, network and household models settle cases in
+time order, not generation order, so `state.current_generation` cannot be
+trusted to climb monotonically as [`should_stop`](@ref) is polled; those
+models instead drop a settled case's own onward proposals once its generation
+reaches this bound. Define it alongside `should_stop` for a rule that, like
+[`MaxGenerations`](@ref), should also cap such a run's depth.
+"""
+generation_bound(::AbstractStoppingRule) = typemax(Int)
+generation_bound(r::MaxGenerations) = r.n
+
+"""
     honoured_without_should_stop(rule::AbstractStoppingRule) -> Bool
 
-Whether the mass-action, network and household models apply `rule` in full.
-They do not check [`should_stop`](@ref) and stop only when transmission dies
-out or at a time limit, so they fully apply only [`Extinction`](@ref) and
-[`MaxTime`](@ref) (through its [`time_bound`](@ref EpiBranch.time_bound)).
-Any other rule keeps the default `false`, and those models warn that it was
-ignored. That includes a rule with a time limit that also checks something
-else, such as a case count, since only its time limit is applied.
+Whether the mass-action, network and household models apply `rule` in full
+through [`time_bound`](@ref EpiBranch.time_bound) and
+[`generation_bound`](@ref EpiBranch.generation_bound) alone, with no need to
+poll [`should_stop`](@ref) after each settled case. True for
+[`Extinction`](@ref), [`MaxTime`](@ref) and [`MaxGenerations`](@ref). Any
+other rule keeps the default `false`, and those models poll `should_stop` for
+it instead — including a rule that bounds time or generation depth but also
+tests something else, such as a case count, since only the bound is captured
+without asking.
 """
 honoured_without_should_stop(::AbstractStoppingRule) = false
 honoured_without_should_stop(::Extinction) = true
 honoured_without_should_stop(::MaxTime) = true
+honoured_without_should_stop(::MaxGenerations) = true
 
 """
     SimOpts(; n_initial, initial_cases, max_cases, max_generations, max_time, stopping_rules)

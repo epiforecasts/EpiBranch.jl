@@ -375,16 +375,41 @@ end
             ct; rng = StableRNG(1), n_initial = 2
         )
 
-        # A rollout that doses each newly created contact has nobody to dose on a
-        # path that creates none.
+        # `MassVaccination` declares `acts_on_population`, so the pool offers
+        # it every member before the race starts, whether or not it names
+        # contacts; it warns about nothing and doses the population.
         mass = ModelSpec(
             HomogeneousProcess(; transmission_rate = 1.5, population_size = 200);
             progression = prog,
             interventions = [MassVaccination(efficacy = 0.8, eligibility_time = 0.0)]
         )
-        @test_logs (:warn, r"does not honour"i) match_mode = :any simulate(
+        @test EpiBranch._sellke_honours(mass.process, mass.interventions[1])
+        dosed = @test_logs min_level = Base.CoreLogging.Warn simulate(
             mass; rng = StableRNG(1), n_initial = 2
         )
+        @test any(is_vaccinated, dosed.individuals)
+
+        # `GroupVaccination` declares `needs_contacts = false`, so it finds a
+        # case's group through its `group_key` on the pool, which names no
+        # contacts, exactly as it would through a traced contact elsewhere.
+        onsets_for_group = clinical_presentation(
+            incubation_period = Dirac(0.0), prob_asymptomatic = 0.0
+        )
+        gv = GroupVaccination(
+            efficacy = 0.8, eligibility = OnSymptomOnset(),
+            group_key = :group, dose_delay = 0.0
+        )
+        grouped = ModelSpec(
+            HomogeneousProcess(; transmission_rate = 1.5, population_size = 200);
+            progression = prog,
+            attributes = [onsets_for_group, (rng, ind) -> (ind.state[:group] = 1)],
+            interventions = [gv]
+        )
+        @test EpiBranch._sellke_honours(grouped.process, gv)
+        dosed = @test_logs min_level = Base.CoreLogging.Warn simulate(
+            grouped; rng = StableRNG(1), n_initial = 2
+        )
+        @test any(is_vaccinated, dosed.individuals)
 
         # An intervention from outside the package that acts only through a hook
         # the pool never calls is reported without declaring anything, and so is
@@ -1139,26 +1164,29 @@ end
         @test is_extinct(si_all)
     end
 
-    @testset "termination controls warn on the fixed pool" begin
+    @testset "termination controls on the fixed pool" begin
         prog = [Transition(:recovered; from = :infection, delay = 1.0, terminal = true)]
         spec = ModelSpec(
             HomogeneousProcess(; transmission_rate = 2.0, population_size = 200);
             progression = prog
         )
-        # A set termination control has no effect on the extinction-run pool, so
-        # `simulate` warns rather than silently ignoring it.
-        @test_logs (:warn, r"ignores the other termination controls") simulate(
-            spec; n_initial = 3, max_cases = 50, rng = StableRNG(1)
-        )
-        # No termination keyword set → no warning.
+        # An explicit, non-default max_cases now caps the pool, with no
+        # warning that it had no effect.
+        capped = @test_logs simulate(spec; n_initial = 3, max_cases = 50, rng = StableRNG(1))
+        @test capped.cumulative_cases == 50
+        @test !is_extinct(capped)
+        # No termination keyword set → no warning, and the run still goes to
+        # extinction or `max_time` as before.
         @test_logs simulate(spec; n_initial = 3, rng = StableRNG(1))
         # Extinction and MaxTime are both honoured, so neither warns.
         @test_logs simulate(
             spec; n_initial = 3,
             stopping_rules = [Extinction(), MaxTime(2.0)], rng = StableRNG(1)
         )
-        # The trait itself: the pool ignores the controls, the generation engine
-        # honours them.
+        # The trait itself: whether the max_cases/max_generations keyword
+        # *defaults* apply out of the box. The pool leaves them off (an
+        # explicit value still works, as above); the generation engine
+        # applies them either way.
         @test !EpiBranch._honours_termination_controls(
             HomogeneousProcess(; transmission_rate = 2.0, population_size = 10)
         )

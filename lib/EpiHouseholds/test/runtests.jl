@@ -47,6 +47,23 @@ struct _MaskLessRule <: EpiHouseholds.ConditionOn end
         @test !is_extinct(cut)
     end
 
+    @testset "an explicit stopping rule shares one clock across households" begin
+        # A `MaxCases` cap, polled via `should_stop` after every settled case,
+        # needs every household on the same clock or it lands on whichever
+        # household's own race happens to run first rather than on the
+        # chronologically earliest cases: household 1's pair meets very
+        # slowly, household 2's almost at once, so the shared clock settles
+        # household 2's pair well before household 1's.
+        sizes = [2, 2]
+        kernel = (i, j) -> i <= 2 ? Dirac(100.0) : Dirac(0.001)
+        spec = ModelSpec(HouseholdProcess(sizes, kernel); progression = _sir(1000.0))
+        capped = simulate(spec; stopping_rules = [MaxCases(3)], rng = StableRNG(1))
+        @test capped.cumulative_cases == 3
+        @test !is_extinct(capped)
+        @test count(is_infected, capped.individuals[1:2]) == 1
+        @test count(is_infected, capped.individuals[3:4]) == 2
+    end
+
     @testset "construction" begin
         m = HouseholdProcess([3, 4, 2], Exponential(3.0))
         @test m isa HouseholdProcess

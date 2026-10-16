@@ -205,7 +205,7 @@ end
 
 # Record a proposal to member `k` from opening `w`, due at `t`, and put it in the
 # heap when it is that member's earliest.
-function _propose!(pending, proposals, head, best, represents, k, w, t, may_block)
+function _propose!(queue, proposals, head, best, represents, k, w, t, may_block)
     # With nothing to block the contact there is no fallback to keep, so the
     # entry names the opening itself and only an improvement is pushed.
     pid = w
@@ -218,7 +218,7 @@ function _propose!(pending, proposals, head, best, represents, k, w, t, may_bloc
         best[k] = t
         represents[k] = pid
         may_block && (proposals[pid] = _queue(proposals[pid]))
-        _heap_push!(pending, (t, k, pid))
+        _enqueue!(queue, _Event(t, k, pid))
     end
     return nothing
 end
@@ -229,7 +229,7 @@ end
 # depend on the order the chain was built in. The chosen proposal may still have
 # an entry in the heap, from before a later proposal overtook it, in which case
 # there is nothing to push.
-function _requeue!(pending, proposals, head, best, represents, k)
+function _requeue!(queue, proposals, head, best, represents, k)
     pid = 0
     t = oftype(best[k], Inf)
     q = Int(head[k])
@@ -246,7 +246,7 @@ function _requeue!(pending, proposals, head, best, represents, k)
     represents[k] = pid
     if pid != 0 && !proposals[pid].queued
         proposals[pid] = _queue(proposals[pid])
-        _heap_push!(pending, (t, k, pid))
+        _enqueue!(queue, _Event(t, k, pid))
     end
     return nothing
 end
@@ -678,15 +678,19 @@ end
 # `trace_contacts!` stands in for `keep_active` the same way, but needs a model
 # that can name a case's contacts as well. Actions from `intervention_actions`
 # are discovered on the race only for an intervention declaring
-# `continuous_actions`, because the race offers them to pending members whose
-# infection times it does not know yet; one that does not declare it is
-# reported, unless it also traces contacts, since tracing still reaches a model
-# that names contacts even though its actions go undelivered. The checks read
-# the methods themselves, so an intervention written outside the package is
-# reported without declaring anything. `MassVaccination`'s rollout, for one,
-# doses each contact a case makes, which the race would have to offer the whole
-# pending population; on the continuous-time path nobody is therefore ever
-# dosed, and the efficacy risk it contributes never blocks.
+# `continuous_actions` (per settled case, narrowed to the contacts it can
+# still reach, and needing them unless it also declares `needs_contacts =
+# false`) or `acts_on_population` (once, at the start, for the whole
+# population, regardless of what the model names); one that declares neither
+# is reported, unless it also traces contacts, since tracing still reaches a
+# model that names contacts even though its actions go undelivered. The
+# checks read the methods themselves, so an intervention written outside the
+# package is reported without declaring anything. `MassVaccination` declares
+# `acts_on_population`, since its dosing time comes from each person's own
+# `eligibility_time` rather than from who infected whom, and so is offered to
+# everybody before the race starts; `GroupVaccination` declares
+# `continuous_actions` and `needs_contacts = false`, since its candidates are
+# a case's group, found through `group_key` rather than through any contact.
 #
 # The settled-hook shortcut yields to a method of the intervention's own for
 # `continuous_actions`: that already answers, for its own configuration,
@@ -713,7 +717,10 @@ end
 # candidate actions run after tracing through the shared admission protocol;
 # batch-only delivery remains unsupported.
 function _sellke_honours(model, iv::AbstractIntervention)
-    continuous_actions(iv) && return supplies_contacts(model)
+    # Offered to the whole population at the start, regardless of what the
+    # model names.
+    acts_on_population(iv) && return true
+    continuous_actions(iv) && return !needs_contacts(iv) || supplies_contacts(model)
     # Its actions go undelivered, but tracing still reaches a model that names
     # contacts.
     _discovers_actions(iv) && return traces_contacts(iv) && supplies_contacts(model)
@@ -735,9 +742,10 @@ _sellke_honours(model, s::Scheduled) = _sellke_honours(model, s.intervention)
 # intervention honoured through `on_infection_settled!` never gets
 # `apply_post_transmission!` named, since it already reaches that hook.
 function _unhonoured_hooks(model, iv::AbstractIntervention)
+    acts_on_population(iv) && return Symbol[]
     hooks = _generation_hooks(iv)
     if continuous_actions(iv)
-        supplies_contacts(model) && return Symbol[]
+        (!needs_contacts(iv) || supplies_contacts(model)) && return Symbol[]
         # This branch always reaches `intervention_actions`, independently of
         # whatever generation hooks `iv` also defines; name it alongside them
         # rather than letting it go unnamed whenever `iv` happens to define
@@ -965,6 +973,14 @@ than the same draw. Returns `true` when the race ran
 until no candidate infection remained (the population reached extinction) and
 `false` when it was cut off at `max_time` with candidates still pending.
 
+`max_generation` drops a settled case's own proposals once its generation
+reaches it, leaving every case beyond that depth undrawn; everything at or
+within the bound still runs to its own extinction or `max_time`.
+`stopping_rules` is polled with [`should_stop`](@ref) once a case settles, for
+whatever a caller's `max_time`/`max_generation` do not already cover (see
+[`honoured_without_should_stop`](@ref EpiBranch.honoured_without_should_stop));
+the race ends there too, also returning `false`.
+
 `contacts(infective_id, state)` yields the ids of everyone that case was in
 contact with, whether or not transmission followed, which is what contact
 tracing acts on; it is therefore usually wider than `targets`, which yields only
@@ -985,7 +1001,8 @@ function _sellke_race!(
         from::Union{Symbol, Nothing} = nothing, until::Union{Tuple, Nothing} = nothing,
         routes = nothing, interventions = (), contacts = nothing, risks = (),
         introduction = nothing, watches = nothing, projections = nothing,
-        max_time = Inf, recorder::ContactRecorder = NoContactRecorder()
+        max_time = Inf, max_generation = typemax(Int), stopping_rules = (),
+        recorder::ContactRecorder = NoContactRecorder()
     )
     # A model either passes `routes`, a collection of `(RouteWindow, targets)`
     # pairs, or the single-route shorthand `from`/`until`/`targets`. The
@@ -1031,6 +1048,10 @@ function _sellke_race!(
     ]
     close_keys = map(((w, _),) -> _time_keys(w.until), rts)
 
+    # An intervention declaring `acts_on_population` needs no case settled to
+    # propose its actions, so it is offered every member before the race
+    # starts rather than case by case as the race goes.
+    _apply_population_actions!(state, interventions, members)
     seed!(best, members, rng)
     # The host state each route's kernel reads, as the keys it declares through
     # `watched_records`. A route that declares nothing draws from hazards fixed
@@ -1110,11 +1131,17 @@ function _sellke_race!(
         ), interventions
     )
     tracing = any(traces_contacts, interventions)
+    # Whether `_apply_continuous_actions!` is worth calling on a model that
+    # names no contacts: an intervention declaring `needs_contacts = false`
+    # (`GroupVaccination`) still has candidates to offer it there.
+    contactless_actions = any(
+        iv -> continuous_actions(iv) && !needs_contacts(iv), interventions
+    )
     openings = _RouteOpening{T}[] # one per case and route it transmits along
     proposals = _Pending{T}[]  # every proposal made, when something can block
     head = zeros(Int, may_block ? m : 0)  # first proposal to each member
     represents = zeros(Int, m) # what each member's heap entry names
-    pending = Tuple{T, Int, Int}[]
+    queue = _EventQueue{T}()
 
     # The seeds' own opening: no infector, so nothing about it is ever read.
     push!(openings, _RouteOpening(0, 0, zero(T), T(Inf)))
@@ -1128,13 +1155,17 @@ function _sellke_race!(
     clock = T(-Inf)
     pops = Tuple{Int, Int}[]
     passed = 0
+    # Whether `max_generation` has suppressed a case's own transmission, so
+    # the run finishing with no candidates left is reported as cut off rather
+    # than as having reached extinction on its own.
+    capped_generation = false
     # For a live kernel, which hosts' records a pending or future draw reads.
     # Empty and unused otherwise.
     watch = _LiveWatch(live ? m : 0, length(rts))
     # What a route needs to propose from an opening (see `_propose_along!`).
     # Every field is bound once and only mutated in place.
     race = (;
-        pending, proposals, head, best, represents, processed, pos, state, rng,
+        queue, proposals, head, best, represents, processed, pos, state, rng,
         watch, snapshot, watched_keys, may_block, max_time,
         route_projections, full_snapshot,
     )
@@ -1142,11 +1173,12 @@ function _sellke_race!(
         best[k] < Inf || continue
         seeded = best[k]
         best[k] = T(Inf)
-        _propose!(pending, proposals, head, best, represents, k, 1, seeded, may_block)
+        _propose!(queue, proposals, head, best, represents, k, 1, seeded, may_block)
     end
 
-    while !isempty(pending)
-        bt, j, p = _heap_pop!(pending)
+    while !isempty(queue)
+        event = _dequeue!(queue)
+        bt, j, p = event.time, event.member, event.ref
         # Pops come in increasing time, so every later infection also falls
         # after `max_time`: those individuals stay uninfected, and the race
         # was cut off rather than reaching extinction on its own.
@@ -1223,7 +1255,7 @@ function _sellke_race!(
                     )
                     proposals[p] = _at(proposals[p], nxt <= close_t ? nxt : T(Inf))
                 end
-                _requeue!(pending, proposals, head, best, represents, j)
+                _requeue!(queue, proposals, head, best, represents, j)
                 continue
             end
         end
@@ -1261,10 +1293,16 @@ function _sellke_race!(
         # time is the clock, and it is the next case in sequence. The post-loop
         # reconcile (`_reconcile_sellke_bookkeeping!`) sets the final values.
         _settle_case!(state, ind, interventions, state.cumulative_cases + 1)
+        # `_settle_case!` has just brought `state.cumulative_cases`,
+        # `max_infection_time` and `current_generation` up to this case, which
+        # is what a rule not already captured by `max_time`/`max_generation`
+        # reads; ending here rather than after this case transmits matches
+        # `MaxCases` stopping at the first `n` infections in time.
+        any(r -> should_stop(r, state), stopping_rules) && return false
         traced = _trace_from!(
             state, ind, interventions, contacts, pos, processed, tracing
         )
-        contacts === nothing ||
+        (contacts !== nothing || contactless_actions) &&
             _apply_continuous_actions!(
             state, ind, interventions, members, processed, contacts, pos, traced
         )
@@ -1282,11 +1320,11 @@ function _sellke_race!(
                 full_snapshot, route_projections, route_names
             )
             orphans += _redraw_moved!(
-                pending, proposals, head, best, represents,
+                queue, proposals, head, best, represents,
                 watch, openings, processed, pos, rts, state, bt, pops, passed, rng
             )
             if orphans > max(m, length(proposals) ÷ 2)
-                _compact_proposals!(pending, proposals, head, best, represents, processed)
+                _compact_proposals!(queue, proposals, head, best, represents, processed)
                 orphans = 0
             end
         end
@@ -1298,6 +1336,11 @@ function _sellke_race!(
         for (ri, (w, route_targets)) in enumerate(rts)
             open_t = window_open(ind, w)
             isfinite(open_t) || continue
+            # A case at the generation bound opened this route and would
+            # otherwise have transmitted along it, so the run was cut off
+            # rather than reaching extinction on its own — the same
+            # distinction `max_time` draws for a route it censors.
+            ind.generation >= max_generation && (capped_generation = true; continue)
             close_t = _route_close(ind, w, interventions, close_keys[ri])
             push!(openings, _RouteOpening(members[j], ri, open_t, close_t))
             opening_id = length(openings)
@@ -1312,7 +1355,8 @@ function _sellke_race!(
             )
         end
     end
-    return !any(((_, route_targets),) -> _pending_beyond(route_targets, race), rts)
+    return !capped_generation &&
+        !any(((_, route_targets),) -> _pending_beyond(route_targets, race), rts)
 end
 
 # Whether a route left contacts past the time limit that it never proposed, so
@@ -1369,7 +1413,7 @@ end
 # Record a proposal through the race's own queues.
 function _propose!(race, k, opening_id, t)
     return _propose!(
-        race.pending, race.proposals, race.head, race.best, race.represents,
+        race.queue, race.proposals, race.head, race.best, race.represents,
         k, opening_id, t, race.may_block
     )
 end
@@ -1378,29 +1422,34 @@ end
     sellke_race!(state, members, rng, sim_opts; kwargs...) -> state
 
 Public wrapper around `_sellke_race!`: resolves the race's
-`max_time` from `sim_opts`'s stopping rules, then reconciles `state`'s
-aggregate bookkeeping (`cumulative_cases`, `max_infection_time`, `extinct`)
-from the per-individual state the race wrote directly, before returning
-`state`. A model with its own simulation loop calls this rather than
-`_sellke_race!` itself, so it never has to resolve `max_time` or reconcile the
-bookkeeping by hand. `kwargs` are `_sellke_race!`'s own (`seed!`, `targets` or
-`routes`, `from`, `until`, `interventions`, `contacts`, `risks`,
-`introduction`, `watches`, `recorder`), everything but `max_time`, which this
+`max_time`, `max_generation` and `stopping_rules` from `sim_opts`'s stopping
+rules, then reconciles `state`'s aggregate bookkeeping (`cumulative_cases`,
+`max_infection_time`, `extinct`) from the per-individual state the race wrote
+directly, before returning `state`. A model with its own simulation loop
+calls this rather than `_sellke_race!` itself, so it never has to resolve
+these or reconcile the bookkeeping by hand. `kwargs` are `_sellke_race!`'s own
+(`seed!`, `targets` or `routes`, `from`, `until`, `interventions`, `contacts`,
+`risks`, `introduction`, `watches`, `recorder`), everything but the three this
 wrapper sets.
 
 A model with more than one natural race partition (a household process, over
 its households, via [`race_groups`](@ref)) calls `_sellke_race!` directly in
-its own loop instead, with `max_time` resolved once outside it, and reconciles
-`state` once after the loop: this wrapper's per-call reconciliation scans
-every individual, which would cost O(races × population) run inside such a
-loop rather than the O(population) a single-race model gets from calling this
-once. See `HouseholdProcess` in the `EpiHouseholds` package.
+its own loop instead, with `max_time`, `max_generation` and `stopping_rules`
+resolved once outside it, and reconciles `state` once after the loop: this
+wrapper's per-call reconciliation scans every individual, which would cost
+O(races × population) run inside such a loop rather than the O(population) a
+single-race model gets from calling this once. See `HouseholdProcess` in the
+`EpiHouseholds` package.
 """
 function sellke_race!(
         state::SimulationState, members::AbstractVector{Int},
         rng::AbstractRNG, sim_opts::SimOpts; kwargs...
     )
-    extinct = _sellke_race!(state, members, rng; max_time = _max_time(sim_opts), kwargs...)
+    extinct = _sellke_race!(
+        state, members, rng; max_time = _max_time(sim_opts),
+        max_generation = _max_generation(sim_opts),
+        stopping_rules = _poll_rules(sim_opts), kwargs...
+    )
     return _reconcile_sellke_bookkeeping!(state, extinct)
 end
 
@@ -1698,7 +1747,7 @@ end
 # change. Fixed kernels never take this path. Returns how many proposals it
 # unlinked.
 function _redraw_moved!(
-        pending, proposals, head, best, represents, w::_LiveWatch,
+        queue, proposals, head, best, represents, w::_LiveWatch,
         openings, processed, pos, rts, state, now, pops, passed, rng
     )
     # Opening => the members whose pairs with it are drawn again, or `nothing`
@@ -1785,14 +1834,14 @@ function _redraw_moved!(
                 candidate = opening.open_t + dt
                 candidate <= opening.close_t || continue
                 _propose!(
-                    pending, proposals, head, best, represents, j, oi, candidate, true
+                    queue, proposals, head, best, represents, j, oi, candidate, true
                 )
             end
         end
     end
     # Each member's earliest proposal, kept or new, takes its place in the heap.
     for j in hit
-        _requeue!(pending, proposals, head, best, represents, j)
+        _requeue!(queue, proposals, head, best, represents, j)
     end
     return unlinked
 end
@@ -1802,9 +1851,9 @@ end
 # already settled. Each member keeps its proposals in order, and only its
 # earliest goes back in the heap: an entry for any other is skipped when popped,
 # and a blocked contact requeues the next earliest.
-function _compact_proposals!(pending, proposals, head, best, represents, processed)
+function _compact_proposals!(queue, proposals, head, best, represents, processed)
     kept = empty(proposals)
-    empty!(pending)
+    empty!(queue)
     for j in eachindex(head)
         q = head[j]
         head[j] = 0
@@ -1822,7 +1871,7 @@ function _compact_proposals!(pending, proposals, head, best, represents, process
         represents[j] = representative
         if representative != 0
             kept[representative] = _queue(kept[representative])
-            _heap_push!(pending, (best[j], j, representative))
+            _enqueue!(queue, _Event(best[j], j, representative))
         end
     end
     copy!(proposals, kept)
