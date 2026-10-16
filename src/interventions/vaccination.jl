@@ -1353,8 +1353,8 @@ required_fields(::MassVaccination) = Symbol[]
 # closed form below: `coverage * efficacy`, since a secondary case is
 # prevented independently of every other once immunity has already
 # developed when the simulation starts. Only then does blocking not depend on
-# when, in the simulation, the exposure happens, which is what the closed
-# form needs; see the "Closed-form offspring distribution" section of
+# when, in the simulation, the exposure happens, and the closed form needs
+# exactly that; see the "Closed-form offspring distribution" section of
 # `MassVaccination`'s docstring.
 function _mass_vaccination_block(mv::MassVaccination)
     e_t = mv.eligibility_time
