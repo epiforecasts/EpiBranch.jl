@@ -540,6 +540,14 @@ instead of ending a pair whose contacts could still transmit.
     the likelihood fits on the whole exposure while the simulation blocked part
     of it. This biases the fit without any sign of it.
 
+A removal that only reduces transmission during its stretch, rather than
+blocking it outright, names the same key but also overrides
+[`EpiBranch.removal_block_fraction`](@ref EpiBranch.removal_block_fraction),
+which defaults to 1 (the whole stretch blocked). `household_offspring` weights
+each recorded stretch by this fraction when it works out a case's
+community-infectious person-time, so a leaky removal cuts that time only
+partly rather than not at all or completely.
+
 The one part for which naming no key is right is one that holds another
 intervention and can withdraw its block partway through a recorded stretch: a
 [`Scheduled`](@ref) that can end, through an `end_time` or a `start_after`
