@@ -1649,6 +1649,56 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             @test !EpiBranch._within_eligibility_window(1.0, exposed, 3.0, rng)
         end
 
+        @testset "A dose given while pending is withdrawn once settling excludes it" begin
+            # A network or household race admits a dose for a contact not yet
+            # exposed as though the window were open (see the previous
+            # testset), then learns the contact's real infection time once
+            # the race settles it.
+            rv = RingVaccination(efficacy = 0.9, eligibility_window = 2.0)
+            state = EpiBranch.new_state(
+                BranchingProcess(Poisson(0.0)),
+                EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
+            )
+            ind = Individual(
+                id = 1, infection_time = NaN,
+                state = Dict{Symbol, Any}(:traced => true, :trace_time => 5.0)
+            )
+            EpiBranch.initialise_individual!(rv, ind, state)
+            @test EpiBranch.continuous_actions(rv)
+            action = only(EpiBranch.intervention_actions(rv, state, [ind]))
+            action.effect!(ind, action.time, state)
+            @test is_vaccinated(ind)
+            @test ind.state[:vaccination_time] == 5.0
+
+            # The dose, given at day 5, falls 5 days after the infection the
+            # race now settles at day 0, outside the 2-day window.
+            ind.infection_time = 0.0
+            EpiBranch.on_infection_settled!(rv, ind, state, StableRNG(2))
+            @test !is_vaccinated(ind)
+            @test ind.state[:vaccination_time] == Inf
+            @test vaccine_efficacy(ind) === nothing
+        end
+
+        @testset "A dose the settled exposure still covers stands" begin
+            rv = RingVaccination(efficacy = 0.9, eligibility_window = 2.0)
+            state = EpiBranch.new_state(
+                BranchingProcess(Poisson(0.0)),
+                EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
+            )
+            ind = Individual(
+                id = 1, infection_time = NaN,
+                state = Dict{Symbol, Any}(:traced => true, :trace_time => 5.0)
+            )
+            EpiBranch.initialise_individual!(rv, ind, state)
+            action = only(EpiBranch.intervention_actions(rv, state, [ind]))
+            action.effect!(ind, action.time, state)
+
+            ind.infection_time = 4.0
+            EpiBranch.on_infection_settled!(rv, ind, state, StableRNG(2))
+            @test is_vaccinated(ind)
+            @test ind.state[:vaccination_time] == 5.0
+        end
+
         @testset "Doses are timed at the trace, whatever the trace action" begin
             # A ring member is vaccinated when the tracing team reaches
             # them, so `:vaccination_time` is the trace time.

@@ -87,15 +87,16 @@ Interventions on this process:
   and `CapacityConstrained`, and a ring dose's `post_exposure_efficacy` can stop
   a household member's own infection before onset. A capacity limit is one
   budget shared by all households, renewed every `period` days of the
-  outbreak.
+  outbreak. `RingVaccination`'s `eligibility_window` admits a household
+  member's dose before their own infection time is known, and withdraws it
+  once that infection settles and the window turns out not to cover it,
+  freeing any capacity it used.
 - `MassVaccination` doses every household's members before its own race
   starts, needing no household membership at all.
 - A removal `Transition` in the progression always applies.
 
 Limits:
 
-- `RingVaccination` needs `eligibility_window = Inf`, because a household
-  member's own infection time is not yet known when the dose is decided.
 - Existing protection can instead be given through `transmission_traits`, a
   [`PairKernel`](@ref), or an intervention with its own `competing_risk`.
 

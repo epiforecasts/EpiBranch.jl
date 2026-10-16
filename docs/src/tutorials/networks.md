@@ -178,10 +178,11 @@ contact-interval distribution that depends on who is in contact with whom (see
 your own (see [Extending EpiBranch](extending.md)).
 
 !!! warning "Limits on interventions on a network"
-    - Ring vaccination works only without an `eligibility_window` (the
-      default). Checking whether a contact was exposed recently enough needs
-      their infection time, which is not yet known when they are vaccinated.
-      With a window set, `simulate` warns and ignores the ring vaccination.
+    - Ring vaccination with an `eligibility_window` set vaccinates a contact
+      not yet exposed as though the window were open, since their infection
+      time is not yet known. Once the network settles the contact's
+      infection, it withdraws the dose if the window turns out not to cover
+      it, which frees any capacity the dose had used.
     - Tracing is forward only. It can reach the contacts who had not been
       infected by the time the case was. Contacts infected before the case,
       including the case's own infector, are not reached: backward

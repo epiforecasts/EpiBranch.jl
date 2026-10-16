@@ -120,9 +120,11 @@ component type.
 offspring distribution is exact in closed form. One that cuts every case's R
 by a fixed proportion `p` turns `NegBin(R, k)` into `NegBin((1 - p) * R, k)`,
 and its method returns that; return a `Poisson` or a negative binomial, the
-forms the analytical functions accept. Most interventions have no such form:
-the effect of isolation on R depends on how its timing overlaps the generation
-time, and `Isolation` has no method. [`extinction_probability`](@ref),
+forms the analytical functions accept. [`MassVaccination`](@ref) has such a
+method for a campaign already complete before the simulation starts. Most
+interventions have no such form: the effect of isolation on R depends on how
+its timing overlaps the generation time, and `Isolation` has no method.
+[`extinction_probability`](@ref),
 [`epidemic_probability`](@ref), [`probability_contain`](@ref) and the other
 [analytical functions](analytical.md) stop with an error on a `ModelSpec` that
 holds an intervention without one, and their error points to simulating the
@@ -197,11 +199,14 @@ In practice:
   two declarations. `EpiBranch.continuous_actions(iv) = true` offers them once
   a case settles, narrowed to the case and the contacts it can still reach;
   such actions must work without knowing a contact's infection time, which is
-  not yet drawn. That narrowing needs a model that can name contacts, unless
-  the intervention also declares `EpiBranch.needs_contacts(iv) = false`, as
-  group vaccination does, since its candidates come from a case's group
-  rather than its contacts. Ring vaccination declares `continuous_actions`
-  when its `eligibility_window` is left at the default.
+  not yet drawn, and must not change a case already settled. That narrowing
+  needs a model that can name contacts, unless the intervention also declares
+  `EpiBranch.needs_contacts(iv) = false`, as group vaccination does, since its
+  candidates come from a case's group rather than its contacts. Ring
+  vaccination declares `continuous_actions` too: it admits a dose for a
+  contact not yet exposed as though any `eligibility_window` were open, and
+  withdraws it through `EpiBranch.on_infection_settled!` once that contact's
+  own infection settles and the window turns out not to cover it.
   `EpiBranch.acts_on_population(iv) = true` instead offers the actions once,
   before any case settles, to every member; [`MassVaccination`](@ref)
   declares it, since its rollout depends on nothing about who infected whom.
