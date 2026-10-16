@@ -96,25 +96,29 @@ jobs:
       # *active* project's `[sources]`. A dependency pinned there by git
       # url/rev (not yet registered) cannot resolve, failing with "has no
       # known versions!" (EpiAware/EpiAwarePackageTools.jl#216). Register each such pin into a throwaway
-      # registry in this runner's depot instead: registries are depot-level,
-      # so the dependency resolves by name in every environment on the
-      # runner. A package with no unregistered pins is a no-op.
+      # registry instead, so the dependency resolves by name. Each revision
+      # gets its own, in a depot of its own (`depot-pr`, `depot-main`) added
+      # to the end of that revision's depot path: the two may pin the same
+      # dependency at different revisions, and `bootstrap_sources_registry`
+      # replaces the whole registry on every call. Packages and compiled
+      # code still go to the first, cached depot. A package with no
+      # unregistered pins is a no-op.
       #
-      # The scratch registry from an earlier run is stale (cached depot), so
-      # drop it first, before the guard: otherwise a package that has since
-      # dropped its pin is left with a registry still carrying the name,
-      # which fails the depot with a hash mismatch.
+      # A scratch registry left in the cached depot by the workflow before
+      # this one is stale, so drop it first, before the guard: otherwise a
+      # package that has since dropped its pin is left with a registry still
+      # carrying the name, which fails the depot with a hash mismatch.
       - name: Bootstrap registry for unregistered [sources] deps
         run: |
           rm -rf "${JULIA_DEPOT_PATH:-$HOME/.julia}/registries/EpiAwareScratch"
-          dirs=()
+          revs=()
           for rev in pr main; do
             [ -f "$rev/benchmark/benchmarks.jl" ] || continue
             if grep -qE '^\[sources(\.|\])' "$rev/benchmark/Project.toml"; then
-              dirs+=("$rev/benchmark")
+              revs+=("$rev")
             fi
           done
-          if [ ${#dirs[@]} -eq 0 ]; then
+          if [ ${#revs[@]} -eq 0 ]; then
             echo "no [sources] section at either revision: nothing to register"
             exit 0
           fi
@@ -126,16 +130,21 @@ jobs:
                 Pkg.PackageSpec(
                     name = "EpiAwarePackageTools", version = "0.4")])
             using EpiAwarePackageTools.Benchmarks: bootstrap_sources_registry
-            for dir in ARGS
-                done = bootstrap_sources_registry(dir)
-                println(dir, ": ", isempty(done) ? "no unregistered [sources] deps" :
+            for rev in ARGS
+                done = bootstrap_sources_registry(
+                    joinpath(rev, "benchmark");
+                    depot = joinpath(ENV["GITHUB_WORKSPACE"], "depot-" * rev))
+                println(rev, ": ", isempty(done) ? "no unregistered [sources] deps" :
                         "registered: " * join(done, ", "))
-            end' "${dirs[@]}"
+            end' "${revs[@]}"
       # Precompiling takes most of the job, so both revisions do it at once.
       - name: Install and precompile
         run: |
+          # The revision's own registry depot after the usual ones (an empty
+          # entry stands for Julia's defaults).
+          depot_path() { echo "${JULIA_DEPOT_PATH:-}:$GITHUB_WORKSPACE/depot-$1"; }
           setup() {
-            (cd "$1" && julia --project=benchmark -e '
+            (cd "$1" && JULIA_DEPOT_PATH="$(depot_path "$1")" julia --project=benchmark -e '
               using Pkg
               Pkg.instantiate()
               Pkg.precompile()')
@@ -148,8 +157,11 @@ jobs:
           wait "$pr_pid"
       - name: Run benchmark suites
         run: |
+          # The revision's own registry depot after the usual ones (an empty
+          # entry stands for Julia's defaults).
+          depot_path() { echo "${JULIA_DEPOT_PATH:-}:$GITHUB_WORKSPACE/depot-$1"; }
           run_round() {
-            (cd "$1" && julia --project=benchmark -e '
+            (cd "$1" && JULIA_DEPOT_PATH="$(depot_path "$1")" julia --project=benchmark -e '
               using BenchmarkTools
               include("benchmark/benchmarks.jl")
               results = run(SUITE; verbose = true, seconds = 1)
