@@ -205,7 +205,7 @@ end
 
 # Record a proposal to member `k` from opening `w`, due at `t`, and put it in the
 # heap when it is that member's earliest.
-function _propose!(pending, proposals, head, best, represents, k, w, t, may_block)
+function _propose!(queue, proposals, head, best, represents, k, w, t, may_block)
     # With nothing to block the contact there is no fallback to keep, so the
     # entry names the opening itself and only an improvement is pushed.
     pid = w
@@ -218,7 +218,7 @@ function _propose!(pending, proposals, head, best, represents, k, w, t, may_bloc
         best[k] = t
         represents[k] = pid
         may_block && (proposals[pid] = _queue(proposals[pid]))
-        _heap_push!(pending, (t, k, pid))
+        _enqueue!(queue, _Event(t, k, pid))
     end
     return nothing
 end
@@ -229,7 +229,7 @@ end
 # depend on the order the chain was built in. The chosen proposal may still have
 # an entry in the heap, from before a later proposal overtook it, in which case
 # there is nothing to push.
-function _requeue!(pending, proposals, head, best, represents, k)
+function _requeue!(queue, proposals, head, best, represents, k)
     pid = 0
     t = oftype(best[k], Inf)
     q = Int(head[k])
@@ -246,7 +246,7 @@ function _requeue!(pending, proposals, head, best, represents, k)
     represents[k] = pid
     if pid != 0 && !proposals[pid].queued
         proposals[pid] = _queue(proposals[pid])
-        _heap_push!(pending, (t, k, pid))
+        _enqueue!(queue, _Event(t, k, pid))
     end
     return nothing
 end
@@ -1114,7 +1114,7 @@ function _sellke_race!(
     proposals = _Pending{T}[]  # every proposal made, when something can block
     head = zeros(Int, may_block ? m : 0)  # first proposal to each member
     represents = zeros(Int, m) # what each member's heap entry names
-    pending = Tuple{T, Int, Int}[]
+    queue = _EventQueue{T}()
 
     # The seeds' own opening: no infector, so nothing about it is ever read.
     push!(openings, _RouteOpening(0, 0, zero(T), T(Inf)))
@@ -1134,7 +1134,7 @@ function _sellke_race!(
     # What a route needs to propose from an opening (see `_propose_along!`).
     # Every field is bound once and only mutated in place.
     race = (;
-        pending, proposals, head, best, represents, processed, pos, state, rng,
+        queue, proposals, head, best, represents, processed, pos, state, rng,
         watch, snapshot, watched_keys, may_block, max_time,
         route_projections, full_snapshot,
     )
@@ -1142,11 +1142,12 @@ function _sellke_race!(
         best[k] < Inf || continue
         seeded = best[k]
         best[k] = T(Inf)
-        _propose!(pending, proposals, head, best, represents, k, 1, seeded, may_block)
+        _propose!(queue, proposals, head, best, represents, k, 1, seeded, may_block)
     end
 
-    while !isempty(pending)
-        bt, j, p = _heap_pop!(pending)
+    while !isempty(queue)
+        event = _dequeue!(queue)
+        bt, j, p = event.time, event.member, event.ref
         # Pops come in increasing time, so every later infection also falls
         # after `max_time`: those individuals stay uninfected, and the race
         # was cut off rather than reaching extinction on its own.
@@ -1223,7 +1224,7 @@ function _sellke_race!(
                     )
                     proposals[p] = _at(proposals[p], nxt <= close_t ? nxt : T(Inf))
                 end
-                _requeue!(pending, proposals, head, best, represents, j)
+                _requeue!(queue, proposals, head, best, represents, j)
                 continue
             end
         end
@@ -1282,11 +1283,11 @@ function _sellke_race!(
                 full_snapshot, route_projections, route_names
             )
             orphans += _redraw_moved!(
-                pending, proposals, head, best, represents,
+                queue, proposals, head, best, represents,
                 watch, openings, processed, pos, rts, state, bt, pops, passed, rng
             )
             if orphans > max(m, length(proposals) ÷ 2)
-                _compact_proposals!(pending, proposals, head, best, represents, processed)
+                _compact_proposals!(queue, proposals, head, best, represents, processed)
                 orphans = 0
             end
         end
@@ -1369,7 +1370,7 @@ end
 # Record a proposal through the race's own queues.
 function _propose!(race, k, opening_id, t)
     return _propose!(
-        race.pending, race.proposals, race.head, race.best, race.represents,
+        race.queue, race.proposals, race.head, race.best, race.represents,
         k, opening_id, t, race.may_block
     )
 end
@@ -1698,7 +1699,7 @@ end
 # change. Fixed kernels never take this path. Returns how many proposals it
 # unlinked.
 function _redraw_moved!(
-        pending, proposals, head, best, represents, w::_LiveWatch,
+        queue, proposals, head, best, represents, w::_LiveWatch,
         openings, processed, pos, rts, state, now, pops, passed, rng
     )
     # Opening => the members whose pairs with it are drawn again, or `nothing`
@@ -1785,14 +1786,14 @@ function _redraw_moved!(
                 candidate = opening.open_t + dt
                 candidate <= opening.close_t || continue
                 _propose!(
-                    pending, proposals, head, best, represents, j, oi, candidate, true
+                    queue, proposals, head, best, represents, j, oi, candidate, true
                 )
             end
         end
     end
     # Each member's earliest proposal, kept or new, takes its place in the heap.
     for j in hit
-        _requeue!(pending, proposals, head, best, represents, j)
+        _requeue!(queue, proposals, head, best, represents, j)
     end
     return unlinked
 end
@@ -1802,9 +1803,9 @@ end
 # already settled. Each member keeps its proposals in order, and only its
 # earliest goes back in the heap: an entry for any other is skipped when popped,
 # and a blocked contact requeues the next earliest.
-function _compact_proposals!(pending, proposals, head, best, represents, processed)
+function _compact_proposals!(queue, proposals, head, best, represents, processed)
     kept = empty(proposals)
-    empty!(pending)
+    empty!(queue)
     for j in eachindex(head)
         q = head[j]
         head[j] = 0
@@ -1822,7 +1823,7 @@ function _compact_proposals!(pending, proposals, head, best, represents, process
         represents[j] = representative
         if representative != 0
             kept[representative] = _queue(kept[representative])
-            _heap_push!(pending, (best[j], j, representative))
+            _enqueue!(queue, _Event(best[j], j, representative))
         end
     end
     copy!(proposals, kept)
