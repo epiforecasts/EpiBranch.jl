@@ -69,8 +69,8 @@ function simulate_once(
     # capacity budget shared across households, or a stopping rule that polls
     # `should_stop` (`poll_rules` below) — needs every household on one clock,
     # so that its view of the population reflects cases in true time order
-    # rather than one household's race run to completion before the next
-    # starts. `reads_population_state` is how an intervention declares that;
+    # rather than each household's race running to completion before the
+    # next begins. `reads_population_state` is how an intervention declares that;
     # `race_groups` is how the process itself partitions races for a kernel,
     # which `HouseholdProcess` narrows to one race per household unless the
     # kernel's watched records say otherwise.

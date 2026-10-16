@@ -966,12 +966,12 @@ until no candidate infection remained (the population reached extinction) and
 `false` when it was cut off at `max_time` with candidates still pending.
 
 `max_generation` drops a settled case's own proposals once its generation
-reaches it, so no case beyond that depth is ever created; everything at or
-within the bound still runs to its own extinction or `max_time`. `stopping_rules`
-is polled with [`should_stop`](@ref) once a case settles, for whatever a
-caller's `max_time`/`max_generation` do not already cover (see
-[`honoured_without_should_stop`](@ref EpiBranch.honoured_without_should_stop)); the race ends there too,
-and this also returns `false`.
+reaches it, leaving every case beyond that depth undrawn; everything at or
+within the bound still runs to its own extinction or `max_time`.
+`stopping_rules` is polled with [`should_stop`](@ref) once a case settles, for
+whatever a caller's `max_time`/`max_generation` do not already cover (see
+[`honoured_without_should_stop`](@ref EpiBranch.honoured_without_should_stop));
+the race ends there too, also returning `false`.
 
 `contacts(infective_id, state)` yields the ids of everyone that case was in
 contact with, whether or not transmission followed, which is what contact
