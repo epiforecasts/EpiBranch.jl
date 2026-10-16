@@ -235,10 +235,12 @@ EpiBranch.risk_applies(::ReopeningWard, route) = true
         @test_throws ArgumentError race([ReopeningWard()])
     end
 
-    @testset "A leaky isolation records no stretch and keeps its window open" begin
-        # Leaky isolation reduces each contact's hazard and removes nobody, so
-        # it has no stretch for a likelihood to take out and no window to
-        # close. A wrapper that cannot read stretches must not narrow the
+    @testset "A leaky isolation records its stretch, weighted, and keeps its window open" begin
+        # Leaky isolation reduces each contact's hazard and removes nobody
+        # outright, so it has no window to close, but its stretch is recorded
+        # like perfect isolation's, for a reader (such as `household_offspring`)
+        # to weight by `removal_block_fraction` rather than treat as a full
+        # block. A wrapper that cannot read stretches must not narrow the
         # window for it either, which would turn the reduction into a
         # permanent, perfect removal.
         leaky = Isolation(
@@ -254,9 +256,12 @@ EpiBranch.risk_applies(::ReopeningWard, route) = true
         case = Individual(id = 1)
         set_isolated!(case, 8.0; release_time = 15.0)
 
-        @test isempty(EpiBranch.removal_gap_host_times(leaky))
+        @test EpiBranch.removal_gap_host_times(leaky) ==
+            (EpiBranch.REMOVAL_STRETCHES_KEY,)
         @test EpiBranch.removal_gap_host_times(perfect) ==
             (EpiBranch.REMOVAL_STRETCHES_KEY,)
+        @test EpiBranch.removal_block_fraction(leaky) == 0.5
+        @test EpiBranch.removal_block_fraction(perfect) == 1.0
         for wrap in (
                 identity,
                 iv -> Scheduled(iv; start_time = 0.0),

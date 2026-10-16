@@ -191,19 +191,29 @@ function competing_risk(iso::Isolation, parent, contact, state)
 end
 
 # The likelihood reads the stretch a lapsing isolation removed the host for.
-# A duration of `Inf` leaves no stretch to read, the window closing at the
-# isolation's own start, and the layer records nothing extra for it.
-# A recorded stretch is append-only, so the release it reports binds.
+# Perfect isolation with a duration of `Inf` leaves no stretch to read, the
+# window closing at the isolation's own start instead, and the layer records
+# nothing extra for it. A recorded stretch is append-only, so the release it
+# reports binds.
 binding_release(::Isolation) = true
 
+# Perfect isolation (`post_isolation_transmission == 0`) with no release has
+# one stretch and no release, which the infectious window holds instead (see
+# `infectious_removal_time`), so there is nothing extra to read back. Any
+# other isolation — leaky, finite, or both — hands transmission back in full
+# or in part rather than closing the window, and so needs its stretch read by
+# anything that otherwise assumes the case transmits throughout;
+# `removal_block_fraction` tells such a reader how much of it to count as
+# blocked.
 function removal_gap_host_times(iso::Isolation)
-    # Leaky isolation contributes no removal at all, only a reduced hazard, so
-    # it has no stretch for anything to read; a duration of `Inf` has one
-    # stretch and no release, which the infectious window holds instead.
-    iso.post_isolation_transmission == 0 || return ()
-    iso.duration === Inf && return ()
+    iso.post_isolation_transmission == 0 && iso.duration === Inf && return ()
     return (REMOVAL_STRETCHES_KEY,)
 end
+
+"""Leaky isolation blocks only `1 - post_isolation_transmission` of
+transmission during its stretch; perfect isolation (the default) blocks all
+of it."""
+removal_block_fraction(iso::Isolation) = 1.0 - iso.post_isolation_transmission
 
 # Leaky isolation's residual block stands in for the removal perfect isolation
 # makes, so it reaches the same routes: those the case is isolated from.

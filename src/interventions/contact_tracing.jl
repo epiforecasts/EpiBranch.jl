@@ -841,6 +841,7 @@ binding_release(::ContactTracing) = true
 removal_gap_host_times(ct::ContactTracing) = removal_gap_host_times(ct.action)
 removal_gap_host_times(::TraceAction) = ()
 removal_gap_host_times(::Quarantine) = (QUARANTINE_STRETCHES_KEY,)
+removal_block_fraction(ct::ContactTracing) = removal_block_fraction(ct.action)
 
 # Where the action recorded the removals this tracing should honour. An action
 # written outside the package names its own key, as the built-in quarantine

@@ -243,6 +243,22 @@ the record, and in simulation acts contact by contact instead.
 """
 removal_gap_host_times(component) = ()
 
+"""
+    removal_block_fraction(component) -> Float64
+
+The fraction of transmission a period recorded under [`removal_gap_host_times`](@ref
+EpiBranch.removal_gap_host_times) prevents, between 0 and 1. The default is 1,
+a removal that blocks transmission outright for its stretch (quarantine,
+perfect isolation). [`Isolation`](@ref) overrides it to `1 -
+post_isolation_transmission` for a leaky stretch, which is less than its
+whole length blocked.
+
+`household_offspring` (in `EpiHouseholds`) weights each recorded stretch by
+this fraction when it works out a case's community-infectious person-time,
+rather than assuming every stretch blocks transmission completely.
+"""
+removal_block_fraction(component) = 1.0
+
 # The keys every removal in `model` records its stretches under.
 function _removal_gap_keys(model::ModelSpec)
     keys = Symbol[]
