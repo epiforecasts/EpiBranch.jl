@@ -31,8 +31,8 @@ function EpiBranch.resolve_individual!(::DeathAfterOneDay, ind, state)
 end
 
 # A custom intervention that removes a case for a short, lapsing stretch
-# under a key of its own, without naming it through `removal_gap_host_times`
-# or `removal_gap_host_times_withdrawn`, for the forgotten-key test below.
+# under a key of its own, without declaring it through `removal_gap_host_times`
+# or `removal_gap_host_times_withdrawn`.
 struct _ForgetfulRemoval <: EpiBranch.AbstractIntervention end
 function EpiBranch.resolve_individual!(::_ForgetfulRemoval, ind, state)
     EpiBranch.record_removal!(
