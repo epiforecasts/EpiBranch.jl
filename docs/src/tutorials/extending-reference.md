@@ -804,9 +804,10 @@ window with no end. `HomogeneousProcess` and `MixingProcess` name no
 contacts, so a `continuous_actions` intervention that needs them is not
 offered any. `EpiBranch.acts_on_population(iv) = true` opts in to the other
 way instead: actions run once, before any case settles, for every member,
-needing nothing about who infected whom. Mass vaccination declares this, and
-so reaches every model, including `HomogeneousProcess` and `MixingProcess`.
-Scheduling and capacity work as on branching processes either way.
+needing nothing about who infected whom. Mass vaccination declares this,
+which lets it reach every model, including `HomogeneousProcess` and
+`MixingProcess`. Scheduling and capacity work as on branching processes
+either way.
 On a household model a capacity limit puts every household on one shared
 clock, so a budget with a finite `period` is counted in calendar order across
 households.
