@@ -169,6 +169,25 @@ using Dates
         @test all(name -> !startswith(name, "_"), names(df))
     end
 
+    @testset "linelist omits exclusive_probabilities' shared draw" begin
+        rng = StableRNG(1)
+        death_p, recovered_p = exclusive_probabilities([0.64, 0.36])
+        spec = ModelSpec(
+            BranchingProcess(Poisson(1.5), Gamma(2.0, 3.0));
+            attributes = clinical_presentation(incubation_period = LogNormal(1.6, 0.5)),
+            progression = [
+                Death(delay = LogNormal(2.5, 0.4), probability = death_p),
+                Transition(
+                    :recovered, from = :onset, delay = LogNormal(2.0, 0.4),
+                    probability = recovered_p, terminal = true
+                ),
+            ]
+        )
+        state = simulate(spec; max_cases = 20, rng = rng)
+        df = linelist(state)
+        @test all(name -> !startswith(name, "_") && !startswith(name, "#"), names(df))
+    end
+
     @testset "contacts output" begin
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(2.0), Exponential(5.0))
