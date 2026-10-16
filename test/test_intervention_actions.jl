@@ -110,17 +110,20 @@ end
     append!(state.individuals, [a, b, ind])
     members = [1, 2, 3]
     processed = falses(3)
+    # The walk's reach is passed as `traced`, so `contacts` only stands in for
+    # a model that names contacts, which ring vaccination needs to be offered.
+    contacts(id, state) = Int[]
 
     # `a` settles first, tracing `ind` late.
     ind.state[:trace_time] = 20.0
     processed[1] = true
-    EpiBranch._apply_continuous_actions!(state, a, [rv], members, processed, nothing, nothing, [ind.id])
+    EpiBranch._apply_continuous_actions!(state, a, [rv], members, processed, contacts, nothing, [ind.id])
     @test ind.state[:vaccination_time] == 21.0
 
     # `b` settles next, despite having isolated, and so traced `ind`, earlier.
     ind.state[:trace_time] = 5.0
     processed[2] = true
-    EpiBranch._apply_continuous_actions!(state, b, [rv], members, processed, nothing, nothing, [ind.id])
+    EpiBranch._apply_continuous_actions!(state, b, [rv], members, processed, contacts, nothing, [ind.id])
     @test ind.state[:vaccination_time] == 6.0
     @test immunity_time(ind) == 9.0
 end
