@@ -1015,11 +1015,11 @@
         end
 
         @testset "max_cases/max_generations defaults stay off for a fixed-population model" begin
-            # A fixed-population model's race leaves the max_cases/max_generations
-            # defaults off, so fitting against it must route through the same
-            # SimOpts-building path as `simulate` rather than building its own
-            # SimOpts straight from the keywords, which would reapply those
-            # defaults as a hard cap.
+            # Regression: a fixed-population model's extinction race leaves
+            # max_cases and max_generations off by default, so fitting must
+            # build SimOpts through the same path as `simulate` rather than
+            # straight from the keywords, which would reimpose those defaults
+            # as a hard cap.
             prog = [Transition(:recovered; rate = 1.0, terminal = true)]
             model = ModelSpec(
                 HomogeneousProcess(; transmission_rate = 50.0, population_size = 10_050);
