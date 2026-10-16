@@ -380,6 +380,21 @@ end
         @test EpiHouseholds._removal_gap_duration(ind, gap_fractions, 0.0, 10.0) == 4.0
     end
 
+    @testset "overlapping stretches at different fractions are not double-counted" begin
+        # A leaky isolation (blocking half of transmission) overlapping a
+        # full-block quarantine: in the four days both apply the quarantine
+        # alone already blocks everything, so the overlap must not add the
+        # isolation's own half on top of it.
+        ind = Individual(id = 1)
+        EpiBranch.record_removal!(ind, 3.0, 10.0; key = EpiBranch.REMOVAL_STRETCHES_KEY)
+        EpiBranch.record_removal!(ind, 6.0, 14.0; key = EpiBranch.QUARANTINE_STRETCHES_KEY)
+        gap_fractions = [
+            EpiBranch.REMOVAL_STRETCHES_KEY => 0.5,
+            EpiBranch.QUARANTINE_STRETCHES_KEY => 1.0,
+        ]
+        @test EpiHouseholds._removal_gap_duration(ind, gap_fractions, 0.0, 20.0) == 9.5
+    end
+
     @testset "cases that never become infectious make no contacts" begin
         # A household of one isolates the window: R* is the community rate times
         # the lone case's mean infectious time, zero for a case that recovers

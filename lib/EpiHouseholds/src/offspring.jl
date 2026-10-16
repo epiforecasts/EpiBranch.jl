@@ -552,37 +552,54 @@ function _removal_gap_fractions(interventions)
 end
 
 # How much of `ind`'s community-infectious window its recorded removals take
-# out, weighted by each key's fraction. Keys sharing a fraction have their
-# stretches merged into a union first, the way `_layer_host_times` merges
-# removal keys for the likelihood: `ContactTracing`'s `Quarantine` always
-# records its own key and, through `set_isolated!`, the identical stretch
-# under the default key too, so summing the two keys' durations apart would
-# count that stretch twice.
+# out. Keys sharing a fraction have their stretches merged into a union
+# first, the way `_layer_host_times` merges removal keys for the likelihood:
+# `ContactTracing`'s `Quarantine` always records its own key and, through
+# `set_isolated!`, the identical stretch under the default key too, so
+# summing the two keys' durations apart would count that stretch twice. Two
+# groups at different fractions, such as a leaky isolation layered under a
+# full-block quarantine (see `reset!`'s handling of that layering), can still
+# overlap in time, so the groups' own durations are not simply added: a
+# moment covered by both is combined the way independent competing risks
+# are, left unblocked with probability the product of each group's own
+# unblocked fraction.
 function _removal_gap_duration(ind, gap_fractions, opened::Float64, closed::Float64)
-    total = 0.0
+    groups = Tuple{Float64, Vector{Tuple{Float64, Float64}}}[]
     for frac in unique(last.(gap_fractions))
         keys = (key for (key, f) in gap_fractions if f == frac)
         stretches = reduce(vcat, (removal_stretches(ind, key) for key in keys))
-        merged = _merge_stretches(sort(stretches; by = first))
-        total += frac * _removed_duration(merged, opened, closed)
+        push!(groups, (frac, _merge_stretches(sort(stretches; by = first))))
+    end
+    return _combined_removed_duration(groups, opened, closed)
+end
+
+# The window's community-infectious time every group's stretches take out at
+# once, swept between the breakpoints any stretch starts or ends at, clipped
+# to the window. Between two consecutive breakpoints the groups covering that
+# stretch do not change, so the fraction blocked there is fixed and the
+# elapsed time can be weighted by it directly.
+function _combined_removed_duration(groups, opened::Float64, closed::Float64)
+    breakpoints = Float64[opened, closed]
+    for (_, stretches) in groups, (start, release) in stretches
+        push!(breakpoints, clamp(start, opened, closed))
+        push!(breakpoints, clamp(release, opened, closed))
+    end
+    sort!(unique!(breakpoints))
+    total = 0.0
+    for i in eachindex(breakpoints)[1:(end - 1)]
+        lo, hi = breakpoints[i], breakpoints[i + 1]
+        hi > lo || continue
+        mid = (lo + hi) / 2
+        unblocked = 1.0
+        for (frac, stretches) in groups
+            _covers(stretches, mid) && (unblocked *= 1.0 - frac)
+        end
+        total += (hi - lo) * (1.0 - unblocked)
     end
     return total
 end
 
-# How much of a case's isolated or quarantined stretches fall inside its
-# community-infectious window, weighted by the fraction of transmission that
-# stretch blocks. Each stretch is clipped to the window: one starting before
-# it opens or outlasting its close counts only for the part the case would
-# otherwise have spent in the community.
-function _removed_duration(stretches, opened::Float64, closed::Float64)
-    total = 0.0
-    for (start, release) in stretches
-        lo = clamp(start, opened, closed)
-        hi = clamp(release, opened, closed)
-        total += max(hi - lo, 0.0)
-    end
-    return total
-end
+_covers(stretches, t) = any(((start, release),) -> start <= t < release, stretches)
 
 # The offspring law of a sample of households with the given total
 # community-infectious person-times: a Poisson count per household, averaged
