@@ -187,19 +187,16 @@ expected to grow.
 An [`Isolation`](@ref) that leaves some transmission after isolating
 (`post_isolation_transmission > 0`) reduces transmission in the same way.
 
-!!! warning "Contact tracing and vaccination do not apply"
+!!! warning "Contact tracing does not apply"
     [`ContactTracing`](@ref) and [`RingVaccination`](@ref) need named
-    contacts, which a well-mixed population does not have.
-    [`GroupVaccination`](@ref) doses the members of a case's group, but a
-    continuous-time model applies it only when it lists each case's
-    contacts, as the household and network models do, and this model lists
-    none. [`MassVaccination`](@ref)
-    doses each contact as the branching process creates it, which no
-    continuous-time model does. None of these is applied to a
-    `HomogeneousProcess`, and
-    `simulate` warns if you include one. Isolation, reduced susceptibility or
-    infectiousness, and events in the natural history all apply. To model
-    vaccine protection, lower susceptibility with `transmission_traits`.
+    contacts, which a well-mixed population does not have, and `simulate`
+    warns if you include either. [`MassVaccination`](@ref) and
+    [`GroupVaccination`](@ref) need none: the first doses the whole
+    population before the race starts, and the second finds a case's group
+    through its `group_key` rather than through a contact, so both work here.
+    Isolation, reduced susceptibility or infectiousness, and events in the
+    natural history all apply too. To model existing protection rather than a
+    rollout, lower susceptibility with `transmission_traits` instead.
 
 !!! note "Stopping the simulation"
     A `HomogeneousProcess` runs until no one is infectious or until

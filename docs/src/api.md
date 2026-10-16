@@ -287,6 +287,7 @@ proportion_cases_offspring
 proportion_cluster_size
 heterogeneous_contact_R
 EpiBranch.analytic_offspring_effect
+GeneratingFunctionOffspring
 ```
 
 ### Chain-size distributions
@@ -524,6 +525,7 @@ close_episode!
 ```@docs
 should_stop
 EpiBranch.time_bound
+EpiBranch.generation_bound
 EpiBranch.honoured_without_should_stop
 ```
 
@@ -587,6 +589,8 @@ EpiBranch.action_draw!
 EpiBranch._action_cache
 EpiBranch.apply_actions!
 EpiBranch.continuous_actions
+EpiBranch.acts_on_population
+EpiBranch.needs_contacts
 EpiBranch.settles_generation_batch
 EpiBranch.may_revise
 EpiBranch.is_settled
@@ -644,6 +648,7 @@ EpiBranch.susceptibility_components
 EpiBranch.susceptibility_host_times
 EpiBranch.binding_release
 EpiBranch.removal_gap_host_times
+EpiBranch.removal_gap_host_times_withdrawn
 EpiBranch.record_removal!
 EpiBranch.removal_stretches
 EpiBranch.HazardScaling

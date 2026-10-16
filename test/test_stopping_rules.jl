@@ -110,13 +110,11 @@ EpiBranch.time_bound(r::TimeOrCasesRule) = r.t
         @test !is_extinct(cut)
     end
 
-    @testset "a rule that tests more than time is reported as half applied" begin
-        # Declaring a time bound does not make a rule fully applied: the bound
-        # is honoured and the case count is not, so the warning names the rule
-        # rather than passing over it.
+    @testset "a rule not honoured by time or generation alone is polled via should_stop" begin
         @test !EpiBranch.honoured_without_should_stop(TimeOrCasesRule(2.0, 5))
         @test EpiBranch.honoured_without_should_stop(Extinction())
         @test EpiBranch.honoured_without_should_stop(MaxTime(5.0))
+        @test EpiBranch.honoured_without_should_stop(MaxGenerations(5))
         @test EpiBranch.honoured_without_should_stop(CustomTimeBoundRule(5.0))
         @test !EpiBranch.honoured_without_should_stop(MaxCases(10))
 
@@ -126,17 +124,76 @@ EpiBranch.time_bound(r::TimeOrCasesRule) = r.t
             progression = prog
         )
         full = simulate(spec; n_initial = 3, rng = StableRNG(4))
-        cut = @test_logs (:warn, r"of TimeOrCasesRule") simulate(
+        # The time bound applies as before, and the race now also polls
+        # `should_stop` for the case count, so the rule is fully honoured
+        # rather than only half of it.
+        cut = @test_logs simulate(
             spec; n_initial = 3,
             stopping_rules = [Extinction(), TimeOrCasesRule(2.0, 5)], rng = StableRNG(4)
         )
-        # The bound applied even though the case count did not.
         @test count(is_infected, cut.individuals) < count(is_infected, full.individuals)
-        # With no bound to apply, the rule did nothing at all.
-        @test_logs (:warn, r"MaxCases.*no effect") simulate(
+        @test !is_extinct(cut)
+        # An explicit `MaxCases`, with no time bound at all, now stops the
+        # race exactly at the cap instead of being ignored.
+        capped = @test_logs simulate(
             spec; n_initial = 3,
             stopping_rules = [Extinction(), MaxCases(5)], rng = StableRNG(4)
         )
+        @test capped.cumulative_cases == 5
+        @test !is_extinct(capped)
+    end
+
+    @testset "generation_bound drops a case's own proposals past the cap" begin
+        @test EpiBranch.generation_bound(MaxCases(10)) == typemax(Int)
+        @test EpiBranch.generation_bound(MaxGenerations(3)) == 3
+
+        prog = [Transition(:recovered; from = :infection, delay = 1.0, terminal = true)]
+        spec = ModelSpec(
+            HomogeneousProcess(; transmission_rate = 3.0, population_size = 500);
+            progression = prog
+        )
+        capped = simulate(
+            spec; n_initial = 3,
+            stopping_rules = [Extinction(), MaxGenerations(3)], rng = StableRNG(4)
+        )
+        @test maximum(ind.generation for ind in capped.individuals if is_infected(ind)) <= 3
+        # Capping depth is not the same as stopping the race the instant that
+        # depth is seen: cases below the cap, settling later in time than a
+        # capped one, still arise and are counted.
+        @test capped.cumulative_cases > 4
+        @test !is_extinct(capped)
+    end
+
+    @testset "the max_cases/max_generations defaults stay off where the race does not honour them" begin
+        homog = HomogeneousProcess(; transmission_rate = 2.0, population_size = 50)
+        default_opts = EpiBranch._build_sim_opts(
+            homog, nothing, nothing, EpiBranch._DEFAULT_MAX_CASES,
+            EpiBranch._DEFAULT_MAX_GENERATIONS, nothing, nothing
+        )
+        @test !any(r -> r isa MaxCases, default_opts.stopping_rules)
+        @test !any(r -> r isa MaxGenerations, default_opts.stopping_rules)
+
+        # A non-default value still gets through, as does `stopping_rules`
+        # given directly.
+        explicit_opts = EpiBranch._build_sim_opts(
+            homog, nothing, nothing, 50, 10, nothing, nothing
+        )
+        @test any(r -> r isa MaxCases && r.n == 50, explicit_opts.stopping_rules)
+        @test any(r -> r isa MaxGenerations && r.n == 10, explicit_opts.stopping_rules)
+        given_opts = EpiBranch._build_sim_opts(
+            homog, nothing, nothing, EpiBranch._DEFAULT_MAX_CASES,
+            EpiBranch._DEFAULT_MAX_GENERATIONS, nothing, [MaxCases(10_000)]
+        )
+        @test any(r -> r isa MaxCases, given_opts.stopping_rules)
+
+        # The generation-based engine is untouched either way.
+        branching = BranchingProcess(Poisson(1.5), Exponential(2.0))
+        engine_opts = EpiBranch._build_sim_opts(
+            branching, nothing, nothing, EpiBranch._DEFAULT_MAX_CASES,
+            EpiBranch._DEFAULT_MAX_GENERATIONS, nothing, nothing
+        )
+        @test any(r -> r isa MaxCases, engine_opts.stopping_rules)
+        @test any(r -> r isa MaxGenerations, engine_opts.stopping_rules)
     end
 
     @testset "Extinction is prepended to user-supplied rules" begin

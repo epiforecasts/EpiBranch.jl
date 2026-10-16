@@ -558,9 +558,12 @@ end
     head = [5, 3, 4]
     best = [0.7, 1.5, 3.0]
     represents = [5, 1, 4]
-    pending = Tuple{Float64, Int, Int}[(0.5, 2, 2), (1.5, 2, 1), (3.0, 3, 4), (0.7, 1, 5)]
+    queue = EpiBranch._EventQueue{Float64}()
+    for (t, k, p) in [(0.5, 2, 2), (1.5, 2, 1), (3.0, 3, 4), (0.7, 1, 5)]
+        EpiBranch._enqueue!(queue, EpiBranch._Event(t, k, p))
+    end
     EpiBranch._compact_proposals!(
-        pending, proposals, head, best, represents,
+        queue, proposals, head, best, represents,
         [true, false, false]
     )
     @test length(proposals) == 3
@@ -575,7 +578,9 @@ end
     @test proposals[represents[2]].time == 1.5 && proposals[represents[2]].queued
     @test proposals[represents[3]].time == 3.0
     @test count(p -> p.queued, proposals) == 2
-    @test sort(pending) == [(1.5, 2, represents[2]), (3.0, 3, represents[3])]
+    @test sort(queue.heap) == [
+        EpiBranch._Event(1.5, 2, represents[2]), EpiBranch._Event(3.0, 3, represents[3]),
+    ]
 end
 
 @testset "Shared race refreshes live pair kernels" begin

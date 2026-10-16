@@ -127,22 +127,40 @@ EpiBranch.continuous_actions(::AppointmentAction) = true
         ]
     )
     state.max_infection_time = 11.0
+    # `AppointmentAction` needs no named contacts (its candidates are the
+    # default: `current` and everyone not yet processed), so a `contacts`
+    # function is passed only to stand in for a model that supplies one;
+    # `needs_contacts`'s conservative default would otherwise skip it on a
+    # call with none, as a model without named contacts does on the race.
+    contacts(id, state) = Int[]
     EpiBranch._apply_continuous_actions!(
         state, state.individuals[1],
-        [AppointmentAction()], [1, 2, 3, 4], [true, false, true, false]
+        [AppointmentAction()], [1, 2, 3, 4], [true, false, true, false], contacts
     )
     @test [get(i.state, :attended, false) for i in state.individuals] ==
         [true, true, false, false]
     @test EpiBranch._apply_continuous_actions!(
         state, state.individuals[1], [],
-        [1, 2, 3, 4], [true, false, true, false]
+        [1, 2, 3, 4], [true, false, true, false], contacts
     ) === nothing
     @test !EpiBranch.continuous_actions(MassVaccination(efficacy = 0.8, eligibility_time = 1.0))
     @test EpiBranch.continuous_actions(GroupVaccination(efficacy = 0.8))
     @test EpiBranch.continuous_actions(RingVaccination(efficacy = 0.8))
-    @test !EpiBranch.continuous_actions(RingVaccination(efficacy = 0.8, eligibility_window = 2.0))
+    @test EpiBranch.continuous_actions(RingVaccination(efficacy = 0.8, eligibility_window = 2.0))
     @test EpiBranch.continuous_actions(RingVaccination(efficacy = 0.0, post_exposure_efficacy = 0.8))
     @test EpiBranch.continuous_actions(Scheduled(RingVaccination(efficacy = 0.8); start_time = 1.0))
+    @test EpiBranch.acts_on_population(MassVaccination(efficacy = 0.8, eligibility_time = 1.0))
+    @test !EpiBranch.acts_on_population(GroupVaccination(efficacy = 0.8))
+    @test !EpiBranch.acts_on_population(RingVaccination(efficacy = 0.8))
+    @test EpiBranch.acts_on_population(
+        Scheduled(MassVaccination(efficacy = 0.8, eligibility_time = 1.0); start_time = 1.0)
+    )
+    @test !EpiBranch.needs_contacts(GroupVaccination(efficacy = 0.8))
+    @test EpiBranch.needs_contacts(RingVaccination(efficacy = 0.8))
+    @test EpiBranch.needs_contacts(AppointmentAction())
+    @test !EpiBranch.needs_contacts(
+        Scheduled(GroupVaccination(efficacy = 0.8); start_time = 1.0)
+    )
     broken = Scheduled(AppointmentAction(), state -> error("predicate failed"))
     @test_throws ErrorException EpiBranch.apply_actions!(broken, state, [state.individuals[3]])
     @test state.max_infection_time == 11.0
@@ -427,4 +445,39 @@ end
         Scheduled(rv; end_time = 0.0), wrapped, state, StableRNG(1)
     )
     @test wrapped.state[:infection_aborted_time] == 3.0
+end
+
+@testset "MassVaccination coverage declines without redrawing" begin
+    mv = MassVaccination(efficacy = 0.9, eligibility_time = 0.0, coverage = 0.5)
+    state = EpiBranch.new_state(
+        BranchingProcess(Poisson(1.0), Exponential(5.0)),
+        EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(3)
+    )
+    candidates = [Individual(id = i, state = Dict{Symbol, Any}()) for i in 1:200]
+    append!(state.individuals, candidates)
+
+    EpiBranch.apply_actions!(mv, state, candidates)
+    first_round = Set(ind.id for ind in candidates if is_vaccinated(ind))
+    # Half of 200 candidates, up to the sampling noise of a fair coin.
+    @test 70 < length(first_round) < 130
+
+    # Asking again does not redraw a coin for anyone who already declined.
+    for _ in 1:10
+        EpiBranch.apply_actions!(mv, state, candidates)
+    end
+    @test Set(ind.id for ind in candidates if is_vaccinated(ind)) == first_round
+
+    # Full coverage keeps the previous, deterministic behaviour.
+    full = MassVaccination(efficacy = 0.9, eligibility_time = 0.0)
+    full_candidates = [Individual(id = i, state = Dict{Symbol, Any}()) for i in 1:20]
+    append!(state.individuals, full_candidates)
+    EpiBranch.apply_actions!(full, state, full_candidates)
+    @test all(is_vaccinated, full_candidates)
+
+    # No coverage vaccinates nobody.
+    none = MassVaccination(efficacy = 0.9, eligibility_time = 0.0, coverage = 0.0)
+    none_candidates = [Individual(id = i, state = Dict{Symbol, Any}()) for i in 1:20]
+    append!(state.individuals, none_candidates)
+    EpiBranch.apply_actions!(none, state, none_candidates)
+    @test !any(is_vaccinated, none_candidates)
 end
