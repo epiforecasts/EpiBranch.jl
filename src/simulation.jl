@@ -44,10 +44,12 @@ a constant or a function of the random number generator and the individual,
 
 !!! note
     [`HomogeneousProcess`](@ref), [`MixingProcess`](@ref),
-    `NetworkProcess`, `RoutedNetwork` and `HouseholdProcess` run over a fixed
-    population until transmission
-    dies out or `max_time` is reached. They ignore `max_cases`,
-    `max_generations` and most stopping rules, and warn when one is set.
+    `NetworkProcess`, `RoutedNetwork` and `HouseholdProcess` run a
+    continuous-time race over a fixed population rather than stepping by
+    generation. A `stopping_rules` entry, or a non-default `max_cases` or
+    `max_generations`, still ends such a run; the `max_cases` and
+    `max_generations` keyword *defaults* have no effect on them, so an
+    existing run over a large population is not capped unless you ask for it.
 
 # Examples
 ```julia
@@ -78,11 +80,8 @@ function simulate(
     # `simulate`, already validated at composition, so it never double-warns).
     _validate_process_windows(model, _progression(model))
     _warn_incomplete_terminal_coverage(_progression(model))
-    _warn_ignored_termination(
-        model, max_cases, max_generations, max_time, stopping_rules
-    )
-    sim_opts = SimOpts(;
-        n_initial, initial_cases, max_cases, max_generations, max_time,
+    sim_opts = _build_sim_opts(
+        model, n_initial, initial_cases, max_cases, max_generations, max_time,
         stopping_rules
     )
     _validate_initial_cases(model, sim_opts)
@@ -184,11 +183,8 @@ function simulate(
     )
     _validate_process_windows(model, _progression(model))
     _warn_incomplete_terminal_coverage(_progression(model))
-    _warn_ignored_termination(
-        model, max_cases, max_generations, max_time, stopping_rules
-    )
-    sim_opts = SimOpts(;
-        n_initial, initial_cases, max_cases, max_generations, max_time,
+    sim_opts = _build_sim_opts(
+        model, n_initial, initial_cases, max_cases, max_generations, max_time,
         stopping_rules
     )
     _validate_initial_cases(model, sim_opts)
@@ -236,11 +232,14 @@ end
 # reconciles once after its own loop instead, directly through
 # `_reconcile_sellke_bookkeeping!` below.
 
-# Whether a model's simulation honours the termination controls (`max_cases`,
-# `max_generations`, `max_time`, `stopping_rules`). The generation-based engine
-# does. The structure-driven pools run over their fixed population until
-# extinction or `max_time`, and ignore the other controls; they override this
-# to `false`.
+# Whether a model's simulation honours the `max_cases`/`max_generations`
+# keyword shortcuts' *defaults* out of the box. The generation-based engine
+# does. The structure-driven pools run their own continuous-time race, which
+# polls `should_stop` and the `time_bound`/`generation_bound` traits for
+# whatever `stopping_rules` it is given (see `_sellke_race!`), but leaves
+# these two shortcuts' defaults off (`_drop_default_shortcuts`) so an existing
+# run over a large fixed population keeps running to extinction or `max_time`
+# unless a cap is explicitly asked for. They override this to `false`.
 _honours_termination_controls(::TransmissionModel) = true
 
 # The time at which a structure-driven run ends: the earliest `time_bound`
@@ -249,39 +248,46 @@ function _max_time(sim_opts)
     return minimum(time_bound(r) for r in sim_opts.stopping_rules; init = Inf)
 end
 
-_rule_names(rules) = join([string(nameof(typeof(r))) for r in rules], ", ")
-
-# Warn when a termination control is set on a model that ignores it, so the
-# silent no-op is discoverable. Compares against the keyword defaults, so only
-# an explicitly-set control triggers the warning; `simulate` on a fixed
-# population with no termination keywords stays quiet.
-function _warn_ignored_termination(
-        model, max_cases, max_generations, max_time, stopping_rules
+# The generation beyond which a structure-driven run drops a settled case's
+# own proposals: the smallest `generation_bound` among the stopping rules, or
+# `typemax(Int)`.
+function _max_generation(sim_opts)
+    return minimum(
+        generation_bound(r) for r in sim_opts.stopping_rules; init = typemax(Int)
     )
-    _honours_termination_controls(model) && return nothing
-    ignored = String[]
-    max_cases != _DEFAULT_MAX_CASES && push!(ignored, "max_cases")
-    max_generations != _DEFAULT_MAX_GENERATIONS && push!(ignored, "max_generations")
-    # Each rule says for itself whether a run that never consults `should_stop`
-    # applies it in full. One that does not is reported by name, and separately
-    # when a time bound of its own was still applied, so a rule that is only
-    # half honoured does not read as having done nothing.
-    partial = ""
-    if stopping_rules !== nothing
-        unapplied = filter(r -> !honoured_without_should_stop(r), stopping_rules)
-        inert = _rule_names(filter(r -> !isfinite(time_bound(r)), unapplied))
-        partial = _rule_names(filter(r -> isfinite(time_bound(r)), unapplied))
-        isempty(inert) || push!(ignored, "stopping_rules ($inert)")
-    end
-    (isempty(ignored) && isempty(partial)) && return nothing
-    msg = "$(nameof(typeof(model))) runs to extinction or `max_time` over its " *
-        "fixed population and ignores the other termination controls"
-    isempty(ignored) || (msg *= "; $(join(ignored, ", ")) had no effect")
-    # A rule that bounds time and tests something else had half an effect, so
-    # it is reported apart from the controls that had none.
-    isempty(partial) || (msg *= "; of $partial only the time bound applied")
-    @warn msg * " (only n_initial, a time bound and condition apply)."
-    return nothing
+end
+
+# The stopping rules a structure-driven race must poll `should_stop` for
+# after each settled case: those not already fully captured by `time_bound`
+# and `generation_bound` alone.
+_poll_rules(sim_opts) = filter(!honoured_without_should_stop, sim_opts.stopping_rules)
+
+# Drop the `MaxCases`/`MaxGenerations` rules `SimOpts` built from the
+# `max_cases`/`max_generations` keywords, on a model whose race does not
+# honour their defaults (`_honours_termination_controls` false), when each was
+# left at its default — a cap set through a non-default keyword value, or
+# through `stopping_rules` directly, is never touched here.
+function _drop_default_shortcuts(model, sim_opts, max_cases, max_generations, stopping_rules)
+    (stopping_rules !== nothing || _honours_termination_controls(model)) && return sim_opts
+    rules = sim_opts.stopping_rules
+    max_cases == _DEFAULT_MAX_CASES &&
+        (rules = filter(r -> !(r isa MaxCases && r.n == max_cases), rules))
+    max_generations == _DEFAULT_MAX_GENERATIONS &&
+        (rules = filter(r -> !(r isa MaxGenerations && r.n == max_generations), rules))
+    return SimOpts(sim_opts.n_initial, sim_opts.initial_cases, rules)
+end
+
+# Shared by all four `simulate` entry points (a bare process or a `ModelSpec`,
+# each for one outbreak or `n`): build the `SimOpts` the termination keywords
+# describe, with the defaults dropped per `_drop_default_shortcuts`.
+function _build_sim_opts(
+        model, n_initial, initial_cases, max_cases, max_generations,
+        max_time, stopping_rules
+    )
+    sim_opts = SimOpts(;
+        n_initial, initial_cases, max_cases, max_generations, max_time, stopping_rules
+    )
+    return _drop_default_shortcuts(model, sim_opts, max_cases, max_generations, stopping_rules)
 end
 
 """
