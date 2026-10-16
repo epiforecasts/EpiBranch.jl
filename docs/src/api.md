@@ -453,6 +453,8 @@ EarliestInfected
 ```@docs
 network_infections
 NetworkInfections
+routed_network_infections
+RoutedNetworkInfections
 ```
 
 ## Distribution helpers

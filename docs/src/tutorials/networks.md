@@ -602,6 +602,49 @@ contact with everyone else, is fitted the same way: give the actual
 within-household contacts as the network. On a directed network, the people
 who can infect person `i` are those who list `i` as a contact.
 
+### Fitting several routes
+
+A `RoutedNetwork` model, such as the household-and-community one above, is
+fitted the same way. [`routed_network_infections`](@ref) reads one infectious
+window per route from a simulated outbreak, and `pairwise_surv_loglik(windows,
+data)` evaluates the log-likelihood of a given set of route kernels: survival
+sums every route's hazard, and an infected person's event term sums the
+hazard from every route and every possible infector before taking its log, so
+the household route's estimate is not biased by ignoring the community
+route's contribution, or the other way round.
+
+```@example networks
+truth2 = ModelSpec(RoutedNetwork(routes(not_stopped_by_isolation));
+    progression = [Transition(:recovered; from = :infection, delay = 10.0,
+        terminal = true)])
+data2 = routed_network_infections(
+    simulate(truth2; n_initial = 3, rng = StableRNG(7)), truth2)
+
+# log-likelihood at a candidate community mean, holding the household route
+# at the kernel it was simulated with
+ll2(community_scale) = pairwise_surv_loglik(
+    [
+        RouteWindow(:household; until = not_stopped_by_isolation,
+            kernel = Weibull(1.5, 4.0), reach = hh_adj),
+        RouteWindow(:community; until = stopped_by_isolation,
+            kernel = Exponential(community_scale), reach = comm_adj),
+    ],
+    data2
+)
+grid2 = 15.0:2.5:45.0
+grid2[argmax(ll2.(grid2))]
+```
+
+close to the 30-day mean `routes` simulated the community route with.
+
+`truth2` above has no interventions, so neither route loses exposure to
+isolation here. Had it been simulated with a lapsing isolation instead, one
+with a finite `duration` such as `iso` above (`duration = 7.0`) rather than
+`iso2`'s permanent one, `pairwise_surv_loglik` would take it out of each
+route's exposure the way the simulation applies it: only a route whose
+`until` lists `EpiBranch.INTERVENTION_REMOVAL` loses exposure during the
+stretch a case is isolated for, and has it back once released.
+
 !!! warning "Data that stop before the outbreak ends (right-censoring)"
     If your data stop at a date, pass that date as `followup_end` to
     `network_infections` (or to `NetworkInfections` when you build the data
@@ -620,7 +663,11 @@ who can infect person `i` are those who list `i` as a contact.
     separately. [Fitting a community hazard](@ref) explains why.
 
 !!! warning "What cannot be fitted yet"
-    - Models with several routes (`RoutedNetwork`) have no likelihood yet.
+    - A route kernel that is a [`PairKernel`](@ref), and an intervention that
+      changes susceptibility (such as vaccination) on a `RoutedNetwork`, are
+      not yet represented in the routed likelihood; `loglikelihood(data,
+      model)` stops with an error for such a model, as it does for leaky
+      isolation on `NetworkProcess`.
     - In real data infection times are not observed. They have to be estimated
       together with the parameters, from symptom onsets and the disease
       timeline (data augmentation), as described for [household
