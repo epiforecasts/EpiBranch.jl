@@ -340,13 +340,21 @@ lost, though, and an output built to count them needs those draws back.
 A [`ContactRecorder`](@ref), passed as the `recorder` of a `ModelSpec`, does
 this, through one method:
 [`records_contacts`](@ref EpiBranch.records_contacts)`(recorder, parent, contact, state, t)`
-says whether the recorder wants the simulation to keep drawing this pair. It is
-asked every time a permanent block would end the pair's draws (not only the
-first), with `t` the time of the proposal that would be dropped. The default
-[`NoContactRecorder`](@ref) answers `false` for every pair, so a model with no
-recorder drops the pair at no extra cost.
+says whether the recorder wants the simulation to keep drawing this pair after
+a *permanent* block. It is asked about every proposal a risk blocks, not only
+ones certain to recur, with `t` the time of that proposal, so a recorder can
+log each one; only its answer for a proposal whose block is permanent decides
+whether that pair's draws continue. The default [`NoContactRecorder`](@ref)
+answers `false` for every pair, so a model with no recorder drops a
+permanently-blocked pair at no extra cost.
 
-A sketch:
+If what you want is just the missing rows in [`contacts`](@ref) — a household
+member or network neighbour who was exposed but escaped infection — attach the
+built-in [`ExposedContactRecorder`](@ref) instead of writing your own; no
+further step is needed.
+
+A sketch of a recorder that wants the whole stream of blocked proposals on a
+permanently-blocked pair, not just the one that would end it:
 
 ```julia
 struct CountingRecorder <: ContactRecorder
@@ -361,14 +369,15 @@ end
 ```
 
 Usage: `rec = CountingRecorder()`, then
-`ModelSpec(HouseholdProcess(...); recorder = rec)`. Every
-later proposal on a permanently blocked pair is logged before the simulation is
-told to continue, so `rec.events` ends up with every contact event of every
+`ModelSpec(HouseholdProcess(...); recorder = rec)`. Every blocked proposal is
+logged, and answering `true` for a permanent block keeps the simulation
+drawing that pair, so `rec.events` ends up with every contact event of every
 such pair.
 
-Answering `true` restricts which models can run: drawing again puts the pair
-back under the rule for blocked contacts above, so a model whose window never
-ends is refused, as if the block had never been declared permanent.
+Answering `true` for a permanent block restricts which models can run: drawing
+again puts the pair back under the rule for blocked contacts above, so a model
+whose window never ends is refused, as if the block had never been declared
+permanent.
 
 ## Likelihood compatibility
 
@@ -849,7 +858,7 @@ works for simulation has no closed form.
 | A capacity limit | `CapacityConstrained(iv; budget_per_period = ...)`, with `capacity_key` and `capacity_time_key` for `iv` | When actions are admitted, once per case |
 | An exact effect on the offspring distribution | `analytic_offspring_effect` for an intervention | Closed-form results on a `ModelSpec` |
 | A stopping rule | A type `<: AbstractStoppingRule` and `should_stop` | Each step |
-| A contact recorder | A type `<: ContactRecorder` and `records_contacts` | Continuous-time models, each proposal on a permanently blocked pair |
+| A contact recorder | A type `<: ContactRecorder` and `records_contacts` | Continuous-time models, each blocked proposal |
 | A terminal clinical transition | A type `<: AbstractClinicalTransition` with `is_terminal`, `terminal_event`, `terminal_target` | When a case is settled |
 | Population characteristics | A function `(rng, ind) -> nothing` | When a person is created |
 | Several population characteristics | `[f1, f2, ...]` | When a person is created |

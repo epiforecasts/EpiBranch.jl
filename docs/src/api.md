@@ -209,14 +209,17 @@ The continuous-time models (networks, households,
 [`HomogeneousProcess`](@ref) and [`MixingProcess`](@ref)) stop simulating
 contacts with a person an
 intervention has protected for good, such as a vaccinated contact. A contact
-recorder, a type you write with
-[`records_contacts`](@ref EpiBranch.records_contacts), keeps simulating them
-and can log each one. For a [`BranchingProcess`](@ref), [`contacts`](@ref)
-already lists exposures that did not infect, and no recorder is needed.
+recorder keeps simulating them and can log each one, through
+[`records_contacts`](@ref EpiBranch.records_contacts). For a
+[`BranchingProcess`](@ref), [`contacts`](@ref) already lists exposures that
+did not infect; for a continuous-time model, attach an
+[`ExposedContactRecorder`](@ref) to get the same, or write your own recorder
+type for anything else you want logged.
 
 ```@docs
 ContactRecorder
 NoContactRecorder
+ExposedContactRecorder
 ```
 
 ## Information about each case
