@@ -182,8 +182,8 @@ EpiBranch.has_effect(::_WithdrawingShield) = true
             probability = 0.5, isolation_to_trace_delay = Exponential(1.0),
             action = Quarantine(duration = 5.0)
         )
-        # As for `ContactTracing`: `SourceTracing` must withdraw the same
-        # shared key its releasing quarantine also writes to.
+        # `SourceTracing` withdraws the same shared key as `ContactTracing`,
+        # for the same reason.
         @test withdrawn(source_quarantine) == (EpiBranch.REMOVAL_STRETCHES_KEY,)
 
         # A schedule that can lapse withdraws the inner removal's key instead
