@@ -251,11 +251,15 @@ with the part you want changed.
 ### Exact results and simulation
 
 Where a closed form exists, EpiBranch uses it; simulation covers the rest, and
-the two give the same answers. Most interventions, isolation among them, change
-outbreaks in ways that depend on timing and have no closed form. The exact
-results are refused for a model that includes one, and the answer comes from
-simulating it. An intervention whose effect on the offspring distribution is
-exact can say so and is then included.
+the two give the same answers. Most interventions change outbreaks in ways
+that depend on timing and have no closed form. Isolation is an exception: a
+case isolated at time T keeps a secondary case with a probability that is a
+mixture over T (the generation time's cumulative distribution, adjusted for
+leaky or finite isolation), and the mixture over cases is computed
+numerically. The exact results are refused for a model that includes an
+intervention with no closed form, and the answer comes from simulating it. An
+intervention whose effect on the offspring distribution is exact, in this
+sense or a simpler one, can say so and is then included.
 
 New simulation behaviour comes from new interventions and transmission models.
 On the closed-form side, two kinds of addition fit in:

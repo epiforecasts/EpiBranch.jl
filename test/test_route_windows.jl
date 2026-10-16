@@ -339,19 +339,19 @@ EpiBranch.records_contacts(::AlwaysRecord, parent, contact, state, t) = true
         # with no contacts supplied there is nothing to trace along
         @test infected(race([iso, ct])) == [true, true, true]
 
-        # Vaccination delivery still requires generation-based contacts.
+        # Ring vaccination still requires generation-based contacts.
         nameless = BranchingProcess(Poisson(1.0), Exponential(1.0))
         @test !EpiBranch.supplies_contacts(nameless)
         @test !EpiBranch._sellke_honours(nameless, RingVaccination(efficacy = 0.9))
-        # A rollout that doses each newly created contact has nobody to dose
-        # when no contacts are created, wherever it runs.
-        @test !EpiBranch._sellke_honours(
+        # Mass vaccination declares `acts_on_population`, so it reaches
+        # everybody before the race starts, with no contacts at all.
+        @test EpiBranch._sellke_honours(
             nameless,
             MassVaccination(efficacy = 0.9, eligibility_time = 0.0)
         )
-        # Group vaccination doses whole groups as the generation engine creates
-        # their members, so it has nobody to dose either.
-        @test !EpiBranch._sellke_honours(nameless, GroupVaccination(efficacy = 0.9))
+        # Group vaccination declares `needs_contacts = false`, finding a
+        # case's group through its `group_key` rather than a contact.
+        @test EpiBranch._sellke_honours(nameless, GroupVaccination(efficacy = 0.9))
         # A leaky isolation is a per-contact block, and the race now resolves it.
         @test EpiBranch._sellke_honours(
             nameless,

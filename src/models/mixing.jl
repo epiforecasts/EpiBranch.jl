@@ -80,8 +80,10 @@ end
 
 population_size(m::MixingProcess) = m.population_size
 
-# The race runs over the fixed population until extinction or `max_time`; the
-# other termination controls do not apply, and `simulate` warns if any is set.
+# The race honours a `stopping_rules` entry, or a non-default `max_cases` or
+# `max_generations`, but leaves those two keywords' defaults off, so an
+# existing run over the fixed population keeps going to extinction or
+# `max_time` unless a cap is explicitly asked for (`_drop_default_shortcuts`).
 _honours_termination_controls(::MixingProcess) = false
 
 # See `_warn_uncovered_terminal_states` in branching_process.jl.
