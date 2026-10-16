@@ -270,13 +270,22 @@ isolation is always a stated choice.
 A transmission route that isolation should end lists
 [`EpiBranch.INTERVENTION_REMOVAL`](@ref) in its `until`, which also allows
 for leaky isolation. `:isolated` in an `until` instead refers to a
-`Transition(:isolated, …)` step in the natural history."""
-function set_isolated!(ind::Individual, time::Real; release_time::Real)
+`Transition(:isolated, …)` step in the natural history.
+
+`key` names the [`record_removal!`](@ref EpiBranch.record_removal!) key the
+stretch goes under, the shared default key by default. A removal that only
+blocks a fraction of the hazard passes its own key instead, so its stretch is
+never mistaken for a complete removal's merely because some other component in
+the model happens to share the default key."""
+function set_isolated!(
+        ind::Individual, time::Real;
+        release_time::Real, key::Symbol = REMOVAL_STRETCHES_KEY
+    )
     ind.state[:isolated] = true
     delete!(ind.state, :_isolation_unrecorded)
     ind.state[:isolation_time] = time
     ind.state[:isolation_release_time] = release_time
-    record_removal!(ind, time, release_time)
+    record_removal!(ind, time, release_time; key = key)
     return release_time
 end
 

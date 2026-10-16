@@ -168,10 +168,11 @@ EpiBranch.has_effect(::_WithdrawingShield) = true
             onset_to_isolation_delay = Exponential(1.0),
             post_isolation_transmission = 0.5, duration = 5.0
         )
-        # Perfect isolation names its own key above; leaky isolation never
-        # reads the shared history back, so it withdraws it instead.
+        # Perfect isolation names its own key above; leaky isolation records
+        # under its own key instead of the shared one, so it has nothing to
+        # withdraw either.
         @test withdrawn(perfect) == ()
-        @test withdrawn(leaky) == (EpiBranch.REMOVAL_STRETCHES_KEY,)
+        @test withdrawn(leaky) == ()
 
         quarantine = ContactTracing(
             probability = 0.5, isolation_to_trace_delay = Exponential(1.0),

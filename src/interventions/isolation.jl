@@ -187,7 +187,9 @@ isolation time until its [`isolation_release_time`](@ref) (never released when
 `duration` is `Inf`). Each such contact is prevented with probability
 `1 - post_isolation_transmission`."""
 function competing_risk(iso::Isolation, parent, contact, state)
-    return _removal_risks(parent, 1.0 - iso.post_isolation_transmission)
+    key = iso.post_isolation_transmission == 0 ?
+        REMOVAL_STRETCHES_KEY : LEAKY_REMOVAL_STRETCHES_KEY
+    return _removal_risks(parent, 1.0 - iso.post_isolation_transmission, key)
 end
 
 # The likelihood reads the stretch a lapsing isolation removed the host for.
@@ -209,15 +211,6 @@ function removal_gap_host_times(iso::Isolation)
     # of `Inf` closes the window instead and has no stretch of its own to add.
     iso.post_isolation_transmission == 0 || return (LEAKY_REMOVAL_STRETCHES_KEY,)
     iso.duration === Inf && return ()
-    return (REMOVAL_STRETCHES_KEY,)
-end
-
-# Leaky isolation still calls `set_isolated!` for the shared history, so a
-# finite duration can leave a releasing stretch on `REMOVAL_STRETCHES_KEY`
-# with nothing above naming it; declaring it withdrawn here says that is by
-# design, since the leaky block it stands for is never read back anyway.
-function removal_gap_host_times_withdrawn(iso::Isolation)
-    iso.post_isolation_transmission == 0 && return ()
     return (REMOVAL_STRETCHES_KEY,)
 end
 
@@ -348,11 +341,12 @@ function _isolate!(iso::Isolation, individual, state, time)
             start, release
         )
     end
-    set_isolated!(individual, start; release_time = release)
-    # The likelihood reads this stretch apart from the shared history above,
-    # since it blocks only a fraction of the hazard over it.
-    iso.post_isolation_transmission == 0 ||
-        record_removal!(individual, start, release; key = LEAKY_REMOVAL_STRETCHES_KEY)
+    # Leaky isolation records under its own key, not the shared one, so a
+    # sibling component that legitimately claims the shared key for a
+    # complete removal never pulls this stretch into its column.
+    record_key = iso.post_isolation_transmission == 0 ?
+        REMOVAL_STRETCHES_KEY : LEAKY_REMOVAL_STRETCHES_KEY
+    set_isolated!(individual, start; release_time = release, key = record_key)
     individual.state[:_isolated_by_isolation] = true
     # Whether this counts as a detection is a question about the start in
     # force, so a standing start that won keeps its own answer, and only an
