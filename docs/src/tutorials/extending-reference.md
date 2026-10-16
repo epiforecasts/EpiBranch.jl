@@ -708,9 +708,18 @@ defines `EpiBranch.intervention_actions(iv, state, candidates)` and returns
 `effect!(individual, time, state)` records an action once admitted. Proposing
 can add people beyond the input, as group vaccination does when it finds every
 member of a group in which a case was found. Branching processes call it once
-per case for every intervention, the continuous-time models only for one that
-opts in (see below), and both put what it returns through the schedule and
-capacity limits.
+per case for every intervention, then again for each case in a settled
+generation in turn, with that case alone as the candidate, but this second
+round of calls reaches only an intervention that declares
+`EpiBranch.settles_generation_batch(iv) = true`. This defaults to
+`EpiBranch.continuous_actions(iv)` (see below), so group vaccination, which
+sets that, needs no method of its own; ring vaccination overrides
+`settles_generation_batch` back to `false` even when its `continuous_actions`
+is `true`, because its contacts already reach it pre-infection through the
+per-case call, and the settlement call would reconsider a dose after this
+same round has already resolved the case's clinical outcome. The continuous-time
+models call it only for an intervention that opts in to `continuous_actions`.
+Both put what it returns through the schedule and capacity limits.
 
 `Scheduled` checks the proposed action time before delivery. A condition
 function sees that time as `state.max_infection_time`, with the current case

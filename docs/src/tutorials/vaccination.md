@@ -647,8 +647,9 @@ println("Reached among willing people: $(round(campaign_reach, digits = 3)); ",
 ```
 
 Overall coverage is the share willing times the share of willing people
-reached. Those are the shares the parameters aim for. What a run delivers is
-lower:
+reached. Those are the shares the parameters aim for, and what a run
+delivers is close to them, up to the sampling noise of a finite number of
+outbreaks:
 
 ```@example vaccination
 campaign_runs = simulate(campaign_model, 200; max_cases = 300, rng = StableRNG(42))
@@ -659,12 +660,10 @@ println("Measured: among willing people ",
     ", overall ", round(count(is_vaccinated, people) / length(people), digits = 3))
 ```
 
-Both come out about three points below what the parameters aim for, for the
-reason in the limitations note. A person with `:willing == false` refuses
-throughout the campaign, and a willing person left unvaccinated was either
-never reached or never offered a dose. For a reach probability of zero, use
-`coverage = 0.0` directly. A single visit gives the usual campaign with one
-opportunity. Use a different `dose_label` for another
+A person with `:willing == false` refuses throughout the campaign, and a
+willing person left unvaccinated was never reached. For a reach probability
+of zero, use `coverage = 0.0` directly. A single visit gives the usual
+campaign with one opportunity. Use a different `dose_label` for another
 dose; willingness can be shared across doses, as here, or stored separately
 for each.
 
@@ -675,13 +674,6 @@ for each.
     capacity or to how the outbreak develops, and failed visits are not
     recorded. Visits are assumed to reach people independently, with a fixed
     probability.
-
-    A group is also offered doses only when a case makes a contact who
-    belongs to it, so a group whose trigger arrives after the last such
-    contact leaves its members unvaccinated. A group that gains another
-    contact later is offered doses again. In this model a
-    few per cent of willing people are never offered a dose, which is what
-    puts the measured coverage below the shares the parameters aim for.
 
 ## Limited vaccine supply
 

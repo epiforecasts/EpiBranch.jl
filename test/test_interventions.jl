@@ -10,6 +10,11 @@ end
 struct _AlwaysOpenTrigger <: EpiBranch.AbstractTrigger end
 EpiBranch.is_triggered!(::_AlwaysOpenTrigger, state) = true
 
+# A trigger reading a population characteristic rather than a transition.
+struct _AgeTrigger <: EpiBranch.AbstractTrigger end
+EpiBranch.is_triggered!(::_AgeTrigger, state) = true
+EpiBranch.required_fields(::_AgeTrigger) = [:age]
+
 # An isolation eligibility that records a detection arriving after the case's
 # outcome, which the default declines.
 struct _DetectAfterOutcome <: EpiBranch.IsolationEligibility end
@@ -2973,15 +2978,21 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             @test EpiBranch.is_triggered!(ReportedCases(0), state)
             @test EpiBranch.is_triggered!(Infections(0), state)
 
+            # Reports are counted from what `Reporting` draws, so they are
+            # drawn through it here: each case is infected at time 0 and
+            # reported `t` days later, or never.
+            report!(ind, t) = EpiBranch.resolve_individual!(
+                Reporting(delay = t, from = :infection), ind, state
+            )
             # Two reports dated at or before the clock (10.0), one dated after
             # it, and one case never reported.
-            inds[1].state[:reported] = true
-            inds[1].state[:reporting_time] = 2.0
-            inds[2].state[:reported] = true
-            inds[2].state[:reporting_time] = 9.0
-            inds[3].state[:reported] = true
-            inds[3].state[:reporting_time] = 15.0
-            inds[4].state[:reported] = false
+            report!(inds[1], 2.0)
+            report!(inds[2], 9.0)
+            report!(inds[3], 15.0)
+            EpiBranch.resolve_individual!(
+                Reporting(delay = 1.0, probability = 0.0, from = :infection),
+                inds[4], state
+            )
 
             @test EpiBranch.is_triggered!(ReportedCases(2), state)
             @test !EpiBranch.is_triggered!(ReportedCases(3), state)
@@ -2991,35 +3002,61 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             state.max_infection_time = 10.0
             @test !EpiBranch.is_triggered!(ReportedCases(3), state)
             # A report made before a reinfection is archived with its
-            # episode, and the health system has still made it, so it counts.
-            # Without the archived episodes this host would hold one report
-            # however many times it had been reported.
-            episode = EpiBranch.InfectionEpisode(inds[1])
-            EpiBranch.close_episode!(inds[1], episode)
-            # The engine archives the episode as a copy of the live state and
-            # clears the live report only when the new infection's transitions
-            # are initialised. In between, the two are one report and must be
-            # counted once: two reports are due here, not three.
+            # episode, and the health system has still made it, so it counts
+            # once, whether the live state still shows it or the new
+            # infection has cleared it.
+            EpiBranch.close_episode!(inds[1], EpiBranch.InfectionEpisode(inds[1]))
             @test EpiBranch.is_triggered!(ReportedCases(2), state)
             @test !EpiBranch.is_triggered!(ReportedCases(3), state)
-            # Once the live report is cleared the archived one still counts.
-            inds[1].state[:reported] = false
-            inds[1].state[:reporting_time] = Inf
+            EpiBranch.initialise_individual!(Reporting(delay = 1.0), inds[1], state)
             @test EpiBranch.is_triggered!(ReportedCases(2), state)
             @test !EpiBranch.is_triggered!(ReportedCases(3), state)
+            # The new episode's own report is a second one for the host.
+            report!(inds[1], 3.0)
+            @test EpiBranch.is_triggered!(ReportedCases(3), state)
+            @test !EpiBranch.is_triggered!(ReportedCases(4), state)
             # Reports already due stay due, so the gate holds once it opens
             # and the schedule it starts cannot close.
             @test !EpiBranch.trigger_can_lapse(ReportedCases(2))
 
-            # The count reads the report time it needs rather than indexing
-            # it: a `:reported` flag from anywhere else does not throw.
-            # `PerCaseObservation` sets one, with `:report_time` and no
-            # `:reporting_time`; it runs after the simulation, so a trigger
-            # never meets it mid-run, and its reports are not what this
-            # trigger counts either way.
-            inds[5].state[:reported] = true
-            @test EpiBranch.is_triggered!(ReportedCases(2), state)
-            @test !EpiBranch.is_triggered!(ReportedCases(3), state)
+            # A report the case's outcome overtakes is reset to "not
+            # reported", and does not count.
+            progression = AbstractClinicalTransition[
+                Reporting(delay = 4.0, from = :infection),
+                Recovery(delay = 1.0, from = :infection),
+            ]
+            state.transitions = progression
+            EpiBranch.resolve_transitions!(state, inds[5])
+            @test !inds[5].state[:reported]
+            @test !EpiBranch.is_triggered!(ReportedCases(4), state)
+            state.max_infection_time = 20.0
+            @test EpiBranch.is_triggered!(ReportedCases(4), state)
+            @test !EpiBranch.is_triggered!(ReportedCases(5), state)
+            state.max_infection_time = 10.0
+
+            # A `:reported` flag from anywhere else is not a report this
+            # trigger counts. `PerCaseObservation` sets one after the
+            # simulation, so a trigger never meets it mid-run.
+            inds[4].state[:reported] = true
+            inds[4].state[:reporting_time] = 1.0
+            @test !EpiBranch.is_triggered!(ReportedCases(4), state)
+
+            # The first count builds the log from the reports the population
+            # already holds, archived episodes included. A host reinfected
+            # since its report shows it twice until the new infection clears
+            # the live one, and it counts once.
+            fresh = [Individual(id = i) for i in 1:3]
+            for (ind, t) in zip(fresh, (2.0, 9.0, 15.0))
+                ind.state[:reported] = true
+                ind.state[:reporting_time] = t
+            end
+            EpiBranch.close_episode!(fresh[1], EpiBranch.InfectionEpisode(fresh[1]))
+            fresh_state = SimulationState(
+                fresh, Int[], 0, StableRNG(1), 3, false, nothing, 10.0, nothing,
+                AbstractClinicalTransition[]
+            )
+            @test EpiBranch.is_triggered!(ReportedCases(2), fresh_state)
+            @test !EpiBranch.is_triggered!(ReportedCases(3), fresh_state)
 
             # A user's own trigger is conservatively assumed able to lapse,
             # exactly as an opaque `Scheduled` predicate is.
@@ -3115,6 +3152,29 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                 @test EpiBranch.is_active(by_cases, state) ==
                     EpiBranch.is_active(by_reports, state)
             end
+        end
+
+        @testset "a trigger names the fields it reads" begin
+            iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = Inf)
+
+            # The default declares nothing, as `_AlwaysOpenTrigger` does.
+            @test EpiBranch.required_fields(_AlwaysOpenTrigger()) == Symbol[]
+            @test EpiBranch.required_fields(_AgeTrigger()) == [:age]
+
+            # `Scheduled` adds the trigger's fields to the wrapped
+            # intervention's own, so `_validate_required_fields` catches a
+            # model missing either.
+            scheduled = Scheduled(iso; start_after = _AgeTrigger())
+            @test :age in EpiBranch.required_fields(scheduled)
+            @test issubset(EpiBranch.required_fields(iso), EpiBranch.required_fields(scheduled))
+
+            # No trigger: forwards plainly to the wrapped intervention.
+            @test EpiBranch.required_fields(Scheduled(iso; start_time = 0.0)) ==
+                EpiBranch.required_fields(iso)
+
+            # Found through a wrapper around the schedule.
+            capped = CapacityConstrained(scheduled; budget_per_period = 5)
+            @test :age in EpiBranch.required_fields(capped)
         end
 
         @testset "start_after reaches a case resolved before it, once its own action falls inside" begin

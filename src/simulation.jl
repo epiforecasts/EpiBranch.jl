@@ -751,6 +751,15 @@ function _act_per_case!(state::SimulationState, interventions, targets, edges, i
     return kept
 end
 
+"""
+    _case_hooks!(state, case, interventions, contacts, is_new, kept)
+
+Offer `case`'s `contacts` to `interventions`' [`trace_contacts!`](@ref), then
+their [`intervention_actions`](@ref), admitted through their wrappers, then
+their [`keep_active`](@ref), appending its answers to `kept`. This is the
+per-case hook `_act_per_case!` calls for each source, and the one a
+continuous-time race calls when it settles a case.
+"""
 function _case_hooks!(state::SimulationState, case, interventions, contacts, is_new, kept)
     for intervention in interventions
         trace_contacts!(intervention, state, case, contacts)
@@ -890,13 +899,18 @@ end
 
 Settle a generation's new `cases`: every case's clinical transitions
 ([`resolve_transitions!`](@ref)), then every case's intervention hooks
-([`resolve_individual!`](@ref)). The generation engine has no time order beyond
-the generation. Each case sees the clock at its own infection time and, as its
-case count, the `cases_before` cases of earlier generations plus those of its
-own generation infected no later than it. Cases sharing an infection time
-are counted in the order they appear in `cases`. The clock, count and
-generation are restored to the generation's totals afterwards, which is what
-the stopping rules read.
+([`resolve_individual!`](@ref)), then, once every case's own state is settled,
+each intervention declaring [`settles_generation_batch`](@ref) is offered its
+actions for every case in turn ([`_offer_continuous_actions!`](@ref)), so a
+trigger that only becomes true on settlement (such as a case's own lab
+confirmation) still reaches its group. The generation engine has no time
+order beyond the generation. Each case, including in the settled-batch offer,
+sees the clock at its own infection time and, as its case count, the
+`cases_before` cases of earlier generations plus those of its own generation
+infected no later than it. Cases sharing an infection time are counted in the
+order they appear in `cases`. The clock, count and generation are restored to
+the generation's totals once every case has been offered, which is what the
+stopping rules read.
 """
 function _settle_generation!(state::SimulationState, interventions, cases, cases_before)
     isempty(cases) && return nothing
@@ -911,8 +925,34 @@ function _settle_generation!(state::SimulationState, interventions, cases, cases
         _at_case!(state, case, cases_before + _rank(rank, i))
         _resolve_interventions!(state, case, interventions)
     end
+    _offer_continuous_actions!(state, interventions, cases, cases_before, rank)
     state.max_infection_time, state.cumulative_cases = clock, count
     state.current_generation = generation
+    return nothing
+end
+
+"""
+    _offer_continuous_actions!(state, interventions, cases, cases_before, rank)
+
+Once `cases` are settled, offer each intervention declaring
+[`settles_generation_batch`](@ref) its actions one case at a time, with the
+clock at that case's own infection time, so a wrapper such as
+`CapacityConstrained` bills capacity to the triggering case's own period
+rather than the generation's. Each call is scoped to the single case: an
+intervention such as `GroupVaccination` finds the rest of a triggered group
+through its own population-wide index, not through the candidates it is
+passed, so a single-case candidate still finds everything a whole-batch call
+would.
+"""
+function _offer_continuous_actions!(state::SimulationState, interventions, cases, cases_before, rank)
+    for (i, case) in enumerate(cases)
+        _at_case!(state, case, cases_before + _rank(rank, i))
+        for iv in interventions
+            settles_generation_batch(iv) || continue
+            actions = intervention_actions(iv, state, (case,))
+            actions === nothing || _admit_actions!(iv, state, actions)
+        end
+    end
     return nothing
 end
 
