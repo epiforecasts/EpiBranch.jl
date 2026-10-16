@@ -1014,6 +1014,25 @@
             @test ll < 0.0
         end
 
+        @testset "max_cases/max_generations defaults stay off for a fixed-population model" begin
+            # A fixed-population model's race leaves the max_cases/max_generations
+            # defaults off, so fitting against it must route through the same
+            # SimOpts-building path as `simulate` rather than building its own
+            # SimOpts straight from the keywords, which would reapply those
+            # defaults as a hard cap.
+            prog = [Transition(:recovered; rate = 1.0, terminal = true)]
+            model = ModelSpec(
+                HomogeneousProcess(; transmission_rate = 50.0, population_size = 10_050);
+                progression = prog
+            )
+            data = ChainSizes([10_050])
+            ll_default = loglikelihood(data, model; n_sim = 1, rng = StableRNG(1))
+            ll_uncapped = loglikelihood(
+                data, model; n_sim = 1, stopping_rules = [Extinction()], rng = StableRNG(1)
+            )
+            @test ll_default == ll_uncapped
+        end
+
         @testset "Consistent with analytical for Poisson" begin
             data = ChainSizes([1, 1, 1, 2, 1])
             ll_analytical = loglikelihood(data, Poisson(0.5))
@@ -1200,6 +1219,20 @@
             ll = loglikelihood(ChainLengths([0, 1, 0, 2, 1]), model; n_sim = 5000, rng = StableRNG(42))
             @test isfinite(ll)
             @test ll < 0.0
+        end
+
+        @testset "max_cases/max_generations defaults stay off for a fixed-population model" begin
+            prog = [Transition(:recovered; rate = 1.0, terminal = true)]
+            model = ModelSpec(
+                HomogeneousProcess(; transmission_rate = 50.0, population_size = 10_050);
+                progression = prog
+            )
+            data = ChainLengths([10])
+            ll_default = loglikelihood(data, model; n_sim = 1, rng = StableRNG(1))
+            ll_uncapped = loglikelihood(
+                data, model; n_sim = 1, stopping_rules = [Extinction()], rng = StableRNG(1)
+            )
+            @test ll_default == ll_uncapped
         end
     end
 
