@@ -908,9 +908,8 @@ end
 
 @testset "ExposedContactRecorder captures the generation of an escaped exposure" begin
     # 1 infects 2 (generation 1), and 2's attempt on 3 is blocked: the escaped
-    # exposure should carry generation 2, the generation 3 would have had if
-    # the block had not stopped it, not the default 0 of someone never
-    # infected.
+    # exposure should carry generation 2, the generation 3 would have had
+    # without the block, rather than the default 0 of someone never infected.
     rng = StableRNG(11)
     prog = [Transition(:recovered; from = :infection, delay = 100.0, terminal = true)]
     state = EpiBranch.new_state(
