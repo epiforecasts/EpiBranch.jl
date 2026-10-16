@@ -678,15 +678,19 @@ end
 # `trace_contacts!` stands in for `keep_active` the same way, but needs a model
 # that can name a case's contacts as well. Actions from `intervention_actions`
 # are discovered on the race only for an intervention declaring
-# `continuous_actions`, because the race offers them to pending members whose
-# infection times it does not know yet; one that does not declare it is
-# reported, unless it also traces contacts, since tracing still reaches a model
-# that names contacts even though its actions go undelivered. The checks read
-# the methods themselves, so an intervention written outside the package is
-# reported without declaring anything. `MassVaccination`'s rollout, for one,
-# doses each contact a case makes, which the race would have to offer the whole
-# pending population; on the continuous-time path nobody is therefore ever
-# dosed, and the efficacy risk it contributes never blocks.
+# `continuous_actions` (per settled case, narrowed to the contacts it can
+# still reach, and needing them unless it also declares `needs_contacts =
+# false`) or `acts_on_population` (once, at the start, for the whole
+# population, regardless of what the model names); one that declares neither
+# is reported, unless it also traces contacts, since tracing still reaches a
+# model that names contacts even though its actions go undelivered. The
+# checks read the methods themselves, so an intervention written outside the
+# package is reported without declaring anything. `MassVaccination` declares
+# `acts_on_population`, since its dosing time comes from each person's own
+# `eligibility_time` rather than from who infected whom, and so is offered to
+# everybody before the race starts; `GroupVaccination` declares
+# `continuous_actions` and `needs_contacts = false`, since its candidates are
+# a case's group, found through `group_key` rather than through any contact.
 #
 # The settled-hook shortcut yields to a method of the intervention's own for
 # `continuous_actions`: that already answers, for its own configuration,
@@ -713,7 +717,10 @@ end
 # candidate actions run after tracing through the shared admission protocol;
 # batch-only delivery remains unsupported.
 function _sellke_honours(model, iv::AbstractIntervention)
-    continuous_actions(iv) && return supplies_contacts(model)
+    # Offered to the whole population at the start, regardless of what the
+    # model names.
+    acts_on_population(iv) && return true
+    continuous_actions(iv) && return !needs_contacts(iv) || supplies_contacts(model)
     # Its actions go undelivered, but tracing still reaches a model that names
     # contacts.
     _discovers_actions(iv) && return traces_contacts(iv) && supplies_contacts(model)
@@ -735,9 +742,10 @@ _sellke_honours(model, s::Scheduled) = _sellke_honours(model, s.intervention)
 # intervention honoured through `on_infection_settled!` never gets
 # `apply_post_transmission!` named, since it already reaches that hook.
 function _unhonoured_hooks(model, iv::AbstractIntervention)
+    acts_on_population(iv) && return Symbol[]
     hooks = _generation_hooks(iv)
     if continuous_actions(iv)
-        supplies_contacts(model) && return Symbol[]
+        (!needs_contacts(iv) || supplies_contacts(model)) && return Symbol[]
         # This branch always reaches `intervention_actions`, independently of
         # whatever generation hooks `iv` also defines; name it alongside them
         # rather than letting it go unnamed whenever `iv` happens to define
@@ -1031,6 +1039,10 @@ function _sellke_race!(
     ]
     close_keys = map(((w, _),) -> _time_keys(w.until), rts)
 
+    # An intervention declaring `acts_on_population` needs no case settled to
+    # propose its actions, so it is offered every member before the race
+    # starts rather than case by case as the race goes.
+    _apply_population_actions!(state, interventions, members)
     seed!(best, members, rng)
     # The host state each route's kernel reads, as the keys it declares through
     # `watched_records`. A route that declares nothing draws from hazards fixed
@@ -1110,6 +1122,12 @@ function _sellke_race!(
         ), interventions
     )
     tracing = any(traces_contacts, interventions)
+    # Whether `_apply_continuous_actions!` is worth calling on a model that
+    # names no contacts: an intervention declaring `needs_contacts = false`
+    # (`GroupVaccination`) still has candidates to offer it there.
+    contactless_actions = any(
+        iv -> continuous_actions(iv) && !needs_contacts(iv), interventions
+    )
     openings = _RouteOpening{T}[] # one per case and route it transmits along
     proposals = _Pending{T}[]  # every proposal made, when something can block
     head = zeros(Int, may_block ? m : 0)  # first proposal to each member
@@ -1265,7 +1283,7 @@ function _sellke_race!(
         traced = _trace_from!(
             state, ind, interventions, contacts, pos, processed, tracing
         )
-        contacts === nothing ||
+        (contacts !== nothing || contactless_actions) &&
             _apply_continuous_actions!(
             state, ind, interventions, members, processed, contacts, pos, traced
         )

@@ -779,13 +779,23 @@ first_time == next_time
 The result is `true`: the second call uses the stored draw. Give a new visit a
 different key, and keep the same key when the same visit is proposed again.
 
-On network and household models, supported actions run after a newly final
-case is traced. Interventions of your own opt in with
-`EpiBranch.continuous_actions(iv) = true`, and must work without the infection
-time of a contact whose infection is not yet final. Ring delivery supports an
-eligibility window with no end; group delivery uses known triggering cases. Scheduling and capacity work as on branching
-processes. Mass vaccination is not supported here, and nor are
-`HomogeneousProcess` and `MixingProcess`, which name no contacts.
+On network and household models, supported actions run in one of two ways.
+Interventions of your own opt in to the per-case way with
+`EpiBranch.continuous_actions(iv) = true`: actions run after a newly final
+case is traced, narrowed to the case and the contacts it can still reach, and
+must work without the infection time of a contact whose infection is not yet
+final. That narrowing needs a model that names contacts
+(`EpiBranch.supplies_contacts(model) = true`), unless the intervention also
+declares `EpiBranch.needs_contacts(iv) = false`, as group delivery does,
+since it finds a case's group through its `group_key` rather than through a
+contact; ring delivery, which does need contacts, supports an eligibility
+window with no end. `HomogeneousProcess` and `MixingProcess` name no
+contacts, so a `continuous_actions` intervention that needs them is not
+offered any. `EpiBranch.acts_on_population(iv) = true` opts in to the other
+way instead: actions run once, before any case settles, for every member,
+needing nothing about who infected whom. Mass vaccination declares this, and
+so reaches every model, including `HomogeneousProcess` and `MixingProcess`.
+Scheduling and capacity work as on branching processes either way.
 On a household model a capacity limit puts every household on one shared
 clock, so a budget with a finite `period` is counted in calendar order across
 households.

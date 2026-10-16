@@ -69,6 +69,35 @@ using StableRNGs
             count(is_infected, band2) / length(band2)
     end
 
+    @testset "vaccinating by patch" begin
+        # `GroupVaccination` finds a case's group through `group_key` rather
+        # than through a named contact, which `MixingProcess` has none of;
+        # the same `:patch` attribute that drives the mixing structure
+        # doubles as the group, so a symptomatic case in a patch vaccinates
+        # the rest of it.
+        N = 1000
+        patch = (rng, ind) -> (ind.state[:patch] = ind.id <= N ÷ 2 ? 1 : 2)
+        rate = (from, to) -> 2.0 / (N ÷ 2)
+        prog = [Transition(:recovered; from = :infection, delay = Exponential(1.0), terminal = true)]
+        clinical = clinical_presentation(
+            incubation_period = Dirac(0.0), prob_asymptomatic = 0.0
+        )
+        gv = GroupVaccination(
+            efficacy = 1.0, eligibility = OnSymptomOnset(),
+            group_key = :patch, dose_delay = 0.0
+        )
+        process = MixingProcess(; population_size = N, mixing_by = (:patch,), rate)
+        @test EpiBranch._sellke_honours(process, gv)
+        state = simulate(
+            ModelSpec(
+                process; progression = prog, attributes = [patch, clinical],
+                interventions = [gv]
+            );
+            n_initial = 5, rng = StableRNG(1)
+        )
+        @test any(is_vaccinated, state.individuals)
+    end
+
     @testset "from override and derivation from progression" begin
         rate = (from, to) -> 0.0
         # With no latent transition the window opens at :infection.

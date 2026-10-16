@@ -91,11 +91,12 @@ Interventions on this process:
   member's dose before their own infection time is known, and withdraws it
   once that infection settles and the window turns out not to cover it,
   freeing any capacity it used.
+- `MassVaccination` doses every household's members before its own race
+  starts, needing no household membership at all.
 - A removal `Transition` in the progression always applies.
 
 Limits:
 
-- `MassVaccination` is not supported.
 - Existing protection can instead be given through `transmission_traits`, a
   [`PairKernel`](@ref), or an intervention with its own `competing_risk`.
 

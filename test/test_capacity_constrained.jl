@@ -115,10 +115,10 @@ end
     end
 
     @testset "A dose withdrawn for missing its window refunds its capacity" begin
-        # Ring vaccination's own usage key (`:vaccinated`) is what
-        # `_capacity_usage` rescans on every call, rather than a running
-        # total, so withdrawing a dose through `on_infection_settled!` is
-        # itself the refund: the next call sees one fewer dose used.
+        # `_capacity_usage` rescans ring vaccination's own usage key
+        # (`:vaccinated`) on every call, rather than keeping a running total,
+        # so withdrawing a dose through `on_infection_settled!` is itself the
+        # refund: the next call sees one fewer dose used.
         rv = RingVaccination(efficacy = 0.9, eligibility_window = 2.0)
         cc = CapacityConstrained(rv; budget_per_period = 1.0)
         state = EpiBranch.new_state(
