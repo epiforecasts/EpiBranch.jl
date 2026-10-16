@@ -245,12 +245,6 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
 
 ### Changed
 
-- `RingVaccination` with a finite `eligibility_window` now works on the
-  network and household models, rather than being ignored with a warning. A
-  dose for a contact not yet exposed is admitted as though the window were
-  open, and withdrawn once the race settles that contact's own infection and
-  the window turns out not to cover it, freeing any `CapacityConstrained`
-  budget the withdrawn dose had used.
 - The continuous-time models (`HomogeneousProcess`, and `NetworkProcess`,
   `RoutedNetwork` and `HouseholdProcess` in the companion packages) now resolve
   per-contact competing risks, so an intervention whose effect is a per-contact
