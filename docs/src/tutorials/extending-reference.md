@@ -881,14 +881,18 @@ group that is never confirmed. Group vaccination's trigger for a person whose
 infection is not yet final therefore moves earlier whenever a later search
 finds an earlier one, keeping the dose at the group's true earliest trigger
 instead of the first one found. The dose of a person whose infection is final,
-and a dose another vaccination gave, keep their date.
+and a dose another vaccination gave, keep their date. Ring vaccination moves
+the same way: a contact's trace can be found earlier from a second infector
+whose own isolation came first, so its dose moves to the earliest trace
+found rather than staying at the first.
 
 This moving earlier is itself a method rather than a rule written into the
 intervention. `EpiBranch.may_revise(iv, prior_trigger, new_trigger)` says
 whether a dose already admitted under `prior_trigger` may move to
 `new_trigger`. The default is `false` (an admitted dose keeps its date), and
-group vaccination defines it to allow a genuine improvement. An intervention of
-your own wanting the same behaviour defines this method for its type.
+group and ring vaccination define it to allow a genuine improvement. An
+intervention of your own wanting the same behaviour defines this method for
+its type.
 `EpiBranch.is_settled(state, ind)` says whether a person's fate is already
 fixed: `true` once a continuous-time model has finished its own round of
 proposals for `ind`, so nothing later can move it, and `false` for a person

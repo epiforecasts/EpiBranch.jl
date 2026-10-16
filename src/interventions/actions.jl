@@ -178,11 +178,61 @@ function _after_action_dose!(rv::RingVaccination, ind, time, rng)
     return nothing
 end
 
+"""
+    may_revise(intervention, prior_trigger, new_trigger) -> Bool
+
+Whether a dose already accepted under `prior_trigger` may be moved to
+`new_trigger`, found later. The default is `false`: an accepted dose keeps its
+date. [`GroupVaccination`](@ref) and [`RingVaccination`](@ref) allow the move
+when `new_trigger` is earlier, since in continuous-time models a group's
+earliest eligible case, or a contact's earliest trace, may only be found
+after a later one."""
+may_revise(::AbstractIntervention, prior_trigger, new_trigger) = false
+function may_revise(w::InterventionWrapper, prior_trigger, new_trigger)
+    return may_revise(w.intervention, prior_trigger, new_trigger)
+end
+may_revise(::GroupVaccination, prior_trigger, new_trigger) = new_trigger < prior_trigger
+may_revise(::RingVaccination, prior_trigger, new_trigger) = new_trigger < prior_trigger
+
+_trigger_cache_key(v::AbstractVaccination) = (v, :trigger)
+
+# Records the trigger a dose this action gave was timed from, so a later
+# discovery can tell whether its own trigger is a genuine revision of *this*
+# action's dose rather than a dose another vaccination (sharing the same
+# `dose_label`) already gave. Used for both a person's first dose and a
+# revision of one already given: the effect reads the person's own current
+# state at admission time to tell which it is, rather than two separate
+# action builders each hardcoding one.
+#
+# A revision moves `:vaccination_time` to the new trigger plus the person's
+# own (already-drawn) delay, and shifts `:immunity_time` by the same amount,
+# keeping the delay to immunity that was drawn for it. Efficacy and severity
+# efficacy are untouched, since neither depends on when the dose was given,
+# so this does not go through `_record_vaccination!`, which would resample
+# them.
+function _revisable_dose_action(v::AbstractVaccination, ind, trigger, time)
+    label = dose_label(v)
+    effect! = function (person, at, state)
+        if get(person.state, _vaccinated_key(label), false)
+            old_time = person.state[_vaccination_time_key(label)]
+            person.state[_vaccination_time_key(label)] = at
+            person.state[_immunity_time_key(label)] += at - old_time
+        else
+            record_dose!(v, person, at, state.rng)
+        end
+        _action_cache(person)[_trigger_cache_key(v)] = trigger
+        return nothing
+    end
+    return InterventionAction(ind, time, effect!)
+end
+
 function intervention_actions(rv::RingVaccination, state, candidates)
     actions = InterventionAction[]
     label = dose_label(rv)
     for ind in candidates
         is_traced(ind) || continue
+        trace_t = haskey(ind.state, :trace_time) ? ind.state[:trace_time] :
+            min(_recorded_isolation_time(ind), _state_real(ind.state, :_traced_isolation_time, Inf))
         if get(ind.state, _vaccinated_key(label), false)
             if _maybe_positive(rv.post_exposure_efficacy)
                 # Reconsider protection at this exposure without recording a new dose.
@@ -191,10 +241,18 @@ function intervention_actions(rv::RingVaccination, state, candidates)
                 )
                 push!(actions, InterventionAction(ind, state.max_infection_time, effect!))
             end
+            prior = get(_action_cache(ind), _trigger_cache_key(rv), nothing)
+            if isfinite(trace_t) && prior !== nothing && may_revise(rv, prior, trace_t)
+                delay = action_draw!(ind, (rv, :delay)) do
+                    _sample_value(rv.dose_delay, state.rng, ind)
+                end
+                time = trace_t + delay
+                # An earlier date must still follow the dose this one requires.
+                _has_required_dose(rv, ind, time) &&
+                    push!(actions, _revisable_dose_action(rv, ind, trace_t, time))
+            end
             continue
         end
-        trace_t = haskey(ind.state, :trace_time) ? ind.state[:trace_time] :
-            min(_recorded_isolation_time(ind), _state_real(ind.state, :_traced_isolation_time, Inf))
         isfinite(trace_t) || continue
         delay = action_draw!(ind, (rv, :delay)) do
             _sample_value(rv.dose_delay, state.rng, ind)
@@ -209,55 +267,9 @@ function intervention_actions(rv::RingVaccination, state, candidates)
         accepted = action_draw!(ind, (rv, :acceptance)) do
             _covers(rv.coverage, ind, state.rng)
         end
-        accepted && push!(actions, dose_action(rv, ind, time))
+        accepted && push!(actions, _revisable_dose_action(rv, ind, trace_t, time))
     end
     return actions
-end
-
-"""
-    may_revise(intervention, prior_trigger, new_trigger) -> Bool
-
-Whether a dose already accepted under `prior_trigger` may be moved to
-`new_trigger`, found later. The default is `false`: an accepted dose keeps its
-date. [`GroupVaccination`](@ref) allows the move when `new_trigger` is
-earlier, since in continuous-time models a group's earliest eligible case may
-only be found after a later one."""
-may_revise(::AbstractIntervention, prior_trigger, new_trigger) = false
-function may_revise(w::InterventionWrapper, prior_trigger, new_trigger)
-    return may_revise(w.intervention, prior_trigger, new_trigger)
-end
-may_revise(::GroupVaccination, prior_trigger, new_trigger) = new_trigger < prior_trigger
-
-_group_trigger_cache_key(gv::GroupVaccination) = (gv, :trigger)
-
-# Records the trigger a dose this action gave was timed from, so a later
-# discovery can tell whether its own trigger is a genuine revision of *this*
-# action's dose rather than a dose another vaccination (sharing the same
-# `dose_label`) already gave. Used for both a member's first dose and a
-# revision of one already given: the effect reads the member's own current
-# state at admission time to tell which it is, rather than two separate
-# action builders each hardcoding one.
-#
-# A revision moves `:vaccination_time` to the new trigger plus the member's
-# own (already-drawn) delay, and shifts `:immunity_time` by the same amount,
-# keeping the delay to immunity that was drawn for it. Efficacy and severity
-# efficacy are untouched, since neither depends on when the dose was given,
-# so this does not go through `_record_vaccination!`, which would resample
-# them.
-function _group_dose_action(gv::GroupVaccination, ind, trigger, time)
-    label = dose_label(gv)
-    effect! = function (person, at, state)
-        if get(person.state, _vaccinated_key(label), false)
-            old_time = person.state[_vaccination_time_key(label)]
-            person.state[_vaccination_time_key(label)] = at
-            person.state[_immunity_time_key(label)] += at - old_time
-        else
-            record_dose!(gv, person, at, state.rng)
-        end
-        _action_cache(person)[_group_trigger_cache_key(gv)] = trigger
-        return nothing
-    end
-    return InterventionAction(ind, time, effect!)
 end
 
 function intervention_actions(gv::GroupVaccination, state, candidates)
@@ -287,12 +299,12 @@ function intervention_actions(gv::GroupVaccination, state, candidates)
                 # genuinely earlier trigger. `ind.id in allowed` keeps this
                 # within the members this call actually received.
                 (ind.id in allowed && !is_settled(state, ind)) || continue
-                prior = get(_action_cache(ind), _group_trigger_cache_key(gv), nothing)
+                prior = get(_action_cache(ind), _trigger_cache_key(gv), nothing)
                 (prior !== nothing && may_revise(gv, prior, trigger)) || continue
                 delay = action_draw!(ind, (gv, :delay)) do
                     _sample_value(gv.dose_delay, state.rng, ind)
                 end
-                push!(actions, _group_dose_action(gv, ind, trigger, trigger + delay))
+                push!(actions, _revisable_dose_action(gv, ind, trigger, trigger + delay))
                 continue
             end
             get(ind.state, _coverage_declined_key(dose_label(gv)), false) && continue
@@ -306,7 +318,7 @@ function intervention_actions(gv::GroupVaccination, state, candidates)
             delay = action_draw!(ind, (gv, :delay)) do
                 _sample_value(gv.dose_delay, state.rng, ind)
             end
-            push!(actions, _group_dose_action(gv, ind, trigger, trigger + delay))
+            push!(actions, _revisable_dose_action(gv, ind, trigger, trigger + delay))
         end
     end
     return actions

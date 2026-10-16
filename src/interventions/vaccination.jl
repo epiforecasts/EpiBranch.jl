@@ -691,6 +691,13 @@ is then skipped for that contact.
 A dose is recorded when it is due, whether or not the contact was infected
 in the meantime, so counts of later doses are counts of doses scheduled.
 
+In network and household models, infectors settle in order of infection, not
+of isolation, so a contact can be traced late from one infector and later
+traced earlier still from a second infector whose own isolation came first. A
+contact not yet settled has their dose moved to the earliest trace found
+rather than staying at the first; a settled contact's dose, and a dose
+another vaccination already gave, keep their date.
+
 `waning` scales `efficacy`, `post_exposure_efficacy` and `onward_efficacy` by
 the time since this contact became immune. Post-exposure protection acts the
 moment immunity arrives and uses `waning(0)`, so a `waning` that builds up

@@ -73,10 +73,12 @@ end
     EpiBranch.apply_actions!(rv, state, [ind])
     @test calls[] == 2
     @test ind.state[:vaccination_time] == 10.0
+    # A trace found earlier than the admitted dose's own trigger moves it,
+    # reusing the cached delay rather than drawing a fresh one.
     ind.state[:trace_time] = 5.0
     EpiBranch.apply_actions!(rv, state, [ind])
     @test calls[] == 2
-    @test ind.state[:vaccination_time] == 10.0
+    @test ind.state[:vaccination_time] == 7.0
     @test !("_intervention_actions" in names(linelist(state)))
 
     declined = RingVaccination(efficacy = 0.8, coverage = (rng, ind) -> (calls[] += 1; 0.0))
@@ -95,6 +97,75 @@ end
     @test_throws ArgumentError EpiBranch.apply_actions!(
         Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf), state, [other]
     )
+end
+
+@testset "A pending contact's ring dose moves earlier when a later infector traces it sooner" begin
+    # On a continuous-time race, infectors settle in order of infection, not
+    # of isolation: one that is infected later can still isolate, and so
+    # trace a shared contact earlier than one infected before it. A dose
+    # already given from the first trace found must move to a genuinely
+    # earlier one found afterwards, for a contact still pending its own
+    # infection.
+    state = EpiBranch.new_state(
+        BranchingProcess(Poisson(0.0)),
+        EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
+    )
+    rv = RingVaccination(efficacy = 0.9, dose_delay = 1.0, delay_to_immunity = 3.0)
+    a = Individual(id = 1, state = Dict{Symbol, Any}())
+    b = Individual(id = 2, state = Dict{Symbol, Any}())
+    ind = Individual(id = 3, state = Dict{Symbol, Any}(:traced => true))
+    EpiBranch.initialise_individual!(rv, ind, state)
+    append!(state.individuals, [a, b, ind])
+    members = [1, 2, 3]
+    processed = falses(3)
+    # The walk's reach is passed as `traced`, so `contacts` only stands in for
+    # a model that names contacts, which ring vaccination needs to be offered.
+    contacts(id, state) = Int[]
+
+    # `a` settles first, tracing `ind` late.
+    ind.state[:trace_time] = 20.0
+    processed[1] = true
+    EpiBranch._apply_continuous_actions!(state, a, [rv], members, processed, contacts, nothing, [ind.id])
+    @test ind.state[:vaccination_time] == 21.0
+
+    # `b` settles next, despite having isolated, and so traced `ind`, earlier.
+    ind.state[:trace_time] = 5.0
+    processed[2] = true
+    EpiBranch._apply_continuous_actions!(state, b, [rv], members, processed, contacts, nothing, [ind.id])
+    @test ind.state[:vaccination_time] == 6.0
+    @test immunity_time(ind) == 9.0
+end
+
+@testset "An earlier re-trace does not move a dose before the dose it requires" begin
+    state = EpiBranch.new_state(
+        BranchingProcess(Poisson(0.0)),
+        EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
+    )
+    rv = RingVaccination(
+        efficacy = 0.9, dose_delay = 1.0, requires_dose = :prime, dose_label = :boost
+    )
+    a = Individual(id = 1, state = Dict{Symbol, Any}())
+    b = Individual(id = 2, state = Dict{Symbol, Any}())
+    ind = Individual(id = 3, state = Dict{Symbol, Any}(:traced => true))
+    ind.state[EpiBranch._vaccinated_key(:prime)] = true
+    ind.state[EpiBranch._vaccination_time_key(:prime)] = 10.0
+    EpiBranch.initialise_individual!(rv, ind, state)
+    append!(state.individuals, [a, b, ind])
+    members = [1, 2, 3]
+    processed = falses(3)
+    contacts(id, state) = Int[]
+    boost_time = EpiBranch._vaccination_time_key(:boost)
+
+    ind.state[:trace_time] = 20.0
+    processed[1] = true
+    EpiBranch._apply_continuous_actions!(state, a, [rv], members, processed, contacts, nothing, [ind.id])
+    @test ind.state[boost_time] == 21.0
+
+    # A trace at 5 would date the booster at 6, before the prime at 10.
+    ind.state[:trace_time] = 5.0
+    processed[2] = true
+    EpiBranch._apply_continuous_actions!(state, b, [rv], members, processed, contacts, nothing, [ind.id])
+    @test ind.state[boost_time] == 21.0
 end
 
 @testset "Ring vaccination times a dose only from a recorded isolation" begin
@@ -176,7 +247,10 @@ end
 
 @testset "A dose's revise-earlier policy is a dispatched trait, not a branch in the body" begin
     @test !EpiBranch.may_revise(AppointmentAction(), 20.0, 5.0)
-    @test !EpiBranch.may_revise(RingVaccination(efficacy = 0.8), 20.0, 5.0)
+    rv = RingVaccination(efficacy = 0.8)
+    @test EpiBranch.may_revise(rv, 20.0, 5.0)
+    @test !EpiBranch.may_revise(rv, 5.0, 20.0)
+    @test !EpiBranch.may_revise(rv, 5.0, 5.0)
     gv = GroupVaccination(efficacy = 0.8)
     @test EpiBranch.may_revise(gv, 20.0, 5.0)
     @test !EpiBranch.may_revise(gv, 5.0, 20.0)
