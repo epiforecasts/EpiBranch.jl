@@ -1401,23 +1401,25 @@ end
         )
         @test meansize([iso, late]) <= meansize([iso]) * 1.05
 
-        # Exposure-dependent eligibility requires a known infection time; PEP
-        # does not, since a dose given to a still-pending member is
-        # reconsidered once the race settles that member's own infection.
+        # Exposure-dependent eligibility is honoured too: a dose given to a
+        # still-pending member is admitted as though the window were open,
+        # and reconsidered once the race settles that member's own
+        # infection, the same way a post-exposure dose already was.
         model = build([iso]).process
-        for rv in (RingVaccination(efficacy = 0.8, eligibility_window = 21.0),)
-            @test !EpiBranch._sellke_honours(model, rv)
-            warning_name = rv isa Scheduled ? r"Scheduled" : r"RingVaccination"
-            undosed = @test_logs (:warn, warning_name) match_mode = :any simulate(
-                build([iso, ct, rv]); n_initial = 1, rng = StableRNG(4)
-            )
-            @test !any(is_vaccinated, undosed.individuals)
-            @test all(
-                !haskey(ind.state, :ring_dose_delay) &&
-                    !haskey(ind.state, :ring_dose_offered)
-                    for ind in undosed.individuals
-            )
-        end
+        windowed = RingVaccination(efficacy = 0.8, eligibility_window = 21.0)
+        @test EpiBranch._sellke_honours(model, windowed)
+        dosed_within_window = @test_logs min_level = Base.CoreLogging.Warn simulate(
+            build([iso, ct, windowed]); n_initial = 1, rng = StableRNG(4)
+        )
+        vaccinated = filter(is_vaccinated, dosed_within_window.individuals)
+        @test !isempty(vaccinated)
+        # A vaccinated contact never itself infected (`infection_time` is
+        # `NaN`) satisfies any window vacuously, as `_within_window` says.
+        @test all(
+            ind -> isnan(ind.infection_time) ||
+                ind.state[:vaccination_time] - ind.infection_time <= 21.0,
+            vaccinated
+        )
         @test_logs (:warn, r"MassVaccination") match_mode = :any simulate(
             build([iso, ct, MassVaccination(efficacy = 0.8, eligibility_time = 0.0)]);
             n_initial = 1, rng = StableRNG(4)

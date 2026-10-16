@@ -343,14 +343,13 @@ function continuous_actions(w::InterventionWrapper)
     return continuous_actions(w.intervention)
 end
 continuous_actions(::GroupVaccination) = true
-# A finite `eligibility_window` needs the candidate's own exposure to check
-# against, which a pending, still-uninfected member of a continuous-time race
-# does not have yet (see `_within_window`). `post_exposure_efficacy` has no
-# such requirement: `on_infection_settled!` reconsiders it once that
-# member's own infection settles, against the exposure the race then knows.
-function continuous_actions(rv::RingVaccination)
-    return rv.eligibility_window isa Real && rv.eligibility_window == Inf
-end
+# `_within_window` treats a pending, still-uninfected member as within any
+# window, so a finite `eligibility_window` admits a dose for one here just as
+# an infinite one would. `on_infection_settled!` reconsiders that dose once
+# the member's own infection settles and its exposure is known, withdrawing
+# it if the window turns out not to cover it, the same way it already
+# reconsiders `post_exposure_efficacy`.
+continuous_actions(::RingVaccination) = true
 
 """
     settles_generation_batch(intervention) -> Bool
