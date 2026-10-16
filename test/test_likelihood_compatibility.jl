@@ -9,6 +9,16 @@ EpiBranch.has_effect(::_Shield) = true
 struct _WithdrawingShield <: EpiBranch.AbstractIntervention end
 EpiBranch.has_effect(::_WithdrawingShield) = true
 
+# A component that blocks only a fraction of the hazard over its own key, for
+# the leaky-merge tests below.
+struct _LeakyShield <: EpiBranch.AbstractIntervention
+    key::Symbol
+    block::Float64
+end
+EpiBranch.has_effect(::_LeakyShield) = true
+EpiBranch.removal_gap_host_times(s::_LeakyShield) = (s.key,)
+EpiBranch.removal_block_probability(s::_LeakyShield) = s.block
+
 @testset "Infection likelihood compatibility" begin
     compatible = EpiBranch.infection_likelihood_compatible
     iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
@@ -209,5 +219,45 @@ EpiBranch.has_effect(::_WithdrawingShield) = true
 
         capacity_quarantine = CapacityConstrained(quarantine; budget_per_period = 2)
         @test withdrawn(capacity_quarantine) == (EpiBranch.REMOVAL_STRETCHES_KEY,)
+    end
+
+    @testset "A leaky removal merges into its own column, apart from a complete one's" begin
+        shield_key = :_scratch_leaky_shield_stretches
+        other_key = :_scratch_leaky_shield_stretches_2
+        mini(inds) = SimulationState(
+            inds, Int[], 0, StableRNG(1), 0, false, nothing, Inf, nothing,
+            AbstractClinicalTransition[]
+        )
+
+        # A leaky component's stretches merge into the leaky column, tagged
+        # with its surviving fraction, and never into the complete-removal
+        # column.
+        lapsing = [Individual(id = 1)]
+        EpiBranch.record_removal!(lapsing[1], 2.0, 9.0; key = shield_key)
+        leaky_model = ModelSpec(
+            BranchingProcess(Poisson(0.0));
+            interventions = [_LeakyShield(shield_key, 0.6)]
+        )
+        @test EpiBranch._leaky_gap_keys(leaky_model) == [shield_key => 0.4]
+        result = EpiBranch._layer_host_times(mini(lapsing), leaky_model, ())
+        @test !haskey(result, EpiBranch.REMOVAL_STRETCHES_KEY)
+        @test result[EpiBranch.LEAKY_REMOVAL_STRETCHES_KEY] == [[(2.0, 9.0, 0.4)]]
+
+        # Two components sharing a key must agree on its surviving fraction,
+        # since a merged stretch could not otherwise say whose it was.
+        disagreeing = ModelSpec(
+            BranchingProcess(Poisson(0.0));
+            interventions = [_LeakyShield(shield_key, 0.6), _LeakyShield(shield_key, 0.5)]
+        )
+        @test_throws ArgumentError EpiBranch._leaky_gap_keys(disagreeing)
+
+        # Two leaky components under different keys with different surviving
+        # fractions cannot be composed in one model either, since the
+        # pairwise likelihood supports only one such fraction at a time.
+        mismatched = ModelSpec(
+            BranchingProcess(Poisson(0.0));
+            interventions = [_LeakyShield(shield_key, 0.6), _LeakyShield(other_key, 0.5)]
+        )
+        @test_throws ArgumentError EpiBranch._layer_host_times(mini(lapsing), mismatched, ())
     end
 end
