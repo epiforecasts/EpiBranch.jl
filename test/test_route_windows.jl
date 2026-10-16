@@ -799,6 +799,29 @@ end
     @test !is_infected(only(state.individuals))
 end
 
+@testset "ExposedContactRecorder does not log a blocked community introduction" begin
+    # A community introduction proposes the person as their own infector
+    # (`source === ind`), standing in for a source outside the population; a
+    # block on it is not an exposure between two people and must not appear
+    # as a self-pair.
+    rng = StableRNG(1)
+    state = EpiBranch.new_state(
+        BranchingProcess(Poisson(0.0), Exponential(1.0)),
+        AbstractClinicalTransition[], NoAttributes(), rng
+    )
+    interventions = [ProtectTo(1)]
+    EpiBranch.add_individuals!(state, 1, interventions)
+    @test EpiBranch._sellke_race!(
+        state, [1], rng;
+        from = :infection, until = (), interventions,
+        introduction = (Exponential(1.0), Inf), targets = (i, st) -> (),
+        seed! = (best, members, r) -> (best[1] = 1.0),
+        recorder = EpiBranch.ExposedContactRecorder()
+    )
+    @test !is_infected(only(state.individuals))
+    @test !haskey(state.scratch, EpiBranch.EXPOSED_CONTACTS_KEY)
+end
+
 @testset "A recorder keeps drawing a standing-blocked pair" begin
     # Same setup as "A certain block drops the pair without asking again", but
     # a recorder that wants the stream is attached: the race keeps asking the

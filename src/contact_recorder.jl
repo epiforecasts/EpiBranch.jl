@@ -62,10 +62,13 @@ _ExposedContactLog() = _ExposedContactLog(Set{Tuple{Int, Int}}(), Tuple{Int, Int
 """
 Logs every distinct infector-contact pair a continuous-time model's race
 blocks, whether or not the block is certain to recur, keeping the time of the
-first block. Attach one to a [`ModelSpec`](@ref) as `recorder =
-ExposedContactRecorder()`; [`contacts`](@ref) then lists each logged pair as
-an exposure that did not lead to infection, the same way it already does for
-a [`BranchingProcess`](@ref).
+first block. A blocked community introduction, where the person proposed as
+their own infector stands in for a source outside the population, is not a
+contact between two people and is not logged. Attach one to a
+[`ModelSpec`](@ref) as `recorder = ExposedContactRecorder()`;
+[`contacts`](@ref) then lists each logged pair as an exposure that did not
+lead to infection, the same way it already does for a
+[`BranchingProcess`](@ref).
 
 Unlike a recorder whose [`records_contacts`](@ref EpiBranch.records_contacts)
 answers `true`, this one never asks the race to keep drawing a pair whose
@@ -75,6 +78,7 @@ run.
 struct ExposedContactRecorder <: ContactRecorder end
 
 function records_contacts(::ExposedContactRecorder, parent, contact, state, t)
+    parent.id == contact.id && return false  # a blocked community introduction, not an exposure between two people
     log = get!(_ExposedContactLog, state.scratch, EXPOSED_CONTACTS_KEY)::_ExposedContactLog
     key = (parent.id, contact.id)
     key in log.pairs || (push!(log.pairs, key); push!(log.events, (parent.id, contact.id, Float64(t))))
