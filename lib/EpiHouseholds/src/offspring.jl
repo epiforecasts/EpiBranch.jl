@@ -512,11 +512,7 @@ function _simulated_person_time(
                     "listed in the process's `until` states, reached by every case"
             )
         )
-        removed = sum(
-            frac * _removed_duration(removal_stretches(ind, key), opened, closed)
-                for (key, frac) in gap_fractions;
-            init = 0.0
-        )
+        removed = _removal_gap_duration(ind, gap_fractions, opened, closed)
         person_time[ind.state[:household]] += closed - opened - min(removed, closed - opened)
     end
     return person_time
@@ -553,6 +549,24 @@ function _removal_gap_fractions(interventions)
         end
     end
     return pairs
+end
+
+# How much of `ind`'s community-infectious window its recorded removals take
+# out, weighted by each key's fraction. Keys sharing a fraction have their
+# stretches merged into one union first, the way `_layer_host_times` merges
+# removal keys for the likelihood: `ContactTracing`'s `Quarantine` always
+# records its own key and, through `set_isolated!`, the identical stretch
+# under the default key too, so summing the two keys' durations apart would
+# count that stretch twice.
+function _removal_gap_duration(ind, gap_fractions, opened::Float64, closed::Float64)
+    total = 0.0
+    for frac in unique(last.(gap_fractions))
+        keys = (key for (key, f) in gap_fractions if f == frac)
+        stretches = reduce(vcat, (removal_stretches(ind, key) for key in keys))
+        merged = _merge_stretches(sort(stretches; by = first))
+        total += frac * _removed_duration(merged, opened, closed)
+    end
+    return total
 end
 
 # How much of a case's isolated or quarantined stretches fall inside its

@@ -363,6 +363,23 @@ end
         )
     end
 
+    @testset "a quarantine's shared removal key is not double-counted" begin
+        # `ContactTracing`'s `Quarantine` always records its own key and,
+        # through `set_isolated!`, the identical stretch under the default key
+        # too. Summing each key's blocked duration apart would take the same
+        # four days out twice; merging the keys that share a fraction takes
+        # it out once.
+        ind = Individual(id = 1)
+        for key in (EpiBranch.REMOVAL_STRETCHES_KEY, EpiBranch.QUARANTINE_STRETCHES_KEY)
+            EpiBranch.record_removal!(ind, 2.0, 6.0; key)
+        end
+        gap_fractions = [
+            EpiBranch.REMOVAL_STRETCHES_KEY => 1.0,
+            EpiBranch.QUARANTINE_STRETCHES_KEY => 1.0,
+        ]
+        @test EpiHouseholds._removal_gap_duration(ind, gap_fractions, 0.0, 10.0) == 4.0
+    end
+
     @testset "cases that never become infectious make no contacts" begin
         # A household of one isolates the window: R* is the community rate times
         # the lone case's mean infectious time, zero for a case that recovers
