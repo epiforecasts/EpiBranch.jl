@@ -858,8 +858,8 @@ end
 
 @testset "A leaky removal scales the hazard over its stretch instead of excluding it" begin
     # The same pure-escape pair as above, but the stretch is leaky: a
-    # quarter of the hazard still gets through it, so the exposure loses only
-    # three quarters of the isolated days rather than all of them.
+    # quarter of the hazard still gets through it, and the exposure loses
+    # only three quarters of the isolated days rather than all of them.
     adj = [1, 1]
     theta = 4.0
     k = Exponential(theta)
@@ -877,7 +877,7 @@ end
         -(30.0 - 0.75 * 7.0 - 0.5 * 4.0) / theta
 
     # A complete and a leaky removal on the same host merge into separate
-    # columns, so the pair loses the complete stretch outright and only a
+    # columns: the pair loses the complete stretch outright and only a
     # fraction of the leaky one.
     mixed = layer(
         (
