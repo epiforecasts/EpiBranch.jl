@@ -153,6 +153,11 @@ end
         @test_throws ArgumentError RoutedNetworkInfections(
             [:household, :community], [hh, hh[1:(end - 1)]], ok, ok, ok[1], falses(n)
         )
+        out_of_range = [copy(c) for c in hh]
+        push!(out_of_range[1], n + 1)
+        @test_throws ArgumentError RoutedNetworkInfections(
+            [:household, :community], [out_of_range, comm], ok, ok, ok[1], falses(n)
+        )
     end
 
     @testset "a susceptibility effect is refused" begin

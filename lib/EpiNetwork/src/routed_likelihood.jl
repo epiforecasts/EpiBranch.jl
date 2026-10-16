@@ -68,6 +68,14 @@ function RoutedNetworkInfections(
                 "route :$(route_names[r]) must cover the same $n hosts as infection_time"
             )
         )
+        for (i, nb) in enumerate(contacts[r]), j in nb
+            1 <= j <= n || throw(
+                ArgumentError(
+                    "route :$(route_names[r]) host $i lists contact $j, outside the " *
+                        "$n hosts in the structure"
+                )
+            )
+        end
     end
     host_times isa NamedTuple ||
         throw(ArgumentError("host_times must be a named tuple of per-host vectors"))
