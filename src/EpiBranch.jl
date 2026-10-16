@@ -93,6 +93,7 @@ include("route_window.jl")
 
 # Sellke/Dijkstra continuous-time race primitive (shared by structure-driven
 # models over a finite, depleting set of nodes, e.g. household cliques).
+include("event_queue.jl")
 include("sellke.jl")
 
 # Mass-action contacts as a route of the race, and the closed population that
