@@ -173,15 +173,15 @@ EpiBranch.has_effect(::_WithdrawingShield) = true
             action = FlagOnly()
         )
         # A releasing quarantine's own key already names the days; the shared
-        # history `apply_trace!` also writes is withdrawn rather than read
-        # twice.
+        # history that `apply_trace!` also writes is withdrawn rather than
+        # read twice.
         @test withdrawn(quarantine) == (EpiBranch.REMOVAL_STRETCHES_KEY,)
         @test withdrawn(flagging) == ()
 
         # A schedule that can lapse withdraws the inner removal's key instead
         # of naming it, since closing the window part-way through a stretch
-        # leaves the record unable to say when the block actually ended; one
-        # that cannot close forwards the inner key as named, not withdrawn.
+        # means the record no longer shows when the block ended; one that
+        # cannot close forwards the inner key as named, not withdrawn.
         lapsing_schedule = Scheduled(perfect; start_time = 0.0, end_time = 10.0)
         standing_schedule = Scheduled(perfect; start_time = 0.0)
         @test withdrawn(lapsing_schedule) == (EpiBranch.REMOVAL_STRETCHES_KEY,)
