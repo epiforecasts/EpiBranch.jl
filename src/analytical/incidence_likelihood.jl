@@ -317,11 +317,188 @@ function loglikelihood(
         reporting_probability::Real = 1, reporting_delay = nothing,
         tol::Real = 1.0e-8, max_lag::Int = 10_000
     )
+    y, seeds = _single_type_series(data)
     μ, Σ = incidence_moments(
-        offspring, generation_time, length(data.data);
+        offspring, generation_time, length(y);
+        seeds, reporting_probability, reporting_delay, tol, max_lag
+    )
+    return _incidence_loglik(approximation, y, μ, Σ)
+end
+
+_single_type_series(data::IncidenceCounts{Vector{Int}, Int}) = (data.data, data.seeds)
+function _single_type_series(::IncidenceCounts)
+    throw(
+        ArgumentError(
+            "counts or seeds by type need a multi-type offspring law " *
+                "(MultiTypeOffspring); a single-type law takes a vector of counts and " *
+                "a single number of seeds"
+        )
+    )
+end
+
+# ── Multi-type processes ──────────────────────────────────────────────
+#
+# A type-j case draws its total offspring from G_j = dist_fn(R_j) and gives
+# each child type i with probability a[i, j] (see `multi_type.jl`), and each
+# child independently lands w[l] steps later. Each type and step has its own
+# auxiliary variable, so with B_i(k) = Σ_l w[l] · Ψ_{k+l, i},
+#
+#   Ψ_{k, j}(u) = r_{k, j}(u) · G_j(Σ_i a[i, j] · B_i(k)),
+#
+# r as in the single-type recursion but reading type j's own variables, and
+# K(u) = Σ_j seeds[j] · log Ψ_{0, j}(u). The variables are ordered step
+# first, then type, as `vec` orders an n × m matrix.
+function _incidence_log_pgf(
+        u::AbstractVector{T}, w::AbstractVector{<:Real}, o::MultiTypeOffspring,
+        n::Integer, seeds::AbstractVector{<:Real}, ρ::Real, d::AbstractVector{<:Real}
+    ) where {T <: Real}
+    m = _n_types(o)
+    laws = _total_count_laws(o)
+    S = promote_type(
+        T, eltype(o.alloc_probs), eltype(o.R_by_type), typeof(ρ),
+        map(Distributions.partype, laws)...
+    )
+    U(k, i) = 1 <= k <= n ? S(u[k + (i - 1) * n]) : one(S)
+    function report(k, i)
+        r = zero(S)
+        for l in 0:(length(d) - 1)
+            r += d[l + 1] * U(k + l, i)
+        end
+        return 1 - ρ + ρ * r
+    end
+    Ψ = Matrix{S}(undef, n, m)
+    B = Vector{S}(undef, m)
+    function next_generation!(k)
+        for i in 1:m
+            b = zero(S)
+            for l in 1:length(w)
+                b += w[l] * (k + l > n ? one(S) : Ψ[k + l, i])
+            end
+            B[i] = b
+        end
+        return B
+    end
+    child(j) = sum(o.alloc_probs[i, j] * B[i] for i in 1:m)
+    for k in n:-1:1
+        next_generation!(k)
+        for j in 1:m
+            Ψ[k, j] = report(k, j) * _pgf(laws[j], child(j))
+        end
+    end
+    next_generation!(0)
+    K = zero(S)
+    for j in 1:m
+        iszero(seeds[j]) && continue
+        K += seeds[j] * log(report(0, j) * _pgf(laws[j], child(j)))
+    end
+    return K
+end
+
+"""
+    incidence_moments(offspring::MultiTypeOffspring, generation_time::Distribution,
+        n::Integer; seeds, reporting_probability = 1, reporting_delay = nothing)
+
+Mean and covariance of the incidence counts of each type of a multi-type
+branching process at steps `1:n`, started by `seeds[j]` index cases of type
+`j` at step 0. `generation_time` is shared by every type, and
+`reporting_probability` and `reporting_delay` act as in the single-type
+method.
+
+Returns a `(mean, cov)` named tuple: `mean[t, j]` is the expected count of
+type `j` at step `t`, and `cov` is the covariance matrix of `vec(mean)`'s
+entries, steps first and then types, so `cov[t + (j - 1) * n, t′ + (j′ - 1) * n]`
+is the covariance between type `j` at step `t` and type `j′` at step `t′`.
+
+# Examples
+
+```julia
+offspring = EpiBranch.MultiTypeOffspring([1.2 0.4; 0.3 0.9], R -> NegBin(R, 0.5))
+m = incidence_moments(offspring, LogNormal(1.6, 0.5), 20; seeds = [0, 1])
+m.mean[end, :]  # expected count of each type on the last step
+```
+"""
+function incidence_moments(
+        offspring::MultiTypeOffspring, generation_time::Distribution, n::Integer;
+        seeds::AbstractVector{<:Real}, reporting_probability::Real = 1,
+        reporting_delay = nothing, tol::Real = 1.0e-8, max_lag::Int = 10_000
+    )
+    m = _n_types(offspring)
+    n >= 1 || throw(ArgumentError("n must be ≥ 1"))
+    length(seeds) == m || throw(
+        ArgumentError("seeds needs one entry per type ($m), got $(length(seeds))")
+    )
+    all(>=(0), seeds) && sum(seeds) > 0 ||
+        throw(ArgumentError("seeds must be ≥ 0 and not all zero"))
+    0 < reporting_probability <= 1 ||
+        throw(ArgumentError("reporting_probability must be in (0, 1]"))
+    w = _discretize_generation_interval(generation_time; tol, max_lag)
+    d = _discretize_report_delay(reporting_delay; tol, max_lag)
+    K(u) = _incidence_log_pgf(u, w, offspring, n, seeds, reporting_probability, d)
+    u1 = ones(Float64, n * m)
+    μ = ForwardDiff.gradient(K, u1)
+    H = ForwardDiff.hessian(K, u1)
+    return (mean = reshape(μ, n, m), cov = Symmetric(H + Diagonal(μ)))
+end
+
+"""
+    loglikelihood(data::IncidenceCounts, offspring::MultiTypeOffspring,
+        generation_time::Distribution,
+        approximation::IncidenceApproximation = NormalApproximation();
+        reporting_probability = 1, reporting_delay = nothing)
+
+Log-likelihood of an incidence time series under a multi-type branching
+process, from the moments of [`incidence_moments`](@ref). `data` holds the
+counts by type, one column per type, or their total over types as a vector;
+its `seeds` give the index cases of each type. The limits are those of the
+single-type method.
+
+# Examples
+
+```julia
+offspring = EpiBranch.MultiTypeOffspring([1.2 0.4; 0.3 0.9], R -> NegBin(R, 0.5))
+gt = LogNormal(1.6, 0.5)
+loglikelihood(IncidenceCounts([0 1; 1 1; 1 3; 2 4]; seeds = [0, 1]), offspring, gt)
+loglikelihood(IncidenceCounts([1, 2, 4, 6]; seeds = [0, 1]), offspring, gt)
+```
+"""
+function loglikelihood(
+        data::IncidenceCounts, offspring::MultiTypeOffspring,
+        generation_time::Distribution,
+        approximation::IncidenceApproximation = NormalApproximation();
+        reporting_probability::Real = 1, reporting_delay = nothing,
+        tol::Real = 1.0e-8, max_lag::Int = 10_000
+    )
+    data.seeds isa AbstractVector || throw(
+        ArgumentError(
+            "a multi-type process needs seeds by type: IncidenceCounts(data; seeds = " *
+                "[...]) with one entry per type"
+        )
+    )
+    n = size(data.data, 1)
+    μ, Σ = incidence_moments(
+        offspring, generation_time, n;
         seeds = data.seeds, reporting_probability, reporting_delay, tol, max_lag
     )
-    return _incidence_loglik(approximation, data.data, μ, Σ)
+    y, μ_obs, Σ_obs = _observed_moments(data.data, μ, Σ)
+    return _incidence_loglik(approximation, y, μ_obs, Σ_obs)
+end
+
+# The observed vector and its moments: the counts by type as they are, or
+# their total over types, whose mean and covariance sum the per-type blocks.
+function _observed_moments(data::AbstractMatrix, μ, Σ)
+    size(data) == size(μ) || throw(
+        ArgumentError(
+            "counts by type have $(size(data, 2)) columns, but the process has " *
+                "$(size(μ, 2)) types"
+        )
+    )
+    return vec(data), vec(μ), Σ
+end
+function _observed_moments(data::AbstractVector, μ, Σ)
+    n, m = size(μ)
+    block(i) = ((i - 1) * n + 1):(i * n)
+    Σ_total = sum(Σ[block(i), block(i′)] for i in 1:m, i′ in 1:m)
+    return data, vec(sum(μ; dims = 2)), Symmetric(Σ_total)
 end
 
 # Refuse under-reporting from either source `simulate` reads it from: an
@@ -361,7 +538,9 @@ end
         approximation::IncidenceApproximation = NormalApproximation())
 
 Log-likelihood of an incidence time series under a model's own offspring and
-generation-time distributions. Only defined for a model with no
+generation-time distributions, single-type or multi-type (a model built from
+an offspring matrix, with `data` holding counts and seeds by type or their
+total). Only defined for a model with no
 interventions, a single infectiousness window and full reporting (every
 case counted, whether under-reporting would otherwise come from an
 observation model or a `Reporting` progression step); each of those
@@ -398,5 +577,5 @@ function loglikelihood(
                 "generation-time distributions directly instead."
         )
     )
-    return loglikelihood(data, single_type_offspring(model), gt, approximation; kwargs...)
+    return loglikelihood(data, _analytic_offspring(model), gt, approximation; kwargs...)
 end
