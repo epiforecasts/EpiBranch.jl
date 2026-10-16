@@ -169,6 +169,25 @@ using Dates
         @test all(name -> !startswith(name, "_"), names(df))
     end
 
+    @testset "linelist omits exclusive_probabilities' shared draw" begin
+        rng = StableRNG(1)
+        death_p, recovered_p = exclusive_probabilities([0.64, 0.36])
+        spec = ModelSpec(
+            BranchingProcess(Poisson(1.5), Gamma(2.0, 3.0));
+            attributes = clinical_presentation(incubation_period = LogNormal(1.6, 0.5)),
+            progression = [
+                Death(delay = LogNormal(2.5, 0.4), probability = death_p),
+                Transition(
+                    :recovered, from = :onset, delay = LogNormal(2.0, 0.4),
+                    probability = recovered_p, terminal = true
+                ),
+            ]
+        )
+        state = simulate(spec; max_cases = 20, rng = rng)
+        df = linelist(state)
+        @test all(name -> !startswith(name, "_") && !startswith(name, "#"), names(df))
+    end
+
     @testset "contacts output" begin
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(2.0), Exponential(5.0))
@@ -179,6 +198,40 @@ using Dates
         @test "from" in names(df)
         @test "to" in names(df)
         @test "infected" in names(df)
+    end
+
+    @testset "contacts lists exposures an ExposedContactRecorder keeps" begin
+        # A permanent, population-wide vaccine blocks every onward
+        # transmission from the index case, so the fixed-population race
+        # would otherwise give this contacts() table no rows at all.
+        spec = ModelSpec(
+            HomogeneousProcess(; transmission_rate = 4.0, population_size = 6);
+            progression = [
+                Transition(:recovered; from = :infection, delay = 3.0, terminal = true),
+            ],
+            interventions = [LeakyVaccine(1.0, 0.0)],
+            recorder = EpiBranch.ExposedContactRecorder()
+        )
+        state = simulate(spec; n_initial = 1, rng = StableRNG(3))
+        @test state.cumulative_cases == 1
+        index_id = findfirst(is_infected, state.individuals)
+
+        df = contacts(state)
+        @test nrow(df) > 0
+        @test all(==(index_id), df.from)
+        @test all(!, df.infected)
+        @test index_id ∉ df.to
+
+        # Without the recorder, the same run has no rows to report.
+        plain = ModelSpec(
+            HomogeneousProcess(; transmission_rate = 4.0, population_size = 6);
+            progression = [
+                Transition(:recovered; from = :infection, delay = 3.0, terminal = true),
+            ],
+            interventions = [LeakyVaccine(1.0, 0.0)]
+        )
+        plain_state = simulate(plain; n_initial = 1, rng = StableRNG(3))
+        @test nrow(contacts(plain_state)) == 0
     end
 
     @testset "index cases identifiable via parent_id" begin

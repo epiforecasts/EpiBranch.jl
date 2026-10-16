@@ -703,10 +703,16 @@ function required_fields(e::NoneOf)
     return reduce(union, (required_fields(c) for c in e.conditions); init = Symbol[])
 end
 
-function reset!(::ContactTracing, ind::Individual)
+reset!(::ContactTracing, ind::Individual) = _reset_traced!(ind)
+
+# Shared by `ContactTracing` and `SourceTracing`: both write the same tracing
+# state on whoever `apply_trace!` acts on, forward or backward, through the
+# same `TraceAction` protocol.
+function _reset_traced!(ind::Individual)
     ind.state[:traced] = false
     ind.state[:quarantined] = false
     haskey(ind.state, :traced_by) && delete!(ind.state, :traced_by)
+    haskey(ind.state, :source_traced_by) && delete!(ind.state, :source_traced_by)
     haskey(ind.state, :trace_level) && delete!(ind.state, :trace_level)
     haskey(ind.state, :trace_time) && delete!(ind.state, :trace_time)
     haskey(ind.state, :_ring_remaining) && delete!(ind.state, :_ring_remaining)
@@ -719,6 +725,18 @@ end
 function initialise_individual!(::ContactTracing, individual, state)
     individual.state[:traced] = false
     individual.state[:quarantined] = false
+    return nothing
+end
+
+# Keep the earliest trace time across tracing systems, matching how
+# `Quarantine` keeps the earliest isolation time: shared by `ContactTracing`
+# and `SourceTracing`, whichever tracing system reaches a person first. A
+# `NaN` says nothing about when they were reached, and `min` propagates it, so
+# it would overwrite a good time another tracing system had already written; a
+# custom `trigger_time` can return one.
+function _record_trace_time!(ind::Individual, trace_time)
+    isnan(trace_time) && return nothing
+    ind.state[:trace_time] = min(_state_real(ind.state, :trace_time, Inf), trace_time)
     return nothing
 end
 
@@ -767,18 +785,7 @@ function _trace_pair!(ct::ContactTracing, state, infector, ind, rng; not_before 
     # When the contact was reached. Interventions that act on a traced
     # contact time themselves from this, which is the same whatever the
     # trace action and the contact's own clinical course.
-    #
-    # Keep the earliest across tracing systems, matching how `Quarantine`
-    # keeps the earliest isolation time: with several `ContactTracing`
-    # interventions in the stack, a contact is reached when the first of
-    # them gets there.
-    #
-    # A `NaN` says nothing about when the contact was reached, and `min`
-    # propagates it, so it would overwrite a good time another tracing system
-    # had already written. A custom `trigger_time` can return one.
-    if !isnan(trace_time)
-        ind.state[:trace_time] = min(_state_real(ind.state, :trace_time, Inf), trace_time)
-    end
+    _record_trace_time!(ind, trace_time)
 
     # Record how far the ring can still grow from this contact, so a
     # contact-of-contact one hop further out can time its own trace from
@@ -826,10 +833,15 @@ isolates it. A quarantine that is never released ends the person's
 infectious period. With a finite `duration` (see [`Quarantine`](@ref)) each of
 their contacts during quarantine is blocked and they transmit again once
 released, as with [`Isolation`](@ref)."""
-function infectious_removal_time(ct::ContactTracing, ind::Individual)
+infectious_removal_time(ct::ContactTracing, ind::Individual) = _trace_removal_time(ct.action, ind)
+
+# Shared by `ContactTracing` and `SourceTracing`, which both remove whoever
+# `apply_trace!` acted on through the same `TraceAction` protocol; only which
+# person ends up quarantined differs between forward and backward tracing.
+function _trace_removal_time(action::TraceAction, ind::Individual)
     get(ind.state, :quarantined, false) || return Inf
     t = Inf
-    for key in _trace_removal_keys(ct.action)
+    for key in _trace_removal_keys(action)
         t = min(t, permanent_removal_time(ind, key))
     end
     return t
@@ -841,14 +853,14 @@ binding_release(::ContactTracing) = true
 removal_gap_host_times(ct::ContactTracing) = removal_gap_host_times(ct.action)
 removal_gap_host_times(::TraceAction) = ()
 removal_gap_host_times(::Quarantine) = (QUARANTINE_STRETCHES_KEY,)
-removal_block_fraction(ct::ContactTracing) = removal_block_fraction(ct.action)
+removal_block_probability(ct::ContactTracing) = removal_block_probability(ct.action)
 
 removal_gap_host_times_withdrawn(ct::ContactTracing) = removal_gap_host_times_withdrawn(ct.action)
 removal_gap_host_times_withdrawn(::TraceAction) = ()
 # `apply_trace!` keeps the shared history `set_isolated!` writes as well as
 # its own key, so a releasing quarantine leaves a stretch on
-# `REMOVAL_STRETCHES_KEY` too; `QUARANTINE_STRETCHES_KEY` already names the
-# same days, so the shared one is withdrawn rather than read twice.
+# `REMOVAL_STRETCHES_KEY` too. Since `QUARANTINE_STRETCHES_KEY` already names
+# the same days, the shared one is withdrawn rather than read twice.
 removal_gap_host_times_withdrawn(::Quarantine) = (REMOVAL_STRETCHES_KEY,)
 
 # Where the action recorded the removals this tracing should honour. An action
@@ -874,8 +886,13 @@ end
 # what reduces onward transmission on the generation engine, where there is no
 # window to close.
 function competing_risk(ct::ContactTracing, parent, contact, state)
+    return _trace_competing_risk(ct.action, parent)
+end
+
+# Shared by `ContactTracing` and `SourceTracing`: see `_trace_removal_time`.
+function _trace_competing_risk(action::TraceAction, parent)
     get(parent.state, :quarantined, false) || return nothing
-    keys = _trace_removal_keys(ct.action)
+    keys = _trace_removal_keys(action)
     length(keys) == 1 && return _removal_risks(parent, 1.0, only(keys))
     risks = Risk[]
     for key in keys
@@ -923,4 +940,164 @@ function keep_active(ct::ContactTracing, state, targets, is_new)
         push!(ids, t.id)
     end
     return ids
+end
+
+# ── SourceTracing intervention ─────────────────────────────────────────
+
+"""
+    SourceTracing(eligibility, probability, isolation_to_trace_delay, action)
+    SourceTracing(; probability, isolation_to_trace_delay, action,
+                  eligibility = SymptomaticParent())
+
+Trace a case back to its own infector, once the case itself meets
+`eligibility`, and act on the infector found this way (quarantine or just
+record it). Where [`ContactTracing`](@ref) reaches forward, to the people a
+case infects, `SourceTracing` reaches backward, to the person who infected it,
+through the same [`TraceEligibility`](@ref), [`TraceRate`](@ref),
+[`TraceDelay`](@ref) and [`TraceAction`](@ref) protocol: `eligibility` and its
+timing are read off the case found eligible, as they are for
+[`ContactTracing`](@ref), and the `action` is applied to its infector instead
+of to a forward contact.
+
+# Arguments
+Same as [`ContactTracing`](@ref): `eligibility` (which cases are traced back,
+default [`SymptomaticParent`](@ref)), `probability` (share of eligible cases
+whose infector is found), `isolation_to_trace_delay` and `action` (required).
+
+# Engine differences
+
+By the time a case is itself confirmed and traced back, a branching process has
+usually already generated its infector's secondary cases in one step, together
+rather than over time, so there is nothing left for `SourceTracing` to shorten
+there; it still records the link. On a continuous-time model — the household
+and network processes, and the mass-action pools, where [`ContactTracing`](@ref)
+has no pairwise structure to act along at all — an infector's contacts already
+proposed but not yet resolved are checked against every intervention's
+[`competing_risk`](@ref) as each is reached, so quarantining the infector here
+blocks its remaining onward transmission without undoing any infection already
+settled.
+
+# Examples
+```julia
+# Quarantine a case's own infector once the case is isolated
+SourceTracing(
+    probability = 0.7, isolation_to_trace_delay = Exponential(1.0),
+    action = Quarantine(duration = 14.0)
+)
+```
+
+# Requirements and output
+
+Same requirements as [`ContactTracing`](@ref) for the same `eligibility`. The
+infector found this way is marked traced (and quarantined, under
+[`Quarantine`](@ref)), with its `trace_time` and, under the key
+`:source_traced_by`, the id of the case whose tracing reached it — the reverse
+of [`ContactTracing`](@ref)'s `:traced_by`, which always names an earlier-
+infected node. `:source_traced_by` is kept separate because it names a later
+one instead.
+"""
+struct SourceTracing{
+        E <: TraceEligibility, F <: TraceRate, D <: TraceDelay, A <: TraceAction,
+    } <: AbstractIntervention
+    eligibility::E
+    trace_rate::F
+    isolation_to_trace_delay::D
+    action::A
+end
+
+function SourceTracing(;
+        probability::Float64,
+        isolation_to_trace_delay::Distribution,
+        action::TraceAction,
+        eligibility::TraceEligibility = SymptomaticParent()
+    )
+    return SourceTracing(
+        eligibility, ConstantRate(probability), ConstantDelay(isolation_to_trace_delay), action
+    )
+end
+
+# Terse positional form, as `ContactTracing`'s equivalent constructor is: an
+# eligibility policy with a constant trace probability and a constant delay
+# distribution. The fully-typed inner constructor (taking `TraceRate`/
+# `TraceDelay` objects directly) is unaffected.
+function SourceTracing(
+        eligibility::TraceEligibility, probability::Real,
+        isolation_to_trace_delay::Distribution, action::TraceAction
+    )
+    return SourceTracing(
+        eligibility, ConstantRate(probability), ConstantDelay(isolation_to_trace_delay), action
+    )
+end
+
+required_fields(st::SourceTracing) = required_fields(st.eligibility)
+intervention_time(::SourceTracing, ind::Individual) = isolation_time(ind)
+reset!(::SourceTracing, ind::Individual) = _reset_traced!(ind)
+
+function initialise_individual!(::SourceTracing, individual, state)
+    individual.state[:traced] = false
+    individual.state[:quarantined] = false
+    return nothing
+end
+
+# `trace_contacts!` below traces backward; the forward ring walk the race and
+# the generation engine build for `traces_contacts` has nothing for
+# `SourceTracing` to do. `traces_source` asks them to call it through a
+# second route instead (see `trace_contacts!`'s docstring).
+traces_contacts(::SourceTracing) = false
+traces_source(::SourceTracing) = true
+
+"""Trace `case` back to its own infector, named in `contacts` as both engines
+offer it (see [`traces_source`](@ref EpiBranch.traces_source)): the same
+eligibility, probability, delay and action [`ContactTracing`](@ref) would use
+for a forward trace, applied instead to the single contact offered here."""
+function trace_contacts!(st::SourceTracing, state, case, contacts, not_before = nothing)
+    rng = state.rng
+    for (i, source) in enumerate(contacts)
+        # Both engines also call every intervention's `trace_contacts!`
+        # unconditionally in the ordinary *forward* role, with `case`'s real
+        # contacts — the one `traces_contacts(::SourceTracing) = false`
+        # cannot prevent, since that trait only gates whether the race
+        # bothers to gather contacts at all. Acting only on the single
+        # element that actually is `case`'s own infector makes a forward call
+        # a no-op here: no real contact of `case` ever has that id, since its
+        # infector is, on every built-in model, already settled by the time
+        # `case` reaches anyone new.
+        source.id == case.parent_id || continue
+        is_eligible(st.eligibility, case, source, state) || continue
+        traces(st.trace_rate, case, source, state, rng) || continue
+        trace_delay = draw_trace_delay(st.isolation_to_trace_delay, case, source, state, rng)
+        base = trigger_time(st.eligibility, case, source, state)
+        nb = not_before === nothing ? -Inf : not_before[i]
+        trace_time = max(base, nb) + trace_delay
+        apply_trace!(st.action, source, state, trace_time, rng)
+        # The reverse of `ContactTracing`'s `:traced_by`: `source` was found
+        # through `case`, a later-infected node, so it is kept under its own
+        # key rather than break `compute_trace_level!`'s invariant that
+        # `:traced_by` always points to an earlier one.
+        source.state[:source_traced_by] = case.id
+        _record_trace_time!(source, trace_time)
+    end
+    return nothing
+end
+
+infectious_removal_time(st::SourceTracing, ind::Individual) = _trace_removal_time(st.action, ind)
+
+# As for `ContactTracing`: a quarantine's recorded stretches are append-only.
+binding_release(::SourceTracing) = true
+
+removal_gap_host_times(st::SourceTracing) = removal_gap_host_times(st.action)
+removal_gap_host_times_withdrawn(st::SourceTracing) = removal_gap_host_times_withdrawn(st.action)
+
+function competing_risk(st::SourceTracing, parent, contact, state)
+    return _trace_competing_risk(st.action, parent)
+end
+
+# A quarantine is a removal, so it reaches only the routes a removal can cut.
+risk_applies(::SourceTracing, route) = route !== nothing && INTERVENTION_REMOVAL in route.until
+
+function reads_population_state(st::SourceTracing)
+    return reads_population_state(st.eligibility) ||
+        reads_population_state(st.trace_rate) ||
+        reads_population_state(st.isolation_to_trace_delay) ||
+        reads_population_state(st.action)
 end

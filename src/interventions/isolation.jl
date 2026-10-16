@@ -187,7 +187,9 @@ isolation time until its [`isolation_release_time`](@ref) (never released when
 `duration` is `Inf`). Each such contact is prevented with probability
 `1 - post_isolation_transmission`."""
 function competing_risk(iso::Isolation, parent, contact, state)
-    return _removal_risks(parent, 1.0 - iso.post_isolation_transmission)
+    key = iso.post_isolation_transmission == 0 ?
+        REMOVAL_STRETCHES_KEY : LEAKY_REMOVAL_STRETCHES_KEY
+    return _removal_risks(parent, 1.0 - iso.post_isolation_transmission, key)
 end
 
 # The likelihood reads the stretch a lapsing isolation removed the host for.
@@ -197,23 +199,23 @@ end
 # reports binds.
 binding_release(::Isolation) = true
 
-# Perfect isolation (`post_isolation_transmission == 0`) with no release has
-# one stretch and no release, which the infectious window holds instead (see
-# `infectious_removal_time`), so there is nothing extra to read back. Any
-# other isolation, leaky, finite, or both, hands transmission back in full or
-# in part rather than closing the window, and needs its stretch read by
-# anything that otherwise assumes the case transmits throughout;
-# `removal_block_fraction` tells such a reader how much of it to count as
-# blocked.
+# Leaky isolation blocks only this fraction of transmission over its
+# stretches (see `EpiBranch.removal_block_probability`); perfect isolation
+# blocks all of it, the default. `household_offspring` (in `EpiHouseholds`)
+# uses this fraction too, to weight a stretch's contribution to a case's
+# community-infectious person-time.
+removal_block_probability(iso::Isolation) = 1.0 - iso.post_isolation_transmission
+
 function removal_gap_host_times(iso::Isolation)
-    iso.post_isolation_transmission == 0 && iso.duration === Inf && return ()
+    # Leaky isolation never closes the window (its block is per contact
+    # regardless of duration), so it always has a stretch to read. That
+    # stretch is recorded under its own key, keeping a likelihood from
+    # mistaking it for a complete removal. Perfect isolation with a duration
+    # of `Inf` closes the window instead and has no stretch of its own to add.
+    iso.post_isolation_transmission == 0 || return (LEAKY_REMOVAL_STRETCHES_KEY,)
+    iso.duration === Inf && return ()
     return (REMOVAL_STRETCHES_KEY,)
 end
-
-"""Leaky isolation blocks only `1 - post_isolation_transmission` of
-transmission during its stretch; perfect isolation (the default) blocks all
-of it."""
-removal_block_fraction(iso::Isolation) = 1.0 - iso.post_isolation_transmission
 
 # Leaky isolation's residual block stands in for the removal perfect isolation
 # makes, so it reaches the same routes: those the case is isolated from.
@@ -342,7 +344,12 @@ function _isolate!(iso::Isolation, individual, state, time)
             start, release
         )
     end
-    set_isolated!(individual, start; release_time = release)
+    # Leaky isolation records under its own key, apart from the shared one,
+    # keeping a likelihood from mistaking this stretch for a complete
+    # removal's.
+    record_key = iso.post_isolation_transmission == 0 ?
+        REMOVAL_STRETCHES_KEY : LEAKY_REMOVAL_STRETCHES_KEY
+    set_isolated!(individual, start; release_time = release, key = record_key)
     individual.state[:_isolated_by_isolation] = true
     # Whether this counts as a detection is a question about the start in
     # force, so a standing start that won keeps its own answer, and only an

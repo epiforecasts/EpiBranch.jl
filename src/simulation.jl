@@ -44,10 +44,12 @@ a constant or a function of the random number generator and the individual,
 
 !!! note
     [`HomogeneousProcess`](@ref), [`MixingProcess`](@ref),
-    `NetworkProcess`, `RoutedNetwork` and `HouseholdProcess` run over a fixed
-    population until transmission
-    dies out or `max_time` is reached. They ignore `max_cases`,
-    `max_generations` and most stopping rules, and warn when one is set.
+    `NetworkProcess`, `RoutedNetwork` and `HouseholdProcess` run a
+    continuous-time race over a fixed population rather than stepping by
+    generation. A `stopping_rules` entry, or a non-default `max_cases` or
+    `max_generations`, still ends such a run; the `max_cases` and
+    `max_generations` keyword *defaults* have no effect on them, so an
+    existing run over a large population is not capped unless you ask for it.
 
 # Examples
 ```julia
@@ -78,11 +80,8 @@ function simulate(
     # `simulate`, already validated at composition, so it never double-warns).
     _validate_process_windows(model, _progression(model))
     _warn_incomplete_terminal_coverage(_progression(model))
-    _warn_ignored_termination(
-        model, max_cases, max_generations, max_time, stopping_rules
-    )
-    sim_opts = SimOpts(;
-        n_initial, initial_cases, max_cases, max_generations, max_time,
+    sim_opts = _build_sim_opts(
+        model, n_initial, initial_cases, max_cases, max_generations, max_time,
         stopping_rules
     )
     _validate_initial_cases(model, sim_opts)
@@ -190,11 +189,8 @@ function simulate(
     )
     _validate_process_windows(model, _progression(model))
     _warn_incomplete_terminal_coverage(_progression(model))
-    _warn_ignored_termination(
-        model, max_cases, max_generations, max_time, stopping_rules
-    )
-    sim_opts = SimOpts(;
-        n_initial, initial_cases, max_cases, max_generations, max_time,
+    sim_opts = _build_sim_opts(
+        model, n_initial, initial_cases, max_cases, max_generations, max_time,
         stopping_rules
     )
     _validate_initial_cases(model, sim_opts)
@@ -242,11 +238,14 @@ end
 # reconciles once after its own loop instead, directly through
 # `_reconcile_sellke_bookkeeping!` below.
 
-# Whether a model's simulation honours the termination controls (`max_cases`,
-# `max_generations`, `max_time`, `stopping_rules`). The generation-based engine
-# does. The structure-driven pools run over their fixed population until
-# extinction or `max_time`, and ignore the other controls; they override this
-# to `false`.
+# Whether a model's simulation honours the `max_cases`/`max_generations`
+# keyword shortcuts' *defaults* out of the box. The generation-based engine
+# does. The structure-driven pools run their own continuous-time race, which
+# polls `should_stop` and the `time_bound`/`generation_bound` traits for
+# whatever `stopping_rules` it is given (see `_sellke_race!`), but leaves
+# these two shortcuts' defaults off (`_drop_default_shortcuts`) so an existing
+# run over a large fixed population keeps running to extinction or `max_time`
+# unless a cap is explicitly asked for. They override this to `false`.
 _honours_termination_controls(::TransmissionModel) = true
 
 # The time at which a structure-driven run ends: the earliest `time_bound`
@@ -255,39 +254,46 @@ function _max_time(sim_opts)
     return minimum(time_bound(r) for r in sim_opts.stopping_rules; init = Inf)
 end
 
-_rule_names(rules) = join([string(nameof(typeof(r))) for r in rules], ", ")
-
-# Warn when a termination control is set on a model that ignores it, so the
-# silent no-op is discoverable. Compares against the keyword defaults, so only
-# an explicitly-set control triggers the warning; `simulate` on a fixed
-# population with no termination keywords stays quiet.
-function _warn_ignored_termination(
-        model, max_cases, max_generations, max_time, stopping_rules
+# The generation beyond which a structure-driven run drops a settled case's
+# own proposals: the smallest `generation_bound` among the stopping rules, or
+# `typemax(Int)`.
+function _max_generation(sim_opts)
+    return minimum(
+        generation_bound(r) for r in sim_opts.stopping_rules; init = typemax(Int)
     )
-    _honours_termination_controls(model) && return nothing
-    ignored = String[]
-    max_cases != _DEFAULT_MAX_CASES && push!(ignored, "max_cases")
-    max_generations != _DEFAULT_MAX_GENERATIONS && push!(ignored, "max_generations")
-    # Each rule says for itself whether a run that never consults `should_stop`
-    # applies it in full. One that does not is reported by name, and separately
-    # when a time bound of its own was still applied, so a rule that is only
-    # half honoured does not read as having done nothing.
-    partial = ""
-    if stopping_rules !== nothing
-        unapplied = filter(r -> !honoured_without_should_stop(r), stopping_rules)
-        inert = _rule_names(filter(r -> !isfinite(time_bound(r)), unapplied))
-        partial = _rule_names(filter(r -> isfinite(time_bound(r)), unapplied))
-        isempty(inert) || push!(ignored, "stopping_rules ($inert)")
-    end
-    (isempty(ignored) && isempty(partial)) && return nothing
-    msg = "$(nameof(typeof(model))) runs to extinction or `max_time` over its " *
-        "fixed population and ignores the other termination controls"
-    isempty(ignored) || (msg *= "; $(join(ignored, ", ")) had no effect")
-    # A rule that bounds time and tests something else had half an effect, so
-    # it is reported apart from the controls that had none.
-    isempty(partial) || (msg *= "; of $partial only the time bound applied")
-    @warn msg * " (only n_initial, a time bound and condition apply)."
-    return nothing
+end
+
+# The stopping rules a structure-driven race must poll `should_stop` for
+# after each settled case: those not already fully captured by `time_bound`
+# and `generation_bound` alone.
+_poll_rules(sim_opts) = filter(!honoured_without_should_stop, sim_opts.stopping_rules)
+
+# Drop the `MaxCases`/`MaxGenerations` rules `SimOpts` built from the
+# `max_cases`/`max_generations` keywords, on a model whose race does not
+# honour their defaults (`_honours_termination_controls` false), when each was
+# left at its default — a cap set through a non-default keyword value, or
+# through `stopping_rules` directly, is never touched here.
+function _drop_default_shortcuts(model, sim_opts, max_cases, max_generations, stopping_rules)
+    (stopping_rules !== nothing || _honours_termination_controls(model)) && return sim_opts
+    rules = sim_opts.stopping_rules
+    max_cases == _DEFAULT_MAX_CASES &&
+        (rules = filter(r -> !(r isa MaxCases && r.n == max_cases), rules))
+    max_generations == _DEFAULT_MAX_GENERATIONS &&
+        (rules = filter(r -> !(r isa MaxGenerations && r.n == max_generations), rules))
+    return SimOpts(sim_opts.n_initial, sim_opts.initial_cases, rules)
+end
+
+# Shared by all four `simulate` entry points (a bare process or a `ModelSpec`,
+# each for one outbreak or `n`): build the `SimOpts` the termination keywords
+# describe, with the defaults dropped per `_drop_default_shortcuts`.
+function _build_sim_opts(
+        model, n_initial, initial_cases, max_cases, max_generations,
+        max_time, stopping_rules
+    )
+    sim_opts = SimOpts(;
+        n_initial, initial_cases, max_cases, max_generations, max_time, stopping_rules
+    )
+    return _drop_default_shortcuts(model, sim_opts, max_cases, max_generations, stopping_rules)
 end
 
 """
@@ -720,6 +726,10 @@ their [`intervention_actions`](@ref), admitted through their wrappers, then
 their [`keep_active`](@ref), whose answers are returned. The caller leaves out
 interventions on the deprecated batch hook. A target reached by
 several individuals is offered to each of them, as a neighbour is on the race.
+Each infected case is also offered to interventions declaring
+[`traces_source`](@ref EpiBranch.traces_source) (see [`trace_contacts!`](@ref)'s
+docstring), whether or not it reached any contact of its own this generation —
+unlike the forward hooks, which have nothing to act on when it did not.
 
 Cases are visited in order of infection time, each with the state its settling
 hooks saw ([`_at_case!`](@ref)): the clock at its infection time and its place
@@ -728,7 +738,7 @@ the state as the generation left it. The state is restored afterwards.
 """
 function _act_per_case!(state::SimulationState, interventions, targets, edges, is_new)
     kept = Int[]
-    (isempty(targets) || isempty(interventions)) && return kept
+    isempty(interventions) && return kept
     reached = Dict{Int, Vector{Int}}()
     for i in eachindex(targets), (pid, _) in edges[i]
         idx = get!(Vector{Int}, reached, pid)
@@ -736,6 +746,7 @@ function _act_per_case!(state::SimulationState, interventions, targets, edges, i
     end
     clock, count, generation = state.max_infection_time, state.cumulative_cases,
         state.current_generation
+    tracing_source = any(traces_source, interventions)
     sources = [state.individuals[id] for id in state.active_ids]
     cases = filter(is_infected, sources)
     sort!(cases; by = case -> case.infection_time)
@@ -744,6 +755,7 @@ function _act_per_case!(state::SimulationState, interventions, targets, edges, i
         if is_infected(source)
             seen += 1
             _at_case!(state, source, seen)
+            _trace_source!(state, source, interventions, tracing_source)
         else
             state.max_infection_time, state.cumulative_cases = clock, count
             state.current_generation = generation
@@ -755,6 +767,28 @@ function _act_per_case!(state::SimulationState, interventions, targets, edges, i
     state.max_infection_time, state.cumulative_cases = clock, count
     state.current_generation = generation
     return kept
+end
+
+# Offer `case`'s own infector to interventions tracing backward, as the sole
+# contact in `trace_contacts!`'s usual four-argument form. An index case or a
+# community introduction has no infector to offer. Shared with the
+# continuous-time race (sellke.jl), where it is called once a case is settled.
+# On the generation engine, called for every infected case regardless of
+# whether it made a forward contact this generation, unlike `_case_hooks!`,
+# which has nothing to do when it did not.
+function _trace_source!(
+        state::SimulationState, case, interventions,
+        tracing_source = any(traces_source, interventions)
+    )
+    tracing_source || return nothing
+    1 <= case.parent_id <= length(state.individuals) || return nothing
+    infector = state.individuals[case.parent_id]
+    contacts = (infector,)
+    for intervention in interventions
+        traces_source(intervention) || continue
+        trace_contacts!(intervention, state, case, contacts)
+    end
+    return nothing
 end
 
 """

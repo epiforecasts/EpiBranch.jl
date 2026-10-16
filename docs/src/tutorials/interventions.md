@@ -135,11 +135,11 @@ With a finite duration, the line list from [`linelist`](@ref) gains a
 !!! note "Release on the network, household and homogeneous models"
     The network, household and homogeneous-mixing models (see
     [Networks](networks.md), [Households](households.md) and
-    [Homogeneous models](homogeneous.md)) release isolated cases in the same way. The
-    same holds for an isolation switched on or off with [`Scheduled`](@ref),
-    below, except that a complete isolation with `duration = Inf`, or a
-    quarantine with no end, stays in force on those models after the schedule
-    ends.
+    [Homogeneous models](homogeneous.md)) release isolated cases in the same
+    way. The same holds for an isolation switched on or off with
+    [`Scheduled`](@ref), below, including a complete isolation with
+    `duration = Inf`, or a quarantine with no end: the schedule ending
+    releases it on those models too.
     A case isolated for a week part-way through a month of infectiousness
     transmits again for the rest of that month.
 
@@ -315,21 +315,14 @@ may begin on day 14, or contact tracing once cases pass a threshold.
 in this section go back to the 7-day isolation from the start of the page,
 and compare with its result.
 
-Two checks decide whether a scheduled isolation or contact tracing reaches a
-case. Both read that case's own times: its infection time must fall within the
-schedule, and the action's own time must then also fall on or after the
-start day. With testing from day 10, someone whose isolation would fall on day
-9 is never isolated. Nor is someone infected on day 8, even with symptom onset
-on day 9 and a 2-day delay putting their isolation on day 11: they were
-infected before the policy began.
-
-!!! note "The earliest cases are missed"
-    Index cases are infected on day 0, so isolation or tracing scheduled to
-    start later never reaches them, and nor does it reach any case infected
-    before the start day, even if their isolation would fall after it. A
-    scheduled [vaccination](vaccination.md) is checked differently: each dose
-    counts if its own date falls within the schedule, whenever its case was
-    infected.
+Whether a scheduled isolation or contact tracing reaches a case is checked
+against the action's own day, not the case's infection time, exactly as a
+scheduled [vaccination](vaccination.md)'s dose is. With testing from day 10,
+someone whose isolation would fall on day 9 is never isolated, but someone
+infected on day 8, with symptom onset on day 9 and a 2-day delay putting
+their isolation on day 11, is isolated after all: the policy reaches them
+once their own isolation falls inside its window, whatever day they were
+infected on.
 
 ```@example interventions
 # Testing starts on day 10
@@ -400,19 +393,19 @@ accumulate than 20 infections. [`Infections`](@ref) is the trigger
 Start and end times can be combined:
 
 ```@example interventions
-# Isolation for cases infected between day 5 and day 30
+# Isolation only for cases whose own isolation falls between day 5 and day 30
 iso_window = Scheduled(Isolation(onset_to_isolation_delay = Exponential(1.0), duration = 7.0);
     start_time = 5.0, end_time = 30.0)
 nothing # hide
 ```
 
-The end is checked against the case's own infection time as well: a case
-infected after day 30 is not isolated. The end also stops isolations already
-under way. Once the simulation's clock, the latest infection so far, passes
-day 30, isolation no longer blocks any transmission, including from a case
-isolated on day 28. A scheduled vaccination
-instead checks each dose's own date, and a dose given keeps protecting after
-the schedule ends.
+The end is checked the same way: a case whose own isolation would fall after
+day 30 is not isolated. The end also stops isolations already under way, by a
+different route. Once the simulation's clock, the latest infection so far,
+passes day 30, isolation no longer blocks any transmission, including from a
+case isolated on day 28. A scheduled vaccination keeps protecting after the
+schedule ends, since a dose given stands on its own rather than on the
+schedule's clock.
 
 For any other trigger, pass a function of the [`SimulationState`](@ref) that
 returns `true` while the intervention should be on. This one switches

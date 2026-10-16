@@ -141,6 +141,21 @@ Contacts are collected only once some intervention in the stack returns
 are, this method is called on every intervention, so declaring `false` keeps
 the walk from starting but does not keep this method dormant in a stack that
 holds something which does trace.
+
+Both engines also call it a second time per case, for an intervention
+declaring [`traces_source`](@ref EpiBranch.traces_source): once with `infector`
+the case itself and `contacts` its own infector, the single-element collection
+`(source,)`, so a backward-tracing intervention such as [`SourceTracing`](@ref)
+can act on the person who infected this case rather than the people it
+infected. An index case or a community introduction has no infector, so this
+second call is skipped for it.
+
+A backward-tracing intervention still receives the *first*, forward call too,
+with `case`'s real contacts: declaring `traces_source` only adds the second
+call, it does not withdraw the intervention from the first. Check that the
+`contacts` offered actually is `case`'s own infector, for example
+`only(contacts).id == case.parent_id`, before acting, so that call is a no-op
+on a stack's ordinary forward round; [`SourceTracing`](@ref) does this.
 """
 trace_contacts!(::AbstractIntervention, state, infector, contacts) = nothing
 function trace_contacts!(iv::AbstractIntervention, state, infector, contacts, not_before)
@@ -163,6 +178,22 @@ of tracing as [`CapacityConstrained`](@ref)'s does, defines
 function traces_contacts(iv::AbstractIntervention)
     return _has_own_method(trace_contacts!, typeof(iv), AbstractIntervention)
 end
+
+"""
+    traces_source(intervention) -> Bool
+
+Whether `intervention` traces a case back to its own infector rather than
+forward to the people it infected: both engines then call its
+[`trace_contacts!`](@ref EpiBranch.trace_contacts!) a second time per case, as
+documented there. Default: `false`, so writing `trace_contacts!` for forward
+tracing (as [`ContactTracing`](@ref) does) never also triggers a backward
+call; a backward-tracing intervention such as [`SourceTracing`](@ref) declares
+`traces_source(::T) = true` itself. Unlike [`traces_contacts`](@ref
+EpiBranch.traces_contacts), this is not inferred from the methods an
+intervention defines, since both directions are written through the same
+`trace_contacts!` verb.
+"""
+traces_source(::AbstractIntervention) = false
 
 """
     keep_active(intervention, state, targets, is_new) -> iterable of Int
@@ -256,11 +287,13 @@ competing_risk(::AbstractIntervention, parent, contact, state) = nothing
     intervention_time(intervention, individual)
 
 Time (days) at which this intervention acts on a person, such as their
-isolation time. [`Scheduled`](@ref) uses it to enforce `start_time`: an
-effect timed before the start is undone with
-[`reset!`](@ref EpiBranch.reset!).
+isolation time. [`Scheduled`](@ref) runs an intervention that defines this
+whether or not its schedule is active at the case's or contact's own clock,
+checks the schedule again at `intervention_time`, and undoes the effect with
+[`reset!`](@ref EpiBranch.reset!) if that falls outside it.
 
-Default: `-Inf` (effect always applies).
+Default: `-Inf`. An intervention relying on the default is instead gated
+before it runs: with no named time, `reset!` has nothing to undo afterwards.
 """
 intervention_time(::AbstractIntervention, ::Individual) = -Inf
 

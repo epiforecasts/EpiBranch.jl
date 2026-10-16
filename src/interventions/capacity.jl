@@ -16,9 +16,9 @@ CapacityConstrained(GroupVaccination(efficacy = 0.8); budget_per_period = 200.0)
 
 # Arguments
 - `budget_per_period`: number of people that can be served per period.
-- `period`: length of a period in days, measured on the infection time of the
-  case whose actions are being admitted. `Inf` (default) gives a single budget
-  for the whole outbreak.
+- `period`: length of a period in days, measured on the date each dose is
+  actually given. `Inf` (default) gives a single budget for the whole
+  outbreak.
 - `carry_over`: whether unused capacity is added to later periods
   (default `true`); with `false` each period has its own allowance.
 - `priority`: function `(individual, state) -> number` ordering who is served
@@ -27,20 +27,17 @@ CapacityConstrained(GroupVaccination(efficacy = 0.8); budget_per_period = 200.0)
   they were traced.
 
 Each case's actions are offered together, in the order the engine settles
-cases, with the clock at that case's infection time. People turned away use no
-capacity and are not queued, though they may be offered the intervention again
-if reached again later. Only whole people are
-served, so a fraction of remaining capacity serves nobody. Capacity is
-counted when a person is accepted, which can be before the dose is given (for
-example after a delay), so it may fall in an earlier period than the dose.
-Interventions with the same dose label share one budget, and doses given by
-another intervention under that label count against it; use different
-labels for separate budgets. [`capacity_usage`](@ref) reports the capacity
-used and available.
+cases, and each is checked against the budget of the period its own proposed
+date falls in, whatever day the case itself was settled on. People turned away
+use no capacity and are not queued, though they may be offered the
+intervention again if reached again later. Only whole people are served, so a
+fraction of remaining capacity serves nobody. Interventions with the same dose
+label share one budget, and doses given by another intervention under that
+label count against it; use different labels for separate budgets.
+[`capacity_usage`](@ref) reports the capacity used and available.
 
 [`Scheduled`](@ref) and `CapacityConstrained` can be combined in either
-order: the schedule checks each person's action time, while capacity uses the
-simulation clock.
+order: both check each action's own proposed date.
 
 !!! note "Supported models"
     In network and household models, ring and group vaccination can both be
@@ -63,8 +60,10 @@ For extension authors: a new intervention can be capacity-limited by defining
 [`intervention_actions`](@ref EpiBranch.intervention_actions) and
 [`capacity_key`](@ref EpiBranch.capacity_key). Group vaccination offers every
 eligible member of a triggered group as a separate person to serve.
-Interventions without `intervention_actions` are offered the accepted people
-one at a time.
+Interventions without `intervention_actions`, offered through the deprecated
+[`apply_post_transmission!`](@ref EpiBranch.apply_post_transmission!) batch
+hook, propose no dated action, so each is checked against the budget of the
+period the admitting call itself falls in rather than the day it is given.
 """
 struct CapacityConstrained{I <: AbstractIntervention, F} <: InterventionWrapper
     intervention::I
@@ -110,8 +109,8 @@ used one unit of `intervention`'s capacity (for vaccination, received the dose
 with its `dose_label`). [`CapacityConstrained`](@ref) counts it to measure how
 much capacity has been used. Defined for [`RingVaccination`](@ref),
 [`MassVaccination`](@ref) and [`GroupVaccination`](@ref). Define it, and
-[`capacity_time_key`](@ref EpiBranch.capacity_time_key) unless only
-`carry_over = true` is used, to make a new intervention capacity-limited.
+[`capacity_time_key`](@ref EpiBranch.capacity_time_key), to make a new
+intervention capacity-limited.
 """
 function capacity_key(iv::AbstractIntervention)
     throw(
@@ -128,15 +127,16 @@ end
 
 For extension authors: the key in `ind.state` holding the day the
 [`capacity_key`](@ref EpiBranch.capacity_key) was set (for vaccination, the
-vaccination day). With `carry_over = false`, [`CapacityConstrained`](@ref)
-uses it to place a dose given by another intervention sharing the same
-capacity in the right period.
+vaccination day). [`CapacityConstrained`](@ref) places usage, including a
+dose given by another intervention sharing the same capacity, in the period
+this date falls in, so a dose a delay dates later than its admission is
+charged to the day it is actually given.
 """
 function capacity_time_key(iv::AbstractIntervention)
     throw(
         ArgumentError(
             "CapacityConstrained needs a `capacity_time_key` method for " *
-                "$(typeof(iv)) to measure usage within a period (carry_over = false). " *
+                "$(typeof(iv)) to measure usage within a period. " *
                 "See the Extending guide."
         )
     )
@@ -154,45 +154,72 @@ capacity_time_key(v::MassVaccination) = _vaccination_time_key(dose_label(v))
 capacity_key(v::GroupVaccination) = _vaccinated_key(dose_label(v))
 capacity_time_key(v::GroupVaccination) = _vaccination_time_key(dose_label(v))
 
-# The `Individual.state` key on which `CapacityConstrained` stamps the time
-# of the call that admitted an individual, so a later call in the same period
-# sees the budget that call spent. Derived from `capacity_key`, so two
-# wrappers rationing different resources keep separate stamps.
+# The `Individual.state` key `CapacityConstrained`'s deprecated
+# `apply_post_transmission!` branch stamps with the time of the call that
+# admitted an individual: that legacy protocol proposes no dated action, so
+# it has nothing but its own clock to place the dose by. `_admit_actions!`,
+# which every action-based intervention goes through, never sets it, since
+# its candidates already name the date the dose is to be given.
 _capacity_admission_key(key::Symbol) = Symbol("capacity_admission_time_", key)
 
-# Doses (or whatever `cc` rations) used and available, in the scope
-# `carry_over` implies, at `state`'s current point in time. Reused by the
-# admission decision and by `capacity_usage`.
-#
-# With `carry_over = false`, usage is placed in a period by the time of the
-# call that admitted it, since a dose is dated later than its admission and
-# often falls outside the period whose budget paid for it. Usage this wrapper
-# never admitted, which any other intervention writing the same
-# `capacity_key` also draws on, has no such stamp and is placed by
-# `capacity_time_key` instead.
-function _capacity_usage(cc::CapacityConstrained, state)
+# The start and end of the period containing `at`, in the scope `carry_over`
+# implies: `(0.0, Inf)`, a single period for the whole outbreak, when `period`
+# is infinite.
+function _period_bounds(cc::CapacityConstrained, at)
+    isinf(cc.period) && return (0.0, Inf)
+    period_start = floor(at / cc.period) * cc.period
+    return (period_start, period_start + cc.period)
+end
+
+# The time each already-given dose counts against, sorted: the admission
+# stamp above where the deprecated branch left one, or otherwise the dose's
+# own recorded date, so a dose a delay dates later than its admission is
+# charged to the day it is actually given rather than to whichever call
+# admitted it. Built once per call, so the admission loop below can test
+# each candidate's own date against cumulative usage without rescanning the
+# population once per candidate.
+function _dose_times(cc::CapacityConstrained, state)
     key = capacity_key(cc.intervention)
-    t = state.max_infection_time
+    time_key = capacity_time_key(cc.intervention)
+    admission_key = _capacity_admission_key(key)
+    times = Float64[]
+    for ind in state.individuals
+        get(ind.state, key, false) || continue
+        t = get(ind.state, admission_key, nothing)
+        isnothing(t) && (t = get(ind.state, time_key, -Inf))
+        push!(times, t)
+    end
+    sort!(times)
+    return times
+end
+
+# How many of the sorted `times`, together with `extra` (doses admitted so far
+# within the current call, not yet visible to a fresh scan of `state`), fall
+# strictly before `before`.
+function _count_before(times::Vector{Float64}, extra::Vector{Float64}, before::Float64)
+    return searchsortedfirst(times, before) - 1 + count(<(before), extra)
+end
+
+# Doses used and available for the period containing `at`, in the scope
+# `carry_over` implies. Reused by the admission decision, once per candidate
+# with its own proposed date, and by `capacity_usage`, with the simulation's
+# current clock.
+function _usage_at(cc::CapacityConstrained, times, extra, at)
+    period_start, period_end = _period_bounds(cc, at)
     if cc.carry_over
-        n_periods = isinf(cc.period) ? 1.0 : floor(t / cc.period) + 1.0
-        available = n_periods * cc.budget_per_period
-        used = count(ind -> get(ind.state, key, false), state.individuals)
+        available = isinf(cc.period) ? cc.budget_per_period :
+            (period_end / cc.period) * cc.budget_per_period
+        used = _count_before(times, extra, period_end)
     else
-        time_key = capacity_time_key(cc.intervention)
-        admission_key = _capacity_admission_key(key)
-        period_start = isinf(cc.period) ? 0.0 : floor(t / cc.period) * cc.period
-        period_end = period_start + cc.period
         available = cc.budget_per_period
-        # Bounded above as well, since the generation engine admits a later
-        # generation's earlier cases after an earlier generation's later ones.
-        used = count(state.individuals) do ind
-            get(ind.state, key, false) || return false
-            used_at = get(ind.state, admission_key, nothing)
-            isnothing(used_at) && (used_at = get(ind.state, time_key, -Inf))
-            return period_start <= used_at < period_end
-        end
+        used = _count_before(times, extra, period_end) -
+            _count_before(times, extra, period_start)
     end
     return (used = used, available = available)
+end
+
+function _capacity_usage(cc::CapacityConstrained, state, at = state.max_infection_time)
+    return _usage_at(cc, _dose_times(cc, state), Float64[], at)
 end
 
 # A candidate already carrying `capacity_key` (dosed in an earlier call, now
@@ -258,14 +285,14 @@ end
 """
     capacity_usage(cc::CapacityConstrained, state::SimulationState) -> (used, available)
 
-The number of doses (or other units of capacity) given so far, and the number
+The number of doses (or other units of capacity) dated by now, and the number
 that could have been given by now, at the end of a simulation or at the point
 `state` has reached. With `carry_over = true` (the default) both count the
 whole outbreak: `available` is `budget_per_period` for every period begun so
-far. With `carry_over = false` both refer to the current period only:
-`available` is one `budget_per_period`, and `used` counts the people accepted
-in that period, whatever day their dose falls on, and the doses given in that
-period by another intervention sharing the same capacity.
+far, and `used` counts every dose dated no later than it. With
+`carry_over = false` both refer to the current period only: `available` is one
+`budget_per_period`, and `used` counts the doses dated within it, including
+one given in that period by another intervention sharing the same capacity.
 """
 function capacity_usage(cc::CapacityConstrained, state::SimulationState)
     return _capacity_usage(cc, state)
@@ -288,7 +315,7 @@ trace_contacts!(::CapacityConstrained, state, infector, contacts) = nothing
 function removal_gap_host_times(c::CapacityConstrained)
     return removal_gap_host_times(c.intervention)
 end
-removal_block_fraction(c::CapacityConstrained) = removal_block_fraction(c.intervention)
+removal_block_probability(c::CapacityConstrained) = removal_block_probability(c.intervention)
 
 # Admission reads `_capacity_usage`, how much of the shared budget every other
 # individual has already used — population-wide state regardless of what the

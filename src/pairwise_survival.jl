@@ -244,19 +244,30 @@ the record, and in simulation acts contact by contact instead.
 removal_gap_host_times(component) = ()
 
 """
-    removal_block_fraction(component) -> Float64
+    removal_block_probability(component) -> Real
 
-The fraction of transmission a period recorded under [`removal_gap_host_times`](@ref
-EpiBranch.removal_gap_host_times) prevents, between 0 and 1. The default is 1,
-for a removal that blocks transmission outright for its stretch (quarantine,
-perfect isolation). [`Isolation`](@ref) overrides it to `1 -
-post_isolation_transmission` for a leaky stretch, where less than the whole
-length is blocked.
+The fraction of the hazard `component` blocks over each stretch it names in
+[`removal_gap_host_times`](@ref EpiBranch.removal_gap_host_times): `1` (the
+default) for a removal that stops transmission outright, such as a quarantine
+or perfect isolation, so its stretches are taken out of the exposure entirely.
+Below `1` for one that only reduces it, such as leaky isolation's
+`1 - post_isolation_transmission`: the likelihood scales the hazard by this
+fraction over the stretch instead of excluding it, and adds the log of the
+surviving fraction to the hazard of an infection that falls inside one, rather
+than treating that infector as ruled out.
+
+Declaring a value below `1` is a promise by the intervention's author, as
+[`infection_likelihood_compatible`](@ref) is: nothing checks that the stretches
+the component records actually reduce transmission by this much. Two
+components naming the same key must agree on this fraction, since the
+likelihood cannot tell their stretches apart once merged; give each its own
+key otherwise.
 
 `household_offspring` (in `EpiHouseholds`) weights each recorded stretch by
-this fraction when it works out a case's community-infectious person-time.
+this fraction too, when it works out a case's community-infectious
+person-time.
 """
-removal_block_fraction(component) = 1.0
+removal_block_probability(component) = 1.0
 
 """
     removal_gap_host_times_withdrawn(component) -> Tuple of Symbol
@@ -276,13 +287,42 @@ the extending guide's `removal_gap_host_times` section).
 """
 removal_gap_host_times_withdrawn(component) = ()
 
-# The keys every removal in `model` records its stretches under.
+# The keys every completely-blocking removal in `model` records its stretches
+# under (`removal_block_probability` of `1`, the default); a leaky one's are
+# kept apart by `_leaky_gap_keys`.
 function _removal_gap_keys(model::ModelSpec)
     keys = Symbol[]
     for component in model.interventions, key in removal_gap_host_times(component)
+        isone(removal_block_probability(component)) || continue
         key in keys || push!(keys, key)
     end
     return keys
+end
+
+# Every key a leaky removal names, paired with the fraction of hazard that
+# still gets through over its stretches (`1 - removal_block_probability`).
+# Two components sharing a key must agree on that fraction, since a merged
+# stretch could not otherwise say whose it was.
+function _leaky_gap_keys(model::ModelSpec)
+    pairs = Pair{Symbol, Float64}[]
+    for component in model.interventions, key in removal_gap_host_times(component)
+        p = removal_block_probability(component)
+        isone(p) && continue
+        leak = 1.0 - p
+        i = findfirst(kv -> first(kv) == key, pairs)
+        if i === nothing
+            push!(pairs, key => leak)
+        elseif pairs[i][2] != leak
+            throw(
+                ArgumentError(
+                    "two components record a leaky removal under the same " *
+                        "key ($key) with different surviving fractions " *
+                        "($(pairs[i][2]) and $leak); give each its own key"
+                )
+            )
+        end
+    end
+    return pairs
 end
 
 # The keys some component in `model` withdraws on purpose.
@@ -295,12 +335,17 @@ function _withdrawn_removal_gap_keys(model::ModelSpec)
 end
 
 # Every key a simulated `state` recorded a lapsing stretch under must be named
-# by some component or withdrawn by one, or the likelihood would silently fit
-# on the whole exposure where the simulation blocked part of it.
+# by some component (a complete removal or a leaky one) or withdrawn by one, or
+# the likelihood would silently fit on the whole exposure where the simulation
+# blocked part of it.
 function _validate_removal_gap_keys(state::SimulationState, model::ModelSpec)
     lapsing = _lapsing_removal_keys(state)
     isempty(lapsing) && return nothing
-    accounted = union(_removal_gap_keys(model), _withdrawn_removal_gap_keys(model))
+    accounted = union(
+        _removal_gap_keys(model),
+        first.(_leaky_gap_keys(model)),
+        _withdrawn_removal_gap_keys(model)
+    )
     unnamed = setdiff(lapsing, accounted)
     isempty(unnamed) ||
         throw(
@@ -314,21 +359,36 @@ function _validate_removal_gap_keys(state::SimulationState, model::ModelSpec)
     return nothing
 end
 
-# Every stretch each host was removed for, as one column of sorted disjoint
-# `(start, release)` pairs, or `nothing` when the layer records none. Several
-# removals' keys are already merged into the one column (see
+# Every removal recorded for `data`'s hosts: `complete`'s stretches exclude
+# the hazard outright, `leaky`'s scale it by a surviving fraction instead.
+# `nothing` in either when the layer recorded none of that kind. Several
+# removals' keys are already merged into one column apiece (see
 # `_layer_host_times`), a host removed by either being removed.
 function _removal_gaps(data)
     times = host_times(data)
-    haskey(times, REMOVAL_STRETCHES_KEY) || return nothing
-    return times[REMOVAL_STRETCHES_KEY]
+    complete = get(times, REMOVAL_STRETCHES_KEY, nothing)
+    leaky = get(times, LEAKY_REMOVAL_STRETCHES_KEY, nothing)
+    (complete === nothing && leaky === nothing) && return nothing
+    return (; complete, leaky)
 end
+
+# A leaky stretch, unlike a complete one, carries its own surviving fraction,
+# since `_layer_host_times` merges every leaky key sharing one into a single
+# column and the hot loop needs no further lookup to use it.
+const _NO_LEAKY_STRETCHES = Tuple{Float64, Float64, Float64}[]
 
 # A host that never had the key written reads as `missing`, which stands for a
 # host no removal reached.
 function _host_stretches(gaps, i)
-    gaps === nothing && return _NO_STRETCHES
-    return coalesce(gaps[i], _NO_STRETCHES)
+    (gaps === nothing || gaps.complete === nothing) && return _NO_STRETCHES
+    return coalesce(gaps.complete[i], _NO_STRETCHES)
+end
+
+# A host with no leaky stretch reads as `missing`, standing for a host no
+# leaky removal reached.
+function _host_leaky_stretches(gaps, i)
+    (gaps === nothing || gaps.leaky === nothing) && return _NO_LEAKY_STRETCHES
+    return coalesce(gaps.leaky[i], _NO_LEAKY_STRETCHES)
 end
 
 # The pair's cumulative hazard over the exposure `[0, stop]`, in elapsed time
@@ -340,8 +400,8 @@ end
 # gaps: a kernel of bounded support has an infinite cumulative hazard past its
 # support, and one infinity less another gives a `NaN` where the head alone is
 # the answer.
-function _gapped_cumhazard(H, stretches, oi, stop)
-    isempty(stretches) && return H(stop)
+function _gapped_cumhazard(H, stretches, oi, stop, leaky = _NO_LEAKY_STRETCHES)
+    (isempty(stretches) && isempty(leaky)) && return H(stop)
     zero_t = zero(stop)
     total = H(zero_t)
     u = zero_t
@@ -355,10 +415,28 @@ function _gapped_cumhazard(H, stretches, oi, stop)
         # offered rather than on the days it blocked.
         hi = isfinite(b) ? clamp(b - oi, zero_t, stop) : stop
         hi > lo || continue
-        total += _surviving_cumhazard(H, u, lo)
+        total += _leaky_cumhazard(H, leaky, oi, u, lo)
         u = max(u, hi)
     end
-    return total + _surviving_cumhazard(H, u, stop)
+    return total + _leaky_cumhazard(H, leaky, oi, u, stop)
+end
+
+# `_gapped_cumhazard`'s own trick, one level down: a leaky stretch is kept
+# rather than skipped, its hazard scaled by the fraction that survives it
+# instead of excluded, since a leak never rules its infector out.
+function _leaky_cumhazard(H, leaky, oi, lo, hi)
+    isempty(leaky) && return _surviving_cumhazard(H, lo, hi)
+    total = _surviving_cumhazard(H, lo, lo)
+    u = lo
+    for (a, b, leak) in leaky
+        la = clamp(a - oi, lo, hi)
+        lb = isfinite(b) ? clamp(b - oi, lo, hi) : hi
+        lb > la || continue
+        total += _surviving_cumhazard(H, u, la)
+        total += leak * _surviving_cumhazard(H, la, lb)
+        u = max(u, lb)
+    end
+    return total + _surviving_cumhazard(H, u, hi)
 end
 
 # One surviving stretch's share of the exposure. Past the time the pair's
@@ -378,6 +456,16 @@ function _removed_at(gaps, i, t)
         a <= t < b && return true
     end
     return false
+end
+
+# The log of the fraction of hazard that still gets through at `t`, for every
+# leaky stretch active then: `0` (log of `1`) where none is. Unlike a complete
+# removal this never rules the infector out; it only discounts their hazard.
+function _leak_log_at(gaps, i, t)
+    for (a, b, leak) in _host_leaky_stretches(gaps, i)
+        a <= t < b && return log(leak)
+    end
+    return 0.0
 end
 
 # The per-host fields of an `InfectionLayer` subtype over `n` hosts, in field
@@ -472,8 +560,11 @@ changes transmission only by starting or ending people's infectious periods,
 changes a person's susceptibility only through [`susceptibility_components`](@ref
 EpiBranch.susceptibility_components), or does not affect infection at all. The
 default is `false`, so `loglikelihood(data, model)` refuses a model with an
-intervention that has not declared this. Partial blocking (leaky isolation),
-changes to infectiousness, and changes to the contact interval need a kernel
+intervention that has not declared this. A removal that only reduces
+transmission, such as leaky isolation, is still compatible when it declares
+[`removal_block_probability`](@ref EpiBranch.removal_block_probability) below
+`1`; the likelihood scales its stretches' hazard rather than excluding them.
+Changes to infectiousness and to the contact interval still need a kernel
 that includes them, passed to `pairwise_surv_loglik` directly.
 
 Declaring `true` is a promise by the intervention's author; nothing checks it.
@@ -489,7 +580,7 @@ function infection_likelihood_compatible(components::Union{Tuple, AbstractVector
 end
 infection_likelihood_compatible(::Transition) = true
 infection_likelihood_compatible(::Union{Reporting, Hospitalisation, Recovery, Death}) = true
-infection_likelihood_compatible(iso::Isolation) = iso.post_isolation_transmission == 0
+infection_likelihood_compatible(::Isolation) = true
 function infection_likelihood_compatible(ct::ContactTracing)
     return infection_likelihood_compatible(ct.action)
 end
@@ -711,26 +802,54 @@ function _layer_host_time_keys(model::ModelSpec, host_times)
     for key in _removal_gap_keys(model)
         key in keys || push!(keys, key)
     end
+    for (key, _) in _leaky_gap_keys(model)
+        key in keys || push!(keys, key)
+    end
     return keys
 end
 
-# The host-time columns an infection layer reads out of a simulated `state`,
-# with every removal's stretches merged into the one column the likelihood
-# takes out of each exposure. A host removed by either of two removals is
-# removed, so the merge is their union.
-function _layer_host_times(state::SimulationState, model::ModelSpec, host_times)
-    _validate_removal_gap_keys(state, model)
-    columns = _host_time_columns(state, _layer_host_time_keys(model, host_times))
-    gap_keys = _removal_gap_keys(model)
-    isempty(gap_keys) && return columns
-    merged = map(eachindex(state.individuals)) do i
+# Every stretch under `keys` merged into one column, sorted and disjoint, as
+# a host removed by either of two removals is removed.
+function _merged_gap_column(columns, keys, individuals)
+    return map(eachindex(individuals)) do i
         stretches = mapreduce(
-            key -> coalesce(columns[key][i], _NO_STRETCHES), vcat, gap_keys;
+            key -> coalesce(columns[key][i], _NO_STRETCHES), vcat, keys;
             init = _NO_STRETCHES
         )
         return _merge_stretches(sort(stretches; by = first))
     end
-    return merge(columns, NamedTuple{(REMOVAL_STRETCHES_KEY,)}((merged,)))
+end
+
+# The host-time columns an infection layer reads out of a simulated `state`,
+# with every completely-blocking removal's stretches merged into one column
+# and every leaky one's into another, apart, so the likelihood can tell them
+# apart (see `removal_block_probability`). A host removed by either of two
+# removals of the same kind is removed, so each merge is a union.
+function _layer_host_times(state::SimulationState, model::ModelSpec, host_times)
+    _validate_removal_gap_keys(state, model)
+    columns = _host_time_columns(state, _layer_host_time_keys(model, host_times))
+    gap_keys = _removal_gap_keys(model)
+    leaky_keys = _leaky_gap_keys(model)
+    result = columns
+    if !isempty(gap_keys)
+        merged = _merged_gap_column(columns, gap_keys, state.individuals)
+        result = merge(result, NamedTuple{(REMOVAL_STRETCHES_KEY,)}((merged,)))
+    end
+    if !isempty(leaky_keys)
+        leaks = unique(last.(leaky_keys))
+        length(leaks) == 1 || throw(
+            ArgumentError(
+                "composing more than one leaky removal with a different " *
+                    "surviving fraction ($leaks) in one model is not yet " *
+                    "supported by the pairwise likelihood"
+            )
+        )
+        merged = _merged_gap_column(columns, first.(leaky_keys), state.individuals)
+        leak = leaks[1]
+        tagged = [[(a, b, leak) for (a, b) in host] for host in merged]
+        result = merge(result, NamedTuple{(LEAKY_REMOVAL_STRETCHES_KEY,)}((tagged,)))
+    end
+    return result
 end
 
 function _validate_infection_likelihood(model::ModelSpec)
@@ -1408,7 +1527,7 @@ function _component_loglik(
             pk = _pair_kernel(kernel, layout, r, data)
             ll -= _gapped_cumhazard(
                 t -> _scaled_cumhazard(modifier, pk, oi, t),
-                _host_stretches(gaps, i), oi, stop
+                _host_stretches(gaps, i), oi, stop, _host_leaky_stretches(gaps, i)
             )
         end
     end
@@ -1424,7 +1543,8 @@ function _component_loglik(
             oi = data.infectious_time[i]
             isfinite(oi) || continue
             if oi < tj && tj <= data.removal_time[i] && !_removed_at(gaps, i, tj)
-                lh = loghazard(_pair_kernel(kernel, layout, r, data), tj - oi)
+                lh = loghazard(_pair_kernel(kernel, layout, r, data), tj - oi) +
+                    _leak_log_at(gaps, i, tj)
                 _push!(acc, _scaled_loghazard(modifier, lh, tj))
             end
         end
@@ -1665,7 +1785,8 @@ function _pairwise_cumhazard(reduction, kernel, extdist, data, layout, tfollow, 
             stop > 0 || continue
             pk = _pair_kernel(kernel, layout, row, data)
             h = _gapped_cumhazard(
-                t -> cumhazard(pk, t), _host_stretches(gaps, i), oi, stop
+                t -> cumhazard(pk, t), _host_stretches(gaps, i), oi, stop,
+                _host_leaky_stretches(gaps, i)
             )
             totals = _add!(reduction, totals, j, -h)
         end
@@ -1711,7 +1832,9 @@ function _pairwise_events(reduction, kernel, extdist, data, layout, tfollow, tot
                 oi = data.infectious_time[i]
                 isfinite(oi) || continue
                 if oi < tj && tj <= data.removal_time[i] && !_removed_at(gaps, i, tj)
-                    _push!(acc, loghazard(_pair_kernel(kernel, layout, row, data), tj - oi))
+                    lh = loghazard(_pair_kernel(kernel, layout, row, data), tj - oi) +
+                        _leak_log_at(gaps, i, tj)
+                    _push!(acc, lh)
                 end
             end
         end

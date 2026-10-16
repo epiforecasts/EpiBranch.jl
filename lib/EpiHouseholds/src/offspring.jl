@@ -530,7 +530,7 @@ end
 function _removal_gap_fractions(interventions)
     pairs = Pair{Symbol, Float64}[]
     for component in interventions
-        frac = removal_block_fraction(component)
+        frac = removal_block_probability(component)
         for key in removal_gap_host_times(component)
             i = findfirst(p -> p.first == key, pairs)
             if i === nothing
@@ -539,7 +539,7 @@ function _removal_gap_fractions(interventions)
                 throw(
                     ArgumentError(
                         "two interventions record removal stretches under the same key " *
-                            "$(repr(key)) with different `removal_block_fraction`s " *
+                            "$(repr(key)) with different `removal_block_probability`s " *
                             "($(pairs[i].second) and $frac); `household_offspring` cannot " *
                             "tell apart whose stretch is whose once they are merged. Give " *
                             "them distinct `removal_gap_host_times` keys instead"

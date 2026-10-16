@@ -856,6 +856,55 @@ end
         -(30.0 - 7.0) / theta
 end
 
+@testset "A leaky removal scales the hazard over its stretch instead of excluding it" begin
+    # The same pure-escape pair as above, but the stretch is leaky: a
+    # quarter of the hazard still gets through it, and the exposure loses
+    # only three quarters of the isolated days rather than all of them.
+    adj = [1, 1]
+    theta = 4.0
+    k = Exponential(theta)
+    none = Tuple{Float64, Float64, Float64}[]
+    layer(host_times) = _GappedInfections(
+        adj, [0.0, NaN], [0.0, NaN], [30.0, NaN], [true, false], Inf, Inf, host_times
+    )
+    leaky(stretches) = layer((_leaky_removal_stretches = [stretches, none],))
+
+    @test pairwise_surv_loglik(k, leaky([(4.0, 11.0, 0.25)])) ≈
+        -(30.0 - 0.75 * 7.0) / theta
+
+    # Two leaky stretches, each losing their own fraction.
+    @test pairwise_surv_loglik(k, leaky([(4.0, 11.0, 0.25), (18.0, 22.0, 0.5)])) ≈
+        -(30.0 - 0.75 * 7.0 - 0.5 * 4.0) / theta
+
+    # A complete and a leaky removal on the same host merge into separate
+    # columns: the pair loses the complete stretch outright and only a
+    # fraction of the leaky one.
+    mixed = layer(
+        (
+            _removal_stretches = [[(18.0, 22.0)], Tuple{Float64, Float64}[]],
+            _leaky_removal_stretches = [[(4.0, 11.0, 0.25)], none],
+        )
+    )
+    @test pairwise_surv_loglik(k, mixed) ≈ -(30.0 - 0.75 * 7.0 - 4.0) / theta
+end
+
+@testset "An infection inside a leaky stretch picks up the log of what got through" begin
+    # Host 1 infectious from day 0, host 2 infected at day 6, inside a leaky
+    # stretch running [4, 11) at a surviving fraction of 0.4. The escape loses
+    # `1 - leak` of the hazard over [4, 6) and the hazard at the infection
+    # itself is scaled by `leak`, rather than the infector being ruled out as
+    # a complete removal's stretch would.
+    adj = [1, 1]
+    theta = 4.0
+    leak = 0.4
+    gap = (_leaky_removal_stretches = [[(4.0, 11.0, leak)], Tuple{Float64, Float64, Float64}[]],)
+    with_leak = _GappedInfections(
+        adj, [0.0, 6.0], [0.0, 6.0], [30.0, 36.0], [true, false], Inf, Inf, gap
+    )
+    expected = -(4.0 + leak * 2.0) / theta - log(theta) + log(leak)
+    @test pairwise_surv_loglik(Exponential(theta), with_leak) ≈ expected
+end
+
 @testset "An infector removed at the infection cannot be the one" begin
     adj = [1, 1]
     k = Exponential(4.0)
@@ -1003,4 +1052,34 @@ EpiBranch.infection_likelihood_compatible(::_IdentitySusceptibility) = true
     )
     @test !isnan(bounded)
     @test bounded ≈ log(1 - 4 / 10)
+end
+
+@testset "The mixture path scales a leaky stretch the same way as the flat one" begin
+    # `_component_loglik`'s own exposure loop has to read a leaky stretch too,
+    # scaling it rather than excluding it, same as the flat path above.
+    adj = [1, 1]
+    theta = 4.0
+    layer(host_times) = _GappedInfections(
+        adj, [0.0, NaN], [0.0, NaN], [30.0, NaN], [true, false], Inf, Inf, host_times
+    )
+    none = Tuple{Float64, Float64, Float64}[]
+    gap = (_leaky_removal_stretches = [[(4.0, 11.0, 0.25)], none],)
+
+    flat = pairwise_surv_loglik(Exponential(theta), layer(gap))
+    mixed = pairwise_surv_loglik(
+        Exponential(theta), layer(gap); susceptibility = _IdentitySusceptibility()
+    )
+    @test flat ≈ -(30.0 - 0.75 * 7.0) / theta
+    @test mixed ≈ flat
+
+    # An infection inside the leaky stretch picks up the log of what got
+    # through on this path too, rather than being dropped as a complete
+    # removal's stretch would be.
+    inside = _GappedInfections(
+        adj, [0.0, 6.0], [0.0, 6.0], [30.0, 36.0], [true, false], Inf, Inf, gap
+    )
+    expected = -(4.0 + 0.25 * 2.0) / theta - log(theta) + log(0.25)
+    @test pairwise_surv_loglik(
+        Exponential(theta), inside; susceptibility = _IdentitySusceptibility()
+    ) ≈ expected
 end

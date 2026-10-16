@@ -40,6 +40,7 @@ function infectious_removal_time(w::InterventionWrapper, ind::Individual)
     return t
 end
 traces_contacts(w::InterventionWrapper) = traces_contacts(w.intervention)
+traces_source(w::InterventionWrapper) = traces_source(w.intervention)
 function on_infection_settled!(w::InterventionWrapper, ind, state, rng)
     return on_infection_settled!(w.intervention, ind, state, rng)
 end

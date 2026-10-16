@@ -46,25 +46,27 @@ underscore are internal.
 | `:sex` | `Symbol` | — | `demographics` | Creation |
 | `:group` | `Int` | — | `groups` | Creation |
 | `:household` | `Int` | — | `HouseholdProcess` | Creation |
-| `:isolated` | `Bool` | `false` | `Isolation`, `ContactTracing`'s `Quarantine` | `resolve_individual!` / `apply_trace!` |
-| `:isolation_time` | `Float64` | `Inf` | `Isolation`, `ContactTracing`'s `Quarantine` | `resolve_individual!` / `apply_trace!` |
-| `:isolation_release_time` | `Float64` | `Inf` | `Isolation`, `ContactTracing`'s `Quarantine` | `resolve_individual!` / `apply_trace!`; when the block ends |
+| `:isolated` | `Bool` | `false` | `Isolation`, `ContactTracing`/`SourceTracing`'s `Quarantine` | `resolve_individual!` / `apply_trace!` |
+| `:isolation_time` | `Float64` | `Inf` | `Isolation`, `ContactTracing`/`SourceTracing`'s `Quarantine` | `resolve_individual!` / `apply_trace!` |
+| `:isolation_release_time` | `Float64` | `Inf` | `Isolation`, `ContactTracing`/`SourceTracing`'s `Quarantine` | `resolve_individual!` / `apply_trace!`; when the block ends |
 | `:_removal_stretches` | `Vector{Tuple{Float64,Float64}}` | `[]` | `set_isolated!` | Internal. Every `(start, release)` a removal took the person out for, merged and sorted; a release of `Inf` for one that never ends |
-| `:_quarantine_stretches` | `Vector{Tuple{Float64,Float64}}` | `[]` | `ContactTracing`'s `Quarantine` | `apply_trace!`; internal. The quarantine's own stretches, apart from the shared history |
+| `:_leaky_removal_stretches` | `Vector{Tuple{Float64,Float64}}` | `[]` | `Isolation` | `resolve_individual!`; internal. The stretches of a leaky isolation, apart from `:_removal_stretches`'s complete ones |
+| `:_quarantine_stretches` | `Vector{Tuple{Float64,Float64}}` | `[]` | `ContactTracing`/`SourceTracing`'s `Quarantine` | `apply_trace!`; internal. The quarantine's own stretches, apart from the shared history |
 | `:_lapsing_removal_keys` | `Tuple{Vararg{Symbol}}` | `()` | `record_removal!` | Internal. The keys under which a releasing stretch has been recorded, checked against `removal_gap_host_times` when the infection layer is built |
 | `:_isolated_by_isolation` | `Bool` | `false` | `Isolation` | `resolve_individual!`; internal |
-| `:_isolation_unrecorded` | `Bool` | `false` | `Isolation`, `ContactTracing` | `resolve_individual!` / `apply_trace!`; internal. The isolation removes the case from transmission without counting as a detection |
+| `:_isolation_unrecorded` | `Bool` | `false` | `Isolation`, `ContactTracing`/`SourceTracing` | `resolve_individual!` / `apply_trace!`; internal. The isolation removes the case from transmission without counting as a detection |
 | `:_isolation_time_before_isolation` | `Float64` | — | `Isolation` | `resolve_individual!`; internal. The time of an isolation already in place before this one |
 | `:_isolation_release_time_before_isolation` | `Float64` | — | `Isolation` | `resolve_individual!`; internal. The release time of an isolation already in place before this one |
 | `:_isolation_unrecorded_before_isolation` | `Bool` | — | `Isolation` | `resolve_individual!`; internal |
 | `:test_positive` | `Bool` | `false` | `Isolation` | `initialise_individual!` |
-| `:traced` | `Bool` | `false` | `ContactTracing` | `trace_contacts!` |
-| `:quarantined` | `Bool` | `false` | `ContactTracing` | `trace_contacts!` |
+| `:traced` | `Bool` | `false` | `ContactTracing`, `SourceTracing` | `trace_contacts!` |
+| `:quarantined` | `Bool` | `false` | `ContactTracing`, `SourceTracing` | `trace_contacts!` |
 | `:_traced_isolation_time` | `Float64` | `Inf` | `ContactTracing` → `Isolation` | Internal hand-over; may precede onset, so `Isolation` holds it back to onset |
-| `:trace_time` | `Float64` | — | `ContactTracing` | `trace_contacts!` |
+| `:trace_time` | `Float64` | — | `ContactTracing`, `SourceTracing` | `trace_contacts!` |
 | `:_ring_remaining` | `Int` | `0` | `ContactTracing` (`depth > 1`) | `trace_contacts!`; internal |
 | `:_ring_propagated` | `Bool` | `false` | `ContactTracing` (`depth > 1`) | `trace_contacts!`; internal |
 | `:traced_by` | `Int` | — | `ContactTracing` | `trace_contacts!` |
+| `:source_traced_by` | `Int` | — | `SourceTracing` | `trace_contacts!`; the reverse of `:traced_by` (names a *later*-infected node) |
 | `:trace_level` | `Int` | — | `compute_trace_level!` | After the simulation |
 | `:vaccinated[_<label>]` | `Bool` | `false` | `AbstractVaccination` | Creation / when a dose is admitted |
 | `:vaccination_time[_<label>]` | `Float64` | `Inf` | `AbstractVaccination` | When a dose is admitted |
@@ -75,7 +77,7 @@ underscore are internal.
 | `:severity_efficacy[_<label>]` | `Float64` | — | `AbstractVaccination` | When a dose is admitted |
 | `:coverage_declined[_<label>]` | `Bool` | `false` | `MassVaccination`, `GroupVaccination` | When a dose is offered and declined |
 | `:infection_aborted_time` | `Float64` | — | Simulation, through `abort_infection!` (for example by `RingVaccination`'s `post_exposure_efficacy`) | Any intervention hook |
-| `:capacity_admission_time_<capacity_key>` | `Float64` | — | `CapacityConstrained` | When an action is admitted |
+| `:capacity_admission_time_<capacity_key>` | `Float64` | — | `CapacityConstrained` | When an action is admitted through the deprecated `apply_post_transmission!` batch hook, which proposes no dated action |
 | `:_settled` | `Bool` | `false` | Simulation (continuous-time action delivery) | Once a case's own round of action discovery has run; internal, read through `is_settled` |
 | `:_intervention_actions` | `Dict` | `Dict()` | Any intervention using the action protocol | `action_draw!`; internal. Each intervention's own draws for this person, so a draw is made once and reread |
 | `:reporting_time` | `Float64` | `Inf` | `Reporting` transition *or* `PerCaseObservation` | `resolve_individual!` / after the simulation; reset to `Inf` by `censor_after_outcome!` if it falls after `:outcome_time` |
@@ -207,6 +209,13 @@ On a tree the level is exact. On a `NetworkProcess` with cycles it is the
 depth along the path by which the person was last traced, and **not**
 necessarily the shortest distance to the nearest index case; do not read it as
 one.
+
+`:source_traced_by`, which [`SourceTracing`](@ref) sets, is the reverse: the
+case whose own tracing found this person as its infector. It always names a
+*later*-infected node, where `:traced_by` always names an earlier one. The two
+are kept apart rather than sharing a key: merging them would break
+`compute_trace_level!`'s assumption that `:traced_by` never cycles.
+`SourceTracing` never writes `:traced_by`.
 
 ### Naming your own keys
 
@@ -341,13 +350,20 @@ lost, though, and an output built to count them needs those draws back.
 A [`ContactRecorder`](@ref), passed as the `recorder` of a `ModelSpec`, does
 this, through one method:
 [`records_contacts`](@ref EpiBranch.records_contacts)`(recorder, parent, contact, state, t)`
-says whether the recorder wants the simulation to keep drawing this pair. It is
-asked every time a permanent block would end the pair's draws (not only the
-first), with `t` the time of the proposal that would be dropped. The default
-[`NoContactRecorder`](@ref) answers `false` for every pair, so a model with no
-recorder drops the pair at no extra cost.
+says whether the recorder wants the simulation to keep drawing this pair after
+a *permanent* block. It is asked about every proposal a risk blocks, not only
+ones certain to recur, with `t` the time of that proposal, so a recorder can
+log each one; only its answer for a proposal whose block is permanent decides
+whether that pair's draws continue. The default [`NoContactRecorder`](@ref)
+answers `false` for every pair, so a model with no recorder drops a
+permanently-blocked pair at no extra cost.
 
-A sketch:
+To get just the missing rows in [`contacts`](@ref) — a household member or
+network neighbour who was exposed but escaped infection — attach the built-in
+[`ExposedContactRecorder`](@ref) instead of writing your own.
+
+A sketch of a recorder that wants the whole stream of blocked proposals on a
+permanently-blocked pair, not just the one that would end it:
 
 ```julia
 struct CountingRecorder <: ContactRecorder
@@ -362,14 +378,15 @@ end
 ```
 
 Usage: `rec = CountingRecorder()`, then
-`ModelSpec(HouseholdProcess(...); recorder = rec)`. Every
-later proposal on a permanently blocked pair is logged before the simulation is
-told to continue, so `rec.events` ends up with every contact event of every
+`ModelSpec(HouseholdProcess(...); recorder = rec)`. Every blocked proposal is
+logged, and answering `true` for a permanent block keeps the simulation
+drawing that pair, so `rec.events` ends up with every contact event of every
 such pair.
 
-Answering `true` restricts which models can run: drawing again puts the pair
-back under the rule for blocked contacts above, so a model whose window never
-ends is refused, as if the block had never been declared permanent.
+Answering `true` for a permanent block restricts which models can run: drawing
+again puts the pair back under the rule for blocked contacts above, so a model
+whose window never ends is refused, as if the block had never been declared
+permanent.
 
 ## Likelihood compatibility
 
@@ -389,19 +406,19 @@ compatible with these likelihoods. The built-in parts declare:
 | `clinical_presentation`, no population characteristics | yes |
 | Other population characteristics (`demographics`, `groups`, `transmission_traits`, `vaccine_acceptance`, and your own functions) | no, unless declared |
 | `Transition`, `Reporting`, `Hospitalisation`, `Recovery`, `Death` | yes |
-| `Isolation` | only with `post_isolation_transmission = 0` (complete isolation) |
+| `Isolation` | yes, complete or leaky |
 | `ContactTracing` with `Quarantine` or `FlagOnly` | yes |
 | `MassVaccination`, `GroupVaccination` | only with the default `dose_label` and a fixed (numeric) `efficacy` |
 | `RingVaccination` | only with the default `dose_label`, a fixed (numeric) `efficacy`, and no `onward_efficacy` or `post_exposure_efficacy` |
 | `Scheduled`, `CapacityConstrained` | as the intervention they hold |
 | Interventions and transitions of your own | no, unless declared |
 
-Removal from transmission, including complete isolation, is represented by the
-recorded removal times. Partial reduction of transmission, or a susceptibility
-multiplier, also changes the rate of infection within the infectious period. A
-change to a person's susceptibility is declared through
-`susceptibility_components` (below); other effects are not recorded in the
-infection data.
+Removal from transmission, whether complete or only a reduction such as leaky
+isolation, is represented by the recorded removal stretches; see [Removals
+that only reduce transmission](@ref) below for the fraction a leaky one
+blocks. A susceptibility multiplier is declared through
+`susceptibility_components` (below); other effects on the rate of infection
+are not recorded in the infection data.
 
 A part of your own that only changes the infectious period can declare itself
 compatible:
@@ -545,14 +562,6 @@ instead of ending a pair whose contacts could still transmit.
     infection layer with no sign that the fit now covers more exposure than
     the simulation gave it.
 
-A removal that only reduces transmission during its stretch, rather than
-blocking it outright, names the same key but also overrides
-[`EpiBranch.removal_block_fraction`](@ref EpiBranch.removal_block_fraction),
-which defaults to 1 (the whole stretch blocked). `household_offspring` weights
-each recorded stretch by this fraction when it works out a case's
-community-infectious person-time, so a leaky removal only partly cuts that
-time.
-
 The one part for which naming no key is right is one that holds another
 intervention and can withdraw its block partway through a recorded stretch: a
 [`Scheduled`](@ref) that can end, through an `end_time` or a `start_after`
@@ -568,6 +577,54 @@ intervention it holds never releases anyone by itself. One that does, such as an
 competing risk, which checks the wrapper's on/off condition again at every
 contact. That narrowing belongs to the wrapping type and is not passed to plain interventions, whose default
 `infectious_removal_time` is `Inf`.
+
+### Removals that only reduce transmission
+
+A removal that only reduces transmission rather than stopping it, such as
+leaky isolation, blocks a fraction of the hazard over its stretches instead of
+all of it. The same shape as `Shielding` above, but with a
+`block_probability` of its own and a reduced, rather than certain, risk:
+
+```julia
+struct PartialShielding <: EpiBranch.AbstractIntervention
+    duration::Float64
+    block_probability::Float64
+end
+const PARTIAL_SHIELDING_STRETCHES = :partial_shielding_stretches
+
+function EpiBranch.resolve_individual!(s::PartialShielding, ind, state)
+    t = EpiBranch.onset_time(ind)
+    isfinite(t) || return nothing
+    EpiBranch.record_removal!(ind, t, t + s.duration; key = PARTIAL_SHIELDING_STRETCHES)
+    return nothing
+end
+
+function EpiBranch.competing_risk(s::PartialShielding, parent, contact, state)
+    stretches = EpiBranch.removal_stretches(parent, PARTIAL_SHIELDING_STRETCHES)
+    isempty(stretches) && return nothing
+    return Tuple(
+        EpiBranch.Risk(event_time = a, block_probability = s.block_probability, release_time = b)
+            for (a, b) in stretches
+    )
+end
+
+EpiBranch.removal_gap_host_times(::PartialShielding) = (PARTIAL_SHIELDING_STRETCHES,)
+EpiBranch.removal_block_probability(s::PartialShielding) = s.block_probability
+EpiBranch.infection_likelihood_compatible(::PartialShielding) = true
+```
+
+Name the fraction with
+[`EpiBranch.removal_block_probability`](@ref EpiBranch.removal_block_probability),
+`1` by default for a removal that stops transmission outright. The likelihood
+then scales the hazard over the recorded stretch by this fraction instead of
+excluding it, and the hazard of an infection that falls inside one picks up
+the log of the fraction that got through, rather than ruling that infector out
+as a complete removal's stretch does. `household_offspring` weights each
+recorded stretch by the same fraction when it works out a case's
+community-infectious person-time, so a leaky removal only partly cuts that
+time. Two components recording a leaky removal under the same key must agree
+on this fraction; give each its own key otherwise, as `Isolation` does
+(`:_leaky_removal_stretches`, apart from the shared `:_removal_stretches`).
 
 ## Custom clinical transitions: further details
 
@@ -741,15 +798,18 @@ Both put what it returns through the schedule and capacity limits.
 
 `Scheduled` checks the proposed action time before delivery. A condition
 function sees that time as `state.max_infection_time`, with the current case
-count and generation. `CapacityConstrained` uses the simulation's own clock for
-counting admissions. Both orders of the two follow these rules. The budget
-counts admissions, including deliveries dated in the future; it is not a count
-of doses given per calendar day. An intervention using a resource of your own
-defines `capacity_key` and `capacity_time_key` and sets the resource flag only
-after successful delivery. An action on a person who already has that flag
-passes the capacity check without another charge, though the schedule still
-applies. Ring vaccination uses this for protection from an existing dose at a
-new exposure, with the current simulation time as its action time.
+count and generation. `CapacityConstrained` checks the same proposed time
+against the budget of the period it falls in, whatever the clock of the case
+proposing it. Both orders of the two follow these rules. The budget counts
+doses by the day they are actually given, not by when they were admitted; an
+intervention still on the deprecated `apply_post_transmission!` batch hook
+proposes no dated action, so it is counted against the admitting call's own
+clock instead. An intervention using a resource of your own defines
+`capacity_key` and `capacity_time_key` and sets the resource flag only after
+successful delivery. An action on a person who already has that flag passes
+the capacity check without another charge, though the schedule still applies.
+Ring vaccination uses this for protection from an existing dose at a new
+exposure, with the current simulation time as its action time.
 
 Recorded protection follows its effect date even when the delivery schedule is
 no longer active. Vaccination declares this with
@@ -787,13 +847,24 @@ first_time == next_time
 The result is `true`: the second call uses the stored draw. Give a new visit a
 different key, and keep the same key when the same visit is proposed again.
 
-On network and household models, supported actions run after a newly final
-case is traced. Interventions of your own opt in with
-`EpiBranch.continuous_actions(iv) = true`, and must work without the infection
-time of a contact whose infection is not yet final. Ring delivery supports an
-eligibility window with no end; group delivery uses known triggering cases. Scheduling and capacity work as on branching
-processes. Mass vaccination is not supported here, and nor are
-`HomogeneousProcess` and `MixingProcess`, which name no contacts.
+On network and household models, supported actions run in one of two ways.
+Interventions of your own opt in to the per-case way with
+`EpiBranch.continuous_actions(iv) = true`: actions run after a newly final
+case is traced, narrowed to the case and the contacts it can still reach, and
+must work without the infection time of a contact whose infection is not yet
+final. That narrowing needs a model that names contacts
+(`EpiBranch.supplies_contacts(model) = true`), unless the intervention also
+declares `EpiBranch.needs_contacts(iv) = false`, as group delivery does,
+since it finds a case's group through its `group_key` rather than through a
+contact; ring delivery, which does need contacts, supports an eligibility
+window with no end. `HomogeneousProcess` and `MixingProcess` name no
+contacts, so a `continuous_actions` intervention that needs them is not
+offered any. `EpiBranch.acts_on_population(iv) = true` opts in to the other
+way instead: actions run once, before any case settles, for every member,
+needing nothing about who infected whom. Mass vaccination declares this,
+which lets it reach every model, including `HomogeneousProcess` and
+`MixingProcess`. Scheduling and capacity work as on branching processes
+either way.
 On a household model a capacity limit puts every household on one shared
 clock, so a budget with a finite `period` is counted in calendar order across
 households.
@@ -867,7 +938,7 @@ works for simulation has no closed form.
 | A capacity limit | `CapacityConstrained(iv; budget_per_period = ...)`, with `capacity_key` and `capacity_time_key` for `iv` | When actions are admitted, once per case |
 | An exact effect on the offspring distribution | `analytic_offspring_effect` for an intervention | Closed-form results on a `ModelSpec` |
 | A stopping rule | A type `<: AbstractStoppingRule` and `should_stop` | Each step |
-| A contact recorder | A type `<: ContactRecorder` and `records_contacts` | Continuous-time models, each proposal on a permanently blocked pair |
+| A contact recorder | A type `<: ContactRecorder` and `records_contacts` | Continuous-time models, each blocked proposal |
 | A terminal clinical transition | A type `<: AbstractClinicalTransition` with `is_terminal`, `terminal_event`, `terminal_target` | When a case is settled |
 | Population characteristics | A function `(rng, ind) -> nothing` | When a person is created |
 | Several population characteristics | `[f1, f2, ...]` | When a person is created |

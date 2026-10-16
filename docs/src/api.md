@@ -115,6 +115,7 @@ takes and what happens to a traced contact.
 
 ```@docs
 ContactTracing
+SourceTracing
 TraceEligibility
 OnSymptomOnset
 OnLabConfirmation
@@ -209,14 +210,17 @@ The continuous-time models (networks, households,
 [`HomogeneousProcess`](@ref) and [`MixingProcess`](@ref)) stop simulating
 contacts with a person an
 intervention has protected for good, such as a vaccinated contact. A contact
-recorder, a type you write with
-[`records_contacts`](@ref EpiBranch.records_contacts), keeps simulating them
-and can log each one. For a [`BranchingProcess`](@ref), [`contacts`](@ref)
-already lists exposures that did not infect, and no recorder is needed.
+recorder keeps simulating them and can log each one, through
+[`records_contacts`](@ref EpiBranch.records_contacts). For a
+[`BranchingProcess`](@ref), [`contacts`](@ref) already lists exposures that
+did not infect; for a continuous-time model, attach an
+[`ExposedContactRecorder`](@ref) to get the same, or write your own recorder
+type for anything else you want logged.
 
 ```@docs
 ContactRecorder
 NoContactRecorder
+ExposedContactRecorder
 ```
 
 ## Information about each case
@@ -453,6 +457,8 @@ EarliestInfected
 ```@docs
 network_infections
 NetworkInfections
+routed_network_infections
+RoutedNetworkInfections
 ```
 
 ## Distribution helpers
@@ -523,6 +529,7 @@ close_episode!
 ```@docs
 should_stop
 EpiBranch.time_bound
+EpiBranch.generation_bound
 EpiBranch.honoured_without_should_stop
 ```
 
@@ -535,6 +542,7 @@ EpiBranch.apply_post_transmission!
 EpiBranch.on_infection_settled!
 EpiBranch.trace_contacts!
 EpiBranch.traces_contacts
+EpiBranch.traces_source
 EpiBranch.has_effect
 EpiBranch.supplies_contacts
 EpiBranch.keep_active
@@ -586,6 +594,8 @@ EpiBranch.action_draw!
 EpiBranch._action_cache
 EpiBranch.apply_actions!
 EpiBranch.continuous_actions
+EpiBranch.acts_on_population
+EpiBranch.needs_contacts
 EpiBranch.settles_generation_batch
 EpiBranch.may_revise
 EpiBranch.is_settled
@@ -644,7 +654,7 @@ EpiBranch.susceptibility_host_times
 EpiBranch.binding_release
 EpiBranch.removal_gap_host_times
 EpiBranch.removal_gap_host_times_withdrawn
-EpiBranch.removal_block_fraction
+EpiBranch.removal_block_probability
 EpiBranch.record_removal!
 EpiBranch.removal_stretches
 EpiBranch.HazardScaling
