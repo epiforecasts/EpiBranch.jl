@@ -525,13 +525,30 @@ end
 # The keys the model's interventions record removal stretches under, paired
 # with the fraction of transmission each stretch blocks (1 unless the
 # intervention is leaky, such as `Isolation` with `post_isolation_transmission
-# > 0`).
+# > 0`). Two components that write the same key merge their stretches into
+# one before this ever reads them (see `record_removal!`), so a second
+# component naming a key already seen contributes no fraction of its own: one
+# with a different fraction cannot be reconciled after that merge, since
+# nothing says which part of the merged stretch is whose.
 function _removal_gap_fractions(interventions)
     pairs = Pair{Symbol, Float64}[]
     for component in interventions
         frac = removal_block_fraction(component)
         for key in removal_gap_host_times(component)
-            push!(pairs, key => frac)
+            i = findfirst(p -> p.first == key, pairs)
+            if i === nothing
+                push!(pairs, key => frac)
+            elseif pairs[i].second != frac
+                throw(
+                    ArgumentError(
+                        "two interventions record removal stretches under the same key " *
+                            "$(repr(key)) with different `removal_block_fraction`s " *
+                            "($(pairs[i].second) and $frac); `household_offspring` cannot " *
+                            "tell apart whose stretch is whose once they are merged. Give " *
+                            "them distinct `removal_gap_host_times` keys instead"
+                    )
+                )
+            end
         end
     end
     return pairs

@@ -333,6 +333,36 @@ end
         @test r_leaky ≈ midpoint rtol = 0.2
     end
 
+    @testset "two leaky isolations sharing a key cannot be reconciled" begin
+        # Both components here record under the reserved
+        # `REMOVAL_STRETCHES_KEY`, merging their stretches before
+        # `household_offspring` ever sees them, so there is no way to tell
+        # how much of the merged stretch each one's fraction should apply to.
+        prog = [
+            Transition(:onset; from = :infection, delay = 1.0),
+            Transition(:recovered; from = :infection, delay = 6.0, terminal = true),
+        ]
+        process = HouseholdProcess(fill(4, 10), Weibull(1.5, 3.0))
+        spec = ModelSpec(
+            process; progression = prog,
+            interventions = [
+                Isolation(
+                    onset_to_isolation_delay = Exponential(1.0),
+                    eligibility = AllCases(), duration = Inf,
+                    post_isolation_transmission = 0.5
+                ),
+                Isolation(
+                    onset_to_isolation_delay = Exponential(1.0),
+                    eligibility = AllCases(), duration = Inf,
+                    post_isolation_transmission = 0.2
+                ),
+            ]
+        )
+        @test_throws ArgumentError household_offspring(
+            spec; global_rate = 0.1, rng = StableRNG(7)
+        )
+    end
+
     @testset "cases that never become infectious make no contacts" begin
         # A household of one isolates the window: R* is the community rate times
         # the lone case's mean infectious time, zero for a case that recovers
