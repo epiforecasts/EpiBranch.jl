@@ -522,6 +522,7 @@ close_episode!
 ```@docs
 should_stop
 EpiBranch.time_bound
+EpiBranch.generation_bound
 EpiBranch.honoured_without_should_stop
 ```
 
