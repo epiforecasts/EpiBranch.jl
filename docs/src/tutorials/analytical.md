@@ -68,16 +68,20 @@ The model's answer depends only on its offspring distribution and matches
 `extinction_probability(2.5, 0.16)`; the generation time does not change it.
 
 !!! warning "Interventions in a `ModelSpec`"
-    `extinction_probability`, `epidemic_probability`, `proportion_transmission`
-    and the `proportion_cases_*` functions also accept a [`ModelSpec`](@ref).
-    They apply an intervention only if it declares a closed-form effect on the
+    `extinction_probability`, `epidemic_probability`, `probability_contain`,
+    `reproduction_number`, `proportion_transmission` and the
+    `proportion_cases_*` functions also accept a [`ModelSpec`](@ref). They
+    apply an intervention only if it declares a closed-form effect on the
     offspring distribution through `EpiBranch.analytic_offspring_effect`.
-    [`MassVaccination`](@ref) has one when its campaign is already complete
-    before the simulation starts; isolation, contact tracing and a
-    still-ongoing rollout have none, and a spec holding one of those throws an
-    error. Call them on the process itself for the outbreak without
-    interventions. For the chance of containing an outbreak under
-    interventions, simulate the model and use
+    `Isolation` does, for the common case (its own docstring sets out the
+    limits), as does [`MassVaccination`](@ref) when its campaign is already
+    complete before the simulation starts; contact tracing, ring and group
+    vaccination, and a still-ongoing rollout have none. `proportion_transmission`
+    and the `proportion_cases_*` functions do not yet accept `Isolation`'s
+    closed form either way. For a spec whose interventions have no closed form,
+    all of these throw an error. Call them on the process itself for the
+    outbreak without interventions. For the chance of containing an outbreak
+    under interventions with no closed form, simulate the model and use
     [`containment_probability`](@ref), as in
     [Isolation and contact tracing](interventions.md).
     `chain_size_distribution` is different: given a model with interventions,

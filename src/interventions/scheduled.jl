@@ -35,9 +35,10 @@ Scheduled(iso, state -> state.current_generation >= 3)
 
 # Arguments
 - `start_time`, `end_time`: days (as decimals, such as `14.0`) between which
-  the intervention acts, read against the infection time of the case being
-  acted on. For vaccinations, the window and `condition` are checked against
-  each dose's date instead.
+  the intervention acts, read against the day the action itself falls on
+  (a case's isolation, a contact's trace) rather than the case's infection
+  time, exactly as a scheduled vaccination's dose is checked against its own
+  date.
 - `start_after_cases`: number of infections after which it acts, counting
   every infection as it happens, whether or not it is ever reported.
 - `start_after`: a trigger such as [`ReportedCases`](@ref), which counts only
@@ -46,10 +47,12 @@ Scheduled(iso, state -> state.current_generation >= 3)
 - `condition`: a function of the simulation state returning `true` while the
   intervention should act.
 
-Give at least one; several keywords must all hold. A case whose isolation (or
-other action) would fall before `start_time` is not acted on, even if the
-case itself appears after the start. The `condition` form has no start time
-to compare against and does not do this check.
+Give at least one; several keywords must all hold. An isolation or trace
+dated before `start_time`, or after `end_time`, is undone with
+[`reset!`](@ref EpiBranch.reset!): with `start_time = 10.0`, a case infected
+on day 8 whose symptoms begin on day 9, with a 2-day delay putting their
+isolation on day 11, is isolated after all, even though they were infected
+before the policy began.
 
 Isolation and quarantine already in place end when the schedule ends (after
 `end_time`, or once `condition` returns `false`). The exception is the
@@ -68,10 +71,19 @@ does, never later.
 For extension authors: an intervention that proposes its actions through
 [`intervention_actions`](@ref EpiBranch.intervention_actions) has each action
 checked against the schedule at the action's own time (seen by the condition
-as `state.max_infection_time`). Other interventions are skipped while the
-schedule is inactive, and an effect whose
-[`intervention_time`](@ref EpiBranch.intervention_time) falls before
-`start_time` is undone with [`reset!`](@ref EpiBranch.reset!).
+as `state.max_infection_time`). Among the rest, one that defines its own
+[`intervention_time`](@ref EpiBranch.intervention_time) is run whether or not
+the schedule is active at the case's or contact's own clock, and its effect
+undone with [`reset!`](@ref EpiBranch.reset!) once `intervention_time` is
+checked against the condition the same way, with `state.max_infection_time`
+moved to that time for the check; a trigger that reads other population-wide
+state, such as [`ReportedCases`](@ref), sees it as it stands now, not as it
+will once that time comes, the same approximation a scheduled vaccination's
+dose already accepts. An intervention relying on the default `intervention_time`
+(`-Inf`) is instead skipped outright while the schedule is inactive at that
+clock, as every hook always was: `intervention_time` comes paired with a
+`reset!` that undoes whatever it names, and without one there is nothing to
+correct the effect with afterwards.
 """
 struct Scheduled{I <: AbstractIntervention, F, T <: Tuple} <: InterventionWrapper
     intervention::I
@@ -90,6 +102,21 @@ struct Scheduled{I <: AbstractIntervention, F, T <: Tuple} <: InterventionWrappe
     # each what it needs of the progression; see `required_transitions`. The
     # condition itself is an opaque closure. Empty for every other form.
     triggers::T
+    # Whether `intervention` has its own `intervention_time`, computed once
+    # here rather than by introspection on every call. See `_time_aware`.
+    time_aware::Bool
+end
+
+# Computes `time_aware` from `intervention` once, rather than asking on every
+# call a hook makes.
+function Scheduled(
+        intervention::AbstractIntervention, condition, start_time::Float64,
+        population_dependent::Bool, can_lapse::Bool, triggers::Tuple
+    )
+    return Scheduled(
+        intervention, condition, start_time, population_dependent, can_lapse,
+        triggers, _time_aware(intervention)
+    )
 end
 
 # Pre-existing callers build a `Scheduled` without the trigger record.
@@ -99,6 +126,19 @@ function Scheduled(
     )
     return Scheduled(
         intervention, condition, start_time, population_dependent, can_lapse, ()
+    )
+end
+
+# Whether `iv` has declared its own `intervention_time`, which by that hook's
+# contract comes paired with a `reset!` undoing whatever it names (see
+# `intervention_time`'s docstring). `Scheduled` only runs such an
+# intervention unconditionally and corrects the result afterwards, in
+# `_reset_unless_in_schedule!`; one relying on the defaults (`-Inf`, a no-op
+# `reset!`) has given it nothing to undo, and is instead gated up front, as
+# every hook always was.
+function _time_aware(iv::AbstractIntervention)
+    return _has_own_method(
+        intervention_time, typeof(_hook_owner(intervention_time, iv)), AbstractIntervention
     )
 end
 
@@ -282,6 +322,23 @@ end
 
 is_active(s::Scheduled, state::SimulationState) = s.condition(state)
 
+# Whether `s`'s condition holds evaluated as of `t` rather than the clock the
+# caller is otherwise running under. `state.max_infection_time` is moved
+# there for the check and restored before returning, even if the condition
+# throws, since each simulation owns its own state. A population-reading
+# condition (a trigger, an opaque predicate) still sees the population as it
+# stands right now, only the clock itself moves: the same approximation
+# `apply_actions!` already makes for a proposed dose's own time.
+function _active_at(s::Scheduled, t, state)
+    previous_time = state.max_infection_time
+    try
+        state.max_infection_time = t
+        return is_active(s, state)
+    finally
+        state.max_infection_time = previous_time
+    end
+end
+
 # Overrides the plain forwarding from `InterventionWrapper`: a trigger's own
 # fields must be checked too, not only the wrapped intervention's.
 function required_fields(s::Scheduled)
@@ -295,9 +352,9 @@ end
 # fields must exist before the policy activates.
 
 function resolve_individual!(s::Scheduled, ind, state)
-    is_active(s, state) || return nothing
+    s.time_aware || is_active(s, state) || return nothing
     resolve_individual!(s.intervention, ind, state)
-    _maybe_reset!(s, ind)
+    s.time_aware && _reset_unless_in_schedule!(s, ind, state)
     return nothing
 end
 
@@ -310,27 +367,31 @@ function apply_post_transmission!(s::Scheduled, state, new_contacts)
         _admit_actions!(s, state, actions)
         return nothing
     end
-    is_active(s, state) || return nothing
+    s.time_aware || is_active(s, state) || return nothing
     apply_post_transmission!(s.intervention, state, new_contacts)
-    for c in new_contacts
-        _maybe_reset!(s, c)
+    if s.time_aware
+        for c in new_contacts
+            _reset_unless_in_schedule!(s, c, state)
+        end
     end
     return nothing
 end
 
-# Individual-level reset if the action time falls before policy start.
-@inline function _maybe_reset!(s::Scheduled, ind::Individual)
-    s.start_time <= 0.0 && return nothing
-    intervention_time(s.intervention, ind) < s.start_time &&
-        reset!(s.intervention, ind)
+# Undo the wrapped intervention's effect on `ind` unless it falls inside the
+# schedule's window at its own time, exactly as `_action_in_schedule` checks a
+# proposed action. An effect that never fired (`intervention_time` still at
+# its default) has nothing to undo.
+function _reset_unless_in_schedule!(s::Scheduled, ind::Individual, state)
+    t = intervention_time(s.intervention, ind)
+    isfinite(t) || return nothing
+    _active_at(s, t, state) || reset!(s.intervention, ind)
     return nothing
 end
 
 # `infectious_removal_time` comes from `InterventionWrapper`, which narrows it
-# for a schedule that can close: see `removal_gap_host_times` below. The loop
-# resolves it against the running clock, so a case whose infection time is
-# before `start_time` never has its wrapped intervention run (its gate is
-# closed) and so is not removed.
+# for a schedule that can close: see `removal_gap_host_times` below. A case
+# whose isolation or quarantine was undone by `_reset_unless_in_schedule!`
+# above reads back as never isolated, so it is not removed either.
 
 """
     persistent_competing_risks(intervention) -> Bool
@@ -389,23 +450,32 @@ function competing_risk(s::Scheduled, parent, contact, state)
     return competing_risk(s.intervention, parent, contact, state)
 end
 
-# Which contacts the ring grows from, gated by the schedule as the tracing
-# hooks are: outside its window the wrapped intervention keeps nobody active.
+# Which contacts the ring grows from. A time-aware intervention has already
+# had each target's own trace checked against the schedule, by
+# `trace_contacts!`, which always runs first; a target whose trace did not
+# stick is not `is_traced`, so the wrapped `keep_active` already excludes it
+# without gating here on the stale infector-level clock. One that is not
+# time-aware stays gated on the infector's clock, as every hook always was.
 function keep_active(s::Scheduled, state, targets, is_new)
-    is_active(s, state) || return ()
+    s.time_aware || is_active(s, state) || return ()
     return keep_active(s.intervention, state, targets, is_new)
 end
 
-# Tracing, gated by the schedule at the infector's clock.
+# Tracing: a time-aware intervention has each contact's own trace checked
+# against the schedule at its own time, below, rather than at the
+# infector's; one that is not stays gated on the infector's clock, as every
+# hook always was.
 function trace_contacts!(s::Scheduled, state, infector, contacts, not_before = nothing)
-    is_active(s, state) || return nothing
+    s.time_aware || is_active(s, state) || return nothing
     if not_before === nothing
         trace_contacts!(s.intervention, state, infector, contacts)
     else
         trace_contacts!(s.intervention, state, infector, contacts, not_before)
     end
-    for c in contacts
-        _maybe_reset!(s, c)
+    if s.time_aware
+        for c in contacts
+            _reset_unless_in_schedule!(s, c, state)
+        end
     end
     return nothing
 end

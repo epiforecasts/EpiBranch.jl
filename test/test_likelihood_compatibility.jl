@@ -1,6 +1,6 @@
 # A component with no recorded stretch of its own, for the unnamed-key tests
 # below. It acts only through `removal_gap_host_times`, not any simulation
-# hook, which is why `has_effect` is declared true.
+# hook, so `has_effect` is declared true.
 struct _Shield <: EpiBranch.AbstractIntervention end
 EpiBranch.has_effect(::_Shield) = true
 

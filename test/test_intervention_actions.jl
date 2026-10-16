@@ -35,10 +35,18 @@ end
                 for (i, t) in enumerate([9.0, 11.0, 13.0])
         ]
         append!(state.individuals, contacts)
-        EpiBranch.apply_actions!(wrap(AppointmentAction()), state, contacts)
+        iv = wrap(AppointmentAction())
+        EpiBranch.apply_actions!(iv, state, contacts)
         @test [get(i.state, :attended, false) for i in contacts] == [false, true, false]
-        @test contacts[2].state[:capacity_admission_time_attended] == 0.0
         @test state.max_infection_time == 0.0
+
+        # The admitted appointment used the budget of day 11, its own date,
+        # though the call that admitted it ran on day 0.
+        cc = iv isa CapacityConstrained ? iv : iv.intervention
+        state.max_infection_time = 11.0
+        @test capacity_usage(cc, state).used == 1
+        state.max_infection_time = 0.0
+        @test capacity_usage(cc, state).used == 0
     end
 
     state = newstate()
@@ -127,15 +135,21 @@ EpiBranch.continuous_actions(::AppointmentAction) = true
         ]
     )
     state.max_infection_time = 11.0
+    # `AppointmentAction` needs no named contacts (its candidates are the
+    # default: `current` and everyone not yet processed), so a `contacts`
+    # function is passed only to stand in for a model that supplies one;
+    # `needs_contacts`'s conservative default would otherwise skip it on a
+    # call with none, as a model without named contacts does on the race.
+    contacts(id, state) = Int[]
     EpiBranch._apply_continuous_actions!(
         state, state.individuals[1],
-        [AppointmentAction()], [1, 2, 3, 4], [true, false, true, false]
+        [AppointmentAction()], [1, 2, 3, 4], [true, false, true, false], contacts
     )
     @test [get(i.state, :attended, false) for i in state.individuals] ==
         [true, true, false, false]
     @test EpiBranch._apply_continuous_actions!(
         state, state.individuals[1], [],
-        [1, 2, 3, 4], [true, false, true, false]
+        [1, 2, 3, 4], [true, false, true, false], contacts
     ) === nothing
     @test !EpiBranch.continuous_actions(MassVaccination(efficacy = 0.8, eligibility_time = 1.0))
     @test EpiBranch.continuous_actions(GroupVaccination(efficacy = 0.8))
@@ -143,6 +157,18 @@ EpiBranch.continuous_actions(::AppointmentAction) = true
     @test EpiBranch.continuous_actions(RingVaccination(efficacy = 0.8, eligibility_window = 2.0))
     @test EpiBranch.continuous_actions(RingVaccination(efficacy = 0.0, post_exposure_efficacy = 0.8))
     @test EpiBranch.continuous_actions(Scheduled(RingVaccination(efficacy = 0.8); start_time = 1.0))
+    @test EpiBranch.acts_on_population(MassVaccination(efficacy = 0.8, eligibility_time = 1.0))
+    @test !EpiBranch.acts_on_population(GroupVaccination(efficacy = 0.8))
+    @test !EpiBranch.acts_on_population(RingVaccination(efficacy = 0.8))
+    @test EpiBranch.acts_on_population(
+        Scheduled(MassVaccination(efficacy = 0.8, eligibility_time = 1.0); start_time = 1.0)
+    )
+    @test !EpiBranch.needs_contacts(GroupVaccination(efficacy = 0.8))
+    @test EpiBranch.needs_contacts(RingVaccination(efficacy = 0.8))
+    @test EpiBranch.needs_contacts(AppointmentAction())
+    @test !EpiBranch.needs_contacts(
+        Scheduled(GroupVaccination(efficacy = 0.8); start_time = 1.0)
+    )
     broken = Scheduled(AppointmentAction(), state -> error("predicate failed"))
     @test_throws ErrorException EpiBranch.apply_actions!(broken, state, [state.individuals[3]])
     @test state.max_infection_time == 11.0

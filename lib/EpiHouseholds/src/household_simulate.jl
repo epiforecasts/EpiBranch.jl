@@ -66,12 +66,16 @@ function simulate_once(
     projection = EpiBranch.kernel_projection(model.kernel)
     # Only a policy that can read population-wide state — cases in other
     # households, a kernel reading host records an intervention can move, a
-    # capacity budget shared across households — needs every household on one
-    # clock. `reads_population_state` is how an intervention declares that;
+    # capacity budget shared across households, or a stopping rule that polls
+    # `should_stop` (`poll_rules` below) — needs every household on one clock,
+    # so that its view of the population reflects cases in true time order
+    # rather than each household's race running to completion before the
+    # next begins. `reads_population_state` is how an intervention declares that;
     # `race_groups` is how the process itself partitions races for a kernel,
     # which `HouseholdProcess` narrows to one race per household unless the
     # kernel's watched records say otherwise.
-    races = any(EpiBranch.reads_population_state, interventions) ?
+    poll_rules = EpiBranch._poll_rules(sim_opts)
+    races = any(EpiBranch.reads_population_state, interventions) || !isempty(poll_rules) ?
         (collect(eachindex(model.household_of)),) : race_groups(model, model.kernel)
     # One race per household, each reconciled against the whole state once the
     # loop is done rather than per race: `sellke_race!`'s per-call reconciliation
@@ -79,12 +83,14 @@ function simulate_once(
     # instead of O(population) for the one reconciliation a single-race model
     # gets from the wrapper.
     max_time = EpiBranch._max_time(sim_opts)
+    max_generation = EpiBranch._max_generation(sim_opts)
     extinct = true
     for mem in races
         extinct &= EpiBranch._sellke_race!(
             state, mem, rng;
             from = from, until = model.until, interventions = interventions,
-            max_time = max_time, risks = EpiBranch.transmission_risks(model),
+            max_time = max_time, max_generation = max_generation,
+            stopping_rules = poll_rules, risks = EpiBranch.transmission_risks(model),
             watches = (watched,), projections = (projection,), recorder = recorder,
             seed! = (best, members, r) -> _seed_household_race!(
                 best, members, model, state, Tobs, r, initial_cases

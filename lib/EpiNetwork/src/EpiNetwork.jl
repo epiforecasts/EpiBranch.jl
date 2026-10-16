@@ -19,16 +19,25 @@ import EpiBranch: population_size, new_state, add_individuals!, apply_observatio
 # simulator and the likelihood share EpiBranch's community-hazard helpers as
 # well, and agree on when that term applies and what it is.
 import EpiBranch: _infection_layer_columns, _infection_layer_fields,
-    _layer_host_times, _ext_active,
+    _layer_host_times, _ext_active, _ext_survival,
     _ext_draw, _valid_external, _normalise_external
+# The routed likelihood leaves each route's removal to the same lapsing-stretch
+# record the single-route likelihood reads, gated per route, and refuses a
+# model whose interventions need a susceptibility mixture it does not evaluate.
+import EpiBranch: _removal_gaps, _host_stretches, _gapped_cumhazard, _removed_at,
+    _validate_infection_likelihood, susceptibility_host_times,
+    INTERVENTION_REMOVAL, followup_end, contact_structure,
+    cumhazard, loghazard, logsumexp
 
 export NetworkProcess, RoutedNetwork
 export NetworkInfections, network_infections
+export RoutedNetworkInfections, routed_network_infections
 export pairwise_surv_loglik, compile_contact_pairs
 
 include("network_process.jl")
 include("routed_network.jl")
 include("network_simulate.jl")
 include("likelihood.jl")
+include("routed_likelihood.jl")
 
 end # module

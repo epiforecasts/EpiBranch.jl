@@ -103,7 +103,8 @@ public removal_gap_host_times, removal_gap_host_times_withdrawn
 public record_removal!
 public removal_stretches
 public InterventionAction, intervention_actions, action_draw!, apply_actions!,
-    continuous_actions, may_revise, is_settled, settles_generation_batch
+    continuous_actions, acts_on_population, needs_contacts, may_revise, is_settled,
+    settles_generation_batch
 
 # Pairwise survival likelihood: how its two accumulation passes group rows
 # into a result. `pairwise_surv_loglik` and `pairwise_surv_loglik_by_component`
@@ -133,10 +134,12 @@ public record_effect_draws!
 public store_draw!
 public dose_value
 
-# Stopping rules: a rule bounds a structure-driven run through `time_bound`,
-# and says through `honoured_without_should_stop` whether such a run, which
-# never consults `should_stop`, applies it in full.
+# Stopping rules: a rule bounds a structure-driven run's time through
+# `time_bound` and its generation depth through `generation_bound`, and says
+# through `honoured_without_should_stop` whether those two bounds apply it in
+# full, without the run having to poll `should_stop` after each settled case.
 public time_bound
+public generation_bound
 public honoured_without_should_stop
 
 # Vaccine effect modes: whether a mode's protection can be given a `waning`
