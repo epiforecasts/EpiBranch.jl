@@ -223,7 +223,14 @@ single-route likelihood reads it, taken out of its own exposure.
 
 ```julia
 using EpiNetwork, EpiBranch, Distributions
-state = simulate(ModelSpec(RoutedNetwork(windows); progression); n_initial = 5)
+household = [[2, 3], [1, 3], [1, 2], Int[]]
+community = [[4], Int[], Int[], [1]]
+windows = [
+    RouteWindow(:household; until = (:recovered,), kernel = Exponential(4.0), reach = household),
+    RouteWindow(:community; until = (:recovered,), kernel = Exponential(20.0), reach = community),
+]
+progression = [Transition(:recovered; from = :infection, delay = 6.0, terminal = true)]
+state = simulate(ModelSpec(RoutedNetwork(windows); progression); n_initial = 2)
 data = routed_network_infections(state, RoutedNetwork(windows))
 pairwise_surv_loglik(windows, data)
 ```
