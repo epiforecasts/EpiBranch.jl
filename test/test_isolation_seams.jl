@@ -295,8 +295,9 @@ EpiBranch.infectious_removal_time(f::FixedRemoval, ::Individual) = f.time
         @test EpiBranch.infectious_removal_time(lapsing, Individual(id = 4)) == Inf
 
         # A removal that does not go through `record_removal!`, such as a
-        # custom mortality intervention, has nothing a lapsing schedule could
-        # hand back: its own closing time stands even when wrapped.
+        # custom mortality intervention, has no releasable stretch for a
+        # lapsing schedule to hand back: its own closing time stands even
+        # when wrapped.
         fixed = Scheduled(FixedRemoval(20.0); start_time = 0.0, end_time = 100.0)
         @test EpiBranch.infectious_removal_time(fixed, Individual(id = 5)) == 20.0
     end

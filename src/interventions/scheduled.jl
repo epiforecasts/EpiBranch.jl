@@ -386,17 +386,17 @@ function _reset_unless_in_schedule!(s::Scheduled, ind::Individual, state)
 end
 
 # A schedule that can close again must not let the wrapped intervention's own
-# `infectious_removal_time` speak for it when the permanence it reports only
-# holds for want of a release: an isolation or quarantine with no `duration`
-# reports a removal this way, and the gated per-contact risk already
+# `infectious_removal_time` speak for it when the reported permanence only
+# reflects a missing release: an isolation or quarantine with no `duration`
+# reports a removal this way, but the gated per-contact risk already
 # re-checks `is_active` at every proposal, exactly as it does for a finite
-# `duration`, so the window is left open here too and the schedule's end
-# decides instead. `binding_release` tells that kind of removal apart from one
-# that is permanent on its own terms and has no stretch for a release to lift:
-# isolation and quarantine declare it, a component that never records a
-# releasable stretch does not, and its own answer stands. A schedule that
-# cannot close again has nothing to hand the case back with either way, so it
-# keeps the wrapped intervention's own answer.
+# `duration`. The window stays open, and the schedule's end decides instead.
+# `binding_release` tells that kind of removal apart from one that is
+# permanent on its own terms, with no releasable stretch behind it: isolation
+# and quarantine declare it, a component that never records such a stretch
+# does not, and its own answer stands. A schedule that cannot close again has
+# nothing to hand the case back with either way and keeps the wrapped
+# intervention's own answer.
 function infectious_removal_time(s::Scheduled, ind::Individual)
     s.can_lapse && binding_release(s.intervention) && return Inf
     return infectious_removal_time(s.intervention, ind)
