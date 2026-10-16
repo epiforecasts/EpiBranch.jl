@@ -877,8 +877,8 @@ end
 
 # A dose given to a pending, still-uninfected member of a continuous-time race
 # (household, network, routed network) is recorded on it before its own
-# infection is settled, against a window assumed open and, for
-# `_abort_infection!`, with nothing yet to check against
+# infection is settled, with the window assumed open and, for
+# `_abort_infection!`, nothing yet to check against
 # (`contact.infection_time` is still `NaN`, so it does not draw). Once the
 # race settles that member's infection, this reconsiders both against the
 # now-final exposure: a dose the window turns out not to cover is withdrawn

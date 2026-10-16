@@ -196,8 +196,8 @@ In practice:
   infection time, which is not yet drawn, and must not change a case already
   settled. Group and ring vaccination both declare it: ring vaccination
   admits a dose for a contact not yet exposed as though any
-  `eligibility_window` were open, and withdraws it, through
-  `EpiBranch.on_infection_settled!`, once that contact's own infection
+  `eligibility_window` were open, and withdraws it through
+  `EpiBranch.on_infection_settled!` once that contact's own infection
   settles and the window turns out not to cover it.
   [`MassVaccination`](@ref) does not declare it: its rollout vaccinates each
   contact a case makes, which on these models would mean offering a dose to the whole

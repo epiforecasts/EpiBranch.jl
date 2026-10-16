@@ -88,9 +88,9 @@ Interventions on this process:
   a household member's own infection before onset. A capacity limit is one
   budget shared by all households, renewed every `period` days of the
   outbreak. `RingVaccination`'s `eligibility_window` admits a household
-  member's dose before their own infection time is known, and withdraws it,
-  freeing any capacity it used, once that infection settles and the window
-  turns out not to cover it.
+  member's dose before their own infection time is known, and withdraws it
+  once that infection settles and the window turns out not to cover it,
+  freeing any capacity it used.
 - A removal `Transition` in the progression always applies.
 
 Limits:
