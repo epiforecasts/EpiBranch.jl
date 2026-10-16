@@ -71,11 +71,13 @@ The model's answer depends only on its offspring distribution and matches
     `extinction_probability`, `epidemic_probability`, `proportion_transmission`
     and the `proportion_cases_*` functions also accept a [`ModelSpec`](@ref).
     They apply an intervention only if it declares a closed-form effect on the
-    offspring distribution through `EpiBranch.analytic_offspring_effect`, and
-    no built-in intervention does yet. For a spec with isolation, contact
-    tracing or vaccination they throw an error. Call them on the process itself
-    for the outbreak without interventions. For the chance of containing an
-    outbreak under interventions, simulate the model and use
+    offspring distribution through `EpiBranch.analytic_offspring_effect`.
+    [`MassVaccination`](@ref) has one when its campaign is already complete
+    before the simulation starts; isolation, contact tracing and a
+    still-ongoing rollout have none, and a spec holding one of those throws an
+    error. Call them on the process itself for the outbreak without
+    interventions. For the chance of containing an outbreak under
+    interventions, simulate the model and use
     [`containment_probability`](@ref), as in
     [Isolation and contact tracing](interventions.md).
     `chain_size_distribution` is different: given a model with interventions,

@@ -428,3 +428,38 @@ end
     )
     @test wrapped.state[:infection_aborted_time] == 3.0
 end
+
+@testset "MassVaccination coverage declines without redrawing" begin
+    mv = MassVaccination(efficacy = 0.9, eligibility_time = 0.0, coverage = 0.5)
+    state = EpiBranch.new_state(
+        BranchingProcess(Poisson(1.0), Exponential(5.0)),
+        EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(3)
+    )
+    candidates = [Individual(id = i, state = Dict{Symbol, Any}()) for i in 1:200]
+    append!(state.individuals, candidates)
+
+    EpiBranch.apply_actions!(mv, state, candidates)
+    first_round = Set(ind.id for ind in candidates if is_vaccinated(ind))
+    # Half of 200 candidates, up to the sampling noise of a fair coin.
+    @test 70 < length(first_round) < 130
+
+    # Asking again does not redraw a coin for anyone who already declined.
+    for _ in 1:10
+        EpiBranch.apply_actions!(mv, state, candidates)
+    end
+    @test Set(ind.id for ind in candidates if is_vaccinated(ind)) == first_round
+
+    # Full coverage keeps the previous, deterministic behaviour.
+    full = MassVaccination(efficacy = 0.9, eligibility_time = 0.0)
+    full_candidates = [Individual(id = i, state = Dict{Symbol, Any}()) for i in 1:20]
+    append!(state.individuals, full_candidates)
+    EpiBranch.apply_actions!(full, state, full_candidates)
+    @test all(is_vaccinated, full_candidates)
+
+    # No coverage vaccinates nobody.
+    none = MassVaccination(efficacy = 0.9, eligibility_time = 0.0, coverage = 0.0)
+    none_candidates = [Individual(id = i, state = Dict{Symbol, Any}()) for i in 1:20]
+    append!(state.individuals, none_candidates)
+    EpiBranch.apply_actions!(none, state, none_candidates)
+    @test !any(is_vaccinated, none_candidates)
+end
