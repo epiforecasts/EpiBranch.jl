@@ -88,11 +88,12 @@ Interventions on this process:
   a household member's own infection before onset. A capacity limit is one
   budget shared by all households, renewed every `period` days of the
   outbreak.
+- `MassVaccination` doses every household's members before its own race
+  starts, needing no household membership at all.
 - A removal `Transition` in the progression always applies.
 
 Limits:
 
-- `MassVaccination` is not supported.
 - `RingVaccination` needs `eligibility_window = Inf`, because a household
   member's own infection time is not yet known when the dose is decided.
 - Existing protection can instead be given through `transmission_traits`, a

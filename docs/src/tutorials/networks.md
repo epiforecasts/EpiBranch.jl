@@ -169,7 +169,7 @@ characteristics attach in the same way whatever the source of the graph.
 | Individual differences in susceptibility or infectiousness | Multiply the rate of infecting contacts along each of that person's links by the person's factor. |
 | [`ContactTracing`](@ref) | Traces a case's contacts in the network and quarantines them ([below](#Contact-tracing-on-a-network)). |
 | [`RingVaccination`](@ref), [`GroupVaccination`](@ref) | Supported, including delays to vaccination and capacity limits, with the limits in the box below. |
-| [`MassVaccination`](@ref) | Not supported on networks. |
+| [`MassVaccination`](@ref) | Supported: it doses the whole population before the race starts, needing no contacts. |
 
 Protection that people already have before the outbreak, such as prior
 immunity, can be given as a population characteristic, through a
@@ -178,9 +178,6 @@ contact-interval distribution that depends on who is in contact with whom (see
 your own (see [Extending EpiBranch](extending.md)).
 
 !!! warning "Limits on interventions on a network"
-    - Mass vaccination is not supported. When a model has an intervention that
-      the network cannot apply, `simulate` warns and runs as if that
-      intervention were absent.
     - Ring vaccination works only without an `eligibility_window` (the
       default). Checking whether a contact was exposed recently enough needs
       their infection time, which is not yet known when they are vaccinated.
