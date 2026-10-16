@@ -25,8 +25,8 @@ import EpiBranch: new_state, add_individuals!, apply_observation!,
 import EpiBranch: _infection_layer_columns, _infection_layer_fields,
     _layer_host_times
 # The within-household person-time calculation reads each intervention's own
-# removed stretches and the fraction of transmission each blocks, rather than
-# assuming every recorded stretch blocks transmission completely.
+# removed stretches together with the fraction of transmission each one
+# blocks.
 import EpiBranch: removal_gap_host_times, removal_block_fraction, removal_stretches
 # The pairwise survival likelihood works for any contact structure and lives in
 # EpiBranch, which handles a household population through `contact_structure`.

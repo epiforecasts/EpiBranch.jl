@@ -200,8 +200,8 @@ binding_release(::Isolation) = true
 # Perfect isolation (`post_isolation_transmission == 0`) with no release has
 # one stretch and no release, which the infectious window holds instead (see
 # `infectious_removal_time`), so there is nothing extra to read back. Any
-# other isolation — leaky, finite, or both — hands transmission back in full
-# or in part rather than closing the window, and so needs its stretch read by
+# other isolation, leaky, finite, or both, hands transmission back in full or
+# in part rather than closing the window, and needs its stretch read by
 # anything that otherwise assumes the case transmits throughout;
 # `removal_block_fraction` tells such a reader how much of it to count as
 # blocked.

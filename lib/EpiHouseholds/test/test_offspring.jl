@@ -326,9 +326,9 @@ end
         r_perfect = rstar(isolated(0.0))
         r_leaky = rstar(isolated(0.5))
         @test r_perfect < r_leaky < r_none
-        # Roughly halfway between the two extremes, not close to either one,
-        # which is what it would be if the leaky stretch were left out
-        # (close to `r_none`) or subtracted in full (close to `r_perfect`).
+        # Roughly halfway between the two extremes rather than close to
+        # either: leaving the leaky stretch out entirely would put it near
+        # `r_none`, and subtracting it in full would put it near `r_perfect`.
         midpoint = (r_perfect + r_none) / 2
         @test r_leaky ≈ midpoint rtol = 0.2
     end

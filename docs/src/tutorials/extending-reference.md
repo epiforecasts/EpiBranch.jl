@@ -545,8 +545,8 @@ blocking it outright, names the same key but also overrides
 [`EpiBranch.removal_block_fraction`](@ref EpiBranch.removal_block_fraction),
 which defaults to 1 (the whole stretch blocked). `household_offspring` weights
 each recorded stretch by this fraction when it works out a case's
-community-infectious person-time, so a leaky removal cuts that time only
-partly rather than not at all or completely.
+community-infectious person-time, so a leaky removal only partly cuts that
+time.
 
 The one part for which naming no key is right is one that holds another
 intervention and can withdraw its block partway through a recorded stretch: a
