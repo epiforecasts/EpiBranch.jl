@@ -335,8 +335,8 @@ end
 
     @testset "two leaky isolations sharing a key cannot be reconciled" begin
         # Both components here record under the reserved
-        # `REMOVAL_STRETCHES_KEY`, merging their stretches before
-        # `household_offspring` ever sees them, so there is no way to tell
+        # `REMOVAL_STRETCHES_KEY`, so their stretches merge before
+        # `household_offspring` ever sees them. There is then no way to tell
         # how much of the merged stretch each one's fraction should apply to.
         prog = [
             Transition(:onset; from = :infection, delay = 1.0),

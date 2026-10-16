@@ -527,9 +527,10 @@ end
 # intervention is leaky, such as `Isolation` with `post_isolation_transmission
 # > 0`). Two components that write the same key merge their stretches into
 # one before this ever reads them (see `record_removal!`), so a second
-# component naming a key already seen contributes no fraction of its own: one
-# with a different fraction cannot be reconciled after that merge, since
-# nothing says which part of the merged stretch is whose.
+# component naming a key already seen contributes no fraction of its own.
+# If its fraction differs from the first, the two can no longer be
+# reconciled, because nothing records which part of the merged stretch
+# belongs to which component.
 function _removal_gap_fractions(interventions)
     pairs = Pair{Symbol, Float64}[]
     for component in interventions
