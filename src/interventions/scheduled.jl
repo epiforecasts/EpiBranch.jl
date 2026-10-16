@@ -55,12 +55,9 @@ isolation on day 11, is isolated after all, even though they were infected
 before the policy began.
 
 Isolation and quarantine already in place end when the schedule ends (after
-`end_time`, or once `condition` returns `false`). The exception is the
-mass-action, network and household models, where a perfect isolation
-(`post_isolation_transmission = 0`) with no end (`duration = Inf`), or a
-quarantine with no end, keeps the case out of transmission for good.
-Only protection the
-intervention keeps, such as vaccination, continues (see
+`end_time`, or once `condition` returns `false`), whatever `duration` they
+were given, on every transmission model. Only protection the intervention
+keeps, such as vaccination, continues (see
 [`persistent_competing_risks`](@ref EpiBranch.persistent_competing_risks)).
 Everyone still records the intervention's starting information, such as "not
 isolated", before it starts.
@@ -388,10 +385,22 @@ function _reset_unless_in_schedule!(s::Scheduled, ind::Individual, state)
     return nothing
 end
 
-# `infectious_removal_time` comes from `InterventionWrapper`, which narrows it
-# for a schedule that can close: see `removal_gap_host_times` below. A case
-# whose isolation or quarantine was undone by `_reset_unless_in_schedule!`
-# above reads back as never isolated, so it is not removed either.
+# A schedule that can close again must not let the wrapped intervention's own
+# `infectious_removal_time` speak for it when the reported permanence only
+# reflects a missing release: an isolation or quarantine with no `duration`
+# reports a removal this way, but the gated per-contact risk already
+# re-checks `is_active` at every proposal, exactly as it does for a finite
+# `duration`. The window stays open, and the schedule's end decides instead.
+# `binding_release` tells that kind of removal apart from one that is
+# permanent on its own terms, with no releasable stretch behind it: isolation
+# and quarantine declare it, a component that never records such a stretch
+# does not, and its own answer stands. A schedule that cannot close again has
+# nothing to hand the case back with either way and keeps the wrapped
+# intervention's own answer.
+function infectious_removal_time(s::Scheduled, ind::Individual)
+    s.can_lapse && binding_release(s.intervention) && return Inf
+    return infectious_removal_time(s.intervention, ind)
+end
 
 """
     persistent_competing_risks(intervention) -> Bool

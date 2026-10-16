@@ -18,6 +18,14 @@ function EpiBranch.competing_risk(::ReopeningWard, parent, contact, state)
 end
 EpiBranch.risk_applies(::ReopeningWard, route) = true
 
+# A removal unrelated to isolation or quarantine, closing the window at a
+# fixed time with no `record_removal!` stretch behind it, used below to check
+# that a lapsing `Scheduled` leaves such a removal alone.
+struct FixedRemoval <: EpiBranch.AbstractIntervention
+    time::Float64
+end
+EpiBranch.infectious_removal_time(f::FixedRemoval, ::Individual) = f.time
+
 @testset "Isolation trait seams" begin
     clinical = clinical_presentation(
         incubation_period = LogNormal(1.5, 0.5),
@@ -274,17 +282,24 @@ EpiBranch.risk_applies(::ReopeningWard, route) = true
         lapsing = Scheduled(perfect; start_time = 0.0, end_time = 10.0)
         @test EpiBranch.infectious_removal_time(lapsing, case) == Inf
 
-        # A removal with no release of its own leaves nothing for either side
-        # to hand back, so the same lapsing wrapper still narrows its window —
-        # the conservative answer for a block it genuinely cannot speak for.
+        # A removal with no release of its own still has the schedule to hand
+        # the case back: the window stays open so the schedule's own end, not
+        # the isolation's start, decides when transmission resumes.
         permanent_case = Individual(id = 2)
         set_isolated!(permanent_case, 8.0; release_time = Inf)
         lapsing_permanent = Scheduled(permanent; start_time = 0.0, end_time = 10.0)
-        @test EpiBranch.infectious_removal_time(lapsing_permanent, permanent_case) == 8.0
+        @test EpiBranch.infectious_removal_time(lapsing_permanent, permanent_case) == Inf
 
         # A host no removal reached has no permanent removal to narrow to.
         @test EpiBranch.permanent_removal_time(Individual(id = 3)) == Inf
         @test EpiBranch.infectious_removal_time(lapsing, Individual(id = 4)) == Inf
+
+        # A removal that does not go through `record_removal!`, such as a
+        # custom mortality intervention, has no releasable stretch for a
+        # lapsing schedule to hand back: its own closing time stands even
+        # when wrapped.
+        fixed = Scheduled(FixedRemoval(20.0); start_time = 0.0, end_time = 100.0)
+        @test EpiBranch.infectious_removal_time(fixed, Individual(id = 5)) == 20.0
     end
 
     @testset "A lapsed isolation lets the case go again, on every engine" begin
@@ -349,6 +364,53 @@ EpiBranch.risk_applies(::ReopeningWard, route) = true
         secondary = [ind for ind in gen_state.individuals if ind.parent_id != 0]
         @test length(secondary) == 1
         @test is_infected(only(secondary))
+    end
+
+    @testset "A scheduled isolation with no duration still ends with the schedule" begin
+        # Isolated on day 4 with no `duration` of its own, under a schedule
+        # that ends on day 10. A contact at day 7 falls inside the schedule's
+        # window and is blocked; one at day 15 falls after the schedule ends
+        # and should go through, exactly as it would with a finite duration
+        # that happened to release the case before day 15. Before the fix,
+        # the continuous-time window closed for good at the isolation's own
+        # start, missing both the release and the later contact.
+        prog = [Transition(:recovered; from = :infection, delay = 30.0, terminal = true)]
+        attrs = clinical_presentation(incubation_period = Dirac(3.0))
+        iso = Scheduled(
+            Isolation(onset_to_isolation_delay = Dirac(1.0), duration = Inf);
+            start_time = 0.0, end_time = 10.0
+        )
+
+        rng = StableRNG(1)
+        state = EpiBranch.new_state(
+            BranchingProcess(Dirac(1), Dirac(15.0)), prog, attrs, rng
+        )
+        EpiBranch.add_individuals!(state, 2, [iso])
+        EpiBranch._sellke_race!(
+            state, [1, 2], rng; from = :infection, until = (:recovered,),
+            interventions = [iso],
+            targets = (inf, st) -> inf == 1 && !is_infected(st.individuals[2]) ?
+                ((2, Dirac(15.0)),) : (),
+            seed! = (best, members, r) -> (best[1] = 0.0)
+        )
+        @test isolation_time(state.individuals[1]) == 4.0
+        @test isolation_release_time(state.individuals[1]) == Inf
+        @test is_infected(state.individuals[2])
+
+        inside_rng = StableRNG(1)
+        inside = EpiBranch.new_state(
+            BranchingProcess(Dirac(1), Dirac(7.0)), prog, attrs, inside_rng
+        )
+        EpiBranch.add_individuals!(inside, 2, [iso])
+        EpiBranch._sellke_race!(
+            inside, [1, 2], inside_rng; from = :infection, until = (:recovered,),
+            interventions = [iso],
+            targets = (inf, st) -> inf == 1 && !is_infected(st.individuals[2]) ?
+                ((2, Dirac(7.0)),) : (),
+            seed! = (best, members, r) -> (best[1] = 0.0)
+        )
+        @test isolation_time(inside.individuals[1]) == 4.0
+        @test !is_infected(inside.individuals[2])
     end
 
     @testset "A schedule that never lapses still hands the case back" begin
