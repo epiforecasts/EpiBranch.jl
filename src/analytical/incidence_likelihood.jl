@@ -117,7 +117,7 @@ needs a generation time in weeks).
 
 Returns a `(mean, cov)` named tuple: `mean[t]` is the expected count at step
 `t`, and `cov` is their `n × n` covariance matrix, both ignoring susceptible
-depletion (see [`loglikelihood`](@ref) for the likelihood this feeds and its
+depletion (see `loglikelihood` for the likelihood this feeds and its
 limits). Matching a `MvNormal(mean, cov)`
 or a moment-matched lognormal to these is what the `NormalApproximation`
 and `LognormalApproximation` of that likelihood do; call this directly for
@@ -153,7 +153,7 @@ end
 """
     IncidenceApproximation
 
-How [`loglikelihood(::IncidenceCounts, ::Distribution)`](@ref) turns the
+How `loglikelihood(::IncidenceCounts, ::Distribution)` turns the
 mean and covariance from [`incidence_moments`](@ref) into a likelihood:
 [`NormalApproximation`](@ref) matches a multivariate normal, and
 [`LognormalApproximation`](@ref) a multivariate lognormal. Dispatch on a new
