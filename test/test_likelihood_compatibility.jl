@@ -178,6 +178,14 @@ EpiBranch.has_effect(::_WithdrawingShield) = true
         @test withdrawn(quarantine) == (EpiBranch.REMOVAL_STRETCHES_KEY,)
         @test withdrawn(flagging) == ()
 
+        source_quarantine = SourceTracing(
+            probability = 0.5, isolation_to_trace_delay = Exponential(1.0),
+            action = Quarantine(duration = 5.0)
+        )
+        # `SourceTracing` withdraws the same shared key as `ContactTracing`,
+        # for the same reason.
+        @test withdrawn(source_quarantine) == (EpiBranch.REMOVAL_STRETCHES_KEY,)
+
         # A schedule that can lapse withdraws the inner removal's key instead
         # of naming it, since closing the window part-way through a stretch
         # means the record no longer shows when the block ended; one that

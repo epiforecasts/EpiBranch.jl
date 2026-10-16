@@ -376,7 +376,7 @@ end
         )
 
         # `MassVaccination` declares `acts_on_population`, so the pool offers
-        # it every member before the race starts, whether or not it names
+        # it to every member before the race starts, whether or not it names
         # contacts; it warns about nothing and doses the population.
         mass = ModelSpec(
             HomogeneousProcess(; transmission_rate = 1.5, population_size = 200);

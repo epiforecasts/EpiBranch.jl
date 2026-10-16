@@ -46,25 +46,26 @@ underscore are internal.
 | `:sex` | `Symbol` | — | `demographics` | Creation |
 | `:group` | `Int` | — | `groups` | Creation |
 | `:household` | `Int` | — | `HouseholdProcess` | Creation |
-| `:isolated` | `Bool` | `false` | `Isolation`, `ContactTracing`'s `Quarantine` | `resolve_individual!` / `apply_trace!` |
-| `:isolation_time` | `Float64` | `Inf` | `Isolation`, `ContactTracing`'s `Quarantine` | `resolve_individual!` / `apply_trace!` |
-| `:isolation_release_time` | `Float64` | `Inf` | `Isolation`, `ContactTracing`'s `Quarantine` | `resolve_individual!` / `apply_trace!`; when the block ends |
+| `:isolated` | `Bool` | `false` | `Isolation`, `ContactTracing`/`SourceTracing`'s `Quarantine` | `resolve_individual!` / `apply_trace!` |
+| `:isolation_time` | `Float64` | `Inf` | `Isolation`, `ContactTracing`/`SourceTracing`'s `Quarantine` | `resolve_individual!` / `apply_trace!` |
+| `:isolation_release_time` | `Float64` | `Inf` | `Isolation`, `ContactTracing`/`SourceTracing`'s `Quarantine` | `resolve_individual!` / `apply_trace!`; when the block ends |
 | `:_removal_stretches` | `Vector{Tuple{Float64,Float64}}` | `[]` | `set_isolated!` | Internal. Every `(start, release)` a removal took the person out for, merged and sorted; a release of `Inf` for one that never ends |
-| `:_quarantine_stretches` | `Vector{Tuple{Float64,Float64}}` | `[]` | `ContactTracing`'s `Quarantine` | `apply_trace!`; internal. The quarantine's own stretches, apart from the shared history |
+| `:_quarantine_stretches` | `Vector{Tuple{Float64,Float64}}` | `[]` | `ContactTracing`/`SourceTracing`'s `Quarantine` | `apply_trace!`; internal. The quarantine's own stretches, apart from the shared history |
 | `:_lapsing_removal_keys` | `Tuple{Vararg{Symbol}}` | `()` | `record_removal!` | Internal. The keys under which a releasing stretch has been recorded, checked against `removal_gap_host_times` when the infection layer is built |
 | `:_isolated_by_isolation` | `Bool` | `false` | `Isolation` | `resolve_individual!`; internal |
-| `:_isolation_unrecorded` | `Bool` | `false` | `Isolation`, `ContactTracing` | `resolve_individual!` / `apply_trace!`; internal. The isolation removes the case from transmission without counting as a detection |
+| `:_isolation_unrecorded` | `Bool` | `false` | `Isolation`, `ContactTracing`/`SourceTracing` | `resolve_individual!` / `apply_trace!`; internal. The isolation removes the case from transmission without counting as a detection |
 | `:_isolation_time_before_isolation` | `Float64` | — | `Isolation` | `resolve_individual!`; internal. The time of an isolation already in place before this one |
 | `:_isolation_release_time_before_isolation` | `Float64` | — | `Isolation` | `resolve_individual!`; internal. The release time of an isolation already in place before this one |
 | `:_isolation_unrecorded_before_isolation` | `Bool` | — | `Isolation` | `resolve_individual!`; internal |
 | `:test_positive` | `Bool` | `false` | `Isolation` | `initialise_individual!` |
-| `:traced` | `Bool` | `false` | `ContactTracing` | `trace_contacts!` |
-| `:quarantined` | `Bool` | `false` | `ContactTracing` | `trace_contacts!` |
+| `:traced` | `Bool` | `false` | `ContactTracing`, `SourceTracing` | `trace_contacts!` |
+| `:quarantined` | `Bool` | `false` | `ContactTracing`, `SourceTracing` | `trace_contacts!` |
 | `:_traced_isolation_time` | `Float64` | `Inf` | `ContactTracing` → `Isolation` | Internal hand-over; may precede onset, so `Isolation` holds it back to onset |
-| `:trace_time` | `Float64` | — | `ContactTracing` | `trace_contacts!` |
+| `:trace_time` | `Float64` | — | `ContactTracing`, `SourceTracing` | `trace_contacts!` |
 | `:_ring_remaining` | `Int` | `0` | `ContactTracing` (`depth > 1`) | `trace_contacts!`; internal |
 | `:_ring_propagated` | `Bool` | `false` | `ContactTracing` (`depth > 1`) | `trace_contacts!`; internal |
 | `:traced_by` | `Int` | — | `ContactTracing` | `trace_contacts!` |
+| `:source_traced_by` | `Int` | — | `SourceTracing` | `trace_contacts!`; the reverse of `:traced_by` (names a *later*-infected node) |
 | `:trace_level` | `Int` | — | `compute_trace_level!` | After the simulation |
 | `:vaccinated[_<label>]` | `Bool` | `false` | `AbstractVaccination` | Creation / when a dose is admitted |
 | `:vaccination_time[_<label>]` | `Float64` | `Inf` | `AbstractVaccination` | When a dose is admitted |
@@ -207,6 +208,13 @@ On a tree the level is exact. On a `NetworkProcess` with cycles it is the
 depth along the path by which the person was last traced, and **not**
 necessarily the shortest distance to the nearest index case; do not read it as
 one.
+
+`:source_traced_by`, which [`SourceTracing`](@ref) sets, is the reverse: the
+case whose own tracing found this person as its infector. It always names a
+*later*-infected node, where `:traced_by` always names an earlier one. The two
+are kept apart rather than sharing a key: merging them would break
+`compute_trace_level!`'s assumption that `:traced_by` never cycles.
+`SourceTracing` never writes `:traced_by`.
 
 ### Naming your own keys
 
