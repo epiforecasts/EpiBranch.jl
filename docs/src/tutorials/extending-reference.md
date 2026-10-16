@@ -795,9 +795,9 @@ infection is not yet final therefore moves earlier whenever a later search
 finds an earlier one, keeping the dose at the group's true earliest trigger
 instead of the first one found. The dose of a person whose infection is final,
 and a dose another vaccination gave, keep their date. Ring vaccination moves
-the same way: a contact's trace can likewise be found earlier from a second
-infector whose own isolation came first, so its dose moves to the earliest
-trace found rather than staying at the first.
+the same way: a contact's trace can be found earlier from a second infector
+whose own isolation came first, so its dose moves to the earliest trace
+found rather than staying at the first.
 
 This moving earlier is itself a method rather than a rule written into the
 intervention. `EpiBranch.may_revise(iv, prior_trigger, new_trigger)` says

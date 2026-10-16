@@ -94,7 +94,7 @@ end
 @testset "A pending contact's ring dose moves earlier when a later infector traces it sooner" begin
     # On a continuous-time race, infectors settle in order of infection, not
     # of isolation: one that is infected later can still isolate, and so
-    # trace a shared contact, earlier than one infected before it. A dose
+    # trace a shared contact earlier than one infected before it. A dose
     # already given from the first trace found must move to a genuinely
     # earlier one found afterwards, for a contact still pending its own
     # infection.
