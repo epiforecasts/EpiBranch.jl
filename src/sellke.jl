@@ -1243,6 +1243,10 @@ function _sellke_race!(
             ind.generation = infector.generation + 1
             ind.chain_id = infector.chain_id
             push!(infector.secondary_case_ids, ind.id)
+            # This pair may have been logged earlier from a non-permanent
+            # block that `recorder` was asked to keep drawing; it infected
+            # after all, so that logged exposure is retracted.
+            _retract_contact!(recorder, infector, ind, state)
             # Only a model with named routes reports one. The single-window
             # shorthand has one window covering the whole model, so its name
             # identifies the model, where `:infection_route` is meant to

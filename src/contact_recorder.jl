@@ -52,8 +52,9 @@ const EXPOSED_CONTACTS_KEY = (:exposed_contacts,)
 
 # Every distinct (infector, contact) pair an `ExposedContactRecorder` has seen
 # blocked, in the order first seen, with the time of that first block and the
-# generation the exposure implies for the contact. That is enough for
-# `contacts` to list each pair once, as an exposure that did not infect.
+# generation the exposure implies for the contact, kept until either
+# `contacts` reads it or the same pair goes on to infect (`_retract_contact!`
+# then drops it, since the pair is no longer one that escaped).
 struct _ExposedContactLog
     pairs::Set{Tuple{Int, Int}}
     events::Vector{Tuple{Int, Int, Float64, Int}}
@@ -63,13 +64,15 @@ _ExposedContactLog() = _ExposedContactLog(Set{Tuple{Int, Int}}(), Tuple{Int, Int
 """
 Logs every distinct infector-contact pair a continuous-time model's race
 blocks, whether or not the block is certain to recur, keeping the time of the
-first block. A blocked community introduction, where the person proposed as
-their own infector stands in for a source outside the population, is not a
-contact between two people and is not logged. Attach one to a
-[`ModelSpec`](@ref) as `recorder = ExposedContactRecorder()`;
-[`contacts`](@ref) then lists each logged pair as an exposure that did not
-lead to infection, the same way it already does for a
-[`BranchingProcess`](@ref).
+first block. A pair logged from a block that is not certain to recur is
+dropped again if the same pair later infects: the block was not this pair's
+last outcome, so it is no longer an exposure that escaped. A blocked community
+introduction, where the person proposed as their own infector stands in for a
+source outside the population, is not a contact between two people and is not
+logged. Attach one to a [`ModelSpec`](@ref) as `recorder =
+ExposedContactRecorder()`; [`contacts`](@ref) then lists each pair still
+logged as an exposure that did not lead to infection, the same way it already
+does for a [`BranchingProcess`](@ref).
 
 Unlike a recorder whose [`records_contacts`](@ref EpiBranch.records_contacts)
 answers `true`, this one never asks the race to keep drawing a pair whose
@@ -87,4 +90,23 @@ function records_contacts(::ExposedContactRecorder, parent, contact, state, t)
         push!(log.events, (parent.id, contact.id, Float64(t), parent.generation + 1))
     end
     return false
+end
+
+# Drops `parent`-`contact` from a recorder's log once that pair infects: a
+# block that was not certain to recur (`records_contacts` is asked about it
+# again) can still be followed by a later, unblocked proposal for the same
+# pair, and the earlier block is then not the exposure's last outcome. A
+# recorder with nothing to retract, including the default, does nothing.
+_retract_contact!(::ContactRecorder, parent, contact, state) = nothing
+
+function _retract_contact!(::ExposedContactRecorder, parent, contact, state)
+    log = get(state.scratch, EXPOSED_CONTACTS_KEY, nothing)
+    log === nothing && return nothing
+    log = log::_ExposedContactLog
+    key = (parent.id, contact.id)
+    key in log.pairs || return nothing
+    delete!(log.pairs, key)
+    idx = findfirst(e -> (e[1], e[2]) == key, log.events)
+    idx === nothing || deleteat!(log.events, idx)
+    return nothing
 end
