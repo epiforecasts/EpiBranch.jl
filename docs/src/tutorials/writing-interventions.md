@@ -101,7 +101,7 @@ many people each case infects](@ref).
 | `risk_applies(iv, route)` | Continuous-time models choosing the risks for a route | The route's `RouteWindow`, or `nothing` for an introduction from outside | `Bool`; default `true` |
 | `standing_block(iv)` | Continuous-time models deciding whether a certain block ends a pair's contacts for good | Nothing | `Bool`; default `false` |
 | `reads_population_state(iv)` | Before a structure-driven model (such as `HouseholdProcess`) decides whether to simulate each household separately or all on one shared clock | Nothing | `Bool`: whether what the intervention does can depend on population-wide quantities such as a running case count or a shared budget (default `true`, the safe choice) |
-| `analytic_offspring_effect(iv, offspring)` | When an analytical function such as [`extinction_probability`](@ref) is called on a `ModelSpec` holding the intervention | The offspring distribution without the intervention | The offspring distribution a case has under the intervention. Without a method the function stops with an error |
+| `analytic_offspring_effect(iv, offspring)`, `analytic_offspring_effect(iv, offspring, spec)` | When an analytical function such as [`extinction_probability`](@ref) is called on a `ModelSpec` holding the intervention | The offspring distribution without the intervention (the three-argument form also receives the `ModelSpec`, for an effect that needs more than the offspring law) | The offspring distribution a case has under the intervention. Without a method of either arity the function stops with an error |
 
 `reads_population_state` covers everything an intervention hands work to: a
 component or function you supply counts towards its owner's answer. A built-in
@@ -116,15 +116,23 @@ component type.
 `analytic_offspring_effect` is for the rare intervention whose effect on the
 offspring distribution is exact in closed form. One that cuts every case's R
 by a fixed proportion `p` turns `NegBin(R, k)` into `NegBin((1 - p) * R, k)`,
-and its method returns that; return a `Poisson` or a negative binomial, the
-forms the analytical functions accept. Most interventions have no such form:
-the effect of isolation on R depends on how its timing overlaps the generation
-time, and `Isolation` has no method. [`extinction_probability`](@ref),
+and its method returns that; return a `Poisson`, a negative binomial, or a
+[`GeneratingFunctionOffspring`](@ref) built from the effect's own generating
+function, the forms the analytical functions accept. [`MassVaccination`](@ref)
+has such a method for a campaign already complete before the simulation
+starts. Most interventions still have no such form: contact tracing's and
+ring and group vaccination's effects depend on who they reach and when, and
+have no method. `Isolation`'s effect on R depends on how its timing overlaps
+the generation time, which is a mixture over the isolation time rather than a
+fixed proportion; it defines the three-argument form to build that mixture
+from the model's generation time and incubation period, and its own docstring
+sets out the limits of this (a custom eligibility rule, say, still has no
+closed form). [`extinction_probability`](@ref),
 [`epidemic_probability`](@ref), [`probability_contain`](@ref) and the other
 [analytical functions](analytical.md) stop with an error on a `ModelSpec` that
-holds an intervention without one, and their error points to simulating the
-model instead. The border closure from [Extending EpiBranch](@ref "A custom
-intervention: closing a border") is one of these.
+holds an intervention with no method of either arity, and their error points
+to simulating the model instead. The border closure from [Extending
+EpiBranch](@ref "A custom intervention: closing a border") is one of these.
 
 !!! note "`apply_post_transmission!` is deprecated"
     Older interventions acted on a whole generation's contacts at once through
@@ -195,9 +203,13 @@ In practice:
 - An intervention's actions reach the continuous-time models only if it
   declares `EpiBranch.continuous_actions(iv) = true`, and then only on a model
   that can name contacts. Such actions must work without knowing a contact's
-  infection time, which is not yet drawn. Group vaccination declares it, and
-  so does ring vaccination when its `eligibility_window` is left at the
-  default. [`MassVaccination`](@ref) does not: its rollout vaccinates each
+  infection time, which is not yet drawn, and must not change a case already
+  settled. Group and ring vaccination both declare it: ring vaccination
+  admits a dose for a contact not yet exposed as though any
+  `eligibility_window` were open, and withdraws it through
+  `EpiBranch.on_infection_settled!` once that contact's own infection
+  settles and the window turns out not to cover it.
+  [`MassVaccination`](@ref) does not declare it: its rollout vaccinates each
   contact a case makes, which on these models would mean offering a dose to the whole
   population not yet infected. The simulation names an intervention it cannot
   honour in a warning, with the hooks it skips, and an intervention of your own

@@ -2,7 +2,9 @@
 step, which `simulate`, `progression_loglik`, the chain-size likelihood and
 `end_of_outbreak_probability` all read directly, rather than splitting the
 same reporting process across a `progression` step and an observation
-model. A model with both stops with an error in `simulate`.
+model. A model can use only one of them: `simulate` stops with an error when
+`PerCaseObservation` finds `:reported` already written by a `Reporting`
+transition.
 
 Two behaviours differ between the two routes. `PerCaseObservation` falls
 back to the infection time when its anchor (`:onset_time` by default) is
