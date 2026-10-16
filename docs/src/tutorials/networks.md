@@ -638,9 +638,10 @@ grid2[argmax(ll2.(grid2))]
 ```
 
 close to the 30-day mean `routes` simulated the community route with. A
-lapsing isolation, such as `iso2` above with a finite `duration`, is taken out
-of each route's exposure the way the simulation applies it: only a route
-whose `until` lists `EpiBranch.INTERVENTION_REMOVAL` loses exposure during the
+lapsing isolation, one with a finite `duration` such as `iso` above
+(`duration = 7.0`) rather than `iso2`'s permanent one, is taken out of each
+route's exposure the way the simulation applies it: only a route whose
+`until` lists `EpiBranch.INTERVENTION_REMOVAL` loses exposure during the
 stretch a case is isolated for, and has it back once released.
 
 !!! warning "Data that stop before the outbreak ends (right-censoring)"
