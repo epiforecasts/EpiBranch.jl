@@ -694,13 +694,11 @@ println("Doses without a limit: $(count(is_vaccinated, state_uncapped.individual
 println("Doses with at most 5 people admitted a day: $(count(is_vaccinated, state_capped.individuals))")
 ```
 
-!!! warning "The limit is on people admitted each day"
-    The simulation offers one case's traced contacts at a time, in the order
-    it settles cases, and charges them to the allowance of the day that case
-    was infected. The doses themselves are dated at each trace plus
-    `dose_delay`, so they can fall on other days than the one whose allowance
-    paid for them. One day can see several times `budget_per_period` doses
-    given: the limit does not cap the doses given per day.
+The simulation offers one case's traced contacts at a time, in the order it
+settles cases, but checks each proposed dose against the allowance of the day
+it is actually dated, whatever day the case making the trace was infected. A
+dose for one day can be admitted before a case settled later asks for an
+earlier day; the allowance for each day still holds across both.
 
 [`capacity_usage`](@ref) reports how much of the allowance a simulated
 outbreak had used, and how much was available, by the time it stopped:
@@ -736,7 +734,8 @@ spends at once, well above `budget_per_period` in a day.
 
 !!! note "Which models support capacity limits"
     On the network and household models, capacity limits work for group
-    vaccination, and for ring vaccination with its default, infinite
-    `eligibility_window`. Mass vaccination does not reach anyone on those models
+    vaccination and for ring vaccination, with any `eligibility_window`: a
+    dose the race withdraws for falling outside the window frees the
+    capacity it used. Mass vaccination does not reach anyone on those models
     at all, with or without a limit, and `simulate` warns that it will have
     no effect. To limit an intervention of your own, see [Capacity limits](@ref).

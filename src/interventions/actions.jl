@@ -82,9 +82,10 @@ end
 
 Propose the intervention's actions for `candidates` and perform those that
 its [`Scheduled`](@ref) and [`CapacityConstrained`](@ref) settings accept.
-Schedules check each action's own day; capacity uses the simulation clock. A
-person turned down may be offered the action again later, with the same
-random draws. The intervention itself leaves out actions already performed.
+Both check each action's own day: a schedule against its start and end, and
+capacity against the budget of the period that day falls in. A person turned
+down may be offered the action again later, with the same random draws. The
+intervention itself leaves out actions already performed.
 """
 function apply_actions!(iv, state, candidates)
     actions = intervention_actions(iv, state, candidates)
@@ -102,42 +103,38 @@ function _admit_actions!(iv::AbstractIntervention, state, actions)
 end
 
 function _action_in_schedule(s::Scheduled, action, state)
-    # Predicates see the proposed action clock; restore the admission clock even
-    # if a user predicate throws. Each simulation owns its state.
-    previous_time = state.max_infection_time
-    try
-        state.max_infection_time = action.time
-        return action.time >= s.start_time && is_active(s, state)
-    finally
-        state.max_infection_time = previous_time
-    end
+    return action.time >= s.start_time && _active_at(s, action.time, state)
 end
 function _admit_actions!(s::Scheduled, state, actions)
     selected = filter(a -> isfinite(a.time) && _action_in_schedule(s, a, state), actions)
     return _admit_actions!(s.intervention, state, selected)
 end
 
+# Each candidate action already names the day its dose would fall on, so it
+# is checked against the budget of the period that day is in, not the clock
+# of whichever case's call proposes it: a dose for day 12 can be committed
+# before a case settled later asks for day 11, and either leaves the other's
+# own day's budget untouched. A period exhausted by an earlier candidate
+# therefore skips to the next-ranked one (`continue`, not `break`), which may
+# fall in a different, still-open period.
 function _admit_actions!(cc::CapacityConstrained, state, actions)
     key = capacity_key(cc.intervention)
     already_used = filter(a -> get(a.individual.state, key, false), actions)
     candidates = filter(a -> !get(a.individual.state, key, false), actions)
     _admit_actions!(cc.intervention, state, already_used)
-    # The usage count scans the whole population, which only a call with
+    # The usage scan covers the whole population, which only a call with
     # someone to admit needs.
     isempty(candidates) && return nothing
     order = sortperm([cc.priority(a.individual, state) for a in candidates]; alg = MergeSort)
-    usage = _capacity_usage(cc, state)
-    used = usage.used
-    admission_key = _capacity_admission_key(key)
+    times = _dose_times(cc, state)
+    extra = Float64[]
     for i in order
-        used + 1 <= usage.available || break
         action = candidates[i]
         get(action.individual.state, key, false) && continue
+        usage = _usage_at(cc, times, extra, action.time)
+        usage.used + 1 <= usage.available || continue
         _admit_actions!(cc.intervention, state, [action])
-        if get(action.individual.state, key, false)
-            action.individual.state[admission_key] = state.max_infection_time
-            used += 1
-        end
+        get(action.individual.state, key, false) && push!(extra, action.time)
     end
     return nothing
 end
@@ -317,12 +314,22 @@ end
 
 function intervention_actions(mv::MassVaccination, state, candidates)
     actions = InterventionAction[]
+    label = dose_label(mv)
     for ind in candidates
-        get(ind.state, _vaccinated_key(dose_label(mv)), false) && continue
+        get(ind.state, _vaccinated_key(label), false) && continue
+        get(ind.state, _coverage_declined_key(label), false) && continue
         time = action_draw!(ind, (mv, :time)) do
             _sample_value(mv.eligibility_time, state.rng, ind)
         end
-        isfinite(time) && push!(actions, dose_action(mv, ind, time))
+        isfinite(time) || continue
+        accepted = action_draw!(ind, (mv, :acceptance)) do
+            _covers(mv.coverage, ind, state.rng)
+        end
+        if accepted
+            push!(actions, dose_action(mv, ind, time))
+        else
+            ind.state[_coverage_declined_key(label)] = true
+        end
     end
     return actions
 end
@@ -343,14 +350,55 @@ function continuous_actions(w::InterventionWrapper)
     return continuous_actions(w.intervention)
 end
 continuous_actions(::GroupVaccination) = true
-# A finite `eligibility_window` needs the candidate's own exposure to check
-# against, which a pending, still-uninfected member of a continuous-time race
-# does not have yet (see `_within_window`). `post_exposure_efficacy` has no
-# such requirement: `on_infection_settled!` reconsiders it once that
-# member's own infection settles, against the exposure the race then knows.
-function continuous_actions(rv::RingVaccination)
-    return rv.eligibility_window isa Real && rv.eligibility_window == Inf
+# `_within_window` treats a pending, still-uninfected member as within any
+# window, so a finite `eligibility_window` admits a dose for one here just as
+# an infinite one would. `on_infection_settled!` reconsiders that dose once
+# the member's own infection settles and its exposure is known, withdrawing
+# it if the window turns out not to cover it, the same way it already
+# reconsiders `post_exposure_efficacy`.
+continuous_actions(::RingVaccination) = true
+
+"""
+    acts_on_population(intervention) -> Bool
+
+Whether this intervention's actions belong to the whole population rather
+than to a case's contacts or group. On a network or household race,
+[`intervention_actions`](@ref) is then called once, before any case settles,
+with every member as a candidate, instead of per settled case. Return `true`
+only if proposing an action needs nothing a case's settlement would supply:
+no infection time, no exposure, no settled state. The default is `false`.
+
+[`MassVaccination`](@ref) declares it: each person's dosing time comes from
+their own `eligibility_time`, not from who infected whom, so the whole
+rollout can be decided upfront. A dose dated later in the simulation still
+protects correctly, because the per-contact competing risk is checked against
+the recorded dose time when a candidate infection is popped, not when it was
+proposed.
+"""
+acts_on_population(::AbstractIntervention) = false
+function acts_on_population(w::InterventionWrapper)
+    return acts_on_population(w.intervention)
 end
+acts_on_population(::MassVaccination) = true
+
+"""
+    needs_contacts(intervention) -> Bool
+
+Whether this intervention's [`continuous_actions`](@ref) need the model to
+name each case's contacts. A network or household race narrows
+`intervention_actions`'s candidates to a case and the people it can still
+reach, through [`supplies_contacts`](@ref EpiBranch.supplies_contacts); the
+homogeneous and mixing models name none, so an intervention that needs them
+is never offered them there. The default is `true`, matching
+[`RingVaccination`](@ref), whose candidates come from walking the contact
+graph. [`GroupVaccination`](@ref) declares `false`: its candidates are a
+case's group, found through its `group_key`, not through any contact.
+"""
+needs_contacts(::AbstractIntervention) = true
+function needs_contacts(w::InterventionWrapper)
+    return needs_contacts(w.intervention)
+end
+needs_contacts(::GroupVaccination) = false
 
 """
     settles_generation_batch(intervention) -> Bool
@@ -461,6 +509,11 @@ function _apply_continuous_actions!(
         # smaller, set of people to visit.
         for iv in interventions
             continuous_actions(iv) || continue
+            # `needs_contacts` rather than `contacts !== nothing` alone, so an
+            # intervention that needs no contacts (`GroupVaccination`) still
+            # runs on a model that names none, even alongside one that does
+            # need them.
+            needs_contacts(iv) && contacts === nothing && continue
             candidates = _continuous_candidates(
                 iv, state, current, members, processed, contacts, pos, traced
             )
@@ -479,5 +532,22 @@ function _apply_continuous_actions!(
     # same round (an admitted dose of `current`'s own being reconsidered by
     # a trigger `current` itself just supplied) still sees it as pending.
     current.state[:_settled] = true
+    return nothing
+end
+
+# Offer every intervention declaring `acts_on_population` its actions once,
+# with every one of `members` as a candidate, before a network or household
+# race processes any of them. An intervention with no `intervention_actions`
+# method of its own contributes nothing, the same as `_apply_continuous_actions!`
+# does for the per-case path.
+function _apply_population_actions!(state, interventions, members)
+    any(acts_on_population, interventions) || return nothing
+    candidates = [state.individuals[id] for id in members]
+    for iv in interventions
+        acts_on_population(iv) || continue
+        actions = intervention_actions(iv, state, candidates)
+        actions === nothing && continue
+        _admit_actions!(iv, state, actions)
+    end
     return nothing
 end

@@ -169,7 +169,7 @@ characteristics attach in the same way whatever the source of the graph.
 | Individual differences in susceptibility or infectiousness | Multiply the rate of infecting contacts along each of that person's links by the person's factor. |
 | [`ContactTracing`](@ref) | Traces a case's contacts in the network and quarantines them ([below](#Contact-tracing-on-a-network)). |
 | [`RingVaccination`](@ref), [`GroupVaccination`](@ref) | Supported, including delays to vaccination and capacity limits, with the limits in the box below. |
-| [`MassVaccination`](@ref) | Not supported on networks. |
+| [`MassVaccination`](@ref) | Supported: it doses the whole population before the race starts, needing no contacts. |
 
 Protection that people already have before the outbreak, such as prior
 immunity, can be given as a population characteristic, through a
@@ -178,13 +178,11 @@ contact-interval distribution that depends on who is in contact with whom (see
 your own (see [Extending EpiBranch](extending.md)).
 
 !!! warning "Limits on interventions on a network"
-    - Mass vaccination is not supported. When a model has an intervention that
-      the network cannot apply, `simulate` warns and runs as if that
-      intervention were absent.
-    - Ring vaccination works only without an `eligibility_window` (the
-      default). Checking whether a contact was exposed recently enough needs
-      their infection time, which is not yet known when they are vaccinated.
-      With a window set, `simulate` warns and ignores the ring vaccination.
+    - Ring vaccination with an `eligibility_window` set vaccinates a contact
+      not yet exposed as though the window were open, since their infection
+      time is not yet known. Once the network settles the contact's
+      infection, it withdraws the dose if the window turns out not to cover
+      it, which frees any capacity the dose had used.
     - Tracing is forward only. It can reach the contacts who had not been
       infected by the time the case was. Contacts infected before the case,
       including the case's own infector, are not reached: backward
@@ -604,6 +602,49 @@ contact with everyone else, is fitted the same way: give the actual
 within-household contacts as the network. On a directed network, the people
 who can infect person `i` are those who list `i` as a contact.
 
+### Fitting several routes
+
+A `RoutedNetwork` model, such as the household-and-community one above, is
+fitted the same way. [`routed_network_infections`](@ref) reads one infectious
+window per route from a simulated outbreak, and `pairwise_surv_loglik(windows,
+data)` evaluates the log-likelihood of a given set of route kernels: survival
+sums every route's hazard, and an infected person's event term sums the
+hazard from every route and every possible infector before taking its log, so
+the household route's estimate is not biased by ignoring the community
+route's contribution, or the other way round.
+
+```@example networks
+truth2 = ModelSpec(RoutedNetwork(routes(not_stopped_by_isolation));
+    progression = [Transition(:recovered; from = :infection, delay = 10.0,
+        terminal = true)])
+data2 = routed_network_infections(
+    simulate(truth2; n_initial = 3, rng = StableRNG(7)), truth2)
+
+# log-likelihood at a candidate community mean, holding the household route
+# at the kernel it was simulated with
+ll2(community_scale) = pairwise_surv_loglik(
+    [
+        RouteWindow(:household; until = not_stopped_by_isolation,
+            kernel = Weibull(1.5, 4.0), reach = hh_adj),
+        RouteWindow(:community; until = stopped_by_isolation,
+            kernel = Exponential(community_scale), reach = comm_adj),
+    ],
+    data2
+)
+grid2 = 15.0:2.5:45.0
+grid2[argmax(ll2.(grid2))]
+```
+
+close to the 30-day mean `routes` simulated the community route with.
+
+`truth2` above has no interventions, so neither route loses exposure to
+isolation here. Had it been simulated with a lapsing isolation instead, one
+with a finite `duration` such as `iso` above (`duration = 7.0`) rather than
+`iso2`'s permanent one, `pairwise_surv_loglik` would take it out of each
+route's exposure the way the simulation applies it: only a route whose
+`until` lists `EpiBranch.INTERVENTION_REMOVAL` loses exposure during the
+stretch a case is isolated for, and has it back once released.
+
 !!! warning "Data that stop before the outbreak ends (right-censoring)"
     If your data stop at a date, pass that date as `followup_end` to
     `network_infections` (or to `NetworkInfections` when you build the data
@@ -622,7 +663,11 @@ who can infect person `i` are those who list `i` as a contact.
     separately. [Fitting a community hazard](@ref) explains why.
 
 !!! warning "What cannot be fitted yet"
-    - Models with several routes (`RoutedNetwork`) have no likelihood yet.
+    - A route kernel that is a [`PairKernel`](@ref), and an intervention that
+      changes susceptibility (such as vaccination) on a `RoutedNetwork`, are
+      not yet represented in the routed likelihood; `loglikelihood(data,
+      model)` stops with an error for such a model, as it does for leaky
+      isolation on `NetworkProcess`.
     - In real data infection times are not observed. They have to be estimated
       together with the parameters, from symptom onsets and the disease
       timeline (data augmentation), as described for [household

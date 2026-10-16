@@ -34,6 +34,16 @@ function test_continuous_vaccine_actions(make_process)
         )
         state = simulate(grouped; rng = StableRNG(23))
         @test count(is_vaccinated, state.individuals) == 2
+
+        # `MassVaccination` declares `acts_on_population`, so it reaches
+        # everybody before the race starts, needing no contacts at all.
+        mv = MassVaccination(efficacy = 1.0, eligibility_time = 0.0)
+        @test EpiBranch._sellke_honours(process, mv)
+        state = simulate(
+            ModelSpec(process; progression, attributes = clinical, interventions = [mv]);
+            rng = StableRNG(24)
+        )
+        @test all(is_vaccinated, state.individuals)
     end
 
     @testset "Post-exposure abort of a dose given while still pending" begin
