@@ -189,3 +189,34 @@ struct ChainLengths
         return new(convert(Vector{Int}, data))
     end
 end
+
+"""
+    IncidenceCounts(data; seeds = 1)
+
+Observed incidence: the number of new cases in each successive time step
+(day, week, or whatever unit `data` is recorded in) of a single outbreak,
+starting one step after the `seeds` index cases. Pass it to `loglikelihood`
+with an offspring distribution and a generation-time distribution, or with a
+model that carries its own, to fit a branching process to a case or
+admission time series without simulating it.
+
+- `data`: the incidence count for each step, in calendar order.
+- `seeds`: the number of index cases introduced at step 0, 1 by default.
+
+# Examples
+
+```julia
+data = IncidenceCounts([1, 2, 4, 5, 9, 12, 18])
+loglikelihood(data, NegBin(1.3, 0.5), LogNormal(1.6, 0.5))
+```
+"""
+struct IncidenceCounts
+    data::Vector{Int}
+    seeds::Int
+    function IncidenceCounts(data::AbstractVector{<:Integer}; seeds::Integer = 1)
+        isempty(data) && throw(ArgumentError("data must be non-empty"))
+        all(x -> x >= 0, data) || throw(ArgumentError("incidence counts must be non-negative"))
+        seeds >= 1 || throw(ArgumentError("seeds must be ≥ 1"))
+        return new(convert(Vector{Int}, data), convert(Int, seeds))
+    end
+end

@@ -3,7 +3,8 @@ module EpiBranch
 using DataFrames
 using Dates
 using Distributions
-using LinearAlgebra: LinearAlgebra, eigvals
+using ForwardDiff
+using LinearAlgebra: LinearAlgebra, Diagonal, Symmetric, eigvals
 using QuadGK
 using Random
 using SpecialFunctions
@@ -125,6 +126,7 @@ include("analytical/cluster_mixed.jl")
 include("analytical/generating_function_offspring.jl")
 include("analytical/isolation_offspring.jl")
 include("analytical/end_of_outbreak_probability.jl")
+include("analytical/incidence_likelihood.jl")
 
 # Distribution wrappers so models work directly with Turing's `~`.
 include("likelihood_dists.jl")
@@ -211,7 +213,9 @@ export proportion_cases_individual, proportion_cases_offspring
 export probability_contain
 
 # Exports — unified inference interface
-export OffspringCounts, ChainSizes, ChainLengths
+export OffspringCounts, ChainSizes, ChainLengths, IncidenceCounts
+export incidence_moments
+export IncidenceApproximation, NormalApproximation, LognormalApproximation
 # Entry points returning a Distribution that wraps a model; use with
 # Turing's `~`. `chain_size_distribution` is already exported above.
 export chain_length_distribution, offspring_distribution

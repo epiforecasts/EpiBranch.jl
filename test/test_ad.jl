@@ -26,6 +26,7 @@ using StableRNGs
     sizes_data = [1, 2, 1, 3, 1, 5, 2]
     lengths_data = [0, 1, 2, 0, 3, 1]
     counts_data = [0, 1, 2, 0, 3, 1, 0]
+    incidence_data = [1, 2, 4, 5, 9, 12, 18]
 
     fdm = central_fdm(5, 1)
     fd_grad(f, x) = first(FiniteDifferences.grad(fdm, f, x))
@@ -68,6 +69,13 @@ using StableRNGs
                 )
             ),
             [0.5], sizes_data
+        ),
+        # Nested automatic differentiation: `incidence_moments` itself calls
+        # ForwardDiff on the calendar-time PGF, so this differentiates
+        # ForwardDiff through ForwardDiff.
+        scenario(
+            (R, d) -> loglikelihood(IncidenceCounts(d), NegBin(R[1], 0.5), LogNormal(1.6, 0.5)),
+            [1.2], incidence_data
         ),
     ]
 

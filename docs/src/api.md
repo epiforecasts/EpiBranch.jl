@@ -349,6 +349,7 @@ contact networks are fitted by a pairwise survival likelihood.
 OffspringCounts
 ChainSizes
 ChainLengths
+IncidenceCounts
 ```
 
 ### Likelihood and fitting
@@ -362,6 +363,7 @@ loglikelihood(OffspringCounts(data), NegBin.(μ, 0.5))  # one distribution per c
 loglikelihood(ChainSizes(data), NegBin(0.8, 0.5))
 loglikelihood(ChainLengths(data), Poisson(0.5))
 loglikelihood(ChainSizes(data), model)   # interventions/observation read from model
+loglikelihood(IncidenceCounts(data), NegBin(0.8, 0.5), LogNormal(1.6, 0.5))
 ```
 
 The dot in `NegBin.(μ, 0.5)` applies `NegBin` to each element of `μ`, like
@@ -388,6 +390,20 @@ exact formula exists, the distribution is estimated by simulation. The
 ```@docs
 chain_length_distribution
 offspring_distribution
+```
+
+### Incidence time-series likelihood
+
+A closed-form, moment-matched likelihood for case or admission counts per
+step (day, week, ...), built from the offspring and generation-time
+distributions rather than simulated. See its "Limits" note for what it
+ignores.
+
+```@docs
+incidence_moments
+IncidenceApproximation
+NormalApproximation
+LognormalApproximation
 ```
 
 ### Observation models
