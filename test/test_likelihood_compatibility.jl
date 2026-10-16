@@ -151,4 +151,40 @@ EpiBranch.has_effect(::_WithdrawingShield) = true
         EpiBranch.record_removal!(standing[1], 2.0, Inf; key = shield_key)
         @test EpiBranch._layer_host_times(mini(standing), bare, ()) == (;)
     end
+
+    @testset "removal_gap_host_times_withdrawn for built-in components" begin
+        withdrawn = EpiBranch.removal_gap_host_times_withdrawn
+        perfect = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = 5.0)
+        leaky = Isolation(
+            onset_to_isolation_delay = Exponential(1.0),
+            post_isolation_transmission = 0.5, duration = 5.0
+        )
+        # Perfect isolation names its own key above; leaky isolation never
+        # reads the shared history back, so it withdraws it instead.
+        @test withdrawn(perfect) == ()
+        @test withdrawn(leaky) == (EpiBranch.REMOVAL_STRETCHES_KEY,)
+
+        quarantine = ContactTracing(
+            probability = 0.5, isolation_to_trace_delay = Exponential(1.0),
+            action = Quarantine(duration = 5.0)
+        )
+        flagging = ContactTracing(
+            probability = 0.5, isolation_to_trace_delay = Exponential(1.0),
+            action = FlagOnly()
+        )
+        # A releasing quarantine's own key already names the days; the shared
+        # history `apply_trace!` also writes is withdrawn rather than read
+        # twice.
+        @test withdrawn(quarantine) == (EpiBranch.REMOVAL_STRETCHES_KEY,)
+        @test withdrawn(flagging) == ()
+
+        # A schedule that can lapse withdraws the inner removal's key instead
+        # of naming it, since closing the window part-way through a stretch
+        # leaves the record unable to say when the block actually ended; one
+        # that cannot close forwards the inner key as named, not withdrawn.
+        lapsing_schedule = Scheduled(perfect; start_time = 0.0, end_time = 10.0)
+        standing_schedule = Scheduled(perfect; start_time = 0.0)
+        @test withdrawn(lapsing_schedule) == (EpiBranch.REMOVAL_STRETCHES_KEY,)
+        @test withdrawn(standing_schedule) == ()
+    end
 end
