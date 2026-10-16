@@ -35,6 +35,7 @@
         )
         @test !EpiBranch.traces_contacts(st)
         @test EpiBranch.traces_source(st)
+        @test EpiBranch.traces_source(Scheduled(st; start_time = 5.0))
 
         ct = ContactTracing(
             probability = 1.0, isolation_to_trace_delay = Exponential(1.0),
