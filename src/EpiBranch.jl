@@ -143,7 +143,7 @@ export TransmissionModel, BranchingProcess, Infectiousness, HomogeneousProcess,
 export Individual, InfectionEpisode, close_episode!, SimulationState
 export SimOpts
 export AbstractStoppingRule, Extinction, MaxCases, MaxGenerations, MaxTime, should_stop
-export AbstractIntervention, Isolation, ContactTracing
+export AbstractIntervention, Isolation, ContactTracing, SourceTracing
 export IsolationEligibility, SymptomaticOnly, AllCases
 export is_eligible_for_isolation
 export TraceEligibility, AlwaysEligible, SymptomaticParent
@@ -165,7 +165,7 @@ export is_active, intervention_time
 export AbstractClinicalTransition, Transition, Reporting, Hospitalisation, Death, Recovery
 export is_terminal, terminal_event, terminal_target, exclusive_probabilities
 export ObservationModel, PerCaseObservation, NoObservation, MinimumSize, observe
-export ContactRecorder, NoContactRecorder
+export ContactRecorder, NoContactRecorder, ExposedContactRecorder
 export single_type_offspring
 
 # Exports — sentinel types

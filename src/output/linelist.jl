@@ -155,9 +155,11 @@ the transmission tree.
 The generation-based models, such as [`BranchingProcess`](@ref), record every
 exposure, whether or not it led to infection. The continuous-time models
 (`HomogeneousProcess`, `MixingProcess`, `NetworkProcess`, `RoutedNetwork`,
-`HouseholdProcess`) record only who infected whom, so every row has
-`infected = true`: a household member or network neighbour who was exposed
-but not infected does not appear.
+`HouseholdProcess`) record only who infected whom by default, so every row
+has `infected = true`: a household member or network neighbour who was
+exposed but not infected does not appear. Attach an
+[`ExposedContactRecorder`](@ref) as the `ModelSpec`'s `recorder` to have such
+a pair listed too, with `infected = false`.
 
 Columns: `from` (`id` of the case), `to` (`id` of the person exposed),
 `infected` (whether that exposure infected them), `generation` (generation of
@@ -199,6 +201,18 @@ function contacts(
                 )
             )
         end
+    end
+    log = get(state.scratch, EXPOSED_CONTACTS_KEY, nothing)
+    log === nothing && return df
+    for (from_id, to_id, t, generation) in (log::_ExposedContactLog).events
+        push!(
+            df,
+            (
+                from = from_id, to = to_id, infected = false,
+                generation = generation, infection_time = t,
+                date_infection = _to_date(reference_date, t),
+            )
+        )
     end
     return df
 end
