@@ -115,6 +115,7 @@ takes and what happens to a traced contact.
 
 ```@docs
 ContactTracing
+SourceTracing
 TraceEligibility
 OnSymptomOnset
 OnLabConfirmation
@@ -534,6 +535,7 @@ EpiBranch.apply_post_transmission!
 EpiBranch.on_infection_settled!
 EpiBranch.trace_contacts!
 EpiBranch.traces_contacts
+EpiBranch.traces_source
 EpiBranch.has_effect
 EpiBranch.supplies_contacts
 EpiBranch.keep_active
