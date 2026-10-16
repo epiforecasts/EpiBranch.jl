@@ -249,7 +249,10 @@ function intervention_actions(rv::RingVaccination, state, candidates)
                 delay = action_draw!(ind, (rv, :delay)) do
                     _sample_value(rv.dose_delay, state.rng, ind)
                 end
-                push!(actions, _revisable_dose_action(rv, ind, trace_t, trace_t + delay))
+                time = trace_t + delay
+                # An earlier date must still follow the dose this one requires.
+                _has_required_dose(rv, ind, time) &&
+                    push!(actions, _revisable_dose_action(rv, ind, trace_t, time))
             end
             continue
         end

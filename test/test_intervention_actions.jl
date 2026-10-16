@@ -128,6 +128,38 @@ end
     @test immunity_time(ind) == 9.0
 end
 
+@testset "An earlier re-trace does not move a dose before the dose it requires" begin
+    state = EpiBranch.new_state(
+        BranchingProcess(Poisson(0.0)),
+        EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
+    )
+    rv = RingVaccination(
+        efficacy = 0.9, dose_delay = 1.0, requires_dose = :prime, dose_label = :boost
+    )
+    a = Individual(id = 1, state = Dict{Symbol, Any}())
+    b = Individual(id = 2, state = Dict{Symbol, Any}())
+    ind = Individual(id = 3, state = Dict{Symbol, Any}(:traced => true))
+    ind.state[EpiBranch._vaccinated_key(:prime)] = true
+    ind.state[EpiBranch._vaccination_time_key(:prime)] = 10.0
+    EpiBranch.initialise_individual!(rv, ind, state)
+    append!(state.individuals, [a, b, ind])
+    members = [1, 2, 3]
+    processed = falses(3)
+    contacts(id, state) = Int[]
+    boost_time = EpiBranch._vaccination_time_key(:boost)
+
+    ind.state[:trace_time] = 20.0
+    processed[1] = true
+    EpiBranch._apply_continuous_actions!(state, a, [rv], members, processed, contacts, nothing, [ind.id])
+    @test ind.state[boost_time] == 21.0
+
+    # A trace at 5 would date the booster at 6, before the prime at 10.
+    ind.state[:trace_time] = 5.0
+    processed[2] = true
+    EpiBranch._apply_continuous_actions!(state, b, [rv], members, processed, contacts, nothing, [ind.id])
+    @test ind.state[boost_time] == 21.0
+end
+
 @testset "Ring vaccination times a dose only from a recorded isolation" begin
     # A traced contact with no `:trace_time` falls back to its isolation, which
     # counts only when the isolation was recorded as a detection.
