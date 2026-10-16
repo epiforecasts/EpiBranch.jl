@@ -298,9 +298,9 @@ function transition_loglik(t::AbstractClinicalTransition, individual)
 end
 
 # A fresh state key for each call's shared draw, distinct from every other
-# group's. Starts with `_` so `linelist` hides it as the bookkeeping it is;
-# `gensym` would do the same job but names its symbol `##exclusive_draw#N`,
-# which `linelist` does not recognise as hidden.
+# group's. Starts with `_` so `linelist` hides it as bookkeeping; `gensym`
+# would do the same job but names its symbol `##exclusive_draw#N`, which
+# `linelist` does not recognise as hidden.
 const _EXCLUSIVE_DRAW_COUNTER = Threads.Atomic{Int}(0)
 function _exclusive_draw_key()
     n = Threads.atomic_add!(_EXCLUSIVE_DRAW_COUNTER, 1)
