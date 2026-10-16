@@ -1,5 +1,5 @@
 `household_offspring` only subtracted isolated time from community
-person-time for complete isolation: `removal_gap_host_times` returned no
+person-time for perfect isolation: `removal_gap_host_times` returned no
 stretch once `post_isolation_transmission` was above zero, so leaky isolation
 left R* close to its value with no isolation at all.
 
