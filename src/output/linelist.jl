@@ -204,13 +204,12 @@ function contacts(
     end
     log = get(state.scratch, EXPOSED_CONTACTS_KEY, nothing)
     log === nothing && return df
-    for (from_id, to_id, t) in (log::_ExposedContactLog).events
-        child = state.individuals[to_id]
+    for (from_id, to_id, t, generation) in (log::_ExposedContactLog).events
         push!(
             df,
             (
                 from = from_id, to = to_id, infected = false,
-                generation = child.generation, infection_time = t,
+                generation = generation, infection_time = t,
                 date_infection = _to_date(reference_date, t),
             )
         )

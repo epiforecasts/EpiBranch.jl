@@ -60,6 +60,17 @@ end
 # The block reads nothing that changes, so a certain one never lifts.
 EpiBranch.standing_block(::FlatBlock) = true
 
+# Blocks every transmission by one named infector, regardless of route: unlike
+# `BlockFrom`, `risk_applies` is left at the default so this also reaches the
+# single-window shorthand, where there is no named route to require.
+struct BlockFromIndividual <: EpiBranch.AbstractIntervention
+    id::Int
+end
+function EpiBranch.competing_risk(b::BlockFromIndividual, parent, contact, state)
+    return parent.id == b.id ? Risk(block_probability = 1.0) : nothing
+end
+EpiBranch.standing_block(::BlockFromIndividual) = true
+
 # The same risk with its arguments typed, as the style guide asks for. The race
 # has to find this method as readily as the untyped one above.
 struct TypedBlock <: EpiBranch.AbstractIntervention
@@ -889,9 +900,44 @@ end
     @test !is_infected(state.individuals[2])
     log = state.scratch[EpiBranch.EXPOSED_CONTACTS_KEY]
     @test length(log.events) == 1
-    from_id, to_id, t = only(log.events)
+    from_id, to_id, t, generation = only(log.events)
     @test (from_id, to_id) == (1, 2)
     @test 0.0 <= t <= 100.0
+    @test generation == state.individuals[1].generation + 1
+end
+
+@testset "ExposedContactRecorder captures the generation of an escaped exposure" begin
+    # 1 infects 2 (generation 1), and 2's attempt on 3 is blocked: the escaped
+    # exposure should carry generation 2, the generation 3 would have had if
+    # the block had not stopped it, not the default 0 of someone never
+    # infected.
+    rng = StableRNG(11)
+    prog = [Transition(:recovered; from = :infection, delay = 100.0, terminal = true)]
+    state = EpiBranch.new_state(
+        BranchingProcess(Poisson(1.0), Exponential(1.0)),
+        prog, NoAttributes(), rng
+    )
+    interventions = [BlockFromIndividual(2)]
+    EpiBranch.add_individuals!(state, 3, interventions)
+    targets = function (inf, st)
+        inf == 1 && return ((2, Exponential(1.0)),)
+        inf == 2 && return ((3, Exponential(1.0)),)
+        return ()
+    end
+    EpiBranch._sellke_race!(
+        state, [1, 2, 3], rng; targets,
+        from = :infection, until = (:recovered,), interventions,
+        seed! = (best, members, r) -> (best[1] = 0.0),
+        recorder = EpiBranch.ExposedContactRecorder()
+    )
+    @test is_infected(state.individuals[2])
+    @test state.individuals[2].generation == 1
+    @test !is_infected(state.individuals[3])
+    log = state.scratch[EpiBranch.EXPOSED_CONTACTS_KEY]
+    @test length(log.events) == 1
+    from_id, to_id, t, generation = only(log.events)
+    @test (from_id, to_id) == (2, 3)
+    @test generation == 2
 end
 
 @testset "ExposedContactRecorder logs a block that is not permanent, once" begin

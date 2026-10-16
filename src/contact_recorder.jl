@@ -51,13 +51,14 @@ records_contacts(::ContactRecorder, parent, contact, state, t) = false
 const EXPOSED_CONTACTS_KEY = (:exposed_contacts,)
 
 # Every distinct (infector, contact) pair an `ExposedContactRecorder` has seen
-# blocked, in the order first seen, and the time of that first block — enough
-# for `contacts` to list each pair once, as an exposure that did not infect.
+# blocked, in the order first seen, the time of that first block and the
+# generation the exposure implies for the contact — enough for `contacts` to
+# list each pair once, as an exposure that did not infect.
 struct _ExposedContactLog
     pairs::Set{Tuple{Int, Int}}
-    events::Vector{Tuple{Int, Int, Float64}}
+    events::Vector{Tuple{Int, Int, Float64, Int}}
 end
-_ExposedContactLog() = _ExposedContactLog(Set{Tuple{Int, Int}}(), Tuple{Int, Int, Float64}[])
+_ExposedContactLog() = _ExposedContactLog(Set{Tuple{Int, Int}}(), Tuple{Int, Int, Float64, Int}[])
 
 """
 Logs every distinct infector-contact pair a continuous-time model's race
@@ -81,6 +82,9 @@ function records_contacts(::ExposedContactRecorder, parent, contact, state, t)
     parent.id == contact.id && return false  # a blocked community introduction, not an exposure between two people
     log = get!(_ExposedContactLog, state.scratch, EXPOSED_CONTACTS_KEY)::_ExposedContactLog
     key = (parent.id, contact.id)
-    key in log.pairs || (push!(log.pairs, key); push!(log.events, (parent.id, contact.id, Float64(t))))
+    if key ∉ log.pairs
+        push!(log.pairs, key)
+        push!(log.events, (parent.id, contact.id, Float64(t), parent.generation + 1))
+    end
     return false
 end
