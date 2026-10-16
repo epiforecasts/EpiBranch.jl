@@ -559,10 +559,10 @@ end
 # summing the two keys' durations apart would count that stretch twice. Two
 # groups at different fractions, such as a leaky isolation layered under a
 # full-block quarantine (see `reset!`'s handling of that layering), can still
-# overlap in time, so the groups' own durations are not simply added: a
-# moment covered by both is combined the way independent competing risks
-# are, left unblocked with probability the product of each group's own
-# unblocked fraction.
+# overlap in time. The groups' own durations are then not simply additive: a
+# moment covered by both combines them the way independent competing risks
+# combine, staying unblocked with probability equal to the product of each
+# group's own unblocked fraction.
 function _removal_gap_duration(ind, gap_fractions, opened::Float64, closed::Float64)
     groups = Tuple{Float64, Vector{Tuple{Float64, Float64}}}[]
     for frac in unique(last.(gap_fractions))

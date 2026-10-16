@@ -381,10 +381,10 @@ end
     end
 
     @testset "overlapping stretches at different fractions are not double-counted" begin
-        # A leaky isolation (blocking half of transmission) overlapping a
-        # full-block quarantine: in the four days both apply the quarantine
-        # alone already blocks everything, so the overlap must not add the
-        # isolation's own half on top of it.
+        # A leaky isolation (blocking half of transmission) overlaps a
+        # full-block quarantine for four days. The quarantine alone already
+        # blocks all four days, so the overlap must not add the isolation's
+        # own half on top of it.
         ind = Individual(id = 1)
         EpiBranch.record_removal!(ind, 3.0, 10.0; key = EpiBranch.REMOVAL_STRETCHES_KEY)
         EpiBranch.record_removal!(ind, 6.0, 14.0; key = EpiBranch.QUARANTINE_STRETCHES_KEY)
