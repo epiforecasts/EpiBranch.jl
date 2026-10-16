@@ -342,8 +342,14 @@ end
         EpiBranch._settle_generation!(state, [cc], [confirmed, unrelated], 0)
 
         @test is_vaccinated(confirmed)
-        admission_key = EpiBranch._capacity_admission_key(EpiBranch.capacity_key(gv))
-        @test confirmed.state[admission_key] == 2.0
+        @test confirmed.state[:vaccination_time] == 2.0
+
+        # The dose is billed to the period its own date (2.0) falls in, not
+        # to the period of `unrelated`'s time (50.0).
+        state.max_infection_time = 9.0
+        @test capacity_usage(cc, state).used == 1
+        state.max_infection_time = 59.0
+        @test capacity_usage(cc, state).used == 0
     end
 
     @testset "No triggering case leaves the group unvaccinated" begin

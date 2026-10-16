@@ -292,7 +292,7 @@ end
         @test_throws ArgumentError EpiBranch.capacity_time_key(iso)
     end
 
-    @testset "A dose dated before the period began still uses the call's budget" begin
+    @testset "A dose's own date decides its period, not the call's clock" begin
         rv = RingVaccination(efficacy = 0.9)
         cc = CapacityConstrained(
             rv; budget_per_period = 1.0, period = 1.0,
@@ -303,12 +303,47 @@ end
             EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1)
         )
 
+        # All five doses fall due on day 3, though the call that admits them
+        # runs on day 6.2.
         contacts = [_traced_contact(rv, i, 3.0 + i / 10) for i in 1:5]
         append!(state.individuals, contacts)
         state.max_infection_time = 6.2
         EpiBranch.apply_actions!(cc, state, contacts)
 
         @test count(is_vaccinated, contacts) == 1
+
+        # The admitted dose used day 3's budget, not day 6's.
+        state.max_infection_time = 3.1
+        @test capacity_usage(cc, state).used == 1
+        state.max_infection_time = 6.2
+        @test capacity_usage(cc, state).used == 0
+    end
+
+    @testset "A day's budget binds across calls admitted on different clocks" begin
+        rv = RingVaccination(efficacy = 0.9)
+        cc = CapacityConstrained(
+            rv; budget_per_period = 1.0, period = 1.0,
+            carry_over = false
+        )
+        state = EpiBranch.new_state(
+            BranchingProcess(Poisson(1.0), Exponential(5.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1)
+        )
+
+        # Two different cases are settled on widely separated days, but both
+        # propose a dose dated to day 10: the budget for that single day must
+        # still hold, however far apart the calls that propose it are.
+        first = [_traced_contact(rv, 1, 10.0)]
+        append!(state.individuals, first)
+        state.max_infection_time = 1.0
+        EpiBranch.apply_actions!(cc, state, first)
+        @test count(is_vaccinated, first) == 1
+
+        second = [_traced_contact(rv, 2, 10.5)]
+        append!(state.individuals, second)
+        state.max_infection_time = 50.0
+        EpiBranch.apply_actions!(cc, state, second)
+        @test count(is_vaccinated, second) == 0
     end
 
     @testset "A fractional budget is not rounded up" begin
@@ -466,8 +501,8 @@ end
             EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1)
         )
 
-        # Both calls are charged to the period [10, 15), while the doses they
-        # give are dated from the trace times, well before that period began.
+        # Both doses are dated day 3, inside period [0, 5), though the calls
+        # that admit them run on days 12 and 13, well into a later period.
         first = [_traced_contact(rv, 1, 3.1)]
         append!(state.individuals, first)
         state.max_infection_time = 12.0
@@ -480,6 +515,7 @@ end
         EpiBranch.apply_actions!(cc, state, second)
         @test count(is_vaccinated, second) == 0
 
+        state.max_infection_time = 3.0
         usage = capacity_usage(cc, state)
         @test usage.used == 1
         @test usage.available == 1.0

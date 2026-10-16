@@ -75,7 +75,7 @@ underscore are internal.
 | `:severity_efficacy[_<label>]` | `Float64` | — | `AbstractVaccination` | When a dose is admitted |
 | `:coverage_declined[_<label>]` | `Bool` | `false` | `MassVaccination`, `GroupVaccination` | When a dose is offered and declined |
 | `:infection_aborted_time` | `Float64` | — | Simulation, through `abort_infection!` (for example by `RingVaccination`'s `post_exposure_efficacy`) | Any intervention hook |
-| `:capacity_admission_time_<capacity_key>` | `Float64` | — | `CapacityConstrained` | When an action is admitted |
+| `:capacity_admission_time_<capacity_key>` | `Float64` | — | `CapacityConstrained` | When an action is admitted through the deprecated `apply_post_transmission!` batch hook, which proposes no dated action |
 | `:_settled` | `Bool` | `false` | Simulation (continuous-time action delivery) | Once a case's own round of action discovery has run; internal, read through `is_settled` |
 | `:_intervention_actions` | `Dict` | `Dict()` | Any intervention using the action protocol | `action_draw!`; internal. Each intervention's own draws for this person, so a draw is made once and reread |
 | `:reporting_time` | `Float64` | `Inf` | `Reporting` transition *or* `PerCaseObservation` | `resolve_individual!` / after the simulation; reset to `Inf` by `censor_after_outcome!` if it falls after `:outcome_time` |
@@ -733,15 +733,18 @@ Both put what it returns through the schedule and capacity limits.
 
 `Scheduled` checks the proposed action time before delivery. A condition
 function sees that time as `state.max_infection_time`, with the current case
-count and generation. `CapacityConstrained` uses the simulation's own clock for
-counting admissions. Both orders of the two follow these rules. The budget
-counts admissions, including deliveries dated in the future; it is not a count
-of doses given per calendar day. An intervention using a resource of your own
-defines `capacity_key` and `capacity_time_key` and sets the resource flag only
-after successful delivery. An action on a person who already has that flag
-passes the capacity check without another charge, though the schedule still
-applies. Ring vaccination uses this for protection from an existing dose at a
-new exposure, with the current simulation time as its action time.
+count and generation. `CapacityConstrained` checks the same proposed time
+against the budget of the period it falls in, whatever the clock of the case
+proposing it. Both orders of the two follow these rules. The budget counts
+doses by the day they are actually given, not by when they were admitted; an
+intervention still on the deprecated `apply_post_transmission!` batch hook
+proposes no dated action, so it is counted against the admitting call's own
+clock instead. An intervention using a resource of your own defines
+`capacity_key` and `capacity_time_key` and sets the resource flag only after
+successful delivery. An action on a person who already has that flag passes
+the capacity check without another charge, though the schedule still applies.
+Ring vaccination uses this for protection from an existing dose at a new
+exposure, with the current simulation time as its action time.
 
 Recorded protection follows its effect date even when the delivery schedule is
 no longer active. Vaccination declares this with

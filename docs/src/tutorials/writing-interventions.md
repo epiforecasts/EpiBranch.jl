@@ -695,17 +695,17 @@ to say why.
 per period, such as the doses available or the appointments a clinic can offer.
 Contact tracing itself cannot be limited this way. Your intervention defines `EpiBranch.capacity_key(iv)`, the name of the
 `true`/`false` value recording that a person used the resource, and
-`EpiBranch.capacity_time_key(iv)`, the name of the value recording when. The
-time places use by other interventions within a period when
-`carry_over = false`; actions admitted by `CapacityConstrained` itself use the
-time they were admitted. Ring, group and mass vaccination use their dose-label
-names.
+`EpiBranch.capacity_time_key(iv)`, the name of the value recording when. This
+places usage in the period its date falls in, whichever intervention sharing
+the same capacity gave it. Ring, group and mass vaccination use their
+dose-label names.
 
 Every proposed recipient is known before admission, including group members
 found by searching a whole group. See [Intervention actions](@ref) for how to
 propose actions and the rules on timing. An intervention still on the
-deprecated `apply_post_transmission!` can use the capacity names too, provided
-that method changes only the people it receives.
+deprecated `apply_post_transmission!` proposes no dated action, so a dose it
+gives is placed by the admitting call's own clock instead; it can still use
+the capacity names, provided that method changes only the people it receives.
 
 ## Requiring values on each person
 
@@ -897,10 +897,11 @@ This gives two cases and one dose: only one of the two contacts is protected.
 start_time = 10.0, end_time = 10.0)` gives the same result, because both orders
 check the proposed delivery date and count only doses that go ahead.
 
-Capacity counts decisions to admit actions. In this example the index case is
-processed at time zero, so the dose for day 10 uses the budget available at
-time zero, and `period = 7.0` would not move that charge into the second week.
-The default `period = Inf` gives one budget for the whole simulation.
+Capacity counts a dose against the budget of the day it is dated, not the
+clock of the case that proposes it. Here both contacts' doses are dated day
+10, so they draw on the same budget whatever day the index case was processed
+on; `period = 7.0` would charge the second week, `[7, 14)`, not the first. The
+default `period = Inf` gives one budget for the whole simulation.
 
 ### Proposing actions of your own
 

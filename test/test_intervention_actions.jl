@@ -35,10 +35,18 @@ end
                 for (i, t) in enumerate([9.0, 11.0, 13.0])
         ]
         append!(state.individuals, contacts)
-        EpiBranch.apply_actions!(wrap(AppointmentAction()), state, contacts)
+        iv = wrap(AppointmentAction())
+        EpiBranch.apply_actions!(iv, state, contacts)
         @test [get(i.state, :attended, false) for i in contacts] == [false, true, false]
-        @test contacts[2].state[:capacity_admission_time_attended] == 0.0
         @test state.max_infection_time == 0.0
+
+        # The admitted appointment used the budget of day 11, its own date,
+        # though the call that admitted it ran on day 0.
+        cc = iv isa CapacityConstrained ? iv : iv.intervention
+        state.max_infection_time = 11.0
+        @test capacity_usage(cc, state).used == 1
+        state.max_infection_time = 0.0
+        @test capacity_usage(cc, state).used == 0
     end
 
     state = newstate()
