@@ -487,6 +487,7 @@ function _simulated_person_time(
         recorder = spec.recorder
     )
     state = simulate(sample_spec; rng)
+    _validate_removal_gap_keys(state, sample_spec)
 
     from = something(process.from, infectious_from(spec.progression))
     # A removal that lapses, such as a finite-duration isolation or quarantine,

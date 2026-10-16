@@ -23,7 +23,7 @@ import EpiBranch: new_state, add_individuals!, apply_observation!,
 # The infection layer is built and read out of a simulation by EpiBranch's
 # helpers, which close each case's window where the simulator's race does.
 import EpiBranch: _infection_layer_columns, _infection_layer_fields,
-    _layer_host_times
+    _layer_host_times, _validate_removal_gap_keys
 # The within-household person-time calculation reads each intervention's own
 # removed stretches together with the fraction of transmission each one
 # blocks, merging stretches that different keys record for the same block

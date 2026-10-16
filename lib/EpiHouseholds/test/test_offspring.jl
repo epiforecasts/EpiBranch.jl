@@ -30,6 +30,18 @@ function EpiBranch.resolve_individual!(::DeathAfterOneDay, ind, state)
     return nothing
 end
 
+# A custom intervention that removes a case for a short, lapsing stretch
+# under a key of its own, without naming it through `removal_gap_host_times`
+# or `removal_gap_host_times_withdrawn`, for the forgotten-key test below.
+struct _ForgetfulRemoval <: EpiBranch.AbstractIntervention end
+function EpiBranch.resolve_individual!(::_ForgetfulRemoval, ind, state)
+    EpiBranch.record_removal!(
+        ind, ind.infection_time + 0.1, ind.infection_time + 0.2;
+        key = :_scratch_forgotten_stretches
+    )
+    return nothing
+end
+
 @testset "household_final_size" begin
     β, γ = 0.5, 1 / 4
 
@@ -360,6 +372,20 @@ end
         )
         @test_throws ArgumentError household_offspring(
             spec; global_rate = 0.1, rng = StableRNG(7)
+        )
+    end
+
+    @testset "a removal recorded under an undeclared key is not silently dropped" begin
+        prog = [
+            Transition(:onset; from = :infection, delay = 0.5),
+            Transition(:recovered; from = :infection, rate = γ, terminal = true),
+        ]
+        spec = ModelSpec(
+            HouseholdProcess(fill(5, 10), Exponential(1 / β)); progression = prog,
+            interventions = [_ForgetfulRemoval()]
+        )
+        @test_throws ArgumentError household_offspring(
+            spec; global_rate = λG, n_samples = 100, rng = StableRNG(3)
         )
     end
 
