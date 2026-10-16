@@ -205,6 +205,15 @@ function removal_gap_host_times(iso::Isolation)
     return (REMOVAL_STRETCHES_KEY,)
 end
 
+# Leaky isolation still calls `set_isolated!` for the shared history, so a
+# finite duration can leave a releasing stretch on `REMOVAL_STRETCHES_KEY`
+# with nothing above naming it; declaring it withdrawn here says that is by
+# design, since the leaky block it stands for is never read back anyway.
+function removal_gap_host_times_withdrawn(iso::Isolation)
+    iso.post_isolation_transmission == 0 && return ()
+    return (REMOVAL_STRETCHES_KEY,)
+end
+
 # Leaky isolation's residual block stands in for the removal perfect isolation
 # makes, so it reaches the same routes: those the case is isolated from.
 risk_applies(::Isolation, route) = route !== nothing && INTERVENTION_REMOVAL in route.until
