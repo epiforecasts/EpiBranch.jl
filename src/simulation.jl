@@ -133,7 +133,13 @@ function simulate_once(
         model, sim_opts, interventions, progression, attributes, rng
     )
     _settle_generation!(state, interventions, _seed_cases(state), 0)
-    _run_generations!(model, state, sim_opts, interventions, _as_tuple(interventions))
+    # The tuple's type depends on what the vector holds, so the call below is
+    # resolved at run time; a run with no interventions skips that lookup.
+    if isempty(interventions)
+        _run_generations!(model, state, sim_opts, interventions, ())
+    else
+        _run_generations!(model, state, sim_opts, interventions, Tuple(interventions))
+    end
     apply_observation!(observation, state, rng)
     return state
 end

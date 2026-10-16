@@ -462,9 +462,9 @@ define one method:
   distribution (or anything with a `chain_size_distribution` method). The
   analytical functions then work for your model.
 
-If a model only sometimes has a closed-form law — a multi-type or
+If a model only sometimes has a closed-form law (a multi-type or
 multi-window model, say, or a single-type offspring with no closed-form
-`chain_size_distribution` method — the default
+`chain_size_distribution` method), the default
 [`has_single_type_law`](@ref EpiBranch.has_single_type_law) already handles
 this: it calls `single_type_offspring` and reports `false` when that throws
 or when the result has no `chain_size_distribution` method, so

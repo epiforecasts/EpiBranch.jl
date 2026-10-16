@@ -461,7 +461,8 @@ the one a bare process would use (a `Distribution` for a single-type process, a
 the effect is exact in closed form on its own, and return a law the analytical
 functions take: a `Poisson` or `NegativeBinomial` for a single-type process.
 A population-level reduction of R by a factor `p`, for example, turns
-`NegBin(R, k)` into `NegBin(p * R, k)`.
+`NegBin(R, k)` into `NegBin(p * R, k)`, as [`MassVaccination`](@ref)'s method
+does for a campaign already complete before the simulation starts.
 
 An effect that depends on how the intervention's timing overlaps the
 generation-time distribution has no such form. Isolation's effect on R is one

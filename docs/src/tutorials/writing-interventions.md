@@ -118,9 +118,11 @@ component type.
 offspring distribution is exact in closed form. One that cuts every case's R
 by a fixed proportion `p` turns `NegBin(R, k)` into `NegBin((1 - p) * R, k)`,
 and its method returns that; return a `Poisson` or a negative binomial, the
-forms the analytical functions accept. Most interventions have no such form:
-the effect of isolation on R depends on how its timing overlaps the generation
-time, and `Isolation` has no method. [`extinction_probability`](@ref),
+forms the analytical functions accept. [`MassVaccination`](@ref) has such a
+method for a campaign already complete before the simulation starts. Most
+interventions have no such form: the effect of isolation on R depends on how
+its timing overlaps the generation time, and `Isolation` has no method.
+[`extinction_probability`](@ref),
 [`epidemic_probability`](@ref), [`probability_contain`](@ref) and the other
 [analytical functions](analytical.md) stop with an error on a `ModelSpec` that
 holds an intervention without one, and their error points to simulating the
@@ -202,9 +204,13 @@ In practice:
 - An intervention's actions reach the continuous-time models only if it
   declares `EpiBranch.continuous_actions(iv) = true`, and then only on a model
   that can name contacts. Such actions must work without knowing a contact's
-  infection time, which is not yet drawn. Group vaccination declares it, and
-  so does ring vaccination when its `eligibility_window` is left at the
-  default. [`MassVaccination`](@ref) does not: its rollout vaccinates each
+  infection time, which is not yet drawn, and must not change a case already
+  settled. Group and ring vaccination both declare it: ring vaccination
+  admits a dose for a contact not yet exposed as though any
+  `eligibility_window` were open, and withdraws it through
+  `EpiBranch.on_infection_settled!` once that contact's own infection
+  settles and the window turns out not to cover it.
+  [`MassVaccination`](@ref) does not declare it: its rollout vaccinates each
   contact a case makes, which on these models would mean offering a dose to the whole
   population not yet infected. The simulation names an intervention it cannot
   honour in a warning, with the hooks it skips, and an intervention of your own
