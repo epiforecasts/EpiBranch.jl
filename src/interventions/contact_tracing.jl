@@ -853,6 +853,7 @@ binding_release(::ContactTracing) = true
 removal_gap_host_times(ct::ContactTracing) = removal_gap_host_times(ct.action)
 removal_gap_host_times(::TraceAction) = ()
 removal_gap_host_times(::Quarantine) = (QUARANTINE_STRETCHES_KEY,)
+removal_block_probability(ct::ContactTracing) = removal_block_probability(ct.action)
 
 removal_gap_host_times_withdrawn(ct::ContactTracing) = removal_gap_host_times_withdrawn(ct.action)
 removal_gap_host_times_withdrawn(::TraceAction) = ()

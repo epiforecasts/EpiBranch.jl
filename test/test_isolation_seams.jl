@@ -245,11 +245,13 @@ EpiBranch.infectious_removal_time(f::FixedRemoval, ::Individual) = f.time
 
     @testset "A leaky isolation records its own stretch and keeps its window open" begin
         # Leaky isolation reduces each contact's hazard and removes nobody, so
-        # it has no window to close. The likelihood still needs its stretch
-        # though, recorded under its own key, apart from a complete removal's,
-        # so the two are never merged together. A wrapper that cannot read
-        # stretches must not narrow the window for it either, which would turn
-        # the reduction into a permanent, perfect removal.
+        # it has no window to close. A reader of the recorded stretch, such as
+        # the likelihood or `household_offspring`, needs it apart from a
+        # complete removal's, so the two are never merged together and
+        # `removal_block_probability` says how much of it to weight as
+        # blocked. A wrapper that cannot read stretches must not narrow the
+        # window for it either, which would turn the reduction into a
+        # permanent, perfect removal.
         leaky = Isolation(
             onset_to_isolation_delay = Dirac(1.0), duration = Dirac(7.0),
             post_isolation_transmission = 0.5

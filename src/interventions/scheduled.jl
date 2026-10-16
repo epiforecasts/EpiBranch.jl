@@ -446,6 +446,7 @@ function removal_gap_host_times(s::Scheduled)
     s.can_lapse && return ()
     return removal_gap_host_times(s.intervention)
 end
+removal_block_probability(s::Scheduled) = removal_block_probability(s.intervention)
 
 # A `start_after_cases` count, or a `start_after` trigger, reads state the
 # whole population contributes to; a `start_time`/`end_time`-only schedule

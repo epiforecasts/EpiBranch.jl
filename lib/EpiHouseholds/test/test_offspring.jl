@@ -30,6 +30,18 @@ function EpiBranch.resolve_individual!(::DeathAfterOneDay, ind, state)
     return nothing
 end
 
+# A custom intervention that removes a case for a short, lapsing stretch
+# under a key of its own, without declaring it through `removal_gap_host_times`
+# or `removal_gap_host_times_withdrawn`.
+struct _ForgetfulRemoval <: EpiBranch.AbstractIntervention end
+function EpiBranch.resolve_individual!(::_ForgetfulRemoval, ind, state)
+    EpiBranch.record_removal!(
+        ind, ind.infection_time + 0.1, ind.infection_time + 0.2;
+        key = :_scratch_forgotten_stretches
+    )
+    return nothing
+end
+
 @testset "household_final_size" begin
     β, γ = 0.5, 1 / 4
 
@@ -297,6 +309,116 @@ end
         # and one that lasts the rest of the case's infectious period.
         r_short = rstar(isolated(1.0))
         @test r_inf < r_short < r_none
+    end
+
+    @testset "leaky isolation only partially cuts the community person-time" begin
+        # With `post_isolation_transmission` between 0 and 1 the case keeps
+        # transmitting at a reduced rate while isolated, so the person-time
+        # the offspring law reads should fall only partway between no
+        # isolation and perfect isolation, weighted by the fraction blocked.
+        prog = [
+            Transition(:onset; from = :infection, delay = 1.0),
+            Transition(:recovered; from = :infection, delay = 6.0, terminal = true),
+        ]
+        process() = HouseholdProcess(fill(4, 300), Weibull(1.5, 3.0))
+        isolated(eps) = ModelSpec(
+            process(); progression = prog,
+            interventions = [
+                Isolation(
+                    onset_to_isolation_delay = Exponential(1.0),
+                    eligibility = AllCases(), duration = Inf,
+                    post_isolation_transmission = eps
+                ),
+            ]
+        )
+        rstar(spec) = reproduction_number(
+            household_offspring(spec; global_rate = 0.1, rng = StableRNG(7))
+        )
+        r_none = rstar(isolated(1.0))
+        r_perfect = rstar(isolated(0.0))
+        r_leaky = rstar(isolated(0.5))
+        @test r_perfect < r_leaky < r_none
+        # Roughly halfway between the two extremes rather than close to
+        # either: leaving the leaky stretch out entirely would put it near
+        # `r_none`, and subtracting it in full would put it near `r_perfect`.
+        midpoint = (r_perfect + r_none) / 2
+        @test r_leaky ≈ midpoint rtol = 0.2
+    end
+
+    @testset "two leaky isolations sharing a key cannot be reconciled" begin
+        # Both components here record under the reserved
+        # `REMOVAL_STRETCHES_KEY`, so their stretches merge before
+        # `household_offspring` ever sees them. There is then no way to tell
+        # how much of the merged stretch each one's fraction should apply to.
+        prog = [
+            Transition(:onset; from = :infection, delay = 1.0),
+            Transition(:recovered; from = :infection, delay = 6.0, terminal = true),
+        ]
+        process = HouseholdProcess(fill(4, 10), Weibull(1.5, 3.0))
+        spec = ModelSpec(
+            process; progression = prog,
+            interventions = [
+                Isolation(
+                    onset_to_isolation_delay = Exponential(1.0),
+                    eligibility = AllCases(), duration = Inf,
+                    post_isolation_transmission = 0.5
+                ),
+                Isolation(
+                    onset_to_isolation_delay = Exponential(1.0),
+                    eligibility = AllCases(), duration = Inf,
+                    post_isolation_transmission = 0.2
+                ),
+            ]
+        )
+        @test_throws ArgumentError household_offspring(
+            spec; global_rate = 0.1, rng = StableRNG(7)
+        )
+    end
+
+    @testset "a removal recorded under an undeclared key is not silently dropped" begin
+        prog = [
+            Transition(:onset; from = :infection, delay = 0.5),
+            Transition(:recovered; from = :infection, rate = γ, terminal = true),
+        ]
+        spec = ModelSpec(
+            HouseholdProcess(fill(5, 10), Exponential(1 / β)); progression = prog,
+            interventions = [_ForgetfulRemoval()]
+        )
+        @test_throws ArgumentError household_offspring(
+            spec; global_rate = λG, n_samples = 100, rng = StableRNG(3)
+        )
+    end
+
+    @testset "a quarantine's shared removal key is not double-counted" begin
+        # `ContactTracing`'s `Quarantine` always records its own key and,
+        # through `set_isolated!`, the identical stretch under the default key
+        # too. Summing each key's blocked duration apart would take the same
+        # four days out twice; merging the keys that share a fraction takes
+        # it out once.
+        ind = Individual(id = 1)
+        for key in (EpiBranch.REMOVAL_STRETCHES_KEY, EpiBranch.QUARANTINE_STRETCHES_KEY)
+            EpiBranch.record_removal!(ind, 2.0, 6.0; key)
+        end
+        gap_fractions = [
+            EpiBranch.REMOVAL_STRETCHES_KEY => 1.0,
+            EpiBranch.QUARANTINE_STRETCHES_KEY => 1.0,
+        ]
+        @test EpiHouseholds._removal_gap_duration(ind, gap_fractions, 0.0, 10.0) == 4.0
+    end
+
+    @testset "overlapping stretches at different fractions are not double-counted" begin
+        # A leaky isolation (blocking half of transmission) overlaps a
+        # full-block quarantine for four days. The quarantine alone already
+        # blocks all four days, so the overlap must not add the isolation's
+        # own half on top of it.
+        ind = Individual(id = 1)
+        EpiBranch.record_removal!(ind, 3.0, 10.0; key = EpiBranch.REMOVAL_STRETCHES_KEY)
+        EpiBranch.record_removal!(ind, 6.0, 14.0; key = EpiBranch.QUARANTINE_STRETCHES_KEY)
+        gap_fractions = [
+            EpiBranch.REMOVAL_STRETCHES_KEY => 0.5,
+            EpiBranch.QUARANTINE_STRETCHES_KEY => 1.0,
+        ]
+        @test EpiHouseholds._removal_gap_duration(ind, gap_fractions, 0.0, 20.0) == 9.5
     end
 
     @testset "cases that never become infectious make no contacts" begin

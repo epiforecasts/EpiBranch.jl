@@ -193,14 +193,17 @@ function competing_risk(iso::Isolation, parent, contact, state)
 end
 
 # The likelihood reads the stretch a lapsing isolation removed the host for.
-# A duration of `Inf` leaves no stretch to read, the window closing at the
-# isolation's own start, and the layer records nothing extra for it.
-# A recorded stretch is append-only, so the release it reports binds.
+# Perfect isolation with a duration of `Inf` leaves no stretch to read, the
+# window closing at the isolation's own start instead, and the layer records
+# nothing extra for it. A recorded stretch is append-only, so the release it
+# reports binds.
 binding_release(::Isolation) = true
 
-# Leaky isolation blocks only this fraction of the hazard over its stretches
-# (see `EpiBranch.removal_block_probability`); perfect isolation blocks all
-# of it, the default.
+# Leaky isolation blocks only this fraction of transmission over its
+# stretches (see `EpiBranch.removal_block_probability`); perfect isolation
+# blocks all of it, the default. `household_offspring` (in `EpiHouseholds`)
+# uses this fraction too, to weight a stretch's contribution to a case's
+# community-infectious person-time.
 removal_block_probability(iso::Isolation) = 1.0 - iso.post_isolation_transmission
 
 function removal_gap_host_times(iso::Isolation)

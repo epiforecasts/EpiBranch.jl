@@ -619,10 +619,12 @@ Name the fraction with
 then scales the hazard over the recorded stretch by this fraction instead of
 excluding it, and the hazard of an infection that falls inside one picks up
 the log of the fraction that got through, rather than ruling that infector out
-as a complete removal's stretch does. Two components recording a leaky
-removal under the same key must agree on this fraction; give each its own key
-otherwise, as `Isolation` does (`:_leaky_removal_stretches`, apart from the
-shared `:_removal_stretches`).
+as a complete removal's stretch does. `household_offspring` weights each
+recorded stretch by the same fraction when it works out a case's
+community-infectious person-time, so a leaky removal only partly cuts that
+time. Two components recording a leaky removal under the same key must agree
+on this fraction; give each its own key otherwise, as `Isolation` does
+(`:_leaky_removal_stretches`, apart from the shared `:_removal_stretches`).
 
 ## Custom clinical transitions: further details
 

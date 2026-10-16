@@ -487,13 +487,14 @@ function _simulated_person_time(
         recorder = spec.recorder
     )
     state = simulate(sample_spec; rng)
+    _validate_removal_gap_keys(state, sample_spec)
 
     from = something(process.from, infectious_from(spec.progression))
     # A removal that lapses, such as a finite-duration isolation or quarantine,
-    # does not close the window (see `infectious_removal_time`); it blocks the
-    # isolated stretch per contact instead, which the pairwise likelihood takes
-    # out of the exposure through the same recorded stretches.
-    gaps = get(_layer_host_times(state, sample_spec, (;)), REMOVAL_STRETCHES_KEY, nothing)
+    # does not close the window (see `infectious_removal_time`); the fraction
+    # of transmission it blocks comes out of the exposure here instead,
+    # through the same stretches the intervention recorded.
+    gap_fractions = _removal_gap_fractions(spec.interventions)
     person_time = zeros(length(sample.members))
     for (i, ind) in enumerate(state.individuals)
         is_infected(ind) || continue
@@ -512,26 +513,94 @@ function _simulated_person_time(
                     "listed in the process's `until` states, reached by every case"
             )
         )
-        stretches = gaps === nothing ? () : gaps[i]
-        person_time[ind.state[:household]] += closed - opened -
-            _removed_duration(stretches, opened, closed)
+        removed = _removal_gap_duration(ind, gap_fractions, opened, closed)
+        person_time[ind.state[:household]] += closed - opened - min(removed, closed - opened)
     end
     return person_time
 end
 
-# How much of a case's isolated or quarantined stretches fall inside its
-# community-infectious window. Each stretch is clipped to the window: one
-# starting before it opens or outlasting its close counts only for the part
-# the case would otherwise have spent in the community.
-function _removed_duration(stretches, opened::Float64, closed::Float64)
+# The keys the model's interventions record removal stretches under, paired
+# with the fraction of transmission each stretch blocks (1 unless the
+# intervention is leaky, such as `Isolation` with `post_isolation_transmission
+# > 0`). Two components that write the same key merge their stretches into
+# one before this ever reads them (see `record_removal!`), so a second
+# component naming a key already seen contributes no fraction of its own.
+# If its fraction differs from the first, the two can no longer be
+# reconciled, because nothing records which part of the merged stretch
+# belongs to which component.
+function _removal_gap_fractions(interventions)
+    pairs = Pair{Symbol, Float64}[]
+    for component in interventions
+        frac = removal_block_probability(component)
+        for key in removal_gap_host_times(component)
+            i = findfirst(p -> p.first == key, pairs)
+            if i === nothing
+                push!(pairs, key => frac)
+            elseif pairs[i].second != frac
+                throw(
+                    ArgumentError(
+                        "two interventions record removal stretches under the same key " *
+                            "$(repr(key)) with different `removal_block_probability`s " *
+                            "($(pairs[i].second) and $frac); `household_offspring` cannot " *
+                            "tell apart whose stretch is whose once they are merged. Give " *
+                            "them distinct `removal_gap_host_times` keys instead"
+                    )
+                )
+            end
+        end
+    end
+    return pairs
+end
+
+# How much of `ind`'s community-infectious window its recorded removals take
+# out. Keys sharing a fraction have their stretches merged into a union
+# first, the way `_layer_host_times` merges removal keys for the likelihood:
+# `ContactTracing`'s `Quarantine` always records its own key and, through
+# `set_isolated!`, the identical stretch under the default key too, so
+# summing the two keys' durations apart would count that stretch twice. Two
+# groups at different fractions, such as a leaky isolation layered under a
+# full-block quarantine (see `reset!`'s handling of that layering), can still
+# overlap in time. The groups' own durations are then not simply additive: a
+# moment covered by both combines them the way independent competing risks
+# combine, staying unblocked with probability equal to the product of each
+# group's own unblocked fraction.
+function _removal_gap_duration(ind, gap_fractions, opened::Float64, closed::Float64)
+    groups = Tuple{Float64, Vector{Tuple{Float64, Float64}}}[]
+    for frac in unique(last.(gap_fractions))
+        keys = (key for (key, f) in gap_fractions if f == frac)
+        stretches = reduce(vcat, (removal_stretches(ind, key) for key in keys))
+        push!(groups, (frac, _merge_stretches(sort(stretches; by = first))))
+    end
+    return _combined_removed_duration(groups, opened, closed)
+end
+
+# The window's community-infectious time every group's stretches take out at
+# once, swept between the breakpoints any stretch starts or ends at, clipped
+# to the window. Between two consecutive breakpoints the groups covering that
+# stretch do not change, so the fraction blocked there is fixed and the
+# elapsed time can be weighted by it directly.
+function _combined_removed_duration(groups, opened::Float64, closed::Float64)
+    breakpoints = Float64[opened, closed]
+    for (_, stretches) in groups, (start, release) in stretches
+        push!(breakpoints, clamp(start, opened, closed))
+        push!(breakpoints, clamp(release, opened, closed))
+    end
+    sort!(unique!(breakpoints))
     total = 0.0
-    for (start, release) in stretches
-        lo = clamp(start, opened, closed)
-        hi = clamp(release, opened, closed)
-        total += max(hi - lo, 0.0)
+    for i in eachindex(breakpoints)[1:(end - 1)]
+        lo, hi = breakpoints[i], breakpoints[i + 1]
+        hi > lo || continue
+        mid = (lo + hi) / 2
+        unblocked = 1.0
+        for (frac, stretches) in groups
+            _covers(stretches, mid) && (unblocked *= 1.0 - frac)
+        end
+        total += (hi - lo) * (1.0 - unblocked)
     end
     return total
 end
+
+_covers(stretches, t) = any(((start, release),) -> start <= t < release, stretches)
 
 # The offspring law of a sample of households with the given total
 # community-infectious person-times: a Poisson count per household, averaged

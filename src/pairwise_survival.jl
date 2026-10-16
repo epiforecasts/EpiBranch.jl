@@ -262,6 +262,10 @@ the component records actually reduce transmission by this much. Two
 components naming the same key must agree on this fraction, since the
 likelihood cannot tell their stretches apart once merged; give each its own
 key otherwise.
+
+`household_offspring` (in `EpiHouseholds`) weights each recorded stretch by
+this fraction too, when it works out a case's community-infectious
+person-time.
 """
 removal_block_probability(component) = 1.0
 
