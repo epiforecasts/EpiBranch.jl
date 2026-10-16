@@ -40,13 +40,15 @@ label count against it; use different labels for separate budgets.
 order: both check each action's own proposed date.
 
 !!! note "Supported models"
-    In network and household models, ring and group vaccination can be
-    capacity-limited, but ring vaccination then needs an infinite
-    `eligibility_window`. Mass vaccination does not reach anyone in those
-    models at all, with or without a limit, and `simulate` warns that it will
-    have no effect. It gives the same warning for any other intervention that
-    relies on a hook these models do not call, such as one that reaches its
-    targets only through the deprecated
+    In network and household models, ring and group vaccination can both be
+    capacity-limited, with any `eligibility_window`: a dose a network or
+    household race withdraws for falling outside the window (see
+    [`RingVaccination`](@ref)) counts against no capacity from then on, so
+    the budget it used is available to the next candidate. Mass vaccination
+    does not reach anyone in those models at all, with or without a limit,
+    and `simulate` warns that it will have no effect. It gives the same
+    warning for any other intervention that relies on a hook these models do
+    not call, such as one that reaches its targets only through the deprecated
     [`apply_post_transmission!`](@ref EpiBranch.apply_post_transmission!)
     batch hook, so for a custom intervention the warning is the thing to check.
     The mass-action models,

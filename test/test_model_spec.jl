@@ -265,9 +265,12 @@ end
 
 # A hook whose default is not a no-op: `analytic_offspring_effect` throws, so
 # the warning cannot claim the engine carries on without the intervention.
+# Written at four arguments, one more than either arity the engine calls it
+# with, so it stays a mis-written hook rather than a legitimate three-argument
+# override.
 struct _AnalyticOnly <: AbstractIntervention end
 EpiBranch.initialise_individual!(::_AnalyticOnly, ind, state) = nothing
-EpiBranch.analytic_offspring_effect(::_AnalyticOnly, offspring, state) = offspring
+EpiBranch.analytic_offspring_effect(::_AnalyticOnly, offspring, state, extra) = offspring
 
 # A correct intervention in a module that also holds a variadic helper of a
 # hook's name, and an intervention in the same module with no hooks at all.
@@ -372,14 +375,18 @@ EpiBranch.interventions(m::_ProcessWithInterventions) = m.interventions
     end
 
     @testset "analytical functions refuse to ignore interventions" begin
-        # An intervention without a declared closed-form offspring effect (every
-        # built-in one, Isolation included: its effect on R depends on how its
-        # timing overlaps the generation-time distribution, which has no closed
-        # form here) must make every analytical function on the spec refuse,
-        # rather than silently answer as if it were not there.
+        # An intervention without a declared closed-form offspring effect (most
+        # built-in ones: contact tracing's effect depends on who it reaches and
+        # when, which has no closed form here) must make every analytical
+        # function on the spec refuse, rather than silently answer as if it
+        # were not there. Isolation is not one of these any more — see
+        # `test_analytical.jl` for its own closed form and the limits of it.
         bp = BranchingProcess(NegativeBinomial(2.5, 0.5), Gamma(4.0, 1.25))
-        iso = Isolation(onset_to_isolation_delay = 0.0, duration = Inf)
-        spec = ModelSpec(bp; interventions = [iso])
+        ct = ContactTracing(
+            probability = 0.8, isolation_to_trace_delay = Exponential(1.0),
+            action = Quarantine(duration = 7.0)
+        )
+        spec = ModelSpec(bp; interventions = [ct])
 
         for f in (
                 extinction_probability, epidemic_probability, probability_contain,
@@ -387,7 +394,7 @@ EpiBranch.interventions(m::_ProcessWithInterventions) = m.interventions
                 proportion_cases_individual, proportion_cases_offspring,
                 proportion_cluster_size, spec -> end_of_outbreak_probability(spec, 7.0),
             )
-            @test_throws r"Isolation" f(spec)
+            @test_throws r"ContactTracing" f(spec)
             @test_throws r"from simulated outbreaks, simulate\(spec, n\)" f(spec)
             @test_throws r"probability_contain\(R, k; ind_control, pop_control\)" f(spec)
             @test_throws r"containment_probability\(simulate\(spec, n\)\)" f(spec)

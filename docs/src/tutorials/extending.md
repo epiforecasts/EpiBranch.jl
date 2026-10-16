@@ -343,17 +343,21 @@ Type the state argument as `state::SimulationState`, as above, so your method
 does not clash with the package's default one.
 
 !!! note "Stopping rules on continuous-time models"
-    The network, household, homogeneous and mixing models do not check `should_stop`
-    as they go: they run until transmission dies out or a time limit is
-    reached. A rule
-    that should be able to end such a run also defines
-    [`EpiBranch.time_bound`](@ref)`(rule)`, the latest infection time at which
-    it could still want the simulation to continue, as [`MaxTime`](@ref) does.
-    If reaching that time is all the rule tests, it also declares
-    `EpiBranch.honoured_without_should_stop(rule) = true`; otherwise these
-    models warn that the rule was ignored. A rule that sets a time limit and
-    also tests something else, such as a case count, keeps the default
-    `false`, because only its time limit is applied there.
+    The network, household, homogeneous and mixing models run a
+    continuous-time race rather than stepping by generation. A rule that
+    should end such a run at a time or a generation depth defines
+    [`EpiBranch.time_bound`](@ref)`(rule)` or
+    [`EpiBranch.generation_bound`](@ref)`(rule)`, as [`MaxTime`](@ref) and
+    [`MaxGenerations`](@ref) do; the race applies the bound directly, dropping
+    a case's own proposals past a generation bound rather than waiting to be
+    asked, since cases there settle in time order rather than generation
+    order. If one of these bounds is all the rule tests, it also declares
+    `EpiBranch.honoured_without_should_stop(rule) = true`; otherwise the race
+    polls `should_stop` after each settled case to apply the rest of it, as it
+    does for [`MaxCases`](@ref) and any rule of your own with no bound at all.
+    The `max_cases` and `max_generations` keyword *defaults* have no effect on
+    these models, so an existing run over a large population is not capped
+    unless you ask for it with an explicit value or a `stopping_rules` entry.
 
 ## A custom intervention: closing a border
 

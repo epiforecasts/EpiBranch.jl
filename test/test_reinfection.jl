@@ -76,4 +76,36 @@ using Random
         @test all(length(e.secondary_case_ids) == 1 for e in one.episodes)
         @test all(length(e.secondary_case_ids) == 1 for e in two.episodes)
     end
+
+    @testset "ReportedCases counts each episode's report once" begin
+        # Every infection is reported half a day in, and each ping-pong
+        # exchange reinfects a host, so the count has to find the reports
+        # that reinfections archived.
+        progression = [
+            Reporting(delay = 0.5, from = :infection),
+            Transition(:recovered, from = :infection, delay = 1.0),
+            Transition(:susceptible_again, from = :recovered, delay = 0.0),
+        ]
+        # The schedule only has the gate asked during the run; its isolation
+        # comes too late to stop the exchanges.
+        iso = Isolation(onset_to_isolation_delay = 100.0, duration = Inf)
+        spec = ModelSpec(
+            PingPongModel(); progression,
+            attributes = clinical_presentation(incubation_period = Dirac(0.2)),
+            interventions = [Scheduled(iso; start_after = ReportedCases(3))]
+        )
+        state = simulate(spec; n_initial = 1, stopping_rules = [MaxGenerations(6)])
+        @test any(ind -> !isempty(ind.episodes), state.individuals)
+
+        due(st, clock) = get(st, :reported, false) && st[:reporting_time] <= clock
+        function recount(clock)
+            return sum(state.individuals) do ind
+                count(e -> due(e.state, clock), ind.episodes) + due(ind.state, clock)
+            end
+        end
+        for clock in 0.0:0.25:8.0
+            state.max_infection_time = clock
+            @test EpiBranch._reported_cases_due(state) == recount(clock)
+        end
+    end
 end

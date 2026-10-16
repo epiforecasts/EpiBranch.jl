@@ -1,3 +1,14 @@
+# A component with no recorded stretch of its own, for the unnamed-key tests
+# below. It acts only through `removal_gap_host_times`, not any simulation
+# hook, so `has_effect` is declared true.
+struct _Shield <: EpiBranch.AbstractIntervention end
+EpiBranch.has_effect(::_Shield) = true
+
+# As `_Shield`, but withdrawing the scratch key on purpose instead of naming
+# it.
+struct _WithdrawingShield <: EpiBranch.AbstractIntervention end
+EpiBranch.has_effect(::_WithdrawingShield) = true
+
 @testset "Infection likelihood compatibility" begin
     compatible = EpiBranch.infection_likelihood_compatible
     iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
@@ -98,5 +109,95 @@
         )
         @test EpiBranch._layer_host_time_keys(spec, (:onset_time, :immunity_time)) ==
             [:onset_time, :immunity_time, :immunity_time_boost]
+    end
+
+    @testset "A recorded removal must name its key or be withdrawn" begin
+        shield_key = :_scratch_shield_stretches
+        mini(inds) = SimulationState(
+            inds, Int[], 0, StableRNG(1), 0, false, nothing, Inf, nothing,
+            AbstractClinicalTransition[]
+        )
+        bare = ModelSpec(BranchingProcess(Poisson(0.0)))
+
+        # Nothing names the key and nothing withdraws it: the likelihood would
+        # otherwise fit on the whole exposure as if the stretch never happened.
+        lapsing = [Individual(id = 1)]
+        EpiBranch.record_removal!(lapsing[1], 2.0, 9.0; key = shield_key)
+        @test_throws ArgumentError EpiBranch._layer_host_times(mini(lapsing), bare, ())
+
+        # Naming the key lets the stretch through, merged into the layer's own
+        # removal column.
+        EpiBranch.removal_gap_host_times(::_Shield) = (shield_key,)
+        named = ModelSpec(
+            BranchingProcess(Poisson(0.0)); interventions = [_Shield()]
+        )
+        result = EpiBranch._layer_host_times(mini(lapsing), named, ())
+        @test result[shield_key] == [[(2.0, 9.0)]]
+        @test result[EpiBranch.REMOVAL_STRETCHES_KEY] == [[(2.0, 9.0)]]
+
+        # Declaring it withdrawn instead is just as good: another component
+        # means to leave it out, so it stays out of `host_times` rather than
+        # erroring.
+        EpiBranch.removal_gap_host_times_withdrawn(::_WithdrawingShield) = (shield_key,)
+        withdrawn = ModelSpec(
+            BranchingProcess(Poisson(0.0)); interventions = [_WithdrawingShield()]
+        )
+        @test EpiBranch._layer_host_times(mini(lapsing), withdrawn, ()) == (;)
+
+        # A stretch that never releases needs no declaration either: the
+        # infectious window closes there instead of this column holding it
+        # (see `infectious_removal_time`).
+        standing = [Individual(id = 1)]
+        EpiBranch.record_removal!(standing[1], 2.0, Inf; key = shield_key)
+        @test EpiBranch._layer_host_times(mini(standing), bare, ()) == (;)
+    end
+
+    @testset "removal_gap_host_times_withdrawn for built-in components" begin
+        withdrawn = EpiBranch.removal_gap_host_times_withdrawn
+        perfect = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = 5.0)
+        leaky = Isolation(
+            onset_to_isolation_delay = Exponential(1.0),
+            post_isolation_transmission = 0.5, duration = 5.0
+        )
+        # Perfect isolation names its own key above; leaky isolation never
+        # reads the shared history back, so it withdraws it instead.
+        @test withdrawn(perfect) == ()
+        @test withdrawn(leaky) == (EpiBranch.REMOVAL_STRETCHES_KEY,)
+
+        quarantine = ContactTracing(
+            probability = 0.5, isolation_to_trace_delay = Exponential(1.0),
+            action = Quarantine(duration = 5.0)
+        )
+        flagging = ContactTracing(
+            probability = 0.5, isolation_to_trace_delay = Exponential(1.0),
+            action = FlagOnly()
+        )
+        # A releasing quarantine's own key already names the days; the shared
+        # history that `apply_trace!` also writes is withdrawn rather than
+        # read twice.
+        @test withdrawn(quarantine) == (EpiBranch.REMOVAL_STRETCHES_KEY,)
+        @test withdrawn(flagging) == ()
+
+        # A schedule that can lapse withdraws the inner removal's key instead
+        # of naming it, since closing the window part-way through a stretch
+        # means the record no longer shows when the block ended; one that
+        # cannot close forwards the inner key as named, not withdrawn.
+        lapsing_schedule = Scheduled(perfect; start_time = 0.0, end_time = 10.0)
+        standing_schedule = Scheduled(perfect; start_time = 0.0)
+        @test withdrawn(lapsing_schedule) == (EpiBranch.REMOVAL_STRETCHES_KEY,)
+        @test withdrawn(standing_schedule) == ()
+
+        # `quarantine` above names its own key through `removal_gap_host_times`
+        # and withdraws the shared history at once. A lapsing schedule around
+        # it forwards neither, so both must come through as withdrawn here,
+        # not just the one `removal_gap_host_times` would have named.
+        lapsing_quarantine = Scheduled(quarantine; start_time = 0.0, end_time = 10.0)
+        standing_quarantine = Scheduled(quarantine; start_time = 0.0)
+        @test Set(withdrawn(lapsing_quarantine)) ==
+            Set((EpiBranch.QUARANTINE_STRETCHES_KEY, EpiBranch.REMOVAL_STRETCHES_KEY))
+        @test withdrawn(standing_quarantine) == (EpiBranch.REMOVAL_STRETCHES_KEY,)
+
+        capacity_quarantine = CapacityConstrained(quarantine; budget_per_period = 2)
+        @test withdrawn(capacity_quarantine) == (EpiBranch.REMOVAL_STRETCHES_KEY,)
     end
 end

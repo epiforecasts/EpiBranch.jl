@@ -10,6 +10,11 @@ end
 struct _AlwaysOpenTrigger <: EpiBranch.AbstractTrigger end
 EpiBranch.is_triggered!(::_AlwaysOpenTrigger, state) = true
 
+# A trigger reading a population characteristic rather than a transition.
+struct _AgeTrigger <: EpiBranch.AbstractTrigger end
+EpiBranch.is_triggered!(::_AgeTrigger, state) = true
+EpiBranch.required_fields(::_AgeTrigger) = [:age]
+
 # An isolation eligibility that records a detection arriving after the case's
 # outcome, which the default declines.
 struct _DetectAfterOutcome <: EpiBranch.IsolationEligibility end
@@ -70,6 +75,20 @@ EpiBranch.reads_population_state(::_PopulationAction) = true
 struct _UnboundedDelay <: ContinuousUnivariateDistribution end
 Base.rand(::AbstractRNG, ::_UnboundedDelay) = 30.0
 Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
+
+# Uses the deprecated whole-generation `apply_post_transmission!` hook but
+# still declares its own `intervention_time`, so a `Scheduled` wrapping it is
+# time-aware too.
+struct _TimedBatchDose <: AbstractIntervention end
+function EpiBranch.apply_post_transmission!(::_TimedBatchDose, state, new_contacts)
+    for c in new_contacts
+        c.state[:_dosed_at] = c.infection_time + 5.0
+    end
+    return nothing
+end
+EpiBranch.intervention_time(::_TimedBatchDose, ind::Individual) =
+    get(ind.state, :_dosed_at, -Inf)
+EpiBranch.reset!(::_TimedBatchDose, ind::Individual) = delete!(ind.state, :_dosed_at)
 
 @testset "Interventions" begin
     clinical = clinical_presentation(
@@ -291,13 +310,14 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         # The structure-driven processes that call this walk live in the
         # companion packages, so it is driven directly here on a path graph
         # 1-2-3-4 in which only node 1 is a case.
-        function walk(depth; timed = false, wrap = identity)
-            ct = wrap(ContactTracing(TraceEveryone(), 1.0, Dirac(0.0), Quarantine(duration = Inf); depth))
+        function walk(depth; timed = false, wrap = identity, delay = Dirac(0.0), clock = nothing)
+            ct = wrap(ContactTracing(TraceEveryone(), 1.0, delay, Quarantine(duration = Inf); depth))
             state = EpiBranch.new_state(
                 BranchingProcess(Poisson(1.0), Exponential(5.0)),
                 EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
             )
             EpiBranch.add_individuals!(state, 4, [ct])
+            clock === nothing || (state.max_infection_time = clock)
             case = state.individuals[1]
             case.state[:infected] = true
             case.infection_time = 0.0
@@ -350,6 +370,18 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         # The case's own contacts were still offered; nothing beyond them was,
         # because an inactive schedule keeps nobody active.
         @test reached == Set([2])
+
+        # `ContactTracing` declares its own `intervention_time`, so the
+        # schedule above is time-aware: the root case's clock sits before the
+        # start, but its contact's own trace time, pushed out by the delay,
+        # falls inside the window and sticks, and the ring grows past it as
+        # it would have had the schedule been active all along.
+        inds, reached = walk(
+            3; wrap = ct -> Scheduled(ct; start_time = 10.0),
+            delay = Dirac(20.0), clock = 5.0
+        )
+        @test all(is_traced, inds[2:4])
+        @test reached == Set([2, 3, 4])
     end
 
     @testset "Scheduled resetting a ring member lets a later trace grow the ring" begin
@@ -1642,6 +1674,56 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             @test EpiBranch._within_eligibility_window(21.0, unexposed, 3.0, rng)
             exposed = Individual(id = 2, infection_time = 1.0)
             @test !EpiBranch._within_eligibility_window(1.0, exposed, 3.0, rng)
+        end
+
+        @testset "A dose given while pending is withdrawn once settling excludes it" begin
+            # A network or household race admits a dose for a contact not yet
+            # exposed as though the window were open (see the previous
+            # testset), then learns the contact's real infection time once
+            # the race settles it.
+            rv = RingVaccination(efficacy = 0.9, eligibility_window = 2.0)
+            state = EpiBranch.new_state(
+                BranchingProcess(Poisson(0.0)),
+                EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
+            )
+            ind = Individual(
+                id = 1, infection_time = NaN,
+                state = Dict{Symbol, Any}(:traced => true, :trace_time => 5.0)
+            )
+            EpiBranch.initialise_individual!(rv, ind, state)
+            @test EpiBranch.continuous_actions(rv)
+            action = only(EpiBranch.intervention_actions(rv, state, [ind]))
+            action.effect!(ind, action.time, state)
+            @test is_vaccinated(ind)
+            @test ind.state[:vaccination_time] == 5.0
+
+            # The dose, given at day 5, falls 5 days after the infection the
+            # race now settles at day 0, outside the 2-day window.
+            ind.infection_time = 0.0
+            EpiBranch.on_infection_settled!(rv, ind, state, StableRNG(2))
+            @test !is_vaccinated(ind)
+            @test ind.state[:vaccination_time] == Inf
+            @test vaccine_efficacy(ind) === nothing
+        end
+
+        @testset "A dose the settled exposure still covers stands" begin
+            rv = RingVaccination(efficacy = 0.9, eligibility_window = 2.0)
+            state = EpiBranch.new_state(
+                BranchingProcess(Poisson(0.0)),
+                EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
+            )
+            ind = Individual(
+                id = 1, infection_time = NaN,
+                state = Dict{Symbol, Any}(:traced => true, :trace_time => 5.0)
+            )
+            EpiBranch.initialise_individual!(rv, ind, state)
+            action = only(EpiBranch.intervention_actions(rv, state, [ind]))
+            action.effect!(ind, action.time, state)
+
+            ind.infection_time = 4.0
+            EpiBranch.on_infection_settled!(rv, ind, state, StableRNG(2))
+            @test is_vaccinated(ind)
+            @test ind.state[:vaccination_time] == 5.0
         end
 
         @testset "Doses are timed at the trace, whatever the trace action" begin
@@ -2973,15 +3055,21 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             @test EpiBranch.is_triggered!(ReportedCases(0), state)
             @test EpiBranch.is_triggered!(Infections(0), state)
 
+            # Reports are counted from what `Reporting` draws, so they are
+            # drawn through it here: each case is infected at time 0 and
+            # reported `t` days later, or never.
+            report!(ind, t) = EpiBranch.resolve_individual!(
+                Reporting(delay = t, from = :infection), ind, state
+            )
             # Two reports dated at or before the clock (10.0), one dated after
             # it, and one case never reported.
-            inds[1].state[:reported] = true
-            inds[1].state[:reporting_time] = 2.0
-            inds[2].state[:reported] = true
-            inds[2].state[:reporting_time] = 9.0
-            inds[3].state[:reported] = true
-            inds[3].state[:reporting_time] = 15.0
-            inds[4].state[:reported] = false
+            report!(inds[1], 2.0)
+            report!(inds[2], 9.0)
+            report!(inds[3], 15.0)
+            EpiBranch.resolve_individual!(
+                Reporting(delay = 1.0, probability = 0.0, from = :infection),
+                inds[4], state
+            )
 
             @test EpiBranch.is_triggered!(ReportedCases(2), state)
             @test !EpiBranch.is_triggered!(ReportedCases(3), state)
@@ -2991,35 +3079,61 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             state.max_infection_time = 10.0
             @test !EpiBranch.is_triggered!(ReportedCases(3), state)
             # A report made before a reinfection is archived with its
-            # episode, and the health system has still made it, so it counts.
-            # Without the archived episodes this host would hold one report
-            # however many times it had been reported.
-            episode = EpiBranch.InfectionEpisode(inds[1])
-            EpiBranch.close_episode!(inds[1], episode)
-            # The engine archives the episode as a copy of the live state and
-            # clears the live report only when the new infection's transitions
-            # are initialised. In between, the two are one report and must be
-            # counted once: two reports are due here, not three.
+            # episode, and the health system has still made it, so it counts
+            # once, whether the live state still shows it or the new
+            # infection has cleared it.
+            EpiBranch.close_episode!(inds[1], EpiBranch.InfectionEpisode(inds[1]))
             @test EpiBranch.is_triggered!(ReportedCases(2), state)
             @test !EpiBranch.is_triggered!(ReportedCases(3), state)
-            # Once the live report is cleared the archived one still counts.
-            inds[1].state[:reported] = false
-            inds[1].state[:reporting_time] = Inf
+            EpiBranch.initialise_individual!(Reporting(delay = 1.0), inds[1], state)
             @test EpiBranch.is_triggered!(ReportedCases(2), state)
             @test !EpiBranch.is_triggered!(ReportedCases(3), state)
+            # The new episode's own report is a second one for the host.
+            report!(inds[1], 3.0)
+            @test EpiBranch.is_triggered!(ReportedCases(3), state)
+            @test !EpiBranch.is_triggered!(ReportedCases(4), state)
             # Reports already due stay due, so the gate holds once it opens
             # and the schedule it starts cannot close.
             @test !EpiBranch.trigger_can_lapse(ReportedCases(2))
 
-            # The count reads the report time it needs rather than indexing
-            # it: a `:reported` flag from anywhere else does not throw.
-            # `PerCaseObservation` sets one, with `:report_time` and no
-            # `:reporting_time`; it runs after the simulation, so a trigger
-            # never meets it mid-run, and its reports are not what this
-            # trigger counts either way.
-            inds[5].state[:reported] = true
-            @test EpiBranch.is_triggered!(ReportedCases(2), state)
-            @test !EpiBranch.is_triggered!(ReportedCases(3), state)
+            # A report the case's outcome overtakes is reset to "not
+            # reported", and does not count.
+            progression = AbstractClinicalTransition[
+                Reporting(delay = 4.0, from = :infection),
+                Recovery(delay = 1.0, from = :infection),
+            ]
+            state.transitions = progression
+            EpiBranch.resolve_transitions!(state, inds[5])
+            @test !inds[5].state[:reported]
+            @test !EpiBranch.is_triggered!(ReportedCases(4), state)
+            state.max_infection_time = 20.0
+            @test EpiBranch.is_triggered!(ReportedCases(4), state)
+            @test !EpiBranch.is_triggered!(ReportedCases(5), state)
+            state.max_infection_time = 10.0
+
+            # A `:reported` flag from anywhere else is not a report this
+            # trigger counts. `PerCaseObservation` sets one after the
+            # simulation, so a trigger never meets it mid-run.
+            inds[4].state[:reported] = true
+            inds[4].state[:reporting_time] = 1.0
+            @test !EpiBranch.is_triggered!(ReportedCases(4), state)
+
+            # The first count builds the log from the reports the population
+            # already holds, archived episodes included. A host reinfected
+            # since its report shows it twice until the new infection clears
+            # the live one, and it counts once.
+            fresh = [Individual(id = i) for i in 1:3]
+            for (ind, t) in zip(fresh, (2.0, 9.0, 15.0))
+                ind.state[:reported] = true
+                ind.state[:reporting_time] = t
+            end
+            EpiBranch.close_episode!(fresh[1], EpiBranch.InfectionEpisode(fresh[1]))
+            fresh_state = SimulationState(
+                fresh, Int[], 0, StableRNG(1), 3, false, nothing, 10.0, nothing,
+                AbstractClinicalTransition[]
+            )
+            @test EpiBranch.is_triggered!(ReportedCases(2), fresh_state)
+            @test !EpiBranch.is_triggered!(ReportedCases(3), fresh_state)
 
             # A user's own trigger is conservatively assumed able to lapse,
             # exactly as an opaque `Scheduled` predicate is.
@@ -3088,40 +3202,82 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             )
         end
 
-        @testset "start_after = ReportedCases matches start_after_cases under certain, instant reporting" begin
-            # With every case reported at its own infection time, a
-            # report-gated and a case-gated trigger see the same count at
-            # every step.
-            progression = [
-                Reporting(delay = Dirac(0.0), probability = 1.0, from = ind -> ind.infection_time),
-                Recovery(delay = Dirac(5.0)),
-            ]
-            iso_cases = Scheduled(
-                Isolation(onset_to_isolation_delay = Dirac(0.0), duration = Inf);
-                start_after_cases = 10
+        @testset "start_after = ReportedCases and start_after_cases agree reading the same clock" begin
+            # With every case reported at its own infection time, the two
+            # triggers count the same thing when asked about the same `now`:
+            # ten reports due by `now` is the same fact as ten cumulative
+            # cases by `now`. (The two can still open at different cases in a
+            # full simulation, because `cumulative_cases` is a generation
+            # rank and `ReportedCases` a true clock reading, which disagree
+            # whenever a case of an earlier generation is infected later than
+            # one of a following generation.)
+            inds = [Individual(id = i, infection_time = Float64(i)) for i in 1:12]
+            for ind in inds
+                ind.state[:reported] = true
+                ind.state[:reporting_time] = ind.infection_time
+            end
+            state = SimulationState(
+                inds, Int[], 0, StableRNG(1), 0, false, nothing, 0.0, nothing,
+                AbstractClinicalTransition[]
             )
-            iso_reports = Scheduled(
-                Isolation(onset_to_isolation_delay = Dirac(0.0), duration = Inf);
-                start_after = ReportedCases(10)
-            )
+            iso = Isolation(onset_to_isolation_delay = Dirac(0.0), duration = Inf)
+            by_cases = Scheduled(iso; start_after_cases = 10)
+            by_reports = Scheduled(iso; start_after = ReportedCases(10))
+            for i in 1:12
+                state.max_infection_time = Float64(i)
+                state.cumulative_cases = i
+                @test EpiBranch.is_active(by_cases, state) ==
+                    EpiBranch.is_active(by_reports, state)
+            end
+        end
 
-            results_cases = simulate(
-                ModelSpec(
-                    BranchingProcess(Poisson(3.0), Exponential(5.0));
-                    progression, interventions = [iso_cases], attributes = clinical
-                ),
-                50; max_cases = 100, rng = StableRNG(11)
-            )
-            results_reports = simulate(
-                ModelSpec(
-                    BranchingProcess(Poisson(3.0), Exponential(5.0));
-                    progression, interventions = [iso_reports], attributes = clinical
-                ),
-                50; max_cases = 100, rng = StableRNG(11)
-            )
+        @testset "a trigger names the fields it reads" begin
+            iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = Inf)
 
-            @test containment_probability(results_cases) ==
-                containment_probability(results_reports)
+            # The default declares nothing, as `_AlwaysOpenTrigger` does.
+            @test EpiBranch.required_fields(_AlwaysOpenTrigger()) == Symbol[]
+            @test EpiBranch.required_fields(_AgeTrigger()) == [:age]
+
+            # `Scheduled` adds the trigger's fields to the wrapped
+            # intervention's own, so `_validate_required_fields` catches a
+            # model missing either.
+            scheduled = Scheduled(iso; start_after = _AgeTrigger())
+            @test :age in EpiBranch.required_fields(scheduled)
+            @test issubset(EpiBranch.required_fields(iso), EpiBranch.required_fields(scheduled))
+
+            # No trigger: forwards plainly to the wrapped intervention.
+            @test EpiBranch.required_fields(Scheduled(iso; start_time = 0.0)) ==
+                EpiBranch.required_fields(iso)
+
+            # Found through a wrapper around the schedule.
+            capped = CapacityConstrained(scheduled; budget_per_period = 5)
+            @test :age in EpiBranch.required_fields(capped)
+        end
+
+        @testset "start_after reaches a case resolved before it, once its own action falls inside" begin
+            # As with `start_time`, a case can be resolved while the trigger
+            # is still shut and still be isolated: `_reset_unless_in_schedule!`
+            # checks the trigger again at the isolation's own time, by when
+            # another case's report may have brought it open.
+            iso = Scheduled(
+                Isolation(onset_to_isolation_delay = Dirac(0.0), duration = Inf);
+                start_after = ReportedCases(1)
+            )
+            ind = Individual(id = 1, infection_time = 0.0)
+            ind.state[:onset_time] = 5.0
+            ind.state[:asymptomatic] = false
+            ind.state[:test_positive] = true
+            other = Individual(id = 2, infection_time = 0.0)
+            other.state[:reported] = true
+            other.state[:reporting_time] = 3.0 # between ind's infection and its own isolation
+            state = SimulationState(
+                [ind, other], Int[], 0, StableRNG(1), 0, false, nothing, 0.0, nothing,
+                AbstractClinicalTransition[]
+            )
+            state.max_infection_time = ind.infection_time
+            EpiBranch.resolve_individual!(iso, ind, state)
+            @test is_isolated(ind)
+            @test isolation_time(ind) == 5.0
         end
 
         @testset "start_after = ReportedCases delays activation past Infections" begin
@@ -3256,6 +3412,69 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                     @test isolation_time(ind) >= 15.0
                 end
             end
+        end
+
+        @testset "start_time reaches a case infected before it, once its own isolation falls inside" begin
+            # Isolation that starts on day 10 must still reach someone
+            # infected on day 8 who develops symptoms on day 12: the case
+            # itself predates the policy, but its own isolation does not.
+            iso = Scheduled(
+                Isolation(onset_to_isolation_delay = Dirac(0.0), duration = Inf);
+                start_time = 10.0
+            )
+            ind = Individual(id = 1, infection_time = 8.0)
+            ind.state[:onset_time] = 12.0
+            ind.state[:asymptomatic] = false
+            ind.state[:test_positive] = true
+            state = SimulationState(
+                [ind], Int[], 0, StableRNG(1), 0, false, nothing, 0.0, nothing,
+                AbstractClinicalTransition[]
+            )
+            state.max_infection_time = ind.infection_time
+            EpiBranch.resolve_individual!(iso, ind, state)
+            @test is_isolated(ind)
+            @test isolation_time(ind) == 12.0
+        end
+
+        @testset "start_time reaches a contact traced before it, once the trace falls inside" begin
+            # The same check applies to tracing: the infector's own clock
+            # predates the policy, but the contact's own trace, after the
+            # tracing delay, does not.
+            ct = Scheduled(
+                ContactTracing(TraceEveryone(), 1.0, Dirac(7.0), Quarantine(duration = Inf));
+                start_time = 10.0
+            )
+            infector = Individual(id = 1, infection_time = 1.0)
+            infector.state[:infected] = true
+            infector.state[:onset_time] = 2.0
+            set_isolated!(infector, 4.0; release_time = Inf)
+            contact = Individual(id = 2, infection_time = 1.0)
+            state = SimulationState(
+                [infector, contact], Int[], 0, StableRNG(1), 0, false, nothing, 0.0, nothing,
+                AbstractClinicalTransition[]
+            )
+            EpiBranch.initialise_individual!(ct, contact, state)
+            state.max_infection_time = infector.infection_time
+            EpiBranch.trace_contacts!(ct, state, infector, [contact])
+            @test is_traced(contact)
+            @test isolation_time(contact) == 11.0 # infector's isolation (4.0) plus the 7-day delay
+        end
+
+        @testset "start_time reaches a contact dosed through the deprecated batch hook before it, once its own dose time falls inside" begin
+            # The same check applies to the deprecated `apply_post_transmission!`
+            # hook: the running clock predates the policy, but each contact's
+            # own dose time is checked individually once the hook has run.
+            dosed = Scheduled(_TimedBatchDose(); start_time = 10.0)
+            early = Individual(id = 1, infection_time = 1.0) # dose time 6.0: outside
+            late = Individual(id = 2, infection_time = 6.0) # dose time 11.0: inside
+            state = SimulationState(
+                [early, late], Int[], 0, StableRNG(1), 0, false, nothing, 0.0, nothing,
+                AbstractClinicalTransition[]
+            )
+            state.max_infection_time = 0.0
+            EpiBranch.apply_post_transmission!(dosed, state, [early, late])
+            @test !haskey(early.state, :_dosed_at)
+            @test late.state[:_dosed_at] == 11.0
         end
 
         @testset "requires at least one condition" begin
