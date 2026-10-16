@@ -299,6 +299,40 @@ end
         @test r_inf < r_short < r_none
     end
 
+    @testset "leaky isolation only partially cuts the community person-time" begin
+        # With `post_isolation_transmission` between 0 and 1 the case keeps
+        # transmitting at a reduced rate while isolated, so the person-time
+        # the offspring law reads should fall only partway between no
+        # isolation and perfect isolation, weighted by the fraction blocked.
+        prog = [
+            Transition(:onset; from = :infection, delay = 1.0),
+            Transition(:recovered; from = :infection, delay = 6.0, terminal = true),
+        ]
+        process() = HouseholdProcess(fill(4, 300), Weibull(1.5, 3.0))
+        isolated(eps) = ModelSpec(
+            process(); progression = prog,
+            interventions = [
+                Isolation(
+                    onset_to_isolation_delay = Exponential(1.0),
+                    eligibility = AllCases(), duration = Inf,
+                    post_isolation_transmission = eps
+                ),
+            ]
+        )
+        rstar(spec) = reproduction_number(
+            household_offspring(spec; global_rate = 0.1, rng = StableRNG(7))
+        )
+        r_none = rstar(isolated(1.0))
+        r_perfect = rstar(isolated(0.0))
+        r_leaky = rstar(isolated(0.5))
+        @test r_perfect < r_leaky < r_none
+        # Roughly halfway between the two extremes, not close to either one,
+        # which is what it would be if the leaky stretch were left out
+        # (close to `r_none`) or subtracted in full (close to `r_perfect`).
+        midpoint = (r_perfect + r_none) / 2
+        @test r_leaky ≈ midpoint rtol = 0.2
+    end
+
     @testset "cases that never become infectious make no contacts" begin
         # A household of one isolates the window: R* is the community rate times
         # the lone case's mean infectious time, zero for a case that recovers

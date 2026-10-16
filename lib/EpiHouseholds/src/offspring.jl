@@ -490,10 +490,10 @@ function _simulated_person_time(
 
     from = something(process.from, infectious_from(spec.progression))
     # A removal that lapses, such as a finite-duration isolation or quarantine,
-    # does not close the window (see `infectious_removal_time`); it blocks the
-    # isolated stretch per contact instead, which the pairwise likelihood takes
-    # out of the exposure through the same recorded stretches.
-    gaps = get(_layer_host_times(state, sample_spec, (;)), REMOVAL_STRETCHES_KEY, nothing)
+    # does not close the window (see `infectious_removal_time`); the fraction
+    # of transmission it blocks comes out of the exposure here instead,
+    # through the same stretches the intervention recorded.
+    gap_fractions = _removal_gap_fractions(spec.interventions)
     person_time = zeros(length(sample.members))
     for (i, ind) in enumerate(state.individuals)
         is_infected(ind) || continue
@@ -512,17 +512,36 @@ function _simulated_person_time(
                     "listed in the process's `until` states, reached by every case"
             )
         )
-        stretches = gaps === nothing ? () : gaps[i]
-        person_time[ind.state[:household]] += closed - opened -
-            _removed_duration(stretches, opened, closed)
+        removed = sum(
+            frac * _removed_duration(removal_stretches(ind, key), opened, closed)
+                for (key, frac) in gap_fractions;
+            init = 0.0
+        )
+        person_time[ind.state[:household]] += closed - opened - min(removed, closed - opened)
     end
     return person_time
 end
 
+# The keys the model's interventions record removal stretches under, paired
+# with the fraction of transmission each stretch blocks (1 unless the
+# intervention is leaky, such as `Isolation` with `post_isolation_transmission
+# > 0`).
+function _removal_gap_fractions(interventions)
+    pairs = Pair{Symbol, Float64}[]
+    for component in interventions
+        frac = removal_block_fraction(component)
+        for key in removal_gap_host_times(component)
+            push!(pairs, key => frac)
+        end
+    end
+    return pairs
+end
+
 # How much of a case's isolated or quarantined stretches fall inside its
-# community-infectious window. Each stretch is clipped to the window: one
-# starting before it opens or outlasting its close counts only for the part
-# the case would otherwise have spent in the community.
+# community-infectious window, weighted by the fraction of transmission that
+# stretch blocks. Each stretch is clipped to the window: one starting before
+# it opens or outlasting its close counts only for the part the case would
+# otherwise have spent in the community.
 function _removed_duration(stretches, opened::Float64, closed::Float64)
     total = 0.0
     for (start, release) in stretches
