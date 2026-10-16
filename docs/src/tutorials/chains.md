@@ -96,16 +96,20 @@ println("NegBin(R = 0.9, k = 0.5): log-likelihood = $(round(ll, digits=2))")
 ### Under-reporting
 
 If only some cases are detected, observed clusters are smaller than the true
-ones, and a lone detected case may belong to a larger cluster. To allow for this, say that each case is detected independently with
-probability `detection_prob`, using [`PerCaseObservation`](@ref) in a
-[`ModelSpec`](@ref). Each observed cluster size is then the number of detected
-cases out of its true size.
+ones, and a lone detected case may belong to a larger cluster. To allow for
+this, say that each case is reported independently with probability
+`probability`, using a [`Reporting`](@ref) step in the model's `progression`.
+This model has no symptom onset to report from, so `from` names the infection
+time instead. Each observed cluster size is then the number of reported cases
+out of its true size.
 
 ```@example chains
 data = ChainSizes([1, 1, 2, 1, 3, 1, 1, 5, 1, 2])
 full = ModelSpec(BranchingProcess(Poisson(0.9)))
 partial = ModelSpec(BranchingProcess(Poisson(0.9));
-    observation = PerCaseObservation(detection_prob = 0.7))
+    progression = [
+        Reporting(delay = 0.0, probability = 0.7, from = ind -> ind.infection_time),
+    ])
 println("All cases detected: $(round(loglikelihood(data, full), digits=2))")
 println("70% detected:       $(round(loglikelihood(data, partial), digits=2))")
 ```
@@ -114,6 +118,13 @@ The log-likelihood changes because the model of what was observed changes.
 Fit R under the reporting you believe applies: assuming complete reporting
 when some cases are missed makes clusters look smaller than they are, and
 biases the estimate of R downwards.
+
+!!! warning "Clusters with no detected case"
+    A cluster in which no case was detected never appears in the data, and the
+    likelihood should allow for that. At present it does not, so it penalises
+    every observed cluster more the lower the reporting probability, and a fit
+    of R and `probability` together will favour reporting that is too high
+    (see [issue #416](https://github.com/epiforecasts/epiBranch.jl/issues/416)).
 
 ### Offspring counts
 

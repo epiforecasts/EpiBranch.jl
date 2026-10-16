@@ -1105,22 +1105,19 @@ did not:
 Needs the group characteristic and whatever `eligibility` needs, such as the
 test result from [`Isolation`](@ref) for the default `OnLabConfirmation()`.
 
-!!! note "Index cases in a branching process"
-    Like [`RingVaccination`](@ref) and [`MassVaccination`](@ref),
-    `GroupVaccination` acts on new contacts as they are made. In a
-    branching process the index cases are not contacts, so an index case
-    is vaccinated only once another member of its group appears later; an
-    index case whose chain dies out without anyone else in its group being
-    infected is not vaccinated, even if it is itself confirmed.
+Unlike [`RingVaccination`](@ref) and [`MassVaccination`](@ref), which act
+only on new contacts as they are made, `GroupVaccination` also checks a case's
+group once its own infection is settled, on every engine: an index case, or
+one whose own trigger (such as lab confirmation) only becomes true after it
+last made a contact, is still reached.
 
-In network and household models, a group is checked after each case's
-infection is settled, index cases included, and the dose can reach that case
-and members not yet infected, subject to scheduling and capacity. Cases there
-are settled in order of infection, not of eligibility, so a member can turn
-out eligible earlier than the person who infected them. A member whose
-infection is not yet settled has their dose moved earlier if an earlier
-trigger is found later; a member already settled keeps their dose date, as
-does a dose another vaccination already gave.
+In network and household models, the dose can also reach the settling case
+itself and members not yet infected, subject to scheduling and capacity.
+Cases there are settled in order of infection, not of eligibility, so a
+member can turn out eligible earlier than the person who infected them. A
+member whose infection is not yet settled has their dose moved earlier if an
+earlier trigger is found later; a member already settled keeps their dose
+date, as does a dose another vaccination already gave.
 
 For a campaign with repeat visits, `coverage` is the final probability of being
 reached, and `dose_delay` can describe the first successful visit. A person
@@ -1206,9 +1203,9 @@ end
 # ── MassVaccination ──────────────────────────────────────────────────
 
 """
-    MassVaccination(; efficacy, eligibility_time, severity_efficacy = 0.0,
-                    delay_to_immunity = 0.0, waning = nothing,
-                    mode = LeakyMode(), dose_label = :default)
+    MassVaccination(; efficacy, eligibility_time, coverage = 1.0,
+                    severity_efficacy = 0.0, delay_to_immunity = 0.0,
+                    waning = nothing, mode = LeakyMode(), dose_label = :default)
 
 Vaccinate the population on a schedule, independently of contact tracing.
 
@@ -1221,6 +1218,10 @@ Vaccinate the population on a schedule, independently of contact tracing.
   `(rng, ind) -> ind.state[:vaccine_acceptance] > 0.5 ? 30.0 : Inf` leaves out
   whole groups whose acceptance is at most 0.5, so uptake is
   `P(acceptance > 0.5)`.
+- `coverage`: probability that a person eligible at `eligibility_time` is
+  actually vaccinated (consent, absence, logistics). Default 1. A number, a
+  distribution or a function `(rng, ind) -> ...`, as for
+  [`RingVaccination`](@ref)'s `coverage`.
 - `efficacy`, `delay_to_immunity`, `severity_efficacy`: take the same forms,
   drawn once per vaccinated person, for example an age-dependent efficacy or
   immunity taking one to three weeks. See [`AbstractVaccination`](@ref).
@@ -1236,6 +1237,21 @@ Each contact's vaccination day is drawn when a branching process creates
 the contact (index cases are not vaccinated), and they count as vaccinated
 if it is finite. They are protected against an exposure only if their
 vaccination day plus `delay_to_immunity` comes before it.
+
+# Closed-form offspring distribution
+
+A campaign already complete before the simulation starts (`eligibility_time`
+a number with `eligibility_time + delay_to_immunity <= 0`) protects every
+case alike, so the effect on the offspring distribution has a closed form:
+each secondary case is prevented independently with probability
+`coverage * efficacy`, and a `NegativeBinomial(R, k)` offspring distribution
+becomes `NegativeBinomial(R * (1 - coverage * efficacy), k)` (a `Poisson`
+likewise, on its mean). `extinction_probability`, `probability_contain` and
+the other analytical functions use this when `coverage`, `efficacy` and
+`delay_to_immunity` are numbers and `waning === nothing`; a rollout still
+under way during the simulation changes each case's exposure to vaccinated
+contacts over time, which has no such form, and those functions raise an
+error instead.
 
 # Examples
 
@@ -1276,14 +1292,15 @@ Prime-and-boost schedule (two doses with different labels):
 ]
 ```
 """
-struct MassVaccination{V <: VaccineEffect, T} <: AbstractVaccination
+struct MassVaccination{V <: VaccineEffect, T, C} <: AbstractVaccination
     effect::V
     eligibility_time::T
+    coverage::C
 end
 
-function MassVaccination(; eligibility_time, effect...)
-    _check_effect_keywords(MassVaccination, (:eligibility_time,), effect)
-    return MassVaccination(VaccineEffect(; effect...), eligibility_time)
+function MassVaccination(; eligibility_time, coverage = 1.0, effect...)
+    _check_effect_keywords(MassVaccination, (:eligibility_time, :coverage), effect)
+    return MassVaccination(VaccineEffect(; effect...), eligibility_time, coverage)
 end
 
 vaccine_effect(mv::MassVaccination) = getfield(mv, :effect)
@@ -1296,3 +1313,31 @@ Base.propertynames(mv::MassVaccination, ::Bool = false) = _effect_propertynames(
 Base.show(io::IO, mv::MassVaccination) = _show_keywords(io, mv)
 
 required_fields(::MassVaccination) = Symbol[]
+
+# The per-contact probability a dose of `mv` blocks an exposure, for the
+# closed form below: `coverage * efficacy`, since a secondary case is
+# prevented independently of every other once immunity has already
+# developed when the simulation starts. Only then does blocking not depend on
+# when, in the simulation, the exposure happens, which is what the closed
+# form needs; see the "Closed-form offspring distribution" section of
+# `MassVaccination`'s docstring.
+function _mass_vaccination_block(mv::MassVaccination)
+    e_t = mv.eligibility_time
+    ready = e_t isa Real && delay_to_immunity(mv) isa Real && e_t + delay_to_immunity(mv) <= 0
+    ready && waning(mv) === nothing && mv.coverage isa Real && efficacy(mv) isa Real ||
+        throw(
+        ArgumentError(
+            "MassVaccination has no closed-form effect on the offspring " *
+                "distribution unless `eligibility_time` and `delay_to_immunity` are " *
+                "numbers with `eligibility_time + delay_to_immunity <= 0` (immunity " *
+                "already in place before the simulation starts), `coverage` and " *
+                "`efficacy` are numbers, and `waning` is `nothing`. Compute the " *
+                "quantity from simulated outbreaks, simulate(spec, n), instead."
+        )
+    )
+    return mv.coverage * efficacy(mv)
+end
+
+function analytic_offspring_effect(mv::MassVaccination, offspring::Union{NegativeBinomial, Poisson})
+    return scale_distribution(offspring, 1 - _mass_vaccination_block(mv))
+end

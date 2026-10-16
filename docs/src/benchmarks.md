@@ -35,12 +35,12 @@ Simulating 1000 transmission chains until each dies out, and calculating the lik
 
 | Scenario | R (epichains) | Julia (EpiBranch) |
 |---|---|---|
-| 1000 chains, Poisson(0.9) | 22.4 ms | 1.6 ms |
-| 1000 chains, NegBin(0.8, 0.5) | 11.3 ms | 1.0 ms |
-| 1000 chains + generation time | 30.2 ms | 2.0 ms |
-| Chain statistics | 0.45 ms | 0.26 ms |
-| Log-likelihood, Poisson offspring (Borel) | 151 μs | 0.18 μs |
-| Log-likelihood, Poisson offspring with gamma-distributed R (gamma-Borel) | 165 μs | 0.49 μs |
+| 1000 chains, Poisson(0.9) | 39.4 ms | 2.5 ms |
+| 1000 chains, NegBin(0.8, 0.5) | 18.6 ms | 1.6 ms |
+| 1000 chains + generation time | 50.8 ms | 3.3 ms |
+| Chain statistics | 0.73 ms | 0.39 ms |
+| Log-likelihood, Poisson offspring (Borel) | 296 μs | 0.37 μs |
+| Log-likelihood, Poisson offspring with gamma-distributed R (gamma-Borel) | 305 μs | 1.06 μs |
 
 The two likelihood rows give the probability of observed chain sizes. With Poisson offspring the chain size follows the Borel distribution. In the last row R varies from chain to chain, following a gamma distribution with shape k and scale R/k (mean R), and chain sizes then follow the gamma-Borel distribution (`ClusterMixed(Poisson, Gamma(k, R/k))` in Julia, `rgborel` in epichains).
 
@@ -50,24 +50,19 @@ Simulating 500 outbreaks with R = 2.5 and dispersion k = 0.16 (`NegBin(2.5, 0.16
 
 | Scenario | R (ringbp) | Julia (EpiBranch) |
 |---|---|---|
-| No interventions | 9,893 ms | 707 ms |
-| 50% contact tracing | 10,374 ms | 707 ms |
-| 50% tracing + quarantine | 9,319 ms | 707 ms |
+| No interventions | 22,573 ms | 859 ms |
+| 50% contact tracing | 25,842 ms | 859 ms |
+| 50% tracing + quarantine | 21,091 ms | 859 ms |
 
 !!! note "One Julia scenario against three R scenarios"
     The Julia column repeats one timing, for isolation plus 50% contact tracing (scenario 7 in `benchmark_julia.jl`), against all three ringbp scenarios. The models also differ: ringbp links each generation time to the case's incubation period and sets the fraction of transmission before symptoms, which the EpiBranch run does not. Read these as order-of-magnitude comparisons only.
-
-!!! warning "The Julia figure here is not reproducible by the current script"
-    The 707 ms dates from April 2026, from an engine and a version of the script that have both moved on. It cannot be reproduced by the script this page tells you to run: that gives several times as long, by a factor that moves with the machine and with what else it is doing. Treat the ratio in this table as not yet re-measured.
 
 ## Other benchmarks
 
 | Scenario | Julia (EpiBranch) |
 |---|---|
-| Line list generation (200 to 260 cases) | 0.08 ms |
+| Line list generation (200 to 260 cases) | 0.06 ms |
 | NegBin fit from 1000 offspring counts | 4.2 ms |
-
-These two rows were measured together, in October 2026, on different hardware from the comparison tables above. They are therefore comparable with each other but not with the rows above.
 
 The script holds both rows to the size they name. The line list is built from a state `condition` holds between 200 and 260 cases. That window is the narrowest the size can be pinned here. The cap does not set the size, because the generation that crosses it completes: a capped run of this process lands anywhere between 220 and about 490 cases. Three in four of the rejected runs overshoot 260; the rest die out before 200. A seed would be weaker, because the run it produces changes with any change upstream of the first draw.
 
@@ -82,4 +77,4 @@ No direct R comparison is included for line list generation (simulist requires e
 - All timings are medians from multiple runs
 - Hardware differences will affect absolute numbers; ratios are more informative
 - Neither implementation is specifically optimised for speed
-- Last run: the comparison tables April 2026, the "Other benchmarks" table October 2026
+- Last run: October 2026, every table on the same computer

@@ -432,7 +432,9 @@ the effect is exact in closed form on its own, and return a law the analytical
 functions take: a `Poisson`, a `NegativeBinomial`, or a
 [`GeneratingFunctionOffspring`](@ref) built from the offspring's generating
 function or probability mass function. A population-level reduction of R by a
-factor `p`, for example, turns `NegBin(R, k)` into `NegBin(p * R, k)`.
+factor `p`, for example, turns `NegBin(R, k)` into `NegBin(p * R, k)`, as
+[`MassVaccination`](@ref)'s method does for a campaign already complete
+before the simulation starts.
 
 The three-argument form also receives the [`ModelSpec`](@ref) (or process that
 stores its own interventions), for an effect that needs more than the

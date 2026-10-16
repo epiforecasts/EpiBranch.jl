@@ -118,14 +118,16 @@ offspring distribution is exact in closed form. One that cuts every case's R
 by a fixed proportion `p` turns `NegBin(R, k)` into `NegBin((1 - p) * R, k)`,
 and its method returns that; return a `Poisson`, a negative binomial, or a
 [`GeneratingFunctionOffspring`](@ref) built from the effect's own generating
-function, the forms the analytical functions accept. Most interventions still
-have no such form: contact tracing's and ring and group vaccination's effects
-depend on who they reach and when, and have no method. `Isolation`'s effect on
-R depends on how its timing overlaps the generation time, which is a mixture
-over the isolation time rather than a fixed proportion; it defines the
-three-argument form to build that mixture from the model's generation time and
-incubation period, and its own docstring sets out the limits of this (a custom
-eligibility rule, say, still has no closed form). [`extinction_probability`](@ref),
+function, the forms the analytical functions accept. [`MassVaccination`](@ref)
+has such a method for a campaign already complete before the simulation
+starts. Most interventions still have no such form: contact tracing's and
+ring and group vaccination's effects depend on who they reach and when, and
+have no method. `Isolation`'s effect on R depends on how its timing overlaps
+the generation time, which is a mixture over the isolation time rather than a
+fixed proportion; it defines the three-argument form to build that mixture
+from the model's generation time and incubation period, and its own docstring
+sets out the limits of this (a custom eligibility rule, say, still has no
+closed form). [`extinction_probability`](@ref),
 [`epidemic_probability`](@ref), [`probability_contain`](@ref) and the other
 [analytical functions](analytical.md) stop with an error on a `ModelSpec` that
 holds an intervention with no method of either arity, and their error points
@@ -160,7 +162,7 @@ they do have is each potential infection, a drawn time for a named pair, and a
 | `infectious_removal_time` | not read | yes |
 | `on_infection_settled!` | not called | yes |
 | `trace_contacts!` | yes | yes, where the model can name contacts (not homogeneous or mixing) |
-| `intervention_actions` | yes | where the model can name contacts, for an intervention that declares `continuous_actions` |
+| `intervention_actions` | yes; once a generation is settled, also once per settled case, for an intervention that declares `settles_generation_batch` | where the model can name contacts, for an intervention that declares `continuous_actions` |
 | `keep_active` | yes | during tracing: chooses which traced contacts a ring grows from |
 | `apply_post_transmission!` (deprecated) | yes, with a warning | not called |
 
@@ -642,6 +644,11 @@ traits with defaults:
   trigger, because without the transition that writes what the trigger reads
   the schedule never opens. `ReportedCases` names `Reporting`, except at
   `n = 0`, when the schedule opens before any report exists.
+- `EpiBranch.required_fields(trigger)` names the population characteristics
+  the trigger reads from `Individual.state`, `Symbol[]` by default.
+  `Scheduled` adds these to the fields it already requires of the
+  intervention it wraps (see [Requiring values on each person](@ref)), so the
+  simulation's startup check catches a model missing either.
 
 Here the border closes once 20 cases have had symptom onset:
 
@@ -654,21 +661,16 @@ function EpiBranch.is_triggered!(::TwentyOnsets, state)
         state.individuals
     ) >= 20
 end
+EpiBranch.required_fields(::TwentyOnsets) = [:onset_time]
 
 Scheduled(BorderClosure(0.0, 0.05); start_after = TwentyOnsets())
 ```
 
 `TwentyOnsets` keeps the default `trigger_can_lapse`: a person infected a second
-time draws a new onset, so the count can fall.
-
-!!! warning "A trigger cannot declare the population characteristics it reads"
-    `required_transitions` covers the `progression` only. `TwentyOnsets` reads
-    `:onset_time`, which [`clinical_presentation`](@ref) sets, and has no way
-    to say so. On a model built without it every `onset_time` is `NaN`, the
-    trigger counts nobody, and the border stays open for the whole run with
-    nothing to say why. `required_fields` does not help either: `Scheduled`
-    answers it for the intervention it wraps. Check for the value in
-    `is_triggered!` if you want to hear about it.
+time draws a new onset, so the count can fall. It reads `:onset_time`, which
+[`clinical_presentation`](@ref) sets, and names it with `required_fields`: a
+model built without that attribute now stops with a clear error at the start
+instead of leaving the border open for the whole run with nothing to say why.
 
 ## Capacity limits
 

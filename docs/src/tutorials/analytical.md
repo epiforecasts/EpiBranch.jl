@@ -68,12 +68,15 @@ The model's answer depends only on its offspring distribution and matches
 `extinction_probability(2.5, 0.16)`; the generation time does not change it.
 
 !!! warning "Interventions in a `ModelSpec`"
-    `extinction_probability`, `epidemic_probability`, `probability_contain` and
-    `reproduction_number` also accept a [`ModelSpec`](@ref). They apply an
-    intervention only if it declares a closed-form effect on the offspring
-    distribution through `EpiBranch.analytic_offspring_effect`. `Isolation`
-    does, for the common case (its own docstring sets out the limits); contact
-    tracing, ring and group vaccination still have none. `proportion_transmission`
+    `extinction_probability`, `epidemic_probability`, `probability_contain`,
+    `reproduction_number`, `proportion_transmission` and the
+    `proportion_cases_*` functions also accept a [`ModelSpec`](@ref). They
+    apply an intervention only if it declares a closed-form effect on the
+    offspring distribution through `EpiBranch.analytic_offspring_effect`.
+    `Isolation` does, for the common case (its own docstring sets out the
+    limits), as does [`MassVaccination`](@ref) when its campaign is already
+    complete before the simulation starts; contact tracing, ring and group
+    vaccination, and a still-ongoing rollout have none. `proportion_transmission`
     and the `proportion_cases_*` functions do not yet accept `Isolation`'s
     closed form either way. For a spec whose interventions have no closed form,
     all of these throw an error. Call them on the process itself for the

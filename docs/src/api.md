@@ -586,6 +586,7 @@ EpiBranch.action_draw!
 EpiBranch._action_cache
 EpiBranch.apply_actions!
 EpiBranch.continuous_actions
+EpiBranch.settles_generation_batch
 EpiBranch.may_revise
 EpiBranch.is_settled
 EpiBranch.persistent_competing_risks
@@ -667,10 +668,12 @@ helpers the package may change at any time.
 EpiBranch.get_generation_time
 EpiBranch._advance_generation!
 EpiBranch._settle_generation!
+EpiBranch._offer_continuous_actions!
 EpiBranch._settle_case!
 EpiBranch._at_case!
 EpiBranch._intervene!
 EpiBranch._act_per_case!
+EpiBranch._case_hooks!
 EpiBranch._resolve!
 EpiBranch._decide_infected
 EpiBranch.population_size
