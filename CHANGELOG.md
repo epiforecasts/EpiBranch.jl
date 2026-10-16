@@ -449,6 +449,12 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
   first trigger found even once a genuinely earlier one turned up. A settled
   member's dose, and a dose another vaccination already gave, still keep
   their date.
+- `RingVaccination` now moves a traced contact's dose earlier when a
+  re-trace finds an earlier `:trace_time`. Infectors settle in order of
+  infection, not of isolation, so a contact traced late from one infector
+  can later be traced earlier from another whose isolation came first; the
+  dose used to stay at the first trace found even once a genuinely earlier
+  one turned up.
 
 ## [0.1.0] - 2026-06-16
 
