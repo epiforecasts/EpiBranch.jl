@@ -38,6 +38,20 @@
         @test EpiBranch._dequeue!(q).time == 1.0
     end
 
+    @testset "Negative times order as times" begin
+        q = EpiBranch._EventQueue{Float64}()
+        EpiBranch._enqueue!(q, EpiBranch._Event(-10.0, 1, 0))
+        EpiBranch._enqueue!(q, EpiBranch._Event(-1.0, 1, 0))
+        @test EpiBranch._dequeue!(q).time == -10.0
+        for i in 1:1100
+            EpiBranch._enqueue!(q, EpiBranch._Event(Float64(i), 1, 0))
+        end
+        EpiBranch._enqueue!(q, EpiBranch._Event(-5.0, 2, 0))
+        EpiBranch._enqueue!(q, EpiBranch._Event(-0.0, 2, 0))
+        @test EpiBranch._radix(q)
+        @test [EpiBranch._dequeue!(q).time for _ in 1:4] == [-5.0, -1.0, 0.0, 1.0]
+    end
+
     @testset "An event before the last one taken is refused" begin
         q = EpiBranch._EventQueue{Float64}()
         for i in 1:2000

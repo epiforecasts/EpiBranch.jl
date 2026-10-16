@@ -28,16 +28,19 @@ end
 # never pay for the radix heap's buckets.
 const _RADIX_THRESHOLD = 1024
 
-# A radix heap orders events by the bit pattern of their time, which sorts like
-# the time itself for the non-negative `Float64` times the race uses. Only those
-# have such a pattern; other time types (a dual number under automatic
+# A radix heap orders events by an unsigned key that sorts like their time. Only
+# `Float64` times get one; other time types (a dual number under automatic
 # differentiation) stay on the binary heap.
 _radix_capable(::Type{Float64}) = true
 _radix_capable(::Type) = false
 
-# Times are compared through their bits once in the radix heap. Adding zero
-# turns a negative zero into a positive one, whose pattern is the smallest.
-@inline _time_key(t::Float64) = reinterpret(UInt64, t + 0.0)
+# The bits of a non-negative time with the sign bit set, and of a negative time
+# with every bit flipped, order as the times do, negative ones included. Adding
+# zero turns a negative zero into a positive one first.
+@inline function _time_key(t::Float64)
+    bits = reinterpret(UInt64, t + 0.0)
+    return signbit(t + 0.0) ? ~bits : bits | (UInt64(1) << 63)
+end
 
 # Bucket 1 holds the events at the time last popped, as a binary heap ordered
 # by member and proposal: a large outbreak seeds every case at one time, and a
