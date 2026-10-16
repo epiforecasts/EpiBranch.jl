@@ -297,6 +297,16 @@ function transition_loglik(t::AbstractClinicalTransition, individual)
     )
 end
 
+# A fresh state key for each call's shared draw, distinct from every other
+# group's. Starts with `_` so `linelist` hides it as the bookkeeping it is;
+# `gensym` would do the same job but names its symbol `##exclusive_draw#N`,
+# which `linelist` does not recognise as hidden.
+const _EXCLUSIVE_DRAW_COUNTER = Threads.Atomic{Int}(0)
+function _exclusive_draw_key()
+    n = Threads.atomic_add!(_EXCLUSIVE_DRAW_COUNTER, 1)
+    return Symbol("_exclusive_draw#", n)
+end
+
 """
     exclusive_probabilities(ps::AbstractVector{<:Real}) -> Vector
 
@@ -346,7 +356,7 @@ function exclusive_probabilities(ps::AbstractVector{<:Real})
     )
     # A sum that reaches 1 up to its own rounding leaves no shortfall at all.
     shortfall = total < 1 - slack
-    key = gensym(:exclusive_draw)
+    key = _exclusive_draw_key()
     bounds = cumsum(ps)
     return [
         _ExclusiveGate(
