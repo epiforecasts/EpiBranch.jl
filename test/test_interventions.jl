@@ -296,13 +296,14 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         # The structure-driven processes that call this walk live in the
         # companion packages, so it is driven directly here on a path graph
         # 1-2-3-4 in which only node 1 is a case.
-        function walk(depth; timed = false, wrap = identity)
-            ct = wrap(ContactTracing(TraceEveryone(), 1.0, Dirac(0.0), Quarantine(duration = Inf); depth))
+        function walk(depth; timed = false, wrap = identity, delay = Dirac(0.0), clock = nothing)
+            ct = wrap(ContactTracing(TraceEveryone(), 1.0, delay, Quarantine(duration = Inf); depth))
             state = EpiBranch.new_state(
                 BranchingProcess(Poisson(1.0), Exponential(5.0)),
                 EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
             )
             EpiBranch.add_individuals!(state, 4, [ct])
+            clock === nothing || (state.max_infection_time = clock)
             case = state.individuals[1]
             case.state[:infected] = true
             case.infection_time = 0.0
@@ -355,6 +356,18 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         # The case's own contacts were still offered; nothing beyond them was,
         # because an inactive schedule keeps nobody active.
         @test reached == Set([2])
+
+        # `ContactTracing` declares its own `intervention_time`, so the
+        # schedule above is time-aware: the root case's clock sits before the
+        # start, but its contact's own trace time, pushed out by the delay,
+        # falls inside the window and sticks, and the ring grows past it as
+        # it would have had the schedule been active all along.
+        inds, reached = walk(
+            3; wrap = ct -> Scheduled(ct; start_time = 10.0),
+            delay = Dirac(20.0), clock = 5.0
+        )
+        @test all(is_traced, inds[2:4])
+        @test reached == Set([2, 3, 4])
     end
 
     @testset "Scheduled resetting a ring member lets a later trace grow the ring" begin

@@ -450,10 +450,14 @@ function competing_risk(s::Scheduled, parent, contact, state)
     return competing_risk(s.intervention, parent, contact, state)
 end
 
-# Which contacts the ring grows from, gated by the schedule as the tracing
-# hooks are: outside its window the wrapped intervention keeps nobody active.
+# Which contacts the ring grows from. A time-aware intervention has already
+# had each target's own trace checked against the schedule, by
+# `trace_contacts!`, which always runs first; a target whose trace did not
+# stick is not `is_traced`, so the wrapped `keep_active` already excludes it
+# without gating here on the stale infector-level clock. One that is not
+# time-aware stays gated on the infector's clock, as every hook always was.
 function keep_active(s::Scheduled, state, targets, is_new)
-    is_active(s, state) || return ()
+    s.time_aware || is_active(s, state) || return ()
     return keep_active(s.intervention, state, targets, is_new)
 end
 

@@ -5,6 +5,10 @@ infected before a policy's `start_time` was previously never isolated, even
 when its own isolation would have fallen inside the window; it now is.
 `start_after`, including the `ReportedCases` and `Infections` triggers, is
 checked at that later time too, so a trigger's reading of the population can
-differ slightly from a plain case count where it did not before. This
-changes which cases a `Scheduled` isolation or tracing policy reaches, and
-with it the results of simulations using one.
+differ slightly from a plain case count where it did not before. A
+`Scheduled(ContactTracing(...; depth > 1), ...)` ring also used to stop
+growing past a contact traced inside the window if the schedule looked
+inactive at the root case's own clock; it now keeps growing exactly as far
+as an unwrapped `ContactTracing` would. This changes which cases a
+`Scheduled` isolation or tracing policy reaches, and with it the results of
+simulations using one.
