@@ -76,6 +76,20 @@ struct _UnboundedDelay <: ContinuousUnivariateDistribution end
 Base.rand(::AbstractRNG, ::_UnboundedDelay) = 30.0
 Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
 
+# Acts through the deprecated whole-generation `apply_post_transmission!`
+# hook, and declares its own `intervention_time`, so a `Scheduled` wrapping it
+# is time-aware there too.
+struct _TimedBatchDose <: AbstractIntervention end
+function EpiBranch.apply_post_transmission!(::_TimedBatchDose, state, new_contacts)
+    for c in new_contacts
+        c.state[:_dosed_at] = c.infection_time + 5.0
+    end
+    return nothing
+end
+EpiBranch.intervention_time(::_TimedBatchDose, ind::Individual) =
+    get(ind.state, :_dosed_at, -Inf)
+EpiBranch.reset!(::_TimedBatchDose, ind::Individual) = delete!(ind.state, :_dosed_at)
+
 @testset "Interventions" begin
     clinical = clinical_presentation(
         incubation_period = LogNormal(1.5, 0.5),
@@ -3394,6 +3408,23 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             EpiBranch.trace_contacts!(ct, state, infector, [contact])
             @test is_traced(contact)
             @test isolation_time(contact) == 11.0 # infector's isolation (4.0) plus the 7-day delay
+        end
+
+        @testset "start_time reaches a contact dosed through the deprecated batch hook before it, once its own dose time falls inside" begin
+            # The same check applies to the deprecated `apply_post_transmission!`
+            # hook: the running clock predates the policy, but each contact's
+            # own dose time is checked individually once the hook has run.
+            dosed = Scheduled(_TimedBatchDose(); start_time = 10.0)
+            early = Individual(id = 1, infection_time = 1.0) # dose time 6.0: outside
+            late = Individual(id = 2, infection_time = 6.0) # dose time 11.0: inside
+            state = SimulationState(
+                [early, late], Int[], 0, StableRNG(1), 0, false, nothing, 0.0, nothing,
+                AbstractClinicalTransition[]
+            )
+            state.max_infection_time = 0.0
+            EpiBranch.apply_post_transmission!(dosed, state, [early, late])
+            @test !haskey(early.state, :_dosed_at)
+            @test late.state[:_dosed_at] == 11.0
         end
 
         @testset "requires at least one condition" begin
