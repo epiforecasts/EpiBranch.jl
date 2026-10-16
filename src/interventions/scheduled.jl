@@ -52,12 +52,9 @@ case itself appears after the start. The `condition` form has no start time
 to compare against and does not do this check.
 
 Isolation and quarantine already in place end when the schedule ends (after
-`end_time`, or once `condition` returns `false`). The exception is the
-mass-action, network and household models, where a perfect isolation
-(`post_isolation_transmission = 0`) with no end (`duration = Inf`), or a
-quarantine with no end, keeps the case out of transmission for good.
-Only protection the
-intervention keeps, such as vaccination, continues (see
+`end_time`, or once `condition` returns `false`), whatever `duration` they
+were given, on every transmission model. Only protection the intervention
+keeps, such as vaccination, continues (see
 [`persistent_competing_risks`](@ref EpiBranch.persistent_competing_risks)).
 Everyone still records the intervention's starting information, such as "not
 isolated", before it starts.
@@ -326,11 +323,19 @@ end
     return nothing
 end
 
-# `infectious_removal_time` comes from `InterventionWrapper`, which narrows it
-# for a schedule that can close: see `removal_gap_host_times` below. The loop
-# resolves it against the running clock, so a case whose infection time is
-# before `start_time` never has its wrapped intervention run (its gate is
-# closed) and so is not removed.
+# A schedule that can close again must not let the wrapped intervention's own
+# `infectious_removal_time` speak for it: an isolation or quarantine with no
+# `duration` reports a removal with no release of its own, which
+# `InterventionWrapper`'s default reads as closing the window for good,
+# whatever the schedule does later. The gated per-contact risk already
+# re-checks `is_active` at every proposal, exactly as it does for a finite
+# `duration`, so the window is left open here too and the schedule's end
+# decides instead. A schedule that cannot close again has nothing to hand the
+# case back with, so it keeps the wrapped intervention's own answer.
+function infectious_removal_time(s::Scheduled, ind::Individual)
+    s.can_lapse && return Inf
+    return infectious_removal_time(s.intervention, ind)
+end
 
 """
     persistent_competing_risks(intervention) -> Bool

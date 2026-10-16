@@ -135,11 +135,11 @@ With a finite duration, the line list from [`linelist`](@ref) gains a
 !!! note "Release on the network, household and homogeneous models"
     The network, household and homogeneous-mixing models (see
     [Networks](networks.md), [Households](households.md) and
-    [Homogeneous models](homogeneous.md)) release isolated cases in the same way. The
-    same holds for an isolation switched on or off with [`Scheduled`](@ref),
-    below, except that a complete isolation with `duration = Inf`, or a
-    quarantine with no end, stays in force on those models after the schedule
-    ends.
+    [Homogeneous models](homogeneous.md)) release isolated cases in the same
+    way. The same holds for an isolation switched on or off with
+    [`Scheduled`](@ref), below, including a complete isolation with
+    `duration = Inf`, or a quarantine with no end: the schedule ending
+    releases it on those models too.
     A case isolated for a week part-way through a month of infectiousness
     transmits again for the rest of that month.
 
