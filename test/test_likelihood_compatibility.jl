@@ -186,5 +186,18 @@ EpiBranch.has_effect(::_WithdrawingShield) = true
         standing_schedule = Scheduled(perfect; start_time = 0.0)
         @test withdrawn(lapsing_schedule) == (EpiBranch.REMOVAL_STRETCHES_KEY,)
         @test withdrawn(standing_schedule) == ()
+
+        # `quarantine` above names its own key through `removal_gap_host_times`
+        # and withdraws the shared history at once. A lapsing schedule around
+        # it forwards neither, so both must come through as withdrawn here,
+        # not just the one `removal_gap_host_times` would have named.
+        lapsing_quarantine = Scheduled(quarantine; start_time = 0.0, end_time = 10.0)
+        standing_quarantine = Scheduled(quarantine; start_time = 0.0)
+        @test Set(withdrawn(lapsing_quarantine)) ==
+            Set((EpiBranch.QUARANTINE_STRETCHES_KEY, EpiBranch.REMOVAL_STRETCHES_KEY))
+        @test withdrawn(standing_quarantine) == (EpiBranch.REMOVAL_STRETCHES_KEY,)
+
+        capacity_quarantine = CapacityConstrained(quarantine; budget_per_period = 2)
+        @test withdrawn(capacity_quarantine) == (EpiBranch.REMOVAL_STRETCHES_KEY,)
     end
 end

@@ -61,9 +61,15 @@ reads_population_state(w::InterventionWrapper) = reads_population_state(w.interv
 # only sometimes forwards, such as a lapsing `Scheduled`) is the one case
 # `removal_gap_host_times` leaves silent on purpose: whatever the intervention
 # it holds would have named, or already counts as withdrawn further down, is
-# withdrawn here too, so the gap stays unnamed without looking forgotten.
+# withdrawn here too, so the gap stays unnamed without looking forgotten. A
+# key the wrapper does forward stays named, not withdrawn, but the wrapped
+# intervention's own withdrawals (declared for reasons of its own, such as
+# `ContactTracing`'s shared history) still need to reach the model: forwarding
+# one key is no reason to drop another.
 function removal_gap_host_times_withdrawn(w::InterventionWrapper)
-    isempty(removal_gap_host_times(w)) || return ()
-    inner = removal_gap_host_times(w.intervention)
-    return isempty(inner) ? removal_gap_host_times_withdrawn(w.intervention) : inner
+    named = removal_gap_host_times(w)
+    inner_withdrawn = removal_gap_host_times_withdrawn(w.intervention)
+    isempty(named) || return Tuple(setdiff(inner_withdrawn, named))
+    inner_named = removal_gap_host_times(w.intervention)
+    return Tuple(union(inner_withdrawn, inner_named))
 end
