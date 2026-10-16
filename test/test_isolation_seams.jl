@@ -243,12 +243,13 @@ EpiBranch.infectious_removal_time(f::FixedRemoval, ::Individual) = f.time
         @test_throws ArgumentError race([ReopeningWard()])
     end
 
-    @testset "A leaky isolation records no stretch and keeps its window open" begin
+    @testset "A leaky isolation records its own stretch and keeps its window open" begin
         # Leaky isolation reduces each contact's hazard and removes nobody, so
-        # it has no stretch for a likelihood to take out and no window to
-        # close. A wrapper that cannot read stretches must not narrow the
-        # window for it either, which would turn the reduction into a
-        # permanent, perfect removal.
+        # it has no window to close. The likelihood still needs its stretch
+        # though, recorded under its own key, apart from a complete removal's,
+        # so the two are never merged together. A wrapper that cannot read
+        # stretches must not narrow the window for it either, which would turn
+        # the reduction into a permanent, perfect removal.
         leaky = Isolation(
             onset_to_isolation_delay = Dirac(1.0), duration = Dirac(7.0),
             post_isolation_transmission = 0.5
@@ -262,9 +263,12 @@ EpiBranch.infectious_removal_time(f::FixedRemoval, ::Individual) = f.time
         case = Individual(id = 1)
         set_isolated!(case, 8.0; release_time = 15.0)
 
-        @test isempty(EpiBranch.removal_gap_host_times(leaky))
+        @test EpiBranch.removal_gap_host_times(leaky) ==
+            (EpiBranch.LEAKY_REMOVAL_STRETCHES_KEY,)
+        @test EpiBranch.removal_block_probability(leaky) == 0.5
         @test EpiBranch.removal_gap_host_times(perfect) ==
             (EpiBranch.REMOVAL_STRETCHES_KEY,)
+        @test EpiBranch.removal_block_probability(perfect) == 1.0
         for wrap in (
                 identity,
                 iv -> Scheduled(iv; start_time = 0.0),

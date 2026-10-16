@@ -92,6 +92,94 @@ end
         pairwise_surv_loglik(Exponential(theta), one_gap) ≈ 2 * 4.0 / theta
 end
 
+@testset "A leaky stretch scales the hazard it covers, rather than excluding it" begin
+    # The same household as above, but the stretch is leaky: a quarter of the
+    # hazard still gets through it, so each susceptible's escape loses only
+    # three quarters of the isolated days' hazard rather than all of it.
+    theta = 2.0
+    leak = 0.25
+    households = [1, 1, 1]
+    infection = [0.0, NaN, NaN]
+    infectious = [0.0, NaN, NaN]
+    removal = [30.0, NaN, NaN]
+    index = [true, false, false]
+    layer(stretches) = HouseholdInfections(
+        households, infection, infectious, removal, index; obs_end = Inf,
+        host_times = (_leaky_removal_stretches = stretches,),
+    )
+    empty_stretches = Tuple{Float64, Float64, Float64}[]
+    one_gap = layer([[(4.0, 11.0, leak)], empty_stretches, empty_stretches])
+
+    @test pairwise_surv_loglik(Exponential(theta), one_gap) ≈
+        -2 * (30.0 - (1 - leak) * 7.0) / theta
+end
+
+@testset "An infection inside a leaky stretch picks up the log of what got through" begin
+    # Household of two: host 1 infectious from day 0, host 2 infected at day 6,
+    # inside a leaky stretch running [4, 11). The escape loses `1 - leak` of
+    # the hazard over [4, 6), and the hazard at the infection itself is scaled
+    # by `leak`.
+    theta = 2.0
+    leak = 0.4
+    households = [1, 1]
+    infection = [0.0, 6.0]
+    infectious = [0.0, NaN]
+    removal = [30.0, NaN]
+    index = [true, false]
+    stretches = [[(4.0, 11.0, leak)], Tuple{Float64, Float64, Float64}[]]
+    with_leak = HouseholdInfections(
+        households, infection, infectious, removal, index; obs_end = Inf,
+        host_times = (_leaky_removal_stretches = stretches,),
+    )
+    expected = -(4.0 + leak * 2.0) / theta - log(theta) + log(leak)
+    @test pairwise_surv_loglik(Exponential(theta), with_leak) ≈ expected
+end
+
+@testset "Households with a leaky isolation: simulate to loglikelihood" begin
+    clinical = clinical_presentation(incubation_period = Dirac(0.0))
+    progression = [
+        Transition(:recovered; from = :infection, delay = 30.0, terminal = true),
+    ]
+    process = HouseholdProcess(fill(5, 120), Exponential(0.4))
+
+    leaky = Isolation(
+        onset_to_isolation_delay = Dirac(1.0), duration = Dirac(7.0),
+        post_isolation_transmission = 0.3
+    )
+    m = ModelSpec(process; progression, attributes = clinical, interventions = [leaky])
+    state = simulate(m; rng = StableRNG(17))
+    data = household_infections(state, m)
+
+    # The stretches the likelihood reads are apart from a complete removal's.
+    @test haskey(data.host_times, :_leaky_removal_stretches)
+    @test !haskey(data.host_times, :_removal_stretches)
+    recorded = data.host_times._leaky_removal_stretches
+    @test any(!isempty, recorded)
+
+    @test isfinite(loglikelihood(data, m))
+
+    households = [ind.state[:household]::Int for ind in state.individuals]
+    plain = HouseholdInfections(
+        households, data.infection_time, data.infectious_time, data.removal_time,
+        data.is_index; obs_end = data.obs_end
+    )
+    excluded = HouseholdInfections(
+        households, data.infection_time, data.infectious_time, data.removal_time,
+        data.is_index; obs_end = data.obs_end,
+        host_times = (
+            _removal_stretches = [[(a, b) for (a, b, _) in s] for s in recorded],
+        ),
+    )
+
+    # The leaky evaluation is the one the data were actually generated under,
+    # so it fits better than either misspecified alternative: excluding the
+    # stretches outright (as perfect isolation would) or ignoring them.
+    @test pairwise_surv_loglik(process.kernel, data) >
+        pairwise_surv_loglik(process.kernel, excluded)
+    @test pairwise_surv_loglik(process.kernel, data) >
+        pairwise_surv_loglik(process.kernel, plain)
+end
+
 @testset "A wrapper forwards its stretches only when it cannot withdraw them" begin
     iso = Isolation(
         onset_to_isolation_delay = Dirac(1.0), duration = Dirac(7.0)

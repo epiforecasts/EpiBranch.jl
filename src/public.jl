@@ -100,6 +100,7 @@ public infection_likelihood_compatible
 public susceptibility_components, susceptibility_host_times, HazardScaling
 public binding_release
 public removal_gap_host_times, removal_gap_host_times_withdrawn
+public removal_block_probability
 public record_removal!
 public removal_stretches
 public InterventionAction, intervention_actions, action_draw!, apply_actions!,

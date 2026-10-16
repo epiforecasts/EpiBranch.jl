@@ -254,6 +254,12 @@ individual_type(ind::Individual) = get(ind.state, :type, 1)::Int
 # and names it from `removal_gap_host_times`.
 const REMOVAL_STRETCHES_KEY = :_removal_stretches
 
+# The key a removal that only blocks a fraction of the hazard (see
+# `removal_block_probability`) records its stretches under, apart from
+# `REMOVAL_STRETCHES_KEY`'s complete ones, so a likelihood never mistakes one
+# for the other. `Isolation` writes here for itself when leaky.
+const LEAKY_REMOVAL_STRETCHES_KEY = :_leaky_removal_stretches
+
 const _NO_STRETCHES = Tuple{Float64, Float64}[]
 
 """Record that a person is isolated from `time` (days) until `release_time`.
@@ -264,13 +270,21 @@ isolation is always a stated choice.
 A transmission route that isolation should end lists
 [`EpiBranch.INTERVENTION_REMOVAL`](@ref) in its `until`, which also allows
 for leaky isolation. `:isolated` in an `until` instead refers to a
-`Transition(:isolated, …)` step in the natural history."""
-function set_isolated!(ind::Individual, time::Real; release_time::Real)
+`Transition(:isolated, …)` step in the natural history.
+
+`key` names the [`record_removal!`](@ref EpiBranch.record_removal!) key the
+stretch goes under, the shared key by default. A removal that only blocks a
+fraction of the hazard passes its own key instead, apart from the shared one,
+so a likelihood never mistakes one for the other."""
+function set_isolated!(
+        ind::Individual, time::Real;
+        release_time::Real, key::Symbol = REMOVAL_STRETCHES_KEY
+    )
     ind.state[:isolated] = true
     delete!(ind.state, :_isolation_unrecorded)
     ind.state[:isolation_time] = time
     ind.state[:isolation_release_time] = release_time
-    record_removal!(ind, time, release_time)
+    record_removal!(ind, time, release_time; key = key)
     return release_time
 end
 
@@ -393,5 +407,8 @@ function clear_isolated!(ind::Individual)
     ind.state[:isolation_time] = Inf
     ind.state[:isolation_release_time] = Inf
     delete!(ind.state, REMOVAL_STRETCHES_KEY)
+    # Leaky isolation's own record, apart from the shared history above; only
+    # `Isolation` ever writes it, so clearing it unconditionally is safe.
+    delete!(ind.state, LEAKY_REMOVAL_STRETCHES_KEY)
     return nothing
 end

@@ -50,6 +50,7 @@ underscore are internal.
 | `:isolation_time` | `Float64` | `Inf` | `Isolation`, `ContactTracing`/`SourceTracing`'s `Quarantine` | `resolve_individual!` / `apply_trace!` |
 | `:isolation_release_time` | `Float64` | `Inf` | `Isolation`, `ContactTracing`/`SourceTracing`'s `Quarantine` | `resolve_individual!` / `apply_trace!`; when the block ends |
 | `:_removal_stretches` | `Vector{Tuple{Float64,Float64}}` | `[]` | `set_isolated!` | Internal. Every `(start, release)` a removal took the person out for, merged and sorted; a release of `Inf` for one that never ends |
+| `:_leaky_removal_stretches` | `Vector{Tuple{Float64,Float64}}` | `[]` | `Isolation` | `resolve_individual!`; internal. The stretches of a leaky isolation, apart from `:_removal_stretches`'s complete ones |
 | `:_quarantine_stretches` | `Vector{Tuple{Float64,Float64}}` | `[]` | `ContactTracing`/`SourceTracing`'s `Quarantine` | `apply_trace!`; internal. The quarantine's own stretches, apart from the shared history |
 | `:_lapsing_removal_keys` | `Tuple{Vararg{Symbol}}` | `()` | `record_removal!` | Internal. The keys under which a releasing stretch has been recorded, checked against `removal_gap_host_times` when the infection layer is built |
 | `:_isolated_by_isolation` | `Bool` | `false` | `Isolation` | `resolve_individual!`; internal |
@@ -405,19 +406,19 @@ compatible with these likelihoods. The built-in parts declare:
 | `clinical_presentation`, no population characteristics | yes |
 | Other population characteristics (`demographics`, `groups`, `transmission_traits`, `vaccine_acceptance`, and your own functions) | no, unless declared |
 | `Transition`, `Reporting`, `Hospitalisation`, `Recovery`, `Death` | yes |
-| `Isolation` | only with `post_isolation_transmission = 0` (complete isolation) |
+| `Isolation` | yes, complete or leaky |
 | `ContactTracing` with `Quarantine` or `FlagOnly` | yes |
 | `MassVaccination`, `GroupVaccination` | only with the default `dose_label` and a fixed (numeric) `efficacy` |
 | `RingVaccination` | only with the default `dose_label`, a fixed (numeric) `efficacy`, and no `onward_efficacy` or `post_exposure_efficacy` |
 | `Scheduled`, `CapacityConstrained` | as the intervention they hold |
 | Interventions and transitions of your own | no, unless declared |
 
-Removal from transmission, including complete isolation, is represented by the
-recorded removal times. Partial reduction of transmission, or a susceptibility
-multiplier, also changes the rate of infection within the infectious period. A
-change to a person's susceptibility is declared through
-`susceptibility_components` (below); other effects are not recorded in the
-infection data.
+Removal from transmission, whether complete or only a reduction such as leaky
+isolation, is represented by the recorded removal stretches; see [Removals
+that only reduce transmission](@ref) below for the fraction a leaky one
+blocks. A susceptibility multiplier is declared through
+`susceptibility_components` (below); other effects on the rate of infection
+are not recorded in the infection data.
 
 A part of your own that only changes the infectious period can declare itself
 compatible:
@@ -576,6 +577,52 @@ intervention it holds never releases anyone by itself. One that does, such as an
 competing risk, which checks the wrapper's on/off condition again at every
 contact. That narrowing belongs to the wrapping type and is not passed to plain interventions, whose default
 `infectious_removal_time` is `Inf`.
+
+### Removals that only reduce transmission
+
+A removal that only reduces transmission rather than stopping it, such as
+leaky isolation, blocks a fraction of the hazard over its stretches instead of
+all of it. The same shape as `Shielding` above, but with a
+`block_probability` of its own and a reduced, rather than certain, risk:
+
+```julia
+struct PartialShielding <: EpiBranch.AbstractIntervention
+    duration::Float64
+    block_probability::Float64
+end
+const PARTIAL_SHIELDING_STRETCHES = :partial_shielding_stretches
+
+function EpiBranch.resolve_individual!(s::PartialShielding, ind, state)
+    t = EpiBranch.onset_time(ind)
+    isfinite(t) || return nothing
+    EpiBranch.record_removal!(ind, t, t + s.duration; key = PARTIAL_SHIELDING_STRETCHES)
+    return nothing
+end
+
+function EpiBranch.competing_risk(s::PartialShielding, parent, contact, state)
+    stretches = EpiBranch.removal_stretches(parent, PARTIAL_SHIELDING_STRETCHES)
+    isempty(stretches) && return nothing
+    return Tuple(
+        EpiBranch.Risk(event_time = a, block_probability = s.block_probability, release_time = b)
+            for (a, b) in stretches
+    )
+end
+
+EpiBranch.removal_gap_host_times(::PartialShielding) = (PARTIAL_SHIELDING_STRETCHES,)
+EpiBranch.removal_block_probability(s::PartialShielding) = s.block_probability
+EpiBranch.infection_likelihood_compatible(::PartialShielding) = true
+```
+
+Name the fraction with
+[`EpiBranch.removal_block_probability`](@ref EpiBranch.removal_block_probability),
+`1` by default for a removal that stops transmission outright. The likelihood
+then scales the hazard over the recorded stretch by this fraction instead of
+excluding it, and the hazard of an infection that falls inside one picks up
+the log of the fraction that got through, rather than ruling that infector out
+as a complete removal's stretch does. Two components recording a leaky
+removal under the same key must agree on this fraction; give each its own key
+otherwise, as `Isolation` does (`:_leaky_removal_stretches`, apart from the
+shared `:_removal_stretches`).
 
 ## Custom clinical transitions: further details
 
