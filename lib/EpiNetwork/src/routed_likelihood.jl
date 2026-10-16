@@ -293,7 +293,13 @@ function EpiBranch.pairwise_surv_loglik(
         ext_term = (external && 0 <= tj <= data.obs_end) ?
             [loghazard(extdist, tj)] : Float64[]
         terms = vcat(route_terms, ext_term)
-        ll += isempty(terms) ? -Inf : logsumexp(terms)
+        # A literal `-Inf` here, not `ll += -Inf`, discards whatever AD partials
+        # `ll` has accumulated from this and every earlier host: the likelihood
+        # is the constant -Inf at every parameter value once a host is
+        # structurally unexplainable, so its gradient must be exactly zero,
+        # which surviving partials from the discarded finite terms would spoil.
+        isempty(terms) && return -Inf
+        ll += logsumexp(terms)
     end
     return ll
 end

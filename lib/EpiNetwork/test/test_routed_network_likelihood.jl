@@ -195,4 +195,24 @@ end
         ]
         @test ForwardDiff.gradient(f, x) ≈ fd rtol = 1.0e-5
     end
+
+    @testset "a structurally infeasible host has a zero gradient, not just -Inf" begin
+        # host 1 infects host 2 on the only route, but closes before host 2's
+        # infection time, so host 2's survival accumulates hazard (depending on
+        # the kernel's rate) while its event term is empty and the likelihood is
+        # -Inf at every parameter value; its gradient must be the zero vector,
+        # not whatever host 2's discarded survival term leaves behind in the
+        # shared running total.
+        reach = [[2], Int[]]
+        data = RoutedNetworkInfections(
+            [:community], [reach], [[0.0, 0.0]], [[2.0, Inf]],
+            [0.0, 5.0], [true, false]
+        )
+        f(θ) = pairwise_surv_loglik(
+            [RouteWindow(:community; until = (:recovered,), kernel = Exponential(exp(θ[1])), reach = reach)],
+            data
+        )
+        @test f([0.0]) == -Inf
+        @test ForwardDiff.gradient(f, [0.0]) == [0.0]
+    end
 end
