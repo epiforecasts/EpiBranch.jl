@@ -114,7 +114,7 @@ end
 # over R or k gives).
 function _incidence_log_pgf(
         u::AbstractVector{T}, w::AbstractVector{<:Real}, pgf, n::Integer, seeds::Real,
-        ::Type{Toff}, ρ::Real = 1, d::AbstractVector{<:Real} = (1.0,)
+        ::Type{Toff}, ρ::Real = 1, d::AbstractVector{<:Real} = [1.0]
     ) where {T <: Real, Toff <: Real}
     S = promote_type(T, Toff, typeof(ρ))
     U(m) = 1 <= m <= n ? S(u[m]) : one(S)
