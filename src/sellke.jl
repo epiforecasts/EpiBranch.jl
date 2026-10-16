@@ -80,13 +80,14 @@ end
 # An output that wants every contact event — to count how many exposures a
 # vaccine averted, say — needs the draws the race would otherwise skip. A
 # `recorder` ([`ContactRecorder`](@ref)) attached to the composed model is
-# asked, every time a standing block would end a pair's draws, whether they
-# still matter ([`records_contacts`](@ref EpiBranch.records_contacts)); if it
-# says yes the race keeps drawing exactly as it does for a block that is not
-# certain, which puts the pair back under the rejection-continuation guard
-# rather than needing one of its own. The default `NoContactRecorder` answers
-# no to every pair, so a run with no recorder attached drops the pair exactly
-# as above.
+# asked about every blocked proposal, permanent or not
+# ([`records_contacts`](@ref EpiBranch.records_contacts)), so it can log each
+# one; only its answer for a proposal whose block is permanent decides whether
+# a standing block ends the pair's draws. Answering yes there keeps the race
+# drawing exactly as it does for a block that is not certain, which puts the
+# pair back under the rejection-continuation guard rather than needing one of
+# its own. The default `NoContactRecorder` answers no to every pair, so a run
+# with no recorder attached drops the pair exactly as above.
 #
 # It is not what a block means on the generation engine, where a parent draws a
 # fixed set of contacts and a blocked one is a transmission lost with nothing to
@@ -1224,19 +1225,23 @@ function _sellke_race!(
                     route_interventions[opening.route]
             )
             if blocked
-                # The contact did not transmit. Unless the block is certain to
-                # recur (`permanent`), the source goes on meeting the person: the
-                # next contact is a draw from the same hazard conditioned on
-                # falling later, kept while the window is still open for it. A
-                # permanent block already answers every later proposal the same
-                # way, so the pair is dropped without asking the model or the
-                # kernel again, unless `recorder` says this pair's draws still
-                # matter, in which case it is asked afresh at every proposal a
-                # standing block would otherwise end — not just this one — so a
-                # recorder that wants the stream can log each one. Tracing and
-                # ring construction read the standing contacts, not these
+                # The contact did not transmit. `recorder` is asked about every
+                # blocked proposal, permanent or not, so it can log the
+                # exposure even when the pair goes on meeting; only its answer
+                # for a permanent block decides whether the pair's draws
+                # continue. Unless the block is certain to recur (`permanent`),
+                # the source goes on meeting the person: the next contact is a
+                # draw from the same hazard conditioned on falling later, kept
+                # while the window is still open for it. A permanent block
+                # already answers every later proposal the same way, so the
+                # pair is dropped without asking the model or the kernel again,
+                # unless `recorder` says this pair's draws still matter, in
+                # which case it is asked afresh at every later proposal too, so
+                # a recorder that wants the stream can log each one. Tracing
+                # and ring construction read the standing contacts, not these
                 # proposals, so the pair itself is unaffected either way.
-                if permanent && !records_contacts(recorder, source, ind, state, bt)
+                keeps_drawing = records_contacts(recorder, source, ind, state, bt)
+                if permanent && !keeps_drawing
                     proposals[p] = _at(proposals[p], T(Inf))
                 else
                     if opening.route == 0
@@ -1278,6 +1283,10 @@ function _sellke_race!(
             ind.generation = infector.generation + 1
             ind.chain_id = infector.chain_id
             push!(infector.secondary_case_ids, ind.id)
+            # This pair may have been logged earlier from a non-permanent
+            # block that `recorder` was asked to keep drawing; it infected
+            # after all, so that logged exposure is retracted.
+            _retract_contact!(recorder, infector, ind, state)
             # Only a model with named routes reports one. The single-window
             # shorthand has one window covering the whole model, so its name
             # identifies the model, where `:infection_route` is meant to

@@ -60,6 +60,17 @@ end
 # The block reads nothing that changes, so a certain one never lifts.
 EpiBranch.standing_block(::FlatBlock) = true
 
+# Blocks every transmission by one named infector, regardless of route: unlike
+# `BlockFrom`, `risk_applies` is left at the default so this also reaches the
+# single-window shorthand, where there is no named route to require.
+struct BlockFromIndividual <: EpiBranch.AbstractIntervention
+    id::Int
+end
+function EpiBranch.competing_risk(b::BlockFromIndividual, parent, contact, state)
+    return parent.id == b.id ? Risk(block_probability = 1.0) : nothing
+end
+EpiBranch.standing_block(::BlockFromIndividual) = true
+
 # The same risk with its arguments typed, as the style guide asks for. The race
 # has to find this method as readily as the untyped one above.
 struct TypedBlock <: EpiBranch.AbstractIntervention
@@ -82,6 +93,31 @@ struct FunctionBlock <: EpiBranch.AbstractIntervention
 end
 function EpiBranch.competing_risk(b::FunctionBlock, parent, contact, state)
     return parent === contact ? nothing : Risk(block_probability = (rng, p, c, st) -> b.p)
+end
+
+# A certain block with a fixed `release_time`: not permanent, since the pair
+# keeps meeting again once it lifts and can still infect afterwards.
+struct BlockUntil <: EpiBranch.AbstractIntervention
+    until::Float64
+end
+function EpiBranch.competing_risk(b::BlockUntil, parent, contact, state)
+    return parent === contact ? nothing :
+        Risk(block_probability = 1.0, release_time = b.until)
+end
+
+# Wraps `ExposedContactRecorder`, flagging whether it was ever asked about a
+# block, so a test can tell a block actually happened before trusting that
+# the logged exposure is retracted once the same pair infects.
+mutable struct ProbeExposedRecorder <: EpiBranch.ContactRecorder
+    asked::Bool
+end
+ProbeExposedRecorder() = ProbeExposedRecorder(false)
+function EpiBranch.records_contacts(r::ProbeExposedRecorder, parent, contact, state, t)
+    r.asked = true
+    return EpiBranch.records_contacts(EpiBranch.ExposedContactRecorder(), parent, contact, state, t)
+end
+function EpiBranch._retract_contact!(::ProbeExposedRecorder, parent, contact, state)
+    return EpiBranch._retract_contact!(EpiBranch.ExposedContactRecorder(), parent, contact, state)
 end
 
 # A contact recorder that always wants a standing-blocked pair's draws kept,
@@ -799,6 +835,29 @@ end
     @test !is_infected(only(state.individuals))
 end
 
+@testset "ExposedContactRecorder does not log a blocked community introduction" begin
+    # A community introduction proposes the person as their own infector
+    # (`source === ind`), standing in for a source outside the population; a
+    # block on it is not an exposure between two people and must not appear
+    # as a self-pair.
+    rng = StableRNG(1)
+    state = EpiBranch.new_state(
+        BranchingProcess(Poisson(0.0), Exponential(1.0)),
+        AbstractClinicalTransition[], NoAttributes(), rng
+    )
+    interventions = [ProtectTo(1)]
+    EpiBranch.add_individuals!(state, 1, interventions)
+    @test EpiBranch._sellke_race!(
+        state, [1], rng;
+        from = :infection, until = (), interventions,
+        introduction = (Exponential(1.0), Inf), targets = (i, st) -> (),
+        seed! = (best, members, r) -> (best[1] = 1.0),
+        recorder = EpiBranch.ExposedContactRecorder()
+    )
+    @test !is_infected(only(state.individuals))
+    @test !haskey(state.scratch, EpiBranch.EXPOSED_CONTACTS_KEY)
+end
+
 @testset "A recorder keeps drawing a standing-blocked pair" begin
     # Same setup as "A certain block drops the pair without asking again", but
     # a recorder that wants the stream is attached: the race keeps asking the
@@ -845,4 +904,122 @@ end
         seed! = (best, members, r) -> (best[1] = 1.0),
         recorder = AlwaysRecord()
     )
+end
+
+@testset "ExposedContactRecorder logs a permanently blocked pair" begin
+    rng = StableRNG(11)
+    prog = [Transition(:recovered; from = :infection, delay = 100.0, terminal = true)]
+    state = EpiBranch.new_state(
+        BranchingProcess(Poisson(1.0), Exponential(1.0)),
+        prog, NoAttributes(), rng
+    )
+    interventions = [FlatBlock(1.0)]
+    EpiBranch.add_individuals!(state, 2, interventions)
+    targets = (inf, st) -> ((2, Exponential(1.0)),)
+    EpiBranch._sellke_race!(
+        state, [1, 2], rng; targets,
+        from = :infection, until = (:recovered,), interventions,
+        seed! = (best, members, r) -> (best[1] = 0.0),
+        recorder = EpiBranch.ExposedContactRecorder()
+    )
+    @test !is_infected(state.individuals[2])
+    log = state.scratch[EpiBranch.EXPOSED_CONTACTS_KEY]
+    @test length(log.events) == 1
+    from_id, to_id, t, generation = only(log.events)
+    @test (from_id, to_id) == (1, 2)
+    @test 0.0 <= t <= 100.0
+    @test generation == state.individuals[1].generation + 1
+end
+
+@testset "ExposedContactRecorder captures the generation of an escaped exposure" begin
+    # 1 infects 2 (generation 1), and 2's attempt on 3 is blocked: the escaped
+    # exposure should carry generation 2, the generation 3 would have had
+    # without the block, rather than the default 0 of someone never infected.
+    rng = StableRNG(11)
+    prog = [Transition(:recovered; from = :infection, delay = 100.0, terminal = true)]
+    state = EpiBranch.new_state(
+        BranchingProcess(Poisson(1.0), Exponential(1.0)),
+        prog, NoAttributes(), rng
+    )
+    interventions = [BlockFromIndividual(2)]
+    EpiBranch.add_individuals!(state, 3, interventions)
+    targets = function (inf, st)
+        inf == 1 && return ((2, Exponential(1.0)),)
+        inf == 2 && return ((3, Exponential(1.0)),)
+        return ()
+    end
+    EpiBranch._sellke_race!(
+        state, [1, 2, 3], rng; targets,
+        from = :infection, until = (:recovered,), interventions,
+        seed! = (best, members, r) -> (best[1] = 0.0),
+        recorder = EpiBranch.ExposedContactRecorder()
+    )
+    @test is_infected(state.individuals[2])
+    @test state.individuals[2].generation == 1
+    @test !is_infected(state.individuals[3])
+    log = state.scratch[EpiBranch.EXPOSED_CONTACTS_KEY]
+    @test length(log.events) == 1
+    from_id, to_id, t, generation = only(log.events)
+    @test (from_id, to_id) == (2, 3)
+    @test generation == 2
+end
+
+@testset "ExposedContactRecorder logs a block that is not permanent, once" begin
+    # The block is function-valued, so the race cannot drop the pair for it
+    # on sight (unlike `FlatBlock`) and keeps redrawing until the short window
+    # closes. Previously no recorder was ever asked about such a block; now
+    # it is logged exactly as a permanent one is, and kept only once, since
+    # every later block is the same pair escaping the same infector.
+    rng = StableRNG(11)
+    prog = [Transition(:recovered; from = :infection, delay = 5.0, terminal = true)]
+    state = EpiBranch.new_state(
+        BranchingProcess(Poisson(1.0), Exponential(1.0)),
+        prog, NoAttributes(), rng
+    )
+    interventions = [FunctionBlock(1.0)]
+    EpiBranch.add_individuals!(state, 2, interventions)
+    targets = (inf, st) -> ((2, Exponential(1.0)),)
+    EpiBranch._sellke_race!(
+        state, [1, 2], rng; targets,
+        from = :infection, until = (:recovered,), interventions,
+        seed! = (best, members, r) -> (best[1] = 0.0),
+        recorder = EpiBranch.ExposedContactRecorder()
+    )
+    @test !is_infected(state.individuals[2])
+    log = state.scratch[EpiBranch.EXPOSED_CONTACTS_KEY]
+    @test length(log.events) == 1
+    @test log.events[1][1:2] == (1, 2)
+end
+
+@testset "ExposedContactRecorder drops a pair that later infects" begin
+    # `BlockUntil`'s block lifts at t=5, so a pair it blocks early can still
+    # meet again and infect once the race draws a contact time past that. A
+    # block that was not this pair's last outcome must not stay logged as an
+    # escaped exposure once the pair does infect.
+    exercised = 0
+    for seed in 1:100
+        rng = StableRNG(seed)
+        prog = [Transition(:recovered; from = :infection, delay = 20.0, terminal = true)]
+        state = EpiBranch.new_state(
+            BranchingProcess(Poisson(1.0), Exponential(1.0)),
+            prog, NoAttributes(), rng
+        )
+        interventions = [BlockUntil(5.0)]
+        EpiBranch.add_individuals!(state, 2, interventions)
+        targets = (inf, st) -> inf == 1 ? ((2, Exponential(1.0)),) : ()
+        recorder = ProbeExposedRecorder()
+        EpiBranch._sellke_race!(
+            state, [1, 2], rng; targets,
+            from = :infection, until = (:recovered,), interventions,
+            seed! = (best, members, r) -> (best[1] = 0.0),
+            recorder
+        )
+        is_infected(state.individuals[2]) && recorder.asked || continue
+        exercised += 1
+        log = get(state.scratch, EpiBranch.EXPOSED_CONTACTS_KEY, nothing)
+        @test log === nothing || (1, 2) ∉ log.pairs
+    end
+    # A seed range in which the pair is never both blocked and later infected
+    # would pass vacuously; this confirms that case was actually exercised.
+    @test exercised > 0
 end

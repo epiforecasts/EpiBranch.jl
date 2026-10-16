@@ -200,6 +200,40 @@ using Dates
         @test "infected" in names(df)
     end
 
+    @testset "contacts lists exposures an ExposedContactRecorder keeps" begin
+        # A permanent, population-wide vaccine blocks every onward
+        # transmission from the index case, so the fixed-population race
+        # would otherwise give this contacts() table no rows at all.
+        spec = ModelSpec(
+            HomogeneousProcess(; transmission_rate = 4.0, population_size = 6);
+            progression = [
+                Transition(:recovered; from = :infection, delay = 3.0, terminal = true),
+            ],
+            interventions = [LeakyVaccine(1.0, 0.0)],
+            recorder = EpiBranch.ExposedContactRecorder()
+        )
+        state = simulate(spec; n_initial = 1, rng = StableRNG(3))
+        @test state.cumulative_cases == 1
+        index_id = findfirst(is_infected, state.individuals)
+
+        df = contacts(state)
+        @test nrow(df) > 0
+        @test all(==(index_id), df.from)
+        @test all(!, df.infected)
+        @test index_id ∉ df.to
+
+        # Without the recorder, the same run has no rows to report.
+        plain = ModelSpec(
+            HomogeneousProcess(; transmission_rate = 4.0, population_size = 6);
+            progression = [
+                Transition(:recovered; from = :infection, delay = 3.0, terminal = true),
+            ],
+            interventions = [LeakyVaccine(1.0, 0.0)]
+        )
+        plain_state = simulate(plain; n_initial = 1, rng = StableRNG(3))
+        @test nrow(contacts(plain_state)) == 0
+    end
+
     @testset "index cases identifiable via parent_id" begin
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(1.5), Exponential(5.0))
