@@ -197,7 +197,7 @@ Observed incidence: the number of new cases in each successive time step
 (day, week, or whatever unit `data` is recorded in) of a single outbreak,
 starting one step after the `seeds` index cases. Pass it to `loglikelihood`
 with an offspring distribution and a generation-time distribution, or with a
-model that carries its own, to fit a branching process to a case or
+model that already has its own, to fit a branching process to a case or
 admission time series without simulating it.
 
 - `data`: the incidence count for each step, in calendar order.

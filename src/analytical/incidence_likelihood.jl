@@ -3,7 +3,7 @@
 # A closed-form likelihood for the incidence time series a branching process
 # produces, in the spirit of Boudreau and St-Onge's calendar-time branching
 # process (arXiv:2610.17138): advance the probability generating function one
-# time step at a time, carrying one auxiliary variable per step, then read
+# time step at a time, with one auxiliary variable per step, then read
 # the mean and covariance of the step counts off the cumulant generating
 # function (the log of that PGF) and match a multivariate normal or
 # lognormal to them.
