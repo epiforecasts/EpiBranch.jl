@@ -39,8 +39,9 @@ _radix_capable(::Type) = false
 # turns a negative zero into a positive one, whose pattern is the smallest.
 @inline _time_key(t::Float64) = reinterpret(UInt64, t + 0.0)
 
-# Bucket 1 holds the events at the time last popped, kept sorted so the earliest
-# by member and proposal comes off the end. Bucket `b > 1` holds events whose
+# Bucket 1 holds the events at the time last popped, as a binary heap ordered
+# by member and proposal: a large outbreak seeds every case at one time, and a
+# sorted vector would make those ties quadratic. Bucket `b > 1` holds events whose
 # time first differs from the last popped in bit `b - 2`, counted from the
 # lowest.
 @inline _bucket(key::UInt64, last::UInt64) =
@@ -141,17 +142,7 @@ function _radix_push!(q::_EventQueue, e::_Event)
         )
     )
     b = _bucket(key, q.last)
-    bucket = q.buckets[b]
-    push!(bucket, e)
-    if b == 1
-        # Keep the current time's events sorted with the earliest last.
-        i = length(bucket)
-        @inbounds while i > 1 && isless(bucket[i - 1], e)
-            bucket[i] = bucket[i - 1]
-            i -= 1
-        end
-        @inbounds bucket[i] = e
-    end
+    b == 1 ? _heap_push!(q.buckets[1], e) : push!(q.buckets[b], e)
     return q
 end
 
@@ -166,10 +157,10 @@ function _radix_pop!(q::_EventQueue)
         q.last = minimum(e -> _time_key(e.time), source)
         # Every event moves to a lower bucket, relative to the new last time.
         for e in source
-            push!(q.buckets[_bucket(_time_key(e.time), q.last)], e)
+            b = _bucket(_time_key(e.time), q.last)
+            b == 1 ? _heap_push!(current, e) : push!(q.buckets[b], e)
         end
         empty!(source)
-        sort!(current; rev = true)
     end
-    return pop!(current)
+    return _heap_pop!(current)
 end

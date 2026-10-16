@@ -27,6 +27,17 @@
     @test all(s -> queue_matches_sorting(s; ties = true), 1:3)
     @test all(s -> queue_matches_sorting(s; ties = false), 1:3)
 
+    @testset "Many events at one time pop by member" begin
+        q = EpiBranch._EventQueue{Float64}()
+        for k in 1:5000
+            EpiBranch._enqueue!(q, EpiBranch._Event(0.0, k, 1))
+        end
+        EpiBranch._enqueue!(q, EpiBranch._Event(1.0, 1, 1))
+        @test EpiBranch._radix(q)
+        @test [EpiBranch._dequeue!(q).member for _ in 1:5000] == 1:5000
+        @test EpiBranch._dequeue!(q).time == 1.0
+    end
+
     @testset "An event before the last one taken is refused" begin
         q = EpiBranch._EventQueue{Float64}()
         for i in 1:2000
