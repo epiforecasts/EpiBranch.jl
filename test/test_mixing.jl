@@ -114,13 +114,16 @@ using StableRNGs
         @test m.from === :infection
     end
 
-    @testset "termination controls warn on the structured population" begin
+    @testset "termination controls on the structured population" begin
         rate = (from, to) -> 2.0 / 200
         prog = [Transition(:recovered; from = :infection, delay = 1.0, terminal = true)]
         spec = ModelSpec(MixingProcess(; population_size = 200, rate); progression = prog)
-        @test_logs (:warn, r"ignores the other termination controls") simulate(
-            spec; n_initial = 3, max_cases = 50, rng = StableRNG(1)
-        )
+        # An explicit, non-default max_cases now caps the population, with no
+        # warning that it had no effect.
+        capped = @test_logs simulate(spec; n_initial = 3, max_cases = 50, rng = StableRNG(1))
+        @test capped.cumulative_cases == 50
+        @test !is_extinct(capped)
+        # No termination keyword set → no warning, and the default stays off.
         @test_logs simulate(spec; n_initial = 3, rng = StableRNG(1))
         @test !EpiBranch._honours_termination_controls(
             MixingProcess(; population_size = 10, rate)

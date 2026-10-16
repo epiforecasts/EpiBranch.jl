@@ -165,6 +165,10 @@ function _validate_route_kernel(w::RouteWindow)
 end
 
 population_size(::RoutedNetwork) = NoPopulation()
+# The race honours a `stopping_rules` entry, or a non-default `max_cases` or
+# `max_generations`, but leaves those two keywords' defaults off, so an
+# existing run over the fixed network keeps going to extinction or `max_time`
+# unless a cap is explicitly asked for (`_drop_default_shortcuts`).
 _honours_termination_controls(::RoutedNetwork) = false
 
 # Each route closes independently at the earliest of its own `until` states

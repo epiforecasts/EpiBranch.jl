@@ -973,6 +973,14 @@ than the same draw. Returns `true` when the race ran
 until no candidate infection remained (the population reached extinction) and
 `false` when it was cut off at `max_time` with candidates still pending.
 
+`max_generation` drops a settled case's own proposals once its generation
+reaches it, leaving every case beyond that depth undrawn; everything at or
+within the bound still runs to its own extinction or `max_time`.
+`stopping_rules` is polled with [`should_stop`](@ref) once a case settles, for
+whatever a caller's `max_time`/`max_generation` do not already cover (see
+[`honoured_without_should_stop`](@ref EpiBranch.honoured_without_should_stop));
+the race ends there too, also returning `false`.
+
 `contacts(infective_id, state)` yields the ids of everyone that case was in
 contact with, whether or not transmission followed, which is what contact
 tracing acts on; it is therefore usually wider than `targets`, which yields only
@@ -993,7 +1001,8 @@ function _sellke_race!(
         from::Union{Symbol, Nothing} = nothing, until::Union{Tuple, Nothing} = nothing,
         routes = nothing, interventions = (), contacts = nothing, risks = (),
         introduction = nothing, watches = nothing, projections = nothing,
-        max_time = Inf, recorder::ContactRecorder = NoContactRecorder()
+        max_time = Inf, max_generation = typemax(Int), stopping_rules = (),
+        recorder::ContactRecorder = NoContactRecorder()
     )
     # A model either passes `routes`, a collection of `(RouteWindow, targets)`
     # pairs, or the single-route shorthand `from`/`until`/`targets`. The
@@ -1146,6 +1155,10 @@ function _sellke_race!(
     clock = T(-Inf)
     pops = Tuple{Int, Int}[]
     passed = 0
+    # Whether `max_generation` has suppressed a case's own transmission, so
+    # the run finishing with no candidates left is reported as cut off rather
+    # than as having reached extinction on its own.
+    capped_generation = false
     # For a live kernel, which hosts' records a pending or future draw reads.
     # Empty and unused otherwise.
     watch = _LiveWatch(live ? m : 0, length(rts))
@@ -1280,6 +1293,12 @@ function _sellke_race!(
         # time is the clock, and it is the next case in sequence. The post-loop
         # reconcile (`_reconcile_sellke_bookkeeping!`) sets the final values.
         _settle_case!(state, ind, interventions, state.cumulative_cases + 1)
+        # `_settle_case!` has just brought `state.cumulative_cases`,
+        # `max_infection_time` and `current_generation` up to this case, which
+        # is what a rule not already captured by `max_time`/`max_generation`
+        # reads; ending here rather than after this case transmits matches
+        # `MaxCases` stopping at the first `n` infections in time.
+        any(r -> should_stop(r, state), stopping_rules) && return false
         traced = _trace_from!(
             state, ind, interventions, contacts, pos, processed, tracing
         )
@@ -1317,6 +1336,11 @@ function _sellke_race!(
         for (ri, (w, route_targets)) in enumerate(rts)
             open_t = window_open(ind, w)
             isfinite(open_t) || continue
+            # A case at the generation bound opened this route and would
+            # otherwise have transmitted along it, so the run was cut off
+            # rather than reaching extinction on its own — the same
+            # distinction `max_time` draws for a route it censors.
+            ind.generation >= max_generation && (capped_generation = true; continue)
             close_t = _route_close(ind, w, interventions, close_keys[ri])
             push!(openings, _RouteOpening(members[j], ri, open_t, close_t))
             opening_id = length(openings)
@@ -1331,7 +1355,8 @@ function _sellke_race!(
             )
         end
     end
-    return !any(((_, route_targets),) -> _pending_beyond(route_targets, race), rts)
+    return !capped_generation &&
+        !any(((_, route_targets),) -> _pending_beyond(route_targets, race), rts)
 end
 
 # Whether a route left contacts past the time limit that it never proposed, so
@@ -1397,29 +1422,34 @@ end
     sellke_race!(state, members, rng, sim_opts; kwargs...) -> state
 
 Public wrapper around `_sellke_race!`: resolves the race's
-`max_time` from `sim_opts`'s stopping rules, then reconciles `state`'s
-aggregate bookkeeping (`cumulative_cases`, `max_infection_time`, `extinct`)
-from the per-individual state the race wrote directly, before returning
-`state`. A model with its own simulation loop calls this rather than
-`_sellke_race!` itself, so it never has to resolve `max_time` or reconcile the
-bookkeeping by hand. `kwargs` are `_sellke_race!`'s own (`seed!`, `targets` or
-`routes`, `from`, `until`, `interventions`, `contacts`, `risks`,
-`introduction`, `watches`, `recorder`), everything but `max_time`, which this
+`max_time`, `max_generation` and `stopping_rules` from `sim_opts`'s stopping
+rules, then reconciles `state`'s aggregate bookkeeping (`cumulative_cases`,
+`max_infection_time`, `extinct`) from the per-individual state the race wrote
+directly, before returning `state`. A model with its own simulation loop
+calls this rather than `_sellke_race!` itself, so it never has to resolve
+these or reconcile the bookkeeping by hand. `kwargs` are `_sellke_race!`'s own
+(`seed!`, `targets` or `routes`, `from`, `until`, `interventions`, `contacts`,
+`risks`, `introduction`, `watches`, `recorder`), everything but the three this
 wrapper sets.
 
 A model with more than one natural race partition (a household process, over
 its households, via [`race_groups`](@ref)) calls `_sellke_race!` directly in
-its own loop instead, with `max_time` resolved once outside it, and reconciles
-`state` once after the loop: this wrapper's per-call reconciliation scans
-every individual, which would cost O(races × population) run inside such a
-loop rather than the O(population) a single-race model gets from calling this
-once. See `HouseholdProcess` in the `EpiHouseholds` package.
+its own loop instead, with `max_time`, `max_generation` and `stopping_rules`
+resolved once outside it, and reconciles `state` once after the loop: this
+wrapper's per-call reconciliation scans every individual, which would cost
+O(races × population) run inside such a loop rather than the O(population) a
+single-race model gets from calling this once. See `HouseholdProcess` in the
+`EpiHouseholds` package.
 """
 function sellke_race!(
         state::SimulationState, members::AbstractVector{Int},
         rng::AbstractRNG, sim_opts::SimOpts; kwargs...
     )
-    extinct = _sellke_race!(state, members, rng; max_time = _max_time(sim_opts), kwargs...)
+    extinct = _sellke_race!(
+        state, members, rng; max_time = _max_time(sim_opts),
+        max_generation = _max_generation(sim_opts),
+        stopping_rules = _poll_rules(sim_opts), kwargs...
+    )
     return _reconcile_sellke_bookkeeping!(state, extinct)
 end
 
