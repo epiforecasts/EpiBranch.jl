@@ -76,9 +76,9 @@ struct _UnboundedDelay <: ContinuousUnivariateDistribution end
 Base.rand(::AbstractRNG, ::_UnboundedDelay) = 30.0
 Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
 
-# Acts through the deprecated whole-generation `apply_post_transmission!`
-# hook, and declares its own `intervention_time`, so a `Scheduled` wrapping it
-# is time-aware there too.
+# Uses the deprecated whole-generation `apply_post_transmission!` hook but
+# still declares its own `intervention_time`, so a `Scheduled` wrapping it is
+# time-aware too.
 struct _TimedBatchDose <: AbstractIntervention end
 function EpiBranch.apply_post_transmission!(::_TimedBatchDose, state, new_contacts)
     for c in new_contacts
