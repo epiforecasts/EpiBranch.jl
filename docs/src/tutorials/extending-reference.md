@@ -348,10 +348,9 @@ whether that pair's draws continue. The default [`NoContactRecorder`](@ref)
 answers `false` for every pair, so a model with no recorder drops a
 permanently-blocked pair at no extra cost.
 
-If what you want is just the missing rows in [`contacts`](@ref) — a household
-member or network neighbour who was exposed but escaped infection — attach the
-built-in [`ExposedContactRecorder`](@ref) instead of writing your own; no
-further step is needed.
+To get just the missing rows in [`contacts`](@ref) — a household member or
+network neighbour who was exposed but escaped infection — attach the built-in
+[`ExposedContactRecorder`](@ref) instead of writing your own.
 
 A sketch of a recorder that wants the whole stream of blocked proposals on a
 permanently-blocked pair, not just the one that would end it:
