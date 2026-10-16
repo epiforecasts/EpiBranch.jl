@@ -736,7 +736,8 @@ spends at once, well above `budget_per_period` in a day.
 
 !!! note "Which models support capacity limits"
     On the network and household models, capacity limits work for group
-    vaccination, and for ring vaccination with its default, infinite
-    `eligibility_window`. Mass vaccination does not reach anyone on those models
+    vaccination and for ring vaccination, with any `eligibility_window`: a
+    dose the race withdraws for falling outside the window frees the
+    capacity it used. Mass vaccination does not reach anyone on those models
     at all, with or without a limit, and `simulate` warns that it will have
     no effect. To limit an intervention of your own, see [Capacity limits](@ref).
