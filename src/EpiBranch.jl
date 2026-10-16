@@ -162,7 +162,7 @@ export is_active, intervention_time
 export AbstractClinicalTransition, Transition, Reporting, Hospitalisation, Death, Recovery
 export is_terminal, terminal_event, terminal_target, exclusive_probabilities
 export ObservationModel, PerCaseObservation, NoObservation, MinimumSize, observe
-export ContactRecorder, NoContactRecorder
+export ContactRecorder, NoContactRecorder, ExposedContactRecorder
 export single_type_offspring
 
 # Exports — sentinel types

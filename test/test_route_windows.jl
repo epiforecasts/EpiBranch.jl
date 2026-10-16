@@ -846,3 +846,54 @@ end
         recorder = AlwaysRecord()
     )
 end
+
+@testset "ExposedContactRecorder logs a permanently blocked pair" begin
+    rng = StableRNG(11)
+    prog = [Transition(:recovered; from = :infection, delay = 100.0, terminal = true)]
+    state = EpiBranch.new_state(
+        BranchingProcess(Poisson(1.0), Exponential(1.0)),
+        prog, NoAttributes(), rng
+    )
+    interventions = [FlatBlock(1.0)]
+    EpiBranch.add_individuals!(state, 2, interventions)
+    targets = (inf, st) -> ((2, Exponential(1.0)),)
+    EpiBranch._sellke_race!(
+        state, [1, 2], rng; targets,
+        from = :infection, until = (:recovered,), interventions,
+        seed! = (best, members, r) -> (best[1] = 0.0),
+        recorder = EpiBranch.ExposedContactRecorder()
+    )
+    @test !is_infected(state.individuals[2])
+    log = state.scratch[EpiBranch.EXPOSED_CONTACTS_KEY]
+    @test length(log.events) == 1
+    from_id, to_id, t = only(log.events)
+    @test (from_id, to_id) == (1, 2)
+    @test 0.0 <= t <= 100.0
+end
+
+@testset "ExposedContactRecorder logs a block that is not permanent, once" begin
+    # The block is function-valued, so the race cannot drop the pair for it
+    # on sight (unlike `FlatBlock`) and keeps redrawing until the short window
+    # closes. Previously no recorder was ever asked about such a block; now
+    # it is logged exactly as a permanent one is, and kept only once, since
+    # every later block is the same pair escaping the same infector.
+    rng = StableRNG(11)
+    prog = [Transition(:recovered; from = :infection, delay = 5.0, terminal = true)]
+    state = EpiBranch.new_state(
+        BranchingProcess(Poisson(1.0), Exponential(1.0)),
+        prog, NoAttributes(), rng
+    )
+    interventions = [FunctionBlock(1.0)]
+    EpiBranch.add_individuals!(state, 2, interventions)
+    targets = (inf, st) -> ((2, Exponential(1.0)),)
+    EpiBranch._sellke_race!(
+        state, [1, 2], rng; targets,
+        from = :infection, until = (:recovered,), interventions,
+        seed! = (best, members, r) -> (best[1] = 0.0),
+        recorder = EpiBranch.ExposedContactRecorder()
+    )
+    @test !is_infected(state.individuals[2])
+    log = state.scratch[EpiBranch.EXPOSED_CONTACTS_KEY]
+    @test length(log.events) == 1
+    @test log.events[1][1:2] == (1, 2)
+end
