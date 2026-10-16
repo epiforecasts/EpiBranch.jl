@@ -341,9 +341,9 @@ function _isolate!(iso::Isolation, individual, state, time)
             start, release
         )
     end
-    # Leaky isolation records under its own key, not the shared one, so a
-    # sibling component that legitimately claims the shared key for a
-    # complete removal never pulls this stretch into its column.
+    # Leaky isolation records under its own key, apart from the shared one,
+    # keeping a likelihood from mistaking this stretch for a complete
+    # removal's.
     record_key = iso.post_isolation_transmission == 0 ?
         REMOVAL_STRETCHES_KEY : LEAKY_REMOVAL_STRETCHES_KEY
     set_isolated!(individual, start; release_time = release, key = record_key)

@@ -273,10 +273,9 @@ for leaky isolation. `:isolated` in an `until` instead refers to a
 `Transition(:isolated, …)` step in the natural history.
 
 `key` names the [`record_removal!`](@ref EpiBranch.record_removal!) key the
-stretch goes under, the shared default key by default. A removal that only
-blocks a fraction of the hazard passes its own key instead, so its stretch is
-never mistaken for a complete removal's merely because some other component in
-the model happens to share the default key."""
+stretch goes under, the shared key by default. A removal that only blocks a
+fraction of the hazard passes its own key instead, apart from the shared one,
+so a likelihood never mistakes one for the other."""
 function set_isolated!(
         ind::Individual, time::Real;
         release_time::Real, key::Symbol = REMOVAL_STRETCHES_KEY
