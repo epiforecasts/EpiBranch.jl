@@ -1418,10 +1418,15 @@ end
                     for ind in undosed.individuals
             )
         end
-        @test_logs (:warn, r"MassVaccination") match_mode = :any simulate(
-            build([iso, ct, MassVaccination(efficacy = 0.8, eligibility_time = 0.0)]);
-            n_initial = 1, rng = StableRNG(4)
+        # `MassVaccination` declares `acts_on_population`, so the race offers
+        # it every member before it starts, without needing the contacts the
+        # network does name.
+        mv = MassVaccination(efficacy = 0.8, eligibility_time = 0.0)
+        @test EpiBranch._sellke_honours(model, mv)
+        dosed = @test_logs min_level = Base.CoreLogging.Warn simulate(
+            build([iso, ct, mv]); n_initial = 1, rng = StableRNG(4)
         )
+        @test all(is_vaccinated, dosed.individuals)
 
         # Tracing and actions share the continuous-time candidate state. A
         # post-exposure dose is honoured too: a contact traced while still

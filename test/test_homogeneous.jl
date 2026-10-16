@@ -375,16 +375,41 @@ end
             ct; rng = StableRNG(1), n_initial = 2
         )
 
-        # A rollout that doses each newly created contact has nobody to dose on a
-        # path that creates none.
+        # `MassVaccination` declares `acts_on_population`, so the pool offers
+        # it every member before the race starts, whether or not it names
+        # contacts; it warns about nothing and doses the population.
         mass = ModelSpec(
             HomogeneousProcess(; transmission_rate = 1.5, population_size = 200);
             progression = prog,
             interventions = [MassVaccination(efficacy = 0.8, eligibility_time = 0.0)]
         )
-        @test_logs (:warn, r"does not honour"i) match_mode = :any simulate(
+        @test EpiBranch._sellke_honours(mass.process, mass.interventions[1])
+        dosed = @test_logs min_level = Base.CoreLogging.Warn simulate(
             mass; rng = StableRNG(1), n_initial = 2
         )
+        @test any(is_vaccinated, dosed.individuals)
+
+        # `GroupVaccination` declares `needs_contacts = false`, so it finds a
+        # case's group through its `group_key` on the pool, which names no
+        # contacts, exactly as it would through a traced contact elsewhere.
+        onsets_for_group = clinical_presentation(
+            incubation_period = Dirac(0.0), prob_asymptomatic = 0.0
+        )
+        gv = GroupVaccination(
+            efficacy = 0.8, eligibility = OnSymptomOnset(),
+            group_key = :group, dose_delay = 0.0
+        )
+        grouped = ModelSpec(
+            HomogeneousProcess(; transmission_rate = 1.5, population_size = 200);
+            progression = prog,
+            attributes = [onsets_for_group, (rng, ind) -> (ind.state[:group] = 1)],
+            interventions = [gv]
+        )
+        @test EpiBranch._sellke_honours(grouped.process, gv)
+        dosed = @test_logs min_level = Base.CoreLogging.Warn simulate(
+            grouped; rng = StableRNG(1), n_initial = 2
+        )
+        @test any(is_vaccinated, dosed.individuals)
 
         # An intervention from outside the package that acts only through a hook
         # the pool never calls is reported without declaring anything, and so is
