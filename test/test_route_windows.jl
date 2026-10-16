@@ -95,9 +95,8 @@ function EpiBranch.competing_risk(b::FunctionBlock, parent, contact, state)
     return parent === contact ? nothing : Risk(block_probability = (rng, p, c, st) -> b.p)
 end
 
-# A certain block that lifts at a fixed time (`release_time`), so a pair it
-# blocks keeps meeting until then and can still infect afterwards: not
-# permanent, since the risk's own `release_time` says the block ends.
+# A certain block with a fixed `release_time`: not permanent, since the pair
+# keeps meeting again once it lifts and can still infect afterwards.
 struct BlockUntil <: EpiBranch.AbstractIntervention
     until::Float64
 end
@@ -107,8 +106,8 @@ function EpiBranch.competing_risk(b::BlockUntil, parent, contact, state)
 end
 
 # Wraps `ExposedContactRecorder`, flagging whether it was ever asked about a
-# block, so a test can tell a block actually happened before trusting that it
-# does not survive a later infection of the same pair.
+# block, so a test can tell a block actually happened before trusting that
+# the logged exposure is retracted once the same pair infects.
 mutable struct ProbeExposedRecorder <: EpiBranch.ContactRecorder
     asked::Bool
 end
