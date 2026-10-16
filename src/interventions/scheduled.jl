@@ -379,8 +379,8 @@ end
 
 # Undo the wrapped intervention's effect on `ind` unless it falls inside the
 # schedule's window at its own time, exactly as `_action_in_schedule` checks a
-# proposed action. An effect that never fired (`intervention_time` still at
-# its default) has nothing to undo.
+# proposed action. An effect that never ran (`intervention_time` still at its
+# default) has nothing to undo.
 function _reset_unless_in_schedule!(s::Scheduled, ind::Individual, state)
     t = intervention_time(s.intervention, ind)
     isfinite(t) || return nothing

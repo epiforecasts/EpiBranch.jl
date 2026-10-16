@@ -1422,8 +1422,8 @@ end
         )
 
         # `MassVaccination` declares `acts_on_population`, so the race offers
-        # it every member before it starts, without needing the contacts the
-        # network does name.
+        # it to every member before it starts, without needing the contacts
+        # the network does name.
         mv = MassVaccination(efficacy = 0.8, eligibility_time = 0.0)
         @test EpiBranch._sellke_honours(model, mv)
         dosed = @test_logs min_level = Base.CoreLogging.Warn simulate(
