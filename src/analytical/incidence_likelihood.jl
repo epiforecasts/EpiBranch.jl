@@ -620,7 +620,8 @@ function _infection_to_onset(attrs)
                 "one; this model has $(length(presentations))"
         )
     )
-    _check_onset_builders(builders)
+    # Fresh copies, so the probe leaves the model's own builders as they were.
+    _check_onset_builders(_fresh_attributes(builders))
     cp = only(presentations)
     cp.prob_asymptomatic isa Real || throw(
         ArgumentError(

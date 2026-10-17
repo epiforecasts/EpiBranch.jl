@@ -414,6 +414,15 @@
             progression = [Reporting(delay = rd, probability = 0.7)]
         )
         @test loglikelihood(data, reads_age) ≈ loglikelihood(data, with_demographics)
+        # The probe leaves a group attribute's cache of drawn values untouched.
+        by_group = group_attribute(:risk; value = Beta(6, 4))
+        with_groups = ModelSpec(
+            process;
+            attributes = [groups(3), by_group, clinical_presentation(incubation_period = inc)],
+            progression = [Reporting(delay = rd, probability = 0.7)]
+        )
+        @test loglikelihood(data, with_groups) ≈ loglikelihood(data, with_demographics)
+        @test isempty(by_group.cache)
 
         from_infection = ModelSpec(
             process; progression = [Reporting(delay = rd, probability = 0.7, from = :infection)]
