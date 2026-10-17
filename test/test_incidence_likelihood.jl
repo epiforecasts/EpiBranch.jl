@@ -403,6 +403,17 @@
             data, offspring, gt;
             reporting_probability = 0.7, reporting_delay = EpiBranch._DelaySum(inc, rd)
         )
+        # A builder reading what an earlier one recorded, as the demographics
+        # docstring describes, runs after it.
+        reads_age = ModelSpec(
+            process;
+            attributes = [
+                demographics(), (rng, ind) -> (ind.state[:risk] = ind.state[:age] > 60),
+                clinical_presentation(incubation_period = inc),
+            ],
+            progression = [Reporting(delay = rd, probability = 0.7)]
+        )
+        @test loglikelihood(data, reads_age) ≈ loglikelihood(data, with_demographics)
 
         from_infection = ModelSpec(
             process; progression = [Reporting(delay = rd, probability = 0.7, from = :infection)]
@@ -449,6 +460,11 @@
             # a builder of its own that records an onset
             ModelSpec(
                 process; attributes = [cp, (rng, ind) -> (ind.state[:onset_time] = 1.0)],
+                progression = [reporting]
+            ),
+            # one that runs before clinical_presentation and fails on a probe
+            ModelSpec(
+                process; attributes = [(rng, ind) -> ind.state[:missing], cp],
                 progression = [reporting]
             ),
         ]

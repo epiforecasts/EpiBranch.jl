@@ -607,8 +607,8 @@ function _infection_to(from, attrs)
 end
 
 # Onset from the model's `clinical_presentation`, its incubation period and
-# asymptomatic share. Every other attribute builder is run once on a probe
-# case to check that it records no onset of its own.
+# asymptomatic share. The builders are run once, in order, on a probe case, as
+# `simulate` runs them, to check that no other one records an onset of its own.
 function _infection_to_onset(attrs)
     builders = attrs isa NoAttributes ? () :
         attrs isa Union{Tuple, AbstractVector} ? Tuple(attrs) : (attrs,)
@@ -620,9 +620,7 @@ function _infection_to_onset(attrs)
                 "one; this model has $(length(presentations))"
         )
     )
-    for b in builders
-        b isa ClinicalPresentation || _records_no_onset(b)
-    end
+    _check_onset_builders(builders)
     cp = only(presentations)
     cp.prob_asymptomatic isa Real || throw(
         ArgumentError(
@@ -633,17 +631,31 @@ function _infection_to_onset(attrs)
     return (1 - cp.prob_asymptomatic, cp.incubation_period)
 end
 
-_records_no_onset(::GroupAttribute) = nothing
-function _records_no_onset(builder)
+function _check_onset_builders(builders)
     probe = Individual(id = 1, infection_time = 0.0)
-    _apply_attributes!(builder, Random.Xoshiro(1), probe)
-    haskey(probe.state, :onset_time) || haskey(probe.state, :incubation_period) || return nothing
-    throw(
-        ArgumentError(
-            "loglikelihood(IncidenceCounts, model): an attribute builder other than " *
-                "clinical_presentation records an onset, which this closed form cannot read"
+    rng = Random.Xoshiro(1)
+    onset(ind) = (get(ind.state, :onset_time, nothing), get(ind.state, :incubation_period, nothing))
+    for b in builders
+        before = onset(probe)
+        try
+            _apply_attributes!(b, rng, probe)
+        catch err
+            throw(
+                ArgumentError(
+                    "loglikelihood(IncidenceCounts, model) could not check the model's " *
+                        "attribute builders for an onset of their own: running them on " *
+                        "a probe case failed with $(sprint(showerror, err))"
+                )
+            )
+        end
+        b isa ClinicalPresentation || isequal(onset(probe), before) || throw(
+            ArgumentError(
+                "loglikelihood(IncidenceCounts, model): an attribute builder other than " *
+                    "clinical_presentation records an onset, which this closed form cannot read"
+            )
         )
-    )
+    end
+    return nothing
 end
 
 """
