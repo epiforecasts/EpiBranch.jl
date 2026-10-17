@@ -32,20 +32,24 @@ end
 # settles would leave each one to be read again long after, in time order, once
 # it is far out of cache. Places are in the order contacts were drawn, and the
 # index cases hold the first ones.
-struct _Tree{T <: Real} <: AbstractVector{Int}
+mutable struct _Tree{T <: Real} <: AbstractVector{Int}
     ids::Vector{Int}           # the person at each place, 0 until there is one
     places::Vector{Int}        # each person's place
-    drawn::Vector{_Drawn{T}}   # how each place's contact was drawn
+    drawn::Vector{_Drawn{T}}   # temporary records for unresolved contacts
+    slots::Vector{Int}        # draw slot: negative when queued, zero when resolved
+    free::Int                # head of the recycled draw records
     untils::Vector{Tuple}      # each window's `until` states
     tagged::Vector{Bool}       # whether that window has any
 end
 
-_Tree{T}() where {T} = _Tree{T}(Int[], Int[], _Drawn{T}[], Tuple[], Bool[])
+_Tree{T}() where {T} = _Tree{T}(Int[], Int[], _Drawn{T}[], Int[], 0, Tuple[], Bool[])
 
 # A tree with the index cases at the first places, reusing one this task has
 # grown before, for the reason `_RaceBuffers` gives.
 function _take_tree(::Type{T}, n_initial::Int, untils) where {T}
     tree = _take_pooled!(_Tree{T})
+    copyto!(resize!(tree.slots, n_initial), 1:n_initial)
+    tree.free = 0
     copyto!(resize!(tree.ids, n_initial), 1:n_initial)
     copyto!(resize!(tree.places, n_initial), 1:n_initial)
     fill!(resize!(tree.drawn, n_initial), _Drawn(0, 0, 0, zero(T)))
@@ -62,12 +66,48 @@ _proposal_fallback(::_Tree) = false
 # A new place for a contact `infector` drew on window `route`, at `time`.
 function _place!(tree::_Tree, race, infector, time, type_idx, route)
     push!(tree.ids, 0)
-    push!(tree.drawn, _Drawn(infector.id, route, type_idx, time))
-    push!(race.best, oftype(first(race.best), Inf))
+    drawn = _Drawn(infector.id, route, type_idx, time)
+    slot = tree.free
+    if slot == 0
+        push!(tree.drawn, drawn)
+        slot = length(tree.drawn)
+    else
+        tree.free = tree.drawn[slot].infector
+        tree.drawn[slot] = drawn
+    end
+    push!(tree.slots, slot)
     push!(race.processed, false)
-    push!(race.represents, 0)
     race.may_block && push!(race.head, 0)
     return length(tree.ids)
+end
+
+# A tree contact has one proposal, so no competing representative or persistent
+# opening is needed. The contact already records its infector and route.
+_stale_proposal(tree::_Tree, processed, represents, j, p) = false
+function _discard_proposal!(tree::_Tree, best, j)
+    _release_draw!(tree, j)
+    return nothing
+end
+_settled_proposal!(tree::_Tree, j) = _release_draw!(tree, j)
+function _release_draw!(tree::_Tree{T}, j) where {T}
+    slot = abs(tree.slots[j])
+    slot == 0 && return nothing
+    # A released record links to the next free slot through its infector field.
+    tree.drawn[slot] = _Drawn(tree.free, 0, 0, zero(T))
+    tree.free = slot
+    tree.slots[j] = 0
+    return nothing
+end
+function _event_opening(tree::_Tree, event, openings, proposals, may_block)
+    drawn = tree.drawn[event.ref]
+    return _RouteOpening(drawn.infector, drawn.route, zero(event.time), oftype(event.time, Inf))
+end
+_store_opening!(tree::_Tree, openings, infector, route, open_t, close_t) = route
+function _propose_member!(tree::_Tree, race, k, opening_id, t)
+    t < oftype(t, Inf) || return nothing
+    tree.slots[k] = -tree.slots[k]
+    _enqueue!(race.queue, _Event(t, k, -tree.slots[k]))
+    return nothing
 end
 
 # The person at place `k`, created now if there is none yet. The interventions
@@ -76,7 +116,7 @@ _member!(tree::_Tree, race, k) = _birth!(tree, race, k)
 function _birth!(tree::_Tree, race, k)
     (; state) = race
     tree.ids[k] == 0 || return state.individuals[tree.ids[k]]
-    drawn = tree.drawn[k]
+    drawn = tree.drawn[abs(tree.slots[k])]
     parent = state.individuals[drawn.infector]
     contact = drawn.type == 0 ? make_contact!(state, parent, drawn.time) :
         make_contact!(state, parent, drawn.time; type_idx = drawn.type)
@@ -93,19 +133,19 @@ function _birth!(tree::_Tree, race, k)
 end
 
 # One infectiousness window of a branching process as a route, numbered
-# `route`. `pending` holds the places the settling case just drew, with their
-# times, until the race proposes them. `reached` holds the places drawn for
+# `route`. `pending` holds the contiguous places the settling case just drew
+# until the race proposes them. `reached` holds the places drawn for
 # people a tracing ring reached before they settled, by person, until they do.
-struct _Offspring{W <: Infectiousness, T <: Real}
+mutable struct _Offspring{W <: Infectiousness, T <: Real}
     window::W
     route::Int
     tree::_Tree{T}
-    pending::Vector{Tuple{Int, T}}
-    reached::Dict{Int, Vector{Tuple{Int, T}}}
+    pending::UnitRange{Int}
+    reached::Dict{Int, UnitRange{Int}}
 end
 function _Offspring(window::Infectiousness, route::Int, tree::_Tree{T}) where {T}
     return _Offspring(
-        window, route, tree, Tuple{Int, T}[], Dict{Int, Vector{Tuple{Int, T}}}()
+        window, route, tree, 1:0, Dict{Int, UnitRange{Int}}()
     )
 end
 
@@ -143,9 +183,10 @@ end
 function _mint!(o::_Offspring, race, ind, max_generation)
     if !isempty(o.reached)
         reached = pop!(o.reached, ind.id, nothing)
-        reached === nothing || return append!(o.pending, reached)
+        reached === nothing || return (o.pending = reached)
     end
-    return _draw_contacts!(o.pending, o, race, ind, max_generation, false)
+    o.pending = _draw_contacts!(o, race, ind, max_generation, false)
+    return nothing
 end
 
 # What tracing and the interventions' actions read as a case's contacts. The
@@ -162,12 +203,12 @@ function _case_contacts(
     return function (id, state)
         for (_, o) in rts
             if race.processed[o.tree.places[id]]
-                for (k, _) in o.pending
+                for k in o.pending
                     _birth!(o.tree, race, k)
                 end
             elseif !haskey(o.reached, id)
                 o.reached[id] = _draw_contacts!(
-                    eltype(values(o.reached))(), o, race, state.individuals[id],
+                    o, race, state.individuals[id],
                     max_generation, true
                 )
             end
@@ -177,40 +218,40 @@ function _case_contacts(
 end
 
 # Draw a person's contacts on this window, once it opens, unless the person is
-# at the generation bound, and add each place with its time to `into`, creating
-# the contacts as people when `born`.
-function _draw_contacts!(into, o::_Offspring, race, ind, max_generation, born::Bool)
-    ind.generation >= max_generation && return into
+# at the generation bound. Their places form a contiguous range; contact
+# times stay in the draw records. Create the contacts as people when `born`.
+function _draw_contacts!(o::_Offspring, race, ind, max_generation, born::Bool)
+    first_place = length(o.tree) + 1
+    ind.generation >= max_generation && return first_place:(first_place - 1)
     from_t = _state_time(ind, o.window.from)
-    isfinite(from_t) || return into
+    isfinite(from_t) || return first_place:(first_place - 1)
     (; state) = race
     kernel = get_generation_time(o.window.kernel, ind)
     counts = draw_offspring(state.rng, o.window.offspring, ind, state)
-    _draw_counts!(into, o, race, ind, counts, from_t, kernel, born)
-    return into
+    _draw_counts!(o, race, ind, counts, from_t, kernel, born)
+    return first_place:length(o.tree)
 end
 
 # Single-type: one count. Multi-type: a count per type.
-function _draw_counts!(into, o::_Offspring, race, ind, n::Int, from_t, kernel, born)
+function _draw_counts!(o::_Offspring, race, ind, n::Int, from_t, kernel, born)
     for _ in 1:n
-        _draw_contact!(into, o, race, ind, from_t, kernel, 0, born)
+        _draw_contact!(o, race, ind, from_t, kernel, 0, born)
     end
     return nothing
 end
 function _draw_counts!(
-        into, o::_Offspring, race, ind, counts::Vector{Int}, from_t, kernel, born
+        o::_Offspring, race, ind, counts::Vector{Int}, from_t, kernel, born
     )
     for (type_idx, n) in enumerate(counts), _ in 1:n
-        _draw_contact!(into, o, race, ind, from_t, kernel, type_idx, born)
+        _draw_contact!(o, race, ind, from_t, kernel, type_idx, born)
     end
     return nothing
 end
 
-function _draw_contact!(into, o::_Offspring, race, ind, from_t, kernel, type_idx, born)
+function _draw_contact!(o::_Offspring, race, ind, from_t, kernel, type_idx, born)
     t = _window_infection_time(kernel, from_t, race.state)
     k = _place!(o.tree, race, ind, t, type_idx, o.route)
     born && _birth!(o.tree, race, k)
-    push!(into, (k, t))
     return nothing
 end
 
@@ -220,10 +261,16 @@ end
 function _propose_along!(
         o::_Offspring, race, infector_id, opening_id, open_t, close_t, traits, live, ri
     )
-    for (k, t) in o.pending
-        t <= close_t ? _propose!(race, k, opening_id, t) : _birth!(o.tree, race, k)
+    for k in o.pending
+        t = o.tree.drawn[abs(o.tree.slots[k])].time
+        if t <= close_t
+            _propose!(race, k, opening_id, t)
+        else
+            _birth!(o.tree, race, k)
+            _release_draw!(o.tree, k)
+        end
     end
-    empty!(o.pending)
+    o.pending = 1:0
     return nothing
 end
 
@@ -235,10 +282,10 @@ end
 # reached; the others were never created. Routes share the places, so the
 # first route to finish does this for all of them.
 function _finish!(o::_Offspring, race)
-    (; state, processed, best) = race
-    for k in eachindex(best)
-        (processed[k] || !isfinite(best[k])) && continue
-        best[k] = oftype(best[k], Inf)
+    (; state) = race
+    for k in eachindex(o.tree.slots)
+        o.tree.slots[k] < 0 || continue
+        o.tree.slots[k] = -o.tree.slots[k]
         id = o.tree.ids[k]
         id == 0 && continue
         contact = state.individuals[id]

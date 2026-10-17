@@ -1062,3 +1062,60 @@ end
     @test_throws ArgumentError fixed_race(1; watches = ())
     @test_throws ArgumentError fixed_race(1; projections = ())
 end
+
+@testset "Offspring history survives scheduling-buffer reuse" begin
+    function offspring_history(state)
+        return (
+            state.cumulative_cases, state.current_generation,
+            state.max_infection_time, state.extinct,
+            [
+                (
+                    i.id, i.parent_id, i.generation, i.chain_id, i.infection_time,
+                    copy(i.secondary_case_ids), Dict(i.state),
+                ) for i in state.individuals
+            ],
+        )
+    end
+    model = ModelSpec(
+        BranchingProcess(
+            (
+                Infectiousness(Poisson(1.4); kernel = Exponential(0.5), until = (:recovered,)),
+                Infectiousness(Poisson(0.5); kernel = Exponential(3.0)),
+            ); population_size = 200
+        );
+        attributes = clinical_presentation(incubation_period = Exponential(1.0)),
+        progression = [Transition(:recovered; delay = 2.0, terminal = true)],
+        interventions = [
+            Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf),
+            ContactTracing(
+                probability = 0.8, isolation_to_trace_delay = Exponential(1.0),
+                action = Quarantine(duration = Inf)
+            ),
+        ]
+    )
+    for seed in 1:6, limits in (
+                (; max_cases = 60), (; max_cases = 60, max_time = 3.0),
+                (; max_cases = 60, max_generations = 4),
+            )
+        rng = StableRNG(seed)
+        state = simulate(model; rng, limits...)
+        expected = offspring_history(state)
+        next_draw = rand(rng, UInt64)
+        # A larger run overwrites recycled scheduling storage while the earlier
+        # outbreak remains available to its caller.
+        simulate(BranchingProcess(Poisson(1.5)); max_cases = 1000, rng = Xoshiro(3))
+        replay_rng = StableRNG(seed)
+        replay = simulate(model; rng = replay_rng, limits...)
+        @test isequal(offspring_history(state), expected)
+        @test isequal(offspring_history(replay), expected)
+        @test rand(replay_rng, UInt64) == next_draw
+    end
+end
+
+@testset "Infinite offspring times leave no scheduled infection" begin
+    model = BranchingProcess(Poisson(5.0), Dirac(Inf))
+    state = simulate(model; max_cases = 10, rng = StableRNG(7))
+    @test state.cumulative_cases == 1
+    @test length(state.individuals) == 1
+    @test state.extinct
+end

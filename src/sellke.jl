@@ -1165,7 +1165,7 @@ function _sellke_race!(
     # What a route needs to propose from an opening (see `_propose_along!`).
     # Every field is bound once and only mutated in place.
     race = (;
-        queue, proposals, head, best, represents, processed, pos, state, rng,
+        queue, proposals, head, best, represents, processed, pos, state, rng, members,
         watch, snapshot, watched_keys, may_block, max_time,
         route_projections, full_snapshot, interventions, buffers,
     )
@@ -1177,7 +1177,7 @@ function _sellke_race!(
         best[k] < Inf || continue
         seeded = best[k]
         best[k] = T(Inf)
-        _propose!(queue, proposals, head, best, represents, k, 1, seeded, may_block)
+        _propose!(race, k, 1, seeded)
     end
 
     while !isempty(queue)
@@ -1198,8 +1198,8 @@ function _sellke_race!(
             passed = max(passed, j)
         end
         may_block && (proposals[p] = _dequeue(proposals[p]))
-        (processed[j] || represents[j] != p) && continue
-        opening = openings[may_block ? proposals[p].opening : p]
+        _stale_proposal(members, processed, represents, j, p) && continue
+        opening = _event_opening(members, event, openings, proposals, may_block)
         infector_id = opening.infector
 
         ind = _member!(members, race, j)
@@ -1242,7 +1242,7 @@ function _sellke_race!(
                 # proposals, so the pair itself is unaffected either way.
                 keeps_drawing = records_contacts(recorder, source, ind, state, bt)
                 if !may_block
-                    best[j] = T(Inf)
+                    _discard_proposal!(members, best, j)
                     continue
                 end
                 if permanent && !keeps_drawing
@@ -1277,6 +1277,7 @@ function _sellke_race!(
             end
         end
         processed[j] = true
+        _settled_proposal!(members, j)
 
         ind.infection_time = bt
         ind.state[:infected] = true
@@ -1373,8 +1374,7 @@ function _sellke_race!(
             close_t = convert(
                 T, _route_close(ind, close_keys[ri], removable[ri], interventions)
             )
-            push!(openings, _RouteOpening(members[j], ri, open_t, close_t))
-            opening_id = length(openings)
+            opening_id = _store_opening!(members, openings, members[j], ri, open_t, close_t)
             live && _watch_opening!(watch, j, live_route[ri])
             if live_route[ri]
                 proj = route_projections[ri]
@@ -1445,6 +1445,17 @@ function _return_pooled!(b::B) where {B}
     pool = get(task_local_storage(), B, nothing)
     pool === nothing || push!(pool::Vector{B}, b)
     return nothing
+end
+
+# Fixed-population members can have competing proposals and retain route openings.
+_discard_proposal!(members, best, j) = (best[j] = oftype(best[j], Inf))
+_settled_proposal!(members, j) = nothing
+_stale_proposal(members, processed, represents, j, p) = processed[j] || represents[j] != p
+_event_opening(members, event, openings, proposals, may_block) =
+    openings[may_block ? proposals[event.ref].opening : event.ref]
+function _store_opening!(members, openings, infector, route, open_t, close_t)
+    push!(openings, _RouteOpening(infector, route, open_t, close_t))
+    return length(openings)
 end
 
 # Whether a blocked contact can have another proposal to try. Members in a
@@ -1534,7 +1545,9 @@ function _propose_along!(
 end
 
 # Record a proposal through the race's own queues.
-function _propose!(race, k, opening_id, t)
+_propose!(race, k, opening_id, t) = _propose_member!(race.members, race, k, opening_id, t)
+
+function _propose_member!(members, race, k, opening_id, t)
     return _propose!(
         race.queue, race.proposals, race.head, race.best, race.represents,
         k, opening_id, t, race.may_block
