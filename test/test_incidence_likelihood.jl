@@ -364,4 +364,129 @@
         @test loglikelihood(IncidenceCounts([1 1; 1 1; 1 3; 2 4]; seeds = [0, 1]), o, gt; kw...) ==
             -Inf
     end
+
+    @testset "Discretised sum of two delays" begin
+        inc, rd = LogNormal(1.6, 0.5), Gamma(2.0, 1.5)
+        d = EpiBranch._discretize_report_delay(EpiBranch._DelaySum(inc, rd))
+        @test sum(d) ≈ 1.0
+        rng = StableRNG(1)
+        xs = rand(rng, inc, 200_000) .+ rand(rng, rd, 200_000)
+        emp = [mean(x -> (l == 0 ? x <= 0 : l - 1 < x <= l), xs) for l in 0:(length(d) - 1)]
+        @test maximum(abs.(emp .- d)) < 3.0e-3
+        # A fixed second delay shifts the first.
+        @test EpiBranch._discretize_report_delay(EpiBranch._DelaySum(inc, 2.0)) ≈
+            EpiBranch._bin_delay(t -> cdf(inc, t - 2.0), 1.0e-8, 10_000)
+    end
+
+    @testset "loglikelihood on a model with a Reporting step" begin
+        data = IncidenceCounts([1, 2, 4, 5, 9, 12, 18]; seeds = 2)
+        offspring, gt = NegBin(1.3, 0.5), LogNormal(1.6, 0.5)
+        inc, rd = LogNormal(1.6, 0.5), Gamma(2.0, 1.5)
+        process = BranchingProcess(offspring, gt)
+
+        from_onset = ModelSpec(
+            process;
+            attributes = clinical_presentation(incubation_period = inc, prob_asymptomatic = 0.2),
+            progression = [Reporting(delay = rd, probability = 0.7)]
+        )
+        @test loglikelihood(data, from_onset) ≈ loglikelihood(
+            data, offspring, gt;
+            reporting_probability = 0.7 * 0.8, reporting_delay = EpiBranch._DelaySum(inc, rd)
+        )
+        # Other attribute builders that record no onset are allowed alongside.
+        with_demographics = ModelSpec(
+            process;
+            attributes = [clinical_presentation(incubation_period = inc), demographics()],
+            progression = [Reporting(delay = rd, probability = 0.7)]
+        )
+        @test loglikelihood(data, with_demographics) ≈ loglikelihood(
+            data, offspring, gt;
+            reporting_probability = 0.7, reporting_delay = EpiBranch._DelaySum(inc, rd)
+        )
+
+        from_infection = ModelSpec(
+            process; progression = [Reporting(delay = rd, probability = 0.7, from = :infection)]
+        )
+        @test loglikelihood(data, from_infection) ≈ loglikelihood(
+            data, offspring, gt; reporting_probability = 0.7, reporting_delay = rd
+        )
+        @test_throws ArgumentError loglikelihood(
+            data, from_infection; reporting_probability = 0.5
+        )
+
+        multi = ModelSpec(
+            BranchingProcess([1.2 0.4; 0.3 0.9], R -> NegBin(R, 0.5), gt);
+            progression = [Reporting(delay = rd, probability = 0.7, from = :infection)]
+        )
+        by_type = IncidenceCounts([0 1; 1 1; 1 3; 2 4]; seeds = [0, 1])
+        @test loglikelihood(by_type, multi) ≈ loglikelihood(
+            by_type, EpiBranch._analytic_offspring(multi), gt;
+            reporting_probability = 0.7, reporting_delay = rd
+        )
+
+        reporting = Reporting(delay = rd, probability = 0.7)
+        cp = clinical_presentation(incubation_period = inc)
+        refused = [
+            # another step can end a case before its report
+            ModelSpec(
+                process; attributes = cp,
+                progression = [reporting, Recovery(delay = Exponential(5.0))]
+            ),
+            # nothing records the onset the step reports from
+            ModelSpec(process; progression = [reporting]),
+            # a per-case delay or asymptomatic share
+            ModelSpec(
+                process; attributes = cp,
+                progression = [Reporting(delay = (rng, ind) -> 1.0, probability = 0.7)]
+            ),
+            ModelSpec(
+                process;
+                attributes = clinical_presentation(
+                    incubation_period = inc, prob_asymptomatic = (rng, ind) -> 0.2
+                ),
+                progression = [reporting]
+            ),
+            # a builder of its own that records an onset
+            ModelSpec(
+                process; attributes = [cp, (rng, ind) -> (ind.state[:onset_time] = 1.0)],
+                progression = [reporting]
+            ),
+        ]
+        for model in refused
+            @test_throws ArgumentError loglikelihood(data, model)
+        end
+    end
+
+    @testset "A Reporting step's moments match simulated reports" begin
+        # A generation time of exactly one step puts every infection on a step
+        # boundary, where binning the reporting delay is exact.
+        n = 5
+        inc, rd = Gamma(2.0, 0.8), Exponential(1.0)
+        model = ModelSpec(
+            BranchingProcess(Poisson(1.2), Dirac(1.0));
+            attributes = clinical_presentation(incubation_period = inc, prob_asymptomatic = 0.25),
+            progression = [Reporting(delay = rd, probability = 0.7)]
+        )
+        m = incidence_moments(
+            Poisson(1.2), Dirac(1.0), n;
+            reporting_probability = 0.7 * 0.75, reporting_delay = EpiBranch._DelaySum(inc, rd)
+        )
+        nsim = 4000
+        sims = zeros(nsim, n)
+        for i in 1:nsim
+            state = simulate(model; rng = StableRNG(i), max_time = n + 0.5)
+            for ind in state.individuals
+                is_infected(ind) && get(ind.state, :reported, false) || continue
+                t = ceil(Int, ind.state[:reporting_time])
+                1 <= t <= n && (sims[i, t] += 1)
+            end
+        end
+        emp_mean = vec(sum(sims; dims = 1)) ./ nsim
+        emp_cov = [
+            sum((sims[:, a] .- emp_mean[a]) .* (sims[:, b] .- emp_mean[b])) / (nsim - 1)
+                for a in 1:n, b in 1:n
+        ]
+        @test maximum(abs.(emp_mean .- m.mean)) < 0.06
+        @test maximum(abs.(emp_cov .- m.cov)) < 0.2
+    end
 end
