@@ -327,20 +327,18 @@ until no candidate infection remained, rather than being cut off at
 `max_time` with candidates still pending.
 """
 function _reconcile_sellke_bookkeeping!(state::SimulationState, extinct::Bool)
-    state.cumulative_cases = count(
-        ind -> get(ind.state, :infected, false), state.individuals
-    )
-    state.max_infection_time = maximum(
-        (
-            ind.infection_time
-                for ind in state.individuals if get(ind.state, :infected, false)
-        );
-        init = 0.0
-    )
-    state.current_generation = maximum(
-        (ind.generation for ind in state.individuals if get(ind.state, :infected, false));
-        init = 0
-    )
+    cases = 0
+    max_time = 0.0
+    max_generation = 0
+    for ind in state.individuals
+        get(ind.state, :infected, false) || continue
+        cases += 1
+        max_time = max(max_time, ind.infection_time)
+        max_generation = max(max_generation, ind.generation)
+    end
+    state.cumulative_cases = cases
+    state.max_infection_time = max_time
+    state.current_generation = max_generation
     state.extinct = extinct
     return state
 end
