@@ -200,23 +200,53 @@ with an offspring distribution and a generation-time distribution, or with a
 model that already has its own, to fit a branching process to a case or
 admission time series without simulating it.
 
-- `data`: the incidence count for each step, in calendar order.
-- `seeds`: the number of index cases introduced at step 0, 1 by default.
+- `data`: the incidence count for each step, in calendar order. For a
+  multi-type process ([`MultiTypeOffspring`](@ref EpiBranch.MultiTypeOffspring)),
+  a vector holds the total over types, and a matrix with one row per step and
+  one column per type holds the counts by type.
+- `seeds`: the number of index cases introduced at step 0, 1 by default. For
+  a multi-type process, a vector with the number of each type.
 
 # Examples
 
 ```julia
 data = IncidenceCounts([1, 2, 4, 5, 9, 12, 18])
 loglikelihood(data, NegBin(1.3, 0.5), LogNormal(1.6, 0.5))
+
+# children and adults, one column each, started by one adult
+by_type = IncidenceCounts([0 1; 1 1; 1 3; 2 4]; seeds = [0, 1])
 ```
 """
-struct IncidenceCounts
-    data::Vector{Int}
-    seeds::Int
-    function IncidenceCounts(data::AbstractVector{<:Integer}; seeds::Integer = 1)
+struct IncidenceCounts{D <: VecOrMat{Int}, S <: Union{Int, Vector{Int}}}
+    data::D
+    seeds::S
+    function IncidenceCounts(
+            data::AbstractVecOrMat{<:Integer};
+            seeds::Union{Integer, AbstractVector{<:Integer}} = 1
+        )
         isempty(data) && throw(ArgumentError("data must be non-empty"))
         all(x -> x >= 0, data) || throw(ArgumentError("incidence counts must be non-negative"))
-        seeds >= 1 || throw(ArgumentError("seeds must be ≥ 1"))
-        return new(convert(Vector{Int}, data), convert(Int, seeds))
+        if seeds isa Integer
+            seeds >= 1 || throw(ArgumentError("seeds must be ≥ 1"))
+            data isa AbstractMatrix && throw(
+                ArgumentError(
+                    "counts by type (a matrix) need `seeds` by type, a vector with one " *
+                        "entry per column"
+                )
+            )
+            seeds = convert(Int, seeds)
+        else
+            all(>=(0), seeds) && sum(seeds) >= 1 ||
+                throw(ArgumentError("seeds by type must be ≥ 0 and sum to at least 1"))
+            data isa AbstractMatrix && size(data, 2) != length(seeds) && throw(
+                ArgumentError(
+                    "counts by type have $(size(data, 2)) columns but `seeds` has " *
+                        "$(length(seeds)) entries; give one per type"
+                )
+            )
+            seeds = convert(Vector{Int}, seeds)
+        end
+        d = data isa AbstractMatrix ? convert(Matrix{Int}, data) : convert(Vector{Int}, data)
+        return new{typeof(d), typeof(seeds)}(d, seeds)
     end
 end
