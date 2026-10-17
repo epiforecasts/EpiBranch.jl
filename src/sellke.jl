@@ -1753,6 +1753,8 @@ end
 # position here. A route neither watching a key nor holding a projection
 # takes its slot and no more: its contacts are never redrawn and nothing of
 # its hosts is read.
+# Absent watch declarations have no opening records to retain.
+_watch_opening!(::Nothing, infector, watched::Bool) = nothing
 function _watch_opening!(w::_LiveWatch, infector, watched::Bool)
     push!(w.source, infector)
     push!(w.reach, Int[])
