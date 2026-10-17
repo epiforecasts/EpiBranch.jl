@@ -263,6 +263,17 @@ function simulate_once(
         model::BranchingProcess, sim_opts::SimOpts;
         interventions, attributes, progression, observation, recorder, rng
     )
+    # An empty tuple lets the race omit intervention setup and per-case hooks.
+    return _simulate_offspring(
+        model, sim_opts, isempty(interventions) ? () : interventions;
+        attributes, progression, observation, recorder, rng
+    )
+end
+
+function _simulate_offspring(
+        model::BranchingProcess, sim_opts::SimOpts, interventions;
+        attributes, progression, observation, recorder, rng
+    )
     state = initialise_state(model, sim_opts, interventions, progression, attributes, rng)
     # The race counts the index cases as it settles them.
     state.cumulative_cases = 0
