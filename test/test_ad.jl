@@ -77,6 +77,25 @@ using StableRNGs
             (R, d) -> loglikelihood(IncidenceCounts(d), NegBin(R[1], 0.5), LogNormal(1.6, 0.5)),
             [1.2], incidence_data
         ),
+        # The reporting probability enters the same PGF, so it differentiates
+        # alongside the offspring parameter.
+        scenario(
+            (θ, d) -> loglikelihood(
+                IncidenceCounts(d), NegBin(θ[1], 0.5), LogNormal(1.6, 0.5);
+                reporting_probability = θ[2], reporting_delay = Gamma(2.0, 1.0)
+            ),
+            [1.2, 0.6], incidence_data
+        ),
+        # A multi-type process differentiates through its offspring matrix,
+        # here against counts by type.
+        scenario(
+            (θ, d) -> loglikelihood(
+                IncidenceCounts(d; seeds = [0, 1]),
+                EpiBranch.MultiTypeOffspring([θ[1] 0.4; 0.3 θ[2]], R -> NegBin(R, 0.5)),
+                LogNormal(1.6, 0.5)
+            ),
+            [1.2, 0.9], [0 1; 1 1; 1 3; 2 4; 3 6]
+        ),
     ]
 
     DIT.test_differentiation(
