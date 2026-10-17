@@ -246,6 +246,21 @@ strictly positive, since a lognormal puts no mass at 0; use
 """
 struct LognormalApproximation <: IncidenceApproximation end
 
+# A count that can only be zero, such as a type with no seeds in the first
+# step, or any count before a delayed report can arrive, has zero mean and
+# variance, which no approximation can be matched to. It is left out, and the
+# data are impossible unless they are zero there too.
+function _incidence_loglik_observed(approximation, data, μ, Σ)
+    keep = [Σ[t, t] > 0 for t in eachindex(data)]
+    all(keep) && return _incidence_loglik(approximation, data, μ, Σ)
+    T = float(eltype(μ))
+    any(t -> !keep[t] && data[t] != 0, eachindex(data)) && return T(-Inf)
+    any(keep) || return zero(T)
+    return _incidence_loglik(
+        approximation, data[keep], μ[keep], Symmetric(Matrix(Σ)[keep, keep])
+    )
+end
+
 function _incidence_loglik(::NormalApproximation, data::AbstractVector{<:Real}, μ, Σ)
     return logpdf(MvNormal(μ, Σ), data)
 end
@@ -322,7 +337,7 @@ function loglikelihood(
         offspring, generation_time, length(y);
         seeds, reporting_probability, reporting_delay, tol, max_lag
     )
-    return _incidence_loglik(approximation, y, μ, Σ)
+    return _incidence_loglik_observed(approximation, y, μ, Σ)
 end
 
 _single_type_series(data::IncidenceCounts{Vector{Int}, Int}) = (data.data, data.seeds)
@@ -480,7 +495,7 @@ function loglikelihood(
         seeds = data.seeds, reporting_probability, reporting_delay, tol, max_lag
     )
     y, μ_obs, Σ_obs = _observed_moments(data.data, μ, Σ)
-    return _incidence_loglik(approximation, y, μ_obs, Σ_obs)
+    return _incidence_loglik_observed(approximation, y, μ_obs, Σ_obs)
 end
 
 # The observed vector and its moments: the counts by type as they are, or

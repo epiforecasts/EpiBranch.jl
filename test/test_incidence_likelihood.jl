@@ -347,4 +347,21 @@
         @test_throws ArgumentError loglikelihood(by_type, NegBin(1.3, 0.5), gt)
         @test_throws ArgumentError loglikelihood(total, NegBin(1.3, 0.5), gt)
     end
+
+    @testset "Counts that can only be zero are left out" begin
+        # With no type-1 seed and every report delayed, type 1 has no report
+        # in the first step: mean and variance 0 there.
+        o = EpiBranch.MultiTypeOffspring([1.2 0.4; 0.3 0.9], R -> NegBin(R, 0.5))
+        gt, rd = LogNormal(1.6, 0.5), Gamma(2.0, 1.5)
+        kw = (reporting_probability = 0.7, reporting_delay = rd)
+        m = incidence_moments(o, gt, 4; seeds = [0, 1], kw...)
+        @test m.mean[1, 1] == 0
+        @test m.cov[1, 1] == 0
+        counts = [0 1; 1 1; 1 3; 2 4]
+        keep = 2:8
+        ll = loglikelihood(IncidenceCounts(counts; seeds = [0, 1]), o, gt; kw...)
+        @test ll ≈ logpdf(MvNormal(vec(m.mean)[keep], Matrix(m.cov)[keep, keep]), vec(counts)[keep])
+        @test loglikelihood(IncidenceCounts([1 1; 1 1; 1 3; 2 4]; seeds = [0, 1]), o, gt; kw...) ==
+            -Inf
+    end
 end
