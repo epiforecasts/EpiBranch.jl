@@ -1023,3 +1023,39 @@ end
     # would pass vacuously; this confirms that case was actually exercised.
     @test exercised > 0
 end
+@testset "Absent and empty kernel watches preserve the race stream" begin
+    function fixed_race(seed; declarations...)
+        rng = StableRNG(seed)
+        progression = [
+            Transition(:recovered; from = :infection, delay = 5.0, terminal = true),
+        ]
+        state = EpiBranch.new_state(
+            BranchingProcess(Poisson(0.0)), progression, NoAttributes(), rng
+        )
+        EpiBranch.add_individuals!(state, 20, ())
+        targets = (i, st) -> (
+            (j, Exponential(3.0)) for j in 1:20 if j != i && !is_infected(st.individuals[j])
+        )
+        extinct = EpiBranch._sellke_race!(
+            state, collect(1:20), rng; targets, from = :infection,
+            until = (:recovered,), seed! = (best, _, _) -> (best[1] = 0.0),
+            declarations...
+        )
+        return (
+            extinct,
+            [
+                (i.parent_id, i.infection_time, i.generation, Dict(i.state))
+                    for i in state.individuals
+            ],
+            rand(rng, UInt64),
+        )
+    end
+    for seed in 1:10
+        absent = fixed_race(seed)
+        @test isequal(absent, fixed_race(seed; watches = ((),), projections = (nothing,)))
+        @test isequal(absent, fixed_race(seed; watches = ((),)))
+        @test isequal(absent, fixed_race(seed; projections = (nothing,)))
+    end
+    @test_throws ArgumentError fixed_race(1; watches = ())
+    @test_throws ArgumentError fixed_race(1; projections = ())
+end

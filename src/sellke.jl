@@ -1079,36 +1079,11 @@ function _sellke_race!(
     # of the keys the live routes declare, and a key belongs to the routes that
     # declared it, which is how a record that moves reaches only the pairs whose
     # own kernel reads it.
-    route_keys = _route_watch_keys(watches, length(rts))
-    watched_keys = _watched_union(route_keys)
-    # A route with a live projection is tracked even when it watches nothing:
-    # declaring no key is a claim that nothing can move its hazard, and the
-    # race holds the kernel to that claim (`_check_undeclared_read!`) rather
-    # than drawing from it unchecked.
-    route_projections = _route_projections(projections, length(rts))
+    (;
+        watch, snapshot, watched_keys, key_routes, route_projections,
+        full_snapshot, live_route, live,
+    ) = _race_watch(state, members, rts, watches, projections)
     route_names = Tuple(w.name for (w, _) in rts)
-    live_route = Bool[
-        !isempty(route_keys[ri]) || route_projections[ri] !== nothing
-            for ri in eachindex(route_keys)
-    ]
-    live = any(live_route)
-    key_routes = [
-        [ri for ri in eachindex(route_keys) if key in route_keys[ri]]
-            for key in watched_keys
-    ]
-    # What each watched key held on each member when contacts were last drawn
-    # from it. A key can change type as well as value (a date that was absent
-    # until a dose), so the store takes anything.
-    snapshot = live ?
-        Any[
-            _remember(_watched_value(state.individuals[id], key))
-            for key in watched_keys, id in members
-        ] : Matrix{Any}(undef, 0, 0)
-    # The full record each route's projection read last from a host with a
-    # pending or future draw, kept only for a route that has one.
-    full_snapshot = [
-        proj === nothing ? Any[] : Any[nothing for _ in 1:m] for proj in route_projections
-    ]
 
     # A popped entry is final unless the risks block it: every other pending
     # proposal is at a later time, a blocked pair's next contact is later again,
@@ -1182,9 +1157,6 @@ function _sellke_race!(
     # the run finishing with no candidates left is reported as cut off rather
     # than as having reached extinction on its own.
     capped_generation = false
-    # For a live kernel, which hosts' records a pending or future draw reads.
-    # Empty and unused otherwise.
-    watch = _LiveWatch(live ? m : 0, length(rts))
     # What a route needs to propose from an opening (see `_propose_along!`).
     # Every field is bound once and only mutated in place.
     race = (;
@@ -1629,6 +1601,55 @@ function _refresh_host!(snapshot, watched_keys, ind::Individual, k)
         snapshot[ki, k] = _remember(_watched_value(ind, key))
     end
     return nothing
+end
+
+# A race with fixed kernels has no host records to watch. Dispatching on
+# absent declarations keeps the unused watch buffers and snapshots out of setup.
+function _race_watch(state, members, rts, ::Nothing, ::Nothing)
+    return (;
+        watch = nothing, snapshot = nothing, watched_keys = (), key_routes = (),
+        route_projections = map(_ -> nothing, rts), full_snapshot = nothing,
+        live_route = map(_ -> false, rts), live = false,
+    )
+end
+
+function _race_watch(state, members, rts, watches, projections)
+    m = length(members)
+    route_keys = _route_watch_keys(watches, length(rts))
+    watched_keys = _watched_union(route_keys)
+    # A route with a live projection is tracked even when it watches nothing:
+    # declaring no key is a claim that nothing can move its hazard, and the
+    # race holds the kernel to that claim (`_check_undeclared_read!`) rather
+    # than drawing from it unchecked.
+    route_projections = _route_projections(projections, length(rts))
+    live_route = Bool[
+        !isempty(route_keys[ri]) || route_projections[ri] !== nothing
+            for ri in eachindex(route_keys)
+    ]
+    live = any(live_route)
+    key_routes = [
+        [ri for ri in eachindex(route_keys) if key in route_keys[ri]]
+            for key in watched_keys
+    ]
+    # What each watched key held on each member when contacts were last drawn
+    # from it. A key can change type as well as value (a date that was absent
+    # until a dose), so the store takes anything.
+    snapshot = live ?
+        Any[
+            _remember(_watched_value(state.individuals[id], key))
+            for key in watched_keys, id in members
+        ] : Matrix{Any}(undef, 0, 0)
+    # The full record each route's projection read last from a host with a
+    # pending or future draw, kept only for a route that has one.
+    full_snapshot = [
+        proj === nothing ? Any[] : Any[nothing for _ in 1:m] for proj in route_projections
+    ]
+
+    watch = _LiveWatch(live ? m : 0, length(rts))
+    return (;
+        watch, snapshot, watched_keys, key_routes, route_projections,
+        full_snapshot, live_route, live,
+    )
 end
 
 # The keys each route's kernel declares. A model gives one tuple per route, in
