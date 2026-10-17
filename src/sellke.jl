@@ -1117,12 +1117,17 @@ function _sellke_race!(
         ),
         members
     )
-    may_block = live || !isempty(risks) ||
-        any(
-        iv -> _has_own_method(
-            competing_risk, typeof(iv),
-            AbstractIntervention
-        ), interventions
+    # Lists retain alternatives after a block. A live kernel can redraw a
+    # contact, and an introduction can recur even for single-exposure members.
+    may_block = live || (
+        (introduction !== nothing || _proposal_fallback(members)) && (
+            !isempty(risks) || any(
+                iv -> _has_own_method(
+                    competing_risk, typeof(iv),
+                    AbstractIntervention
+                ), interventions
+            )
+        )
     )
     # A route whose contacts the race checks against built-in risks of its own
     # (`_route_may_block`) checks every proposal too. It proposes each member
@@ -1136,7 +1141,7 @@ function _sellke_race!(
     acting = filter(_proposes_actions, interventions)
     contactless_actions = any(iv -> !needs_contacts(iv), acting)
     openings = empty!(buffers.openings) # one per case and route it transmits along
-    proposals = empty!(buffers.proposals) # every proposal made, when something can block
+    proposals = empty!(buffers.proposals) # proposals retained for fallback
     head = fill!(resize!(buffers.head, may_block ? m : 0), 0) # first proposal to each member
     represents = fill!(resize!(buffers.represents, m), 0) # what each member's heap entry names
     queue = empty!(buffers.queue)
@@ -1441,6 +1446,10 @@ function _return_pooled!(b::B) where {B}
     pool === nothing || push!(pool::Vector{B}, b)
     return nothing
 end
+
+# Whether a blocked contact can have another proposal to try. Members in a
+# fixed population can be reached along several edges or repeated contacts.
+_proposal_fallback(members) = true
 
 # Each member's position in `members`, by id.
 _member_positions(members) = Dict{Int, Int}(id => k for (k, id) in enumerate(members))

@@ -56,6 +56,8 @@ end
 Base.size(t::_Tree) = (length(t.ids),)
 Base.@propagate_inbounds Base.getindex(t::_Tree, k::Int) = t.ids[k]
 _member_positions(t::_Tree) = t.places
+# Each place is a single exposure. Blocking it loses that contact entirely.
+_proposal_fallback(::_Tree) = false
 
 # A new place for a contact `infector` drew on window `route`, at `time`.
 function _place!(tree::_Tree, race, infector, time, type_idx, route)
