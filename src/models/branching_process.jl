@@ -312,14 +312,14 @@ end
 Draw how many contacts the case `parent` makes in this generation, before
 susceptibility and interventions decide which are infected: one number, or one
 number per type in a multi-type model. Only defined for a process with a single
-[`Infectiousness`](@ref) window. The simulation does not use it, since
-[`collect_exposures`](@ref) draws each window's contacts itself; it is kept
-for code that wants the count for one case.
+[`Infectiousness`](@ref) window. The simulation does not use it, since each
+window draws its own contacts when a case settles; it is kept for code that
+wants the count for one case.
 """
 function generate_offspring(model::BranchingProcess, parent, state)
     length(model.infectiousness) == 1 || throw(
         ArgumentError(
-            "generate_offspring is defined for a single infectiousness window; use collect_exposures for multi-window models"
+            "generate_offspring is defined for a single infectiousness window"
         )
     )
     return draw_offspring(state.rng, model.infectiousness[1].offspring, parent, state)

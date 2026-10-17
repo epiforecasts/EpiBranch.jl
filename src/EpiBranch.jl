@@ -100,6 +100,7 @@ include("sellke.jl")
 # Mass-action contacts as a route of the race, and the closed population that
 # mixes that way, HomogeneousProcess.
 include("mass_action.jl")
+include("offspring_route.jl")
 include("models/homogeneous.jl")
 include("models/mixing.jl")
 

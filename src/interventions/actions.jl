@@ -448,10 +448,9 @@ end
     _continuous_candidates(intervention, state, current, members, processed, contacts, pos, traced)
 
 The people to offer `intervention`'s actions to once `current`'s infection
-is settled in a network or household model. The default is `current` and
-everyone not yet settled, which suits any intervention. [`RingVaccination`](@ref)
-and [`GroupVaccination`](@ref) narrow it to the people tracing reached from
-`current` or the members of `current`'s group.
+is settled: `current` and the contacts it can still reach, those tracing
+reached from it where there was tracing. [`GroupVaccination`](@ref) offers the
+members of `current`'s group instead.
 
 `traced` is the set tracing reached, or `nothing` if there was no tracing. A
 ring wider than one step reaches people who are not `current`'s direct
@@ -459,25 +458,6 @@ contacts, so a list built from `current`'s contacts alone would miss them.
 """
 function _continuous_candidates(
         ::AbstractIntervention, state, current, members, processed, contacts, pos,
-        traced = nothing
-    )
-    return [
-        state.individuals[id]
-            for (k, id) in enumerate(members)
-            if !processed[k] || id == current.id
-    ]
-end
-function _continuous_candidates(
-        w::InterventionWrapper, state, current,
-        members, processed, contacts, pos, traced = nothing
-    )
-    return _continuous_candidates(
-        w.intervention, state, current, members, processed, contacts, pos, traced
-    )
-end
-
-function _continuous_candidates(
-        ::RingVaccination, state, current, members, processed, contacts, pos,
         traced = nothing
     )
     candidates = [current]
@@ -492,6 +472,14 @@ function _continuous_candidates(
         push!(candidates, state.individuals[cid])
     end
     return candidates
+end
+function _continuous_candidates(
+        w::InterventionWrapper, state, current,
+        members, processed, contacts, pos, traced = nothing
+    )
+    return _continuous_candidates(
+        w.intervention, state, current, members, processed, contacts, pos, traced
+    )
 end
 
 function _continuous_candidates(
@@ -511,33 +499,31 @@ end
 
 function _apply_continuous_actions!(
         state, current, interventions, members, processed,
-        contacts = nothing, pos = nothing, traced = nothing
-    )
-    if any(continuous_actions, interventions)
-        # Finalised cases have already generated proposals. A new action may
-        # affect the current case and pending people, but must not revise
-        # earlier cases — `_continuous_candidates` is what keeps each
-        # intervention within that boundary while choosing its own, much
-        # smaller, set of people to visit.
-        for iv in interventions
-            continuous_actions(iv) || continue
-            # `needs_contacts` rather than `contacts !== nothing` alone, so an
-            # intervention that needs no contacts (`GroupVaccination`) still
-            # runs on a model that names none, even alongside one that does
-            # need them.
-            needs_contacts(iv) && contacts === nothing && continue
-            candidates = _continuous_candidates(
-                iv, state, current, members, processed, contacts, pos, traced
-            )
-            allowed = Set(ind.id for ind in candidates)
-            actions = intervention_actions(iv, state, candidates)
-            actions === nothing && continue
-            selected = filter(
-                a -> a.individual.id in allowed &&
-                    a.time >= state.max_infection_time, actions
-            )
-            _admit_actions!(iv, state, selected)
-        end
+        contacts::C = nothing, pos = nothing, traced = nothing
+    ) where {C}
+    # Finalised cases have already generated proposals. A new action may
+    # affect the current case and pending people, but must not revise earlier
+    # cases — `_continuous_candidates` is what keeps each intervention within
+    # that boundary while choosing its own, much smaller, set of people to
+    # visit. The caller passes only the interventions that propose actions
+    # (`_proposes_actions`).
+    for iv in interventions
+        # `needs_contacts` rather than `contacts !== nothing` alone, so an
+        # intervention that needs no contacts (`GroupVaccination`) still
+        # runs on a model that names none, even alongside one that does
+        # need them.
+        needs_contacts(iv) && contacts === nothing && continue
+        candidates = _continuous_candidates(
+            iv, state, current, members, processed, contacts, pos, traced
+        )
+        allowed = Set(ind.id for ind in candidates)
+        actions = intervention_actions(iv, state, candidates)
+        actions === nothing && continue
+        selected = filter(
+            a -> a.individual.id in allowed &&
+                a.time >= state.max_infection_time, actions
+        )
+        _admit_actions!(iv, state, selected)
     end
     # `current`'s own round of discovery is done: mark it settled only now,
     # after the loop above, so a policy consulting `is_settled` during this
@@ -545,6 +531,14 @@ function _apply_continuous_actions!(
     # a trigger `current` itself just supplied) still sees it as pending.
     current.state[:_settled] = true
     return nothing
+end
+
+# Whether an intervention proposes actions per settled case: it has an
+# `intervention_actions` method of its own, found past any wrapper that only
+# forwards it, and is not one offered the whole population at once instead.
+function _proposes_actions(iv::AbstractIntervention)
+    acts_on_population(iv) && return false
+    return _discovers_actions(_hook_owner(intervention_actions, iv))
 end
 
 # Offer every intervention declaring `acts_on_population` its actions once,

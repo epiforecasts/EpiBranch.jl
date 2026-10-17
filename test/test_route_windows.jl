@@ -375,8 +375,8 @@ EpiBranch.records_contacts(::AlwaysRecord, parent, contact, state, t) = true
         # with no contacts supplied there is nothing to trace along
         @test infected(race([iso, ct])) == [true, true, true]
 
-        # Ring vaccination still requires generation-based contacts.
-        nameless = BranchingProcess(Poisson(1.0), Exponential(1.0))
+        # Ring vaccination needs a model that names each case's contacts.
+        nameless = HomogeneousProcess(transmission_rate = 1.0, population_size = 10)
         @test !EpiBranch.supplies_contacts(nameless)
         @test !EpiBranch._sellke_honours(nameless, RingVaccination(efficacy = 0.9))
         # Mass vaccination declares `acts_on_population`, so it reaches

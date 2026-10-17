@@ -159,7 +159,7 @@ EpiBranch.reset!(::_TimedBatchDose, ind::Individual) = delete!(ind.state, :_dose
             max_cases = 50, rng = rng
         )
 
-        @test all(ind -> ind.infection_time < 1000.0, state.individuals)
+        @test all(ind -> ind.infection_time < 1000.0, filter(is_infected, state.individuals))
     end
 
     @testset "FlagOnly records no traced isolation for an asymptomatic contact" begin
@@ -220,7 +220,10 @@ EpiBranch.reset!(::_TimedBatchDose, ind::Individual) = delete!(ind.state, :_dose
         @test !EpiBranch.traces_contacts(Scheduled(iso; start_time = 5.0))
 
         # Models declare whether they can name a case's contacts at all.
-        @test !EpiBranch.supplies_contacts(BranchingProcess(Poisson(1.0)))
+        @test EpiBranch.supplies_contacts(BranchingProcess(Poisson(1.0)))
+        @test !EpiBranch.supplies_contacts(
+            HomogeneousProcess(transmission_rate = 1.0, population_size = 10)
+        )
 
         state = EpiBranch.new_state(
             BranchingProcess(Poisson(1.0), Exponential(5.0)),
@@ -596,16 +599,10 @@ EpiBranch.reset!(::_TimedBatchDose, ind::Individual) = delete!(ind.state, :_dose
         # isolating after their outcome. Only the detection record may differ.
         removed(s) = count(i -> isfinite(isolation_time(i)), s.individuals)
         configs = (
-            (
-                Recovery(delay = Gamma(2.0, 3.0)), 7,
-                [124, 1, 1, 15, 135, 113, 104, 120, 113, 1],
-            ),
-            (
-                Death(delay = 0.0, probability = 1.0), 11,
-                [3, 1, 111, 107, 121, 14, 124, 109, 4, 2],
-            ),
+            (Recovery(delay = Gamma(2.0, 3.0)), 7),
+            (Death(delay = 0.0, probability = 1.0), 11),
         )
-        for (outcome, seed, cases) in configs
+        for (outcome, seed) in configs
             model = ModelSpec(
                 BranchingProcess(Poisson(2.0), Gamma(2.0, 3.0));
                 attributes = clinical_presentation(incubation_period = LogNormal(1.6, 0.4)),
@@ -613,7 +610,8 @@ EpiBranch.reset!(::_TimedBatchDose, ind::Individual) = delete!(ind.state, :_dose
                 interventions = [Isolation(onset_to_isolation_delay = Exponential(2.0), duration = Inf)]
             )
             results = simulate(model, 10; max_cases = 100, rng = StableRNG(seed))
-            @test [s.cumulative_cases for s in results] == cases
+            cases = [s.cumulative_cases for s in results]
+            @test any(>(1), cases)
             @test [removed(s) for s in results] == cases
             @test sum(s -> count(is_isolated, s.individuals), results) < sum(cases)
         end
@@ -1654,7 +1652,7 @@ EpiBranch.reset!(::_TimedBatchDose, ind::Individual) = delete!(ind.state, :_dose
 
             # Every vaccinated contact must satisfy the window.
             for state in states_narrow
-                for ind in state.individuals
+                for ind in filter(is_infected, state.individuals)
                     if is_vaccinated(ind)
                         @test isolation_time(ind) - ind.infection_time <= 1.0
                     end
@@ -2932,11 +2930,7 @@ EpiBranch.reset!(::_TimedBatchDose, ind::Individual) = delete!(ind.state, :_dose
         # test-negative contacts, so 1 − test_sensitivity of cases never
         # isolated even when traced.
         #
-        # Filter to cases that ran through resolve_individual at least once
-        # (those that became parents — they have non-empty
-        # secondary_case_ids — or those who are themselves index cases).
-        # Final-generation contacts created in the last step never resolve
-        # because the engine stops before they would be active.
+        # Filter to the cases, which are the people `resolve_individual!` ran on.
         rng = StableRNG(20260601)
         iso = Isolation(onset_to_isolation_delay = Exponential(1.0), test_sensitivity = 0.4, duration = Inf)
         ct = ContactTracing(
@@ -2952,11 +2946,7 @@ EpiBranch.reset!(::_TimedBatchDose, ind::Individual) = delete!(ind.state, :_dose
             max_cases = 500, rng = rng
         )
 
-        resolved = filter(
-            ind -> !isempty(ind.secondary_case_ids) ||
-                ind.parent_id == 0,
-            state.individuals
-        )
+        resolved = filter(is_infected, state.individuals)
         traced_symptomatic = filter(
             ind -> is_traced(ind) && !is_asymptomatic(ind),
             resolved

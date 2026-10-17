@@ -255,6 +255,10 @@ function _discovers_actions(cc::CapacityConstrained)
         AbstractIntervention
     )
 end
+# Asked for its actions on every settled case even when the intervention it
+# wraps proposes none, so that wrapping one with nothing to ration fails when
+# the run starts rather than going unrationed (see `intervention_actions`).
+_proposes_actions(cc::CapacityConstrained) = !acts_on_population(cc)
 function apply_post_transmission!(cc::CapacityConstrained, state, new_contacts)
     actions = intervention_actions(cc, state, new_contacts)
     if actions !== nothing

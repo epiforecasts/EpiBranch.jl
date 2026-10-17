@@ -18,8 +18,11 @@ days throughout.
 - `n_initial`: number of index cases (default 1).
 - `max_cases`, `max_generations`, `max_time` (days): stop the run once any of
   these is reached. Set one to `nothing` to remove that limit. The run always
-  stops when transmission dies out. The limits are checked at the end of each
-  generation, so the final number of cases can exceed `max_cases`.
+  stops when transmission dies out. Cases are settled in order of infection
+  time, so a run stops at exactly `max_cases` cases, leaves out any infection
+  after `max_time`, and draws no contacts for a case at generation
+  `max_generations`. A contact whose infection was still to be decided when
+  the run stopped has no infection time.
 - `stopping_rules`: a vector of [`AbstractStoppingRule`](@ref)s for finer
   control over when the run ends. When given, `max_cases`,
   `max_generations` and `max_time` are ignored.
@@ -43,13 +46,12 @@ a constant or a function of the random number generator and the individual,
 `(rng, ind) -> value`, so rates and delays can depend on age or risk group.
 
 !!! note
-    [`HomogeneousProcess`](@ref), [`MixingProcess`](@ref),
-    `NetworkProcess`, `RoutedNetwork` and `HouseholdProcess` run a
-    continuous-time race over a fixed population rather than stepping by
-    generation. A `stopping_rules` entry, or a non-default `max_cases` or
-    `max_generations`, still ends such a run; the `max_cases` and
-    `max_generations` keyword *defaults* have no effect on them, so an
-    existing run over a large population is not capped unless you ask for it.
+    On a model over a fixed population ([`HomogeneousProcess`](@ref),
+    [`MixingProcess`](@ref), `NetworkProcess`, `RoutedNetwork` and
+    `HouseholdProcess`) the `max_cases` and `max_generations` keyword
+    *defaults* have no effect, so a run over a large population is not capped
+    unless you ask for it. A `stopping_rules` entry, or a non-default
+    `max_cases` or `max_generations`, still ends such a run.
 
 # Examples
 ```julia
@@ -114,13 +116,12 @@ them off a bare process, or off a [`ModelSpec`](@ref), and wraps this in a
 retry loop when a `condition` is given; this method itself takes no
 `condition`.
 
-The default method runs the generation-based engine. A model with its own
-simulation loop (one driven by a continuous-time race rather than stepping
-generation by generation, such as the network, household and homogeneous-pool
-processes) defines its own method instead, reading the layers off the
-arguments and deriving any window state it needs (the infectious window's
-`from`, say, via [`infectious_from`](@ref)) from the composed `progression`.
-`recorder` is read only by the continuous-time (Sellke) race; the
+The built-in models run on the continuous-time race and each define a method,
+reading the layers off the arguments and deriving any window state they need
+(the infectious window's `from`, say, via [`infectious_from`](@ref)) from the
+composed `progression`. The default method runs the generation-based engine,
+for a model written against [`generate_offspring`](@ref) or
+[`contacts_of`](@ref). `recorder` is read only by the race; the
 generation-based engine never drops a pair for a standing block, so it has
 nothing to ask one.
 """
@@ -501,32 +502,6 @@ function _materialise_offspring!(
     return nothing
 end
 
-# Window-aware exposure collection for the branching process. Each
-# infectiousness window draws its own offspring and times them from its
-# `from` state. A window contributes contacts only once its `from` state
-# has been reached for this parent (`:infection` always has, so the
-# default single window reproduces the offspring-driven path above).
-function collect_exposures(model::BranchingProcess, state::SimulationState)
-    pre = length(state.individuals)
-    T = _timetype(state)
-    targets = Individual{T}[]
-    edges = _OneEdge{T}[]
-    for idx in state.active_ids
-        parent = state.individuals[idx]
-        for window in model.infectiousness
-            from_t = _state_time(parent, window.from)
-            isfinite(from_t) || continue
-            kernel = get_generation_time(window.kernel, parent)
-            counts = draw_offspring(state.rng, window.offspring, parent, state)
-            _materialise_window!(
-                targets, edges, counts, parent, state, from_t, kernel, window.until
-            )
-        end
-    end
-    minted = view(state.individuals, (pre + 1):length(state.individuals))
-    return targets, edges, minted, _AllNew(length(targets))
-end
-
 # A contact's infection time is the window's `from`-state time plus a draw
 # from its kernel (the contact interval measured from `from`).
 _window_infection_time(::NoGenerationTime, from_t::Real, state) = from_t
@@ -539,41 +514,6 @@ end
 # `until` (the default), so single-window models write no extra state.
 _tag_window!(contact, until::Tuple{}) = nothing
 _tag_window!(contact, until) = (contact.state[:censor_until] = until; nothing)
-
-# Single-type: one count. Multi-type: a count per type.
-function _materialise_window!(
-        targets, edges, n_contacts::Int,
-        parent::Individual, state::SimulationState, from_t::Real,
-        kernel::Union{Distribution, NoGenerationTime}, until
-    )
-    T = _timetype(state)
-    for _ in 1:n_contacts
-        t = _window_infection_time(kernel, from_t, state)
-        contact = make_contact!(state, parent, t)
-        _tag_window!(contact, until)
-        push!(targets, contact)
-        push!(edges, _OneEdge{T}((parent.id, t)))
-    end
-    return nothing
-end
-
-function _materialise_window!(
-        targets, edges, counts::Vector{Int},
-        parent::Individual, state::SimulationState, from_t::Real,
-        kernel::Union{Distribution, NoGenerationTime}, until
-    )
-    T = _timetype(state)
-    for (type_idx, n) in enumerate(counts)
-        for _ in 1:n
-            t = _window_infection_time(kernel, from_t, state)
-            contact = make_contact!(state, parent, t; type_idx)
-            _tag_window!(contact, until)
-            push!(targets, contact)
-            push!(edges, _OneEdge{T}((parent.id, t)))
-        end
-    end
-    return nothing
-end
 
 """
     gather_by_target(model, state) -> (targets, edges, minted, is_new)
@@ -1535,8 +1475,8 @@ before the contact would have happened. Routes without `until` (the default)
 are not affected."""
 struct WindowCensor end
 function competing_risk(::WindowCensor, parent, contact, state)
-    until = get(contact.state, :censor_until, ())
-    isempty(until) && return nothing
+    until = get(contact.state, :censor_until, nothing)
+    until === nothing && return nothing
     t_end = Inf
     for s in until
         st = get(parent.state, Symbol(s, :_time), Inf)

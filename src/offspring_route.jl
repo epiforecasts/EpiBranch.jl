@@ -1,0 +1,282 @@
+# ── Branching processes on the race ──────────────────────────────────
+#
+# A branching process names no population in advance: each case creates its
+# own contacts, as many as its offspring distribution draws, each timed from
+# the case's window. On the race that is a route which creates the case's
+# contacts when the case settles (`_mint!`) and proposes each one once. The
+# race then decides them in time order with the rest, so a contact infected
+# earlier than another case's contact is settled first whichever generation
+# either belongs to, and the population grows as the race runs.
+#
+# A contact is one exposure, not a pair that goes on meeting, so a blocked
+# contact is lost: the route offers no pair kernel to draw a later contact
+# from. Its built-in risks are those of a single exposure. The contact's
+# susceptibility and the infector's infectiousness each block it with one
+# minus their value, and a finite population blocks it with the share already
+# infected.
+
+# Who drew the contact at a place, on which window, of which type (0 in a
+# single-type process), and when it falls: read together when the place
+# becomes a person, so they are kept together.
+struct _Drawn{T <: Real}
+    infector::Int
+    route::Int
+    type::Int
+    time::T
+end
+
+# The race's members for a branching process: a place for every contact drawn.
+# A place becomes a person only when something needs one: when the race comes
+# to decide the contact's infection, or earlier when tracing or an
+# intervention's actions reach it. Creating every contact as its infector
+# settles would leave each one to be read again long after, in time order, once
+# it is far out of cache. Places are in the order contacts were drawn, and the
+# index cases hold the first ones.
+struct _Tree{T <: Real} <: AbstractVector{Int}
+    ids::Vector{Int}           # the person at each place, 0 until there is one
+    places::Vector{Int}        # each person's place
+    drawn::Vector{_Drawn{T}}   # how each place's contact was drawn
+    untils::Vector{Tuple}      # each window's `until` states
+    tagged::Vector{Bool}       # whether that window has any
+end
+
+_Tree{T}() where {T} = _Tree{T}(Int[], Int[], _Drawn{T}[], Tuple[], Bool[])
+
+# A tree with the index cases at the first places, reusing one this task has
+# grown before, for the reason `_RaceBuffers` gives.
+function _take_tree(::Type{T}, n_initial::Int, untils) where {T}
+    tree = _take_pooled!(_Tree{T})
+    copyto!(resize!(tree.ids, n_initial), 1:n_initial)
+    copyto!(resize!(tree.places, n_initial), 1:n_initial)
+    fill!(resize!(tree.drawn, n_initial), _Drawn(0, 0, 0, zero(T)))
+    append!(empty!(tree.untils), untils)
+    append!(empty!(tree.tagged), map(u -> !isempty(u), untils))
+    return tree
+end
+Base.size(t::_Tree) = (length(t.ids),)
+Base.@propagate_inbounds Base.getindex(t::_Tree, k::Int) = t.ids[k]
+_member_positions(t::_Tree) = t.places
+
+# A new place for a contact `infector` drew on window `route`, at `time`.
+function _place!(tree::_Tree, race, infector, time, type_idx, route)
+    push!(tree.ids, 0)
+    push!(tree.drawn, _Drawn(infector.id, route, type_idx, time))
+    push!(race.best, oftype(first(race.best), Inf))
+    push!(race.processed, false)
+    push!(race.represents, 0)
+    race.may_block && push!(race.head, 0)
+    return length(tree.ids)
+end
+
+# The person at place `k`, created now if there is none yet. The interventions
+# set up their state on them, as on anyone created.
+_member!(tree::_Tree, race, k) = _birth!(tree, race, k)
+function _birth!(tree::_Tree, race, k)
+    (; state) = race
+    tree.ids[k] == 0 || return state.individuals[tree.ids[k]]
+    drawn = tree.drawn[k]
+    parent = state.individuals[drawn.infector]
+    contact = drawn.type == 0 ? make_contact!(state, parent, drawn.time) :
+        make_contact!(state, parent, drawn.time; type_idx = drawn.type)
+    contact.generation = parent.generation + 1
+    tree.tagged[drawn.route] && _tag_window!(contact, tree.untils[drawn.route])
+    tree.ids[k] = contact.id
+    push!(tree.places, k)
+    isempty(race.interventions) && return contact
+    for intervention in race.interventions
+        initialise_individual!(intervention, contact, state)
+    end
+    _apply_population_actions!(state, race.interventions, (contact.id,))
+    return contact
+end
+
+# One infectiousness window of a branching process as a route, numbered
+# `route`. `pending` holds the places the settling case just drew, with their
+# times, until the race proposes them. `reached` holds the places drawn for
+# people a tracing ring reached before they settled, by person, until they do.
+struct _Offspring{W <: Infectiousness, T <: Real}
+    window::W
+    route::Int
+    tree::_Tree{T}
+    pending::Vector{Tuple{Int, T}}
+    reached::Dict{Int, Vector{Tuple{Int, T}}}
+end
+function _Offspring(window::Infectiousness, route::Int, tree::_Tree{T}) where {T}
+    return _Offspring(
+        window, route, tree, Tuple{Int, T}[], Dict{Int, Vector{Tuple{Int, T}}}()
+    )
+end
+
+# The window the race closes this route on: the window's own `until` states,
+# and removal by an intervention, which a branching process applies on every
+# route.
+function _offspring_window(w::Infectiousness)
+    return RouteWindow(
+        :transmission; until = (w.until..., INTERVENTION_REMOVAL), kernel = nothing
+    )
+end
+
+# A contact made by a branching process exists nowhere else, so no other case
+# can reach it: the route names no targets, and no pair kernel to redraw from.
+(::_Offspring)(infector_id, state) = ()
+_pair_kernel(::_Offspring, infector_id, target_id, state) = nothing
+
+_route_open(o::_Offspring, ind, w::RouteWindow) = _state_time(ind, o.window.from)
+_route_may_block(::_Offspring) = true
+_route_builtin_blocks(::_Offspring) = _offspring_builtin_risk_blocks
+
+# The contact was registered on its infector when it was created, and a
+# branching process names no route.
+_record_infection!(::_Offspring, infector, ind, w, named) = nothing
+
+function _offspring_builtin_risk_blocks(parent, contact, state, transmission_time)
+    pop_suscept = susceptible_fraction(state)
+    pop_suscept <= 0.0 && return true
+    pop_suscept < 1.0 && rand(state.rng) > pop_suscept && return true
+    return _builtin_risk_blocks(parent, contact, state, transmission_time)
+end
+
+# Draw the settling case's contacts on this window, or take those a tracing
+# ring already drew for it.
+function _mint!(o::_Offspring, race, ind, max_generation)
+    if !isempty(o.reached)
+        reached = pop!(o.reached, ind.id, nothing)
+        reached === nothing || return append!(o.pending, reached)
+    end
+    return _draw_contacts!(o.pending, o, race, ind, max_generation, false)
+end
+
+# What tracing and the interventions' actions read as a case's contacts. The
+# settling case's contacts are created as people, since tracing writes to them
+# before their infection is decided. A ring that grows through people who have
+# not settled needs their contacts too, which a branching process draws only
+# when a case settles: the walk draws them when it reaches such a person
+# instead, and they are the contacts that person goes on to expose if it is
+# infected later. An uninfected person exposes none of them, since only
+# infected people transmit.
+function _case_contacts(
+        contacts, rts::Tuple{Vararg{Tuple{RouteWindow, _Offspring}}}, race, max_generation
+    )
+    return function (id, state)
+        for (_, o) in rts
+            if race.processed[o.tree.places[id]]
+                for (k, _) in o.pending
+                    _birth!(o.tree, race, k)
+                end
+            elseif !haskey(o.reached, id)
+                o.reached[id] = _draw_contacts!(
+                    eltype(values(o.reached))(), o, race, state.individuals[id],
+                    max_generation, true
+                )
+            end
+        end
+        return state.individuals[id].secondary_case_ids
+    end
+end
+
+# Draw a person's contacts on this window, once it opens, unless the person is
+# at the generation bound, and add each place with its time to `into`, creating
+# the contacts as people when `born`.
+function _draw_contacts!(into, o::_Offspring, race, ind, max_generation, born::Bool)
+    ind.generation >= max_generation && return into
+    from_t = _state_time(ind, o.window.from)
+    isfinite(from_t) || return into
+    (; state) = race
+    kernel = get_generation_time(o.window.kernel, ind)
+    counts = draw_offspring(state.rng, o.window.offspring, ind, state)
+    _draw_counts!(into, o, race, ind, counts, from_t, kernel, born)
+    return into
+end
+
+# Single-type: one count. Multi-type: a count per type.
+function _draw_counts!(into, o::_Offspring, race, ind, n::Int, from_t, kernel, born)
+    for _ in 1:n
+        _draw_contact!(into, o, race, ind, from_t, kernel, 0, born)
+    end
+    return nothing
+end
+function _draw_counts!(
+        into, o::_Offspring, race, ind, counts::Vector{Int}, from_t, kernel, born
+    )
+    for (type_idx, n) in enumerate(counts), _ in 1:n
+        _draw_contact!(into, o, race, ind, from_t, kernel, type_idx, born)
+    end
+    return nothing
+end
+
+function _draw_contact!(into, o::_Offspring, race, ind, from_t, kernel, type_idx, born)
+    t = _window_infection_time(kernel, from_t, race.state)
+    k = _place!(o.tree, race, ind, t, type_idx, o.route)
+    born && _birth!(o.tree, race, k)
+    push!(into, (k, t))
+    return nothing
+end
+
+# Propose the contacts the case drew on this window, those that fall before it
+# closes. One that falls later is a contact who was never infected, and is
+# created as one now.
+function _propose_along!(
+        o::_Offspring, race, infector_id, opening_id, open_t, close_t, traits, live, ri
+    )
+    for (k, t) in o.pending
+        t <= close_t ? _propose!(race, k, opening_id, t) : _birth!(o.tree, race, k)
+    end
+    empty!(o.pending)
+    return nothing
+end
+
+# A run cut off by a stopping rule or a time limit leaves contacts whose
+# infection was still to be decided. Their exposure falls after the run ended,
+# so it is not part of the outbreak the run describes. One that tracing or an
+# intervention already reached stays a contact of its case, with what was done
+# to it, but with no infection time, as a network leaves a member the run never
+# reached; the others were never created. Routes share the places, so the
+# first route to finish does this for all of them.
+function _finish!(o::_Offspring, race)
+    (; state, processed, best) = race
+    for k in eachindex(best)
+        (processed[k] || !isfinite(best[k])) && continue
+        best[k] = oftype(best[k], Inf)
+        id = o.tree.ids[k]
+        id == 0 && continue
+        contact = state.individuals[id]
+        # An index case the run stopped before reaching stays an index case.
+        contact.parent_id == 0 && continue
+        contact.infection_time = oftype(contact.infection_time, NaN)
+    end
+    return nothing
+end
+
+supplies_contacts(::BranchingProcess) = true
+
+"""
+    simulate_once(model::BranchingProcess, sim_opts; interventions, attributes,
+                  progression, observation, recorder, rng)
+
+Simulate a branching process on the continuous-time race. Each case creates its
+contacts when it settles, one route per [`Infectiousness`](@ref) window, and
+the race decides every contact in order of infection time.
+"""
+function simulate_once(
+        model::BranchingProcess, sim_opts::SimOpts;
+        interventions, attributes, progression, observation, recorder, rng
+    )
+    state = initialise_state(model, sim_opts, interventions, progression, attributes, rng)
+    # The race counts the index cases as it settles them.
+    state.cumulative_cases = 0
+    T = _timetype(state)
+    windows = model.infectiousness
+    tree = _take_tree(T, length(state.individuals), map(w -> w.until, windows))
+    routes = ntuple(
+        i -> (_offspring_window(windows[i]), _Offspring(windows[i], i, tree)), length(windows)
+    )
+    sellke_race!(
+        state, tree, rng, sim_opts;
+        seed! = (best, _, _) -> fill!(best, zero(T)), routes,
+        interventions, contacts = (id, state) -> state.individuals[id].secondary_case_ids,
+        risks = transmission_risks(model), recorder
+    )
+    _return_pooled!(tree)
+    apply_observation!(observation, state, rng)
+    return state
+end

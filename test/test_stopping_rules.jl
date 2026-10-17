@@ -56,7 +56,7 @@ EpiBranch.time_bound(r::TimeOrCasesRule) = r.t
         @test state.current_generation <= 3
     end
 
-    @testset "MaxTime stops once max_infection_time crosses the cap" begin
+    @testset "MaxTime keeps only infections up to the cap" begin
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(3.0), Exponential(5.0))
         state = simulate(
@@ -64,7 +64,8 @@ EpiBranch.time_bound(r::TimeOrCasesRule) = r.t
             stopping_rules = [Extinction(), MaxTime(20.0)],
             rng = rng
         )
-        @test state.max_infection_time >= 20.0
+        @test 15.0 < state.max_infection_time <= 20.0
+        @test all(ind -> ind.infection_time <= 20.0, filter(is_infected, state.individuals))
         @test !state.extinct
     end
 

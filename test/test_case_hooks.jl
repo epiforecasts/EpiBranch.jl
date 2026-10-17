@@ -1,8 +1,8 @@
-# Both engines call one set of per-case intervention hooks: `trace_contacts!`
+# Every model calls one set of per-case intervention hooks: `trace_contacts!`
 # with an infector and the contacts it reached, `intervention_actions` for
-# actions with a delivery time, and `keep_active` for who goes on generating
-# contacts. The generation engine calls them for each case of the previous
-# generation rather than handing an intervention the whole batch.
+# actions with a delivery time, and `keep_active` for which traced contacts a
+# ring grows from. The deprecated batch hook is still called by the generation
+# engine, which runs models written against `generate_offspring`.
 
 # Records, on each contact, the infector it was offered with and the state the
 # hook saw, and on each `keep_active` call whether every target came from one
@@ -91,7 +91,15 @@ _case_hook_model(ivs) = ModelSpec(
     BranchingProcess(Poisson(2.0), Exponential(3.0)); interventions = ivs
 )
 
-@testset "Per-case intervention hooks on the generation engine" begin
+# An offspring-driven model of its own, which runs on the generation engine.
+struct _GenerationTree <: EpiBranch.TransmissionModel
+    generation_time::Exponential{Float64}
+end
+EpiBranch.population_size(::_GenerationTree) = EpiBranch.NoPopulation()
+EpiBranch.generate_offspring(::_GenerationTree, parent, state) = rand(state.rng, Poisson(2.0))
+_batch_hook_model(ivs) = ModelSpec(_GenerationTree(Exponential(3.0)); interventions = ivs)
+
+@testset "Per-case intervention hooks" begin
     @testset "trace_contacts! is called once per case with its own contacts" begin
         state = simulate(
             _case_hook_model([_RecordCaseHooks()]);
@@ -107,17 +115,12 @@ _case_hook_model(ivs) = ModelSpec(
             ind -> ind.state[:_offered_clock] ==
                 state.individuals[ind.parent_id].infection_time, offered
         )
-        # The count is the infector's place among the cases settled up to it.
+        # The count is the infector's place among the cases infected up to it.
         cases = filter(is_infected, state.individuals)
         for ind in offered
             infector = state.individuals[ind.parent_id]
-            @test ind.state[:_offered_count] == count(
-                c -> c.generation < infector.generation ||
-                    (
-                    c.generation == infector.generation &&
-                        c.infection_time <= infector.infection_time
-                ), cases
-            )
+            @test ind.state[:_offered_count] ==
+                count(c -> c.infection_time <= infector.infection_time, cases)
         end
         @test state.max_infection_time ==
             maximum(ind.infection_time for ind in cases)
@@ -165,9 +168,11 @@ _case_hook_model(ivs) = ModelSpec(
         @test state.individuals[3].state[:_traced_from] == 2
     end
 
-    @testset "A tracer that also proposes actions is honoured where contacts are named" begin
+    @testset "Proposed actions are honoured where contacts are named" begin
         @test EpiBranch._sellke_honours(_NamesContacts(), _TraceAndAct())
-        @test !EpiBranch._sellke_honours(_NamesContacts(), _ActionsOnly())
+        @test EpiBranch._sellke_honours(_NamesContacts(), _ActionsOnly())
+        pool = HomogeneousProcess(transmission_rate = 1.0, population_size = 10)
+        @test !EpiBranch._sellke_honours(pool, _ActionsOnly())
     end
 
     @testset "An intervention with only intervention_actions acts" begin
@@ -175,13 +180,21 @@ _case_hook_model(ivs) = ModelSpec(
             _case_hook_model([_ActionsOnly()]);
             max_cases = 50, max_generations = 4, rng = StableRNG(12)
         )
+        # A case's contacts are offered to it when the case settles, and an
+        # action cannot be dated before then: those of cases settled by day 3
+        # are served on day 3, and those of later cases are not.
         contacts = filter(ind -> ind.parent_id != 0, state.individuals)
-        @test !isempty(contacts)
-        @test all(ind -> get(ind.state, :_served_at, nothing) == 3.0, contacts)
+        early(ind) = state.individuals[ind.parent_id].infection_time <= 3.0
+        @test any(early, contacts)
+        @test any(!early, contacts)
+        @test all(
+            ind -> get(ind.state, :_served_at, nothing) == (early(ind) ? 3.0 : nothing),
+            contacts
+        )
     end
 
     @testset "An intervention with only the batch hook works, with a warning" begin
-        model = _case_hook_model([_BatchOnly()])
+        model = _batch_hook_model([_BatchOnly()])
         state = @test_logs (:warn, r"_BatchOnly.*apply_post_transmission!.*deprecated"s) match_mode = :any simulate(
             model; max_cases = 50, max_generations = 4, rng = StableRNG(13)
         )
@@ -194,7 +207,7 @@ _case_hook_model(ivs) = ModelSpec(
         @test_logs (:warn, r"^_BatchOnly") (:warn, r"^_BatchTracer") begin
             for iv in (_BatchOnly(), _BatchTracer()), seed in 1:2
                 simulate(
-                    _case_hook_model([iv]); max_cases = 10, max_generations = 2,
+                    _batch_hook_model([iv]); max_cases = 10, max_generations = 2,
                     rng = StableRNG(seed)
                 )
             end
@@ -203,7 +216,7 @@ _case_hook_model(ivs) = ModelSpec(
 
     @testset "keep_active of a batch-hook intervention sees its batch writes" begin
         state = @test_logs (:warn,) match_mode = :any simulate(
-            _case_hook_model([_BatchRing()]);
+            _batch_hook_model([_BatchRing()]);
             max_cases = 10_000, max_generations = 3, rng = StableRNG(16)
         )
         # Every contact, infected or not, stays active and makes contacts.
@@ -217,7 +230,7 @@ _case_hook_model(ivs) = ModelSpec(
     @testset "A batch-hook intervention feeds the interventions after it" begin
         rv = RingVaccination(efficacy = 0.9)
         state = @test_logs (:warn,) match_mode = :any simulate(
-            _case_hook_model([_BatchTracer(), rv]);
+            _batch_hook_model([_BatchTracer(), rv]);
             max_cases = 50, max_generations = 3, rng = StableRNG(19)
         )
         contacts = filter(ind -> ind.parent_id != 0, state.individuals)

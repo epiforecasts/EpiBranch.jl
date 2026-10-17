@@ -189,6 +189,9 @@ function contacts(
         for child_id in ind.secondary_case_ids
             child_id > length(state.individuals) && continue
             child = state.individuals[child_id]
+            # A contact whose exposure fell after the run stopped was never
+            # exposed within it.
+            isnan(child.infection_time) && continue
             push!(
                 df,
                 (

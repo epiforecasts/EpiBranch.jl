@@ -206,12 +206,9 @@ EpiBranch.continuous_actions(::AppointmentAction) = true
         ]
     )
     state.max_infection_time = 11.0
-    # `AppointmentAction` needs no named contacts (its candidates are the
-    # default: `current` and everyone not yet processed), so a `contacts`
-    # function is passed only to stand in for a model that supplies one;
-    # `needs_contacts`'s conservative default would otherwise skip it on a
-    # call with none, as a model without named contacts does on the race.
-    contacts(id, state) = Int[]
+    # `AppointmentAction` takes the default candidates: `current` and the
+    # contacts it names that are still pending.
+    contacts(id, state) = id == 1 ? [2, 3, 4] : Int[]
     EpiBranch._apply_continuous_actions!(
         state, state.individuals[1],
         [AppointmentAction()], [1, 2, 3, 4], [true, false, true, false], contacts
@@ -315,13 +312,12 @@ end
     @test length(group_candidates) == 3
     @test Set(ind.id for ind in group_candidates) == Set([1, 2, 3])
 
-    # The default candidate strategy, used by any other custom
-    # `continuous_actions` intervention, keeps the wider (expensive)
-    # contract every still-pending member.
+    # Any other intervention gets the default, the case and the contacts it
+    # names, which is the ring's own set.
     generic_candidates = EpiBranch._continuous_candidates(
         AppointmentAction(), state, current, members, processed, contacts, pos
     )
-    @test length(generic_candidates) == n
+    @test Set(ind.id for ind in generic_candidates) == Set([1, 2, 3])
 end
 
 @testset "Existing-dose effects require admission" begin
@@ -384,7 +380,9 @@ end
             ModelSpec(process; interventions = [iv]);
             max_generations = 1, rng = MersenneTwister(1)
         )
-        @test count(is_vaccinated, state.individuals) == 9
+        # The rollout reaches everyone alive on day 10: the index case and
+        # its nine contacts.
+        @test count(is_vaccinated, state.individuals) == 10
         @test state.cumulative_cases == 1
         contact = state.individuals[2]
         state.max_infection_time = 30.0

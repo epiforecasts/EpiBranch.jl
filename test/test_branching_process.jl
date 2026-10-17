@@ -177,3 +177,46 @@ EpiBranch.draw_offspring(rng, ::ExternalOffspringRule, ind, state) = 0
     model = BranchingProcess(Infectiousness(ExternalOffspringRule()))
     @test simulate(model; rng = StableRNG(42)).cumulative_cases == 1
 end
+
+# Infection times of one outbreak up to `horizon`, drawn by recursing down the
+# tree from an index case at time 0. Written to share nothing with the
+# simulation, as a check on the timing of incidence, which has no closed form.
+function _reference_infection_times(rng, offspring, generation_time, horizon)
+    times = [0.0]
+    to_visit = [0.0]
+    while !isempty(to_visit)
+        t = pop!(to_visit)
+        for _ in 1:rand(rng, offspring)
+            child = t + rand(rng, generation_time)
+            child <= horizon || continue
+            push!(times, child)
+            push!(to_visit, child)
+        end
+    end
+    return times
+end
+
+@testset "Incidence over time matches an independent tree sampler" begin
+    offspring, generation_time, horizon = Poisson(1.2), Gamma(2.5, 2.0), 30.0
+    n = 4000
+    simulated = simulate(
+        BranchingProcess(offspring, generation_time), n;
+        max_time = horizon, max_cases = nothing, max_generations = nothing,
+        rng = StableRNG(7)
+    )
+    rng = StableRNG(8)
+    reference = [
+        _reference_infection_times(rng, offspring, generation_time, horizon)
+            for _ in 1:n
+    ]
+    sim_times = [
+        [ind.infection_time for ind in s.individuals if is_infected(ind)]
+            for s in simulated
+    ]
+    for day in (5.0, 10.0, 20.0, 30.0)
+        a = [count(<=(day), ts) for ts in sim_times]
+        b = [count(<=(day), ts) for ts in reference]
+        se = sqrt(var(a) / n + var(b) / n)
+        @test abs(mean(a) - mean(b)) < 4 * se
+    end
+end
