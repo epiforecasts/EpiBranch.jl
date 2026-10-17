@@ -1039,8 +1039,11 @@ end
         extinct = EpiBranch._sellke_race!(
             state, collect(1:20), rng; targets, from = :infection,
             until = (:recovered,), seed! = (best, _, _) -> (best[1] = 0.0),
+            contacts = (i, st) -> [j for j in 1:20 if j != i],
             declarations...
         )
+        # Finishing an empty action pass still finalises accepted infections.
+        @test all(i -> !is_infected(i) || EpiBranch.is_settled(state, i), state.individuals)
         return (
             extinct,
             [

@@ -1326,7 +1326,7 @@ function _sellke_race!(
             state, ind, interventions, case_contacts, pos, processed, tracing
         )
         _trace_source!(state, ind, interventions, tracing_source)
-        (contacts !== nothing || contactless_actions) && !isempty(acting) &&
+        (contacts !== nothing || contactless_actions) &&
             _apply_continuous_actions!(
             state, ind, acting, members, processed, case_contacts, pos, traced
         )
