@@ -277,3 +277,15 @@ end
     @test early == 0
     @test any(s -> s.cumulative_cases > 1, states)
 end
+
+@testset "A recorder lists each branching-process contact once" begin
+    spec = ModelSpec(
+        BranchingProcess(Poisson(3.0), Exponential(2.0));
+        attributes = transmission_traits(susceptibility = 0.5),
+        recorder = ExposedContactRecorder()
+    )
+    s = simulate(spec; max_cases = 50, n_initial = 5, rng = StableRNG(4))
+    rows = contacts(s)
+    @test nrow(rows) == nrow(unique(rows[:, [:from, :to]]))
+    @test any(!, rows.infected)
+end
