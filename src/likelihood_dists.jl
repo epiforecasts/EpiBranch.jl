@@ -45,9 +45,9 @@ const _CHAIN_LENGTH_LOGLIK_KWARGS = (
     :n_initial, :max_cases, :max_generations, :max_time, :stopping_rules, :n_sim, :rng,
 )
 
-# Every keyword either `rand` or `logpdf` recognises for each wrapper, so a
-# misspelt keyword (e.g. `n_sims` for `n_sim`) is refused at construction
-# rather than being silently dropped by both sides' per-callee filtering.
+# Every keyword `rand` or `logpdf` accepts for each wrapper, so a misspelt
+# keyword (e.g. `n_sims` for `n_sim`) is caught at construction instead of
+# being silently dropped by each side's own filtering.
 const _CHAIN_SIZE_KWARGS = union(_SIMULATE_ONCE_KWARGS, _CHAIN_SIZE_LOGLIK_KWARGS)
 const _CHAIN_LENGTH_KWARGS = union(_SIMULATE_BATCH_KWARGS, _CHAIN_LENGTH_LOGLIK_KWARGS)
 

@@ -238,8 +238,8 @@
 
     @testset "a kwarg neither rand nor logpdf accepts is refused at construction" begin
         # A typo such as `n_sims` for `n_sim` is not in either callee's
-        # accepted-keyword list, so neither side's filtering would ever
-        # raise it; it must be refused up front instead.
+        # accepted-keyword list, so neither side's filtering would catch it;
+        # construction must refuse it up front instead.
         bp = BranchingProcess(Poisson(0.5))
         @test_throws ArgumentError chain_size_distribution(bp; n_sims = 50)
         @test_throws ArgumentError chain_length_distribution(bp; n_sims = 50)
