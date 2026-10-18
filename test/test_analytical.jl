@@ -1276,6 +1276,33 @@
             )
             @test ll_default == ll_uncapped
         end
+
+        @testset "n_initial combines seeds into the longest chain (regression for issue #532)" begin
+            # Interventions force the simulation path. Each simulated outbreak
+            # there must contribute one cluster length — the longest of its
+            # n_initial seeded chains — rather than each seed's own chain
+            # length as a separate observation, which would leave the sim
+            # path matching the single-seed length distribution regardless
+            # of n_initial.
+            iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = 7.0)
+            spec = ModelSpec(
+                BranchingProcess(Poisson(0.5), Exponential(5.0));
+                interventions = [iso],
+                attributes = clinical_presentation(
+                    incubation_period = LogNormal(1.0, 0.3)
+                )
+            )
+            data = ChainLengths([5])
+            ll_one = loglikelihood(
+                data, spec; n_initial = 1, max_cases = 500, n_sim = 20_000, rng = StableRNG(1)
+            )
+            ll_many = loglikelihood(
+                data, spec; n_initial = 5, max_cases = 500, n_sim = 20_000, rng = StableRNG(1)
+            )
+            @test isfinite(ll_one)
+            @test isfinite(ll_many)
+            @test ll_many > ll_one
+        end
     end
 
     @testset "Proportion transmission (superspreading)" begin

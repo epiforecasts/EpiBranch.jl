@@ -235,9 +235,13 @@ function _sim_loglikelihood(
     for state in states
         cs = chain_statistics(state)
         vals = getproperty(cs, column)
-        append!(sim_values, vals)
+        isempty(vals) && continue
+        # A multi-seed cluster is one simulation: its longest chain (one per
+        # seed) is the cluster's observed value, rather than each seed's
+        # chain being reported separately.
+        push!(sim_values, maximum(vals))
         hit_cap = !state.extinct && state.cumulative_cases >= cap
-        append!(censored, fill(hit_cap, length(vals)))
+        push!(censored, hit_cap)
     end
     return _empirical_ll(observed, sim_values; min_val, censored, cap)
 end
