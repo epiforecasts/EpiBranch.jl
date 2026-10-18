@@ -870,9 +870,9 @@ function _walk_ring!(
         for ind in pending
             push!(visited, ind.id)
         end
-        # Which of them the ring grows from is the intervention's call. Nothing
-        # here is freshly created, so `is_new` is all false; the race settles
-        # pre-existing members rather than creating contacts as it goes.
+        # Which of them the ring grows from is the intervention's call. `is_new`
+        # marks contacts a generation step created, and the race has no
+        # generations, so it is all false.
         is_new = falses(length(pending))
         for iv in interventions
             for id in keep_active(iv, state, pending, is_new)

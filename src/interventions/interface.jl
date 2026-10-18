@@ -220,7 +220,8 @@ for one more generation, so their contacts are offered to them through the
 same hooks in turn, and the `InfectiousSource` risk source (a default) stops
 them infecting anyone.
 
-`is_new[i]` flags which of `targets` were freshly created. A contact returned
+`is_new[i]` flags which of `targets` were freshly created, on a model run one
+generation at a time; every built-in model passes `false` for all of them. A contact returned
 here that turns out to be infected is active as a case anyway."""
 keep_active(::AbstractIntervention, state, targets, is_new) = ()
 
