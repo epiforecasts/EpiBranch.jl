@@ -75,7 +75,7 @@ end
 # than one per seed). A cluster with no reported case has no observed size
 # under `logpdf` either, so it is dropped and redrawn rather than counted as
 # zero.
-function _rand_chain_size(rng, model, sim_kwargs, obs, prog)
+function _rand_chain_size(rng::AbstractRNG, model, sim_kwargs::NamedTuple, obs, prog)
     while true
         state = simulate(model; sim_kwargs..., rng)
         vals = _sim_chain_sizes(state, obs, prog)
