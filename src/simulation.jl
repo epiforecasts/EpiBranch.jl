@@ -1882,11 +1882,21 @@ function demographics(;
         age_range::Tuple{Int, Int} = (0, 90),
         prob_female::Real = 0.5
     )
-    pf = float(prob_female)
-    return function (rng, ind)
-        ind.state[:age] = _sample_age(rng, age_distribution, age_range)
-        return ind.state[:sex] = rand(rng) < pf ? :female : :male
-    end
+    return Demographics(age_distribution, age_range, float(prob_female))
+end
+
+"""Callable population characteristic `demographics` returns. Has a type,
+rather than being a bare closure, so [`EpiBranch.offspring_law_unchanged`](@ref)
+can recognise it as leaving the offspring law unchanged."""
+struct Demographics{D}
+    age_distribution::D
+    age_range::Tuple{Int, Int}
+    prob_female::Float64
+end
+
+function (d::Demographics)(rng, ind)
+    ind.state[:age] = _sample_age(rng, d.age_distribution, d.age_range)
+    return ind.state[:sex] = rand(rng) < d.prob_female ? :female : :male
 end
 
 _sample_age(rng, ::NoAgeDistribution, age_range) = rand(rng, age_range[1]:age_range[2])
@@ -1928,9 +1938,19 @@ See also [`GroupVaccination`](@ref), [`vaccine_acceptance`](@ref).
 """
 function groups(n_groups::Integer; key::Symbol = :group)
     n_groups >= 1 || throw(ArgumentError("n_groups must be at least 1, got $n_groups"))
-    return function (rng, ind)
-        return ind.state[key] = rand(rng, 1:n_groups)
-    end
+    return Groups(n_groups, key)
+end
+
+"""Callable population characteristic `groups` returns. Has a type, rather
+than being a bare closure, so [`EpiBranch.offspring_law_unchanged`](@ref) can
+recognise it as leaving the offspring law unchanged."""
+struct Groups
+    n_groups::Int
+    key::Symbol
+end
+
+function (g::Groups)(rng, ind)
+    return ind.state[g.key] = rand(rng, 1:g.n_groups)
 end
 
 """
@@ -1984,7 +2004,12 @@ attributes = [
 ```
 
 For rules this function does not cover, an `attributes` entry can set the
-fields directly, as in `(rng, ind) -> (ind.susceptibility = ...)`.
+fields directly, as in `(rng, ind) -> (ind.susceptibility = ...)`. Such a
+closure sends `loglikelihood(::ChainSizes, model)`, `chain_size_distribution`
+and the closed-form incidence likelihood to simulation rather than their
+analytical path, since [`EpiBranch.offspring_law_unchanged`](@ref) cannot
+tell what a bare function does; wrap it in its own callable type with a
+method on that trait to get the analytical path back.
 
 See also [`clinical_presentation`](@ref), [`demographics`](@ref).
 """

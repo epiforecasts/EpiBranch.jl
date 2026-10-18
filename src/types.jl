@@ -124,6 +124,15 @@ either one thins how many of the drawn contacts actually become cases. A
 `Tuple` or `AbstractVector` of attributes answers `true` only once every
 entry does.
 
+A bare `Function` or closure answers the conservative `false` instead,
+whatever it does: an `attributes` entry can set `ind.susceptibility` or
+`ind.infectiousness` directly rather than going through
+[`transmission_traits`](@ref) (its docstring recommends exactly this for
+rules it doesn't cover), and this trait has no way to tell that apart from
+one that leaves them alone. [`demographics`](@ref) and [`groups`](@ref)
+return a dedicated callable type rather than a closure so they keep the
+`true` default; give a custom attributes function one too if it should.
+
 For a [`TransmissionModel`](@ref) the default is the conservative `false`
 instead, as for [`EpiBranch.infection_likelihood_compatible`](@ref): a new
 model opts in once it has checked that nothing of its own — a finite
@@ -135,6 +144,7 @@ non-empty `until` (transmission can stop before every drawn contact
 happens).
 """
 offspring_law_unchanged(::Any) = true
+offspring_law_unchanged(::Function) = false
 offspring_law_unchanged(::TransmissionModel) = false
 function offspring_law_unchanged(xs::Union{Tuple, AbstractVector})
     return all(offspring_law_unchanged, xs)
