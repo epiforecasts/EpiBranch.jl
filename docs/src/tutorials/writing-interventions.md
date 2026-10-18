@@ -570,8 +570,13 @@ infection is decided. The ring grows through them whether or not the contact
 is infected, and if it is, they are the contacts it goes on to expose. An
 offspring or generation time given as a function may read what settling the
 contact writes, such as its severity, so there the contact's own contacts are
-drawn only once it settles as a case, and the ring grows through them then; an
-uninfected one has none (see [`EpiBranch.reads_settled_state`](@ref)). A window
+drawn only once it settles as a case; an uninfected one has none (see
+[`EpiBranch.reads_settled_state`](@ref)). If the contact is then eligible for
+tracing in its own right, its contacts are traced from its own trigger, so a
+deeper ring adds nothing for it; the ring grows only through contacts that
+are not eligible, such as asymptomatic ones under `OnSymptomOnset`. A
+generation time from [`incubation_linked_generation_time`](@ref) is such a
+function. A window
 that opens on a later state, such as `:infectious` after a latent period, has
 no opening time yet, and waits the same way. When any of a contact's windows
 waits, all of them do, so the ring reaches every contact an infected member
