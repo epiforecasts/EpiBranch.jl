@@ -407,7 +407,9 @@ homogeneous and mixing models name none, so an intervention that needs them
 is never offered them there. The default is `true`, matching
 [`RingVaccination`](@ref), whose candidates come from walking the contact
 graph. [`GroupVaccination`](@ref) declares `false`: its candidates are a
-case's group, found through its `group_key`, not through any contact.
+case's group, found through its `group_key`, not through any contact. A
+branching process offers an intervention declaring `false` each contact as it
+creates it, too, so a group's dose reaches a member created after it.
 """
 needs_contacts(::AbstractIntervention) = true
 function needs_contacts(w::InterventionWrapper)
@@ -582,6 +584,24 @@ function _apply_population_actions!(state, interventions, members)
         actions = intervention_actions(iv, state, candidates)
         actions === nothing && continue
         _admit_actions!(iv, state, actions)
+    end
+    return nothing
+end
+
+# Offer a person a branching process has just created to every intervention
+# proposing actions that need no named contacts. `GroupVaccination` finds its
+# candidates through a case's group, which a contact joins only once it exists,
+# so without this a group's dose would never reach a member created after it.
+# Nothing about the new person is settled yet, so an action dated before the
+# clock, such as the dose its group was given, is admitted as it stands.
+function _apply_creation_actions!(state, interventions, contact)
+    for iv in interventions
+        acts_on_population(iv) && continue
+        needs_contacts(iv) && continue
+        _proposes_actions(iv) || continue
+        actions = intervention_actions(iv, state, [contact])
+        actions === nothing && continue
+        _admit_actions!(iv, state, filter(a -> a.individual.id == contact.id, actions))
     end
     return nothing
 end

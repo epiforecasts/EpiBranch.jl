@@ -224,7 +224,9 @@ In practice:
   contact not yet infected, and must not change a case already settled. That
   narrowing needs a model that can name contacts, unless the intervention
   declares `EpiBranch.needs_contacts(iv) = false`, as group vaccination does,
-  since its candidates come from a case's group rather than its contacts. Ring
+  since its candidates come from a case's group rather than its contacts. A
+  branching process also offers such an intervention each contact as it is
+  created, so a group's dose reaches a member who joins it later. Ring
   vaccination admits a dose for a contact not yet exposed as though any
   `eligibility_window` were open, and withdraws it through
   `EpiBranch.on_infection_settled!` once that contact's own infection settles
