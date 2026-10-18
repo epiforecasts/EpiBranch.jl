@@ -14,12 +14,6 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
 
 ### Added
 
-- `is_triggered!` takes the `InterventionAction` `Scheduled` is deciding on as
-  an optional third argument, so a `start_after` trigger can gate an action
-  by whom it is for, such as a group's own case count, rather than only by
-  the population as a whole. `After(trigger, delay)` opens a fixed delay
-  after `trigger` itself opened, found through the new `opened_at`, which
-  `Infections` and `ReportedCases` both implement.
 - `pairwise_surv_loglik_by_component` splits the pairwise survival
   log-likelihood by connected component of the contact structure (households,
   under a household partition), reusing one compiled `ContactPairsLayout` so
