@@ -1413,7 +1413,8 @@ function _sellke_race!(
             )
             orphans += _redraw_moved!(
                 queue, proposals, head, best, represents,
-                watch, openings, processed, pos, rts, state, bt, pops, passed, rng
+                watch, openings, processed, pos, rts, state, bt, pops, passed, rng,
+                reinfects
             )
             if orphans > max(m, length(proposals) ÷ 2)
                 _compact_proposals!(queue, proposals, head, best, represents, processed, reinfects)
@@ -1834,7 +1835,8 @@ function _draw_beyond(rng::AbstractRNG, kernel, m::Real, after)
 end
 
 # A record that moved changes only the pairs it enters: those of an open opening
-# whose infector moved, and those reaching a moved member that has not settled.
+# whose infector moved, and those reaching a moved member that has not settled,
+# or that has but can still be reinfected (see `reinfects` in `_propose_along!`).
 # Their contacts are drawn again from the hazards now in force, conditioned on
 # the exposure already elapsed, and every other proposal stands, external
 # introductions included. A pair with no pending proposal is drawn again too:
@@ -1843,7 +1845,7 @@ end
 # unlinked.
 function _redraw_moved!(
         queue, proposals, head, best, represents, w::_LiveWatch,
-        openings, processed, pos, rts, state, now, pops, passed, rng
+        openings, processed, pos, rts, state, now, pops, passed, rng, reinfects
     )
     # Opening => the members whose pairs with it are drawn again, or `nothing`
     # for all of them.
@@ -1854,7 +1856,7 @@ function _redraw_moved!(
                 openings[oi].route == ri || continue
                 openings[oi].close_t >= now && (redo[oi] = nothing)
             end
-            processed[k] && continue
+            processed[k] && !reinfects && continue
             for oi in w.reached_by[k]
                 openings[oi].route == ri || continue
                 openings[oi].close_t >= now || continue
@@ -1867,7 +1869,7 @@ function _redraw_moved!(
     hit = Set{Int}()
     for (oi, members_hit) in redo
         for j in (members_hit === nothing ? w.reach[oi] : members_hit)
-            processed[j] || push!(hit, j)
+            (processed[j] && !reinfects) || push!(hit, j)
         end
     end
     # Unlink the proposals drawn again, keeping the rest in order.
@@ -1912,7 +1914,7 @@ function _redraw_moved!(
             ri == opening.route || continue
             for (id, kernel) in targets(opening.infector, state)
                 j = get(pos, id, 0)
-                (j == 0 || processed[j]) && continue
+                (j == 0 || (processed[j] && !reinfects)) && continue
                 members_hit === nothing || j in members_hit || continue
                 m = source.infectiousness * state.individuals[id].susceptibility
                 m <= 0 && continue

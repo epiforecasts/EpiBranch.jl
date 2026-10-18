@@ -684,6 +684,74 @@ end
     @test isapprox(redrawn, ordinary; atol = 0.6)
 end
 
+# Like `stateful_test_race`, but targets every household-mate regardless of
+# whether they have already settled, and never closes a window on `:recovered`,
+# so a progression with `:susceptible_again` can hold a losing proposal open
+# until its target wanes.
+function reinfecting_test_race(kernel, initial_times; interventions = (), seed = 1)
+    rng = StableRNG(seed)
+    progression = [
+        Transition(:recovered; from = :infection, delay = 0.5),
+        Transition(:susceptible_again; from = :recovered, delay = 1.0),
+    ]
+    state = EpiBranch.new_state(
+        BranchingProcess(Poisson(0.0)), progression,
+        NoAttributes(), rng
+    )
+    n = length(initial_times)
+    EpiBranch.add_individuals!(state, n, interventions)
+    targets = (i, st) -> (
+        (
+            j,
+            EpiBranch.pair_kernel(
+                kernel, i, j,
+                st.individuals[i].infection_time, st.individuals[i].infection_time, st
+            ),
+        )
+            for j in 1:n if j != i
+    )
+    EpiBranch._sellke_race!(
+        state, collect(1:n), rng;
+        seed! = (best, members, r) -> copyto!(best, initial_times),
+        targets, from = :infection, until = (), interventions, max_time = 20.0,
+        watches = (EpiBranch.watched_records(kernel),),
+        projections = (EpiBranch.kernel_projection(kernel),)
+    )
+    return state
+end
+
+# Sets host 2's `:tick` the moment host 4 is infected, rather than host 2's
+# own: a settled host's own record change is folded into its fresh opening
+# without counting as a move (see `_records_changed!`), so only a change made
+# by someone else's settling can exercise a held proposal's redraw.
+struct _MarkSecondOnFourth <: EpiBranch.AbstractIntervention end
+function EpiBranch.resolve_individual!(::_MarkSecondOnFourth, ind, state)
+    ind.id == 4 && (state.individuals[2].state[:tick] = 1)
+    return nothing
+end
+
+@testset "A moved record redraws a held reinfection proposal" begin
+    # Host 1 wins host 2 at t = 1; host 3's own proposal to host 2 loses and is
+    # held, under `:tick == 0`, for t = 3. Host 4's infection at t = 2 flips
+    # host 2's `:tick`, which host 3's held proposal reads; redrawn under
+    # `:tick == 1` it falls at t = 8 instead, well past host 2's immunity
+    # waning at t = 2.5, so whichever time survives is the one host 2 is
+    # actually reinfected at.
+    function kernel_cb(c, a, b)
+        c.susceptible == 2 && c.infector == 1 && return Dirac(1.0)
+        c.susceptible == 2 && c.infector == 3 &&
+            return b.tick == 0 ? Dirac(3.0) : Dirac(8.0)
+        c.susceptible == 4 && c.infector == 1 && return Dirac(2.0)
+        return Dirac(1.0e6)
+    end
+    kernel = PairKernel(kernel_cb; state = tick_state, watches = (:tick,))
+    state = reinfecting_test_race(
+        kernel, [0.0, Inf, 0.0, Inf]; interventions = [_MarkSecondOnFourth()]
+    )
+    @test state.individuals[2].episodes[1].infection_time == 1.0
+    @test state.individuals[2].infection_time == 8.0
+end
+
 @testset "Live kernels outside a race" begin
     live = PairKernel((c, a, b) -> Exponential(1.0); state = tick_state, watches = (:tick,))
     @test EpiBranch.watched_records(live) == (:tick,)
