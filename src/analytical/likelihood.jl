@@ -8,7 +8,7 @@ Analytical chain-length log-likelihood for a branching process whose
 offspring PGF is `G`. Iterating `q[n] = G(q[n-1])` from `q[1] = G(0)`
 gives `q[len + 1] = P(length ≤ len)` for a single seed. A chain with
 `n_initial` independent seeds has the length of the longest of `n_initial`
-single-seed chains, so its CDF is `q[len + 1]^n_initial`, and `P(length =
+single-seed chains: its CDF is `q[len + 1]^n_initial`, and `P(length =
 len)` is the successive difference of that. Element-type generic in `Tel`
 (the offspring parameter type) so `ForwardDiff` gradients flow through.
 """

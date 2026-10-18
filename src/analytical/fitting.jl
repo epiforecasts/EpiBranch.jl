@@ -196,7 +196,7 @@ Log-likelihood of observed chain lengths under the exact chain-length
 distribution for Poisson or negative binomial offspring. Only defined when R
 is below 1, since above it chains can go on for ever.
 
-`n_initial` is the number of independent seeds each chain started from: its
+`n_initial` is the number of independent seeds each chain started from. Its
 length is the longest of `n_initial` single-seed chains, so its CDF is the
 single-seed CDF raised to the power `n_initial`.
 """
@@ -394,8 +394,8 @@ Log-likelihood of observed chain lengths under a model, including its
 interventions. Exact when there are no interventions, the offspring
 distribution is Poisson or negative binomial, and R is below 1; otherwise
 estimated from `n_sim` simulated outbreaks (keywords as for chain sizes).
-`n_initial` gives the number of independent seeds the chains started from,
-and applies on both paths. Not available with an observation model, since a
+`n_initial` is the number of independent seeds the chains started from, and
+applies on both paths. Not available with an observation model, since a
 chain with undetected cases has no well-defined observed length.
 """
 function loglikelihood(data::ChainLengths, model::TransmissionModel; kwargs...)
