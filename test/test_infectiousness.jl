@@ -114,3 +114,37 @@
         @test_throws ArgumentError extinction_probability(multi)
     end
 end
+
+@testset "A deep ring leaves a case's settled state to its offspring" begin
+    # Severe cases make three contacts and others one. Tracing that changes
+    # nothing must leave every case with the count its own severity implies,
+    # at any ring depth.
+    progression = [
+        Transition(:severe; from = :infection, delay = 0.0, probability = 0.5),
+        Transition(:recovered; from = :infection, delay = 20.0),
+    ]
+    severe(ind) = isfinite(get(ind.state, :severe_time, Inf))
+    m = BranchingProcess(
+        Infectiousness((rng, ind) -> severe(ind) ? 3 : 1; kernel = Exponential(2.0))
+    )
+    for depth in (1, 2)
+        ct = ContactTracing(
+            TraceEveryone(), 1.0, Exponential(1000.0), FlagOnly(); depth = depth
+        )
+        wrong = 0
+        for seed in 1:20
+            s = simulate(
+                ModelSpec(m; progression, interventions = [ct]);
+                max_generations = 4, max_cases = nothing, rng = StableRNG(seed)
+            )
+            for ind in s.individuals
+                is_infected(ind) && ind.generation < 4 || continue
+                drawn = count(
+                    c -> !isnan(s.individuals[c].infection_time), ind.secondary_case_ids
+                )
+                drawn == (severe(ind) ? 3 : 1) || (wrong += 1)
+            end
+        end
+        @test wrong == 0
+    end
+end

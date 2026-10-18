@@ -180,15 +180,43 @@ function _offspring_builtin_risk_blocks(parent, contact, state, transmission_tim
 end
 
 # Draw the settling case's contacts on this window, or take those a tracing
-# ring already drew for it.
+# ring already drew for it. Where those draws may have read the person as it
+# was before settling, they stay traced contacts it never exposed, and the case
+# draws afresh.
 function _mint!(o::_Offspring, race, ind, max_generation)
     if !isempty(o.reached)
         reached = pop!(o.reached, ind.id, nothing)
-        reached === nothing || return (o.pending = reached)
+        if reached !== nothing
+            _draws_before_settling(o.window) && return (o.pending = reached)
+            _unexpose!(o.tree, race, reached)
+        end
     end
     o.pending = _draw_contacts!(o, race, ind, max_generation, false)
     return nothing
 end
+
+function _unexpose!(tree::_Tree, race, places)
+    for k in places
+        _release_draw!(tree, k)
+        id = tree.ids[k]
+        id == 0 && continue
+        contact = race.state.individuals[id]
+        contact.infection_time = oftype(contact.infection_time, NaN)
+    end
+    return nothing
+end
+
+# Whether contacts drawn for a person before it settles stand once it does: its
+# offspring and generation time read nothing settling writes, such as a state
+# a `Transition` records or the case count. A distribution reads nothing of the
+# person, a multi-type law only its type, set when it is created, and a mixed
+# one its parent's draw. A function may read anything, so its draws are redone.
+_draws_before_settling(w::Infectiousness) =
+    _reads_nothing_settled(w.offspring) && _reads_nothing_settled(w.kernel)
+_reads_nothing_settled(_) = false
+_reads_nothing_settled(::Distribution) = true
+_reads_nothing_settled(::MultiTypeOffspring) = true
+_reads_nothing_settled(::NoGenerationTime) = true
 
 # What tracing and the interventions' actions read as a case's contacts. The
 # settling case's contacts are created as people, since tracing writes to them
@@ -199,7 +227,8 @@ end
 # and they are the contacts that person goes on to expose if it is infected
 # later. An uninfected person exposes none of them, since only infected people
 # transmit. A window that opens on a later state has no time yet, and is drawn
-# when the person settles.
+# when the person settles. Where the draws may read what settling writes, the
+# person draws again when it settles (`_mint!`).
 function _case_contacts(
         contacts, rts::Tuple{Vararg{Tuple{RouteWindow, _Offspring}}}, race, max_generation
     )

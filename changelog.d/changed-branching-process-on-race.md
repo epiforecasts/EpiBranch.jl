@@ -15,7 +15,9 @@ across generations. What this changes in a run:
   state as it stands at each case, rather than once per generation.
 - A ring of depth 2 or more reaches the contacts of a ring member when the
   ring reaches it, including a member infected later, whose contacts are then
-  the ones it goes on to expose.
+  the ones it goes on to expose. Where the offspring or generation time is a
+  function, which may read what settling the member writes, an infected member
+  draws its contacts again when it settles.
 - `keep_active` is asked only by tracing, to choose which traced contacts a
   ring grows from. An intervention answering it without tracing is named in a
   warning.

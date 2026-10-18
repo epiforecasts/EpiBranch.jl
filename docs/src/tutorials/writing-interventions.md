@@ -567,8 +567,11 @@ traced contacts the ring is traced onward from. On a branching process whose
 window opens at infection, the default, a contact's own contacts are drawn
 when the ring reaches it, from its potential infection time and before its
 infection is decided. The ring grows through them whether or not the contact
-is infected, and if it is, they are the contacts it goes on to expose.
-A window that opens on a later state, such as `:infectious` after a latent
+is infected, and if it is, they are the contacts it goes on to expose. An
+offspring or generation time given as a function may read what settling the
+contact writes, such as its severity, so there an infected contact draws its
+contacts again when it settles, and those drawn earlier stay traced contacts
+it never exposed. A window that opens on a later state, such as `:infectious` after a latent
 period, has no opening time yet: an infected contact gets its contacts when it
 settles, and an uninfected one has none.
 

@@ -162,6 +162,10 @@ function draw_offspring(
     return rand(rng, offspring.build(θ))
 end
 
+# A chain's `θ` is its index case's draw, which a contact reads from its parent
+# whenever it is drawn, so its contacts can be drawn before it settles.
+_reads_nothing_settled(::ClusterMixed) = true
+
 # ── Reproduction number and extinction probability ───────────────────
 #
 # Every case in a chain shares the θ drawn for its index case, so a chain is a
