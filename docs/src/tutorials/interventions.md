@@ -286,26 +286,34 @@ largest block of untraced contacts: 55,911 of 106,280.
 
 The simulation keeps everyone each case could have infected, including those
 who were not infected. It can therefore count how many contacts tracing reached as a
-measure of workload. `condition = 50:200` keeps simulating until an outbreak
-stops with between 50 and 200 cases, and returns that one outbreak. It stops
-either because it died out or because it reached the 200-case cap, as the
-one here did:
+measure of workload. A run stopped at `max_cases` leaves the last cases'
+contacts undecided, so this one is bounded by generations instead:
+`max_generations = 5`, with `max_cases = nothing`, draws no contacts for
+cases in the fifth generation and leaves every earlier case with all its
+contacts decided. `condition = 50:200` keeps simulating until an outbreak
+stops with between 50 and 200 cases, and returns that one outbreak. The one
+here had not died out when it reached the bound:
 
 ```@example interventions
 rng = StableRNG(42)
-state = simulate(scenario([iso, ct]); condition = 50:200, max_cases = 200, rng = rng)
+state = simulate(scenario([iso, ct]); condition = 50:200,
+    max_cases = nothing, max_generations = 5, rng = rng)
 
 contacts = length(state.individuals)
 infected = count(is_infected, state.individuals)
 traced = count(is_traced, state.individuals)
+# Cases in the fifth generation drew no contacts to trace
+complete = count(ind -> is_infected(ind) && ind.generation < 5, state.individuals)
 println("Contacts: $contacts, Infections: $infected, Traced: $traced")
-println("Traced contacts per case: $(round(traced / infected, digits=1))")
+println("Traced contacts per case: $(round(traced / complete, digits=1))")
 ```
 
 `count(is_traced, state.individuals)` counts the people for whom `is_traced`
 is true, like `sum(is_traced(x))` in R. Every contact generated is
 infected unless an intervention prevents it. The gap between contacts and
 infections is the number of infections isolation and quarantine prevented.
+The traced contacts per case divide by the 69 cases before the fifth
+generation, the ones whose contacts could be traced.
 
 ## Interventions that start or stop during the outbreak
 
