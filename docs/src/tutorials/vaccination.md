@@ -476,9 +476,8 @@ println("Mass vaccination from day 30: $(round(containment_probability(results),
 
 With R = 3, an outbreak that takes off reaches the case cap well before
 protection starts on day 44. Containment stays level with the baseline
-without interventions: at 200 outbreaks the standard error on each estimate
-is about 0.015, so the gap between the two printed numbers is simulation
-error.
+without interventions, at 0.04 for both. At 200 outbreaks the standard error
+on each estimate is about 0.015.
 
 For a gradual rollout in which each person becomes eligible at a random
 time, pass a distribution. `Exponential(60.0)` makes the mean wait 60 days:
@@ -510,10 +509,10 @@ println("Age-stratified rollout: $(round(containment_probability(results), digit
 
 Containment is at the no-intervention baseline again: the older group is
 protected from day 44 and everyone else from day 104, and an outbreak that
-takes off has reached the case cap well before either. The printed 0.07 and
-0.04 are two noisy estimates of the same quantity, as the standard error
-above suggests; runs of 3,000 give 0.065 and 0.057, a gap of under one and a
-half standard errors of the difference.
+takes off has reached the case cap well before either. The printed 0.055 and
+the baseline 0.04 are two noisy estimates of the same quantity, as the
+standard error above suggests; runs of 3,000 give 0.055 and 0.059, a gap of
+under one standard error of the difference.
 
 ### Efficacy that varies between people
 
