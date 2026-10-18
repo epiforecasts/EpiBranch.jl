@@ -80,8 +80,8 @@ using Random
     # Counts, on each individual, how many times `initialise_individual!` has
     # run: once when they are created, and again every time a reinfection
     # settles a new episode. A host whose count stalls at 1 past its first
-    # episode would be carrying an earlier episode's intervention state (such
-    # as `Isolation`'s `:test_positive`) into every later one.
+    # episode would be reusing an earlier episode's intervention state (such
+    # as `Isolation`'s `:test_positive`) for every later one.
     struct _CountInitialisations <: EpiBranch.AbstractIntervention end
     function EpiBranch.initialise_individual!(::_CountInitialisations, ind, state)
         ind.state[:_init_count] = get(ind.state, :_init_count, 0) + 1
