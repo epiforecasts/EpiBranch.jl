@@ -7,7 +7,26 @@
 # `offspring_distribution`; not exported on their own. `logpdf` routes
 # back to the existing `loglikelihood` methods so analytical fast
 # paths and simulation fallbacks are unchanged. `rand(d, n)` simulates
-# from the underlying model and projects to the relevant data type.
+# from the underlying model, applies the same reporting and observation
+# `logpdf` scores against, and projects to the relevant data type, so a
+# prior or posterior predictive check draws from what the likelihood
+# evaluates rather than from the unobserved simulation. Only the keywords
+# `simulate` itself accepts are forwarded to it; a likelihood-only keyword
+# such as `n_sim` is stored for `logpdf` but dropped here.
+
+# Keywords a stored `kwargs` may carry for the simulation-based `logpdf`
+# fallback (such as `n_sim`) but that `simulate` itself does not accept.
+_simulate_kwargs(kwargs::NamedTuple, accepted) =
+    NamedTuple(k => v for (k, v) in pairs(kwargs) if k in accepted)
+
+const _SIMULATE_ONCE_KWARGS = (
+    :n_initial, :initial_cases, :max_cases, :max_generations, :max_time,
+    :stopping_rules, :condition, :max_attempts
+)
+const _SIMULATE_BATCH_KWARGS = (
+    :n_initial, :initial_cases, :max_cases, :max_generations, :max_time,
+    :stopping_rules, :parallel
+)
 
 struct _ChainSizeLaw{M, S, P, K} <:
     Distributions.Distribution{Multivariate, Discrete}
@@ -41,13 +60,26 @@ end
 # `::Int` rather than `::Integer` to disambiguate against
 # `rand(::AbstractRNG, ::Sampleable{Multivariate}, ::Int64)`.
 function Base.rand(rng::AbstractRNG, d::_ChainSizeLaw, n::Int)
-    states = simulate(_underlying_model(d), n; d.kwargs..., rng)
-    # Each simulation is one cluster of `n_initial` seeds; its
-    # observed size is the total infected across all seed chains, so a
-    # multi-seed cluster is summed rather than having every chain but the
-    # first silently dropped. `seeds`/`prob_concluded` describe the grouping of
-    # *observed* data and have no role in generating new draws.
-    return [sum(chain_statistics(s).size) for s in states]
+    model = _underlying_model(d)
+    obs = observation(model)
+    prog = _progression(model)
+    sim_kwargs = _simulate_kwargs(d.kwargs, _SIMULATE_ONCE_KWARGS)
+    # `seeds`/`prob_concluded` describe the grouping of *observed* data and
+    # have no role in generating new draws.
+    return [_rand_chain_size(rng, model, sim_kwargs, obs, prog) for _ in 1:n]
+end
+
+# One cluster's observed size: the same reported-case total
+# `_sim_chain_sizes` feeds the simulation-based `logpdf` with, summed across
+# the cluster's seed chains (so a multi-seed cluster is one draw, not one
+# per seed). A cluster with no reported case has no observed size under
+# `logpdf` either, so it is dropped and redrawn rather than counted as zero.
+function _rand_chain_size(rng, model, sim_kwargs, obs, prog)
+    while true
+        state = simulate(model; sim_kwargs..., rng)
+        vals = _sim_chain_sizes(state, obs, prog)
+        isempty(vals) || return sum(vals)
+    end
 end
 
 _underlying_model(d::_ChainSizeLaw) = d.model
@@ -71,7 +103,8 @@ function Distributions.loglikelihood(
 end
 
 function Base.rand(rng::AbstractRNG, d::_ChainLengthLaw, n::Int)
-    states = simulate(d.model, n; d.kwargs..., rng)
+    sim_kwargs = _simulate_kwargs(d.kwargs, _SIMULATE_BATCH_KWARGS)
+    states = simulate(d.model, n; sim_kwargs..., rng)
     # Cluster length is the deepest generation reached across the
     # cluster's seed chains, so multi-seed clusters take the maximum
     # rather than dropping all but the first chain.
