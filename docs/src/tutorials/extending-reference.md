@@ -929,6 +929,24 @@ their own `draw_offspring` method are used as they are. Closed-form results need
 offspring distribution with the corresponding analytical methods; a rule that
 works for simulation has no closed form.
 
+## Common random numbers
+
+A draw that belongs to one person, or one pair of them, should come from
+`EpiBranch.stream(rng, id, purpose)` rather than `rng` directly: `id` is a
+person's `id`, or `(a, b)` for an ordered pair, and `purpose` is a `Symbol`
+telling apart the different things drawn for that `id`, such as `:delay` and
+`:acceptance`. For an ordinary `AbstractRNG`, `stream` returns `rng` itself, so
+nothing about an existing model or intervention changes by taking part. Under
+[`CommonRandomNumbers`](@ref), it returns a generator kept just for that `(id,
+purpose)`, so the draw keeps its value however many unrelated draws happen
+elsewhere in the run — the reason two scenarios built from the same seed can
+share every draw up to the point one of them changes what happens to a
+particular person or pair, and only differ in what follows from that change.
+
+A draw that does not belong to one person or pair, such as an offspring count
+or which node a community hazard reaches first, reads `rng` directly as
+before.
+
 ## All extension points
 
 | To add | You write | Used |
@@ -959,3 +977,4 @@ works for simulation has no closed form.
 | The likelihood of the natural history | `progression_loglik(spec, individuals)`; built-in transitions work as they are, one of your own needs `transition_loglik` | Likelihood |
 | An observation model | A type `<: ObservationModel` with `observe(base, ::YourObs)` (closed form) and/or `apply_observation!(::YourObs, state, rng)` (simulation) | Closed-form results and fitting |
 | Per-cluster information | Either computed into existing `ChainSizes` fields, or a new data type with a `loglikelihood` method that passes each group to `loglikelihood(ChainSizes(sizes; seeds), offspring)` | Likelihood |
+| A per-person or per-pair draw that should stay aligned under `CommonRandomNumbers` | `EpiBranch.stream(rng, id, purpose)` in place of `rng` | Wherever the draw happens |

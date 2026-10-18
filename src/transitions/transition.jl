@@ -101,10 +101,11 @@ end
 
 function resolve_individual!(t::Transition, individual, state)
     anchor = _state_time(individual, t.from)
-    _transition_selected(state.rng, individual, anchor, t.probability) || return nothing
+    rng = stream(state.rng, individual.id, t.state)
+    _transition_selected(rng, individual, anchor, t.probability) || return nothing
     # Delay callbacks can read the newly reached state.
     individual.state[t.state] = true
-    individual.state[t.time_key] = anchor + _resolve_delay(t.delay, state.rng, individual)
+    individual.state[t.time_key] = anchor + _resolve_delay(t.delay, rng, individual)
     return nothing
 end
 

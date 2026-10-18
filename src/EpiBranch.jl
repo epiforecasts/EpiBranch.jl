@@ -22,6 +22,7 @@ include("distributions.jl")
 include("timing.jl")
 include("pair_kernels.jl")
 include("utils.jl")
+include("streams.jl")
 
 # Intervention interface (must come before models that use it)
 include("interventions/interface.jl")
@@ -198,6 +199,7 @@ export clinical_presentation, demographics, transmission_traits, groups,
 
 # Exports — simulation
 export simulate, make_contact!, susceptible_fraction
+export CommonRandomNumbers
 export generate_offspring, contacts_of, collect_exposures, gather_by_target
 
 # Exports — output

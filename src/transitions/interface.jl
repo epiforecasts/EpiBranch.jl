@@ -409,7 +409,8 @@ end
 _exclusive_selected(g::_ExclusiveGate, ind) = g.lo <= _exclusive_draw(g, ind) < g.hi
 
 """
-    transition_time(rng, individual, start_time, delay; probability = nothing)
+    transition_time(rng, individual, start_time, delay; probability = nothing,
+                     purpose = :progression)
 
 Draw the time of a clinical event that follows `start_time` (days since the
 start of the simulation) by `delay` days, or `nothing` if the event does not
@@ -425,8 +426,17 @@ and `probability = nothing` uses none. A case whose starting event never
 happened uses none either, the anchor being checked first; keep both in mind
 if reproducing a run's random numbers matters. The caller records the returned time and decides which
 of several terminal events comes first.
+
+`purpose` names this step for [`stream`](@ref EpiBranch.stream), so that under
+[`CommonRandomNumbers`](@ref) its draws keep their place for this individual
+regardless of what else the run draws; steps sharing a name share a stream, so
+give a new built-in step one of its own.
 """
-function transition_time(rng, individual, start_time, delay; probability = nothing)
+function transition_time(
+        rng, individual, start_time, delay; probability = nothing,
+        purpose = :progression
+    )
+    rng = stream(rng, individual.id, purpose)
     _transition_selected(rng, individual, start_time, probability) || return nothing
     return start_time + _resolve_delay(delay, rng, individual)
 end

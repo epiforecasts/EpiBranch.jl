@@ -37,7 +37,7 @@ end
 
 function resolve_individual!(r::Recovery, individual, state)
     anchor = _state_time(individual, r.from)
-    time = transition_time(state.rng, individual, anchor, r.delay)
+    time = transition_time(state.rng, individual, anchor, r.delay; purpose = :recovered)
     time === nothing && return nothing
     individual.state[:recovery_candidate_time] = time
     return nothing
@@ -145,7 +145,7 @@ function resolve_individual!(d::Death, individual, state)
     anchor = _state_time(individual, d.from)
     time = transition_time(
         state.rng, individual, anchor, d.delay;
-        probability = d.probability
+        probability = d.probability, purpose = :died
     )
     time === nothing && return nothing
     individual.state[:death_candidate_time] = time
