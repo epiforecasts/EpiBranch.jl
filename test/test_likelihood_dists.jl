@@ -188,6 +188,30 @@
         @test_throws ErrorException rand(StableRNG(1), d, 1)
     end
 
+    @testset "rand bounds total attempts by max_attempts when a condition is set" begin
+        # A `condition` that can never hold, on a model where every cluster
+        # also goes unreported, exercises both the redraw-for-observed-size
+        # loop and the condition check at once; the error must report the
+        # caller's own `max_attempts` rather than a fixed, larger cap, so
+        # that a restrictive condition cannot multiply the two into far more
+        # attempts than the caller asked for.
+        spec = ModelSpec(
+            BranchingProcess(Poisson(0.5));
+            progression = [Reporting(probability = 0.0, delay = 0.0, from = :infection)]
+        )
+        d = chain_size_distribution(
+            spec; seeds = [1], condition = 0:0, max_attempts = 5
+        )
+        err = try
+            rand(StableRNG(1), d, 1)
+            nothing
+        catch e
+            e
+        end
+        @test err isa ErrorException
+        @test occursin("5 attempts", err.msg)
+    end
+
     @testset "rand drops a kwarg simulate does not accept" begin
         # `n_sim` is a documented likelihood keyword, accepted by the
         # constructor for `logpdf`, but `simulate` itself has no such

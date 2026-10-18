@@ -122,23 +122,28 @@ end
 # under `logpdf` either, so it is dropped and redrawn rather than counted as
 # zero; a model whose clusters never produce an observed size (every case
 # going unreported, or a `MinimumSize` threshold out of reach) must still
-# raise rather than redraw forever.
-const _RAND_CHAIN_SIZE_MAX_ATTEMPTS = 10_000
-
+# raise rather than redraw forever. The `condition` check and the
+# observed-size check share this one loop and its one `max_attempts` budget,
+# rather than each having their own cap: nesting an inner condition-retry
+# inside this outer redraw, as `_run_once_or_retry` would, multiplies the two
+# caps, so a restrictive `condition` on a model that often reports no case
+# could run up to `max_attempts^2` simulations for a single draw.
 function _rand_chain_size(rng::AbstractRNG, setup::NamedTuple, obs, prog)
-    for _ in 1:_RAND_CHAIN_SIZE_MAX_ATTEMPTS
-        state = _run_once_or_retry(
-            setup.process, setup.sim_opts, setup.condition, setup.max_attempts;
+    for _ in 1:setup.max_attempts
+        state = simulate_once(
+            setup.process, setup.sim_opts;
             interventions = setup.interventions, attributes = setup.attributes,
             progression = prog, observation = obs, recorder = setup.recorder, rng
         )
+        setup.condition === nothing ||
+            state.cumulative_cases in setup.condition || continue
         vals = _sim_chain_sizes(state, obs, prog)
         isempty(vals) || return sum(vals)
     end
     throw(
         ErrorException(
             "No simulated cluster had an observed size within " *
-                "$_RAND_CHAIN_SIZE_MAX_ATTEMPTS attempts"
+                "$(setup.max_attempts) attempts"
         )
     )
 end
