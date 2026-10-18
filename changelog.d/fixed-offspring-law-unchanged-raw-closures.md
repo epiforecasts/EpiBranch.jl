@@ -6,4 +6,4 @@ path in `loglikelihood(::ChainSizes, model)`, `chain_size_distribution` and
 the closed-form incidence likelihood. A bare function or closure now answers
 the conservative `false`, since the trait cannot tell what it does.
 `demographics` and `groups` return a dedicated callable type rather than a
-closure, so they keep the analytical path.
+closure, which keeps them on the analytical path.

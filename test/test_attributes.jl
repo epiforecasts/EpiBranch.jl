@@ -141,14 +141,14 @@ end
     end
 
     @testset "offspring_law_unchanged for other attribute builders" begin
-        # demographics and groups only set state unrelated to transmission, so
-        # they keep the default true, like clinical_presentation and
+        # demographics and groups only set state unrelated to transmission,
+        # which keeps the default true, like clinical_presentation and
         # group_attribute.
         @test EpiBranch.offspring_law_unchanged(demographics())
         @test EpiBranch.offspring_law_unchanged(groups(2))
         # A bare closure cannot be inspected: it might set ind.susceptibility
         # or ind.infectiousness directly, as transmission_traits's own
-        # docstring recommends for rules it doesn't cover, so it answers the
+        # docstring recommends for rules it doesn't cover. It answers the
         # conservative false whatever it actually does.
         @test !EpiBranch.offspring_law_unchanged((rng, ind) -> nothing)
         @test !EpiBranch.offspring_law_unchanged(
