@@ -5,7 +5,10 @@ across generations. What this changes in a run:
 
 - `max_cases` stops at exactly that many cases, and `max_time` leaves out every
   infection after it. Before, the generation that crossed either limit was
-  completed first.
+  completed first. The last cases of such a run have not yet made all their
+  contacts, so per-case quantities such as offspring counts and realised
+  generation intervals are right-truncated; bound a run by `max_generations`
+  to measure them.
 - A contact whose infection was still to be decided when a run stopped is left
   out of the output. One that tracing or an intervention's actions had already
   reached stays a contact of its case, with no infection time, and is not

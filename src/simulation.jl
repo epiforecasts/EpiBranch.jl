@@ -25,7 +25,11 @@ days throughout.
   `max_generations`. A model written against [`generate_offspring`](@ref) or
   [`contacts_of`](@ref) runs one generation at a time and finishes the
   generation that crosses a limit, so it can end past `max_cases` or with
-  infections after `max_time`. On a branching process, a contact whose infection was
+  infections after `max_time`. The last cases of a run the built-in models
+  stop by `max_cases` or `max_time` have not made all their contacts, so
+  per-case quantities such as offspring counts or realised generation
+  intervals are right-truncated; `max_generations` alone leaves every case
+  below the bound complete. On a branching process, a contact whose infection was
   still to be decided when the run stopped is left out, unless tracing or an
   intervention's actions had already reached it; it is then kept with no
   infection time.

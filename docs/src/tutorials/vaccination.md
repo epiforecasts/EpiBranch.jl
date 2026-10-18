@@ -234,8 +234,9 @@ much for a contact who has already infected most of their own contacts.
 Quarantine from the trace already stops that later transmission, and the
 examples here trace without quarantine. The clearest measure of the effect is
 the mean number of secondary cases per traced case, an effective reproduction
-number among traced cases. The function below computes it over cases whose
-own contacts were simulated before the run stopped:
+number among traced cases. A run stopped at `max_cases` leaves the last cases'
+contacts undecided, so the function below counts cases from runs bounded at
+five generations instead, below that bound, where every contact was decided:
 
 ```@example vaccination
 ct_noquarantine = ContactTracing(probability = 0.7,
@@ -244,8 +245,10 @@ ct_noquarantine = ContactTracing(probability = 0.7,
 function secondary_per_traced(runs)
     mean(count(id -> is_infected(s.individuals[id]), ind.secondary_case_ids)
     for s in runs for ind in s.individuals
-    if is_infected(ind) && is_traced(ind) && ind.generation < s.current_generation)
+    if is_infected(ind) && is_traced(ind) && ind.generation < 5)
 end
+traced_runs(interventions) = simulate(scenario(interventions), 400;
+    max_cases = nothing, max_generations = 5, rng = StableRNG(42))
 
 for (label, vaccination) in [
     ("no vaccine", nothing),
@@ -259,7 +262,7 @@ for (label, vaccination) in [
         [iso, ct_noquarantine, vaccination]
     runs = simulate(scenario(interventions), 400; max_cases = 500, rng = StableRNG(42))
     println(rpad(label, 30), "secondary cases per traced case ",
-        round(secondary_per_traced(runs), digits = 2),
+        round(secondary_per_traced(traced_runs(interventions)), digits = 2),
         ", containment ", round(containment_probability(runs), digits = 3))
 end
 ```
@@ -281,12 +284,9 @@ onset, and the incubation period here averages about five days:
 
 ```@example vaccination
 for days in [0.0, 2.0, 5.0, 21.0]
-    # `let` keeps the loop's own `rng` apart from the one above.
     let pep = RingVaccination(efficacy = 0.0, post_exposure_efficacy = 0.9,
-            delay_to_immunity = days),
-        rng = StableRNG(42)
-        results = simulate(scenario([iso, ct_noquarantine, pep]), 400;
-            max_cases = 500, rng = rng)
+            delay_to_immunity = days)
+        results = traced_runs([iso, ct_noquarantine, pep])
         cases = [ind for s in results for ind in s.individuals
                  if is_infected(ind) && is_traced(ind)]
         stopped = count(ind -> isfinite(EpiBranch.infection_aborted_time(ind)), cases)
