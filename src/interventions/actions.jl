@@ -137,8 +137,7 @@ function _admit_actions!(cc::CapacityConstrained, state, actions)
     for i in order
         action = candidates[i]
         get(action.individual.state, key, false) && continue
-        usage = _usage_at(cc, times, extra, action.time)
-        usage.used + 1 <= usage.available || continue
+        _fits_budget(cc, times, extra, action.time) || continue
         _admit_actions!(cc.intervention, state, [action])
         get(action.individual.state, key, false) && push!(extra, action.time)
     end
