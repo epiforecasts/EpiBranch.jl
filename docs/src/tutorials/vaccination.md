@@ -281,11 +281,12 @@ end
 ```
 
 `onward_efficacy` and `post_exposure_efficacy` both reduce the secondary cases
-per traced case, while `efficacy` changes nothing. Containment moves much
-less, because a traced contact has usually made a good share of their
-transmissions before the trace; at 400 outbreaks per scenario the
-differences in containment are close to the Monte Carlo error. A single run
-can place the scenarios in either order.
+per traced case, from 1.94 to 1.66 and 1.64, while `efficacy` changes nothing.
+Containment rises with them, from 0.15 to 0.232 and 0.218. At 400 outbreaks
+per scenario each containment estimate has a standard error of about 0.02, so
+these gains are three to four times the Monte Carlo error. The gap between
+`onward_efficacy` and `post_exposure_efficacy` is within it, and another set
+of runs can place those two in either order.
 
 ### Post-exposure prophylaxis
 
