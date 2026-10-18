@@ -193,10 +193,11 @@ end
 # settling case's contacts are created as people, since tracing writes to them
 # before their infection is decided. A ring that grows through people who have
 # not settled needs their contacts too, which a branching process draws only
-# when a case settles: the walk draws them when it reaches such a person
-# instead, and they are the contacts that person goes on to expose if it is
-# infected later. An uninfected person exposes none of them, since only
-# infected people transmit.
+# when a case settles: the walk draws them when it reaches such a person whose
+# window is already open, and they are the contacts that person goes on to
+# expose if it is infected later. An uninfected person exposes none of them,
+# since only infected people transmit. A window that opens on a later state
+# has no time yet, and is drawn when the person settles.
 function _case_contacts(
         contacts, rts::Tuple{Vararg{Tuple{RouteWindow, _Offspring}}}, race, max_generation
     )
@@ -208,7 +209,6 @@ function _case_contacts(
                 end
             elseif !haskey(o.reached, id) &&
                     isfinite(_state_time(state.individuals[id], o.window.from))
-                # A window still to open is drawn when its case settles.
                 o.reached[id] = _draw_contacts!(
                     o, race, state.individuals[id],
                     max_generation, true
