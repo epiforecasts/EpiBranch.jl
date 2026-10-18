@@ -83,6 +83,16 @@ struct _TraceAndAct <: AbstractIntervention end
 EpiBranch.trace_contacts!(::_TraceAndAct, state, infector, contacts) = nothing
 EpiBranch.intervention_actions(::_TraceAndAct, state, candidates) = nothing
 
+# Proposes actions and grows a ring through `keep_active`, without tracing.
+struct _ActAndKeep <: AbstractIntervention end
+EpiBranch.intervention_actions(::_ActAndKeep, state, candidates) = nothing
+EpiBranch.keep_active(::_ActAndKeep, state, targets, is_new) = [t.id for t in targets]
+
+# Proposes actions whose candidates need no named contacts.
+struct _ActsWithoutContacts <: AbstractIntervention end
+EpiBranch.intervention_actions(::_ActsWithoutContacts, state, candidates) = nothing
+EpiBranch.needs_contacts(::_ActsWithoutContacts) = false
+
 # A model that can name each case's contacts.
 struct _NamesContacts <: EpiBranch.TransmissionModel end
 EpiBranch.supplies_contacts(::_NamesContacts) = true
@@ -173,6 +183,15 @@ _batch_hook_model(ivs) = ModelSpec(_GenerationTree(Exponential(3.0)); interventi
         @test EpiBranch._sellke_honours(_NamesContacts(), _ActionsOnly())
         pool = HomogeneousProcess(transmission_rate = 1.0, population_size = 10)
         @test !EpiBranch._sellke_honours(pool, _ActionsOnly())
+        # Actions needing no contacts are delivered on a model naming none.
+        @test EpiBranch._sellke_honours(pool, _ActsWithoutContacts())
+        @test isempty(EpiBranch._unhonoured_hooks(pool, _ActsWithoutContacts()))
+        # Delivered actions leave a `keep_active` with nothing to call it.
+        @test !EpiBranch._sellke_honours(_NamesContacts(), _ActAndKeep())
+        @test EpiBranch._unhonoured_hooks(_NamesContacts(), _ActAndKeep()) == [:keep_active]
+        @test_logs (:warn, r"_ActAndKeep \(keep_active\)") match_mode = :any simulate(
+            _case_hook_model([_ActAndKeep()]); max_cases = 5, rng = StableRNG(1)
+        )
     end
 
     @testset "An intervention with only intervention_actions acts" begin

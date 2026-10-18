@@ -722,8 +722,11 @@ function _sellke_honours(model, iv::AbstractIntervention)
     # model names.
     acts_on_population(iv) && return true
     continuous_actions(iv) && return !needs_contacts(iv) || supplies_contacts(model)
-    # Its actions reach each settled case and the contacts the model names.
-    _discovers_actions(iv) && return supplies_contacts(model)
+    # Its actions reach each settled case and the contacts the model names, or
+    # the case alone where it needs no contacts; any generation hook it also
+    # has still needs a counterpart of its own.
+    _discovers_actions(iv) && needs_contacts(iv) && !supplies_contacts(model) &&
+        return false
     hooks = _generation_hooks(iv)
     isempty(hooks) && return true
     cont_T = typeof(_hook_owner(continuous_actions, iv))
@@ -753,9 +756,16 @@ function _unhonoured_hooks(model, iv::AbstractIntervention)
         return [:intervention_actions; hooks]
     end
     # An intervention that discovers its own actions without declaring
-    # `continuous_actions` is offered them on a model that names contacts.
-    _discovers_actions(iv) &&
-        return supplies_contacts(model) ? Symbol[] : [:intervention_actions]
+    # `continuous_actions` is offered them on a model that names contacts, or
+    # wherever it needs none.
+    undelivered = _discovers_actions(iv) && needs_contacts(iv) &&
+        !supplies_contacts(model)
+    hooks = _unhonoured_generation_hooks(model, iv, hooks)
+    return undelivered ? [:intervention_actions; hooks] : hooks
+end
+
+# Which of `iv`'s generation-only `hooks` have no counterpart on the race.
+function _unhonoured_generation_hooks(model, iv, hooks)
     isempty(hooks) && return hooks
     cont_T = typeof(_hook_owner(continuous_actions, iv))
     settled_T = typeof(_hook_owner(on_infection_settled!, iv))
@@ -897,9 +907,9 @@ function _warn_unhonoured_interventions(model, interventions)
         ]
     )
     isempty(unhonoured) && return nothing
-    @warn "$(nameof(typeof(model))) is a continuous-time model that settles one " *
-        "pre-existing case at a time, so it never creates the batches of new " *
-        "contacts the generation engine's post-transmission hooks act on; it " *
+    @warn "$(nameof(typeof(model))) runs on the continuous-time race, which " *
+        "settles one case at a time, so it never hands the generation engine's " *
+        "post-transmission hooks a generation of new contacts to act on; it " *
         "does not honour the named hooks, which will have no effect: " *
         "$(join(unhonoured, ", ")). What they do as each individual is " *
         "initialised or resolved, and the risks they put on each contact, " *
