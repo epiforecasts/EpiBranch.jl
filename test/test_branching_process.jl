@@ -254,7 +254,7 @@ end
     end
 end
 
-@testset "A contact timed before its infector's infection is not infected" begin
+@testset "A contact timed before its infector's infection is dropped" begin
     # Transmission timed from onset can fall before the infection itself,
     # where the infector could not yet transmit.
     spec = ModelSpec(
@@ -267,9 +267,11 @@ end
         spec, 200; max_cases = 2000, max_time = nothing, max_generations = nothing,
         rng = StableRNG(3)
     )
+    # No one is infected, or even exposed, before their infector's infection.
     early = 0
     for s in states, ind in s.individuals
-        is_infected(ind) && ind.parent_id != 0 || continue
+        ind.parent_id == 0 && continue
+        isnan(ind.infection_time) && continue
         ind.infection_time < s.individuals[ind.parent_id].infection_time && (early += 1)
     end
     @test early == 0

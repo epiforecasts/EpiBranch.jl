@@ -300,18 +300,23 @@ function _draw_contact!(o::_Offspring, race, ind, from_t, kernel, type_idx, born
     return nothing
 end
 
-# Propose the contacts the case drew on this window, those that fall between
-# its own infection and the window's close. One that falls outside them is a
-# contact who was never infected, and is created as one now. A window timed
-# from a later state, such as onset, can draw a time before the infection
-# that the infector could not have transmitted at.
+# Propose the contacts the case drew on this window, those that fall before it
+# closes. One that falls later is a contact who was never infected, and is
+# created as one now. A window timed from a later state, such as onset, can
+# draw a time before the infector's own infection: no exposure happens then,
+# so that draw is dropped, and a person a ring already created for it keeps no
+# exposure time.
 function _propose_along!(
         o::_Offspring, race, infector_id, opening_id, open_t, close_t, traits, live, ri
     )
     infected_t = race.state.individuals[infector_id].infection_time
     for k in o.pending
         t = o.tree.drawn[abs(o.tree.slots[k])].time
-        if infected_t <= t <= close_t
+        if t < infected_t
+            _release_draw!(o.tree, k)
+            id = o.tree.ids[k]
+            id == 0 || (race.state.individuals[id].infection_time = oftype(t, NaN))
+        elseif t <= close_t
             _propose!(race, k, opening_id, t)
         else
             _birth!(o.tree, race, k)
