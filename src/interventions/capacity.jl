@@ -45,11 +45,12 @@ order: both check each action's own proposed date.
     household race withdraws for falling outside the window (see
     [`RingVaccination`](@ref)) counts against no capacity from then on, so
     the budget it used is available to the next candidate. `simulate` warns
-    when an intervention relies on a hook these models do not call, such as
-    one that reaches its targets only through the deprecated
+    that an intervention will have no effect when it relies on a hook these
+    models do not call, such as one that reaches its targets only through
+    the deprecated
     [`apply_post_transmission!`](@ref EpiBranch.apply_post_transmission!)
-    batch hook, that it will have no effect, so for a custom intervention the
-    warning is the thing to check.
+    batch hook, so for a custom intervention the warning is the thing to
+    check.
     The mass-action models,
     [`HomogeneousProcess`](@ref) and [`MixingProcess`](@ref), do not trace
     contacts, so ring vaccination cannot act in either. Contact tracing itself
