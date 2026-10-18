@@ -152,14 +152,18 @@ Who exposed whom in a simulated outbreak: a DataFrame with one row per
 exposure of a person by an infectious case. Filter on `infected` to keep only
 the transmission tree.
 
-A [`BranchingProcess`](@ref), and a model written against
-[`generate_offspring`](@ref) or [`contacts_of`](@ref), record every exposure
-within the run, whether or not it led to infection. A run cut short by
-`max_cases`, `max_time` or a stopping rule leaves out the exposures that would
-have come after it stopped, as well as those timed before their infector's own
-infection. The models of a fixed population (`HomogeneousProcess`,
-`MixingProcess`, `NetworkProcess`, `RoutedNetwork`, `HouseholdProcess`) record
-only who infected whom by default, so every row
+A [`BranchingProcess`](@ref) records every exposure within the run, whether or
+not it led to infection. A run cut short by `max_cases`, `max_time` or a
+stopping rule leaves out the exposures that would have come after it stopped,
+and a contact timed before its infector's own infection is no exposure and is
+left out too. A model written against [`generate_offspring`](@ref) records
+every contact it creates, infected or not; it runs one generation at a time and
+finishes the generation in progress when it stops, so it can run past
+`max_cases` and list exposures after `max_time`. A model written against
+[`contacts_of`](@ref) lists an uninfected exposure only of a person it creates,
+not of one who already existed. The models of a fixed population
+(`HomogeneousProcess`, `MixingProcess`, `NetworkProcess`, `RoutedNetwork`,
+`HouseholdProcess`) record only who infected whom by default, so every row
 has `infected = true`: a household member or network neighbour who was
 exposed but not infected does not appear. Attach an
 [`ExposedContactRecorder`](@ref) as the `ModelSpec`'s `recorder` to have such

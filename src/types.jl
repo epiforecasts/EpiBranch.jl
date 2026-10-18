@@ -148,10 +148,14 @@ contact they exposed; for models with a fixed population, anyone in it.
   transmission once infected (each of their contacts is infected only with
   this probability).
 - `secondary_case_ids`: the `id`s of the people they exposed. A branching
-  process, and a model written against `generate_offspring` or `contacts_of`,
-  lists every contact, infected or not; a contact whose exposure a run cut
-  short never reached is listed with a `NaN` infection time. The
-  fixed-population models below list only the people they infected.
+  process lists the contacts it created, infected or not. A contact the run
+  stopped before reaching is not created and not listed, unless tracing or an
+  intervention had already reached it; it is then listed with a `NaN`
+  infection time, as is one a ring created for a time before its infector's
+  own infection. A model written against `generate_offspring` lists every
+  contact it created; one written against `contacts_of` lists an existing
+  person only if it infected them. The fixed-population models below list
+  only the people they infected.
 - `state`: everything else recorded about them, such as symptom onset
   (`:onset_time`), `:asymptomatic`, `:age`, `:sex`, whether they were
   `:isolated`, `:traced`, `:quarantined` or `:vaccinated`, `:test_positive`,
