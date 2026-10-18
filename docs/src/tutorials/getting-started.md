@@ -117,8 +117,10 @@ spec = ModelSpec(BranchingProcess(NegBin(2.5, 0.16), LogNormal(1.6, 0.5));
 rng = StableRNG(18)
 outbreak = simulate(spec; max_cases = 500, rng = rng)
 println("Cases: $(outbreak.cumulative_cases), Extinct: $(outbreak.extinct)")
-println("Isolated or quarantined: $(count(is_isolated, outbreak.individuals))")
-println("Traced: $(count(is_traced, outbreak.individuals))")
+# Leave out contacts whose infection was undecided when the run stopped
+decided = filter(i -> isfinite(i.infection_time), outbreak.individuals)
+println("Isolated or quarantined: $(count(is_isolated, decided))")
+println("Traced: $(count(is_traced, decided))")
 ```
 
 `Exponential(θ)` has mean θ, here in days. The `action` says what happens to a
@@ -127,9 +129,11 @@ the time they are traced, even before they have symptoms. `duration` sets how
 long isolation and quarantine last. When it ends the person is released, and
 one who is still infectious can transmit again. Use `duration = Inf` for
 isolation or quarantine that is never lifted.
-`count(is_isolated, outbreak.individuals)` counts the people who were isolated
-or quarantined at some point, including quarantined contacts who were never
-infected. `Extinct` shows whether the measures ended transmission in this
+`count(is_isolated, decided)` counts the people who were isolated or
+quarantined at some point, including quarantined contacts who were never
+infected. `decided` leaves out the contacts whose infection was still
+undecided when the run stopped at the cap, which have no infection time;
+counted over `outbreak.individuals`, they would add 371 to each line. `Extinct` shows whether the measures ended transmission in this
 outbreak before it reached the cap.
 
 ## Estimating the containment probability
