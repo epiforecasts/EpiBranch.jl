@@ -228,27 +228,38 @@ _draws_before_settling(w::Infectiousness) =
 # and they are the contacts that person goes on to expose if it is infected
 # later. An uninfected person exposes none of them, since only infected people
 # transmit. A window that opens on a later state has no time yet, and one whose
-# draws may read what settling writes must wait for it; either is drawn when
-# the person settles, and the ring then grows through those contacts.
+# draws may read what settling writes must wait for it. Then none of the
+# person's windows is drawn early: all are drawn when it settles, and the ring
+# grows through them then.
 function _case_contacts(
         contacts, rts::Tuple{Vararg{Tuple{RouteWindow, _Offspring}}}, race, max_generation
     )
     return function (id, state)
+        ind = state.individuals[id]
+        settled = race.processed[first(rts)[2].tree.places[id]]
+        early = !settled && _draws_early(rts, ind)
         for (_, o) in rts
-            if race.processed[o.tree.places[id]]
+            if settled
                 for k in o.pending
                     _birth!(o.tree, race, k)
                 end
-            elseif !haskey(o.reached, id) && _draws_before_settling(o.window) &&
-                    isfinite(_state_time(state.individuals[id], o.window.from))
-                o.reached[id] = _draw_contacts!(
-                    o, race, state.individuals[id],
-                    max_generation, true
-                )
+            elseif early && !haskey(o.reached, id)
+                o.reached[id] = _draw_contacts!(o, race, ind, max_generation, true)
             end
         end
-        return state.individuals[id].secondary_case_ids
+        return ind.secondary_case_ids
     end
+end
+
+# Whether every window can draw `ind`'s contacts before it settles. A ring grows
+# past a person once, so drawing only some windows early would leave the rest,
+# drawn at settlement, out of its reach.
+function _draws_early(rts, ind)
+    for (_, o) in rts
+        _draws_before_settling(o.window) || return false
+        isfinite(_state_time(ind, o.window.from)) || return false
+    end
+    return true
 end
 
 # Draw a person's contacts on this window, once it opens, unless the person is

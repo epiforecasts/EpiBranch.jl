@@ -16,9 +16,9 @@ across generations. What this changes in a run:
 - A ring of depth 2 or more reaches the contacts of a ring member when the
   ring reaches it, including a member infected later, whose contacts are then
   the ones it goes on to expose. Where the offspring or generation time is a
-  function, which may read what settling the member writes, a member's
-  contacts are drawn only once it settles as a case, and an uninfected member
-  has none. An offspring specification of your own that reads nothing settling
+  function, which may read what settling the member writes, or a window opens
+  on a later state, a member's contacts are drawn only once it settles as a
+  case, on every window, and an uninfected member has none. An offspring specification of your own that reads nothing settling
   writes says so with `EpiBranch.reads_settled_state`.
 - `keep_active` is asked only by tracing, to choose which traced contacts a
   ring grows from. An intervention answering it without tracing is named in a

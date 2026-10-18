@@ -572,9 +572,10 @@ offspring or generation time given as a function may read what settling the
 contact writes, such as its severity, so there the contact's own contacts are
 drawn only once it settles as a case, and the ring grows through them then; an
 uninfected one has none (see [`EpiBranch.reads_settled_state`](@ref)). A window
-that opens on a later state, such as `:infectious` after a latent
-period, has no opening time yet: an infected contact gets its contacts when it
-settles, and an uninfected one has none.
+that opens on a later state, such as `:infectious` after a latent period, has
+no opening time yet, and waits the same way. When any of a contact's windows
+waits, all of them do, so the ring reaches every contact an infected member
+makes.
 
 A model written against `generate_offspring` or `contacts_of` asks
 `keep_active` once per case instead, about the contacts that case reached:
