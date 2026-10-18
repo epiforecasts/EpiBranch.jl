@@ -159,6 +159,31 @@
         @test all(l -> l >= 0, lengths)
     end
 
+    @testset "rand draws reported cluster sizes, not total infected" begin
+        # Offspring mean 0.5 gives a full outbreak size that averages
+        # 1 / (1 - 0.5) = 2; with only 10% of cases reported, the observed
+        # cluster sizes `logpdf` scores are thinned well below that, and
+        # never drop to 0 (an unreported cluster is redrawn rather than kept).
+        spec = ModelSpec(
+            BranchingProcess(Poisson(0.5));
+            progression = [Reporting(probability = 0.1, delay = 0.0, from = :infection)]
+        )
+        d = chain_size_distribution(spec; seeds = ones(Int, 500))
+        samples = rand(StableRNG(1), d, 500)
+        @test length(samples) == 500
+        @test all(s -> s >= 1, samples)
+        @test mean(samples) < 1.5
+    end
+
+    @testset "rand drops a kwarg simulate does not accept" begin
+        # `n_sim` is a documented likelihood keyword, accepted by the
+        # constructor for `logpdf`, but `simulate` itself has no such
+        # keyword; `rand` must not forward it.
+        bp = BranchingProcess(Poisson(0.8))
+        @test length(rand(StableRNG(1), chain_size_distribution(bp; n_sim = 5), 2)) == 2
+        @test length(rand(StableRNG(1), chain_length_distribution(bp; n_sim = 5), 2)) == 2
+    end
+
     @testset "coverage matrix: every cell is a Distribution or a clear ArgumentError" begin
         # Locks the model × data-type matrix so a gap can't silently
         # reopen: each entry point either returns something usable with
