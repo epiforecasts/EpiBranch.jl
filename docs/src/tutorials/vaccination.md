@@ -438,11 +438,12 @@ for (label, interventions) in (
 end
 ```
 
-Vaccinating about half the traced contacts raises containment a little, and
-clustered refusal comes out about 0.015 below independent refusal. The
+Vaccinating about half the traced contacts raises containment a little, from
+0.212 to 0.226 with clustered refusal and 0.224 with independent refusal. The
 standard error of a difference between two scenarios is about 1.4 times that
-of each, so that gap is around two and a half standard errors: small, and more
-than the noise of these runs.
+of each, about 0.006 here, so the gain from vaccination is around two and a
+half standard errors. The 0.002 between clustered and independent refusal is
+well within the noise of these runs.
 
 Clustering has little effect here because `groups(20)` puts each person in a
 community independently of who infected them. A case's contacts are spread
