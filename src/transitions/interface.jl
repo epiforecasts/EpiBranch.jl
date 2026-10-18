@@ -427,10 +427,10 @@ happened uses none either, the anchor being checked first; keep both in mind
 if reproducing a run's random numbers matters. The caller records the returned time and decides which
 of several terminal events comes first.
 
-`purpose` names this step for [`stream`](@ref EpiBranch.stream), so that under
-[`CommonRandomNumbers`](@ref) its draws keep their place for this individual
-regardless of what else the run draws; steps sharing a name share a stream, so
-give a new built-in step one of its own.
+`purpose` names this step for [`stream`](@ref EpiBranch.stream): under
+[`CommonRandomNumbers`](@ref) its draws then keep their place for this
+individual regardless of what else the run draws. Steps sharing a name share
+a stream, so give a new built-in step one of its own.
 """
 function transition_time(
         rng, individual, start_time, delay; probability = nothing,

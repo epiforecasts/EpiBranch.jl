@@ -1,8 +1,8 @@
 # A no-op intervention that draws one extra random number straight from
 # `state.rng`, for one individual only, the way an intervention with no effect
 # on the outbreak still would. It does not route the draw through `stream`, so
-# it stands in for any per-person draw a model or intervention has not (yet)
-# been migrated to use it.
+# it stands in for any per-person draw a model or intervention has not yet
+# migrated to `stream`.
 struct _NoiseForOne <: EpiBranch.AbstractIntervention
     id::Int
 end

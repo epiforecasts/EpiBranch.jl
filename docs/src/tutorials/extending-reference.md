@@ -939,9 +939,9 @@ telling apart the different things drawn for that `id`, such as `:delay` and
 nothing about an existing model or intervention changes by taking part. Under
 [`CommonRandomNumbers`](@ref), it returns a generator kept just for that `(id,
 purpose)`, so the draw keeps its value however many unrelated draws happen
-elsewhere in the run — the reason two scenarios built from the same seed can
-share every draw up to the point one of them changes what happens to a
-particular person or pair, and only differ in what follows from that change.
+elsewhere in the run. Two scenarios built from the same seed can then share
+every draw up to the point one of them changes what happens to a particular
+person or pair, and only differ in what follows from that change.
 
 A draw that does not belong to one person or pair, such as an offspring count
 or which node a community hazard reaches first, reads `rng` directly as
