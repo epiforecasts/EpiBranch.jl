@@ -295,6 +295,12 @@ function _finish!(o::_Offspring, race)
         contact.parent_id == 0 && continue
         contact.infection_time = oftype(contact.infection_time, NaN)
     end
+    # An abort recorded on a contact before its infection was decided stands
+    # only on one that was infected before it.
+    isempty(race.interventions) && return nothing
+    for id in o.tree.ids
+        id == 0 || _drop_stale_abort!(state.individuals[id])
+    end
     return nothing
 end
 
