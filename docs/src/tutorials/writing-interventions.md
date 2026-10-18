@@ -539,11 +539,12 @@ Six built-in risks are always present:
   ended it stops being active.
 - [`EpiBranch.HostImmunity`](@ref) blocks every exposure of a contact who has
   already been infected, until [`susceptible_again_time`](@ref) is in the
-  past. It does nothing for a model whose `contacts_of` never offers an
-  already-infected person as a contact, which is every built-in model. A model
-  that does gets a new, separately recorded infection episode (see [Individual
-  state and reserved keys](@ref)) instead of a reinfection overwriting the
-  earlier one.
+  past. It does nothing for a model whose `progression` never reaches
+  `:susceptible_again`, or, on the generation engine, whose `contacts_of`
+  never offers an already-infected person as a contact (every built-in model
+  there). A model that does gets a new, separately recorded infection episode
+  (see [Individual state and reserved keys](@ref)) instead of a reinfection
+  overwriting the earlier one.
 
 A susceptibility or infectiousness of `1.0` blocks nothing, and these risks have
 no effect unless a population characteristic sets a value below one. You can
@@ -553,12 +554,16 @@ your own should not apply susceptibility or infectiousness a second time.
 `HostSusceptibility` and `InfectorInfectiousness` apply on branching processes.
 The continuous-time models apply the same two values as multipliers on the rate
 of transmission instead (see [Continuous-time models: further details](@ref)),
-so they do not decide them contact by contact. Of the remaining four, only
-`AbortedInfection` is resolved there: the end of an infectiousness window is
-enforced by the window closing, the race proposes only from cases that have
-settled and are infected by construction, and `HostImmunity` is not applied at
-all, because the race has nowhere to put a second episode. A risk of your own
-applies there as it does on a branching process.
+so they do not decide them contact by contact. Of the remaining four,
+`InfectiousSource` never has anything to block, since the race proposes only
+from cases that have settled and are infected by construction, and the end of
+an infectiousness window is enforced by the window closing rather than by
+`competing_risk`. `AbortedInfection` and `HostImmunity` are both resolved
+there: a settled member becomes a target again, and goes through
+`HostImmunity`'s block until their immunity has waned, the moment the
+`progression` can reach `:susceptible_again` — no change to the model's own
+`targets`/`contacts` is needed. A risk of your own applies there as it does on
+a branching process.
 
 ## Following up contacts who were not infected
 
