@@ -350,10 +350,12 @@ reset!(::AbstractIntervention, ::Individual) = nothing
     risk_applies(intervention, route) -> Bool
 
 Whether this intervention's [`competing_risk`](@ref EpiBranch.competing_risk)
-acts on infections through a given transmission route in a continuous-time
-model. `route` is a [`RouteWindow`](@ref), or `nothing` for an infection from
-outside the population. A model with a single route names it
-`:transmission`. The default is `true`, so protection such as vaccination
+acts on infections through a given transmission route. `route` is a
+[`RouteWindow`](@ref), or `nothing` for an infection from outside the
+population. A model with a single route names it `:transmission`. Each
+[`Infectiousness`](@ref) window of a [`BranchingProcess`](@ref) is a route
+named `:transmission`, from and until its own states, with
+[`EpiBranch.INTERVENTION_REMOVAL`](@ref) added to `until`. The default is `true`, so protection such as vaccination
 follows a person across routes. [`Scheduled`](@ref) and
 [`CapacityConstrained`](@ref) answer for the intervention they contain.
 
@@ -361,7 +363,8 @@ follows a person across routes. [`Scheduled`](@ref) and
 [`EpiBranch.INTERVENTION_REMOVAL`](@ref) in `until`, and not on infections
 from outside the population. Other interventions may select routes by any
 property of the route. This does not affect protection set by the model
-itself or contacts in a branching process.
+itself, or a model written against [`generate_offspring`](@ref) or
+[`contacts_of`](@ref), which applies every risk to every contact.
 """
 risk_applies(::AbstractIntervention, route) = true
 
