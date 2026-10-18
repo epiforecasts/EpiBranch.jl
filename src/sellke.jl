@@ -1262,7 +1262,7 @@ function _sellke_race!(
                         mult = source.infectiousness * ind.susceptibility
                     end
                     nxt = open_t + _next_contact(
-                        stream(rng, (infector_id, members[j]), :contact),
+                        stream(rng, (infector_id, members[j]), (:contact, opening.route)),
                         kernel, mult, bt - open_t, close_t - open_t,
                         certain_release === nothing ? nothing :
                             certain_release - open_t
@@ -1415,7 +1415,7 @@ function _propose_along!(
         # pair's contact interval, folded into the draw rather than
         # resolved contact by contact. A pair at the default 1 draws
         # exactly as it did before they were honoured here.
-        pair_rng = stream(rng, (infector_id, target_id), :contact)
+        pair_rng = stream(rng, (infector_id, target_id), (:contact, ri))
         dt = traits ?
             _traits_scaled_draw(
                 pair_rng, kernel,
@@ -1841,7 +1841,7 @@ function _redraw_moved!(
                 members_hit === nothing || j in members_hit || continue
                 m = source.infectiousness * state.individuals[id].susceptibility
                 m <= 0 && continue
-                pair_rng = stream(rng, (opening.infector, id), :contact)
+                pair_rng = stream(rng, (opening.infector, id), (:contact, opening.route))
                 lower = now - opening.open_t - slack
                 dt = lower <= 0 ? _traits_scaled_draw(pair_rng, kernel, m) :
                     _draw_beyond(pair_rng, kernel, m, lower)
