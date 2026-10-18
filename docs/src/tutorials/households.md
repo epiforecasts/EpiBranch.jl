@@ -318,9 +318,10 @@ housemate is traced separately, with the same probability and delay as any
 other contact. Tracing does not reach a whole household at once.
 
 !!! warning "Limits on interventions in households"
-    - Mass vaccination is not supported. When a model has an intervention
-      that the household model cannot apply, `simulate` warns and runs as if
-      that intervention were absent.
+    - Mass vaccination doses every household member before the race starts,
+      and can be capacity-limited like ring and group vaccination. When a
+      model has an intervention that the household model cannot apply,
+      `simulate` warns and runs as if that intervention were absent.
     - Ring vaccination with an `eligibility_window` set vaccinates a contact
       not yet exposed as though the window were open, since their infection
       time is not yet known, and withdraws the dose once their infection
