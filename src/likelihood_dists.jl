@@ -53,7 +53,7 @@ const _CHAIN_LENGTH_KWARGS = union(_SIMULATE_BATCH_KWARGS, _CHAIN_LENGTH_LOGLIK_
 
 function _check_kwargs(kwargs::NamedTuple, accepted, fname::Symbol)
     unknown = setdiff(keys(kwargs), accepted)
-    isempty(unknown) || throw(
+    return isempty(unknown) || throw(
         ArgumentError(
             "$fname does not accept keyword" * (length(unknown) > 1 ? "s " : " ") *
                 join(unknown, ", ") * "; accepts " * join(accepted, ", ")
