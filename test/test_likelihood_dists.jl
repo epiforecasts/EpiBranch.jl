@@ -177,9 +177,9 @@
 
     @testset "rand raises rather than redrawing forever when no cluster is ever observed" begin
         # Every case goes unreported, so `vals` is always empty and the
-        # redraw loop would otherwise spin forever; it must give up and
-        # raise instead. `seeds` routes this through the simulation-based
-        # wrapper rather than the analytical fast path.
+        # loop would otherwise redraw forever; it must raise instead.
+        # `seeds` routes this through the simulation-based wrapper rather
+        # than the analytical fast path.
         spec = ModelSpec(
             BranchingProcess(Poisson(0.5));
             progression = [Reporting(probability = 0.0, delay = 0.0, from = :infection)]
