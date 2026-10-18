@@ -428,6 +428,7 @@ function _chain_length_model_loglik(
                 "length. Use ChainSizes, or a model with no observation."
         )
     )
+    n_initial >= 1 || throw(ArgumentError("n_initial must be ≥ 1"))
     # Analytical iff no interventions thin transmission, as for chain size above;
     # progression and attributes don't affect the offspring law.
     if isempty(ivs)
