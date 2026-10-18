@@ -191,7 +191,7 @@
     @testset "rand bounds total attempts by max_attempts when a condition is set" begin
         # A `condition` that can never hold, on a model where every cluster
         # also goes unreported, exercises both the redraw-for-observed-size
-        # loop and the condition check at once; the error must report the
+        # loop and the condition check at once. The error must report the
         # caller's own `max_attempts` rather than a fixed, larger cap, so
         # that a restrictive condition cannot multiply the two into far more
         # attempts than the caller asked for.

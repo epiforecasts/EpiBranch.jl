@@ -124,10 +124,10 @@ end
 # going unreported, or a `MinimumSize` threshold out of reach) must still
 # raise rather than redraw forever. The `condition` check and the
 # observed-size check share this one loop and its one `max_attempts` budget,
-# rather than each having their own cap: nesting an inner condition-retry
-# inside this outer redraw, as `_run_once_or_retry` would, multiplies the two
-# caps, so a restrictive `condition` on a model that often reports no case
-# could run up to `max_attempts^2` simulations for a single draw.
+# rather than each having its own cap. Nesting an inner condition-retry
+# inside this outer redraw, as `_run_once_or_retry` would, multiplies the
+# two caps: a restrictive `condition` on a model that often reports no case
+# could then run up to `max_attempts^2` simulations for a single draw.
 function _rand_chain_size(rng::AbstractRNG, setup::NamedTuple, obs, prog)
     for _ in 1:setup.max_attempts
         state = simulate_once(
