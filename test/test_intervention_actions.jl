@@ -11,6 +11,19 @@ function EpiBranch.intervention_actions(iv::AppointmentAction, state, candidates
     ]
 end
 
+# A continuous-actions intervention with a custom `continuous_candidates`
+# method, narrowing its own candidates to a single, fixed person rather than
+# taking the default's "current plus everyone pending".
+struct SoleTargetAction <: EpiBranch.AbstractIntervention
+    target::Int
+end
+EpiBranch.continuous_actions(::SoleTargetAction) = true
+function EpiBranch.continuous_candidates(
+        iv::SoleTargetAction, state, current, traced, is_pending, members, contacts
+    )
+    return [state.individuals[iv.target]]
+end
+
 @testset "Intervention action admission" begin
     newstate() = EpiBranch.new_state(
         BranchingProcess(Poisson(0.0)),
@@ -287,6 +300,7 @@ end
     members = collect(1:n)
     processed = falses(n)
     pos = Dict(id => k for (k, id) in enumerate(members))
+    is_pending = id -> EpiBranch._pending(id, members, processed, pos)
     state = EpiBranch.new_state(
         BranchingProcess(Poisson(0.0)),
         EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
@@ -296,8 +310,8 @@ end
 
     rv = RingVaccination(efficacy = 0.8)
     contacts = (id, st) -> id == 1 ? (2, 3) : ()
-    ring_candidates = EpiBranch._continuous_candidates(
-        rv, state, current, members, processed, contacts, pos
+    ring_candidates = EpiBranch.continuous_candidates(
+        rv, state, current, nothing, is_pending, members, contacts
     )
     @test length(ring_candidates) == 3
     @test Set(ind.id for ind in ring_candidates) == Set([1, 2, 3])
@@ -309,8 +323,8 @@ end
     for i in 4:n
         state.individuals[i].state[:group] = i
     end
-    group_candidates = EpiBranch._continuous_candidates(
-        gv, state, current, members, processed, contacts, pos
+    group_candidates = EpiBranch.continuous_candidates(
+        gv, state, current, nothing, is_pending, members, contacts
     )
     @test length(group_candidates) == 3
     @test Set(ind.id for ind in group_candidates) == Set([1, 2, 3])
@@ -318,10 +332,36 @@ end
     # The default candidate strategy, used by any other custom
     # `continuous_actions` intervention, keeps the wider (expensive)
     # contract every still-pending member.
-    generic_candidates = EpiBranch._continuous_candidates(
-        AppointmentAction(), state, current, members, processed, contacts, pos
+    generic_candidates = EpiBranch.continuous_candidates(
+        AppointmentAction(), state, current, nothing, is_pending, members, contacts
     )
     @test length(generic_candidates) == n
+end
+
+@testset "A custom intervention can narrow its own continuous candidates" begin
+    # Before `continuous_candidates` was public, a custom `continuous_actions`
+    # intervention had no supported way to do what `RingVaccination` and
+    # `GroupVaccination` do: it always got the default, however few people it
+    # targeted.
+    n = 500
+    members = collect(1:n)
+    processed = falses(n)
+    pos = Dict(id => k for (k, id) in enumerate(members))
+    is_pending = id -> EpiBranch._pending(id, members, processed, pos)
+    state = EpiBranch.new_state(
+        BranchingProcess(Poisson(0.0)),
+        EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
+    )
+    append!(state.individuals, [Individual(id = i) for i in 1:n])
+
+    # `current` here is not the target: a custom method answers however it
+    # likes, not just the default's "current plus everyone pending".
+    current = state.individuals[2]
+    candidates = EpiBranch.continuous_candidates(
+        SoleTargetAction(1), state, current, nothing, is_pending, members, nothing
+    )
+    @test length(candidates) == 1
+    @test only(candidates).id == 1
 end
 
 @testset "Existing-dose effects require admission" begin
