@@ -116,7 +116,7 @@ transition each answer `true` here; any one of them answering `false` sends
 the evaluation to simulation instead.
 
 For an attribute or a progression transition, the default is `true`: most of
-what either can carry — the natural history, population characteristics such
+what either can hold — the natural history, population characteristics such
 as age or a group label, reporting — has no bearing on the offspring law at
 all. [`transmission_traits`](@ref) overrides it to `false` once
 susceptibility or infectiousness departs from its neutral value of 1, since

@@ -1999,7 +1999,7 @@ function transmission_traits(;
 end
 
 """Callable population characteristic `transmission_traits` returns. Keeps
-the original `susceptibility`/`infectiousness` arguments, not just the
+the original `susceptibility`/`infectiousness` arguments alongside the
 samplers built from them, so [`EpiBranch.offspring_law_unchanged`](@ref) can
 tell a neutral value (the default `1.0`) from one that thins transmission."""
 struct TransmissionTraits{S, I, SF, IF}
