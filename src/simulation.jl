@@ -21,8 +21,10 @@ days throughout.
   stops when transmission dies out. Cases are settled in order of infection
   time, so a run stops at exactly `max_cases` cases, leaves out any infection
   after `max_time`, and draws no contacts for a case at generation
-  `max_generations`. A contact whose infection was still to be decided when
-  the run stopped has no infection time.
+  `max_generations`. On a branching process, a contact whose infection was
+  still to be decided when the run stopped is left out, unless tracing or an
+  intervention's actions had already reached it; it is then kept with no
+  infection time.
 - `stopping_rules`: a vector of [`AbstractStoppingRule`](@ref)s for finer
   control over when the run ends. When given, `max_cases`,
   `max_generations` and `max_time` are ignored.

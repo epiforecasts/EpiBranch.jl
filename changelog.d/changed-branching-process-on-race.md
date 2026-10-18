@@ -6,9 +6,11 @@ across generations. What this changes in a run:
 - `max_cases` stops at exactly that many cases, and `max_time` leaves out every
   infection after it. Before, the generation that crossed either limit was
   completed first.
-- A contact whose infection was still to be decided when a run stopped stays a
-  contact of its case, with no infection time, and is not listed by
-  `contacts`.
+- A contact whose infection was still to be decided when a run stopped is left
+  out of the output. One that tracing or an intervention's actions had already
+  reached stays a contact of its case, with no infection time, and is not
+  listed by `contacts`. Before, the generation engine created every contact of
+  the last generation.
 - Intervention hooks run case by case in order of infection time, with the
   state as it stands at each case, rather than once per generation.
 - A ring of depth 2 or more reaches the contacts of a ring member when the
