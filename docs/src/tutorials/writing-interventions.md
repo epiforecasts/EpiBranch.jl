@@ -557,13 +557,14 @@ applies there as it does on a branching process.
 Contact tracing beyond direct contacts needs the contacts of a case's
 contacts, even of those never infected. On the built-in models `keep_active` is
 asked during tracing, straight after `trace_contacts!`: return the ids of the
-traced contacts the ring is traced onward from. On a branching process, when
-the ring reaches a contact whose infectiousness window is already open, the
-contact's own contacts are drawn then, before its infection is decided. If it
-is infected, those are the contacts it goes on to expose. A window that opens
-on a later state, such as `:infectious` after a latent period, has nothing
-drawn yet: an infected contact gets its contacts when it settles, and an
-uninfected one has none.
+traced contacts the ring is traced onward from. On a branching process whose
+window opens at infection, the default, a contact's own contacts are drawn
+when the ring reaches it, from its potential infection time and before its
+infection is decided. The ring grows through them whether or not the contact
+is infected, and if it is, they are the contacts it goes on to expose.
+A window that opens on a later state, such as `:infectious` after a latent
+period, has no opening time yet: an infected contact gets its contacts when it
+settles, and an uninfected one has none.
 
 A model written against `generate_offspring` or `contacts_of` asks
 `keep_active` once per case instead, about the contacts that case reached:
