@@ -1992,12 +1992,35 @@ function transmission_traits(;
         susceptibility = 1.0,
         infectiousness = 1.0
     )
-    sus = _trait_sampler(susceptibility)
-    inf = _trait_sampler(infectiousness)
-    return function (rng, ind)
-        ind.susceptibility = sus(rng, ind)
-        return ind.infectiousness = inf(rng, ind)
-    end
+    return TransmissionTraits(
+        susceptibility, infectiousness,
+        _trait_sampler(susceptibility), _trait_sampler(infectiousness)
+    )
+end
+
+"""Callable population characteristic `transmission_traits` returns. Keeps
+the original `susceptibility`/`infectiousness` arguments, not just the
+samplers built from them, so [`EpiBranch.offspring_law_unchanged`](@ref) can
+tell a neutral value (the default `1.0`) from one that thins transmission."""
+struct TransmissionTraits{S, I, SF, IF}
+    susceptibility::S
+    infectiousness::I
+    sus_sampler::SF
+    inf_sampler::IF
+end
+
+function (traits::TransmissionTraits)(rng, ind)
+    ind.susceptibility = traits.sus_sampler(rng, ind)
+    return ind.infectiousness = traits.inf_sampler(rng, ind)
+end
+
+# Neutral only for a bare `1`; a distribution or function might also always
+# give 1, but that can't be told without drawing from it, so it counts as a
+# change, conservatively.
+_trait_is_neutral(x::Real) = isone(x)
+_trait_is_neutral(x) = false
+function offspring_law_unchanged(t::TransmissionTraits)
+    return _trait_is_neutral(t.susceptibility) && _trait_is_neutral(t.infectiousness)
 end
 
 _trait_sampler(x::Real) =

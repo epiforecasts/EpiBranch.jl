@@ -120,6 +120,24 @@ end
             @test all(ind.susceptibility == 0.5 for ind in state.individuals)
             @test all(ind.infectiousness == 0.8 for ind in state.individuals)
         end
+
+        @testset "offspring_law_unchanged" begin
+            @test EpiBranch.offspring_law_unchanged(transmission_traits())
+            @test !EpiBranch.offspring_law_unchanged(transmission_traits(susceptibility = 0.0))
+            @test !EpiBranch.offspring_law_unchanged(
+                transmission_traits(infectiousness = Beta(2, 5))
+            )
+        end
+
+        @testset "chain-size likelihood accounts for susceptibility" begin
+            # Nobody can be infected, so every cluster is a singleton; the bare
+            # offspring law susceptibility leaves unscored would give
+            # log(pdf(Poisson(0.8), 1)) ≈ -0.8 instead.
+            bp = BranchingProcess(Poisson(0.8))
+            spec = ModelSpec(bp; attributes = transmission_traits(susceptibility = 0.0))
+            ll = loglikelihood(ChainSizes([1]), spec; rng = StableRNG(1), n_sim = 500)
+            @test isapprox(ll, 0.0; atol = 1.0e-9)
+        end
     end
 
     @testset "clinical_presentation prob_asymptomatic accepts distribution and function" begin
