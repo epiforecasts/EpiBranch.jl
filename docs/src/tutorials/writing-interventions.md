@@ -168,7 +168,7 @@ and calls some hooks differently.
 | `on_infection_settled!` | yes | not called |
 | `trace_contacts!` (forward) | yes, where the model can name contacts (not homogeneous or mixing) | yes |
 | `trace_contacts!` (backward, `traces_source`) | yes, everywhere, including homogeneous and mixing: the infector comes from the transmission tree, not the model's contact structure | yes, recording only: a case's secondary cases are already drawn by the time it can itself be traced back |
-| `intervention_actions` | once per settled case, for every intervention with a method of it (narrowed to contacts the model can name, unless it also declares `needs_contacts = false`); once, upfront, for an intervention that declares `acts_on_population` | yes; once a generation is settled, also once per settled case, for an intervention that declares `settles_generation_batch` |
+| `intervention_actions` | once per settled case, for every intervention with a method of it (narrowed to contacts the model can name, unless it also declares `needs_contacts = false`); once, upfront, for an intervention that declares `acts_on_population`; on a branching process, also once per contact as it is created, with that contact alone, for an intervention that declares `needs_contacts = false`, admitting its actions at any finite time | yes; once a generation is settled, also once per settled case, for an intervention that declares `settles_generation_batch` |
 | `keep_active` | during tracing: chooses which traced contacts a ring grows from | yes |
 | `apply_post_transmission!` (deprecated) | not called | yes, with a warning |
 
@@ -226,7 +226,9 @@ In practice:
   declares `EpiBranch.needs_contacts(iv) = false`, as group vaccination does,
   since its candidates come from a case's group rather than its contacts. A
   branching process also offers such an intervention each contact as it is
-  created, so a group's dose reaches a member who joins it later. Ring
+  created, with that contact alone as the candidate, so a group's dose reaches
+  a member who joins it later. Those actions are admitted at any finite time,
+  even one before the clock, since nothing about the new person is settled. Ring
   vaccination admits a dose for a contact not yet exposed as though any
   `eligibility_window` were open, and withdraws it through
   `EpiBranch.on_infection_settled!` once that contact's own infection settles

@@ -31,7 +31,12 @@ Both engines call it once per case, after every intervention's
 wrote. The race, which runs every built-in model, passes the case and the
 contacts it can still reach, or on a fixed-population model everyone not yet
 settled for an intervention declaring [`continuous_actions`](@ref), and admits
-only actions dated no earlier than the case's infection time. The generation engine, which runs a model written
+only actions dated no earlier than the case's infection time. A branching
+process also calls it each time it creates a contact, with that contact alone
+as the candidate, for an intervention declaring
+[`needs_contacts`](@ref) `= false`, and admits that contact's actions at any
+finite time, since nothing about the new person is settled yet. The
+generation engine, which runs a model written
 against `generate_offspring` or `contacts_of`, passes the contacts the case
 made and admits every action with a finite time; once a generation's cases
 are settled, it also calls it again for each settled case in turn, with that
