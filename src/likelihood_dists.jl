@@ -21,11 +21,11 @@ _simulate_kwargs(kwargs::NamedTuple, accepted) =
 
 const _SIMULATE_ONCE_KWARGS = (
     :n_initial, :initial_cases, :max_cases, :max_generations, :max_time,
-    :stopping_rules, :condition, :max_attempts
+    :stopping_rules, :condition, :max_attempts,
 )
 const _SIMULATE_BATCH_KWARGS = (
     :n_initial, :initial_cases, :max_cases, :max_generations, :max_time,
-    :stopping_rules, :parallel
+    :stopping_rules, :parallel,
 )
 
 struct _ChainSizeLaw{M, S, P, K} <:
@@ -81,6 +81,7 @@ function _rand_chain_size(rng, model, sim_kwargs, obs, prog)
         vals = _sim_chain_sizes(state, obs, prog)
         isempty(vals) || return sum(vals)
     end
+    return
 end
 
 _underlying_model(d::_ChainSizeLaw) = d.model
