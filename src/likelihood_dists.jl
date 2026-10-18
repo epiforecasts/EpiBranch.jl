@@ -65,18 +65,19 @@ function Base.rand(rng::AbstractRNG, d::_ChainSizeLaw, n::Int)
     prog = _progression(model)
     sim_kwargs = _simulate_kwargs(d.kwargs, _SIMULATE_ONCE_KWARGS)
     # `seeds`/`prob_concluded` describe the grouping of *observed* data and
-    # have no role in generating new draws. The window/coverage/intervention
-    # checks `simulate` would otherwise repeat on every redraw run once here.
+    # have no role in generating new draws, and `simulate`'s window/coverage/
+    # intervention checks — which would otherwise repeat on every redraw —
+    # run once here instead.
     setup = _rand_chain_size_setup(model, sim_kwargs)
     return [_rand_chain_size(rng, setup, obs, prog) for _ in 1:n]
 end
 
-# What the redraw loop below needs to call `simulate_once` (via
-# `_run_once_or_retry`) directly: a validated `SimOpts` and the modelling
-# layers, built once per `rand` call rather than once per redraw attempt —
-# mirroring what the batched `simulate(model, n; ...)` already does, instead
-# of re-running the public single-outbreak `simulate`'s checks (and any
-# `@warn` it raises) on every attempt.
+# Builds the validated `SimOpts` and modelling layers the redraw loop below
+# needs to call `simulate_once` directly (via `_run_once_or_retry`), once per
+# `rand` call rather than once per redraw attempt — mirroring what the
+# batched `simulate(model, n; ...)` already does, instead of re-running the
+# public single-outbreak `simulate`'s checks (and any `@warn` it raises) on
+# every attempt.
 function _rand_chain_size_setup(model::TransmissionModel, sim_kwargs::NamedTuple)
     _validate_process_windows(model, _progression(model))
     _warn_incomplete_terminal_coverage(_progression(model))
