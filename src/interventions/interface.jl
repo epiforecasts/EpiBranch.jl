@@ -354,8 +354,8 @@ acts on infections through a given transmission route. `route` is a
 [`RouteWindow`](@ref), or `nothing` for an infection from outside the
 population. A model with a single route names it `:transmission`. Each
 [`Infectiousness`](@ref) window of a [`BranchingProcess`](@ref) is a route
-named `:transmission`, from and until its own states, with
-[`EpiBranch.INTERVENTION_REMOVAL`](@ref) added to `until`. The default is `true`, so protection such as vaccination
+named `:transmission`, whose `until` holds the window's own states and
+[`EpiBranch.INTERVENTION_REMOVAL`](@ref); it names no `from`. The default is `true`, so protection such as vaccination
 follows a person across routes. [`Scheduled`](@ref) and
 [`CapacityConstrained`](@ref) answer for the intervention they contain.
 
