@@ -68,7 +68,9 @@ default) and a time (`max_time`, in days).
 
 The result holds one record per person (every case, and every potential
 secondary case that was not infected), plus summary information such as the
-total number of cases and whether the outbreak died out.
+total number of cases and whether the outbreak died out. A run stopped at the
+cap also keeps contacts whose infection was still undecided when it stopped,
+if an intervention had already reached them. Their infection time is `NaN`.
 
 ## Adding symptom onset
 
@@ -154,19 +156,24 @@ interventions all of them are infected, and the mean of `NegBin(2.5, 0.16)` is
 R. Isolation and quarantine prevent some of these infections. Fewer people are
 then infected than were drawn, and the reproduction number realised under
 control is below 2.5. The people whose infection was prevented stay in
-the results as contacts who were not infected:
+the results as contacts who were not infected. They keep the time at which
+they would have been infected, which tells them apart from the contacts whose
+infection was still undecided when the run reached the cap:
 
 ```@example gettingstarted
 n_total = length(outbreak.individuals)
 n_infected = count(is_infected, outbreak.individuals)
+n_prevented = count(i -> !is_infected(i) && isfinite(i.infection_time), outbreak.individuals)
 println("People in the simulation: $n_total")
 println("Infected (cases, including the index case): $n_infected")
-println("Potential secondary cases not infected: $(n_total - n_infected)")
+println("Potential secondary cases not infected: $n_prevented")
 ```
 
 The last line is the number of infections the interventions prevented in this
-outbreak. These people are not infected and the simulation draws no contacts
-for them. See [Isolation and contact tracing](interventions.md) for more.
+outbreak. The remaining 752 people are contacts whose infection was still
+undecided when the run stopped, kept because an intervention had already
+reached them. The simulation draws no contacts for anyone who is not
+infected. See [Isolation and contact tracing](interventions.md) for more.
 
 ## Tables of results
 
