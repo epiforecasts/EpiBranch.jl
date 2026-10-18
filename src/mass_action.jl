@@ -192,11 +192,13 @@ function _pending_beyond(m::_MassAction, race)
     end
 end
 
-# A contact with a member who is the infector or already infected is wasted, as
-# it would be under any route.
+# A contact with a member who is the infector is wasted, as it would be under
+# any route. A settled member is wasted too, unless the progression allows
+# reinfection (`race.reinfects`; see `HostImmunity`), in which case the
+# proposal is still recorded and held back until their immunity has waned.
 function _propose_contact!(race, id, infector_id, opening_id, t)
     id == infector_id && return nothing
     k = race.pos[id]
-    race.processed[k] && return nothing
+    race.processed[k] && !race.reinfects && return nothing
     return _propose!(race, k, opening_id, t)
 end

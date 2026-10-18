@@ -1,3 +1,5 @@
+using Random
+
 # A leaky vaccine written from outside the package: the whole population is
 # dosed at `from_time`, and every exposure from then on is blocked with
 # probability `efficacy`. The entire intervention is one competing risk, which
@@ -1269,5 +1271,17 @@ end
             until = (:recovered, :died, :isolated, :lost)
         )
         @test_logs ModelSpec(covered_lost; progression = lost)
+    end
+
+    @testset "A settled member is offered again once immunity has waned" begin
+        model = ModelSpec(
+            HomogeneousProcess(; transmission_rate = 5.0, population_size = 30);
+            progression = [
+                Transition(:recovered; from = :infection, delay = 1.0),
+                Transition(:susceptible_again; from = :recovered, delay = 0.5),
+            ]
+        )
+        state = simulate(model; n_initial = 1, max_time = 50.0, rng = MersenneTwister(1))
+        @test any(ind -> !isempty(ind.episodes), state.individuals)
     end
 end
