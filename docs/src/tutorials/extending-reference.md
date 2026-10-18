@@ -933,9 +933,14 @@ works for simulation has no closed form.
 
 A draw that belongs to one person, or one pair of them, should come from
 `EpiBranch.stream(rng, id, purpose)` rather than `rng` directly: `id` is a
-person's `id`, or `(a, b)` for an ordered pair, and `purpose` is a `Symbol`
-telling apart the different things drawn for that `id`, such as `:delay` and
-`:acceptance`. For an ordinary `AbstractRNG`, `stream` returns `rng` itself, so
+person's `id`, or `(a, b)` for an ordered pair, and `purpose` is a tag telling
+apart the different things drawn for that `id`, such as `:delay` and
+`:acceptance`. When more than one intervention instance can draw for the same
+`id` under the same tag — two doses of the same vaccination type, say, or a
+group and a mass campaign both offering `:acceptance` — include the
+intervention itself in the tag, as `(iv, :acceptance)`, so each instance keeps
+its own place in the stream regardless of what the others draw. For an
+ordinary `AbstractRNG`, `stream` returns `rng` itself, so
 nothing about an existing model or intervention changes by taking part. Under
 [`CommonRandomNumbers`](@ref), it returns a generator kept just for that `(id,
 purpose)`, so the draw keeps its value however many unrelated draws happen
