@@ -171,6 +171,9 @@ function _hook_owner(f, iv::AbstractIntervention)
     return iv
 end
 
+_innermost(iv::InterventionWrapper) = _innermost(iv.intervention)
+_innermost(iv::AbstractIntervention) = iv
+
 # The generation-only hooks an intervention implements a method of its own
 # for, named so a warning can say exactly which ones the race skips rather
 # than claiming the intervention itself does nothing. `apply_post_transmission!`
@@ -181,8 +184,10 @@ end
 function _generation_hooks(iv::AbstractIntervention)
     hooks = Symbol[]
     _uses_batch_hook(iv) && push!(hooks, :apply_post_transmission!)
+    # Wrappers forward `keep_active`, so only the intervention inside them can
+    # mean it.
     _has_own_method(
-        keep_active, typeof(_hook_owner(keep_active, iv)), AbstractIntervention
+        keep_active, typeof(_innermost(iv)), AbstractIntervention
     ) && push!(hooks, :keep_active)
     return hooks
 end
@@ -1079,7 +1084,7 @@ function _sellke_race!(
     # An intervention declaring `acts_on_population` needs no case settled to
     # propose its actions, so it is offered every member before the race
     # starts rather than case by case as the race goes.
-    _apply_population_actions!(state, interventions, members)
+    _apply_population_actions!(state, interventions, _population_members(members))
     seed!(best, members, rng)
     # The host state each route's kernel reads, as the keys it declares through
     # `watched_records`. A route that declares nothing draws from hazards fixed
@@ -1472,6 +1477,8 @@ end
 # Whether a blocked contact can have another proposal to try. Members in a
 # fixed population can be reached along several edges or repeated contacts.
 _proposal_fallback(members) = true
+# The members offered actions for the whole population before the race starts.
+_population_members(members) = members
 # Whether a blocked proposal is offered to the recorder. Members created as
 # contacts are already listed as their infector's contacts, blocked or not.
 _logs_blocked(members) = true
