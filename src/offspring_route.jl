@@ -206,7 +206,9 @@ function _case_contacts(
                 for k in o.pending
                     _birth!(o.tree, race, k)
                 end
-            elseif !haskey(o.reached, id)
+            elseif !haskey(o.reached, id) &&
+                    isfinite(_state_time(state.individuals[id], o.window.from))
+                # A window still to open is drawn when its case settles.
                 o.reached[id] = _draw_contacts!(
                     o, race, state.individuals[id],
                     max_generation, true

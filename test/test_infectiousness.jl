@@ -27,6 +27,25 @@
         @test minimum(gi) > 4.0   # latent 4 + a positive contact interval
     end
 
+    @testset "a deep ring reaching a case before its window opens leaves its offspring" begin
+        # Every case has three contacts, so tracing that does not isolate
+        # leaves the size of each generation fixed at any ring depth.
+        latent = Transition(:infectious, from = :infection, delay = (rng, ind) -> 4.0)
+        m = BranchingProcess(
+            Infectiousness((rng, ind) -> 3; from = :infectious, kernel = Exponential(0.5))
+        )
+        for depth in (1, 2)
+            ct = ContactTracing(
+                TraceEveryone(), 1.0, Exponential(1000.0), FlagOnly(); depth = depth
+            )
+            s = simulate(
+                ModelSpec(m; progression = [latent], interventions = [ct]);
+                n_initial = 5, max_generations = 2, rng = StableRNG(1)
+            )
+            @test s.cumulative_cases == 5 + 15 + 45
+        end
+    end
+
     @testset "a window whose from-state is never reached produces no contacts" begin
         # `from = :died` but no death transition, so `:died_time` is never
         # set and the window never opens: the outbreak cannot spread.
