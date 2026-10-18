@@ -938,8 +938,8 @@ apart the different things drawn for that `id`, such as `:delay` and
 `:acceptance`. When more than one intervention instance can draw for the same
 `id` under the same tag — two doses of the same vaccination type, say, or a
 group and a mass campaign both offering `:acceptance` — include the
-intervention itself in the tag, as `(iv, :acceptance)`, so each instance keeps
-its own place in the stream regardless of what the others draw. For an
+intervention itself in the tag, as `(iv, :acceptance)`: each instance then
+keeps its own place in the stream regardless of what the others draw. For an
 ordinary `AbstractRNG`, `stream` returns `rng` itself, so
 nothing about an existing model or intervention changes by taking part. Under
 [`CommonRandomNumbers`](@ref), it returns a generator kept just for that `(id,
