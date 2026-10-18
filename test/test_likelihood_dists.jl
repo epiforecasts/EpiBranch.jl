@@ -175,6 +175,19 @@
         @test mean(samples) < 1.5
     end
 
+    @testset "rand raises rather than redrawing forever when no cluster is ever observed" begin
+        # Every case goes unreported, so `vals` is always empty and the
+        # redraw loop would otherwise spin forever; it must give up and
+        # raise instead. `seeds` routes this through the simulation-based
+        # wrapper rather than the analytical fast path.
+        spec = ModelSpec(
+            BranchingProcess(Poisson(0.5));
+            progression = [Reporting(probability = 0.0, delay = 0.0, from = :infection)]
+        )
+        d = chain_size_distribution(spec; seeds = [1])
+        @test_throws ErrorException rand(StableRNG(1), d, 1)
+    end
+
     @testset "rand drops a kwarg simulate does not accept" begin
         # `n_sim` is a documented likelihood keyword, accepted by the
         # constructor for `logpdf`, but `simulate` itself has no such

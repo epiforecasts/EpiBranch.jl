@@ -74,14 +74,23 @@ end
 # simulation-based `logpdf` (a multi-seed cluster counts as one draw rather
 # than one per seed). A cluster with no reported case has no observed size
 # under `logpdf` either, so it is dropped and redrawn rather than counted as
-# zero.
+# zero; a model whose clusters realistically never clear the observation
+# (such as every case going unreported, or a `MinimumSize` threshold out of
+# reach) must still raise rather than redraw forever.
+const _RAND_CHAIN_SIZE_MAX_ATTEMPTS = 10_000
+
 function _rand_chain_size(rng::AbstractRNG, model, sim_kwargs::NamedTuple, obs, prog)
-    while true
+    for _ in 1:_RAND_CHAIN_SIZE_MAX_ATTEMPTS
         state = simulate(model; sim_kwargs..., rng)
         vals = _sim_chain_sizes(state, obs, prog)
         isempty(vals) || return sum(vals)
     end
-    return
+    throw(
+        ErrorException(
+            "No simulated cluster had an observed size within " *
+                "$_RAND_CHAIN_SIZE_MAX_ATTEMPTS attempts"
+        )
+    )
 end
 
 _underlying_model(d::_ChainSizeLaw) = d.model
