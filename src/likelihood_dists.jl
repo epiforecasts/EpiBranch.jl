@@ -65,8 +65,53 @@ function Base.rand(rng::AbstractRNG, d::_ChainSizeLaw, n::Int)
     prog = _progression(model)
     sim_kwargs = _simulate_kwargs(d.kwargs, _SIMULATE_ONCE_KWARGS)
     # `seeds`/`prob_concluded` describe the grouping of *observed* data and
-    # have no role in generating new draws.
-    return [_rand_chain_size(rng, model, sim_kwargs, obs, prog) for _ in 1:n]
+    # have no role in generating new draws. The window/coverage/intervention
+    # checks `simulate` would otherwise repeat on every redraw run once here.
+    setup = _rand_chain_size_setup(model, sim_kwargs)
+    return [_rand_chain_size(rng, setup, obs, prog) for _ in 1:n]
+end
+
+# What the redraw loop below needs to call `simulate_once` (via
+# `_run_once_or_retry`) directly: a validated `SimOpts` and the modelling
+# layers, built once per `rand` call rather than once per redraw attempt —
+# mirroring what the batched `simulate(model, n; ...)` already does, instead
+# of re-running the public single-outbreak `simulate`'s checks (and any
+# `@warn` it raises) on every attempt.
+function _rand_chain_size_setup(model::TransmissionModel, sim_kwargs::NamedTuple)
+    _validate_process_windows(model, _progression(model))
+    _warn_incomplete_terminal_coverage(_progression(model))
+    sim_opts = _build_sim_opts(
+        model, get(sim_kwargs, :n_initial, nothing),
+        get(sim_kwargs, :initial_cases, nothing),
+        get(sim_kwargs, :max_cases, _DEFAULT_MAX_CASES),
+        get(sim_kwargs, :max_generations, _DEFAULT_MAX_GENERATIONS),
+        get(sim_kwargs, :max_time, nothing), get(sim_kwargs, :stopping_rules, nothing)
+    )
+    _validate_initial_cases(model, sim_opts)
+    return (
+        process = model, sim_opts = sim_opts, interventions = interventions(model),
+        attributes = attributes(model), recorder = recorder(model),
+        condition = get(sim_kwargs, :condition, nothing),
+        max_attempts = get(sim_kwargs, :max_attempts, 10_000),
+    )
+end
+
+function _rand_chain_size_setup(spec::ModelSpec, sim_kwargs::NamedTuple)
+    _warn_unhonoured_interventions(spec.process, spec.interventions)
+    sim_opts = _build_sim_opts(
+        spec.process, get(sim_kwargs, :n_initial, nothing),
+        get(sim_kwargs, :initial_cases, nothing),
+        get(sim_kwargs, :max_cases, _DEFAULT_MAX_CASES),
+        get(sim_kwargs, :max_generations, _DEFAULT_MAX_GENERATIONS),
+        get(sim_kwargs, :max_time, nothing), get(sim_kwargs, :stopping_rules, nothing)
+    )
+    _validate_initial_cases(spec.process, sim_opts)
+    return (
+        process = spec.process, sim_opts = sim_opts, interventions = spec.interventions,
+        attributes = spec.attributes, recorder = spec.recorder,
+        condition = get(sim_kwargs, :condition, nothing),
+        max_attempts = get(sim_kwargs, :max_attempts, 10_000),
+    )
 end
 
 # One cluster's observed size: the same reported-case total that
@@ -79,9 +124,13 @@ end
 # raise rather than redraw forever.
 const _RAND_CHAIN_SIZE_MAX_ATTEMPTS = 10_000
 
-function _rand_chain_size(rng::AbstractRNG, model, sim_kwargs::NamedTuple, obs, prog)
+function _rand_chain_size(rng::AbstractRNG, setup::NamedTuple, obs, prog)
     for _ in 1:_RAND_CHAIN_SIZE_MAX_ATTEMPTS
-        state = simulate(model; sim_kwargs..., rng)
+        state = _run_once_or_retry(
+            setup.process, setup.sim_opts, setup.condition, setup.max_attempts;
+            interventions = setup.interventions, attributes = setup.attributes,
+            progression = prog, observation = obs, recorder = setup.recorder, rng
+        )
         vals = _sim_chain_sizes(state, obs, prog)
         isempty(vals) || return sum(vals)
     end
