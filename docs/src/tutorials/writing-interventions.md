@@ -455,14 +455,18 @@ n_traced(runs) = sum(s -> count(ind -> get(ind.state, :traced, false), s.individ
 everyone = ContactTracing(OnSymptomOnset(), 0.7, Exponential(1.0), Quarantine(duration = Inf))
 older_only = ContactTracing(SymptomaticOver65(), 0.7, Exponential(1.0), Quarantine(duration = Inf))
 traced_all = simulate(ModelSpec(process; interventions = [iso, everyone], attributes = attrs),
-    100; max_cases = 200, rng = StableRNG(5))
+    100; max_cases = nothing, max_generations = 4, rng = StableRNG(5))
 traced_older = simulate(ModelSpec(process; interventions = [iso, older_only], attributes = attrs),
-    100; max_cases = 200, rng = StableRNG(5))
+    100; max_cases = nothing, max_generations = 4, rng = StableRNG(5))
 (all_symptomatic = n_traced(traced_all), symptomatic_over_65 = n_traced(traced_older))
 ```
 
-With ages drawn from `Normal(50, 20)`, about a fifth of infectors are 65 or
-over, so far fewer contacts are traced. Combined with a built-in policy,
+The runs stop after four generations (`max_generations = 4`, with
+`max_cases = nothing`), which leaves every contact of the earlier cases
+decided; a run stopped at `max_cases` would also count contacts traced before
+their infection was decided. With ages drawn from `Normal(50, 20)`, nearly a
+quarter of infectors are 65 or over, so far fewer contacts are traced, even
+though the outbreaks under the narrower policy grow larger. Combined with a built-in policy,
 `SymptomaticOver65() | OnLabConfirmation()` traces the contacts of older
 symptomatic cases and of every laboratory-confirmed case.
 
