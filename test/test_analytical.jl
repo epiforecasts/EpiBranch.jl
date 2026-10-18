@@ -1022,8 +1022,8 @@
                 ChainLengths([0]), NegBin(0.8, 0.5); n_initial = -1
             )
 
-            # Routing through a model must not swallow the error into the
-            # simulation fallback.
+            # Regression: dispatching through a model must still throw here,
+            # rather than falling back to simulation and swallowing the error.
             @test_throws ArgumentError loglikelihood(
                 ChainLengths([0]), BranchingProcess(Poisson(0.8)); n_initial = 0
             )
