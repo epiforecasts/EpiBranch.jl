@@ -10,11 +10,11 @@
 # from the underlying model, applies the same reporting and observation
 # `logpdf` scores against, and projects to the relevant data type, so a
 # prior or posterior predictive check draws from what the likelihood
-# evaluates rather than from the unobserved simulation. A stored keyword is
-# forwarded only where the callee that uses it accepts it: `rand` forwards
-# only what `simulate` takes, dropping a likelihood-only keyword such as
-# `n_sim`; `logpdf` forwards only what the `loglikelihood` backend takes,
-# dropping a `rand`-only keyword such as `condition` or `max_attempts`.
+# evaluates rather than from the unobserved simulation. Each stored keyword
+# is forwarded only to the callee that accepts it: `rand` forwards only what
+# `simulate` takes, dropping a likelihood-only keyword such as `n_sim`;
+# `logpdf` forwards only what the `loglikelihood` backend takes, dropping a
+# `rand`-only keyword such as `condition` or `max_attempts`.
 
 # Keywords a stored `kwargs` may carry for the simulation-based `logpdf`
 # fallback (such as `n_sim`) but that `simulate` itself does not accept.
@@ -35,8 +35,8 @@ const _SIMULATE_BATCH_KWARGS = (
 # `max_attempts` steer `rand`'s single-outbreak redraw loop and have no
 # counterpart in the batched, data-driven simulation `logpdf` runs instead
 # (seed count comes from the data, not `n_initial`/`initial_cases`; `parallel`
-# is not threaded through its batching either), so these must be dropped
-# before forwarding a wrapper's stored kwargs to `logpdf`, or the very
+# is not threaded through its batching either). These must be dropped before
+# forwarding a wrapper's stored kwargs to `logpdf` — otherwise the very
 # keyword that makes `rand` work makes `logpdf` throw a `MethodError`.
 const _CHAIN_SIZE_LOGLIK_KWARGS = (
     :max_cases, :max_generations, :max_time, :stopping_rules, :n_sim, :rng,

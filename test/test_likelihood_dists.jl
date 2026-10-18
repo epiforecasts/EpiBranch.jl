@@ -224,7 +224,7 @@
     @testset "logpdf drops a kwarg only rand's simulation accepts" begin
         # `condition`, `max_attempts` and `initial_cases` steer `rand`'s
         # single-outbreak draw; `logpdf`'s simulation is batched and
-        # data-driven and has no such keywords, so it must not forward them —
+        # data-driven and has no such keywords. It must not forward them —
         # a kwarg that makes `rand` work must not make `logpdf` throw.
         bp = BranchingProcess(Poisson(0.5))
         d = chain_size_distribution(
