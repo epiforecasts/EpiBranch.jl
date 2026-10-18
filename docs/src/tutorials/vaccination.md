@@ -162,21 +162,29 @@ simulation error.
 
 ### Counting doses
 
-`condition = 50:200` keeps simulating until an outbreak stops with between 50
-and 200 cases and returns it. It stops either because it died out or because
-it reached the 200-case cap, as the one here did.
+A run stopped at `max_cases` leaves the last cases' contacts undecided and
+not yet vaccinated, so the run here is bounded by generations instead:
+`max_generations = 5`, with `max_cases = nothing`, draws no contacts for
+cases in the fifth generation and leaves every earlier case with all its
+contacts decided. `condition = 50:200` keeps simulating until an outbreak
+stops with between 50 and 200 cases and returns it.
 `count(is_vaccinated, state.individuals)` then counts everyone vaccinated,
 like `sum(is_vaccinated(x))` in R:
 
 ```@example vaccination
 rng = StableRNG(42)
-state = simulate(scenario([iso, ct, rv]); condition = 50:200, max_cases = 200, rng = rng)
+state = simulate(scenario([iso, ct, rv]); condition = 50:200,
+    max_cases = nothing, max_generations = 5, rng = rng)
 n_vaccinated = count(is_vaccinated, state.individuals)
 n_infected = count(is_infected, state.individuals)
+# Cases in the fifth generation drew no contacts to vaccinate
+n_complete = count(ind -> is_infected(ind) && ind.generation < 5, state.individuals)
 println("Vaccinated: $n_vaccinated, Infected: $n_infected")
+println("Doses per case: $(round(n_vaccinated / n_complete, digits = 1))")
 ```
 
-The ratio of the two is the number of doses used per case in this outbreak.
+The doses per case divide by the cases before the fifth generation, the ones
+whose contacts could be traced and vaccinated.
 
 ### Rings beyond direct contacts
 
@@ -196,12 +204,17 @@ ct2 = ContactTracing(
 )
 
 rng = StableRNG(42)
-state = simulate(scenario([iso, ct2, rv]); condition = 50:200, max_cases = 200, rng = rng)
+state = simulate(scenario([iso, ct2, rv]); condition = 50:200,
+    max_cases = nothing, max_generations = 5, rng = rng)
 doses_depth2 = count(is_vaccinated, state.individuals)
-println("Doses with a second ring: $doses_depth2")
+n_complete2 = count(ind -> is_infected(ind) && ind.generation < 5, state.individuals)
+println("Doses with a second ring: $doses_depth2, ",
+    "per case: $(round(doses_depth2 / n_complete2, digits = 1))")
 ```
 
-A wider ring reaches more people and uses more doses, but the extra doses
+The second ring around a case in the fourth generation would reach the
+sixth, past the bound, so the doses per case here are an underestimate. A
+wider ring reaches more people and uses more doses, but the extra doses
 protect only people still exposed after they are traced. Here every infected
 ring member with symptoms is isolated and starts a ring of their own. Their
 contacts are traced after that isolation, when the second ring's doses have
