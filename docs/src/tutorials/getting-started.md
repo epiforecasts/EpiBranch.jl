@@ -62,9 +62,10 @@ println("Cases: $(outbreak.cumulative_cases), Extinct: $(outbreak.extinct)")
 
 The simulation starts from one index case and stops when transmission dies out
 (`Extinct: true`) or the outbreak reaches `max_cases`. An outbreak stopped at
-the cap is recorded as not extinct, and because the last generation is
-completed before stopping, its case count can go past 500. Other limits are a number of generations (`max_generations`, 100 by
-default) and a time (`max_time`, in days).
+the cap is recorded as not extinct. A branching process stops at exactly
+`max_cases` cases, and the last cases have not yet made all their contacts.
+Other limits are a number of generations (`max_generations`, 100 by default)
+and a time (`max_time`, in days).
 
 The result holds one record per person (every case, and every potential
 secondary case that was not infected), plus summary information such as the
