@@ -156,17 +156,18 @@ earlier stand. The check reads the `_time` keys a transition writes, so it
 covers a custom transition that records its time under a `_time` key, as the
 built-in ones do.
 
-On branching processes `trace_contacts!` and admitted actions run before
-infection is decided, so an abort recorded there is set against a contact's provisional
-infection time, its earliest exposure. The key is removed and the onset
-restored when the contact turns out not to have been infected by an exposure
-before the abort: when no exposure infected it, or when it was infected by a
-later exposure at or after the abort time. The key is therefore only present on
-an infected person whose infection it ended. `RingVaccination` draws again each
-time a contact who already has the dose is exposed: a person created in advance
-who escapes one exposure gets a new draw for the exposure that later infects
-them. On the continuous-time models the infection time is final by the time
-`on_infection_settled!` runs, and an abort recorded there needs no such check.
+On a branching process `trace_contacts!` and admitted actions run before a
+contact's infection is decided, so an abort recorded there is set against the
+contact's potential infection time. The key is removed and the onset restored
+when the contact turns out not to have been infected before the abort: when it
+was not infected at all or, on a model written against `generate_offspring` or
+`contacts_of`, when it was infected by a later exposure at or after the abort
+time. The key is therefore only present on an infected person whose infection
+it ended. `RingVaccination` draws again each time a contact who already has the
+dose is exposed: a person created in advance who escapes one exposure gets a
+new draw for the exposure that later infects them. The infection time is final
+by the time `on_infection_settled!` runs, and an abort recorded there needs no
+such check.
 
 ### Isolation keys
 
@@ -315,7 +316,9 @@ model](@ref)).
       route !== nothing && EpiBranch.INTERVENTION_REMOVAL in route.until
   ```
 
-  Branching processes apply every risk to every contact. Risks from the model
+  A branching process asks the same of each infectiousness window, as a route
+  that intervention removal ends; a model written against `generate_offspring`
+  or `contacts_of` applies every risk to every contact. Risks from the model
   itself and per-person multipliers apply on every route.
 - **Permanent blocks.** [`EpiBranch.standing_block`](@ref) tells a
   continuous-time model that a certain block of yours, once in force for a
@@ -782,19 +785,20 @@ defines `EpiBranch.intervention_actions(iv, state, candidates)` and returns
 `EpiBranch.InterventionAction(individual, time, effect!)` values.
 `effect!(individual, time, state)` records an action once admitted. Proposing
 can add people beyond the input, as group vaccination does when it finds every
-member of a group in which a case was found. Branching processes call it once
-per case for every intervention, then again for each case in a settled
-generation in turn, with that case alone as the candidate, but this second
-round of calls reaches only an intervention that declares
-`EpiBranch.settles_generation_batch(iv) = true`. This defaults to
-`EpiBranch.continuous_actions(iv)` (see below), so group vaccination, which
-sets that, needs no method of its own; ring vaccination overrides
+member of a group in which a case was found. Every built-in model calls it
+once each case settles, for every intervention with a method of it, with the
+case and the contacts it can still reach as candidates. A model written
+against `generate_offspring` or `contacts_of` calls it once per case for every
+intervention, then again for each case in a settled generation in turn, with
+that case alone as the candidate, but this second round of calls reaches only
+an intervention that declares `EpiBranch.settles_generation_batch(iv) = true`.
+This defaults to `EpiBranch.continuous_actions(iv)`, so group vaccination,
+which sets that, needs no method of its own; ring vaccination overrides
 `settles_generation_batch` back to `false` even when its `continuous_actions`
 is `true`, because its contacts already reach it pre-infection through the
 per-case call, and the settlement call would reconsider a dose after this
-same round has already resolved the case's clinical outcome. The continuous-time
-models call it only for an intervention that opts in to `continuous_actions`.
-Both put what it returns through the schedule and capacity limits.
+same round has already resolved the case's clinical outcome. Both put what it
+returns through the schedule and capacity limits.
 
 `Scheduled` checks the proposed action time before delivery. A condition
 function sees that time as `state.max_infection_time`, with the current case
@@ -847,24 +851,22 @@ first_time == next_time
 The result is `true`: the second call uses the stored draw. Give a new visit a
 different key, and keep the same key when the same visit is proposed again.
 
-On network and household models, supported actions run in one of two ways.
-Interventions of your own opt in to the per-case way with
-`EpiBranch.continuous_actions(iv) = true`: actions run after a newly final
-case is traced, narrowed to the case and the contacts it can still reach, and
-must work without the infection time of a contact whose infection is not yet
-final. That narrowing needs a model that names contacts
-(`EpiBranch.supplies_contacts(model) = true`), unless the intervention also
+On the built-in models, actions run in one of two ways. By default they run
+after a newly final case is traced, narrowed to the case and the contacts it
+can still reach, and must work without the infection time of a contact whose
+infection is not yet final. That narrowing needs a model that names contacts
+(`EpiBranch.supplies_contacts(model) = true`), unless the intervention
 declares `EpiBranch.needs_contacts(iv) = false`, as group delivery does,
 since it finds a case's group through its `group_key` rather than through a
 contact; ring delivery, which does need contacts, supports an eligibility
 window with no end. `HomogeneousProcess` and `MixingProcess` name no
-contacts, so a `continuous_actions` intervention that needs them is not
-offered any. `EpiBranch.acts_on_population(iv) = true` opts in to the other
-way instead: actions run once, before any case settles, for every member,
-needing nothing about who infected whom. Mass vaccination declares this,
-which lets it reach every model, including `HomogeneousProcess` and
-`MixingProcess`. Scheduling and capacity work as on branching processes
-either way.
+contacts, so an intervention that needs them is not offered any.
+`EpiBranch.acts_on_population(iv) = true` opts in to the other way instead:
+actions run once, before any case settles, for every member, and for each
+contact a branching process creates, needing nothing about who infected whom.
+Mass vaccination declares this, which lets it reach every model, including
+`HomogeneousProcess` and `MixingProcess`. Scheduling and capacity work the
+same either way.
 On a household model a capacity limit puts every household on one shared
 clock, so a budget with a finite `period` is counted in calendar order across
 households.

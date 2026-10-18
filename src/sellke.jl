@@ -187,8 +187,8 @@ function _generation_hooks(iv::AbstractIntervention)
     return hooks
 end
 
-# Whether an intervention discovers actions of its own, which the race delivers
-# only for one declaring `continuous_actions`.
+# Whether an intervention discovers actions of its own, which the race offers
+# per settled case.
 function _discovers_actions(iv::AbstractIntervention)
     return _has_own_method(intervention_actions, typeof(iv), AbstractIntervention)
 end
@@ -680,13 +680,11 @@ end
 # defines alongside it to treat the same case the moment each engine can;
 # `trace_contacts!` stands in for `keep_active` the same way, but needs a model
 # that can name a case's contacts as well. Actions from `intervention_actions`
-# are discovered on the race only for an intervention declaring
-# `continuous_actions` (per settled case, narrowed to the contacts it can
-# still reach, and needing them unless it also declares `needs_contacts =
-# false`) or `acts_on_population` (once, at the start, for the whole
-# population, regardless of what the model names); one that declares neither
-# is reported, unless it also traces contacts, since tracing still reaches a
-# model that names contacts even though its actions go undelivered. The
+# are offered on the race per settled case, narrowed to the contacts it can
+# still reach and needing them unless the intervention declares
+# `needs_contacts = false`, or, for one declaring `acts_on_population`, once,
+# at the start, for the whole population, regardless of what the model names.
+# One whose actions need contacts on a model that names none is reported. The
 # checks read the methods themselves, so an intervention written outside the
 # package is reported without declaring anything. `MassVaccination` declares
 # `acts_on_population`, since its dosing time comes from each person's own

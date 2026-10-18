@@ -28,15 +28,15 @@ the intervention has no actions.
 
 Both engines call it once per case, after every intervention's
 [`trace_contacts!`](@ref) for that case, so a producer can read what tracing
-wrote. The generation engine passes the contacts the case made and admits
-every action with a finite time; once a generation's cases are settled, it
-also calls it again for each settled case in turn, with that case alone as
-the candidate, for an intervention that declares
+wrote. The race, which runs every built-in model, passes the case and the
+contacts it can still reach, and admits only actions dated no earlier than
+the case's infection time. The generation engine, which runs a model written
+against `generate_offspring` or `contacts_of`, passes the contacts the case
+made and admits every action with a finite time; once a generation's cases
+are settled, it also calls it again for each settled case in turn, with that
+case alone as the candidate, for an intervention that declares
 [`settles_generation_batch`](@ref), so a trigger that only becomes true on
 settlement (such as a case's own lab confirmation) still reaches its group.
-The network and household races pass the case and the members it can still
-reach, for an intervention that declares [`continuous_actions`](@ref), and
-admit only actions dated no earlier than the case's infection time.
 [`Scheduled`](@ref) and [`CapacityConstrained`](@ref) admit the actions
 through their own gates.
 """
@@ -350,10 +350,10 @@ end
     continuous_actions(intervention) -> Bool
 
 Whether this intervention can act once a case's infection is settled, rather
-than only when it makes a contact: on a network or household race, after each
-case's infection is settled, and, by default (see
-[`settles_generation_batch`](@ref)), on the generation engine, for the whole
-batch once a generation is settled. Return `true` only if proposing actions
+than only when it makes a contact. The generation engine, by default (see
+[`settles_generation_batch`](@ref)), then offers it the whole batch once a
+generation is settled; the race offers every intervention its actions per
+settled case whatever this returns. Return `true` only if proposing actions
 needs no infection time of a contact not yet infected and never changes a
 case already settled. The default is `false`.
 """
@@ -374,9 +374,10 @@ continuous_actions(::RingVaccination) = true
     acts_on_population(intervention) -> Bool
 
 Whether this intervention's actions belong to the whole population rather
-than to a case's contacts or group. On a network or household race,
+than to a case's contacts or group. On the race,
 [`intervention_actions`](@ref) is then called once, before any case settles,
-with every member as a candidate, instead of per settled case. Return `true`
+with every member as a candidate, and for each contact a branching process
+creates, instead of per settled case. Return `true`
 only if proposing an action needs nothing a case's settlement would supply:
 no infection time, no exposure, no settled state. The default is `false`.
 
@@ -396,10 +397,10 @@ acts_on_population(::MassVaccination) = true
 """
     needs_contacts(intervention) -> Bool
 
-Whether this intervention's [`continuous_actions`](@ref) need the model to
-name each case's contacts. A network or household race narrows
-`intervention_actions`'s candidates to a case and the people it can still
-reach, through [`supplies_contacts`](@ref EpiBranch.supplies_contacts); the
+Whether this intervention's actions need the model to name each case's
+contacts. The race narrows `intervention_actions`'s candidates to a case and
+the people it can still reach, through
+[`supplies_contacts`](@ref EpiBranch.supplies_contacts); the
 homogeneous and mixing models name none, so an intervention that needs them
 is never offered them there. The default is `true`, matching
 [`RingVaccination`](@ref), whose candidates come from walking the contact
