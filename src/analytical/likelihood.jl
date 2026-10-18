@@ -13,6 +13,8 @@ len)` is the successive difference of that. Element-type generic in `Tel`
 (the offspring parameter type) so `ForwardDiff` gradients flow through.
 """
 function _chain_length_ll_pgf(data, G, ::Type{Tel}; n_initial::Int = 1) where {Tel}
+    n_initial >= 1 || throw(ArgumentError("n_initial must be ≥ 1"))
+
     max_len = maximum(data)
 
     q = Vector{Tel}(undef, max_len + 1)

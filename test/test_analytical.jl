@@ -1014,6 +1014,15 @@
             @test sum(probs) ≈ 1.0 atol = 1.0e-6
         end
 
+        @testset "Non-positive n_initial throws" begin
+            @test_throws ArgumentError loglikelihood(
+                ChainLengths([0]), Poisson(0.8); n_initial = 0
+            )
+            @test_throws ArgumentError loglikelihood(
+                ChainLengths([0]), NegBin(0.8, 0.5); n_initial = -1
+            )
+        end
+
         @testset "Supercritical throws" begin
             @test_throws ArgumentError loglikelihood(ChainLengths([1, 2]), Poisson(1.5))
             @test_throws ArgumentError loglikelihood(ChainLengths([1, 2]), NegBin(1.5, 0.5))
