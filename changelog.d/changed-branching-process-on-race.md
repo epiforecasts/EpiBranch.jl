@@ -12,7 +12,10 @@ across generations. What this changes in a run:
   listed by `contacts`. Before, the generation engine created every contact of
   the last generation.
 - Intervention hooks run case by case in order of infection time, with the
-  state as it stands at each case, rather than once per generation.
+  state as it stands at each case, rather than once per generation. An action
+  that `intervention_actions` dates before the infection of the case whose
+  settlement proposed it is dropped; before, any action with a finite time
+  was admitted.
 - A ring of depth 2 or more reaches the contacts of a ring member when the
   ring reaches it, including a member infected later, whose contacts are then
   the ones it goes on to expose. Where the offspring or generation time is a
