@@ -433,6 +433,12 @@ standing_block(w::InterventionWrapper) = standing_block(w.intervention)
 # An abort is recorded on the infector and never withdrawn, so the block it
 # composes lasts as long as the infector does.
 standing_block(::AbortedInfection) = true
+# Whether this particular pair's block is standing is decided by
+# `_standing_risk`, from the resolved `Risk`'s own `release_time`: infinite
+# when the contact's progression never reaches `:susceptible_again`, and so
+# genuinely permanent, finite and not standing otherwise. Declaring it here
+# only opts `HostImmunity` into that per-pair check.
+standing_block(::HostImmunity) = true
 # A mode that disallows `waning` draws its block once at vaccination and it
 # never fades, so once immunity has developed the block it composes is certain
 # for good — which is what `supports_waning` reports. A mode that allows
@@ -463,6 +469,10 @@ to. A [`Scheduled`](@ref) intervention that can end withdraws the declaration,
 since ending it lifts a block before the release it reported.
 """
 binding_release(component) = false
+# `susceptible_again_time` is set once, when the contact's natural history
+# resolves, and stands until their next infection; nothing moves it in
+# between.
+binding_release(::HostImmunity) = true
 
 # Whether a resolved risk is certain and already in force at this proposal: its
 # `event_time`, a plain number rather than one resampled on each ask, has
@@ -511,6 +521,10 @@ function _certain_block_release(
         nothing, AbortedInfection(), parent, contact, state, transmission_time
     )
     ok || return nothing
+    release, ok = _certain_release(
+        release, HostImmunity(), parent, contact, state, transmission_time
+    )
+    ok || return nothing
     for source in model_risks
         release, ok = _certain_release(
             release, source, parent, contact, state, transmission_time
@@ -551,6 +565,8 @@ function _permanently_blocked(
         model_risks, interventions
     )
     _any_standing_risk(AbortedInfection(), parent, contact, state, transmission_time) &&
+        return true
+    _any_standing_risk(HostImmunity(), parent, contact, state, transmission_time) &&
         return true
     for source in model_risks
         _any_standing_risk(source, parent, contact, state, transmission_time) && return true
@@ -905,6 +921,17 @@ function _warn_unhonoured_interventions(model, interventions)
 end
 
 """
+Whether `transitions` can ever set a finite `susceptible_again_time`, the one
+way a continuous-time race is told a settled host becomes a target again
+(see [`HostImmunity`](@ref EpiBranch.HostImmunity)). Read from
+`state.transitions` rather than taken as a keyword, so every model built on
+`_sellke_race!` gets reinfection for free the moment its `progression`
+declares a `:susceptible_again` step, with no extra bookkeeping cost where it
+does not.
+"""
+_allows_reinfection(transitions) = any(t -> t isa Transition && t.state === :susceptible_again, transitions)
+
+"""
     _sellke_race!(state, members, rng; seed!, targets, from, until, routes, risks)
 
 Run the Sellke/Dijkstra continuous-time competing-risks race over the individuals
@@ -971,6 +998,16 @@ stand in for removing an infector, and an introduction's source is outside the
 population. Omit `introduction` for a model whose seeds are index cases, which
 are put to no risk at all. An introduced case's `:infection_route` is
 `:external`, including on a model that also names routes.
+
+A `progression` whose transitions can reach `:susceptible_again` (see
+[`susceptible_again_time`](@ref)) lets a settled member become a target once
+more: every proposal still pending for them, from a household-mate still
+infectious or a repeated community introduction, is held back by
+[`HostImmunity`](@ref EpiBranch.HostImmunity) exactly as a blocked contact is,
+and goes through once their immunity has waned. The earlier infection is kept
+on [`Individual.episodes`](@ref Individual) via [`close_episode!`](@ref). A
+progression that never sets `susceptible_again_time` costs nothing extra: no
+settled member is ever offered again.
 
 `max_time` ends the race at that time: individuals whose infection would fall
 later are left uninfected, and the state is exactly the full run's state
@@ -1131,7 +1168,12 @@ function _sellke_race!(
         ),
         members
     )
-    may_block = live || !isempty(risks) ||
+    # A settled member only ever becomes a target again by going through the
+    # same blocked-contact redraw every other risk uses (see `reinfects`
+    # below), which needs every proposal kept rather than just each member's
+    # earliest.
+    reinfects = _allows_reinfection(state.transitions)
+    may_block = live || !isempty(risks) || reinfects ||
         any(
         iv -> _has_own_method(
             competing_risk, typeof(iv),
@@ -1175,7 +1217,7 @@ function _sellke_race!(
     # Every field is bound once and only mutated in place.
     race = (;
         queue, proposals, head, best, represents, processed, pos, state, rng,
-        watch, snapshot, watched_keys, may_block, max_time,
+        watch, snapshot, watched_keys, may_block, max_time, reinfects,
         route_projections, full_snapshot,
     )
     for k in 1:m
@@ -1200,11 +1242,20 @@ function _sellke_race!(
         push!(pops, (length(openings), j))
         passed = max(passed, j)
         may_block && (proposals[p] = _dequeue(proposals[p]))
-        (processed[j] || represents[j] != p) && continue
+        represents[j] != p && continue
         opening = openings[may_block ? proposals[p].opening : p]
         infector_id = opening.infector
 
         ind = state.individuals[members[j]]
+        # Set once the progression can reach `:susceptible_again`: `ind` has
+        # already settled an earlier episode, so this candidate is a
+        # reinfection if `HostImmunity` lets it through below, rather than a
+        # first infection. `_proposal_blocked` resolves a risk against `ind`
+        # as the candidate it is testing, leaving `ind.infection_time` at `bt`
+        # once it decides not to block; the prior episode's own time is saved
+        # here so it survives that to reach `InfectionEpisode` below.
+        reinfection = processed[j]
+        prior_infection_time = reinfection ? ind.infection_time : zero(T)
         # A seeded time is a community introduction when the model gave the race
         # an `introduction`, and an index case otherwise. An introduction arrives
         # from outside the population, so it is put to the risks that act on the
@@ -1273,6 +1324,29 @@ function _sellke_race!(
             end
         end
         processed[j] = true
+        if reinfects
+            # Anyone else still meeting `ind` — a household-mate whose own
+            # proposal to them lost this race — gets a chance to redraw
+            # towards `ind`'s next `susceptible_again_time` rather than being
+            # abandoned: the entry this candidate used is retired, and the
+            # chain's next earliest, if any, takes its place in the heap.
+            proposals[p] = _at(proposals[p], T(Inf))
+            _requeue!(queue, proposals, head, best, represents, j)
+            # The community hazard made its one introduction attempt at the
+            # seed, before anyone was settled; a settled member needs a fresh
+            # one armed for them, on the same memoryless schedule, to be
+            # reachable again after this episode.
+            if introduction !== nothing
+                kernel, close_t = introduction
+                nxt = _next_contact(rng, kernel, ind.susceptibility, bt, close_t)
+                nxt <= close_t &&
+                    _propose!(queue, proposals, head, best, represents, j, 1, nxt, true)
+            end
+        end
+        if reinfection
+            ind.infection_time = prior_infection_time
+            close_episode!(ind, InfectionEpisode(ind))
+        end
 
         ind.infection_time = bt
         ind.state[:infected] = true
@@ -1342,7 +1416,7 @@ function _sellke_race!(
                 watch, openings, processed, pos, rts, state, bt, pops, passed, rng
             )
             if orphans > max(m, length(proposals) ÷ 2)
-                _compact_proposals!(queue, proposals, head, best, represents, processed)
+                _compact_proposals!(queue, proposals, head, best, represents, processed, reinfects)
                 orphans = 0
             end
         end
@@ -1392,13 +1466,16 @@ function _propose_along!(
     )
     (;
         state, rng, pos, processed, watch, snapshot, watched_keys,
-        route_projections, full_snapshot,
+        route_projections, full_snapshot, reinfects,
     ) = race
     infector = state.individuals[infector_id]
     proj = route_projections[ri]
     for (target_id, kernel) in route_targets(infector_id, state)
         k = get(pos, target_id, 0)
-        (k == 0 || processed[k]) && continue
+        # A settled target still draws a proposal when the progression allows
+        # reinfection: `HostImmunity`, on the pop, blocks it until the target's
+        # immunity has waned.
+        (k == 0 || (processed[k] && !reinfects)) && continue
         if live
             # This opening's draws come from the target's record as it
             # stands now, which is what later comparisons start from.
@@ -1868,8 +1945,10 @@ end
 # that have not settled, dropping those a redraw unlinked and those to members
 # already settled. Each member keeps its proposals in order, and only its
 # earliest goes back in the heap: an entry for any other is skipped when popped,
-# and a blocked contact requeues the next earliest.
-function _compact_proposals!(queue, proposals, head, best, represents, processed)
+# and a blocked contact requeues the next earliest. A settled member's chain is
+# kept too when `reinfects`, since a proposal to them held back by
+# `HostImmunity` is still due once they wane, not abandoned.
+function _compact_proposals!(queue, proposals, head, best, represents, processed, reinfects = false)
     kept = empty(proposals)
     empty!(queue)
     for j in eachindex(head)
@@ -1877,7 +1956,7 @@ function _compact_proposals!(queue, proposals, head, best, represents, processed
         head[j] = 0
         representative = 0
         last = 0
-        while !processed[j] && q != 0
+        while (reinfects || !processed[j]) && q != 0
             proposal = proposals[q]
             push!(kept, _Pending(proposal.opening, 0, proposal.time, false))
             id = length(kept)
