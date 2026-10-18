@@ -202,6 +202,8 @@ SimulationState
 Individual
 EpiBranch.IndividualState
 InfectionEpisode
+CommonRandomNumbers
+EpiBranch.stream
 ```
 
 ## Recording contacts
