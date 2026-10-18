@@ -155,8 +155,8 @@ the transmission tree.
 A [`BranchingProcess`](@ref) records every exposure within the run, whether or
 not it led to infection. A run cut short by `max_cases`, `max_time` or a
 stopping rule leaves out the exposures that would have come after it stopped,
-and a contact timed before its infector's own infection is no exposure and is
-left out too. A model written against [`generate_offspring`](@ref) records
+a case at `max_generations` makes no contacts, and a contact timed before its
+infector's own infection is no exposure and is left out too. A model written against [`generate_offspring`](@ref) records
 every contact it creates, infected or not; it runs one generation at a time and
 finishes the generation in progress when it stops, so it can run past
 `max_cases` and list exposures after `max_time`. A model written against
