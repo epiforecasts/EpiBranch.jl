@@ -148,3 +148,38 @@ end
         @test wrong == 0
     end
 end
+
+@testset "A deep ring traces the offspring of an infected member that cannot seed" begin
+    # An asymptomatic ring member is not eligible under `OnSymptomOnset`, so
+    # its own contacts are reached only by the ring growing through it, with
+    # the offspring a distribution or a function.
+    attributes = clinical_presentation(
+        incubation_period = Exponential(1.0), prob_asymptomatic = 0.5
+    )
+    ct = ContactTracing(
+        OnSymptomOnset(), 1.0, Exponential(1000.0), FlagOnly(); depth = 2
+    )
+    for offspring in (Dirac(2), (rng, ind) -> 2)
+        m = BranchingProcess(Infectiousness(offspring; kernel = Exponential(2.0)))
+        reached = 0
+        traced = 0
+        for seed in 1:30
+            s = simulate(
+                ModelSpec(m; interventions = [ct], attributes);
+                max_generations = 4, max_cases = nothing, rng = StableRNG(seed)
+            )
+            for ind in s.individuals
+                is_infected(ind) && ind.parent_id != 0 || continue
+                parent = s.individuals[ind.parent_id]
+                parent.parent_id == 0 && continue
+                grandparent = s.individuals[parent.parent_id]
+                is_traced(parent) && is_asymptomatic(parent) &&
+                    !is_asymptomatic(grandparent) || continue
+                reached += 1
+                is_traced(ind) && (traced += 1)
+            end
+        end
+        @test reached > 0
+        @test traced == reached
+    end
+end

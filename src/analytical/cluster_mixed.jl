@@ -164,7 +164,7 @@ end
 
 # A chain's `θ` is its index case's draw, which a contact reads from its parent
 # whenever it is drawn, so its contacts can be drawn before it settles.
-_reads_nothing_settled(::ClusterMixed) = true
+reads_settled_state(::ClusterMixed) = false
 
 # ── Reproduction number and extinction probability ───────────────────
 #

@@ -65,6 +65,7 @@ public new_state
 public add_individuals!
 public seed!
 public get_generation_time
+public reads_settled_state
 public transmission_time
 
 # Resolve a case's natural history (the model's `progression`). The engine calls

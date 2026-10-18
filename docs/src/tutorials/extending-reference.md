@@ -955,6 +955,7 @@ works for simulation has no closed form.
 | Offspring as a function | A function `(rng, ind) -> Int` | Offspring draw |
 | Multi-type offspring as a function | A function `(rng, ind) -> Vector{Int}` | Offspring draw |
 | An offspring specification | A type with `draw_offspring` and `chain_size_distribution` | Offspring draw and closed-form results |
+| An offspring specification or generation time that reads nothing a case's settlement writes | `EpiBranch.reads_settled_state(::YourType) = false` | Tracing rings of depth 2 or more on a branching process |
 | A transmission model | A type `<: TransmissionModel` with `generate_offspring` (offspring-driven) or `initialise_state`, `contacts_of` and `collect_exposures` returning `gather_by_target` (structure-driven), or `EpiBranch.simulate_once` running `EpiBranch.sellke_race!` (its own continuous-time loop); optionally `single_type_offspring` and accessors | Simulation and closed-form results |
 | A transmission route | `RouteWindow(name; from, until, kernel, reach)` on a model that reads routes | Continuous-time models, each case |
 | Structured mixing in a closed population | `MixingProcess(; population_size, mixing_by, rate)`: the characteristics that define the groups, and the contact rate between one person in each of two groups | Simulation |
