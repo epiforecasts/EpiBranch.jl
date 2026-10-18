@@ -236,6 +236,15 @@
         @test logpdf(dl, [0, 1]) isa Real
     end
 
+    @testset "a kwarg neither rand nor logpdf accepts is refused at construction" begin
+        # A typo such as `n_sims` for `n_sim` is not in either callee's
+        # accepted-keyword list, so neither side's filtering would ever
+        # raise it; it must be refused up front instead.
+        bp = BranchingProcess(Poisson(0.5))
+        @test_throws ArgumentError chain_size_distribution(bp; n_sims = 50)
+        @test_throws ArgumentError chain_length_distribution(bp; n_sims = 50)
+    end
+
     @testset "coverage matrix: every cell is a Distribution or a clear ArgumentError" begin
         # Locks the model × data-type matrix so a gap can't silently
         # reopen: each entry point either returns something usable with

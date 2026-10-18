@@ -45,6 +45,22 @@ const _CHAIN_LENGTH_LOGLIK_KWARGS = (
     :n_initial, :max_cases, :max_generations, :max_time, :stopping_rules, :n_sim, :rng,
 )
 
+# Every keyword either `rand` or `logpdf` recognises for each wrapper, so a
+# misspelt keyword (e.g. `n_sims` for `n_sim`) is refused at construction
+# rather than being silently dropped by both sides' per-callee filtering.
+const _CHAIN_SIZE_KWARGS = union(_SIMULATE_ONCE_KWARGS, _CHAIN_SIZE_LOGLIK_KWARGS)
+const _CHAIN_LENGTH_KWARGS = union(_SIMULATE_BATCH_KWARGS, _CHAIN_LENGTH_LOGLIK_KWARGS)
+
+function _check_kwargs(kwargs::NamedTuple, accepted, fname::Symbol)
+    unknown = setdiff(keys(kwargs), accepted)
+    isempty(unknown) || throw(
+        ArgumentError(
+            "$fname does not accept keyword" * (length(unknown) > 1 ? "s " : " ") *
+                join(unknown, ", ") * "; accepts " * join(accepted, ", ")
+        )
+    )
+end
+
 struct _ChainSizeLaw{M, S, P, K} <:
     Distributions.Distribution{Multivariate, Discrete}
     model::M
@@ -270,7 +286,9 @@ function chain_size_distribution(
         end
         folded !== nothing && return observe(folded, observation(model))
     end
-    return _ChainSizeLaw(model, seeds, prob_concluded, NamedTuple(kwargs))
+    nt_kwargs = NamedTuple(kwargs)
+    _check_kwargs(nt_kwargs, _CHAIN_SIZE_KWARGS, :chain_size_distribution)
+    return _ChainSizeLaw(model, seeds, prob_concluded, nt_kwargs)
 end
 
 function chain_size_distribution(
@@ -288,7 +306,9 @@ function chain_size_distribution(
         end
         folded !== nothing && return observe(folded, observation(spec))
     end
-    return _ChainSizeLaw(spec, seeds, prob_concluded, NamedTuple(kwargs))
+    nt_kwargs = NamedTuple(kwargs)
+    _check_kwargs(nt_kwargs, _CHAIN_SIZE_KWARGS, :chain_size_distribution)
+    return _ChainSizeLaw(spec, seeds, prob_concluded, nt_kwargs)
 end
 
 """
@@ -311,11 +331,15 @@ exists. Interventions come from the model; add them with a
 [`ModelSpec`](@ref). See [`ChainLengths`](@ref) for the length convention.
 """
 function chain_length_distribution(model::TransmissionModel; kwargs...)
-    return _ChainLengthLaw(model, NamedTuple(kwargs))
+    nt_kwargs = NamedTuple(kwargs)
+    _check_kwargs(nt_kwargs, _CHAIN_LENGTH_KWARGS, :chain_length_distribution)
+    return _ChainLengthLaw(model, nt_kwargs)
 end
 
 function chain_length_distribution(spec::ModelSpec; kwargs...)
-    return _ChainLengthLaw(spec, NamedTuple(kwargs))
+    nt_kwargs = NamedTuple(kwargs)
+    _check_kwargs(nt_kwargs, _CHAIN_LENGTH_KWARGS, :chain_length_distribution)
+    return _ChainLengthLaw(spec, nt_kwargs)
 end
 
 """
