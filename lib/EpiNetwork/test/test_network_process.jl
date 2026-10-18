@@ -1052,7 +1052,7 @@ end
         # Both routes connect the same pair, but only the first route's kernel
         # reads a record a scenario might move. Under common random numbers,
         # the second route's draw for that pair must stay put whatever the
-        # first route's draw does, or the two routes are not really apart.
+        # first route's draw does, or the two routes are not apart.
         moved = PairKernel(
             (c, a, b) -> a.mode == 0 ? Dirac(1000.0) : Exponential(1000.0);
             state = ind -> (mode = get(ind.state, :mode, 0)::Int,), watches = (:mode,)
