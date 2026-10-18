@@ -253,3 +253,25 @@ end
         @test from_undecided == 0
     end
 end
+
+@testset "A contact timed before its infector's infection is not infected" begin
+    # Transmission timed from onset can fall before the infection itself,
+    # where the infector could not yet transmit.
+    spec = ModelSpec(
+        BranchingProcess(
+            Infectiousness(Poisson(2.0); from = :onset, kernel = Normal(0.0, 3.0))
+        );
+        attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
+    )
+    states = simulate(
+        spec, 200; max_cases = 2000, max_time = nothing, max_generations = nothing,
+        rng = StableRNG(3)
+    )
+    early = 0
+    for s in states, ind in s.individuals
+        is_infected(ind) && ind.parent_id != 0 || continue
+        ind.infection_time < s.individuals[ind.parent_id].infection_time && (early += 1)
+    end
+    @test early == 0
+    @test any(s -> s.cumulative_cases > 1, states)
+end

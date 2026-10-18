@@ -23,6 +23,9 @@ across generations. What this changes in a run:
 - `keep_active` is asked only by tracing, to choose which traced contacts a
   ring grows from. An intervention answering it without tracing is named in a
   warning.
+- A contact drawn for a time before its infector was infected, which a window
+  timed from onset can give, is not infected. Before, it was infected before
+  its infector.
 - The deprecated `apply_post_transmission!` is no longer called on a
   branching process.
 - The line list of a branching process has the `index` column the other
