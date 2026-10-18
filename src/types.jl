@@ -102,6 +102,44 @@ function has_single_type_law(model::TransmissionModel)
         rethrow()
     end
 end
+
+"""
+    offspring_law_unchanged(x) -> Bool
+
+Whether `x` leaves a model's single-type offspring law exactly as the
+offspring distribution draws it, with nothing reshaping how many of the
+drawn contacts end up as cases. `loglikelihood(::ChainSizes, model)`,
+[`chain_size_distribution`](@ref) and the closed-form incidence likelihood
+take their analytical path, scoring the bare offspring distribution, only
+once the process, every entry of `attributes` and every `progression`
+transition each answer `true` here; any one of them answering `false` sends
+the evaluation to simulation instead.
+
+For an attribute or a progression transition, the default is `true`: most of
+what either can carry — the natural history, population characteristics such
+as age or a group label, reporting — has no bearing on the offspring law at
+all. [`transmission_traits`](@ref) overrides it to `false` once
+susceptibility or infectiousness departs from its neutral value of 1, since
+either one thins how many of the drawn contacts actually become cases. A
+`Tuple` or `AbstractVector` of attributes answers `true` only once every
+entry does.
+
+For a [`TransmissionModel`](@ref) the default is the conservative `false`
+instead, as for [`EpiBranch.infection_likelihood_compatible`](@ref): a new
+model opts in once it has checked that nothing of its own — a finite
+population, a window that can close early, or anything else — reshapes the
+offspring law away from the bare distribution. [`BranchingProcess`](@ref)
+opts in except for a finite `population_size` (fewer susceptible people than
+an unlimited offspring law assumes) or an infectiousness window with a
+non-empty `until` (transmission can stop before every drawn contact
+happens).
+"""
+offspring_law_unchanged(::Any) = true
+offspring_law_unchanged(::TransmissionModel) = false
+function offspring_law_unchanged(xs::Union{Tuple, AbstractVector})
+    return all(offspring_law_unchanged, xs)
+end
+
 n_types(::TransmissionModel) = 1
 
 # The offspring specification the analytical helpers dispatch on. By default it

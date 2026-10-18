@@ -129,6 +129,31 @@ EpiBranch.single_type_offspring(::_BrokenOffspringModel) = error("broken")
         )
     end
 
+    @testset "offspring_law_unchanged" begin
+        # Conservative default for an undeclared transmission model.
+        @test !EpiBranch.offspring_law_unchanged(_BrokenOffspringModel())
+        # An unlimited population and a window with no `until` leave the
+        # offspring law as drawn.
+        @test EpiBranch.offspring_law_unchanged(
+            BranchingProcess(NegBin(2.5, 0.16), LogNormal(1.6, 0.5))
+        )
+        # A finite population reshapes it, however the window is set up.
+        @test !EpiBranch.offspring_law_unchanged(
+            BranchingProcess(Poisson(2.0), Exponential(5.0); population_size = 1000)
+        )
+        # A window with `until` reshapes it even over an unlimited population.
+        @test !EpiBranch.offspring_law_unchanged(
+            BranchingProcess(Infectiousness(Poisson(2.0); until = (:recovered,)))
+        )
+        # Attributes and progression transitions default to leaving it
+        # unchanged, since neither has a general mechanism to affect it.
+        @test EpiBranch.offspring_law_unchanged(NoAttributes())
+        @test EpiBranch.offspring_law_unchanged(Transition(:recovered; delay = 1.0))
+        @test EpiBranch.offspring_law_unchanged(
+            [NoAttributes(), Transition(:recovered; delay = 1.0)]
+        )
+    end
+
     @testset "BranchingProcess with population_size" begin
         model = BranchingProcess(Poisson(2.0), Exponential(5.0); population_size = 1000)
         @test model.population_size == 1000
