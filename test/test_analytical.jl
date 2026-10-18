@@ -1279,7 +1279,7 @@
 
         @testset "n_initial combines seeds into the longest chain (regression for issue #532)" begin
             # Interventions force the simulation path. Each simulated outbreak
-            # there must contribute one cluster length — the longest of its
+            # must contribute one cluster length — the longest of its
             # n_initial seeded chains — rather than each seed's own chain
             # length as a separate observation, which would leave the sim
             # path matching the single-seed length distribution regardless
