@@ -103,7 +103,7 @@ function _admit_actions!(iv::AbstractIntervention, state, actions)
 end
 
 function _action_in_schedule(s::Scheduled, action, state)
-    return action.time >= s.start_time && _active_at(s, action.time, state)
+    return action.time >= s.start_time && _active_at(s, action.time, state, action)
 end
 function _admit_actions!(s::Scheduled, state, actions)
     selected = filter(a -> isfinite(a.time) && _action_in_schedule(s, a, state), actions)
