@@ -189,24 +189,32 @@ end
 
 # AD-compatible chain length: Poisson — PGF iteration on G(s) = exp(λ(s − 1)).
 """
-    loglikelihood(data::ChainLengths, offspring::Poisson)
-    loglikelihood(data::ChainLengths, offspring::NegativeBinomial)
+    loglikelihood(data::ChainLengths, offspring::Poisson; n_initial = 1)
+    loglikelihood(data::ChainLengths, offspring::NegativeBinomial; n_initial = 1)
 
 Log-likelihood of observed chain lengths under the exact chain-length
 distribution for Poisson or negative binomial offspring. Only defined when R
 is below 1, since above it chains can go on for ever.
+
+`n_initial` is the number of independent seeds each chain started from: its
+length is the longest of `n_initial` single-seed chains, so its CDF is the
+single-seed CDF raised to the power `n_initial`.
 """
-function loglikelihood(data::ChainLengths, offspring::Poisson{T}) where {T}
+function loglikelihood(
+        data::ChainLengths, offspring::Poisson{T}; n_initial::Int = 1
+    ) where {T}
     λ = mean(offspring)
     λ < 1 ||
         throw(ArgumentError("chain length distribution only defined for subcritical process (λ < 1)"))
     G(s) = exp(λ * (s - one(λ)))
-    return _chain_length_ll_pgf(data.data, G, typeof(λ))
+    return _chain_length_ll_pgf(data.data, G, typeof(λ); n_initial)
 end
 
 # AD-compatible chain length: NegBin — PGF iteration
-function loglikelihood(data::ChainLengths, offspring::NegativeBinomial{T}) where {T}
-    return _chain_length_ll_negbin(data.data, offspring)
+function loglikelihood(
+        data::ChainLengths, offspring::NegativeBinomial{T}; n_initial::Int = 1
+    ) where {T}
+    return _chain_length_ll_negbin(data.data, offspring; n_initial)
 end
 
 # Simulation estimate of the chain-size or chain-length log-likelihood under
@@ -386,8 +394,9 @@ Log-likelihood of observed chain lengths under a model, including its
 interventions. Exact when there are no interventions, the offspring
 distribution is Poisson or negative binomial, and R is below 1; otherwise
 estimated from `n_sim` simulated outbreaks (keywords as for chain sizes).
-Not available with an observation model, since a chain with undetected
-cases has no well-defined observed length.
+`n_initial` gives the number of independent seeds the chains started from,
+and applies on both paths. Not available with an observation model, since a
+chain with undetected cases has no well-defined observed length.
 """
 function loglikelihood(data::ChainLengths, model::TransmissionModel; kwargs...)
     return _chain_length_model_loglik(
@@ -423,7 +432,7 @@ function _chain_length_model_loglik(
     # progression and attributes don't affect the offspring law.
     if isempty(ivs)
         try
-            return loglikelihood(data, single_type_offspring(process))
+            return loglikelihood(data, single_type_offspring(process); n_initial)
         catch e
             (e isa MethodError || e isa ArgumentError) || rethrow()
         end
