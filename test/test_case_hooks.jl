@@ -305,3 +305,18 @@ _batch_hook_model(ivs) = ModelSpec(_GenerationTree(Exponential(3.0)); interventi
         @test contact.state[:trace_time] == 2.5
     end
 end
+
+@testset "A wrapper's forwarding keep_active is not a hook of its own" begin
+    mv = MassVaccination(efficacy = 1.0, eligibility_time = 10.0)
+    @test isempty(EpiBranch._generation_hooks(Scheduled(mv; start_time = 10.0)))
+    @test isempty(
+        EpiBranch._generation_hooks(
+            CapacityConstrained(Scheduled(mv; start_time = 10.0); budget_per_period = 1.0)
+        )
+    )
+    ct = ContactTracing(
+        probability = 1.0, isolation_to_trace_delay = Exponential(1.0),
+        action = Quarantine(duration = Inf), depth = 2
+    )
+    @test :keep_active in EpiBranch._generation_hooks(Scheduled(ct; start_time = 1.0))
+end
