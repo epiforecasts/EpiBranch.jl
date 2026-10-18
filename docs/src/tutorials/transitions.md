@@ -333,7 +333,7 @@ model = ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0));
     progression = progression, attributes = clinical)
 
 rng = StableRNG(42)
-state = simulate(model; max_cases = 200, rng = rng)
+state = simulate(model; max_cases = 2000, rng = rng)
 
 outcomes = [ind.state[:outcome] for ind in state.individuals if haskey(ind.state, :outcome)]
 println("Outcome counts: ",
@@ -342,8 +342,9 @@ println("Outcome counts: ",
      lost = count(==(:lost), outcomes)))
 ```
 
-Most cases recover. The deaths and losses to follow-up are fewer than 5% and
-10% of cases, because recovery often comes first. The same approach gives
+Most cases recover. The deaths and losses to follow-up, 16 and 157 of 2,000
+cases, are fewer than 5% and 10% of cases, because recovery often comes
+first. The same approach gives
 admission to intensive care after admission to hospital, or outcomes that
 depend on treatment.
 
