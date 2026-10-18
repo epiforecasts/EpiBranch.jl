@@ -787,7 +787,9 @@ defines `EpiBranch.intervention_actions(iv, state, candidates)` and returns
 can add people beyond the input, as group vaccination does when it finds every
 member of a group in which a case was found. Every built-in model calls it
 once each case settles, for every intervention with a method of it, with the
-case and the contacts it can still reach as candidates. A model written
+case and the contacts it can still reach as candidates; a fixed-population
+model passes an intervention declaring `EpiBranch.continuous_actions(iv) =
+true` the case and everyone not yet infected instead. A model written
 against `generate_offspring` or `contacts_of` calls it once per case for every
 intervention, then again for each case in a settled generation in turn, with
 that case alone as the candidate, but this second round of calls reaches only
@@ -853,7 +855,9 @@ different key, and keep the same key when the same visit is proposed again.
 
 On the built-in models, actions run in one of two ways. By default they run
 after a newly final case is traced, narrowed to the case and the contacts it
-can still reach, and must work without the infection time of a contact whose
+can still reach (or, for an intervention declaring `continuous_actions` on a
+fixed-population model, offered the case and everyone not yet infected), and
+must work without the infection time of a contact whose
 infection is not yet final. That narrowing needs a model that names contacts
 (`EpiBranch.supplies_contacts(model) = true`), unless the intervention
 declares `EpiBranch.needs_contacts(iv) = false`, as group delivery does,

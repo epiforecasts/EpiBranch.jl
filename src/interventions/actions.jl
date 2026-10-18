@@ -29,8 +29,9 @@ the intervention has no actions.
 Both engines call it once per case, after every intervention's
 [`trace_contacts!`](@ref) for that case, so a producer can read what tracing
 wrote. The race, which runs every built-in model, passes the case and the
-contacts it can still reach, and admits only actions dated no earlier than
-the case's infection time. The generation engine, which runs a model written
+contacts it can still reach, or on a fixed-population model everyone not yet
+settled for an intervention declaring [`continuous_actions`](@ref), and admits
+only actions dated no earlier than the case's infection time. The generation engine, which runs a model written
 against `generate_offspring` or `contacts_of`, passes the contacts the case
 made and admits every action with a finite time; once a generation's cases
 are settled, it also calls it again for each settled case in turn, with that
@@ -350,10 +351,11 @@ end
     continuous_actions(intervention) -> Bool
 
 Whether this intervention can act once a case's infection is settled, rather
-than only when it makes a contact. The generation engine, by default (see
-[`settles_generation_batch`](@ref)), then offers it the whole batch once a
-generation is settled; the race offers every intervention its actions per
-settled case whatever this returns. Return `true` only if proposing actions
+than only when it makes a contact. The race offers every intervention its
+actions per settled case, and offers one declaring this, on a fixed-population
+model, everyone not yet settled rather than only the contacts the case can
+reach. The generation engine, by default (see [`settles_generation_batch`](@ref)),
+also offers it the whole batch once a generation is settled. Return `true` only if proposing actions
 needs no infection time of a contact not yet infected and never changes a
 case already settled. The default is `false`.
 """
@@ -449,18 +451,43 @@ end
     _continuous_candidates(intervention, state, current, members, processed, contacts, pos, traced)
 
 The people to offer `intervention`'s actions to once `current`'s infection
-is settled: `current` and the contacts it can still reach, those tracing
-reached from it where there was tracing. [`GroupVaccination`](@ref) offers the
-members of `current`'s group instead.
+is settled. An intervention declaring [`continuous_actions`](@ref) is offered
+`current` and everyone not yet settled, and narrows that itself; any other is
+offered `current` and the contacts it can still reach, those tracing reached
+from it where there was tracing, as [`RingVaccination`](@ref) is.
+[`GroupVaccination`](@ref) offers the members of `current`'s group instead.
 
 `traced` is the set tracing reached, or `nothing` if there was no tracing. A
 ring wider than one step reaches people who are not `current`'s direct
 contacts, so a list built from `current`'s contacts alone would miss them.
 """
 function _continuous_candidates(
-        ::AbstractIntervention, state, current, members, processed, contacts, pos,
+        iv::AbstractIntervention, state, current, members, processed, contacts, pos,
         traced = nothing
     )
+    continuous_actions(iv) && return _unsettled_candidates(
+        members, state, current, processed, contacts, pos, traced
+    )
+    return _reached_candidates(state, current, members, processed, contacts, pos, traced)
+end
+function _continuous_candidates(
+        ::RingVaccination, state, current, members, processed, contacts, pos,
+        traced = nothing
+    )
+    return _reached_candidates(state, current, members, processed, contacts, pos, traced)
+end
+
+# `current` and everyone the race has not yet settled.
+function _unsettled_candidates(members, state, current, processed, contacts, pos, traced)
+    return [
+        state.individuals[id]
+            for (k, id) in enumerate(members)
+            if !processed[k] || id == current.id
+    ]
+end
+
+# `current` and the contacts it can still reach.
+function _reached_candidates(state, current, members, processed, contacts, pos, traced)
     candidates = [current]
     # The walk's own reach where there was one: a ring of depth above 1 grows
     # past `current`'s neighbours, and those members are the ones it traced.

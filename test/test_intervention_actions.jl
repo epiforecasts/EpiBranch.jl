@@ -206,9 +206,12 @@ EpiBranch.continuous_actions(::AppointmentAction) = true
         ]
     )
     state.max_infection_time = 11.0
-    # `AppointmentAction` takes the default candidates: `current` and the
-    # contacts it names that are still pending.
-    contacts(id, state) = id == 1 ? [2, 3, 4] : Int[]
+    # `AppointmentAction` needs no named contacts (its candidates are the
+    # default: `current` and everyone not yet processed), so a `contacts`
+    # function is passed only to stand in for a model that supplies one;
+    # `needs_contacts`'s conservative default would otherwise skip it on a
+    # call with none, as a model without named contacts does on the race.
+    contacts(id, state) = Int[]
     EpiBranch._apply_continuous_actions!(
         state, state.individuals[1],
         [AppointmentAction()], [1, 2, 3, 4], [true, false, true, false], contacts
@@ -276,6 +279,9 @@ end
     @test !EpiBranch.is_settled(state, other)
 end
 
+struct _UndeclaredAction <: AbstractIntervention end
+EpiBranch.intervention_actions(::_UndeclaredAction, state, candidates) = nothing
+
 @testset "Continuous-time candidates scale with the ring or group, not the population" begin
     # A settled case's own ring or group is tiny; most of the population is
     # neither traced by it nor in its group, and must never be materialised
@@ -312,12 +318,20 @@ end
     @test length(group_candidates) == 3
     @test Set(ind.id for ind in group_candidates) == Set([1, 2, 3])
 
-    # Any other intervention gets the default, the case and the contacts it
-    # names, which is the ring's own set.
+    # The default candidate strategy, used by any other custom
+    # `continuous_actions` intervention, keeps the wider (expensive)
+    # contract every still-pending member.
     generic_candidates = EpiBranch._continuous_candidates(
         AppointmentAction(), state, current, members, processed, contacts, pos
     )
-    @test Set(ind.id for ind in generic_candidates) == Set([1, 2, 3])
+    @test length(generic_candidates) == n
+
+    # One that proposes actions without declaring `continuous_actions` is
+    # offered the case and the contacts it names, the ring's own set.
+    undeclared_candidates = EpiBranch._continuous_candidates(
+        _UndeclaredAction(), state, current, members, processed, contacts, pos
+    )
+    @test Set(ind.id for ind in undeclared_candidates) == Set([1, 2, 3])
 end
 
 @testset "Existing-dose effects require admission" begin
