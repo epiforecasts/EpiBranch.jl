@@ -735,8 +735,8 @@ end
     # held, under `:tick == 0`, for t = 3. Host 4's infection at t = 2 flips
     # host 2's `:tick`, which host 3's held proposal reads; redrawn under
     # `:tick == 1` it falls at t = 8 instead, well past host 2's immunity
-    # waning at t = 2.5, so whichever time survives is the one host 2 is
-    # actually reinfected at.
+    # waning at t = 2.5, so the surviving time is when host 2 is actually
+    # reinfected.
     function kernel_cb(c, a, b)
         c.susceptible == 2 && c.infector == 1 && return Dirac(1.0)
         c.susceptible == 2 && c.infector == 3 &&
