@@ -1147,6 +1147,8 @@ function _sellke_race!(
     # names no contacts: an intervention declaring `needs_contacts = false`
     # (`GroupVaccination`) still has candidates to offer it there.
     acting = filter(_proposes_actions, interventions)
+    # Those a person a route creates as it goes is offered on creation.
+    creating = filter(iv -> !acts_on_population(iv) && !needs_contacts(iv), acting)
     contactless_actions = any(iv -> !needs_contacts(iv), acting)
     openings = empty!(buffers.openings) # one per case and route it transmits along
     proposals = empty!(buffers.proposals) # proposals retained for fallback
@@ -1175,7 +1177,7 @@ function _sellke_race!(
     race = (;
         queue, proposals, head, best, represents, processed, pos, state, rng, members,
         watch, snapshot, watched_keys, may_block, max_time,
-        route_projections, full_snapshot, interventions, buffers,
+        route_projections, full_snapshot, interventions, creating, buffers,
     )
     # What tracing and the interventions' actions read as a case's contacts. A
     # route that creates contacts as it goes creates a ring member's when the

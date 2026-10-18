@@ -131,7 +131,7 @@ function _birth!(tree::_Tree, race, k)
         initialise_individual!(intervention, contact, state)
     end
     _apply_population_actions!(state, race.interventions, (contact.id,))
-    _apply_creation_actions!(state, race.interventions, contact)
+    _apply_creation_actions!(state, race.creating, contact)
     return contact
 end
 

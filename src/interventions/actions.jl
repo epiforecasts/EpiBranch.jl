@@ -593,17 +593,14 @@ function _apply_population_actions!(state, interventions, members)
     return nothing
 end
 
-# Offer a person a branching process has just created to every intervention
-# proposing actions that need no named contacts. `GroupVaccination` finds its
+# Offer a person a branching process has just created to `interventions`, those
+# the race found proposing actions that need no named contacts. `GroupVaccination` finds its
 # candidates through a case's group, which a contact joins only once it exists,
 # so without this a group's dose would never reach a member created after it.
 # Nothing about the new person is settled yet, so an action dated before the
 # clock, such as the dose its group was given, is admitted as it stands.
 function _apply_creation_actions!(state, interventions, contact)
     for iv in interventions
-        acts_on_population(iv) && continue
-        needs_contacts(iv) && continue
-        _proposes_actions(iv) || continue
         actions = intervention_actions(iv, state, [contact])
         actions === nothing && continue
         _admit_actions!(iv, state, filter(a -> a.individual.id == contact.id, actions))
