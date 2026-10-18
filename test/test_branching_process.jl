@@ -313,7 +313,7 @@ end
     )
     s = simulate(spec; max_cases = 50, n_initial = 5, rng = StableRNG(4))
     rows = contacts(s)
-    @test nrow(rows) == nrow(unique(rows[:, [:from, :to]]))
+    @test length(rows.from) == length(Set(zip(rows.from, rows.to)))
     @test any(!, rows.infected)
 end
 
