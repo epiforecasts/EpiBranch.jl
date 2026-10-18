@@ -241,6 +241,18 @@
             Infectiousness(offspring; kernel = gt), Infectiousness(offspring; kernel = gt)
         )
         @test_throws ArgumentError loglikelihood(data, multi_window)
+
+        # A finite population, a window with `until`, or susceptibility off 1
+        # each reshape transmission over time away from the bare offspring
+        # law, so none of them has a closed form here either.
+        finite_pop = BranchingProcess(offspring, gt; population_size = 1000)
+        @test_throws ArgumentError loglikelihood(data, finite_pop)
+
+        windowed = BranchingProcess(Infectiousness(offspring; until = (:recovered,), kernel = gt))
+        @test_throws ArgumentError loglikelihood(data, windowed)
+
+        with_traits = ModelSpec(model; attributes = transmission_traits(susceptibility = 0.5))
+        @test_throws ArgumentError loglikelihood(data, with_traits)
     end
 
     @testset "IncidenceCounts by type" begin

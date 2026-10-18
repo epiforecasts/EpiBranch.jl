@@ -65,6 +65,19 @@
         @test max_gen <= 3
     end
 
+    @testset "Chain-size likelihood accounts for a finite population" begin
+        # A population of one cannot produce a cluster of two; the bare
+        # offspring law population_size leaves unscored would give
+        # log(pdf(Borel(0.8), 2)) ≈ -1.82 instead of something far smaller.
+        bp1 = BranchingProcess(Poisson(0.8), Exponential(1.0); population_size = 1)
+        @test !EpiBranch.offspring_law_unchanged(bp1)
+        ll = loglikelihood(ChainSizes([2]), bp1; rng = StableRNG(1), n_sim = 500)
+        @test ll < -5.0
+        # chain_size_distribution routes the same model to simulation rather
+        # than handing back the bare (population-blind) Borel law.
+        @test chain_size_distribution(bp1) isa EpiBranch._ChainSizeLaw
+    end
+
     @testset "Infection times increase" begin
         rng = StableRNG(77)
         model = BranchingProcess(Poisson(2.0), Exponential(5.0); population_size = 500)

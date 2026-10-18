@@ -541,9 +541,11 @@ Log-likelihood of an incidence time series under a model's own offspring and
 generation-time distributions, single-type or multi-type (a model built from
 an offspring matrix, with `data` holding counts and seeds by type or their
 total). Only defined for a model with no
-interventions, a single infectiousness window and full reporting (every
-case counted, whether under-reporting would otherwise come from an
-observation model or a `Reporting` progression step); each of those
+interventions, an unlimited `population_size`, a single infectiousness
+window with no `until`, attributes and progression that leave the offspring
+law unchanged (see [`EpiBranch.offspring_law_unchanged`](@ref)), and full
+reporting (every case counted, whether under-reporting would otherwise come
+from an observation model or a `Reporting` progression step); each of those
 reshapes transmission, detection or timing in a way this closed form does
 not represent, and throws an `ArgumentError` naming the reason instead of a
 silent approximation. Simulate [`weekly_incidence`](@ref) (or daily, by
@@ -559,6 +561,16 @@ function loglikelihood(
             "loglikelihood(IncidenceCounts, model with interventions) has no closed form: " *
                 "interventions reshape transmission over time in ways this likelihood does " *
                 "not represent. Simulate instead."
+        )
+    )
+    offspring_law_unchanged(model) && offspring_law_unchanged(attributes(model)) &&
+        all(offspring_law_unchanged, _progression(model)) || throw(
+        ArgumentError(
+            "loglikelihood(IncidenceCounts, model) has no closed form: a finite " *
+                "population_size, an infectiousness window with `until`, or an " *
+                "attribute (such as transmission_traits away from its neutral value) " *
+                "reshapes transmission over time in a way this likelihood does not " *
+                "represent. Simulate instead."
         )
     )
     _incidence_assert_full_reporting(observation(model), _progression(model))
