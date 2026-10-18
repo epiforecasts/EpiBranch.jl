@@ -198,20 +198,27 @@ traces_source(::AbstractIntervention) = false
 """
     keep_active(intervention, state, targets, is_new) -> iterable of Int
 
-The ids of the `targets` a case reached that should go on generating contacts
-of their own although they are not infected. Default: none.
+The ids of the `targets` a case reached that a ring of contact tracing grows
+from, or that should go on generating contacts of their own although they are
+not infected. Default: none.
 
-Both engines ask it once per case, right after the case's
-[`trace_contacts!`](@ref) and [`intervention_actions`](@ref), with the same
-contacts and the same state. An intervention still implementing the deprecated
-[`apply_post_transmission!`](@ref) is asked instead once per generation, about
-the whole batch, after that hook has run. An intervention that grows its reach through
-uninfected people, such as contact tracing reaching contacts-of-contacts,
-returns those people's ids here. The generation engine keeps them active for
-one more generation, so their contacts are offered to them through the same
-hooks in turn, and the `InfectiousSource` risk source (a default) stops them
-infecting anyone. The continuous-time race walks the model's contact structure
-from them instead.
+Every built-in model asks it during tracing, straight after
+[`trace_contacts!`](@ref) for each case or ring member the ring grows from,
+with the contacts that call received: return those the ring is traced onward
+from. On a branching process their own contacts are then drawn, if they can be
+before the person settles (see
+[`reads_settled_state`](@ref EpiBranch.reads_settled_state)). It is not asked
+when no intervention traces.
+
+A model written against [`generate_offspring`](@ref) or
+[`contacts_of`](@ref) asks it instead once per case, right after the case's
+`trace_contacts!` and [`intervention_actions`](@ref), with the same contacts
+and the same state. An intervention still implementing the deprecated
+[`apply_post_transmission!`](@ref) is asked there once per generation, about
+the whole batch, after that hook has run. The contacts it returns stay active
+for one more generation, so their contacts are offered to them through the
+same hooks in turn, and the `InfectiousSource` risk source (a default) stops
+them infecting anyone.
 
 `is_new[i]` flags which of `targets` were freshly created. A contact returned
 here that turns out to be infected is active as a case anyway."""
