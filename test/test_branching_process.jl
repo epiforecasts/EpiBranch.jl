@@ -276,6 +276,33 @@ end
     end
     @test early == 0
     @test any(s -> s.cumulative_cases > 1, states)
+
+    # Dropped before tracing or a ring can reach it: a run that dies out
+    # leaves no one without an exposure time, traced or dosed.
+    ring_spec = ModelSpec(
+        BranchingProcess(
+            Infectiousness(Poisson(0.9); from = :onset, kernel = Normal(-2.0, 2.0))
+        );
+        interventions = [
+            Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf),
+            ContactTracing(
+                probability = 1.0, isolation_to_trace_delay = Exponential(0.5),
+                action = Quarantine(duration = Inf)
+            ),
+            RingVaccination(efficacy = 0.9),
+        ],
+        attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
+    )
+    phantom = 0
+    for seed in 1:100
+        s = simulate(
+            ring_spec; max_cases = nothing, max_time = nothing, max_generations = nothing,
+            rng = StableRNG(seed)
+        )
+        s.extinct || continue
+        phantom += count(ind -> isnan(ind.infection_time), s.individuals)
+    end
+    @test phantom == 0
 end
 
 @testset "A recorder lists each branching-process contact once" begin
