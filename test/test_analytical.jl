@@ -1004,9 +1004,11 @@
             @test loglikelihood(ChainLengths([0]), bp; n_initial = 2) ≈ ll2
 
             # Still a normalised distribution over lengths for n_initial > 1.
+            # Cubing the CDF thickens the tail relative to a single seed, so
+            # the cutoff needs to reach further out than for n_initial = 1.
             probs = [
                 exp(loglikelihood(ChainLengths([n]), Poisson(λ); n_initial = 3))
-                    for n in 0:60
+                    for n in 0:100
             ]
             @test all(≥(0), probs)
             @test sum(probs) ≈ 1.0 atol = 1.0e-6
