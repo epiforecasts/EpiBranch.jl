@@ -429,16 +429,19 @@ of several terminal events comes first.
 
 `purpose` names this step for [`stream`](@ref EpiBranch.stream): under
 [`CommonRandomNumbers`](@ref) its draws then keep their place for this
-individual regardless of what else the run draws. Steps sharing a name share
-a stream, so give a new built-in step one of its own.
+individual regardless of what else the run draws. The probability gate and
+the delay draw use separate streams tagged off `purpose`, so reshaping
+`probability` alone does not move the delay. Steps sharing a name share a
+stream, so give a new built-in step one of its own.
 """
 function transition_time(
         rng, individual, start_time, delay; probability = nothing,
         purpose = :progression
     )
-    rng = stream(rng, individual.id, purpose)
-    _transition_selected(rng, individual, start_time, probability) || return nothing
-    return start_time + _resolve_delay(delay, rng, individual)
+    gate_rng = stream(rng, individual.id, (purpose, :selected))
+    _transition_selected(gate_rng, individual, start_time, probability) || return nothing
+    delay_rng = stream(rng, individual.id, (purpose, :delay))
+    return start_time + _resolve_delay(delay, delay_rng, individual)
 end
 
 function _transition_selected(rng, individual, start_time, probability)
