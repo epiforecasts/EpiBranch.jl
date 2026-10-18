@@ -1037,6 +1037,15 @@ function _at_case!(state::SimulationState, case, count)
 end
 
 function _resolve_interventions!(state::SimulationState, case, interventions)
+    # A reinfection (`case.episodes` already holds the earlier one, closed
+    # before this call) gets a fresh `initialise_individual!` first, so
+    # per-episode draws such as `Isolation`'s `:test_positive` do not carry
+    # over from an earlier episode into this one.
+    if !isempty(case.episodes)
+        for intervention in interventions
+            initialise_individual!(intervention, case, state)
+        end
+    end
     for intervention in interventions
         resolve_individual!(intervention, case, state)
     end

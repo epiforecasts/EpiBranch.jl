@@ -77,6 +77,34 @@ using Random
         @test all(length(e.secondary_case_ids) == 1 for e in two.episodes)
     end
 
+    # Counts, on each individual, how many times `initialise_individual!` has
+    # run: once when they are created, and again every time a reinfection
+    # settles a new episode. A host whose count stalls at 1 past its first
+    # episode would be carrying an earlier episode's intervention state (such
+    # as `Isolation`'s `:test_positive`) into every later one.
+    struct _CountInitialisations <: EpiBranch.AbstractIntervention end
+    function EpiBranch.initialise_individual!(::_CountInitialisations, ind, state)
+        ind.state[:_init_count] = get(ind.state, :_init_count, 0) + 1
+        return nothing
+    end
+
+    @testset "A reinfection re-initialises intervention state for the new episode" begin
+        progression = [
+            Transition(:recovered, from = :infection, delay = 1.0),
+            Transition(:susceptible_again, from = :recovered, delay = 0.0),
+        ]
+        spec = ModelSpec(
+            PingPongModel(); progression,
+            interventions = [_CountInitialisations()]
+        )
+        state = simulate(spec; n_initial = 1, stopping_rules = [MaxGenerations(4)])
+        one, two = state.individuals
+
+        @test length(one.episodes) >= 1
+        @test one.state[:_init_count] == length(one.episodes) + 1
+        @test two.state[:_init_count] == length(two.episodes) + 1
+    end
+
     @testset "ReportedCases counts each episode's report once" begin
         # Every infection is reported half a day in, and each ping-pong
         # exchange reinfects a host, so the count has to find the reports
