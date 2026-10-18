@@ -208,13 +208,21 @@ by the cases in this one. It is a rough within-simulation measure of how
 transmission changes as the measures take effect. It is not the time-varying
 reproduction number Rt estimated from incidence data.
 
+A run stopped by `max_cases` ends part-way through its last generations. Their
+cases have not yet infected everyone they would, and the ratio falls towards 0
+there whatever the measures do. The example below runs the same model with
+the same seed, bounded by six generations (`max_generations = 6`, with
+`max_cases = nothing` to remove the case cap). Every case before the sixth
+generation then has all its contacts decided, and each ratio is complete:
+
 ```@example gettingstarted
-r_df = generation_R(outbreak)
+bounded = simulate(spec; max_cases = nothing, max_generations = 6, rng = StableRNG(18))
+r_df = generation_R(bounded)
 r_df
 ```
 
-This outbreak escaped control and reached the case cap, and its ratio stays
-above 1. In an outbreak the measures contain, the ratio falls below 1 in the
+This outbreak escaped control, growing to 771 cases in six generations, and
+its ratio stays above 1. In an outbreak the measures contain, the ratio falls below 1 in the
 later generations. With few cases per generation and strong superspreading it
 also jumps about from one generation to the next.
 
