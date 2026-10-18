@@ -423,9 +423,11 @@ function _chain_length_model_loglik(
                 "length. Use ChainSizes, or a model with no observation."
         )
     )
-    # Analytical iff no interventions thin transmission, as for chain size above;
-    # progression and attributes don't affect the offspring law.
-    if isempty(ivs)
+    # Analytical iff no interventions thin transmission, as for chain size
+    # above, and the process, attributes and progression each leave the
+    # offspring law unchanged (see `offspring_law_unchanged`).
+    if isempty(ivs) && offspring_law_unchanged(process) && offspring_law_unchanged(attrs) &&
+            all(offspring_law_unchanged, prog)
         try
             return loglikelihood(data, single_type_offspring(process))
         catch e

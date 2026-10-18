@@ -1,6 +1,7 @@
-`loglikelihood(::ChainSizes, model)`, `chain_size_distribution` and the
-incidence likelihood took their analytical path from the bare offspring
-law whenever it had a closed form, ignoring a finite `population_size`, an
+`loglikelihood(::ChainSizes, model)`, `loglikelihood(::ChainLengths, model)`,
+`chain_size_distribution`, `chain_length_distribution` and the incidence
+likelihood took their analytical path from the bare offspring law whenever
+it had a closed form, ignoring a finite `population_size`, an
 `Infectiousness` window with `until`, and `transmission_traits` away from
 its neutral susceptibility or infectiousness of 1 — each of which `simulate`
 already honoured, so the two disagreed. They now ask the new
