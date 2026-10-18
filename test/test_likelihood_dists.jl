@@ -159,7 +159,7 @@
         @test all(l -> l >= 0, lengths)
     end
 
-    @testset "rand draws reported cluster sizes, not total infected" begin
+    @testset "rand draws reported cluster sizes rather than total infected" begin
         # Offspring mean 0.5 gives a full outbreak size that averages
         # 1 / (1 - 0.5) = 2; with only 10% of cases reported, the observed
         # cluster sizes `logpdf` scores are thinned well below that, and

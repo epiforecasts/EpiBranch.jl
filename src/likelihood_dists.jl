@@ -69,11 +69,12 @@ function Base.rand(rng::AbstractRNG, d::_ChainSizeLaw, n::Int)
     return [_rand_chain_size(rng, model, sim_kwargs, obs, prog) for _ in 1:n]
 end
 
-# One cluster's observed size: the same reported-case total
-# `_sim_chain_sizes` feeds the simulation-based `logpdf` with, summed across
-# the cluster's seed chains (so a multi-seed cluster is one draw, not one
-# per seed). A cluster with no reported case has no observed size under
-# `logpdf` either, so it is dropped and redrawn rather than counted as zero.
+# One cluster's observed size: the same reported-case total that
+# `_sim_chain_sizes` sums across the cluster's seed chains and feeds to the
+# simulation-based `logpdf` (a multi-seed cluster counts as one draw rather
+# than one per seed). A cluster with no reported case has no observed size
+# under `logpdf` either, so it is dropped and redrawn rather than counted as
+# zero.
 function _rand_chain_size(rng, model, sim_kwargs, obs, prog)
     while true
         state = simulate(model; sim_kwargs..., rng)
