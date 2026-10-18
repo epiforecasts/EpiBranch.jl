@@ -101,7 +101,7 @@ results = simulate(scenario([iso_leaky]), 200; max_cases = 500, rng = rng)
 println("Leaky isolation: $(round(containment_probability(results), digits=3))")
 ```
 
-That falls between the 0.04 with no isolation and the 0.135 the same isolation
+That falls between the 0.04 with no isolation and the 0.12 the same isolation
 gives when it holds completely. All three numbers are noisy at 200 outbreaks;
 runs of 5,000 put leaky isolation at about 60% of the benefit complete
 isolation buys. Keeping a third of a case's infectiousness costs a good part
