@@ -301,17 +301,17 @@ intervention_time(::AbstractIntervention, ::Individual) = -Inf
     infectious_removal_time(intervention, individual) -> Real
 
 The time (days) at which this intervention ends `individual`'s infectious
-period for good. Continuous-time models ([`HomogeneousProcess`](@ref),
-[`MixingProcess`](@ref) and the network and household models) end a case's
-infectious period at the earliest
-such time across interventions: `Isolation` at the isolation time (perfect
+period for good. Every built-in model, the [`BranchingProcess`](@ref) as much
+as [`HomogeneousProcess`](@ref), [`MixingProcess`](@ref) and the network and
+household models, ends a case's infectious period at the earliest such time
+across interventions: `Isolation` at the isolation time (perfect
 isolation only, `post_isolation_transmission = 0`) and `ContactTracing` at a
 quarantined contact's trace time, when the isolation or quarantine has no end
 (`duration = Inf`). The default `Inf`
 (no removal) suits an intervention that reduces transmission per contact,
 such as a leaky vaccine, which acts through
-[`competing_risk`](@ref EpiBranch.competing_risk) instead. Branching processes
-do not use it.
+[`competing_risk`](@ref EpiBranch.competing_risk) instead. A model written
+against [`generate_offspring`](@ref) or [`contacts_of`](@ref) does not read it.
 """
 infectious_removal_time(::AbstractIntervention, ::Individual) = Inf
 
