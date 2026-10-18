@@ -460,9 +460,9 @@ methods, narrowing the candidates to the people tracing reached from
 ring wider than one step reaches people who are not `current`'s direct
 contacts, so a list built from `current`'s contacts alone would miss them.
 `is_pending(id)` reports whether `id` belongs to this race and has not yet
-been settled, so an action may still reach it. `members` and `contacts` are
-what the default and `RingVaccination`'s own fallback (walking `current`'s
-direct contacts when there is no `traced` to use) need; an intervention
+been settled, so an action may still reach it. The default and
+`RingVaccination`'s own fallback (walking `current`'s direct contacts when
+there is no `traced` to use) need `members` and `contacts`; an intervention
 narrowing its own candidates usually needs only `current`, `traced` and
 `is_pending`.
 

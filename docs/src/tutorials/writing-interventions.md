@@ -226,8 +226,8 @@ In practice:
   `EpiBranch.needs_contacts(iv) = false`. Write a method of
   `EpiBranch.continuous_candidates` for an intervention whose candidates are
   not the whole population: group vaccination narrows it to a case's group,
-  found through its `group_key` rather than any contact, which is what its
-  own `needs_contacts(iv) = false` declares. Ring vaccination narrows it to
+  found through its `group_key` rather than any contact, as its own
+  `needs_contacts(iv) = false` declares. Ring vaccination narrows it to
   the contacts it can still reach: it admits a dose for a contact not yet
   exposed as though any `eligibility_window` were open, and withdraws it
   through `EpiBranch.on_infection_settled!` once that contact's own infection
