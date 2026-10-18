@@ -1005,7 +1005,7 @@
 
             # Still a normalised distribution over lengths for n_initial > 1.
             # Cubing the CDF thickens the tail relative to a single seed, so
-            # the cutoff needs to reach further out than for n_initial = 1.
+            # the cutoff must extend further than it does for n_initial = 1.
             probs = [
                 exp(loglikelihood(ChainLengths([n]), Poisson(λ); n_initial = 3))
                     for n in 0:100
