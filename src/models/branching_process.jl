@@ -30,7 +30,11 @@ different routes, such as community and funeral transmission of Ebola.
   With `until` it is the contact interval (the time to a contact that would
   infect if nothing stopped it), and the generation time follows from which
   comes first, the contact or the end of transmission, so do not also
-  shorten it by hand.
+  shorten it by hand. A kernel measured from a later state, such as onset,
+  can put a contact before the case's own infection. No exposure happens
+  then, so that contact is dropped, and a case makes fewer contacts on
+  average than its offspring distribution draws, by the share of the kernel
+  that falls before infection.
 
 # Examples
 ```julia
