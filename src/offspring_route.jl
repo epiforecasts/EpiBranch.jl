@@ -277,24 +277,27 @@ function _propose_along!(
     return nothing
 end
 
-# A run cut off by a stopping rule or a time limit leaves contacts whose
-# infection was still to be decided. Their exposure falls after the run ended,
-# so it is not part of the outbreak the run describes. One that tracing or an
-# intervention already reached stays a contact of its case, with what was done
-# to it, but with no infection time, as a network leaves a member the run never
-# reached; the others were never created. Routes share the places, so the
-# first route to finish does this for all of them.
-function _finish!(o::_Offspring, race)
+# A run cut off at `stop_t` by a stopping rule or a time limit leaves contacts
+# whose infection was still to be decided: those queued, and those drawn early
+# for a ring member who had not settled. Their exposure falls after the run
+# ended, as does that of a contact drawn after its infector's window closed but
+# timed after `stop_t`, so none is part of the outbreak the run describes. One
+# that tracing or an intervention already reached stays a contact of its case,
+# with what was done to it, but with no infection time, as a network leaves a
+# member the run never reached; the others were never created. Routes share
+# the places, so the first route to finish does this for all of them.
+function _finish!(o::_Offspring, race, stop_t)
     (; state) = race
     for k in eachindex(o.tree.slots)
-        o.tree.slots[k] < 0 || continue
-        o.tree.slots[k] = -o.tree.slots[k]
+        undecided = o.tree.slots[k] != 0
+        undecided && _release_draw!(o.tree, k)
         id = o.tree.ids[k]
         id == 0 && continue
         contact = state.individuals[id]
         # An index case the run stopped before reaching stays an index case.
         contact.parent_id == 0 && continue
-        contact.infection_time = oftype(contact.infection_time, NaN)
+        (undecided || contact.infection_time > stop_t) &&
+            (contact.infection_time = oftype(contact.infection_time, NaN))
     end
     # An abort recorded on a contact before its infection was decided stands
     # only on one that was infected before it.

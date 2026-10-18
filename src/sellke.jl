@@ -1184,7 +1184,7 @@ function _sellke_race!(
         # Pops come in increasing time, so every later infection also falls
         # after `max_time`: those individuals stay uninfected, and the race
         # was cut off rather than reaching extinction on its own.
-        bt > max_time && return _finish_race!(rts, race, false)
+        bt > max_time && return _finish_race!(rts, race, false, max_time)
         # Only a redraw of a live kernel reads which pops happened at this clock.
         if live
             if bt != clock
@@ -1320,7 +1320,7 @@ function _sellke_race!(
         # is what a rule not already captured by `max_time`/`max_generation`
         # reads; ending here rather than after this case transmits matches
         # `MaxCases` stopping at the first `n` infections in time.
-        _any_stop(stopping_rules, state) && return _finish_race!(rts, race, false)
+        _any_stop(stopping_rules, state) && return _finish_race!(rts, race, false, bt)
         # A route that creates its contacts as it goes creates this case's now,
         # so that tracing and the interventions' actions can reach them.
         for (_, route_targets) in rts
@@ -1391,16 +1391,16 @@ function _sellke_race!(
     )
 end
 
-# Let each route tidy up what the race left undecided, then report whether the
-# race reached extinction.
-function _finish_race!(rts, race, extinct)
+# Let each route tidy up what the race left undecided when it ended at
+# `stop_t`, then report whether the race reached extinction.
+function _finish_race!(rts, race, extinct, stop_t = Inf)
     for (_, route_targets) in rts
-        _finish!(route_targets, race)
+        _finish!(route_targets, race, stop_t)
     end
     _return_buffers!(race.buffers)
     return extinct
 end
-_finish!(route_targets, race) = nothing
+_finish!(route_targets, race, stop_t) = nothing
 
 # Whether any of the stopping rules ends the run now.
 function _any_stop(rules, state)

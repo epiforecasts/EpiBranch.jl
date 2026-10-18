@@ -220,3 +220,36 @@ end
         @test abs(mean(a) - mean(b)) < 4 * se
     end
 end
+
+@testset "A run cut short lists no exposure after it ends" begin
+    # A depth-2 ring draws the contacts of members it reaches before they
+    # settle, and the run can stop before they do.
+    spec = ModelSpec(
+        BranchingProcess(Poisson(4.0), Gamma(4.0, 1.0));
+        interventions = [
+            Isolation(onset_to_isolation_delay = Dirac(6.0), duration = Inf),
+            ContactTracing(
+                probability = 0.5, isolation_to_trace_delay = Dirac(0.1),
+                action = Quarantine(duration = Inf), depth = 2
+            ),
+        ],
+        attributes = clinical_presentation(incubation_period = Exponential(0.5))
+    )
+    for (opts, cutoff) in (((; max_time = 8.0), s -> 8.0), ((; max_cases = 15), s -> s.max_infection_time))
+        listed_late = 0
+        from_undecided = 0
+        for seed in 1:30
+            s = simulate(spec; rng = StableRNG(seed), opts...)
+            # A run that dies out decides every contact it drew.
+            stop_t = s.extinct ? Inf : cutoff(s)
+            for ind in s.individuals
+                ind.parent_id == 0 && continue
+                isnan(ind.infection_time) && continue
+                ind.infection_time > stop_t && (listed_late += 1)
+                isnan(s.individuals[ind.parent_id].infection_time) && (from_undecided += 1)
+            end
+        end
+        @test listed_late == 0
+        @test from_undecided == 0
+    end
+end
