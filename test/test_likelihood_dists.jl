@@ -221,6 +221,21 @@
         @test length(rand(StableRNG(1), chain_length_distribution(bp; n_sim = 5), 2)) == 2
     end
 
+    @testset "logpdf drops a kwarg only rand's simulation accepts" begin
+        # `condition`, `max_attempts` and `initial_cases` steer `rand`'s
+        # single-outbreak draw; `logpdf`'s simulation is batched and
+        # data-driven and has no such keywords, so it must not forward them —
+        # a kwarg that makes `rand` work must not make `logpdf` throw.
+        bp = BranchingProcess(Poisson(0.5))
+        d = chain_size_distribution(
+            bp; condition = 1:10, max_attempts = 5, initial_cases = [1, 2]
+        )
+        @test logpdf(d, [2, 3]) isa Real
+
+        dl = chain_length_distribution(bp; initial_cases = [1, 2], parallel = false)
+        @test logpdf(dl, [0, 1]) isa Real
+    end
+
     @testset "coverage matrix: every cell is a Distribution or a clear ArgumentError" begin
         # Locks the model × data-type matrix so a gap can't silently
         # reopen: each entry point either returns something usable with

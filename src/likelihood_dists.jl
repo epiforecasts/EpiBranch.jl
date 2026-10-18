@@ -10,9 +10,11 @@
 # from the underlying model, applies the same reporting and observation
 # `logpdf` scores against, and projects to the relevant data type, so a
 # prior or posterior predictive check draws from what the likelihood
-# evaluates rather than from the unobserved simulation. Only the keywords
-# `simulate` itself accepts are forwarded to it; a likelihood-only keyword
-# such as `n_sim` is stored for `logpdf` but dropped here.
+# evaluates rather than from the unobserved simulation. A stored keyword is
+# forwarded only where the callee that uses it accepts it: `rand` forwards
+# only what `simulate` takes, dropping a likelihood-only keyword such as
+# `n_sim`; `logpdf` forwards only what the `loglikelihood` backend takes,
+# dropping a `rand`-only keyword such as `condition` or `max_attempts`.
 
 # Keywords a stored `kwargs` may carry for the simulation-based `logpdf`
 # fallback (such as `n_sim`) but that `simulate` itself does not accept.
@@ -26,6 +28,21 @@ const _SIMULATE_ONCE_KWARGS = (
 const _SIMULATE_BATCH_KWARGS = (
     :n_initial, :initial_cases, :max_cases, :max_generations, :max_time,
     :stopping_rules, :parallel,
+)
+
+# Keywords `_chain_size_model_loglik`/`_chain_length_model_loglik` accept,
+# excluding `prob_concluded` (already a dedicated field). `condition` and
+# `max_attempts` steer `rand`'s single-outbreak redraw loop and have no
+# counterpart in the batched, data-driven simulation `logpdf` runs instead
+# (seed count comes from the data, not `n_initial`/`initial_cases`; `parallel`
+# is not threaded through its batching either), so these must be dropped
+# before forwarding a wrapper's stored kwargs to `logpdf`, or the very
+# keyword that makes `rand` work makes `logpdf` throw a `MethodError`.
+const _CHAIN_SIZE_LOGLIK_KWARGS = (
+    :max_cases, :max_generations, :max_time, :stopping_rules, :n_sim, :rng,
+)
+const _CHAIN_LENGTH_LOGLIK_KWARGS = (
+    :n_initial, :max_cases, :max_generations, :max_time, :stopping_rules, :n_sim, :rng,
 )
 
 struct _ChainSizeLaw{M, S, P, K} <:
@@ -48,7 +65,8 @@ function Distributions.logpdf(
     # `loglikelihood(::ChainSizes, model)` itself picks the analytical or
     # simulation-based route and, either way, now honours `prob_concluded`
     # (the simulation-based route from its empirical tail).
-    return loglikelihood(cs, d.model; prob_concluded = d.prob_concluded, d.kwargs...)
+    loglik_kwargs = _simulate_kwargs(d.kwargs, _CHAIN_SIZE_LOGLIK_KWARGS)
+    return loglikelihood(cs, d.model; prob_concluded = d.prob_concluded, loglik_kwargs...)
 end
 
 function Distributions.loglikelihood(
@@ -159,7 +177,8 @@ end
 function Distributions.logpdf(
         d::_ChainLengthLaw, data::AbstractVector{<:Integer}
     )
-    return loglikelihood(ChainLengths(data), d.model; d.kwargs...)
+    loglik_kwargs = _simulate_kwargs(d.kwargs, _CHAIN_LENGTH_LOGLIK_KWARGS)
+    return loglikelihood(ChainLengths(data), d.model; loglik_kwargs...)
 end
 
 function Distributions.loglikelihood(
