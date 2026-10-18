@@ -262,7 +262,7 @@ function initialise_individual!(iso::Isolation, individual, state)
     clear_isolated!(individual)
     individual.state[:_isolated_by_isolation] = false
     if is_eligible_for_isolation(iso.eligibility, individual, state)
-        rng = stream(state.rng, individual.id, :isolation)
+        rng = stream(state.rng, individual.id, (:isolation, :test))
         sens = _sample_value(iso.test_sensitivity, rng, individual)
         individual.state[:test_positive] = rand(rng) < sens
     else
@@ -284,7 +284,7 @@ function resolve_individual!(iso::Isolation, individual, state)
         self_t = onset_time(individual) +
             _sample_value(
             iso.onset_to_isolation_delay,
-            stream(state.rng, individual.id, :isolation), individual
+            stream(state.rng, individual.id, (:isolation, :delay)), individual
         )
         self_t < isolation_time(individual) || return nothing
         # Remember what we are overwriting. Claiming provenance below tells a
@@ -324,7 +324,7 @@ function resolve_individual!(iso::Isolation, individual, state)
         onset +
             _sample_value(
             iso.onset_to_isolation_delay,
-            stream(state.rng, individual.id, :isolation), individual
+            stream(state.rng, individual.id, (:isolation, :delay)), individual
         )
     else
         Inf
