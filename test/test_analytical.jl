@@ -236,6 +236,14 @@
             @test cdf(d, 5) ≈ sum(pdf(d, n) for n in 1:5)
             @test cdf(d, 5) + ccdf(d, 5) ≈ 1.0
             @test logccdf(d, 5) ≈ log(ccdf(d, 5))
+
+            # Regression: loglikelihood(::ChainSizes, ::ThinnedChainSize) used
+            # to fall through to the generic offspring-distribution method and
+            # throw a MethodError, since a ThinnedChainSize is itself a
+            # chain-size law rather than an offspring distribution.
+            data = ChainSizes([1, 1, 2, 5])
+            ll = loglikelihood(data, d)
+            @test ll ≈ sum(logpdf(d, n) for n in data.data)
         end
     end
 
