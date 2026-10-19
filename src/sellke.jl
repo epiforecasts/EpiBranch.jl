@@ -1536,7 +1536,8 @@ function _sellke_race!(
     return _finish_race!(
         rts, race,
         !capped_generation &&
-            !any(((_, route_targets),) -> _pending_beyond(route_targets, race), rts)
+            !any(((_, route_targets),) -> _pending_beyond(route_targets, race), rts),
+        race.max_time
     )
 end
 

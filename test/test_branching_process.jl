@@ -250,13 +250,18 @@ end
         ],
         attributes = clinical_presentation(incubation_period = Exponential(0.5))
     )
-    for (opts, cutoff) in (((; max_time = 8.0), s -> 8.0), ((; max_cases = 15), s -> s.max_infection_time))
+    # A run that dies out decides every contact it drew, but `max_time`
+    # still bounds what it lists.
+    cutoffs = (
+        ((; max_time = 8.0), s -> 8.0),
+        ((; max_cases = 15), s -> s.extinct ? Inf : s.max_infection_time),
+    )
+    for (opts, cutoff) in cutoffs
         listed_late = 0
         from_undecided = 0
         for seed in 1:30
             s = simulate(spec; rng = StableRNG(seed), opts...)
-            # A run that dies out decides every contact it drew.
-            stop_t = s.extinct ? Inf : cutoff(s)
+            stop_t = cutoff(s)
             for ind in s.individuals
                 ind.parent_id == 0 && continue
                 isnan(ind.infection_time) && continue
