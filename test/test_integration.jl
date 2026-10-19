@@ -212,7 +212,7 @@ using Dates
 
         # A case infected at or after the limit makes no further contacts,
         # but a branch still before the limit keeps running, so the run as a
-        # whole is not extinct (it was cut short, like a max_cases run).
+        # whole is cut short rather than extinct, like a max_cases run.
         infected = filter(is_infected, state.individuals)
         @test all(
             case -> case.infection_time < 30.0 || isempty(case.secondary_case_ids),

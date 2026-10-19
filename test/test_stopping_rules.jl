@@ -71,12 +71,12 @@ EpiBranch.time_bound(r::TimeOrCasesRule) = r.t
     @testset "MaxTime keeps cases before the limit despite a spread-out generation time" begin
         # A later generation can hold infections well before the limit even
         # once an earlier one has crossed it, so stopping the whole run at the
-        # first case past the limit (the bug) loses most of them. Comparing
-        # case counts up to the limit, with a run stopped at it against one
-        # left to run on (capped on cases instead, well above the few dozen
-        # this mildly supercritical setting reaches), the two should land
-        # close; under the bug the time-limited run came out at under half
-        # the other.
+        # first case past the limit (the bug) loses most of them. We compare
+        # case counts up to the limit between a run stopped at it and one left
+        # to run on (capped on cases instead, well above the few dozen this
+        # mildly supercritical setting reaches); the two should land close.
+        # Under the bug, the time-limited run came out at under half the
+        # other.
         gt = Gamma(2.0, 2.5)
         model = BranchingProcess(NegBin(1.5, 2.0), gt)
         by_day30(s) = count(i -> is_infected(i) && i.infection_time <= 30, s.individuals)

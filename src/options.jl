@@ -61,12 +61,12 @@ end
 
 """Stop a branch once its own infection is at or after time `t` (days since
 the start of the outbreak), without drawing it any further contacts. The
-generation-based engine (such as [`BranchingProcess`](@ref)) keeps running
-other branches that are still before `t`, so a spread-out generation time
-does not lose cases before the limit to one case well after it; the
-mass-action, network and household models, which settle cases in time order
-rather than generation order, end the whole run at `t` instead, since nothing
-after it could have been reached first."""
+generation-based engine (such as [`BranchingProcess`](@ref)) keeps other
+branches running while they are still before `t`, which keeps cases before
+the limit from being lost even when one branch reaches well past it first.
+The mass-action, network and household models settle cases in time order
+rather than generation order, so nothing after `t` could have been reached
+first; ending the whole run at `t` is enough for them."""
 struct MaxTime <: AbstractStoppingRule
     t::Float64
 end

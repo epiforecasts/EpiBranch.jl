@@ -21,10 +21,10 @@ days throughout.
   stops when transmission dies out. `max_cases` and `max_generations` are
   checked at the end of each generation, so the final number of cases can
   exceed `max_cases`. `max_time` instead stops each case from making further
-  contacts once its own infection reaches the limit, and lets the rest of the
-  run continue until no case before the limit remains, so a case infected
-  just before `max_time` is not lost because another, in a later generation,
-  was infected well after it.
+  contacts once its own infection reaches the limit, then lets the rest of
+  the run continue until no case before the limit remains; a case infected
+  just before `max_time` survives even when another, in a later generation,
+  is infected well after it.
 - `stopping_rules`: a vector of [`AbstractStoppingRule`](@ref)s for finer
   control over when the run ends. When given, `max_cases`,
   `max_generations` and `max_time` are ignored.
@@ -273,19 +273,20 @@ function _max_time(sim_opts)
     return minimum(time_bound(r) for r in sim_opts.stopping_rules; init = Inf)
 end
 
-# Scratch keys the generation-based engine uses to carry the run's time bound
-# (set once in `_run_generations!`) to `collect_exposures`, a public extension
-# point whose signature takes only `(model, state)`, and to record whether any
-# case's own offspring were suppressed by it.
+# Scratch keys the generation-based engine uses to carry the time bound of a
+# run (set once in `_run_generations!`) to `collect_exposures`, a public
+# extension point whose signature takes only `(model, state)`, and to record
+# whether any case's own offspring were suppressed by it.
 const _MAX_TIME_BOUND = :_max_time_bound
 const _MAX_TIME_CAPPED = :_max_time_capped
 
-"""Whether `parent`'s own infection reached the run's time bound: if so, it
-makes no further contacts, though the cases it already produced (even past
-the bound) stay counted. Flags the run as cut short rather than extinct
+"""Whether `parent`'s own infection reached the time bound for the run: if
+so, it makes no further contacts, though the cases it already produced (even
+past the bound) stay counted. Flags the run as cut short rather than extinct
 (`_run_generations!` reads this once the run ends). A branch still before the
-bound keeps running toward its own extinction, so a spread-out generation
-time no longer loses cases that would have arisen before the bound."""
+bound keeps running toward its own extinction, so cases before the bound
+survive even when generation times are spread out enough to put another
+case well after it."""
 function _past_time_bound!(state::SimulationState, parent::Individual)
     is_infected(parent) || return false
     parent.infection_time < get(state.scratch, _MAX_TIME_BOUND, Inf) && return false
@@ -1294,11 +1295,11 @@ end
 # The rules a run has by default are tested for by type so their calls compile
 # statically; any other rule goes through dispatch as usual. Asked once per
 # generation, so on many small outbreaks a dynamic call here is a visible
-# share of the run. `MaxTime` is handled elsewhere, not here: each branch's
-# own time bound is enforced per case in `collect_exposures` (via
-# `_past_time_bound!`), and the run as a whole ends through `Extinction` once
-# no branch before the bound remains active, so `should_stop(MaxTime, ...)`
-# (which would end the whole run at the first case past the bound) is never
+# share of the run. `MaxTime` is handled elsewhere, not here: the time bound
+# for each branch is enforced per case in `collect_exposures` (via
+# `_past_time_bound!`). The run as a whole ends through `Extinction` once no
+# branch before the bound remains active. `should_stop(MaxTime, ...)` (which
+# would end the whole run at the first case past the bound) is never
 # consulted by the generation-based engine.
 @inline function _should_stop(rule, state)
     rule isa Extinction && return should_stop(rule, state)
