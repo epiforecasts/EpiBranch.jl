@@ -172,6 +172,20 @@ function Distributions.logccdf(d::ThinnedChainSize, n::Integer)
 end
 
 """
+Sample an observed chain size: draw a true size from `base`, thin it to a
+`Binomial(n, detection_prob)` number of detected cases, and redraw when none
+are detected, matching the conditioning `logpdf` applies.
+"""
+function Base.rand(rng::AbstractRNG, d::ThinnedChainSize)
+    while true
+        n = rand(rng, d.base)
+        obs = rand(rng, Binomial(n, d.detection_prob))
+        obs > 0 && return obs
+    end
+    return
+end
+
+"""
     observe(base_distribution, obs::ObservationModel)
 
 Turn the true distribution of chain sizes into the distribution a
