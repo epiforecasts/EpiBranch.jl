@@ -1,10 +1,10 @@
 using StableRNGs
 using Random
 
-# A minimal structure-driven model — a ring of nodes — exercising the shared
-# engine's structure-driven path from within core: `gather_by_target` (shared,
-# deduplicated exposures), a model-contributed competing risk, and the
-# "exposed but not infected" resolve branch. The network and household
+# A minimal structure-driven model — a ring of nodes — exercising the race's
+# `contacts_of` route from within core: a node exposed by both neighbours
+# (decided once, by the earliest exposure that transmits), a model-contributed
+# competing risk, and the "exposed but not infected" branch. The network and household
 # subpackages cover these too, but only under their own coverage flags; a tiny
 # model here keeps the extension contract tested in core.
 
@@ -27,11 +27,6 @@ function EpiBranch.initialise_state(
     return state
 end
 
-# Shared contacts across parents in a generation ⇒ gather by target.
-function EpiBranch.collect_exposures(m::RingModel, state::EpiBranch.SimulationState)
-    return EpiBranch.gather_by_target(m, state)
-end
-
 function EpiBranch.contacts_of(m::RingModel, parent, state::EpiBranch.SimulationState)
     i = parent.id
     neighbours = (i == 1 ? m.n : i - 1, i == m.n ? 1 : i + 1)
@@ -45,7 +40,7 @@ function EpiBranch.contacts_of(m::RingModel, parent, state::EpiBranch.Simulation
 end
 
 # The per-edge probability enters as a model competing risk (the `model_risks`
-# loop in the engine's resolution); p < 1 lets some exposed nodes escape.
+# the race resolves on each exposure); p < 1 lets some exposed nodes escape.
 struct RingRisk
     p::Float64
 end
@@ -56,7 +51,7 @@ end
 
 @testset "Structure-driven model (core extension path)" begin
     # p < 1 so some exposures fail — exercises the exposed-but-not-infected
-    # resolve branch; the ring guarantees a node is reached from both sides.
+    # branch; the ring guarantees a node is reached from both sides.
     state = simulate(
         RingModel(50, 0.5); n_initial = 1, rng = StableRNG(11),
         stopping_rules = [Extinction(), MaxGenerations(50)]
@@ -74,16 +69,13 @@ end
     @test count(ind -> get(ind.state, :infected, false), full.individuals) == 20
 end
 
-# A structure-driven model whose `contacts_of` *mints* fresh contacts (the other
-# `gather_by_target` branch, where a contact's id is past the generation's
-# starting count). It uses the default `initialise_state` (offspring-style seeds).
+# A structure-driven model whose `contacts_of` *mints* fresh contacts with
+# `make_contact!`, so the race grows its members as it goes. It uses the default
+# `initialise_state` (offspring-style seeds).
 struct MintModel <: EpiBranch.TransmissionModel
     k::Int
 end
 EpiBranch.population_size(::MintModel) = EpiBranch.NoPopulation()
-function EpiBranch.collect_exposures(m::MintModel, state::EpiBranch.SimulationState)
-    return EpiBranch.gather_by_target(m, state)
-end
 function EpiBranch.contacts_of(m::MintModel, parent, state::EpiBranch.SimulationState)
     result = Tuple{eltype(state.individuals), Float64}[]
     for _ in 1:(m.k)
@@ -103,7 +95,7 @@ end
 end
 
 # A pool of pre-created nodes, each parent reaching random members, so a node
-# can be exposed, escape, and be exposed again in a later generation. That is
+# can be exposed, escape, and be exposed again by a later case. That is
 # the path on which a post-exposure abort drawn for one exposure could outlive
 # it.
 struct AbortPoolModel <: EpiBranch.TransmissionModel
@@ -120,9 +112,6 @@ function EpiBranch.initialise_state(
     EpiBranch.add_individuals!(state, m.n, interventions)
     EpiBranch.seed!(state, 1:(sim_opts.n_initial), interventions, transitions)
     return state
-end
-function EpiBranch.collect_exposures(m::AbortPoolModel, state::EpiBranch.SimulationState)
-    return EpiBranch.gather_by_target(m, state)
 end
 function EpiBranch.contacts_of(m::AbortPoolModel, parent, state::EpiBranch.SimulationState)
     result = Tuple{eltype(state.individuals), Float64}[]

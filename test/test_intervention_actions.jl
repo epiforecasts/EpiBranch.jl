@@ -11,14 +11,13 @@ function EpiBranch.intervention_actions(iv::AppointmentAction, state, candidates
     ]
 end
 
-# A continuous-actions intervention with a custom `continuous_candidates`
-# method, narrowing its own candidates to a single, fixed person rather than
-# taking the default's "current plus everyone pending".
+# An intervention with an `action_candidates` method of its own, narrowing its
+# candidates to a single, fixed person rather than taking the default's
+# "current plus the contacts it can reach".
 struct SoleTargetAction <: EpiBranch.AbstractIntervention
     target::Int
 end
-EpiBranch.continuous_actions(::SoleTargetAction) = true
-function EpiBranch.continuous_candidates(
+function EpiBranch.action_candidates(
         iv::SoleTargetAction, state, current, traced, is_pending, members, contacts
     )
     return [state.individuals[iv.target]]
@@ -174,13 +173,13 @@ end
     # `a` settles first, tracing `ind` late.
     ind.state[:trace_time] = 20.0
     processed[1] = true
-    EpiBranch._apply_continuous_actions!(state, a, [rv], members, processed, contacts, nothing, [ind.id])
+    EpiBranch._apply_case_actions!(state, a, [rv], members, processed, contacts, nothing, [ind.id])
     @test ind.state[:vaccination_time] == 21.0
 
     # `b` settles next, despite having isolated, and so traced `ind`, earlier.
     ind.state[:trace_time] = 5.0
     processed[2] = true
-    EpiBranch._apply_continuous_actions!(state, b, [rv], members, processed, contacts, nothing, [ind.id])
+    EpiBranch._apply_case_actions!(state, b, [rv], members, processed, contacts, nothing, [ind.id])
     @test ind.state[:vaccination_time] == 6.0
     @test immunity_time(ind) == 9.0
 end
@@ -207,13 +206,13 @@ end
 
     ind.state[:trace_time] = 20.0
     processed[1] = true
-    EpiBranch._apply_continuous_actions!(state, a, [rv], members, processed, contacts, nothing, [ind.id])
+    EpiBranch._apply_case_actions!(state, a, [rv], members, processed, contacts, nothing, [ind.id])
     @test ind.state[boost_time] == 21.0
 
     # A trace at 5 would date the booster at 6, before the prime at 10.
     ind.state[:trace_time] = 5.0
     processed[2] = true
-    EpiBranch._apply_continuous_actions!(state, b, [rv], members, processed, contacts, nothing, [ind.id])
+    EpiBranch._apply_case_actions!(state, b, [rv], members, processed, contacts, nothing, [ind.id])
     @test ind.state[boost_time] == 21.0
 end
 
@@ -241,8 +240,14 @@ end
     @test only(EpiBranch.intervention_actions(rv, state, [recorded])).time == 7.0
 end
 
-EpiBranch.continuous_actions(::AppointmentAction) = true
-@testset "Continuous action boundaries" begin
+# Offered `current` and every member not yet settled, so the boundaries below
+# are drawn by settlement and timing alone.
+function EpiBranch.action_candidates(
+        ::AppointmentAction, state, current, traced, is_pending, members, contacts
+    )
+    return [state.individuals[id] for id in members if id == current.id || is_pending(id)]
+end
+@testset "Per-case action boundaries" begin
     state = EpiBranch.new_state(
         BranchingProcess(Poisson(0.0)),
         EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(18)
@@ -255,28 +260,22 @@ EpiBranch.continuous_actions(::AppointmentAction) = true
         ]
     )
     state.max_infection_time = 11.0
-    # `AppointmentAction` needs no named contacts (its candidates are the
-    # default: `current` and everyone not yet processed), so a `contacts`
-    # function is passed only to stand in for a model that supplies one;
+    # `AppointmentAction` needs no named contacts (its candidates are
+    # `current` and everyone not yet processed), so a `contacts` function is
+    # passed only to stand in for a model that supplies one;
     # `needs_contacts`'s conservative default would otherwise skip it on a
     # call with none, as a model without named contacts does on the race.
     contacts(id, state) = Int[]
-    EpiBranch._apply_continuous_actions!(
+    EpiBranch._apply_case_actions!(
         state, state.individuals[1],
         [AppointmentAction()], [1, 2, 3, 4], [true, false, true, false], contacts
     )
     @test [get(i.state, :attended, false) for i in state.individuals] ==
         [true, true, false, false]
-    @test EpiBranch._apply_continuous_actions!(
+    @test EpiBranch._apply_case_actions!(
         state, state.individuals[1], [],
         [1, 2, 3, 4], [true, false, true, false], contacts
     ) === nothing
-    @test !EpiBranch.continuous_actions(MassVaccination(efficacy = 0.8, eligibility_time = 1.0))
-    @test EpiBranch.continuous_actions(GroupVaccination(efficacy = 0.8))
-    @test EpiBranch.continuous_actions(RingVaccination(efficacy = 0.8))
-    @test EpiBranch.continuous_actions(RingVaccination(efficacy = 0.8, eligibility_window = 2.0))
-    @test EpiBranch.continuous_actions(RingVaccination(efficacy = 0.0, post_exposure_efficacy = 0.8))
-    @test EpiBranch.continuous_actions(Scheduled(RingVaccination(efficacy = 0.8); start_time = 1.0))
     @test EpiBranch.acts_on_population(MassVaccination(efficacy = 0.8, eligibility_time = 1.0))
     @test !EpiBranch.acts_on_population(GroupVaccination(efficacy = 0.8))
     @test !EpiBranch.acts_on_population(RingVaccination(efficacy = 0.8))
@@ -319,7 +318,7 @@ end
     current, other = state.individuals
     @test !EpiBranch.is_settled(state, current)
     @test !EpiBranch.is_settled(state, other)
-    EpiBranch._apply_continuous_actions!(
+    EpiBranch._apply_case_actions!(
         state, current, [AppointmentAction()], [1, 2], [true, false]
     )
     # `current`'s own round is done, so it is now settled; `other`, never the
@@ -349,7 +348,7 @@ EpiBranch.intervention_actions(::_UndeclaredAction, state, candidates) = nothing
 
     rv = RingVaccination(efficacy = 0.8)
     contacts = (id, st) -> id == 1 ? (2, 3) : ()
-    ring_candidates = EpiBranch.continuous_candidates(
+    ring_candidates = EpiBranch.action_candidates(
         rv, state, current, nothing, is_pending, members, contacts
     )
     @test length(ring_candidates) == 3
@@ -357,7 +356,7 @@ EpiBranch.intervention_actions(::_UndeclaredAction, state, candidates) = nothing
 
     # A wrapper such as `CapacityConstrained` forwards to the intervention it
     # wraps, instead of falling back to the default.
-    wrapped_candidates = EpiBranch.continuous_candidates(
+    wrapped_candidates = EpiBranch.action_candidates(
         CapacityConstrained(rv; budget_per_period = Inf),
         state, current, nothing, is_pending, members, contacts
     )
@@ -370,33 +369,21 @@ EpiBranch.intervention_actions(::_UndeclaredAction, state, candidates) = nothing
     for i in 4:n
         state.individuals[i].state[:group] = i
     end
-    group_candidates = EpiBranch.continuous_candidates(
+    group_candidates = EpiBranch.action_candidates(
         gv, state, current, nothing, is_pending, members, contacts
     )
     @test length(group_candidates) == 3
     @test Set(ind.id for ind in group_candidates) == Set([1, 2, 3])
 
-    # The default candidate strategy, used by any other custom
-    # `continuous_actions` intervention, keeps the wider (expensive)
-    # contract every still-pending member.
-    generic_candidates = EpiBranch.continuous_candidates(
-        AppointmentAction(), state, current, nothing, is_pending, members, contacts
-    )
-    @test length(generic_candidates) == n
-
-    # One that proposes actions without declaring `continuous_actions` is
-    # offered the case and the contacts it names, the ring's own set.
-    undeclared_candidates = EpiBranch.continuous_candidates(
+    # Any other intervention proposing actions is offered, by default, the
+    # case and the contacts it names, the ring's own set.
+    undeclared_candidates = EpiBranch.action_candidates(
         _UndeclaredAction(), state, current, nothing, is_pending, members, contacts
     )
     @test Set(ind.id for ind in undeclared_candidates) == Set([1, 2, 3])
 end
 
-@testset "A custom intervention can narrow its own continuous candidates" begin
-    # Before `continuous_candidates` was public, a custom `continuous_actions`
-    # intervention had no supported way to do what `RingVaccination` and
-    # `GroupVaccination` do: it always got the default, however few people it
-    # targeted.
+@testset "A custom intervention can narrow its own action candidates" begin
     n = 500
     members = collect(1:n)
     processed = falses(n)
@@ -409,9 +396,9 @@ end
     append!(state.individuals, [Individual(id = i) for i in 1:n])
 
     # `current` here is not the target: a custom method answers however it
-    # likes, not just the default's "current plus everyone pending".
+    # likes, not just the default's "current plus its contacts".
     current = state.individuals[2]
-    candidates = EpiBranch.continuous_candidates(
+    candidates = EpiBranch.action_candidates(
         SoleTargetAction(1), state, current, nothing, is_pending, members, nothing
     )
     @test length(candidates) == 1
@@ -501,53 +488,6 @@ end
         Scheduled(AppointmentAction(), st -> false),
         parent, contact, state
     ) === nothing
-end
-
-struct LegacyService <: EpiBranch.AbstractIntervention end
-EpiBranch.capacity_key(::LegacyService) = :served
-EpiBranch.capacity_time_key(::LegacyService) = :service_time
-function EpiBranch.apply_post_transmission!(::LegacyService, state, candidates)
-    for ind in candidates
-        ind.state[:visits] = get(ind.state, :visits, 0) + 1
-        get(ind.state, :served, false) && continue
-        get(ind.state, :eligible, true) || continue
-        ind.state[:served] = true
-        ind.state[:service_time] = state.max_infection_time + 10.0
-    end
-    return
-end
-
-@testset "Legacy batch admission remains supported" begin
-    state = EpiBranch.new_state(
-        BranchingProcess(Poisson(0.0)),
-        EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(18)
-    )
-    contacts = [Individual(id = i) for i in 1:5]
-    contacts[1].state[:eligible] = false
-    contacts[5].state[:served] = true
-    contacts[5].state[:service_time] = 0.0
-    append!(state.individuals, contacts)
-    cc = CapacityConstrained(
-        LegacyService(); budget_per_period = 2.0,
-        period = 10.0, carry_over = false
-    )
-    EpiBranch.apply_post_transmission!(cc, state, contacts)
-    @test [get(i.state, :served, false) for i in contacts] ==
-        [false, true, false, false, true]
-    @test contacts[1].state[:visits] == 1
-    @test contacts[5].state[:visits] == 1
-    @test contacts[2].state[:service_time] == 10.0
-    @test capacity_usage(cc, state) == (used = 2, available = 2.0)
-    state.max_infection_time = 10.0
-    @test capacity_usage(cc, state) == (used = 0, available = 2.0)
-    EpiBranch.apply_post_transmission!(cc, state, contacts[3:4])
-    @test all(i -> i.state[:served], contacts[2:5])
-    @test contacts[3].state[:service_time] == 20.0
-    @test contacts[3].state[:capacity_admission_time_served] == 10.0
-    @test capacity_usage(cc, state) == (used = 2, available = 2.0)
-    EpiBranch.apply_post_transmission!(cc, state, contacts[3:4])
-    @test contacts[3].state[:visits] == 2
-    @test capacity_usage(cc, state) == (used = 2, available = 2.0)
 end
 
 @testset "A dose recorded while pending is reconsidered once infection settles" begin

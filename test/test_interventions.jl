@@ -76,20 +76,6 @@ struct _UnboundedDelay <: ContinuousUnivariateDistribution end
 Base.rand(::AbstractRNG, ::_UnboundedDelay) = 30.0
 Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
 
-# Uses the deprecated whole-generation `apply_post_transmission!` hook but
-# still declares its own `intervention_time`, so a `Scheduled` wrapping it is
-# time-aware too.
-struct _TimedBatchDose <: AbstractIntervention end
-function EpiBranch.apply_post_transmission!(::_TimedBatchDose, state, new_contacts)
-    for c in new_contacts
-        c.state[:_dosed_at] = c.infection_time + 5.0
-    end
-    return nothing
-end
-EpiBranch.intervention_time(::_TimedBatchDose, ind::Individual) =
-    get(ind.state, :_dosed_at, -Inf)
-EpiBranch.reset!(::_TimedBatchDose, ind::Individual) = delete!(ind.state, :_dosed_at)
-
 @testset "Interventions" begin
     clinical = clinical_presentation(
         incubation_period = LogNormal(1.5, 0.5),
@@ -870,11 +856,11 @@ EpiBranch.reset!(::_TimedBatchDose, ind::Individual) = delete!(ind.state, :_dose
         @test !is_isolated(ind)
     end
 
-    @testset "A zero-length removal removes nobody on either engine" begin
+    @testset "A zero-length removal removes nobody" begin
         # A day-resolution duration can legitimately draw 0, so it is accepted
-        # and means no removal: the generation engine needs
-        # `event_t <= t < release_t` and blocks nothing, and the continuous-time
-        # engines find nothing to close a window with.
+        # and means no removal: a per-contact block needs
+        # `event_t <= t < release_t` and blocks nothing, and the race finds
+        # nothing to close a window with.
         iso = Isolation(
             onset_to_isolation_delay = Dirac(1.0), duration = Dirac(0.0)
         )
@@ -894,9 +880,9 @@ EpiBranch.reset!(::_TimedBatchDose, ind::Individual) = delete!(ind.state, :_dose
     end
 
     @testset "A removal duration must not be negative" begin
-        # A release before its own start reads as no removal on the generation
-        # engine and a permanent one on the continuous-time engines, so it is
-        # refused at the draw rather than left to disagree.
+        # A release before its own start would read as no removal to a
+        # per-contact block and as a permanent one to the race's window, so it
+        # is refused at the draw rather than left to disagree.
         rng = StableRNG(1)
         for bad in (-1.0, NaN)
             contact = Individual(id = 1)
@@ -1735,7 +1721,6 @@ EpiBranch.reset!(::_TimedBatchDose, ind::Individual) = delete!(ind.state, :_dose
                 state = Dict{Symbol, Any}(:traced => true, :trace_time => 5.0)
             )
             EpiBranch.initialise_individual!(rv, ind, state)
-            @test EpiBranch.continuous_actions(rv)
             action = only(EpiBranch.intervention_actions(rv, state, [ind]))
             action.effect!(ind, action.time, state)
             @test is_vaccinated(ind)
@@ -3573,23 +3558,6 @@ EpiBranch.reset!(::_TimedBatchDose, ind::Individual) = delete!(ind.state, :_dose
             EpiBranch.trace_contacts!(ct, state, infector, [contact])
             @test is_traced(contact)
             @test isolation_time(contact) == 11.0 # infector's isolation (4.0) plus the 7-day delay
-        end
-
-        @testset "start_time reaches a contact dosed through the deprecated batch hook before it, once its own dose time falls inside" begin
-            # The same check applies to the deprecated `apply_post_transmission!`
-            # hook: the running clock predates the policy, but each contact's
-            # own dose time is checked individually once the hook has run.
-            dosed = Scheduled(_TimedBatchDose(); start_time = 10.0)
-            early = Individual(id = 1, infection_time = 1.0) # dose time 6.0: outside
-            late = Individual(id = 2, infection_time = 6.0) # dose time 11.0: inside
-            state = SimulationState(
-                [early, late], Int[], 0, StableRNG(1), 0, false, nothing, 0.0, nothing,
-                AbstractClinicalTransition[]
-            )
-            state.max_infection_time = 0.0
-            EpiBranch.apply_post_transmission!(dosed, state, [early, late])
-            @test !haskey(early.state, :_dosed_at)
-            @test late.state[:_dosed_at] == 11.0
         end
 
         @testset "requires at least one condition" begin
