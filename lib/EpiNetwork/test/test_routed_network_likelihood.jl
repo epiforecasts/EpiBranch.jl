@@ -61,6 +61,35 @@ end
         @test_throws ArgumentError pairwise_surv_loglik(reverse(windows), data)
     end
 
+    @testset "a community hazard per node matches a shared one when all equal" begin
+        hh, comm = _routed_adjacency(30, 4)
+        windows = [
+            RouteWindow(:household; until = (:recovered,), kernel = Weibull(1.5, 4.0), reach = hh),
+            RouteWindow(:community; until = (:recovered,), kernel = Exponential(10.0), reach = comm),
+        ]
+        shared = ModelSpec(
+            RoutedNetwork(windows; external_hazard = 0.01, obs_end = 20.0);
+            progression = _sir(8.0)
+        )
+        per_node = ModelSpec(
+            RoutedNetwork(windows; external_hazard = fill(0.01, 120), obs_end = 20.0);
+            progression = _sir(8.0)
+        )
+        a = simulate(shared; rng = StableRNG(4))
+        b = simulate(per_node; rng = StableRNG(4))
+        @test [i.infection_time for i in a.individuals] ==
+            [i.infection_time for i in b.individuals]
+        data = routed_network_infections(a, shared)
+        @test loglikelihood(data, per_node) ≈ loglikelihood(data, shared)
+        # a node without a community hazard has no external term
+        silent = [0.0; fill(0.01, 119)]
+        @test pairwise_surv_loglik(windows, data; external_hazard = silent) !=
+            loglikelihood(data, shared)
+        @test_throws DimensionMismatch RoutedNetwork(
+            windows; external_hazard = fill(0.01, 119), obs_end = 20.0
+        )
+    end
+
     @testset "simulate → loglikelihood recovers both routes' kernel scales jointly" begin
         # survival sums the two routes' hazards and the event term is a
         # log-sum-exp across them: fitting both scales at once is the sharpest

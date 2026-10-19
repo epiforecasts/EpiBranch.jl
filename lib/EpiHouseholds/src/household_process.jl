@@ -42,7 +42,11 @@ the states that end the infectious period.
 
 `external_hazard` is infection from the community: a constant rate per person
 per day, or a distribution of the time (in days) at which each person would be
-infected from outside, for a rate that changes over time. These introductions
+infected from outside, for a rate that changes over time. To let it differ
+between people, households or trial arms, give a vector with one rate or
+distribution per person, or a function `j -> rate or distribution` of person
+`j`'s number, as the kernel is a function of two people's numbers. A person
+with a zero rate is never infected from outside. These introductions
 happen only in the first `obs_end` days, which must be finite when
 `external_hazard` is used. Without an external hazard, each household starts
 with one index case at day 0, unless `initial_cases` is given, in which case
@@ -134,8 +138,7 @@ function HouseholdProcess(
         obs_end = Inf
     )
     all(s -> s >= 1, sizes) || throw(ArgumentError("household sizes must be ≥ 1"))
-    _valid_external(external_hazard) ||
-        throw(ArgumentError("external_hazard must be a non-negative number or a continuous distribution"))
+    _check_external(external_hazard, sum(sizes))
 
     household_of = Int[]
     members = Vector{Int}[]

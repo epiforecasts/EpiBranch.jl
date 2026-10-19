@@ -328,6 +328,9 @@ end
     @test !EpiBranch.is_settled(state, other)
 end
 
+struct _UndeclaredAction <: AbstractIntervention end
+EpiBranch.intervention_actions(::_UndeclaredAction, state, candidates) = nothing
+
 @testset "Continuous-time candidates scale with the ring or group, not the population" begin
     # A settled case's own ring or group is tiny; most of the population is
     # neither traced by it nor in its group, and must never be materialised
@@ -380,6 +383,13 @@ end
         AppointmentAction(), state, current, nothing, is_pending, members, contacts
     )
     @test length(generic_candidates) == n
+
+    # One that proposes actions without declaring `continuous_actions` is
+    # offered the case and the contacts it names, the ring's own set.
+    undeclared_candidates = EpiBranch.continuous_candidates(
+        _UndeclaredAction(), state, current, nothing, is_pending, members, contacts
+    )
+    @test Set(ind.id for ind in undeclared_candidates) == Set([1, 2, 3])
 end
 
 @testset "A custom intervention can narrow its own continuous candidates" begin

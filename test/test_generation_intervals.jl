@@ -48,15 +48,15 @@
     end
 
     @testset "Intervention-free run recovers the intrinsic mean (no depletion)" begin
-        # With NoPopulation and no interventions nothing is blocked, so the
-        # realised intervals are the raw generation-time draws.
+        # With NoPopulation and no interventions nothing is blocked, and
+        # subcritical outbreaks run to extinction rather than being cut off
+        # partway through an interval, so the realised intervals are the raw
+        # generation-time draws.
         rng = StableRNG(4)
         gt_mean = 5.0
-        model = BranchingProcess(Poisson(1.5), Exponential(gt_mean))
-        states = simulate(
-            model, 50; max_cases = 500,
-            rng = rng
-        )
+        model = BranchingProcess(Poisson(0.9), Exponential(gt_mean))
+        states = simulate(model, 1000; max_cases = nothing, rng = rng)
+        @test all(s -> s.extinct, states)
         gts = realised_generation_intervals(states)
         @test length(gts) > 5000
         @test isapprox(sum(gts) / length(gts), gt_mean; rtol = 0.05)

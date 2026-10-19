@@ -242,7 +242,7 @@ end
         for s in 1:20
             state = simulate(
                 ModelSpec(
-                    BranchingProcess((rng, ind) -> 4, Exponential(5.0));
+                    BranchingProcess(Dirac(4), Exponential(5.0));
                     interventions = [iso, ct], attributes = attrs
                 );
                 opts..., rng = StableRNG(s)
@@ -265,7 +265,7 @@ end
         )
         state = simulate(
             ModelSpec(
-                BranchingProcess((rng, ind) -> 4, Exponential(5.0));
+                BranchingProcess(Dirac(4), Exponential(5.0));
                 interventions = [ct], attributes = attrs
             );
             opts..., rng = StableRNG(1)
@@ -287,14 +287,14 @@ end
         )
         s1 = simulate(
             ModelSpec(
-                BranchingProcess((rng, ind) -> 4, Exponential(5.0));
+                BranchingProcess(Dirac(4), Exponential(5.0));
                 interventions = [ct1], attributes = attrs
             );
             opts..., rng = StableRNG(1)
         )
         s2 = simulate(
             ModelSpec(
-                BranchingProcess((rng, ind) -> 4, Exponential(5.0));
+                BranchingProcess(Dirac(4), Exponential(5.0));
                 interventions = [ct2], attributes = attrs
             );
             opts..., rng = StableRNG(1)
@@ -327,7 +327,7 @@ end
         )
         state = simulate(
             ModelSpec(
-                BranchingProcess((rng, ind) -> 4, Exponential(5.0));
+                BranchingProcess(Dirac(4), Exponential(5.0));
                 interventions = [ct], attributes = attrs
             );
             n_initial = 3, max_generations = 6, rng = StableRNG(7)
@@ -351,7 +351,7 @@ end
         rv = RingVaccination(efficacy = 0.9)
         state = simulate(
             ModelSpec(
-                BranchingProcess((rng, ind) -> 4, Exponential(5.0));
+                BranchingProcess(Dirac(4), Exponential(5.0));
                 interventions = [ct, rv], attributes = attrs
             );
             opts..., rng = StableRNG(3)
@@ -495,7 +495,7 @@ end
         )
         state = simulate(
             ModelSpec(
-                BranchingProcess((rng, ind) -> 4, Exponential(5.0));
+                BranchingProcess(Dirac(4), Exponential(5.0));
                 interventions = [ct], attributes = attrs
             );
             n_initial = 3, max_generations = 4, rng = StableRNG(1)

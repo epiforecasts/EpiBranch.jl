@@ -105,6 +105,12 @@ This differs from the time-varying reproduction number `Rt` estimated from an
 incidence time series; the two coincide only under strong assumptions. Use it
 to see how transmission falls from one generation to the next in a
 simulation, for example through depletion of susceptibles or interventions.
+
+In a run stopped by `max_cases` or `max_time`, the cases of the last
+generations have not made all their contacts, so the ratios for those
+generations are right-truncated and fall towards 0. A run bounded by
+`max_generations` alone (with `max_cases = nothing`) gives complete ratios up
+to the bound.
 """
 function generation_R(state::SimulationState)
     # Single-pass: count infected individuals per generation

@@ -217,6 +217,25 @@ function _usage_at(cc::CapacityConstrained, times, extra, at)
     return (used = used, available = available)
 end
 
+# Whether one more dose at `at` keeps every period within its allowance. With
+# `carry_over` a dose also counts against every later period, and the race
+# admits doses in the order cases settle rather than by date, so a period
+# that later doses already fill must still have room for this one.
+function _fits_budget(cc::CapacityConstrained, times, extra, at)
+    usage = _usage_at(cc, times, extra, at)
+    usage.used + 1 <= usage.available || return false
+    (cc.carry_over && isfinite(cc.period)) || return true
+    _, own_end = _period_bounds(cc, at)
+    for later in (@view(times[searchsortedfirst(times, own_end):end]), extra)
+        for t in later
+            t >= own_end || continue
+            u = _usage_at(cc, times, extra, t)
+            u.used + 1 <= u.available || return false
+        end
+    end
+    return true
+end
+
 function _capacity_usage(cc::CapacityConstrained, state, at = state.max_infection_time)
     return _usage_at(cc, _dose_times(cc, state), Float64[], at)
 end
@@ -254,6 +273,10 @@ function _discovers_actions(cc::CapacityConstrained)
         AbstractIntervention
     )
 end
+# Asked for its actions on every settled case even when the intervention it
+# wraps proposes none, so that wrapping one with nothing to ration fails when
+# the run starts rather than going unrationed (see `intervention_actions`).
+_proposes_actions(cc::CapacityConstrained) = !acts_on_population(cc)
 function apply_post_transmission!(cc::CapacityConstrained, state, new_contacts)
     actions = intervention_actions(cc, state, new_contacts)
     if actions !== nothing

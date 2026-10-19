@@ -52,8 +52,10 @@ the states that end the infectious period, so adding a
 
 `external_hazard` adds infections from outside the network: a constant rate
 per person per day, or a continuous distribution of the time (in days) at which
-each person would be infected from outside. These introductions happen only in
-the first `obs_end` days, which must be finite when `external_hazard` is used.
+each person would be infected from outside. To let it differ between people,
+give a vector with one rate or distribution per node, or a function `j -> rate
+or distribution` of node `j`'s number. These introductions happen only in the
+first `obs_end` days, which must be finite when `external_hazard` is used.
 
 # Example
 
@@ -83,8 +85,7 @@ function NetworkProcess(
     )
     adj = Vector{Int}[Int.(nbrs) for nbrs in adjacency]
     edge_kernel = _validate_kernel(kernel, adj)
-    _valid_external(external_hazard) ||
-        throw(ArgumentError("external_hazard must be a non-negative number or a continuous distribution"))
+    _check_external(external_hazard, length(adj))
     obs_end_value = Float64(obs_end)
     (!isnan(obs_end_value) && obs_end_value >= 0) || throw(
         ArgumentError(

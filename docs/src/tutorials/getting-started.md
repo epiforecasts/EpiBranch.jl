@@ -62,13 +62,16 @@ println("Cases: $(outbreak.cumulative_cases), Extinct: $(outbreak.extinct)")
 
 The simulation starts from one index case and stops when transmission dies out
 (`Extinct: true`) or the outbreak reaches `max_cases`. An outbreak stopped at
-the cap is recorded as not extinct, and because the last generation is
-completed before stopping, its case count can go past 500. Other limits are a number of generations (`max_generations`, 100 by
-default) and a time (`max_time`, in days).
+the cap is recorded as not extinct. A branching process stops at exactly
+`max_cases` cases, and the last cases have not yet made all their contacts.
+Other limits are a number of generations (`max_generations`, 100 by default)
+and a time (`max_time`, in days).
 
 The result holds one record per person (every case, and every potential
 secondary case that was not infected), plus summary information such as the
-total number of cases and whether the outbreak died out.
+total number of cases and whether the outbreak died out. A run stopped at the
+cap also keeps contacts whose infection was still undecided when it stopped,
+if an intervention had already reached them. Their infection time is `NaN`.
 
 ## Adding symptom onset
 
@@ -114,8 +117,10 @@ spec = ModelSpec(BranchingProcess(NegBin(2.5, 0.16), LogNormal(1.6, 0.5));
 rng = StableRNG(18)
 outbreak = simulate(spec; max_cases = 500, rng = rng)
 println("Cases: $(outbreak.cumulative_cases), Extinct: $(outbreak.extinct)")
-println("Isolated or quarantined: $(count(is_isolated, outbreak.individuals))")
-println("Traced: $(count(is_traced, outbreak.individuals))")
+# Leave out contacts whose infection was undecided when the run stopped
+decided = filter(i -> isfinite(i.infection_time), outbreak.individuals)
+println("Isolated or quarantined: $(count(is_isolated, decided))")
+println("Traced: $(count(is_traced, decided))")
 ```
 
 `Exponential(θ)` has mean θ, here in days. The `action` says what happens to a
@@ -124,9 +129,11 @@ the time they are traced, even before they have symptoms. `duration` sets how
 long isolation and quarantine last. When it ends the person is released, and
 one who is still infectious can transmit again. Use `duration = Inf` for
 isolation or quarantine that is never lifted.
-`count(is_isolated, outbreak.individuals)` counts the people who were isolated
-or quarantined at some point, including quarantined contacts who were never
-infected. `Extinct` shows whether the measures ended transmission in this
+`count(is_isolated, decided)` counts the people who were isolated or
+quarantined at some point, including quarantined contacts who were never
+infected. `decided` leaves out the contacts whose infection was still
+undecided when the run stopped at the cap, which have no infection time;
+counted over `outbreak.individuals`, they would add 371 to each line. `Extinct` shows whether the measures ended transmission in this
 outbreak before it reached the cap.
 
 ## Estimating the containment probability
@@ -154,19 +161,24 @@ interventions all of them are infected, and the mean of `NegBin(2.5, 0.16)` is
 R. Isolation and quarantine prevent some of these infections. Fewer people are
 then infected than were drawn, and the reproduction number realised under
 control is below 2.5. The people whose infection was prevented stay in
-the results as contacts who were not infected:
+the results as contacts who were not infected. They keep the time at which
+they would have been infected, which tells them apart from the contacts whose
+infection was still undecided when the run reached the cap:
 
 ```@example gettingstarted
 n_total = length(outbreak.individuals)
 n_infected = count(is_infected, outbreak.individuals)
+n_prevented = count(i -> !is_infected(i) && isfinite(i.infection_time), outbreak.individuals)
 println("People in the simulation: $n_total")
 println("Infected (cases, including the index case): $n_infected")
-println("Potential secondary cases not infected: $(n_total - n_infected)")
+println("Potential secondary cases not infected: $n_prevented")
 ```
 
 The last line is the number of infections the interventions prevented in this
-outbreak. These people are not infected and the simulation draws no contacts
-for them. See [Isolation and contact tracing](interventions.md) for more.
+outbreak. The remaining 752 people are contacts whose infection was still
+undecided when the run stopped, kept because an intervention had already
+reached them. The simulation draws no contacts for anyone who is not
+infected. See [Isolation and contact tracing](interventions.md) for more.
 
 ## Tables of results
 
@@ -208,13 +220,21 @@ by the cases in this one. It is a rough within-simulation measure of how
 transmission changes as the measures take effect. It is not the time-varying
 reproduction number Rt estimated from incidence data.
 
+A run stopped by `max_cases` ends part-way through its last generations. Their
+cases have not yet infected everyone they would, and the ratio falls towards 0
+there whatever the measures do. The example below runs the same model with
+the same seed, bounded by six generations (`max_generations = 6`, with
+`max_cases = nothing` to remove the case cap). Every case before the sixth
+generation then has all its contacts decided, and each ratio is complete:
+
 ```@example gettingstarted
-r_df = generation_R(outbreak)
+bounded = simulate(spec; max_cases = nothing, max_generations = 6, rng = StableRNG(18))
+r_df = generation_R(bounded)
 r_df
 ```
 
-This outbreak escaped control and reached the case cap, and its ratio stays
-above 1. In an outbreak the measures contain, the ratio falls below 1 in the
+This outbreak escaped control, growing to 771 cases in six generations, and
+its ratio stays above 1. In an outbreak the measures contain, the ratio falls below 1 in the
 later generations. With few cases per generation and strong superspreading it
 also jumps about from one generation to the next.
 
