@@ -36,9 +36,9 @@ end
 end
 
 @testset "reinfection redraws from the reinfected host's own external hazard" begin
-    # single-member households rule out household spread, so every episode,
-    # first or repeat, must come from the community; only person 1's hazard is
-    # above zero, so only they should ever be infected
+    # single-member households rule out household spread: every episode,
+    # first or repeat, must come from the community. Only person 1's hazard
+    # is above zero, so only they should ever be infected
     n = 150
     rates = [j == 1 ? 0.3 : 0.0 for j in 1:n]
     model = ModelSpec(
