@@ -178,12 +178,12 @@ Sample an observed chain size: draw a true size from `base`, thin it to a
 are detected, matching the conditioning `logpdf` applies.
 """
 function Base.rand(rng::AbstractRNG, d::ThinnedChainSize)
-    while true
+    obs = 0
+    while obs == 0
         n = rand(rng, d.base)
         obs = rand(rng, Binomial(n, d.detection_prob))
-        obs > 0 && return obs
     end
-    return
+    return obs
 end
 
 """
