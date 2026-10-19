@@ -102,6 +102,64 @@ function has_single_type_law(model::TransmissionModel)
         rethrow()
     end
 end
+
+"""
+    offspring_law_unchanged(x) -> Bool
+
+Whether `x` leaves a model's single-type offspring law exactly as the
+offspring distribution draws it, with nothing reshaping how many of the
+drawn contacts end up as cases. `loglikelihood(::ChainSizes, model)`,
+[`chain_size_distribution`](@ref) and the closed-form incidence likelihood
+take their analytical path, scoring the bare offspring distribution, only
+once the process, every entry of `attributes` and every `progression`
+transition each answer `true` here; any one of them answering `false` sends
+the evaluation to simulation instead.
+
+For an attribute or a progression transition, the default is `true`: most of
+what either can hold — the natural history, population characteristics such
+as age or a group label, reporting — has no bearing on the offspring law at
+all. [`transmission_traits`](@ref) overrides it to `false` once
+susceptibility or infectiousness departs from its neutral value of 1, since
+either one thins how many of the drawn contacts actually become cases. A
+`Tuple` or `AbstractVector` of attributes answers `true` only once every
+entry does.
+
+A bare `Function` or closure answers the conservative `false` instead,
+whatever it does: an `attributes` entry can set `ind.susceptibility` or
+`ind.infectiousness` directly rather than going through
+[`transmission_traits`](@ref) (its docstring recommends exactly this for
+rules it doesn't cover), and this trait has no way to tell that apart from
+one that leaves them alone. [`demographics`](@ref) and [`groups`](@ref)
+return a dedicated callable type rather than a closure so they keep the
+`true` default; give a custom attributes function one too if it should.
+
+A custom [`AbstractClinicalTransition`](@ref) answers the same conservative
+`false`, for the same reason: `initialise_individual!` and
+`resolve_individual!` receive the case directly and can set its
+susceptibility or infectiousness just as a bare attributes function can. The
+five built-in transitions ([`Transition`](@ref), [`Reporting`](@ref),
+[`Hospitalisation`](@ref), [`Recovery`](@ref), [`Death`](@ref)) touch neither
+field; each overrides it back to `true`, and one of your own that doesn't
+touch them either should do the same.
+
+For a [`TransmissionModel`](@ref) the default is the conservative `false`
+instead, as for [`EpiBranch.infection_likelihood_compatible`](@ref): a new
+model opts in once it has checked that nothing of its own — a finite
+population, a window that can close early, or anything else — reshapes the
+offspring law away from the bare distribution. [`BranchingProcess`](@ref)
+opts in except for a finite `population_size` (fewer susceptible people than
+an unlimited offspring law assumes) or an infectiousness window with a
+non-empty `until` (transmission can stop before every drawn contact
+happens).
+"""
+offspring_law_unchanged(::Any) = true
+offspring_law_unchanged(::Function) = false
+offspring_law_unchanged(::TransmissionModel) = false
+offspring_law_unchanged(::AbstractClinicalTransition) = false
+function offspring_law_unchanged(xs::Union{Tuple, AbstractVector})
+    return all(offspring_law_unchanged, xs)
+end
+
 n_types(::TransmissionModel) = 1
 
 # The offspring specification the analytical helpers dispatch on. By default it

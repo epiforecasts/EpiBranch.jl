@@ -337,10 +337,14 @@ function _chain_size_model_loglik(
     # Chain size depends only on the offspring law (and the observation), so the
     # analytical form is exact whenever the offspring is the single-type one and
     # nothing thins transmission. Interventions thin it, hence the `ivs` check;
-    # progression and attributes don't touch the offspring, so they need none.
-    # Structured/depleting models have no single-type offspring, hence the
-    # `has_single_type_law` check, and the evaluation falls through to simulation.
-    if isempty(ivs) && has_single_type_law(process)
+    # structured/depleting models have no single-type offspring, hence the
+    # `has_single_type_law` check; a finite population, a window with `until`,
+    # susceptibility/infectiousness off 1, or anything else that reshapes the
+    # offspring law is caught by `offspring_law_unchanged`, asked of the
+    # process, the attributes and every progression transition. Any of these
+    # failing falls through to simulation.
+    if isempty(ivs) && has_single_type_law(process) && offspring_law_unchanged(process) &&
+            offspring_law_unchanged(attrs) && all(offspring_law_unchanged, prog)
         try
             d = observe(
                 _fold_reporting(
@@ -433,9 +437,11 @@ function _chain_length_model_loglik(
         )
     )
     n_initial >= 1 || throw(ArgumentError("n_initial must be ≥ 1"))
-    # Analytical iff no interventions thin transmission, as for chain size above;
-    # progression and attributes don't affect the offspring law.
-    if isempty(ivs)
+    # Analytical iff no interventions thin transmission, as for chain size
+    # above, and the process, attributes and progression each leave the
+    # offspring law unchanged (see `offspring_law_unchanged`).
+    if isempty(ivs) && offspring_law_unchanged(process) && offspring_law_unchanged(attrs) &&
+            all(offspring_law_unchanged, prog)
         try
             return loglikelihood(data, single_type_offspring(process); n_initial)
         catch e

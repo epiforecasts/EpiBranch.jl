@@ -24,6 +24,10 @@ Base.@kwdef struct Recovery{D, F} <: AbstractClinicalTransition
     from::F = :onset_time
 end
 
+# Only writes recovery outcome state; never touches susceptibility or
+# infectiousness.
+offspring_law_unchanged(::Recovery) = true
+
 required_fields(r::Recovery) = _from_required(r.from)
 is_terminal(::Recovery) = true
 terminal_target(::Recovery) = :recovered
@@ -130,6 +134,10 @@ Base.@kwdef struct Death{D, P, F} <: AbstractClinicalTransition
     probability::P
     from::F = :onset_time
 end
+
+# Only writes death outcome state; never touches susceptibility or
+# infectiousness.
+offspring_law_unchanged(::Death) = true
 
 required_fields(d::Death) = _from_required(d.from)
 is_terminal(::Death) = true

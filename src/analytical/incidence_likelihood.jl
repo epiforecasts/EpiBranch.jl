@@ -672,12 +672,15 @@ probability and delay, and one timed from onset (the default) adds the
 model's [`clinical_presentation`](@ref) incubation period to the delay and
 counts only the cases that are not asymptomatic.
 
-Only defined for a model with no interventions, a single infectiousness
-window, and either no progression or a `Reporting` step as its only one,
-with a fixed probability and delay. An outcome or another transition can end
-a case before its report, which the closed form, assuming each case is
-reported independently, does not represent. Each of these limits throws an
-`ArgumentError` naming the reason instead of a silent approximation. Simulate [`weekly_incidence`](@ref) (or daily, by
+Only defined for a model with no interventions, an unlimited
+`population_size`, a single infectiousness window with no `until`,
+attributes that leave the offspring law unchanged (see
+[`EpiBranch.offspring_law_unchanged`](@ref)), and either no progression or a
+`Reporting` step as its only one, with a fixed probability and delay. An
+outcome or another transition can end a case before its report, which the
+closed form, assuming each case is reported independently, does not
+represent. Each of these limits throws an `ArgumentError` naming the reason
+instead of a silent approximation. Simulate [`weekly_incidence`](@ref) (or daily, by
 passing a weekly `condition`) and compare empirically for a model outside
 these limits.
 """
@@ -690,6 +693,16 @@ function loglikelihood(
             "loglikelihood(IncidenceCounts, model with interventions) has no closed form: " *
                 "interventions reshape transmission over time in ways this likelihood does " *
                 "not represent. Simulate instead."
+        )
+    )
+    offspring_law_unchanged(model) && offspring_law_unchanged(attributes(model)) &&
+        all(offspring_law_unchanged, _progression(model)) || throw(
+        ArgumentError(
+            "loglikelihood(IncidenceCounts, model) has no closed form: a finite " *
+                "population_size, an infectiousness window with `until`, or an " *
+                "attribute (such as transmission_traits away from its neutral value) " *
+                "reshapes transmission over time in a way this likelihood does not " *
+                "represent. Simulate instead."
         )
     )
     reporting = _incidence_reporting(model)

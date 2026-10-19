@@ -37,6 +37,10 @@ Base.@kwdef struct Hospitalisation{D, P, F} <: AbstractClinicalTransition
     from::F = :onset_time
 end
 
+# Only writes `:admitted`/`:admission_time`; never touches susceptibility or
+# infectiousness.
+offspring_law_unchanged(::Hospitalisation) = true
+
 required_fields(h::Hospitalisation) = _from_required(h.from)
 
 function initialise_individual!(::Hospitalisation, individual, state)

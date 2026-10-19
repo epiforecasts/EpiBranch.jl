@@ -270,7 +270,9 @@ function chain_size_distribution(
     # single-type law to fall back on in the first place. The model's
     # observation is applied analytically via `observe`.
     if seeds === nothing && prob_concluded === nothing && isempty(kwargs) &&
-            isempty(interventions(model)) && has_single_type_law(model)
+            isempty(interventions(model)) && has_single_type_law(model) &&
+            offspring_law_unchanged(model) && offspring_law_unchanged(attributes(model)) &&
+            all(offspring_law_unchanged, _progression(model))
         base = chain_size_distribution(single_type_offspring(model))
         # Only the `Reporting`-reading step can fail here (e.g. a callable
         # per-individual probability); fall through to the simulation-based
@@ -296,7 +298,9 @@ function chain_size_distribution(
         prob_concluded = nothing, kwargs...
     )
     if seeds === nothing && prob_concluded === nothing && isempty(kwargs) &&
-            isempty(interventions(spec)) && has_single_type_law(spec)
+            isempty(interventions(spec)) && has_single_type_law(spec) &&
+            offspring_law_unchanged(spec) && offspring_law_unchanged(attributes(spec)) &&
+            all(offspring_law_unchanged, _progression(spec))
         base = chain_size_distribution(single_type_offspring(spec.process))
         folded = try
             _fold_reporting(_progression(spec), base, observation(spec))

@@ -1,3 +1,8 @@
+# A callable struct, not a bare closure, so offspring_law_unchanged keeps its
+# default true instead of conservatively assuming it touches transmission.
+struct _RiskFromAge end
+(::_RiskFromAge)(rng, ind) = (ind.state[:risk] = ind.state[:age] > 60)
+
 @testset "Incidence likelihood" begin
     @testset "IncidenceCounts constructor" begin
         @test IncidenceCounts([1, 2, 3]).data == [1, 2, 3]
@@ -241,6 +246,18 @@
             Infectiousness(offspring; kernel = gt), Infectiousness(offspring; kernel = gt)
         )
         @test_throws ArgumentError loglikelihood(data, multi_window)
+
+        # A finite population, a window with `until`, or susceptibility off 1
+        # each reshape transmission over time away from the bare offspring
+        # law, so none of them has a closed form here either.
+        finite_pop = BranchingProcess(offspring, gt; population_size = 1000)
+        @test_throws ArgumentError loglikelihood(data, finite_pop)
+
+        windowed = BranchingProcess(Infectiousness(offspring; until = (:recovered,), kernel = gt))
+        @test_throws ArgumentError loglikelihood(data, windowed)
+
+        with_traits = ModelSpec(model; attributes = transmission_traits(susceptibility = 0.5))
+        @test_throws ArgumentError loglikelihood(data, with_traits)
     end
 
     @testset "IncidenceCounts by type" begin
@@ -408,7 +425,7 @@
         reads_age = ModelSpec(
             process;
             attributes = [
-                demographics(), (rng, ind) -> (ind.state[:risk] = ind.state[:age] > 60),
+                demographics(), _RiskFromAge(),
                 clinical_presentation(incubation_period = inc),
             ],
             progression = [Reporting(delay = rd, probability = 0.7)]
