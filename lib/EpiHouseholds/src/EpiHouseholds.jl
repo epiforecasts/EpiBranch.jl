@@ -37,7 +37,7 @@ import EpiBranch: removal_gap_host_times, removal_block_probability, removal_str
 import EpiBranch: pairwise_surv_loglik, _ext_active, _ext_draw, _check_external,
     _normalise_external
 
-export HouseholdProcess, household_sizes
+export HouseholdProcess, household_sizes, household_members, external_hazard, observation_end
 export HouseholdInfections, household_infections
 export PairwiseSurvivalData, pairwise_surv_loglik
 export HouseholdPairsLayout, compile_household_pairs
