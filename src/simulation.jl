@@ -163,11 +163,11 @@ end
 
 # Takes the interventions as a tuple, so the calls made on every generation
 # are resolved once per outbreak rather than once per generation. The time
-# bound (if any `MaxTime` rule is given) is stashed on `state.scratch` for
-# `collect_exposures` to read, since that is a public extension point whose
-# signature takes only `(model, state)`.
+# bound (if any `MaxTime` rule is given) is stashed on `state._max_time_bound`
+# for `collect_exposures` to read, since that is a public extension point
+# whose signature takes only `(model, state)`.
 function _run_generations!(model, state, sim_opts, interventions, intervention_tuple)
-    state.scratch[_MAX_TIME_BOUND] = _max_time(sim_opts)
+    state._max_time_bound = _max_time(sim_opts)
     while !should_terminate(state, sim_opts)
         _advance_generation!(model, state, interventions, intervention_tuple)
     end
@@ -175,7 +175,7 @@ function _run_generations!(model, state, sim_opts, interventions, intervention_t
     # not the whole outbreak (see `_past_time_bound!`), so the active set can
     # empty out from that alone; an outbreak cut short this way is no more
     # "extinct" than one stopped by `max_cases` or `max_generations`.
-    get(state.scratch, _MAX_TIME_CAPPED, false) && (state.extinct = false)
+    state._max_time_capped && (state.extinct = false)
     return state
 end
 
@@ -283,13 +283,6 @@ function _max_time(sim_opts)
     return minimum(time_bound(r) for r in sim_opts.stopping_rules; init = Inf)
 end
 
-# Scratch keys the generation-based engine uses to carry the time bound of a
-# run (set once in `_run_generations!`) to `collect_exposures`, a public
-# extension point whose signature takes only `(model, state)`, and to record
-# whether any case's own offspring were suppressed by it.
-const _MAX_TIME_BOUND = :_max_time_bound
-const _MAX_TIME_CAPPED = :_max_time_capped
-
 """Whether `parent`'s own infection reached the time bound for the run: if
 so, it makes no further contacts, though the cases it already produced (even
 past the bound) stay counted. Flags the run as cut short rather than extinct
@@ -299,8 +292,8 @@ survive even when generation times are spread out enough to put another
 case well after it."""
 function _past_time_bound!(state::SimulationState, parent::Individual)
     is_infected(parent) || return false
-    parent.infection_time < get(state.scratch, _MAX_TIME_BOUND, Inf) && return false
-    state.scratch[_MAX_TIME_CAPPED] = true
+    parent.infection_time < state._max_time_bound && return false
+    state._max_time_capped = true
     return true
 end
 
