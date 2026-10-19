@@ -277,11 +277,17 @@ function _draw_contacts!(o::_Offspring, race, ind, max_generation, born::Bool)
     isfinite(from_t) || return first_place:(first_place - 1)
     (; state) = race
     counts = draw_offspring(state.rng, o.window.offspring, ind, state)
-    kernel = _has_contacts(counts) ?
-        get_generation_time(o.window.kernel, ind) : NoGenerationTime()
+    kernel = _window_kernel(counts, o.window.kernel, ind)
     _draw_counts!(o, race, ind, counts, from_t, kernel, born)
     return first_place:length(o.tree)
 end
+
+# The kernel to draw each contact's time from: none for a case with no
+# contacts to time, and none either for `OffspringTimes`, whose times are
+# already given, so `o.window.kernel` goes unread and uncalled for it.
+_window_kernel(counts, window_kernel, ind) =
+    _has_contacts(counts) ? get_generation_time(window_kernel, ind) : NoGenerationTime()
+_window_kernel(::OffspringTimes, window_kernel, ind) = NoGenerationTime()
 
 # Single-type: one count. Multi-type: a count per type.
 function _draw_counts!(o::_Offspring, race, ind, n::Int, from_t, kernel, born)
@@ -295,6 +301,18 @@ function _draw_counts!(
     )
     for (type_idx, n) in enumerate(counts), _ in 1:n
         _draw_contact!(o, race, ind, from_t, kernel, type_idx, born)
+    end
+    return nothing
+end
+# `OffspringTimes`: each contact's offset from `from_t` is already known, so
+# it stands in for `kernel` in `_draw_contact!`, which `_window_infection_time`
+# resolves to a time with no draw. `kernel` itself (always `NoGenerationTime`
+# here, from `_window_kernel`) is unused.
+function _draw_counts!(
+        o::_Offspring, race, ind, times::OffspringTimes, from_t, kernel, born
+    )
+    for Δt in times.times
+        _draw_contact!(o, race, ind, from_t, Δt, 0, born)
     end
     return nothing
 end

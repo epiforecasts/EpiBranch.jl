@@ -522,8 +522,12 @@ function _materialise_offspring!(
 end
 
 # A contact's infection time is the window's `from`-state time plus a draw
-# from its kernel (the contact interval measured from `from`).
+# from its kernel (the contact interval measured from `from`), or the time
+# an `OffspringTimes` already gave, for which `offspring_route.jl` passes the
+# bare offset here in place of a kernel so `_draw_contact!` need not branch on
+# where the offset came from.
 _window_infection_time(::NoGenerationTime, from_t::Real, state) = from_t
+_window_infection_time(offset::Real, from_t::Real, state) = from_t + offset
 function _window_infection_time(kernel::Distribution, from_t::Real, state)
     return from_t + rand(state.rng, kernel)
 end
