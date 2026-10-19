@@ -258,12 +258,14 @@ listing `Transition(:susceptible_again, from = :recovered, delay = Exponential(1
 writes `:susceptible_again_time`, which [`susceptible_again_time`](@ref) reads
 and [`EpiBranch.HostImmunity`](@ref) checks. Storage is a separate matter:
 [`Individual`](@ref)'s fields describe only the current infection episode, so
-a model whose `contacts_of` offers an already-infected person as a contact
-again (once `HostImmunity` lets the exposure through) gets the closing episode
-archived onto `episodes` instead of overwritten; see
-[`InfectionEpisode`](@ref). No built-in model does this yet. A model that allows
-reinfection writes `contacts_of` to keep offering people after their first
-infection, instead of leaving them out.
+a contact offered as a target again (once `HostImmunity` lets the exposure
+through) gets the closing episode archived onto `episodes` instead of
+overwritten; see [`InfectionEpisode`](@ref). The continuous-time models
+(network, household, homogeneous, mixing) do this on their own the moment the
+`progression` reaches `:susceptible_again`, with no change to how they name
+targets or contacts. On the generation engine a model allows reinfection by
+writing its own `contacts_of` to keep offering people after their first
+infection, instead of leaving them out; no built-in model does that yet.
 
 ## Continuous-time models: further details
 

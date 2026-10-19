@@ -1037,6 +1037,15 @@ function _at_case!(state::SimulationState, case, count)
 end
 
 function _resolve_interventions!(state::SimulationState, case, interventions)
+    # A reinfection (`case.episodes` already holds the earlier one, closed
+    # before this call) gets a fresh `initialise_individual!` first. That
+    # keeps per-episode draws such as `Isolation`'s `:test_positive` specific
+    # to the new episode, rather than left over from the one before it.
+    if !isempty(case.episodes)
+        for intervention in interventions
+            initialise_individual!(intervention, case, state)
+        end
+    end
     for intervention in interventions
         resolve_individual!(intervention, case, state)
     end
@@ -1516,12 +1525,15 @@ end
 
 """Immunity after infection: a person who has been infected cannot be
 infected again until [`susceptible_again_time`](@ref), which is `Inf` (never)
-unless a natural-history step sets it. None of the built-in models exposes an
-infected person again, so this matters only for a new model that does,
-through its own [`contacts_of`](@ref). Such a model allows reinfection by
-adding a step to its `progression` that sets `:susceptible_again_time`; the
-earlier infection is then kept as a past episode (see
-[`close_episode!`](@ref)) when the person is reinfected."""
+unless a natural-history step sets it. On the generation engine this matters
+only for a model that exposes an infected person again through its own
+[`contacts_of`](@ref); the continuous-time models (`HomogeneousProcess`,
+`MixingProcess`, `HouseholdProcess`, the network processes) apply it to every
+settled member on their own, once their `progression` can reach
+`:susceptible_again`, with no change needed to how they name contacts. Either
+way, a model allows reinfection by adding a step to its `progression` that
+sets `:susceptible_again_time`; the earlier infection is then kept as a past
+episode (see [`close_episode!`](@ref)) when the person is reinfected."""
 struct HostImmunity end
 function competing_risk(::HostImmunity, parent, contact, state)
     is_infected(contact) || return nothing
@@ -1575,18 +1587,21 @@ function _builtin_risk_blocks(parent, contact, state, transmission_time)
     return false
 end
 
-# The built-in sources the continuous-time models compose. Only one of the six
-# applies there. Three are the generation engine's own and can never apply: an
-# infector on those models has settled and so is infected by construction,
+# The built-in sources the continuous-time models compose. Only two of the six
+# apply there. Two are the generation engine's own and can never apply: an
+# infector on those models has settled and so is infected by construction, and
 # route censoring is the infectious window's job rather than a tag written on a
-# contact, and a candidate the race proposes is always one not yet settled,
-# hence never already infected either — the race has nowhere yet to put a
-# second episode even once a model wants to offer one. The other two, the
-# per-individual susceptibility and infectiousness, are rate multipliers on
-# those models rather than per-contact blocks: each one
-# scales the hazard a pair meets at (`_traits_scaled_draw`) or the pressure a
-# susceptible absorbs, so resolving them here again would count them twice.
+# contact. The other two, the per-individual susceptibility and
+# infectiousness, are rate multipliers on those models rather than per-contact
+# blocks: each one scales the hazard a pair meets at (`_traits_scaled_draw`)
+# or the pressure a susceptible absorbs, so resolving them here again would
+# count them twice. `HostImmunity` does apply: a candidate the race proposes
+# can be a settled member offered again once the race allows reinfection (see
+# `_allows_reinfection` in sellke.jl), and this is where that candidate is
+# held back until `susceptible_again_time`.
 function _sellke_builtin_risk_blocks(parent, contact, state, transmission_time)
+    _risk_blocks(HostImmunity(), parent, contact, state, transmission_time) &&
+        return true
     return _risk_blocks(AbortedInfection(), parent, contact, state, transmission_time)
 end
 

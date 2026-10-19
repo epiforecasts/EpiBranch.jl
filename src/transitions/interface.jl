@@ -431,10 +431,20 @@ function transition_time(rng, individual, start_time, delay; probability = nothi
     return start_time + _resolve_delay(delay, rng, individual)
 end
 
+# Set on an individual's own state by `_reinfection_probe` (sellke.jl) to
+# mark its disposable probe individual: every `probability` gate the probe
+# meets is then taken unless its probability is exactly zero, rather than
+# left to the probe's one real draw. Carried on the individual rather than
+# `rng`, since a custom transition's gate is only ever reached through
+# `transition_time(rng, individual, ...)`, which has no `state` argument
+# through which it could otherwise learn it is being probed.
+const _REINFECTION_PROBE_KEY = :_reinfection_probing
+
 function _transition_selected(rng, individual, start_time, probability)
     _anchor_ok(start_time) || return false
     probability === nothing && return true
     p = _resolve_probability(probability, rng, individual)
+    get(individual.state, _REINFECTION_PROBE_KEY, false) && return p > 0
     return rand(rng) < p
 end
 
