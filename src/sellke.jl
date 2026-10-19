@@ -959,18 +959,19 @@ without any of the route's declared `watches` moving — the declaration is
 checked rather than trusted. `nothing`, the default, is a model with no such
 kernel at all.
 
-`introduction`, when given, is the `(kernel, until)` of the community hazard the
-model seeded its members from: the contact-interval distribution of an
-introduction from outside the population, and the time the introduction window
-closes. It says that a seeded time is a community introduction rather than an
-index case, so the risks that act on the person are resolved against it — a
-vaccinated person is protected from the community as from a neighbour — and a
-blocked introduction is followed by the next one from the same hazard. The risks
-of isolation and quarantine are not: they
-stand in for removing an infector, and an introduction's source is outside the
-population. Omit `introduction` for a model whose seeds are index cases, which
-are put to no risk at all. An introduced case's `:infection_route` is
-`:external`, including on a model that also names routes.
+`introduction`, when given, is the `(source, until)` of the community hazard the
+model seeded its members from: `source` is whatever `external_hazard` accepts
+— a shared rate or distribution, or one that differs by person (a vector, or a
+function of a person's number) — and `until` is the time the introduction
+window closes. It says that a seeded time is a community introduction rather
+than an index case, so the risks that act on the person are resolved against
+it — a vaccinated person is protected from the community as from a neighbour —
+and a blocked introduction is followed by the next one from the same person's
+hazard. The risks of isolation and quarantine are not: they stand in for
+removing an infector, and an introduction's source is outside the population.
+Omit `introduction` for a model whose seeds are index cases, which are put to
+no risk at all. An introduced case's `:infection_route` is `:external`,
+including on a model that also names routes.
 
 `max_time` ends the race at that time: individuals whose infection would fall
 later are left uninfected, and the state is exactly the full run's state
@@ -1245,7 +1246,8 @@ function _sellke_race!(
                     proposals[p] = _at(proposals[p], T(Inf))
                 else
                     if opening.route == 0
-                        kernel, close_t = introduction
+                        extsrc, close_t = introduction
+                        kernel = _ext_survival_for(extsrc, ind.id)
                         open_t = zero(T)
                         mult = ind.susceptibility
                     else

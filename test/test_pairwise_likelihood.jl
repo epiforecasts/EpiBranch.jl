@@ -209,6 +209,22 @@ end
             rand(StableRNG(1), Exponential(2.0))
         @test EpiBranch._ext_draw(StableRNG(1), Gamma(2.0, 3.0)) ==
             rand(StableRNG(1), Gamma(2.0, 3.0))
+
+        # a vector or a function of the person's number can vary the hazard
+        # between people, as the pair kernel's callable form does between pairs
+        rates = [0.01, 0.0, 0.02]
+        @test EpiBranch._valid_external(rates)
+        @test !EpiBranch._valid_external([0.01, -0.02])
+        f(j) = j == 2 ? Gamma(2.0, 3.0) : 0.01
+        @test EpiBranch._valid_external(f)
+        @test EpiBranch._ext_active(rates)      # any entry positive
+        @test !EpiBranch._ext_active([0.0, 0.0])
+        @test EpiBranch._ext_active(f)          # a function might give a positive rate
+        @test EpiBranch._ext_for(rates, 2) == 0.0
+        @test EpiBranch._ext_for(f, 2) == Gamma(2.0, 3.0)
+        @test EpiBranch._ext_for(f, 1) == 0.01
+        @test EpiBranch._ext_survival_for(rates, 1) == Exponential(1 / 0.01)
+        @test EpiBranch._ext_survival_for(f, 2) == Gamma(2.0, 3.0)
     end
 
     @testset "layout on a household partition" begin
@@ -400,6 +416,16 @@ end
             @test pairwise_surv_loglik(k, data, L; external_hazard = ext) ≈
                 pairwise_surv_loglik(rowk, rows)
         end
+
+        # a vector or a function of the person's number varies the community
+        # hazard between people, as a cluster-randomised trial's arms would
+        sus = [1, 2, 2, 3, 3, 3, 4]
+        rates = [0.05, 0.2, 0.01, 0.1]
+        rowk_by_person = r -> is_ext[r] ? Exponential(1 / rates[sus[r]]) : k
+        reference = pairwise_surv_loglik(rowk_by_person, rows)
+        @test pairwise_surv_loglik(k, data, L; external_hazard = rates) ≈ reference
+        @test pairwise_surv_loglik(k, data, L; external_hazard = j -> rates[j]) ≈
+            reference
     end
 
     @testset "a community case at time 0 is counted" begin

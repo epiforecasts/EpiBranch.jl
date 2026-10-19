@@ -1155,25 +1155,54 @@ end
 #
 # A model with a contact structure can also introduce cases from outside it: a
 # non-negative rate (a constant hazard) or a continuous distribution on the
-# non-negative reals (a calendar-time hazard). Its simulators and this likelihood
+# non-negative reals (a calendar-time hazard), shared by everyone, or one that
+# differs by person — a vector with one entry per person, or a function of a
+# person's number, for covariates that make a cluster-randomised arm's
+# community hazard differ from another's. Its simulators and this likelihood
 # share these helpers and agree on when the term applies and what it is.
 
 # A distribution with negative support is rejected, because introductions cannot
-# happen before time 0.
+# happen before time 0. A vector is valid when every entry is; a function is
+# trusted the way a pair kernel's callable form is, and validated when called.
 _valid_external(α::Real) = α >= 0
 _valid_external(d::ContinuousUnivariateDistribution) = minimum(d) >= 0
-_valid_external(_) = false
+_valid_external(v::AbstractVector) = all(_valid_external, v)
+_valid_external(f) = hasmethod(f, Tuple{Int})
 _normalise_external(α::Real) = Float64(α)
 _normalise_external(d::ContinuousUnivariateDistribution) = d
+_normalise_external(v::AbstractVector) = [_normalise_external(x) for x in v]
+_normalise_external(f) = f
 
-# The community hazard is off at a zero rate; a distribution is always on.
+# A per-person vector needs one entry per person; every other form answers for
+# any number of people, so it needs no length check.
+_valid_external_length(source, n) = true
+_valid_external_length(source::AbstractVector, n) = length(source) == n
+
+# The community hazard is off at a zero rate; a distribution is always on, as
+# is anything else (a vector of distributions, or a function, could give a
+# positive rate to someone, and checking that would mean calling it for every
+# person), except a vector of rates, checked directly.
 _ext_active(α::Real) = α > 0
 _ext_active(::ContinuousUnivariateDistribution) = true
+_ext_active(v::AbstractVector{<:Real}) = any(>(0), v)
+_ext_active(_) = true
+
+# The source narrowed to one person (by host id): a shared rate or distribution
+# answers the same for everyone, a vector is indexed by it, and a function
+# receives it, exactly as the within-structure kernel's callable form receives
+# the pair.
+_ext_for(source::Real, j) = source
+_ext_for(source::ContinuousUnivariateDistribution, j) = source
+_ext_for(source::AbstractVector, j) = source[j]
+_ext_for(source, j) = source(j)
 
 # The community hazard as a calendar-time survival distribution: a constant rate
 # α is `Exponential(1/α)` (hazard α, cumulative α·t); a distribution is itself.
 _ext_survival(α::Real) = Exponential(1 / α)
 _ext_survival(d::ContinuousUnivariateDistribution) = d
+
+# Person `j`'s community hazard as a calendar-time survival distribution.
+_ext_survival_for(source, j) = _ext_survival(_ext_for(source, j))
 
 # A community introduction time drawn under the hazard.
 _ext_draw(rng::AbstractRNG, source) = rand(rng, _ext_survival(source))
@@ -1271,10 +1300,29 @@ function _kernel_partype(kernel, layout, data, ::Type{T}) where {T}
     return T
 end
 
+# The parameter float type the community hazard adds to the accumulator, found
+# the same way `_kernel_partype` finds the within-structure kernel's: a shared
+# distribution gives it directly, and a per-person source (a vector or a
+# function) is probed on the first external row. With no external row the type
+# falls back to `T`.
+function _ext_partype(source::Real, layout, ::Type{T}) where {T}
+    return Distributions.partype(_ext_survival(source))
+end
+function _ext_partype(source::ContinuousUnivariateDistribution, layout, ::Type{T}) where {T}
+    return Distributions.partype(source)
+end
+function _ext_partype(source, layout, ::Type{T}) where {T}
+    for r in eachindex(layout.is_ext)
+        layout.is_ext[r] || continue
+        return Distributions.partype(_ext_survival_for(source, layout.sus[r]))
+    end
+    return T
+end
+
 # Validation and type promotion shared by the layout-based forms of
-# `pairwise_surv_loglik`: the community-hazard survival distribution, the time
-# to truncate at, and the number type the reduction runs in, promoted against
-# the kernel's parameter type so AD values in a fitted kernel survive it.
+# `pairwise_surv_loglik`: the community-hazard source, the time to truncate
+# at, and the number type the reduction runs in, promoted against the
+# kernel's parameter type so AD values in a fitted kernel survive it.
 function _pairwise_setup(kernel, data, layout::ContactPairsLayout, external_hazard)
     external = _ext_active(external_hazard)
     external == layout.external ||
@@ -1291,7 +1339,9 @@ function _pairwise_setup(kernel, data, layout::ContactPairsLayout, external_haza
                 "was compiled for ($(layout.nhosts))"
         )
     )
-    extdist = external ? _ext_survival(external_hazard) : kernel
+    # Not resolved to a single distribution here: a vector or function source
+    # answers per person, so each row resolves its own susceptible's hazard.
+    extsrc = external ? external_hazard : kernel
 
     tfollow = followup_end(data)
     (!isnan(tfollow) && tfollow >= 0) || throw(
@@ -1306,9 +1356,9 @@ function _pairwise_setup(kernel, data, layout::ContactPairsLayout, external_haza
         typeof(tfollow),
         Float64
     )
-    Text = external ? Distributions.partype(extdist) : Union{}
+    Text = external ? _ext_partype(external_hazard, layout, Tdata) : Union{}
     T = promote_type(Tdata, _kernel_partype(kernel, layout, data, Tdata), Text)
-    return extdist, convert(Tdata, tfollow), T
+    return extsrc, convert(Tdata, tfollow), T
 end
 
 """
@@ -1341,14 +1391,17 @@ a contact list (`kernel[i][k]` for person `i`'s `k`-th listed contact).
 
 `external_hazard` is infection from outside the households or network: a
 constant rate per person per day, or a distribution of the time of infection
-from outside. Such infections happen only in the first `data.obs_end` days.
-With an external hazard, index cases are explained like any other case;
-without one, the likelihood conditions on them. Each person is exposed to the
-external hazard until the earlier of their infection and `data.obs_end`, so a
-person infected after `obs_end` must have been infected by a possible infector.
-Spread within households or the network continues after `obs_end`: a person
-never infected is exposed over each possible infector's whole infectious
-period.
+from outside, shared by everyone, or a vector giving one per person, or a
+function of a person's number, for covariates that make the community hazard
+differ between people, households or clusters — such as comparing the arms of
+a cluster-randomised trial. Such infections happen only in the first
+`data.obs_end` days. With an external hazard, index cases are explained like
+any other case; without one, the likelihood conditions on them. Each person
+is exposed to the external hazard until the earlier of their infection and
+`data.obs_end`, so a person infected after `obs_end` must have been infected
+by a possible infector. Spread within households or the network continues
+after `obs_end`: a person never infected is exposed over each possible
+infector's whole infectious period.
 
 `susceptibility` is an effect on people's own risk of infection, such as a
 candidate [`VaccineEffect`](@ref) or a model's interventions; `nothing` (the
@@ -1504,9 +1557,10 @@ end
 # infection if that falls within follow-up. The windows are those of the flat
 # passes.
 function _component_loglik(
-        modifier, kernel, extdist, data, layout, rg, tj, tfollow, ::Type{T},
+        modifier, kernel, extsrc, data, layout, rg, tj, tfollow, ::Type{T},
         gaps = nothing
     ) where {T}
+    sus = layout.sus
     infector = layout.infector
     is_ext = layout.is_ext
     tend = (isnan(tj) || tj > tfollow) ? tfollow : convert(typeof(tfollow), tj)
@@ -1516,7 +1570,7 @@ function _component_loglik(
         if is_ext[r]
             stop = min(tend, data.obs_end)
             stop > 0 || continue
-            ll -= _scaled_cumhazard(modifier, extdist, zero(stop), stop)
+            ll -= _scaled_cumhazard(modifier, _ext_survival_for(extsrc, sus[r]), zero(stop), stop)
         else
             i = infector[r]
             oi = data.infectious_time[i]
@@ -1537,7 +1591,7 @@ function _component_loglik(
         r = layout.sus_row_order[k]
         if is_ext[r]
             (tj >= 0 && tj <= data.obs_end) || continue
-            _push!(acc, _scaled_loghazard(modifier, loghazard(extdist, tj), tj))
+            _push!(acc, _scaled_loghazard(modifier, loghazard(_ext_survival_for(extsrc, sus[r]), tj), tj))
         else
             i = infector[r]
             oi = data.infectious_time[i]
@@ -1556,7 +1610,7 @@ end
 
 # One modified susceptible's contribution: the log of its mixture.
 function _mixture_loglik(
-        mixture, kernel, extdist, data, layout, g, tfollow, ::Type{T}, gaps = nothing
+        mixture, kernel, extsrc, data, layout, g, tfollow, ::Type{T}, gaps = nothing
     ) where {T}
     j = layout.sus_unique[g]
     rg = layout.sus_row_ranges[g]
@@ -1566,7 +1620,7 @@ function _mixture_loglik(
     # derivative of the mixture with respect to that weight.
     terms = map(mixture) do (weight, modifier)
         weight => _component_loglik(
-            modifier, kernel, extdist, data, layout, rg, tj, tfollow, T, gaps
+            modifier, kernel, extsrc, data, layout, rg, tj, tfollow, T, gaps
         )
     end
     m = T(-Inf)
@@ -1718,18 +1772,18 @@ function pairwise_reduce(
         reduction::PairwiseReduction, kernel, data::InfectionLayer,
         layout::ContactPairsLayout; external_hazard = 0.0, susceptibility = nothing
     )
-    extdist, tfollow, T = _pairwise_setup(kernel, data, layout, external_hazard)
+    extsrc, tfollow, T = _pairwise_setup(kernel, data, layout, external_hazard)
     mixtures = _host_mixtures(susceptibility, data, layout)
     # A per-edge or covariate kernel's parameter type is only known at run time;
     # the function barrier keeps the passes type-stable.
     return _pairwise_surv_loglik(
-        kernel, extdist, data, layout, tfollow, reduction,
+        kernel, extsrc, data, layout, tfollow, reduction,
         promote_type(T, _mixtures_partype(mixtures)), mixtures
     )
 end
 
 function _pairwise_surv_loglik(
-        kernel, extdist, data, layout, tfollow,
+        kernel, extsrc, data, layout, tfollow,
         reduction::PairwiseReduction, ::Type{T}, mixtures = nothing
     ) where {T}
     totals = _GroupTotals(reduction, T)
@@ -1743,13 +1797,13 @@ function _pairwise_surv_loglik(
     if !all(totals.infeasible)
         gaps = _removal_gaps(data)
         totals = _pairwise_cumhazard(
-            reduction, kernel, extdist, data, layout, tfollow, totals, mixtures, gaps
+            reduction, kernel, extsrc, data, layout, tfollow, totals, mixtures, gaps
         )
         totals = _pairwise_events(
-            reduction, kernel, extdist, data, layout, tfollow, totals, mixtures, gaps
+            reduction, kernel, extsrc, data, layout, tfollow, totals, mixtures, gaps
         )
         totals = _pairwise_mixtures(
-            reduction, kernel, extdist, data, layout, tfollow, totals, mixtures, gaps
+            reduction, kernel, extsrc, data, layout, tfollow, totals, mixtures, gaps
         )
     end
     return _result(reduction, totals)
@@ -1761,7 +1815,7 @@ end
 # earlier of that and `obs_end`, after which there are no more introductions.
 # Nothing is at risk after the end of follow-up, and a host infected after it
 # has escaped until then as far as the data show.
-function _pairwise_cumhazard(reduction, kernel, extdist, data, layout, tfollow, totals, mixtures = nothing, gaps = nothing)
+function _pairwise_cumhazard(reduction, kernel, extsrc, data, layout, tfollow, totals, mixtures = nothing, gaps = nothing)
     sus = layout.sus
     infector = layout.infector
     is_ext = layout.is_ext
@@ -1775,7 +1829,7 @@ function _pairwise_cumhazard(reduction, kernel, extdist, data, layout, tfollow, 
         if is_ext[row]
             stop = min(tend, data.obs_end)
             stop > 0 || continue
-            totals = _add!(reduction, totals, j, -cumhazard(extdist, stop))
+            totals = _add!(reduction, totals, j, -cumhazard(_ext_survival_for(extsrc, j), stop))
         else
             i = infector[row]
             oi = data.infectious_time[i]
@@ -1804,7 +1858,7 @@ end
 # sitting alongside an infinite value, whereas the log-density is -Inf
 # throughout a neighbourhood of the parameters, because impossibility is a
 # discrete fact of the fixed times.
-function _pairwise_events(reduction, kernel, extdist, data, layout, tfollow, totals, mixtures = nothing, gaps = nothing)
+function _pairwise_events(reduction, kernel, extsrc, data, layout, tfollow, totals, mixtures = nothing, gaps = nothing)
     sus = layout.sus
     infector = layout.infector
     is_ext = layout.is_ext
@@ -1826,7 +1880,7 @@ function _pairwise_events(reduction, kernel, extdist, data, layout, tfollow, tot
                 # a host infected after `obs_end` was infected along a contact;
                 # one infected at 0 is a community case like any other
                 (tj >= 0 && tj <= data.obs_end) || continue
-                _push!(acc, loghazard(extdist, tj))
+                _push!(acc, loghazard(_ext_survival_for(extsrc, j), tj))
             else
                 i = infector[row]
                 oi = data.infectious_time[i]
@@ -1851,10 +1905,10 @@ end
 # that component's modifier. As in the event pass, a mixture of density zero
 # makes its group impossible.
 _pairwise_mixtures(
-    reduction, kernel, extdist, data, layout, tfollow, totals, ::Nothing, gaps = nothing
+    reduction, kernel, extsrc, data, layout, tfollow, totals, ::Nothing, gaps = nothing
 ) = totals
 function _pairwise_mixtures(
-        reduction, kernel, extdist, data, layout, tfollow, totals,
+        reduction, kernel, extsrc, data, layout, tfollow, totals,
         mixtures::AbstractDict, gaps = nothing
     )
     for g in eachindex(layout.sus_unique)
@@ -1863,7 +1917,7 @@ function _pairwise_mixtures(
         mixture = get(mixtures, j, nothing)
         mixture === nothing && continue
         T = eltype(totals.ll)
-        v = _mixture_loglik(mixture, kernel, extdist, data, layout, g, tfollow, T, gaps)
+        v = _mixture_loglik(mixture, kernel, extsrc, data, layout, g, tfollow, T, gaps)
         totals = _is_minus_inf(v) ? _infeasible!(reduction, totals, j) : _add!(reduction, totals, j, v)
     end
     return totals
