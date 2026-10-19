@@ -1339,6 +1339,13 @@ function _pairwise_setup(kernel, data, layout::ContactPairsLayout, external_haza
                 "was compiled for ($(layout.nhosts))"
         )
     )
+    _valid_external_length(external_hazard, layout.nhosts) ||
+        throw(
+        ArgumentError(
+            "external_hazard must have one entry per person ($(layout.nhosts)), " *
+                "got $(length(external_hazard))"
+        )
+    )
     # Not resolved to a single distribution here: a vector or function source
     # answers per person, so each row resolves its own susceptible's hazard.
     extsrc = external ? external_hazard : kernel
