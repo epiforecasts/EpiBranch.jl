@@ -326,6 +326,13 @@
             @test mean(==(1), draws) ≈ pdf(d, 1) atol = 0.01
             @test mean(==(2), draws) ≈ pdf(d, 2) atol = 0.01
         end
+
+        @testset "rejects a non-positive detection_prob" begin
+            base = chain_size_distribution(Poisson(0.5))
+            @test_throws ArgumentError ThinnedChainSize(base, 0.0)
+            @test_throws ArgumentError ThinnedChainSize(base, -0.1)
+            @test_throws ArgumentError ThinnedChainSize(base, 1.1)
+        end
     end
 
     @testset "Chain size likelihood" begin

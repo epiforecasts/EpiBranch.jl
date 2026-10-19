@@ -99,6 +99,7 @@ end
 
 function ThinnedChainSize(base::D, detection_prob) where {D <: DiscreteUnivariateDistribution}
     p = Float64(detection_prob)
+    0.0 < p <= 1.0 || throw(ArgumentError("detection_prob must be in (0, 1], got $p"))
     log_prob_any_detected = _log_prob_any_detected(base, p)
     return ThinnedChainSize{D, typeof(log_prob_any_detected)}(base, p, log_prob_any_detected)
 end
