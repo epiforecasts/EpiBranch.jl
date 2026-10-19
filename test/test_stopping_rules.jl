@@ -68,6 +68,40 @@ EpiBranch.time_bound(r::TimeOrCasesRule) = r.t
         @test !state.extinct
     end
 
+    @testset "MaxTime keeps cases before the limit despite a spread-out generation time" begin
+        # A later generation can hold infections well before the limit even
+        # once an earlier one has crossed it, so stopping the whole run at the
+        # first case past the limit (the bug) loses most of them. Comparing
+        # case counts up to the limit, with a run stopped at it against one
+        # left to run on (capped on cases instead, well above the few dozen
+        # this mildly supercritical setting reaches), the two should land
+        # close; under the bug the time-limited run came out at under half
+        # the other.
+        gt = Gamma(2.0, 2.5)
+        model = BranchingProcess(NegBin(1.5, 2.0), gt)
+        by_day30(s) = count(i -> is_infected(i) && i.infection_time <= 30, s.individuals)
+        n = 150
+        with_limit = sum(
+            by_day30(
+                simulate(
+                    model; max_time = 30.0, max_cases = nothing,
+                    max_generations = nothing, rng = StableRNG(s)
+                )
+            )
+                for s in 1:n
+        ) / n
+        without = sum(
+            by_day30(
+                simulate(
+                    model; max_cases = 20_000, max_generations = nothing,
+                    rng = StableRNG(s)
+                )
+            )
+                for s in 1:n
+        ) / n
+        @test with_limit > 0.7 * without
+    end
+
     @testset "Ergonomic kwargs build rules" begin
         opts = SimOpts(max_cases = 100, max_generations = 5)
         @test any(r isa MaxCases && r.n == 100 for r in opts.stopping_rules)

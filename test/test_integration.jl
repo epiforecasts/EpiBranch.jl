@@ -202,7 +202,7 @@ using Dates
         @test cp_aware <= cp_naive
     end
 
-    @testset "max_time terminates simulation" begin
+    @testset "max_time stops each case's own branch, not the whole run" begin
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(2.0), Exponential(5.0))
         state = simulate(
@@ -210,11 +210,15 @@ using Dates
             max_cases = 10_000, max_time = 30.0, rng = rng
         )
 
-        # Check infected individuals only — non-infected contacts may have
-        # later generation times but were never active
+        # A case infected at or after the limit makes no further contacts,
+        # but a branch still before the limit keeps running, so the run as a
+        # whole is not extinct (it was cut short, like a max_cases run).
         infected = filter(is_infected, state.individuals)
-        max_inf_time = maximum(ind.infection_time for ind in infected)
-        @test max_inf_time <= 40.0  # allow overshoot from last generation
+        @test all(
+            case -> case.infection_time < 30.0 || isempty(case.secondary_case_ids),
+            infected
+        )
+        @test !state.extinct
     end
 
     @testset "Analytical vs simulation extinction" begin
