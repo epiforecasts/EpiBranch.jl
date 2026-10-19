@@ -921,15 +921,45 @@ function _warn_unhonoured_interventions(model, interventions)
 end
 
 """
-Whether `transitions` can ever set a finite `susceptible_again_time`, the one
-way a continuous-time race is told a settled host becomes a target again
-(see [`HostImmunity`](@ref EpiBranch.HostImmunity)). Read from
+Whether `state.transitions` can ever set a finite `susceptible_again_time`,
+the one way a continuous-time race is told a settled host becomes a target
+again (see [`HostImmunity`](@ref EpiBranch.HostImmunity)). Read from
 `state.transitions` rather than taken as a keyword, so every model built on
 `_sellke_race!` gets reinfection for free the moment its `progression`
 declares a `:susceptible_again` step, with no extra bookkeeping cost where it
 does not.
+
+A literal [`Transition`](@ref) is recognised directly, from its `state`
+field, which costs nothing and is exact regardless of its `probability`. Any
+other `AbstractClinicalTransition` is probed instead: a disposable individual
+is run through every transition's `initialise_individual!` and
+`resolve_individual!`, on a copy of `state.rng` so the probe's own draws
+never alter the run it is checking, and the result is read back off
+`susceptible_again_time`.
 """
-_allows_reinfection(transitions) = any(t -> t isa Transition && t.state === :susceptible_again, transitions)
+function _allows_reinfection(state)
+    transitions = state.transitions
+    any(t -> t isa Transition && t.state === :susceptible_again, transitions) && return true
+    any(t -> !(t isa Transition), transitions) || return false
+    return isfinite(susceptible_again_time(_reinfection_probe(state)))
+end
+
+function _reinfection_probe(state)
+    probe = Individual(; id = 0, infection_time = zero(_timetype(state)))
+    saved_rng = state.rng
+    state.rng = copy(saved_rng)
+    try
+        for t in state.transitions
+            initialise_individual!(t, probe, state)
+        end
+        for t in state.transitions
+            resolve_individual!(t, probe, state)
+        end
+    finally
+        state.rng = saved_rng
+    end
+    return probe
+end
 
 """
     _sellke_race!(state, members, rng; seed!, targets, from, until, routes, risks)
@@ -1172,7 +1202,7 @@ function _sellke_race!(
     # same blocked-contact redraw every other risk uses (see `reinfects`
     # below), which needs every proposal kept rather than just each member's
     # earliest.
-    reinfects = _allows_reinfection(state.transitions)
+    reinfects = _allows_reinfection(state)
     may_block = live || !isempty(risks) || reinfects ||
         any(
         iv -> _has_own_method(
