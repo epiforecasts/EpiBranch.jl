@@ -355,7 +355,7 @@ function _chain_size_model_loglik(
     for k in sort(unique(data.seeds))
         group = findall(==(k), data.seeds)
         sim_opts = _build_sim_opts(
-            process, k, nothing, max_cases, max_generations, max_time, stopping_rules
+            process, k, nothing, nothing, max_cases, max_generations, max_time, stopping_rules
         )
         states = _simulate_n(
             process, n_sim, sim_opts;
@@ -439,7 +439,8 @@ function _chain_length_model_loglik(
         end
     end
     sim_opts = _build_sim_opts(
-        process, n_initial, nothing, max_cases, max_generations, max_time, stopping_rules
+        process, n_initial, nothing, nothing, max_cases, max_generations, max_time,
+        stopping_rules
     )
     return _sim_loglikelihood(
         data.data, process, :length, 0;

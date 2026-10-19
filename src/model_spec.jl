@@ -466,6 +466,7 @@ function simulate(
         spec::ModelSpec;
         n_initial::Union{Int, Nothing} = nothing,
         initial_cases::Union{AbstractVector{<:Integer}, Nothing} = nothing,
+        index_types::Union{AbstractVector{<:Integer}, Distribution, Nothing} = nothing,
         max_cases::Union{Int, Nothing} = _DEFAULT_MAX_CASES,
         max_generations::Union{Int, Nothing} = _DEFAULT_MAX_GENERATIONS,
         max_time::Union{Real, Nothing} = nothing,
@@ -476,10 +477,11 @@ function simulate(
     )
     _warn_unhonoured_interventions(spec.process, spec.interventions)
     sim_opts = _build_sim_opts(
-        spec.process, n_initial, initial_cases, max_cases, max_generations,
+        spec.process, n_initial, initial_cases, index_types, max_cases, max_generations,
         max_time, stopping_rules
     )
     _validate_initial_cases(spec.process, sim_opts)
+    _validate_index_types(spec.process, sim_opts)
     return _run_once_or_retry(
         spec.process, sim_opts, condition, max_attempts;
         interventions = spec.interventions, attributes = spec.attributes,
@@ -492,6 +494,7 @@ function simulate(
         spec::ModelSpec, n::Int;
         n_initial::Union{Int, Nothing} = nothing,
         initial_cases::Union{AbstractVector{<:Integer}, Nothing} = nothing,
+        index_types::Union{AbstractVector{<:Integer}, Distribution, Nothing} = nothing,
         max_cases::Union{Int, Nothing} = _DEFAULT_MAX_CASES,
         max_generations::Union{Int, Nothing} = _DEFAULT_MAX_GENERATIONS,
         max_time::Union{Real, Nothing} = nothing,
@@ -501,10 +504,11 @@ function simulate(
     )
     _warn_unhonoured_interventions(spec.process, spec.interventions)
     sim_opts = _build_sim_opts(
-        spec.process, n_initial, initial_cases, max_cases, max_generations,
+        spec.process, n_initial, initial_cases, index_types, max_cases, max_generations,
         max_time, stopping_rules
     )
     _validate_initial_cases(spec.process, sim_opts)
+    _validate_index_types(spec.process, sim_opts)
     return _simulate_n(
         spec.process, n, sim_opts;
         interventions = spec.interventions, attributes = spec.attributes,

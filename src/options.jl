@@ -122,12 +122,14 @@ honoured_without_should_stop(::MaxTime) = true
 honoured_without_should_stop(::MaxGenerations) = true
 
 """
-    SimOpts(; n_initial, initial_cases, max_cases, max_generations, max_time, stopping_rules)
+    SimOpts(; n_initial, initial_cases, index_types, max_cases, max_generations,
+            max_time, stopping_rules)
 
 Settings for how a simulation starts (`n_initial` index cases, or the
-`initial_cases` IDs) and when it stops. [`simulate`](@ref) takes the same
-keywords and builds this for you. Natural history, population
-characteristics and interventions are set with a [`ModelSpec`](@ref).
+`initial_cases` IDs, with `index_types` setting their types on a multi-type
+model) and when it stops. [`simulate`](@ref) takes the same keywords and
+builds this for you. Natural history, population characteristics and
+interventions are set with a [`ModelSpec`](@ref).
 
 The run stops at the first generation at which any of the
 `stopping_rules` ([`AbstractStoppingRule`](@ref)) says so, and always when
@@ -145,12 +147,14 @@ SimOpts(stopping_rules = [MaxCases(1000), MyCustomRule()])
 struct SimOpts
     n_initial::Int
     initial_cases::Union{Nothing, Vector{Int}}
+    index_types::Union{Nothing, Vector{Int}, Distribution}
     stopping_rules::Vector{AbstractStoppingRule}
 end
 
 function SimOpts(;
         n_initial::Union{Int, Nothing} = nothing,
         initial_cases::Union{AbstractVector{<:Integer}, Nothing} = nothing,
+        index_types::Union{AbstractVector{<:Integer}, Distribution, Nothing} = nothing,
         max_cases::Union{Int, Nothing} = _DEFAULT_MAX_CASES,
         max_generations::Union{Int, Nothing} = _DEFAULT_MAX_GENERATIONS,
         max_time::Union{Real, Nothing} = nothing,
@@ -162,12 +166,29 @@ function SimOpts(;
             "provide either initial_cases or n_initial, not both"
         )
     )
+    index_types isa AbstractVector && n_initial !== nothing &&
+        throw(
+        ArgumentError(
+            "provide either index_types as a vector of types or n_initial, not both"
+        )
+    )
     ids = initial_cases === nothing ? nothing : collect(Int, initial_cases)
     if ids !== nothing
         all(>(0), ids) || throw(ArgumentError("initial_cases must contain positive IDs"))
         allunique(ids) || throw(ArgumentError("initial_cases must contain distinct IDs"))
     end
-    count = ids === nothing ? something(n_initial, 1) : length(ids)
+    types = index_types isa AbstractVector ? collect(Int, index_types) : index_types
+    if types isa Vector{Int}
+        !isempty(types) || throw(ArgumentError("index_types must not be empty"))
+        all(>(0), types) || throw(ArgumentError("index_types must contain positive type indices"))
+    end
+    count = if ids !== nothing
+        length(ids)
+    elseif types isa Vector{Int}
+        length(types)
+    else
+        something(n_initial, 1)
+    end
     if stopping_rules !== nothing
         # Extinction is always included (per its docstring) unless the user
         # supplied their own, so a custom rule set can't loop forever on an
@@ -175,13 +196,13 @@ function SimOpts(;
         # vector, leaving the caller's untouched.
         rules = collect(AbstractStoppingRule, stopping_rules)
         any(r -> r isa Extinction, rules) || pushfirst!(rules, Extinction())
-        return SimOpts(count, ids, rules)
+        return SimOpts(count, ids, types, rules)
     end
     rules = AbstractStoppingRule[Extinction()]
     max_cases !== nothing && push!(rules, MaxCases(max_cases))
     max_generations !== nothing && push!(rules, MaxGenerations(max_generations))
     max_time !== nothing && push!(rules, MaxTime(Float64(max_time)))
-    return SimOpts(count, ids, rules)
+    return SimOpts(count, ids, types, rules)
 end
 
 """The case cap set by `opts` (`typemax(Int)` if none), used to flag
@@ -195,7 +216,7 @@ end
 
 # Preserve the positional constructor used by external simulation methods.
 function SimOpts(n_initial, rules)
-    return SimOpts(n_initial, nothing, rules)
+    return SimOpts(n_initial, nothing, nothing, rules)
 end
 
 function _validate_initial_cases(model::TransmissionModel, opts::SimOpts)
@@ -204,6 +225,29 @@ function _validate_initial_cases(model::TransmissionModel, opts::SimOpts)
             "$(nameof(typeof(model))) does not support initial_cases"
         )
     )
+    return nothing
+end
+
+"""
+    _validate_index_types(model::TransmissionModel, opts::SimOpts)
+
+Check that `opts.index_types`, if given, is usable against `model`: it needs
+more than one type to mean anything, and a vector's entries must be types the
+model has. A `Distribution` is left unchecked here; a draw outside `1:n_types`
+is instead caught at seeding, where it occurs.
+"""
+function _validate_index_types(model::TransmissionModel, opts::SimOpts)
+    opts.index_types === nothing && return nothing
+    nt = n_types(model)
+    nt > 1 || throw(
+        ArgumentError(
+            "$(nameof(typeof(model))) does not support index_types (it has a single type)"
+        )
+    )
+    types = opts.index_types
+    types isa AbstractVector || return nothing
+    all(t -> 1 <= t <= nt, types) ||
+        throw(ArgumentError("index_types must be in 1:$nt"))
     return nothing
 end
 

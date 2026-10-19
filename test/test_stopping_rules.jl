@@ -168,7 +168,7 @@ EpiBranch.time_bound(r::TimeOrCasesRule) = r.t
     @testset "the max_cases/max_generations defaults stay off where the race does not honour them" begin
         homog = HomogeneousProcess(; transmission_rate = 2.0, population_size = 50)
         default_opts = EpiBranch._build_sim_opts(
-            homog, nothing, nothing, EpiBranch._DEFAULT_MAX_CASES,
+            homog, nothing, nothing, nothing, EpiBranch._DEFAULT_MAX_CASES,
             EpiBranch._DEFAULT_MAX_GENERATIONS, nothing, nothing
         )
         @test !any(r -> r isa MaxCases, default_opts.stopping_rules)
@@ -177,12 +177,12 @@ EpiBranch.time_bound(r::TimeOrCasesRule) = r.t
         # A non-default value still gets through, as does `stopping_rules`
         # given directly.
         explicit_opts = EpiBranch._build_sim_opts(
-            homog, nothing, nothing, 50, 10, nothing, nothing
+            homog, nothing, nothing, nothing, 50, 10, nothing, nothing
         )
         @test any(r -> r isa MaxCases && r.n == 50, explicit_opts.stopping_rules)
         @test any(r -> r isa MaxGenerations && r.n == 10, explicit_opts.stopping_rules)
         given_opts = EpiBranch._build_sim_opts(
-            homog, nothing, nothing, EpiBranch._DEFAULT_MAX_CASES,
+            homog, nothing, nothing, nothing, EpiBranch._DEFAULT_MAX_CASES,
             EpiBranch._DEFAULT_MAX_GENERATIONS, nothing, [MaxCases(10_000)]
         )
         @test any(r -> r isa MaxCases, given_opts.stopping_rules)
@@ -190,7 +190,7 @@ EpiBranch.time_bound(r::TimeOrCasesRule) = r.t
         # The generation-based engine is untouched either way.
         branching = BranchingProcess(Poisson(1.5), Exponential(2.0))
         engine_opts = EpiBranch._build_sim_opts(
-            branching, nothing, nothing, EpiBranch._DEFAULT_MAX_CASES,
+            branching, nothing, nothing, nothing, EpiBranch._DEFAULT_MAX_CASES,
             EpiBranch._DEFAULT_MAX_GENERATIONS, nothing, nothing
         )
         @test any(r -> r isa MaxCases, engine_opts.stopping_rules)
