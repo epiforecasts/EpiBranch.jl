@@ -59,8 +59,14 @@ struct MaxGenerations <: AbstractStoppingRule
     n::Int
 end
 
-"""Stop once the latest infection is at or after time `t` (days since the
-start of the outbreak)."""
+"""Stop a branch once its own infection is at or after time `t` (days since
+the start of the outbreak), without drawing it any further contacts. The
+generation-based engine (such as [`BranchingProcess`](@ref)) keeps running
+other branches that are still before `t`, so a spread-out generation time
+does not lose cases before the limit to one case well after it; the
+mass-action, network and household models, which settle cases in time order
+rather than generation order, end the whole run at `t` instead, since nothing
+after it could have been reached first."""
 struct MaxTime <: AbstractStoppingRule
     t::Float64
 end
