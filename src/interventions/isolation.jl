@@ -274,11 +274,12 @@ end
 function resolve_individual!(iso::Isolation, individual, state)
     # An isolation already standing on the individual is a quarantine written by
     # `ContactTracing`: a case's contacts are traced when the *infector* is
-    # settled, which is before the contact itself resolves. The quarantine then
-    # competes with self-isolation and the earlier time wins. Returning early
-    # here would leave the contact with a trace time later than the onset it
-    # would have self-reported on, and tracing would delay isolation instead of
-    # advancing it.
+    # settled, which is before the contact itself resolves. Self-isolation from
+    # onset applies on top of it regardless of which started first: `_isolate!`
+    # below combines the two, layering over the quarantine where they overlap
+    # and adding a separate removal where they do not. That way a quarantine
+    # that ends, or never covered anything, before onset still gets the case
+    # isolated.
     if _isolation_in_force(individual)
         is_test_positive(individual) || return nothing
         self_t = onset_time(individual) +
@@ -286,7 +287,7 @@ function resolve_individual!(iso::Isolation, individual, state)
             iso.onset_to_isolation_delay,
             stream(state.rng, individual.id, (:isolation, :delay)), individual
         )
-        self_t < isolation_time(individual) || return nothing
+        isfinite(self_t) || return nothing
         # Remember what we are overwriting. Claiming provenance below tells a
         # `Scheduled` reset that this isolation is Isolation's to undo, but the
         # standing quarantine underneath it belongs to ContactTracing and must

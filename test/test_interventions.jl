@@ -431,14 +431,15 @@ EpiBranch.reset!(::_TimedBatchDose, ind::Individual) = delete!(ind.state, :_dose
         @test is_traced(second_out)
     end
 
-    @testset "Isolation keeps the earliest pathway when already isolated" begin
+    @testset "Isolation layers onset-based isolation over a standing quarantine" begin
         # A quarantine written by ContactTracing leaves `:isolated` set before
         # Isolation resolves the individual. That is the ordering the
         # continuous-time models produce, where a contact is traced when its
-        # infector settles rather than when it settles itself. Isolation must
-        # treat the standing quarantine as a competing pathway: if the
-        # individual would have self-reported earlier, the earlier time wins.
-        # Otherwise tracing *delays* isolation instead of advancing it.
+        # infector settles rather than when it settles itself. Isolation from
+        # onset must still apply on top of the quarantine, whichever started
+        # first: overlapping it where the two windows meet, and adding a
+        # separate removal where a short or already-lapsed quarantine ends
+        # before onset.
         iso = Isolation(onset_to_isolation_delay = Exponential(1.0e-9), duration = Inf)
         state = EpiBranch.new_state(
             BranchingProcess(Poisson(1.0), Exponential(5.0)),
@@ -454,14 +455,31 @@ EpiBranch.reset!(::_TimedBatchDose, ind::Individual) = delete!(ind.state, :_dose
         @test isolation_time(late) ≈ 2.0 atol = 1.0e-6
         @test get(late.state, :_isolated_by_isolation, false)
 
-        # Quarantined early: the quarantine stands and is left untouched.
+        # Quarantined early with no release: onset falls inside the standing
+        # quarantine, so the two merge into the same open-ended removal.
         early = Individual(id = 2)
         early.state[:onset_time] = 40.0
         early.state[:test_positive] = true
         set_isolated!(early, 1.0; release_time = Inf)
         EpiBranch.resolve_individual!(iso, early, state)
         @test isolation_time(early) == 1.0
-        @test !get(early.state, :_isolated_by_isolation, false)
+        @test get(early.state, :_isolated_by_isolation, false)
+
+        # A short quarantine that ends before onset: isolation from onset is
+        # its own separate removal after the lapsed one, rather than being
+        # folded into it or blocked by it.
+        lapsed = Individual(id = 4)
+        lapsed.state[:onset_time] = 40.0
+        lapsed.state[:test_positive] = true
+        set_isolated!(lapsed, 1.0; release_time = 3.0)
+        EpiBranch.resolve_individual!(iso, lapsed, state)
+        @test isolation_time(lapsed) ≈ 40.0 atol = 1.0e-6
+        @test isolation_release_time(lapsed) == Inf
+        stretches = EpiBranch.removal_stretches(lapsed)
+        @test length(stretches) == 2
+        @test stretches[1] == (1.0, 3.0)
+        @test stretches[2][1] ≈ 40.0 atol = 1.0e-6
+        @test stretches[2][2] == Inf
 
         # A test-negative quarantined contact has no self-reporting pathway,
         # so the quarantine stands.
