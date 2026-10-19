@@ -238,10 +238,11 @@ end
     @test EpiBranch.competing_risk(ct, contact, Individual(id = 2), nothing) === nothing
     @test EpiBranch.removal_gap_host_times(ct) == (EpiBranch.QUARANTINE_STRETCHES_KEY,)
 
-    # Isolation from onset otherwise layers over a standing quarantine, so a
-    # traced contact's delay is left infinite once it is quarantined, keeping
-    # this test to the quarantine's own effect on the exposure. The household
-    # kernel is slow enough that a household is still being exposed when its
+    # Isolation from onset normally layers over a standing quarantine. Here
+    # the onset-to-isolation delay turns infinite once a contact is
+    # quarantined, so this test stays clear of that composition and measures
+    # only the quarantine's own effect on the exposure. The household kernel
+    # is slow enough that a household is still being exposed when its
     # contacts are quarantined.
     clinical = clinical_presentation(incubation_period = Dirac(0.0))
     progression = [
