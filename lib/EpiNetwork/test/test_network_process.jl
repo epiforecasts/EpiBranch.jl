@@ -829,6 +829,12 @@ end
         # as on NetworkProcess, the importation window must be non-negative
         @test_throws ArgumentError RoutedNetwork([w(:a, a)]; obs_end = -1.0)
         @test_throws ArgumentError RoutedNetwork([w(:a, a)]; obs_end = NaN)
+        # an external_hazard vector not matching the node count is rejected
+        @test RoutedNetwork([w(:a, a)]; external_hazard = fill(0.01, 6)) isa
+            RoutedNetwork
+        @test_throws ArgumentError RoutedNetwork(
+            [w(:a, a)]; external_hazard = fill(0.01, 5)
+        )
     end
 
     @testset "RoutedNetwork: conditioned simulation" begin
