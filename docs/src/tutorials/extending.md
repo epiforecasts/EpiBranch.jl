@@ -359,6 +359,13 @@ does not clash with the package's default one.
     these models, so an existing run over a large population is not capped
     unless you ask for it with an explicit value or a `stopping_rules` entry.
 
+    A rule declaring `time_bound` and `honoured_without_should_stop(rule) =
+    true` is applied the same way by the generation-based engine (such as
+    [`BranchingProcess`](@ref)): `should_stop` is never called for it there
+    either, and a branch instead stops making further contacts once its own
+    infection reaches the bound, while other branches keep running until none
+    before it remains.
+
 ## A custom intervention: closing a border
 
 An intervention that stops some transmissions needs one type and one method of

@@ -89,8 +89,11 @@ should_stop(r::MaxTime, state::SimulationState) = state.max_infection_time >= r.
 The time limit (days) a stopping rule sets, or `Inf` if it sets none (the
 default). The mass-action, network and household models end the whole run at
 the earliest such limit among its rules, before any candidate infection past
-it is drawn. Define it alongside `should_stop` for a rule that, like
-[`MaxTime`](@ref), should also end those runs.
+it is drawn. The generation-based engine (such as [`BranchingProcess`](@ref))
+instead cuts a branch off from making further contacts once its own infection
+reaches the limit, keeping other branches running while they are still before
+it. Define it alongside `should_stop` for a rule that, like [`MaxTime`](@ref),
+should also get this treatment on those models.
 """
 time_bound(::AbstractStoppingRule) = Inf
 time_bound(r::MaxTime) = r.t
@@ -121,6 +124,12 @@ other rule keeps the default `false`, and those models poll `should_stop` for
 it instead — including a rule that bounds time or generation depth but also
 tests something else, such as a case count, since only the bound is captured
 without asking.
+
+A rule with a finite [`time_bound`](@ref EpiBranch.time_bound) that also
+returns `true` here skips `should_stop` on the generation-based engine (such
+as [`BranchingProcess`](@ref)) too: that engine never polls `should_stop` for
+it, relying instead on the per-branch time cut-off described under
+`time_bound` to end the run.
 """
 honoured_without_should_stop(::AbstractStoppingRule) = false
 honoured_without_should_stop(::Extinction) = true
