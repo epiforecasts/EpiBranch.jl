@@ -352,6 +352,14 @@ end
     @test length(ring_candidates) == 3
     @test Set(ind.id for ind in ring_candidates) == Set([1, 2, 3])
 
+    # A wrapper, such as `CapacityConstrained`, forwards to the intervention
+    # it wraps rather than falling back to the default.
+    wrapped_candidates = EpiBranch.continuous_candidates(
+        CapacityConstrained(rv; budget_per_period = Inf),
+        state, current, nothing, is_pending, members, contacts
+    )
+    @test Set(ind.id for ind in wrapped_candidates) == Set(ind.id for ind in ring_candidates)
+
     gv = GroupVaccination(efficacy = 0.8)
     for i in 1:3
         state.individuals[i].state[:group] = :A
