@@ -1173,9 +1173,9 @@ end
     end
 
     @testset "a cut group still reinfectable is not reported extinct" begin
-        # A cut group whose sole member has already settled (waiting on
-        # `susceptible_again_time`, not on susceptibility, which stays > 0
-        # throughout) is still reachable when the progression reinfects.
+        # A cut group whose sole member has already settled is waiting on
+        # `susceptible_again_time`, not on susceptibility (which stays > 0
+        # throughout), so it is still reachable once the progression reinfects.
         m = EpiBranch._MassAction(
             [[1]], Dict(1 => 1), reshape([1.0], 1, 1), [1.0], reshape([true], 1, 1)
         )
