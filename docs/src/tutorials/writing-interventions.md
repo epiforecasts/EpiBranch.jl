@@ -565,12 +565,12 @@ so they do not decide them contact by contact. Of the remaining four,
 `InfectiousSource` never has anything to block, since the race proposes only
 from cases that have settled and are infected by construction, and the end of
 an infectiousness window is enforced by the window closing rather than by
-`competing_risk`. `AbortedInfection` and `HostImmunity` are both resolved
-there: a settled member becomes a target again, and goes through
-`HostImmunity`'s block until their immunity has waned, the moment the
-`progression` can reach `:susceptible_again` — no change to the model's own
-`targets`/`contacts` is needed. A risk of your own applies there as it does on
-a branching process.
+`competing_risk`. `AbortedInfection` and `HostImmunity`, by contrast, are both
+resolved through `competing_risk` there: a settled member can become a target
+again and is blocked by `HostImmunity` until their immunity has waned, exactly
+when the `progression` reaches `:susceptible_again`, with no change needed to
+the model's own `targets`/`contacts`. A risk of your own applies there as it
+does on a branching process.
 
 ## Following up contacts who were not infected
 
