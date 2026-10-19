@@ -1039,8 +1039,10 @@ kernel at all.
 `introduction`, when given, is the `(kernel, until)` of the community hazard the
 model seeded its members from: the contact-interval distribution of an
 introduction from outside the population, and the time the introduction window
-closes. It says that a seeded time is a community introduction rather than an
-index case, so the risks that act on the person are resolved against it — a
+closes. The kernel can also differ between people, as a vector indexed by
+host id or a function of the host id, each giving a rate or a distribution,
+as `external_hazard` takes them. It says that a seeded time is a community
+introduction rather than an index case, so the risks that act on the person are resolved against it — a
 vaccinated person is protected from the community as from a neighbour — and a
 blocked introduction is followed by the next one from the same hazard. The risks
 of isolation and quarantine are not: they
@@ -1346,7 +1348,8 @@ function _sellke_race!(
                     proposals[p] = _at(proposals[p], T(Inf))
                 else
                     if opening.route == 0
-                        kernel, close_t = introduction
+                        source_ext, close_t = introduction
+                        kernel = _ext_survival_of(source_ext, members[j])
                         open_t = zero(T)
                         mult = ind.susceptibility
                     else
@@ -1388,7 +1391,8 @@ function _sellke_race!(
             # one armed for them, on the same memoryless schedule, to be
             # reachable again after this episode.
             if introduction !== nothing
-                kernel, close_t = introduction
+                source_ext, close_t = introduction
+                kernel = _ext_survival_of(source_ext, members[j])
                 nxt = _next_contact(rng, kernel, ind.susceptibility, bt, close_t)
                 nxt <= close_t &&
                     _propose!(queue, proposals, head, best, represents, j, 1, nxt, true)

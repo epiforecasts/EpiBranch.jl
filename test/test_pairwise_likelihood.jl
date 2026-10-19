@@ -211,6 +211,29 @@ end
             rand(StableRNG(1), Gamma(2.0, 3.0))
     end
 
+    @testset "community hazard that differs between people" begin
+        v = [0.5, 0.0, Gamma(2.0, 3.0)]
+        @test EpiBranch._valid_external(v)
+        @test !EpiBranch._valid_external([0.5, -0.1])
+        @test !EpiBranch._valid_external([[0.5]])
+        @test EpiBranch._ext_active(v)
+        @test !EpiBranch._ext_active(zeros(3))
+        @test EpiBranch._ext_active(j -> 0.0)
+        @test EpiBranch._ext_survival_of(v, 1) == Exponential(2.0)
+        @test EpiBranch._ext_survival_of(v, 2) === nothing
+        @test EpiBranch._ext_survival_of(v, 3) == Gamma(2.0, 3.0)
+        @test EpiBranch._ext_survival_of(j -> v[j], 1) == Exponential(2.0)
+        @test_throws ArgumentError EpiBranch._ext_survival_of(j -> -1.0, 1)
+        @test_throws DimensionMismatch EpiBranch._check_external(v, 4)
+        @test EpiBranch._check_external(v, 3) === nothing
+        # a person with no community hazard is never introduced, and the rest
+        # draw as under a shared one
+        @test EpiBranch._ext_draw(StableRNG(1), v, 2, 1.0) == Inf
+        @test EpiBranch._ext_draw(StableRNG(1), v, 1, 1.0) ==
+            EpiBranch._ext_draw(StableRNG(1), 0.5, 1.0)
+        @test EpiBranch._ext_partype(v, 3) == Float64
+    end
+
     @testset "layout on a household partition" begin
         # households {1,2,3} and {4,5}; 1 and 4 are indexes, 2 is infected too
         membership = [1, 1, 1, 2, 2]

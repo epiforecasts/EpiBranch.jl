@@ -660,6 +660,38 @@ cannot be read off near zero.
     close to `n_ext` while α is small and falls to zero at the maximum
     likelihood estimate.
 
+### A community hazard that differs between people
+
+In a cluster-randomised or case-triggered study, the community hazard is
+where an intervention's indirect effect shows, so each arm needs its own.
+`external_hazard` takes a vector with one rate or distribution per person,
+or a function `j -> rate or distribution` of person `j`'s number, and the
+simulation and the likelihood both read it. A person given a rate of zero is
+never infected from outside. Here the second half of the households has its
+community hazard multiplied by a rate ratio, which is fitted along with the
+baseline rate and the contact interval:
+
+```julia
+n = 1000
+in_arm = [h > n ÷ 2 for h in 1:n for _ in 1:4]
+hazard(θ) = exp(θ[2]) .* ifelse.(in_arm, exp(θ[3]), 1.0)
+
+model = ModelSpec(
+    HouseholdProcess(fill(4, n), Exponential(3.0);
+        external_hazard = hazard([log(3.0), log(0.02), log(0.5)]), obs_end = 30.0);
+    progression = [Transition(:recovered; from = :infection, delay = 5.0, terminal = true)]
+)
+data = household_infections(simulate(model; rng = StableRNG(1)), model)
+layout = compile_household_pairs(data; external = true)
+loglik(θ) = pairwise_surv_loglik(
+    Exponential(exp(θ[1])), data, layout; external_hazard = hazard(θ)
+)
+```
+
+The same `θ[3]` can also scale the vaccinated people's susceptibility in the
+contact interval, so that one rate ratio acts on infection from inside and
+outside the household alike.
+
 !!! note "Gamma distributions with Turing"
     To fit a `Gamma` contact interval or community hazard with Turing, use
     `NUTS(; adtype = AutoMooncake())`, after adding the Mooncake package to
