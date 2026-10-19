@@ -166,6 +166,8 @@ is_active
 AbstractTrigger
 Infections
 ReportedCases
+opened_at
+After
 CapacityConstrained
 capacity_usage
 default_capacity_priority
@@ -203,6 +205,8 @@ SimulationState
 Individual
 EpiBranch.IndividualState
 InfectionEpisode
+CommonRandomNumbers
+EpiBranch.stream
 ```
 
 ## Recording contacts

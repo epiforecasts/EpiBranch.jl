@@ -189,24 +189,32 @@ end
 
 # AD-compatible chain length: Poisson — PGF iteration on G(s) = exp(λ(s − 1)).
 """
-    loglikelihood(data::ChainLengths, offspring::Poisson)
-    loglikelihood(data::ChainLengths, offspring::NegativeBinomial)
+    loglikelihood(data::ChainLengths, offspring::Poisson; n_initial = 1)
+    loglikelihood(data::ChainLengths, offspring::NegativeBinomial; n_initial = 1)
 
 Log-likelihood of observed chain lengths under the exact chain-length
 distribution for Poisson or negative binomial offspring. Only defined when R
 is below 1, since above it chains can go on for ever.
+
+`n_initial` is the number of independent seeds each chain started from. Its
+length is the longest of `n_initial` single-seed chains, so its CDF is the
+single-seed CDF raised to the power `n_initial`.
 """
-function loglikelihood(data::ChainLengths, offspring::Poisson{T}) where {T}
+function loglikelihood(
+        data::ChainLengths, offspring::Poisson{T}; n_initial::Int = 1
+    ) where {T}
     λ = mean(offspring)
     λ < 1 ||
         throw(ArgumentError("chain length distribution only defined for subcritical process (λ < 1)"))
     G(s) = exp(λ * (s - one(λ)))
-    return _chain_length_ll_pgf(data.data, G, typeof(λ))
+    return _chain_length_ll_pgf(data.data, G, typeof(λ); n_initial)
 end
 
 # AD-compatible chain length: NegBin — PGF iteration
-function loglikelihood(data::ChainLengths, offspring::NegativeBinomial{T}) where {T}
-    return _chain_length_ll_negbin(data.data, offspring)
+function loglikelihood(
+        data::ChainLengths, offspring::NegativeBinomial{T}; n_initial::Int = 1
+    ) where {T}
+    return _chain_length_ll_negbin(data.data, offspring; n_initial)
 end
 
 # Simulation estimate of the chain-size or chain-length log-likelihood under
@@ -227,9 +235,13 @@ function _sim_loglikelihood(
     for state in states
         cs = chain_statistics(state)
         vals = getproperty(cs, column)
-        append!(sim_values, vals)
+        isempty(vals) && continue
+        # A multi-seed cluster is one simulation: its longest chain (one per
+        # seed) is the cluster's observed value, instead of reporting each
+        # seed's chain separately.
+        push!(sim_values, maximum(vals))
         hit_cap = !state.extinct && state.cumulative_cases >= cap
-        append!(censored, fill(hit_cap, length(vals)))
+        push!(censored, hit_cap)
     end
     return _empirical_ll(observed, sim_values; min_val, censored, cap)
 end
@@ -390,8 +402,9 @@ Log-likelihood of observed chain lengths under a model, including its
 interventions. Exact when there are no interventions, the offspring
 distribution is Poisson or negative binomial, and R is below 1; otherwise
 estimated from `n_sim` simulated outbreaks (keywords as for chain sizes).
-Not available with an observation model, since a chain with undetected
-cases has no well-defined observed length.
+`n_initial` is the number of independent seeds the chains started from, and
+applies on both paths. Not available with an observation model, since a
+chain with undetected cases has no well-defined observed length.
 """
 function loglikelihood(data::ChainLengths, model::TransmissionModel; kwargs...)
     return _chain_length_model_loglik(
@@ -423,13 +436,14 @@ function _chain_length_model_loglik(
                 "length. Use ChainSizes, or a model with no observation."
         )
     )
+    n_initial >= 1 || throw(ArgumentError("n_initial must be ≥ 1"))
     # Analytical iff no interventions thin transmission, as for chain size
     # above, and the process, attributes and progression each leave the
     # offspring law unchanged (see `offspring_law_unchanged`).
     if isempty(ivs) && offspring_law_unchanged(process) && offspring_law_unchanged(attrs) &&
             all(offspring_law_unchanged, prog)
         try
-            return loglikelihood(data, single_type_offspring(process))
+            return loglikelihood(data, single_type_offspring(process); n_initial)
         catch e
             (e isa MethodError || e isa ArgumentError) || rethrow()
         end

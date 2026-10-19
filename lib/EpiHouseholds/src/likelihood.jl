@@ -74,12 +74,29 @@ function household_infections(
         model::ModelSpec{<:HouseholdProcess}; obs_end = model.process.obs_end,
         followup_end = Inf, host_times = ()
     )
+    _warn_uncovered_episodes(state)
     household_of = [ind.state[:household]::Int for ind in state.individuals]
     columns = _infection_layer_columns(state, model)
     return HouseholdInfections(
         household_of, columns...; obs_end, followup_end,
         host_times = _layer_host_times(state, model, host_times)
     )
+end
+
+# `_infection_layer_columns` reads each individual's live fields, which a
+# progression reaching `:susceptible_again` has moved on to that person's
+# latest infection; a household race letting `HostImmunity` reinfect someone
+# (see `_allows_reinfection` in EpiBranch's sellke.jl) archives the episodes
+# before it onto `episodes` instead, where this layer, and so `loglikelihood`,
+# does not read them.
+function _warn_uncovered_episodes(state::SimulationState)
+    any(ind -> !isempty(ind.episodes), state.individuals) || return nothing
+    @warn "this outbreak has hosts with more than one infection episode " *
+        "(`ind.episodes`), from a progression that reaches `:susceptible_again`; " *
+        "`household_infections` records only each host's current episode, so " *
+        "`loglikelihood` is the likelihood of that episode alone, not of the " *
+        "full reinfection history."
+    return nothing
 end
 
 function household_infections(

@@ -86,15 +86,42 @@ function _discretize_report_delay(
         delay::Distribution; tol::Real = 1.0e-8, max_lag::Int = 10_000
     )
     minimum(delay) >= 0 || throw(ArgumentError("reporting_delay must be non-negative"))
-    d = [cdf(delay, 0)]
+    return _bin_delay(t -> cdf(delay, t), tol, max_lag)
+end
+
+# The sum of two independent delays, such as an incubation period and the
+# delay from onset to report, which a model's `Reporting` step gives.
+struct _DelaySum{A <: Distribution, B <: Union{Real, Distribution}}
+    first::A
+    second::B
+end
+
+function _discretize_report_delay(
+        delay::_DelaySum; tol::Real = 1.0e-8, max_lag::Int = 10_000
+    )
+    a, b = delay.first, delay.second
+    minimum(a) >= 0 && (b isa Real ? b >= 0 : minimum(b) >= 0) ||
+        throw(ArgumentError("reporting delays must be non-negative"))
+    b isa Real && return _bin_delay(t -> cdf(a, t - b), tol, max_lag)
+    # P(A + B ≤ t) = ∫ f_A(x) F_B(t - x) dx over x ≤ t, B being non-negative.
+    lo = minimum(a)
+    F(t) = t <= lo ? 0.0 : first(quadgk(x -> pdf(a, x) * cdf(b, t - x), lo, t))
+    return _bin_delay(F, tol, max_lag)
+end
+
+# Bin a delay with cumulative distribution `F` onto lags 0, 1, 2, ...: the
+# mass at or below 0, then each `(l - 1, l]`, until the remaining tail is
+# below `tol`.
+function _bin_delay(F, tol::Real, max_lag::Int)
+    d = [F(0)]
     l = 1
-    while 1 - cdf(delay, l - 1) >= tol
+    while 1 - F(l - 1) >= tol
         if l > max_lag
             @warn "The reporting delay has more than $tol of its mass above a lag of " *
                 "$max_lag steps, so the discretised pmf is truncated there." maxlog = 1
             break
         end
-        push!(d, cdf(delay, l) - cdf(delay, l - 1))
+        push!(d, F(l) - F(l - 1))
         l += 1
     end
     return d ./ sum(d)
@@ -246,6 +273,21 @@ strictly positive, since a lognormal puts no mass at 0; use
 """
 struct LognormalApproximation <: IncidenceApproximation end
 
+# A count that can only be zero, such as a type with no seeds in the first
+# step, or any count before a delayed report can arrive, has zero mean and
+# variance, which no approximation can be matched to. It is left out, and the
+# data are impossible unless they are zero there too.
+function _incidence_loglik_observed(approximation, data, μ, Σ)
+    keep = [Σ[t, t] > 0 for t in eachindex(data)]
+    all(keep) && return _incidence_loglik(approximation, data, μ, Σ)
+    T = float(eltype(μ))
+    any(t -> !keep[t] && data[t] != 0, eachindex(data)) && return T(-Inf)
+    any(keep) || return zero(T)
+    return _incidence_loglik(
+        approximation, data[keep], μ[keep], Symmetric(Matrix(Σ)[keep, keep])
+    )
+end
+
 function _incidence_loglik(::NormalApproximation, data::AbstractVector{<:Real}, μ, Σ)
     return logpdf(MvNormal(μ, Σ), data)
 end
@@ -322,7 +364,7 @@ function loglikelihood(
         offspring, generation_time, length(y);
         seeds, reporting_probability, reporting_delay, tol, max_lag
     )
-    return _incidence_loglik(approximation, y, μ, Σ)
+    return _incidence_loglik_observed(approximation, y, μ, Σ)
 end
 
 _single_type_series(data::IncidenceCounts{Vector{Int}, Int}) = (data.data, data.seeds)
@@ -480,7 +522,7 @@ function loglikelihood(
         seeds = data.seeds, reporting_probability, reporting_delay, tol, max_lag
     )
     y, μ_obs, Σ_obs = _observed_moments(data.data, μ, Σ)
-    return _incidence_loglik(approximation, y, μ_obs, Σ_obs)
+    return _incidence_loglik_observed(approximation, y, μ_obs, Σ_obs)
 end
 
 # The observed vector and its moments: the counts by type as they are, or
@@ -501,36 +543,120 @@ function _observed_moments(data::AbstractVector, μ, Σ)
     return data, vec(sum(μ; dims = 2)), Symmetric(Σ_total)
 end
 
-# Refuse under-reporting from either source `simulate` reads it from: an
-# observation model, or a `Reporting` progression step (`_reporting_probability`
-# is the same helper `_eoo_assert_full_reporting` reads for the end-of-outbreak
-# probability). A `Reporting` step dates its report from onset by default, so
-# its infection-to-report delay would need the incubation period convolved in,
-# which this overload does not do; the direct method takes that delay as given.
-_incidence_assert_full_reporting(::NoObservation, progression) = _incidence_assert_reporting_rate(
-    _reporting_probability(progression)
-)
-function _incidence_assert_full_reporting(obs, progression)
-    throw(
+# A model's under-reporting as the direct method's keywords. An observation
+# model is refused. A `Reporting` step becomes `reporting_probability` and an
+# infection-to-report `reporting_delay`: its own probability and delay when it
+# reports from infection, and, from onset, the delay added to the incubation
+# period and the probability scaled by the share of cases that reach onset.
+# The step must be the model's only one: an outcome or another transition can
+# end a case before its report, or set the onset it reports from, and neither
+# keeps reporting independent of the rest of the case.
+function _incidence_reporting(model)
+    obs = observation(model)
+    obs isa NoObservation || throw(
         ArgumentError(
             "loglikelihood(IncidenceCounts, model with $(typeof(obs))) is not " *
-                "implemented. Call loglikelihood with the offspring and generation-time " *
-                "distributions directly, passing `reporting_probability` and, if reports " *
-                "are delayed, `reporting_delay` measured from infection."
+                "implemented; report cases with a Reporting step instead."
+        )
+    )
+    progression = _progression(model)
+    _reporting_probability(progression) === nothing && return (;)
+    length(progression) == 1 || throw(
+        ArgumentError(
+            "loglikelihood(IncidenceCounts, model) supports a Reporting step only as " *
+                "the model's whole progression: another step can end a case before its " *
+                "report or set the time it reports from, and the closed form assumes " *
+                "each case is reported independently. Call loglikelihood with the " *
+                "offspring and generation-time distributions directly, passing " *
+                "`reporting_probability` and `reporting_delay` measured from infection."
+        )
+    )
+    r = only(progression)
+    r.delay isa Union{Real, Distribution} || throw(
+        ArgumentError(
+            "loglikelihood(IncidenceCounts, model) needs the Reporting delay to be a " *
+                "number or a distribution, not a per-case function"
+        )
+    )
+    reached, to_anchor = _infection_to(r.from, attributes(model))
+    return (
+        reporting_probability = _reporting_probability(progression) * reached,
+        reporting_delay = to_anchor === nothing ? r.delay : _DelaySum(to_anchor, r.delay),
+    )
+end
+
+# The share of cases that reach the time a `Reporting` step measures its delay
+# from, and that time's delay after infection (`nothing` for infection itself).
+function _infection_to(from::Symbol, attrs)
+    from === :infection && return (1.0, nothing)
+    _resolved_key(from) === :onset_time && return _infection_to_onset(attrs)
+    throw(
+        ArgumentError(
+            "loglikelihood(IncidenceCounts, model) supports a Reporting step from " *
+                "infection or onset, not from `:$from`"
         )
     )
 end
-_incidence_assert_reporting_rate(::Nothing) = nothing
-function _incidence_assert_reporting_rate(ρ::Real)
-    ρ >= 1.0 && return nothing
+function _infection_to(from, attrs)
     throw(
         ArgumentError(
-            "loglikelihood(IncidenceCounts, model with a Reporting step at probability " *
-                "$ρ) is not implemented. Call loglikelihood with the offspring and " *
-                "generation-time distributions directly, passing `reporting_probability = " *
-                "$ρ` and, if reports are delayed, `reporting_delay` measured from infection."
+            "loglikelihood(IncidenceCounts, model) supports a Reporting step from " *
+                "infection or onset, not from a function"
         )
     )
+end
+
+# Onset from the model's `clinical_presentation`, its incubation period and
+# asymptomatic share. The builders are run once, in order, on a probe case, as
+# `simulate` runs them, to check that no other one records an onset of its own.
+function _infection_to_onset(attrs)
+    builders = attrs isa NoAttributes ? () :
+        attrs isa Union{Tuple, AbstractVector} ? Tuple(attrs) : (attrs,)
+    presentations = filter(b -> b isa ClinicalPresentation, builders)
+    length(presentations) == 1 || throw(
+        ArgumentError(
+            "loglikelihood(IncidenceCounts, model) reads the onset a Reporting step " *
+                "reports from from the model's clinical_presentation, and needs exactly " *
+                "one; this model has $(length(presentations))"
+        )
+    )
+    # Fresh copies, so the probe leaves the model's own builders as they were.
+    _check_onset_builders(_fresh_attributes(builders))
+    cp = only(presentations)
+    cp.prob_asymptomatic isa Real || throw(
+        ArgumentError(
+            "loglikelihood(IncidenceCounts, model) needs a fixed prob_asymptomatic, not " *
+                "a per-case function"
+        )
+    )
+    return (1 - cp.prob_asymptomatic, cp.incubation_period)
+end
+
+function _check_onset_builders(builders)
+    probe = Individual(id = 1, infection_time = 0.0)
+    rng = Random.Xoshiro(1)
+    onset(ind) = (get(ind.state, :onset_time, nothing), get(ind.state, :incubation_period, nothing))
+    for b in builders
+        before = onset(probe)
+        try
+            _apply_attributes!(b, rng, probe)
+        catch err
+            throw(
+                ArgumentError(
+                    "loglikelihood(IncidenceCounts, model) could not check the model's " *
+                        "attribute builders for an onset of their own: running them on " *
+                        "a probe case failed with $(sprint(showerror, err))"
+                )
+            )
+        end
+        b isa ClinicalPresentation || isequal(onset(probe), before) || throw(
+            ArgumentError(
+                "loglikelihood(IncidenceCounts, model): an attribute builder other than " *
+                    "clinical_presentation records an onset, which this closed form cannot read"
+            )
+        )
+    end
+    return nothing
 end
 
 """
@@ -540,15 +666,21 @@ end
 Log-likelihood of an incidence time series under a model's own offspring and
 generation-time distributions, single-type or multi-type (a model built from
 an offspring matrix, with `data` holding counts and seeds by type or their
-total). Only defined for a model with no
-interventions, an unlimited `population_size`, a single infectiousness
-window with no `until`, attributes and progression that leave the offspring
-law unchanged (see [`EpiBranch.offspring_law_unchanged`](@ref)), and full
-reporting (every case counted, whether under-reporting would otherwise come
-from an observation model or a `Reporting` progression step); each of those
-reshapes transmission, detection or timing in a way this closed form does
-not represent, and throws an `ArgumentError` naming the reason instead of a
-silent approximation. Simulate [`weekly_incidence`](@ref) (or daily, by
+total). A [`Reporting`](@ref) step makes `data` a series of reported cases
+by report date: a report timed from infection uses the step's own
+probability and delay, and one timed from onset (the default) adds the
+model's [`clinical_presentation`](@ref) incubation period to the delay and
+counts only the cases that are not asymptomatic.
+
+Only defined for a model with no interventions, an unlimited
+`population_size`, a single infectiousness window with no `until`,
+attributes that leave the offspring law unchanged (see
+[`EpiBranch.offspring_law_unchanged`](@ref)), and either no progression or a
+`Reporting` step as its only one, with a fixed probability and delay. An
+outcome or another transition can end a case before its report, which the
+closed form, assuming each case is reported independently, does not
+represent. Each of these limits throws an `ArgumentError` naming the reason
+instead of a silent approximation. Simulate [`weekly_incidence`](@ref) (or daily, by
 passing a weekly `condition`) and compare empirically for a model outside
 these limits.
 """
@@ -573,7 +705,14 @@ function loglikelihood(
                 "represent. Simulate instead."
         )
     )
-    _incidence_assert_full_reporting(observation(model), _progression(model))
+    reporting = _incidence_reporting(model)
+    isempty(reporting) ||
+        !any(k -> k in (:reporting_probability, :reporting_delay), keys(kwargs)) || throw(
+        ArgumentError(
+            "this model's Reporting step already sets the reporting probability and " *
+                "delay; drop `reporting_probability` and `reporting_delay`"
+        )
+    )
     gt = _single_kernel(model)
     gt isa NoGenerationTime && throw(
         ArgumentError(
@@ -589,5 +728,7 @@ function loglikelihood(
                 "generation-time distributions directly instead."
         )
     )
-    return loglikelihood(data, _analytic_offspring(model), gt, approximation; kwargs...)
+    return loglikelihood(
+        data, _analytic_offspring(model), gt, approximation; reporting..., kwargs...
+    )
 end

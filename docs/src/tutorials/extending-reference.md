@@ -258,12 +258,14 @@ listing `Transition(:susceptible_again, from = :recovered, delay = Exponential(1
 writes `:susceptible_again_time`, which [`susceptible_again_time`](@ref) reads
 and [`EpiBranch.HostImmunity`](@ref) checks. Storage is a separate matter:
 [`Individual`](@ref)'s fields describe only the current infection episode, so
-a model whose `contacts_of` offers an already-infected person as a contact
-again (once `HostImmunity` lets the exposure through) gets the closing episode
-archived onto `episodes` instead of overwritten; see
-[`InfectionEpisode`](@ref). No built-in model does this yet. A model that allows
-reinfection writes `contacts_of` to keep offering people after their first
-infection, instead of leaving them out.
+a contact offered as a target again (once `HostImmunity` lets the exposure
+through) gets the closing episode archived onto `episodes` instead of
+overwritten; see [`InfectionEpisode`](@ref). The continuous-time models
+(network, household, homogeneous, mixing) do this on their own the moment the
+`progression` reaches `:susceptible_again`, with no change to how they name
+targets or contacts. On the generation engine a model allows reinfection by
+writing its own `contacts_of` to keep offering people after their first
+infection, instead of leaving them out; no built-in model does that yet.
 
 ## Continuous-time models: further details
 
@@ -929,6 +931,29 @@ their own `draw_offspring` method are used as they are. Closed-form results need
 offspring distribution with the corresponding analytical methods; a rule that
 works for simulation has no closed form.
 
+## Common random numbers
+
+A draw that belongs to one person, or one pair of them, should come from
+`EpiBranch.stream(rng, id, purpose)` rather than `rng` directly: `id` is a
+person's `id`, or `(a, b)` for an ordered pair, and `purpose` is a tag telling
+apart the different things drawn for that `id`, such as `:delay` and
+`:acceptance`. When more than one intervention instance can draw for the same
+`id` under the same tag — two doses of the same vaccination type, say, or a
+group and a mass campaign both offering `:acceptance` — include the
+intervention itself in the tag, as `(iv, :acceptance)`: each instance then
+keeps its own place in the stream regardless of what the others draw. For an
+ordinary `AbstractRNG`, `stream` returns `rng` itself, so
+nothing about an existing model or intervention changes by taking part. Under
+[`CommonRandomNumbers`](@ref), it returns a generator kept just for that `(id,
+purpose)`, so the draw keeps its value however many unrelated draws happen
+elsewhere in the run. Two scenarios built from the same seed can then share
+every draw up to the point one of them changes what happens to a particular
+person or pair, and only differ in what follows from that change.
+
+A draw that does not belong to one person or pair, such as an offspring count
+or which node a community hazard reaches first, reads `rng` directly as
+before.
+
 ## All extension points
 
 | To add | You write | Used |
@@ -960,3 +985,4 @@ works for simulation has no closed form.
 | The likelihood of the natural history | `progression_loglik(spec, individuals)`; built-in transitions work as they are, one of your own needs `transition_loglik` | Likelihood |
 | An observation model | A type `<: ObservationModel` with `observe(base, ::YourObs)` (closed form) and/or `apply_observation!(::YourObs, state, rng)` (simulation) | Closed-form results and fitting |
 | Per-cluster information | Either computed into existing `ChainSizes` fields, or a new data type with a `loglikelihood` method that passes each group to `loglikelihood(ChainSizes(sizes; seeds), offspring)` | Likelihood |
+| A per-person or per-pair draw that should stay aligned under `CommonRandomNumbers` | `EpiBranch.stream(rng, id, purpose)` in place of `rng` | Wherever the draw happens |
