@@ -449,8 +449,8 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
   first trigger found even once a genuinely earlier one turned up. A settled
   member's dose, and a dose another vaccination already gave, still keep
   their date.
-- `_sellke_race!` no longer boxes a case's transmission routes as it settles
-  it, on a model whose windows are not all the same type (a different
+- `_sellke_race!` no longer boxes a case's transmission routes while settling
+  the case, on a model whose windows are not all the same type (a different
   offspring law, kernel or `until`). Settling a case used to cost memory and
   time in proportion to how many routes there were in total rather than to
   how many of them were reached, which could multiply a run's allocation by

@@ -1620,9 +1620,9 @@ function _on_route(f::F, rts::Tuple, route, ri = 1) where {F}
     return _on_route(f, Base.tail(rts), route, ri + 1)
 end
 
-# Draw each route's own contacts for a case as it settles (`_mint!`), for every
-# route rather than one named route. A generated function unrolls over `rts`'s
-# literal length instead of looping over it or recursing through
+# Call `_mint!`, which draws a route's own contacts for a case as it settles,
+# on every route rather than one at a time. A generated function unrolls over
+# `rts`'s literal length instead of looping over it or recursing through
 # `Base.tail`: a `for` loop over routes of more than one type (a different
 # offspring law, kernel or `until`, say) reads every visit through their
 # common supertype and boxes it, and recursion deep enough to cover a few
