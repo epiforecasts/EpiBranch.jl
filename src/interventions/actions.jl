@@ -546,8 +546,8 @@ function _apply_continuous_actions!(
     is_pending = id -> _pending(id, members, processed, pos)
     # Finalised cases have already generated proposals. A new action may
     # affect the current case and pending people, but must not revise earlier
-    # cases — `continuous_candidates` is what keeps each intervention within
-    # that boundary while choosing its own, much smaller, set of people to
+    # cases. `continuous_candidates` keeps each intervention within that
+    # boundary while it chooses its own, much smaller, set of people to
     # visit. The caller passes only the interventions that propose actions
     # (`_proposes_actions`).
     for iv in interventions
