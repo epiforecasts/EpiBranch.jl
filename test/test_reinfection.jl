@@ -48,6 +48,39 @@ using Random
         return [(other, parent.infection_time + 1.0)]
     end
 
+    # A custom reinfection step written exactly as the `FollowupVisit` idiom
+    # in the docs: one `transition_time` call, gated on `probability`, that
+    # only sometimes sets its target field. `_allows_reinfection` must read
+    # this as capable regardless of how a given probe draw would have landed.
+    struct _ProbabilisticReinfection <: EpiBranch.AbstractClinicalTransition
+        probability::Float64
+    end
+    function EpiBranch.resolve_individual!(t::_ProbabilisticReinfection, ind, state)
+        time = EpiBranch.transition_time(
+            state.rng, ind, ind.infection_time, 0.0; probability = t.probability
+        )
+        time === nothing || (ind.state[:susceptible_again_time] = time)
+        return nothing
+    end
+
+    @testset "A low-probability custom reinfection step is still detected" begin
+        for seed in 1:20
+            transitions = EpiBranch.AbstractClinicalTransition[_ProbabilisticReinfection(0.05)]
+            state = EpiBranch.new_state(
+                PingPongModel(), transitions, NoAttributes(), MersenneTwister(seed)
+            )
+            @test EpiBranch._allows_reinfection(state)
+        end
+    end
+
+    @testset "A custom step that can never reinfect is not detected" begin
+        transitions = EpiBranch.AbstractClinicalTransition[_ProbabilisticReinfection(0.0)]
+        state = EpiBranch.new_state(
+            PingPongModel(), transitions, NoAttributes(), MersenneTwister(1)
+        )
+        @test !EpiBranch._allows_reinfection(state)
+    end
+
     @testset "A model that keeps offering a recovered host gets fresh episodes" begin
         progression = [
             Transition(:recovered, from = :infection, delay = 1.0),
