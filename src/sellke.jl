@@ -1396,6 +1396,10 @@ function _sellke_race!(
         if reinfection
             ind.infection_time = prior_infection_time
             close_episode!(ind, InfectionEpisode(ind))
+            # `ind` is the case being processed again, so `is_settled` must
+            # go back to false until this new episode's own call to
+            # `_apply_continuous_actions!` below marks it settled afresh.
+            ind.state[:_settled] = false
         end
 
         ind.infection_time = bt

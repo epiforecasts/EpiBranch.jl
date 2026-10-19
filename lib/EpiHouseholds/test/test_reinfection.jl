@@ -35,6 +35,41 @@ end
         count(ind -> ind.parent_id == reinfected.id, state.individuals)
 end
 
+@testset "is_settled is false again for a host whose reinfection is being processed" begin
+    # Each `intervention_actions` call runs while `state.max_infection_time`
+    # sits at the candidate currently being settled, so a candidate whose
+    # `infection_time` matches it is the current one; recording its episode
+    # count alongside `is_settled` catches a host revisited by a second
+    # episode while `is_settled` still carries the first episode's answer.
+    struct _RecordSettled <: EpiBranch.AbstractIntervention
+        observed::Vector{Tuple{Int, Bool}}
+    end
+    EpiBranch.continuous_actions(::_RecordSettled) = true
+    function EpiBranch.intervention_actions(iv::_RecordSettled, state, candidates)
+        for c in candidates
+            c.infection_time == state.max_infection_time || continue
+            push!(iv.observed, (length(c.episodes), EpiBranch.is_settled(state, c)))
+        end
+        return nothing
+    end
+
+    recorder = _RecordSettled(Tuple{Int, Bool}[])
+    model = ModelSpec(
+        HouseholdProcess(
+            fill(4, 150), Exponential(1.5);
+            external_hazard = 0.05, obs_end = 200.0
+        );
+        progression = _waning_progression(),
+        interventions = [recorder]
+    )
+    state = simulate(model; rng = StableRNG(1))
+    @test any(ind -> length(ind.episodes) >= 1, state.individuals)
+
+    reinfection_rounds = filter(((episodes, _),) -> episodes >= 1, recorder.observed)
+    @test !isempty(reinfection_rounds)
+    @test all(((_, settled),) -> !settled, reinfection_rounds)
+end
+
 @testset "Without a susceptible_again step nobody is reinfected" begin
     model = ModelSpec(
         HouseholdProcess(
