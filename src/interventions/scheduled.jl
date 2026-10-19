@@ -29,6 +29,9 @@ Scheduled(iso; start_time = 10.0, end_time = 30.0)
 # Isolation once 20 cases have been reported
 Scheduled(iso; start_after = ReportedCases(20))
 
+# Isolation from seven days after the fifth reported case
+Scheduled(iso; start_after = After(ReportedCases(5), 7.0))
+
 # Any condition on the simulation, here from the third generation on
 Scheduled(iso, state -> state.current_generation >= 3)
 ```
@@ -43,7 +46,11 @@ Scheduled(iso, state -> state.current_generation >= 3)
   every infection as it happens, whether or not it is ever reported.
 - `start_after`: a trigger such as [`ReportedCases`](@ref), which counts only
   cases reported by that day, or [`Infections`](@ref). `start_after_cases = n`
-  is the same as `start_after = Infections(n)`.
+  is the same as `start_after = Infections(n)`. Wrap one in [`After`](@ref)
+  to start a fixed delay after it opened, or write one that reads an
+  admitted [`InterventionAction`](@ref EpiBranch.InterventionAction)'s own
+  individual, through the three-argument [`is_triggered!`](@ref), to gate it
+  by group rather than by the whole population.
 - `condition`: a function of the simulation state returning `true` while the
   intervention should act.
 
@@ -149,11 +156,18 @@ override the trait [`trigger_can_lapse`](@ref) to say whether that can turn
 false again. `Scheduled` reads both to set its own `population_dependent`
 and `can_lapse` flags, so a trigger written outside the package works
 without editing `Scheduled`.
+
+A trigger that also implements the three-argument [`is_triggered!`](@ref)
+can gate an admitted action by whom it is for rather than only by the
+population as a whole, and one that implements [`opened_at`](@ref) can be
+wrapped in [`After`](@ref) to open a fixed delay after its own condition
+first held.
 """
 abstract type AbstractTrigger end
 
 """
     is_triggered!(trigger, state::SimulationState) -> Bool
+    is_triggered!(trigger, state::SimulationState, action) -> Bool
 
 Whether `trigger`'s condition holds now. A trigger must keep no state of its
 own between calls, because the same trigger object is reused across the
@@ -165,8 +179,21 @@ The engine asks the gate about 1.7 times per individual, so a trigger that
 walks the population on every call makes a run quadratic in the number of
 individuals. Read a running total instead, as [`Infections`](@ref) reads
 `cumulative_cases`.
+
+The three-argument form is asked when `Scheduled` admits an
+[`InterventionAction`](@ref EpiBranch.InterventionAction) (such as a dose),
+with `action` the one proposed. Its default calls the two-argument form,
+ignoring `action`, so an existing trigger keeps working unchanged. A trigger
+that reads `action.individual`, for example a group attribute, gates that
+action for the person it is for rather than the whole population at once.
 """
 function is_triggered! end
+# `state` and `action` are left untyped, rather than `state::SimulationState`,
+# so that a trigger overriding the three-argument form as loosely as the
+# built-in two-argument triggers already do (`is_triggered!(::T, state) = ...`)
+# is unambiguously more specific than this default, not merely different from
+# it on another argument.
+is_triggered!(trigger::AbstractTrigger, state, action) = is_triggered!(trigger, state)
 
 """
     trigger_can_lapse(trigger) -> Bool
@@ -217,6 +244,22 @@ catches an intervention missing a field of its own.
 required_fields(::AbstractTrigger) = Symbol[]
 
 """
+    opened_at(trigger, state::SimulationState) -> Union{Nothing, Real}
+
+The day on which `trigger` turned true, if it can name one, or `nothing`.
+[`After`](@ref) reads this to start its delay from the moment a trigger
+opened, rather than from whenever the gate next happens to be checked, which
+can be well after the condition itself became true.
+
+The default is `nothing`, the conservative answer for a trigger written
+outside the package: most triggers need not implement this to work with
+`Scheduled` directly, only to be wrapped in `After`. [`Infections`](@ref) and
+[`ReportedCases`](@ref) both answer exactly, from the `n`-th infection or
+report.
+"""
+opened_at(::AbstractTrigger, ::SimulationState) = nothing
+
+"""
     Infections(n)
 
 A `start_after` trigger for [`Scheduled`](@ref) that opens once there have
@@ -229,6 +272,35 @@ struct Infections <: AbstractTrigger
 end
 is_triggered!(t::Infections, state::SimulationState) = state.cumulative_cases >= t.n
 trigger_can_lapse(::Infections) = false
+
+# Every infection time the population holds, counting a reinfected host's
+# earlier episode as well as its current infection: mirrors `_report_log`,
+# which the comment there explains in full. Cached in `state.scratch` once
+# the `n`-th time is found, since it is settled for good from then on
+# (`Infections` cannot lapse); read afresh on every call before that, which
+# costs no more than a single `is_triggered!` already would once summed over
+# the calls it takes to reach `n`. `state` is left unparametrised by the
+# host's own number type, as `opened_at`'s default is, rather than written
+# `state::SimulationState{T}) where {T}`: pinning only the first of
+# `SimulationState`'s four parameters there leaves a method Julia cannot
+# always tell is strictly narrower than the plain default on `state`,
+# wrongly calling the two ambiguous.
+function opened_at(t::Infections, state::SimulationState)
+    cached = get(state.scratch, (t, :opened_at), nothing)
+    T = typeof(state.max_infection_time)
+    cached === nothing || return cached::T
+    times = T[]
+    for ind in state.individuals
+        for episode in ind.episodes
+            push!(times, episode.infection_time)
+        end
+        is_infected(ind) && isfinite(ind.infection_time) && push!(times, ind.infection_time)
+    end
+    length(times) >= t.n || return nothing
+    time = partialsort!(times, t.n)
+    state.scratch[(t, :opened_at)] = time
+    return time
+end
 
 # The reports dated by `state.max_infection_time`, counting every episode of a
 # host infected more than once: a reinfection resets the live `:reported` flag
@@ -264,6 +336,65 @@ required_transitions(t::ReportedCases) = t.n > 0 ? (Reporting,) : ()
 # counted from the archive once the host is reinfected, and the accepted
 # clock only rises.
 trigger_can_lapse(::ReportedCases) = false
+# The report log already holds every report in the order it falls due,
+# `_reported_cases_due`'s own binary search included; the `n`-th report's own
+# day, rather than a count against the current clock, is exactly when
+# `ReportedCases(n)` opened. `state` is left unparametrised, as `Infections`'s
+# own `opened_at` is, for the same reason given there.
+function opened_at(t::ReportedCases, state::SimulationState)
+    T = typeof(state.max_infection_time)
+    log = get(state.scratch, (:report_log,), nothing)
+    if log === nothing
+        log = state.scratch[(:report_log,)] = _report_log(state)
+    end
+    _confirm_reports!(log::_ReportLog{T}, state.individuals)
+    return length(log.times) >= t.n ? log.times[t.n] : nothing
+end
+
+"""
+    After(trigger, delay)
+
+A `start_after` trigger for [`Scheduled`](@ref) that opens `delay` days after
+`trigger` itself opened, found through [`opened_at`](@ref) rather than from
+whenever the combined gate is next checked, which can land well after
+`trigger`'s own condition first held.
+
+# Examples
+```julia
+# Isolation from seven days after the fifth reported case
+Scheduled(iso; start_after = After(ReportedCases(5), 7.0))
+```
+
+`trigger` must itself answer [`opened_at`](@ref) with something other than
+the conservative default `nothing`; [`Infections`](@ref) and
+[`ReportedCases`](@ref) both do. Building an `After` around a trigger that
+does not throws straight away, rather than leaving a gate that can silently
+never open.
+"""
+struct After{T <: AbstractTrigger} <: AbstractTrigger
+    trigger::T
+    delay::Float64
+    function After(trigger::T, delay::Real) where {T <: AbstractTrigger}
+        _has_own_method(opened_at, T, AbstractTrigger) || throw(
+            ArgumentError(
+                "$(nameof(T)) does not implement `opened_at`, so `After` " *
+                    "cannot tell when it opened"
+            )
+        )
+        return new{T}(trigger, Float64(delay))
+    end
+end
+function is_triggered!(a::After, state::SimulationState, action = nothing)
+    t = opened_at(a.trigger, state)
+    return t !== nothing && state.max_infection_time >= t + a.delay
+end
+trigger_can_lapse(a::After) = trigger_can_lapse(a.trigger)
+required_transitions(a::After) = required_transitions(a.trigger)
+required_fields(a::After) = required_fields(a.trigger)
+function opened_at(a::After, state::SimulationState)
+    t = opened_at(a.trigger, state)
+    return t === nothing ? nothing : t + a.delay
+end
 
 # ── Keyword convenience constructor ──────────────────────────────────
 
@@ -287,14 +418,16 @@ function Scheduled(
         conditions,
         s -> s.cumulative_cases >= start_after_cases
     )
-    start_after !== nothing && push!(
-        conditions,
-        s -> is_triggered!(start_after, s)
-    )
 
-    isempty(conditions) && error("Scheduled requires at least one condition")
+    isempty(conditions) && start_after === nothing &&
+        error("Scheduled requires at least one condition")
 
-    condition = if length(conditions) == 1
+    # `start_after` is checked separately, from `triggers` below, rather
+    # than folded in here, so that `is_active` can offer it the action being
+    # admitted; see `is_triggered!`.
+    condition = if isempty(conditions)
+        s -> true
+    elseif length(conditions) == 1
         conditions[1]
     else
         s -> all(c -> c(s), conditions)
@@ -317,7 +450,21 @@ end
 
 # ── Protocol delegation ──────────────────────────────────────────────
 
-is_active(s::Scheduled, state::SimulationState) = s.condition(state)
+is_active(s::Scheduled, state::SimulationState) = is_active(s, state, nothing)
+
+# `action`, when given, is the `InterventionAction` `Scheduled` is deciding
+# whether to admit: each of `s.triggers` is then asked about it through the
+# three-argument `is_triggered!`, so a trigger that reads the action's own
+# individual can gate it rather than the whole population at once. With no
+# action to offer, every trigger is asked its plain two-argument question
+# instead of the three-argument one with `nothing` in its place, so a trigger
+# that implements only the action-aware form, expecting a real one, is never
+# called with something else.
+function is_active(s::Scheduled, state::SimulationState, action)
+    s.condition(state) || return false
+    action === nothing && return all(t -> is_triggered!(t, state), s.triggers)
+    return all(t -> is_triggered!(t, state, action), s.triggers)
+end
 
 # Whether `s`'s condition holds evaluated as of `t` rather than the clock the
 # caller is otherwise running under. `state.max_infection_time` is moved
@@ -326,11 +473,11 @@ is_active(s::Scheduled, state::SimulationState) = s.condition(state)
 # condition (a trigger, an opaque predicate) still sees the population as it
 # stands right now, only the clock itself moves: the same approximation
 # `apply_actions!` already makes for a proposed dose's own time.
-function _active_at(s::Scheduled, t, state)
+function _active_at(s::Scheduled, t, state, action = nothing)
     previous_time = state.max_infection_time
     try
         state.max_infection_time = t
-        return is_active(s, state)
+        return is_active(s, state, action)
     finally
         state.max_infection_time = previous_time
     end

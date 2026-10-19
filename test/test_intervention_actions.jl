@@ -24,6 +24,17 @@ function EpiBranch.continuous_candidates(
     return [state.individuals[iv.target]]
 end
 
+# A `start_after` trigger written outside the package, gating each
+# `InterventionAction` by a group count carried on the action's own
+# individual rather than by the population as a whole.
+struct _DistrictTrigger <: EpiBranch.AbstractTrigger
+    threshold::Int
+end
+EpiBranch.is_triggered!(::_DistrictTrigger, state) = true
+function EpiBranch.is_triggered!(t::_DistrictTrigger, state, action)
+    return get(action.individual.state, :district_cases, 0) >= t.threshold
+end
+
 @testset "Intervention action admission" begin
     newstate() = EpiBranch.new_state(
         BranchingProcess(Poisson(0.0)),
@@ -110,6 +121,31 @@ end
     @test_throws ArgumentError EpiBranch.apply_actions!(
         Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf), state, [other]
     )
+end
+
+@testset "a start_after trigger can read the action it gates" begin
+    state = EpiBranch.new_state(
+        BranchingProcess(Poisson(0.0)),
+        EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(18)
+    )
+    low, high = (
+        Individual(
+            id = i, state = Dict{Symbol, Any}(
+                :appointment_time => 1.0, :district_cases => cases
+            )
+        )
+            for (i, cases) in enumerate((2, 9))
+    )
+    append!(state.individuals, [low, high])
+    scheduled = Scheduled(AppointmentAction(); start_after = _DistrictTrigger(5))
+
+    EpiBranch.apply_actions!(scheduled, state, [low, high])
+    @test !get(low.state, :attended, false)
+    @test get(high.state, :attended, false)
+
+    # The two-argument form still answers call sites with no action to offer,
+    # such as `resolve_individual!`'s own gate.
+    @test EpiBranch.is_active(scheduled, state)
 end
 
 @testset "A pending contact's ring dose moves earlier when a later infector traces it sooner" begin

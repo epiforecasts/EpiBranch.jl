@@ -12,6 +12,7 @@ include("testutils/progression.jl")
 @testset "EpiBranch" begin
     include("test_quality.jl")
     include("test_types.jl")
+    include("test_streams.jl")
     include("test_branching_process.jl")
     include("test_attributes.jl")
     include("test_interventions.jl")

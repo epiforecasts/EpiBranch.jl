@@ -48,6 +48,71 @@ using Random
         return [(other, parent.infection_time + 1.0)]
     end
 
+    # A custom reinfection step written exactly as the `FollowupVisit` idiom
+    # in the docs: one `transition_time` call, gated on `probability`, that
+    # only sometimes sets its target field. `_allows_reinfection` must read
+    # this as capable regardless of how a given probe draw would have landed.
+    struct _ProbabilisticReinfection <: EpiBranch.AbstractClinicalTransition
+        probability::Float64
+    end
+    function EpiBranch.resolve_individual!(t::_ProbabilisticReinfection, ind, state)
+        time = EpiBranch.transition_time(
+            state.rng, ind, ind.infection_time, 0.0; probability = t.probability
+        )
+        time === nothing || (ind.state[:susceptible_again_time] = time)
+        return nothing
+    end
+
+    @testset "A low-probability custom reinfection step is still detected" begin
+        for seed in 1:20
+            transitions = EpiBranch.AbstractClinicalTransition[_ProbabilisticReinfection(0.05)]
+            state = EpiBranch.new_state(
+                PingPongModel(), transitions, NoAttributes(), MersenneTwister(seed)
+            )
+            @test EpiBranch._allows_reinfection(state)
+        end
+    end
+
+    @testset "A custom step that can never reinfect is not detected" begin
+        transitions = EpiBranch.AbstractClinicalTransition[_ProbabilisticReinfection(0.0)]
+        state = EpiBranch.new_state(
+            PingPongModel(), transitions, NoAttributes(), MersenneTwister(1)
+        )
+        @test !EpiBranch._allows_reinfection(state)
+    end
+
+    @testset "An attribute-dependent progression alongside a custom step does not crash the probe" begin
+        # A `Transition` whose `delay` reads `:age` sits alongside a custom
+        # transition, which forces `_allows_reinfection` to probe every
+        # transition; the probe must have `:age` set on it too.
+        transitions = EpiBranch.AbstractClinicalTransition[
+            Transition(:recovered; from = :infection, delay = (rng, ind) -> ind.state[:age] < 18 ? 2.0 : 5.0),
+            _ProbabilisticReinfection(0.0),
+        ]
+        state = EpiBranch.new_state(
+            PingPongModel(), transitions, demographics(), MersenneTwister(1)
+        )
+        @test !EpiBranch._allows_reinfection(state)
+    end
+
+    # The key comes from a model's own per-individual `setup` (as
+    # `HouseholdProcess` sets `:household` there), rather than from
+    # `state.attributes` or a literal `Transition`, so the probe individual
+    # never has it.
+    struct _ReadsSetupKey <: EpiBranch.AbstractClinicalTransition end
+    function EpiBranch.resolve_individual!(::_ReadsSetupKey, ind, state)
+        ind.state[:household]
+        return nothing
+    end
+
+    @testset "A custom step reading a setup-only key does not crash the probe" begin
+        transitions = EpiBranch.AbstractClinicalTransition[_ReadsSetupKey()]
+        state = EpiBranch.new_state(
+            PingPongModel(), transitions, NoAttributes(), MersenneTwister(1)
+        )
+        @test EpiBranch._allows_reinfection(state)
+    end
+
     @testset "A model that keeps offering a recovered host gets fresh episodes" begin
         progression = [
             Transition(:recovered, from = :infection, delay = 1.0),
@@ -75,6 +140,34 @@ using Random
         # up as two.
         @test all(length(e.secondary_case_ids) == 1 for e in one.episodes)
         @test all(length(e.secondary_case_ids) == 1 for e in two.episodes)
+    end
+
+    # Counts, on each individual, how many times `initialise_individual!` has
+    # run: once when they are created, and again every time a reinfection
+    # settles a new episode. A host whose count stalls at 1 past its first
+    # episode would be reusing an earlier episode's intervention state (such
+    # as `Isolation`'s `:test_positive`) for every later one.
+    struct _CountInitialisations <: EpiBranch.AbstractIntervention end
+    function EpiBranch.initialise_individual!(::_CountInitialisations, ind, state)
+        ind.state[:_init_count] = get(ind.state, :_init_count, 0) + 1
+        return nothing
+    end
+
+    @testset "A reinfection re-initialises intervention state for the new episode" begin
+        progression = [
+            Transition(:recovered, from = :infection, delay = 1.0),
+            Transition(:susceptible_again, from = :recovered, delay = 0.0),
+        ]
+        spec = ModelSpec(
+            PingPongModel(); progression,
+            interventions = [_CountInitialisations()]
+        )
+        state = simulate(spec; n_initial = 1, stopping_rules = [MaxGenerations(4)])
+        one, two = state.individuals
+
+        @test length(one.episodes) >= 1
+        @test one.state[:_init_count] == length(one.episodes) + 1
+        @test two.state[:_init_count] == length(two.episodes) + 1
     end
 
     @testset "ReportedCases counts each episode's report once" begin
