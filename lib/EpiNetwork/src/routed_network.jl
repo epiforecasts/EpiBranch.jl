@@ -125,8 +125,7 @@ function RoutedNetwork(
     # kernel; a per-edge vector is validated and normalised against this
     # route's own adjacency.
     windows = [_validate_route_kernel(w) for w in windows]
-    _valid_external(external_hazard) ||
-        throw(ArgumentError("external_hazard must be a non-negative number or a continuous distribution"))
+    _check_external(external_hazard, n)
     obs_end_value = Float64(obs_end)
     (!isnan(obs_end_value) && obs_end_value >= 0) || throw(
         ArgumentError(
@@ -289,7 +288,7 @@ function simulate_once(
             initial_cases = sim_opts.initial_cases
         ),
         introduction = _ext_active(model.external_hazard) ?
-            (EpiBranch._ext_survival(model.external_hazard), Tobs) : nothing,
+            (EpiBranch._ext_prepare(model.external_hazard), Tobs) : nothing,
         contacts = (inf, st) -> _route_contacts(
             windows, interventions, st.individuals[inf], inf, st.rng
         )

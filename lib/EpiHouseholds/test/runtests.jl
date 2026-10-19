@@ -1177,3 +1177,4 @@ include("test_vaccine_likelihood.jl")
 include("test_isolation_duration_likelihood.jl")
 
 include("test_pair_kernels.jl")
+include("test_external_hazard.jl")
