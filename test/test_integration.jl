@@ -202,7 +202,7 @@ using Dates
         @test cp_aware <= cp_naive
     end
 
-    @testset "max_time stops each case's own branch, not the whole run" begin
+    @testset "max_time stops each case's own branch on the continuous-time race" begin
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(2.0), Exponential(5.0))
         state = simulate(
@@ -210,9 +210,13 @@ using Dates
             max_cases = 10_000, max_time = 30.0, rng = rng
         )
 
-        # A case infected at or after the limit makes no further contacts,
-        # but a branch still before the limit keeps running, so the run as a
-        # whole is cut short rather than extinct, like a max_cases run.
+        # BranchingProcess runs on the continuous-time Sellke race (see
+        # offspring_route.jl), which already stopped each case's own branch
+        # at the limit rather than ending the whole run; this checks that
+        # still holds. It is not a regression test for the generation
+        # engine's per-branch fix — see the "MaxTime stops each case's own
+        # branch on the generation engine" testset in
+        # test_stopping_rules.jl for that.
         infected = filter(is_infected, state.individuals)
         @test all(
             case -> case.infection_time < 30.0 || isempty(case.secondary_case_ids),
