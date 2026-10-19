@@ -102,6 +102,7 @@ include("sellke.jl")
 # mixes that way, HomogeneousProcess.
 include("mass_action.jl")
 include("offspring_route.jl")
+include("contacts_route.jl")
 include("models/homogeneous.jl")
 include("models/mixing.jl")
 

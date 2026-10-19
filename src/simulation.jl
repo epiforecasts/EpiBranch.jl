@@ -142,9 +142,10 @@ function simulate_once(
         model::TransmissionModel, sim_opts::SimOpts;
         interventions, attributes, progression, observation, recorder, rng
     )
-    _has_own_method(contacts_of, typeof(model), TransmissionModel) || return _simulate_generated(
-        model, sim_opts; interventions, attributes, progression, observation, recorder, rng
-    )
+    layers = (; interventions, attributes, progression, observation, recorder, rng)
+    _has_own_method(contacts_of, typeof(model), TransmissionModel) &&
+        return _simulate_contacts_of(model, sim_opts; layers...)
+    return _simulate_generated(model, sim_opts; layers...)
     state = initialise_state(
         model, sim_opts, interventions, progression, attributes, rng
     )
