@@ -425,10 +425,10 @@ matters for a contact who escapes the traced exposure and is infected later
 through another route: that person transmits normally once the quarantine
 ends.
 
-`ind.state[:trace_time]` is already set by the time `duration` is called, so a
+`ind.state[:trace_time]` is already set by the time `duration` is called. A
 rule phrased as an end day counted from exposure, such as "until 14 days after
-exposure", can subtract the trace time from that day to get a duration, and a
-rule that ends quarantine at symptom onset can compare it against
+exposure", can subtract the trace time from that day to get a duration. A rule
+that ends quarantine at symptom onset can compare it against
 [`onset_time`](@ref)`(ind)`.
 """
 struct Quarantine{D} <: TraceAction
@@ -782,11 +782,11 @@ function _trace_pair!(ct::ContactTracing, state, infector, ind, rng; not_before 
     # before the funeral, so the delay runs from whichever comes later.
     trace_time = max(base, not_before) + trace_delay
 
-    # When the contact was reached, recorded before the action runs so that an
-    # action reading the contact's own state, such as a `Quarantine` `duration`
-    # function, can see it. Interventions that act on a traced contact time
-    # themselves from this, which is the same whatever the trace action and
-    # the contact's own clinical course.
+    # When the contact was reached. Recorded before the action runs, so an
+    # action reading the contact's own state, such as a `Quarantine`
+    # `duration` function, can see it. Interventions that act on a traced
+    # contact time themselves from this, which is the same whatever the
+    # trace action and the contact's own clinical course.
     _record_trace_time!(ind, trace_time)
     apply_trace!(ct.action, ind, state, trace_time, rng)
 
