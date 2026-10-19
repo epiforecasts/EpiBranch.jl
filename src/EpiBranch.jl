@@ -22,6 +22,7 @@ include("distributions.jl")
 include("timing.jl")
 include("pair_kernels.jl")
 include("utils.jl")
+include("streams.jl")
 
 # Intervention interface (must come before models that use it)
 include("interventions/interface.jl")
@@ -161,7 +162,7 @@ export AbstractVaccination, VaccineEffect, RingVaccination, MassVaccination,
 export AbstractEffectMode, LeakyMode, AllOrNothingMode
 export Scheduled, Risk
 export AbstractTrigger, is_triggered!, trigger_can_lapse, required_transitions,
-    Infections, ReportedCases
+    Infections, ReportedCases, opened_at, After
 export CapacityConstrained, capacity_usage, default_capacity_priority
 export RouteWindow, window_open, window_close
 export is_active, intervention_time
@@ -199,6 +200,7 @@ export clinical_presentation, demographics, transmission_traits, groups,
 
 # Exports — simulation
 export simulate, make_contact!, susceptible_fraction
+export CommonRandomNumbers
 export generate_offspring, contacts_of, collect_exposures, gather_by_target
 
 # Exports — output

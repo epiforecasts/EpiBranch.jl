@@ -68,6 +68,11 @@ public get_generation_time
 public reads_settled_state
 public transmission_time
 
+# The per-`(id, purpose)` generator a draw belonging to one person or one pair
+# should use, so `CommonRandomNumbers` keeps two runs on the same draws until
+# one of them changes what happens. `CommonRandomNumbers` is exported.
+public stream
+
 # Resolve a case's natural history (the model's `progression`). The engine calls
 # this for every new case; a model running its own simulation loop calls it.
 public transition_time

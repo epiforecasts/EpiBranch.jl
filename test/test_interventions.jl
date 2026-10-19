@@ -3130,6 +3130,85 @@ EpiBranch.reset!(::_TimedBatchDose, ind::Individual) = delete!(ind.state, :_dose
             @test EpiBranch.trigger_can_lapse(_AlwaysOpenTrigger())
         end
 
+        @testset "opened_at and After" begin
+            # `Infections(n)` opens at the n-th smallest infection time,
+            # whatever order individuals hold in `state.individuals` and
+            # whatever their own id; an uninfected contact's time does not
+            # count.
+            inds = [
+                Individual(id = 1, infection_time = 5.0),
+                Individual(id = 2, infection_time = 1.0),
+                Individual(id = 3, infection_time = 3.0),
+                Individual(
+                    id = 4, infection_time = 2.0,
+                    state = Dict{Symbol, Any}(:infected => false)
+                ),
+            ]
+            state = SimulationState(
+                inds, Int[], 0, StableRNG(1), 3, false, nothing, 10.0, nothing,
+                AbstractClinicalTransition[]
+            )
+            @test EpiBranch.opened_at(Infections(1), state) == 1.0
+            @test EpiBranch.opened_at(Infections(2), state) == 3.0
+            @test EpiBranch.opened_at(Infections(3), state) == 5.0
+            @test EpiBranch.opened_at(Infections(4), state) === nothing
+
+            # The default, for a trigger that names nothing, is `nothing`.
+            @test EpiBranch.opened_at(_AlwaysOpenTrigger(), state) === nothing
+
+            # A reinfected host's earlier episode counts alongside its
+            # current infection, giving the population one more infection
+            # than it has individuals. A fresh state, rather than mutating
+            # `inds`, keeps this independent of the cache `Infections`
+            # already filled above for the same `n`.
+            reinfected = Individual(id = 1, infection_time = 5.0)
+            EpiBranch.close_episode!(reinfected, EpiBranch.InfectionEpisode(reinfected))
+            reinfected.infection_time = 8.0
+            reinfection_state = SimulationState(
+                [reinfected], Int[], 0, StableRNG(1), 1, false, nothing, 10.0, nothing,
+                AbstractClinicalTransition[]
+            )
+            @test EpiBranch.opened_at(Infections(1), reinfection_state) == 5.0
+            @test EpiBranch.opened_at(Infections(2), reinfection_state) == 8.0
+            @test EpiBranch.opened_at(Infections(3), reinfection_state) === nothing
+
+            # `ReportedCases` answers from the report log's own n-th date,
+            # not from a count against the current clock.
+            report_inds = [Individual(id = i) for i in 1:3]
+            report_state = SimulationState(
+                report_inds, Int[], 0, StableRNG(1), 3, false, nothing, 10.0, nothing,
+                AbstractClinicalTransition[]
+            )
+            for (ind, t) in zip(report_inds, (2.0, 9.0, 15.0))
+                EpiBranch.resolve_individual!(
+                    Reporting(delay = t, from = :infection), ind, report_state
+                )
+            end
+            @test EpiBranch.opened_at(ReportedCases(1), report_state) == 2.0
+            @test EpiBranch.opened_at(ReportedCases(2), report_state) == 9.0
+            # The third report falls due only after the current clock
+            # (10.0), but `opened_at` answers from its own date regardless.
+            @test EpiBranch.opened_at(ReportedCases(3), report_state) == 15.0
+            @test EpiBranch.opened_at(ReportedCases(4), report_state) === nothing
+
+            # `After` refuses a trigger that cannot say when it opened.
+            @test_throws ArgumentError After(_AlwaysOpenTrigger(), 7.0)
+
+            after = After(ReportedCases(2), 7.0)
+            @test EpiBranch.trigger_can_lapse(after) ==
+                EpiBranch.trigger_can_lapse(ReportedCases(2))
+            @test EpiBranch.required_transitions(after) ==
+                EpiBranch.required_transitions(ReportedCases(2))
+            @test EpiBranch.required_fields(after) ==
+                EpiBranch.required_fields(ReportedCases(2))
+            @test EpiBranch.opened_at(after, report_state) == 16.0
+
+            report_state.max_infection_time = 15.9
+            @test !EpiBranch.is_triggered!(after, report_state)
+            report_state.max_infection_time = 16.0
+            @test EpiBranch.is_triggered!(after, report_state)
+        end
+
         @testset "a trigger names the transitions it needs" begin
             # The keys a trigger reads are written by the progression, so a
             # model without the transition leaves the gate shut for the whole

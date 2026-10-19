@@ -15,6 +15,10 @@ incubation period or other population characteristics. That way the
 generation time and symptom onset of a case can be linked rather than drawn
 independently. Use [`incubation_period`](@ref) to read the incubation period
 inside such a function.
+
+Called only for a case with at least one contact to time, after the number
+of contacts is drawn. A case making none is never asked for a distribution,
+so the function need not handle a case lacking whatever it reads.
 """
 get_generation_time(gt::Distribution, individual) = gt
 get_generation_time(ngt::NoGenerationTime, individual) = ngt

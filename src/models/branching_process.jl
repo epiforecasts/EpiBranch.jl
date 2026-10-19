@@ -209,6 +209,15 @@ _progvec(p) = convert(Vector{AbstractClinicalTransition}, p)
 population_size(m::BranchingProcess) = m.population_size
 n_types(m::BranchingProcess) = m.n_types
 
+# A finite population thins transmission as cases accumulate, and a window
+# with `until` stops it before every drawn contact happens — both reshape the
+# offspring law away from the bare distribution, so the analytical chain-size
+# and incidence likelihoods must not take the model's offspring law as read.
+function offspring_law_unchanged(m::BranchingProcess)
+    population_size(m) isa NoPopulation || return false
+    return all(w -> isempty(w.until), m.infectiousness)
+end
+
 function single_type_offspring(m::BranchingProcess)
     length(m.infectiousness) == 1 || throw(
         ArgumentError(

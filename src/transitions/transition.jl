@@ -59,6 +59,10 @@ struct Transition{D, P, F} <: AbstractClinicalTransition
     terminal::Bool
 end
 
+# Only writes `state`_time and whether/when it happened; never touches
+# susceptibility or infectiousness.
+offspring_law_unchanged(::Transition) = true
+
 function Transition(
         state::Symbol; delay = nothing, rate = nothing,
         from = :infection, probability = 1.0, terminal::Bool = false
@@ -101,10 +105,12 @@ end
 
 function resolve_individual!(t::Transition, individual, state)
     anchor = _state_time(individual, t.from)
-    _transition_selected(state.rng, individual, anchor, t.probability) || return nothing
+    gate_rng = stream(state.rng, individual.id, (t.state, :selected))
+    _transition_selected(gate_rng, individual, anchor, t.probability) || return nothing
     # Delay callbacks can read the newly reached state.
     individual.state[t.state] = true
-    individual.state[t.time_key] = anchor + _resolve_delay(t.delay, state.rng, individual)
+    delay_rng = stream(state.rng, individual.id, (t.state, :delay))
+    individual.state[t.time_key] = anchor + _resolve_delay(t.delay, delay_rng, individual)
     return nothing
 end
 

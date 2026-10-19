@@ -25,7 +25,12 @@ guide.
 abstract type AbstractIntervention end
 
 """Record this intervention's starting information on a person when they
-enter the simulation (for example "not yet isolated"). Default: does nothing."""
+enter the simulation (for example "not yet isolated"). Default: does nothing.
+
+Also called again, before [`resolve_individual!`](@ref), on a case settling a
+new episode after a reinfection, so per-episode state it draws (such as
+`Isolation`'s `:test_positive`) is fresh for that episode rather than left
+over from an earlier one."""
 initialise_individual!(::AbstractIntervention, individual, state) = nothing
 
 """

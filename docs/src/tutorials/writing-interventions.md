@@ -97,6 +97,7 @@ many people each case infects](@ref).
 | `traces_contacts(iv)` | Whenever a model decides whether to collect a case's contacts at all | Nothing | `true` if this intervention traces. The default is `true` for a type with a `trace_contacts!` method of its own; you need not write it |
 | `traces_source(iv)` | Whenever either engine decides whether to make the second, backward `trace_contacts!` call | Nothing | `true` if this intervention traces a case back to its own infector. Default `false`; [`SourceTracing`](@ref) declares it, since this is not inferred the way `traces_contacts` is |
 | `continuous_actions(iv)` | Whenever the simulation chooses whom to offer this intervention's actions, and whenever a model run one generation at a time decides whether to offer them for a settled generation (see [`EpiBranch.settles_generation_batch`](@ref)) | Nothing | `Bool`: whether proposing an action needs no infection time of a contact not yet infected and never changes a case already settled. Default `false` |
+| `EpiBranch.continuous_candidates(iv, state, current, traced, is_pending, members, contacts)` | Once per case, for an intervention with an `intervention_actions` method, to choose its candidates | The settled case, the people tracing reached from it (or `nothing`), and `is_pending(id)` to ask whether a person is still part of this race and not yet settled | A vector of candidates. The default is the case and the contacts it can still reach or, for an intervention declaring `continuous_actions`, the case and every other member `is_pending` still admits, which costs the size of the race; [`GroupVaccination`](@ref) writes its own method, offering the members of the case's group |
 | `acts_on_population(iv)` | Once, before the simulation processes any case, and for each contact a branching process creates | Nothing | `Bool`: whether this intervention's actions belong to the whole population rather than a case's contacts or group, so `intervention_actions` is called once, upfront, with every member. Default `false`; [`MassVaccination`](@ref) declares it |
 | `needs_contacts(iv)` | Whenever the simulation decides whether an intervention can be offered actions on a model that names no contacts | Nothing | `Bool`: whether this intervention's candidates come from the model's named contacts. Default `true`, the conservative choice; [`GroupVaccination`](@ref) declares `false`, since its candidates come from a case's group |
 | `has_effect(iv)` | Once per intervention type, when a `ModelSpec` is built | Nothing | `Bool`: whether the intervention can change a simulation or a likelihood. The default is `true` for a type with a method of its own, with the right number of arguments, for a hook it can act through, such as `competing_risk` or `trace_contacts!`; `ModelSpec` warns on `false` |
@@ -220,7 +221,8 @@ In practice:
   actions once each case settles, narrowed to the case and the contacts it can
   still reach. One that declares `EpiBranch.continuous_actions(iv) = true` is
   offered the case and everyone not yet infected on a fixed-population model,
-  and narrows that itself. Such actions must work without knowing the infection time of a
+  and narrows that itself by writing a method of
+  `EpiBranch.continuous_candidates`. Such actions must work without knowing the infection time of a
   contact not yet infected, and must not change a case already settled. That
   narrowing needs a model that can name contacts, unless the intervention
   declares `EpiBranch.needs_contacts(iv) = false`, as group vaccination does,
@@ -541,11 +543,12 @@ Six built-in risks are always present:
   ended it stops being active.
 - [`EpiBranch.HostImmunity`](@ref) blocks every exposure of a contact who has
   already been infected, until [`susceptible_again_time`](@ref) is in the
-  past. It does nothing for a model whose `contacts_of` never offers an
-  already-infected person as a contact, which is every built-in model. A model
-  that does gets a new, separately recorded infection episode (see [Individual
-  state and reserved keys](@ref)) instead of a reinfection overwriting the
-  earlier one.
+  past. It does nothing for a model whose `progression` never reaches
+  `:susceptible_again`, or, on the generation engine, whose `contacts_of`
+  never offers an already-infected person as a contact (every built-in model
+  there). A model that does gets a new, separately recorded infection episode
+  (see [Individual state and reserved keys](@ref)) instead of a reinfection
+  overwriting the earlier one.
 
 A susceptibility or infectiousness of `1.0` blocks nothing, and these risks have
 no effect unless a population characteristic sets a value below one. You can
@@ -555,12 +558,16 @@ your own should not apply susceptibility or infectiousness a second time.
 `HostSusceptibility` and `InfectorInfectiousness` apply on branching processes.
 The fixed-population models apply the same two values as multipliers on the rate
 of transmission instead (see [Continuous-time models: further details](@ref)),
-so they do not decide them contact by contact. Of the remaining four, only
-`AbortedInfection` is resolved there: the end of an infectiousness window is
-enforced by the window closing, the race proposes only from cases that have
-settled and are infected by construction, and `HostImmunity` is not applied at
-all, because the race has nowhere to put a second episode. A risk of your own
-applies there as it does on a branching process.
+so they do not decide them contact by contact. Of the remaining four,
+`InfectiousSource` never has anything to block, since the race proposes only
+from cases that have settled and are infected by construction, and the end of
+an infectiousness window is enforced by the window closing rather than by
+`competing_risk`. `AbortedInfection` and `HostImmunity`, by contrast, are both
+resolved through `competing_risk` there: a settled member can become a target
+again and is blocked by `HostImmunity` until their immunity has waned, exactly
+when the `progression` reaches `:susceptible_again`, with no change needed to
+the model's own `targets`/`contacts`. A risk of your own applies there as it
+does on a branching process.
 
 ## Following up contacts who were not infected
 

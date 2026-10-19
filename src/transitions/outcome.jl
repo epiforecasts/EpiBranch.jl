@@ -24,6 +24,10 @@ Base.@kwdef struct Recovery{D, F} <: AbstractClinicalTransition
     from::F = :onset_time
 end
 
+# Only writes recovery outcome state; never touches susceptibility or
+# infectiousness.
+offspring_law_unchanged(::Recovery) = true
+
 required_fields(r::Recovery) = _from_required(r.from)
 is_terminal(::Recovery) = true
 terminal_target(::Recovery) = :recovered
@@ -37,7 +41,7 @@ end
 
 function resolve_individual!(r::Recovery, individual, state)
     anchor = _state_time(individual, r.from)
-    time = transition_time(state.rng, individual, anchor, r.delay)
+    time = transition_time(state.rng, individual, anchor, r.delay; purpose = :recovered)
     time === nothing && return nothing
     individual.state[:recovery_candidate_time] = time
     return nothing
@@ -131,6 +135,10 @@ Base.@kwdef struct Death{D, P, F} <: AbstractClinicalTransition
     from::F = :onset_time
 end
 
+# Only writes death outcome state; never touches susceptibility or
+# infectiousness.
+offspring_law_unchanged(::Death) = true
+
 required_fields(d::Death) = _from_required(d.from)
 is_terminal(::Death) = true
 terminal_target(::Death) = :died
@@ -145,7 +153,7 @@ function resolve_individual!(d::Death, individual, state)
     anchor = _state_time(individual, d.from)
     time = transition_time(
         state.rng, individual, anchor, d.delay;
-        probability = d.probability
+        probability = d.probability, purpose = :died
     )
     time === nothing && return nothing
     individual.state[:death_candidate_time] = time

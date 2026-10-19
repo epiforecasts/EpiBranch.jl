@@ -50,6 +50,7 @@ household_sizes
 ModelSpec
 single_type_offspring
 EpiBranch.has_single_type_law
+EpiBranch.offspring_law_unchanged
 ```
 
 ## Population characteristics
@@ -165,6 +166,8 @@ is_active
 AbstractTrigger
 Infections
 ReportedCases
+opened_at
+After
 CapacityConstrained
 capacity_usage
 default_capacity_priority
@@ -202,6 +205,8 @@ SimulationState
 Individual
 EpiBranch.IndividualState
 InfectionEpisode
+CommonRandomNumbers
+EpiBranch.stream
 ```
 
 ## Recording contacts
@@ -611,6 +616,7 @@ EpiBranch.action_draw!
 EpiBranch._action_cache
 EpiBranch.apply_actions!
 EpiBranch.continuous_actions
+EpiBranch.continuous_candidates
 EpiBranch.acts_on_population
 EpiBranch.needs_contacts
 EpiBranch.settles_generation_batch

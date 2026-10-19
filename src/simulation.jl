@@ -37,7 +37,10 @@ days throughout.
   control over when the run ends. When given, `max_cases`,
   `max_generations` and `max_time` are ignored.
 - `rng`: the random number generator; pass a seeded one, such as
-  `Xoshiro(42)`, for reproducible runs.
+  `Xoshiro(42)`, for reproducible runs. Pass [`CommonRandomNumbers`](@ref)
+  instead to compare scenarios on shared random numbers: two runs built from
+  the same seed then share every draw until one of them changes what happens
+  to a particular person or pair.
 - `condition`: a range of final outbreak sizes, such as `10:1000`. The
   simulation is repeated until the total number of cases falls inside it (at
   most `max_attempts` tries), for example to leave out outbreaks that died
@@ -467,13 +470,21 @@ function collect_exposures(model::TransmissionModel, state::SimulationState)
         parent = state.individuals[idx]
         offspring = generate_offspring(model, parent, state)
         # the generation interval: how long after this parent was infected
-        # each of its contacts occurs.
-        gt_dist = get_generation_time(model_generation_time(model), parent)
+        # each of its contacts occurs. Only asked for when there is at least
+        # one contact to time, since a generation_time function may rely on
+        # something a case with none never reaches.
+        gt_dist = _has_contacts(offspring) ?
+            get_generation_time(model_generation_time(model), parent) : NoGenerationTime()
         _materialise_offspring!(targets, edges, offspring, parent, state, gt_dist)
     end
     minted = view(state.individuals, (pre + 1):length(state.individuals))
     return targets, edges, minted, _AllNew(length(targets))
 end
+
+# Whether an offspring draw has at least one contact to time: a count
+# (single-type) or a count per type (multi-type).
+_has_contacts(n::Int) = n > 0
+_has_contacts(counts::Vector{Int}) = any(>(0), counts)
 
 # Engine half of the offspring-driven contract: the model returns a count
 # from `generate_offspring`; the engine creates each contact with
@@ -985,6 +996,15 @@ function _at_case!(state::SimulationState, case, count)
 end
 
 function _resolve_interventions!(state::SimulationState, case, interventions)
+    # A reinfection (`case.episodes` already holds the earlier one, closed
+    # before this call) gets a fresh `initialise_individual!` first. That
+    # keeps per-episode draws such as `Isolation`'s `:test_positive` specific
+    # to the new episode, rather than left over from the one before it.
+    if !isempty(case.episodes)
+        for intervention in interventions
+            initialise_individual!(intervention, case, state)
+        end
+    end
     for intervention in interventions
         resolve_individual!(intervention, case, state)
     end
@@ -1464,12 +1484,15 @@ end
 
 """Immunity after infection: a person who has been infected cannot be
 infected again until [`susceptible_again_time`](@ref), which is `Inf` (never)
-unless a natural-history step sets it. None of the built-in models exposes an
-infected person again, so this matters only for a new model that does,
-through its own [`contacts_of`](@ref). Such a model allows reinfection by
-adding a step to its `progression` that sets `:susceptible_again_time`; the
-earlier infection is then kept as a past episode (see
-[`close_episode!`](@ref)) when the person is reinfected."""
+unless a natural-history step sets it. On the generation engine this matters
+only for a model that exposes an infected person again through its own
+[`contacts_of`](@ref); the continuous-time models (`HomogeneousProcess`,
+`MixingProcess`, `HouseholdProcess`, the network processes) apply it to every
+settled member on their own, once their `progression` can reach
+`:susceptible_again`, with no change needed to how they name contacts. Either
+way, a model allows reinfection by adding a step to its `progression` that
+sets `:susceptible_again_time`; the earlier infection is then kept as a past
+episode (see [`close_episode!`](@ref)) when the person is reinfected."""
 struct HostImmunity end
 function competing_risk(::HostImmunity, parent, contact, state)
     is_infected(contact) || return nothing
@@ -1523,18 +1546,21 @@ function _builtin_risk_blocks(parent, contact, state, transmission_time)
     return false
 end
 
-# The built-in sources the continuous-time models compose. Only one of the six
-# applies there. Three are the generation engine's own and can never apply: an
-# infector on those models has settled and so is infected by construction,
+# The built-in sources the continuous-time models compose. Only two of the six
+# apply there. Two are the generation engine's own and can never apply: an
+# infector on those models has settled and so is infected by construction, and
 # route censoring is the infectious window's job rather than a tag written on a
-# contact, and a candidate the race proposes is always one not yet settled,
-# hence never already infected either — the race has nowhere yet to put a
-# second episode even once a model wants to offer one. The other two, the
-# per-individual susceptibility and infectiousness, are rate multipliers on
-# those models rather than per-contact blocks: each one
-# scales the hazard a pair meets at (`_traits_scaled_draw`) or the pressure a
-# susceptible absorbs, so resolving them here again would count them twice.
+# contact. The other two, the per-individual susceptibility and
+# infectiousness, are rate multipliers on those models rather than per-contact
+# blocks: each one scales the hazard a pair meets at (`_traits_scaled_draw`)
+# or the pressure a susceptible absorbs, so resolving them here again would
+# count them twice. `HostImmunity` does apply: a candidate the race proposes
+# can be a settled member offered again once the race allows reinfection (see
+# `_allows_reinfection` in sellke.jl), and this is where that candidate is
+# held back until `susceptible_again_time`.
 function _sellke_builtin_risk_blocks(parent, contact, state, transmission_time)
+    _risk_blocks(HostImmunity(), parent, contact, state, transmission_time) &&
+        return true
     return _risk_blocks(AbortedInfection(), parent, contact, state, transmission_time)
 end
 
@@ -1830,11 +1856,21 @@ function demographics(;
         age_range::Tuple{Int, Int} = (0, 90),
         prob_female::Real = 0.5
     )
-    pf = float(prob_female)
-    return function (rng, ind)
-        ind.state[:age] = _sample_age(rng, age_distribution, age_range)
-        return ind.state[:sex] = rand(rng) < pf ? :female : :male
-    end
+    return Demographics(age_distribution, age_range, float(prob_female))
+end
+
+"""Callable population characteristic `demographics` returns. Has a type,
+rather than being a bare closure, so [`EpiBranch.offspring_law_unchanged`](@ref)
+can recognise it as leaving the offspring law unchanged."""
+struct Demographics{D}
+    age_distribution::D
+    age_range::Tuple{Int, Int}
+    prob_female::Float64
+end
+
+function (d::Demographics)(rng, ind)
+    ind.state[:age] = _sample_age(rng, d.age_distribution, d.age_range)
+    return ind.state[:sex] = rand(rng) < d.prob_female ? :female : :male
 end
 
 _sample_age(rng, ::NoAgeDistribution, age_range) = rand(rng, age_range[1]:age_range[2])
@@ -1876,9 +1912,19 @@ See also [`GroupVaccination`](@ref), [`vaccine_acceptance`](@ref).
 """
 function groups(n_groups::Integer; key::Symbol = :group)
     n_groups >= 1 || throw(ArgumentError("n_groups must be at least 1, got $n_groups"))
-    return function (rng, ind)
-        return ind.state[key] = rand(rng, 1:n_groups)
-    end
+    return Groups(n_groups, key)
+end
+
+"""Callable population characteristic `groups` returns. Has a type, rather
+than being a bare closure, so [`EpiBranch.offspring_law_unchanged`](@ref) can
+recognise it as leaving the offspring law unchanged."""
+struct Groups
+    n_groups::Int
+    key::Symbol
+end
+
+function (g::Groups)(rng, ind)
+    return ind.state[g.key] = rand(rng, 1:g.n_groups)
 end
 
 """
@@ -1932,7 +1978,12 @@ attributes = [
 ```
 
 For rules this function does not cover, an `attributes` entry can set the
-fields directly, as in `(rng, ind) -> (ind.susceptibility = ...)`.
+fields directly, as in `(rng, ind) -> (ind.susceptibility = ...)`. Such a
+closure sends `loglikelihood(::ChainSizes, model)`, `chain_size_distribution`
+and the closed-form incidence likelihood to simulation rather than their
+analytical path, since [`EpiBranch.offspring_law_unchanged`](@ref) cannot
+tell what a bare function does; wrap it in its own callable type with a
+method on that trait to get the analytical path back.
 
 See also [`clinical_presentation`](@ref), [`demographics`](@ref).
 """
@@ -1940,12 +1991,35 @@ function transmission_traits(;
         susceptibility = 1.0,
         infectiousness = 1.0
     )
-    sus = _trait_sampler(susceptibility)
-    inf = _trait_sampler(infectiousness)
-    return function (rng, ind)
-        ind.susceptibility = sus(rng, ind)
-        return ind.infectiousness = inf(rng, ind)
-    end
+    return TransmissionTraits(
+        susceptibility, infectiousness,
+        _trait_sampler(susceptibility), _trait_sampler(infectiousness)
+    )
+end
+
+"""Callable population characteristic `transmission_traits` returns. Keeps
+the original `susceptibility`/`infectiousness` arguments alongside the
+samplers built from them, so [`EpiBranch.offspring_law_unchanged`](@ref) can
+tell a neutral value (the default `1.0`) from one that thins transmission."""
+struct TransmissionTraits{S, I, SF, IF}
+    susceptibility::S
+    infectiousness::I
+    sus_sampler::SF
+    inf_sampler::IF
+end
+
+function (traits::TransmissionTraits)(rng, ind)
+    ind.susceptibility = traits.sus_sampler(stream(rng, ind.id, :susceptibility), ind)
+    return ind.infectiousness = traits.inf_sampler(stream(rng, ind.id, :infectiousness), ind)
+end
+
+# Neutral only for a bare `1`; a distribution or function might also always
+# give 1, but that can't be told without drawing from it, so it counts as a
+# change, conservatively.
+_trait_is_neutral(x::Real) = isone(x)
+_trait_is_neutral(x) = false
+function offspring_law_unchanged(t::TransmissionTraits)
+    return _trait_is_neutral(t.susceptibility) && _trait_is_neutral(t.infectiousness)
 end
 
 _trait_sampler(x::Real) =

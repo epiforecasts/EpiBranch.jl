@@ -276,8 +276,9 @@ function _draw_contacts!(o::_Offspring, race, ind, max_generation, born::Bool)
     from_t = _state_time(ind, o.window.from)
     isfinite(from_t) || return first_place:(first_place - 1)
     (; state) = race
-    kernel = get_generation_time(o.window.kernel, ind)
     counts = draw_offspring(state.rng, o.window.offspring, ind, state)
+    kernel = _has_contacts(counts) ?
+        get_generation_time(o.window.kernel, ind) : NoGenerationTime()
     _draw_counts!(o, race, ind, counts, from_t, kernel, born)
     return first_place:length(o.tree)
 end
@@ -363,10 +364,8 @@ supplies_contacts(::BranchingProcess) = true
 # A branching process has no population beyond the contacts drawn so far, most
 # not yet created, so an intervention asking for everyone not yet settled is
 # offered the contacts the case can still reach.
-function _unsettled_candidates(
-        tree::_Tree, state, current, processed, contacts, pos, traced
-    )
-    return _reached_candidates(state, current, tree, processed, contacts, pos, traced)
+function _unsettled_candidates(state, current, traced, is_pending, ::_Tree, contacts)
+    return _reached_candidates(state, current, traced, is_pending, contacts)
 end
 
 """

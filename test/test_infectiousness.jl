@@ -101,6 +101,22 @@
         @test kids_early < kids_late
     end
 
+    @testset "chain-size likelihood routes a window with until to simulation" begin
+        # Transmission stops at infection (recovery is immediate), so every
+        # cluster is a singleton; the bare offspring law `until` leaves
+        # unscored would give log(pdf(Poisson(0.8), 1)) ≈ -0.8 instead.
+        w = Infectiousness(Poisson(0.8); until = (:recovered,), kernel = Exponential(1.0))
+        spec = ModelSpec(
+            BranchingProcess(w);
+            progression = [
+                Transition(:recovered, from = :infection, delay = 0.0, terminal = true),
+            ]
+        )
+        @test !EpiBranch.offspring_law_unchanged(spec.process)
+        ll = loglikelihood(ChainSizes([1]), spec; rng = StableRNG(1), n_sim = 500)
+        @test isapprox(ll, 0.0; atol = 1.0e-9)
+    end
+
     @testset "analytics: single window closed-form, multi-window directs to simulation" begin
         single = BranchingProcess(NegBin(2.0, 0.5), LogNormal(1.6, 0.5))
         @test single_type_offspring(single) isa NegativeBinomial
