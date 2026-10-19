@@ -58,62 +58,6 @@ a case of a later generation is not counted, even one infected earlier.
 resolve_individual!(::AbstractIntervention, individual, state) = nothing
 
 """
-    apply_post_transmission!(intervention, state, new_contacts)
-
-Deprecated: implement [`trace_contacts!`](@ref) for what an intervention does
-to the contacts a case reached, and [`intervention_actions`](@ref) for actions
-with a delivery time. Both engines call those once per case.
-
-The generation engine used to hand this hook a whole generation's new
-contacts at once. It still does for an intervention that defines a method of
-its own, with a deprecation warning, so an intervention written against it
-keeps working there. Called on an intervention without one, it traces each
-contact from its `parent_id` and then admits the intervention's actions for
-the batch, as the built-in methods it replaces did.
-"""
-function apply_post_transmission!(iv::AbstractIntervention, state, new_contacts)
-    Base.depwarn(
-        "`apply_post_transmission!` is deprecated. Call `trace_contacts!` with " *
-            "each infector and the contacts it reached, and `apply_actions!` for " *
-            "an intervention's actions.",
-        :apply_post_transmission!; force = true
-    )
-    by_infector = Dict{Int, Vector{eltype(new_contacts)}}()
-    for contact in new_contacts
-        1 <= contact.parent_id <= length(state.individuals) || continue
-        push!(get!(Vector{eltype(new_contacts)}, by_infector, contact.parent_id), contact)
-    end
-    for pid in sort!(collect(keys(by_infector)))
-        trace_contacts!(iv, state, state.individuals[pid], by_infector[pid])
-    end
-    actions = intervention_actions(iv, state, new_contacts)
-    actions === nothing || _admit_actions!(iv, state, actions)
-    return nothing
-end
-
-# Whether the generation engine should hand `iv` a whole generation's contacts
-# through the deprecated `apply_post_transmission!` rather than call its
-# per-case hooks: true for an intervention with a method of its own for it.
-# The built-in wrappers keep a method for wrapping such an intervention, so
-# they answer for the one they wrap.
-function _uses_batch_hook(iv::AbstractIntervention)
-    return _has_own_method(apply_post_transmission!, typeof(iv), AbstractIntervention)
-end
-
-# Logged once per intervention type, so each one still on the hook is named.
-function _warn_batch_hook(iv::AbstractIntervention)
-    T = typeof(_unwrap_scheduled(iv))
-    msg = "$(nameof(T)) implements `apply_post_transmission!`, which is " *
-        "deprecated. Implement `trace_contacts!(intervention, state, infector, " *
-        "contacts)` for what it does to the contacts a case reached, and " *
-        "`intervention_actions(intervention, state, candidates)` for actions " *
-        "with a delivery time; both engines call these once per case."
-    id = (:apply_post_transmission!, T)
-    @warn msg maxlog = 1 _id = id _group = :depwarn
-    return nothing
-end
-
-"""
     trace_contacts!(intervention, state, infector, contacts[, not_before])
 
 Act on the `contacts` that `infector` reached and that it can still affect.

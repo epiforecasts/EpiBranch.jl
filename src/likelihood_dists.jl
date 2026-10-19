@@ -132,7 +132,6 @@ function _rand_chain_size_setup(model::TransmissionModel, sim_kwargs::NamedTuple
 end
 
 function _rand_chain_size_setup(spec::ModelSpec, sim_kwargs::NamedTuple)
-    _warn_unhonoured_interventions(spec.process, spec.interventions)
     sim_opts = _build_sim_opts(
         spec.process, get(sim_kwargs, :n_initial, nothing),
         get(sim_kwargs, :initial_cases, nothing),

@@ -361,13 +361,6 @@ end
 
 supplies_contacts(::BranchingProcess) = true
 
-# A branching process has no population beyond the contacts drawn so far, most
-# not yet created, so an intervention asking for everyone not yet settled is
-# offered the contacts the case can still reach.
-function _unsettled_candidates(state, current, traced, is_pending, ::_Tree, contacts)
-    return _reached_candidates(state, current, traced, is_pending, contacts)
-end
-
 """
     simulate_once(model::BranchingProcess, sim_opts; interventions, attributes,
                   progression, observation, recorder, rng)

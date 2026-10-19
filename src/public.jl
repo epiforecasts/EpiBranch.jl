@@ -7,7 +7,6 @@
 # overrides these.
 public initialise_individual!
 public resolve_individual!
-public apply_post_transmission!
 public on_infection_settled!
 public trace_contacts!
 public traces_contacts
@@ -38,7 +37,7 @@ public kernel_projection
 # Transmission-model interface. A new process subtypes `TransmissionModel`
 # and extends these seam methods:
 #   - candidate generation: `generate_offspring` (offspring-driven) or
-#     `contacts_of` + `collect_exposures` (structure-driven), all exported;
+#     `contacts_of` (structure-driven), both exported;
 #   - `initialise_state` to build its starting population;
 #   - `interventions`, `attributes`, `observation` to return the model
 #     inputs it carries;
@@ -110,8 +109,7 @@ public removal_block_probability
 public record_removal!
 public removal_stretches
 public InterventionAction, intervention_actions, action_draw!, apply_actions!,
-    continuous_actions, acts_on_population, needs_contacts, may_revise, is_settled,
-    settles_generation_batch
+    action_candidates, acts_on_population, needs_contacts, may_revise, is_settled
 
 # Pairwise survival likelihood: how its two accumulation passes group rows
 # into a result. `pairwise_surv_loglik` and `pairwise_surv_loglik_by_component`

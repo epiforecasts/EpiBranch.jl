@@ -240,32 +240,12 @@ function _capacity_usage(cc::CapacityConstrained, state, at = state.max_infectio
     return _usage_at(cc, _dose_times(cc, state), Float64[], at)
 end
 
-# A candidate already carrying `capacity_key` (dosed in an earlier call, now
-# re-exposed) does not draw on the budget when it is handed to the wrapped
-# intervention again — `RingVaccination`/`MassVaccination` only redraw a
-# post-exposure-efficacy abort for it, so it is always passed through. Fresh
-# candidates are ranked by `priority` (computed once each, not on every
-# comparison a sort makes, so a random `priority` is not resampled mid-sort)
-# and admitted one at a time in that order for as long as the budget has
-# anything left. Usage is counted once per call and then grows by each
-# candidate whose `capacity_key` the wrapped intervention sets, which spares
-# rescanning the whole population per candidate. Each of those candidates is
-# stamped with the time of this call, so a dose uses the budget of the period
-# that admitted it whatever date the dose itself bears, and later calls in
-# that period see it.
-# Some candidates fail the wrapped intervention's own checks (coverage,
-# eligibility window, a missing required dose, an unresolved trace time)
-# without using a dose; this keeps offering the budget to the next-ranked
-# candidate instead of stopping after a fixed count, which would otherwise
-# leave it under-used.
-_uses_batch_hook(cc::CapacityConstrained) = _uses_batch_hook(cc.intervention)
 # `CapacityConstrained` always has its own `intervention_actions` method, to
 # add the `capacity_key` check above, so asking `iv` directly would credit
 # every instance with discovering actions whether or not the one it wraps
-# does. Unwrapping through `_hook_owner`, as `_generation_hooks` already does
-# for `keep_active`/`continuous_actions`/`on_infection_settled!`, reaches past
-# any further `InterventionWrapper` nested inside (`Scheduled`, say) to the
-# intervention that would answer `intervention_actions`.
+# does. Unwrapping through `_hook_owner` reaches past any further
+# `InterventionWrapper` nested inside (`Scheduled`, say) to the intervention
+# that would answer `intervention_actions`.
 function _discovers_actions(cc::CapacityConstrained)
     return _has_own_method(
         intervention_actions,
@@ -277,32 +257,6 @@ end
 # wraps proposes none, so that wrapping one with nothing to ration fails when
 # the run starts rather than going unrationed (see `intervention_actions`).
 _proposes_actions(cc::CapacityConstrained) = !acts_on_population(cc)
-function apply_post_transmission!(cc::CapacityConstrained, state, new_contacts)
-    actions = intervention_actions(cc, state, new_contacts)
-    if actions !== nothing
-        _admit_actions!(cc, state, actions)
-        return nothing
-    end
-    key = capacity_key(cc.intervention)
-    already_used = filter(ind -> get(ind.state, key, false), new_contacts)
-    candidates = filter(ind -> !get(ind.state, key, false), new_contacts)
-    isempty(already_used) || apply_post_transmission!(cc.intervention, state, already_used)
-    isempty(candidates) && return nothing
-    order = sortperm([cc.priority(ind, state) for ind in candidates]; alg = MergeSort)
-    usage = _capacity_usage(cc, state)
-    used = usage.used
-    admission_key = _capacity_admission_key(key)
-    for i in order
-        used + 1 <= usage.available || break
-        candidate = candidates[i]
-        apply_post_transmission!(cc.intervention, state, [candidate])
-        if get(candidate.state, key, false)
-            candidate.state[admission_key] = state.max_infection_time
-            used += 1
-        end
-    end
-    return nothing
-end
 
 """
     capacity_usage(cc::CapacityConstrained, state::SimulationState) -> (used, available)

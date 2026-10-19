@@ -146,28 +146,6 @@ function simulate_once(
     _has_own_method(contacts_of, typeof(model), TransmissionModel) &&
         return _simulate_contacts_of(model, sim_opts; layers...)
     return _simulate_generated(model, sim_opts; layers...)
-    state = initialise_state(
-        model, sim_opts, interventions, progression, attributes, rng
-    )
-    _settle_generation!(state, interventions, _seed_cases(state), 0)
-    # The tuple's type depends on what the vector holds, so the call below is
-    # resolved at run time; a run with no interventions skips that lookup.
-    if isempty(interventions)
-        _run_generations!(model, state, sim_opts, interventions, ())
-    else
-        _run_generations!(model, state, sim_opts, interventions, Tuple(interventions))
-    end
-    apply_observation!(observation, state, rng)
-    return state
-end
-
-# Takes the interventions as a tuple, so the calls made on every generation
-# are resolved once per outbreak rather than once per generation.
-function _run_generations!(model, state, sim_opts, interventions, intervention_tuple)
-    while !should_terminate(state, sim_opts)
-        _advance_generation!(model, state, interventions, intervention_tuple)
-    end
-    return state
 end
 
 """
@@ -360,48 +338,24 @@ function _reconcile_sellke_bookkeeping!(state::SimulationState, extinct::Bool)
     return state
 end
 
-# ── Unified generation step ─────────────────────────────────────────
-#
-# Every model advances through this one step. The only thing a model
-# varies is how it names this generation's contacts, and there are two
-# extension paths for that:
-#
-#   * Offspring-driven (the tree case — BranchingProcess). The model
-#     defines [`generate_offspring`](@ref): how *many* contacts each
-#     infectious parent makes, as a pure count. It constructs nothing and
-#     assigns no time. The engine creates that many fresh, never-seen
-#     contacts and times each one — the default [`collect_exposures`](@ref).
-#     The tree and the timing factorise, so the model stays a pure draw.
-#
-#   * Structure-driven (the graph case — a contact network; households later).
-#     The contacts are *existing* nodes a count cannot name, and a
-#     susceptible can be reached by several infectious neighbours in one
-#     generation (a loop). The model defines [`contacts_of`](@ref) — the
-#     actual nodes, each with its infection time — and overrides
-#     `collect_exposures` with [`gather_by_target`](@ref), which
-#     deduplicates so a node reached several times resolves once.
-#
-# Everything downstream — intervention hooks, competing-risks resolution,
-# clinical transitions, bookkeeping — is shared.
-
 """
     contacts_of(model, node, state) -> iterable of (contact, infection_time)
 
-The people an infectious case `node` can reach in this generation, each with
-the time they would be infected, as `(contact, infection_time)` pairs.
+The people the case `node` exposes, each with the time they would be infected,
+as `(contact, infection_time)` pairs. The simulation asks once for each case,
+when the case's infection is decided.
 
 Only needed when writing a new transmission model that spreads over a fixed
 set of people, such as a contact network (the case's network neighbours) or
-households (the other household members). Such a model defines this function
-for its own type, and a [`collect_exposures`](@ref) method that returns
-[`gather_by_target`](@ref), so that a person exposed by several cases in one
-generation is infected at most once.
+households (the other household members). A contact may also be a new person,
+created with [`make_contact!`](@ref). Someone exposed by several cases is
+infected at most once, at the time of the earliest exposure that transmits; an
+exposure that is blocked, by an intervention or by the contact's
+susceptibility, is not tried again later.
 
 Models in which every contact is a new person, such as a branching process,
 define [`generate_offspring`](@ref) instead. In both cases the simulation
 applies interventions, natural history and the infection decision itself.
-Calling `contacts_of` on a model that does not define it raises an error
-explaining what to define.
 """
 function contacts_of(model::TransmissionModel, parent, state::SimulationState)
     throw(
@@ -417,113 +371,18 @@ end
 """
     model_generation_time(model)
 
-The generation time a model uses to time each case's secondary cases, read
-by the default [`collect_exposures`](@ref). Returns the model's
+The generation time a model written against [`generate_offspring`](@ref) uses
+to time each case's contacts. Returns the model's
 `generation_time` field. A new model that times its contacts another way (for
 example with a separate delay per transmission route) defines this function
 for its own type instead of having a `generation_time` field.
 """
 model_generation_time(model::TransmissionModel) = model.generation_time
 
-# Every target flagged new, as a vector without storing one: the tree case.
-struct _AllNew <: AbstractVector{Bool}
-    n::Int
-end
-Base.size(a::_AllNew) = (a.n,)
-Base.@propagate_inbounds function Base.getindex(a::_AllNew, i::Int)
-    @boundscheck checkbounds(a, i)
-    return true
-end
-
-# The one edge reaching a contact no other parent shares, as a vector of one
-# without allocating one: the tree case, where every contact is fresh.
-struct _OneEdge{T} <: AbstractVector{Tuple{Int, T}}
-    edge::Tuple{Int, T}
-end
-Base.size(::_OneEdge) = (1,)
-Base.@propagate_inbounds function Base.getindex(e::_OneEdge, i::Int)
-    @boundscheck checkbounds(e, i)
-    return e.edge
-end
-
-"""
-    collect_exposures(model, state) -> (targets, edges, minted, is_new)
-
-The people each infectious case exposes in this generation, and when. Only
-needed when writing a new transmission model.
-
-Returns the distinct exposed people (`targets`); for each of them, the
-`(infector_id, infection_time)` exposures reaching them (`edges`) and whether
-they were created in this generation (`is_new`); and the contacts newly
-created in this generation (`minted`).
-
-The default suits models in which every contact is a new person: it asks
-each infectious case how many contacts it makes via
-[`generate_offspring`](@ref), then creates and times that many contacts.
-Models whose contacts are people who already exist and can be exposed by
-more than one case in a generation (networks, households) define a method of
-this function that returns [`gather_by_target`](@ref), which calls
-[`contacts_of`](@ref) and groups the exposures by person.
-"""
-function collect_exposures(model::TransmissionModel, state::SimulationState)
-    pre = length(state.individuals)   # contacts created this step get id > pre
-    T = _timetype(state)
-    targets = Individual{T}[]
-    edges = _OneEdge{T}[]
-    for idx in state.active_ids
-        parent = state.individuals[idx]
-        offspring = generate_offspring(model, parent, state)
-        # the generation interval: how long after this parent was infected
-        # each of its contacts occurs. Only asked for when there is at least
-        # one contact to time, since a generation_time function may rely on
-        # something a case with none never reaches.
-        gt_dist = _has_contacts(offspring) ?
-            get_generation_time(model_generation_time(model), parent) : NoGenerationTime()
-        _materialise_offspring!(targets, edges, offspring, parent, state, gt_dist)
-    end
-    minted = view(state.individuals, (pre + 1):length(state.individuals))
-    return targets, edges, minted, _AllNew(length(targets))
-end
-
 # Whether an offspring draw has at least one contact to time: a count
 # (single-type) or a count per type (multi-type).
 _has_contacts(n::Int) = n > 0
 _has_contacts(counts::Vector{Int}) = any(>(0), counts)
-
-# Engine half of the offspring-driven contract: the model returns a count
-# from `generate_offspring`; the engine creates each contact with
-# `make_contact!` and assigns it a generation time. Each fresh contact is
-# its own target reached by a single edge (the tree case). Single-type
-# offspring is a count; multi-type is a count per type.
-function _materialise_offspring!(
-        targets, edges, n_contacts::Int,
-        parent::Individual, state::SimulationState,
-        gt_dist::Union{Distribution, NoGenerationTime}
-    )
-    T = _timetype(state)
-    for _ in 1:n_contacts
-        t = transmission_time(gt_dist, parent, state)
-        push!(targets, make_contact!(state, parent, t))
-        push!(edges, _OneEdge{T}((parent.id, t)))
-    end
-    return nothing
-end
-
-function _materialise_offspring!(
-        targets, edges, counts::Vector{Int},
-        parent::Individual, state::SimulationState,
-        gt_dist::Union{Distribution, NoGenerationTime}
-    )
-    T = _timetype(state)
-    for (type_idx, n) in enumerate(counts)
-        for _ in 1:n
-            t = transmission_time(gt_dist, parent, state)
-            push!(targets, make_contact!(state, parent, t; type_idx))
-            push!(edges, _OneEdge{T}((parent.id, t)))
-        end
-    end
-    return nothing
-end
 
 # A contact's infection time is the window's `from`-state time plus a draw
 # from its kernel (the contact interval measured from `from`).
@@ -538,207 +397,10 @@ end
 _tag_window!(contact, until::Tuple{}) = nothing
 _tag_window!(contact, until) = (contact.state[:censor_until] = until; nothing)
 
-"""
-    gather_by_target(model, state) -> (targets, edges, minted, is_new)
-
-A version of [`collect_exposures`](@ref) for models in which several cases
-can expose the same person in one generation (networks, households). It
-collects every exposure of a person and lets the simulation decide once
-whether, and by whom, they are infected. Newly created contacts are each
-treated separately, so a model may mix new people with existing ones.
-"""
-function gather_by_target(model::TransmissionModel, state::SimulationState)
-    pre = length(state.individuals)
-    T = _timetype(state)
-    targets = Individual{T}[]
-    edges = Vector{Tuple{Int, T}}[]
-    is_new = Bool[]
-    pos = Dict{Int, Int}()       # node id -> target index; shared nodes only
-    for idx in state.active_ids
-        parent = state.individuals[idx]
-        for (target, time) in contacts_of(model, parent, state)
-            if target.id > pre
-                push!(targets, target)
-                push!(edges, Tuple{Int, T}[(parent.id, time)])
-                push!(is_new, true)
-            else
-                j = get(pos, target.id, 0)
-                if j == 0
-                    push!(targets, target)
-                    push!(edges, Tuple{Int, T}[])
-                    push!(is_new, false)
-                    j = length(targets)
-                    pos[target.id] = j
-                end
-                push!(edges[j], (parent.id, time))
-            end
-        end
-    end
-    minted = view(state.individuals, (pre + 1):length(state.individuals))
-    return targets, edges, minted, is_new
-end
-
-"""Simulate one generation of transmission. Contacts are made and timed
-([`collect_exposures`](@ref)); tracing and vaccination act on those contacts
-([`_intervene!`](@ref)); then each contact is infected or not, and each new
-case is settled, which draws its natural history and lets the interventions
-act on it ([`_resolve!`](@ref), [`_settle_generation!`](@ref)). In a branching
-process a contact is created together with its infection time; in a fixed
-population the contacts already exist."""
-function _advance_generation!(
-        model::TransmissionModel,
-        state::SimulationState, interventions::Vector{<:AbstractIntervention},
-        intervention_tuple = _as_tuple(interventions)
-    )
-    targets, edges, minted, is_new = collect_exposures(model, state)
-    # Snapshotted before anything below moves a live field: `_intervene!`'s
-    # provisional parent assignment overwrites `parent_id`/`infection_time`
-    # unconditionally, on a pre-existing node offered again just as much as on
-    # a fresh one.
-    reinfections = _reinfection_episodes(targets, is_new)
-    kept = _intervene!(state, interventions, targets, edges, minted, is_new)
-    _resolve!(
-        model, state, interventions, targets, edges, is_new, reinfections, kept;
-        intervention_tuple
-    )
-    return nothing
-end
-
-# A pre-existing target already carrying a prior infection, keyed by its
-# position in `targets` rather than by id, since two targets never share a
-# position. Only a model that offers one past its first infection (through
-# `contacts_of`) ever populates this; empty for every other model, which is
-# every built-in one today.
-function _reinfection_episodes(targets, is_new)
-    episodes = _NO_REINFECTIONS
-    for i in eachindex(targets)
-        is_new[i] && continue
-        target = targets[i]
-        is_infected(target) || continue
-        episodes === _NO_REINFECTIONS && (episodes = Dict{Int, InfectionEpisode}())
-        episodes[i] = InfectionEpisode(target)
-    end
-    return episodes
-end
-
-# Shared by every generation with no reinfection, and only ever read.
-const _NO_REINFECTIONS = Dict{Int, InfectionEpisode}()
-const _NO_KEPT = Int[]
-
-"""Phase 2 — contact-level interventions act on this generation's exposures.
-Newly minted contacts get their intervention state initialised; each target is
-given a provisional parent (its earliest exposing edge); then each individual
-of the active set is offered the contacts it reached, through the per-case
-hooks ([`_act_per_case!`](@ref)), before infection is resolved. An
-intervention still implementing the deprecated batch hook
-[`apply_post_transmission!`](@ref) is handed the whole batch instead, at its
-place in the list, and then asked [`keep_active`](@ref) about the whole batch.
-Returns the ids the interventions asked to keep active."""
-function _intervene!(
-        state::SimulationState,
-        interventions::Vector{<:AbstractIntervention},
-        targets::Vector{<:Individual}, edges::AbstractVector{<:AbstractVector{<:Tuple}},
-        minted, is_new
-    )
-    # Newly created contacts (already appended to state by make_contact!)
-    # get their intervention state initialised.
-    for contact in minted
-        for intervention in interventions
-            initialise_individual!(intervention, contact, state)
-        end
-    end
-
-    # Provisional parent = earliest exposing edge. With one edge (the tree
-    # case) this is the contact's only parent.
-    for i in eachindex(targets)
-        es = edges[i]
-        length(es) > 1 && sort!(es, by = last)
-        targets[i].parent_id, targets[i].infection_time = es[1]
-    end
-
-    isempty(interventions) && return _NO_KEPT
-
-    # Each stretch of per-case interventions runs case by case, and a batch-hook
-    # intervention at its own place in the list, so what one writes reaches
-    # those listed after it.
-    kept = Int[]
-    stretch = similar(interventions, 0)
-    for intervention in interventions
-        if _uses_batch_hook(intervention)
-            append!(kept, _act_per_case!(state, stretch, targets, edges, is_new))
-            empty!(stretch)
-            _warn_batch_hook(intervention)
-            apply_post_transmission!(intervention, state, targets)
-            # Asked after the batch hook, which may write what it reads.
-            append!(kept, keep_active(intervention, state, targets, is_new))
-        else
-            push!(stretch, intervention)
-        end
-    end
-    append!(kept, _act_per_case!(state, stretch, targets, edges, is_new))
-    return kept
-end
-
-"""
-    _act_per_case!(state, interventions, targets, edges, is_new) -> Vector{Int}
-
-Offer each individual of the active set the contacts it reached this
-generation, through the per-case hooks the continuous-time race calls when it
-settles a case: every one of `interventions`' [`trace_contacts!`](@ref), then
-their [`intervention_actions`](@ref), admitted through their wrappers, then
-their [`keep_active`](@ref), whose answers are returned. The caller leaves out
-interventions on the deprecated batch hook. A target reached by
-several individuals is offered to each of them, as a neighbour is on the race.
-Each infected case is also offered to interventions declaring
-[`traces_source`](@ref EpiBranch.traces_source) (see [`trace_contacts!`](@ref)'s
-docstring), whether or not it reached any contact of its own this generation —
-unlike the forward hooks, which have nothing to act on when it did not.
-
-Cases are visited in order of infection time, each with the state its settling
-hooks saw ([`_at_case!`](@ref)): the clock at its infection time and its place
-in the case count. An uninfected individual kept active by `keep_active` sees
-the state as the generation left it. The state is restored afterwards.
-"""
-function _act_per_case!(state::SimulationState, interventions, targets, edges, is_new)
-    kept = Int[]
-    isempty(interventions) && return kept
-    reached = Dict{Int, Vector{Int}}()
-    for i in eachindex(targets), (pid, _) in edges[i]
-        idx = get!(Vector{Int}, reached, pid)
-        (isempty(idx) || last(idx) != i) && push!(idx, i)
-    end
-    clock, count, generation = state.max_infection_time, state.cumulative_cases,
-        state.current_generation
-    tracing_source = any(traces_source, interventions)
-    sources = [state.individuals[id] for id in state.active_ids]
-    cases = filter(is_infected, sources)
-    sort!(cases; by = case -> case.infection_time)
-    seen = count - length(cases)
-    for source in Iterators.flatten((cases, Iterators.filter(!is_infected, sources)))
-        if is_infected(source)
-            seen += 1
-            _at_case!(state, source, seen)
-            _trace_source!(state, source, interventions, tracing_source)
-        else
-            state.max_infection_time, state.cumulative_cases = clock, count
-            state.current_generation = generation
-        end
-        idx = get(reached, source.id, nothing)
-        idx === nothing && continue
-        _case_hooks!(state, source, interventions, targets[idx], is_new[idx], kept)
-    end
-    state.max_infection_time, state.cumulative_cases = clock, count
-    state.current_generation = generation
-    return kept
-end
-
 # Offer `case`'s own infector to interventions tracing backward, as the sole
 # contact in `trace_contacts!`'s usual four-argument form. An index case or a
-# community introduction has no infector to offer. Shared with the
-# continuous-time race (sellke.jl), where it is called once a case is settled.
-# On the generation engine, called for every infected case regardless of
-# whether it made a forward contact this generation, unlike `_case_hooks!`,
-# which has nothing to do when it did not.
+# community introduction has no infector to offer. The race calls it once a
+# case is settled.
 function _trace_source!(
         state::SimulationState, case, interventions,
         tracing_source = any(traces_source, interventions)
@@ -754,29 +416,6 @@ function _trace_source!(
     return nothing
 end
 
-"""
-    _case_hooks!(state, case, interventions, contacts, is_new, kept)
-
-Offer `case`'s `contacts` to `interventions`' [`trace_contacts!`](@ref), then
-their [`intervention_actions`](@ref), admitted through their wrappers, then
-their [`keep_active`](@ref), appending its answers to `kept`. This is the
-per-case hook `_act_per_case!` calls for each source, and the one a
-continuous-time race calls when it settles a case.
-"""
-function _case_hooks!(state::SimulationState, case, interventions, contacts, is_new, kept)
-    for intervention in interventions
-        trace_contacts!(intervention, state, case, contacts)
-    end
-    for intervention in interventions
-        actions = intervention_actions(intervention, state, contacts)
-        actions === nothing || _admit_actions!(intervention, state, actions)
-    end
-    for intervention in interventions
-        append!(kept, keep_active(intervention, state, contacts, is_new))
-    end
-    return nothing
-end
-
 """Step 3 of a generation: decide which exposed people are infected, and
 record the new cases. An exposure need not lead to infection. The infector's
 infectiousness, the contact's susceptibility, anything the model adds and any
@@ -786,187 +425,6 @@ transmits, at the time of the earliest one that does. When someone who was
 infected before is reinfected (possible only once their immunity has waned,
 see [`HostImmunity`](@ref EpiBranch.HostImmunity)), the earlier infection is
 kept as a past episode; see [`close_episode!`](@ref)."""
-function _resolve!(
-        model::TransmissionModel, state::SimulationState,
-        interventions::Vector{<:AbstractIntervention},
-        targets::Vector{<:Individual}, edges::AbstractVector{<:AbstractVector{<:Tuple}},
-        is_new, reinfections = Dict{Int, InfectionEpisode}(), kept = Int[];
-        intervention_tuple = _as_tuple(interventions)
-    )
-    newly_infected = _infect_targets!(
-        state, transmission_risks(model), intervention_tuple, targets, edges,
-        is_new, reinfections
-    )
-    _account_generation!(state, interventions, newly_infected, kept)
-    return nothing
-end
-
-_as_tuple(interventions) = isempty(interventions) ? () : Tuple(interventions)
-
-# Decides each target's infection. Takes the interventions as a tuple, so the
-# risk each one contributes per edge is a call resolved at compile time.
-function _infect_targets!(
-        state, model_risks, interventions::Tuple, targets, edges, is_new, reinfections
-    )
-    infected_so_far = 0
-    newly_infected = eltype(targets)[]
-    for i in eachindex(targets)
-        target = targets[i]
-        # A pre-existing node already carrying a prior infection, offered
-        # again as a candidate contact by a model whose host has waned
-        # enough (see `HostImmunity`); its live fields as `_advance_generation!`
-        # snapshotted them, before `_intervene!`'s provisional parent
-        # assignment or the trial edges below moved them. The earlier episode
-        # is either archived (confirmed reinfection) or restored (every edge
-        # failed) rather than lost either way.
-        prior_episode = get(reinfections, i, nothing)
-        reinfection = prior_episode !== nothing
-        infected = false
-        for (pid, t) in edges[i]
-            target.parent_id = pid
-            target.infection_time = t
-            if _decide_infected(state, target, model_risks, interventions, infected_so_far)
-                infected = true
-                break
-            end
-        end
-        if reinfection && !infected
-            target.parent_id = prior_episode.parent_id
-            target.infection_time = prior_episode.infection_time
-            _drop_stale_abort!(target)
-            continue
-        end
-        target.state[:infected] = infected
-        if infected
-            reinfection && close_episode!(target, prior_episode)
-            infected_so_far += 1
-            parent = state.individuals[target.parent_id]
-            target.generation = parent.generation + 1
-            target.chain_id = parent.chain_id
-            # Onset follows from the *infection* time. A minted contact is
-            # created at its infection time, so this is idempotent; a
-            # pre-instantiated node was created with no infection time (NaN),
-            # so this derives its onset from the time it was actually infected.
-            _set_onset_from_incubation!(target)
-            # Freshly created contacts were already registered on their
-            # parent by `make_contact!`; shared network nodes are not.
-            is_new[i] || push!(parent.secondary_case_ids, target.id)
-            push!(newly_infected, target)
-        elseif !is_new[i]
-            # A pre-instantiated node exposed but not infected this
-            # generation stays a clean susceptible; clear the provisional
-            # parent and infection time left from the failed exposure. A NaN
-            # infection time marks it as never infected; 0.0 would mean
-            # infected at time 0. (Minted "contact-only" individuals keep their
-            # parent because they are real contacts.)
-            target.parent_id = 0
-            target.infection_time = NaN
-        end
-        _drop_stale_abort!(target)
-    end
-    return newly_infected
-end
-
-function _account_generation!(state, interventions, newly_infected, kept)
-    cases_before = state.cumulative_cases
-    for target in newly_infected
-        target.infection_time > state.max_infection_time &&
-            (state.max_infection_time = target.infection_time)
-    end
-    state.cumulative_cases += length(newly_infected)
-    state.current_generation += 1
-
-    # Next active set: the cases that transmit, plus any nodes an
-    # intervention asked to keep active (`keep_active`), such as uninfected
-    # contacts a tracing depth wants to keep growing. Who stays active is
-    # not a special built-in rule. It was asked before infection was decided,
-    # so a kept contact that went on to be infected is already in the set.
-    next_active = [target.id for target in newly_infected]
-    isempty(kept) || for id in unique(kept)
-        is_infected(state.individuals[id]) || push!(next_active, id)
-    end
-    state.active_ids = next_active
-    state.extinct = isempty(next_active)
-
-    _settle_generation!(state, interventions, newly_infected, cases_before)
-    return nothing
-end
-
-# The seed cases a model's `initialise_state` infected.
-function _seed_cases(state::SimulationState)
-    return filter(ind -> get(ind.state, :infected, false), state.individuals)
-end
-
-"""
-    _settle_generation!(state, interventions, cases, cases_before)
-
-Settle a generation's new `cases`: every case's clinical transitions
-([`resolve_transitions!`](@ref)), then every case's intervention hooks
-([`resolve_individual!`](@ref)), then, once every case's own state is settled,
-each intervention declaring [`settles_generation_batch`](@ref) is offered its
-actions for every case in turn ([`_offer_continuous_actions!`](@ref)), so a
-trigger that only becomes true on settlement (such as a case's own lab
-confirmation) still reaches its group. The generation engine has no time
-order beyond the generation. Each case, including in the settled-batch offer,
-sees the clock at its own infection time and, as its case count, the
-`cases_before` cases of earlier generations plus those of its own generation
-infected no later than it. Cases sharing an infection time are counted in the
-order they appear in `cases`. The clock, count and generation are restored to
-the generation's totals once every case has been offered, which is what the
-stopping rules read.
-"""
-function _settle_generation!(state::SimulationState, interventions, cases, cases_before)
-    isempty(cases) && return nothing
-    clock, count, generation = state.max_infection_time, state.cumulative_cases,
-        state.current_generation
-    rank = _infection_ranks(cases)
-    for (i, case) in enumerate(cases)
-        _at_case!(state, case, cases_before + _rank(rank, i))
-        resolve_transitions!(state, case)
-    end
-    for (i, case) in enumerate(cases)
-        _at_case!(state, case, cases_before + _rank(rank, i))
-        _resolve_interventions!(state, case, interventions)
-    end
-    _offer_continuous_actions!(state, interventions, cases, cases_before, rank)
-    state.max_infection_time, state.cumulative_cases = clock, count
-    state.current_generation = generation
-    return nothing
-end
-
-"""
-    _offer_continuous_actions!(state, interventions, cases, cases_before, rank)
-
-Once `cases` are settled, offer each intervention declaring
-[`settles_generation_batch`](@ref) its actions one case at a time, with the
-clock at that case's own infection time, so a wrapper such as
-`CapacityConstrained` bills capacity to the triggering case's own period
-rather than the generation's. Each call is scoped to the single case: an
-intervention such as `GroupVaccination` finds the rest of a triggered group
-through its own population-wide index, not through the candidates it is
-passed, so a single-case candidate still finds everything a whole-batch call
-would.
-"""
-function _offer_continuous_actions!(state::SimulationState, interventions, cases, cases_before, rank)
-    for (i, case) in enumerate(cases)
-        _at_case!(state, case, cases_before + _rank(rank, i))
-        for iv in interventions
-            settles_generation_batch(iv) || continue
-            actions = intervention_actions(iv, state, (case,))
-            actions === nothing || _admit_actions!(iv, state, actions)
-        end
-    end
-    return nothing
-end
-
-# Each case's place among `cases` by infection time; `nothing` when they are
-# already in that order, as a generation of one always is.
-function _infection_ranks(cases)
-    issorted(cases; by = case -> case.infection_time) && return nothing
-    return invperm(sortperm([case.infection_time for case in cases]))
-end
-_rank(::Nothing, i) = i
-_rank(rank, i) = rank[i]
 
 """
     _settle_case!(state, case, interventions, count)
@@ -1197,13 +655,6 @@ function initialise_state(
     return state
 end
 
-function should_terminate(state::SimulationState, sim_opts::SimOpts)
-    for rule in sim_opts.stopping_rules
-        _should_stop(rule, state) && return true
-    end
-    return false
-end
-
 # The rules a run has by default are tested for by type so their calls compile
 # statically; any other rule goes through dispatch as usual. Asked once per
 # generation, so on many small outbreaks a dynamic call here is a visible
@@ -1280,25 +731,18 @@ _set_type!(contact, idx::Int) = (contact.state[:type] = idx)
 
 Add one new contact of the case `parent`, exposed at `infection_time` (days),
 to the outbreak, and return it. Its population characteristics are drawn
-when it is created; interventions act on it later in the generation.
+when it is created.
 
 Only needed when writing a new transmission model. The simulation calls it
 for every contact drawn from a branching process's offspring distribution, or
 from [`generate_offspring`](@ref) in a model that defines it. A model that
 creates new people inside its [`contacts_of`](@ref) calls it directly,
-returning each contact with its infection time. Such a model also needs a
-[`collect_exposures`](@ref) method that returns [`gather_by_target`](@ref):
-without one the simulation asks it for `generate_offspring` and never reaches
-`contacts_of`. A model whose contacts are all new and share one generation
-time is simpler written as `generate_offspring`; `contacts_of` earns its
+returning each contact with its infection time. A model whose contacts are
+all new and share one generation time is simpler written as `generate_offspring`; `contacts_of` earns its
 keep where the model times each contact itself, as here, where every route
 out of a case has its own delay:
 
 ```julia
-function EpiBranch.collect_exposures(m::MyModel, state::SimulationState)
-    return gather_by_target(m, state)
-end
-
 function EpiBranch.contacts_of(m::MyModel, parent, state::SimulationState)
     map(m.routes) do route
         t = parent.infection_time + rand(state.rng, route.delay)
@@ -1605,34 +1049,6 @@ every contact while the contact is still made (and can still be traced).
 Each source defines [`competing_risk`](@ref). Returns none by default.
 """
 transmission_risks(::TransmissionModel) = ()
-
-"""
-Decide whether `contact` is infected by the case that exposed it, and return
-`true` if so. An index case is always infected. Otherwise, in a finite
-population the contact first escapes with probability one minus the
-[`susceptible_fraction`](@ref). Then each thing that can prevent infection
-is checked in turn: the contact's susceptibility and the infector's
-infectiousness, anything from the model's [`transmission_risks`](@ref), and
-the interventions. The first one that prevents it decides.
-"""
-function _decide_infected(
-        state::SimulationState, contact::Individual,
-        model_risks, interventions, infected_so_far::Int
-    )
-    contact.parent_id == 0 && return true
-    rng = state.rng
-    parent = state.individuals[contact.parent_id]
-    transmission_time = contact.infection_time
-
-    # Finite-population depletion (dispatched on the population type).
-    pop_suscept = susceptible_fraction(state, infected_so_far)
-    pop_suscept <= 0.0 && return false
-    pop_suscept < 1.0 && rand(rng) > pop_suscept && return false
-
-    return !_composed_risks_block(
-        state, parent, contact, transmission_time, model_risks, interventions
-    )
-end
 
 """Whether any risk blocks the `parent` → `contact` transmission at
 `transmission_time`: the built-in sources (host susceptibility, infector
