@@ -429,7 +429,12 @@ ends.
 rule phrased as an end day counted from exposure, such as "until 14 days after
 exposure", can subtract the trace time from that day to get a duration. A rule
 that ends quarantine at symptom onset can compare it against
-[`onset_time`](@ref)`(ind)`.
+[`onset_time`](@ref)`(ind)`. A contact traced more than once — ring
+propagation keeping the widest budget any infector gave it, or more than one
+child triggering `SourceTracing` on the same parent — keeps its *earliest*
+trace in `:trace_time`, which on a later trace predates the one `duration` is
+being called for; a rule that subtracts a stored, earlier trace time from a
+fixed end day will run longer than intended on that later trace.
 """
 struct Quarantine{D} <: TraceAction
     duration::D
