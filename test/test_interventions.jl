@@ -438,8 +438,8 @@ EpiBranch.reset!(::_TimedBatchDose, ind::Individual) = delete!(ind.state, :_dose
         # infector settles rather than when it settles itself. Isolation from
         # onset must still apply on top of the quarantine, whichever started
         # first: overlapping it where the two windows meet, and adding a
-        # separate removal where a short or already-lapsed quarantine does not
-        # reach as far as onset.
+        # separate removal where a short or already-lapsed quarantine ends
+        # before onset.
         iso = Isolation(onset_to_isolation_delay = Exponential(1.0e-9), duration = Inf)
         state = EpiBranch.new_state(
             BranchingProcess(Poisson(1.0), Exponential(5.0)),
@@ -465,8 +465,9 @@ EpiBranch.reset!(::_TimedBatchDose, ind::Individual) = delete!(ind.state, :_dose
         @test isolation_time(early) == 1.0
         @test get(early.state, :_isolated_by_isolation, false)
 
-        # A short quarantine that ends before onset: isolation from onset is a
-        # separate removal, not folded into (or blocked by) the lapsed one.
+        # A short quarantine that ends before onset: isolation from onset is
+        # its own separate removal after the lapsed one, rather than being
+        # folded into it or blocked by it.
         lapsed = Individual(id = 4)
         lapsed.state[:onset_time] = 40.0
         lapsed.state[:test_positive] = true

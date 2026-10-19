@@ -277,9 +277,9 @@ function resolve_individual!(iso::Isolation, individual, state)
     # settled, which is before the contact itself resolves. Self-isolation from
     # onset applies on top of it regardless of which started first: `_isolate!`
     # below combines the two, layering over the quarantine where they overlap
-    # and adding a separate removal where they do not, so a quarantine that
-    # ends, or never blocked anything, before onset does not leave the case
-    # unisolated.
+    # and adding a separate removal where they do not. That way a quarantine
+    # that ends, or never covered anything, before onset still gets the case
+    # isolated.
     if _isolation_in_force(individual)
         is_test_positive(individual) || return nothing
         self_t = onset_time(individual) +
