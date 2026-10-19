@@ -1084,8 +1084,9 @@ function _sellke_race!(
         )
     ) || (_proposal_fallback(members) && any(((_, rt),) -> _route_may_block(rt), rts))
     # A route whose contacts the race checks against built-in risks of its own
-    # (`_route_may_block`) checks every proposal too. It proposes each member
-    # once, so a blocked contact has nothing to fall back on and needs no lists.
+    # (`_route_may_block`) checks every proposal too. Where its members cannot
+    # fall back (`_Offspring`), it proposes each member once, so a blocked
+    # contact has nothing to fall back on and needs no lists.
     checks = may_block || any(((_, rt),) -> _route_may_block(rt), rts)
     tracing = any(traces_contacts, interventions)
     tracing_source = any(traces_source, interventions)
