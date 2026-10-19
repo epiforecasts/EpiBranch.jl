@@ -133,6 +133,15 @@ one that leaves them alone. [`demographics`](@ref) and [`groups`](@ref)
 return a dedicated callable type rather than a closure so they keep the
 `true` default; give a custom attributes function one too if it should.
 
+A custom [`AbstractClinicalTransition`](@ref) answers the same conservative
+`false`, for the same reason: `initialise_individual!` and
+`resolve_individual!` receive the case directly and can set its
+susceptibility or infectiousness just as a bare attributes function can. The
+five built-in transitions ([`Transition`](@ref), [`Reporting`](@ref),
+[`Hospitalisation`](@ref), [`Recovery`](@ref), [`Death`](@ref)) touch neither
+field, so each overrides it back to `true`; one of your own that doesn't
+touch them either should do the same.
+
 For a [`TransmissionModel`](@ref) the default is the conservative `false`
 instead, as for [`EpiBranch.infection_likelihood_compatible`](@ref): a new
 model opts in once it has checked that nothing of its own — a finite
@@ -146,6 +155,7 @@ happens).
 offspring_law_unchanged(::Any) = true
 offspring_law_unchanged(::Function) = false
 offspring_law_unchanged(::TransmissionModel) = false
+offspring_law_unchanged(::AbstractClinicalTransition) = false
 function offspring_law_unchanged(xs::Union{Tuple, AbstractVector})
     return all(offspring_law_unchanged, xs)
 end

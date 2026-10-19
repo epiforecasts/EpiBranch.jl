@@ -3,6 +3,10 @@
 struct _BrokenOffspringModel <: EpiBranch.TransmissionModel end
 EpiBranch.single_type_offspring(::_BrokenOffspringModel) = error("broken")
 
+# A progression transition that has not declared `offspring_law_unchanged`,
+# to check it gets the conservative default rather than the built-ins' `true`.
+struct _UndeclaredTransition <: EpiBranch.AbstractClinicalTransition end
+
 @testset "Types" begin
     @testset "NegBin convenience constructor" begin
         d = NegBin(2.5, 0.16)
@@ -145,13 +149,20 @@ EpiBranch.single_type_offspring(::_BrokenOffspringModel) = error("broken")
         @test !EpiBranch.offspring_law_unchanged(
             BranchingProcess(Infectiousness(Poisson(2.0); until = (:recovered,)))
         )
-        # Attributes and progression transitions default to leaving it
-        # unchanged, since neither has a general mechanism to affect it.
+        # Attributes default to leaving it unchanged, since they have no
+        # general mechanism to affect it; the built-in progression
+        # transitions each declare the same, having checked they touch
+        # neither susceptibility nor infectiousness.
         @test EpiBranch.offspring_law_unchanged(NoAttributes())
         @test EpiBranch.offspring_law_unchanged(Transition(:recovered; delay = 1.0))
         @test EpiBranch.offspring_law_unchanged(
             [NoAttributes(), Transition(:recovered; delay = 1.0)]
         )
+        # A custom progression transition that has not declared itself
+        # defaults to the conservative `false`: its `resolve_individual!`
+        # could set susceptibility or infectiousness directly, the same way
+        # a bare attributes closure can.
+        @test !EpiBranch.offspring_law_unchanged(_UndeclaredTransition())
     end
 
     @testset "BranchingProcess with population_size" begin

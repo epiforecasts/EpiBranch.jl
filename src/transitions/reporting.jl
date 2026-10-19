@@ -40,6 +40,10 @@ Base.@kwdef struct Reporting{D, P, F} <: AbstractClinicalTransition
     from::F = :onset_time
 end
 
+# Only writes `:reported`/`:reporting_time`; never touches susceptibility or
+# infectiousness.
+offspring_law_unchanged(::Reporting) = true
+
 required_fields(r::Reporting) = _from_required(r.from)
 
 function initialise_individual!(::Reporting, individual, state)
