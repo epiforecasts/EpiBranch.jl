@@ -187,8 +187,10 @@ function _pending_beyond(m::_MassAction, race)
     return any(CartesianIndices(m.cut)) do ab
         a, b = Tuple(ab)
         m.cut[a, b] && any(m.groups[b]) do id
-            (!race.processed[race.pos[id]] || race.reinfects) &&
-                race.state.individuals[id].susceptibility > 0
+            ind = race.state.individuals[id]
+            settled = race.processed[race.pos[id]]
+            (!settled || (race.reinfects && isfinite(susceptible_again_time(ind)))) &&
+                ind.susceptibility > 0
         end
     end
 end

@@ -1174,17 +1174,24 @@ end
 
     @testset "a cut group still reinfectable is not reported extinct" begin
         # A cut group whose sole member has already settled is waiting on
-        # `susceptible_again_time`, not on susceptibility (which stays > 0
-        # throughout), so it is still reachable once the progression reinfects.
+        # their own `susceptible_again_time`, not on susceptibility (which
+        # stays > 0 throughout), so it is still reachable once the
+        # progression reinfects and their draw gave them a finite wait.
         m = EpiBranch._MassAction(
             [[1]], Dict(1 => 1), reshape([1.0], 1, 1), [1.0], reshape([true], 1, 1)
         )
-        race(reinfects) = (;
+        waiting = Individual(; id = 1)
+        waiting.state[:susceptible_again_time] = 5.0
+        race(ind, reinfects) = (;
             processed = [true], pos = Dict(1 => 1),
-            state = (; individuals = Dict(1 => (; susceptibility = 1.0))), reinfects
+            state = (; individuals = Dict(1 => ind)), reinfects
         )
-        @test EpiBranch._pending_beyond(m, race(true))
-        @test !EpiBranch._pending_beyond(m, race(false))
+        @test EpiBranch._pending_beyond(m, race(waiting, true))
+        @test !EpiBranch._pending_beyond(m, race(waiting, false))
+        # A settled member whose own draw never let them wane stays immune
+        # for good (`susceptible_again_time == Inf`), so they are not
+        # pending even though the progression reinfects in general.
+        @test !EpiBranch._pending_beyond(m, race(Individual(; id = 1), true))
     end
 
     @testset "termination controls on the fixed pool" begin
