@@ -139,7 +139,7 @@ A custom [`AbstractClinicalTransition`](@ref) answers the same conservative
 susceptibility or infectiousness just as a bare attributes function can. The
 five built-in transitions ([`Transition`](@ref), [`Reporting`](@ref),
 [`Hospitalisation`](@ref), [`Recovery`](@ref), [`Death`](@ref)) touch neither
-field, so each overrides it back to `true`; one of your own that doesn't
+field; each overrides it back to `true`, and one of your own that doesn't
 touch them either should do the same.
 
 For a [`TransmissionModel`](@ref) the default is the conservative `false`
