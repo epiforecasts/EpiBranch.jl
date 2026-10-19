@@ -8,17 +8,23 @@ children and adults, or health-care workers and the community), built from a
 next-generation matrix `M`: `M[i, j]` is the mean number of type-`i` cases
 infected by one type-`j` case.
 
-A type-`j` case draws how many people it infects in total from
-`dist_fn(R_j)`, where `R_j` is the sum of column `j`, then splits them at
-random between types in proportion to that column. The mean number infected
-is the mean of `dist_fn(R_j)`, which equals `R_j` only if the distribution
-has mean `R_j`. A function such as `R -> Poisson(θ * R)` scales the whole
-matrix by `θ`.
+A type-`j` case draws how many people it infects in total, then splits them
+at random between types in proportion to column `j`. `dist_fn` gives that
+total count law in one of two ways:
+
+- A function of the column sum `R_j`: a type-`j` case draws from
+  `dist_fn(R_j)`. The mean number infected is the mean of `dist_fn(R_j)`,
+  which equals `R_j` only if the distribution has mean `R_j`. A function such
+  as `R -> Poisson(θ * R)` scales the whole matrix by `θ`.
+- A vector of one distribution per type: a type-`j` case draws from
+  `dist_fn[j]` directly, independent of `R_j`. Use this when types' offspring
+  laws differ in more than their mean, for example one heavy-tailed and one
+  not, or sharing a mean but not its dispersion.
 
 !!! warning
-    `dist_fn` must take a mean if the column sums are meant to be the
-    reproduction numbers. Use `R -> NegBin(R, k)` (mean `R`, dispersion `k`).
-    `R -> NegativeBinomial(R, 0.3)` from Distributions.jl reads `R` as a
+    A function `dist_fn` must take a mean if the column sums are meant to be
+    the reproduction numbers. Use `R -> NegBin(R, k)` (mean `R`, dispersion
+    `k`). `R -> NegativeBinomial(R, 0.3)` from Distributions.jl reads `R` as a
     number of successes, not a mean: with it, a matrix whose dominant
     eigenvalue is 1.045 gives a process with reproduction number 2.44.
     [`reproduction_number`](@ref) reports the reproduction number the model
@@ -45,6 +51,11 @@ function MultiTypeOffspring(offspring_matrix::AbstractMatrix{<:Real}, dist_fn)
             "offspring_matrix must be square, got $(size(offspring_matrix))"
         )
     )
+    dist_fn isa AbstractVector && length(dist_fn) != n && throw(
+        ArgumentError(
+            "dist_fn has $(length(dist_fn)) laws for $n types"
+        )
+    )
 
     R_by_type = vec(sum(offspring_matrix, dims = 1))
     alloc_probs = similar(offspring_matrix, float(eltype(offspring_matrix)))
@@ -54,6 +65,13 @@ function MultiTypeOffspring(offspring_matrix::AbstractMatrix{<:Real}, dist_fn)
     end
     return MultiTypeOffspring(offspring_matrix, dist_fn, R_by_type, alloc_probs)
 end
+
+# The total-count law for a type-`j` case with column sum `R`: `dist_fn(R)`
+# for a function, or `dist_fn[j]` for one law per type. Dispatch on the type
+# of `dist_fn` rather than branching inside a single method, so a third way
+# of giving the law is a new method here, not a new case.
+_type_law(dist_fn, R, ::Integer) = dist_fn(R)
+_type_law(dist_fn::AbstractVector, ::Real, j::Integer) = dist_fn[j]
 
 _n_types(o::MultiTypeOffspring) = size(o.offspring_matrix, 1)
 
@@ -83,11 +101,11 @@ end
 
 A multi-type branching process from a next-generation matrix:
 `offspring_matrix[i, j]` is the mean number of type-`i` cases infected by one
-type-`j` case. `dist_fn` turns the total for each type of infector (the column
-sum, its reproduction number) into an offspring distribution, and
-`generation_time` is the generation time in days. See
-[`MultiTypeOffspring`](@ref EpiBranch.MultiTypeOffspring) for how secondary
-cases are split between types.
+type-`j` case. `dist_fn` gives each type of infector its offspring
+distribution, either as a function of the column sum (its reproduction
+number) or as one law per type, and `generation_time` is the generation time
+in days. See [`MultiTypeOffspring`](@ref EpiBranch.MultiTypeOffspring) for how
+secondary cases are split between types.
 
 # Examples
 ```julia
@@ -113,8 +131,9 @@ end
     draw_offspring(rng, offspring::MultiTypeOffspring, individual, state)
 
 Draw the number of secondary cases of each type for a case of type `j`: a
-total from `dist_fn(R_j)`, split at random between types in proportion to
-column `j` of the next-generation matrix.
+total from its offspring law (see [`MultiTypeOffspring`](@ref)), split at
+random between types in proportion to column `j` of the next-generation
+matrix.
 """
 function draw_offspring(
         rng::AbstractRNG, offspring::MultiTypeOffspring,
@@ -127,7 +146,7 @@ function draw_offspring(
     # before calling `dist_fn`: the documented `R -> NegBin(R, k)` form throws at
     # R = 0 because `NegBin` requires R > 0.
     R <= 0 && return zeros(Int, n)
-    total = rand(rng, offspring.dist_fn(R))
+    total = rand(rng, _type_law(offspring.dist_fn, R, pt))
     total == 0 && return zeros(Int, n)
     return rand(rng, Multinomial(total, offspring.alloc_probs[:, pt]))
 end
