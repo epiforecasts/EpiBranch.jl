@@ -166,6 +166,31 @@ The size of each household in `model`.
 """
 household_sizes(m::HouseholdProcess) = length.(m.members)
 
+"""
+    household_members(model) -> Vector{Vector{Int}}
+
+The individual ids belonging to each household in `model`, so
+`household_members(model)[h]` lists the members of household `h`.
+"""
+household_members(m::HouseholdProcess) = m.members
+
+"""
+    external_hazard(model)
+
+The community force of infection in `model`: a constant rate, a distribution
+of introduction times, or a per-person vector or function of those, as given
+to [`HouseholdProcess`](@ref). Zero means no community introductions.
+"""
+external_hazard(m::HouseholdProcess) = m.external_hazard
+
+"""
+    observation_end(model) -> Float64
+
+The end, in days, of the window in which `model`'s community introductions can
+happen. `Inf` when `model` has no `external_hazard`.
+"""
+observation_end(m::HouseholdProcess) = m.obs_end
+
 # The race honours a `stopping_rules` entry, or a non-default `max_cases` or
 # `max_generations`, but leaves those two keywords' defaults off, so an
 # existing run over the fixed membership keeps going to extinction or
