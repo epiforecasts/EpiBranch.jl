@@ -24,12 +24,11 @@ across generations. What this changes in a run:
   the ones it goes on to expose. Where the offspring or generation time is a
   function, which may read what settling the member writes, or a window opens
   on a later state, a member's contacts are drawn only once it settles as a
-  case, on every window, and an uninfected member has none. A member that is
-  eligible for tracing in its own right then has its contacts traced from its
-  own trigger, as before, so the deeper ring adds nothing there; it still
-  reaches the contacts of members that are not eligible. This includes
-  `incubation_linked_generation_time`. An offspring specification of your own that reads nothing settling
-  writes says so with `EpiBranch.reads_settled_state`.
+  case, on every window, and an uninfected member has none. Their contacts
+  are still traced from when the ring reached the member. This includes
+  `incubation_linked_generation_time`. An offspring specification of your own
+  that reads nothing settling writes says so with
+  `EpiBranch.reads_settled_state`.
 - `keep_active` is asked only by tracing, to choose which traced contacts a
   ring grows from.
 - A contact drawn for a time before its infector was infected, which a window
