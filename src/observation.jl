@@ -182,6 +182,7 @@ function Base.rand(rng::AbstractRNG, d::ThinnedChainSize)
         obs = rand(rng, Binomial(n, d.detection_prob))
         obs > 0 && return obs
     end
+    return
 end
 
 """
