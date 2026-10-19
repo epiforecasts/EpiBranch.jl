@@ -273,3 +273,37 @@ end
     @test aborted + not_aborted >= 50
     @test 0.35 < aborted / (aborted + not_aborted) < 0.65
 end
+
+# Two cases expose the same person, who is half as susceptible as usual.
+struct TwoToOneModel <: EpiBranch.TransmissionModel end
+EpiBranch.population_size(::TwoToOneModel) = EpiBranch.NoPopulation()
+function EpiBranch.initialise_state(
+        m::TwoToOneModel, sim_opts::EpiBranch.SimOpts,
+        interventions, transitions, attributes, rng::AbstractRNG
+    )
+    state = EpiBranch.new_state(m, transitions, attributes, rng)
+    EpiBranch.add_individuals!(state, 3, interventions)
+    EpiBranch.seed!(state, 1:2, interventions, transitions)
+    state.individuals[3].susceptibility = 0.5
+    return state
+end
+function EpiBranch.contacts_of(::TwoToOneModel, parent, state::EpiBranch.SimulationState)
+    result = Tuple{eltype(state.individuals), Float64}[]
+    parent.id == 3 && return result
+    push!(result, (state.individuals[3], parent.infection_time + parent.id))
+    return result
+end
+
+@testset "A person whose earliest exposure is blocked can be infected by a later one" begin
+    n = 4000
+    infected = count(1:n) do seed
+        s = simulate(
+            TwoToOneModel(); n_initial = 2, rng = StableRNG(seed),
+            stopping_rules = [Extinction(), MaxGenerations(5)]
+        )
+        is_infected(s.individuals[3])
+    end
+    # Each exposure gets through with probability 0.5, so at least one does
+    # with probability 0.75.
+    @test abs(infected / n - 0.75) < 4 * sqrt(0.75 * 0.25 / n)
+end

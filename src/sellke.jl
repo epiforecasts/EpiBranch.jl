@@ -1071,6 +1071,8 @@ function _sellke_race!(
     reinfects = _proposal_fallback(members) && _allows_reinfection(state)
     # Lists retain alternatives after a block. A live kernel can redraw a
     # contact, and an introduction can recur even for single-exposure members.
+    # A route that checks its own built-in risks (`_route_may_block`) can block
+    # a member that another case may still reach.
     may_block = live || reinfects || (
         (introduction !== nothing || _proposal_fallback(members)) && (
             !isempty(risks) || any(
@@ -1080,7 +1082,7 @@ function _sellke_race!(
                 ), interventions
             )
         )
-    )
+    ) || (_proposal_fallback(members) && any(((_, rt),) -> _route_may_block(rt), rts))
     # A route whose contacts the race checks against built-in risks of its own
     # (`_route_may_block`) checks every proposal too. It proposes each member
     # once, so a blocked contact has nothing to fall back on and needs no lists.
