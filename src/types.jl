@@ -360,11 +360,11 @@ mutable struct SimulationState{T <: Real, R <: AbstractRNG, P, A}
     attributes::A
     transitions::Vector{AbstractClinicalTransition}
     scratch::Dict{Any, Any}
-    # The run's own bookkeeping, not `scratch`'s: the time bound the
+    # The run's own bookkeeping, not part of `scratch`: the time bound the
     # generation-based engine enforces per case (`Inf` if none), and whether
-    # it has cut a branch short because of it. Kept off `scratch` so that
-    # dict's documented "the simulation never reads it" holds without
-    # exception.
+    # it has cut a branch short because of it. Kept separate so the
+    # documented claim about `scratch`, that the simulation never reads it,
+    # still holds without exception.
     _max_time_bound::Float64
     _max_time_capped::Bool
 end
