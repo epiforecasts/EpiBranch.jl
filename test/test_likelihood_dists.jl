@@ -159,6 +159,92 @@
         @test all(l -> l >= 0, lengths)
     end
 
+    @testset "rand draws reported cluster sizes rather than total infected" begin
+        # Offspring mean 0.5 gives a full outbreak size that averages
+        # 1 / (1 - 0.5) = 2; with only 10% of cases reported, the observed
+        # cluster sizes `logpdf` scores are thinned well below that, and
+        # never drop to 0 (an unreported cluster is redrawn rather than kept).
+        spec = ModelSpec(
+            BranchingProcess(Poisson(0.5));
+            progression = [Reporting(probability = 0.1, delay = 0.0, from = :infection)]
+        )
+        d = chain_size_distribution(spec; seeds = ones(Int, 500))
+        samples = rand(StableRNG(1), d, 500)
+        @test length(samples) == 500
+        @test all(s -> s >= 1, samples)
+        @test mean(samples) < 1.5
+    end
+
+    @testset "rand raises rather than redrawing forever when no cluster is ever observed" begin
+        # Every case goes unreported, so `vals` is always empty and the
+        # loop would otherwise redraw forever; it must raise instead.
+        # `seeds` routes this through the simulation-based wrapper rather
+        # than the analytical fast path.
+        spec = ModelSpec(
+            BranchingProcess(Poisson(0.5));
+            progression = [Reporting(probability = 0.0, delay = 0.0, from = :infection)]
+        )
+        d = chain_size_distribution(spec; seeds = [1])
+        @test_throws ErrorException rand(StableRNG(1), d, 1)
+    end
+
+    @testset "rand bounds total attempts by max_attempts when a condition is set" begin
+        # A `condition` that can never hold, on a model where every cluster
+        # also goes unreported, exercises both the redraw-for-observed-size
+        # loop and the condition check at once. The error must report the
+        # caller's own `max_attempts` rather than a fixed, larger cap, so
+        # that a restrictive condition cannot multiply the two into far more
+        # attempts than the caller asked for.
+        spec = ModelSpec(
+            BranchingProcess(Poisson(0.5));
+            progression = [Reporting(probability = 0.0, delay = 0.0, from = :infection)]
+        )
+        d = chain_size_distribution(
+            spec; seeds = [1], condition = 0:0, max_attempts = 5
+        )
+        err = try
+            rand(StableRNG(1), d, 1)
+            nothing
+        catch e
+            e
+        end
+        @test err isa ErrorException
+        @test occursin("5 attempts", err.msg)
+    end
+
+    @testset "rand drops a kwarg simulate does not accept" begin
+        # `n_sim` is a documented likelihood keyword, accepted by the
+        # constructor for `logpdf`, but `simulate` itself has no such
+        # keyword; `rand` must not forward it.
+        bp = BranchingProcess(Poisson(0.8))
+        @test length(rand(StableRNG(1), chain_size_distribution(bp; n_sim = 5), 2)) == 2
+        @test length(rand(StableRNG(1), chain_length_distribution(bp; n_sim = 5), 2)) == 2
+    end
+
+    @testset "logpdf drops a kwarg only rand's simulation accepts" begin
+        # `condition`, `max_attempts` and `initial_cases` steer `rand`'s
+        # single-outbreak draw; `logpdf`'s simulation is batched and
+        # data-driven and has no such keywords. It must not forward them —
+        # a kwarg that makes `rand` work must not make `logpdf` throw.
+        bp = BranchingProcess(Poisson(0.5))
+        d = chain_size_distribution(
+            bp; condition = 1:10, max_attempts = 5, initial_cases = [1, 2]
+        )
+        @test logpdf(d, [2, 3]) isa Real
+
+        dl = chain_length_distribution(bp; initial_cases = [1, 2], parallel = false)
+        @test logpdf(dl, [0, 1]) isa Real
+    end
+
+    @testset "a kwarg neither rand nor logpdf accepts is refused at construction" begin
+        # A typo such as `n_sims` for `n_sim` is not in either callee's
+        # accepted-keyword list, so neither side's filtering would catch it;
+        # construction must refuse it up front instead.
+        bp = BranchingProcess(Poisson(0.5))
+        @test_throws ArgumentError chain_size_distribution(bp; n_sims = 50)
+        @test_throws ArgumentError chain_length_distribution(bp; n_sims = 50)
+    end
+
     @testset "coverage matrix: every cell is a Distribution or a clear ArgumentError" begin
         # Locks the model × data-type matrix so a gap can't silently
         # reopen: each entry point either returns something usable with
