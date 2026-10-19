@@ -104,8 +104,14 @@ function _propose_along!(
 end
 
 # A person the model created but the run never infected stays a contact of its
-# case, with no infection time, as on a network.
+# case. An exposure after the run ended is not part of the outbreak it
+# describes, so such a person is left with no infection time, as a branching
+# process leaves its undecided contacts.
 function _finish!(c::_ContactsOf, race, stop_t)
+    for ind in race.state.individuals
+        !is_infected(ind) && ind.infection_time > stop_t || continue
+        ind.infection_time = oftype(ind.infection_time, NaN)
+    end
     isempty(race.interventions) && return nothing
     for ind in race.state.individuals
         _drop_stale_abort!(ind)

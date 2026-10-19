@@ -307,3 +307,15 @@ end
     # with probability 0.75.
     @test abs(infected / n - 0.75) < 4 * sqrt(0.75 * 0.25 / n)
 end
+
+@testset "A contact a model creates lists no exposure after the run ends" begin
+    late = 0
+    for seed in 1:10
+        s = simulate(
+            MintModel(2); n_initial = 1, rng = StableRNG(seed), max_time = 2.0,
+            max_cases = 10^6, max_generations = 100
+        )
+        late += count(i -> i.infection_time > 2.0, s.individuals)
+    end
+    @test late == 0
+end
