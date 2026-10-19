@@ -82,6 +82,12 @@ end
         half1 = count(i -> i.id <= n ÷ 2 && get(i.state, :index, false), state.individuals)
         half2 = count(i -> i.id > n ÷ 2 && get(i.state, :index, false), state.individuals)
         @test half2 > half1
+
+        # a vector not matching the population in `data` is rejected rather
+        # than indexed out of bounds
+        @test_throws ArgumentError pairwise_surv_loglik(
+            windows, data; external_hazard = rates[1:(end - 1)]
+        )
     end
 
     @testset "simulate → loglikelihood recovers both routes' kernel scales jointly" begin

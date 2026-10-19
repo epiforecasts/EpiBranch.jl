@@ -426,6 +426,12 @@ end
         @test pairwise_surv_loglik(k, data, L; external_hazard = rates) ≈ reference
         @test pairwise_surv_loglik(k, data, L; external_hazard = j -> rates[j]) ≈
             reference
+
+        # a vector not matching the population the layout was compiled for is
+        # rejected rather than indexed out of bounds
+        @test_throws ArgumentError pairwise_surv_loglik(
+            k, data, L; external_hazard = rates[1:3]
+        )
     end
 
     @testset "a community case at time 0 is counted" begin
