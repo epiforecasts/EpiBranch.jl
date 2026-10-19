@@ -28,6 +28,17 @@ function EpiBranch.should_stop(r::TimeOrCasesRule, state::SimulationState)
 end
 EpiBranch.time_bound(r::TimeOrCasesRule) = r.t
 
+# The built-in models all run on the continuous-time race, which enforces
+# `MaxTime` by processing cases in time order; this model runs on the
+# generation engine instead (see `generate_offspring`), used below to check
+# that engine's own per-branch enforcement.
+struct _OffspringTree <: EpiBranch.TransmissionModel
+    offspring::Distribution
+    generation_time::Gamma{Float64}
+end
+EpiBranch.population_size(::_OffspringTree) = EpiBranch.NoPopulation()
+EpiBranch.generate_offspring(m::_OffspringTree, parent, state) = rand(state.rng, m.offspring)
+
 @testset "Stopping rules" begin
     @testset "MaxCases stops once cumulative cases reach the cap" begin
         # The engine processes a full generation per step, so cumulative
@@ -101,6 +112,20 @@ EpiBranch.time_bound(r::TimeOrCasesRule) = r.t
                 for s in 1:n
         ) / n
         @test with_limit > 0.7 * without
+    end
+
+    @testset "MaxTime stops each case's own branch on the generation engine" begin
+        model = _OffspringTree(NegBin(1.5, 2.0), Gamma(2.0, 2.5))
+        state = simulate(
+            model; max_time = 30.0, max_cases = nothing, max_generations = nothing,
+            rng = StableRNG(8)
+        )
+        infected = filter(is_infected, state.individuals)
+        @test all(
+            case -> case.infection_time < 30.0 || isempty(case.secondary_case_ids),
+            infected
+        )
+        @test !state.extinct
     end
 
     @testset "Ergonomic kwargs build rules" begin
