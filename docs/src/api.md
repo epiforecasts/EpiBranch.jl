@@ -427,6 +427,7 @@ NoObservation
 PerCaseObservation
 MinimumSize
 observe
+ChainSizeLaw
 ThinnedChainSize
 TruncatedChainSize
 ```

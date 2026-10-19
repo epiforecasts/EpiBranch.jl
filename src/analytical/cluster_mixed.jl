@@ -64,7 +64,7 @@ probabilities of `build(θ)`, averaged over `θ` drawn from `mixing`.
 The average is computed by numerical integration over the central 99.8% of
 `mixing` (its 0.001 to 0.999 quantiles).
 """
-struct ChainSizeMixture{F, D <: Distribution} <: DiscreteUnivariateDistribution
+struct ChainSizeMixture{F, D <: Distribution} <: ChainSizeLaw
     build::F
     mixing::D
 end
