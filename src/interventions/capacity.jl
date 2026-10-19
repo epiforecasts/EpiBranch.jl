@@ -44,13 +44,8 @@ order: both check each action's own proposed date.
     be capacity-limited, with any `eligibility_window`: a dose a network or
     household race withdraws for falling outside the window (see
     [`RingVaccination`](@ref)) counts against no capacity from then on, and
-    the budget it used becomes available to the next candidate. `simulate`
-    warns that an intervention will have no effect when it relies on a hook
-    these models do not call, such as one that reaches its targets only
-    through the deprecated
-    [`apply_post_transmission!`](@ref EpiBranch.apply_post_transmission!)
-    batch hook; for a custom intervention, the warning is the thing to check.
-    The mass-action models,
+    the budget it used becomes available to the next candidate. The
+    mass-action models,
     [`HomogeneousProcess`](@ref) and [`MixingProcess`](@ref), do not trace
     contacts, so ring vaccination cannot act in either. Contact tracing itself
     cannot be capacity-limited in any model.
@@ -59,10 +54,6 @@ For extension authors: a new intervention can be capacity-limited by defining
 [`intervention_actions`](@ref EpiBranch.intervention_actions) and
 [`capacity_key`](@ref EpiBranch.capacity_key). Group vaccination offers every
 eligible member of a triggered group as a separate person to serve.
-Interventions without `intervention_actions`, offered through the deprecated
-[`apply_post_transmission!`](@ref EpiBranch.apply_post_transmission!) batch
-hook, propose no dated action, so each is checked against the budget of the
-period the admitting call itself falls in rather than the day it is given.
 """
 struct CapacityConstrained{I <: AbstractIntervention, F} <: InterventionWrapper
     intervention::I
@@ -153,14 +144,6 @@ capacity_time_key(v::MassVaccination) = _vaccination_time_key(dose_label(v))
 capacity_key(v::GroupVaccination) = _vaccinated_key(dose_label(v))
 capacity_time_key(v::GroupVaccination) = _vaccination_time_key(dose_label(v))
 
-# The `Individual.state` key `CapacityConstrained`'s deprecated
-# `apply_post_transmission!` branch stamps with the time of the call that
-# admitted an individual: that legacy protocol proposes no dated action, so
-# it has nothing but its own clock to place the dose by. `_admit_actions!`,
-# which every action-based intervention goes through, never sets it, since
-# its candidates already name the date the dose is to be given.
-_capacity_admission_key(key::Symbol) = Symbol("capacity_admission_time_", key)
-
 # The start and end of the period containing `at`, in the scope `carry_over`
 # implies: `(0.0, Inf)`, a single period for the whole outbreak, when `period`
 # is infinite.
@@ -170,23 +153,19 @@ function _period_bounds(cc::CapacityConstrained, at)
     return (period_start, period_start + cc.period)
 end
 
-# The time each already-given dose counts against, sorted: the admission
-# stamp above where the deprecated branch left one, or otherwise the dose's
-# own recorded date, so a dose a delay dates later than its admission is
-# charged to the day it is actually given rather than to whichever call
-# admitted it. Built once per call, so the admission loop below can test
+# The time each already-given dose counts against, sorted: the dose's own
+# recorded date, so a dose a delay dates later than its admission is charged
+# to the day it is actually given rather than to whichever call admitted it.
+# Built once per call, so the admission loop below can test
 # each candidate's own date against cumulative usage without rescanning the
 # population once per candidate.
 function _dose_times(cc::CapacityConstrained, state)
     key = capacity_key(cc.intervention)
     time_key = capacity_time_key(cc.intervention)
-    admission_key = _capacity_admission_key(key)
     times = Float64[]
     for ind in state.individuals
         get(ind.state, key, false) || continue
-        t = get(ind.state, admission_key, nothing)
-        isnothing(t) && (t = get(ind.state, time_key, -Inf))
-        push!(times, t)
+        push!(times, get(ind.state, time_key, -Inf))
     end
     sort!(times)
     return times
