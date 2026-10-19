@@ -65,6 +65,7 @@ public new_state
 public add_individuals!
 public seed!
 public get_generation_time
+public reads_settled_state
 public transmission_time
 
 # The per-`(id, purpose)` generator a draw belonging to one person or one pair

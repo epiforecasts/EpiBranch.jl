@@ -29,7 +29,7 @@ using DataFrames
         state = simulate(model; max_cases = 50, rng = rng)
 
         df = chain_statistics(state)
-        max_gen = maximum(ind.generation for ind in state.individuals)
+        max_gen = maximum(ind.generation for ind in state.individuals if is_infected(ind))
         @test maximum(df.length) == max_gen
     end
 

@@ -20,7 +20,7 @@ struct _CaseAnchor end
             );
             n_initial = 4, rng = StableRNG(7)
         )
-        for ind in state.individuals
+        for ind in filter(is_infected, state.individuals)
             @test ind.state[:reported] == isodd(ind.id)
             offset = obs.from isa _CaseAnchor ? 5.0 : 0.0
             expected = ind.state[:reported] ?
@@ -67,7 +67,7 @@ end
             );
             max_cases = 100, rng = rng
         )
-        for ind in state.individuals
+        for ind in filter(is_infected, state.individuals)
             expected = ind.state[:age] >= 50
             @test ind.state[:reported] == expected
         end
@@ -93,7 +93,7 @@ end
             );
             max_cases = 100, rng = rng
         )
-        for ind in state.individuals
+        for ind in filter(is_infected, state.individuals)
             expected_lag = ind.state[:age] >= 50 ? 1.0 : 7.0
             @test ind.state[:reporting_time] ≈ ind.state[:onset_time] + expected_lag
         end
@@ -116,7 +116,7 @@ end
             );
             max_cases = 50, rng = rng
         )
-        for ind in state.individuals
+        for ind in filter(is_infected, state.individuals)
             @test !isnan(ind.state[:reporting_time])
             @test ind.state[:reporting_time] ≈ ind.infection_time + 2.0
         end
@@ -140,7 +140,7 @@ end
             );
             max_cases = 50, rng = rng
         )
-        for ind in state.individuals
+        for ind in filter(is_infected, state.individuals)
             @test ind.state[:reporting_time] ≈ ind.infection_time + 3.0
         end
     end
@@ -156,7 +156,7 @@ end
         )
         reported = [
             ind.state[:reported]
-                for s in states for ind in s.individuals
+                for s in states for ind in filter(is_infected, s.individuals)
         ]
         @test !isempty(reported)
         frac = count(reported) / length(reported)

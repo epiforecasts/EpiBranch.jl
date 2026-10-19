@@ -1,5 +1,5 @@
-# Test intervention exercising the `keep_active` seam: keep every
-# uninfected contact active so it grows contacts of its own next generation.
+# Test intervention answering `keep_active` without tracing anything, which
+# leaves the race nothing to ask it about.
 struct KeepUninfectedActive <: EpiBranch.AbstractIntervention end
 function EpiBranch.keep_active(::KeepUninfectedActive, state, targets, is_new)
     return [t.id for t in targets if !is_infected(t)]
@@ -36,10 +36,12 @@ end
             ModelSpec(BranchingProcess(cap_after_20, Exponential(5.0)); attributes = clinical);
             max_cases = 200, rng = rng
         )
-        # After the cap kicks in (cumulative_cases >= 20), every parent
-        # should emit at most 2 contacts.
-        for ind in state.individuals
-            ind.id < 20 && continue
+        # A case draws its contacts when it settles, with the case count at
+        # its own place in infection order, so every case from the 20th on
+        # emits at most 2 contacts.
+        cases = sort(filter(is_infected, state.individuals); by = ind -> ind.infection_time)
+        @test length(cases) > 40
+        for ind in cases[20:end]
             @test length(ind.secondary_case_ids) <= 2
         end
     end
@@ -416,31 +418,17 @@ end
         @test 0.2 < sum(frac) / length(frac) < 0.4
     end
 
-    @testset "keep_active grows uninfected contacts without infecting them" begin
-        # ~half of each case's contacts go uninfected (susceptibility 0.5).
-        attrs = transmission_traits(susceptibility = 0.5)
-        opts = (; n_initial = 5, max_generations = 4)
-        base = simulate(
-            ModelSpec(BranchingProcess((rng, ind) -> 4, Exponential(5.0)); attributes = attrs);
-            opts..., rng = StableRNG(1)
+    @testset "keep_active without tracing is reported as having no effect" begin
+        model = ModelSpec(
+            BranchingProcess((rng, ind) -> 4, Exponential(5.0));
+            interventions = [KeepUninfectedActive()]
         )
-        grown = simulate(
-            ModelSpec(
-                BranchingProcess((rng, ind) -> 4, Exponential(5.0));
-                interventions = [KeepUninfectedActive()], attributes = attrs
-            );
-            opts..., rng = StableRNG(1)
+        @test_logs (:warn, r"keep_active") match_mode = :any simulate(
+            model; max_cases = 5, rng = StableRNG(1)
         )
+    end
 
-        # The uninfected fringe now spawns its own contacts: far more nodes.
-        @test length(grown.individuals) > length(base.individuals)
-        # But an uninfected source never transmits (`InfectiousSource`):
-        # every contact of an uninfected parent is itself uninfected.
-        for ind in grown.individuals
-            ind.parent_id == 0 && continue
-            is_infected(grown.individuals[ind.parent_id]) && continue
-            @test !is_infected(ind)
-        end
+    @testset "An uninfected source never transmits" begin
         # InfectiousSource itself: an uninfected source contributes a
         # full block; an infected one contributes nothing.
         well = Individual(id = 1)

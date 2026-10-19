@@ -526,6 +526,7 @@ and brings the state's running totals back into line afterwards.
 ```@docs
 TransmissionModel
 EpiBranch.draw_offspring
+EpiBranch.reads_settled_state
 EpiBranch.simulate_once
 generate_offspring
 contacts_of

@@ -152,8 +152,16 @@ Who exposed whom in a simulated outbreak: a DataFrame with one row per
 exposure of a person by an infectious case. Filter on `infected` to keep only
 the transmission tree.
 
-The generation-based models, such as [`BranchingProcess`](@ref), record every
-exposure, whether or not it led to infection. The continuous-time models
+A [`BranchingProcess`](@ref) records every exposure within the run, whether or
+not it led to infection. A run cut short by `max_cases`, `max_time` or a
+stopping rule leaves out the exposures that would have come after it stopped,
+a case at `max_generations` makes no contacts, and a contact timed before its
+infector's own infection is no exposure and is left out too. A model written against [`generate_offspring`](@ref) records
+every contact it creates, infected or not; it runs one generation at a time and
+finishes the generation in progress when it stops, so it can run past
+`max_cases` and list exposures after `max_time`. A model written against
+[`contacts_of`](@ref) lists an uninfected exposure only of a person it creates,
+not of one who already existed. The models of a fixed population
 (`HomogeneousProcess`, `MixingProcess`, `NetworkProcess`, `RoutedNetwork`,
 `HouseholdProcess`) record only who infected whom by default, so every row
 has `infected = true`: a household member or network neighbour who was
@@ -189,6 +197,9 @@ function contacts(
         for child_id in ind.secondary_case_ids
             child_id > length(state.individuals) && continue
             child = state.individuals[child_id]
+            # A contact whose exposure fell after the run stopped was never
+            # exposed within it.
+            isnan(child.infection_time) && continue
             push!(
                 df,
                 (

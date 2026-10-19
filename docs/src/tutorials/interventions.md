@@ -101,7 +101,7 @@ results = simulate(scenario([iso_leaky]), 200; max_cases = 500, rng = rng)
 println("Leaky isolation: $(round(containment_probability(results), digits=3))")
 ```
 
-That falls between the 0.04 with no isolation and the 0.135 the same isolation
+That falls between the 0.04 with no isolation and the 0.12 the same isolation
 gives when it holds completely. All three numbers are noisy at 200 outbreaks;
 runs of 5,000 put leaky isolation at about 60% of the benefit complete
 isolation buys. Keeping a third of a case's infectiousness costs a good part
@@ -275,37 +275,46 @@ symptomatic and detected, above. A missed case keeps transmitting until
 something else reaches it, and tracing reaches some of them: a symptomatic
 case quarantined as someone else's contact counts as isolated, which together
 with its symptoms satisfies the default trigger, so its own contacts are
-traced after all. Here that happens to 37% of the symptomatic cases the test
+traced after all. Here that happens to 42% of the symptomatic cases the test
 misses. Asymptomatic cases are quarantined at the same rate, which stops them
 transmitting but never starts tracing from them, since the default trigger
 asks for symptoms as well as isolation. Not one contact of an asymptomatic
-case is traced on this run, quarantined or not, and together they are the
-largest block of untraced contacts: 55,911 of 106,280.
+case is traced in these runs, quarantined or not. Leaving out the contacts
+still undecided when a run reached the cap, the contacts of asymptomatic
+cases are the largest block of untraced contacts: 27,830 of 52,373.
 
 ## Contact tracing workload
 
 The simulation keeps everyone each case could have infected, including those
 who were not infected. It can therefore count how many contacts tracing reached as a
-measure of workload. `condition = 50:200` keeps simulating until an outbreak
-stops with between 50 and 200 cases, and returns that one outbreak. It stops
-either because it died out or because it reached the 200-case cap, as the
-one here did:
+measure of workload. A run stopped at `max_cases` leaves the last cases'
+contacts undecided, so this one is bounded by generations instead:
+`max_generations = 5`, with `max_cases = nothing`, draws no contacts for
+cases in the fifth generation and leaves every earlier case with all its
+contacts decided. `condition = 50:200` keeps simulating until an outbreak
+stops with between 50 and 200 cases, and returns that one outbreak. The one
+here had not died out when it reached the bound:
 
 ```@example interventions
 rng = StableRNG(42)
-state = simulate(scenario([iso, ct]); condition = 50:200, max_cases = 200, rng = rng)
+state = simulate(scenario([iso, ct]); condition = 50:200,
+    max_cases = nothing, max_generations = 5, rng = rng)
 
 contacts = length(state.individuals)
 infected = count(is_infected, state.individuals)
 traced = count(is_traced, state.individuals)
+# Cases in the fifth generation drew no contacts to trace
+complete = count(ind -> is_infected(ind) && ind.generation < 5, state.individuals)
 println("Contacts: $contacts, Infections: $infected, Traced: $traced")
-println("Traced contacts per case: $(round(traced / infected, digits=1))")
+println("Traced contacts per case: $(round(traced / complete, digits=1))")
 ```
 
 `count(is_traced, state.individuals)` counts the people for whom `is_traced`
 is true, like `sum(is_traced(x))` in R. Every contact generated is
 infected unless an intervention prevents it. The gap between contacts and
 infections is the number of infections isolation and quarantine prevented.
+The traced contacts per case divide by the 69 cases before the fifth
+generation, the ones whose contacts could be traced.
 
 ## Interventions that start or stop during the outbreak
 

@@ -121,7 +121,7 @@ end
     end
 end
 
-@testset "An outside intervention ends infections on the generation engine" begin
+@testset "An outside intervention ends infections on a branching process" begin
     spec = ModelSpec(
         BranchingProcess(Poisson(3.0), Exponential(2.0));
         interventions = [EndAfter(2.0)],
@@ -134,8 +134,13 @@ end
     misplaced = 0
     after_abort = 0
     before_abort = 0
+    stale = 0
     for seed in 1:20
         state = simulate(spec; rng = StableRNG(seed), max_cases = 200)
+        stale += count(
+            ind -> !is_infected(ind) && EpiBranch._infection_aborted(ind),
+            state.individuals
+        )
         for ind in filter(is_infected, state.individuals)
             ind.generation == 0 && continue
             aborted += 1
@@ -156,6 +161,7 @@ end
     @test misplaced == 0
     @test before_abort > 0
     @test after_abort == 0
+    @test stale == 0
 end
 
 @testset "An outside intervention ends infections on a continuous-time race" begin

@@ -192,3 +192,159 @@ EpiBranch.draw_offspring(rng, ::ExternalOffspringRule, ind, state) = 0
     model = BranchingProcess(Infectiousness(ExternalOffspringRule()))
     @test simulate(model; rng = StableRNG(42)).cumulative_cases == 1
 end
+
+# Infection times of one outbreak up to `horizon`, drawn by recursing down the
+# tree from an index case at time 0. Written to share nothing with the
+# simulation, as a check on the timing of incidence, which has no closed form.
+function _reference_infection_times(rng, offspring, generation_time, horizon)
+    times = [0.0]
+    to_visit = [0.0]
+    while !isempty(to_visit)
+        t = pop!(to_visit)
+        for _ in 1:rand(rng, offspring)
+            child = t + rand(rng, generation_time)
+            child <= horizon || continue
+            push!(times, child)
+            push!(to_visit, child)
+        end
+    end
+    return times
+end
+
+@testset "Incidence over time matches an independent tree sampler" begin
+    offspring, generation_time, horizon = Poisson(1.2), Gamma(2.5, 2.0), 30.0
+    n = 4000
+    simulated = simulate(
+        BranchingProcess(offspring, generation_time), n;
+        max_time = horizon, max_cases = nothing, max_generations = nothing,
+        rng = StableRNG(7)
+    )
+    rng = StableRNG(8)
+    reference = [
+        _reference_infection_times(rng, offspring, generation_time, horizon)
+            for _ in 1:n
+    ]
+    sim_times = [
+        [ind.infection_time for ind in s.individuals if is_infected(ind)]
+            for s in simulated
+    ]
+    for day in (5.0, 10.0, 20.0, 30.0)
+        a = [count(<=(day), ts) for ts in sim_times]
+        b = [count(<=(day), ts) for ts in reference]
+        se = sqrt(var(a) / n + var(b) / n)
+        @test abs(mean(a) - mean(b)) < 4 * se
+    end
+end
+
+@testset "A run cut short lists no exposure after it ends" begin
+    # A depth-2 ring draws the contacts of members it reaches before they
+    # settle, and the run can stop before they do.
+    spec = ModelSpec(
+        BranchingProcess(Poisson(4.0), Gamma(4.0, 1.0));
+        interventions = [
+            Isolation(onset_to_isolation_delay = Dirac(6.0), duration = Inf),
+            ContactTracing(
+                probability = 0.5, isolation_to_trace_delay = Dirac(0.1),
+                action = Quarantine(duration = Inf), depth = 2
+            ),
+        ],
+        attributes = clinical_presentation(incubation_period = Exponential(0.5))
+    )
+    # A run that dies out decides every contact it drew, but `max_time`
+    # still bounds what it lists.
+    cutoffs = (
+        ((; max_time = 8.0), s -> 8.0),
+        ((; max_cases = 15), s -> s.extinct ? Inf : s.max_infection_time),
+    )
+    for (opts, cutoff) in cutoffs
+        listed_late = 0
+        from_undecided = 0
+        for seed in 1:30
+            s = simulate(spec; rng = StableRNG(seed), opts...)
+            stop_t = cutoff(s)
+            for ind in s.individuals
+                ind.parent_id == 0 && continue
+                isnan(ind.infection_time) && continue
+                ind.infection_time > stop_t && (listed_late += 1)
+                isnan(s.individuals[ind.parent_id].infection_time) && (from_undecided += 1)
+            end
+        end
+        @test listed_late == 0
+        @test from_undecided == 0
+    end
+end
+
+@testset "A contact timed before its infector's infection is dropped" begin
+    # Transmission timed from onset can fall before the infection itself,
+    # where the infector could not yet transmit.
+    spec = ModelSpec(
+        BranchingProcess(
+            Infectiousness(Poisson(2.0); from = :onset, kernel = Normal(0.0, 3.0))
+        );
+        attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
+    )
+    states = simulate(
+        spec, 200; max_cases = 2000, max_time = nothing, max_generations = nothing,
+        rng = StableRNG(3)
+    )
+    # No one is infected, or even exposed, before their infector's infection.
+    early = 0
+    for s in states, ind in s.individuals
+        ind.parent_id == 0 && continue
+        isnan(ind.infection_time) && continue
+        ind.infection_time < s.individuals[ind.parent_id].infection_time && (early += 1)
+    end
+    @test early == 0
+    @test any(s -> s.cumulative_cases > 1, states)
+
+    # Dropped before tracing or a ring can reach it: a run that dies out
+    # leaves no one without an exposure time, traced or dosed.
+    ring_spec = ModelSpec(
+        BranchingProcess(
+            Infectiousness(Poisson(0.9); from = :onset, kernel = Normal(-2.0, 2.0))
+        );
+        interventions = [
+            Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf),
+            ContactTracing(
+                probability = 1.0, isolation_to_trace_delay = Exponential(0.5),
+                action = Quarantine(duration = Inf)
+            ),
+            RingVaccination(efficacy = 0.9),
+        ],
+        attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
+    )
+    phantom = 0
+    for seed in 1:100
+        s = simulate(
+            ring_spec; max_cases = nothing, max_time = nothing, max_generations = nothing,
+            rng = StableRNG(seed)
+        )
+        s.extinct || continue
+        phantom += count(ind -> isnan(ind.infection_time), s.individuals)
+    end
+    @test phantom == 0
+end
+
+@testset "A recorder lists each branching-process contact once" begin
+    spec = ModelSpec(
+        BranchingProcess(Poisson(3.0), Exponential(2.0));
+        attributes = transmission_traits(susceptibility = 0.5),
+        recorder = ExposedContactRecorder()
+    )
+    s = simulate(spec; max_cases = 50, n_initial = 5, rng = StableRNG(4))
+    rows = contacts(s)
+    @test length(rows.from) == length(Set(zip(rows.from, rows.to)))
+    @test any(!, rows.infected)
+end
+
+@testset "A population campaign does not dose a branching process's index cases" begin
+    # Two contacts each, all infected well after the rollout on day 10.
+    spec = ModelSpec(
+        BranchingProcess(Dirac(2), Dirac(20.0));
+        interventions = [MassVaccination(efficacy = 1.0, eligibility_time = 10.0)]
+    )
+    s = simulate(spec; max_generations = 1, rng = StableRNG(1))
+    @test !is_vaccinated(s.individuals[1])
+    @test count(is_vaccinated, s.individuals) == 2
+    @test s.cumulative_cases == 1
+end

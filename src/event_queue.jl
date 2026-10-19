@@ -53,22 +53,29 @@ end
 mutable struct _EventQueue{T <: Real}
     heap::Vector{_Event{T}}
     buckets::Vector{Vector{_Event{T}}}
+    radix::Bool
     last::UInt64
     n::Int
 end
-_EventQueue{T}() where {T} = _EventQueue{T}(_Event{T}[], Vector{_Event{T}}[], UInt64(0), 0)
+function _EventQueue{T}() where {T}
+    return _EventQueue{T}(_Event{T}[], Vector{_Event{T}}[], false, UInt64(0), 0)
+end
 
-_radix(q::_EventQueue) = !isempty(q.buckets)
+_radix(q::_EventQueue) = q.radix
 
 Base.isempty(q::_EventQueue) = q.n == 0
 
+# An emptied queue starts again on the binary heap, but keeps its buckets and
+# the room they grew to, so a queue used again does not grow them afresh.
 function Base.empty!(q::_EventQueue)
     empty!(q.heap)
     foreach(empty!, q.buckets)
+    q.radix = false
     q.last = UInt64(0)
     q.n = 0
     return q
 end
+
 
 function _enqueue!(q::_EventQueue{T}, e::_Event{T}) where {T}
     q.n += 1
@@ -129,7 +136,8 @@ end
 # Every queued event falls due at or after the last popped, since a proposal is
 # never made for a time before the clock; the radix heap relies on it.
 function _to_radix!(q::_EventQueue{T}) where {T}
-    q.buckets = [_Event{T}[] for _ in 1:65]
+    isempty(q.buckets) && (q.buckets = [_Event{T}[] for _ in 1:65])
+    q.radix = true
     for e in q.heap
         _radix_push!(q, e)
     end

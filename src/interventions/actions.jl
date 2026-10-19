@@ -28,15 +28,21 @@ the intervention has no actions.
 
 Both engines call it once per case, after every intervention's
 [`trace_contacts!`](@ref) for that case, so a producer can read what tracing
-wrote. The generation engine passes the contacts the case made and admits
-every action with a finite time; once a generation's cases are settled, it
-also calls it again for each settled case in turn, with that case alone as
-the candidate, for an intervention that declares
+wrote. The race, which runs every built-in model, passes the case and the
+contacts it can still reach, or on a fixed-population model everyone not yet
+settled for an intervention declaring [`continuous_actions`](@ref), and admits
+only actions dated no earlier than the case's infection time. A branching
+process also calls it each time it creates a contact, with that contact alone
+as the candidate, for an intervention declaring
+[`needs_contacts`](@ref) `= false`, and admits that contact's actions at any
+finite time, since nothing about the new person is settled yet. The
+generation engine, which runs a model written
+against `generate_offspring` or `contacts_of`, passes the contacts the case
+made and admits every action with a finite time; once a generation's cases
+are settled, it also calls it again for each settled case in turn, with that
+case alone as the candidate, for an intervention that declares
 [`settles_generation_batch`](@ref), so a trigger that only becomes true on
 settlement (such as a case's own lab confirmation) still reaches its group.
-The network and household races pass the case and the members it can still
-reach, for an intervention that declares [`continuous_actions`](@ref), and
-admit only actions dated no earlier than the case's infection time.
 [`Scheduled`](@ref) and [`CapacityConstrained`](@ref) admit the actions
 through their own gates.
 """
@@ -131,8 +137,7 @@ function _admit_actions!(cc::CapacityConstrained, state, actions)
     for i in order
         action = candidates[i]
         get(action.individual.state, key, false) && continue
-        usage = _usage_at(cc, times, extra, action.time)
-        usage.used + 1 <= usage.available || continue
+        _fits_budget(cc, times, extra, action.time) || continue
         _admit_actions!(cc.intervention, state, [action])
         get(action.individual.state, key, false) && push!(extra, action.time)
     end
@@ -350,10 +355,11 @@ end
     continuous_actions(intervention) -> Bool
 
 Whether this intervention can act once a case's infection is settled, rather
-than only when it makes a contact: on a network or household race, after each
-case's infection is settled, and, by default (see
-[`settles_generation_batch`](@ref)), on the generation engine, for the whole
-batch once a generation is settled. Return `true` only if proposing actions
+than only when it makes a contact. The race offers every intervention its
+actions per settled case, and offers one declaring this, on a fixed-population
+model, everyone not yet settled rather than only the contacts the case can
+reach. The generation engine, by default (see [`settles_generation_batch`](@ref)),
+also offers it the whole batch once a generation is settled. Return `true` only if proposing actions
 needs no infection time of a contact not yet infected and never changes a
 case already settled. The default is `false`.
 """
@@ -374,9 +380,10 @@ continuous_actions(::RingVaccination) = true
     acts_on_population(intervention) -> Bool
 
 Whether this intervention's actions belong to the whole population rather
-than to a case's contacts or group. On a network or household race,
+than to a case's contacts or group. On the race,
 [`intervention_actions`](@ref) is then called once, before any case settles,
-with every member as a candidate, instead of per settled case. Return `true`
+with every member as a candidate, and for each contact a branching process
+creates, instead of per settled case. Return `true`
 only if proposing an action needs nothing a case's settlement would supply:
 no infection time, no exposure, no settled state. The default is `false`.
 
@@ -396,15 +403,17 @@ acts_on_population(::MassVaccination) = true
 """
     needs_contacts(intervention) -> Bool
 
-Whether this intervention's [`continuous_actions`](@ref) need the model to
-name each case's contacts. A network or household race narrows
-`intervention_actions`'s candidates to a case and the people it can still
-reach, through [`supplies_contacts`](@ref EpiBranch.supplies_contacts); the
+Whether this intervention's actions need the model to name each case's
+contacts. The race narrows `intervention_actions`'s candidates to a case and
+the people it can still reach, through
+[`supplies_contacts`](@ref EpiBranch.supplies_contacts); the
 homogeneous and mixing models name none, so an intervention that needs them
 is never offered them there. The default is `true`, matching
 [`RingVaccination`](@ref), whose candidates come from walking the contact
 graph. [`GroupVaccination`](@ref) declares `false`: its candidates are a
-case's group, found through its `group_key`, not through any contact.
+case's group, found through its `group_key`, not through any contact. A
+branching process offers an intervention declaring `false` each contact as it
+creates it, too, so a group's dose reaches a member created after it.
 """
 needs_contacts(::AbstractIntervention) = true
 function needs_contacts(w::InterventionWrapper)
@@ -448,36 +457,34 @@ end
     continuous_candidates(intervention, state, current, traced, is_pending, members, contacts)
 
 The people to offer `intervention`'s actions to once `current`'s infection is
-settled on a network or household model, for an intervention that declares
-[`continuous_actions`](@ref). The default is `current` and every member of
-`members` that `is_pending` still admits, which suits any intervention but
-costs the size of the race, however few people it actually targets.
-[`RingVaccination`](@ref) and [`GroupVaccination`](@ref) write their own
-methods, narrowing the candidates to the people tracing reached from
-`current`, or the members of `current`'s group.
+settled. For an intervention declaring [`continuous_actions`](@ref), the
+default is `current` and every member of `members` that `is_pending` still
+admits, which suits any intervention but costs the size of the race, however
+few people it actually targets. For any other, the default is `current` and
+the contacts it can still reach, those tracing reached from it where there was
+tracing, as for [`RingVaccination`](@ref). [`GroupVaccination`](@ref) writes
+its own method, offering the members of `current`'s group instead.
 
 `traced` is the set tracing reached, or `nothing` if there was no tracing. A
 ring wider than one step reaches people who are not `current`'s direct
 contacts, so a list built from `current`'s contacts alone would miss them.
 `is_pending(id)` reports whether `id` belongs to this race and has not yet
-been settled, so an action may still reach it. The default and
-`RingVaccination`'s own fallback (walking `current`'s direct contacts when
-there is no `traced` to use) need `members` and `contacts`; an intervention
-narrowing its own candidates usually needs only `current`, `traced` and
-`is_pending`.
+been settled, so an action may still reach it. The defaults (walking
+`current`'s direct contacts when there is no `traced` to use) need `members`
+and `contacts`; an intervention narrowing its own candidates usually needs
+only `current`, `traced` and `is_pending`.
 
-Write a method of this function for an intervention whose candidates are not
-the whole population: an intervention written outside the package otherwise
-gets the default above, however few people it targets.
+Write a method of this function for an intervention declaring
+`continuous_actions` whose candidates are not the whole population: an
+intervention written outside the package otherwise gets the default above,
+however few people it targets.
 """
 function continuous_candidates(
-        ::AbstractIntervention, state, current, traced, is_pending, members, contacts
+        iv::AbstractIntervention, state, current, traced, is_pending, members, contacts
     )
-    return [
-        state.individuals[id]
-            for id in members
-            if id == current.id || is_pending(id)
-    ]
+    continuous_actions(iv) &&
+        return _unsettled_candidates(state, current, traced, is_pending, members, contacts)
+    return _reached_candidates(state, current, traced, is_pending, contacts)
 end
 function continuous_candidates(
         w::InterventionWrapper, state, current, traced, is_pending, members, contacts
@@ -490,18 +497,7 @@ end
 function continuous_candidates(
         ::RingVaccination, state, current, traced, is_pending, members, contacts
     )
-    candidates = [current]
-    # The walk's own reach where there was one: a ring of depth above 1 grows
-    # past `current`'s neighbours, and those members are the ones it traced.
-    if traced === nothing
-        contacts === nothing && return candidates
-        traced = (c isa Tuple ? c[1] : c for c in contacts(current.id, state))
-    end
-    for cid in traced
-        is_pending(cid) || continue
-        push!(candidates, state.individuals[cid])
-    end
-    return candidates
+    return _reached_candidates(state, current, traced, is_pending, contacts)
 end
 
 function continuous_candidates(
@@ -518,36 +514,59 @@ function continuous_candidates(
     return candidates
 end
 
+# `current` and everyone the race has not yet settled.
+function _unsettled_candidates(state, current, traced, is_pending, members, contacts)
+    return [
+        state.individuals[id]
+            for id in members
+            if id == current.id || is_pending(id)
+    ]
+end
+
+# `current` and the contacts it can still reach.
+function _reached_candidates(state, current, traced, is_pending, contacts)
+    candidates = [current]
+    # The walk's own reach where there was one: a ring of depth above 1 grows
+    # past `current`'s neighbours, and those members are the ones it traced.
+    if traced === nothing
+        contacts === nothing && return candidates
+        traced = (c isa Tuple ? c[1] : c for c in contacts(current.id, state))
+    end
+    for cid in traced
+        is_pending(cid) || continue
+        push!(candidates, state.individuals[cid])
+    end
+    return candidates
+end
+
 function _apply_continuous_actions!(
         state, current, interventions, members, processed,
-        contacts = nothing, pos = nothing, traced = nothing
-    )
-    if any(continuous_actions, interventions)
-        is_pending = id -> _pending(id, members, processed, pos)
-        # Finalised cases have already generated proposals. A new action may
-        # affect the current case and pending people, but must not revise
-        # earlier cases — `continuous_candidates` is what keeps each
-        # intervention within that boundary while choosing its own, much
-        # smaller, set of people to visit.
-        for iv in interventions
-            continuous_actions(iv) || continue
-            # `needs_contacts` rather than `contacts !== nothing` alone, so an
-            # intervention that needs no contacts (`GroupVaccination`) still
-            # runs on a model that names none, even alongside one that does
-            # need them.
-            needs_contacts(iv) && contacts === nothing && continue
-            candidates = continuous_candidates(
-                iv, state, current, traced, is_pending, members, contacts
-            )
-            allowed = Set(ind.id for ind in candidates)
-            actions = intervention_actions(iv, state, candidates)
-            actions === nothing && continue
-            selected = filter(
-                a -> a.individual.id in allowed &&
-                    a.time >= state.max_infection_time, actions
-            )
-            _admit_actions!(iv, state, selected)
-        end
+        contacts::C = nothing, pos = nothing, traced = nothing
+    ) where {C}
+    is_pending = id -> _pending(id, members, processed, pos)
+    # Finalised cases have already generated proposals. A new action may
+    # affect the current case and pending people, but must not revise earlier
+    # cases — `continuous_candidates` is what keeps each intervention within
+    # that boundary while choosing its own, much smaller, set of people to
+    # visit. The caller passes only the interventions that propose actions
+    # (`_proposes_actions`).
+    for iv in interventions
+        # `needs_contacts` rather than `contacts !== nothing` alone, so an
+        # intervention that needs no contacts (`GroupVaccination`) still
+        # runs on a model that names none, even alongside one that does
+        # need them.
+        needs_contacts(iv) && contacts === nothing && continue
+        candidates = continuous_candidates(
+            iv, state, current, traced, is_pending, members, contacts
+        )
+        allowed = Set(ind.id for ind in candidates)
+        actions = intervention_actions(iv, state, candidates)
+        actions === nothing && continue
+        selected = filter(
+            a -> a.individual.id in allowed &&
+                a.time >= state.max_infection_time, actions
+        )
+        _admit_actions!(iv, state, selected)
     end
     # `current`'s own round of discovery is done: mark it settled only now,
     # after the loop above, so a policy consulting `is_settled` during this
@@ -555,6 +574,14 @@ function _apply_continuous_actions!(
     # a trigger `current` itself just supplied) still sees it as pending.
     current.state[:_settled] = true
     return nothing
+end
+
+# Whether an intervention proposes actions per settled case: it has an
+# `intervention_actions` method of its own, found past any wrapper that only
+# forwards it, and is not one offered the whole population at once instead.
+function _proposes_actions(iv::AbstractIntervention)
+    acts_on_population(iv) && return false
+    return _discovers_actions(_hook_owner(intervention_actions, iv))
 end
 
 # Offer every intervention declaring `acts_on_population` its actions once,
@@ -570,6 +597,21 @@ function _apply_population_actions!(state, interventions, members)
         actions = intervention_actions(iv, state, candidates)
         actions === nothing && continue
         _admit_actions!(iv, state, actions)
+    end
+    return nothing
+end
+
+# Offer a person a branching process has just created to `interventions`, those
+# the race found proposing actions that need no named contacts. `GroupVaccination` finds its
+# candidates through a case's group, which a contact joins only once it exists,
+# so without this a group's dose would never reach a member created after it.
+# Nothing about the new person is settled yet, so an action dated before the
+# clock, such as the dose its group was given, is admitted as it stands.
+function _apply_creation_actions!(state, interventions, contact)
+    for iv in interventions
+        actions = intervention_actions(iv, state, [contact])
+        actions === nothing && continue
+        _admit_actions!(iv, state, filter(a -> a.individual.id == contact.id, actions))
     end
     return nothing
 end

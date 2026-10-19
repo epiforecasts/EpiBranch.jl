@@ -66,17 +66,14 @@ BenchmarkTools.DEFAULT_PARAMETERS.samples = 20
 
 # ── 6. Line list simulation ─────────────────────────────────────────
 
-println("6. Line list generation (from a 200 to 260 case state)")
+println("6. Line list generation (from a 220 case state)")
 model_ll = BranchingProcess(Poisson(2.0), LogNormal(1.6, 0.5))
 clinical = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
-# `condition` holds the state to a window, which is the most that is available
-# here: the cap does not set the size, because the generation that crosses it
-# completes, and a capped run of this process lands anywhere from 220 to about
-# 490 cases, median around 310. Of the runs rejected, three in four overshoot
-# 260 and the rest die out before 200, and nothing lands between 200 and 219
-# at all. A seed on its own would pin nothing: the run a given seed produces
-# changes with any change upstream of the first draw, and the row would then
-# name a size the state no longer has.
+# A branching process stops at exactly `max_cases`, so the cap sets the size.
+# `condition` rejects the runs that die out before reaching it, about one in
+# five here. A seed on its own would not do: it can pick a run that dies out,
+# and the run a given seed produces changes with any change upstream of the
+# first draw, leaving the row to name a size the state no longer has.
 #
 # The accepted state is a capped run rather than a finished outbreak, which is
 # what a line list of a given size needs; a conditioned run meant to give a
@@ -84,7 +81,7 @@ clinical = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
 ll_state = simulate(
     ModelSpec(model_ll; attributes = clinical);
     max_cases = 220,
-    condition = 200:260,
+    condition = 220:220,
     rng = StableRNG(42)
 )
 println("   Cases in the state: $(ll_state.cumulative_cases)")

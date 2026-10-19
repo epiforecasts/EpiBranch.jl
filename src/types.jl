@@ -205,9 +205,14 @@ contact they exposed; for models with a fixed population, anyone in it.
 - `infectiousness`, between 0 and 1: the factor applied to their onward
   transmission once infected (each of their contacts is infected only with
   this probability).
-- `secondary_case_ids`: the `id`s of the people they exposed. The
-  generation-based models list every contact, infected or not; the
-  continuous-time models below list only the people they infected.
+- `secondary_case_ids`: the `id`s of the people they exposed. A branching
+  process lists the contacts it created, infected or not. One whose exposure
+  did not happen within the run has a `NaN` infection time: it falls after the
+  run stopped, or a ring created it for a member who was never infected. Most contacts a run stopped before reaching
+  were never created and are not listed. A model written against `generate_offspring` lists every
+  contact it created; one written against `contacts_of` lists an existing
+  person only if it infected them. The fixed-population models below list
+  only the people they infected.
 - `state`: everything else recorded about them, such as symptom onset
   (`:onset_time`), `:asymptomatic`, `:age`, `:sex`, whether they were
   `:isolated`, `:traced`, `:quarantined` or `:vaccinated`, `:test_positive`,
@@ -219,7 +224,7 @@ contact they exposed; for models with a fixed population, anyone in it.
   describe the current or latest infection. None of the built-in models
   reinfects anyone, so this is empty there.
 
-In the continuous-time models ([`HomogeneousProcess`](@ref),
+In the fixed-population models ([`HomogeneousProcess`](@ref),
 [`MixingProcess`](@ref), `NetworkProcess`, `RoutedNetwork`,
 `HouseholdProcess`),
 `susceptibility` and `infectiousness` instead multiply the rate at which a

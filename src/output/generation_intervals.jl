@@ -26,14 +26,17 @@ except the index cases, as a vector. See
 For a model with a fixed `generation_time`, the intrinsic interval is
 that distribution itself. For a state-dependent `generation_time`, run
 the model without interventions and the realised intervals coincide
-with the intrinsic ones, since nothing blocks transmission.
+with the intrinsic ones, since nothing blocks transmission, as long as
+every case's contacts were decided. A run stopped by `max_cases` or
+`max_time` leaves out the late infections of its last cases, which shortens
+the realised intervals; bound it by `max_generations` instead.
 
 # Examples
 
 ```julia
 using Statistics
 state = simulate(ModelSpec(BranchingProcess(Poisson(2.0), Gamma(2.0, 3.0)));
-    n_initial = 5, max_cases = 500)
+    n_initial = 5, max_cases = nothing, max_generations = 6)
 mean(realised_generation_intervals(state))   # compare with mean(Gamma(2.0, 3.0)) = 6
 ```
 """

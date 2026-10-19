@@ -277,7 +277,10 @@ elig(policy, infector) = is_eligible(policy, infector, _CONTACT, nothing)
             );
             n_initial = 5, max_cases = 100, rng = StableRNG(3)
         )
-        traced = filter(ind -> haskey(ind.state, :recorded_trace_time), state.individuals)
+        traced = filter(
+            ind -> haskey(ind.state, :recorded_trace_time) && !isnan(ind.infection_time),
+            state.individuals
+        )
         @test !isempty(traced)
         @test all(
             ind -> ind.state[:recorded_trace_time] == ind.infection_time + 0.5,

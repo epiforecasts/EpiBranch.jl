@@ -61,10 +61,10 @@ Simulating 500 outbreaks with R = 2.5 and dispersion k = 0.16 (`NegBin(2.5, 0.16
 
 | Scenario | Julia (EpiBranch) |
 |---|---|
-| Line list generation (200 to 260 cases) | 0.06 ms |
+| Line list generation (220 cases) | 0.06 ms |
 | NegBin fit from 1000 offspring counts | 4.2 ms |
 
-The script holds both rows to the size they name. The line list is built from a state `condition` holds between 200 and 260 cases. That window is the narrowest the size can be pinned here. The cap does not set the size, because the generation that crosses it completes: a capped run of this process lands anywhere between 220 and about 490 cases. Three in four of the rejected runs overshoot 260; the rest die out before 200. A seed would be weaker, because the run it produces changes with any change upstream of the first draw.
+The script holds both rows to the size they name. The line list is built from a run stopped at a cap of 220 cases, and a branching process stops at exactly its cap. `condition = 220:220` rejects the runs that die out before reaching it, about one in five of them. A seed alone would be weaker: it can pick a run that dies out, and the run it produces changes with any change upstream of the first draw.
 
 The fit is a maximum-likelihood search, EpiBranch's `loglikelihood` paired with an optimiser, because a negative binomial has no closed-form fit. The script cuts the counts the 1,000 simulated chains hold down to the 1,000 the row names, and starts the search away from the values the data were drawn from. Starting at them reaches the optimum in about two thirds of the iterations, which would understate what fitting costs.
 
