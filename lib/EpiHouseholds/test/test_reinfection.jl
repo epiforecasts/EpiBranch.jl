@@ -35,6 +35,25 @@ end
         count(ind -> ind.parent_id == reinfected.id, state.individuals)
 end
 
+@testset "reinfection redraws from the reinfected host's own external hazard" begin
+    # single-member households rule out household spread, so every episode,
+    # first or repeat, must come from the community; only person 1's hazard is
+    # above zero, so only they should ever be infected
+    n = 150
+    rates = [j == 1 ? 0.3 : 0.0 for j in 1:n]
+    model = ModelSpec(
+        HouseholdProcess(
+            fill(1, n), Exponential(1.5);
+            external_hazard = rates, obs_end = 200.0
+        );
+        progression = _waning_progression()
+    )
+    state = simulate(model; rng = StableRNG(1))
+
+    @test length(state.individuals[1].episodes) >= 1
+    @test all(ind -> isempty(ind.episodes) && !is_infected(ind), state.individuals[2:end])
+end
+
 @testset "is_settled is false again for a host whose reinfection is being processed" begin
     # Each `intervention_actions` call runs while `state.max_infection_time`
     # sits at the candidate currently being settled, so a candidate whose
