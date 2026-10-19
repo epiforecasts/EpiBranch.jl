@@ -663,15 +663,38 @@ end
 """
     supplies_contacts(model) -> Bool
 
-Whether a continuous-time model knows each case's contacts (household members
-or network neighbours), so that contact tracing has people to act on (see
-[`trace_contacts!`](@ref EpiBranch.trace_contacts!)). True for the household
-and network processes; false by default, and for the mass-action models
-(`HomogeneousProcess`, `MixingProcess`), whose random mixing has no list of
-contacts. A model returning `true` must pass a
-`contacts` function to `_sellke_race!`.
+Whether a model knows each case's contacts (its offspring, household members
+or network neighbours), so that contact tracing, and actions that need a
+case's contacts, have people to act on (see
+[`trace_contacts!`](@ref EpiBranch.trace_contacts!)). True for the branching,
+household and network processes and for a model written against
+[`generate_offspring`](@ref) or [`contacts_of`](@ref); false for the
+mass-action models (`HomogeneousProcess`, `MixingProcess`), whose random
+mixing has no list of contacts. A model with a simulation loop of its own
+answers `false` unless it declares otherwise, and one returning `true` must
+pass a `contacts` function to `_sellke_race!`.
 """
-supplies_contacts(::TransmissionModel) = false
+supplies_contacts(model::TransmissionModel) =
+    !_has_own_method(simulate_once, typeof(model), TransmissionModel)
+
+# Warn once per run about an intervention that cannot act on a model naming no
+# contacts: one that traces, or proposes actions that need a case's contacts.
+# What it does to each case itself, such as isolating it, still applies.
+function _warn_contactless(model, interventions)
+    supplies_contacts(model) && return nothing
+    names = unique(
+        String[
+            string(nameof(typeof(_unwrap_scheduled(iv))))
+                for iv in interventions
+                if traces_contacts(iv) || (_proposes_actions(iv) && needs_contacts(iv))
+        ]
+    )
+    isempty(names) && return nothing
+    @warn "$(nameof(typeof(model))) names no contacts, so $(join(names, ", ")) " *
+        "has no contacts to trace or act on. What it does to each case itself " *
+        "still applies."
+    return nothing
+end
 
 # Tracing on the continuous-time path. A case's trace time follows from its own
 # timeline, so it can only be stamped once the race has finalised that case —

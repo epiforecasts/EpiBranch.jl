@@ -469,6 +469,7 @@ function simulate(
         condition::Union{UnitRange{Int}, Nothing} = nothing,
         max_attempts::Int = 10_000
     )
+    _warn_contactless(spec.process, spec.interventions)
     sim_opts = _build_sim_opts(
         spec.process, n_initial, initial_cases, max_cases, max_generations,
         max_time, stopping_rules
@@ -493,6 +494,7 @@ function simulate(
         rng::AbstractRNG = Random.default_rng(),
         parallel::Bool = false
     )
+    _warn_contactless(spec.process, spec.interventions)
     sim_opts = _build_sim_opts(
         spec.process, n_initial, initial_cases, max_cases, max_generations,
         max_time, stopping_rules

@@ -1129,3 +1129,32 @@ end
         @test any(ind -> !isempty(ind.episodes), state.individuals)
     end
 end
+
+@testset "Tracing on a model that names no contacts is reported" begin
+    ct = ContactTracing(
+        probability = 0.5, isolation_to_trace_delay = Exponential(1.0),
+        action = Quarantine(duration = Inf)
+    )
+    iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
+    attrs = clinical_presentation(
+        incubation_period = LogNormal(1.4, 0.5), prob_asymptomatic = 0.0
+    )
+    pool = HomogeneousProcess(; transmission_rate = 0.5, population_size = 200)
+    for ivs in ([ct], [Scheduled(ct; start_time = 5.0)])
+        @test_logs (:warn, r"names no contacts.*ContactTracing") match_mode = :any simulate(
+            ModelSpec(pool; interventions = ivs, attributes = attrs); rng = StableRNG(1)
+        )
+    end
+    # Isolation acts on each case itself, and a branching process names its
+    # contacts, so neither is reported.
+    @test_logs simulate(
+        ModelSpec(pool; interventions = [iso], attributes = attrs); rng = StableRNG(1)
+    )
+    @test_logs simulate(
+        ModelSpec(
+            BranchingProcess(Poisson(1.5), Gamma(4.0, 1.0));
+            interventions = [ct, iso], attributes = attrs
+        );
+        max_cases = 100, rng = StableRNG(1)
+    )
+end
