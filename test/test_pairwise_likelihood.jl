@@ -209,22 +209,29 @@ end
             rand(StableRNG(1), Exponential(2.0))
         @test EpiBranch._ext_draw(StableRNG(1), Gamma(2.0, 3.0)) ==
             rand(StableRNG(1), Gamma(2.0, 3.0))
+    end
 
-        # a vector or a function of the person's number can vary the hazard
-        # between people, as the pair kernel's callable form does between pairs
-        rates = [0.01, 0.0, 0.02]
-        @test EpiBranch._valid_external(rates)
-        @test !EpiBranch._valid_external([0.01, -0.02])
-        f(j) = j == 2 ? Gamma(2.0, 3.0) : 0.01
-        @test EpiBranch._valid_external(f)
-        @test EpiBranch._ext_active(rates)      # any entry positive
-        @test !EpiBranch._ext_active([0.0, 0.0])
-        @test EpiBranch._ext_active(f)          # a function might give a positive rate
-        @test EpiBranch._ext_for(rates, 2) == 0.0
-        @test EpiBranch._ext_for(f, 2) == Gamma(2.0, 3.0)
-        @test EpiBranch._ext_for(f, 1) == 0.01
-        @test EpiBranch._ext_survival_for(rates, 1) == Exponential(1 / 0.01)
-        @test EpiBranch._ext_survival_for(f, 2) == Gamma(2.0, 3.0)
+    @testset "community hazard that differs between people" begin
+        v = [0.5, 0.0, Gamma(2.0, 3.0)]
+        @test EpiBranch._valid_external(v)
+        @test !EpiBranch._valid_external([0.5, -0.1])
+        @test !EpiBranch._valid_external([[0.5]])
+        @test EpiBranch._ext_active(v)
+        @test !EpiBranch._ext_active(zeros(3))
+        @test EpiBranch._ext_active(j -> 0.0)
+        @test EpiBranch._ext_survival_of(v, 1) == Exponential(2.0)
+        @test EpiBranch._ext_survival_of(v, 2) === nothing
+        @test EpiBranch._ext_survival_of(v, 3) == Gamma(2.0, 3.0)
+        @test EpiBranch._ext_survival_of(j -> v[j], 1) == Exponential(2.0)
+        @test_throws ArgumentError EpiBranch._ext_survival_of(j -> -1.0, 1)
+        @test_throws DimensionMismatch EpiBranch._check_external(v, 4)
+        @test EpiBranch._check_external(v, 3) === nothing
+        # a person with no community hazard is never introduced, and the rest
+        # draw as under a shared one
+        @test EpiBranch._ext_draw(StableRNG(1), v, 2, 1.0) == Inf
+        @test EpiBranch._ext_draw(StableRNG(1), v, 1, 1.0) ==
+            EpiBranch._ext_draw(StableRNG(1), 0.5, 1.0)
+        @test EpiBranch._ext_partype(v, 3) == Float64
     end
 
     @testset "layout on a household partition" begin
@@ -429,7 +436,7 @@ end
 
         # a vector not matching the population the layout was compiled for is
         # rejected rather than indexed out of bounds
-        @test_throws ArgumentError pairwise_surv_loglik(
+        @test_throws DimensionMismatch pairwise_surv_loglik(
             k, data, L; external_hazard = rates[1:3]
         )
     end

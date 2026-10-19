@@ -50,6 +50,7 @@ household_sizes
 ModelSpec
 single_type_offspring
 EpiBranch.has_single_type_law
+EpiBranch.offspring_law_unchanged
 ```
 
 ## Population characteristics
@@ -614,6 +615,7 @@ EpiBranch.action_draw!
 EpiBranch._action_cache
 EpiBranch.apply_actions!
 EpiBranch.continuous_actions
+EpiBranch.continuous_candidates
 EpiBranch.acts_on_population
 EpiBranch.needs_contacts
 EpiBranch.settles_generation_batch

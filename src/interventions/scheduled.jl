@@ -457,9 +457,9 @@ is_active(s::Scheduled, state::SimulationState) = is_active(s, state, nothing)
 # three-argument `is_triggered!`, so a trigger that reads the action's own
 # individual can gate it rather than the whole population at once. With no
 # action to offer, every trigger is asked its plain two-argument question
-# instead of the three-argument one with `nothing` in its place, so a trigger
-# that implements only the action-aware form, expecting a real one, is never
-# called with something else.
+# instead of the three-argument one with `nothing` in its place; a trigger
+# that implements only the action-aware form, expecting a real one, is then
+# never called with something else.
 function is_active(s::Scheduled, state::SimulationState, action)
     s.condition(state) || return false
     action === nothing && return all(t -> is_triggered!(t, state), s.triggers)

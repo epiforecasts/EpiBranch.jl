@@ -1155,59 +1155,103 @@ end
 #
 # A model with a contact structure can also introduce cases from outside it: a
 # non-negative rate (a constant hazard) or a continuous distribution on the
-# non-negative reals (a calendar-time hazard), shared by everyone, or one that
-# differs by person — a vector with one entry per person, or a function of a
-# person's number, for covariates that make a cluster-randomised arm's
-# community hazard differ from another's. Its simulators and this likelihood
-# share these helpers and agree on when the term applies and what it is.
+# non-negative reals (a calendar-time hazard). Either is shared by everyone, or
+# differs between people, given as a vector with one entry per person or as a
+# function of the person's number returning their own rate or distribution.
+# Its simulators and this likelihood share these helpers and agree on when the
+# term applies and what it is for each person.
 
 # A distribution with negative support is rejected, because introductions cannot
-# happen before time 0. A vector is valid when every entry is; a function is
-# trusted the way a pair kernel's callable form is, and validated when called.
+# happen before time 0. A function's values are checked as they are read.
 _valid_external(α::Real) = α >= 0
 _valid_external(d::ContinuousUnivariateDistribution) = minimum(d) >= 0
-_valid_external(v::AbstractVector) = all(_valid_external, v)
-_valid_external(f) = hasmethod(f, Tuple{Int})
+_valid_external(v::AbstractVector) = all(_is_person_external, v)
+_valid_external(::Function) = true
+_valid_external(_) = false
 _normalise_external(α::Real) = Float64(α)
 _normalise_external(d::ContinuousUnivariateDistribution) = d
-_normalise_external(v::AbstractVector) = [_normalise_external(x) for x in v]
-_normalise_external(f) = f
+_normalise_external(v::AbstractVector) = map(_normalise_external, v)
+_normalise_external(f::Function) = f
 
-# A per-person vector needs one entry per person; every other form answers for
-# any number of people, so it needs no length check.
-_valid_external_length(source, n) = true
-_valid_external_length(source::AbstractVector, n) = length(source) == n
+# One person's own external hazard: a rate or a distribution.
+_is_person_external(s) = (s isa Real || s isa ContinuousUnivariateDistribution) &&
+    _valid_external(s)
 
-# The community hazard is off at a zero rate; a distribution is always on, as
-# is anything else (a vector of distributions, or a function, could give a
-# positive rate to someone, and checking that would mean calling it for every
-# person), except a vector of rates, checked directly.
+# Throws unless `source` is a valid external hazard for a population of `n`.
+function _check_external(source, n::Integer)
+    _valid_external(source) || throw(
+        ArgumentError(
+            "external_hazard must be a non-negative number, a continuous " *
+                "distribution, a vector of these with one per person, or a " *
+                "function of the person's number returning one"
+        )
+    )
+    source isa AbstractVector && length(source) != n && throw(
+        DimensionMismatch(
+            "external_hazard has $(length(source)) entries for $n people"
+        )
+    )
+    return nothing
+end
+
+# The community hazard is off at a zero rate; a distribution is always on. A
+# per-person vector is on when anyone's is, and a function is taken to be on.
 _ext_active(α::Real) = α > 0
 _ext_active(::ContinuousUnivariateDistribution) = true
-_ext_active(v::AbstractVector{<:Real}) = any(>(0), v)
-_ext_active(_) = true
-
-# The source narrowed to one person (by host id): a shared rate or distribution
-# answers the same for everyone, a vector is indexed by it, and a function
-# receives it, exactly as the within-structure kernel's callable form receives
-# the pair.
-_ext_for(source::Real, j) = source
-_ext_for(source::ContinuousUnivariateDistribution, j) = source
-_ext_for(source::AbstractVector, j) = source[j]
-_ext_for(source, j) = source(j)
+_ext_active(v::AbstractVector) = any(_ext_active, v)
+_ext_active(::Function) = true
 
 # The community hazard as a calendar-time survival distribution: a constant rate
 # α is `Exponential(1/α)` (hazard α, cumulative α·t); a distribution is itself.
 _ext_survival(α::Real) = Exponential(1 / α)
 _ext_survival(d::ContinuousUnivariateDistribution) = d
 
-# Person `j`'s community hazard as a calendar-time survival distribution.
-_ext_survival_for(source, j) = _ext_survival(_ext_for(source, j))
+# Person `j`'s survival distribution under the community hazard, or `nothing`
+# when they face none.
+_ext_survival_of(::Nothing, j) = nothing
+_ext_survival_of(d::ContinuousUnivariateDistribution, j) = d
+_ext_survival_of(α::Real, j) = _ext_active(α) ? _ext_survival(α) : nothing
+_ext_survival_of(v::AbstractVector, j) = _ext_survival_of(v[j], j)
+function _ext_survival_of(f::Function, j)
+    s = f(j)
+    _is_person_external(s) || throw(
+        ArgumentError(
+            "external_hazard($j) must return a non-negative number or a " *
+                "continuous distribution on the non-negative reals, got $s"
+        )
+    )
+    return _ext_survival_of(s, j)
+end
 
-# A community introduction time drawn under the hazard.
+# The source with each rate turned into its survival distribution once, for
+# the passes that read it person by person.
+_ext_prepare(α::Real) = _ext_survival_of(α, 0)
+_ext_prepare(d::ContinuousUnivariateDistribution) = d
+_ext_prepare(v::AbstractVector) = map(s -> _ext_survival_of(s, 0), v)
+_ext_prepare(f::Function) = f
+
+# The parameter type of the community hazard over the `n` people, so that AD
+# values in a fitted rate survive the reduction.
+_ext_partype(d::ContinuousUnivariateDistribution, n) = Distributions.partype(d)
+function _ext_partype(source, n)
+    T = Union{}
+    for j in 1:n
+        d = _ext_survival_of(source, j)
+        d === nothing || (T = promote_type(T, Distributions.partype(d)))
+    end
+    return T
+end
+
+# A community introduction time drawn under the hazard person `j` faces, or
+# `Inf` when they face none.
 _ext_draw(rng::AbstractRNG, source) = rand(rng, _ext_survival(source))
 function _ext_draw(rng::AbstractRNG, source, susceptibility)
     return _traits_scaled_draw(rng, _ext_survival(source), susceptibility)
+end
+function _ext_draw(rng::AbstractRNG, source, j::Integer, susceptibility)
+    d = _ext_survival_of(source, j)
+    d === nothing && return oftype(float(susceptibility), Inf)
+    return _traits_scaled_draw(rng, d, susceptibility)
 end
 
 # ── Evaluation ───────────────────────────────────────────────────────
@@ -1300,29 +1344,10 @@ function _kernel_partype(kernel, layout, data, ::Type{T}) where {T}
     return T
 end
 
-# The parameter float type the community hazard adds to the accumulator, found
-# the same way `_kernel_partype` finds the within-structure kernel's: a shared
-# distribution gives it directly, and a per-person source (a vector or a
-# function) is probed on the first external row. With no external row the type
-# falls back to `T`.
-function _ext_partype(source::Real, layout, ::Type{T}) where {T}
-    return Distributions.partype(_ext_survival(source))
-end
-function _ext_partype(source::ContinuousUnivariateDistribution, layout, ::Type{T}) where {T}
-    return Distributions.partype(source)
-end
-function _ext_partype(source, layout, ::Type{T}) where {T}
-    for r in eachindex(layout.is_ext)
-        layout.is_ext[r] || continue
-        return Distributions.partype(_ext_survival_for(source, layout.sus[r]))
-    end
-    return T
-end
-
 # Validation and type promotion shared by the layout-based forms of
-# `pairwise_surv_loglik`: the community-hazard source, the time to truncate
-# at, and the number type the reduction runs in, promoted against the
-# kernel's parameter type so AD values in a fitted kernel survive it.
+# `pairwise_surv_loglik`: the community-hazard survival distribution, the time
+# to truncate at, and the number type the reduction runs in, promoted against
+# the kernel's parameter type so AD values in a fitted kernel survive it.
 function _pairwise_setup(kernel, data, layout::ContactPairsLayout, external_hazard)
     external = _ext_active(external_hazard)
     external == layout.external ||
@@ -1339,16 +1364,8 @@ function _pairwise_setup(kernel, data, layout::ContactPairsLayout, external_haza
                 "was compiled for ($(layout.nhosts))"
         )
     )
-    _valid_external_length(external_hazard, layout.nhosts) ||
-        throw(
-        ArgumentError(
-            "external_hazard must have one entry per person ($(layout.nhosts)), " *
-                "got $(length(external_hazard))"
-        )
-    )
-    # Not resolved to a single distribution here: a vector or function source
-    # answers per person, so each row resolves its own susceptible's hazard.
-    extsrc = external ? external_hazard : kernel
+    external && _check_external(external_hazard, layout.nhosts)
+    extsrc = external ? _ext_prepare(external_hazard) : nothing
 
     tfollow = followup_end(data)
     (!isnan(tfollow) && tfollow >= 0) || throw(
@@ -1363,7 +1380,7 @@ function _pairwise_setup(kernel, data, layout::ContactPairsLayout, external_haza
         typeof(tfollow),
         Float64
     )
-    Text = external ? _ext_partype(external_hazard, layout, Tdata) : Union{}
+    Text = external ? _ext_partype(extsrc, layout.nhosts) : Union{}
     T = promote_type(Tdata, _kernel_partype(kernel, layout, data, Tdata), Text)
     return extsrc, convert(Tdata, tfollow), T
 end
@@ -1398,17 +1415,19 @@ a contact list (`kernel[i][k]` for person `i`'s `k`-th listed contact).
 
 `external_hazard` is infection from outside the households or network: a
 constant rate per person per day, or a distribution of the time of infection
-from outside, shared by everyone, or a vector giving one per person, or a
-function of a person's number, for covariates that make the community hazard
-differ between people, households or clusters — such as comparing the arms of
-a cluster-randomised trial. Such infections happen only in the first
-`data.obs_end` days. With an external hazard, index cases are explained like
-any other case; without one, the likelihood conditions on them. Each person
-is exposed to the external hazard until the earlier of their infection and
-`data.obs_end`, so a person infected after `obs_end` must have been infected
-by a possible infector. Spread within households or the network continues
-after `obs_end`: a person never infected is exposed over each possible
-infector's whole infectious period.
+from outside. Either is shared by everyone, or differs between people: a
+vector with one rate or distribution per person, or a function `j -> rate or
+distribution` of person `j`'s number, for example to give each arm of a trial
+its own community hazard. A function is taken to be in force, so the
+likelihood explains index cases as described next even if it returns zero for
+everyone. Such infections happen only in the first `data.obs_end` days.
+With an external hazard, index cases are explained like any other case;
+without one, the likelihood conditions on them. Each person is exposed to the
+external hazard until the earlier of their infection and `data.obs_end`, so a
+person infected after `obs_end` must have been infected by a possible infector.
+Spread within households or the network continues after `obs_end`: a person
+never infected is exposed over each possible infector's whole infectious
+period.
 
 `susceptibility` is an effect on people's own risk of infection, such as a
 candidate [`VaccineEffect`](@ref) or a model's interventions; `nothing` (the
@@ -1567,7 +1586,6 @@ function _component_loglik(
         modifier, kernel, extsrc, data, layout, rg, tj, tfollow, ::Type{T},
         gaps = nothing
     ) where {T}
-    sus = layout.sus
     infector = layout.infector
     is_ext = layout.is_ext
     tend = (isnan(tj) || tj > tfollow) ? tfollow : convert(typeof(tfollow), tj)
@@ -1575,9 +1593,11 @@ function _component_loglik(
     @inbounds for k in rg
         r = layout.sus_row_order[k]
         if is_ext[r]
+            extdist = _ext_survival_of(extsrc, layout.sus[r])
+            extdist === nothing && continue
             stop = min(tend, data.obs_end)
             stop > 0 || continue
-            ll -= _scaled_cumhazard(modifier, _ext_survival_for(extsrc, sus[r]), zero(stop), stop)
+            ll -= _scaled_cumhazard(modifier, extdist, zero(stop), stop)
         else
             i = infector[r]
             oi = data.infectious_time[i]
@@ -1598,7 +1618,9 @@ function _component_loglik(
         r = layout.sus_row_order[k]
         if is_ext[r]
             (tj >= 0 && tj <= data.obs_end) || continue
-            _push!(acc, _scaled_loghazard(modifier, loghazard(_ext_survival_for(extsrc, sus[r]), tj), tj))
+            extdist = _ext_survival_of(extsrc, layout.sus[r])
+            extdist === nothing && continue
+            _push!(acc, _scaled_loghazard(modifier, loghazard(extdist, tj), tj))
         else
             i = infector[r]
             oi = data.infectious_time[i]
@@ -1834,9 +1856,11 @@ function _pairwise_cumhazard(reduction, kernel, extsrc, data, layout, tfollow, t
         tj = data.infection_time[j]
         tend = (isnan(tj) || tj > tfollow) ? tfollow : convert(typeof(tfollow), tj)
         if is_ext[row]
+            extdist = _ext_survival_of(extsrc, j)
+            extdist === nothing && continue
             stop = min(tend, data.obs_end)
             stop > 0 || continue
-            totals = _add!(reduction, totals, j, -cumhazard(_ext_survival_for(extsrc, j), stop))
+            totals = _add!(reduction, totals, j, -cumhazard(extdist, stop))
         else
             i = infector[row]
             oi = data.infectious_time[i]
@@ -1887,7 +1911,9 @@ function _pairwise_events(reduction, kernel, extsrc, data, layout, tfollow, tota
                 # a host infected after `obs_end` was infected along a contact;
                 # one infected at 0 is a community case like any other
                 (tj >= 0 && tj <= data.obs_end) || continue
-                _push!(acc, loghazard(_ext_survival_for(extsrc, j), tj))
+                extdist = _ext_survival_of(extsrc, j)
+                extdist === nothing && continue
+                _push!(acc, loghazard(extdist, tj))
             else
                 i = infector[row]
                 oi = data.infectious_time[i]

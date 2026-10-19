@@ -117,7 +117,7 @@ end
         @test_throws ArgumentError NetworkProcess(
             ring, Exponential(2.0); external_hazard = [0.05, -0.01, 0.0, 0.0, 0.0]
         )
-        @test_throws ArgumentError NetworkProcess(
+        @test_throws DimensionMismatch NetworkProcess(
             ring, Exponential(2.0); external_hazard = fill(0.05, 4)
         )
 
@@ -832,7 +832,7 @@ end
         # an external_hazard vector not matching the node count is rejected
         @test RoutedNetwork([w(:a, a)]; external_hazard = fill(0.01, 6)) isa
             RoutedNetwork
-        @test_throws ArgumentError RoutedNetwork(
+        @test_throws DimensionMismatch RoutedNetwork(
             [w(:a, a)]; external_hazard = fill(0.01, 5)
         )
     end

@@ -931,15 +931,15 @@ does not.
 
 A literal [`Transition`](@ref) is recognised directly from its `state`
 field, which costs nothing and is exact regardless of its `probability`. Any
-other `AbstractClinicalTransition` is probed instead: a disposable individual,
-given `state.attributes` so a `Transition` reading one of them does not fail
-on a missing key, then marked so that `_transition_selected` takes every
-`probability` gate it meets unless the probability is exactly zero, is run
-through every transition's `initialise_individual!` and `resolve_individual!`
-on a copy of `state.rng`, and the result is read back off
-`susceptible_again_time`. That marking keeps detection exact regardless of
-probability on the custom-transition path too, instead of leaving it to the
-single draw a real run would make.
+other `AbstractClinicalTransition` is probed instead: a disposable individual
+is given `state.attributes`, to keep a `Transition` reading one of them from
+failing on a missing key, then marked to make `_transition_selected` take
+every `probability` gate it meets unless the probability is exactly zero; it
+is run through every transition's `initialise_individual!` and
+`resolve_individual!` on a copy of `state.rng`, and the result is read back
+off `susceptible_again_time`. That marking keeps detection exact regardless
+of probability on the custom-transition path too, instead of leaving it to
+the single draw a real run would make.
 
 The probe never runs a model's own per-individual `setup` (`HouseholdProcess`
 sets `:household` there, for instance), so a custom transition that reads a
@@ -1036,19 +1036,20 @@ without any of the route's declared `watches` moving — the declaration is
 checked rather than trusted. `nothing`, the default, is a model with no such
 kernel at all.
 
-`introduction`, when given, is the `(source, until)` of the community hazard the
-model seeded its members from: `source` is whatever `external_hazard` accepts
-— a shared rate or distribution, or one that differs by person (a vector, or a
-function of a person's number) — and `until` is the time the introduction
-window closes. It says that a seeded time is a community introduction rather
-than an index case, so the risks that act on the person are resolved against
-it — a vaccinated person is protected from the community as from a neighbour —
-and a blocked introduction is followed by the next one from the same person's
-hazard. The risks of isolation and quarantine are not: they stand in for
-removing an infector, and an introduction's source is outside the population.
-Omit `introduction` for a model whose seeds are index cases, which are put to
-no risk at all. An introduced case's `:infection_route` is `:external`,
-including on a model that also names routes.
+`introduction`, when given, is the `(kernel, until)` of the community hazard the
+model seeded its members from: the contact-interval distribution of an
+introduction from outside the population, and the time the introduction window
+closes. The kernel can also differ between people, as a vector indexed by
+host id or a function of the host id, each giving a rate or a distribution,
+as `external_hazard` takes them. It says that a seeded time is a community
+introduction rather than an index case, so the risks that act on the person are resolved against it — a
+vaccinated person is protected from the community as from a neighbour — and a
+blocked introduction is followed by the next one from the same hazard. The risks
+of isolation and quarantine are not: they
+stand in for removing an infector, and an introduction's source is outside the
+population. Omit `introduction` for a model whose seeds are index cases, which
+are put to no risk at all. An introduced case's `:infection_route` is
+`:external`, including on a model that also names routes.
 
 A `progression` whose transitions can reach `:susceptible_again` (see
 [`susceptible_again_time`](@ref)) lets a settled member become a target once
@@ -1347,8 +1348,8 @@ function _sellke_race!(
                     proposals[p] = _at(proposals[p], T(Inf))
                 else
                     if opening.route == 0
-                        extsrc, close_t = introduction
-                        kernel = _ext_survival_for(extsrc, ind.id)
+                        source_ext, close_t = introduction
+                        kernel = _ext_survival_of(source_ext, members[j])
                         open_t = zero(T)
                         mult = ind.susceptibility
                     else
@@ -1390,8 +1391,8 @@ function _sellke_race!(
             # one armed for them, on the same memoryless schedule, to be
             # reachable again after this episode.
             if introduction !== nothing
-                extsrc, close_t = introduction
-                kernel = _ext_survival_for(extsrc, ind.id)
+                source_ext, close_t = introduction
+                kernel = _ext_survival_of(source_ext, members[j])
                 nxt = _next_contact(rng, kernel, ind.susceptibility, bt, close_t)
                 nxt <= close_t &&
                     _propose!(queue, proposals, head, best, represents, j, 1, nxt, true)

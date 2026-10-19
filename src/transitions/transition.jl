@@ -59,6 +59,10 @@ struct Transition{D, P, F} <: AbstractClinicalTransition
     terminal::Bool
 end
 
+# Only writes `state`_time and whether/when it happened; never touches
+# susceptibility or infectiousness.
+offspring_law_unchanged(::Transition) = true
+
 function Transition(
         state::Symbol; delay = nothing, rate = nothing,
         from = :infection, probability = 1.0, terminal::Bool = false

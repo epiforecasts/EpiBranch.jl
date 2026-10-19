@@ -942,13 +942,13 @@ apart the different things drawn for that `id`, such as `:delay` and
 group and a mass campaign both offering `:acceptance` — include the
 intervention itself in the tag, as `(iv, :acceptance)`: each instance then
 keeps its own place in the stream regardless of what the others draw. For an
-ordinary `AbstractRNG`, `stream` returns `rng` itself, so
-nothing about an existing model or intervention changes by taking part. Under
-[`CommonRandomNumbers`](@ref), it returns a generator kept just for that `(id,
-purpose)`, so the draw keeps its value however many unrelated draws happen
-elsewhere in the run. Two scenarios built from the same seed can then share
-every draw up to the point one of them changes what happens to a particular
-person or pair, and only differ in what follows from that change.
+ordinary `AbstractRNG`, `stream` returns `rng` itself, so nothing about an
+existing model or intervention changes by taking part. Under
+[`CommonRandomNumbers`](@ref), it instead returns a generator kept just for
+that `(id, purpose)`, which keeps its value however many unrelated draws
+happen elsewhere in the run. Two scenarios built from the same seed can then
+share every draw up to the point one of them changes what happens to a
+particular person or pair, and only differ in what follows from that change.
 
 A draw that does not belong to one person or pair, such as an offspring count
 or which node a community hazard reaches first, reads `rng` directly as
@@ -966,6 +966,7 @@ before.
 | A condition that starts a schedule | A type `<: AbstractTrigger` with `is_triggered!`; `trigger_can_lapse` and `required_transitions` if the defaults do not fit | Each time the schedule is checked |
 | A capacity limit | `CapacityConstrained(iv; budget_per_period = ...)`, with `capacity_key` and `capacity_time_key` for `iv` | When actions are admitted, once per case |
 | An exact effect on the offspring distribution | `analytic_offspring_effect` for an intervention | Closed-form results on a `ModelSpec` |
+| A model, attribute or progression transition that leaves the single-type offspring law exactly as drawn | `EpiBranch.offspring_law_unchanged` | The chain-size and incidence likelihoods' analytical path |
 | A stopping rule | A type `<: AbstractStoppingRule` and `should_stop` | Each step |
 | A contact recorder | A type `<: ContactRecorder` and `records_contacts` | Continuous-time models, each blocked proposal |
 | A terminal clinical transition | A type `<: AbstractClinicalTransition` with `is_terminal`, `terminal_event`, `terminal_target` | When a case is settled |

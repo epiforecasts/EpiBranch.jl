@@ -445,40 +445,50 @@ function _pending(id, members, processed, pos)
 end
 
 """
-    _continuous_candidates(intervention, state, current, members, processed, contacts, pos, traced)
+    continuous_candidates(intervention, state, current, traced, is_pending, members, contacts)
 
-The people to offer `intervention`'s actions to once `current`'s infection
-is settled in a network or household model. The default is `current` and
-everyone not yet settled, which suits any intervention. [`RingVaccination`](@ref)
-and [`GroupVaccination`](@ref) narrow it to the people tracing reached from
-`current` or the members of `current`'s group.
+The people to offer `intervention`'s actions to once `current`'s infection is
+settled on a network or household model, for an intervention that declares
+[`continuous_actions`](@ref). The default is `current` and every member of
+`members` that `is_pending` still admits, which suits any intervention but
+costs the size of the race, however few people it actually targets.
+[`RingVaccination`](@ref) and [`GroupVaccination`](@ref) write their own
+methods, narrowing the candidates to the people tracing reached from
+`current`, or the members of `current`'s group.
 
 `traced` is the set tracing reached, or `nothing` if there was no tracing. A
 ring wider than one step reaches people who are not `current`'s direct
 contacts, so a list built from `current`'s contacts alone would miss them.
+`is_pending(id)` reports whether `id` belongs to this race and has not yet
+been settled, so an action may still reach it. The default and
+`RingVaccination`'s own fallback (walking `current`'s direct contacts when
+there is no `traced` to use) need `members` and `contacts`; an intervention
+narrowing its own candidates usually needs only `current`, `traced` and
+`is_pending`.
+
+Write a method of this function for an intervention whose candidates are not
+the whole population: an intervention written outside the package otherwise
+gets the default above, however few people it targets.
 """
-function _continuous_candidates(
-        ::AbstractIntervention, state, current, members, processed, contacts, pos,
-        traced = nothing
+function continuous_candidates(
+        ::AbstractIntervention, state, current, traced, is_pending, members, contacts
     )
     return [
         state.individuals[id]
-            for (k, id) in enumerate(members)
-            if !processed[k] || id == current.id
+            for id in members
+            if id == current.id || is_pending(id)
     ]
 end
-function _continuous_candidates(
-        w::InterventionWrapper, state, current,
-        members, processed, contacts, pos, traced = nothing
+function continuous_candidates(
+        w::InterventionWrapper, state, current, traced, is_pending, members, contacts
     )
-    return _continuous_candidates(
-        w.intervention, state, current, members, processed, contacts, pos, traced
+    return continuous_candidates(
+        w.intervention, state, current, traced, is_pending, members, contacts
     )
 end
 
-function _continuous_candidates(
-        ::RingVaccination, state, current, members, processed, contacts, pos,
-        traced = nothing
+function continuous_candidates(
+        ::RingVaccination, state, current, traced, is_pending, members, contacts
     )
     candidates = [current]
     # The walk's own reach where there was one: a ring of depth above 1 grows
@@ -488,22 +498,21 @@ function _continuous_candidates(
         traced = (c isa Tuple ? c[1] : c for c in contacts(current.id, state))
     end
     for cid in traced
-        _pending(cid, members, processed, pos) || continue
+        is_pending(cid) || continue
         push!(candidates, state.individuals[cid])
     end
     return candidates
 end
 
-function _continuous_candidates(
-        gv::GroupVaccination, state, current, members, processed, contacts, pos,
-        traced = nothing
+function continuous_candidates(
+        gv::GroupVaccination, state, current, traced, is_pending, members, contacts
     )
     candidates = [current]
     group = get(current.state, gv.group_key, nothing)
     group === nothing && return candidates
     for id in _group_members(state, gv.group_key, group)
         id == current.id && continue
-        _pending(id, members, processed, pos) || continue
+        is_pending(id) || continue
         push!(candidates, state.individuals[id])
     end
     return candidates
@@ -514,9 +523,10 @@ function _apply_continuous_actions!(
         contacts = nothing, pos = nothing, traced = nothing
     )
     if any(continuous_actions, interventions)
+        is_pending = id -> _pending(id, members, processed, pos)
         # Finalised cases have already generated proposals. A new action may
         # affect the current case and pending people, but must not revise
-        # earlier cases — `_continuous_candidates` is what keeps each
+        # earlier cases — `continuous_candidates` is what keeps each
         # intervention within that boundary while choosing its own, much
         # smaller, set of people to visit.
         for iv in interventions
@@ -526,8 +536,8 @@ function _apply_continuous_actions!(
             # runs on a model that names none, even alongside one that does
             # need them.
             needs_contacts(iv) && contacts === nothing && continue
-            candidates = _continuous_candidates(
-                iv, state, current, members, processed, contacts, pos, traced
+            candidates = continuous_candidates(
+                iv, state, current, traced, is_pending, members, contacts
             )
             allowed = Set(ind.id for ind in candidates)
             actions = intervention_actions(iv, state, candidates)

@@ -461,13 +461,21 @@ function collect_exposures(model::TransmissionModel, state::SimulationState)
         parent = state.individuals[idx]
         offspring = generate_offspring(model, parent, state)
         # the generation interval: how long after this parent was infected
-        # each of its contacts occurs.
-        gt_dist = get_generation_time(model_generation_time(model), parent)
+        # each of its contacts occurs. Only asked for when there is at least
+        # one contact to time, since a generation_time function may rely on
+        # something a case with none never reaches.
+        gt_dist = _has_contacts(offspring) ?
+            get_generation_time(model_generation_time(model), parent) : NoGenerationTime()
         _materialise_offspring!(targets, edges, offspring, parent, state, gt_dist)
     end
     minted = view(state.individuals, (pre + 1):length(state.individuals))
     return targets, edges, minted, _AllNew(length(targets))
 end
+
+# Whether an offspring draw has at least one contact to time: a count
+# (single-type) or a count per type (multi-type).
+_has_contacts(n::Int) = n > 0
+_has_contacts(counts::Vector{Int}) = any(>(0), counts)
 
 # Engine half of the offspring-driven contract: the model returns a count
 # from `generate_offspring`; the engine creates each contact with
@@ -519,8 +527,9 @@ function collect_exposures(model::BranchingProcess, state::SimulationState)
         for window in model.infectiousness
             from_t = _state_time(parent, window.from)
             isfinite(from_t) || continue
-            kernel = get_generation_time(window.kernel, parent)
             counts = draw_offspring(state.rng, window.offspring, parent, state)
+            kernel = _has_contacts(counts) ?
+                get_generation_time(window.kernel, parent) : NoGenerationTime()
             _materialise_window!(
                 targets, edges, counts, parent, state, from_t, kernel, window.until
             )
@@ -1900,11 +1909,21 @@ function demographics(;
         age_range::Tuple{Int, Int} = (0, 90),
         prob_female::Real = 0.5
     )
-    pf = float(prob_female)
-    return function (rng, ind)
-        ind.state[:age] = _sample_age(rng, age_distribution, age_range)
-        return ind.state[:sex] = rand(rng) < pf ? :female : :male
-    end
+    return Demographics(age_distribution, age_range, float(prob_female))
+end
+
+"""Callable population characteristic `demographics` returns. Has a type,
+rather than being a bare closure, so [`EpiBranch.offspring_law_unchanged`](@ref)
+can recognise it as leaving the offspring law unchanged."""
+struct Demographics{D}
+    age_distribution::D
+    age_range::Tuple{Int, Int}
+    prob_female::Float64
+end
+
+function (d::Demographics)(rng, ind)
+    ind.state[:age] = _sample_age(rng, d.age_distribution, d.age_range)
+    return ind.state[:sex] = rand(rng) < d.prob_female ? :female : :male
 end
 
 _sample_age(rng, ::NoAgeDistribution, age_range) = rand(rng, age_range[1]:age_range[2])
@@ -1946,9 +1965,19 @@ See also [`GroupVaccination`](@ref), [`vaccine_acceptance`](@ref).
 """
 function groups(n_groups::Integer; key::Symbol = :group)
     n_groups >= 1 || throw(ArgumentError("n_groups must be at least 1, got $n_groups"))
-    return function (rng, ind)
-        return ind.state[key] = rand(rng, 1:n_groups)
-    end
+    return Groups(n_groups, key)
+end
+
+"""Callable population characteristic `groups` returns. Has a type, rather
+than being a bare closure, so [`EpiBranch.offspring_law_unchanged`](@ref) can
+recognise it as leaving the offspring law unchanged."""
+struct Groups
+    n_groups::Int
+    key::Symbol
+end
+
+function (g::Groups)(rng, ind)
+    return ind.state[g.key] = rand(rng, 1:g.n_groups)
 end
 
 """
@@ -2002,7 +2031,12 @@ attributes = [
 ```
 
 For rules this function does not cover, an `attributes` entry can set the
-fields directly, as in `(rng, ind) -> (ind.susceptibility = ...)`.
+fields directly, as in `(rng, ind) -> (ind.susceptibility = ...)`. Such a
+closure sends `loglikelihood(::ChainSizes, model)`, `chain_size_distribution`
+and the closed-form incidence likelihood to simulation rather than their
+analytical path, since [`EpiBranch.offspring_law_unchanged`](@ref) cannot
+tell what a bare function does; wrap it in its own callable type with a
+method on that trait to get the analytical path back.
 
 See also [`clinical_presentation`](@ref), [`demographics`](@ref).
 """
@@ -2010,12 +2044,35 @@ function transmission_traits(;
         susceptibility = 1.0,
         infectiousness = 1.0
     )
-    sus = _trait_sampler(susceptibility)
-    inf = _trait_sampler(infectiousness)
-    return function (rng, ind)
-        ind.susceptibility = sus(stream(rng, ind.id, :susceptibility), ind)
-        return ind.infectiousness = inf(stream(rng, ind.id, :infectiousness), ind)
-    end
+    return TransmissionTraits(
+        susceptibility, infectiousness,
+        _trait_sampler(susceptibility), _trait_sampler(infectiousness)
+    )
+end
+
+"""Callable population characteristic `transmission_traits` returns. Keeps
+the original `susceptibility`/`infectiousness` arguments alongside the
+samplers built from them, so [`EpiBranch.offspring_law_unchanged`](@ref) can
+tell a neutral value (the default `1.0`) from one that thins transmission."""
+struct TransmissionTraits{S, I, SF, IF}
+    susceptibility::S
+    infectiousness::I
+    sus_sampler::SF
+    inf_sampler::IF
+end
+
+function (traits::TransmissionTraits)(rng, ind)
+    ind.susceptibility = traits.sus_sampler(stream(rng, ind.id, :susceptibility), ind)
+    return ind.infectiousness = traits.inf_sampler(stream(rng, ind.id, :infectiousness), ind)
+end
+
+# Neutral only for a bare `1`; a distribution or function might also always
+# give 1, but that can't be told without drawing from it, so it counts as a
+# change, conservatively.
+_trait_is_neutral(x::Real) = isone(x)
+_trait_is_neutral(x) = false
+function offspring_law_unchanged(t::TransmissionTraits)
+    return _trait_is_neutral(t.susceptibility) && _trait_is_neutral(t.infectiousness)
 end
 
 _trait_sampler(x::Real) =

@@ -61,32 +61,32 @@ end
         @test_throws ArgumentError pairwise_surv_loglik(reverse(windows), data)
     end
 
-    @testset "the community hazard can differ by person" begin
-        hh, comm = _routed_adjacency(60, 4)
-        n = length(hh)
+    @testset "a community hazard per node matches a shared one when all equal" begin
+        hh, comm = _routed_adjacency(30, 4)
         windows = [
             RouteWindow(:household; until = (:recovered,), kernel = Weibull(1.5, 4.0), reach = hh),
             RouteWindow(:community; until = (:recovered,), kernel = Exponential(10.0), reach = comm),
         ]
-        rates = [j <= n ÷ 2 ? 0.01 : 0.05 for j in 1:n]
-        m = ModelSpec(
-            RoutedNetwork(windows; external_hazard = rates, obs_end = 20.0);
+        shared = ModelSpec(
+            RoutedNetwork(windows; external_hazard = 0.01, obs_end = 20.0);
             progression = _sir(8.0)
         )
-        state = simulate(m; rng = StableRNG(4))
-        data = routed_network_infections(state, m)
-        @test isfinite(loglikelihood(data, m))
-        @test loglikelihood(data, m) ==
-            pairwise_surv_loglik(windows, data; external_hazard = rates)
-
-        half1 = count(i -> i.id <= n ÷ 2 && get(i.state, :index, false), state.individuals)
-        half2 = count(i -> i.id > n ÷ 2 && get(i.state, :index, false), state.individuals)
-        @test half2 > half1
-
-        # a vector not matching the population in `data` is rejected rather
-        # than indexed out of bounds
-        @test_throws ArgumentError pairwise_surv_loglik(
-            windows, data; external_hazard = rates[1:(end - 1)]
+        per_node = ModelSpec(
+            RoutedNetwork(windows; external_hazard = fill(0.01, 120), obs_end = 20.0);
+            progression = _sir(8.0)
+        )
+        a = simulate(shared; rng = StableRNG(4))
+        b = simulate(per_node; rng = StableRNG(4))
+        @test [i.infection_time for i in a.individuals] ==
+            [i.infection_time for i in b.individuals]
+        data = routed_network_infections(a, shared)
+        @test loglikelihood(data, per_node) ≈ loglikelihood(data, shared)
+        # a node without a community hazard has no external term
+        silent = [0.0; fill(0.01, 119)]
+        @test pairwise_surv_loglik(windows, data; external_hazard = silent) !=
+            loglikelihood(data, shared)
+        @test_throws DimensionMismatch RoutedNetwork(
+            windows; external_hazard = fill(0.01, 119), obs_end = 20.0
         )
     end
 

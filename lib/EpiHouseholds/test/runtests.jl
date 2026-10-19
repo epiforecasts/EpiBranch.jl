@@ -112,7 +112,7 @@ struct _MaskLessRule <: EpiHouseholds.ConditionOn end
             [2], Exponential(1.0); external_hazard = [0.01, -0.02]
         )
         # a vector must have one entry per person, not per household
-        @test_throws ArgumentError HouseholdProcess(
+        @test_throws DimensionMismatch HouseholdProcess(
             [2, 3], Exponential(1.0); external_hazard = [0.01, 0.02]
         )
     end
@@ -1228,3 +1228,4 @@ include("test_vaccine_likelihood.jl")
 include("test_isolation_duration_likelihood.jl")
 
 include("test_pair_kernels.jl")
+include("test_external_hazard.jl")

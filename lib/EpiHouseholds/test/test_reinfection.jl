@@ -59,7 +59,7 @@ end
     # sits at the candidate currently being settled, so a candidate whose
     # `infection_time` matches it is the current one. Recording its episode
     # count alongside `is_settled` catches a host revisited by a second
-    # episode while `is_settled` still carries the first episode's answer.
+    # episode while `is_settled` still reflects the first episode's answer.
     struct _RecordSettled <: EpiBranch.AbstractIntervention
         observed::Vector{Tuple{Int, Bool}}
     end

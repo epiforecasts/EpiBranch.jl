@@ -266,24 +266,32 @@ end
         @test all(abs.(θhat - θ) .< 3 .* se)
     end
 
-    @testset "the community hazard can differ by person" begin
-        n = 1000
-        adj = _random_graph(n, 3000, StableRNG(12))
-        rate1, rate2 = 0.002, 0.01
-        rates = [j <= n ÷ 2 ? rate1 : rate2 for j in 1:n]
+    @testset "community hazard that differs between nodes" begin
+        adj = _random_graph(1000, 3000, StableRNG(12))
+        high = [i <= 500 for i in 1:1000]
+        hazard(θ) = exp(θ[2]) .* ifelse.(high, exp(θ[3]), 1.0)
+        θ = [log(6.0), log(0.004), log(3.0)]
         m = ModelSpec(
-            NetworkProcess(adj, Exponential(6.0); external_hazard = rates, obs_end = 40.0);
+            NetworkProcess(
+                adj, Exponential(6.0); external_hazard = hazard(θ), obs_end = 40.0
+            );
             progression = _seir(4.0)
         )
         data = network_infections(simulate(m; rng = StableRNG(13)), m)
-        @test isfinite(loglikelihood(data, m))
-
+        @test count(data.is_index[1:500]) > count(data.is_index[501:end])
         layout = compile_contact_pairs(data; external = true)
         @test loglikelihood(data, m) ==
-            pairwise_surv_loglik(Exponential(6.0), data, layout; external_hazard = rates)
-
-        # the half with the higher rate picks up more community cases
-        @test count(data.is_index[(n ÷ 2 + 1):end]) > count(data.is_index[1:(n ÷ 2)])
+            pairwise_surv_loglik(
+            Exponential(6.0), data, layout; external_hazard = hazard(θ)
+        )
+        @test_throws DimensionMismatch pairwise_surv_loglik(
+            Exponential(6.0), data, layout; external_hazard = hazard(θ)[1:999]
+        )
+        g(θ) = pairwise_surv_loglik(
+            Exponential(exp(θ[1])), data, layout; external_hazard = hazard(θ)
+        )
+        θhat, se = _newton_mle_joint(g, θ)
+        @test all(abs.(θhat - θ) .< 3 .* se)
     end
 
     @testset "community introductions stop at obs_end and edge spread goes on" begin

@@ -262,14 +262,9 @@ function EpiBranch.pairwise_surv_loglik(
     )
 
     n = length(data)
-    _valid_external_length(external_hazard, n) ||
-        throw(
-        ArgumentError(
-            "external_hazard must have one entry per person ($n), got " *
-                "$(length(external_hazard))"
-        )
-    )
     external = _ext_active(external_hazard)
+    external && _check_external(external_hazard, n)
+    extsrc = external ? _ext_prepare(external_hazard) : nothing
     tfollow = followup_end(data)
     (!isnan(tfollow) && tfollow >= 0) || throw(
         ArgumentError("followup_end must be a non-negative number (Inf allowed), got $tfollow")
@@ -286,9 +281,10 @@ function EpiBranch.pairwise_surv_loglik(
         tend = (isnan(tj) || tj > tfollow) ? tfollow : tj
 
         survival = 0.0
-        if external
+        extdist = _ext_survival_of(extsrc, j)
+        if extdist !== nothing
             stop = min(tend, data.obs_end)
-            stop > 0 && (survival += cumhazard(_ext_survival_for(external_hazard, j), stop))
+            stop > 0 && (survival += cumhazard(extdist, stop))
         end
         for r in 1:n_routes
             for (i, pos) in in_neighbours[r][j]
@@ -315,8 +311,8 @@ function EpiBranch.pairwise_surv_loglik(
                 data.infectious_time[r][i] < tj <= data.removal_time[r][i] &&
                 (!gates[r] || !_removed_at(gaps, i, tj))
         ]
-        ext_term = (external && 0 <= tj <= data.obs_end) ?
-            [loghazard(_ext_survival_for(external_hazard, j), tj)] : Float64[]
+        ext_term = (extdist !== nothing && 0 <= tj <= data.obs_end) ?
+            [loghazard(extdist, tj)] : Float64[]
         terms = vcat(route_terms, ext_term)
         # Returning `-Inf` directly, rather than adding it to `ll`, discards
         # whatever AD partials `ll` has accumulated from this host and every

@@ -431,7 +431,7 @@ of several terminal events comes first.
 [`CommonRandomNumbers`](@ref) its draws then keep their place for this
 individual regardless of what else the run draws. The probability gate and
 the delay draw use separate streams, `(purpose, :selected)` and `(purpose,
-:delay)`, so reshaping `probability` alone does not move the delay. Steps
+:delay)`: reshaping `probability` alone does not move the delay. Steps
 sharing a name share a stream, so give a new built-in step one of its own.
 """
 function transition_time(

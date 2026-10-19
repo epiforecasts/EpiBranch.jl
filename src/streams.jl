@@ -1,7 +1,7 @@
 # ── Common random numbers ────────────────────────────────────────────
 #
 # Every draw the engine makes comes from one `rng`, in whatever order it
-# needs them, so a draw with no effect on the outbreak still shifts every
+# needs them: a draw with no effect on the outbreak still shifts every
 # draw the engine asks for afterwards. Two scenarios built from the same seed
 # then share nothing once they first differ, instead of sharing everything
 # up to the point one of them changed. `stream` is the seam that lets a draw
@@ -22,7 +22,7 @@ comes from the one sequence, in the order the engine asks for it, exactly as
 before `stream` existed.
 
 [`CommonRandomNumbers`](@ref) is the opt-in alternative: it returns a
-generator kept just for `(id, purpose)`, so a run built from it draws the
+generator kept just for `(id, purpose)`, and a run built from it draws the
 same values for that `id` and `purpose` whatever else in the run has changed.
 A new transmission model or intervention that draws its own per-person or
 per-pair values should call `stream(rng, id, purpose)` for the generator to
