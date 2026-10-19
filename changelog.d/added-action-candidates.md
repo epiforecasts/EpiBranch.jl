@@ -1,7 +1,7 @@
-`EpiBranch.continuous_candidates(iv, state, current, traced, is_pending, members, contacts)`
-is now the documented way for a `continuous_actions` intervention to choose who
-`intervention_actions` is offered once a case settles on a network or household
-model. Without a method of it, an intervention still gets the default, every
-settled case plus everyone else still pending, which costs the size of the
-race; `RingVaccination` and `GroupVaccination` now write their own methods of
-it, narrowing their own candidates the same way they always did.
+`EpiBranch.action_candidates(iv, state, current, traced, is_pending, members, contacts)`
+chooses who an intervention's `intervention_actions` is offered once a case
+settles. The default is the case and the contacts it can still reach;
+`GroupVaccination` writes its own method, offering the members of the case's
+group. An intervention written outside the package narrows or widens its own
+candidates the same way, without the simulation having to walk everyone in
+the run.

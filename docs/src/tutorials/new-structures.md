@@ -365,10 +365,11 @@ An **offspring-driven** model (a branching process and its variants) defines
 one method:
 
 - [`generate_offspring`](@ref)`(model, parent, state)`: the number of contacts
-  the case `parent` makes this generation (a single number, or one per type for
-  a multi-type model). The simulation calls it once per active case, creates
-  that many contacts, gives each an infection time from your model's
-  `generation_time`, and works out which are infected.
+  the case `parent` makes (a single number, or one per type for a multi-type
+  model). The simulation calls it once per case, when the case's infection is
+  decided, creates that many contacts, gives each an infection time from your
+  model's `generation_time`, and works out which are infected, in order of
+  infection time.
 
 Return the number of contacts the case could infect if no control measures
 existed, without looking at whether the case is isolated or vaccinated.
@@ -377,20 +378,22 @@ infected; that is the only place they affect transmission. The simulation also
 runs `initialise_individual!` on the new contacts and the interventions' hooks
 on each case's contacts, the clinical transitions and `resolve_individual!` on
 each new case, and keeps the running totals (`cumulative_cases`,
-`current_generation`, `active_ids`, `extinct`, `max_infection_time`).
+`current_generation`, `extinct`, `max_infection_time`). The count may read the
+case's state, so a ring of contact tracing reaches a case's contacts only once
+the case's own infection is decided.
 
 A **structure-driven** model has contacts a count cannot describe: a contact
 network, or a household or metapopulation model in which a susceptible can be
 exposed by several infectious people at once and infections use up a fixed
 population. It defines instead:
 
-- [`contacts_of`](@ref)`(model, node, state)`: the people an infectious person
-  `node` reaches this generation, as `(contact, infection_time)` pairs. Return
-  existing people (on a network), or create new ones with
-  [`make_contact!`](@ref). Do not set `:infected` yourself.
-- [`collect_exposures`](@ref), returning [`gather_by_target`](@ref): a person
-  exposed by several cases in the same generation then has all exposures
-  considered together, once.
+- [`contacts_of`](@ref)`(model, node, state)`: the people the case `node`
+  exposes, as `(contact, infection_time)` pairs. The simulation asks once per
+  case, when the case's infection is decided. Return existing people (on a
+  network), or create new ones with [`make_contact!`](@ref). Do not set
+  `:infected` yourself. A person exposed by several cases is infected at most
+  once, by the earliest exposure that gets through; one that is blocked is not
+  tried again.
 - [`initialise_state`](@ref EpiBranch.initialise_state), which sets up the
   fixed population with [`new_state`](@ref EpiBranch.new_state),
   [`add_individuals!`](@ref EpiBranch.add_individuals!) and
@@ -408,8 +411,7 @@ tracing and ring vaccination reach it, and the probability is weighed together w
 susceptibility, infectiousness and interventions. The example below does this.
 
 A model can also run **its own simulation loop**, as the continuous-time
-household and network models do, stepping through cases in order of infection
-time instead of by generation. Such a model receives the other model parts as
+household and network models do, with a race of its own. Such a model receives the other model parts as
 arguments: define [`EpiBranch.simulate_once`](@ref)`(m::MyModel, sim_opts; interventions,
 attributes, progression, observation, recorder, rng)`, read the parts from the
 arguments, and work out anything you need there from `progression`, such as
@@ -542,10 +544,6 @@ function EpiBranch.initialise_state(m::HospitalBay, sim_opts::EpiBranch.SimOpts,
     EpiBranch.seed!(state, 1:(sim_opts.n_initial), interventions, transitions)
     return state
 end
-
-# A patient exposed by both neighbours is considered once.
-EpiBranch.collect_exposures(m::HospitalBay, state::EpiBranch.SimulationState) =
-    EpiBranch.gather_by_target(m, state)
 
 # The neighbours in the beds either side, each with a potential infection time
 # drawn from a generation time with mean 5 days.
