@@ -165,6 +165,8 @@ is_active
 AbstractTrigger
 Infections
 ReportedCases
+opened_at
+After
 CapacityConstrained
 capacity_usage
 default_capacity_priority
