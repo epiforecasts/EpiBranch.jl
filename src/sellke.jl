@@ -932,13 +932,14 @@ does not.
 A literal [`Transition`](@ref) is recognised directly from its `state`
 field, which costs nothing and is exact regardless of its `probability`. Any
 other `AbstractClinicalTransition` is probed instead: a disposable individual,
-marked so that `_transition_selected` takes every `probability` gate it meets
-unless the probability is exactly zero, is run through every transition's
-`initialise_individual!` and `resolve_individual!` on a copy of
-`state.rng`, and the result is read back off `susceptible_again_time`. That
-marking keeps detection exact regardless of probability on the
-custom-transition path too, instead of leaving it to the single draw a real
-run would make.
+given `state.attributes` so a `Transition` reading one of them does not fail
+on a missing key, then marked so that `_transition_selected` takes every
+`probability` gate it meets unless the probability is exactly zero, is run
+through every transition's `initialise_individual!` and `resolve_individual!`
+on a copy of `state.rng`, and the result is read back off
+`susceptible_again_time`. That marking keeps detection exact regardless of
+probability on the custom-transition path too, instead of leaving it to the
+single draw a real run would make.
 """
 function _allows_reinfection(state)
     transitions = state.transitions
@@ -953,6 +954,7 @@ function _reinfection_probe(state)
     saved_rng = state.rng
     state.rng = copy(saved_rng)
     try
+        _apply_attributes!(state.attributes, state.rng, probe)
         for t in state.transitions
             initialise_individual!(t, probe, state)
         end

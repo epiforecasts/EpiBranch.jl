@@ -81,6 +81,20 @@ using Random
         @test !EpiBranch._allows_reinfection(state)
     end
 
+    @testset "An attribute-dependent progression alongside a custom step does not crash the probe" begin
+        # A `Transition` whose `delay` reads `:age` sits alongside a custom
+        # transition, which forces `_allows_reinfection` to probe every
+        # transition; the probe must have `:age` set on it too.
+        transitions = EpiBranch.AbstractClinicalTransition[
+            Transition(:recovered; from = :infection, delay = (rng, ind) -> ind.state[:age] < 18 ? 2.0 : 5.0),
+            _ProbabilisticReinfection(0.0),
+        ]
+        state = EpiBranch.new_state(
+            PingPongModel(), transitions, demographics(), MersenneTwister(1)
+        )
+        @test !EpiBranch._allows_reinfection(state)
+    end
+
     @testset "A model that keeps offering a recovered host gets fresh episodes" begin
         progression = [
             Transition(:recovered, from = :infection, delay = 1.0),
