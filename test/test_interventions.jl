@@ -989,6 +989,34 @@ EpiBranch.reset!(::_TimedBatchDose, ind::Individual) = delete!(ind.state, :_dose
         @test_throws UndefKeywordError Quarantine()
     end
 
+    @testset "Quarantine duration can read the contact's trace time" begin
+        # A duration counted from exposure, such as "until 14 days after
+        # exposure", needs the trace time to turn an end day into a length;
+        # `ind.state[:trace_time]` must already be set when `duration` runs.
+        attrs = (rng, ind) -> begin
+            ind.state[:asymptomatic] = false
+            ind.state[:onset_time] = ind.infection_time + 5.0
+        end
+        offspring = (rng, ind) -> ind.generation == 0 ? 1 : 0
+        seen = Float64[]
+        duration = (rng, ind) -> begin
+            push!(seen, get(ind.state, :trace_time, NaN))
+            return 14.0
+        end
+        model = ModelSpec(
+            BranchingProcess(offspring, Dirac(1.0)); attributes = attrs,
+            interventions = [
+                Isolation(onset_to_isolation_delay = Dirac(0.0), duration = 10.0),
+                ContactTracing(
+                    probability = 1.0, isolation_to_trace_delay = Dirac(1.0),
+                    action = Quarantine(; duration)
+                ),
+            ]
+        )
+        contact = simulate(model; rng = StableRNG(1)).individuals[2]
+        @test seen == [contact.state[:trace_time]]
+    end
+
     @testset "set_isolated! requires a release time" begin
         # The accessor is where an intervention written outside the package
         # removes a host, so it is the last place a removal could inherit
