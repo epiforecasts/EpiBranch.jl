@@ -67,6 +67,25 @@ using DataFrames
         end
     end
 
+    @testset "One offspring law per type" begin
+        # Type 1 draws from a fixed law, independent of the column sum, so a
+        # heavy-tailed type and a non-heavy-tailed type can share a matrix.
+        M = [
+            1.5 0.3;
+            0.3 1.0
+        ]
+        laws = [NegBin(1.5, 0.1), Poisson(1.3)]
+        model = BranchingProcess(M, laws, Exponential(5.0))
+        off = model.infectiousness[1].offspring
+        @test off.dist_fn === laws
+
+        rng = StableRNG(42)
+        state = simulate(model; max_cases = 100, rng = rng)
+        @test state.cumulative_cases > 0
+
+        @test_throws ArgumentError EpiBranch.MultiTypeOffspring(M, [NegBin(1.5, 0.1)])
+    end
+
     @testset "Non-square matrix throws" begin
         M = [
             1.0 0.5 0.3;
