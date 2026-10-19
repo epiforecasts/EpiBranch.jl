@@ -462,7 +462,7 @@ function collect_exposures(model::TransmissionModel, state::SimulationState)
         offspring = generate_offspring(model, parent, state)
         # the generation interval: how long after this parent was infected
         # each of its contacts occurs. Only asked for when there is at least
-        # one contact to time, since a function generation time may rely on
+        # one contact to time, since a generation_time function may rely on
         # something a case with none never reaches.
         gt_dist = _has_contacts(offspring) ?
             get_generation_time(model_generation_time(model), parent) : NoGenerationTime()
