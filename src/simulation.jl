@@ -461,13 +461,21 @@ function collect_exposures(model::TransmissionModel, state::SimulationState)
         parent = state.individuals[idx]
         offspring = generate_offspring(model, parent, state)
         # the generation interval: how long after this parent was infected
-        # each of its contacts occurs.
-        gt_dist = get_generation_time(model_generation_time(model), parent)
+        # each of its contacts occurs. Only asked for when there is at least
+        # one contact to time, since a generation_time function may rely on
+        # something a case with none never reaches.
+        gt_dist = _has_contacts(offspring) ?
+            get_generation_time(model_generation_time(model), parent) : NoGenerationTime()
         _materialise_offspring!(targets, edges, offspring, parent, state, gt_dist)
     end
     minted = view(state.individuals, (pre + 1):length(state.individuals))
     return targets, edges, minted, _AllNew(length(targets))
 end
+
+# Whether an offspring draw has at least one contact to time: a count
+# (single-type) or a count per type (multi-type).
+_has_contacts(n::Int) = n > 0
+_has_contacts(counts::Vector{Int}) = any(>(0), counts)
 
 # Engine half of the offspring-driven contract: the model returns a count
 # from `generate_offspring`; the engine creates each contact with
@@ -519,8 +527,9 @@ function collect_exposures(model::BranchingProcess, state::SimulationState)
         for window in model.infectiousness
             from_t = _state_time(parent, window.from)
             isfinite(from_t) || continue
-            kernel = get_generation_time(window.kernel, parent)
             counts = draw_offspring(state.rng, window.offspring, parent, state)
+            kernel = _has_contacts(counts) ?
+                get_generation_time(window.kernel, parent) : NoGenerationTime()
             _materialise_window!(
                 targets, edges, counts, parent, state, from_t, kernel, window.until
             )

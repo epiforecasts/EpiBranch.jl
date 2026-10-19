@@ -94,6 +94,21 @@
         end
     end
 
+    @testset "Generation time function not called for a case with no contacts" begin
+        # Only the index case makes a contact; a generation_time function
+        # that fails for any other case must still simulate fine.
+        offspring = (rng, ind) -> ind.generation == 0 ? 1 : 0
+        gt = ind -> ind.generation == 0 ? Dirac(1.0) : error("asked for case $(ind.id)")
+        state = simulate(
+            ModelSpec(
+                BranchingProcess(offspring, gt);
+                attributes = (rng, ind) -> nothing
+            );
+            rng = StableRNG(1)
+        )
+        @test state.cumulative_cases == 2
+    end
+
     @testset "Truncated generation time enforces minimum" begin
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(3.0), truncated(Exponential(5.0), 3.0, Inf))
