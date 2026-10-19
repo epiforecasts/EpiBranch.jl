@@ -940,12 +940,26 @@ on a copy of `state.rng`, and the result is read back off
 `susceptible_again_time`. That marking keeps detection exact regardless of
 probability on the custom-transition path too, instead of leaving it to the
 single draw a real run would make.
+
+The probe never runs a model's own per-individual `setup` (`HouseholdProcess`
+sets `:household` there, for instance), so a custom transition that reads a
+key only `setup` supplies raises a `KeyError` on the probe even though a real
+run always has it. Rather than let that abort the whole simulation, it is
+read as "reinfection cannot be ruled out": a false positive here only costs
+the bookkeeping that keeps a settled member's proposals pending, not a wrong
+answer during the run itself, where the key is set.
 """
 function _allows_reinfection(state)
     transitions = state.transitions
     any(t -> t isa Transition && t.state === :susceptible_again, transitions) && return true
     any(t -> !(t isa Transition), transitions) || return false
-    return isfinite(susceptible_again_time(_reinfection_probe(state)))
+    probe = try
+        _reinfection_probe(state)
+    catch e
+        e isa KeyError && return true
+        rethrow()
+    end
+    return isfinite(susceptible_again_time(probe))
 end
 
 function _reinfection_probe(state)

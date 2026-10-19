@@ -95,6 +95,23 @@ using Random
         @test !EpiBranch._allows_reinfection(state)
     end
 
+    # A key a model's own per-individual `setup` supplies (as `HouseholdProcess`
+    # does for `:household`), rather than `state.attributes` or a literal
+    # `Transition`, so the probe individual never has it.
+    struct _ReadsSetupKey <: EpiBranch.AbstractClinicalTransition end
+    function EpiBranch.resolve_individual!(::_ReadsSetupKey, ind, state)
+        ind.state[:household]
+        return nothing
+    end
+
+    @testset "A custom step reading a setup-only key does not crash the probe" begin
+        transitions = EpiBranch.AbstractClinicalTransition[_ReadsSetupKey()]
+        state = EpiBranch.new_state(
+            PingPongModel(), transitions, NoAttributes(), MersenneTwister(1)
+        )
+        @test EpiBranch._allows_reinfection(state)
+    end
+
     @testset "A model that keeps offering a recovered host gets fresh episodes" begin
         progression = [
             Transition(:recovered, from = :infection, delay = 1.0),
