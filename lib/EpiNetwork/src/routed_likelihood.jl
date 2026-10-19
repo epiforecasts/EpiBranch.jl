@@ -263,7 +263,6 @@ function EpiBranch.pairwise_surv_loglik(
 
     n = length(data)
     external = _ext_active(external_hazard)
-    extdist = external ? _ext_survival(external_hazard) : nothing
     tfollow = followup_end(data)
     (!isnan(tfollow) && tfollow >= 0) || throw(
         ArgumentError("followup_end must be a non-negative number (Inf allowed), got $tfollow")
@@ -282,7 +281,7 @@ function EpiBranch.pairwise_surv_loglik(
         survival = 0.0
         if external
             stop = min(tend, data.obs_end)
-            stop > 0 && (survival += cumhazard(extdist, stop))
+            stop > 0 && (survival += cumhazard(_ext_survival_for(external_hazard, j), stop))
         end
         for r in 1:n_routes
             for (i, pos) in in_neighbours[r][j]
@@ -310,7 +309,7 @@ function EpiBranch.pairwise_surv_loglik(
                 (!gates[r] || !_removed_at(gaps, i, tj))
         ]
         ext_term = (external && 0 <= tj <= data.obs_end) ?
-            [loghazard(extdist, tj)] : Float64[]
+            [loghazard(_ext_survival_for(external_hazard, j), tj)] : Float64[]
         terms = vcat(route_terms, ext_term)
         # Returning `-Inf` directly, rather than adding it to `ll`, discards
         # whatever AD partials `ll` has accumulated from this host and every

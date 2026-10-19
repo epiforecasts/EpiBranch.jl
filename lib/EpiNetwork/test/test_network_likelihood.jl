@@ -266,6 +266,26 @@ end
         @test all(abs.(θhat - θ) .< 3 .* se)
     end
 
+    @testset "the community hazard can differ by person" begin
+        n = 1000
+        adj = _random_graph(n, 3000, StableRNG(12))
+        rate1, rate2 = 0.002, 0.01
+        rates = [j <= n ÷ 2 ? rate1 : rate2 for j in 1:n]
+        m = ModelSpec(
+            NetworkProcess(adj, Exponential(6.0); external_hazard = rates, obs_end = 40.0);
+            progression = _seir(4.0)
+        )
+        data = network_infections(simulate(m; rng = StableRNG(13)), m)
+        @test isfinite(loglikelihood(data, m))
+
+        layout = compile_contact_pairs(data; external = true)
+        @test loglikelihood(data, m) ==
+            pairwise_surv_loglik(Exponential(6.0), data, layout; external_hazard = rates)
+
+        # the half with the higher rate picks up more community cases
+        @test count(data.is_index[(n ÷ 2 + 1):end]) > count(data.is_index[1:(n ÷ 2)])
+    end
+
     @testset "community introductions stop at obs_end and edge spread goes on" begin
         # most infections here come after obs_end, along edges; the likelihood
         # must give them no community hazard and keep uninfected nodes exposed

@@ -96,6 +96,21 @@ end
             external_hazard = -1.0
         )
 
+        # so is a vector with one entry per node, or a function of a node's
+        # number, for a community hazard that differs between them
+        @test NetworkProcess(
+            ring, Exponential(2.0); external_hazard = fill(0.05, 5)
+        ) isa NetworkProcess
+        @test NetworkProcess(
+            ring, Exponential(2.0); external_hazard = j -> j <= 2 ? 0.05 : 0.01
+        ) isa NetworkProcess
+        @test_throws ArgumentError NetworkProcess(
+            ring, Exponential(2.0); external_hazard = [0.05, -0.01, 0.0, 0.0, 0.0]
+        )
+        @test_throws ArgumentError NetworkProcess(
+            ring, Exponential(2.0); external_hazard = fill(0.05, 4)
+        )
+
         # a matrix builds the same ring structure
         A = zeros(5, 5)
         for i in 1:5

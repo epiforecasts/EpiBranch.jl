@@ -60,7 +60,7 @@ function simulate_once(
             initial_cases = sim_opts.initial_cases
         ),
         introduction = _ext_active(model.external_hazard) ?
-            (EpiBranch._ext_survival(model.external_hazard), Tobs) : nothing,
+            (model.external_hazard, Tobs) : nothing,
         targets = (inf, st) -> (
             (nb, _edge_kernel(model, inf, k, st, from))
                 for (k, nb) in enumerate(model.adjacency[inf])
@@ -107,7 +107,10 @@ end
 function _seed_external!(best, members, state, extsrc, Tobs, rng, skip = ())
     for k in eachindex(members)
         members[k] in skip && continue
-        t = _ext_draw(rng, extsrc, state.individuals[members[k]].susceptibility)
+        t = _ext_draw(
+            rng, _ext_for(extsrc, members[k]),
+            state.individuals[members[k]].susceptibility
+        )
         t <= Tobs && (best[k] = t)
     end
     return nothing

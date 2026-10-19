@@ -61,6 +61,29 @@ end
         @test_throws ArgumentError pairwise_surv_loglik(reverse(windows), data)
     end
 
+    @testset "the community hazard can differ by person" begin
+        hh, comm = _routed_adjacency(60, 4)
+        n = length(hh)
+        windows = [
+            RouteWindow(:household; until = (:recovered,), kernel = Weibull(1.5, 4.0), reach = hh),
+            RouteWindow(:community; until = (:recovered,), kernel = Exponential(10.0), reach = comm),
+        ]
+        rates = [j <= n ÷ 2 ? 0.01 : 0.05 for j in 1:n]
+        m = ModelSpec(
+            RoutedNetwork(windows; external_hazard = rates, obs_end = 20.0);
+            progression = _sir(8.0)
+        )
+        state = simulate(m; rng = StableRNG(4))
+        data = routed_network_infections(state, m)
+        @test isfinite(loglikelihood(data, m))
+        @test loglikelihood(data, m) ==
+            pairwise_surv_loglik(windows, data; external_hazard = rates)
+
+        half1 = count(i -> i.id <= n ÷ 2 && get(i.state, :index, false), state.individuals)
+        half2 = count(i -> i.id > n ÷ 2 && get(i.state, :index, false), state.individuals)
+        @test half2 > half1
+    end
+
     @testset "simulate → loglikelihood recovers both routes' kernel scales jointly" begin
         # survival sums the two routes' hazards and the event term is a
         # log-sum-exp across them: fitting both scales at once is the sharpest
