@@ -83,12 +83,12 @@ function household_infections(
     )
 end
 
-# `_infection_layer_columns` reads each individual's live fields, which a
-# progression reaching `:susceptible_again` has moved on to that person's
-# latest infection; a household race letting `HostImmunity` reinfect someone
-# (see `_allows_reinfection` in EpiBranch's sellke.jl) archives the episodes
-# before it onto `episodes` instead, where this layer, and so `loglikelihood`,
-# does not read them.
+# `_infection_layer_columns` reads each individual's live fields. A
+# progression reaching `:susceptible_again` moves those fields on to the
+# person's latest infection once a household race lets `HostImmunity`
+# reinfect them (see `_allows_reinfection` in EpiBranch's sellke.jl): the
+# earlier episode is archived onto `episodes` instead, and neither this
+# layer nor `loglikelihood` reads it.
 function _warn_uncovered_episodes(state::SimulationState)
     any(ind -> !isempty(ind.episodes), state.individuals) || return nothing
     @warn "this outbreak has hosts with more than one infection episode " *

@@ -43,14 +43,13 @@ order: both check each action's own proposed date.
     In network and household models, ring, group and mass vaccination can all
     be capacity-limited, with any `eligibility_window`: a dose a network or
     household race withdraws for falling outside the window (see
-    [`RingVaccination`](@ref)) counts against no capacity from then on, so
-    the budget it used is available to the next candidate. `simulate` warns
-    that an intervention will have no effect when it relies on a hook these
-    models do not call, such as one that reaches its targets only through
-    the deprecated
+    [`RingVaccination`](@ref)) counts against no capacity from then on, and
+    the budget it used becomes available to the next candidate. `simulate`
+    warns that an intervention will have no effect when it relies on a hook
+    these models do not call, such as one that reaches its targets only
+    through the deprecated
     [`apply_post_transmission!`](@ref EpiBranch.apply_post_transmission!)
-    batch hook, so for a custom intervention the warning is the thing to
-    check.
+    batch hook; for a custom intervention, the warning is the thing to check.
     The mass-action models,
     [`HomogeneousProcess`](@ref) and [`MixingProcess`](@ref), do not trace
     contacts, so ring vaccination cannot act in either. Contact tracing itself

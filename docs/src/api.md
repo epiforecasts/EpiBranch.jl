@@ -615,6 +615,7 @@ EpiBranch.action_draw!
 EpiBranch._action_cache
 EpiBranch.apply_actions!
 EpiBranch.continuous_actions
+EpiBranch.continuous_candidates
 EpiBranch.acts_on_population
 EpiBranch.needs_contacts
 EpiBranch.settles_generation_batch
