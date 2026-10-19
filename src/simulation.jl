@@ -24,7 +24,10 @@ days throughout.
   control over when the run ends. When given, `max_cases`,
   `max_generations` and `max_time` are ignored.
 - `rng`: the random number generator; pass a seeded one, such as
-  `Xoshiro(42)`, for reproducible runs.
+  `Xoshiro(42)`, for reproducible runs. Pass [`CommonRandomNumbers`](@ref)
+  instead to compare scenarios on shared random numbers: two runs built from
+  the same seed then share every draw until one of them changes what happens
+  to a particular person or pair.
 - `condition`: a range of final outbreak sizes, such as `10:1000`. The
   simulation is repeated until the total number of cases falls inside it (at
   most `max_attempts` tries), for example to leave out outbreaks that died
@@ -2010,8 +2013,8 @@ function transmission_traits(;
     sus = _trait_sampler(susceptibility)
     inf = _trait_sampler(infectiousness)
     return function (rng, ind)
-        ind.susceptibility = sus(rng, ind)
-        return ind.infectiousness = inf(rng, ind)
+        ind.susceptibility = sus(stream(rng, ind.id, :susceptibility), ind)
+        return ind.infectiousness = inf(stream(rng, ind.id, :infectiousness), ind)
     end
 end
 

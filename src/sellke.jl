@@ -1363,7 +1363,8 @@ function _sellke_race!(
                         mult = source.infectiousness * ind.susceptibility
                     end
                     nxt = open_t + _next_contact(
-                        rng, kernel, mult, bt - open_t, close_t - open_t,
+                        stream(rng, (infector_id, members[j]), (:contact, opening.route)),
+                        kernel, mult, bt - open_t, close_t - open_t,
                         certain_release === nothing ? nothing :
                             certain_release - open_t
                     )
@@ -1546,13 +1547,14 @@ function _propose_along!(
         # pair's contact interval, folded into the draw rather than
         # resolved contact by contact. A pair at the default 1 draws
         # exactly as it did before they were honoured here.
+        pair_rng = stream(rng, (infector_id, target_id), (:contact, ri))
         dt = traits ?
             _traits_scaled_draw(
-                rng, kernel,
+                pair_rng, kernel,
                 infector.infectiousness *
                 state.individuals[target_id].susceptibility
             ) :
-            rand(rng, kernel)
+            rand(pair_rng, kernel)
         cand = open_t + dt
         cand <= close_t || continue
         _propose!(race, k, opening_id, cand)
@@ -1972,15 +1974,16 @@ function _redraw_moved!(
                 members_hit === nothing || j in members_hit || continue
                 m = source.infectiousness * state.individuals[id].susceptibility
                 m <= 0 && continue
+                pair_rng = stream(rng, (opening.infector, id), (:contact, opening.route))
                 lower = now - opening.open_t - slack
-                dt = lower <= 0 ? _traits_scaled_draw(rng, kernel, m) :
-                    _draw_beyond(rng, kernel, m, lower)
+                dt = lower <= 0 ? _traits_scaled_draw(pair_rng, kernel, m) :
+                    _draw_beyond(pair_rng, kernel, m, lower)
                 # The next contact after one in the past is the same hazard
                 # conditioned on falling later, so this draws exactly given no
                 # contact before `now`, or none up to it once `now` is resolved.
                 resolved = j <= passed_since
                 while opening.open_t + dt < now || (resolved && opening.open_t + dt == now)
-                    dt = _draw_beyond(rng, kernel, m, dt)
+                    dt = _draw_beyond(pair_rng, kernel, m, dt)
                 end
                 candidate = opening.open_t + dt
                 candidate <= opening.close_t || continue

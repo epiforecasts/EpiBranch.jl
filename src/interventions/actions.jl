@@ -265,7 +265,7 @@ function intervention_actions(rv::RingVaccination, state, candidates)
         end
         _within_window(window, ind, time) || continue
         accepted = action_draw!(ind, (rv, :acceptance)) do
-            _covers(rv.coverage, ind, state.rng)
+            _covers(rv.coverage, ind, stream(state.rng, ind.id, (rv, :acceptance)))
         end
         accepted && push!(actions, _revisable_dose_action(rv, ind, trace_t, time))
     end
@@ -309,7 +309,7 @@ function intervention_actions(gv::GroupVaccination, state, candidates)
             end
             get(ind.state, _coverage_declined_key(dose_label(gv)), false) && continue
             accepted = action_draw!(ind, (gv, :acceptance)) do
-                _covers(gv.coverage, ind, state.rng)
+                _covers(gv.coverage, ind, stream(state.rng, ind.id, (gv, :acceptance)))
             end
             if !accepted
                 ind.state[_coverage_declined_key(dose_label(gv))] = true
@@ -335,7 +335,7 @@ function intervention_actions(mv::MassVaccination, state, candidates)
         end
         isfinite(time) || continue
         accepted = action_draw!(ind, (mv, :acceptance)) do
-            _covers(mv.coverage, ind, state.rng)
+            _covers(mv.coverage, ind, stream(state.rng, ind.id, (mv, :acceptance)))
         end
         if accepted
             push!(actions, dose_action(mv, ind, time))
