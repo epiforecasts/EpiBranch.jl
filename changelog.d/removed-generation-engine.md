@@ -15,4 +15,6 @@ Removed with it: the deprecated `apply_post_transmission!` batch hook,
 candidates an intervention's actions are offered to, is
 `EpiBranch.action_candidates`), and the warning that an intervention had
 hooks the continuous-time race does not call, since there is no longer
-another engine to call them.
+another engine to call them. What remains is a warning when contact tracing,
+or actions that need a case's contacts, is given a model that names none,
+such as `HomogeneousProcess`.
