@@ -117,6 +117,32 @@
         @test isapprox(ll, 0.0; atol = 1.0e-9)
     end
 
+    @testset "an offspring function can return OffspringTimes instead of a count" begin
+        # The kernel draws from an exponential with mean 1000, so a contact
+        # timed from it would almost never land at exactly 1.0 or 4.5.
+        off = (rng, ind) -> OffspringTimes([1.0, 1.0, 4.5])
+        m = BranchingProcess(Infectiousness(off; kernel = Exponential(1000.0)))
+        s = simulate(m; n_initial = 1, max_generations = 1, rng = StableRNG(1))
+        kids = filter(i -> i.parent_id != 0 && is_infected(i), s.individuals)
+        @test sort([k.infection_time for k in kids]) == [1.0, 1.0, 4.5]
+    end
+
+    @testset "OffspringTimes before the case's own infection drops that contact" begin
+        # `from = :infectious` opens 4 days after infection; an offset of
+        # -5.0 then falls before the case's own infection, so it is dropped
+        # exactly as a kernel draw landing there would be.
+        latent = Transition(:infectious, from = :infection, delay = (rng, ind) -> 4.0)
+        off = (rng, ind) -> OffspringTimes([-5.0, 1.0])
+        m = ModelSpec(
+            BranchingProcess(Infectiousness(off; from = :infectious));
+            progression = [latent]
+        )
+        s = simulate(m; n_initial = 1, max_generations = 1, rng = StableRNG(1))
+        kids = filter(i -> i.parent_id != 0 && is_infected(i), s.individuals)
+        @test length(kids) == 1
+        @test only(kids).infection_time ≈ 5.0
+    end
+
     @testset "analytics: single window closed-form, multi-window directs to simulation" begin
         single = BranchingProcess(NegBin(2.0, 0.5), LogNormal(1.6, 0.5))
         @test single_type_offspring(single) isa NegativeBinomial
