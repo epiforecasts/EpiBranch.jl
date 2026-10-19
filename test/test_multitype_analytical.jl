@@ -113,9 +113,9 @@ EpiBranch.single_type_offspring(m::LawOnlyModel) = m.law
     end
 
     @testset "One offspring law per type, differing in shape" begin
-        # Both types have R = 1.5, but type 1's law is heavy-tailed (negative
-        # binomial) and type 2's is not (Poisson), which a single `dist_fn(R_j)`
-        # cannot express.
+        # Both types have R = 1.5, but the law for type 1 is heavy-tailed
+        # (negative binomial) while the law for type 2 is not (Poisson). A
+        # single `dist_fn(R_j)` cannot express that.
         M_bipartite = [0.0 1.5; 1.5 0.0]
         laws = [NegBin(1.5, 0.1), Poisson(1.5)]
         model = BranchingProcess(M_bipartite, laws, Exponential(5.0))

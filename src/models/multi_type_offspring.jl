@@ -17,9 +17,10 @@ total count law in one of two ways:
   which equals `R_j` only if the distribution has mean `R_j`. A function such
   as `R -> Poisson(θ * R)` scales the whole matrix by `θ`.
 - A vector of one distribution per type: a type-`j` case draws from
-  `dist_fn[j]` directly, independent of `R_j`. Use this when types' offspring
-  laws differ in more than their mean, for example one heavy-tailed and one
-  not, or sharing a mean but not its dispersion.
+  `dist_fn[j]` directly, independent of `R_j`. Use this when the offspring
+  law needs to differ between types in more than its mean, for example one
+  heavy-tailed and one not, or two laws with the same mean but different
+  dispersion.
 
 !!! warning
     A function `dist_fn` must take a mean if the column sums are meant to be
@@ -68,8 +69,8 @@ end
 
 # The total-count law for a type-`j` case with column sum `R`: `dist_fn(R)`
 # for a function, or `dist_fn[j]` for one law per type. Dispatch on the type
-# of `dist_fn` rather than branching inside a single method, so a third way
-# of giving the law is a new method here, not a new case.
+# of `dist_fn` rather than branch inside one method: a third way of giving
+# the law then needs only a new method here, not an edit to this one.
 _type_law(dist_fn, R, ::Integer) = dist_fn(R)
 _type_law(dist_fn::AbstractVector, ::Real, j::Integer) = dist_fn[j]
 
