@@ -382,20 +382,38 @@ function simulate_once(
     )
     # An empty tuple lets the race omit intervention setup and per-case hooks.
     return _simulate_offspring(
-        model, sim_opts, isempty(interventions) ? () : interventions;
+        model, model.infectiousness, sim_opts, isempty(interventions) ? () : interventions;
+        attributes, progression, observation, recorder, rng
+    )
+end
+
+# A model of its own that says how many contacts each case makes, through
+# `generate_offspring`, is a branching process with one window: the count is
+# its offspring and `model_generation_time` its kernel, so it runs on the same
+# route. The count may read anything, so a tracing ring draws a person's
+# contacts only once they settle.
+function _simulate_generated(
+        model::TransmissionModel, sim_opts::SimOpts;
+        interventions, attributes, progression, observation, recorder, rng
+    )
+    window = Infectiousness(
+        (rng, ind, state) -> generate_offspring(model, ind, state);
+        kernel = model_generation_time(model)
+    )
+    return _simulate_offspring(
+        model, (window,), sim_opts, isempty(interventions) ? () : interventions;
         attributes, progression, observation, recorder, rng
     )
 end
 
 function _simulate_offspring(
-        model::BranchingProcess, sim_opts::SimOpts, interventions;
+        model::TransmissionModel, windows, sim_opts::SimOpts, interventions;
         attributes, progression, observation, recorder, rng
     )
     state = initialise_state(model, sim_opts, interventions, progression, attributes, rng)
     # The race counts the index cases as it settles them.
     state.cumulative_cases = 0
     T = _timetype(state)
-    windows = model.infectiousness
     tree = _take_tree(T, length(state.individuals), map(w -> w.until, windows))
     routes = ntuple(
         i -> (_offspring_window(windows[i]), _Offspring(windows[i], i, tree)), length(windows)
