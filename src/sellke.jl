@@ -929,7 +929,7 @@ again (see [`HostImmunity`](@ref EpiBranch.HostImmunity)). Read from
 declares a `:susceptible_again` step, with no extra bookkeeping cost where it
 does not.
 
-A literal [`Transition`](@ref) is recognised directly, from its `state`
+A literal [`Transition`](@ref) is recognised directly from its `state`
 field, which costs nothing and is exact regardless of its `probability`. Any
 other `AbstractClinicalTransition` is probed instead: a disposable individual
 is run through every transition's `initialise_individual!` and
