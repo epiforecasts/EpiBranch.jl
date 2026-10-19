@@ -38,7 +38,7 @@ end
 @testset "is_settled is false again for a host whose reinfection is being processed" begin
     # Each `intervention_actions` call runs while `state.max_infection_time`
     # sits at the candidate currently being settled, so a candidate whose
-    # `infection_time` matches it is the current one; recording its episode
+    # `infection_time` matches it is the current one. Recording its episode
     # count alongside `is_settled` catches a host revisited by a second
     # episode while `is_settled` still carries the first episode's answer.
     struct _RecordSettled <: EpiBranch.AbstractIntervention

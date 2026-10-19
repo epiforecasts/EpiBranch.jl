@@ -943,11 +943,11 @@ single draw a real run would make.
 
 The probe never runs a model's own per-individual `setup` (`HouseholdProcess`
 sets `:household` there, for instance), so a custom transition that reads a
-key only `setup` supplies raises a `KeyError` on the probe even though a real
-run always has it. Rather than let that abort the whole simulation, it is
-read as "reinfection cannot be ruled out": a false positive here only costs
-the bookkeeping that keeps a settled member's proposals pending, not a wrong
-answer during the run itself, where the key is set.
+key only `setup` supplies raises a `KeyError` on the probe, even though a
+real run always has it. Treating that as "reinfection cannot be ruled out",
+rather than letting it abort the whole simulation, costs only the
+bookkeeping that keeps a settled member's proposals pending: the real run
+never hits this path, because the key is always set there.
 """
 function _allows_reinfection(state)
     transitions = state.transitions

@@ -95,9 +95,10 @@ using Random
         @test !EpiBranch._allows_reinfection(state)
     end
 
-    # A key a model's own per-individual `setup` supplies (as `HouseholdProcess`
-    # does for `:household`), rather than `state.attributes` or a literal
-    # `Transition`, so the probe individual never has it.
+    # The key comes from a model's own per-individual `setup` (as
+    # `HouseholdProcess` sets `:household` there), rather than from
+    # `state.attributes` or a literal `Transition`, so the probe individual
+    # never has it.
     struct _ReadsSetupKey <: EpiBranch.AbstractClinicalTransition end
     function EpiBranch.resolve_individual!(::_ReadsSetupKey, ind, state)
         ind.state[:household]
