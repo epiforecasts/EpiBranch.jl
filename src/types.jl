@@ -24,6 +24,20 @@ struct NoCases end
 without timing, used for chain sizes and lengths only."""
 struct NoGenerationTime end
 
+"""
+    ChainSizeLaw
+
+Parent type of every chain-size distribution: [`Borel`](@ref EpiBranch.Borel),
+[`GammaBorel`](@ref EpiBranch.GammaBorel), [`PoissonGammaChainSize`](@ref
+EpiBranch.PoissonGammaChainSize), [`ChainSizeMixture`](@ref),
+[`IndexChainSize`](@ref), [`TruncatedChainSize`](@ref) and
+[`ThinnedChainSize`](@ref). One `loglikelihood(::ChainSizes, ::ChainSizeLaw)`
+method covers all of them, so `observe(law, obs)` can be passed straight to
+`loglikelihood` for any observation model, built in or user-defined, as long
+as the law it returns subtypes `ChainSizeLaw` and has a `logpdf` method.
+"""
+abstract type ChainSizeLaw <: DiscreteUnivariateDistribution end
+
 # Abstract supertype for clinical-state transitions (defined here so
 # `SimulationState` can hold a typed `transitions` vector without
 # forward-reference issues). Implementations live in

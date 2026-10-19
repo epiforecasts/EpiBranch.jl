@@ -184,6 +184,9 @@ export individual_type, set_isolated!, clear_isolated!
 
 # Exports — distributions
 export NegBin, scale_distribution, incubation_linked_generation_time
+# Parent type of every chain-size law, so a user-defined one gets
+# `loglikelihood(::ChainSizes, ...)` for free by subtyping it.
+export ChainSizeLaw
 # Process-side chain-size distributions (closed forms for offspring specs).
 # Reach `GammaBorel`/`PoissonGammaChainSize` via `chain_size_distribution`;
 # only the standalone `Borel` and the dispatch entry point are exported.

@@ -111,27 +111,17 @@ function loglikelihood(
 end
 
 """
-    loglikelihood(data::ChainSizes, d::IndexChainSize; prob_concluded = nothing)
+    loglikelihood(data::ChainSizes, d::ChainSizeLaw; prob_concluded = nothing)
 
-Log-likelihood of observed chain sizes when the index case has its own
-offspring distribution, as described by an [`IndexChainSize`](@ref).
+Log-likelihood of observed chain sizes under any [`ChainSizeLaw`](@ref), such
+as an [`IndexChainSize`](@ref), a [`TruncatedChainSize`](@ref) (what
+[`observe`](@ref) returns for a [`MinimumSize`](@ref) observation), or a
+[`ThinnedChainSize`](@ref) (what `observe` returns for under-reporting). This
+one method covers every built-in chain-size law and any user-defined one, so
+`loglikelihood(data, observe(law, obs))` works regardless of `obs`.
 """
 function loglikelihood(
-        data::ChainSizes, d::IndexChainSize;
-        prob_concluded::Union{Nothing, AbstractVector{<:Real}} = nothing
-    )
-    return _chain_size_loglik(d, data; prob_concluded)
-end
-
-"""
-    loglikelihood(data::ChainSizes, d::TruncatedChainSize; prob_concluded = nothing)
-
-Log-likelihood of chain sizes recorded only at or above a minimum size, as
-described by a [`TruncatedChainSize`](@ref) (what [`observe`](@ref) returns
-for a [`MinimumSize`](@ref) observation).
-"""
-function loglikelihood(
-        data::ChainSizes, d::TruncatedChainSize;
+        data::ChainSizes, d::ChainSizeLaw;
         prob_concluded::Union{Nothing, AbstractVector{<:Real}} = nothing
     )
     return _chain_size_loglik(d, data; prob_concluded)
