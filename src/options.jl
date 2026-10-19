@@ -93,7 +93,7 @@ it is drawn. The generation-based engine (such as [`BranchingProcess`](@ref))
 instead cuts a branch off from making further contacts once its own infection
 reaches the limit, keeping other branches running while they are still before
 it. Define it alongside `should_stop` for a rule that, like [`MaxTime`](@ref),
-should also get this treatment on those models.
+should end a run the same way on those models.
 """
 time_bound(::AbstractStoppingRule) = Inf
 time_bound(r::MaxTime) = r.t

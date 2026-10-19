@@ -362,9 +362,9 @@ does not clash with the package's default one.
     A rule declaring `time_bound` and `honoured_without_should_stop(rule) =
     true` is applied the same way by the generation-based engine (such as
     [`BranchingProcess`](@ref)): `should_stop` is never called for it there
-    either, and a branch instead stops making further contacts once its own
-    infection reaches the bound, while other branches keep running until none
-    before it remains.
+    either. A branch instead stops making further contacts once its own
+    infection reaches the bound, while other branches keep running until
+    they reach it too.
 
 ## A custom intervention: closing a border
 
