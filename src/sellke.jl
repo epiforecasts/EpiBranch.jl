@@ -1390,7 +1390,8 @@ function _sellke_race!(
             # one armed for them, on the same memoryless schedule, to be
             # reachable again after this episode.
             if introduction !== nothing
-                kernel, close_t = introduction
+                extsrc, close_t = introduction
+                kernel = _ext_survival_for(extsrc, ind.id)
                 nxt = _next_contact(rng, kernel, ind.susceptibility, bt, close_t)
                 nxt <= close_t &&
                     _propose!(queue, proposals, head, best, represents, j, 1, nxt, true)
