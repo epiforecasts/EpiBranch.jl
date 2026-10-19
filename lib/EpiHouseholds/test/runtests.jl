@@ -95,9 +95,25 @@ struct _MaskLessRule <: EpiHouseholds.ConditionOn end
         ) isa
             HouseholdProcess
 
+        # so is a vector with one entry per person, or a function of a person's
+        # number, for a community hazard that differs between people
+        @test HouseholdProcess(
+            [2, 3], Exponential(1.0); external_hazard = [0.01, 0.01, 0.02, 0.02, 0.02]
+        ) isa HouseholdProcess
+        @test HouseholdProcess(
+            [2, 3], Exponential(1.0); external_hazard = j -> j <= 2 ? 0.01 : 0.02
+        ) isa HouseholdProcess
+
         @test_throws ArgumentError HouseholdProcess([0, 2], Exponential(1.0))
         @test_throws ArgumentError HouseholdProcess(
             [2], Exponential(1.0); external_hazard = -1.0
+        )
+        @test_throws ArgumentError HouseholdProcess(
+            [2], Exponential(1.0); external_hazard = [0.01, -0.02]
+        )
+        # a vector must have one entry per person, not per household
+        @test_throws ArgumentError HouseholdProcess(
+            [2, 3], Exponential(1.0); external_hazard = [0.01, 0.02]
         )
     end
 
@@ -500,6 +516,41 @@ struct _MaskLessRule <: EpiHouseholds.ConditionOn end
         ll(s) = pairwise_surv_loglik(Exponential(s), data, layout; external_hazard = 0.05)
         grid = 1.5:0.5:5.0
         @test abs(grid[argmax([ll(s) for s in grid])] - true_scale) <= 1.5
+    end
+
+    @testset "the community hazard can differ by person, as between trial arms" begin
+        # two arms of 100 households each: arm two's community hazard is five
+        # times arm one's, as an unprotected control arm's might be against a
+        # community intervention's indirect effect in arm one
+        n_arm = 100
+        rate1, rate2 = 0.01, 0.05
+        sizes = fill(4, 2n_arm)
+        n_people = sum(sizes)
+        rates = [j <= 4n_arm ? rate1 : rate2 for j in 1:n_people]
+        Tobs = 30.0
+        make(ext) = ModelSpec(
+            HouseholdProcess(sizes, Exponential(3.0); external_hazard = ext, obs_end = Tobs);
+            progression = _sir(6.0)
+        )
+        m = make(rates)
+        state = simulate(m; rng = StableRNG(11))
+        data = household_infections(state, m)
+        @test isfinite(loglikelihood(data, m))
+
+        layout = compile_household_pairs(data; external = true)
+        @test loglikelihood(data, m) ≈
+            pairwise_surv_loglik(Exponential(3.0), data, layout; external_hazard = rates)
+
+        # arm two's higher community hazard shows up as more community cases
+        @test count(data.is_index[(4n_arm + 1):end]) > count(data.is_index[1:(4n_arm)])
+
+        # a function of the person's number reads the same hazard as the vector,
+        # so simulation from either gives the identical outbreak
+        fstate = simulate(make(j -> rates[j]); rng = StableRNG(11))
+        @test isequal(
+            [i.infection_time for i in fstate.individuals],
+            [i.infection_time for i in state.individuals]
+        )
     end
 
     @testset "community introductions stop at obs_end and household spread goes on" begin

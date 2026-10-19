@@ -42,11 +42,14 @@ the states that end the infectious period.
 
 `external_hazard` is infection from the community: a constant rate per person
 per day, or a distribution of the time (in days) at which each person would be
-infected from outside, for a rate that changes over time. These introductions
-happen only in the first `obs_end` days, which must be finite when
-`external_hazard` is used. Without an external hazard, each household starts
-with one index case at day 0, unless `initial_cases` is given, in which case
-only those people are infected at day 0.
+infected from outside, for a rate that changes over time. It can also differ
+by person — a vector with one entry per person, or a function of a person's
+number returning a rate or a distribution — so that, for example, the arms of
+a cluster-randomised trial can be given different community hazards. These
+introductions happen only in the first `obs_end` days, which must be finite
+when `external_hazard` is used. Without an external hazard, each household
+starts with one index case at day 0, unless `initial_cases` is given, in which
+case only those people are infected at day 0.
 
 !!! warning "What isolation means here"
     The only transmission this process represents is *within* a household;
@@ -127,7 +130,20 @@ function HouseholdProcess(
     )
     all(s -> s >= 1, sizes) || throw(ArgumentError("household sizes must be ≥ 1"))
     _valid_external(external_hazard) ||
-        throw(ArgumentError("external_hazard must be a non-negative number or a continuous distribution"))
+        throw(
+        ArgumentError(
+            "external_hazard must be a non-negative number, a continuous " *
+                "distribution, a vector of either (one per person), or a function " *
+                "of a person's number returning one"
+        )
+    )
+    _valid_external_length(external_hazard, sum(sizes)) ||
+        throw(
+        ArgumentError(
+            "external_hazard must have one entry per person ($(sum(sizes))), " *
+                "got $(length(external_hazard))"
+        )
+    )
 
     household_of = Int[]
     members = Vector{Int}[]
