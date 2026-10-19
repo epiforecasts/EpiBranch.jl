@@ -214,7 +214,7 @@ using Dates
         # offspring_route.jl), which already stopped each case's own branch
         # at the limit rather than ending the whole run; this checks that
         # still holds. It is not a regression test for the generation
-        # engine's per-branch fix — see the "MaxTime stops each case's own
+        # engine's per-branch fix: see the "MaxTime stops each case's own
         # branch on the generation engine" testset in
         # test_stopping_rules.jl for that.
         infected = filter(is_infected, state.individuals)

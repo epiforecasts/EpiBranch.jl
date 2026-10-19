@@ -85,7 +85,7 @@ EpiBranch.generate_offspring(m::_OffspringTree, parent, state) = rand(state.rng,
         # offspring_route.jl), which processes cases in time order and so
         # already kept cases before the limit regardless of generation
         # spread; this checks that still holds. It is not a regression test
-        # for the generation engine's per-branch fix — the
+        # for the generation engine's per-branch fix: the
         # "MaxTime stops each case's own branch on the generation engine"
         # testset below covers that.
         gt = Gamma(2.0, 2.5)
