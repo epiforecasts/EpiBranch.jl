@@ -128,6 +128,42 @@ EpiBranch.generate_offspring(m::_OffspringTree, parent, state) = rand(state.rng,
         @test !state.extinct
     end
 
+    @testset "A user-defined time-bounding rule keeps cases before the limit on the generation engine too" begin
+        # The generation engine must give `CustomTimeBoundRule` the same
+        # per-branch treatment as `MaxTime`, since it is written exactly as
+        # the Extending EpiBranch guide's "Stopping rules" section tells a
+        # user to: `should_stop` plus `time_bound` and
+        # `honoured_without_should_stop`. Dispatching on the literal `MaxTime`
+        # type instead of that trait would end the whole run at the first
+        # case past the bound, losing cases infected before it in a later
+        # generation (the same bug `MaxTime` itself was fixed for), which the
+        # per-case count comparison below, as in the `MaxTime` test above,
+        # would catch.
+        model = _OffspringTree(NegBin(1.5, 2.0), Gamma(2.0, 2.5))
+        by_day30(s) = count(i -> is_infected(i) && i.infection_time <= 30, s.individuals)
+        n = 150
+        with_limit = sum(
+            by_day30(
+                simulate(
+                    model;
+                    stopping_rules = [Extinction(), CustomTimeBoundRule(30.0)],
+                    rng = StableRNG(s)
+                )
+            )
+                for s in 1:n
+        ) / n
+        without = sum(
+            by_day30(
+                simulate(
+                    model; stopping_rules = [Extinction(), MaxCases(20_000)],
+                    rng = StableRNG(s)
+                )
+            )
+                for s in 1:n
+        ) / n
+        @test with_limit > 0.7 * without
+    end
+
     @testset "Ergonomic kwargs build rules" begin
         opts = SimOpts(max_cases = 100, max_generations = 5)
         @test any(r isa MaxCases && r.n == 100 for r in opts.stopping_rules)

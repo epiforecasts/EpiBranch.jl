@@ -1233,17 +1233,20 @@ end
 # The rules a run has by default are tested for by type so their calls compile
 # statically; any other rule goes through dispatch as usual. Asked once per
 # generation, so on many small outbreaks a dynamic call here is a visible
-# share of the run. `MaxTime` is handled elsewhere, not here: the time bound
-# for each branch is enforced per case in `collect_exposures` (via
-# `_past_time_bound!`). The run as a whole ends through `Extinction` once no
-# branch before the bound remains active. `should_stop(MaxTime, ...)` (which
-# would end the whole run at the first case past the bound) is never
-# consulted by the generation-based engine.
+# share of the run. A rule bounded by time, such as `MaxTime` or a
+# user-defined one written against `time_bound` and
+# `honoured_without_should_stop` as the Extending EpiBranch guide describes,
+# is handled elsewhere, not here: the time bound for each branch is enforced
+# per case in `collect_exposures` (via `_past_time_bound!`). The run as a
+# whole ends through `Extinction` once no branch before the bound remains
+# active. Calling `should_stop` on such a rule here would end the whole run
+# at the first case past the bound, so it is skipped for any rule caught by
+# the trait check below, whatever its concrete type.
 @inline function _should_stop(rule, state)
     rule isa Extinction && return should_stop(rule, state)
     rule isa MaxCases && return should_stop(rule, state)
     rule isa MaxGenerations && return should_stop(rule, state)
-    rule isa MaxTime && return false
+    honoured_without_should_stop(rule) && time_bound(rule) < Inf && return false
     return should_stop(rule, state)
 end
 
