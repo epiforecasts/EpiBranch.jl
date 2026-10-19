@@ -1184,7 +1184,7 @@ end
         waiting.state[:susceptible_again_time] = 5.0
         race(ind, reinfects) = (;
             processed = [true], pos = Dict(1 => 1),
-            state = (; individuals = Dict(1 => ind)), reinfects
+            state = (; individuals = Dict(1 => ind)), reinfects,
         )
         @test EpiBranch._pending_beyond(m, race(waiting, true))
         @test !EpiBranch._pending_beyond(m, race(waiting, false))
