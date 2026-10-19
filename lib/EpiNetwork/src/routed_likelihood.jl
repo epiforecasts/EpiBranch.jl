@@ -262,6 +262,13 @@ function EpiBranch.pairwise_surv_loglik(
     )
 
     n = length(data)
+    _valid_external_length(external_hazard, n) ||
+        throw(
+        ArgumentError(
+            "external_hazard must have one entry per person ($n), got " *
+                "$(length(external_hazard))"
+        )
+    )
     external = _ext_active(external_hazard)
     tfollow = followup_end(data)
     (!isnan(tfollow) && tfollow >= 0) || throw(
