@@ -31,10 +31,8 @@ function _close_at(ind::Individual{T}, keys) where {T}
     return t
 end
 
-# ── Interventions on the continuous-time (Sellke) models ─────────────
-# These models run their own event loop rather than the generation engine, so
-# the engine's per-generation hook passes never run. Two seams carry an
-# intervention's effect instead. The first is the infectious window: an
+# ── Interventions on the race ────────────────────────────────────────
+# Two seams carry an intervention's effect on transmission. The first is the infectious window: an
 # intervention that removes a case from onward transmission (isolation)
 # shortens it. Each case is settled as the race pops it (`_settle_case!`): its
 # natural history first, then each intervention's `resolve_individual!`, which
@@ -49,9 +47,8 @@ end
 # probability, conditional on the risk having arrived before that transmission's
 # time. On the race, a potential transmission *is* a drawn time: the contact
 # interval from the infector's window opening to the moment it would infect that
-# neighbour. So the risks are resolved against that time, exactly as the
-# generation engine resolves them against a contact's transmission time — but
-# when the candidate is popped rather than when it was proposed, so that a dose
+# neighbour. So the risks are resolved against that time, when the candidate is
+# popped rather than when it was proposed, so that a dose
 # or an isolation that arrived in between is in force (see the loop in
 # `_sellke_race!`).
 #
@@ -89,10 +86,10 @@ end
 # its own. The default `NoContactRecorder` answers no to every pair, so a run
 # with no recorder attached drops the pair exactly as above.
 #
-# It is not what a block means on the generation engine, where a parent draws a
-# fixed set of contacts and a blocked one is a transmission lost with nothing to
-# follow it: an efficacy of 0.5 halves that pair's transmissions there, and here
-# it leaves `1 - exp(-∫h/2)` of them.
+# It is not what a block means for a single exposure, a contact a branching
+# process drew or one a model names through `contacts_of`, which is a
+# transmission lost with nothing to follow it: an efficacy of 0.5 halves those
+# transmissions, and for a kernel pair it leaves `1 - exp(-∫h/2)` of them.
 #
 # Thinning a hazard keeps a pair's contact process in the family the pairwise
 # likelihood is written in, with its hazard scaled, so a susceptibility that is
@@ -567,13 +564,11 @@ function _permanently_blocked(
 end
 
 # Whether the composed risks block `parent` infecting `contact` at the proposed
-# `transmission_time` on a continuous-time model, and whether that block is
-# permanent (see `_permanently_blocked`). On the generation engine a contact's
-# `infection_time` already holds its transmission time when the risks are
-# resolved, and a risk may read the exposure from there. A contact these
-# models propose is still susceptible, so its `infection_time` holds nothing
-# yet: set it to the proposed time for the resolution, and put it back if the
-# contact is blocked, leaving it as it was.
+# `transmission_time`, and whether that block is permanent (see
+# `_permanently_blocked`). A risk may read the exposure from the contact's
+# `infection_time`, but a proposed contact is still susceptible, so it holds
+# nothing yet: set it to the proposed time for the resolution, and put it back
+# if the contact is blocked, leaving it as it was.
 function _proposal_blocked(
         state::SimulationState, parent, contact, transmission_time,
         model_risks, interventions, builtin_blocks = _sellke_builtin_risk_blocks
@@ -683,24 +678,18 @@ supplies_contacts(::TransmissionModel) = false
 # which is also the point at which its contacts are known. Only contacts that
 # are not yet final can be affected: popping a case fixes its infectious window
 # and its onward proposals, so a trace arriving later has nothing left to
-# shorten. The generation engine behaves the same way, tracing a case's contacts
-# and never an earlier generation, so the two paths agree.
+# shorten.
 #
 # Tracing *backwards*, to the case's own (already-final) infector, is
-# `_trace_source!` (shared with the generation engine, in simulation.jl),
-# which `SourceTracing` answers `traces_source` for: the infector's own
+# `_trace_source!` (in simulation.jl), which `SourceTracing` answers `traces_source` for: the infector's own
 # secondary infections are also already final, but its pending proposals are
 # not, and are checked against every intervention's `competing_risk` when they
 # are popped, so quarantining the infector there still blocks what it has not
 # yet gone on to transmit.
 #
 # A ring (`ContactTracing(depth = 2)` and beyond) grows through uninfected
-# contacts too. On the generation engine an intervention asks for that through
-# `keep_active`, which keeps such a contact exposing for one more generation so
-# `trace_contacts!` reaches its own contacts in turn. The race has no
-# generations to keep a node alive for, so it walks the model's own contact
-# structure breadth-first instead, and asks the same hook which contacts the
-# next hop starts from. The depth semantics and the `:_ring_remaining` budget
+# contacts too. The race walks the model's own contact structure breadth-first,
+# and asks `keep_active` which contacts the next hop starts from. The depth semantics and the `:_ring_remaining` budget
 # behind them stay with `ContactTracing`, so a ring of another shape takes part
 # by answering `keep_active` rather than by writing a state key this loop would
 # have to recognise.

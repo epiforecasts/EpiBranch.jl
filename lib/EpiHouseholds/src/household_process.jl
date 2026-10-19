@@ -11,8 +11,7 @@
 # HouseholdProcess is a structure-driven EpiBranch `TransmissionModel`: it shares
 # the natural-history timeline (`progression`/`Transition`), interventions,
 # attributes and observation, and brings its own continuous-time (Sellke)
-# simulator and pairwise likelihood — the part the generation-based engine
-# cannot reproduce exactly for a finite, depleting clique.
+# simulator and pairwise likelihood for a finite, depleting clique.
 
 """
     HouseholdProcess(sizes, kernel; from = nothing, until = (:recovered, :died, :isolated),

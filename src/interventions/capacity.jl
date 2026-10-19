@@ -281,8 +281,7 @@ end
 
 # Tracing records no resource use for the budget to count, so passing it
 # through would let the wrapped intervention act with no budget at all. Opting
-# out leaves the tracing undone; on the generation engine a wrapped intervention
-# without a `capacity_key` fails instead, when its actions are first sought.
+# out leaves the tracing undone.
 traces_contacts(::CapacityConstrained) = false
 trace_contacts!(::CapacityConstrained, state, infector, contacts) = nothing
 

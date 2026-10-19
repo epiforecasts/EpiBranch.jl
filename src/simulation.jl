@@ -132,11 +132,8 @@ retry loop when a `condition` is given; this method itself takes no
 The built-in models run on the continuous-time race and each define a method,
 reading the layers off the arguments and deriving any window state they need
 (the infectious window's `from`, say, via [`infectious_from`](@ref)) from the
-composed `progression`. The default method runs the generation-based engine,
-for a model written against [`generate_offspring`](@ref) or
-[`contacts_of`](@ref). `recorder` is read only by the race; the
-generation-based engine never drops a pair for a standing block, so it has
-nothing to ask one.
+composed `progression`. The default method runs a model written against
+[`contacts_of`](@ref) or [`generate_offspring`](@ref) on the same race.
 """
 function simulate_once(
         model::TransmissionModel, sim_opts::SimOpts;
@@ -225,23 +222,19 @@ function _simulate_n(
     end
 end
 
-# ── Shared helpers for the structure-driven (continuous-time) models ────
-# The homogeneous, household and network `simulate_once` methods run their own
-# Sellke loop rather than the generation engine, so they share one concern:
-# reconciling the aggregate bookkeeping the engine would otherwise maintain. A
-# single-race model gets this from the public `sellke_race!` wrapper; a model
-# with several independent races (a household process, over its households)
-# reconciles once after its own loop instead, directly through
-# `_reconcile_sellke_bookkeeping!` below.
+# ── Shared helpers for the race's models ─────────────────────────────
+# The race writes each case's state directly, so the outbreak's aggregate
+# bookkeeping is reconciled from it afterwards. A single-race model gets this
+# from the public `sellke_race!` wrapper; a model with several independent
+# races (a household process, over its households) reconciles once after its
+# own loop instead, directly through `_reconcile_sellke_bookkeeping!` below.
 
 # Whether a model's simulation honours the `max_cases`/`max_generations`
-# keyword shortcuts' *defaults* out of the box. The generation-based engine
-# does. The structure-driven pools run their own continuous-time race, which
-# polls `should_stop` and the `time_bound`/`generation_bound` traits for
-# whatever `stopping_rules` it is given (see `_sellke_race!`), but leaves
-# these two shortcuts' defaults off (`_drop_default_shortcuts`) so an existing
-# run over a large fixed population keeps running to extinction or `max_time`
-# unless a cap is explicitly asked for. They override this to `false`.
+# keyword shortcuts' *defaults* out of the box: a branching process and a model
+# of its own do. The built-in models over a fixed population leave these two
+# shortcuts' defaults off (`_drop_default_shortcuts`), so a run over a large
+# population keeps running to extinction or `max_time` unless a cap is
+# explicitly asked for. They override this to `false`.
 _honours_termination_controls(::TransmissionModel) = true
 
 # The time at which a structure-driven run ends: the earliest `time_bound`
@@ -316,8 +309,7 @@ end
 Set `cumulative_cases`, `max_infection_time` and `current_generation` (the
 latest generation reached) from the per-individual state a
 continuous-time (Sellke) loop writes directly, and `extinct` to the given
-`extinct`, keeping the returned state consistent with the generation engine's
-bookkeeping. `extinct` is whether the Sellke loop(s) that built `state` ran
+`extinct`. `extinct` is whether the Sellke loop(s) that built `state` ran
 until no candidate infection remained, rather than being cut off at
 `max_time` with candidates still pending.
 """
@@ -877,18 +869,6 @@ function _catch_up!(kept, current)
     return nothing
 end
 
-"""Decide whether a single contact is infected along one edge by
-composing competing risks. Built-in risks (per-individual
-susceptibility, parent infectiousness, population-level susceptibility
-for finite-population models) are applied first; any
-[`competing_risk`](@ref) contributed by an intervention is then applied
-in stack order. A risk whose event has occurred by transmission time blocks
-transmission with its `block_probability`; transmission succeeds iff no
-risk blocks it.
-
-`infected_so_far` counts infections already resolved this generation, so
-population susceptibility shrinks the pool as contacts get infected and
-the cumulative case count cannot overshoot a finite `population_size`."""
 _iter_risks(::Nothing) = ()
 _iter_risks(r::Risk) = (r,)
 _iter_risks(rs) = rs
@@ -932,13 +912,10 @@ end
 
 """Immunity after infection: a person who has been infected cannot be
 infected again until [`susceptible_again_time`](@ref), which is `Inf` (never)
-unless a natural-history step sets it. On the generation engine this matters
-only for a model that exposes an infected person again through its own
-[`contacts_of`](@ref); the continuous-time models (`HomogeneousProcess`,
-`MixingProcess`, `HouseholdProcess`, the network processes) apply it to every
-settled member on their own, once their `progression` can reach
-`:susceptible_again`, with no change needed to how they name contacts. Either
-way, a model allows reinfection by adding a step to its `progression` that
+unless a natural-history step sets it. Every model over a fixed population,
+built in or written against [`contacts_of`](@ref), applies it to every settled
+member once its `progression` can reach `:susceptible_again`, with no change
+needed to how it names contacts. A model allows reinfection by adding a step to its `progression` that
 sets `:susceptible_again_time`; the earlier infection is then kept as a past
 episode (see [`close_episode!`](@ref)) when the person is reinfected."""
 struct HostImmunity end
@@ -994,11 +971,11 @@ function _builtin_risk_blocks(parent, contact, state, transmission_time)
     return false
 end
 
-# The built-in sources the continuous-time models compose. Only two of the six
-# apply there. Two are the generation engine's own and can never apply: an
-# infector on those models has settled and so is infected by construction, and
-# route censoring is the infectious window's job rather than a tag written on a
-# contact. The other two, the per-individual susceptibility and
+# The built-in sources the models over a fixed population compose, where each
+# pair draws its contact times from a kernel. Only two of the six apply there.
+# Two can never apply: an infector has settled and so is infected by
+# construction, and route censoring is the infectious window's job rather than
+# a tag written on a contact. The other two, the per-individual susceptibility and
 # infectiousness, are rate multipliers on those models rather than per-contact
 # blocks: each one scales the hazard a pair meets at (`_traits_scaled_draw`)
 # or the pressure a susceptible absorbs, so resolving them here again would
@@ -1056,17 +1033,17 @@ infectiousness, …) first, then any the model contributes through
 [`transmission_risks`](@ref), then the interventions in stack order. The
 first to block wins.
 
-Both engines resolve a transmission through this one function — the
-generation engine on each contact it created, the continuous-time models on
-each candidate infection time they propose — so an intervention writes one
-[`Risk`](@ref) for both. What that risk does to the epidemic still differs: the
-generation engine blocks a contact and loses it, while on a continuous-time
-model the contact comes round again, as the race redraws the pair's contact
-interval, so blocking a fraction of the contacts thins the hazard by the same
-fraction. `builtin_blocks` is where the two part company, dropping
-four of the five built-in sources on a continuous-time model: two that cannot
-apply there, and the per-individual susceptibility and infectiousness, which
-those models already fold into the contact-interval draw.
+Every model resolves a transmission through this one function, on each
+candidate infection time the race proposes, so an intervention writes one
+[`Risk`](@ref) for all of them. What that risk does to the epidemic still
+differs: a single exposure (a branching-process contact, or one a model names
+through [`contacts_of`](@ref)) is lost when it is blocked, while a pair that
+draws its contacts from a kernel comes round again, as the race redraws its
+contact interval, so blocking a fraction of the contacts thins the hazard by
+the same fraction. `builtin_blocks` is where the two part company, dropping
+four of the built-in sources for a kernel pair: two that cannot apply there,
+and the per-individual susceptibility and infectiousness, which the
+contact-interval draw already folds in.
 Nothing is drawn from the rng unless a risk actually applies."""
 function _composed_risks_block(
         state::SimulationState, parent, contact,

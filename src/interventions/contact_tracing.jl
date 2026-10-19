@@ -818,8 +818,7 @@ traces_contacts(::ContactTracing) = true
 
 """Trace the contacts of `infector`, applying the same eligibility,
 probability, delay and action to each pair. Each contact is traced no earlier
-than its `not_before` time when one is given. Both engines call this once per
-case."""
+than its `not_before` time when one is given. Called once per case."""
 function trace_contacts!(
         ct::ContactTracing, state, infector, contacts, not_before = nothing
     )
@@ -895,9 +894,7 @@ end
 
 # A quarantine that lapses leaves the window open above, and the stretches it
 # removed the case for are blocked per contact here instead. One with no
-# release is blocked here too, from its own start and never released, which is
-# what reduces onward transmission on the generation engine, where there is no
-# window to close.
+# release is blocked here too, from its own start and never released.
 function competing_risk(ct::ContactTracing, parent, contact, state)
     return _trace_competing_risk(ct.action, parent)
 end
@@ -1052,21 +1049,20 @@ function initialise_individual!(::SourceTracing, individual, state)
     return nothing
 end
 
-# `trace_contacts!` below traces backward; the forward ring walk the race and
-# the generation engine build for `traces_contacts` has nothing for
-# `SourceTracing` to do. `traces_source` asks them to call it through a
+# `trace_contacts!` below traces backward; the forward ring walk the race
+# builds for `traces_contacts` has nothing for `SourceTracing` to do. `traces_source` asks them to call it through a
 # second route instead (see `trace_contacts!`'s docstring).
 traces_contacts(::SourceTracing) = false
 traces_source(::SourceTracing) = true
 
-"""Trace `case` back to its own infector, named in `contacts` as both engines
-offer it (see [`traces_source`](@ref EpiBranch.traces_source)): the same
+"""Trace `case` back to its own infector, named in `contacts` as the race
+offers it (see [`traces_source`](@ref EpiBranch.traces_source)): the same
 eligibility, probability, delay and action [`ContactTracing`](@ref) would use
 for a forward trace, applied instead to the single contact offered here."""
 function trace_contacts!(st::SourceTracing, state, case, contacts, not_before = nothing)
     rng = state.rng
     for (i, source) in enumerate(contacts)
-        # Both engines also call every intervention's `trace_contacts!`
+        # The race also calls every intervention's `trace_contacts!`
         # unconditionally in the ordinary *forward* role, with `case`'s real
         # contacts — the one `traces_contacts(::SourceTracing) = false`
         # cannot prevent, since that trait only gates whether the race

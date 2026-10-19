@@ -39,21 +39,15 @@ initialise_individual!(::AbstractIntervention, individual, state) = nothing
 Decide what the intervention does to a case before it transmits, for example
 when it is isolated. Default: does nothing.
 
-Both engines call it once for each infection, as the case is settled: after
-its infection time is fixed and its clinical transitions have run, and before
-it infects anyone. It is never called on an uninfected individual, even a
-contact that `keep_active` keeps in the simulation to generate contacts of
-its own. While it runs,
+The simulation calls it once for each infection, as the case is settled:
+after its infection time is fixed and its clinical transitions have run, and
+before it infects anyone. It is never called on an uninfected individual.
+While it runs,
 `state.max_infection_time` is the case's infection time,
 `state.current_generation` is the case's generation and
 `state.cumulative_cases` counts the case and every case settled before it. A
-[`Scheduled`](@ref) gate is evaluated against these values.
-
-The continuous-time models settle cases in order of infection time. The
-generation engine settles a generation's cases together, once its infections
-are decided. There `state.cumulative_cases` counts the cases of earlier
-generations and those of the case's own generation infected no later than it;
-a case of a later generation is not counted, even one infected earlier.
+[`Scheduled`](@ref) gate is evaluated against these values. Cases are
+settled in order of infection time.
 """
 resolve_individual!(::AbstractIntervention, individual, state) = nothing
 
@@ -63,17 +57,12 @@ resolve_individual!(::AbstractIntervention, individual, state) = nothing
 Act on the `contacts` that `infector` reached and that it can still affect.
 Default: no-op.
 
-Both engines call it once per case, after the case is settled and before any
+The simulation calls it once per case, as the case is settled and before any
 of these contacts is decided infected or not, and before any intervention's
-[`intervention_actions`](@ref) for the same case. While it runs,
-`state.max_infection_time` is the infector's infection time, as in
-[`resolve_individual!`](@ref). The continuous-time models call it as the race
-settles the case, with its neighbours or household members not yet settled.
-The generation engine calls it for each case of the previous generation, with
-the contacts it made in this one. A contact several cases reached is passed to
-each of them. The generation engine also calls it on an uninfected individual
-that [`keep_active`](@ref) kept generating contacts, with the state as the
-generation left it.
+[`intervention_actions`](@ref) for the same case, with the contacts not yet
+settled. While it runs, `state.max_infection_time` is the infector's infection
+time, as in [`resolve_individual!`](@ref). A contact several cases reached is
+passed to each of them.
 
 `not_before[i]`, when given, is the earliest time `contacts[i]` can be sought:
 when that person became a contact of `infector`. A contact met only at a
@@ -91,7 +80,7 @@ are, this method is called on every intervention, so declaring `false` keeps
 the walk from starting but does not keep this method dormant in a stack that
 holds something which does trace.
 
-Both engines also call it a second time per case, for an intervention
+The simulation also calls it a second time per case, for an intervention
 declaring [`traces_source`](@ref EpiBranch.traces_source): once with `infector`
 the case itself and `contacts` its own infector, the single-element collection
 `(source,)`, so a backward-tracing intervention such as [`SourceTracing`](@ref)
@@ -132,7 +121,7 @@ end
     traces_source(intervention) -> Bool
 
 Whether `intervention` traces a case back to its own infector rather than
-forward to the people it infected: both engines then call its
+forward to the people it infected: the simulation then calls its
 [`trace_contacts!`](@ref EpiBranch.trace_contacts!) a second time per case, as
 documented there. Default: `false`, so writing `trace_contacts!` for forward
 tracing (as [`ContactTracing`](@ref) does) never also triggers a backward
@@ -148,8 +137,7 @@ traces_source(::AbstractIntervention) = false
     keep_active(intervention, state, targets, is_new) -> iterable of Int
 
 The ids of the `targets` a case reached that a ring of contact tracing grows
-from, or that should go on generating contacts of their own although they are
-not infected. Default: none.
+from. Default: none.
 
 Every built-in model asks it during tracing, straight after
 [`trace_contacts!`](@ref) for each case or ring member the ring grows from,
@@ -159,19 +147,8 @@ before the person settles (see
 [`reads_settled_state`](@ref EpiBranch.reads_settled_state)). It is not asked
 when no intervention traces.
 
-A model written against [`generate_offspring`](@ref) or
-[`contacts_of`](@ref) asks it instead once per case, right after the case's
-`trace_contacts!` and [`intervention_actions`](@ref), with the same contacts
-and the same state. An intervention still implementing the deprecated
-[`apply_post_transmission!`](@ref) is asked there once per generation, about
-the whole batch, after that hook has run. The contacts it returns stay active
-for one more generation, so their contacts are offered to them through the
-same hooks in turn, and the `InfectiousSource` risk source (a default) stops
-them infecting anyone.
-
-`is_new[i]` flags which of `targets` were freshly created, on a model run one
-generation at a time; every built-in model passes `false` for all of them. A contact returned
-here that turns out to be infected is active as a case anyway."""
+`is_new[i]` is always `false`; it is kept so that methods written against
+the four-argument form still apply."""
 keep_active(::AbstractIntervention, state, targets, is_new) = ()
 
 """Whether an intervention is in effect at this point of the simulation (for
@@ -230,13 +207,11 @@ sees the contact itself. Return `nothing` when `parent === contact` if that is
 not what your risk means, as [`RingVaccination`](@ref)'s onward-transmission
 risk does.
 
-Both engines resolve risks after the infector's [`trace_contacts!`](@ref)
-and [`intervention_actions`](@ref) have run, so a risk can read state that
-other interventions have written on the contact (e.g. `:vaccination_time` set
-by tracing-driven vaccination). The generation engine resolves a generation's
-contacts once every case of the previous generation has been through those
-hooks; the continuous-time models resolve each infection as they propose
-it.
+Risks are resolved after the infector's [`trace_contacts!`](@ref) and
+[`intervention_actions`](@ref) have run, so a risk can read state that other
+interventions have written on the contact (e.g. `:vaccination_time` set by
+tracing-driven vaccination). Each infection is resolved at its own time, once
+every earlier one has been.
 """
 competing_risk(::AbstractIntervention, parent, contact, state) = nothing
 
@@ -305,7 +280,10 @@ acts on infections through a given transmission route. `route` is a
 population. A model with a single route names it `:transmission`. Each
 [`Infectiousness`](@ref) window of a [`BranchingProcess`](@ref) is a route
 named `:transmission`, whose `until` holds the window's own states and
-[`EpiBranch.INTERVENTION_REMOVAL`](@ref); it names no `from`. The default is `true`, so protection such as vaccination
+[`EpiBranch.INTERVENTION_REMOVAL`](@ref); it names no `from`. A model written
+against [`generate_offspring`](@ref) has one such window, and one written
+against [`contacts_of`](@ref) a single `:transmission` route listing
+`INTERVENTION_REMOVAL`. The default is `true`, so protection such as vaccination
 follows a person across routes. [`Scheduled`](@ref) and
 [`CapacityConstrained`](@ref) answer for the intervention they contain.
 
@@ -313,18 +291,14 @@ follows a person across routes. [`Scheduled`](@ref) and
 [`EpiBranch.INTERVENTION_REMOVAL`](@ref) in `until`, and not on infections
 from outside the population. Other interventions may select routes by any
 property of the route. This does not affect protection set by the model
-itself, or a model written against [`generate_offspring`](@ref) or
-[`contacts_of`](@ref), which applies every risk to every contact.
+itself.
 """
 risk_applies(::AbstractIntervention, route) = true
 
 # A removal's duration, drawn or given. A negative or `NaN` one puts the
-# release before its own start, which the generation engine reads as no removal
-# and the continuous-time engines as a permanent one, so it is refused here
-# rather than left to split them. Zero is allowed and means no removal on
-# either engine: the generation engine needs `event_t <= t < release_t` and so
-# blocks nothing, and `infectious_removal_time` reports nothing to close a
-# window with.
+# release before its own start, which would read as a removal that never
+# ends, so it is refused here. Zero is allowed and means no removal:
+# `infectious_removal_time` reports nothing to close a window with.
 function _removal_duration(duration, rng, individual, what)
     d = _sample_value(duration, rng, individual)
     (isnan(d) || d < 0) && throw(

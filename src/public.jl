@@ -160,8 +160,8 @@ public records_contacts
 # the composed interventions remove the case at.
 public INTERVENTION_REMOVAL
 
-# The run seam a model with its own simulation loop defines (a continuous-time
-# race rather than the generation-based engine), and the public wrapper around
+# The run seam a model with its own simulation loop defines, and the public
+# wrapper around
 # its construction: it resolves `max_time` from the run's `SimOpts` and
 # reconciles the aggregate bookkeeping, so a single-race model never touches
 # `_max_time` or `_reconcile_sellke_bookkeeping!` directly.
