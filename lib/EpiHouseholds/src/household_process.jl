@@ -52,6 +52,14 @@ an external hazard, each household starts with one index case at day 0,
 unless `initial_cases` is given, in which case only those people are infected
 at day 0.
 
+A `progression` listing `Transition(:susceptible_again; from = :recovered, delay = …)`
+lets a household member be infected again once their immunity has waned: a
+still-infectious household-mate, or a later community introduction, can reach
+them from [`susceptible_again_time`](@ref) onward, and their earlier infection
+is kept on [`Individual.episodes`](@ref Individual) rather than overwritten
+(see [`close_episode!`](@ref)). Without such a step every member is infected
+at most once, as before.
+
 !!! warning "What isolation means here"
     The only transmission this process represents is *within* a household;
     community infection enters as `external_hazard` introductions, and there is

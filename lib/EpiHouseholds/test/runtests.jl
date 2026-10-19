@@ -1220,6 +1220,7 @@ struct _MaskLessRule <: EpiHouseholds.ConditionOn end
 end
 
 include("test_likelihood_composition.jl")
+include("test_reinfection.jl")
 include("test_initial_cases.jl")
 include("test_actions.jl")
 include("test_vaccine_mode.jl")

@@ -987,6 +987,48 @@
             @test isfinite(ll)
         end
 
+        @testset "n_initial raises the single-seed CDF to its power" begin
+            # A cluster with n_initial independent seeds has the length of
+            # the longest of n_initial single-seed chains, so each seed
+            # must independently have no offspring for the cluster's length
+            # to be 0: P(length = 0) = exp(−λ)^n_initial.
+            λ = 0.8
+            ll1 = loglikelihood(ChainLengths([0]), Poisson(λ); n_initial = 1)
+            ll2 = loglikelihood(ChainLengths([0]), Poisson(λ); n_initial = 2)
+            @test ll1 ≈ -λ atol = 1.0e-12
+            @test ll2 ≈ -2λ atol = 1.0e-12
+
+            # The analytical path through a model honours n_initial too.
+            bp = BranchingProcess(Poisson(λ))
+            @test loglikelihood(ChainLengths([0]), bp; n_initial = 1) ≈ ll1
+            @test loglikelihood(ChainLengths([0]), bp; n_initial = 2) ≈ ll2
+
+            # Still a normalised distribution over lengths for n_initial > 1.
+            # Cubing the CDF thickens the tail relative to a single seed, so
+            # the cutoff must extend further than it does for n_initial = 1.
+            probs = [
+                exp(loglikelihood(ChainLengths([n]), Poisson(λ); n_initial = 3))
+                    for n in 0:100
+            ]
+            @test all(≥(0), probs)
+            @test sum(probs) ≈ 1.0 atol = 1.0e-6
+        end
+
+        @testset "Non-positive n_initial throws" begin
+            @test_throws ArgumentError loglikelihood(
+                ChainLengths([0]), Poisson(0.8); n_initial = 0
+            )
+            @test_throws ArgumentError loglikelihood(
+                ChainLengths([0]), NegBin(0.8, 0.5); n_initial = -1
+            )
+
+            # Regression: dispatching through a model must still throw here,
+            # rather than falling back to simulation and swallowing the error.
+            @test_throws ArgumentError loglikelihood(
+                ChainLengths([0]), BranchingProcess(Poisson(0.8)); n_initial = 0
+            )
+        end
+
         @testset "Supercritical throws" begin
             @test_throws ArgumentError loglikelihood(ChainLengths([1, 2]), Poisson(1.5))
             @test_throws ArgumentError loglikelihood(ChainLengths([1, 2]), NegBin(1.5, 0.5))
@@ -1233,6 +1275,33 @@
                 data, model; n_sim = 1, stopping_rules = [Extinction()], rng = StableRNG(1)
             )
             @test ll_default == ll_uncapped
+        end
+
+        @testset "n_initial combines seeds into the longest chain (regression for issue #532)" begin
+            # Interventions force the simulation path. Each simulated outbreak
+            # must contribute one cluster length — the longest of its
+            # n_initial seeded chains — rather than each seed's own chain
+            # length as a separate observation, which would leave the sim
+            # path matching the single-seed length distribution regardless
+            # of n_initial.
+            iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = 7.0)
+            spec = ModelSpec(
+                BranchingProcess(Poisson(0.5), Exponential(5.0));
+                interventions = [iso],
+                attributes = clinical_presentation(
+                    incubation_period = LogNormal(1.0, 0.3)
+                )
+            )
+            data = ChainLengths([5])
+            ll_one = loglikelihood(
+                data, spec; n_initial = 1, max_cases = 500, n_sim = 20_000, rng = StableRNG(1)
+            )
+            ll_many = loglikelihood(
+                data, spec; n_initial = 5, max_cases = 500, n_sim = 20_000, rng = StableRNG(1)
+            )
+            @test isfinite(ll_one)
+            @test isfinite(ll_many)
+            @test ll_many > ll_one
         end
     end
 

@@ -1,3 +1,5 @@
+using Random
+
 # A leaky vaccine written from outside the package: the whole population is
 # dosed at `from_time`, and every exposure from then on is blocked with
 # probability `efficacy`. The entire intervention is one competing risk, which
@@ -1170,6 +1172,28 @@ end
         @test is_extinct(si_all)
     end
 
+    @testset "a cut group still reinfectable is not reported extinct" begin
+        # A cut group whose sole member has already settled is waiting on
+        # their own `susceptible_again_time`, not on susceptibility (which
+        # stays > 0 throughout), so it is still reachable once the
+        # progression reinfects and their draw gave them a finite wait.
+        m = EpiBranch._MassAction(
+            [[1]], Dict(1 => 1), reshape([1.0], 1, 1), [1.0], reshape([true], 1, 1)
+        )
+        waiting = Individual(; id = 1)
+        waiting.state[:susceptible_again_time] = 5.0
+        race(ind, reinfects) = (;
+            processed = [true], pos = Dict(1 => 1),
+            state = (; individuals = Dict(1 => ind)), reinfects,
+        )
+        @test EpiBranch._pending_beyond(m, race(waiting, true))
+        @test !EpiBranch._pending_beyond(m, race(waiting, false))
+        # A settled member whose own draw never let them wane stays immune
+        # for good (`susceptible_again_time == Inf`), so they are not
+        # pending even though the progression reinfects in general.
+        @test !EpiBranch._pending_beyond(m, race(Individual(; id = 1), true))
+    end
+
     @testset "termination controls on the fixed pool" begin
         prog = [Transition(:recovered; from = :infection, delay = 1.0, terminal = true)]
         spec = ModelSpec(
@@ -1269,5 +1293,17 @@ end
             until = (:recovered, :died, :isolated, :lost)
         )
         @test_logs ModelSpec(covered_lost; progression = lost)
+    end
+
+    @testset "A settled member is offered again once immunity has waned" begin
+        model = ModelSpec(
+            HomogeneousProcess(; transmission_rate = 5.0, population_size = 30);
+            progression = [
+                Transition(:recovered; from = :infection, delay = 1.0),
+                Transition(:susceptible_again; from = :recovered, delay = 0.5),
+            ]
+        )
+        state = simulate(model; n_initial = 1, max_time = 50.0, rng = MersenneTwister(1))
+        @test any(ind -> !isempty(ind.episodes), state.individuals)
     end
 end

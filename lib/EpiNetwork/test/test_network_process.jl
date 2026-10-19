@@ -35,6 +35,16 @@ function EpiBranch.resolve_individual!(::_FlagHosts, ind, state)
     return nothing
 end
 
+# Sets one individual's own `:mode` at the start, which only a route whose
+# kernel declares it should follow.
+struct _SetMode <: EpiBranch.AbstractIntervention
+    id::Int
+end
+function EpiBranch.initialise_individual!(n::_SetMode, individual, state)
+    individual.id == n.id && (individual.state[:mode] = 1)
+    return nothing
+end
+
 # Number of infected nodes in a finished simulation.
 n_infected(state) = count(is_infected, state.individuals)
 
@@ -1051,6 +1061,33 @@ end
         routes = [get(i.state, :infection_route, nothing) for i in reached.individuals]
         @test :moving in routes
         @test :quiet in routes
+    end
+
+    @testset "RoutedNetwork: a pair reachable on two routes draws apart under CommonRandomNumbers" begin
+        # Both routes connect the same pair, but only the first route's kernel
+        # reads a record a scenario might move. Under common random numbers,
+        # the second route's draw for that pair must stay put whatever the
+        # first route's draw does, or the two routes are not apart.
+        moved = PairKernel(
+            (c, a, b) -> a.mode == 0 ? Dirac(1000.0) : Exponential(1000.0);
+            state = ind -> (mode = get(ind.state, :mode, 0)::Int,), watches = (:mode,)
+        )
+        steady = Exponential(0.5)
+        two_routes(ivs) = ModelSpec(
+            RoutedNetwork(
+                [
+                    RouteWindow(:moved; until = (:recovered,), kernel = moved, reach = [[2], [1]]),
+                    RouteWindow(:steady; until = (:recovered,), kernel = steady, reach = [[2], [1]]),
+                ]
+            );
+            progression = _sir(5.0), interventions = ivs
+        )
+        infection_time(ivs) = simulate(
+            two_routes(ivs); initial_cases = [1], rng = CommonRandomNumbers(11)
+        ).individuals[2].infection_time
+        baseline = infection_time(AbstractIntervention[])
+        scenario = infection_time([_SetMode(1)])
+        @test baseline == scenario
     end
 
     @testset "RoutedNetwork: a route's infectiousness start does not delay tracing" begin
