@@ -424,6 +424,12 @@ quarantined until the end of their infectious period. A finite duration
 matters for a contact who escapes the traced exposure and is infected later
 through another route: that person transmits normally once the quarantine
 ends.
+
+`ind.state[:trace_time]` is already set by the time `duration` is called, so a
+rule phrased as an end day counted from exposure, such as "until 14 days after
+exposure", can subtract the trace time from that day to get a duration, and a
+rule that ends quarantine at symptom onset can compare it against
+[`onset_time`](@ref)`(ind)`.
 """
 struct Quarantine{D} <: TraceAction
     duration::D
@@ -775,17 +781,19 @@ function _trace_pair!(ct::ContactTracing, state, infector, ind, rng; not_before 
     # A contact cannot be sought before it exists, such as a funeral contact
     # before the funeral, so the delay runs from whichever comes later.
     trace_time = max(base, not_before) + trace_delay
+
+    # When the contact was reached, recorded before the action runs so that an
+    # action reading the contact's own state, such as a `Quarantine` `duration`
+    # function, can see it. Interventions that act on a traced contact time
+    # themselves from this, which is the same whatever the trace action and
+    # the contact's own clinical course.
+    _record_trace_time!(ind, trace_time)
     apply_trace!(ct.action, ind, state, trace_time, rng)
 
     # Record the source this contact was traced from: the latest case whose
     # trace reached it, which on a tree is its parent. `compute_trace_level!`
     # walks it back to the index case post-run.
     ind.state[:traced_by] = infector.id
-
-    # When the contact was reached. Interventions that act on a traced
-    # contact time themselves from this, which is the same whatever the
-    # trace action and the contact's own clinical course.
-    _record_trace_time!(ind, trace_time)
 
     # Record how far the ring can still grow from this contact, so a
     # contact-of-contact one hop further out can time its own trace from
@@ -1069,13 +1077,16 @@ function trace_contacts!(st::SourceTracing, state, case, contacts, not_before = 
         base = trigger_time(st.eligibility, case, source, state)
         nb = not_before === nothing ? -Inf : not_before[i]
         trace_time = max(base, nb) + trace_delay
+        # Recorded before the action runs, as `ContactTracing` does, so that
+        # an action reading the contact's own state, such as a `Quarantine`
+        # `duration` function, can see it.
+        _record_trace_time!(source, trace_time)
         apply_trace!(st.action, source, state, trace_time, rng)
         # The reverse of `ContactTracing`'s `:traced_by`: `source` was found
         # through `case`, a later-infected node, so it is kept under its own
         # key rather than break `compute_trace_level!`'s invariant that
         # `:traced_by` always points to an earlier one.
         source.state[:source_traced_by] = case.id
-        _record_trace_time!(source, trace_time)
     end
     return nothing
 end
