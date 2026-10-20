@@ -416,6 +416,46 @@ end
         @test ForwardDiff.gradient(f, x) ≈ fd rtol = 1.0e-5
     end
 
+    @testset "differentiable in the external hazard under a susceptibility effect" begin
+        # A vaccinated host's term goes through `_routed_mixture_loglik`, whose
+        # `T` must cover the external hazard's own parameter type as well as
+        # the mixture's, or its `T(-Inf)`/`T(l)` conversions throw once the
+        # external hazard is a `Dual` from being differentiated.
+        hh, comm = _routed_adjacency(30, 4)
+        REM = EpiBranch.INTERVENTION_REMOVAL
+        ws = [
+            RouteWindow(:household; until = (:recovered,), kernel = Exponential(3.0), reach = hh),
+            RouteWindow(
+                :community; until = (:recovered, REM),
+                kernel = Exponential(10.0), reach = comm
+            ),
+        ]
+        ct = ContactTracing(OnSymptomOnset(), 1.0, Dirac(0.0), FlagOnly())
+        clinical = clinical_presentation(incubation_period = Dirac(0.0))
+        iso = Isolation(
+            onset_to_isolation_delay = Exponential(1.5),
+            test_sensitivity = 1.0, duration = 7.0
+        )
+        rv = RingVaccination(efficacy = 0.5, mode = LeakyMode())
+        m = ModelSpec(
+            RoutedNetwork(ws; external_hazard = 0.02, obs_end = 20.0);
+            progression = _sir(10.0), attributes = clinical, interventions = [ct, rv, iso]
+        )
+        state = simulate(m; n_initial = 5, rng = StableRNG(10))
+        data = routed_network_infections(state, m)
+        @test any(!ismissing, data.host_times.immunity_time)
+
+        f(θ) = pairwise_surv_loglik(
+            ws, data;
+            susceptibility = EpiBranch.vaccine_effect(rv), external_hazard = exp(θ[1])
+        )
+        x = [log(0.02)]
+        @test isfinite(f(x))
+        h = 1.0e-6
+        fd = (f(x .+ h) - f(x .- h)) / 2h
+        @test ForwardDiff.gradient(f, x) ≈ [fd] rtol = 1.0e-5
+    end
+
     @testset "a structurally infeasible host has a zero gradient, not just -Inf" begin
         # host 1 infects host 2 on the only route, but closes before host 2's
         # infection time. Host 2's survival term then accumulates hazard

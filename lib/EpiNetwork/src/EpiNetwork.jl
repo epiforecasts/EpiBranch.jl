@@ -20,7 +20,7 @@ import EpiBranch: population_size, new_state, add_individuals!, apply_observatio
 # well, and agree on when that term applies and what it is.
 import EpiBranch: _infection_layer_columns, _infection_layer_fields,
     _layer_host_times, _ext_active, _ext_survival_of, _ext_prepare,
-    _ext_draw, _check_external, _normalise_external
+    _ext_draw, _ext_partype, _check_external, _normalise_external
 # The routed likelihood leaves each route's removal to the same lapsing-stretch
 # record the single-route likelihood reads, gated per route, and evaluates a
 # susceptibility effect over every route and the external hazard the same way

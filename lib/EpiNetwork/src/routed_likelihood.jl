@@ -399,7 +399,8 @@ function EpiBranch.pairwise_surv_loglik(
                 for r in 1:n_routes
         )...
     )
-    T = promote_type(Float64, Twindows, _mixtures_partype(mixtures))
+    Text = external ? _ext_partype(extsrc, n) : Union{}
+    T = promote_type(Float64, Twindows, _mixtures_partype(mixtures), Text)
 
     ll = zero(T)
     for j in 1:n
