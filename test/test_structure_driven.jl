@@ -387,4 +387,14 @@ EpiBranch.contacts_of(::MintEarly, parent, state::EpiBranch.SimulationState) =
     end
     # Some uninfected ring members had their contacts named early.
     @test early > 0
+    # A case at the generation bound has no contacts, as without the opt-in.
+    for seed in 1:20
+        s = simulate(
+            ModelSpec(MintEarly(); interventions = [iso, ct], attributes);
+            n_initial = 1, rng = StableRNG(seed), max_generations = 3
+        )
+        for ind in s.individuals
+            ind.generation >= 3 && @test isempty(ind.secondary_case_ids)
+        end
+    end
 end

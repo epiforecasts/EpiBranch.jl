@@ -128,15 +128,20 @@ function _case_contacts(
         named === nothing || return named
         race.processed[id] && return ()
         ind = state.individuals[id]
+        # A person at the generation bound exposes nobody, so the model is not
+        # asked to create anyone for them.
+        ind.generation >= max_generation && return ()
         infection_time = ind.infection_time
         ind.infection_time = zero(infection_time)
         exposures = [(target.id, t) for (target, t) in contacts_of(c.model, ind, state)]
         ind.infection_time = infection_time
         _grow!(race.members, race)
+        # Only `ind` can infect someone the model created for it.
         for (cid, _) in exposures
             contact = state.individuals[cid]
-            _created_by(contact, ind) &&
-                (contact.infection_time = oftype(contact.infection_time, NaN))
+            _created_by(contact, ind) || continue
+            contact.infection_time = oftype(contact.infection_time, NaN)
+            contact.generation = ind.generation + 1
         end
         c.early[id] = exposures
         named = c.reached[id] = Int[cid for (cid, _) in exposures]
