@@ -881,6 +881,13 @@ function _walk_ring!(
             push!(not_before, t0)
         end
         isempty(pending) && continue
+        # `src` is the walk's own root only on the first pop; every later one
+        # reached the frontier through `keep_active`, so an infected `src`
+        # here is a ring member passed through, not a fresh case settling on
+        # its own account. `_trace_pair!` and `trace_contacts!` read this to
+        # keep such a `src` on the propagate path rather than reseeding.
+        hopped = src !== infector
+        hopped && (src.state[:_ring_hop] = true)
         for iv in interventions
             if timed
                 trace_contacts!(iv, state, src, pending, not_before)
@@ -888,6 +895,7 @@ function _walk_ring!(
                 trace_contacts!(iv, state, src, pending)
             end
         end
+        hopped && delete!(src.state, :_ring_hop)
         for ind in pending
             push!(visited, ind.id)
         end
