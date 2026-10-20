@@ -417,27 +417,9 @@ EpiBranch.records_contacts(::AlwaysRecord, parent, contact, state, t) = true
         # with no contacts supplied there is nothing to trace along
         @test infected(race([iso, ct])) == [true, true, true]
 
-        # Ring vaccination needs a model that names each case's contacts.
+        # A homogeneous model names no contacts for tracing to walk.
         nameless = HomogeneousProcess(transmission_rate = 1.0, population_size = 10)
         @test !EpiBranch.supplies_contacts(nameless)
-        @test !EpiBranch._sellke_honours(nameless, RingVaccination(efficacy = 0.9))
-        # Mass vaccination declares `acts_on_population`, so it reaches
-        # everybody before the race starts, with no contacts at all.
-        @test EpiBranch._sellke_honours(
-            nameless,
-            MassVaccination(efficacy = 0.9, eligibility_time = 0.0)
-        )
-        # Group vaccination declares `needs_contacts = false`, finding a
-        # case's group through its `group_key` rather than a contact.
-        @test EpiBranch._sellke_honours(nameless, GroupVaccination(efficacy = 0.9))
-        # A leaky isolation is a per-contact block, and the race now resolves it.
-        @test EpiBranch._sellke_honours(
-            nameless,
-            Isolation(
-                onset_to_isolation_delay = Dirac(1.0),
-                post_isolation_transmission = 0.5, duration = Inf
-            )
-        )
     end
 
     @testset "a per-contact risk thins the pair's hazard" begin

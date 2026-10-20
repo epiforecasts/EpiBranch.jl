@@ -54,10 +54,6 @@ end
 _effect_hooks() = (
     (initialise_individual!, 3, "initialise_individual!(intervention, individual, state)"),
     (resolve_individual!, 3, "resolve_individual!(intervention, individual, state)"),
-    (
-        apply_post_transmission!, 3,
-        "apply_post_transmission!(intervention, state, new_contacts)",
-    ),
     (competing_risk, 4, "competing_risk(intervention, parent, contact, state)"),
     (trace_contacts!, 4, "trace_contacts!(intervention, state, infector, contacts)"),
     (
@@ -269,8 +265,7 @@ end
 # engine will never call: one written at an arity no call uses, or one added
 # without the `EpiBranch.` prefix and so belonging to a new function of the
 # same name. Either way the hook reads correctly and the package's own default
-# runs: a no-op for most of them, an error for `analytic_offspring_effect`,
-# and the deprecated batch path for `apply_post_transmission!`.
+# runs: a no-op for most of them, and an error for `analytic_offspring_effect`.
 # Returns how many it found, so the caller can tell a diagnosis from silence.
 function _warn_hook_mistakes(T::Type)
     found = 0
@@ -474,7 +469,7 @@ function simulate(
         condition::Union{UnitRange{Int}, Nothing} = nothing,
         max_attempts::Int = 10_000
     )
-    _warn_unhonoured_interventions(spec.process, spec.interventions)
+    _warn_contactless(spec.process, spec.interventions)
     sim_opts = _build_sim_opts(
         spec.process, n_initial, initial_cases, max_cases, max_generations,
         max_time, stopping_rules
@@ -502,7 +497,7 @@ function _simulate_each(
         rng::AbstractRNG = Random.default_rng(),
         parallel::Bool = false
     ) where {T}
-    _warn_unhonoured_interventions(spec.process, spec.interventions)
+    _warn_contactless(spec.process, spec.interventions)
     sim_opts = _build_sim_opts(
         spec.process, n_initial, initial_cases, max_cases, max_generations,
         max_time, stopping_rules
