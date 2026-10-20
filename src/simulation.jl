@@ -23,13 +23,12 @@ days throughout.
   index cases, if there are more of them), leaves out any infection after
   `max_time`, and draws no contacts for a case at generation
   `max_generations`. The last cases of a run stopped by `max_cases` or
-  `max_time` have not made all their contacts, so
-  per-case quantities such as offspring counts or realised generation
-  intervals are right-truncated; `max_generations` alone leaves every case
-  below the bound complete. On a branching process, a contact whose infection was
-  still to be decided when the run stopped is left out, unless tracing or an
-  intervention's actions had already reached it; it is then kept with no
-  infection time.
+  `max_time` have not made all their contacts, so per-case quantities such as
+  offspring counts or realised generation intervals are right-truncated;
+  `max_generations` alone leaves every case below the bound complete. On a
+  branching process, a contact whose infection was still to be decided when
+  the run stopped is left out, unless tracing or an intervention's actions
+  had already reached it; it is then kept with no infection time.
 - `stopping_rules`: a vector of [`AbstractStoppingRule`](@ref)s for finer
   control over when the run ends. When given, `max_cases`,
   `max_generations` and `max_time` are ignored.
@@ -744,9 +743,10 @@ for every contact drawn from a branching process's offspring distribution, or
 from [`generate_offspring`](@ref) in a model that defines it. A model that
 creates new people inside its [`contacts_of`](@ref) calls it directly,
 returning each contact with its infection time. A model whose contacts are
-all new and share one generation time is simpler written as `generate_offspring`; `contacts_of` earns its
-keep where the model times each contact itself, as here, where every route
-out of a case has its own delay:
+all new and share one generation time is simpler written as
+`generate_offspring`; `contacts_of` earns its keep where the model times
+each contact itself, as here, where every route out of a case has its own
+delay:
 
 ```julia
 function EpiBranch.contacts_of(m::MyModel, parent, state::SimulationState)
@@ -929,9 +929,10 @@ infected again until [`susceptible_again_time`](@ref), which is `Inf` (never)
 unless a natural-history step sets it. Every model over a fixed population,
 built in or written against [`contacts_of`](@ref), applies it to every settled
 member once its `progression` can reach `:susceptible_again`, with no change
-needed to how it names contacts. A model allows reinfection by adding a step to its `progression` that
-sets `:susceptible_again_time`; the earlier infection is then kept as a past
-episode (see [`close_episode!`](@ref)) when the person is reinfected."""
+needed to how it names contacts. A model allows reinfection by adding a step
+to its `progression` that sets `:susceptible_again_time`; the earlier
+infection is then kept as a past episode (see [`close_episode!`](@ref)) when
+the person is reinfected."""
 struct HostImmunity end
 function competing_risk(::HostImmunity, parent, contact, state)
     is_infected(contact) || return nothing
