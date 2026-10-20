@@ -136,18 +136,13 @@ function EpiBranch._validate_initial_cases(model::HouseholdProcess, opts::SimOpt
     return EpiBranch._validate_initial_case_ids(opts, length(model.household_of))
 end
 
-# The race's `members` span every household, so each household is seeded as its
-# own clique rather than drawing one index case across the population. `best` and
-# `members` are grouped by household, using position within the race rather
-# than global id, before `_seed_clique!` sees them.
+# The race's `members` are every person in id order, so a household's ids are
+# also its positions in `best`. Each household is seeded as its own clique, in
+# household order, rather than drawing one index case across the population.
 function _seed_household_race!(best, members, model, state, Tobs, rng, initial_cases)
-    households = Dict{Int, Vector{Int}}()
-    for k in eachindex(members)
-        push!(get!(() -> Int[], households, model.household_of[members[k]]), k)
-    end
-    for idxs in values(households)
+    for hh in model.members
         _seed_clique!(
-            view(best, idxs), view(members, idxs), state, model.external_hazard, Tobs,
+            view(best, hh), view(members, hh), state, model.external_hazard, Tobs,
             rng; initial_cases
         )
     end

@@ -88,3 +88,15 @@ end
         end
     end
 end
+
+@testset "Households are seeded in household order" begin
+    # Each household's index case is the next draw from the stream, taken in
+    # household order, so a seed gives the same outbreak on every Julia version.
+    state = simulate(HouseholdProcess(fill(3, 20), Exponential(2.0)); rng = StableRNG(3))
+    index = [
+        findfirst(i -> get(i.state, :index, false), state.individuals[(3h - 2):3h])
+            for h in 1:20
+    ]
+    rng = StableRNG(3)
+    @test index == [rand(rng, 1:3) for _ in 1:20]
+end

@@ -180,10 +180,10 @@ struct _MaskLessRule <: EpiHouseholds.ConditionOn end
         )
         @test [ind.infection_time for ind in st.individuals] ≈
             [
-            1.2332841100671945, 1.5775672740571718, 0.0, 1.9586646650106947, 0.0,
-            0.9392894514788435, 0.8046109695374931,
+            1.2332841100671945, 0.0, 1.5775672740571718, 1.9586646650106947,
+            0.9392894514788435, 0.0, 0.8046109695374931,
         ]
-        @test [ind.parent_id for ind in st.individuals] == [3, 3, 0, 5, 0, 5, 5]
+        @test [ind.parent_id for ind in st.individuals] == [2, 0, 2, 6, 6, 0, 6]
     end
 
     @testset "no within-household spread when the kernel is far out of the period" begin
