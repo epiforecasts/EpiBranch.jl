@@ -945,7 +945,7 @@ reads_population_state(::TraceDelay) = false
 reads_population_state(::TraceAction) = false
 
 """With `depth > 1`, the traced contacts the ring grows onward from: those not
-infected with ring budget left. Returns none for `depth == 1`."""
+yet infected that have ring budget left. Returns none for `depth == 1`."""
 function keep_active(ct::ContactTracing, state, targets, is_new)
     ct.depth > 1 || return ()
     ids = Int[]
