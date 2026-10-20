@@ -14,7 +14,7 @@ sizes add up to less than 1; the missing probability is that of a major
 outbreak. The formula stays valid for each `n`, which lets chain-size
 probabilities be averaged over values of `μ` either side of 1.
 """
-struct Borel{T <: Real} <: DiscreteUnivariateDistribution
+struct Borel{T <: Real} <: ChainSizeLaw
     μ::T
 
     function Borel(μ::Real)
@@ -102,7 +102,7 @@ is large enough to swamp `R` in floating point, `mean(NegativeBinomial)` rounds
 to exactly zero, and the fit must still get a distribution back rather than an
 error.
 """
-struct GammaBorel{T <: Real} <: DiscreteUnivariateDistribution
+struct GammaBorel{T <: Real} <: ChainSizeLaw
     k::T
     R::T
 
@@ -191,7 +191,7 @@ This differs from `GammaBorel`, where each case has its own reproduction
 number (negative binomial offspring). [`chain_size_distribution`](@ref)
 returns it for `ClusterMixed(Poisson, Gamma(...))`.
 """
-struct PoissonGammaChainSize{T <: Real} <: DiscreteUnivariateDistribution
+struct PoissonGammaChainSize{T <: Real} <: ChainSizeLaw
     k::T
     R::T
 
@@ -415,7 +415,7 @@ loglikelihood(ChainSizes([1, 2, 5, 1]), d)
 ```
 """
 struct IndexChainSize{J <: DiscreteUnivariateDistribution, S <: DiscreteUnivariateDistribution} <:
-    DiscreteUnivariateDistribution
+    ChainSizeLaw
     index_offspring::J
     dist::S
 
@@ -491,7 +491,7 @@ and zero below `min_size`. [`observe`](@ref) builds it from a
 conditioned using their own number of index cases.
 """
 struct TruncatedChainSize{D <: DiscreteUnivariateDistribution} <:
-    DiscreteUnivariateDistribution
+    ChainSizeLaw
     base::D
     min_size::Int
 end

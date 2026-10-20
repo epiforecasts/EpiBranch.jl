@@ -375,8 +375,8 @@ EpiBranch.records_contacts(::AlwaysRecord, parent, contact, state, t) = true
         # with no contacts supplied there is nothing to trace along
         @test infected(race([iso, ct])) == [true, true, true]
 
-        # Ring vaccination still requires generation-based contacts.
-        nameless = BranchingProcess(Poisson(1.0), Exponential(1.0))
+        # Ring vaccination needs a model that names each case's contacts.
+        nameless = HomogeneousProcess(transmission_rate = 1.0, population_size = 10)
         @test !EpiBranch.supplies_contacts(nameless)
         @test !EpiBranch._sellke_honours(nameless, RingVaccination(efficacy = 0.9))
         # Mass vaccination declares `acts_on_population`, so it reaches
@@ -1022,4 +1022,141 @@ end
     # A seed range in which the pair is never both blocked and later infected
     # would pass vacuously; this confirms that case was actually exercised.
     @test exercised > 0
+end
+@testset "Absent and empty kernel watches preserve the race stream" begin
+    function fixed_race(seed; declarations...)
+        rng = StableRNG(seed)
+        progression = [
+            Transition(:recovered; from = :infection, delay = 5.0, terminal = true),
+        ]
+        state = EpiBranch.new_state(
+            BranchingProcess(Poisson(0.0)), progression, NoAttributes(), rng
+        )
+        EpiBranch.add_individuals!(state, 20, ())
+        targets = (i, st) -> (
+            (j, Exponential(3.0)) for j in 1:20 if j != i && !is_infected(st.individuals[j])
+        )
+        extinct = EpiBranch._sellke_race!(
+            state, collect(1:20), rng; targets, from = :infection,
+            until = (:recovered,), seed! = (best, _, _) -> (best[1] = 0.0),
+            contacts = (i, st) -> [j for j in 1:20 if j != i],
+            declarations...
+        )
+        # Finishing an empty action pass still finalises accepted infections.
+        @test all(i -> !is_infected(i) || EpiBranch.is_settled(state, i), state.individuals)
+        return (
+            extinct,
+            [
+                (i.parent_id, i.infection_time, i.generation, Dict(i.state))
+                    for i in state.individuals
+            ],
+            rand(rng, UInt64),
+        )
+    end
+    for seed in 1:10
+        absent = fixed_race(seed)
+        @test isequal(absent, fixed_race(seed; watches = ((),), projections = (nothing,)))
+        @test isequal(absent, fixed_race(seed; watches = ((),)))
+        @test isequal(absent, fixed_race(seed; projections = (nothing,)))
+    end
+    @test_throws ArgumentError fixed_race(1; watches = ())
+    @test_throws ArgumentError fixed_race(1; projections = ())
+end
+
+@testset "Offspring history survives scheduling-buffer reuse" begin
+    function offspring_history(state)
+        return (
+            state.cumulative_cases, state.current_generation,
+            state.max_infection_time, state.extinct,
+            [
+                (
+                    i.id, i.parent_id, i.generation, i.chain_id, i.infection_time,
+                    copy(i.secondary_case_ids), Dict(i.state),
+                ) for i in state.individuals
+            ],
+        )
+    end
+    model = ModelSpec(
+        BranchingProcess(
+            (
+                Infectiousness(Poisson(1.4); kernel = Exponential(0.5), until = (:recovered,)),
+                Infectiousness(Poisson(0.5); kernel = Exponential(3.0)),
+            ); population_size = 200
+        );
+        attributes = clinical_presentation(incubation_period = Exponential(1.0)),
+        progression = [Transition(:recovered; delay = 2.0, terminal = true)],
+        interventions = [
+            Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf),
+            ContactTracing(
+                probability = 0.8, isolation_to_trace_delay = Exponential(1.0),
+                action = Quarantine(duration = Inf)
+            ),
+        ]
+    )
+    for seed in 1:6, limits in (
+                (; max_cases = 60), (; max_cases = 60, max_time = 3.0),
+                (; max_cases = 60, max_generations = 4),
+            )
+        rng = StableRNG(seed)
+        state = simulate(model; rng, limits...)
+        expected = offspring_history(state)
+        next_draw = rand(rng, UInt64)
+        # A larger run overwrites recycled scheduling storage while the earlier
+        # outbreak remains available to its caller.
+        simulate(BranchingProcess(Poisson(1.5)); max_cases = 1000, rng = Xoshiro(3))
+        replay_rng = StableRNG(seed)
+        replay = simulate(model; rng = replay_rng, limits...)
+        @test isequal(offspring_history(state), expected)
+        @test isequal(offspring_history(replay), expected)
+        @test rand(replay_rng, UInt64) == next_draw
+    end
+end
+
+@testset "Infinite offspring times leave no scheduled infection" begin
+    model = BranchingProcess(Poisson(5.0), Dirac(Inf))
+    state = simulate(model; max_cases = 10, rng = StableRNG(7))
+    @test state.cumulative_cases == 1
+    @test length(state.individuals) == 1
+    @test state.extinct
+end
+
+# An offspring law written from outside the package, so that each window's
+# `_Offspring` is parameterised on its own concrete `Infectiousness` type
+# rather than sharing one, as `MultiTypeOffspring`'s per-type laws do.
+struct FixedDayOffspring
+    day::Int
+end
+(d::FixedDayOffspring)(rng, ind) = rand(rng, Poisson(0.5))
+
+@testset "A route of another type among many does not box the per-case loop" begin
+    # Regression test for #586: `_sellke_race!` settled every case by looping
+    # over its routes, which boxed every visit once the routes were not all
+    # the same type (a different offspring law, kernel or `until`), costing
+    # memory in proportion to how many cases settled rather than to how many
+    # routes there were.
+    stop_soon(rng, ind) = (ind.state[:stopped_time] = ind.infection_time + 5.0; nothing)
+    same_type = BranchingProcess(
+        Tuple(
+            Infectiousness(
+                FixedDayOffspring(d); kernel = Dirac(d + 0.5), until = (:stopped,)
+            ) for d in 0:19
+        )
+    )
+    mixed_types = BranchingProcess(
+        (
+            Infectiousness(Poisson(0.0); kernel = Uniform(0, 1)), same_type.infectiousness...,
+        )
+    )
+    run_once(model) = simulate(
+        ModelSpec(model; attributes = stop_soon);
+        n_initial = 2000, max_generations = 1, max_cases = nothing, rng = StableRNG(1)
+    )
+    run_once(same_type) # compile both before timing either
+    run_once(mixed_types)
+    same_type_bytes = @allocated run_once(same_type)
+    mixed_types_bytes = @allocated run_once(mixed_types)
+    # One extra route among twenty costs proportionally more, not the
+    # order-of-magnitude more that boxing every visit to a heterogeneous
+    # tuple did.
+    @test mixed_types_bytes < 5 * same_type_bytes
 end

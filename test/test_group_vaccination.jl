@@ -617,3 +617,20 @@ end
     state.scratch[:anything_else] = 42
     @test Set(EpiBranch._group_members(state, :group, :A)) == Set([1, 2, 4])
 end
+
+@testset "Group vaccination reaches members a branching process creates later" begin
+    # One group: once the first case shows symptoms, every member is dosed,
+    # including the contacts the outbreak has not yet created.
+    model = BranchingProcess(Poisson(2.0), Gamma(2.5, 2.0))
+    clinical = clinical_presentation(incubation_period = LogNormal(1.4, 0.4))
+    attributes = (rng, ind) -> (clinical(rng, ind); groups(1)(rng, ind))
+    gv = GroupVaccination(efficacy = 1.0, eligibility = OnSymptomOnset(), dose_delay = 0.0)
+    function contained(ivs)
+        states = simulate(
+            ModelSpec(model; interventions = ivs, attributes), 200;
+            max_cases = 200, rng = StableRNG(11)
+        )
+        return containment_probability(states; max_cases = 200)
+    end
+    @test contained([gv]) > contained(AbstractIntervention[]) + 0.5
+end

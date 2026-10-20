@@ -74,6 +74,16 @@ struct _MaskLessRule <: EpiHouseholds.ConditionOn end
         @test m.from === nothing              # window start derived from the progression
         @test m.external_hazard == 0.0
 
+        @test household_members(m) == m.members
+        @test external_hazard(m) == m.external_hazard
+        @test observation_end(m) == Inf
+
+        with_hazard = HouseholdProcess(
+            [2, 3], Exponential(2.0); external_hazard = 0.1, obs_end = 30.0
+        )
+        @test external_hazard(with_hazard) == 0.1
+        @test observation_end(with_hazard) == 30.0
+
         # with no latent transition the window opens at :infection
         @test EpiBranch.infectious_from(_sir(6.0)) === :infection
 

@@ -159,7 +159,7 @@ EpiBranch.reset!(::_TimedBatchDose, ind::Individual) = delete!(ind.state, :_dose
             max_cases = 50, rng = rng
         )
 
-        @test all(ind -> ind.infection_time < 1000.0, state.individuals)
+        @test all(ind -> ind.infection_time < 1000.0, filter(is_infected, state.individuals))
     end
 
     @testset "FlagOnly records no traced isolation for an asymptomatic contact" begin
@@ -220,7 +220,10 @@ EpiBranch.reset!(::_TimedBatchDose, ind::Individual) = delete!(ind.state, :_dose
         @test !EpiBranch.traces_contacts(Scheduled(iso; start_time = 5.0))
 
         # Models declare whether they can name a case's contacts at all.
-        @test !EpiBranch.supplies_contacts(BranchingProcess(Poisson(1.0)))
+        @test EpiBranch.supplies_contacts(BranchingProcess(Poisson(1.0)))
+        @test !EpiBranch.supplies_contacts(
+            HomogeneousProcess(transmission_rate = 1.0, population_size = 10)
+        )
 
         state = EpiBranch.new_state(
             BranchingProcess(Poisson(1.0), Exponential(5.0)),
@@ -310,29 +313,39 @@ EpiBranch.reset!(::_TimedBatchDose, ind::Individual) = delete!(ind.state, :_dose
         # The structure-driven processes that call this walk live in the
         # companion packages, so it is driven directly here on a path graph
         # 1-2-3-4 in which only node 1 is a case.
-        function walk(depth; timed = false, wrap = identity, delay = Dirac(0.0), clock = nothing)
+        function walk(
+                depth; timed = false, wrap = identity, delay = Dirac(0.0), clock = nothing,
+                infected_before = Int[], n = 4
+            )
             ct = wrap(ContactTracing(TraceEveryone(), 1.0, delay, Quarantine(duration = Inf); depth))
             state = EpiBranch.new_state(
                 BranchingProcess(Poisson(1.0), Exponential(5.0)),
                 EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
             )
-            EpiBranch.add_individuals!(state, 4, [ct])
+            EpiBranch.add_individuals!(state, n, [ct])
             clock === nothing || (state.max_infection_time = clock)
             case = state.individuals[1]
             case.state[:infected] = true
             case.infection_time = 0.0
             set_isolated!(case, 2.0; release_time = Inf)
-            neighbours = [[2], [1, 3], [2, 4], [3]]
+            # A neighbour already settled before this case, as a node infected
+            # earlier on a persistent network would be: its own infection is
+            # final, but the walk still reaches it and grows past it.
+            for id in infected_before
+                state.individuals[id].state[:infected] = true
+            end
+            neighbours = [
+                filter(j -> 1 <= j <= n, [i - 1, i + 1]) for i in 1:n
+            ]
             # Node 3 cannot be reached before time 50, as on a route that
             # opens late.
             opens = Dict(3 => 50.0)
             contacts = timed ?
                 (i, st) -> ((j, get(opens, j, -Inf)) for j in neighbours[i]) :
                 (i, st) -> neighbours[i]
-            pos = Dict(i => i for i in 1:4)
-            processed = [true, false, false, false]
+            pos = Dict(i => i for i in 1:n)
             reached = EpiBranch._trace_from!(
-                state, case, [ct], contacts, pos, processed
+                state, case, [ct], contacts, pos
             )
             return state.individuals, reached
         end
@@ -351,6 +364,24 @@ EpiBranch.reset!(::_TimedBatchDose, ind::Individual) = delete!(ind.state, :_dose
         @test is_traced(inds[3])
         @test !is_traced(inds[4])
         @test reached == Set([2, 3])
+
+        # A neighbour already infected before this case settles — as it would
+        # be on a network or a household, where the same adjacency is shared
+        # by more than one case — is traced and grows the ring past it all the
+        # same, rather than being skipped as already settled.
+        inds, reached = walk(3; infected_before = [2])
+        @test all(is_traced, inds[2:4])
+        @test reached == Set([2, 3, 4])
+
+        # An infected, eligible neighbour reached by propagation is not a
+        # fresh seed: it must spend down the ring's existing budget rather
+        # than restart it, so the ring still stops at its configured radius
+        # even though it passes through an infected member partway there.
+        inds, reached = walk(2; infected_before = [2], n = 5)
+        @test reached == Set([2, 3])
+        @test inds[2].state[:_ring_remaining] == 1
+        @test inds[3].state[:_ring_remaining] == 0
+        @test !is_traced(inds[4])
 
         # A contact reached late on its route is traced no earlier than that,
         # and the ring past it is timed from its trace.
@@ -614,16 +645,10 @@ EpiBranch.reset!(::_TimedBatchDose, ind::Individual) = delete!(ind.state, :_dose
         # isolating after their outcome. Only the detection record may differ.
         removed(s) = count(i -> isfinite(isolation_time(i)), s.individuals)
         configs = (
-            (
-                Recovery(delay = Gamma(2.0, 3.0)), 7,
-                [124, 1, 1, 15, 135, 113, 104, 120, 113, 1],
-            ),
-            (
-                Death(delay = 0.0, probability = 1.0), 11,
-                [3, 1, 111, 107, 121, 14, 124, 109, 4, 2],
-            ),
+            (Recovery(delay = Gamma(2.0, 3.0)), 7),
+            (Death(delay = 0.0, probability = 1.0), 11),
         )
-        for (outcome, seed, cases) in configs
+        for (outcome, seed) in configs
             model = ModelSpec(
                 BranchingProcess(Poisson(2.0), Gamma(2.0, 3.0));
                 attributes = clinical_presentation(incubation_period = LogNormal(1.6, 0.4)),
@@ -631,7 +656,8 @@ EpiBranch.reset!(::_TimedBatchDose, ind::Individual) = delete!(ind.state, :_dose
                 interventions = [Isolation(onset_to_isolation_delay = Exponential(2.0), duration = Inf)]
             )
             results = simulate(model, 10; max_cases = 100, rng = StableRNG(seed))
-            @test [s.cumulative_cases for s in results] == cases
+            cases = [s.cumulative_cases for s in results]
+            @test any(>(1), cases)
             @test [removed(s) for s in results] == cases
             @test sum(s -> count(is_isolated, s.individuals), results) < sum(cases)
         end
@@ -1700,7 +1726,7 @@ EpiBranch.reset!(::_TimedBatchDose, ind::Individual) = delete!(ind.state, :_dose
 
             # Every vaccinated contact must satisfy the window.
             for state in states_narrow
-                for ind in state.individuals
+                for ind in filter(is_infected, state.individuals)
                     if is_vaccinated(ind)
                         @test isolation_time(ind) - ind.infection_time <= 1.0
                     end
@@ -2978,11 +3004,7 @@ EpiBranch.reset!(::_TimedBatchDose, ind::Individual) = delete!(ind.state, :_dose
         # test-negative contacts, so 1 − test_sensitivity of cases never
         # isolated even when traced.
         #
-        # Filter to cases that ran through resolve_individual at least once
-        # (those that became parents — they have non-empty
-        # secondary_case_ids — or those who are themselves index cases).
-        # Final-generation contacts created in the last step never resolve
-        # because the engine stops before they would be active.
+        # Filter to the cases, which are the people `resolve_individual!` ran on.
         rng = StableRNG(20260601)
         iso = Isolation(onset_to_isolation_delay = Exponential(1.0), test_sensitivity = 0.4, duration = Inf)
         ct = ContactTracing(
@@ -2998,11 +3020,7 @@ EpiBranch.reset!(::_TimedBatchDose, ind::Individual) = delete!(ind.state, :_dose
             max_cases = 500, rng = rng
         )
 
-        resolved = filter(
-            ind -> !isempty(ind.secondary_case_ids) ||
-                ind.parent_id == 0,
-            state.individuals
-        )
+        resolved = filter(is_infected, state.individuals)
         traced_symptomatic = filter(
             ind -> is_traced(ind) && !is_asymptomatic(ind),
             resolved

@@ -116,7 +116,9 @@ println("Isolation + tracing + ring vaccination: $(round(containment_probability
 
 Tracing that starts at the infector's symptom onset, before isolation, and
 does not quarantine, leaves contacts exposed after the trace, and there the
-dose acts:
+dose acts. These comparisons need many outbreaks, so they call
+[`containment_probability`](@ref) on the model, which keeps one outbreak in
+memory at a time:
 
 ```@example vaccination
 ct_onset = ContactTracing(probability = 0.7,
@@ -126,8 +128,9 @@ ct_onset = ContactTracing(probability = 0.7,
 for (label, interventions) in (
         ("no vaccination", [iso, ct_onset]),
         ("ring vaccination", [iso, ct_onset, rv]))
-    runs = simulate(scenario(interventions), 1000; max_cases = 500, rng = StableRNG(42))
-    println(rpad(label, 20), round(containment_probability(runs), digits = 3))
+    p = containment_probability(scenario(interventions), 1000;
+        max_cases = 500, rng = StableRNG(42))
+    println(rpad(label, 20), round(p, digits = 3))
 end
 ```
 
@@ -145,8 +148,8 @@ for (label, interventions) in (
         ("no vaccination", [iso, ct_onset]),
         ("same-day protection", [iso, ct_onset, rv]),
         ("7-day delay", [iso, ct_onset, rv_delayed]))
-    runs = simulate(scenario(interventions), n_delay; max_cases = 500, rng = StableRNG(42))
-    p = containment_probability(runs)
+    p = containment_probability(scenario(interventions), n_delay;
+        max_cases = 500, rng = StableRNG(42))
     println(rpad(label, 22), round(p, digits = 3),
         " (standard error ", round(sqrt(p * (1 - p) / n_delay), digits = 3), ")")
 end
@@ -162,21 +165,29 @@ simulation error.
 
 ### Counting doses
 
-`condition = 50:200` keeps simulating until an outbreak stops with between 50
-and 200 cases and returns it. It stops either because it died out or because
-it reached the 200-case cap, as the one here did.
+A run stopped at `max_cases` leaves the last cases' contacts undecided and
+not yet vaccinated, so the run here is bounded by generations instead:
+`max_generations = 5`, with `max_cases = nothing`, draws no contacts for
+cases in the fifth generation and leaves every earlier case with all its
+contacts decided. `condition = 50:200` keeps simulating until an outbreak
+stops with between 50 and 200 cases and returns it.
 `count(is_vaccinated, state.individuals)` then counts everyone vaccinated,
 like `sum(is_vaccinated(x))` in R:
 
 ```@example vaccination
 rng = StableRNG(42)
-state = simulate(scenario([iso, ct, rv]); condition = 50:200, max_cases = 200, rng = rng)
+state = simulate(scenario([iso, ct, rv]); condition = 50:200,
+    max_cases = nothing, max_generations = 5, rng = rng)
 n_vaccinated = count(is_vaccinated, state.individuals)
 n_infected = count(is_infected, state.individuals)
+# Cases in the fifth generation drew no contacts to vaccinate
+n_complete = count(ind -> is_infected(ind) && ind.generation < 5, state.individuals)
 println("Vaccinated: $n_vaccinated, Infected: $n_infected")
+println("Doses per case: $(round(n_vaccinated / n_complete, digits = 1))")
 ```
 
-The ratio of the two is the number of doses used per case in this outbreak.
+The doses per case divide by the cases before the fifth generation, the ones
+whose contacts could be traced and vaccinated.
 
 ### Rings beyond direct contacts
 
@@ -196,12 +207,17 @@ ct2 = ContactTracing(
 )
 
 rng = StableRNG(42)
-state = simulate(scenario([iso, ct2, rv]); condition = 50:200, max_cases = 200, rng = rng)
+state = simulate(scenario([iso, ct2, rv]); condition = 50:200,
+    max_cases = nothing, max_generations = 5, rng = rng)
 doses_depth2 = count(is_vaccinated, state.individuals)
-println("Doses with a second ring: $doses_depth2")
+n_complete2 = count(ind -> is_infected(ind) && ind.generation < 5, state.individuals)
+println("Doses with a second ring: $doses_depth2, ",
+    "per case: $(round(doses_depth2 / n_complete2, digits = 1))")
 ```
 
-A wider ring reaches more people and uses more doses, but the extra doses
+The second ring around a case in the fourth generation would reach the
+sixth, past the bound, so the doses per case here are an underestimate. A
+wider ring reaches more people and uses more doses, but the extra doses
 protect only people still exposed after they are traced. Here every infected
 ring member with symptoms is isolated and starts a ring of their own. Their
 contacts are traced after that isolation, when the second ring's doses have
@@ -234,8 +250,9 @@ much for a contact who has already infected most of their own contacts.
 Quarantine from the trace already stops that later transmission, and the
 examples here trace without quarantine. The clearest measure of the effect is
 the mean number of secondary cases per traced case, an effective reproduction
-number among traced cases. The function below computes it over cases whose
-own contacts were simulated before the run stopped:
+number among traced cases. A run stopped at `max_cases` leaves the last cases'
+contacts undecided, so the function below counts cases from runs bounded at
+five generations instead, below that bound, where every contact was decided:
 
 ```@example vaccination
 ct_noquarantine = ContactTracing(probability = 0.7,
@@ -244,8 +261,10 @@ ct_noquarantine = ContactTracing(probability = 0.7,
 function secondary_per_traced(runs)
     mean(count(id -> is_infected(s.individuals[id]), ind.secondary_case_ids)
     for s in runs for ind in s.individuals
-    if is_infected(ind) && is_traced(ind) && ind.generation < s.current_generation)
+    if is_infected(ind) && is_traced(ind) && ind.generation < 5)
 end
+traced_runs(interventions) = simulate(scenario(interventions), 400;
+    max_cases = nothing, max_generations = 5, rng = StableRNG(42))
 
 for (label, vaccination) in [
     ("no vaccine", nothing),
@@ -259,17 +278,18 @@ for (label, vaccination) in [
         [iso, ct_noquarantine, vaccination]
     runs = simulate(scenario(interventions), 400; max_cases = 500, rng = StableRNG(42))
     println(rpad(label, 30), "secondary cases per traced case ",
-        round(secondary_per_traced(runs), digits = 2),
+        round(secondary_per_traced(traced_runs(interventions)), digits = 2),
         ", containment ", round(containment_probability(runs), digits = 3))
 end
 ```
 
 `onward_efficacy` and `post_exposure_efficacy` both reduce the secondary cases
-per traced case, while `efficacy` changes nothing. Containment moves much
-less, because a traced contact has usually made a good share of their
-transmissions before the trace; at 400 outbreaks per scenario the
-differences in containment are close to the Monte Carlo error. A single run
-can place the scenarios in either order.
+per traced case, from 1.94 to 1.66 and 1.64, while `efficacy` changes nothing.
+Containment rises with them, from 0.15 to 0.232 and 0.218. At 400 outbreaks
+per scenario each containment estimate has a standard error of about 0.02, so
+these gains are three to four times the Monte Carlo error. The gap between
+`onward_efficacy` and `post_exposure_efficacy` is within it, and another set
+of runs can place those two in either order.
 
 ### Post-exposure prophylaxis
 
@@ -281,12 +301,9 @@ onset, and the incubation period here averages about five days:
 
 ```@example vaccination
 for days in [0.0, 2.0, 5.0, 21.0]
-    # `let` keeps the loop's own `rng` apart from the one above.
     let pep = RingVaccination(efficacy = 0.0, post_exposure_efficacy = 0.9,
-            delay_to_immunity = days),
-        rng = StableRNG(42)
-        results = simulate(scenario([iso, ct_noquarantine, pep]), 400;
-            max_cases = 500, rng = rng)
+            delay_to_immunity = days)
+        results = traced_runs([iso, ct_noquarantine, pep])
         cases = [ind for s in results for ind in s.individuals
                  if is_infected(ind) && is_traced(ind)]
         stopped = count(ind -> isfinite(EpiBranch.infection_aborted_time(ind)), cases)
@@ -410,9 +427,9 @@ rv_independent_onward = RingVaccination(efficacy = 0.8, onward_efficacy = 0.8,
     coverage = 0.5)
 
 n_outbreaks = 10000
-containment(interventions) = containment_probability(simulate(
+containment(interventions) = containment_probability(
     scenario(interventions, [clinical, community, acceptance]), n_outbreaks;
-    max_cases = 200, rng = StableRNG(42)))
+    max_cases = 200, rng = StableRNG(42))
 
 for (label, interventions) in (
         ("no vaccination", [iso, ct_noquarantine]),
@@ -424,11 +441,12 @@ for (label, interventions) in (
 end
 ```
 
-Vaccinating about half the traced contacts raises containment a little, and
-clustered refusal comes out about 0.015 below independent refusal. The
+Vaccinating about half the traced contacts raises containment a little, from
+0.212 to 0.226 with clustered refusal and 0.224 with independent refusal. The
 standard error of a difference between two scenarios is about 1.4 times that
-of each, so that gap is around two and a half standard errors: small, and more
-than the noise of these runs.
+of each, about 0.006 here, so the gain from vaccination is around two and a
+half standard errors. The 0.002 between clustered and independent refusal is
+well within the noise of these runs.
 
 Clustering has little effect here because `groups(20)` puts each person in a
 community independently of who infected them. A case's contacts are spread
@@ -461,9 +479,8 @@ println("Mass vaccination from day 30: $(round(containment_probability(results),
 
 With R = 3, an outbreak that takes off reaches the case cap well before
 protection starts on day 44. Containment stays level with the baseline
-without interventions: at 200 outbreaks the standard error on each estimate
-is about 0.015, so the gap between the two printed numbers is simulation
-error.
+without interventions, at 0.04 for both. At 200 outbreaks the standard error
+on each estimate is about 0.015.
 
 For a gradual rollout in which each person becomes eligible at a random
 time, pass a distribution. `Exponential(60.0)` makes the mean wait 60 days:
@@ -495,10 +512,10 @@ println("Age-stratified rollout: $(round(containment_probability(results), digit
 
 Containment is at the no-intervention baseline again: the older group is
 protected from day 44 and everyone else from day 104, and an outbreak that
-takes off has reached the case cap well before either. The printed 0.07 and
-0.04 are two noisy estimates of the same quantity, as the standard error
-above suggests; runs of 3,000 give 0.065 and 0.057, a gap of under one and a
-half standard errors of the difference.
+takes off has reached the case cap well before either. The printed 0.055 and
+the baseline 0.04 are two noisy estimates of the same quantity, as the
+standard error above suggests; runs of 3,000 give 0.055 and 0.059, a gap of
+under one standard error of the difference.
 
 ### Efficacy that varies between people
 
@@ -597,10 +614,10 @@ infected after being traced (see the warning in
 [Ring vaccination](@ref)). Even under `ct_onset`, where infections do
 follow the trace, they follow within days. Both doses here start protecting
 weeks after the trace, too late for those infections (see
-[Delay to immunity](@ref)). The 0.305 above is not comparable with the 0.255
+[Delay to immunity](@ref)). The 0.325 above is not comparable with the 0.33
 printed for isolation and tracing alone: each dose's `coverage` is drawn,
 which shifts the random stream, and setting both efficacies to zero gives
-0.305 as well. Removing the boost and re-running is not a controlled
+0.325 as well. Removing the boost and re-running is not a controlled
 comparison either. The two runs use different random draws, and their
 containment can differ by chance in either direction (see the note on
 comparing many replicates above).
