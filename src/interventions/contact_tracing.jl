@@ -557,13 +557,14 @@ in turn: the contacts of contacts that level-2 ring vaccination targets. Each
 infected, eligible case starts a fresh ring of radius `depth`. Ring members are
 followed for one more hop so the ring can extend past them, whether or not
 they are infected; an uninfected one does not infect anyone it reaches this
-way. On a model whose contacts persist (a household or a network), a
-neighbour infected earlier than the case doing the tracing is reached and
-traced too, not just its own, still-uninfected neighbours: quarantining it
-blocks transmission it has not yet made, the way `SourceTracing` blocks an
-infector found through its own case. A traced contact who later becomes an
-eligible case starts its own ring like any other case; add
-`!PreviouslyTraced()` to the eligibility to interview each case only once.
+way. On a model whose contacts persist (a household or a network), tracing
+also reaches a neighbour already infected earlier than the case doing the
+tracing, not only the case's own, still-uninfected neighbours: quarantining
+that neighbour blocks transmission it has not yet made, the way
+`SourceTracing` blocks an infector found through its own case. A traced
+contact who later becomes an eligible case starts its own ring like any
+other case; add `!PreviouslyTraced()` to the eligibility to interview each
+case only once.
 
 Pair with [`RingVaccination`](@ref) to vaccinate the whole ring:
 

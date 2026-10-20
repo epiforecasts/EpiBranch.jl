@@ -1532,11 +1532,12 @@ end
 
     @testset "ContactTracing reaches a neighbour infected before the traced case" begin
         # Person 1 has no symptoms and infects person 2 before tracing from
-        # person 2 ever begins, so person 1 is already a settled case by the
-        # time it is discovered as person 2's neighbour. Person 4 is a
-        # neighbour of person 1 only, and can never be infected (the kernel
-        # from 1 to 4 is effectively infinite), so reaching it is entirely
-        # down to the depth-2 ring growing through person 1.
+        # person 2 ever begins. By the time person 1 is discovered as person
+        # 2's neighbour, it is already a settled case. Person 4 is a
+        # neighbour of person 1 only, and the kernel from 1 to 4 is
+        # effectively infinite, so person 4 can never be infected. Reaching
+        # person 4 is entirely down to the depth-2 ring growing through
+        # person 1.
         adjacency = [[2, 4], [1, 3], [2], [1]]
         fast, never = Exponential(0.01), Exponential(1.0e9)
         kernel = [[fast, never], [never, never], [never], [never]]
