@@ -319,11 +319,14 @@ Borel
 These are returned by `chain_size_distribution` and are rarely built by hand.
 `GammaBorel` is the chain-size distribution for negative binomial offspring.
 `PoissonGammaChainSize` is the one for Poisson offspring whose mean varies
-between chains following a gamma distribution.
+between chains following a gamma distribution. `HittingTimeChainSize` is the
+exact chain-size distribution for any other discrete offspring law, from the
+hitting-time theorem.
 
 ```@docs
 EpiBranch.GammaBorel
 EpiBranch.PoissonGammaChainSize
+EpiBranch.HittingTimeChainSize
 ```
 
 ### A different offspring distribution for the index case
