@@ -1068,7 +1068,7 @@ function initialise_individual!(::SourceTracing, individual, state)
 end
 
 # `trace_contacts!` below traces backward; the forward ring walk the race
-# builds for `traces_contacts` has nothing for `SourceTracing` to do. `traces_source` asks them to call it through a
+# builds for `traces_contacts` has nothing for `SourceTracing` to do. `traces_source` asks the race to call it through a
 # second route instead (see `trace_contacts!`'s docstring).
 traces_contacts(::SourceTracing) = false
 traces_source(::SourceTracing) = true
