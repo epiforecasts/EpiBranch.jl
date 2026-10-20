@@ -62,6 +62,29 @@ end
         @test_throws ArgumentError pairwise_surv_loglik(reverse(windows), data)
     end
 
+    @testset "a per-edge route kernel's own parameter type is still found" begin
+        # Unlike a shared distribution, a per-edge kernel has no `partype` of
+        # its own to read directly; `_route_kernel_partype` must probe an
+        # actual edge of the route instead, the same way the household route
+        # here is resolved pair by pair rather than through one distribution.
+        hh, comm = _routed_adjacency(20, 4)
+        per_edge = [
+            [Exponential(0.2 + 0.1 * mod1(i + k, 5)) for k in eachindex(hh[i])]
+                for i in eachindex(hh)
+        ]
+        windows = [
+            RouteWindow(:household; until = (:recovered,), kernel = per_edge, reach = hh),
+            RouteWindow(:community; until = (:recovered,), kernel = Exponential(10.0), reach = comm),
+        ]
+        process = RoutedNetwork(windows)
+        m = ModelSpec(process; progression = _sir(8.0))
+        data = routed_network_infections(simulate(m; n_initial = 3, rng = StableRNG(11)), m)
+
+        direct = pairwise_surv_loglik(windows, data)
+        @test isfinite(direct)
+        @test loglikelihood(data, process) == direct
+    end
+
     @testset "a community hazard per node matches a shared one when all equal" begin
         hh, comm = _routed_adjacency(30, 4)
         windows = [
@@ -301,6 +324,43 @@ end
             θ = logit(true_efficacy)
             θhat, se = _newton_mle(g, θ)
             @test abs(θhat - θ) < 3 * se
+        end
+
+        @testset "a vaccinated host still gets a gated route and an external hazard" begin
+            # A vaccinated host's mixture goes through `_routed_modifier_loglik`
+            # for every route and the external hazard alike, so a route gated to
+            # `INTERVENTION_REMOVAL` and a non-zero `external_hazard` must both
+            # reach that function's survival and event terms the same way an
+            # unvaccinated host's plain sum does.
+            REM = EpiBranch.INTERVENTION_REMOVAL
+            windows3 = [
+                RouteWindow(:household; until = (:recovered,), kernel = Exponential(3.0), reach = hh),
+                RouteWindow(
+                    :community; until = (:recovered, REM),
+                    kernel = Exponential(10.0), reach = comm
+                ),
+            ]
+            iso = Isolation(
+                onset_to_isolation_delay = Exponential(1.5),
+                test_sensitivity = 1.0, duration = 7.0
+            )
+            rv = RingVaccination(efficacy = 0.5, mode = LeakyMode())
+            process3 = RoutedNetwork(windows3; external_hazard = 0.02, obs_end = 20.0)
+            m = ModelSpec(
+                process3; progression = _sir(10.0), attributes = clinical,
+                interventions = [ct, rv, iso]
+            )
+            state = simulate(m; n_initial = 5, rng = StableRNG(10))
+            data = routed_network_infections(state, m)
+            @test any(!ismissing, data.host_times.immunity_time)
+            @test haskey(data.host_times, EpiBranch.REMOVAL_STRETCHES_KEY)
+
+            explicit = pairwise_surv_loglik(
+                windows3, data;
+                susceptibility = EpiBranch.vaccine_effect(rv), external_hazard = 0.02
+            )
+            @test loglikelihood(data, m) ≈ explicit
+            @test isfinite(loglikelihood(data, m))
         end
     end
 
