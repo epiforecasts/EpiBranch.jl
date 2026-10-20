@@ -47,14 +47,7 @@ only if nothing blocks it.
 The index cases are settled in the same way first.
 
 A model written against `generate_offspring` or `contacts_of` (see [New
-transmission structures](new-structures.md)) instead works one generation at a
-time. Each case of the previous generation is given its contacts, and the
-cases are taken in order of infection time: `trace_contacts!` and
-`intervention_actions` act on each case's contacts before any of them is known
-to be infected, then `keep_active` can keep contacts who end up not infected,
-so that their own contacts are generated too. `competing_risk` is asked about
-each pair, and the newly infected contacts are settled through their clinical
-transitions and `resolve_individual!`, and make the next generation.
+transmission structures](new-structures.md)) is simulated the same way.
 
 While a case's clinical transitions and intervention hooks run, from
 `resolve_individual!` on, `state.max_infection_time` is that case's infection
