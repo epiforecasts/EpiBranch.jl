@@ -348,6 +348,14 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
 
 ### Fixed
 
+- On the continuous-time race (`NetworkProcess`, `RoutedNetwork` and
+  `HouseholdProcess`), `ContactTracing` now reaches a neighbour infected
+  earlier than the case being traced, and grows the ring through it to its
+  own contacts, rather than skipping it as already settled. Quarantining
+  such a neighbour still blocks the transmissions it has not yet made, the
+  way `SourceTracing` already blocks an infector found through its own case.
+  Previously a case's already-infected neighbours, and anyone reachable only
+  through them, were never traced.
 - `initial_cases` can now be combined with an active `external_hazard` on
   `NetworkProcess`, `RoutedNetwork` and `HouseholdProcess`: the chosen cases are
   seeded at time zero, and the hazard still acts on everyone else from the

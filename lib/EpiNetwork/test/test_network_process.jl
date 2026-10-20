@@ -1530,6 +1530,40 @@ end
         @test !is_traced(st1.individuals[3])
     end
 
+    @testset "ContactTracing reaches a neighbour infected before the traced case" begin
+        # Person 1 has no symptoms and infects person 2 before tracing from
+        # person 2 ever begins, so person 1 is already a settled case by the
+        # time it is discovered as person 2's neighbour. Person 4 is a
+        # neighbour of person 1 only, and can never be infected (the kernel
+        # from 1 to 4 is effectively infinite), so reaching it is entirely
+        # down to the depth-2 ring growing through person 1.
+        adjacency = [[2, 4], [1, 3], [2], [1]]
+        fast, never = Exponential(0.01), Exponential(1.0e9)
+        kernel = [[fast, never], [never, never], [never], [never]]
+        model = ModelSpec(
+            NetworkProcess(adjacency, kernel);
+            attributes = clinical_presentation(
+                incubation_period = Dirac(1.0),
+                prob_asymptomatic = (rng, ind) -> ind.id == 1 ? 1.0 : 0.0
+            ),
+            progression = [
+                Transition(:recovered; from = :infection, delay = 10.0, terminal = true),
+            ],
+            interventions = [
+                Isolation(onset_to_isolation_delay = Dirac(0.0), duration = Inf),
+                ContactTracing(
+                    OnSymptomOnset(), 1.0, Dirac(0.0), Quarantine(duration = Inf); depth = 2
+                ),
+            ]
+        )
+        st = simulate(model; initial_cases = [1], rng = StableRNG(1))
+        @test is_infected(st.individuals[1])
+        @test is_infected(st.individuals[2])
+        @test !is_infected(st.individuals[4])
+        @test is_traced(st.individuals[1])
+        @test is_traced(st.individuals[4])
+    end
+
     @testset "Whether a ring member is interviewed again is the policy's call" begin
         # Same path graph, but with a kernel fast enough that node 2 sometimes
         # becomes infected itself. Node 2's contact (node 3) can then be reached

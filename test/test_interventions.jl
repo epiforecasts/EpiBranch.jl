@@ -313,7 +313,10 @@ EpiBranch.reset!(::_TimedBatchDose, ind::Individual) = delete!(ind.state, :_dose
         # The structure-driven processes that call this walk live in the
         # companion packages, so it is driven directly here on a path graph
         # 1-2-3-4 in which only node 1 is a case.
-        function walk(depth; timed = false, wrap = identity, delay = Dirac(0.0), clock = nothing)
+        function walk(
+                depth; timed = false, wrap = identity, delay = Dirac(0.0), clock = nothing,
+                infected_before = Int[]
+            )
             ct = wrap(ContactTracing(TraceEveryone(), 1.0, delay, Quarantine(duration = Inf); depth))
             state = EpiBranch.new_state(
                 BranchingProcess(Poisson(1.0), Exponential(5.0)),
@@ -325,6 +328,12 @@ EpiBranch.reset!(::_TimedBatchDose, ind::Individual) = delete!(ind.state, :_dose
             case.state[:infected] = true
             case.infection_time = 0.0
             set_isolated!(case, 2.0; release_time = Inf)
+            # A neighbour already settled before this case, as a node infected
+            # earlier on a persistent network would be: its own infection is
+            # final, but the walk still reaches it and grows past it.
+            for id in infected_before
+                state.individuals[id].state[:infected] = true
+            end
             neighbours = [[2], [1, 3], [2, 4], [3]]
             # Node 3 cannot be reached before time 50, as on a route that
             # opens late.
@@ -333,9 +342,8 @@ EpiBranch.reset!(::_TimedBatchDose, ind::Individual) = delete!(ind.state, :_dose
                 (i, st) -> ((j, get(opens, j, -Inf)) for j in neighbours[i]) :
                 (i, st) -> neighbours[i]
             pos = Dict(i => i for i in 1:4)
-            processed = [true, false, false, false]
             reached = EpiBranch._trace_from!(
-                state, case, [ct], contacts, pos, processed
+                state, case, [ct], contacts, pos
             )
             return state.individuals, reached
         end
@@ -354,6 +362,14 @@ EpiBranch.reset!(::_TimedBatchDose, ind::Individual) = delete!(ind.state, :_dose
         @test is_traced(inds[3])
         @test !is_traced(inds[4])
         @test reached == Set([2, 3])
+
+        # A neighbour already infected before this case settles — as it would
+        # be on a network or a household, where the same adjacency is shared
+        # by more than one case — is traced and grows the ring past it all the
+        # same, rather than being skipped as already settled.
+        inds, reached = walk(3; infected_before = [2])
+        @test all(is_traced, inds[2:4])
+        @test reached == Set([2, 3, 4])
 
         # A contact reached late on its route is traced no earlier than that,
         # and the ring past it is timed from its trace.
