@@ -772,9 +772,9 @@ function _trace_pair!(ct::ContactTracing, state, infector, ind, rng; not_before 
     # but it stops an uninfected ring member, which carries its own
     # clinical state, from re-seeding a fresh full-radius ring and
     # letting the fringe grow without bound. On the continuous-time race the
-    # ring can now walk through an already-infected neighbour too (see
-    # `_walk_ring!` in sellke.jl), which marks such an `infector` with
-    # `_ring_hop` so it stays on the propagate path below rather than
+    # ring can also walk through an already-infected neighbour (see
+    # `_walk_ring!` in sellke.jl); that walk marks the infector with
+    # `_ring_hop`, so it stays on the propagate path below rather than
     # reseeding a second time.
     seed = is_infected(infector) && is_eligible(ct.eligibility, infector, ind, state) &&
         !get(infector.state, :_ring_hop, false)::Bool
@@ -839,8 +839,9 @@ function trace_contacts!(
     # `_trace_pair!`, and the same answer holds for every pair in the batch, so
     # the budget is marked spent once the batch is done rather than part way
     # through it. An uninfected `infector` is always a ring member passed
-    # through (an infected one seeds); on the continuous-time race an infected
-    # one can be a ring member too, marked `_ring_hop` by `_walk_ring!`.
+    # through (an infected one seeds), but on the continuous-time race an
+    # infected one can be a ring member too, marked `_ring_hop` by
+    # `_walk_ring!`.
     propagating = ct.depth > 1 && is_traced(infector) &&
         (!is_infected(infector) || get(infector.state, :_ring_hop, false)::Bool)
     for (i, ind) in enumerate(contacts)
