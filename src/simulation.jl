@@ -1083,7 +1083,7 @@ first to block wins.
 
 Every model resolves a transmission through this one function, on each
 candidate infection time the race proposes, so an intervention writes one
-[`Risk`](@ref) for all of them. What that risk does to the epidemic still
+[`Risk`](@ref) for all of them. The risk's effect on the epidemic still
 differs: a single exposure (a branching-process contact, or one a model names
 through [`contacts_of`](@ref)) is lost when it is blocked, while a pair that
 draws its contacts from a kernel comes round again, as the race redraws its

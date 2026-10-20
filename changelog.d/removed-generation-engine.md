@@ -18,9 +18,8 @@ call every intervention hook the built-in ones do, `on_infection_settled!` and
 results.
 
 Also removed are the deprecated `apply_post_transmission!` batch hook,
-`settles_generation_batch` and `continuous_actions`. The candidates an
-intervention's actions are offered to are chosen by
-`EpiBranch.action_candidates` instead. The warning about hooks the
+`settles_generation_batch` and `continuous_actions`. `EpiBranch.action_candidates`
+now chooses who an intervention's actions are offered to. The warning about hooks the
 continuous-time race does not call is gone with the second engine. In its
 place, `simulate` warns when contact tracing, or an action that needs the
 contacts of a case, is given a model that names no contacts, such as

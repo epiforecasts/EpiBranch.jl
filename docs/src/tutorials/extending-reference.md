@@ -789,8 +789,8 @@ case settles, for every intervention with a method of it, with the people
 `EpiBranch.action_candidates` chooses as candidates: by default the case and
 the contacts it can still reach. An intervention that chooses its own, such as
 everyone in the run not yet infected, writes a method of
-`action_candidates`. What it returns goes through the schedule and capacity
-limits.
+`action_candidates`. The actions it returns go through the schedule and
+capacity limits.
 
 `Scheduled` checks the proposed action time before delivery. A condition
 function sees that time as `state.max_infection_time`, with the current case
