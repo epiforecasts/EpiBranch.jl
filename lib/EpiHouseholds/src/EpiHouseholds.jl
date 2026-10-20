@@ -35,7 +35,7 @@ import EpiBranch: removal_gap_host_times, removal_block_probability, removal_str
 # The simulator and the likelihood share EpiBranch's community-hazard helpers
 # and agree on when that term applies and what it is.
 import EpiBranch: pairwise_surv_loglik, _ext_active, _ext_draw, _check_external,
-    _normalise_external
+    _normalise_external, _ext_survival_of
 
 export HouseholdProcess, household_sizes, household_members, external_hazard, observation_end
 export HouseholdInfections, household_infections
@@ -44,10 +44,12 @@ export HouseholdPairsLayout, compile_household_pairs
 export ConditionOn, RecruitedIndex, EarliestInfected
 export HouseholdOffspring, household_offspring, household_offspring_law
 export household_final_size
+export final_status_loglik
 
 include("household_process.jl")
 include("household_simulate.jl")
 include("likelihood.jl")
 include("offspring.jl")
+include("final_status_likelihood.jl")
 
 end # module
