@@ -355,3 +355,36 @@ end
         @test is_traced(s.individuals[3]) == reached
     end
 end
+
+# `MintModel` that says its `contacts_of` reads nothing settling writes.
+struct MintEarly <: EpiBranch.TransmissionModel end
+EpiBranch.reads_settled_state(::MintEarly) = false
+EpiBranch.population_size(::MintEarly) = EpiBranch.NoPopulation()
+EpiBranch.contacts_of(::MintEarly, parent, state::EpiBranch.SimulationState) =
+    EpiBranch.contacts_of(MintModel(2), parent, state)
+
+@testset "A ring that asks early names the contacts a case goes on to expose" begin
+    ct = ContactTracing(OnIsolation(), 1.0, Dirac(0.1), Quarantine(duration = Inf); depth = 2)
+    iso = Isolation(onset_to_isolation_delay = Dirac(0.1), duration = Inf)
+    attributes = clinical_presentation(incubation_period = Dirac(0.2))
+    early = 0
+    for seed in 1:10
+        s = simulate(
+            ModelSpec(MintEarly(); interventions = [iso, ct], attributes);
+            n_initial = 1, rng = StableRNG(seed), max_generations = 6
+        )
+        for ind in s.individuals
+            # Each person the model is asked about has two contacts, however
+            # often it is asked.
+            @test length(ind.secondary_case_ids) in (0, 2)
+            is_infected(ind) || isempty(ind.secondary_case_ids) || (early += 1)
+            # A contact's exposure follows its case's infection.
+            for cid in ind.secondary_case_ids
+                c = s.individuals[cid]
+                is_infected(c) && @test c.infection_time > ind.infection_time
+            end
+        end
+    end
+    # Some uninfected ring members had their contacts named early.
+    @test early > 0
+end

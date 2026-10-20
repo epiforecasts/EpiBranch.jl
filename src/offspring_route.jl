@@ -217,10 +217,11 @@ specification of your own that draws from nothing settling writes declares
 
 A model written against [`contacts_of`](@ref) is asked the same question. If it
 declares `EpiBranch.reads_settled_state(::YourModel) = false`, a ring that
-reaches a person not yet settled calls `contacts_of` for them then, with their
-infection time not yet set, and grows through the people it names, whether or
-not the person is infected; the times it gives are not used. Otherwise the ring
-grows past a person only once they settle as a case.
+reaches a person not yet settled calls `contacts_of` for them then, as though
+they were infected at time 0, and grows through the people it names, whether or
+not the person is infected. If the person settles as a case, those are the
+people they expose, each at the time `contacts_of` gave plus their infection
+time. Otherwise the ring grows past a person only once they settle as a case.
 """
 reads_settled_state(_) = true
 reads_settled_state(::Distribution) = false

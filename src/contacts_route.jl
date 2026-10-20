@@ -47,15 +47,18 @@ function _grow!(g::_Grown, race)
 end
 
 # The route a `contacts_of` model transmits along. `pending` holds the settling
-# case's exposures until the race proposes them, and `reached` who each case
-# exposed, which is what tracing acts on.
+# case's exposures until the race proposes them, `reached` who each case
+# exposed, which is what tracing acts on, and `early` the exposures a ring asked
+# for before a person settled, as delays from their infection.
 struct _ContactsOf{M, T <: Real}
     model::M
     pending::Vector{Tuple{Int, T}}
     reached::Dict{Int, Vector{Int}}
+    early::Dict{Int, Vector{Tuple{Int, T}}}
 end
-_ContactsOf(model, ::Type{T}) where {T} =
-    _ContactsOf(model, Tuple{Int, T}[], Dict{Int, Vector{Int}}())
+_ContactsOf(model, ::Type{T}) where {T} = _ContactsOf(
+    model, Tuple{Int, T}[], Dict{Int, Vector{Int}}(), Dict{Int, Vector{Tuple{Int, T}}}()
+)
 
 # The exposures exist only as the model names them, so the route names no
 # targets for a walker and no pair kernel to redraw from.
@@ -77,26 +80,44 @@ function _record_infection!(::_ContactsOf, infector, ind, w, named)
     return nothing
 end
 
-# Ask the model whom the settling case exposes. A case at the generation bound
-# transmits to nobody, so it is not asked.
+# Ask the model whom the settling case exposes, or take what a ring already
+# asked for, timed from the infection now known. A case at the generation bound
+# transmits to nobody.
 function _mint!(c::_ContactsOf, race, ind, max_generation)
     empty!(c.pending)
+    early = isempty(c.early) ? nothing : pop!(c.early, ind.id, nothing)
     ind.generation >= max_generation && return nothing
-    for (target, t) in contacts_of(c.model, ind, race.state)
-        push!(c.pending, (target.id, t))
+    (; state) = race
+    if early === nothing
+        for (target, t) in contacts_of(c.model, ind, state)
+            push!(c.pending, (target.id, t))
+        end
+        _grow!(race.members, race)
+        c.reached[ind.id] = Int[id for (id, _) in c.pending]
+    else
+        for (id, delay) in early
+            t = ind.infection_time + delay
+            _created_by(state.individuals[id], ind) && (state.individuals[id].infection_time = t)
+            push!(c.pending, (id, t))
+        end
     end
-    _grow!(race.members, race)
-    c.reached[ind.id] = Int[id for (id, _) in c.pending]
     return nothing
 end
+
+# Whether `case`'s `contacts_of` created `contact`, rather than naming someone
+# who already existed.
+_created_by(contact, case) = contact.parent_id == case.id && !is_infected(contact)
 
 # What tracing reads as a case's contacts: the people the model named when the
 # case settled. A ring that grows through someone not yet settled needs their
 # contacts too. A model whose `contacts_of` reads nothing settling writes says
 # so with `reads_settled_state`, and is then asked about that person when the
-# ring reaches them; only whom it names is kept, since the person's exposures
-# are named again if they settle. Otherwise a ring grows past a person only
-# once they settle, as it does for an offspring given as a function.
+# ring reaches them, as though infected at time zero. Its answer is kept as
+# delays from the infection, and they are the exposures the person makes if
+# they settle, as a branching process keeps the contacts it drew early. Someone
+# the model created for the person has no infection time until then. Otherwise
+# a ring grows past a person only once they settle, as it does for an offspring
+# given as a function.
 function _case_contacts(
         contacts, rts::Tuple{Tuple{RouteWindow, _ContactsOf}}, race, max_generation
     )
@@ -106,9 +127,19 @@ function _case_contacts(
         named = get(c.reached, id, nothing)
         named === nothing || return named
         race.processed[id] && return ()
-        named = Int[target.id for (target, _) in contacts_of(c.model, state.individuals[id], state)]
+        ind = state.individuals[id]
+        infection_time = ind.infection_time
+        ind.infection_time = zero(infection_time)
+        exposures = [(target.id, t) for (target, t) in contacts_of(c.model, ind, state)]
+        ind.infection_time = infection_time
         _grow!(race.members, race)
-        c.reached[id] = named
+        for (cid, _) in exposures
+            contact = state.individuals[cid]
+            _created_by(contact, ind) &&
+                (contact.infection_time = oftype(contact.infection_time, NaN))
+        end
+        c.early[id] = exposures
+        named = c.reached[id] = Int[cid for (cid, _) in exposures]
         return named
     end
 end

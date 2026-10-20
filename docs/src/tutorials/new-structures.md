@@ -396,9 +396,10 @@ population. It defines instead:
   tried again. A ring of contact tracing grows past a person only once they
   settle as a case, unless the model declares
   [`EpiBranch.reads_settled_state`](@ref)`(::YourModel) = false`: then
-  `contacts_of` is also asked about a traced person not yet settled, with
-  their infection time not yet set, and the ring grows through whoever it
-  names.
+  `contacts_of` is also asked about a traced person not yet settled, as
+  though they were infected at time 0, and the ring grows through whoever it
+  names. If the person settles as a case, those are the people they expose,
+  each at the time given plus their infection time.
 - [`initialise_state`](@ref EpiBranch.initialise_state), which sets up the
   fixed population with [`new_state`](@ref EpiBranch.new_state),
   [`add_individuals!`](@ref EpiBranch.add_individuals!) and
