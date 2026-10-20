@@ -10,9 +10,11 @@
 How true cases become observed data: which cases are detected, how long
 reporting takes, or which outbreaks are recorded at all. Pass one to a model
 as `observation = ...`. Built in: [`NoObservation`](@ref) (every case seen),
-[`MinimumSize`](@ref) (only chains of at least a given size are recorded)
-and the deprecated [`PerCaseObservation`](@ref) (each case detected with some
-probability, after a reporting delay; use a [`Reporting`](@ref) step instead).
+[`MinimumSize`](@ref) (only chains of at least a given size are recorded),
+[`ChainDetection`](@ref) (a whole chain is recorded with a probability that
+grows with its size) and the deprecated [`PerCaseObservation`](@ref) (each
+case detected with some probability, after a reporting delay; use a
+[`Reporting`](@ref) step instead).
 
 To write a new one, define [`observe`](@ref) (for the likelihood) and
 [`apply_observation!`](@ref EpiBranch.apply_observation!) (for simulation)
@@ -144,4 +146,43 @@ struct MinimumSize <: ObservationModel
         min_size >= 1 || throw(ArgumentError("min_size must be >= 1, got $min_size"))
         return new(Int(min_size))
     end
+end
+
+"""
+    ChainDetection(recording_probability)
+    ChainDetection(q)
+
+A chain is either found and investigated in full, or missed altogether, as
+when surveillance relies on spotting a cluster rather than each case on its
+own. `recording_probability` is a function of chain size, `n -> P(a chain of
+n cases is recorded)`, so any detection rule that grows with size can be
+used.
+
+`ChainDetection(q::Real)` builds the common case directly: each case
+independently brings its chain to attention with probability `q`
+(`0 < q <= 1`), so a chain of `n` cases is recorded with probability
+`1 - (1 - q)^n`.
+
+It acts on whole chains rather than on individual cases: every case in a
+recorded chain is marked `:reported`, and every case in a missed one is not.
+A model has one observation model, so `ChainDetection` cannot be combined
+with [`PerCaseObservation`](@ref) or a [`Reporting`](@ref) progression step.
+
+# Examples
+
+```julia
+# each case has an independent 30% chance of bringing its chain to light
+ChainDetection(0.3)
+
+# a detection rule of your own, as a function of chain size
+ChainDetection(n -> min(1.0, 0.1 * n))
+```
+"""
+struct ChainDetection{F} <: ObservationModel
+    recording_probability::F
+end
+
+function ChainDetection(q::Real)
+    0.0 < q <= 1.0 || throw(ArgumentError("q must be in (0, 1], got $q"))
+    return ChainDetection(n -> -expm1(n * log1p(-q)))
 end
