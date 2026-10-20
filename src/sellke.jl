@@ -818,47 +818,47 @@ supplies_contacts(::TransmissionModel) = false
 
 # Tracing on the continuous-time path. A case's trace time follows from its own
 # timeline, so it can only be stamped once the race has finalised that case —
-# which is also the point at which its contacts are known. Only contacts that
-# are not yet final can be affected: popping a case fixes its infectious window
-# and its onward proposals, so a trace arriving later has nothing left to
-# shorten. The generation engine behaves the same way, tracing a case's contacts
-# and never an earlier generation, so the two paths agree.
+# which is also the point at which its contacts are known. A neighbour already
+# settled, whether infected earlier or finally missed by every proposal that
+# reached it, is offered to tracing all the same: its own infection (if any) is
+# already final, but its pending outgoing proposals are not, and are checked
+# against every intervention's `competing_risk` when they are popped, exactly
+# as `_trace_source!` below relies on for a case's own infector. Quarantining a
+# settled neighbour this way still blocks what it has not yet gone on to
+# transmit, and lets the ring grow through it to its own neighbours in turn —
+# the walk below does not stop at one just because it is already settled.
 #
 # Tracing *backwards*, to the case's own (already-final) infector, is
 # `_trace_source!` (shared with the generation engine, in simulation.jl),
-# which `SourceTracing` answers `traces_source` for: the infector's own
-# secondary infections are also already final, but its pending proposals are
-# not, and are checked against every intervention's `competing_risk` when they
-# are popped, so quarantining the infector there still blocks what it has not
-# yet gone on to transmit.
+# which `SourceTracing` answers `traces_source` for.
 #
-# A ring (`ContactTracing(depth = 2)` and beyond) grows through uninfected
-# contacts too. On the generation engine an intervention asks for that through
-# `keep_active`, which keeps such a contact exposing for one more generation so
-# `trace_contacts!` reaches its own contacts in turn. The race has no
-# generations to keep a node alive for, so it walks the model's own contact
-# structure breadth-first instead, and asks the same hook which contacts the
-# next hop starts from. The depth semantics and the `:_ring_remaining` budget
-# behind them stay with `ContactTracing`, so a ring of another shape takes part
-# by answering `keep_active` rather than by writing a state key this loop would
-# have to recognise.
+# A ring (`ContactTracing(depth = 2)` and beyond) grows through every traced
+# contact's own neighbours, settled or not. On the generation engine an
+# intervention asks for that through `keep_active`, which keeps a contact
+# exposing for one more generation so `trace_contacts!` reaches its own
+# contacts in turn. The race has no generations to keep a node alive for, so it
+# walks the model's own contact structure breadth-first instead, and asks the
+# same hook which contacts the next hop starts from. The depth semantics and
+# the `:_ring_remaining` budget behind them stay with `ContactTracing`, so a
+# ring of another shape takes part by answering `keep_active` rather than by
+# writing a state key this loop would have to recognise.
 #
 # `visited` stops a node being traced twice by two branches of one walk
-# reaching it at once. Across walks nothing is suppressed: a node reached as an
-# uninfected ring member, which later becomes an infected and eligible case in
-# its own right, seeds its own fresh full-radius ring when the race settles it,
-# which is the contract `ContactTracing` documents. Whether that second attempt
+# reaching it at once. Across walks nothing is suppressed: a node reached as a
+# ring member, which later becomes an infected and eligible case in its own
+# right, seeds its own fresh full-radius ring when the race settles it, which
+# is the contract `ContactTracing` documents. Whether that second attempt
 # happens at all is the eligibility policy's call, not this loop's.
 # `tracing` is whether any intervention traces, which the race works out once.
 # `contacts` is typed so the call specialises on it: a closure passed through
 # unspecialised is put on the heap at every call, which is every settled case.
 function _trace_from!(
-        state, infector, interventions, contacts::C, pos, processed,
+        state, infector, interventions, contacts::C, pos,
         tracing = any(traces_contacts, interventions)
     ) where {C}
     contacts === nothing && return nothing
     tracing || return nothing
-    return _walk_ring!(state, infector, interventions, contacts, pos, processed)
+    return _walk_ring!(state, infector, interventions, contacts, pos)
 end
 
 # The walk itself, which reports the members it offered to tracing. A ring
@@ -866,7 +866,7 @@ end
 # the action layer has to be offered those too; which of them a tracing policy
 # actually reached is its own business, and the layer reads that from them.
 function _walk_ring!(
-        state, infector, interventions, contacts::C, pos, processed
+        state, infector, interventions, contacts::C, pos
     ) where {C}
     visited = Set{Int}((infector.id,))
     frontier = Individual[infector]
@@ -879,11 +879,18 @@ function _walk_ring!(
             cid, t0 = c isa Tuple ? (c[1], c[2]) : (c, -Inf)
             timed |= c isa Tuple
             k = get(pos, cid, 0)
-            (k == 0 || processed[k] || cid in visited) && continue
+            (k == 0 || cid in visited) && continue
             push!(pending, state.individuals[cid])
             push!(not_before, t0)
         end
         isempty(pending) && continue
+        # `src` is the walk's own root only on the first pop; every later one
+        # reached the frontier through `keep_active`, so an infected `src`
+        # here is a ring member passed through, not a fresh case settling on
+        # its own account. `_trace_pair!` and `trace_contacts!` read this to
+        # keep such a `src` on the propagate path rather than reseeding.
+        hopped = src !== infector
+        hopped && (src.state[:_ring_hop] = true)
         for iv in interventions
             if timed
                 trace_contacts!(iv, state, src, pending, not_before)
@@ -891,6 +898,7 @@ function _walk_ring!(
                 trace_contacts!(iv, state, src, pending)
             end
         end
+        hopped && delete!(src.state, :_ring_hop)
         for ind in pending
             push!(visited, ind.id)
         end
@@ -901,7 +909,7 @@ function _walk_ring!(
         for iv in interventions
             for id in keep_active(iv, state, pending, is_new)
                 k = get(pos, id, 0)
-                (k == 0 || processed[k]) && continue
+                k == 0 && continue
                 push!(frontier, state.individuals[id])
             end
         end
@@ -1484,11 +1492,11 @@ function _sellke_race!(
         _any_stop(stopping_rules, state) && return _finish_race!(rts, race, false, bt)
         # A route that creates its contacts as it goes creates this case's now,
         # so that tracing and the interventions' actions can reach them.
-        for (_, route_targets) in rts
-            _mint!(route_targets, race, ind, max_generation)
-        end
+        # Unrolled over `rts` rather than looped over (see `_mint_all!`), for
+        # the reason given there.
+        _mint_all!(rts, race, ind, max_generation)
         traced = _trace_from!(
-            state, ind, interventions, case_contacts, pos, processed, tracing
+            state, ind, interventions, case_contacts, pos, tracing
         )
         _trace_source!(state, ind, interventions, tracing_source)
         (contacts !== nothing || contactless_actions) &&
@@ -1522,29 +1530,17 @@ function _sellke_race!(
         # Each route opens and closes on its own states, so a case can still be
         # transmitting on one while another has been cut. A route whose `from`
         # state was never reached contributes nothing, which is how a survivor
-        # never materialises funeral contacts.
-        for (ri, (w, route_targets)) in enumerate(rts)
-            open_t = _route_open(route_targets, ind, w)
-            isfinite(open_t) || continue
-            # A case at the generation bound opened this route and would
-            # otherwise have transmitted along it, so the run was cut off
-            # rather than reaching extinction on its own — the same
-            # distinction `max_time` draws for a route it censors.
-            ind.generation >= max_generation && (capped_generation = true; continue)
-            close_t = convert(
-                T, _route_close(ind, close_keys[ri], removable[ri], route_interventions[ri])
-            )
-            opening_id = _store_opening!(members, openings, members[j], ri, open_t, close_t)
-            live && _watch_opening!(watch, j, live_route[ri])
-            if live_route[ri]
-                proj = route_projections[ri]
-                proj === nothing || (full_snapshot[ri][j] = _remember(proj(ind)))
-            end
-            _propose_along!(
-                route_targets, race, members[j], opening_id, open_t, close_t,
-                traits, live_route[ri], ri
-            )
-        end
+        # never materialises funeral contacts. Unrolled over `rts` rather than
+        # looped over (see `_open_routes!`), for the reason given there.
+        capped_generation = _open_routes!(
+            rts,
+            (;
+                race, ind, members, openings, j, max_generation, close_keys,
+                removable, watch, live, live_route, route_projections,
+                full_snapshot, traits, route_interventions, T,
+            ),
+            capped_generation
+        )
     end
     return _finish_race!(
         rts, race,
@@ -1639,6 +1635,67 @@ _on_route(f::F, ::Tuple{}, route, ri = 1) where {F} = throw(BoundsError())
 function _on_route(f::F, rts::Tuple, route, ri = 1) where {F}
     ri == route && return f(first(rts)...)
     return _on_route(f, Base.tail(rts), route, ri + 1)
+end
+
+# Call `_mint!`, which draws a route's own contacts for a case as it settles,
+# on every route rather than one at a time. A generated function unrolls over
+# `rts`'s literal length instead of looping over it or recursing through
+# `Base.tail`: a `for` loop over routes of more than one type (a different
+# offspring law, kernel or `until`, say) reads every visit through their
+# common supertype and boxes it, and recursion deep enough to cover a few
+# dozen routes defeats the compiler's inlining budget and falls back to that
+# same boxing. Code indexing each route by its literal position avoids both,
+# specialising every visit on its own route's concrete type regardless of how
+# many routes there are or how many share a type.
+@generated function _mint_all!(rts::Tuple, race, ind, max_generation)
+    body = Expr(:block)
+    for i in 1:length(rts.parameters)
+        push!(body.args, :(_mint!(rts[$i][2], race, ind, max_generation)))
+    end
+    push!(body.args, nothing)
+    return body
+end
+
+# Open every route a settling case reaches and offer its targets a proposal,
+# unrolled over `rts`'s literal length for the same reason `_mint_all!` is.
+# `ctx` bundles what every route reads alike, and `capped` threads the "cut
+# off by `max_generation`" flag through the unrolled calls.
+@generated function _open_routes!(rts::Tuple, ctx, capped)
+    body = Expr(:block)
+    for i in 1:length(rts.parameters)
+        push!(body.args, :(capped = _open_route!(rts[$i][1], rts[$i][2], $i, ctx, capped)))
+    end
+    push!(body.args, :(return capped))
+    return body
+end
+
+function _open_route!(w, route_targets, ri, ctx, capped)
+    (;
+        race, ind, members, openings, j, max_generation, close_keys, removable,
+        watch, live, live_route, route_projections, full_snapshot, traits,
+        route_interventions, T,
+    ) = ctx
+    open_t = _route_open(route_targets, ind, w)
+    isfinite(open_t) || return capped
+    # A case at the generation bound opened this route and would otherwise
+    # have transmitted along it, so the run was cut off rather than reaching
+    # extinction on its own — the same distinction `max_time` draws for a
+    # route it censors.
+    ind.generation >= max_generation && return true
+    close_t = convert(
+        T, _route_close(ind, close_keys[ri], removable[ri], route_interventions[ri])
+    )
+    opening_id = _store_opening!(members, openings, members[j], ri, open_t, close_t)
+    live && _watch_opening!(watch, j, live_route[ri])
+    if live_route[ri]
+        proj = route_projections[ri]
+        proj === nothing || (full_snapshot[ri][j] = _remember(proj(ind)))
+    end
+    _propose_along!(
+        route_targets, race, members[j], opening_id, open_t, close_t,
+        traits, live_route[ri], ri
+    )
+    return capped
 end
 
 # What a route needs beyond proposing along its pairs. A route over existing

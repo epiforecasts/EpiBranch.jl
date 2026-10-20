@@ -519,7 +519,7 @@ function analytic_offspring_effect(iv::AbstractIntervention, offspring)
                 "(no `analytic_offspring_effect` method), so this analytical function " *
                 "cannot account for it. Compute the quantity from simulated outbreaks, " *
                 "simulate(spec, n), instead. For containment, " *
-                "containment_probability(simulate(spec, n)) gives the simulated answer " *
+                "containment_probability(spec, n) gives the simulated answer " *
                 "and probability_contain(R, k; ind_control, pop_control) an approximation."
         )
     )
