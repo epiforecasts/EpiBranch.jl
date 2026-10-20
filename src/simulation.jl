@@ -1085,9 +1085,9 @@ and the model sets everyone else's if they are infected later. Pass
 `infection_time = 0` when everyone added is an index case, so that population
 characteristics drawn at creation see the time of their infection.
 
-For each person, the population characteristics are drawn first, then
-`setup(ind, i)` runs (to record model-specific information such as a network
-node or household id), then a random type is drawn for multi-type models, and
+For each person, a random type is drawn first for multi-type models, then the
+population characteristics are drawn, then `setup(ind, i)` runs (to record
+model-specific information such as a network node or household id), and
 finally each intervention sets up its own information on that person.
 """
 function add_individuals!(
@@ -1097,13 +1097,11 @@ function add_individuals!(
     base = length(state.individuals)
     added = eltype(state.individuals)[]
     for i in 1:n
-        ind = _create_individual(state, 0, base + i, base + i, infection_time)
+        type_idx = n_types > 1 ? rand(state.rng, 1:n_types) : NoTypeLabels()
+        ind = _create_individual(
+            state, 0, base + i, base + i, infection_time; type_idx
+        )
         setup(ind, i)
-        # Match the new-contact path's ordering (`make_contact!` sets
-        # `:type` before the engine calls `initialise_individual!`) so an
-        # intervention that reads `:type` at init sees the same state for
-        # seed cases and downstream contacts.
-        n_types > 1 && (ind.state[:type] = rand(state.rng, 1:n_types))
         for intervention in interventions
             initialise_individual!(intervention, ind, state)
         end
@@ -1239,15 +1237,21 @@ function susceptible_fraction(
     return n_susceptible / state.population_size
 end
 
-"""Create a new person and draw their population characteristics. They
-start as not infected; only the infection decision later in the generation
-marks them infected. Interventions set up their information on the person
-later in the generation, so creating a contact (in `make_contact!` or a
-model's [`contacts_of`](@ref)) involves no intervention.
+"""Create a new person, give them their type (if any) and draw their
+population characteristics. They start as not infected; only the infection
+decision later in the generation marks them infected. Interventions set up
+their information on the person later in the generation, so creating a
+contact (in `make_contact!` or a model's [`contacts_of`](@ref)) involves no
+intervention.
+
+`type_idx` is set before the population characteristics are drawn, so an
+attributes function sees each person's actual type rather than the type-1
+default every new `IndividualState` starts with.
 """
 function _create_individual(
         state::SimulationState, parent_id::Int,
-        chain_id::Int, next_id::Int, inf_time::Real
+        chain_id::Int, next_id::Int, inf_time::Real;
+        type_idx::Union{Int, NoTypeLabels} = NoTypeLabels()
     )
     T = _timetype(state)
     s = IndividualState{T}()
@@ -1263,6 +1267,7 @@ function _create_individual(
         InfectionEpisode{T}[]
     )
 
+    _set_type!(ind, type_idx)
     _apply_attributes!(state.attributes, state.rng, ind)
 
     return ind
@@ -1315,9 +1320,8 @@ function make_contact!(
     next_id = length(state.individuals) + 1
     contact = _create_individual(
         state, parent.id, parent.chain_id,
-        next_id, infection_time
+        next_id, infection_time; type_idx
     )
-    _set_type!(contact, type_idx)
     push!(parent.secondary_case_ids, next_id)
     push!(state.individuals, contact)
     return contact
