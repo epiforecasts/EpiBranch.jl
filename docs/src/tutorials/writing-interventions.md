@@ -552,8 +552,8 @@ infection is decided. The ring grows through them whether or not the contact
 is infected, and if it is, they are the contacts it goes on to expose. An
 offspring or generation time given as a function may read what settling the
 contact writes, such as its severity, so there the contact's own contacts are
-drawn only once it settles as a case; an uninfected one has none (see
-[`EpiBranch.reads_settled_state`](@ref)). Its contacts are still traced from
+drawn only once it settles as a case, and the ring does not grow past a
+contact who is never infected (see [`EpiBranch.reads_settled_state`](@ref)). Its contacts are still traced from
 when the ring reached it, and, if it is eligible for tracing in its own right,
 again from its own trigger, as they would be if they had been drawn early. A
 generation time from [`incubation_linked_generation_time`](@ref) is such a
