@@ -238,7 +238,7 @@ end
         end
 
         @testset "a single route matches NetworkProcess with the same vaccination" begin
-            # A single-route `RoutedNetworkInfections` carries exactly the columns
+            # A single-route `RoutedNetworkInfections` has exactly the columns
             # a `NetworkInfections` over the same adjacency does, so the two
             # likelihoods must agree on the same recorded outbreak and vaccine
             # effect, regardless of how each simulator arrived at it.

@@ -282,7 +282,7 @@ end
 # under each of `mixture`'s components, combined by the same weighted
 # log-sum-exp `_mixture_loglik` uses for a household or network: the weights
 # enter linearly, never through `log(weight)`, so a weight of exactly zero
-# still carries a derivative with respect to itself.
+# still has a derivative with respect to itself.
 function _routed_mixture_loglik(
         mixture, windows, extsrc, data, in_neighbours, gaps, gates, tfollow, j, ::Type{T}
     ) where {T}
