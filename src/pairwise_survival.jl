@@ -1154,12 +1154,28 @@ end
 # ── The community hazard ─────────────────────────────────────────────
 #
 # A model with a contact structure can also introduce cases from outside it: a
-# non-negative rate (a constant hazard) or a continuous distribution on the
-# non-negative reals (a calendar-time hazard). Either is shared by everyone, or
-# differs between people, given as a vector with one entry per person or as a
-# function of the person's number returning their own rate or distribution.
-# Its simulators and this likelihood share these helpers and agree on when the
-# term applies and what it is for each person.
+# non-negative rate (a constant hazard), a continuous distribution on the
+# non-negative reals (a calendar-time hazard), or a piecewise-constant calendar
+# schedule such as `Steps` giving the daily rate directly, for a community
+# hazard that changes on known days. Either is shared by everyone, or differs
+# between people, given as a vector with one entry per person or as a function
+# of the person's number returning their own rate or distribution (a schedule
+# is always shared). Its simulators and this likelihood share these helpers
+# and agree on when the term applies and what it is for each person.
+
+# A calendar schedule stands for the hazard itself rather than a multiplier on
+# some other kernel, so only one the package integrates exactly, like `Steps`,
+# is accepted: its `calendar_shape` must be `PiecewiseConstantCalendar`, which
+# also rules out a plain function (read instead as one rate or distribution
+# per person) and a `Real` or `AbstractVector` (neither defines
+# `calendar_multiplier`).
+_is_calendar_external(source) = hasmethod(calendar_multiplier, Tuple{typeof(source), Float64}) &&
+    calendar_shape(source) isa PiecewiseConstantCalendar
+
+# The daily rate a calendar schedule gives, as a survival distribution: a unit
+# hazard (`Exponential(1.0)`) scaled by the schedule from calendar day 0, so
+# its cumulative hazard at τ is the schedule integrated over `[0, τ]`.
+_calendar_external_survival(source) = _CalendarScaledKernel(Exponential(1.0), source, 0.0)
 
 # A distribution with negative support is rejected, because introductions cannot
 # happen before time 0. A function's values are checked as they are read.
@@ -1167,11 +1183,12 @@ _valid_external(α::Real) = α >= 0
 _valid_external(d::ContinuousUnivariateDistribution) = minimum(d) >= 0
 _valid_external(v::AbstractVector) = all(_is_person_external, v)
 _valid_external(::Function) = true
-_valid_external(_) = false
+_valid_external(source) = _is_calendar_external(source)
 _normalise_external(α::Real) = Float64(α)
 _normalise_external(d::ContinuousUnivariateDistribution) = d
 _normalise_external(v::AbstractVector) = map(_normalise_external, v)
 _normalise_external(f::Function) = f
+_normalise_external(source) = source
 
 # One person's own external hazard: a rate or a distribution.
 _is_person_external(s) = (s isa Real || s isa ContinuousUnivariateDistribution) &&
@@ -1182,8 +1199,9 @@ function _check_external(source, n::Integer)
     _valid_external(source) || throw(
         ArgumentError(
             "external_hazard must be a non-negative number, a continuous " *
-                "distribution, a vector of these with one per person, or a " *
-                "function of the person's number returning one"
+                "distribution, a piecewise-constant calendar schedule such as " *
+                "`Steps`, a vector of the first two with one per person, or a " *
+                "function of the person's number returning one of them"
         )
     )
     source isa AbstractVector && length(source) != n && throw(
@@ -1195,19 +1213,24 @@ function _check_external(source, n::Integer)
 end
 
 # The community hazard is off at a zero rate; a distribution is always on. A
-# per-person vector is on when anyone's is, and a function is taken to be on.
+# per-person vector is on when anyone's is, a function is taken to be on, and
+# so is a calendar schedule.
 _ext_active(α::Real) = α > 0
 _ext_active(::ContinuousUnivariateDistribution) = true
 _ext_active(v::AbstractVector) = any(_ext_active, v)
 _ext_active(::Function) = true
+_ext_active(source) = true
 
 # The community hazard as a calendar-time survival distribution: a constant rate
-# α is `Exponential(1/α)` (hazard α, cumulative α·t); a distribution is itself.
+# α is `Exponential(1/α)` (hazard α, cumulative α·t); a distribution is itself;
+# a calendar schedule is its daily rate integrated from day 0.
 _ext_survival(α::Real) = Exponential(1 / α)
 _ext_survival(d::ContinuousUnivariateDistribution) = d
+_ext_survival(source) = _calendar_external_survival(source)
 
 # Person `j`'s survival distribution under the community hazard, or `nothing`
-# when they face none.
+# when they face none. A calendar schedule is the same for everyone, like a
+# shared distribution; `_CalendarScaledKernel` is its own prepared form.
 _ext_survival_of(::Nothing, j) = nothing
 _ext_survival_of(d::ContinuousUnivariateDistribution, j) = d
 _ext_survival_of(α::Real, j) = _ext_active(α) ? _ext_survival(α) : nothing
@@ -1222,6 +1245,8 @@ function _ext_survival_of(f::Function, j)
     )
     return _ext_survival_of(s, j)
 end
+_ext_survival_of(k::_CalendarScaledKernel, j) = k
+_ext_survival_of(source, j) = _calendar_external_survival(source)
 
 # The source with each rate turned into its survival distribution once, for
 # the passes that read it person by person.
@@ -1229,10 +1254,12 @@ _ext_prepare(α::Real) = _ext_survival_of(α, 0)
 _ext_prepare(d::ContinuousUnivariateDistribution) = d
 _ext_prepare(v::AbstractVector) = map(s -> _ext_survival_of(s, 0), v)
 _ext_prepare(f::Function) = f
+_ext_prepare(source) = _calendar_external_survival(source)
 
 # The parameter type of the community hazard over the `n` people, so that AD
 # values in a fitted rate survive the reduction.
 _ext_partype(d::ContinuousUnivariateDistribution, n) = Distributions.partype(d)
+_ext_partype(k::_CalendarScaledKernel, n) = Distributions.partype(k)
 function _ext_partype(source, n)
     T = Union{}
     for j in 1:n
@@ -1414,13 +1441,16 @@ covariates, a [`PairKernel`](@ref) that also uses the infector's infection time
 a contact list (`kernel[i][k]` for person `i`'s `k`-th listed contact).
 
 `external_hazard` is infection from outside the households or network: a
-constant rate per person per day, or a distribution of the time of infection
-from outside. Either is shared by everyone, or differs between people: a
-vector with one rate or distribution per person, or a function `j -> rate or
+constant rate per person per day, a distribution of the time of infection from
+outside, or a piecewise-constant calendar schedule such as [`Steps`](@ref)
+giving the daily rate directly, for a community hazard that changes on known
+days. A rate or distribution is shared by everyone, or differs between
+people: a vector with one per person, or a function `j -> rate or
 distribution` of person `j`'s number, for example to give each arm of a trial
-its own community hazard. A function is taken to be in force, so the
-likelihood explains index cases as described next even if it returns zero for
-everyone. Such infections happen only in the first `data.obs_end` days.
+its own community hazard; a calendar schedule is always shared. A function
+or a calendar schedule is taken to be in force, so the likelihood explains
+index cases as described next even if a function returns zero for everyone.
+Such infections happen only in the first `data.obs_end` days.
 With an external hazard, index cases are explained like any other case;
 without one, the likelihood conditions on them. Each person is exposed to the
 external hazard until the earlier of their infection and `data.obs_end`, so a

@@ -425,6 +425,33 @@ end
         end
     end
 
+    @testset "a community hazard can follow a calendar schedule" begin
+        # two people in separate households, so every row is a community one;
+        # 1 is a community case at 2.5, after the schedule's rate drops at day
+        # 2; 2 escapes the community hazard to obs_end = 4
+        schedule = Steps([2.0], [0.2, 0.05])
+        data = _TestInfections(
+            [1, 2], [2.5, NaN], [2.5, NaN], [10.0, Inf], [true, false];
+            obs_end = 4.0
+        )
+        L = compile_contact_pairs(data; external = true)
+        integrated(t) = 0.2 * min(t, 2.0) + 0.05 * max(t - 2.0, 0.0)
+        expected = log(0.05) - integrated(2.5) - integrated(4.0)
+        @test pairwise_surv_loglik(Exponential(1.0), data, L; external_hazard = schedule) ≈
+            expected
+        @test pairwise_surv_loglik(Exponential(1.0), data; external_hazard = schedule) ≈
+            expected
+
+        # a schedule is not a valid per-element of a per-person vector or
+        # function, only a hazard shared by everyone
+        @test_throws ArgumentError pairwise_surv_loglik(
+            Exponential(1.0), data; external_hazard = [schedule, schedule]
+        )
+        @test_throws ArgumentError pairwise_surv_loglik(
+            Exponential(1.0), data; external_hazard = j -> schedule
+        )
+    end
+
     @testset "a community case at time 0 is counted" begin
         # households {1, 2} and {3}: 1 and 3 are community cases at 0, 1 is
         # infectious over [0, 3] and 2 is never infected
