@@ -112,6 +112,29 @@ EpiBranch.single_type_offspring(m::LawOnlyModel) = m.law
         @test reproduction_number(intended) ≈ 1.0 atol = 1.0e-8
     end
 
+    @testset "One offspring law per type, differing in shape" begin
+        # Both types have R = 1.5, but the law for type 1 is heavy-tailed
+        # (negative binomial) while the law for type 2 is not (Poisson). A
+        # single `dist_fn(R_j)` cannot express that.
+        M_bipartite = [0.0 1.5; 1.5 0.0]
+        laws = [NegBin(1.5, 0.1), Poisson(1.5)]
+        model = BranchingProcess(M_bipartite, laws, Exponential(5.0))
+
+        @test reproduction_number(model) ≈ 1.5
+
+        q1, q2 = extinction_probability(model)
+        @test q1 ≈ EpiBranch._pgf(laws[1], q2) atol = 1.0e-8
+        @test q2 ≈ EpiBranch._pgf(laws[2], q1) atol = 1.0e-8
+
+        # The same reproduction number with an identical law for both types
+        # gives the two types the same extinction probability; the heavy tail
+        # on type 1 alone breaks that symmetry.
+        uniform = BranchingProcess(M_bipartite, R -> Poisson(R), Exponential(5.0))
+        q1_uniform, q2_uniform = extinction_probability(uniform)
+        @test q1_uniform ≈ q2_uniform
+        @test !isapprox(q1, q2)
+    end
+
     @testset "A law with no mean method still works" begin
         # `mean` has no method for a truncated Poisson, and the iterable
         # fallback it reaches cannot iterate a distribution, so the analytics
