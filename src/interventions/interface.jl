@@ -243,7 +243,7 @@ quarantined contact's trace time, when the isolation or quarantine has no end
 (no removal) suits an intervention that reduces transmission per contact,
 such as a leaky vaccine, which acts through
 [`competing_risk`](@ref EpiBranch.competing_risk) instead. A model written
-against [`generate_offspring`](@ref) or [`contacts_of`](@ref) does not read it.
+against [`generate_offspring`](@ref) or [`contacts_of`](@ref) reads it too.
 """
 infectious_removal_time(::AbstractIntervention, ::Individual) = Inf
 
