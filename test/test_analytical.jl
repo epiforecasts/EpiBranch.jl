@@ -245,6 +245,37 @@
             ll = loglikelihood(data, d)
             @test ll ≈ sum(logpdf(d, n) for n in data.data)
         end
+
+        @testset "DetectedChainSize" begin
+            base = chain_size_distribution(NegBin(0.5, 0.3))
+            q = 0.3
+            d = observe(base, ChainDetection(q))
+            @test d isa DetectedChainSize
+
+            # The issue's reproduction: P(n) r(n) / Σ_m P(m) r(m), with
+            # r(n) = 1 - (1 - q)^n.
+            unnormalised = n -> pdf(base, n) * (1 - (1 - q)^n)
+            manual = unnormalised(3) / sum(unnormalised, 1:10_000)
+            @test pdf(d, 3) ≈ manual atol = 1.0e-8
+
+            @test cdf(d, 5) ≈ sum(pdf(d, n) for n in 1:5)
+            @test cdf(d, 5) + ccdf(d, 5) ≈ 1.0
+            @test logccdf(d, 5) ≈ log(ccdf(d, 5))
+            @test sum(pdf(d, n) for n in 1:10_000) ≈ 1.0 atol = 1.0e-6
+
+            # q = 1 records every chain, so it is the unconditioned law.
+            @test pdf(observe(base, ChainDetection(1.0)), 3) ≈ pdf(base, 3)
+
+            # A detection rule of the caller's own choosing.
+            d_custom = observe(base, ChainDetection(n -> min(1.0, 0.1 * n)))
+            @test sum(pdf(d_custom, n) for n in 1:10_000) ≈ 1.0 atol = 1.0e-6
+
+            data = ChainSizes([1, 1, 2, 5])
+            @test loglikelihood(data, d) ≈ sum(logpdf(d, n) for n in data.data)
+
+            @test_throws ArgumentError ChainDetection(0.0)
+            @test_throws ArgumentError ChainDetection(1.5)
+        end
     end
 
     @testset "IndexChainSize" begin
@@ -826,6 +857,52 @@
             @test_throws ArgumentError MinimumSize(0)
         end
 
+        @testset "ChainDetection records whole chains by size" begin
+            off = NegBin(0.8, 0.5)
+            dist = chain_size_distribution(off)
+            q = 0.4
+            data = ChainSizes([1, 2, 3, 5])
+            d = observe(dist, ChainDetection(q))
+
+            ll = loglikelihood(data, d)
+            manual = sum(
+                log(pdf(dist, x) * (1 - (1 - q)^x)) - d.log_prob_recorded
+                    for x in data.data
+            )
+            @test ll ≈ manual atol = 1.0e-10
+
+            # Simulation marks every case in a chain with the same flag.
+            rng = StableRNG(11)
+            state = simulate(
+                ModelSpec(BranchingProcess(off); observation = ChainDetection(q));
+                max_cases = 300, rng = rng
+            )
+            by_chain = Dict{Int, Bool}()
+            consistent = true
+            for ind in state.individuals
+                is_infected(ind) || continue
+                flag = ind.state[:reported]
+                if haskey(by_chain, ind.chain_id) && by_chain[ind.chain_id] != flag
+                    consistent = false
+                else
+                    by_chain[ind.chain_id] = flag
+                end
+            end
+            @test consistent
+
+            # Combined with a `Reporting` step, both would write `:reported`.
+            rep = Reporting(delay = Dirac(0.0), probability = 0.5, from = ind -> ind.infection_time)
+            bad_model = ModelSpec(
+                BranchingProcess(off);
+                progression = [rep], observation = ChainDetection(q)
+            )
+            @test_throws ArgumentError simulate(bad_model; rng = StableRNG(3))
+            @test_throws ArgumentError loglikelihood(data, bad_model)
+
+            @test_throws ArgumentError ChainDetection(0.0)
+            @test_throws ArgumentError ChainDetection(1.1)
+        end
+
         @testset "Per-case observation: simulation decoration" begin
             R, k = 0.6, 0.3
             gt = Gamma(2.0, 2.5)
@@ -918,6 +995,21 @@
                 n_chains = 5000, rng = StableRNG(7)
             )
             for (e, a) in zip(emp_po, ana_po)
+                @test e ≈ a atol = 0.02
+            end
+
+            # BranchingProcess with a ChainDetection(q): simulate bare, keep
+            # whole chains at random with probability growing in size,
+            # compare against DetectedChainSize.
+            emp_cd,
+                ana_cd = sim_analytical_consistent(
+                ModelSpec(
+                    BranchingProcess(NegBin(0.6, 0.5), Exponential(5.0));
+                    observation = ChainDetection(0.4)
+                );
+                n_chains = 5000, rng = StableRNG(13)
+            )
+            for (e, a) in zip(emp_cd, ana_cd)
                 @test e ≈ a atol = 0.02
             end
 
@@ -1156,6 +1248,27 @@
                     BranchingProcess(Poisson(1.5), Exponential(5.0));
                     interventions = [iso],
                     observation = MinimumSize(2),
+                    attributes = clinical_presentation(
+                        incubation_period = LogNormal(1.5, 0.5)
+                    )
+                );
+                max_cases = 500,
+                n_sim = 2000,
+                rng = StableRNG(42)
+            )
+            @test isfinite(ll)
+        end
+
+        @testset "ChainDetection falls through to the simulation path" begin
+            # With interventions present, the same whole-chain draw the
+            # closed form uses has to come from the simulated chains instead.
+            iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
+            ll = loglikelihood(
+                ChainSizes([2, 3, 2]),
+                ModelSpec(
+                    BranchingProcess(Poisson(1.5), Exponential(5.0));
+                    interventions = [iso],
+                    observation = ChainDetection(0.5),
                     attributes = clinical_presentation(
                         incubation_period = LogNormal(1.5, 0.5)
                     )
