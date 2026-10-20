@@ -412,9 +412,9 @@ ring wider than one step reaches people who are not `current`'s direct
 contacts, so a list built from `current`'s contacts alone would miss them.
 `is_pending(id)` reports whether `id` has not yet been settled, so an action
 may still reach it. `members` are the ids of everyone in the run, and
-`contacts(id, state)` yields the contacts of the case `id`; an intervention
+`contacts(id, state)` yields the contacts of the case `id`. An intervention
 choosing its own candidates usually needs only `current`, `traced` and
-`is_pending`, and walks `members` only if it can reach anyone in the run,
+`is_pending`; it walks `members` only if it can reach anyone in the run,
 which costs the size of the run on every settled case.
 
 Write a method of this function for an intervention whose candidates are not

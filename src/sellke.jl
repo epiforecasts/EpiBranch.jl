@@ -32,7 +32,7 @@ function _close_at(ind::Individual{T}, keys) where {T}
 end
 
 # ── Interventions on the race ────────────────────────────────────────
-# Two seams carry an intervention's effect on transmission. The first is the infectious window: an
+# Two seams hold an intervention's effect on transmission. The first is the infectious window: an
 # intervention that removes a case from onward transmission (isolation)
 # shortens it. Each case is settled as the race pops it (`_settle_case!`): its
 # natural history first, then each intervention's `resolve_individual!`, which
@@ -679,7 +679,7 @@ supplies_contacts(model::TransmissionModel) =
 
 # Warn once per run about an intervention that cannot act on a model naming no
 # contacts: one that traces, or proposes actions that need a case's contacts.
-# What it does to each case itself, such as isolating it, still applies.
+# Its hooks on the case itself, such as isolating it, still apply.
 function _warn_contactless(model, interventions)
     supplies_contacts(model) && return nothing
     names = unique(
