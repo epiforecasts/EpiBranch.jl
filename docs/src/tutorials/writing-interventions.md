@@ -526,12 +526,13 @@ no effect unless a population characteristic sets a value below one. You can
 add to them with a `competing_risk` of your own. They always apply, so a risk of
 your own should not apply susceptibility or infectiousness a second time.
 
-`HostSusceptibility` and `InfectorInfectiousness` apply on branching processes.
-The fixed-population models apply the same two values as multipliers on the rate
+`HostSusceptibility` and `InfectorInfectiousness` apply contact by contact on
+branching processes and on models written against `contacts_of`. The other
+fixed-population models apply the same two values as multipliers on the rate
 of transmission instead (see [Continuous-time models: further details](@ref)),
 so they do not decide them contact by contact. Of the remaining four,
-`InfectiousSource` never has anything to block, since the race proposes only
-from cases that have settled and are infected by construction, and the end of
+`InfectiousSource` never has anything to block on any model, since the race
+proposes only from cases that have settled and are infected by construction, and the end of
 an infectiousness window is enforced by the window closing rather than by
 `competing_risk`. `AbortedInfection` and `HostImmunity`, by contrast, are both
 resolved through `competing_risk` there: a settled member can become a target
