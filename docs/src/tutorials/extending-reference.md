@@ -77,8 +77,7 @@ underscore are internal.
 | `:severity_efficacy[_<label>]` | `Float64` | — | `AbstractVaccination` | When a dose is admitted |
 | `:coverage_declined[_<label>]` | `Bool` | `false` | `MassVaccination`, `GroupVaccination` | When a dose is offered and declined |
 | `:infection_aborted_time` | `Float64` | — | Simulation, through `abort_infection!` (for example by `RingVaccination`'s `post_exposure_efficacy`) | Any intervention hook |
-| `:capacity_admission_time_<capacity_key>` | `Float64` | — | `CapacityConstrained` | When an action is admitted through the deprecated `apply_post_transmission!` batch hook, which proposes no dated action |
-| `:_settled` | `Bool` | `false` | Simulation (continuous-time action delivery) | Once a case's own round of action discovery has run; internal, read through `is_settled` |
+| `:_settled` | `Bool` | `false` | Simulation (action delivery) | Once a case's own round of action discovery has run; internal, read through `is_settled` |
 | `:_intervention_actions` | `Dict` | `Dict()` | Any intervention using the action protocol | `action_draw!`; internal. Each intervention's own draws for this person, so a draw is made once and reread |
 | `:reporting_time` | `Float64` | `Inf` | `Reporting` transition *or* `PerCaseObservation` | `resolve_individual!` / after the simulation; reset to `Inf` by `censor_after_outcome!` if it falls after `:outcome_time` |
 | `:admitted` | `Bool` | `false` | `Hospitalisation` transition | `resolve_individual!`; reset to `false` by `censor_after_outcome!` if `:admission_time` falls after `:outcome_time` |
@@ -261,12 +260,10 @@ and [`EpiBranch.HostImmunity`](@ref) checks. Storage is a separate matter:
 [`Individual`](@ref)'s fields describe only the current infection episode, so
 a contact offered as a target again (once `HostImmunity` lets the exposure
 through) gets the closing episode archived onto `episodes` instead of
-overwritten; see [`InfectionEpisode`](@ref). The continuous-time models
-(network, household, homogeneous, mixing) do this on their own the moment the
-`progression` reaches `:susceptible_again`, with no change to how they name
-targets or contacts. On the generation engine a model allows reinfection by
-writing its own `contacts_of` to keep offering people after their first
-infection, instead of leaving them out; no built-in model does that yet.
+overwritten; see [`InfectionEpisode`](@ref). Every model over a fixed
+population (network, household, homogeneous, mixing, and one written against
+`contacts_of`) does this on its own the moment the `progression` reaches
+`:susceptible_again`, with no change to how it names targets or contacts.
 
 ## Continuous-time models: further details
 
@@ -787,32 +784,21 @@ defines `EpiBranch.intervention_actions(iv, state, candidates)` and returns
 `EpiBranch.InterventionAction(individual, time, effect!)` values.
 `effect!(individual, time, state)` records an action once admitted. Proposing
 can add people beyond the input, as group vaccination does when it finds every
-member of a group in which a case was found. Every built-in model calls it
-once each case settles, for every intervention with a method of it, with the
-case and the contacts it can still reach as candidates; a fixed-population
-model passes an intervention declaring `EpiBranch.continuous_actions(iv) =
-true` the case and everyone not yet infected instead. A model written
-against `generate_offspring` or `contacts_of` calls it once per case for every
-intervention, then again for each case in a settled generation in turn, with
-that case alone as the candidate, but this second round of calls reaches only
-an intervention that declares `EpiBranch.settles_generation_batch(iv) = true`.
-This defaults to `EpiBranch.continuous_actions(iv)`, so group vaccination,
-which sets that, needs no method of its own; ring vaccination overrides
-`settles_generation_batch` back to `false` even when its `continuous_actions`
-is `true`, because its contacts already reach it pre-infection through the
-per-case call, and the settlement call would reconsider a dose after this
-same round has already resolved the case's clinical outcome. Both put what it
-returns through the schedule and capacity limits.
+member of a group in which a case was found. Every model calls it once each
+case settles, for every intervention with a method of it, with the people
+`EpiBranch.action_candidates` chooses as candidates: by default the case and
+the contacts it can still reach. An intervention that chooses its own, such as
+everyone in the run not yet infected, writes a method of
+`action_candidates`. What it returns goes through the schedule and capacity
+limits.
 
 `Scheduled` checks the proposed action time before delivery. A condition
 function sees that time as `state.max_infection_time`, with the current case
 count and generation. `CapacityConstrained` checks the same proposed time
 against the budget of the period it falls in, whatever the clock of the case
 proposing it. Both orders of the two follow these rules. The budget counts
-doses by the day they are actually given, not by when they were admitted; an
-intervention still on the deprecated `apply_post_transmission!` batch hook
-proposes no dated action, so it is counted against the admitting call's own
-clock instead. An intervention using a resource of your own defines
+doses by the day they are actually given, not by when they were admitted. An
+intervention using a resource of your own defines
 `capacity_key` and `capacity_time_key` and sets the resource flag only after
 successful delivery. An action on a person who already has that flag passes
 the capacity check without another charge, though the schedule still applies.
@@ -844,7 +830,7 @@ these draws per policy and person. A refused admission may be considered again
 when it is proposed again, but is not queued. An earlier trigger can bring
 forward an action not yet admitted, using the same delay. Admission fixes the
 recorded date and effect draws, and later triggers do not change completed
-actions, with one exception below: on a continuous-time model, a group dose for
+actions, with one exception below: a group dose for
 a person whose infection is not yet final moves to a trigger found later that
 turns out to be earlier than the one the dose was first given from. Dose
 prerequisites are checked against the proposed date before admission.
@@ -865,11 +851,8 @@ first_time == next_time
 The result is `true`: the second call uses the stored draw. Give a new visit a
 different key, and keep the same key when the same visit is proposed again.
 
-On the built-in models, actions run in one of two ways. By default they run
-after a newly final case is traced, narrowed to the case and the contacts it
-can still reach (or, for an intervention declaring `continuous_actions` on a
-fixed-population model, offered the case and everyone not yet infected), and
-must work without the infection time of a contact whose
+Actions run in one of two ways. By default they run after a newly final case
+is traced, offered to the people `action_candidates` chooses, and must work without the infection time of a contact whose
 infection is not yet final. That narrowing needs a model that names contacts
 (`EpiBranch.supplies_contacts(model) = true`), unless the intervention
 declares `EpiBranch.needs_contacts(iv) = false`, as group delivery does,
@@ -993,7 +976,7 @@ before.
 | Multi-type offspring as a function | A function `(rng, ind) -> Vector{Int}` | Offspring draw |
 | An offspring specification | A type with `draw_offspring` and `chain_size_distribution` | Offspring draw and closed-form results |
 | An offspring specification or generation time that reads nothing a case's settlement writes | `EpiBranch.reads_settled_state(::YourType) = false` | Tracing rings of depth 2 or more on a branching process |
-| A transmission model | A type `<: TransmissionModel` with `generate_offspring` (offspring-driven) or `initialise_state`, `contacts_of` and `collect_exposures` returning `gather_by_target` (structure-driven), or `EpiBranch.simulate_once` running `EpiBranch.sellke_race!` (its own continuous-time loop); optionally `single_type_offspring` and accessors | Simulation and closed-form results |
+| A transmission model | A type `<: TransmissionModel` with `generate_offspring` (offspring-driven) or `initialise_state` and `contacts_of` (structure-driven), or `EpiBranch.simulate_once` running `EpiBranch.sellke_race!` (its own continuous-time loop); optionally `single_type_offspring` and accessors | Simulation and closed-form results |
 | A transmission route | `RouteWindow(name; from, until, kernel, reach)` on a model that reads routes | Continuous-time models, each case |
 | Structured mixing in a closed population | `MixingProcess(; population_size, mixing_by, rate)`: the characteristics that define the groups, and the contact rate between one person in each of two groups | Simulation |
 | A clinical transition | A type `<: AbstractClinicalTransition` with `initialise_individual!` and `resolve_individual!`; `is_terminal`, `terminal_event` and `terminal_target` if terminal; `transition_loglik` to evaluate it | When a case is settled |

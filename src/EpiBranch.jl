@@ -47,20 +47,18 @@ include("transitions/outcome.jl")
 """
     generate_offspring(model, parent, state) -> count
 
-How many contacts the case `parent` makes in this generation, before
-susceptibility and interventions decide which of them are infected: one
-number, or one number per type in a multi-type model. Defined by a new
-transmission model in which every contact is a new person. For such a model
-the simulation calls it once for each infectious case, then creates that many
-contacts and times each from the model's generation time, so the model itself
-does not create people, time infections or apply interventions. The built-in
-branching process draws its counts from its offspring distribution directly.
+How many contacts the case `parent` makes, before susceptibility and
+interventions decide which of them are infected: one number, or one number per
+type in a multi-type model. Defined by a new transmission model in which every
+contact is a new person. The simulation calls it once for each case, when the
+case's infection is decided, then creates that many contacts and times each
+from [`model_generation_time`](@ref EpiBranch.model_generation_time), so the
+model itself does not create people, time infections or apply interventions.
+The built-in branching process draws its counts from its offspring
+distribution directly.
 
-A model whose contacts are people who already exist, such as a contact
-network or households, defines [`contacts_of`](@ref) and a
-[`collect_exposures`](@ref) method that returns [`gather_by_target`](@ref)
-instead. No model in the package is written that way: the network and
-household models run the continuous-time race instead.
+A model whose contacts are people who already exist, such as a contact network
+or households, defines [`contacts_of`](@ref) instead.
 """
 function generate_offspring end
 
@@ -102,6 +100,7 @@ include("sellke.jl")
 # mixes that way, HomogeneousProcess.
 include("mass_action.jl")
 include("offspring_route.jl")
+include("contacts_route.jl")
 include("models/homogeneous.jl")
 include("models/mixing.jl")
 
@@ -204,7 +203,7 @@ export clinical_presentation, demographics, transmission_traits, groups,
 # Exports — simulation
 export simulate, make_contact!, susceptible_fraction
 export CommonRandomNumbers
-export generate_offspring, contacts_of, collect_exposures, gather_by_target
+export generate_offspring, contacts_of
 
 # Exports — output
 export event_time_metadata, linelist, contacts, chain_statistics, compute_trace_level!

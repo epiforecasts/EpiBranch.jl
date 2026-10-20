@@ -502,25 +502,6 @@ function resolve_individual!(s::Scheduled, ind, state)
     return nothing
 end
 
-# Kept for wrapping an intervention that still implements the deprecated batch
-# hook; the engine hands the batch here only when the wrapped one does.
-_uses_batch_hook(s::Scheduled) = _uses_batch_hook(s.intervention)
-function apply_post_transmission!(s::Scheduled, state, new_contacts)
-    actions = intervention_actions(s, state, new_contacts)
-    if actions !== nothing
-        _admit_actions!(s, state, actions)
-        return nothing
-    end
-    s.time_aware || is_active(s, state) || return nothing
-    apply_post_transmission!(s.intervention, state, new_contacts)
-    if s.time_aware
-        for c in new_contacts
-            _reset_unless_in_schedule!(s, c, state)
-        end
-    end
-    return nothing
-end
-
 # Undo the wrapped intervention's effect on `ind` unless it falls inside the
 # schedule's window at its own time, exactly as `_action_in_schedule` checks a
 # proposed action. An effect that never ran (`intervention_time` still at its

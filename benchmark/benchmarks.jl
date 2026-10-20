@@ -81,10 +81,9 @@ SUITE["simulation: households"] = @benchmarkable simulate(
     ); rng = StableRNG(1)
 )
 
-# The generation-based engine that `BranchingProcess` drives, distinct from
-# the continuous-time race the processes above run on. Timed with and
-# without interventions, since an intervention adds a state read and a
-# policy check to every case the engine advances.
+# `BranchingProcess` on the continuous-time race. Timed with and without
+# interventions, since an intervention adds a state read and a policy check
+# to every case the race settles.
 const BP_OFFSPRING = NegBin(2.5, 0.16)
 const BP_GT = LogNormal(1.6, 0.5)
 

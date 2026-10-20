@@ -1,10 +1,3 @@
-# Test intervention answering `keep_active` without tracing anything, which
-# leaves the race nothing to ask it about.
-struct KeepUninfectedActive <: EpiBranch.AbstractIntervention end
-function EpiBranch.keep_active(::KeepUninfectedActive, state, targets, is_new)
-    return [t.id for t in targets if !is_infected(t)]
-end
-
 @testset "Competing risks" begin
     clinical = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
 
@@ -416,16 +409,6 @@ end
             push!(frac, count(is_infected, kids) / length(kids))
         end
         @test 0.2 < sum(frac) / length(frac) < 0.4
-    end
-
-    @testset "keep_active without tracing is reported as having no effect" begin
-        model = ModelSpec(
-            BranchingProcess((rng, ind) -> 4, Exponential(5.0));
-            interventions = [KeepUninfectedActive()]
-        )
-        @test_logs (:warn, r"keep_active") match_mode = :any simulate(
-            model; max_cases = 5, rng = StableRNG(1)
-        )
     end
 
     @testset "An uninfected source never transmits" begin

@@ -205,8 +205,8 @@ A branching process asks this before a ring of contact tracing reaches a
 person whose infection is not yet decided. If neither the window's offspring
 nor its generation time reads settled state, the person's contacts are drawn
 then and the ring grows through them, whether or not the person is infected.
-Otherwise they are drawn only once the person settles as a case, so an
-uninfected ring member has none.
+Otherwise they are drawn only once the person settles as a case, so the ring
+does not grow past a ring member who is never infected.
 
 The default is `true`, the safe answer for a function, which may read
 anything. A `Distribution`, a [`MultiTypeOffspring`](@ref) (which reads only
@@ -214,6 +214,14 @@ the case's type, set when it is created), a [`ClusterMixed`](@ref) (which
 reads its parent's draw) and no generation time answer `false`. An offspring
 specification of your own that draws from nothing settling writes declares
 `EpiBranch.reads_settled_state(::YourOffspring) = false`.
+
+A model written against [`contacts_of`](@ref) is asked the same question. If it
+declares `EpiBranch.reads_settled_state(::YourModel) = false`, a ring that
+reaches a person not yet settled calls `contacts_of` for them then, as though
+they were infected at time 0, and grows through the people it names, whether or
+not the person is infected. If the person settles as a case, those are the
+people they expose, each at the time `contacts_of` gave plus their infection
+time. Otherwise the ring grows past a person only once they settle as a case.
 """
 reads_settled_state(_) = true
 reads_settled_state(::Distribution) = false
@@ -361,13 +369,6 @@ end
 
 supplies_contacts(::BranchingProcess) = true
 
-# A branching process has no population beyond the contacts drawn so far, most
-# not yet created, so an intervention asking for everyone not yet settled is
-# offered the contacts the case can still reach.
-function _unsettled_candidates(state, current, traced, is_pending, ::_Tree, contacts)
-    return _reached_candidates(state, current, traced, is_pending, contacts)
-end
-
 """
     simulate_once(model::BranchingProcess, sim_opts; interventions, attributes,
                   progression, observation, recorder, rng)
@@ -382,20 +383,38 @@ function simulate_once(
     )
     # An empty tuple lets the race omit intervention setup and per-case hooks.
     return _simulate_offspring(
-        model, sim_opts, isempty(interventions) ? () : interventions;
+        model, model.infectiousness, sim_opts, isempty(interventions) ? () : interventions;
+        attributes, progression, observation, recorder, rng
+    )
+end
+
+# A model of its own that says how many contacts each case makes, through
+# `generate_offspring`, is a branching process with one window: the count is
+# its offspring and `model_generation_time` its kernel, so it runs on the same
+# route. The count may read anything, so a tracing ring draws a person's
+# contacts only once they settle.
+function _simulate_generated(
+        model::TransmissionModel, sim_opts::SimOpts;
+        interventions, attributes, progression, observation, recorder, rng
+    )
+    window = Infectiousness(
+        (rng, ind, state) -> generate_offspring(model, ind, state);
+        kernel = model_generation_time(model)
+    )
+    return _simulate_offspring(
+        model, (window,), sim_opts, isempty(interventions) ? () : interventions;
         attributes, progression, observation, recorder, rng
     )
 end
 
 function _simulate_offspring(
-        model::BranchingProcess, sim_opts::SimOpts, interventions;
+        model::TransmissionModel, windows, sim_opts::SimOpts, interventions;
         attributes, progression, observation, recorder, rng
     )
     state = initialise_state(model, sim_opts, interventions, progression, attributes, rng)
     # The race counts the index cases as it settles them.
     state.cumulative_cases = 0
     T = _timetype(state)
-    windows = model.infectiousness
     tree = _take_tree(T, length(state.individuals), map(w -> w.until, windows))
     routes = ntuple(
         i -> (_offspring_window(windows[i]), _Offspring(windows[i], i, tree)), length(windows)
