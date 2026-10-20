@@ -325,6 +325,24 @@
         end
     end
 
+    @testset "ThinnedChainSize" begin
+        @testset "rand matches the pdf" begin
+            d = ThinnedChainSize(chain_size_distribution(NegBin(0.6, 0.5)), 0.7)
+            rng = StableRNG(1)
+            draws = [rand(rng, d) for _ in 1:20_000]
+            @test all(>=(1), draws)
+            @test mean(==(1), draws) ≈ pdf(d, 1) atol = 0.01
+            @test mean(==(2), draws) ≈ pdf(d, 2) atol = 0.01
+        end
+
+        @testset "rejects a non-positive detection_prob" begin
+            base = chain_size_distribution(Poisson(0.5))
+            @test_throws ArgumentError ThinnedChainSize(base, 0.0)
+            @test_throws ArgumentError ThinnedChainSize(base, -0.1)
+            @test_throws ArgumentError ThinnedChainSize(base, 1.1)
+        end
+    end
+
     @testset "Chain size likelihood" begin
         @testset "Basic evaluation" begin
             ll = loglikelihood(ChainSizes([1, 1, 2, 1, 3]), Poisson(0.5))

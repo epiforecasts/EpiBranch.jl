@@ -1,7 +1,7 @@
 `BranchingProcess`, multi-type included, now runs on the same continuous-time
 race as the models of a fixed population. Each case creates its contacts when
 it is settled. The race then decides every contact in order of infection time,
-across generations. What this changes in a run:
+across generations. This changes a run in these ways:
 
 - `max_cases` stops at exactly that many cases, and `max_time` leaves out every
   infection after it. Before, the generation that crossed either limit was
