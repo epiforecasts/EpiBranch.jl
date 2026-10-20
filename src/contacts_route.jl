@@ -24,6 +24,9 @@ Base.@propagate_inbounds function Base.getindex(g::_Grown, k::Int)
     return k
 end
 _member_positions(g::_Grown) = g
+# A person the infector created is listed as its contact when created, so only
+# a blocked exposure of someone else is offered to the recorder.
+_logs_blocked(::_Grown, source, ind) = !_created_by(ind, source)
 
 # Add the people created since the race last grew, each as an unsettled member
 # offered what a new person is offered.

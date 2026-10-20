@@ -94,6 +94,25 @@ end
     @test EpiBranch._timetype(state) === Float64
 end
 
+struct MintRiskModel <: EpiBranch.TransmissionModel
+    k::Int
+end
+EpiBranch.population_size(::MintRiskModel) = EpiBranch.NoPopulation()
+EpiBranch.contacts_of(m::MintRiskModel, parent, state::EpiBranch.SimulationState) =
+    EpiBranch.contacts_of(MintModel(m.k), parent, state)
+EpiBranch.transmission_risks(::MintRiskModel) = (RingRisk(0.5),)
+
+@testset "A blocked contact a model creates is listed once" begin
+    spec = ModelSpec(MintRiskModel(2); recorder = ExposedContactRecorder())
+    state = simulate(
+        spec; n_initial = 1, rng = StableRNG(1),
+        stopping_rules = [Extinction(), MaxGenerations(4)]
+    )
+    pairs = contacts(state)
+    @test any(!, pairs.infected)
+    @test allunique(zip(pairs.from, pairs.to))
+end
+
 # A pool of pre-created nodes, each parent reaching random members, so a node
 # can be exposed, escape, and be exposed again by a later case. That is
 # the path on which a post-exposure abort drawn for one exposure could outlive

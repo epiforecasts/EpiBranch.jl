@@ -1217,7 +1217,7 @@ function _sellke_race!(
                 # a recorder that wants the stream can log each one. Tracing
                 # and ring construction read the standing contacts, not these
                 # proposals, so the pair itself is unaffected either way.
-                keeps_drawing = _logs_blocked(members) &&
+                keeps_drawing = _logs_blocked(members, source, ind) &&
                     records_contacts(recorder, source, ind, state, bt)
                 if !may_block
                     _discard_proposal!(members, best, j)
@@ -1461,9 +1461,10 @@ end
 _proposal_fallback(members) = true
 # The members offered actions for the whole population before the race starts.
 _population_members(members) = members
-# Whether a blocked proposal is offered to the recorder. Members created as
-# contacts are already listed as their infector's contacts, blocked or not.
-_logs_blocked(members) = true
+# Whether a blocked proposal from `source` to `ind` is offered to the recorder.
+# Members created as contacts are already listed as their infector's contacts,
+# blocked or not.
+_logs_blocked(members, source, ind) = true
 
 # Each member's position in `members`, by id.
 _member_positions(members) = Dict{Int, Int}(id => k for (k, id) in enumerate(members))
