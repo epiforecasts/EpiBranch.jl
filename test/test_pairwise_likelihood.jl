@@ -210,7 +210,7 @@ end
         @test EpiBranch._ext_draw(StableRNG(1), Gamma(2.0, 3.0)) ==
             rand(StableRNG(1), Gamma(2.0, 3.0))
 
-        # a calendar schedule is passed through unchanged, is always on, and
+        # a calendar schedule passes through unchanged, is always active, and
         # draws from its own calendar-scaled survival distribution
         schedule = Steps([2.0], [0.2, 0.05])
         @test EpiBranch._valid_external(schedule)
