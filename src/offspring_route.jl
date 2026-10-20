@@ -314,12 +314,14 @@ end
 function _draw_counts!(
         o::_Offspring, race, ind, times::OffspringTimes, from_t, kernel, born
     )
-    o.n_types > 1 && throw(ArgumentError(
-        "an offspring function returned OffspringTimes for a multi-type model " *
-            "(n_types = $(o.n_types)); OffspringTimes has no per-type label, so " *
-            "it only works with n_types = 1. Return a per-type Vector{Int} of " *
-            "counts instead."
-    ))
+    o.n_types > 1 && throw(
+        ArgumentError(
+            "an offspring function returned OffspringTimes for a multi-type model " *
+                "(n_types = $(o.n_types)); OffspringTimes has no per-type label, so " *
+                "it only works with n_types = 1. Return a per-type Vector{Int} of " *
+                "counts instead."
+        )
+    )
     for Δt in times.times
         _draw_contact!(o, race, ind, from_t, Δt, 0, born)
     end
