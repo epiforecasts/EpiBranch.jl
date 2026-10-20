@@ -1,7 +1,7 @@
 include(joinpath(@__DIR__, "..", "..", "..", "test", "testutils", "continuous_actions.jl"))
 test_continuous_vaccine_actions(k -> HouseholdProcess([4], k))
 
-@testset "Capacity across separate household races" begin
+@testset "Capacity shared across households" begin
     process = HouseholdProcess([3, 3], (i, j) -> Dirac(2.0))
     clinical = clinical_presentation(incubation_period = Dirac(0.0))
     iso = Isolation(

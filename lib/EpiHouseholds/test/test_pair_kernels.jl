@@ -38,7 +38,8 @@ end
     # slow one: its index also at t = 0, its second case at t = 10. The real
     # 4th case (one of household 1's three t = 1 infections) has not happened
     # when household 2's index case resolves at t = 0. `start_after_cases = 4`
-    # must not yet be satisfied for it, whichever household races first.
+    # must not yet be satisfied for it, although household 2's case is seeded
+    # as early as household 1's.
     clinical = clinical_presentation(incubation_period = Dirac(0.0))
     iso = Scheduled(
         Isolation(onset_to_isolation_delay = Dirac(0.0), duration = Inf);
