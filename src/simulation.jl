@@ -174,7 +174,9 @@ vector of [`SimulationState`](@ref)s. It takes the same stopping keywords
 (`max_cases`, `max_generations`, `max_time`, `stopping_rules`), `n_initial`,
 `initial_cases` and `rng` as the single-outbreak method; `condition` is not
 available here. The usual next step is
-[`containment_probability`](@ref), the share of these outbreaks that died out.
+[`containment_probability`](@ref), the share of these outbreaks that died out;
+`containment_probability(model, n)` gives it directly, without keeping the
+outbreaks.
 
 With `parallel = true` the runs are spread over the CPU threads Julia was
 started with (for example `julia --threads 4`). The results are reproducible
@@ -190,8 +192,14 @@ states = simulate(model, 1000; max_cases = 5000, rng = Xoshiro(1))
 containment_probability(states; max_cases = 5000)
 ```
 """
-function simulate(
-        model::TransmissionModel, n::Int;
+simulate(model::TransmissionModel, n::Int; kwargs...) =
+    _simulate_each(identity, SimulationState, model, n; kwargs...)
+
+# `simulate(model, n)`, with `each` applied to every run as it finishes and only
+# its result (of type `T`) kept, so a summary over `n` runs holds one
+# `SimulationState` at a time (one per thread with `parallel`).
+function _simulate_each(
+        each, ::Type{T}, model::TransmissionModel, n::Int;
         n_initial::Union{Int, Nothing} = nothing,
         initial_cases::Union{AbstractVector{<:Integer}, Nothing} = nothing,
         max_cases::Union{Int, Nothing} = _DEFAULT_MAX_CASES,
@@ -200,7 +208,7 @@ function simulate(
         stopping_rules::Union{Vector{<:AbstractStoppingRule}, Nothing} = nothing,
         rng::AbstractRNG = Random.default_rng(),
         parallel::Bool = false
-    )
+    ) where {T}
     _validate_process_windows(model, _progression(model))
     _warn_incomplete_terminal_coverage(_progression(model))
     sim_opts = _build_sim_opts(
@@ -209,34 +217,41 @@ function simulate(
     )
     _validate_initial_cases(model, sim_opts)
     return _simulate_n(
-        model, n, sim_opts; interventions = interventions(model),
+        each, T, model, n, sim_opts; interventions = interventions(model),
         attributes = attributes(model), progression = _progression(model),
         observation = observation(model), recorder = recorder(model), rng,
         parallel
     )
 end
 
+_simulate_n(model::TransmissionModel, n::Int, sim_opts::SimOpts; kwargs...) =
+    _simulate_n(identity, SimulationState, model, n, sim_opts; kwargs...)
+
 function _simulate_n(
-        model::TransmissionModel, n::Int, sim_opts::SimOpts;
+        each, ::Type{T}, model::TransmissionModel, n::Int, sim_opts::SimOpts;
         interventions, attributes, progression, observation, recorder, rng,
         parallel::Bool = false
-    )
+    ) where {T}
     if parallel && Threads.nthreads() > 1
         seeds = [rand(rng, UInt64) for _ in 1:n]
-        results = Vector{SimulationState}(undef, n)
+        results = Vector{T}(undef, n)
         Threads.@threads for i in 1:n
             local_rng = Random.Xoshiro(seeds[i])
-            results[i] = simulate_once(
-                model, sim_opts; interventions, attributes,
-                progression, observation, recorder, rng = local_rng
+            results[i] = each(
+                simulate_once(
+                    model, sim_opts; interventions, attributes,
+                    progression, observation, recorder, rng = local_rng
+                )
             )
         end
         return results
     else
         return [
-            simulate_once(
-                model, sim_opts; interventions, attributes, progression,
-                observation, recorder, rng
+            each(
+                simulate_once(
+                    model, sim_opts; interventions, attributes, progression,
+                    observation, recorder, rng
+                )
             )
                 for _ in 1:n
         ]

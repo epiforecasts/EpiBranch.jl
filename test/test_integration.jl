@@ -202,6 +202,28 @@ using Dates
         @test cp_aware <= cp_naive
     end
 
+    @testset "containment_probability from a model" begin
+        model = BranchingProcess(Poisson(1.5), Exponential(5.0))
+        states = simulate(model, 200; max_cases = 50, rng = StableRNG(7))
+        @test containment_probability(model, 200; max_cases = 50, rng = StableRNG(7)) ==
+            containment_probability(states; max_cases = 50)
+
+        spec = ModelSpec(
+            model; interventions = [Isolation(onset_to_isolation_delay = 1.0, duration = Inf)],
+            attributes = clinical_presentation(incubation_period = Exponential(5.0))
+        )
+        states = simulate(spec, 200; max_time = 40.0, rng = StableRNG(7))
+        @test containment_probability(spec, 200; max_time = 40.0, rng = StableRNG(7)) ==
+            containment_probability(states)
+
+        p = containment_probability(
+            model, 200; max_cases = 50, rng = StableRNG(7),
+            parallel = true
+        )
+        @test 0.0 <= p <= 1.0
+        @test_throws MethodError containment_probability(model, 10; condition = 1:5)
+    end
+
     @testset "max_time terminates simulation" begin
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(2.0), Exponential(5.0))
