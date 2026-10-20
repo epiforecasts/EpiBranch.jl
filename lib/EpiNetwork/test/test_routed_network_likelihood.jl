@@ -418,9 +418,9 @@ end
 
     @testset "differentiable in the external hazard under a susceptibility effect" begin
         # A vaccinated host's term goes through `_routed_mixture_loglik`, whose
-        # `T` must cover the external hazard's own parameter type as well as
-        # the mixture's, or its `T(-Inf)`/`T(l)` conversions throw once the
-        # external hazard is a `Dual` from being differentiated.
+        # `T` must cover the parameter type of the external hazard as well as
+        # that of the mixture, or its `T(-Inf)`/`T(l)` conversions throw once
+        # the external hazard is a `Dual` from being differentiated.
         hh, comm = _routed_adjacency(30, 4)
         REM = EpiBranch.INTERVENTION_REMOVAL
         ws = [
