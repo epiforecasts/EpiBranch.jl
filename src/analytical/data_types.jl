@@ -165,14 +165,14 @@ end
     ChainSizeClasses(lower, upper, counts)
 
 Observed chain sizes recorded only in size classes: `counts[i]` chains had a
-size between `lower[i]` and `upper[i]` cases, inclusive. Use `Inf` as the top
-class's `upper` for "or more". Pass it to `loglikelihood` with an offspring
-distribution or any chain-size law for
+size between `lower[i]` and `upper[i]` cases, inclusive. Use `Inf` as `upper`
+for the top class to mean "or more". Passing this to `loglikelihood` with an
+offspring distribution or any chain-size law gives the exact likelihood of
+the classes,
 
     Σᵢ counts[i] log P(lower[i] ≤ X ≤ upper[i])
 
-the exact likelihood of the classes, rather than of exact sizes invented to
-stand in for them.
+instead of the likelihood of exact sizes invented to stand in for them.
 
 # Examples
 
@@ -213,8 +213,8 @@ end
 
 One class per distinct value in `data`: a compact form of exact chain sizes,
 with the same likelihood as `ChainSizes(data)` (one seed per chain) but
-evaluating each distinct size once, which is faster for large datasets with
-many repeated sizes.
+evaluating each distinct size once rather than each chain individually. This
+is faster for large datasets with many repeated sizes.
 
 # Examples
 
