@@ -57,6 +57,13 @@ model itself does not create people, time infections or apply interventions.
 The built-in branching process draws its counts from its offspring
 distribution directly.
 
+A model that declares
+[`EpiBranch.reads_settled_state`](@ref)`(::YourModel) = false` is also asked
+about a traced person who has not settled, when a ring of contact tracing
+reaches them. That person may never be infected and has no clinical state yet,
+so the count must not read either. If they later settle as a case, that count
+is the one used.
+
 A model whose contacts are people who already exist, such as a contact network
 or households, defines [`contacts_of`](@ref) instead.
 """
