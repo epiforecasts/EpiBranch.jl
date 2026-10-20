@@ -45,10 +45,9 @@ order: both check each action's own proposed date.
     household race withdraws for falling outside the window (see
     [`RingVaccination`](@ref)) counts against no capacity from then on, and
     the budget it used becomes available to the next candidate. The
-    mass-action models,
-    [`HomogeneousProcess`](@ref) and [`MixingProcess`](@ref), do not trace
-    contacts, so ring vaccination cannot act in either. Contact tracing itself
-    cannot be capacity-limited in any model.
+    mass-action models, [`HomogeneousProcess`](@ref) and [`MixingProcess`](@ref),
+    do not trace contacts, so ring vaccination cannot act in either. Contact
+    tracing itself cannot be capacity-limited in any model.
 
 For extension authors: a new intervention can be capacity-limited by defining
 [`intervention_actions`](@ref EpiBranch.intervention_actions) and
