@@ -5,7 +5,7 @@
 # within-household kernel act independently across people and pairs (Ball
 # 1986): a community contact reaches each person on its own, and an
 # infector's contact with each household-mate over its infectious window
-# either lands or does not, independently of every other pair. The final
+# either infects them or does not, independently of every other pair. The final
 # infected set is then the set reachable, through those independent edges,
 # from whoever the community reaches directly.
 

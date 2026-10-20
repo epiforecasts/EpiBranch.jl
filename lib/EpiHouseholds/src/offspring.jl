@@ -733,12 +733,12 @@ function _final_size_recursion(
     return p
 end
 
-# The probability that a specified set of susceptibles, with `m` their combined
-# infectiousness and susceptibility, all escape one case: its contacts with
-# them are independent given its infectious window, so each escapes with the
-# kernel's survival at the window length and the set escapes with the `m`-th
-# power, averaged over the window. `m` is a plain count (an integer) for
-# `household_final_size`'s exchangeable members, and the product of one
+# The probability that a specified set of susceptibles, whose combined
+# infectiousness and susceptibility is `m`, all escape one case: its contacts
+# with them are independent given its infectious window, so each escapes with
+# the kernel's survival at the window length and the set escapes with the
+# `m`-th power, averaged over the window. `m` is a plain count (an integer)
+# for `household_final_size`'s exchangeable members, and the product of one
 # person's infectiousness and another's susceptibility for
 # `final_status_loglik`'s single pair; either way the power is taken in `T`,
 # since the recursion amplifies any inconsistency between the escape
