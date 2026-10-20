@@ -427,8 +427,8 @@ end
 
     @testset "a community hazard can follow a calendar schedule" begin
         # two people in separate households, so every row is a community one;
-        # 1 is a community case at 2.5, after the schedule's rate drops at day
-        # 2; 2 escapes the community hazard to obs_end = 4
+        # 1 is a community case at 2.5, after the rate drops at day 2; 2
+        # escapes the community hazard to obs_end = 4
         schedule = Steps([2.0], [0.2, 0.05])
         data = _TestInfections(
             [1, 2], [2.5, NaN], [2.5, NaN], [10.0, Inf], [true, false];

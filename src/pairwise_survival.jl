@@ -1163,18 +1163,17 @@ end
 # is always shared). Its simulators and this likelihood share these helpers
 # and agree on when the term applies and what it is for each person.
 
-# A calendar schedule stands for the hazard itself rather than a multiplier on
-# some other kernel, so only one the package integrates exactly, like `Steps`,
-# is accepted: its `calendar_shape` must be `PiecewiseConstantCalendar`, which
-# also rules out a plain function (read instead as one rate or distribution
-# per person) and a `Real` or `AbstractVector` (neither defines
-# `calendar_multiplier`).
+# A calendar schedule is the hazard itself, not a multiplier on some other
+# kernel. Only one the package integrates exactly, like `Steps`, is accepted:
+# its `calendar_shape` must be `PiecewiseConstantCalendar`, which also rules
+# out a plain function (read instead as one rate or distribution per person)
+# and a `Real` or `AbstractVector` (neither defines `calendar_multiplier`).
 _is_calendar_external(source) = hasmethod(calendar_multiplier, Tuple{typeof(source), Float64}) &&
     calendar_shape(source) isa PiecewiseConstantCalendar
 
 # The daily rate a calendar schedule gives, as a survival distribution: a unit
-# hazard (`Exponential(1.0)`) scaled by the schedule from calendar day 0, so
-# its cumulative hazard at τ is the schedule integrated over `[0, τ]`.
+# hazard (`Exponential(1.0)`) scaled by the schedule from calendar day 0. Its
+# cumulative hazard at τ is the schedule integrated over `[0, τ]`.
 _calendar_external_survival(source) = _CalendarScaledKernel(Exponential(1.0), source, 0.0)
 
 # A distribution with negative support is rejected, because introductions cannot
