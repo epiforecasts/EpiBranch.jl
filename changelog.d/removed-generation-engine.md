@@ -5,7 +5,10 @@ against `contacts_of` proposes each exposure the model names at the time it
 gives, and needs no other method: `collect_exposures` and `gather_by_target`
 are removed. Cases are settled one at a time in order of infection time. A
 person exposed by several cases is infected by the earliest exposure that gets
-through, and a blocked exposure is not tried again. These models now call
+through, and a blocked exposure is not tried again. A ring of contact tracing
+grows past a person on such a model only once they settle, unless the model
+declares `EpiBranch.reads_settled_state(::YourModel) = false`, in which case
+`contacts_of` is also asked about a traced person who has not settled. These models now call
 every intervention hook the built-in ones do, `on_infection_settled!` and
 `infectious_removal_time` included, and their seeded runs give different
 results.

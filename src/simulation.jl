@@ -343,7 +343,9 @@ households (the other household members). A contact may also be a new person,
 created with [`make_contact!`](@ref). Someone exposed by several cases is
 infected at most once, at the time of the earliest exposure that transmits; an
 exposure that is blocked, by an intervention or by the contact's
-susceptibility, is not tried again later.
+susceptibility, is not tried again later. A ring of contact tracing reaches the
+contacts of a traced person who has not settled only if the model declares
+[`reads_settled_state`](@ref EpiBranch.reads_settled_state)`(::YourModel) = false`.
 
 Models in which every contact is a new person, such as a branching process,
 define [`generate_offspring`](@ref) instead. In both cases the simulation

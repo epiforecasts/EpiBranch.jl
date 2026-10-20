@@ -214,6 +214,13 @@ the case's type, set when it is created), a [`ClusterMixed`](@ref) (which
 reads its parent's draw) and no generation time answer `false`. An offspring
 specification of your own that draws from nothing settling writes declares
 `EpiBranch.reads_settled_state(::YourOffspring) = false`.
+
+A model written against [`contacts_of`](@ref) is asked the same question. If it
+declares `EpiBranch.reads_settled_state(::YourModel) = false`, a ring that
+reaches a person not yet settled calls `contacts_of` for them then, with their
+infection time not yet set, and grows through the people it names, whether or
+not the person is infected; the times it gives are not used. Otherwise the ring
+grows past a person only once they settle as a case.
 """
 reads_settled_state(_) = true
 reads_settled_state(::Distribution) = false

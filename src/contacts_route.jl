@@ -90,6 +90,29 @@ function _mint!(c::_ContactsOf, race, ind, max_generation)
     return nothing
 end
 
+# What tracing reads as a case's contacts: the people the model named when the
+# case settled. A ring that grows through someone not yet settled needs their
+# contacts too. A model whose `contacts_of` reads nothing settling writes says
+# so with `reads_settled_state`, and is then asked about that person when the
+# ring reaches them; only whom it names is kept, since the person's exposures
+# are named again if they settle. Otherwise a ring grows past a person only
+# once they settle, as it does for an offspring given as a function.
+function _case_contacts(
+        contacts, rts::Tuple{Tuple{RouteWindow, _ContactsOf}}, race, max_generation
+    )
+    c = only(rts)[2]
+    reads_settled_state(c.model) && return contacts
+    return function (id, state)
+        named = get(c.reached, id, nothing)
+        named === nothing || return named
+        race.processed[id] && return ()
+        named = Int[target.id for (target, _) in contacts_of(c.model, state.individuals[id], state)]
+        _grow!(race.members, race)
+        c.reached[id] = named
+        return named
+    end
+end
+
 # Propose the case's exposures that fall inside its window. A time before the
 # case's own infection is no exposure, as in a branching process.
 function _propose_along!(

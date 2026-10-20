@@ -393,7 +393,12 @@ population. It defines instead:
   network), or create new ones with [`make_contact!`](@ref). Do not set
   `:infected` yourself. A person exposed by several cases is infected at most
   once, by the earliest exposure that gets through; one that is blocked is not
-  tried again.
+  tried again. A ring of contact tracing grows past a person only once they
+  settle as a case, unless the model declares
+  [`EpiBranch.reads_settled_state`](@ref)`(::YourModel) = false`: then
+  `contacts_of` is also asked about a traced person not yet settled, with
+  their infection time not yet set, and the ring grows through whoever it
+  names.
 - [`initialise_state`](@ref EpiBranch.initialise_state), which sets up the
   fixed population with [`new_state`](@ref EpiBranch.new_state),
   [`add_individuals!`](@ref EpiBranch.add_individuals!) and

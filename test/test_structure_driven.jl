@@ -319,3 +319,39 @@ end
     end
     @test late == 0
 end
+
+# A line of four people, the first an index case and the second never
+# infected. `LineEarly` says its `contacts_of` reads nothing settling writes.
+abstract type AbstractLine <: EpiBranch.TransmissionModel end
+struct LineLate <: AbstractLine end
+struct LineEarly <: AbstractLine end
+EpiBranch.reads_settled_state(::LineEarly) = false
+EpiBranch.population_size(::AbstractLine) = EpiBranch.NoPopulation()
+function EpiBranch.initialise_state(
+        m::AbstractLine, sim_opts::EpiBranch.SimOpts,
+        interventions, transitions, attributes, rng::AbstractRNG
+    )
+    state = EpiBranch.new_state(m, transitions, attributes, rng)
+    EpiBranch.add_individuals!(state, 4, interventions)
+    state.individuals[2].susceptibility = 0.0
+    EpiBranch.seed!(state, [1], interventions, transitions)
+    return state
+end
+function EpiBranch.contacts_of(::AbstractLine, parent, state::EpiBranch.SimulationState)
+    neighbours = filter(in(1:4), [parent.id - 1, parent.id + 1])
+    return [(state.individuals[j], parent.infection_time + 1.0) for j in neighbours]
+end
+
+@testset "A ring grows past an uninfected person on a model that says it can" begin
+    ct = ContactTracing(OnIsolation(), 1.0, Dirac(0.1), Quarantine(duration = Inf); depth = 2)
+    iso = Isolation(onset_to_isolation_delay = Dirac(0.1), duration = Inf)
+    attributes = clinical_presentation(incubation_period = Dirac(0.2))
+    for (model, reached) in ((LineEarly(), true), (LineLate(), false))
+        s = simulate(
+            ModelSpec(model; interventions = [iso, ct], attributes);
+            n_initial = 1, rng = StableRNG(1), max_generations = 10
+        )
+        @test is_traced(s.individuals[2]) && !is_infected(s.individuals[2])
+        @test is_traced(s.individuals[3]) == reached
+    end
+end
