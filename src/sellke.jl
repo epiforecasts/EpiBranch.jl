@@ -698,41 +698,44 @@ end
 
 # Tracing on the continuous-time path. A case's trace time follows from its own
 # timeline, so it can only be stamped once the race has finalised that case —
-# which is also the point at which its contacts are known. Only contacts that
-# are not yet final can be affected: popping a case fixes its infectious window
-# and its onward proposals, so a trace arriving later has nothing left to
-# shorten.
+# which is also the point at which its contacts are known. A neighbour already
+# settled, whether infected earlier or finally missed by every proposal that
+# reached it, is offered to tracing all the same: its own infection (if any) is
+# already final, but its pending outgoing proposals are not, and are checked
+# against every intervention's `competing_risk` when they are popped, exactly
+# as `_trace_source!` below relies on for a case's own infector. Quarantining a
+# settled neighbour this way still blocks what it has not yet gone on to
+# transmit, and lets the ring grow through it to its own neighbours in turn —
+# the walk below does not stop at one just because it is already settled.
 #
 # Tracing *backwards*, to the case's own (already-final) infector, is
-# `_trace_source!` (in simulation.jl), which `SourceTracing` answers `traces_source` for: the infector's own
-# secondary infections are also already final, but its pending proposals are
-# not, and are checked against every intervention's `competing_risk` when they
-# are popped, so quarantining the infector there still blocks what it has not
-# yet gone on to transmit.
+# `_trace_source!` (in simulation.jl), which `SourceTracing` answers
+# `traces_source` for.
 #
-# A ring (`ContactTracing(depth = 2)` and beyond) grows through uninfected
-# contacts too. The race walks the model's own contact structure breadth-first,
-# and asks `keep_active` which contacts the next hop starts from. The depth semantics and the `:_ring_remaining` budget
+# A ring (`ContactTracing(depth = 2)` and beyond) grows through every traced
+# contact's own neighbours, settled or not. The race walks the model's own
+# contact structure breadth-first, and asks `keep_active` which contacts the
+# next hop starts from. The depth semantics and the `:_ring_remaining` budget
 # behind them stay with `ContactTracing`, so a ring of another shape takes part
 # by answering `keep_active` rather than by writing a state key this loop would
 # have to recognise.
 #
 # `visited` stops a node being traced twice by two branches of one walk
-# reaching it at once. Across walks nothing is suppressed: a node reached as an
-# uninfected ring member, which later becomes an infected and eligible case in
-# its own right, seeds its own fresh full-radius ring when the race settles it,
-# which is the contract `ContactTracing` documents. Whether that second attempt
+# reaching it at once. Across walks nothing is suppressed: a node reached as a
+# ring member, which later becomes an infected and eligible case in its own
+# right, seeds its own fresh full-radius ring when the race settles it, which
+# is the contract `ContactTracing` documents. Whether that second attempt
 # happens at all is the eligibility policy's call, not this loop's.
 # `tracing` is whether any intervention traces, which the race works out once.
 # `contacts` is typed so the call specialises on it: a closure passed through
 # unspecialised is put on the heap at every call, which is every settled case.
 function _trace_from!(
-        state, infector, interventions, contacts::C, pos, processed,
+        state, infector, interventions, contacts::C, pos,
         tracing = any(traces_contacts, interventions)
     ) where {C}
     contacts === nothing && return nothing
     tracing || return nothing
-    return _walk_ring!(state, infector, interventions, contacts, pos, processed)
+    return _walk_ring!(state, infector, interventions, contacts, pos)
 end
 
 # The walk itself, which reports the members it offered to tracing. A ring
@@ -740,7 +743,7 @@ end
 # the action layer has to be offered those too; which of them a tracing policy
 # actually reached is its own business, and the layer reads that from them.
 function _walk_ring!(
-        state, infector, interventions, contacts::C, pos, processed
+        state, infector, interventions, contacts::C, pos
     ) where {C}
     visited = Set{Int}((infector.id,))
     frontier = Individual[infector]
@@ -753,11 +756,18 @@ function _walk_ring!(
             cid, t0 = c isa Tuple ? (c[1], c[2]) : (c, -Inf)
             timed |= c isa Tuple
             k = get(pos, cid, 0)
-            (k == 0 || processed[k] || cid in visited) && continue
+            (k == 0 || cid in visited) && continue
             push!(pending, state.individuals[cid])
             push!(not_before, t0)
         end
         isempty(pending) && continue
+        # `src` is the walk's own root only on the first pop; every later one
+        # reached the frontier through `keep_active`, so an infected `src`
+        # here is a ring member passed through, not a fresh case settling on
+        # its own account. `_trace_pair!` reads this to trace from such a
+        # `src` as a ring member only, rather than reseeding.
+        hopped = src !== infector
+        hopped && (src.state[:_ring_hop] = true)
         for iv in interventions
             if timed
                 trace_contacts!(iv, state, src, pending, not_before)
@@ -765,6 +775,7 @@ function _walk_ring!(
                 trace_contacts!(iv, state, src, pending)
             end
         end
+        hopped && delete!(src.state, :_ring_hop)
         for ind in pending
             push!(visited, ind.id)
         end
@@ -775,7 +786,7 @@ function _walk_ring!(
         for iv in interventions
             for id in keep_active(iv, state, pending, is_new)
                 k = get(pos, id, 0)
-                (k == 0 || processed[k]) && continue
+                k == 0 && continue
                 push!(frontier, state.individuals[id])
             end
         end
@@ -1326,7 +1337,7 @@ function _sellke_race!(
             _mint!(route_targets, race, ind, max_generation)
         end
         traced = _trace_from!(
-            state, ind, interventions, case_contacts, pos, processed, tracing
+            state, ind, interventions, case_contacts, pos, tracing
         )
         _trace_source!(state, ind, interventions, tracing_source)
         (contacts !== nothing || contactless_actions) &&

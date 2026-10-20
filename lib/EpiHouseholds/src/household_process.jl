@@ -40,16 +40,19 @@ latent period produces that state and `:infection` otherwise. `until` names
 the states that end the infectious period.
 
 `external_hazard` is infection from the community: a constant rate per person
-per day, or a distribution of the time (in days) at which each person would be
-infected from outside, for a rate that changes over time. To let it differ
-between people, households or trial arms, give a vector with one rate or
-distribution per person, or a function `j -> rate or distribution` of person
-`j`'s number, as the kernel is a function of two people's numbers. A person
-with a zero rate is never infected from outside. These introductions
-happen only in the first `obs_end` days, which must be finite when
-`external_hazard` is used. Without an external hazard, each household starts
-with one index case at day 0, unless `initial_cases` is given, in which case
-only those people are infected at day 0.
+per day, a distribution of the time (in days) at which each person would be
+infected from outside, or a piecewise-constant calendar schedule such as
+[`Steps`](@ref) giving the daily rate directly, for example one read off
+weekly incidence. To let it differ between people, households or trial arms,
+give a vector with one rate or distribution per person, or a function
+`j -> rate or distribution` of person `j`'s number, as the kernel is a
+function of two people's numbers; a calendar schedule is shared by everyone
+rather than given per person. A person with a zero rate is never infected
+from outside. These introductions happen only in the first `obs_end` days,
+which must be finite when `external_hazard` is used. Without an external
+hazard, each household starts with one index case at day 0, unless
+`initial_cases` is given, in which case only those people are infected at
+day 0.
 
 A `progression` listing `Transition(:susceptible_again; from = :recovered, delay = …)`
 lets a household member be infected again once their immunity has waned: a

@@ -91,7 +91,12 @@ _case_hook_model(ivs) = ModelSpec(
     @testset "Writing trace_contacts! is enough for the race to call it" begin
         @test EpiBranch.traces_contacts(_TraceOnly())
         @test !EpiBranch.traces_contacts(_ActionsOnly())
-        # Node 1 is seeded at 0 and reaches node 2 at 1, which reaches node 3.
+        # Node 1 is seeded at 0 and reaches node 2 at 1, which reaches node 3
+        # at 2. `contacts` names every graph neighbour regardless of its own
+        # infection status, so each settling case retraces its neighbours even
+        # once they are themselves already settled: node 2 traces node 1 back
+        # when it settles, and node 3 retraces node 2 in turn, overwriting the
+        # `_traced_from` node 1 set first.
         interventions = AbstractIntervention[_TraceOnly()]
         rng = StableRNG(18)
         state = EpiBranch.new_state(
@@ -110,7 +115,8 @@ _case_hook_model(ivs) = ModelSpec(
             interventions, contacts = (inf, st) -> neighbours[inf],
             seed! = (best, members, r) -> (best[1] = 0.0)
         )
-        @test state.individuals[2].state[:_traced_from] == 1
+        @test state.individuals[1].state[:_traced_from] == 2
+        @test state.individuals[2].state[:_traced_from] == 3
         @test state.individuals[3].state[:_traced_from] == 2
     end
 

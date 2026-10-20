@@ -299,29 +299,39 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         # The structure-driven processes that call this walk live in the
         # companion packages, so it is driven directly here on a path graph
         # 1-2-3-4 in which only node 1 is a case.
-        function walk(depth; timed = false, wrap = identity, delay = Dirac(0.0), clock = nothing)
+        function walk(
+                depth; timed = false, wrap = identity, delay = Dirac(0.0), clock = nothing,
+                infected_before = Int[], n = 4
+            )
             ct = wrap(ContactTracing(TraceEveryone(), 1.0, delay, Quarantine(duration = Inf); depth))
             state = EpiBranch.new_state(
                 BranchingProcess(Poisson(1.0), Exponential(5.0)),
                 EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
             )
-            EpiBranch.add_individuals!(state, 4, [ct])
+            EpiBranch.add_individuals!(state, n, [ct])
             clock === nothing || (state.max_infection_time = clock)
             case = state.individuals[1]
             case.state[:infected] = true
             case.infection_time = 0.0
             set_isolated!(case, 2.0; release_time = Inf)
-            neighbours = [[2], [1, 3], [2, 4], [3]]
+            # A neighbour already settled before this case, as a node infected
+            # earlier on a persistent network would be: its own infection is
+            # final, but the walk still reaches it and grows past it.
+            for id in infected_before
+                state.individuals[id].state[:infected] = true
+            end
+            neighbours = [
+                filter(j -> 1 <= j <= n, [i - 1, i + 1]) for i in 1:n
+            ]
             # Node 3 cannot be reached before time 50, as on a route that
             # opens late.
             opens = Dict(3 => 50.0)
             contacts = timed ?
                 (i, st) -> ((j, get(opens, j, -Inf)) for j in neighbours[i]) :
                 (i, st) -> neighbours[i]
-            pos = Dict(i => i for i in 1:4)
-            processed = [true, false, false, false]
+            pos = Dict(i => i for i in 1:n)
             reached = EpiBranch._trace_from!(
-                state, case, [ct], contacts, pos, processed
+                state, case, [ct], contacts, pos
             )
             return state.individuals, reached
         end
@@ -340,6 +350,24 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         @test is_traced(inds[3])
         @test !is_traced(inds[4])
         @test reached == Set([2, 3])
+
+        # A neighbour already infected before this case settles — as it would
+        # be on a network or a household, where the same adjacency is shared
+        # by more than one case — is traced and grows the ring past it all the
+        # same, rather than being skipped as already settled.
+        inds, reached = walk(3; infected_before = [2])
+        @test all(is_traced, inds[2:4])
+        @test reached == Set([2, 3, 4])
+
+        # An infected, eligible neighbour reached by propagation is not a
+        # fresh seed: it must spend down the ring's existing budget rather
+        # than restart it, so the ring still stops at its configured radius
+        # even though it passes through an infected member partway there.
+        inds, reached = walk(2; infected_before = [2], n = 5)
+        @test reached == Set([2, 3])
+        @test inds[2].state[:_ring_remaining] == 1
+        @test inds[3].state[:_ring_remaining] == 0
+        @test !is_traced(inds[4])
 
         # A contact reached late on its route is traced no earlier than that,
         # and the ring past it is timed from its trace.

@@ -557,8 +557,12 @@ in turn: the contacts of contacts that level-2 ring vaccination targets. Each
 infected, eligible case starts a fresh ring of radius `depth`. The ring also
 grows through members who are never infected, wherever the model can name a
 member's contacts before it settles (see
-[`EpiBranch.reads_settled_state`](@ref)); such a member infects nobody. A traced
-contact who later becomes an eligible
+[`EpiBranch.reads_settled_state`](@ref)); such a member infects nobody. On a
+model whose contacts persist (a household or a network), tracing also reaches
+a neighbour already infected earlier than the case doing the tracing, not only
+the case's own, still-uninfected neighbours: quarantining that neighbour blocks
+transmission it has not yet made, the way `SourceTracing` blocks an infector
+found through its own case. A traced contact who later becomes an eligible
 case starts its own ring like any other case; add `!PreviouslyTraced()` to the
 eligibility to interview each case only once.
 
@@ -770,13 +774,18 @@ function _trace_pair!(
     #
     # Requiring the seed's infector to be infected stops an uninfected ring
     # member, which carries its own clinical state, from re-seeding a fresh
-    # full-radius ring and letting the fringe grow without bound.
+    # full-radius ring and letting the fringe grow without bound. The ring
+    # walk can also pass through an already-infected neighbour (see
+    # `_walk_ring!` in sellke.jl); that walk marks the infector with
+    # `_ring_hop`, so it is traced from as a ring member only, rather than
+    # reseeding a second time.
     if ring
         base = _state_real(infector.state, :trace_time, _recorded_isolation_time(infector))
         remaining = get(infector.state, :_ring_remaining, 0)::Int - 1
         _trace_attempt!(ct, state, infector, ind, rng, base, remaining, not_before)
     end
-    if is_infected(infector) && is_eligible(ct.eligibility, infector, ind, state)
+    if is_infected(infector) && is_eligible(ct.eligibility, infector, ind, state) &&
+            !get(infector.state, :_ring_hop, false)::Bool
         base = trigger_time(ct.eligibility, infector, ind, state)
         _trace_attempt!(ct, state, infector, ind, rng, base, ct.depth - 1, not_before)
     end
@@ -944,13 +953,16 @@ reads_population_state(::TraceRate) = false
 reads_population_state(::TraceDelay) = false
 reads_population_state(::TraceAction) = false
 
-"""With `depth > 1`, the traced contacts the ring grows onward from: those not
-yet infected that have ring budget left. Returns none for `depth == 1`."""
+"""With `depth > 1`, keep following traced contacts with ring budget left for
+one more hop, whether or not they are themselves infected, so tracing can
+reach their own contacts: an infected one may already be settled, with no
+future turn of its own at which it could be offered as a fresh ring root (see
+`_walk_ring!` in sellke.jl). An uninfected one does not infect those contacts
+either way. Returns the ids of those ring members (none for `depth == 1`)."""
 function keep_active(ct::ContactTracing, state, targets, is_new)
     ct.depth > 1 || return ()
     ids = Int[]
     for t in targets
-        is_infected(t) && continue
         is_traced(t) || continue
         get(t.state, :_ring_remaining, 0)::Int > 0 || continue
         push!(ids, t.id)
