@@ -39,7 +39,7 @@ end
 EpiBranch.population_size(::_OffspringTree) = EpiBranch.NoPopulation()
 EpiBranch.generate_offspring(m::_OffspringTree, parent, state) = rand(state.rng, m.offspring)
 
-# As `_OffspringTree`, but minting its contacts via `contacts_of` and
+# Like `_OffspringTree`, but mints its contacts via `contacts_of` and
 # `gather_by_target` instead of `generate_offspring`, to check that the
 # generation engine's per-branch time bound also applies on that path.
 struct _GatherOffspringTree <: EpiBranch.TransmissionModel
@@ -152,10 +152,10 @@ end
     @testset "MaxTime stops each case's own branch on the generation engine via gather_by_target" begin
         # The `gather_by_target` `collect_exposures` path (networks,
         # households, and the `contacts_of`-minting pattern in
-        # `make_contact!`'s docstring) must get the same per-branch cutoff as
-        # the default `collect_exposures` above, rather than relying on
-        # `should_stop` alone, which the generation engine now skips for a
-        # time-bounded rule.
+        # `make_contact!`'s docstring) needs the same per-branch cutoff as
+        # the default `collect_exposures` above: the generation engine
+        # skips `should_stop` for a time-bounded rule, so this path cannot
+        # rely on it either.
         model = _GatherOffspringTree(NegBin(1.5, 2.0), Gamma(2.0, 2.5))
         state = simulate(
             model; max_time = 30.0, max_cases = nothing, max_generations = nothing,
