@@ -209,8 +209,104 @@ function _route_in_neighbours(contacts::Vector{Vector{Int}}, infected::AbstractV
     return rev
 end
 
+# A susceptible's escape and event terms under one mixture component's
+# modifier, over every route and the external hazard: the same sums the
+# no-susceptibility loop in `pairwise_surv_loglik` below works out, with
+# `_scaled_cumhazard` and `_scaled_loghazard` applying the modifier to each
+# route's and the external hazard's own hazard.
+function _routed_modifier_loglik(
+        modifier, windows, extsrc, data, in_neighbours, gaps, gates, tfollow, j
+    )
+    n_routes = length(windows)
+    tj = data.infection_time[j]
+    tend = (isnan(tj) || tj > tfollow) ? tfollow : tj
+
+    survival = 0.0
+    extdist = _ext_survival_of(extsrc, j)
+    if extdist !== nothing
+        stop = min(tend, data.obs_end)
+        stop > 0 && (survival += _scaled_cumhazard(modifier, extdist, zero(stop), stop))
+    end
+    for r in 1:n_routes
+        for (i, pos) in in_neighbours[r][j]
+            oi = data.infectious_time[r][i]
+            isfinite(oi) || continue
+            oi < tend || continue
+            stop = min(data.removal_time[r][i], tend) - oi
+            stop > 0 || continue
+            pk = _route_kernel(windows[r].kernel, data.contacts[r], i, pos, j)
+            survival += gates[r] ?
+                _gapped_cumhazard(
+                t -> _scaled_cumhazard(modifier, pk, oi, t), _host_stretches(gaps, i), oi, stop
+            ) :
+                _scaled_cumhazard(modifier, pk, oi, stop)
+        end
+    end
+    ll = -survival
+
+    (isnan(tj) || tj > tfollow) && return ll
+    route_terms = [
+        _scaled_loghazard(
+            modifier,
+            loghazard(
+                _route_kernel(windows[r].kernel, data.contacts[r], i, pos, j),
+                tj - data.infectious_time[r][i]
+            ),
+            tj
+        )
+            for r in 1:n_routes for (i, pos) in in_neighbours[r][j]
+            if isfinite(data.infectious_time[r][i]) &&
+            data.infectious_time[r][i] < tj <= data.removal_time[r][i] &&
+            (!gates[r] || !_removed_at(gaps, i, tj))
+    ]
+    ext_term = (extdist !== nothing && 0 <= tj <= data.obs_end) ?
+        [_scaled_loghazard(modifier, loghazard(extdist, tj), tj)] : Float64[]
+    terms = vcat(route_terms, ext_term)
+    isempty(terms) && return -Inf
+    return ll + logsumexp(terms)
+end
+
+# Every susceptible's mixture, by host id, or `nothing` when `effect` modifies
+# none, as `_host_mixtures` finds for a household or network's layout.
+_routed_host_mixtures(::Nothing, data, n) = nothing
+function _routed_host_mixtures(effect, data, n)
+    mixtures = Dict{Int, Any}()
+    for j in 1:n
+        mixture = susceptibility_components(effect, _layer_host(data, j))
+        mixture === nothing || (mixtures[j] = mixture)
+    end
+    return isempty(mixtures) ? nothing : mixtures
+end
+
+# Host `j`'s contribution as the weighted mixture of `_routed_modifier_loglik`
+# under each of `mixture`'s components, combined by the same weighted
+# log-sum-exp `_mixture_loglik` uses for a household or network: the weights
+# enter linearly, never through `log(weight)`, so a weight of exactly zero
+# still carries a derivative with respect to itself.
+function _routed_mixture_loglik(
+        mixture, windows, extsrc, data, in_neighbours, gaps, gates, tfollow, j, ::Type{T}
+    ) where {T}
+    terms = map(mixture) do (weight, modifier)
+        weight => _routed_modifier_loglik(
+            modifier, windows, extsrc, data, in_neighbours, gaps, gates, tfollow, j
+        )
+    end
+    m = T(-Inf)
+    for (_, l) in terms
+        _is_minus_inf(l) && continue
+        m = _is_minus_inf(m) ? T(l) : max(m, T(l))
+    end
+    _is_minus_inf(m) && return T(-Inf)
+    total = zero(T)
+    for (weight, l) in terms
+        _is_minus_inf(l) || (total += weight * exp(l - m))
+    end
+    return m + log(total)
+end
+
 """
-    pairwise_surv_loglik(windows, data::RoutedNetworkInfections; external_hazard = 0.0) -> Real
+    pairwise_surv_loglik(windows, data::RoutedNetworkInfections; external_hazard = 0.0,
+                         susceptibility = nothing) -> Real
 
 Log-likelihood of a routed-network outbreak under `windows`, a collection of
 [`RouteWindow`](@ref)s in the same order as `data`'s routes, giving each
@@ -231,6 +327,15 @@ single-route likelihood reads it, taken out of its own exposure.
 `external_hazard` is community infection shared across every route, as for
 [`NetworkProcess`](@ref)'s likelihood.
 
+`susceptibility` is an effect on people's own risk of infection, such as a
+candidate [`VaccineEffect`](@ref) or a model's interventions, exactly as for
+[`NetworkProcess`](@ref)'s likelihood: through
+[`susceptibility_components`](@ref EpiBranch.susceptibility_components) the
+effect says how it scales every hazard a person faces, from every route and
+the external hazard alike, and a susceptible it modifies is scored as the
+weighted mixture of their escape and infection under each of the effect's
+components. A susceptible it leaves unmodified keeps the plain sum above.
+
 # Example
 
 ```julia
@@ -249,7 +354,7 @@ pairwise_surv_loglik(windows, data)
 """
 function EpiBranch.pairwise_surv_loglik(
         windows::AbstractVector{<:RouteWindow}, data::RoutedNetworkInfections;
-        external_hazard = 0.0
+        external_hazard = 0.0, susceptibility = nothing
     )
     n_routes = length(data.contacts)
     length(windows) == n_routes || throw(
@@ -273,10 +378,28 @@ function EpiBranch.pairwise_surv_loglik(
     gates = Bool[INTERVENTION_REMOVAL in w.until for w in windows]
     infected = .!isnan.(data.infection_time)
     in_neighbours = [_route_in_neighbours(data.contacts[r], infected) for r in 1:n_routes]
+    mixtures = _routed_host_mixtures(susceptibility, data, n)
+    T = promote_type(Float64, _mixtures_partype(mixtures))
 
-    ll = 0.0
+    ll = zero(T)
     for j in 1:n
         (!external && data.is_index[j]) && continue
+        mixture = mixtures === nothing ? nothing : get(mixtures, j, nothing)
+        if mixture !== nothing
+            v = _routed_mixture_loglik(
+                mixture, windows, extsrc, data, in_neighbours, gaps, gates, tfollow, j, T
+            )
+            # Returning `-Inf` directly, rather than adding it to `ll`, discards
+            # whatever AD partials `ll` has accumulated from this host and every
+            # earlier one. Once a host is structurally unexplainable the
+            # likelihood is the constant -Inf at every parameter value, so its
+            # gradient must be exactly zero, and those partials would otherwise
+            # survive into a nonzero one. The flat passes below return -Inf the
+            # same way.
+            _is_minus_inf(v) && return T(-Inf)
+            ll += v
+            continue
+        end
         tj = data.infection_time[j]
         tend = (isnan(tj) || tj > tfollow) ? tfollow : tj
 
@@ -314,12 +437,6 @@ function EpiBranch.pairwise_surv_loglik(
         ext_term = (extdist !== nothing && 0 <= tj <= data.obs_end) ?
             [loghazard(extdist, tj)] : Float64[]
         terms = vcat(route_terms, ext_term)
-        # Returning `-Inf` directly, rather than adding it to `ll`, discards
-        # whatever AD partials `ll` has accumulated from this host and every
-        # earlier one. Once a host is structurally unexplainable the
-        # likelihood is the constant -Inf at every parameter value, so its
-        # gradient must be exactly zero, and those partials would otherwise
-        # survive into a nonzero one.
         isempty(terms) && return -Inf
         ll += logsumexp(terms)
     end
@@ -327,21 +444,25 @@ function EpiBranch.pairwise_surv_loglik(
 end
 
 """
-    loglikelihood(data::RoutedNetworkInfections, model::RoutedNetwork) -> Real
+    loglikelihood(data::RoutedNetworkInfections, model::RoutedNetwork;
+                  susceptibility = nothing) -> Real
     loglikelihood(data::RoutedNetworkInfections, model::ModelSpec{<:RoutedNetwork}) -> Real
 
 Log-likelihood of routed-network outbreak data under `model`'s route windows
 and community hazard: `pairwise_surv_loglik(model.windows, data; external_hazard
-= model.external_hazard)`. For a `ModelSpec`, every intervention must declare
-[`infection_likelihood_compatible`](@ref EpiBranch.infection_likelihood_compatible)
-and leave every person's susceptibility unchanged (vaccination's efficacy, for
-example, is not yet represented here); where it refuses, call
-`pairwise_surv_loglik` with route kernels of your own that include the effect.
+= model.external_hazard, susceptibility)`. For a `ModelSpec`, every intervention
+must declare [`infection_likelihood_compatible`](@ref
+EpiBranch.infection_likelihood_compatible), and `susceptibility` is the
+model's interventions, so a vaccination in the model is evaluated from the
+immunity times [`routed_network_infections`](@ref) recorded.
 """
 function Distributions.loglikelihood(
-        data::RoutedNetworkInfections, model::RoutedNetwork
+        data::RoutedNetworkInfections, model::RoutedNetwork;
+        susceptibility = nothing
     )
-    return pairwise_surv_loglik(model.windows, data; external_hazard = model.external_hazard)
+    return pairwise_surv_loglik(
+        model.windows, data; external_hazard = model.external_hazard, susceptibility
+    )
 end
 
 function Distributions.loglikelihood(
@@ -349,16 +470,5 @@ function Distributions.loglikelihood(
         model::ModelSpec{<:RoutedNetwork}
     )
     _validate_infection_likelihood(model)
-    for component in model.interventions
-        isempty(susceptibility_host_times(component)) || throw(
-            ArgumentError(
-                "$(nameof(typeof(component))) changes susceptibility (such as a " *
-                    "vaccine's efficacy), which the routed-network likelihood does not " *
-                    "yet evaluate; fit a model without it, or call " *
-                    "`pairwise_surv_loglik` directly with route kernels that include " *
-                    "the effect"
-            )
-        )
-    end
-    return loglikelihood(data, model.process)
+    return loglikelihood(data, model.process; susceptibility = model.interventions)
 end
