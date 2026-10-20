@@ -375,6 +375,30 @@ end
     end
 end
 
+# A model that says how many contacts each case makes, with and without saying
+# the count reads nothing settling writes.
+struct CountLate <: EpiBranch.TransmissionModel end
+struct CountEarly <: EpiBranch.TransmissionModel end
+const _CountModel = Union{CountLate, CountEarly}
+EpiBranch.reads_settled_state(::CountEarly) = false
+EpiBranch.population_size(::_CountModel) = EpiBranch.NoPopulation()
+EpiBranch.model_generation_time(::_CountModel) = Gamma(2.0, 2.0)
+EpiBranch.generate_offspring(::_CountModel, parent, state) = rand(state.rng, Poisson(2.0))
+
+@testset "A model that counts its contacts can let a ring grow early" begin
+    ct = ContactTracing(OnIsolation(), 0.8, Exponential(0.5), Quarantine(duration = Inf); depth = 2)
+    iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
+    attributes = clinical_presentation(incubation_period = Gamma(3.0, 1.0))
+    run(model, seed) = simulate(
+        ModelSpec(model; interventions = [iso, ct], attributes);
+        max_cases = 200, rng = StableRNG(seed)
+    )
+    sizes(model) = [length(run(model, seed).individuals) for seed in 1:50]
+    bp = sizes(BranchingProcess(Poisson(2.0), Gamma(2.0, 2.0)))
+    @test sizes(CountEarly()) == bp
+    @test sizes(CountLate()) != bp
+end
+
 # `MintModel` that says its `contacts_of` reads nothing settling writes.
 struct MintEarly <: EpiBranch.TransmissionModel end
 EpiBranch.reads_settled_state(::MintEarly) = false

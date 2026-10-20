@@ -215,7 +215,10 @@ reads its parent's draw) and no generation time answer `false`. An offspring
 specification of your own that draws from nothing settling writes declares
 `EpiBranch.reads_settled_state(::YourOffspring) = false`.
 
-A model written against [`contacts_of`](@ref) is asked the same question. If it
+A model written against [`generate_offspring`](@ref) is asked the same
+question, and declares `EpiBranch.reads_settled_state(::YourModel) = false` when
+its count draws from nothing settling writes; its generation time is asked as
+well. A model written against [`contacts_of`](@ref) is asked it too. If it
 declares `EpiBranch.reads_settled_state(::YourModel) = false`, a ring that
 reaches a person not yet settled calls `contacts_of` for them then, as though
 they were infected at time 0, and grows through the people it names, whether or
@@ -391,16 +394,19 @@ end
 # A model of its own that says how many contacts each case makes, through
 # `generate_offspring`, is a branching process with one window: the count is
 # its offspring and `model_generation_time` its kernel, so it runs on the same
-# route. The count may read anything, so a tracing ring draws a person's
-# contacts only once they settle.
+# route. Whether a tracing ring may draw a person's count before they settle is
+# the model's own answer to `reads_settled_state`.
+struct _Generated{M <: TransmissionModel}
+    model::M
+end
+(g::_Generated)(rng, ind, state) = generate_offspring(g.model, ind, state)
+reads_settled_state(g::_Generated) = reads_settled_state(g.model)
+
 function _simulate_generated(
         model::TransmissionModel, sim_opts::SimOpts;
         interventions, attributes, progression, observation, recorder, rng
     )
-    window = Infectiousness(
-        (rng, ind, state) -> generate_offspring(model, ind, state);
-        kernel = model_generation_time(model)
-    )
+    window = Infectiousness(_Generated(model); kernel = model_generation_time(model))
     return _simulate_offspring(
         model, (window,), sim_opts, isempty(interventions) ? () : interventions;
         attributes, progression, observation, recorder, rng
