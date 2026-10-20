@@ -320,7 +320,7 @@ using DataFrames
 
     @testset "Attributes see a case's own type, index cases and contacts alike" begin
         # Each contact's type comes from its parent's offspring draw, and each
-        # index case's type is drawn independently, so both must be set before
+        # index case's type is drawn independently. Both must be set before
         # an attributes function runs: it must never see the type-1 default
         # every new `IndividualState` starts with.
         function record_type_when_drawn!(rng, ind)
