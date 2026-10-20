@@ -1,17 +1,17 @@
 # ── Multi-type analytics ─────────────────────────────────────────────
 #
 # Threshold and extinction results for a process built from an offspring
-# matrix. A type-j parent draws a total count from G_j = dist_fn(R_j) and splits it
-# multinomially with proportions a_ij = M[i, j] / R_j. Its vector PGF is
-# therefore f_j(s) = G_j(Σ_i a_ij s_i). This agrees with a product of
-# independent per-type PGFs only when G_j is Poisson.
+# matrix. A type-j parent draws a total count from G_j, either dist_fn(R_j) or
+# dist_fn[j], and splits it multinomially with proportions a_ij = M[i, j] / R_j.
+# Its vector PGF is therefore f_j(s) = G_j(Σ_i a_ij s_i). This agrees with a
+# product of independent per-type PGFs only when G_j is Poisson.
 
 # Total-count law of a type-`j` parent. A sink type (zero column) has no
 # offspring, so its law is `Dirac(0)` and `dist_fn`, which may reject R = 0, is
 # never called for it.
 function _total_count_law(o::MultiTypeOffspring, j::Integer)
     R = o.R_by_type[j]
-    return R > 0 ? o.dist_fn(R) : Dirac(0)
+    return R > 0 ? _type_law(o.dist_fn, R, j) : Dirac(0)
 end
 
 _total_count_laws(o::MultiTypeOffspring) = [_total_count_law(o, j) for j in 1:_n_types(o)]
@@ -208,8 +208,9 @@ most 1. A warning is given if the calculation has not converged after
 !!! note "How it is calculated"
     The result is the smallest solution in `[0, 1]` of
     `q_j = G_j(Σ_i a_ij q_i)`, where `G_j` is the probability generating
-    function of `dist_fn(R_j)` and `a_ij = M[i, j] / R_j` is the share of a
-    type-`j` case's secondary cases that are of type `i`. The rules above
+    function of the type-`j` total-count law (`dist_fn(R_j)` or `dist_fn[j]`,
+    see [`MultiTypeOffspring`](@ref)) and `a_ij = M[i, j] / R_j` is the share
+    of a type-`j` case's secondary cases that are of type `i`. The rules above
     assume the number of secondary cases varies between cases; a fixed
     offspring count such as `Dirac(1)` at R = 1 gives chains that never end,
     for which returning 1 is wrong.

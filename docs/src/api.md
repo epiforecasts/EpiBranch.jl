@@ -47,6 +47,9 @@ NetworkProcess
 RoutedNetwork
 HouseholdProcess
 household_sizes
+household_members
+external_hazard
+observation_end
 ModelSpec
 single_type_offspring
 EpiBranch.has_single_type_law
