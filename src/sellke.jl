@@ -1039,7 +1039,7 @@ A model with several transmission routes passes `routes`, a collection of
 opens and closes on its own window, and only a route listing
 `INTERVENTION_REMOVAL` in its `until` can be cut by the interventions'
 removals and blocked by removal risks such as isolation; among those routes,
-[`risk_applies`](@ref) decides which interventions actually reach each one by
+[`risk_applies`](@ref) decides which interventions reach each one by
 its `name`, so a measure can close one route and leave another open. A case
 infected along one of these routes has the route's `name` in its
 `:infection_route`, which `linelist` reports. The single-window shorthand has
@@ -1164,7 +1164,7 @@ function _sellke_race!(
     # scoped away from it, and blocking every proposal it makes would cut it
     # just as surely. This also lets several interventions share a window
     # opted into `INTERVENTION_REMOVAL` while each still only closes the
-    # routes it actually names, as an `OnRoutes`-wrapped one does. A vaccine's
+    # routes it names, as an `OnRoutes`-wrapped one does. A vaccine's
     # protection is no removal, and a vaccinated person is protected at home
     # too, so risks scoped to every route still apply. The model's own risks
     # and the per-individual multipliers always apply, since they belong to

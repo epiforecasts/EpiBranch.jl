@@ -36,7 +36,7 @@ different routes, such as community and funeral transmission of Ebola.
   then, so that contact is dropped, and a case makes fewer contacts on
   average than its offspring distribution draws, by the share of the kernel
   that falls before infection.
-- `name`: what interventions see this window as, through
+- `name`: the name interventions see this window as, through
   [`risk_applies`](@ref EpiBranch.risk_applies)'s `route`. The default,
   `:transmission`, suits a process with a single window; give each of several
   windows its own name, for example `:community` and `:household`, so

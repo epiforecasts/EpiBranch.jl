@@ -1,5 +1,5 @@
 # Records the name of every route `risk_applies` is asked about, so a test
-# can check which named windows a model's routes actually reach it as.
+# can check which named windows a model's routes reach it as.
 struct _SeenRoutes <: EpiBranch.AbstractIntervention
     seen::Vector{Symbol}
 end
