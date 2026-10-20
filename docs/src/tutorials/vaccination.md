@@ -116,7 +116,9 @@ println("Isolation + tracing + ring vaccination: $(round(containment_probability
 
 Tracing that starts at the infector's symptom onset, before isolation, and
 does not quarantine, leaves contacts exposed after the trace, and there the
-dose acts:
+dose acts. These comparisons need many outbreaks, so they call
+[`containment_probability`](@ref) on the model, which keeps one outbreak in
+memory at a time:
 
 ```@example vaccination
 ct_onset = ContactTracing(probability = 0.7,
@@ -126,8 +128,9 @@ ct_onset = ContactTracing(probability = 0.7,
 for (label, interventions) in (
         ("no vaccination", [iso, ct_onset]),
         ("ring vaccination", [iso, ct_onset, rv]))
-    runs = simulate(scenario(interventions), 1000; max_cases = 500, rng = StableRNG(42))
-    println(rpad(label, 20), round(containment_probability(runs), digits = 3))
+    p = containment_probability(scenario(interventions), 1000;
+        max_cases = 500, rng = StableRNG(42))
+    println(rpad(label, 20), round(p, digits = 3))
 end
 ```
 
@@ -145,8 +148,8 @@ for (label, interventions) in (
         ("no vaccination", [iso, ct_onset]),
         ("same-day protection", [iso, ct_onset, rv]),
         ("7-day delay", [iso, ct_onset, rv_delayed]))
-    runs = simulate(scenario(interventions), n_delay; max_cases = 500, rng = StableRNG(42))
-    p = containment_probability(runs)
+    p = containment_probability(scenario(interventions), n_delay;
+        max_cases = 500, rng = StableRNG(42))
     println(rpad(label, 22), round(p, digits = 3),
         " (standard error ", round(sqrt(p * (1 - p) / n_delay), digits = 3), ")")
 end
@@ -424,9 +427,9 @@ rv_independent_onward = RingVaccination(efficacy = 0.8, onward_efficacy = 0.8,
     coverage = 0.5)
 
 n_outbreaks = 10000
-containment(interventions) = containment_probability(simulate(
+containment(interventions) = containment_probability(
     scenario(interventions, [clinical, community, acceptance]), n_outbreaks;
-    max_cases = 200, rng = StableRNG(42)))
+    max_cases = 200, rng = StableRNG(42))
 
 for (label, interventions) in (
         ("no vaccination", [iso, ct_noquarantine]),

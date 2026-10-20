@@ -2,8 +2,8 @@
 # (when it may act) or `CapacityConstrained` (how many it may reach). A
 # subtype stores the wrapped intervention in an `intervention` field and
 # inherits the plain delegation of every hook below, then overrides only the
-# hooks it gates. `apply_post_transmission!` and `trace_contacts!` have no
-# default here, so each wrapper states what it does with them. `keep_active`
+# hooks it gates. `trace_contacts!` has no default here, so each wrapper
+# states what it does with it. `keep_active`
 # does default to plain forwarding below, for a wrapper with nothing of its
 # own to gate there; a wrapper that does gate it overrides the default just
 # like the others.
