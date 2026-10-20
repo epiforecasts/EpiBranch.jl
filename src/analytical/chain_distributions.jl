@@ -504,9 +504,10 @@ function Distributions.mean(d::HittingTimeChainSize)
 end
 
 """
-Draws one offspring count from `offspring`'s own pmf by walking its CDF.
-Each term costs a single `pdf` lookup, unlike a term of `HittingTimeChainSize`'s
-own pdf, so this stays cheap even though it is capped at the same 10,000 terms.
+Draws one offspring count from the pmf of `offspring` by walking its CDF.
+Each term costs a single `pdf` lookup, unlike a term from the pdf of
+`HittingTimeChainSize` itself, so this stays cheap even though it is capped
+at the same 10,000 terms.
 """
 function _offspring_rand(rng::AbstractRNG, offspring)
     u = rand(rng)
@@ -522,10 +523,10 @@ end
 """
 Samples `HittingTimeChainSize` by directly simulating the branching process
 it is the total progeny of, generation by generation, rather than inverting
-its own pdf: reaching a chain of size `n` this way costs `O(n)` offspring
-draws, against the `O(n^3)` of walking `HittingTimeChainSize`'s own pdf up to
-`n`, which made `rand` impractically slow for a moderately subcritical law
-whose typical chain size is already in the thousands.
+its own pdf. Reaching a chain of size `n` this way costs `O(n)` offspring
+draws, against the `O(n^3)` of walking the pdf of `HittingTimeChainSize`
+itself up to `n`. That made `rand` impractically slow for a moderately
+subcritical law whose typical chain size is already in the thousands.
 """
 function _hitting_time_rand(rng::AbstractRNG, offspring)
     total = 1
