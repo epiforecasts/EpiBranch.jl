@@ -4,9 +4,8 @@ using Random
 # A minimal structure-driven model — a ring of nodes — exercising the race's
 # `contacts_of` route from within core: a node exposed by both neighbours
 # (decided once, by the earliest exposure that transmits), a model-contributed
-# competing risk, and the "exposed but not infected" branch. The network and
-# household subpackages cover these too, but only under their own coverage
-# flags; a tiny
+# competing risk, and the "exposed but not infected" branch. The network and household
+# subpackages cover these too, but only under their own coverage flags; a tiny
 # model here keeps the extension contract tested in core.
 
 struct RingModel <: EpiBranch.TransmissionModel
