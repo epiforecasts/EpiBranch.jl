@@ -554,10 +554,10 @@ ContactTracing(
 
 With `depth = 2` the traced contacts of a case have their own contacts traced
 in turn: the contacts of contacts that level-2 ring vaccination targets. Each
-infected, eligible case starts a fresh ring of radius `depth`. The ring grows
-through members who are not infected wherever the model can name their
-contacts before they settle (see
-[`EpiBranch.reads_settled_state`](@ref)); they do not infect anyone. A traced
+infected, eligible case starts a fresh ring of radius `depth`. The ring also
+grows through members who are never infected, wherever the model can name a
+member's contacts before it settles (see
+[`EpiBranch.reads_settled_state`](@ref)); such a member infects nobody. A traced
 contact who later becomes an eligible
 case starts its own ring like any other case; add `!PreviouslyTraced()` to the
 eligibility to interview each case only once.
