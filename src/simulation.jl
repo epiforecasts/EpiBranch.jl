@@ -18,15 +18,12 @@ days throughout.
 - `n_initial`: number of index cases (default 1).
 - `max_cases`, `max_generations`, `max_time` (days): stop the run once any of
   these is reached. Set one to `nothing` to remove that limit. The run always
-  stops when transmission dies out. The built-in models settle cases in order
-  of infection time, so a run stops at exactly `max_cases` cases (or with the
+  stops when transmission dies out. Every model settles cases in order of
+  infection time, so a run stops at exactly `max_cases` cases (or with the
   index cases, if there are more of them), leaves out any infection after
   `max_time`, and draws no contacts for a case at generation
-  `max_generations`. A model written against [`generate_offspring`](@ref) or
-  [`contacts_of`](@ref) runs one generation at a time and finishes the
-  generation that crosses a limit, so it can end past `max_cases` or with
-  infections after `max_time`. The last cases of a run the built-in models
-  stop by `max_cases` or `max_time` have not made all their contacts, so
+  `max_generations`. The last cases of a run stopped by `max_cases` or
+  `max_time` have not made all their contacts, so
   per-case quantities such as offspring counts or realised generation
   intervals are right-truncated; `max_generations` alone leaves every case
   below the bound complete. On a branching process, a contact whose infection was
