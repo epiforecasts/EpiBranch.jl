@@ -603,16 +603,18 @@ end
 
 """The `i`-th person's type, out of `n_types`: uniform at random by default,
 the `i`-th entry of `types` when it is a vector, or an independent draw from
-`types` when it is a `Distribution` (checked against `1:n_types`, since a
-`Distribution`'s support cannot be checked upfront in general)."""
+`types` when it is a `Distribution` (checked against `1:n_types` and for
+being an integer, since a `Distribution`'s support cannot be checked upfront
+in general)."""
 _draw_type(rng, ::Nothing, i, n_types) = rand(rng, 1:n_types)
 _draw_type(rng, types::AbstractVector, i, n_types) = types[i]
 function _draw_type(rng, types::Distribution, i, n_types)
     t = rand(rng, types)
+    isinteger(t) || throw(ArgumentError("drew non-integer type $t"))
     1 <= t <= n_types || throw(
         ArgumentError("drew type $t, which is outside 1:$n_types")
     )
-    return t
+    return Int(t)
 end
 
 """

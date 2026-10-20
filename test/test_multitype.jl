@@ -358,6 +358,12 @@ using DataFrames
             @test_throws ArgumentError simulate(model; index_types = [3])
         end
 
+        @testset "a Distribution drawing a non-integer type is rejected" begin
+            @test_throws ArgumentError simulate(
+                model; index_types = Normal(1.5, 0.01), max_cases = 5, rng = StableRNG(1)
+            )
+        end
+
         @testset "index_types as a vector and n_initial together is rejected" begin
             @test_throws ArgumentError simulate(model; n_initial = 2, index_types = [1])
         end
