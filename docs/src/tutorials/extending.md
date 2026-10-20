@@ -47,7 +47,7 @@ plain meaning here.
 | state | Each simulated person (`ind`, an [`Individual`](@ref)) has a dictionary `ind.state` of named values, such as `ind.state[:age]` or `ind.state[:isolated]`. The whole outbreak so far is a [`SimulationState`](@ref), usually called `state`. |
 | model (`ModelSpec`) | A transmission model together with its natural history (`progression`), population characteristics (`attributes`), interventions and observation. This is what you pass to `simulate` and `loglikelihood`. |
 | transmission model | Who can infect whom, and when: a branching process, a network, a household model. |
-| generation-based and continuous-time models | Every built-in model is simulated in continuous time, one case at a time in order of infection time. A branching process creates each case's contacts as it goes; the network, household, homogeneous and structured-mixing (`MixingProcess`) models simulate a fixed population, in which everyone exists from the start and the simulation works out when each person is infected (by the Sellke construction). A model written against `generate_offspring` or `contacts_of` is simulated one generation at a time, and some hooks are called by only one kind. |
+| continuous-time simulation | Every model is simulated in continuous time, one case at a time in order of infection time. A branching process, or a model written against `generate_offspring`, creates each case's contacts as it goes; the network, household, homogeneous and structured-mixing (`MixingProcess`) models simulate a fixed population, in which everyone exists from the start and the simulation works out when each person is infected (by the Sellke construction). A model written against `contacts_of` names each case's exposures, among people who already exist or new ones it creates. |
 | contact interval (`kernel` in code) | The time from the start of a case's infectiousness to a contact that would infect if nothing intervened. |
 | `!` at the end of a name | The function changes its argument in place, as `abort_infection!(ind, t)` changes `ind`. |
 
@@ -358,13 +358,6 @@ does not clash with the package's default one.
     The `max_cases` and `max_generations` keyword *defaults* have no effect on
     these models, so an existing run over a large population is not capped
     unless you ask for it with an explicit value or a `stopping_rules` entry.
-
-    A rule declaring `time_bound` and `honoured_without_should_stop(rule) =
-    true` is applied the same way by the generation-based engine (such as
-    [`BranchingProcess`](@ref)): `should_stop` is never called for it there
-    either. A branch instead stops making further contacts once its own
-    infection reaches the bound, while other branches keep running until
-    they reach it too.
 
 ## A custom intervention: closing a border
 

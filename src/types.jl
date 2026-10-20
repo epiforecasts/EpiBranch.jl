@@ -360,18 +360,11 @@ mutable struct SimulationState{T <: Real, R <: AbstractRNG, P, A}
     attributes::A
     transitions::Vector{AbstractClinicalTransition}
     scratch::Dict{Any, Any}
-    # The run's own bookkeeping, not part of `scratch`: the time bound the
-    # generation-based engine enforces per case (`Inf` if none), and whether
-    # it has cut a branch short because of it. Kept separate so the
-    # documented claim about `scratch`, that the simulation never reads it,
-    # still holds without exception.
-    _max_time_bound::Float64
-    _max_time_capped::Bool
 end
 
-# Pre-existing callers construct a `SimulationState` without `scratch` or the
-# time-bound bookkeeping; both always start at their defaults, so this fills
-# them in rather than requiring every call site to name them.
+# Pre-existing callers construct a `SimulationState` without `scratch`; it
+# always starts empty, so this fills it in rather than requiring every call
+# site to name it.
 function SimulationState(
         individuals, active_ids, current_generation, rng, cumulative_cases,
         extinct, population_size, max_infection_time, attributes, transitions
@@ -379,7 +372,7 @@ function SimulationState(
     return SimulationState(
         individuals, active_ids, current_generation, rng, cumulative_cases,
         extinct, population_size, max_infection_time, attributes, transitions,
-        Dict{Any, Any}(), Inf, false
+        Dict{Any, Any}()
     )
 end
 

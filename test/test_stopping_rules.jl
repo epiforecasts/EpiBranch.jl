@@ -28,39 +28,6 @@ function EpiBranch.should_stop(r::TimeOrCasesRule, state::SimulationState)
 end
 EpiBranch.time_bound(r::TimeOrCasesRule) = r.t
 
-# The built-in models all run on the continuous-time race, which enforces
-# `MaxTime` by processing cases in time order; this model runs on the
-# generation engine instead (see `generate_offspring`), used below to check
-# that engine's own per-branch enforcement.
-struct _OffspringTree <: EpiBranch.TransmissionModel
-    offspring::Distribution
-    generation_time::Gamma{Float64}
-end
-EpiBranch.population_size(::_OffspringTree) = EpiBranch.NoPopulation()
-EpiBranch.generate_offspring(m::_OffspringTree, parent, state) = rand(state.rng, m.offspring)
-
-# Like `_OffspringTree`, but mints its contacts via `contacts_of` and
-# `gather_by_target` instead of `generate_offspring`, to check that the
-# generation engine's per-branch time bound also applies on that path.
-struct _GatherOffspringTree <: EpiBranch.TransmissionModel
-    offspring::Distribution
-    generation_time::Gamma{Float64}
-end
-EpiBranch.population_size(::_GatherOffspringTree) = EpiBranch.NoPopulation()
-function EpiBranch.collect_exposures(m::_GatherOffspringTree, state::EpiBranch.SimulationState)
-    return EpiBranch.gather_by_target(m, state)
-end
-function EpiBranch.contacts_of(m::_GatherOffspringTree, parent, state::EpiBranch.SimulationState)
-    n = rand(state.rng, m.offspring)
-    return [
-        begin
-            t = parent.infection_time + rand(state.rng, m.generation_time)
-            (EpiBranch.make_contact!(state, parent, t), t)
-        end
-            for _ in 1:n
-    ]
-end
-
 @testset "Stopping rules" begin
     @testset "MaxCases stops once cumulative cases reach the cap" begin
         # The engine processes a full generation per step, so cumulative
@@ -100,109 +67,6 @@ end
         @test 15.0 < state.max_infection_time <= 20.0
         @test all(ind -> ind.infection_time <= 20.0, filter(is_infected, state.individuals))
         @test !state.extinct
-    end
-
-    @testset "MaxTime keeps cases before the limit on the continuous-time race" begin
-        # BranchingProcess runs on the continuous-time Sellke race (see
-        # offspring_route.jl), which processes cases in time order and so
-        # already kept cases before the limit regardless of generation
-        # spread; this checks that still holds. It is not a regression test
-        # for the generation engine's per-branch fix: the
-        # "MaxTime stops each case's own branch on the generation engine"
-        # testset below covers that.
-        gt = Gamma(2.0, 2.5)
-        model = BranchingProcess(NegBin(1.5, 2.0), gt)
-        by_day30(s) = count(i -> is_infected(i) && i.infection_time <= 30, s.individuals)
-        n = 150
-        with_limit = sum(
-            by_day30(
-                simulate(
-                    model; max_time = 30.0, max_cases = nothing,
-                    max_generations = nothing, rng = StableRNG(s)
-                )
-            )
-                for s in 1:n
-        ) / n
-        without = sum(
-            by_day30(
-                simulate(
-                    model; max_cases = 20_000, max_generations = nothing,
-                    rng = StableRNG(s)
-                )
-            )
-                for s in 1:n
-        ) / n
-        @test with_limit > 0.7 * without
-    end
-
-    @testset "MaxTime stops each case's own branch on the generation engine" begin
-        model = _OffspringTree(NegBin(1.5, 2.0), Gamma(2.0, 2.5))
-        state = simulate(
-            model; max_time = 30.0, max_cases = nothing, max_generations = nothing,
-            rng = StableRNG(8)
-        )
-        infected = filter(is_infected, state.individuals)
-        @test all(
-            case -> case.infection_time < 30.0 || isempty(case.secondary_case_ids),
-            infected
-        )
-        @test !state.extinct
-    end
-
-    @testset "MaxTime stops each case's own branch on the generation engine via gather_by_target" begin
-        # The `gather_by_target` `collect_exposures` path (networks,
-        # households, and the `contacts_of`-minting pattern in
-        # `make_contact!`'s docstring) needs the same per-branch cutoff as
-        # the default `collect_exposures` above: the generation engine
-        # skips `should_stop` for a time-bounded rule, so this path cannot
-        # rely on it either.
-        model = _GatherOffspringTree(NegBin(1.5, 2.0), Gamma(2.0, 2.5))
-        state = simulate(
-            model; max_time = 30.0, max_cases = nothing, max_generations = nothing,
-            rng = StableRNG(8)
-        )
-        infected = filter(is_infected, state.individuals)
-        @test all(
-            case -> case.infection_time < 30.0 || isempty(case.secondary_case_ids),
-            infected
-        )
-        @test !state.extinct
-    end
-
-    @testset "A user-defined time-bounding rule keeps cases before the limit on the generation engine too" begin
-        # The generation engine must give `CustomTimeBoundRule` the same
-        # per-branch treatment as `MaxTime`: it is written exactly as the
-        # Extending EpiBranch guide's "Stopping rules" section tells a user
-        # to, with `should_stop` plus `time_bound` and
-        # `honoured_without_should_stop`. Dispatching on the literal
-        # `MaxTime` type instead of that trait would end the whole run at
-        # the first case past the bound. That would lose cases infected
-        # before the bound but in a later generation, the same bug `MaxTime`
-        # itself was fixed for. The per-case count comparison below, as in
-        # the `MaxTime` test above, would catch it.
-        model = _OffspringTree(NegBin(1.5, 2.0), Gamma(2.0, 2.5))
-        by_day30(s) = count(i -> is_infected(i) && i.infection_time <= 30, s.individuals)
-        n = 150
-        with_limit = sum(
-            by_day30(
-                simulate(
-                    model;
-                    stopping_rules = [Extinction(), CustomTimeBoundRule(30.0)],
-                    rng = StableRNG(s)
-                )
-            )
-                for s in 1:n
-        ) / n
-        without = sum(
-            by_day30(
-                simulate(
-                    model; stopping_rules = [Extinction(), MaxCases(20_000)],
-                    rng = StableRNG(s)
-                )
-            )
-                for s in 1:n
-        ) / n
-        @test with_limit > 0.7 * without
     end
 
     @testset "Ergonomic kwargs build rules" begin
@@ -323,7 +187,7 @@ end
         )
         @test any(r -> r isa MaxCases, given_opts.stopping_rules)
 
-        # The generation-based engine is untouched either way.
+        # A branching process keeps both defaults.
         branching = BranchingProcess(Poisson(1.5), Exponential(2.0))
         engine_opts = EpiBranch._build_sim_opts(
             branching, nothing, nothing, EpiBranch._DEFAULT_MAX_CASES,

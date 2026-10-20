@@ -59,14 +59,8 @@ struct MaxGenerations <: AbstractStoppingRule
     n::Int
 end
 
-"""Stop a branch once its own infection is at or after time `t` (days since
-the start of the outbreak), without drawing it any further contacts. The
-generation-based engine (such as [`BranchingProcess`](@ref)) keeps other
-branches running while they are still before `t`, which keeps cases before
-the limit from being lost even when one branch reaches well past it first.
-The mass-action, network and household models settle cases in time order
-rather than generation order, so nothing after `t` could have been reached
-first; ending the whole run at `t` is enough for them."""
+"""Stop once the latest infection is at or after time `t` (days since the
+start of the outbreak)."""
 struct MaxTime <: AbstractStoppingRule
     t::Float64
 end
@@ -89,11 +83,8 @@ should_stop(r::MaxTime, state::SimulationState) = state.max_infection_time >= r.
 The time limit (days) a stopping rule sets, or `Inf` if it sets none (the
 default). The mass-action, network and household models end the whole run at
 the earliest such limit among its rules, before any candidate infection past
-it is drawn. The generation-based engine (such as [`BranchingProcess`](@ref))
-instead cuts a branch off from making further contacts once its own infection
-reaches the limit, keeping other branches running while they are still before
-it. Define it alongside `should_stop` for a rule that, like [`MaxTime`](@ref),
-should end a run the same way on those models.
+it is drawn. Define it alongside `should_stop` for a rule that, like
+[`MaxTime`](@ref), should also end those runs.
 """
 time_bound(::AbstractStoppingRule) = Inf
 time_bound(r::MaxTime) = r.t
@@ -124,12 +115,6 @@ other rule keeps the default `false`, and those models poll `should_stop` for
 it instead — including a rule that bounds time or generation depth but also
 tests something else, such as a case count, since only the bound is captured
 without asking.
-
-A rule with a finite [`time_bound`](@ref EpiBranch.time_bound) that also
-returns `true` here skips `should_stop` on the generation-based engine (such
-as [`BranchingProcess`](@ref)) too: that engine never polls `should_stop` for
-it, relying instead on the per-branch time cut-off described under
-`time_bound` to end the run.
 """
 honoured_without_should_stop(::AbstractStoppingRule) = false
 honoured_without_should_stop(::Extinction) = true
