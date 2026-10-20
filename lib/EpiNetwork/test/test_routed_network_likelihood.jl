@@ -323,6 +323,39 @@ end
         @test ForwardDiff.gradient(f, x) ≈ fd rtol = 1.0e-5
     end
 
+    @testset "still differentiable in the route kernels' parameters under a susceptibility effect" begin
+        # A vaccinated host's term goes through `_routed_mixture_loglik`, whose
+        # `T` must cover the route kernels' own parameter type as well as the
+        # mixture's, or its `T(-Inf)`/`T(l)` conversions throw once `θ` is a
+        # `Dual` from differentiating the kernels rather than the mixture.
+        hh, comm = _routed_adjacency(30, 4)
+        windows(θ) = [
+            RouteWindow(:household; until = (:recovered,), kernel = Exponential(exp(θ[1])), reach = hh),
+            RouteWindow(:community; until = (:recovered,), kernel = Exponential(exp(θ[2])), reach = comm),
+        ]
+        ct = ContactTracing(OnSymptomOnset(), 1.0, Dirac(0.0), FlagOnly())
+        rv = RingVaccination(efficacy = 0.5, mode = LeakyMode())
+        clinical = clinical_presentation(incubation_period = Dirac(0.0))
+        m = ModelSpec(
+            RoutedNetwork(windows([log(3.0), log(10.0)])); progression = _sir(8.0),
+            attributes = clinical, interventions = [ct, rv]
+        )
+        state = simulate(m; n_initial = 3, rng = StableRNG(6))
+        data = routed_network_infections(state, m)
+        @test any(!ismissing, data.host_times.immunity_time)
+
+        f(θ) = pairwise_surv_loglik(
+            windows(θ), data; susceptibility = EpiBranch.vaccine_effect(rv)
+        )
+        x = [log(3.0), log(10.0)]
+        h = 1.0e-6
+        fd = [
+            (f(x + h * e) - f(x - h * e)) / 2h
+                for e in ([1.0, 0.0], [0.0, 1.0])
+        ]
+        @test ForwardDiff.gradient(f, x) ≈ fd rtol = 1.0e-5
+    end
+
     @testset "a structurally infeasible host has a zero gradient, not just -Inf" begin
         # host 1 infects host 2 on the only route, but closes before host 2's
         # infection time. Host 2's survival term then accumulates hazard

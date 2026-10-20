@@ -193,6 +193,20 @@ function _route_kernel(k::PairKernel, contacts, i, pos, j)
 end
 _route_kernel(k, contacts, i, pos, j) = k(i, j)
 
+# A route's own parameter type, found the same way `_kernel_partype` finds it
+# for the single-route likelihood: a shared distribution exposes it directly
+# through `partype`; a per-edge or covariate kernel is probed on an actual
+# edge of that route. With no edge to probe, the route contributes nothing of
+# its own and `T` falls back to whatever the rest of the likelihood needs.
+_route_kernel_partype(k::ContinuousUnivariateDistribution, contacts, in_neighbours) =
+    Distributions.partype(k)
+function _route_kernel_partype(k, contacts, in_neighbours)
+    for (j, row) in enumerate(in_neighbours), (i, pos) in row
+        return Distributions.partype(_route_kernel(k, contacts, i, pos, j))
+    end
+    return Union{}
+end
+
 # Route `r`'s possible infectors of each susceptible: for every infected host
 # `i`, the (host, position-in-`reach[i]`) pairs of its listed contacts, so a
 # susceptible's row only ever enumerates infected hosts that can reach it.
@@ -379,7 +393,13 @@ function EpiBranch.pairwise_surv_loglik(
     infected = .!isnan.(data.infection_time)
     in_neighbours = [_route_in_neighbours(data.contacts[r], infected) for r in 1:n_routes]
     mixtures = _routed_host_mixtures(susceptibility, data, n)
-    T = promote_type(Float64, _mixtures_partype(mixtures))
+    Twindows = promote_type(
+        (
+            _route_kernel_partype(windows[r].kernel, data.contacts[r], in_neighbours[r])
+                for r in 1:n_routes
+        )...
+    )
+    T = promote_type(Float64, Twindows, _mixtures_partype(mixtures))
 
     ll = zero(T)
     for j in 1:n
