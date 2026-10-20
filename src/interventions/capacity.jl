@@ -342,11 +342,13 @@ function apply_post_transmission!(cc::CapacityConstrained, state, new_contacts)
     isempty(already_used) || apply_post_transmission!(cc.intervention, state, already_used)
     isempty(candidates) && return nothing
     admission_key = _capacity_admission_key(key)
+    times_by_key = _dose_times_by_key(cc, state)
     group_idxs, group_keys = _resource_groups(cc, state, candidates)
     for (idxs, group_key) in zip(group_idxs, group_keys)
         group = candidates[idxs]
         order = sortperm([cc.priority(ind, state) for ind in group]; alg = MergeSort)
-        usage = _capacity_usage(cc, state, state.max_infection_time, group_key)
+        times = get(times_by_key, group_key, Float64[])
+        usage = _usage_at(cc, times, Float64[], state.max_infection_time)
         used = usage.used
         for i in order
             used + 1 <= usage.available || break
