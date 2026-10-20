@@ -308,7 +308,7 @@ end
 # `OffspringTimes`: each contact's offset from `from_t` is already known, so
 # it stands in for `kernel` in `_draw_contact!`, which `_window_infection_time`
 # resolves to a time with no draw. `kernel` itself (always `NoGenerationTime`
-# here, from `_window_kernel`) is unused. `OffspringTimes` carries no per-type
+# here, from `_window_kernel`) is unused. `OffspringTimes` lacks a per-type
 # label, so a multi-type model has no type to give each contact; rather than
 # collapse them all to type 1, this refuses to guess.
 function _draw_counts!(
