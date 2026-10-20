@@ -134,3 +134,43 @@
         @test large < 8 * small
     end
 end
+
+@testset "External hazard following a calendar schedule" begin
+    sir = [Transition(:recovered; from = :infection, delay = 5.0, terminal = true)]
+    # single-member households: with no household-mate to infect, every
+    # infection is a community one, which isolates the calendar term
+    sizes = fill(1, 200)
+
+    @testset "a schedule with one value everywhere matches the shared rate" begin
+        α = 0.02
+        shared = ModelSpec(
+            HouseholdProcess(sizes, Exponential(3.0); external_hazard = α, obs_end = 30.0);
+            progression = sir
+        )
+        scheduled = ModelSpec(
+            HouseholdProcess(
+                sizes, Exponential(3.0);
+                external_hazard = Steps([10.0], [α, α]), obs_end = 30.0
+            );
+            progression = sir
+        )
+        data = household_infections(simulate(shared; rng = StableRNG(7)), shared)
+        @test loglikelihood(data, scheduled) ≈ loglikelihood(data, shared)
+    end
+
+    @testset "a changing rate is read off a weekly calendar" begin
+        # a community hazard of 0.002 per day for the first week and 0.0005
+        # afterwards
+        model = ModelSpec(
+            HouseholdProcess(
+                sizes, Exponential(1.0);
+                external_hazard = Steps([7.0], [0.002, 0.0005]), obs_end = 30.0
+            );
+            progression = sir
+        )
+        state = simulate(model; rng = StableRNG(1))
+        @test any(is_infected, state.individuals)
+        data = household_infections(state, model)
+        @test isfinite(loglikelihood(data, model))
+    end
+end

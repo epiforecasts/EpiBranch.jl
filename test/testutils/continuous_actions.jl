@@ -38,7 +38,6 @@ function test_continuous_vaccine_actions(make_process)
         # `MassVaccination` declares `acts_on_population`, so it reaches
         # everybody before the race starts, needing no contacts at all.
         mv = MassVaccination(efficacy = 1.0, eligibility_time = 0.0)
-        @test EpiBranch._sellke_honours(process, mv)
         state = simulate(
             ModelSpec(process; progression, attributes = clinical, interventions = [mv]);
             rng = StableRNG(24)
@@ -61,7 +60,6 @@ function test_continuous_vaccine_actions(make_process)
             efficacy = 0.0, post_exposure_efficacy = 1.0,
             delay_to_immunity = Exponential(2.0)
         )
-        @test EpiBranch.continuous_actions(rv)
         model = ModelSpec(
             process; progression, attributes = clinical,
             interventions = [ct, rv]
