@@ -424,7 +424,7 @@ end
         ind.state[:_ring_propagated] = true
         # An isolation in force but never recorded as a detection is still an
         # isolation this trace brought about, so the reset lifts it.
-        set_isolated!(ind, 6.0; release_time = Inf)
+        EpiBranch.apply_trace!(ct.action, ind, nothing, 6.0, StableRNG(1))
         ind.state[:_isolation_unrecorded] = true
         EpiBranch.reset!(ct, ind)
         @test ind.state[:traced] == false

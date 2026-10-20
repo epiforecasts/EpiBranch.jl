@@ -205,6 +205,42 @@ EpiBranch.reset!(::_TimedBatchDose, ind::Individual) = delete!(ind.state, :_dose
         @test !is_isolated(own)
     end
 
+    @testset "reset!(ContactTracing) leaves another intervention's isolation intact" begin
+        # The mirror image of the `Isolation` test above: a case isolated by
+        # `Isolation`, never quarantined by tracing, must keep that isolation
+        # once a `Scheduled` tracing that has not started resets it.
+        ct = ContactTracing(
+            probability = 1.0, isolation_to_trace_delay = Exponential(1.0),
+            action = Quarantine(duration = Inf)
+        )
+
+        untraced = Individual(id = 1)
+        set_isolated!(untraced, 3.0; release_time = Inf)
+        @test is_isolated(untraced)
+        EpiBranch.reset!(ct, untraced)
+        @test is_isolated(untraced)
+        @test isolation_time(untraced) == 3.0
+
+        # A contact tracing itself quarantined (marked) is still reset, and
+        # restores whatever isolation stood before the quarantine rather than
+        # being cleared outright.
+        rng = StableRNG(1)
+        nothing_before = Individual(id = 2)
+        EpiBranch.apply_trace!(Quarantine(duration = Inf), nothing_before, nothing, 5.0, rng)
+        @test is_isolated(nothing_before)
+        EpiBranch.reset!(ct, nothing_before)
+        @test !is_isolated(nothing_before)
+        @test !EpiBranch._isolation_in_force(nothing_before)
+
+        standing_before = Individual(id = 3)
+        set_isolated!(standing_before, 1.0; release_time = 2.0)
+        EpiBranch.apply_trace!(Quarantine(duration = Inf), standing_before, nothing, 5.0, rng)
+        EpiBranch.reset!(ct, standing_before)
+        @test isolation_time(standing_before) == 1.0
+        @test isolation_release_time(standing_before) == 2.0
+        @test is_isolated(standing_before)
+    end
+
     @testset "Continuous-time tracing hooks" begin
         # The hooks the Sellke models call. Exercised here directly because the
         # only processes that drive them live in the companion packages, so the

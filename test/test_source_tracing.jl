@@ -99,7 +99,7 @@
         ind = Individual(id = 1)
         ind.state[:traced] = true
         ind.state[:source_traced_by] = 7
-        set_isolated!(ind, 6.0; release_time = Inf)
+        EpiBranch.apply_trace!(st.action, ind, nothing, 6.0, StableRNG(1))
         EpiBranch.reset!(st, ind)
         @test ind.state[:traced] == false
         @test !haskey(ind.state, :source_traced_by)
