@@ -744,7 +744,8 @@ for every contact drawn from a branching process's offspring distribution, or
 from [`generate_offspring`](@ref) in a model that defines it. A model that
 creates new people inside its [`contacts_of`](@ref) calls it directly,
 returning each contact with its infection time. A model whose contacts are
-all new and share one generation time is simpler written as `generate_offspring`; `contacts_of` earns its
+all new and share one generation time is simpler written as
+`generate_offspring`; `contacts_of` earns its
 keep where the model times each contact itself, as here, where every route
 out of a case has its own delay:
 
@@ -929,9 +930,10 @@ infected again until [`susceptible_again_time`](@ref), which is `Inf` (never)
 unless a natural-history step sets it. Every model over a fixed population,
 built in or written against [`contacts_of`](@ref), applies it to every settled
 member once its `progression` can reach `:susceptible_again`, with no change
-needed to how it names contacts. A model allows reinfection by adding a step to its `progression` that
-sets `:susceptible_again_time`; the earlier infection is then kept as a past
-episode (see [`close_episode!`](@ref)) when the person is reinfected."""
+needed to how it names contacts. A model allows reinfection by adding a step
+to its `progression` that sets `:susceptible_again_time`; the earlier
+infection is then kept as a past episode (see [`close_episode!`](@ref)) when
+the person is reinfected."""
 struct HostImmunity end
 function competing_risk(::HostImmunity, parent, contact, state)
     is_infected(contact) || return nothing
@@ -989,12 +991,13 @@ end
 # pair draws its contact times from a kernel. Only two of the six apply there.
 # Two can never apply: an infector has settled and so is infected by
 # construction, and route censoring is the infectious window's job rather than
-# a tag written on a contact. The other two, the per-individual susceptibility and
-# infectiousness, are rate multipliers on those models rather than per-contact
-# blocks: each one scales the hazard a pair meets at (`_traits_scaled_draw`)
-# or the pressure a susceptible absorbs, so resolving them here again would
-# count them twice. `HostImmunity` does apply: a candidate the race proposes
-# can be a settled member offered again once the race allows reinfection (see
+# a tag written on a contact. The other two, the per-individual
+# susceptibility and infectiousness, are rate multipliers on those models
+# rather than per-contact blocks: each one scales the hazard a pair meets at
+# (`_traits_scaled_draw`) or the pressure a susceptible absorbs, so resolving
+# them here again would count them twice. `HostImmunity` does apply: a
+# candidate the race proposes can be a settled member offered again once the
+# race allows reinfection (see
 # `_allows_reinfection` in sellke.jl), and this is where that candidate is
 # held back until `susceptible_again_time`.
 function _sellke_builtin_risk_blocks(parent, contact, state, transmission_time)

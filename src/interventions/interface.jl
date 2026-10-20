@@ -283,8 +283,8 @@ named `:transmission`, whose `until` holds the window's own states and
 [`EpiBranch.INTERVENTION_REMOVAL`](@ref); it names no `from`. A model written
 against [`generate_offspring`](@ref) has one such window, and one written
 against [`contacts_of`](@ref) a single `:transmission` route listing
-`INTERVENTION_REMOVAL`. The default is `true`, so protection such as vaccination
-follows a person across routes. [`Scheduled`](@ref) and
+`INTERVENTION_REMOVAL`. The default is `true`, so protection such as
+vaccination follows a person across routes. [`Scheduled`](@ref) and
 [`CapacityConstrained`](@ref) answer for the intervention they contain.
 
 [`Isolation`](@ref) and [`ContactTracing`](@ref) act only on routes listing

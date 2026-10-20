@@ -168,7 +168,8 @@ In practice:
     by `1 - p`. A pair with a one-day mean contact interval and a two-day
     infectious period then infects `1 - exp(-1) = 0.63` of the time at
     efficacy 0.5. On a branching process, or a model written against
-    `contacts_of`, a case's contacts are a fixed set of draws, so a blocked contact is a transmission lost, and the same efficacy
+    `contacts_of`, a case's contacts are a fixed set of draws, so a blocked
+    contact is a transmission lost, and the same efficacy
     of 0.5 halves that pair's chance of transmission (0.43 in this example,
     against 0.63). The per-exposure reading on fixed-population models is what a
     leaky vaccine means there; check which one your scenario needs.
@@ -188,8 +189,8 @@ In practice:
   actions once each case settles, narrowed to the case and the contacts it can
   still reach. One that chooses its own candidates, such as everyone not yet
   infected, writes a method of `EpiBranch.action_candidates`. Such actions
-  must work without knowing the infection time of a
-  contact not yet infected, and must not change a case already settled. That
+  must work without knowing the infection time of a contact not yet infected,
+  and must not change a case already settled. That
   narrowing needs a model that can name contacts, unless the intervention
   declares `EpiBranch.needs_contacts(iv) = false`, as group vaccination does,
   since its candidates come from a case's group rather than its contacts. A
@@ -510,9 +511,9 @@ Six built-in risks are always present:
 - [`EpiBranch.HostImmunity`](@ref) blocks every exposure of a contact who has
   already been infected, until [`susceptible_again_time`](@ref) is in the
   past. It does nothing for a model whose `progression` never reaches
-  `:susceptible_again`. A model that does gets a new, separately recorded infection episode
-  (see [Individual state and reserved keys](@ref)) instead of a reinfection
-  overwriting the earlier one.
+  `:susceptible_again`. A model that does gets a new, separately recorded
+  infection episode (see [Individual state and reserved keys](@ref)) instead
+  of a reinfection overwriting the earlier one.
 
 A susceptibility or infectiousness of `1.0` blocks nothing, and these risks have
 no effect unless a population characteristic sets a value below one. You can
@@ -525,9 +526,10 @@ fixed-population models apply the same two values as multipliers on the rate
 of transmission instead (see [Continuous-time models: further details](@ref)),
 so they do not decide them contact by contact. Of the remaining four,
 `InfectiousSource` never has anything to block on any model, since the race
-proposes only from cases that have settled and are infected by construction, and the end of
-an infectiousness window is enforced by the window closing rather than by
-`competing_risk`. `AbortedInfection` and `HostImmunity`, by contrast, are both
+proposes only from cases that have settled and are infected by construction,
+and the end of an infectiousness window is enforced by the window closing
+rather than by `competing_risk`. `AbortedInfection` and `HostImmunity`, by
+contrast, are both
 resolved through `competing_risk` there: a settled member can become a target
 again and is blocked by `HostImmunity` until their immunity has waned, exactly
 when the `progression` reaches `:susceptible_again`, with no change needed to
