@@ -559,7 +559,7 @@ followed for one more hop so the ring can extend past them, whether or not
 they are infected; an uninfected one does not infect anyone it reaches this
 way. On a model whose contacts persist (a household or a network), tracing
 also reaches a neighbour already infected earlier than the case doing the
-tracing, not only the case's own, still-uninfected neighbours: quarantining
+tracing, not only the case's own still-uninfected neighbours: quarantining
 that neighbour blocks transmission it has not yet made, the way
 `SourceTracing` blocks an infector found through its own case. A traced
 contact who later becomes an eligible case starts its own ring like any

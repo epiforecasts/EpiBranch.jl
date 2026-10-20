@@ -454,8 +454,8 @@ end
         @test pairwise_surv_loglik(Exponential(1.0), data; external_hazard = schedule) ≈
             expected
 
-        # a schedule is not a valid per-element of a per-person vector or
-        # function, only a hazard shared by everyone
+        # a schedule is not valid as an element of a per-person vector or
+        # function, only as a hazard shared by everyone
         @test_throws ArgumentError pairwise_surv_loglik(
             Exponential(1.0), data; external_hazard = [schedule, schedule]
         )
