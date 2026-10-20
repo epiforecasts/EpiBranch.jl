@@ -253,6 +253,14 @@
             @test cdf(d, 5) ≈ sum(pdf(d, n) for n in 1:5)
             @test cdf(d, 5) + ccdf(d, 5) ≈ 1.0
             @test logccdf(d, 5) ≈ log(ccdf(d, 5))
+
+            # Regression: cdf/logccdf/rand summed pdf(d, n) one n at a time,
+            # each restarting the hitting-time coefficient build-up from
+            # scratch, so a walk of a few hundred terms used to be
+            # impractically slow.
+            @test cdf(d, 150) ≈ sum(pdf(d, n) for n in 1:150)
+            rng = StableRNG(1)
+            @test rand(rng, d) isa Integer
         end
 
         @testset "IndexChainSize" begin
@@ -317,6 +325,30 @@
             # n = 1 is exactly "the index case has no secondary cases".
             @test pdf(d, 1) ≈ pdf(index, 0)
             @test pdf(d, 0) == 0.0
+        end
+
+        @testset "PMF matches the manual formula for a generic offspring" begin
+            # Regression: for a HittingTimeChainSize dist, the mixture sum
+            # used to rebuild the hitting-time coefficient table from
+            # scratch for every secondary-case count, instead of sharing one
+            # table across them, so a chain size of a few hundred was
+            # impractically slow.
+            index = Poisson(0.4)
+            off = DiscreteNonParametric([0, 1, 2], [0.5, 0.3, 0.2])
+            d = IndexChainSize(index, off)
+            dist = chain_size_distribution(off)
+            @test dist isa EpiBranch.HittingTimeChainSize
+
+            for n in 1:10
+                manual = n == 1 ? pdf(index, 0) : 0.0
+                for j in 1:(n - 1)
+                    manual += pdf(index, j) *
+                        exp(EpiBranch._chain_size_logpdf(dist, n - 1, j))
+                end
+                @test pdf(d, n) ≈ manual atol = 1.0e-12
+            end
+
+            @test isfinite(pdf(d, 150))
         end
 
         @testset "Normalises to 1 for subcritical later-generation offspring" begin

@@ -382,29 +382,78 @@ chain_size_distribution(d::NegativeBinomial) = GammaBorel(d.r, mean(d))
 # analytical fallback share a single definition.
 
 """
+Internal: one convolution of `coeffs` (the coefficients of `z^0, …,
+z^max_degree` in `G(z)^k`) with `pmf` (`G`'s own coefficients over the same
+range), giving `G(z)^(k+1)`'s. Shared by [`_hitting_time_coefficients`](@ref)
+and [`_hitting_time_pdf_walk`](@ref), which both build up a power of `G` one
+factor at a time; costs `max_degree^2`.
+"""
+function _hitting_time_convolve(coeffs::Vector{Float64}, pmf::Vector{Float64}, max_degree::Integer)
+    next = zeros(Float64, max_degree + 1)
+    for j in 0:max_degree
+        next[j + 1] = sum(coeffs[i + 1] * pmf[j - i + 1] for i in 0:j)
+    end
+    return next
+end
+
+"""
+    _hitting_time_coefficients(offspring, power::Integer, max_degree::Integer)
+
+Internal: the coefficients of `z^0, z^1, …, z^max_degree` in `G(z)^power` all
+at once, where `G` is `offspring`'s probability generating function. Built up
+one factor of `G` at a time via [`_hitting_time_convolve`](@ref); costs
+`power * max_degree^2`. Used where several degrees are needed at the same
+power, as [`IndexChainSize`](@ref)'s log-PDF does across index-case counts,
+so that the coefficient table is built once rather than once per degree.
+"""
+function _hitting_time_coefficients(offspring, power::Integer, max_degree::Integer)
+    max_degree < 0 && return Float64[]
+    pmf = [pdf(offspring, k) for k in 0:max_degree]
+    coeffs = zeros(Float64, max_degree + 1)
+    coeffs[1] = 1.0
+    for _ in 1:power
+        coeffs = _hitting_time_convolve(coeffs, pmf, max_degree)
+    end
+    return coeffs
+end
+
+"""
     _hitting_time_coefficient(offspring, power::Integer, degree::Integer)
 
 Internal: the coefficient of `z^degree` in `G(z)^power`, where `G` is
-`offspring`'s probability generating function. Built up one factor of `G` at
-a time, convolving the running coefficients with `offspring`'s own pmf read
-at `0, 1, …, degree`; each convolution costs `degree^2`, and `power` of them
-cost `power * degree^2`. Used by [`HittingTimeChainSize`](@ref
-EpiBranch.HittingTimeChainSize) with `power == degree + s`, so this is the
-cube of the chain size it is evaluating.
+`offspring`'s probability generating function; the single-degree case of
+[`_hitting_time_coefficients`](@ref), so it costs `power * degree^2`. Used by
+[`HittingTimeChainSize`](@ref EpiBranch.HittingTimeChainSize) with `power ==
+degree + s`, so this is the cube of the chain size it is evaluating.
 """
 function _hitting_time_coefficient(offspring, power::Integer, degree::Integer)
     degree < 0 && return 0.0
+    return _hitting_time_coefficients(offspring, power, degree)[degree + 1]
+end
+
+"""
+    _hitting_time_pdf_walk(offspring, max_n::Integer)
+
+Internal: `pdf(HittingTimeChainSize(offspring), n)` for every `n` from 1 to
+`max_n`, read off the diagonal of the same power-series build-up as
+[`_hitting_time_coefficients`](@ref) instead of restarting it from scratch
+for each `n`. Costs `max_n^3` in total — the same as a single
+`_hitting_time_coefficient` call at `max_n` — rather than `max_n^4` from
+`max_n` independent calls. Used by `HittingTimeChainSize`'s `rand`, `cdf` and
+`logccdf`, which otherwise sum this many terms one at a time.
+"""
+function _hitting_time_pdf_walk(offspring, max_n::Integer)
+    max_n < 1 && return Float64[]
+    degree = max_n - 1
     pmf = [pdf(offspring, k) for k in 0:degree]
     coeffs = zeros(Float64, degree + 1)
     coeffs[1] = 1.0
-    for _ in 1:power
-        next = zeros(Float64, degree + 1)
-        for j in 0:degree
-            next[j + 1] = sum(coeffs[i + 1] * pmf[j - i + 1] for i in 0:j)
-        end
-        coeffs = next
+    pdfs = Vector{Float64}(undef, max_n)
+    for power in 1:max_n
+        coeffs = _hitting_time_convolve(coeffs, pmf, degree)
+        pdfs[power] = coeffs[power] / power
     end
-    return coeffs[degree + 1]
+    return pdfs
 end
 
 """
@@ -454,6 +503,33 @@ function Distributions.mean(d::HittingTimeChainSize)
     return 1.0 / (1.0 - R)
 end
 
+"""
+Walks `HittingTimeChainSize`'s inverse CDF via [`_hitting_time_pdf_walk`](@ref)
+rather than `pdf(d, n)` one `n` at a time, so the terms up to however many
+are needed share a single build-up of `G`'s power series instead of each
+restarting one from scratch. The walk length doubles until the drawn `u` is
+reached, up to 10,000 terms: doubling keeps the total cost within a constant
+factor of a single walk to the length actually needed, since the cost of
+each attempt is dominated by the final one.
+"""
+function _hitting_time_rand(rng::AbstractRNG, offspring)
+    u = rand(rng)
+    max_n = 64
+    while true
+        reach = min(max_n, 10_000)
+        pdfs = _hitting_time_pdf_walk(offspring, reach)
+        cumprob = 0.0
+        for n in 1:reach
+            cumprob += pdfs[n]
+            u <= cumprob && return n
+        end
+        reach >= 10_000 && break
+        max_n *= 4
+    end
+    @warn "HittingTimeChainSize inverse CDF did not converge in 10,000 terms, returning 10,000"
+    return 10_000
+end
+
 function Base.rand(rng::AbstractRNG, d::HittingTimeChainSize)
     _law_mean(d.offspring) >= 1.0 && throw(
         ArgumentError(
@@ -462,12 +538,19 @@ function Base.rand(rng::AbstractRNG, d::HittingTimeChainSize)
                 "infinite with positive probability"
         )
     )
-    return _inverse_cdf_rand(rng, d, "HittingTimeChainSize")
+    return _hitting_time_rand(rng, d.offspring)
 end
 
-Distributions.cdf(d::HittingTimeChainSize, n::Integer) = _chain_size_cdf(d, n)
+function Distributions.cdf(d::HittingTimeChainSize, n::Integer)
+    n < 1 && return 0.0
+    return sum(_hitting_time_pdf_walk(d.offspring, n))
+end
 function Distributions.logccdf(d::HittingTimeChainSize, n::Integer)
-    return _chain_size_right_tail_logprob(d, n + 1, 1)
+    n < 1 && return 0.0
+    cum = sum(_hitting_time_pdf_walk(d.offspring, n))
+    cum >= 1.0 && return oftype(cum, -Inf)
+    p = 1.0 - cum
+    return p > 0.0 ? log(p) : oftype(p, -Inf)
 end
 
 """
@@ -539,6 +622,28 @@ Distributions.maximum(::IndexChainSize) = Inf
 Distributions.insupport(::IndexChainSize, n::Integer) = n >= 1
 
 """
+    _multi_seed_pdfs(dist, x::Integer)
+
+Internal: `P(X = x | s seeds)` for every seed count `s` from 1 to `x` at
+once, as [`IndexChainSize`](@ref)'s log-PDF needs across the index case's
+whole range of secondary-case counts. The general fallback calls
+`_chain_size_logpdf` term by term; [`HittingTimeChainSize`](@ref
+EpiBranch.HittingTimeChainSize) overrides it to build the hitting-time
+coefficient table once and read every seed count off it, since they all
+share the same power `x` and differ only in degree — without this, calling
+`_chain_size_logpdf` once per seed count rebuilds that table from scratch
+each time.
+"""
+function _multi_seed_pdfs(dist, x::Integer)
+    return [exp(_chain_size_logpdf(dist, x, s)) for s in 1:x]
+end
+
+function _multi_seed_pdfs(dist::HittingTimeChainSize, x::Integer)
+    coeffs = _hitting_time_coefficients(dist.offspring, x, x - 1)
+    return [(s / x) * coeffs[x - s + 1] for s in 1:x]
+end
+
+"""
 Log-PDF of [`IndexChainSize`](@ref). The sum over the index case's
 secondary-case count `j` only needs `j` up to `n - 1` (a chain of `j`
 non-index seeds has at least `j` cases), so it is a finite loop rather
@@ -547,11 +652,13 @@ than a truncated infinite series.
 function Distributions.logpdf(d::IndexChainSize, n::Integer)
     n < 1 && return -Inf
     p0 = pdf(d.index_offspring, 0)
-    total = n == 1 ? float(p0) : zero(float(p0))
+    n == 1 && return p0 > 0.0 ? log(p0) : oftype(float(p0), -Inf)
+    total = zero(float(p0))
+    probs = _multi_seed_pdfs(d.dist, n - 1)
     for j in 1:(n - 1)
         pj = pdf(d.index_offspring, j)
         pj == 0 && continue
-        total += pj * exp(_chain_size_logpdf(d.dist, n - 1, j))
+        total += pj * probs[j]
     end
     return total > zero(total) ? log(total) : oftype(total, -Inf)
 end
