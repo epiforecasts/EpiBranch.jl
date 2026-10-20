@@ -131,8 +131,7 @@ convention for naming keys added from other packages, are listed in
 
 ## Why the engine mutates state in place
 
-The engine works in place, one generation (on the continuous-time models, one
-case) at a time. Copying the whole state at every step would be far too
+The engine works in place, one case at a time. Copying the whole state at every step would be far too
 expensive for an unbounded tree, so the engine mutates on purpose.
 
 ## Analytical and simulation paths must agree

@@ -22,7 +22,7 @@ using Random
         @test susceptible_again_time(ind) == 10.0
     end
 
-    # Two nodes that keep exposing each other every generation. Transmission
+    # Two nodes that keep exposing each other, a day after each infection. Transmission
     # always succeeds (no susceptibility/infectiousness block), so a
     # recovered node's only barrier to a fresh exposure is `HostImmunity`:
     # blocked while `susceptible_again_time` is still ahead of the exposure,
@@ -39,9 +39,6 @@ using Random
         EpiBranch.add_individuals!(state, 2, interventions)
         EpiBranch.seed!(state, 1:1, interventions, transitions)
         return state
-    end
-    function EpiBranch.collect_exposures(m::PingPongModel, state::EpiBranch.SimulationState)
-        return EpiBranch.gather_by_target(m, state)
     end
     function EpiBranch.contacts_of(::PingPongModel, parent, state::EpiBranch.SimulationState)
         other = state.individuals[parent.id == 1 ? 2 : 1]
