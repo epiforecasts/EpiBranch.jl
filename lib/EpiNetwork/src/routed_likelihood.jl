@@ -237,8 +237,8 @@ function _routed_modifier_loglik(
             pk = _route_kernel(windows[r].kernel, data.contacts[r], i, pos, j)
             survival += gates[r] ?
                 _gapped_cumhazard(
-                t -> _scaled_cumhazard(modifier, pk, oi, t), _host_stretches(gaps, i), oi, stop
-            ) :
+                    t -> _scaled_cumhazard(modifier, pk, oi, t), _host_stretches(gaps, i), oi, stop
+                ) :
                 _scaled_cumhazard(modifier, pk, oi, stop)
         end
     end
