@@ -31,10 +31,8 @@ function _close_at(ind::Individual{T}, keys) where {T}
     return t
 end
 
-# ── Interventions on the continuous-time (Sellke) models ─────────────
-# These models run their own event loop rather than the generation engine, so
-# the engine's per-generation hook passes never run. Two seams carry an
-# intervention's effect instead. The first is the infectious window: an
+# ── Interventions on the race ────────────────────────────────────────
+# Two seams carry an intervention's effect on transmission. The first is the infectious window: an
 # intervention that removes a case from onward transmission (isolation)
 # shortens it. Each case is settled as the race pops it (`_settle_case!`): its
 # natural history first, then each intervention's `resolve_individual!`, which
@@ -49,9 +47,8 @@ end
 # probability, conditional on the risk having arrived before that transmission's
 # time. On the race, a potential transmission *is* a drawn time: the contact
 # interval from the infector's window opening to the moment it would infect that
-# neighbour. So the risks are resolved against that time, exactly as the
-# generation engine resolves them against a contact's transmission time — but
-# when the candidate is popped rather than when it was proposed, so that a dose
+# neighbour. So the risks are resolved against that time, when the candidate is
+# popped rather than when it was proposed, so that a dose
 # or an isolation that arrived in between is in force (see the loop in
 # `_sellke_race!`).
 #
@@ -89,10 +86,10 @@ end
 # its own. The default `NoContactRecorder` answers no to every pair, so a run
 # with no recorder attached drops the pair exactly as above.
 #
-# It is not what a block means on the generation engine, where a parent draws a
-# fixed set of contacts and a blocked one is a transmission lost with nothing to
-# follow it: an efficacy of 0.5 halves that pair's transmissions there, and here
-# it leaves `1 - exp(-∫h/2)` of them.
+# It is not what a block means for a single exposure, a contact a branching
+# process drew or one a model names through `contacts_of`, which is a
+# transmission lost with nothing to follow it: an efficacy of 0.5 halves those
+# transmissions, and for a kernel pair it leaves `1 - exp(-∫h/2)` of them.
 #
 # Thinning a hazard keeps a pair's contact process in the family the pairwise
 # likelihood is written in, with its hazard scaled, so a susceptibility that is
@@ -160,10 +157,7 @@ end
 # forwarding to `w.intervention` (that method is declared on
 # `InterventionWrapper` itself, not the concrete wrapper). Judging ownership
 # against the wrapper's type would therefore credit it with a method it never
-# wrote. `CapacityConstrained` overrides `apply_post_transmission!` to gate it
-# on its budget, but leaves `continuous_actions`, `on_infection_settled!` and
-# `keep_active` to that forwarding; unwrapping for those three hooks reaches
-# the wrapped intervention's own method instead.
+# wrote; unwrapping reaches the wrapped intervention's own method instead.
 function _hook_owner(f, iv::AbstractIntervention)
     while iv isa InterventionWrapper && !_has_own_method(f, typeof(iv), InterventionWrapper)
         iv = iv.intervention
@@ -173,24 +167,6 @@ end
 
 _innermost(iv::InterventionWrapper) = _innermost(iv.intervention)
 _innermost(iv::AbstractIntervention) = iv
-
-# The generation-only hooks an intervention implements a method of its own
-# for, named so a warning can say exactly which ones the race skips rather
-# than claiming the intervention itself does nothing. `apply_post_transmission!`
-# goes through `_uses_batch_hook` rather than `_hook_owner`, since
-# `CapacityConstrained` always defines its own method for it (to gate the batch
-# hook when its wrapped intervention is still on it), and `_uses_batch_hook`
-# already asks the wrapped intervention instead of crediting that gate to it.
-function _generation_hooks(iv::AbstractIntervention)
-    hooks = Symbol[]
-    _uses_batch_hook(iv) && push!(hooks, :apply_post_transmission!)
-    # Wrappers forward `keep_active`, so only the intervention inside them can
-    # mean it.
-    _has_own_method(
-        keep_active, typeof(_innermost(iv)), AbstractIntervention
-    ) && push!(hooks, :keep_active)
-    return hooks
-end
 
 # Whether an intervention discovers actions of its own, which the race offers
 # per settled case.
@@ -588,13 +564,11 @@ function _permanently_blocked(
 end
 
 # Whether the composed risks block `parent` infecting `contact` at the proposed
-# `transmission_time` on a continuous-time model, and whether that block is
-# permanent (see `_permanently_blocked`). On the generation engine a contact's
-# `infection_time` already holds its transmission time when the risks are
-# resolved, and a risk may read the exposure from there. A contact these
-# models propose is still susceptible, so its `infection_time` holds nothing
-# yet: set it to the proposed time for the resolution, and put it back if the
-# contact is blocked, leaving it as it was.
+# `transmission_time`, and whether that block is permanent (see
+# `_permanently_blocked`). A risk may read the exposure from the contact's
+# `infection_time`, but a proposed contact is still susceptible, so it holds
+# nothing yet: set it to the proposed time for the resolution, and put it back
+# if the contact is blocked, leaving it as it was.
 function _proposal_blocked(
         state::SimulationState, parent, contact, transmission_time,
         model_risks, interventions, builtin_blocks = _sellke_builtin_risk_blocks
@@ -686,132 +660,41 @@ end
 # clock and count (see `_settle_case!`), which its time and count gates read
 # wherever the wrapped intervention takes effect.
 
-#
-# The per-case hooks the generation engine also calls reach the race only in
-# part. The deprecated `apply_post_transmission!` acts on a batch of freshly
-# created contact objects, and a race that settles one pre-existing node at a
-# time never builds those. `keep_active` is read, but only from inside a tracing
-# walk (`_trace_from!` asks it which contacts the ring grows from); an
-# intervention that answers it without tracing has nothing to call it. An
-# intervention with a method of its own for either hook is therefore taken to
-# reach its targets that way, and reported as unhonoured, unless it has a
-# continuous-time counterpart: a method of its own for `on_infection_settled!`,
-# called once a case's infection time is fixed, stands in for
-# `apply_post_transmission!`, which an intervention written for both engines
-# defines alongside it to treat the same case the moment each engine can;
-# `trace_contacts!` stands in for `keep_active` the same way, but needs a model
-# that can name a case's contacts as well. Actions from `intervention_actions`
-# are offered on the race per settled case, narrowed to the contacts it can
-# still reach and needing them unless the intervention declares
-# `needs_contacts = false`, or, for one declaring `acts_on_population`, once,
-# at the start, for the whole population, regardless of what the model names.
-# One whose actions need contacts on a model that names none is reported. The
-# checks read the methods themselves, so an intervention written outside the
-# package is reported without declaring anything. `MassVaccination` declares
-# `acts_on_population`, since its dosing time comes from each person's own
-# `eligibility_time` rather than from who infected whom, and so is offered to
-# everybody before the race starts; `GroupVaccination` declares
-# `continuous_actions` and `needs_contacts = false`, since its candidates are
-# a case's group, found through `group_key` rather than through any contact.
-#
-# The settled-hook shortcut yields to a method of the intervention's own for
-# `continuous_actions`: that already answers, for its own configuration,
-# whether `apply_post_transmission!`'s mechanism has a continuous-time
-# counterpart, and a settled hook written for an unrelated feature must not
-# override it. An intervention with its own `continuous_actions` method
-# forgoes the shortcut, whatever that method returns for a given
-# configuration. Both checks are judged against `_hook_owner`, not `iv`
-# itself: a wrapper such as `CapacityConstrained`, which leaves
-# `continuous_actions` and `on_infection_settled!` to `InterventionWrapper`'s
-# forwarding, is judged by the intervention it wraps, while its own override
-# of `apply_post_transmission!` still counts as its own.
-#
-# The settled hook stands in only for `apply_post_transmission!`; `keep_active`
-# still needs its own counterpart, `trace_contacts!`. An intervention that doses
-# through a settled hook and *also* grows a ring through `keep_active` is
-# therefore unhonoured wherever that ring cannot trace, even though its dosing
-# alone would pass.
-#
-# Tracing needs one thing more: the model has to be able to name the contacts a
-# case reached, which is what `supplies_contacts` reports. A graph names a node's
-# neighbours and a household its members, but mass action names no contacts, so
-# tracing has nothing to act along there and stays unhonoured. Supported
-# candidate actions run after tracing through the shared admission protocol;
-# batch-only delivery remains unsupported.
-function _sellke_honours(model, iv::AbstractIntervention)
-    # Offered to the whole population at the start, regardless of what the
-    # model names.
-    acts_on_population(iv) && return true
-    continuous_actions(iv) && return !needs_contacts(iv) || supplies_contacts(model)
-    # Its actions reach each settled case and the contacts the model names, or
-    # the case alone where it needs no contacts; any generation hook it also
-    # has still needs a counterpart of its own.
-    _discovers_actions(iv) && needs_contacts(iv) && !supplies_contacts(model) &&
-        return false
-    hooks = _generation_hooks(iv)
-    isempty(hooks) && return true
-    cont_T = typeof(_hook_owner(continuous_actions, iv))
-    settled_T = typeof(_hook_owner(on_infection_settled!, iv))
-    if !_has_own_method(continuous_actions, cont_T, AbstractIntervention) &&
-            _has_own_method(on_infection_settled!, settled_T, AbstractIntervention)
-        :keep_active in hooks || return true
-    end
-    return traces_contacts(iv) && supplies_contacts(model)
-end
-_sellke_honours(model, s::Scheduled) = _sellke_honours(model, s.intervention)
-
-# The hooks of `iv` the continuous-time race actually skips, for naming in
-# `_warn_unhonoured_interventions`: the same shortcuts `_sellke_honours` takes
-# drop a hook from this list the moment its counterpart covers it, so an
-# intervention honoured through `on_infection_settled!` never gets
-# `apply_post_transmission!` named, since it already reaches that hook.
-function _unhonoured_hooks(model, iv::AbstractIntervention)
-    acts_on_population(iv) && return Symbol[]
-    hooks = _generation_hooks(iv)
-    if continuous_actions(iv)
-        (!needs_contacts(iv) || supplies_contacts(model)) && return Symbol[]
-        # This branch always reaches `intervention_actions`, independently of
-        # whatever generation hooks `iv` also defines; name it alongside them
-        # rather than letting it go unnamed whenever `iv` happens to define
-        # one too.
-        return [:intervention_actions; hooks]
-    end
-    # An intervention that discovers its own actions without declaring
-    # `continuous_actions` is offered them on a model that names contacts, or
-    # wherever it needs none.
-    undelivered = _discovers_actions(iv) && needs_contacts(iv) &&
-        !supplies_contacts(model)
-    hooks = _unhonoured_generation_hooks(model, iv, hooks)
-    return undelivered ? [:intervention_actions; hooks] : hooks
-end
-
-# Which of `iv`'s generation-only `hooks` have no counterpart on the race.
-function _unhonoured_generation_hooks(model, iv, hooks)
-    isempty(hooks) && return hooks
-    cont_T = typeof(_hook_owner(continuous_actions, iv))
-    settled_T = typeof(_hook_owner(on_infection_settled!, iv))
-    if !_has_own_method(continuous_actions, cont_T, AbstractIntervention) &&
-            _has_own_method(on_infection_settled!, settled_T, AbstractIntervention)
-        hooks = filter(!=(:apply_post_transmission!), hooks)
-    end
-    traces_contacts(iv) && supplies_contacts(model) &&
-        (hooks = filter(!=(:keep_active), hooks))
-    return hooks
-end
-_unhonoured_hooks(model, s::Scheduled) = _unhonoured_hooks(model, s.intervention)
-
 """
     supplies_contacts(model) -> Bool
 
-Whether a continuous-time model knows each case's contacts (household members
-or network neighbours), so that contact tracing has people to act on (see
-[`trace_contacts!`](@ref EpiBranch.trace_contacts!)). True for the household
-and network processes; false by default, and for the mass-action models
-(`HomogeneousProcess`, `MixingProcess`), whose random mixing has no list of
-contacts. A model returning `true` must pass a
-`contacts` function to `_sellke_race!`.
+Whether a model knows each case's contacts (its offspring, household members
+or network neighbours), so that contact tracing, and actions that need a
+case's contacts, have people to act on (see
+[`trace_contacts!`](@ref EpiBranch.trace_contacts!)). True for the branching,
+household and network processes and for a model written against
+[`generate_offspring`](@ref) or [`contacts_of`](@ref); false for the
+mass-action models (`HomogeneousProcess`, `MixingProcess`), whose random
+mixing has no list of contacts. A model with a simulation loop of its own
+answers `false` unless it declares otherwise, and one returning `true` must
+pass a `contacts` function to `_sellke_race!`.
 """
-supplies_contacts(::TransmissionModel) = false
+supplies_contacts(model::TransmissionModel) =
+    !_has_own_method(simulate_once, typeof(model), TransmissionModel)
+
+# Warn once per run about an intervention that cannot act on a model naming no
+# contacts: one that traces, or proposes actions that need a case's contacts.
+# What it does to each case itself, such as isolating it, still applies.
+function _warn_contactless(model, interventions)
+    supplies_contacts(model) && return nothing
+    names = unique(
+        String[
+            string(nameof(typeof(_unwrap_scheduled(iv))))
+                for iv in interventions
+                if traces_contacts(iv) || (_proposes_actions(iv) && needs_contacts(iv))
+        ]
+    )
+    isempty(names) && return nothing
+    @warn "$(nameof(typeof(model))) names no contacts, so $(join(names, ", ")) " *
+        "has no contacts to trace or act on. What it does to each case itself " *
+        "still applies."
+    return nothing
+end
 
 # Tracing on the continuous-time path. A case's trace time follows from its own
 # timeline, so it can only be stamped once the race has finalised that case —
@@ -826,19 +709,16 @@ supplies_contacts(::TransmissionModel) = false
 # the walk below does not stop at one just because it is already settled.
 #
 # Tracing *backwards*, to the case's own (already-final) infector, is
-# `_trace_source!` (shared with the generation engine, in simulation.jl),
-# which `SourceTracing` answers `traces_source` for.
+# `_trace_source!` (in simulation.jl), which `SourceTracing` answers
+# `traces_source` for.
 #
 # A ring (`ContactTracing(depth = 2)` and beyond) grows through every traced
-# contact's own neighbours, settled or not. On the generation engine an
-# intervention asks for that through `keep_active`, which keeps a contact
-# exposing for one more generation so `trace_contacts!` reaches its own
-# contacts in turn. The race has no generations to keep a node alive for, so it
-# walks the model's own contact structure breadth-first instead, and asks the
-# same hook which contacts the next hop starts from. The depth semantics and
-# the `:_ring_remaining` budget behind them stay with `ContactTracing`, so a
-# ring of another shape takes part by answering `keep_active` rather than by
-# writing a state key this loop would have to recognise.
+# contact's own neighbours, settled or not. The race walks the model's own
+# contact structure breadth-first, and asks `keep_active` which contacts the
+# next hop starts from. The depth semantics and the `:_ring_remaining` budget
+# behind them stay with `ContactTracing`, so a ring of another shape takes part
+# by answering `keep_active` rather than by writing a state key this loop would
+# have to recognise.
 #
 # `visited` stops a node being traced twice by two branches of one walk
 # reaching it at once. Across walks nothing is suppressed: a node reached as a
@@ -884,8 +764,8 @@ function _walk_ring!(
         # `src` is the walk's own root only on the first pop; every later one
         # reached the frontier through `keep_active`, so an infected `src`
         # here is a ring member passed through, not a fresh case settling on
-        # its own account. `_trace_pair!` and `trace_contacts!` read this to
-        # keep such a `src` on the propagate path rather than reseeding.
+        # its own account. `_trace_pair!` reads this to trace from such a
+        # `src` as a ring member only, rather than reseeding.
         hopped = src !== infector
         hopped && (src.state[:_ring_hop] = true)
         for iv in interventions
@@ -913,39 +793,6 @@ function _walk_ring!(
     end
     delete!(visited, infector.id)
     return visited
-end
-
-# Whether a model runs on the continuous-time race rather than the generation
-# engine: every model with its own simulation loop, and the branching process.
-_runs_on_race(model::TransmissionModel) = !_honours_termination_controls(model)
-_runs_on_race(::BranchingProcess) = true
-
-# Warn once (per `simulate` call) when a continuous-time model is handed
-# interventions it cannot honour, so the limitation is loud rather than silent.
-# Gated on `_honours_termination_controls`, which is `false` for exactly the
-# structure-driven models that run their own Sellke loop. Names the hooks the
-# race skips rather than the intervention itself, since an intervention
-# reported here may still act through `competing_risk`, `resolve_individual!`,
-# `infectious_removal_time` or `on_infection_settled!`.
-function _warn_unhonoured_interventions(model, interventions)
-    _runs_on_race(model) || return nothing
-    unhonoured = unique(
-        String[
-            "$(nameof(typeof(iv))) ($(join(_unhonoured_hooks(model, iv), ", ")))"
-                for iv in interventions if !_sellke_honours(model, iv)
-        ]
-    )
-    isempty(unhonoured) && return nothing
-    @warn "$(nameof(typeof(model))) runs on the continuous-time race, which " *
-        "settles one case at a time, so it never hands the generation engine's " *
-        "post-transmission hooks a generation of new contacts to act on; it " *
-        "does not honour the named hooks, which will have no effect: " *
-        "$(join(unhonoured, ", ")). What they do as each individual is " *
-        "initialised or resolved, and the risks they put on each contact, " *
-        "still apply. Express such control as a removal " *
-        "`Transition` in the progression, or through an intervention that acts " *
-        "when each individual is initialised, resolved, settled, or traced."
-    return nothing
 end
 
 """
@@ -1235,6 +1082,8 @@ function _sellke_race!(
     reinfects = _proposal_fallback(members) && _allows_reinfection(state)
     # Lists retain alternatives after a block. A live kernel can redraw a
     # contact, and an introduction can recur even for single-exposure members.
+    # A route that checks its own built-in risks (`_route_may_block`) can block
+    # a member that another case may still reach.
     may_block = live || reinfects || (
         (introduction !== nothing || _proposal_fallback(members)) && (
             !isempty(risks) || any(
@@ -1244,14 +1093,15 @@ function _sellke_race!(
                 ), interventions
             )
         )
-    )
+    ) || (_proposal_fallback(members) && any(((_, rt),) -> _route_may_block(rt), rts))
     # A route whose contacts the race checks against built-in risks of its own
-    # (`_route_may_block`) checks every proposal too. It proposes each member
-    # once, so a blocked contact has nothing to fall back on and needs no lists.
+    # (`_route_may_block`) checks every proposal too. Where its members cannot
+    # fall back (`_Offspring`), it proposes each member once, so a blocked
+    # contact has nothing to fall back on and needs no lists.
     checks = may_block || any(((_, rt),) -> _route_may_block(rt), rts)
     tracing = any(traces_contacts, interventions)
     tracing_source = any(traces_source, interventions)
-    # Whether `_apply_continuous_actions!` is worth calling on a model that
+    # Whether `_apply_case_actions!` is worth calling on a model that
     # names no contacts: an intervention declaring `needs_contacts = false`
     # (`GroupVaccination`) still has candidates to offer it there.
     acting = filter(_proposes_actions, interventions)
@@ -1433,7 +1283,7 @@ function _sellke_race!(
             close_episode!(ind, InfectionEpisode(ind))
             # `ind` is the case being processed again, so `is_settled` must
             # go back to false until this new episode's own call to
-            # `_apply_continuous_actions!` below marks it settled afresh.
+            # `_apply_case_actions!` below marks it settled afresh.
             ind.state[:_settled] = false
         end
 
@@ -1491,7 +1341,7 @@ function _sellke_race!(
         )
         _trace_source!(state, ind, interventions, tracing_source)
         (contacts !== nothing || contactless_actions) &&
-            _apply_continuous_actions!(
+            _apply_case_actions!(
             state, ind, acting, members, processed, case_contacts, pos, traced
         )
         traits |= ind.susceptibility != 1 || ind.infectiousness != 1

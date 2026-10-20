@@ -1,6 +1,6 @@
 # `SourceTracing` traces a case back to its own infector, the reverse of
 # `ContactTracing`'s forward reach, through the same eligibility/rate/delay/
-# action protocol and the same `trace_contacts!` verb, which both engines call
+# action protocol and the same `trace_contacts!` verb, which the race calls
 # a second time per case for an intervention declaring `traces_source`.
 
 @testset "SourceTracing trait seams" begin
@@ -109,7 +109,7 @@ end
 
 # Records, on `state.scratch`, every case whose own infector was offered to
 # it, so the engine wiring can be checked without depending on which contact
-# the infector happens to be stored under. Both engines also call this
+# the infector happens to be stored under. The race also calls this
 # unconditionally in the ordinary forward role, with `case`'s real contacts
 # (see `trace_contacts!`'s docstring), which the id check below ignores.
 struct _RecordSource <: AbstractIntervention end
@@ -121,8 +121,8 @@ function EpiBranch.trace_contacts!(::_RecordSource, state, case, contacts)
     return nothing
 end
 
-@testset "Both engines offer a settled case's own infector" begin
-    @testset "Generation engine, including a leaf case with no offspring" begin
+@testset "The race offers a settled case's own infector" begin
+    @testset "Through simulate, including a leaf case with no offspring" begin
         state = simulate(
             ModelSpec(
                 BranchingProcess(Poisson(0.8), Exponential(3.0));
@@ -141,7 +141,7 @@ end
 
         # A leaf (no offspring of its own) still triggers the backward call:
         # unlike the forward hooks, it does not depend on the case having made
-        # a contact this generation.
+        # a contact.
         leaves = filter(c -> isempty(c.secondary_case_ids), children)
         @test !isempty(leaves)
         for leaf in leaves
@@ -153,7 +153,7 @@ end
         @test index_case.id ∉ found
     end
 
-    @testset "The continuous-time race, with no model contact structure at all" begin
+    @testset "Directly on the race, with no model contact structure at all" begin
         interventions = AbstractIntervention[_RecordSource()]
         rng = StableRNG(5)
         state = EpiBranch.new_state(
@@ -182,8 +182,7 @@ end
 
 @testset "SourceTracing blocks a settled infector's own future transmission" begin
     # A mass-action pool has no pairwise structure for `ContactTracing` to act
-    # along (see the "Unhonoured intervention" test in test_homogeneous.jl);
-    # `SourceTracing` needs none, since the infector is read off the
+    # along; `SourceTracing` needs none, since the infector is read off the
     # transmission tree, so this is where its marginal value over `Isolation`
     # alone shows up most clearly. `test_sensitivity` leaves most infectors
     # themselves undetected; their own detected secondary cases find and
@@ -220,21 +219,12 @@ end
     )
     @test source_mean < base_mean
 
-    st = SourceTracing(
-        probability = 1.0, isolation_to_trace_delay = Dirac(0.0),
-        action = Quarantine(duration = Inf)
-    )
-    @test EpiBranch._sellke_honours(pool, st)
     @test_logs min_level = Base.CoreLogging.Warn simulate(
         with_source; rng = StableRNG(1), n_initial = 3
     )
 end
 
-@testset "On the generation engine, SourceTracing only records the link" begin
-    # A case's secondary cases are drawn as one batch, before the case itself
-    # is confirmed and can be traced back, so there is nothing left for
-    # `SourceTracing` to shorten there (see its docstring): the record is its
-    # whole contribution on this engine.
+@testset "SourceTracing records the link back to each traced source" begin
     clinical = clinical_presentation(
         incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0
     )

@@ -358,8 +358,7 @@ EpiBranch.infectious_removal_time(f::FixedRemoval, ::Individual) = f.time
         @test isolation_release_time(inside.individuals[1]) == 11.0
         @test !is_infected(inside.individuals[2])
 
-        # The generation engine, which already answers this correctly, for the
-        # same isolation and the same fixed contact time.
+        # The same isolation and fixed contact time through `simulate`.
         gen_state = simulate(
             ModelSpec(
                 BranchingProcess(Dirac(1), Dirac(15.0));
