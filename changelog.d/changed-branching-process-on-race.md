@@ -23,9 +23,9 @@ across generations. What this changes in a run:
   ring reaches it, including a member infected later, whose contacts are then
   the ones it goes on to expose. An offspring or generation time given as a
   function, such as `incubation_linked_generation_time`, may read what
-  settling the member writes. With one, or with a window that opens on a later
-  state, a member's contacts are drawn only once it settles as a case, on
-  every window, and the ring stops at a member who is never infected.
+  settling the member writes. With such a function, or with a window that
+  opens on a later state, all of a member's contacts are drawn only once it
+  settles as a case, and the ring stops at a member who is never infected.
   Once an infected member settles, its contacts are traced from when the ring
   reached it. An offspring specification of your own that reads nothing
   settling writes says so with `EpiBranch.reads_settled_state`.
