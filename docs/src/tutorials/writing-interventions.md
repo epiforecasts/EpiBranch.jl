@@ -502,10 +502,10 @@ Six built-in risks are always present:
 - [`EpiBranch.InfectorInfectiousness`](@ref) blocks with probability
   `1 - infectiousness` of the infector.
 - [`EpiBranch.InfectiousSource`](@ref) blocks every transmission from someone
-  who is not infected, so a contact kept in the simulation without being
-  infected (see [Following up contacts who were not infected](@ref)) can
-  generate contacts without infecting them. Usually every active person is
-  infected and it does nothing.
+  who is not infected. A ring of contact tracing can reach the contacts of
+  someone never infected (see [Following up contacts who were not
+  infected](@ref)), but only infected people make exposures, so it has nothing
+  to block on the built-in models.
 - The end of an infectiousness window blocks a contact timed at or after the
   earliest `until` state of the infector's window, such as their death or
   recovery (see [Infectiousness windows](@ref)). A window with no `until`
