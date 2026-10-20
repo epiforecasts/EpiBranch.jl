@@ -439,7 +439,7 @@ Internal: `pdf(HittingTimeChainSize(offspring), n)` for every `n` from 1 to
 [`_hitting_time_coefficients`](@ref) instead of restarting it from scratch
 for each `n`. Costs `max_n^3` in total — the same as a single
 `_hitting_time_coefficient` call at `max_n` — rather than `max_n^4` from
-`max_n` independent calls. Used by `HittingTimeChainSize`'s `rand`, `cdf` and
+`max_n` independent calls. Used by `HittingTimeChainSize`'s `cdf` and
 `logccdf`, which otherwise sum this many terms one at a time.
 """
 function _hitting_time_pdf_walk(offspring, max_n::Integer)
@@ -504,30 +504,41 @@ function Distributions.mean(d::HittingTimeChainSize)
 end
 
 """
-Walks `HittingTimeChainSize`'s inverse CDF via [`_hitting_time_pdf_walk`](@ref)
-rather than `pdf(d, n)` one `n` at a time, so the terms up to however many
-are needed share a single build-up of `G`'s power series instead of each
-restarting one from scratch. The walk length doubles until the drawn `u` is
-reached, up to 10,000 terms: doubling keeps the total cost within a constant
-factor of a single walk to the length actually needed, since the cost of
-each attempt is dominated by the final one.
+Draws one offspring count from `offspring`'s own pmf by walking its CDF.
+Each term costs a single `pdf` lookup, unlike a term of `HittingTimeChainSize`'s
+own pdf, so this stays cheap even though it is capped at the same 10,000 terms.
+"""
+function _offspring_rand(rng::AbstractRNG, offspring)
+    u = rand(rng)
+    cumprob = 0.0
+    for k in 0:9999
+        cumprob += pdf(offspring, k)
+        u <= cumprob && return k
+    end
+    @warn "Offspring inverse CDF did not converge in 10,000 terms, returning 10,000"
+    return 10_000
+end
+
+"""
+Samples `HittingTimeChainSize` by directly simulating the branching process
+it is the total progeny of, generation by generation, rather than inverting
+its own pdf: reaching a chain of size `n` this way costs `O(n)` offspring
+draws, against the `O(n^3)` of walking `HittingTimeChainSize`'s own pdf up to
+`n`, which made `rand` impractically slow for a moderately subcritical law
+whose typical chain size is already in the thousands.
 """
 function _hitting_time_rand(rng::AbstractRNG, offspring)
-    u = rand(rng)
-    max_n = 64
-    while true
-        reach = min(max_n, 10_000)
-        pdfs = _hitting_time_pdf_walk(offspring, reach)
-        cumprob = 0.0
-        for n in 1:reach
-            cumprob += pdfs[n]
-            u <= cumprob && return n
-        end
-        reach >= 10_000 && break
-        max_n *= 4
+    total = 1
+    generation = 1
+    while generation > 0 && total < 1_000_000
+        generation = sum(_offspring_rand(rng, offspring) for _ in 1:generation)
+        total += generation
     end
-    @warn "HittingTimeChainSize inverse CDF did not converge in 10,000 terms, returning 10,000"
-    return 10_000
+    if total >= 1_000_000
+        @warn "HittingTimeChainSize did not go extinct within 1,000,000 cases, returning 1,000,000"
+        return 1_000_000
+    end
+    return total
 end
 
 function Base.rand(rng::AbstractRNG, d::HittingTimeChainSize)
