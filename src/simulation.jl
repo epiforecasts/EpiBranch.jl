@@ -582,6 +582,7 @@ function gather_by_target(model::TransmissionModel, state::SimulationState)
     pos = Dict{Int, Int}()       # node id -> target index; shared nodes only
     for idx in state.active_ids
         parent = state.individuals[idx]
+        _past_time_bound!(state, parent) && continue
         for (target, time) in contacts_of(model, parent, state)
             if target.id > pre
                 push!(targets, target)
