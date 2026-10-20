@@ -543,42 +543,32 @@ does on a branching process.
 ## Following up contacts who were not infected
 
 Contact tracing beyond direct contacts needs the contacts of a case's
-contacts, even of those never infected. On the built-in models `keep_active` is
-asked during tracing, straight after `trace_contacts!`: return the ids of the
-traced contacts the ring is traced onward from. On a branching process whose
-window opens at infection, the default, a contact's own contacts are drawn
-when the ring reaches it, from its potential infection time and before its
-infection is decided. The ring grows through them whether or not the contact
-is infected, and if it is, they are the contacts it goes on to expose. An
-offspring or generation time given as a function may read what settling the
-contact writes, such as its severity, so there the contact's own contacts are
-drawn only once it settles as a case, and the ring does not grow past a
-contact who is never infected (see [`EpiBranch.reads_settled_state`](@ref)).
-A contact who is infected has its contacts traced from when the ring reached
-it, and, if it is eligible for tracing in its own right, again from its own
-trigger, as they would be if they had been drawn early. A
-generation time from [`incubation_linked_generation_time`](@ref) is such a
-function. A window
-that opens on a later state, such as `:infectious` after a latent period, has
-no opening time yet, and waits the same way. When any of a contact's windows
-waits, all of them do, so the ring reaches every contact an infected member
-makes.
+contacts, even of those never infected. `keep_active` is asked during tracing,
+straight after `trace_contacts!`: return the ids of the traced contacts the
+ring is traced onward from.
 
-A model written against `generate_offspring` or `contacts_of` asks
-`keep_active` once per case instead, about the contacts that case reached:
-those whose ids it returns keep generating contacts, and the ones not infected
-are added to the next generation, where the built-in `InfectiousSource` risk
-lets them generate contacts without infecting anyone. The contacts are not yet
-known to be infected when `keep_active` is asked, so here every one is kept,
-and those that are infected go on as cases anyway:
+On a branching process whose window opens at infection, the default, a
+contact's own contacts are drawn when the ring reaches it, from its potential
+infection time and before its infection is decided. The ring grows through
+them, infected or not, and if the contact is infected they are the contacts it
+goes on to expose.
 
-```julia
-struct KeepEveryContactActive <: AbstractIntervention end
+An offspring or generation time given as a function may read what settling the
+contact writes, such as its severity, and a generation time from
+[`incubation_linked_generation_time`](@ref) is such a function. There a
+contact's own contacts are drawn only once it settles as a case, and the ring
+stops at a contact who is never infected (see
+[`EpiBranch.reads_settled_state`](@ref)). Once an infected contact settles,
+its contacts are traced from when the ring reached it. If it is eligible for
+tracing in its own right, they are traced again from its own trigger, as they
+would be had they been drawn early. A window that opens on a later state, such
+as `:infectious` after a latent period, has no opening time yet and waits the
+same way. When any of a contact's windows waits, all of them do, which keeps
+every contact an infected member makes within the ring's reach.
 
-function EpiBranch.keep_active(::KeepEveryContactActive, state, targets, is_new)
-    [t.id for t in targets]
-end
-```
+A model written against `contacts_of` waits the same way, unless it declares
+that its `contacts_of` reads nothing settling writes (see
+[`EpiBranch.reads_settled_state`](@ref)).
 
 [`ContactTracing`](@ref) with `depth > 1` is the built-in intervention that
 uses this: it grows the ring from its members until the ring's depth is

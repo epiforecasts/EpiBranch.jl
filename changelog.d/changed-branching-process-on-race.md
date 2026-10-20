@@ -21,15 +21,14 @@ across generations. What this changes in a run:
   was admitted.
 - A ring of depth 2 or more reaches the contacts of a ring member when the
   ring reaches it, including a member infected later, whose contacts are then
-  the ones it goes on to expose. Where the offspring or generation time is a
-  function, which may read what settling the member writes, or a window opens
-  on a later state, a member's contacts are drawn only once it settles as a
-  case, on every window, and the ring does not grow past a member who is
-  never infected. A member who is infected has its contacts traced from when
-  the ring reached it. This includes
-  `incubation_linked_generation_time`. An offspring specification of your own
-  that reads nothing settling writes says so with
-  `EpiBranch.reads_settled_state`.
+  the ones it goes on to expose. An offspring or generation time given as a
+  function, such as `incubation_linked_generation_time`, may read what
+  settling the member writes. With one, or with a window that opens on a later
+  state, a member's contacts are drawn only once it settles as a case, on
+  every window, and the ring stops at a member who is never infected.
+  Once an infected member settles, its contacts are traced from when the ring
+  reached it. An offspring specification of your own that reads nothing
+  settling writes says so with `EpiBranch.reads_settled_state`.
 - `keep_active` is asked only by tracing, to choose which traced contacts a
   ring grows from.
 - A contact drawn for a time before its infector was infected, which a window

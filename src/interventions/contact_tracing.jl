@@ -554,9 +554,11 @@ ContactTracing(
 
 With `depth = 2` the traced contacts of a case have their own contacts traced
 in turn: the contacts of contacts that level-2 ring vaccination targets. Each
-infected, eligible case starts a fresh ring of radius `depth`. Uninfected ring
-members are followed for one more generation so the ring can extend past them,
-but they do not infect anyone. A traced contact who later becomes an eligible
+infected, eligible case starts a fresh ring of radius `depth`. The ring grows
+through members who are not infected wherever the model can name their
+contacts before they settle (see
+[`EpiBranch.reads_settled_state`](@ref)); they do not infect anyone. A traced
+contact who later becomes an eligible
 case starts its own ring like any other case; add `!PreviouslyTraced()` to the
 eligibility to interview each case only once.
 
@@ -942,10 +944,8 @@ reads_population_state(::TraceRate) = false
 reads_population_state(::TraceDelay) = false
 reads_population_state(::TraceAction) = false
 
-"""With `depth > 1`, keep following uninfected traced contacts for one more
-generation so tracing can reach their contacts. They do not infect those
-contacts. Returns the ids of those uninfected ring members (none for
-`depth == 1`)."""
+"""With `depth > 1`, the traced contacts the ring grows onward from: those not
+infected with ring budget left. Returns none for `depth == 1`."""
 function keep_active(ct::ContactTracing, state, targets, is_new)
     ct.depth > 1 || return ()
     ids = Int[]
