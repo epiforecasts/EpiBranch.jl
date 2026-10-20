@@ -27,7 +27,7 @@ end
 struct _MaskLessRule <: EpiHouseholds.ConditionOn end
 
 @testset "EpiHouseholds.jl" begin
-    @testset "max_time ends each household race at that time" begin
+    @testset "max_time ends a household outbreak at that time" begin
         spec = ModelSpec(
             HouseholdProcess(fill(6, 40), Exponential(2.0));
             progression = _sir(4.0)

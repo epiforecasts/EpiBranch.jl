@@ -55,10 +55,9 @@ end
     @test !is_isolated(state.individuals[5])
 end
 
-@testset "A kernel watching no record keeps separate household races" begin
-    # A projection reading no state key has nothing that can move, so neither
-    # redrawing nor a shared clock is needed and the run must match an ordinary
-    # kernel exactly.
+@testset "A kernel watching no record matches an ordinary kernel" begin
+    # A projection reading no state key has nothing that can move, so no
+    # contact is redrawn and the run must match an ordinary kernel exactly.
     scales = fill(2.0, 7)
     by_id(ind) = (scale = scales[ind.id],)
     progression = [Transition(:recovered; delay = 4.0, terminal = true)]
