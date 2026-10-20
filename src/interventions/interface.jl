@@ -357,38 +357,6 @@ function _combine_removal(standing_start, standing_release, new_start, new_relea
 end
 
 """
-    reads_population_state(intervention) -> Bool
-
-Whether who receives this intervention, or when, can depend on the whole
-population (a running case count, a capacity shared by everyone) rather than
-only on the person concerned. A household model can simulate one household at
-a time only when no intervention reads population-wide information; otherwise
-all households are simulated together on one clock so the information is in
-calendar order.
-
-The default is `true`, the safe choice for an intervention written outside the
-package.
-
-`RingVaccination` and `MassVaccination` return `false`, each acting on one
-person at a time. `GroupVaccination` returns `true`, since a
-group's trigger is the earliest eligible time among members who may live
-anywhere in the population. `CapacityConstrained` returns `true`, because
-whether a person is served depends on how much of the shared capacity others
-have used. A `Scheduled` built with `start_after_cases` or `start_after`
-returns `true`, the case count or trigger being exactly such a read; one built
-with only
-`start_time`/`end_time` compares against the time of the case concerned
-and answers for the intervention it contains.
-
-`Isolation` and `ContactTracing` answer for their parts (`ContactTracing` its
-eligibility, rate, delay and action; `Isolation` its eligibility), each
-`false` by default, and a combined eligibility rule answers for its
-conditions. A part of your own that reads population-wide information returns
-`true`, which makes the intervention containing it return `true`.
-"""
-reads_population_state(::AbstractIntervention) = true
-
-"""
     analytic_offspring_effect(intervention, offspring) -> offspring
     analytic_offspring_effect(intervention, offspring, spec) -> offspring
 

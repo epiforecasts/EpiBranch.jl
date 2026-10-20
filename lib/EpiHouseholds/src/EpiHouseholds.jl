@@ -19,7 +19,7 @@ using Random
 import EpiBranch: new_state, add_individuals!, apply_observation!,
     simulate_once, SimOpts, infectious_from,
     _honours_termination_controls, _validate_process_windows,
-    _warn_uncovered_terminal_states, race_groups
+    _warn_uncovered_terminal_states
 # The infection layer is built and read out of a simulation by EpiBranch's
 # helpers, which close each case's window where the simulator's race does.
 import EpiBranch: _infection_layer_columns, _infection_layer_fields,

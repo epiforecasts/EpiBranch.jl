@@ -1634,15 +1634,6 @@ these or reconcile the bookkeeping by hand. `kwargs` are `_sellke_race!`'s own
 (`seed!`, `targets` or `routes`, `from`, `until`, `interventions`, `contacts`,
 `risks`, `introduction`, `watches`, `recorder`), everything but the three this
 wrapper sets.
-
-A model with more than one natural race partition (a household process, over
-its households, via [`race_groups`](@ref)) calls `_sellke_race!` directly in
-its own loop instead, with `max_time`, `max_generation` and `stopping_rules`
-resolved once outside it, and reconciles `state` once after the loop: this
-wrapper's per-call reconciliation scans every individual, which would cost
-O(races × population) run inside such a loop rather than the O(population) a
-single-race model gets from calling this once. See `HouseholdProcess` in the
-`EpiHouseholds` package.
 """
 function sellke_race!(
         state::SimulationState, members::AbstractVector{Int},
@@ -1654,24 +1645,6 @@ function sellke_race!(
         stopping_rules = _poll_rules(sim_opts), kwargs...
     )
     return _reconcile_sellke_bookkeeping!(state, extinct)
-end
-
-"""
-    race_groups(model, kernel)
-
-For model authors: the groups of people a continuous-time model simulates
-separately, as disjoint groups of population ids, each simulated in its own
-call to `_sellke_race!` with its own random number stream. `HouseholdProcess`
-defines this to simulate each household on its own. A new kernel type can
-define a method for a given model to choose a different grouping.
-"""
-function race_groups(model::TransmissionModel, kernel)
-    throw(
-        ArgumentError(
-            "$(nameof(typeof(model))) needs a method for `EpiBranch.race_groups` " *
-                "naming how it partitions its races for a kernel of this type"
-        )
-    )
 end
 
 # Keep a record to compare against later. A projection may hand back a mutable

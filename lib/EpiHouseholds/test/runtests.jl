@@ -49,11 +49,9 @@ struct _MaskLessRule <: EpiHouseholds.ConditionOn end
 
     @testset "an explicit stopping rule shares one clock across households" begin
         # A `MaxCases` cap, polled via `should_stop` after every settled case,
-        # needs every household on the same clock or it lands on whichever
-        # household's own race happens to run first rather than on the
-        # chronologically earliest cases: household 1's pair meets very
-        # slowly, household 2's almost at once, so the shared clock settles
-        # household 2's pair well before household 1's.
+        # lands on the chronologically earliest cases: household 1's pair
+        # meets very slowly, household 2's almost at once, so the shared clock
+        # settles household 2's pair well before household 1's.
         sizes = [2, 2]
         kernel = (i, j) -> i <= 2 ? Dirac(100.0) : Dirac(0.001)
         spec = ModelSpec(HouseholdProcess(sizes, kernel); progression = _sir(1000.0))
@@ -182,10 +180,10 @@ struct _MaskLessRule <: EpiHouseholds.ConditionOn end
         )
         @test [ind.infection_time for ind in st.individuals] ≈
             [
-            1.1701609052240476, 0.0, 1.2332841100671945, 0.0, 0.3297017722468899,
-            1.4196539602204872, 1.0835818339525922,
+            1.2332841100671945, 1.5775672740571718, 0.0, 1.9586646650106947, 0.0,
+            0.9392894514788435, 0.8046109695374931,
         ]
-        @test [ind.parent_id for ind in st.individuals] == [2, 0, 2, 0, 4, 7, 5]
+        @test [ind.parent_id for ind in st.individuals] == [3, 3, 0, 5, 0, 5, 5]
     end
 
     @testset "no within-household spread when the kernel is far out of the period" begin
