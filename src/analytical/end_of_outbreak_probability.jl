@@ -38,12 +38,12 @@ from the probability of a case infecting nobody at `τ = 0` towards 1 as `τ`
 grows.
 
 This is a per-case probability. It is the probability that a whole cluster is
-over only when the cluster's other cases can no longer transmit either, for
-example a cluster of one case, or one where `τ` is measured from its earliest
-rather than its most recent case. For a cluster of several cases still
-capable of transmitting, pass every case's own `τ` to the vector method below
-instead, which combines them properly; using this method with only the most
-recent case's `τ` overstates the cluster's probability of being over.
+over only when the other cases in the cluster can no longer transmit either,
+for example a cluster of one case, or one where `τ` is measured from its
+earliest rather than its most recent case. For a cluster of several cases
+still capable of transmitting, pass every case's own `τ` to the vector method
+below instead, which combines them properly; using this method with only the
+most recent case's `τ` overstates the probability that the cluster is over.
 
 Use it as `prob_concluded` in `loglikelihood(::ChainSizes, ...)` or
 [`chain_size_distribution`](@ref) for real-time cluster data, where some
@@ -161,9 +161,9 @@ end
 Probability that a whole cluster is over, given the time since onset of every
 one of its cases (`τs`) and the number of secondary cases each is already
 known to have caused (`secondary_cases`). A cluster is over only once none of
-its cases transmits again, so this is the product, over its cases, of
+its cases transmits again: this is the product, over its cases, of
 [`end_of_outbreak_probability`](@ref)`(R, k, gt, τs[i])` raised to the power
-`(k + secondary_cases[i]) / k`. Under `NegBin(R, k)` offspring a case already
+`(k + secondary_cases[i]) / k`. Under `NegBin(R, k)` offspring, a case already
 known to have caused more secondary cases is more likely to cause further
 ones too, so it contributes less to the cluster being over than a case with
 the same `τ` and no known onward transmission.

@@ -765,10 +765,10 @@
             πs_vec = end_of_outbreak_probability(R, k, GT, collect(taus))
             @test πs_vec ≈ πs
 
-            # Whole-cluster probability (the issue's reproduction): the
-            # single most-recent-case value overstates the probability that
-            # a multi-case cluster is over, which is instead the product of
-            # every case's own per-case value.
+            # Whole-cluster probability (reproducing the issue): the single
+            # most-recent-case value overstates the probability that a
+            # multi-case cluster is over; the correct value is the product
+            # of every case's own per-case value.
             off = NegBin(0.95, 0.18)
             gt = Gamma(2.7, 5.7)
             onsets = [0.0, 3.0, 5.0, 6.0]
