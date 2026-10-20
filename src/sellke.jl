@@ -47,10 +47,9 @@ end
 # probability, conditional on the risk having arrived before that transmission's
 # time. On the race, a potential transmission *is* a drawn time: the contact
 # interval from the infector's window opening to the moment it would infect that
-# neighbour. So the risks are resolved against that time, when the candidate is
-# popped rather than when it was proposed, so that a dose
-# or an isolation that arrived in between is in force (see the loop in
-# `_sellke_race!`).
+# neighbour. The risks are resolved against that time, when the candidate is
+# popped rather than when it was proposed, so that a dose or an isolation
+# that arrived in between is in force (see the loop in `_sellke_race!`).
 #
 # A blocked contact does not transmit, and the pair goes on meeting: its next
 # contact is a draw from the same kernel conditioned on falling later, offered if
