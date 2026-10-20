@@ -123,6 +123,10 @@ the line list do not count it.
 [`records_isolation`](@ref EpiBranch.records_isolation) makes that choice and
 can be changed through a custom eligibility rule.
 
+Wrap it in [`OnRoutes`](@ref) to isolate a case out of only some of a model's
+named routes, for example community contact while household contact
+continues.
+
 # Examples
 ```julia
 iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = Inf)

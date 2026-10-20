@@ -652,7 +652,10 @@ const INTERVENTION_REMOVAL = :intervention_removal
 # sampler that redraws a blocked pair's next contact has no bound to redraw
 # within.
 function _route_close(ind, w::RouteWindow, interventions)
-    return _route_close(ind, _time_keys(w.until), INTERVENTION_REMOVAL in w.until, interventions)
+    route_interventions = filter(iv -> risk_applies(iv, w), interventions)
+    return _route_close(
+        ind, _time_keys(w.until), INTERVENTION_REMOVAL in w.until, route_interventions
+    )
 end
 
 # The same from what the race reads off each route once: the keys of its
@@ -1034,11 +1037,13 @@ way, which read that relationship rather than the proposals.
 A model with several transmission routes passes `routes`, a collection of
 `(RouteWindow, targets)` pairs, in place of `from`/`until`/`targets`. Each route
 opens and closes on its own window, and only a route listing
-`INTERVENTION_REMOVAL` in its `until` is cut by the interventions' removals and
-blocked by removal risks such as isolation. Other risks select their routes
-through [`risk_applies`](@ref). A case infected along one of these routes has
-the route's `name` in its `:infection_route`, which `linelist` reports. The
-single-window shorthand has no named route and writes nothing.
+`INTERVENTION_REMOVAL` in its `until` can be cut by the interventions'
+removals and blocked by removal risks such as isolation; among those routes,
+[`risk_applies`](@ref) decides which interventions actually reach each one by
+its `name`, so a measure can close one route and leave another open. A case
+infected along one of these routes has the route's `name` in its
+`:infection_route`, which `linelist` reports. The single-window shorthand has
+no named route and writes nothing.
 
 `watches` names the host records each route's kernel reads, one tuple of
 `individual.state` keys per route in route order, as
@@ -1153,13 +1158,17 @@ function _sellke_race!(
     best = fill!(resize!(buffers.best, m), T(Inf))
     processed = fill!(resize!(buffers.processed, m), false)
     pos = _member_positions(members)
-    # A route the interventions cannot cut is not cut by the per-contact risks
-    # that stand in for a removal either: a household route runs on through an
-    # isolation, and blocking every proposal it makes would cut it just as
-    # surely. A vaccine's protection is no removal, and a vaccinated person is
-    # protected at home too, so risks scoped to every route still apply. The
-    # model's own risks and the per-individual multipliers always apply, since
-    # they belong to the people and the edge.
+    # A route an intervention does not apply to, by `risk_applies`, is neither
+    # cut by that intervention's removal nor blocked by the per-contact risks
+    # that stand in for one: a household route runs on through an isolation
+    # scoped away from it, and blocking every proposal it makes would cut it
+    # just as surely. This also lets several interventions share a window
+    # opted into `INTERVENTION_REMOVAL` while each still only closes the
+    # routes it actually names, as an `OnRoutes`-wrapped one does. A vaccine's
+    # protection is no removal, and a vaccinated person is protected at home
+    # too, so risks scoped to every route still apply. The model's own risks
+    # and the per-individual multipliers always apply, since they belong to
+    # the people and the edge.
     introduction_interventions = filter(iv -> risk_applies(iv, nothing), interventions)
     route_interventions = [
         filter(iv -> risk_applies(iv, w), interventions)
@@ -1523,7 +1532,7 @@ function _sellke_race!(
             # distinction `max_time` draws for a route it censors.
             ind.generation >= max_generation && (capped_generation = true; continue)
             close_t = convert(
-                T, _route_close(ind, close_keys[ri], removable[ri], interventions)
+                T, _route_close(ind, close_keys[ri], removable[ri], route_interventions[ri])
             )
             opening_id = _store_opening!(members, openings, members[j], ri, open_t, close_t)
             live && _watch_opening!(watch, j, live_route[ri])

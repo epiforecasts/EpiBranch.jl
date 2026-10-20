@@ -186,6 +186,7 @@ RouteWindow
 window_open
 window_close
 EpiBranch.INTERVENTION_REMOVAL
+OnRoutes
 ```
 
 ## Running simulations
