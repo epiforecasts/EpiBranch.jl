@@ -91,6 +91,30 @@ function extinction_probability(d::NegativeBinomial; tol::Real = 1.0e-10, max_it
 end
 
 """
+    extinction_probability(d::DiscreteUnivariateDistribution; tol=1e-10, max_iter=1000)
+
+Probability that transmission from a single introduced case dies out, for a
+discrete offspring law with no dedicated method, such as
+`DiscreteNonParametric`. Found by Newton's method on the law's own
+probability generating function (`EpiBranch._extinction_at_fixed_law`), the
+same iteration [`extinction_probability(o::ClusterMixed)`](@ref) averages
+over the mixing distribution.
+"""
+function extinction_probability(
+        d::DiscreteUnivariateDistribution; tol::Real = 1.0e-10,
+        max_iter::Int = 1000
+    )
+    d isa ChainSizeLaw && throw(
+        ArgumentError(
+            "extinction_probability expects an offspring law, the number of " *
+                "secondary cases per case, not a chain-size law, the number of " *
+                "cases in a whole chain; $(typeof(d)) is already one."
+        )
+    )
+    return _extinction_at_fixed_law(d; tol, max_iter)
+end
+
+"""
     epidemic_probability(R::Real, k::Real; kwargs...)
 
 Probability that a single introduced case leads to a major epidemic, with

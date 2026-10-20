@@ -382,6 +382,113 @@ chain_size_distribution(d::NegativeBinomial) = GammaBorel(d.r, mean(d))
 # analytical fallback share a single definition.
 
 """
+    _hitting_time_coefficient(offspring, power::Integer, degree::Integer)
+
+Internal: the coefficient of `z^degree` in `G(z)^power`, where `G` is
+`offspring`'s probability generating function. Built up one factor of `G` at
+a time, convolving the running coefficients with `offspring`'s own pmf read
+at `0, 1, …, degree`; each convolution costs `degree^2`, and `power` of them
+cost `power * degree^2`. Used by [`HittingTimeChainSize`](@ref
+EpiBranch.HittingTimeChainSize) with `power == degree + s`, so this is the
+cube of the chain size it is evaluating.
+"""
+function _hitting_time_coefficient(offspring, power::Integer, degree::Integer)
+    degree < 0 && return 0.0
+    pmf = [pdf(offspring, k) for k in 0:degree]
+    coeffs = zeros(Float64, degree + 1)
+    coeffs[1] = 1.0
+    for _ in 1:power
+        next = zeros(Float64, degree + 1)
+        for j in 0:degree
+            next[j + 1] = sum(coeffs[i + 1] * pmf[j - i + 1] for i in 0:j)
+        end
+        coeffs = next
+    end
+    return coeffs[degree + 1]
+end
+
+"""
+    HittingTimeChainSize(offspring)
+
+Chain size distribution for a discrete offspring law with no dedicated
+closed form, from the hitting-time theorem for the total progeny of a
+branching process:
+
+    P(N = n | s index cases) = (s / n) [zⁿ⁻ˢ] G(z)ⁿ
+
+where `G` is `offspring`'s probability generating function and the power of
+`G` is taken as a power series truncated at degree `n - s`.
+[`chain_size_distribution`](@ref) returns it for any discrete offspring law
+with no dedicated method — a plain `Distributions.jl` law such as
+`DiscreteNonParametric`, or a [`GeneratingFunctionOffspring`](@ref) built from
+a probability mass function. Offspring laws with a simpler closed form
+(`Poisson`, `NegativeBinomial`, [`ClusterMixed`](@ref)`(Poisson, ::Gamma)`)
+use that instead.
+
+A single evaluation reads `offspring`'s pmf at `0, 1, …, n - s` and builds up
+`G(z), G(z)^2, …, G(z)^n` term by term, so it costs order `n * (n - s)^2`:
+the cube of the chain size it is evaluating.
+"""
+struct HittingTimeChainSize{D} <: ChainSizeLaw
+    offspring::D
+end
+
+Distributions.minimum(::HittingTimeChainSize) = 1
+Distributions.maximum(::HittingTimeChainSize) = Inf
+Distributions.insupport(::HittingTimeChainSize, n::Integer) = n >= 1
+
+function _chain_size_logpdf(d::HittingTimeChainSize, x::Integer, s::Integer)
+    (s < 1 || x < s) && return oftype(float(_law_mean(d.offspring)), -Inf)
+    p = (s / x) * _hitting_time_coefficient(d.offspring, x, x - s)
+    return p > 0.0 ? log(p) : oftype(p, -Inf)
+end
+
+Distributions.logpdf(d::HittingTimeChainSize, n::Integer) = _chain_size_logpdf(d, n, 1)
+Distributions.pdf(d::HittingTimeChainSize, n::Integer) = exp(logpdf(d, n))
+
+# Expected total progeny of a subcritical branching process is 1/(1-R)
+# whatever the offspring law (see the comment on GammaBorel's mean above).
+function Distributions.mean(d::HittingTimeChainSize)
+    R = float(_law_mean(d.offspring))
+    R >= 1.0 && return Inf
+    return 1.0 / (1.0 - R)
+end
+
+function Base.rand(rng::AbstractRNG, d::HittingTimeChainSize)
+    _law_mean(d.offspring) >= 1.0 && throw(
+        ArgumentError(
+            "rand is not defined for a supercritical HittingTimeChainSize " *
+                "(mean offspring ≥ 1): total mass is < 1 and the chain is " *
+                "infinite with positive probability"
+        )
+    )
+    return _inverse_cdf_rand(rng, d, "HittingTimeChainSize")
+end
+
+Distributions.cdf(d::HittingTimeChainSize, n::Integer) = _chain_size_cdf(d, n)
+function Distributions.logccdf(d::HittingTimeChainSize, n::Integer)
+    return _chain_size_right_tail_logprob(d, n + 1, 1)
+end
+
+"""
+    chain_size_distribution(offspring::DiscreteUnivariateDistribution)
+
+Exact chain size distribution for a discrete offspring law with no dedicated
+method, such as `DiscreteNonParametric`, from the hitting-time theorem
+([`EpiBranch.HittingTimeChainSize`](@ref)).
+"""
+function chain_size_distribution(d::DiscreteUnivariateDistribution)
+    d isa ChainSizeLaw && throw(
+        ArgumentError(
+            "chain_size_distribution expects an offspring law, the number of " *
+                "secondary cases per case, not a chain-size law, the number of " *
+                "cases in a whole chain; $(typeof(d)) is already one."
+        )
+    )
+    return HittingTimeChainSize(d)
+end
+
+"""
     IndexChainSize(index_offspring, offspring)
 
 Chain size distribution when the index case has a different offspring
@@ -401,10 +508,12 @@ Only chains started by a single index case are supported (`seeds == 1` in
         P(N = n) = P(J = 0) 1{n = 1} + Σ_{j ≥ 1} P(J = j) P(chains from j cases have n - 1 cases)
 
     This needs the chain size distribution of `offspring` from several
-    starting cases, which exists for `Poisson`, `NegativeBinomial` and
-    `ClusterMixed(Poisson, ::Gamma)`. For other [`ClusterMixed`](@ref)
-    offspring, `pdf` and `logpdf` give an error once `n` is large enough to
-    need it.
+    starting cases, which [`HittingTimeChainSize`](@ref EpiBranch.HittingTimeChainSize)
+    gives for any discrete `offspring`. The one exception is
+    [`ClusterMixed`](@ref) with a mixing distribution other than `Poisson`
+    with `Gamma`: its [`ChainSizeMixture`](@ref) has no multi-seed formula,
+    and `pdf` and `logpdf` give an error once `n` is large enough to need
+    one.
 
 # Examples
 
