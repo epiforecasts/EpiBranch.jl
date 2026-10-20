@@ -221,9 +221,9 @@ EpiBranch.reset!(::_TimedBatchDose, ind::Individual) = delete!(ind.state, :_dose
         @test is_isolated(untraced)
         @test isolation_time(untraced) == 3.0
 
-        # A contact tracing itself quarantined (marked) is still reset, and
-        # restores whatever isolation stood before the quarantine rather than
-        # being cleared outright.
+        # A contact that tracing itself quarantined (marked) is still reset,
+        # and is restored to whatever isolation stood before the quarantine
+        # rather than being cleared outright.
         rng = StableRNG(1)
         nothing_before = Individual(id = 2)
         EpiBranch.apply_trace!(Quarantine(duration = Inf), nothing_before, nothing, 5.0, rng)

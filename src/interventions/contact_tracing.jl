@@ -460,8 +460,9 @@ function apply_trace!(q::Quarantine, contact, state, trace_time, rng)
     # `Scheduled` reset can restore exactly that rather than wiping out an
     # isolation another intervention recorded (the mirror image of what
     # `Isolation`'s own `reset!` does for a quarantine it is layered over). A
-    # contact already quarantined by an earlier trace keeps the baseline from
-    # before that first trace, not this one's own combined result.
+    # contact already quarantined by an earlier trace keeps the baseline
+    # recorded before that first trace, instead of taking this trace's own
+    # combined outcome as the new baseline.
     if !get(contact.state, :_quarantined_by_tracing, false)::Bool
         contact.state[:_isolation_time_before_quarantine] = isolation_time(contact)
         contact.state[:_isolation_release_time_before_quarantine] = isolation_release_time(contact)
