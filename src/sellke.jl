@@ -1333,9 +1333,9 @@ function _sellke_race!(
         _any_stop(stopping_rules, state) && return _finish_race!(rts, race, false, bt)
         # A route that creates its contacts as it goes creates this case's now,
         # so that tracing and the interventions' actions can reach them.
-        for (_, route_targets) in rts
-            _mint!(route_targets, race, ind, max_generation)
-        end
+        # Unrolled over `rts` rather than looped over (see `_mint_all!`), for
+        # the reason given there.
+        _mint_all!(rts, race, ind, max_generation)
         traced = _trace_from!(
             state, ind, interventions, case_contacts, pos, tracing
         )
@@ -1371,29 +1371,17 @@ function _sellke_race!(
         # Each route opens and closes on its own states, so a case can still be
         # transmitting on one while another has been cut. A route whose `from`
         # state was never reached contributes nothing, which is how a survivor
-        # never materialises funeral contacts.
-        for (ri, (w, route_targets)) in enumerate(rts)
-            open_t = _route_open(route_targets, ind, w)
-            isfinite(open_t) || continue
-            # A case at the generation bound opened this route and would
-            # otherwise have transmitted along it, so the run was cut off
-            # rather than reaching extinction on its own — the same
-            # distinction `max_time` draws for a route it censors.
-            ind.generation >= max_generation && (capped_generation = true; continue)
-            close_t = convert(
-                T, _route_close(ind, close_keys[ri], removable[ri], interventions)
-            )
-            opening_id = _store_opening!(members, openings, members[j], ri, open_t, close_t)
-            live && _watch_opening!(watch, j, live_route[ri])
-            if live_route[ri]
-                proj = route_projections[ri]
-                proj === nothing || (full_snapshot[ri][j] = _remember(proj(ind)))
-            end
-            _propose_along!(
-                route_targets, race, members[j], opening_id, open_t, close_t,
-                traits, live_route[ri], ri
-            )
-        end
+        # never materialises funeral contacts. Unrolled over `rts` rather than
+        # looped over (see `_open_routes!`), for the reason given there.
+        capped_generation = _open_routes!(
+            rts,
+            (;
+                race, ind, members, openings, j, max_generation, close_keys,
+                removable, watch, live, live_route, route_projections,
+                full_snapshot, traits, interventions, T,
+            ),
+            capped_generation
+        )
     end
     return _finish_race!(
         rts, race,
@@ -1488,6 +1476,65 @@ _on_route(f::F, ::Tuple{}, route, ri = 1) where {F} = throw(BoundsError())
 function _on_route(f::F, rts::Tuple, route, ri = 1) where {F}
     ri == route && return f(first(rts)...)
     return _on_route(f, Base.tail(rts), route, ri + 1)
+end
+
+# Call `_mint!`, which draws a route's own contacts for a case as it settles,
+# on every route rather than one at a time. A generated function unrolls over
+# `rts`'s literal length instead of looping over it or recursing through
+# `Base.tail`: a `for` loop over routes of more than one type (a different
+# offspring law, kernel or `until`, say) reads every visit through their
+# common supertype and boxes it, and recursion deep enough to cover a few
+# dozen routes defeats the compiler's inlining budget and falls back to that
+# same boxing. Code indexing each route by its literal position avoids both,
+# specialising every visit on its own route's concrete type regardless of how
+# many routes there are or how many share a type.
+@generated function _mint_all!(rts::Tuple, race, ind, max_generation)
+    body = Expr(:block)
+    for i in 1:length(rts.parameters)
+        push!(body.args, :(_mint!(rts[$i][2], race, ind, max_generation)))
+    end
+    push!(body.args, nothing)
+    return body
+end
+
+# Open every route a settling case reaches and offer its targets a proposal,
+# unrolled over `rts`'s literal length for the same reason `_mint_all!` is.
+# `ctx` bundles what every route reads alike, and `capped` threads the "cut
+# off by `max_generation`" flag through the unrolled calls.
+@generated function _open_routes!(rts::Tuple, ctx, capped)
+    body = Expr(:block)
+    for i in 1:length(rts.parameters)
+        push!(body.args, :(capped = _open_route!(rts[$i][1], rts[$i][2], $i, ctx, capped)))
+    end
+    push!(body.args, :(return capped))
+    return body
+end
+
+function _open_route!(w, route_targets, ri, ctx, capped)
+    (;
+        race, ind, members, openings, j, max_generation, close_keys, removable,
+        watch, live, live_route, route_projections, full_snapshot, traits,
+        interventions, T,
+    ) = ctx
+    open_t = _route_open(route_targets, ind, w)
+    isfinite(open_t) || return capped
+    # A case at the generation bound opened this route and would otherwise
+    # have transmitted along it, so the run was cut off rather than reaching
+    # extinction on its own — the same distinction `max_time` draws for a
+    # route it censors.
+    ind.generation >= max_generation && return true
+    close_t = convert(T, _route_close(ind, close_keys[ri], removable[ri], interventions))
+    opening_id = _store_opening!(members, openings, members[j], ri, open_t, close_t)
+    live && _watch_opening!(watch, j, live_route[ri])
+    if live_route[ri]
+        proj = route_projections[ri]
+        proj === nothing || (full_snapshot[ri][j] = _remember(proj(ind)))
+    end
+    _propose_along!(
+        route_targets, race, members[j], opening_id, open_t, close_t,
+        traits, live_route[ri], ri
+    )
+    return capped
 end
 
 # What a route needs beyond proposing along its pairs. A route over existing
