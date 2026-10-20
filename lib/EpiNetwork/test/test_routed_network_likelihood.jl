@@ -63,10 +63,10 @@ end
     end
 
     @testset "a per-edge route kernel's own parameter type is still found" begin
-        # Unlike a shared distribution, a per-edge kernel has no `partype` of
-        # its own to read directly; `_route_kernel_partype` must probe an
-        # actual edge of the route instead, the same way the household route
-        # here is resolved pair by pair rather than through one distribution.
+        # A per-edge kernel has no `partype` of its own to read directly, unlike
+        # a shared distribution, so `_route_kernel_partype` must probe an actual
+        # edge of the route instead. The household route here is resolved pair
+        # by pair for the same reason, rather than through one distribution.
         hh, comm = _routed_adjacency(20, 4)
         per_edge = [
             [Exponential(0.2 + 0.1 * mod1(i + k, 5)) for k in eachindex(hh[i])]
@@ -328,9 +328,9 @@ end
 
         @testset "a vaccinated host still gets a gated route and an external hazard" begin
             # A vaccinated host's mixture goes through `_routed_modifier_loglik`
-            # for every route and the external hazard alike, so a route gated to
+            # for every route and the external hazard alike. A route gated to
             # `INTERVENTION_REMOVAL` and a non-zero `external_hazard` must both
-            # reach that function's survival and event terms the same way an
+            # reach the survival and event terms in that function, just as an
             # unvaccinated host's plain sum does.
             REM = EpiBranch.INTERVENTION_REMOVAL
             windows3 = [
