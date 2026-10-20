@@ -154,19 +154,20 @@ end
 
 A chain is either found and investigated in full, or missed altogether, as
 when surveillance relies on spotting a cluster rather than each case on its
-own. `recording_probability` is a function of chain size, `n -> P(a chain of
-n cases is recorded)`, so any detection rule that grows with size can be
-used.
+own. `recording_probability` is a function of chain size: `n -> P(a chain of
+n cases is recorded)`. Any detection rule that grows with size can be passed
+this way.
 
 `ChainDetection(q::Real)` builds the common case directly: each case
 independently brings its chain to attention with probability `q`
-(`0 < q <= 1`), so a chain of `n` cases is recorded with probability
+(`0 < q <= 1`); a chain of `n` cases is then recorded with probability
 `1 - (1 - q)^n`.
 
 It acts on whole chains rather than on individual cases: every case in a
 recorded chain is marked `:reported`, and every case in a missed one is not.
-A model has one observation model, so `ChainDetection` cannot be combined
-with [`PerCaseObservation`](@ref) or a [`Reporting`](@ref) progression step.
+Because a model has only one observation model, `ChainDetection` cannot be
+combined with [`PerCaseObservation`](@ref) or a [`Reporting`](@ref)
+progression step.
 
 # Examples
 

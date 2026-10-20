@@ -252,8 +252,8 @@
             d = observe(base, ChainDetection(q))
             @test d isa DetectedChainSize
 
-            # The issue's reproduction: P(n) r(n) / Σ_m P(m) r(m), with
-            # r(n) = 1 - (1 - q)^n.
+            # Reproduced directly from the issue: P(n) r(n) / Σ_m P(m) r(m),
+            # with r(n) = 1 - (1 - q)^n.
             unnormalised = n -> pdf(base, n) * (1 - (1 - q)^n)
             manual = unnormalised(3) / sum(unnormalised, 1:10_000)
             @test pdf(d, 3) ≈ manual atol = 1.0e-8
