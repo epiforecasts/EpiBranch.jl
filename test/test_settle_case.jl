@@ -1,5 +1,4 @@
-# `resolve_individual!` has one meaning on both engines: it runs once for each
-# infection, after the case's clinical transitions, with the clock at the
+# `resolve_individual!` runs once for each infection, after the case's clinical transitions, with the clock at the
 # case's infection time and the case count up to and including it.
 
 struct _RecordSettle <: AbstractIntervention end
@@ -40,32 +39,27 @@ function _check_settled_once(state)
     return nothing
 end
 
-# On the generation engine a case counts the earlier generations' cases and
-# those of its own generation infected no later than it.
-function _check_generation_counts(state)
-    cases = filter(is_infected, state.individuals)
-    for g in unique(c.generation for c in cases)
-        earlier = count(c -> c.generation < g, cases)
-        gen = sort(filter(c -> c.generation == g, cases); by = c -> c.infection_time)
-        @test [only(_settle_calls(c)).count for c in gen] == earlier .+ (1:length(gen))
-    end
+# A case counts every case infected no later than it, whatever its generation.
+function _check_time_order_counts(state)
+    cases = sort(filter(is_infected, state.individuals); by = c -> c.infection_time)
+    @test [only(_settle_calls(c)).count for c in cases] == 1:length(cases)
     return nothing
 end
 
-@testset "resolve_individual! runs once per case on both engines" begin
+@testset "resolve_individual! runs once per case" begin
     progression = [Transition(:recovered; delay = 1.0, terminal = true)]
 
-    @testset "generation engine, including the last generation" begin
+    @testset "branching process, including the last generation" begin
         bp = BranchingProcess(Poisson(2.0), Exponential(5.0))
         model = ModelSpec(bp; interventions = [_RecordSettle()], progression)
         for seed in 1:20
             state = simulate(model; rng = StableRNG(seed), max_generations = 3)
             _check_settled_once(state)
-            _check_generation_counts(state)
+            _check_time_order_counts(state)
         end
     end
 
-    @testset "generation engine leaves uninfected ring members alone" begin
+    @testset "branching process leaves uninfected ring members alone" begin
         ct = ContactTracing(
             probability = 1.0, isolation_to_trace_delay = Dirac(0.1), depth = 3,
             action = Quarantine(duration = 14.0)
@@ -79,7 +73,7 @@ end
         for seed in 1:10
             state = simulate(model; rng = StableRNG(seed), max_generations = 5)
             _check_settled_once(state)
-            _check_generation_counts(state)
+            _check_time_order_counts(state)
         end
     end
 
@@ -88,8 +82,7 @@ end
         model = ModelSpec(hp; interventions = [_RecordSettle()], progression)
         state = simulate(model; rng = StableRNG(2))
         _check_settled_once(state)
-        cases = sort(filter(is_infected, state.individuals); by = c -> c.infection_time)
-        @test [only(_settle_calls(c)).count for c in cases] == 1:length(cases)
+        _check_time_order_counts(state)
     end
 
     @testset "transitions see the case's own clock" begin

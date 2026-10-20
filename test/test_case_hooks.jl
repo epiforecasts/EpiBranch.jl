@@ -1,8 +1,8 @@
-# Both engines call one set of per-case intervention hooks: `trace_contacts!`
+# Every model calls one set of per-case intervention hooks: `trace_contacts!`
 # with an infector and the contacts it reached, `intervention_actions` for
-# actions with a delivery time, and `keep_active` for who goes on generating
-# contacts. The generation engine calls them for each case of the previous
-# generation rather than handing an intervention the whole batch.
+# actions with a delivery time, and `keep_active` for which traced contacts a
+# ring grows from. The deprecated batch hook is still called by the generation
+# engine, which runs models written against `generate_offspring`.
 
 # Records, on each contact, the infector it was offered with and the state the
 # hook saw, and on each `keep_active` call whether every target came from one
@@ -83,6 +83,16 @@ struct _TraceAndAct <: AbstractIntervention end
 EpiBranch.trace_contacts!(::_TraceAndAct, state, infector, contacts) = nothing
 EpiBranch.intervention_actions(::_TraceAndAct, state, candidates) = nothing
 
+# Proposes actions and grows a ring through `keep_active`, without tracing.
+struct _ActAndKeep <: AbstractIntervention end
+EpiBranch.intervention_actions(::_ActAndKeep, state, candidates) = nothing
+EpiBranch.keep_active(::_ActAndKeep, state, targets, is_new) = [t.id for t in targets]
+
+# Proposes actions whose candidates need no named contacts.
+struct _ActsWithoutContacts <: AbstractIntervention end
+EpiBranch.intervention_actions(::_ActsWithoutContacts, state, candidates) = nothing
+EpiBranch.needs_contacts(::_ActsWithoutContacts) = false
+
 # A model that can name each case's contacts.
 struct _NamesContacts <: EpiBranch.TransmissionModel end
 EpiBranch.supplies_contacts(::_NamesContacts) = true
@@ -91,7 +101,15 @@ _case_hook_model(ivs) = ModelSpec(
     BranchingProcess(Poisson(2.0), Exponential(3.0)); interventions = ivs
 )
 
-@testset "Per-case intervention hooks on the generation engine" begin
+# An offspring-driven model of its own, which runs on the generation engine.
+struct _GenerationTree <: EpiBranch.TransmissionModel
+    generation_time::Exponential{Float64}
+end
+EpiBranch.population_size(::_GenerationTree) = EpiBranch.NoPopulation()
+EpiBranch.generate_offspring(::_GenerationTree, parent, state) = rand(state.rng, Poisson(2.0))
+_batch_hook_model(ivs) = ModelSpec(_GenerationTree(Exponential(3.0)); interventions = ivs)
+
+@testset "Per-case intervention hooks" begin
     @testset "trace_contacts! is called once per case with its own contacts" begin
         state = simulate(
             _case_hook_model([_RecordCaseHooks()]);
@@ -107,17 +125,12 @@ _case_hook_model(ivs) = ModelSpec(
             ind -> ind.state[:_offered_clock] ==
                 state.individuals[ind.parent_id].infection_time, offered
         )
-        # The count is the infector's place among the cases settled up to it.
+        # The count is the infector's place among the cases infected up to it.
         cases = filter(is_infected, state.individuals)
         for ind in offered
             infector = state.individuals[ind.parent_id]
-            @test ind.state[:_offered_count] == count(
-                c -> c.generation < infector.generation ||
-                    (
-                    c.generation == infector.generation &&
-                        c.infection_time <= infector.infection_time
-                ), cases
-            )
+            @test ind.state[:_offered_count] ==
+                count(c -> c.infection_time <= infector.infection_time, cases)
         end
         @test state.max_infection_time ==
             maximum(ind.infection_time for ind in cases)
@@ -142,7 +155,12 @@ _case_hook_model(ivs) = ModelSpec(
     @testset "Writing trace_contacts! is enough for the race to call it" begin
         @test EpiBranch.traces_contacts(_TraceOnly())
         @test !EpiBranch.traces_contacts(_ActionsOnly())
-        # Node 1 is seeded at 0 and reaches node 2 at 1, which reaches node 3.
+        # Node 1 is seeded at 0 and reaches node 2 at 1, which reaches node 3
+        # at 2. `contacts` names every graph neighbour regardless of its own
+        # infection status, so each settling case retraces its neighbours even
+        # once they are themselves already settled: node 2 traces node 1 back
+        # when it settles, and node 3 retraces node 2 in turn, overwriting the
+        # `_traced_from` node 1 set first.
         interventions = AbstractIntervention[_TraceOnly()]
         rng = StableRNG(18)
         state = EpiBranch.new_state(
@@ -161,13 +179,25 @@ _case_hook_model(ivs) = ModelSpec(
             interventions, contacts = (inf, st) -> neighbours[inf],
             seed! = (best, members, r) -> (best[1] = 0.0)
         )
-        @test state.individuals[2].state[:_traced_from] == 1
+        @test state.individuals[1].state[:_traced_from] == 2
+        @test state.individuals[2].state[:_traced_from] == 3
         @test state.individuals[3].state[:_traced_from] == 2
     end
 
-    @testset "A tracer that also proposes actions is honoured where contacts are named" begin
+    @testset "Proposed actions are honoured where contacts are named" begin
         @test EpiBranch._sellke_honours(_NamesContacts(), _TraceAndAct())
-        @test !EpiBranch._sellke_honours(_NamesContacts(), _ActionsOnly())
+        @test EpiBranch._sellke_honours(_NamesContacts(), _ActionsOnly())
+        pool = HomogeneousProcess(transmission_rate = 1.0, population_size = 10)
+        @test !EpiBranch._sellke_honours(pool, _ActionsOnly())
+        # Actions needing no contacts are delivered on a model naming none.
+        @test EpiBranch._sellke_honours(pool, _ActsWithoutContacts())
+        @test isempty(EpiBranch._unhonoured_hooks(pool, _ActsWithoutContacts()))
+        # Delivered actions leave a `keep_active` with nothing to call it.
+        @test !EpiBranch._sellke_honours(_NamesContacts(), _ActAndKeep())
+        @test EpiBranch._unhonoured_hooks(_NamesContacts(), _ActAndKeep()) == [:keep_active]
+        @test_logs (:warn, r"_ActAndKeep \(keep_active\)") match_mode = :any simulate(
+            _case_hook_model([_ActAndKeep()]); max_cases = 5, rng = StableRNG(1)
+        )
     end
 
     @testset "An intervention with only intervention_actions acts" begin
@@ -175,13 +205,21 @@ _case_hook_model(ivs) = ModelSpec(
             _case_hook_model([_ActionsOnly()]);
             max_cases = 50, max_generations = 4, rng = StableRNG(12)
         )
+        # A case's contacts are offered to it when the case settles, and an
+        # action cannot be dated before then: those of cases settled by day 3
+        # are served on day 3, and those of later cases are not.
         contacts = filter(ind -> ind.parent_id != 0, state.individuals)
-        @test !isempty(contacts)
-        @test all(ind -> get(ind.state, :_served_at, nothing) == 3.0, contacts)
+        early(ind) = state.individuals[ind.parent_id].infection_time <= 3.0
+        @test any(early, contacts)
+        @test any(!early, contacts)
+        @test all(
+            ind -> get(ind.state, :_served_at, nothing) == (early(ind) ? 3.0 : nothing),
+            contacts
+        )
     end
 
     @testset "An intervention with only the batch hook works, with a warning" begin
-        model = _case_hook_model([_BatchOnly()])
+        model = _batch_hook_model([_BatchOnly()])
         state = @test_logs (:warn, r"_BatchOnly.*apply_post_transmission!.*deprecated"s) match_mode = :any simulate(
             model; max_cases = 50, max_generations = 4, rng = StableRNG(13)
         )
@@ -194,7 +232,7 @@ _case_hook_model(ivs) = ModelSpec(
         @test_logs (:warn, r"^_BatchOnly") (:warn, r"^_BatchTracer") begin
             for iv in (_BatchOnly(), _BatchTracer()), seed in 1:2
                 simulate(
-                    _case_hook_model([iv]); max_cases = 10, max_generations = 2,
+                    _batch_hook_model([iv]); max_cases = 10, max_generations = 2,
                     rng = StableRNG(seed)
                 )
             end
@@ -203,7 +241,7 @@ _case_hook_model(ivs) = ModelSpec(
 
     @testset "keep_active of a batch-hook intervention sees its batch writes" begin
         state = @test_logs (:warn,) match_mode = :any simulate(
-            _case_hook_model([_BatchRing()]);
+            _batch_hook_model([_BatchRing()]);
             max_cases = 10_000, max_generations = 3, rng = StableRNG(16)
         )
         # Every contact, infected or not, stays active and makes contacts.
@@ -217,7 +255,7 @@ _case_hook_model(ivs) = ModelSpec(
     @testset "A batch-hook intervention feeds the interventions after it" begin
         rv = RingVaccination(efficacy = 0.9)
         state = @test_logs (:warn,) match_mode = :any simulate(
-            _case_hook_model([_BatchTracer(), rv]);
+            _batch_hook_model([_BatchTracer(), rv]);
             max_cases = 50, max_generations = 3, rng = StableRNG(19)
         )
         contacts = filter(ind -> ind.parent_id != 0, state.individuals)
@@ -272,4 +310,19 @@ _case_hook_model(ivs) = ModelSpec(
         @test is_traced(contact)
         @test contact.state[:trace_time] == 2.5
     end
+end
+
+@testset "A wrapper's forwarding keep_active is not a hook of its own" begin
+    mv = MassVaccination(efficacy = 1.0, eligibility_time = 10.0)
+    @test isempty(EpiBranch._generation_hooks(Scheduled(mv; start_time = 10.0)))
+    @test isempty(
+        EpiBranch._generation_hooks(
+            CapacityConstrained(Scheduled(mv; start_time = 10.0); budget_per_period = 1.0)
+        )
+    )
+    ct = ContactTracing(
+        probability = 1.0, isolation_to_trace_delay = Exponential(1.0),
+        action = Quarantine(duration = Inf), depth = 2
+    )
+    @test :keep_active in EpiBranch._generation_hooks(Scheduled(ct; start_time = 1.0))
 end

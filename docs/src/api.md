@@ -47,6 +47,9 @@ NetworkProcess
 RoutedNetwork
 HouseholdProcess
 household_sizes
+household_members
+external_hazard
+observation_end
 ModelSpec
 single_type_offspring
 EpiBranch.has_single_type_law
@@ -427,6 +430,7 @@ NoObservation
 PerCaseObservation
 MinimumSize
 observe
+ChainSizeLaw
 ThinnedChainSize
 TruncatedChainSize
 ```
@@ -526,6 +530,7 @@ and brings the state's running totals back into line afterwards.
 ```@docs
 TransmissionModel
 EpiBranch.draw_offspring
+EpiBranch.reads_settled_state
 EpiBranch.simulate_once
 generate_offspring
 contacts_of

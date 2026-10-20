@@ -64,7 +64,7 @@ probabilities of `build(θ)`, averaged over `θ` drawn from `mixing`.
 The average is computed by numerical integration over the central 99.8% of
 `mixing` (its 0.001 to 0.999 quantiles).
 """
-struct ChainSizeMixture{F, D <: Distribution} <: DiscreteUnivariateDistribution
+struct ChainSizeMixture{F, D <: Distribution} <: ChainSizeLaw
     build::F
     mixing::D
 end
@@ -161,6 +161,10 @@ function draw_offspring(
     end
     return rand(rng, offspring.build(θ))
 end
+
+# A chain's `θ` is its index case's draw, which a contact reads from its parent
+# whenever it is drawn, so its contacts can be drawn before it settles.
+reads_settled_state(::ClusterMixed) = false
 
 # ── Reproduction number and extinction probability ───────────────────
 #

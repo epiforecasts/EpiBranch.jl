@@ -37,6 +37,36 @@ function containment_probability(
     return n_extinct / length(states)
 end
 
+"""
+    containment_probability(model, n::Int; max_cases, rng, parallel=false, ...)
+
+The containment probability over `n` outbreaks simulated from `model`. It
+takes the keywords of `simulate(model, n)` and, for the same `rng`, gives the
+same answer as `containment_probability(simulate(model, n; kwargs...);
+max_cases)`. Each outbreak is checked once it has run and then discarded, so
+memory holds one outbreak at a time. Use it when only the containment
+probability is needed.
+
+# Examples
+
+```julia
+model = ModelSpec(
+    BranchingProcess(NegBin(2.5, 0.16), Gamma(2.0, 3.0));
+    attributes = clinical_presentation(incubation_period = LogNormal(1.6, 0.5)),
+    interventions = [Isolation(onset_to_isolation_delay = Exponential(2.0),
+        duration = Inf)]
+)
+containment_probability(model, 10_000; max_cases = 5000)
+```
+"""
+function containment_probability(
+        model::Union{TransmissionModel, ModelSpec}, n::Int; kwargs...
+    )
+    cap = something(get(kwargs, :max_cases, nothing), NoCases())
+    contained = _simulate_each(s -> _is_contained(s, cap), Bool, model, n; kwargs...)
+    return count(contained) / n
+end
+
 _is_contained(s::SimulationState, ::NoCases) = s.extinct
 _is_contained(s::SimulationState, cap::Int) = s.cumulative_cases < cap && s.extinct
 
@@ -105,6 +135,12 @@ This differs from the time-varying reproduction number `Rt` estimated from an
 incidence time series; the two coincide only under strong assumptions. Use it
 to see how transmission falls from one generation to the next in a
 simulation, for example through depletion of susceptibles or interventions.
+
+In a run stopped by `max_cases` or `max_time`, the cases of the last
+generations have not made all their contacts, so the ratios for those
+generations are right-truncated and fall towards 0. A run bounded by
+`max_generations` alone (with `max_cases = nothing`) gives complete ratios up
+to the bound.
 """
 function generation_R(state::SimulationState)
     # Single-pass: count infected individuals per generation
@@ -281,12 +317,13 @@ function scenario_sweep(
             interventions, attributes
         )
 
-        results = simulate(model, n_sim; rng = rng, sim_kwargs...)
-
         for k in keys_ordered
             push!(rows[k], vals[k])
         end
-        push!(rows[:containment_probability], containment_probability(results))
+        push!(
+            rows[:containment_probability],
+            containment_probability(model, n_sim; rng = rng, sim_kwargs...)
+        )
     end
 
     return DataFrame(rows)

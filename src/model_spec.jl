@@ -488,8 +488,11 @@ function simulate(
     )
 end
 
-function simulate(
-        spec::ModelSpec, n::Int;
+simulate(spec::ModelSpec, n::Int; kwargs...) =
+    _simulate_each(identity, SimulationState, spec, n; kwargs...)
+
+function _simulate_each(
+        each, ::Type{T}, spec::ModelSpec, n::Int;
         n_initial::Union{Int, Nothing} = nothing,
         initial_cases::Union{AbstractVector{<:Integer}, Nothing} = nothing,
         max_cases::Union{Int, Nothing} = _DEFAULT_MAX_CASES,
@@ -498,7 +501,7 @@ function simulate(
         stopping_rules::Union{Vector{<:AbstractStoppingRule}, Nothing} = nothing,
         rng::AbstractRNG = Random.default_rng(),
         parallel::Bool = false
-    )
+    ) where {T}
     _warn_unhonoured_interventions(spec.process, spec.interventions)
     sim_opts = _build_sim_opts(
         spec.process, n_initial, initial_cases, max_cases, max_generations,
@@ -506,7 +509,7 @@ function simulate(
     )
     _validate_initial_cases(spec.process, sim_opts)
     return _simulate_n(
-        spec.process, n, sim_opts;
+        each, T, spec.process, n, sim_opts;
         interventions = spec.interventions, attributes = spec.attributes,
         progression = spec.progression, observation = spec.observation,
         recorder = spec.recorder, rng, parallel

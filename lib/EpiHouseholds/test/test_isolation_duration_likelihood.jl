@@ -234,20 +234,33 @@ end
     q = Quarantine(duration = Dirac(7.0))
     contact = Individual(id = 1)
     EpiBranch.set_isolated!(contact, 2.0; release_time = 6.0)
-    ct = ContactTracing(OnIsolation(), 1.0, Exponential(0.5), q)
+    # Eligibility from onset rather than isolation: `OnIsolation` would time a
+    # case's own forward trace from `isolation_time`, which already holds a
+    # quarantine recorded on it earlier as a susceptible contact. A case
+    # infected while still within that quarantine's own stretch would then
+    # trace from a time before its own infection. `onset_time` always
+    # reflects this case's own infection, whichever route reached it, and
+    # stays clear of that composition, measuring only the quarantine's own
+    # effect.
+    ct = ContactTracing(OnSymptomOnset(), 1.0, Exponential(0.5), q)
     @test EpiBranch.competing_risk(ct, contact, Individual(id = 2), nothing) === nothing
     @test EpiBranch.removal_gap_host_times(ct) == (EpiBranch.QUARANTINE_STRETCHES_KEY,)
 
-    # Tracing follows a case's own isolation, so one is composed; its duration
-    # of `Inf` records no stretch of its own and leaves the quarantine's as the
-    # only thing the exposure loses. The household kernel is slow enough that a
-    # household is still being exposed when its contacts are quarantined.
+    # Isolation from onset normally layers over a standing quarantine. Here
+    # the onset-to-isolation delay turns infinite once a contact is
+    # quarantined, so this test stays clear of that composition and measures
+    # only the quarantine's own effect on the exposure. The household kernel
+    # is slow enough that a household is still being exposed when its
+    # contacts are quarantined.
     clinical = clinical_presentation(incubation_period = Dirac(0.0))
     progression = [
         Transition(:recovered; from = :infection, delay = 30.0, terminal = true),
     ]
     process = HouseholdProcess(fill(5, 60), Exponential(6.0))
-    iso = Isolation(onset_to_isolation_delay = Dirac(1.0), duration = Inf)
+    iso = Isolation(
+        onset_to_isolation_delay = (rng, ind) -> EpiBranch._isolation_in_force(ind) ? Inf : 1.0,
+        duration = Inf
+    )
     m = ModelSpec(process; progression, attributes = clinical, interventions = [iso, ct])
     state = simulate(m; rng = StableRNG(5))
     data = household_infections(state, m)

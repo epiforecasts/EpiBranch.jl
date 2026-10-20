@@ -101,6 +101,7 @@ include("sellke.jl")
 # Mass-action contacts as a route of the race, and the closed population that
 # mixes that way, HomogeneousProcess.
 include("mass_action.jl")
+include("offspring_route.jl")
 include("models/homogeneous.jl")
 include("models/mixing.jl")
 
@@ -184,6 +185,9 @@ export individual_type, set_isolated!, clear_isolated!
 
 # Exports — distributions
 export NegBin, scale_distribution, incubation_linked_generation_time
+# Parent type of every chain-size law, so a user-defined one gets
+# `loglikelihood(::ChainSizes, ...)` for free by subtyping it.
+export ChainSizeLaw
 # Process-side chain-size distributions (closed forms for offspring specs).
 # Reach `GammaBorel`/`PoissonGammaChainSize` via `chain_size_distribution`;
 # only the standalone `Borel` and the dispatch entry point are exported.

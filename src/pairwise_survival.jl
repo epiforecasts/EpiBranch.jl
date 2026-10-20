@@ -1154,31 +1154,130 @@ end
 # ── The community hazard ─────────────────────────────────────────────
 #
 # A model with a contact structure can also introduce cases from outside it: a
-# non-negative rate (a constant hazard) or a continuous distribution on the
-# non-negative reals (a calendar-time hazard). Its simulators and this likelihood
-# share these helpers and agree on when the term applies and what it is.
+# non-negative rate (a constant hazard), a continuous distribution on the
+# non-negative reals (a calendar-time hazard), or a piecewise-constant calendar
+# schedule such as `Steps` giving the daily rate directly, for a community
+# hazard that changes on known days. Either is shared by everyone, or differs
+# between people, given as a vector with one entry per person or as a function
+# of the person's number returning their own rate or distribution (a schedule
+# is always shared). Its simulators and this likelihood share these helpers
+# and agree on when the term applies and what it is for each person.
+
+# A calendar schedule is the hazard itself, not a multiplier on some other
+# kernel. Only one the package integrates exactly, like `Steps`, is accepted:
+# its `calendar_shape` must be `PiecewiseConstantCalendar`, which also rules
+# out a plain function (read instead as one rate or distribution per person)
+# and a `Real` or `AbstractVector` (neither defines `calendar_multiplier`).
+_is_calendar_external(source) = hasmethod(calendar_multiplier, Tuple{typeof(source), Float64}) &&
+    calendar_shape(source) isa PiecewiseConstantCalendar
+
+# The daily rate a calendar schedule gives, as a survival distribution: a unit
+# hazard (`Exponential(1.0)`) scaled by the schedule from calendar day 0. Its
+# cumulative hazard at τ is the schedule integrated over `[0, τ]`.
+_calendar_external_survival(source) = _CalendarScaledKernel(Exponential(1.0), source, 0.0)
 
 # A distribution with negative support is rejected, because introductions cannot
-# happen before time 0.
+# happen before time 0. A function's values are checked as they are read.
 _valid_external(α::Real) = α >= 0
 _valid_external(d::ContinuousUnivariateDistribution) = minimum(d) >= 0
-_valid_external(_) = false
+_valid_external(v::AbstractVector) = all(_is_person_external, v)
+_valid_external(::Function) = true
+_valid_external(source) = _is_calendar_external(source)
 _normalise_external(α::Real) = Float64(α)
 _normalise_external(d::ContinuousUnivariateDistribution) = d
+_normalise_external(v::AbstractVector) = map(_normalise_external, v)
+_normalise_external(f::Function) = f
+_normalise_external(source) = source
 
-# The community hazard is off at a zero rate; a distribution is always on.
+# One person's own external hazard: a rate or a distribution.
+_is_person_external(s) = (s isa Real || s isa ContinuousUnivariateDistribution) &&
+    _valid_external(s)
+
+# Throws unless `source` is a valid external hazard for a population of `n`.
+function _check_external(source, n::Integer)
+    _valid_external(source) || throw(
+        ArgumentError(
+            "external_hazard must be a non-negative number, a continuous " *
+                "distribution, a piecewise-constant calendar schedule such as " *
+                "`Steps`, a vector of the first two with one per person, or a " *
+                "function of the person's number returning one of them"
+        )
+    )
+    source isa AbstractVector && length(source) != n && throw(
+        DimensionMismatch(
+            "external_hazard has $(length(source)) entries for $n people"
+        )
+    )
+    return nothing
+end
+
+# The community hazard is off at a zero rate; a distribution is always on. A
+# per-person vector is on when anyone's is, a function is taken to be on, and
+# so is a calendar schedule.
 _ext_active(α::Real) = α > 0
 _ext_active(::ContinuousUnivariateDistribution) = true
+_ext_active(v::AbstractVector) = any(_ext_active, v)
+_ext_active(::Function) = true
+_ext_active(source) = true
 
 # The community hazard as a calendar-time survival distribution: a constant rate
-# α is `Exponential(1/α)` (hazard α, cumulative α·t); a distribution is itself.
+# α is `Exponential(1/α)` (hazard α, cumulative α·t); a distribution is itself;
+# a calendar schedule is its daily rate integrated from day 0.
 _ext_survival(α::Real) = Exponential(1 / α)
 _ext_survival(d::ContinuousUnivariateDistribution) = d
+_ext_survival(source) = _calendar_external_survival(source)
 
-# A community introduction time drawn under the hazard.
+# Person `j`'s survival distribution under the community hazard, or `nothing`
+# when they face none. A calendar schedule is the same for everyone, like a
+# shared distribution; `_CalendarScaledKernel` is its own prepared form.
+_ext_survival_of(::Nothing, j) = nothing
+_ext_survival_of(d::ContinuousUnivariateDistribution, j) = d
+_ext_survival_of(α::Real, j) = _ext_active(α) ? _ext_survival(α) : nothing
+_ext_survival_of(v::AbstractVector, j) = _ext_survival_of(v[j], j)
+function _ext_survival_of(f::Function, j)
+    s = f(j)
+    _is_person_external(s) || throw(
+        ArgumentError(
+            "external_hazard($j) must return a non-negative number or a " *
+                "continuous distribution on the non-negative reals, got $s"
+        )
+    )
+    return _ext_survival_of(s, j)
+end
+_ext_survival_of(k::_CalendarScaledKernel, j) = k
+_ext_survival_of(source, j) = _calendar_external_survival(source)
+
+# The source with each rate turned into its survival distribution once, for
+# the passes that read it person by person.
+_ext_prepare(α::Real) = _ext_survival_of(α, 0)
+_ext_prepare(d::ContinuousUnivariateDistribution) = d
+_ext_prepare(v::AbstractVector) = map(s -> _ext_survival_of(s, 0), v)
+_ext_prepare(f::Function) = f
+_ext_prepare(source) = _calendar_external_survival(source)
+
+# The parameter type of the community hazard over the `n` people, so that AD
+# values in a fitted rate survive the reduction.
+_ext_partype(d::ContinuousUnivariateDistribution, n) = Distributions.partype(d)
+_ext_partype(k::_CalendarScaledKernel, n) = Distributions.partype(k)
+function _ext_partype(source, n)
+    T = Union{}
+    for j in 1:n
+        d = _ext_survival_of(source, j)
+        d === nothing || (T = promote_type(T, Distributions.partype(d)))
+    end
+    return T
+end
+
+# A community introduction time drawn under the hazard person `j` faces, or
+# `Inf` when they face none.
 _ext_draw(rng::AbstractRNG, source) = rand(rng, _ext_survival(source))
 function _ext_draw(rng::AbstractRNG, source, susceptibility)
     return _traits_scaled_draw(rng, _ext_survival(source), susceptibility)
+end
+function _ext_draw(rng::AbstractRNG, source, j::Integer, susceptibility)
+    d = _ext_survival_of(source, j)
+    d === nothing && return oftype(float(susceptibility), Inf)
+    return _traits_scaled_draw(rng, d, susceptibility)
 end
 
 # ── Evaluation ───────────────────────────────────────────────────────
@@ -1291,7 +1390,8 @@ function _pairwise_setup(kernel, data, layout::ContactPairsLayout, external_haza
                 "was compiled for ($(layout.nhosts))"
         )
     )
-    extdist = external ? _ext_survival(external_hazard) : kernel
+    external && _check_external(external_hazard, layout.nhosts)
+    extsrc = external ? _ext_prepare(external_hazard) : nothing
 
     tfollow = followup_end(data)
     (!isnan(tfollow) && tfollow >= 0) || throw(
@@ -1306,9 +1406,9 @@ function _pairwise_setup(kernel, data, layout::ContactPairsLayout, external_haza
         typeof(tfollow),
         Float64
     )
-    Text = external ? Distributions.partype(extdist) : Union{}
+    Text = external ? _ext_partype(extsrc, layout.nhosts) : Union{}
     T = promote_type(Tdata, _kernel_partype(kernel, layout, data, Tdata), Text)
-    return extdist, convert(Tdata, tfollow), T
+    return extsrc, convert(Tdata, tfollow), T
 end
 
 """
@@ -1340,8 +1440,16 @@ covariates, a [`PairKernel`](@ref) that also uses the infector's infection time
 a contact list (`kernel[i][k]` for person `i`'s `k`-th listed contact).
 
 `external_hazard` is infection from outside the households or network: a
-constant rate per person per day, or a distribution of the time of infection
-from outside. Such infections happen only in the first `data.obs_end` days.
+constant rate per person per day, a distribution of the time of infection from
+outside, or a piecewise-constant calendar schedule such as [`Steps`](@ref)
+giving the daily rate directly, for a community hazard that changes on known
+days. A rate or distribution is shared by everyone, or differs between
+people: a vector with one per person, or a function `j -> rate or
+distribution` of person `j`'s number, for example to give each arm of a trial
+its own community hazard; a calendar schedule is always shared. A function
+or a calendar schedule is taken to be in force, so the likelihood explains
+index cases as described next even if a function returns zero for everyone.
+Such infections happen only in the first `data.obs_end` days.
 With an external hazard, index cases are explained like any other case;
 without one, the likelihood conditions on them. Each person is exposed to the
 external hazard until the earlier of their infection and `data.obs_end`, so a
@@ -1504,7 +1612,7 @@ end
 # infection if that falls within follow-up. The windows are those of the flat
 # passes.
 function _component_loglik(
-        modifier, kernel, extdist, data, layout, rg, tj, tfollow, ::Type{T},
+        modifier, kernel, extsrc, data, layout, rg, tj, tfollow, ::Type{T},
         gaps = nothing
     ) where {T}
     infector = layout.infector
@@ -1514,6 +1622,8 @@ function _component_loglik(
     @inbounds for k in rg
         r = layout.sus_row_order[k]
         if is_ext[r]
+            extdist = _ext_survival_of(extsrc, layout.sus[r])
+            extdist === nothing && continue
             stop = min(tend, data.obs_end)
             stop > 0 || continue
             ll -= _scaled_cumhazard(modifier, extdist, zero(stop), stop)
@@ -1537,6 +1647,8 @@ function _component_loglik(
         r = layout.sus_row_order[k]
         if is_ext[r]
             (tj >= 0 && tj <= data.obs_end) || continue
+            extdist = _ext_survival_of(extsrc, layout.sus[r])
+            extdist === nothing && continue
             _push!(acc, _scaled_loghazard(modifier, loghazard(extdist, tj), tj))
         else
             i = infector[r]
@@ -1556,7 +1668,7 @@ end
 
 # One modified susceptible's contribution: the log of its mixture.
 function _mixture_loglik(
-        mixture, kernel, extdist, data, layout, g, tfollow, ::Type{T}, gaps = nothing
+        mixture, kernel, extsrc, data, layout, g, tfollow, ::Type{T}, gaps = nothing
     ) where {T}
     j = layout.sus_unique[g]
     rg = layout.sus_row_ranges[g]
@@ -1566,7 +1678,7 @@ function _mixture_loglik(
     # derivative of the mixture with respect to that weight.
     terms = map(mixture) do (weight, modifier)
         weight => _component_loglik(
-            modifier, kernel, extdist, data, layout, rg, tj, tfollow, T, gaps
+            modifier, kernel, extsrc, data, layout, rg, tj, tfollow, T, gaps
         )
     end
     m = T(-Inf)
@@ -1718,18 +1830,18 @@ function pairwise_reduce(
         reduction::PairwiseReduction, kernel, data::InfectionLayer,
         layout::ContactPairsLayout; external_hazard = 0.0, susceptibility = nothing
     )
-    extdist, tfollow, T = _pairwise_setup(kernel, data, layout, external_hazard)
+    extsrc, tfollow, T = _pairwise_setup(kernel, data, layout, external_hazard)
     mixtures = _host_mixtures(susceptibility, data, layout)
     # A per-edge or covariate kernel's parameter type is only known at run time;
     # the function barrier keeps the passes type-stable.
     return _pairwise_surv_loglik(
-        kernel, extdist, data, layout, tfollow, reduction,
+        kernel, extsrc, data, layout, tfollow, reduction,
         promote_type(T, _mixtures_partype(mixtures)), mixtures
     )
 end
 
 function _pairwise_surv_loglik(
-        kernel, extdist, data, layout, tfollow,
+        kernel, extsrc, data, layout, tfollow,
         reduction::PairwiseReduction, ::Type{T}, mixtures = nothing
     ) where {T}
     totals = _GroupTotals(reduction, T)
@@ -1743,13 +1855,13 @@ function _pairwise_surv_loglik(
     if !all(totals.infeasible)
         gaps = _removal_gaps(data)
         totals = _pairwise_cumhazard(
-            reduction, kernel, extdist, data, layout, tfollow, totals, mixtures, gaps
+            reduction, kernel, extsrc, data, layout, tfollow, totals, mixtures, gaps
         )
         totals = _pairwise_events(
-            reduction, kernel, extdist, data, layout, tfollow, totals, mixtures, gaps
+            reduction, kernel, extsrc, data, layout, tfollow, totals, mixtures, gaps
         )
         totals = _pairwise_mixtures(
-            reduction, kernel, extdist, data, layout, tfollow, totals, mixtures, gaps
+            reduction, kernel, extsrc, data, layout, tfollow, totals, mixtures, gaps
         )
     end
     return _result(reduction, totals)
@@ -1761,7 +1873,7 @@ end
 # earlier of that and `obs_end`, after which there are no more introductions.
 # Nothing is at risk after the end of follow-up, and a host infected after it
 # has escaped until then as far as the data show.
-function _pairwise_cumhazard(reduction, kernel, extdist, data, layout, tfollow, totals, mixtures = nothing, gaps = nothing)
+function _pairwise_cumhazard(reduction, kernel, extsrc, data, layout, tfollow, totals, mixtures = nothing, gaps = nothing)
     sus = layout.sus
     infector = layout.infector
     is_ext = layout.is_ext
@@ -1773,6 +1885,8 @@ function _pairwise_cumhazard(reduction, kernel, extdist, data, layout, tfollow, 
         tj = data.infection_time[j]
         tend = (isnan(tj) || tj > tfollow) ? tfollow : convert(typeof(tfollow), tj)
         if is_ext[row]
+            extdist = _ext_survival_of(extsrc, j)
+            extdist === nothing && continue
             stop = min(tend, data.obs_end)
             stop > 0 || continue
             totals = _add!(reduction, totals, j, -cumhazard(extdist, stop))
@@ -1804,7 +1918,7 @@ end
 # sitting alongside an infinite value, whereas the log-density is -Inf
 # throughout a neighbourhood of the parameters, because impossibility is a
 # discrete fact of the fixed times.
-function _pairwise_events(reduction, kernel, extdist, data, layout, tfollow, totals, mixtures = nothing, gaps = nothing)
+function _pairwise_events(reduction, kernel, extsrc, data, layout, tfollow, totals, mixtures = nothing, gaps = nothing)
     sus = layout.sus
     infector = layout.infector
     is_ext = layout.is_ext
@@ -1826,6 +1940,8 @@ function _pairwise_events(reduction, kernel, extdist, data, layout, tfollow, tot
                 # a host infected after `obs_end` was infected along a contact;
                 # one infected at 0 is a community case like any other
                 (tj >= 0 && tj <= data.obs_end) || continue
+                extdist = _ext_survival_of(extsrc, j)
+                extdist === nothing && continue
                 _push!(acc, loghazard(extdist, tj))
             else
                 i = infector[row]
@@ -1851,10 +1967,10 @@ end
 # that component's modifier. As in the event pass, a mixture of density zero
 # makes its group impossible.
 _pairwise_mixtures(
-    reduction, kernel, extdist, data, layout, tfollow, totals, ::Nothing, gaps = nothing
+    reduction, kernel, extsrc, data, layout, tfollow, totals, ::Nothing, gaps = nothing
 ) = totals
 function _pairwise_mixtures(
-        reduction, kernel, extdist, data, layout, tfollow, totals,
+        reduction, kernel, extsrc, data, layout, tfollow, totals,
         mixtures::AbstractDict, gaps = nothing
     )
     for g in eachindex(layout.sus_unique)
@@ -1863,7 +1979,7 @@ function _pairwise_mixtures(
         mixture = get(mixtures, j, nothing)
         mixture === nothing && continue
         T = eltype(totals.ll)
-        v = _mixture_loglik(mixture, kernel, extdist, data, layout, g, tfollow, T, gaps)
+        v = _mixture_loglik(mixture, kernel, extsrc, data, layout, g, tfollow, T, gaps)
         totals = _is_minus_inf(v) ? _infeasible!(reduction, totals, j) : _add!(reduction, totals, j, v)
     end
     return totals

@@ -575,3 +575,34 @@ end
             count(is_vaccinated, state_uncapped.individuals)
     end
 end
+
+@testset "Carried-over capacity holds at every period, whatever order doses come in" begin
+    # Cases settle in infection order, so a dose dated earlier is often
+    # admitted after later ones; it must still leave every later day within
+    # its cumulative allowance.
+    clinical = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
+    iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = Inf)
+    ct = ContactTracing(
+        probability = 0.7, isolation_to_trace_delay = Exponential(1.0),
+        action = Quarantine(duration = Inf)
+    )
+    rv = CapacityConstrained(
+        RingVaccination(efficacy = 0.9); budget_per_period = 5.0, period = 1.0
+    )
+    @test rv.carry_over
+    over = 0
+    for seed in 1:20
+        s = simulate(
+            ModelSpec(
+                BranchingProcess(Poisson(3.0), Exponential(5.0));
+                interventions = [iso, ct, rv], attributes = clinical
+            );
+            max_cases = 200, rng = StableRNG(seed)
+        )
+        times = EpiBranch._dose_times(rv, s)
+        for day in 1:(ceil(Int, maximum(times; init = 0.0)) + 1)
+            count(<(day), times) <= 5 * day || (over += 1)
+        end
+    end
+    @test over == 0
+end

@@ -203,22 +203,30 @@ traces_source(::AbstractIntervention) = false
 """
     keep_active(intervention, state, targets, is_new) -> iterable of Int
 
-The ids of the `targets` a case reached that should go on generating contacts
-of their own although they are not infected. Default: none.
+The ids of the `targets` a case reached that a ring of contact tracing grows
+from, or that should go on generating contacts of their own although they are
+not infected. Default: none.
 
-Both engines ask it once per case, right after the case's
-[`trace_contacts!`](@ref) and [`intervention_actions`](@ref), with the same
-contacts and the same state. An intervention still implementing the deprecated
-[`apply_post_transmission!`](@ref) is asked instead once per generation, about
-the whole batch, after that hook has run. An intervention that grows its reach through
-uninfected people, such as contact tracing reaching contacts-of-contacts,
-returns those people's ids here. The generation engine keeps them active for
-one more generation, so their contacts are offered to them through the same
-hooks in turn, and the `InfectiousSource` risk source (a default) stops them
-infecting anyone. The continuous-time race walks the model's contact structure
-from them instead.
+Every built-in model asks it during tracing, straight after
+[`trace_contacts!`](@ref) for each case or ring member the ring grows from,
+with the contacts that call received: return those the ring is traced onward
+from. On a branching process their own contacts are then drawn, if they can be
+before the person settles (see
+[`reads_settled_state`](@ref EpiBranch.reads_settled_state)). It is not asked
+when no intervention traces.
 
-`is_new[i]` flags which of `targets` were freshly created. A contact returned
+A model written against [`generate_offspring`](@ref) or
+[`contacts_of`](@ref) asks it instead once per case, right after the case's
+`trace_contacts!` and [`intervention_actions`](@ref), with the same contacts
+and the same state. An intervention still implementing the deprecated
+[`apply_post_transmission!`](@ref) is asked there once per generation, about
+the whole batch, after that hook has run. The contacts it returns stay active
+for one more generation, so their contacts are offered to them through the
+same hooks in turn, and the `InfectiousSource` risk source (a default) stops
+them infecting anyone.
+
+`is_new[i]` flags which of `targets` were freshly created, on a model run one
+generation at a time; every built-in model passes `false` for all of them. A contact returned
 here that turns out to be infected is active as a case anyway."""
 keep_active(::AbstractIntervention, state, targets, is_new) = ()
 
@@ -306,17 +314,17 @@ intervention_time(::AbstractIntervention, ::Individual) = -Inf
     infectious_removal_time(intervention, individual) -> Real
 
 The time (days) at which this intervention ends `individual`'s infectious
-period for good. Continuous-time models ([`HomogeneousProcess`](@ref),
-[`MixingProcess`](@ref) and the network and household models) end a case's
-infectious period at the earliest
-such time across interventions: `Isolation` at the isolation time (perfect
+period for good. Every built-in model, the [`BranchingProcess`](@ref) as much
+as [`HomogeneousProcess`](@ref), [`MixingProcess`](@ref) and the network and
+household models, ends a case's infectious period at the earliest such time
+across interventions: `Isolation` at the isolation time (perfect
 isolation only, `post_isolation_transmission = 0`) and `ContactTracing` at a
 quarantined contact's trace time, when the isolation or quarantine has no end
 (`duration = Inf`). The default `Inf`
 (no removal) suits an intervention that reduces transmission per contact,
 such as a leaky vaccine, which acts through
-[`competing_risk`](@ref EpiBranch.competing_risk) instead. Branching processes
-do not use it.
+[`competing_risk`](@ref EpiBranch.competing_risk) instead. A model written
+against [`generate_offspring`](@ref) or [`contacts_of`](@ref) does not read it.
 """
 infectious_removal_time(::AbstractIntervention, ::Individual) = Inf
 
@@ -348,10 +356,12 @@ reset!(::AbstractIntervention, ::Individual) = nothing
     risk_applies(intervention, route) -> Bool
 
 Whether this intervention's [`competing_risk`](@ref EpiBranch.competing_risk)
-acts on infections through a given transmission route in a continuous-time
-model. `route` is a [`RouteWindow`](@ref), or `nothing` for an infection from
-outside the population. A model with a single route names it
-`:transmission`. The default is `true`, so protection such as vaccination
+acts on infections through a given transmission route. `route` is a
+[`RouteWindow`](@ref), or `nothing` for an infection from outside the
+population. A model with a single route names it `:transmission`. Each
+[`Infectiousness`](@ref) window of a [`BranchingProcess`](@ref) is a route
+named `:transmission`, whose `until` holds the window's own states and
+[`EpiBranch.INTERVENTION_REMOVAL`](@ref); it names no `from`. The default is `true`, so protection such as vaccination
 follows a person across routes. [`Scheduled`](@ref) and
 [`CapacityConstrained`](@ref) answer for the intervention they contain.
 
@@ -359,7 +369,8 @@ follows a person across routes. [`Scheduled`](@ref) and
 [`EpiBranch.INTERVENTION_REMOVAL`](@ref) in `until`, and not on infections
 from outside the population. Other interventions may select routes by any
 property of the route. This does not affect protection set by the model
-itself or contacts in a branching process.
+itself, or a model written against [`generate_offspring`](@ref) or
+[`contacts_of`](@ref), which applies every risk to every contact.
 """
 risk_applies(::AbstractIntervention, route) = true
 
@@ -500,7 +511,7 @@ function analytic_offspring_effect(iv::AbstractIntervention, offspring)
                 "(no `analytic_offspring_effect` method), so this analytical function " *
                 "cannot account for it. Compute the quantity from simulated outbreaks, " *
                 "simulate(spec, n), instead. For containment, " *
-                "containment_probability(simulate(spec, n)) gives the simulated answer " *
+                "containment_probability(spec, n) gives the simulated answer " *
                 "and probability_contain(R, k; ind_control, pop_control) an approximation."
         )
     )

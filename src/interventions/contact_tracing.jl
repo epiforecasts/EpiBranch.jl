@@ -424,6 +424,17 @@ quarantined until the end of their infectious period. A finite duration
 matters for a contact who escapes the traced exposure and is infected later
 through another route: that person transmits normally once the quarantine
 ends.
+
+`ind.state[:trace_time]` is already set by the time `duration` is called. A
+rule phrased as an end day counted from exposure, such as "until 14 days after
+exposure", can subtract the trace time from that day to get a duration. A rule
+that ends quarantine at symptom onset can compare it against
+[`onset_time`](@ref)`(ind)`. A contact traced more than once (ring propagation
+keeping the widest budget any infector gave it, or more than one child
+triggering `SourceTracing` on the same parent) keeps its *earliest* trace in
+`:trace_time`. On a later trace, that stored time predates the one `duration`
+is being called for, so a rule that subtracts it from a fixed end day will run
+longer than intended.
 """
 struct Quarantine{D} <: TraceAction
     duration::D
@@ -543,11 +554,17 @@ ContactTracing(
 
 With `depth = 2` the traced contacts of a case have their own contacts traced
 in turn: the contacts of contacts that level-2 ring vaccination targets. Each
-infected, eligible case starts a fresh ring of radius `depth`. Uninfected ring
-members are followed for one more generation so the ring can extend past them,
-but they do not infect anyone. A traced contact who later becomes an eligible
-case starts its own ring like any other case; add `!PreviouslyTraced()` to the
-eligibility to interview each case only once.
+infected, eligible case starts a fresh ring of radius `depth`. Ring members are
+followed for one more hop so the ring can extend past them, whether or not
+they are infected; an uninfected one does not infect anyone it reaches this
+way. On a model whose contacts persist (a household or a network), tracing
+also reaches a neighbour already infected earlier than the case doing the
+tracing, not only the case's own, still-uninfected neighbours: quarantining
+that neighbour blocks transmission it has not yet made, the way
+`SourceTracing` blocks an infector found through its own case. A traced
+contact who later becomes an eligible case starts its own ring like any
+other case; add `!PreviouslyTraced()` to the eligibility to interview each
+case only once.
 
 Pair with [`RingVaccination`](@ref) to vaccinate the whole ring:
 
@@ -754,8 +771,13 @@ function _trace_pair!(ct::ContactTracing, state, infector, ind, rng; not_before 
     # `depth == 1` (only infected cases ever generate contacts there),
     # but it stops an uninfected ring member, which carries its own
     # clinical state, from re-seeding a fresh full-radius ring and
-    # letting the fringe grow without bound.
-    seed = is_infected(infector) && is_eligible(ct.eligibility, infector, ind, state)
+    # letting the fringe grow without bound. On the continuous-time race the
+    # ring can also walk through an already-infected neighbour (see
+    # `_walk_ring!` in sellke.jl); that walk marks the infector with
+    # `_ring_hop`, so it stays on the propagate path below rather than
+    # reseeding a second time.
+    seed = is_infected(infector) && is_eligible(ct.eligibility, infector, ind, state) &&
+        !get(infector.state, :_ring_hop, false)::Bool
     # A ring grows past a member once. The first walk that reaches it spends
     # its budget on its contacts; a later one would trace the same pairs again,
     # which is a second attempt at the same relationship rather than a wider
@@ -775,17 +797,19 @@ function _trace_pair!(ct::ContactTracing, state, infector, ind, rng; not_before 
     # A contact cannot be sought before it exists, such as a funeral contact
     # before the funeral, so the delay runs from whichever comes later.
     trace_time = max(base, not_before) + trace_delay
+
+    # When the contact was reached. Recorded before the action runs, so an
+    # action reading the contact's own state, such as a `Quarantine`
+    # `duration` function, can see it. Interventions that act on a traced
+    # contact time themselves from this, which is the same whatever the
+    # trace action and the contact's own clinical course.
+    _record_trace_time!(ind, trace_time)
     apply_trace!(ct.action, ind, state, trace_time, rng)
 
     # Record the source this contact was traced from: the latest case whose
     # trace reached it, which on a tree is its parent. `compute_trace_level!`
     # walks it back to the index case post-run.
     ind.state[:traced_by] = infector.id
-
-    # When the contact was reached. Interventions that act on a traced
-    # contact time themselves from this, which is the same whatever the
-    # trace action and the contact's own clinical course.
-    _record_trace_time!(ind, trace_time)
 
     # Record how far the ring can still grow from this contact, so a
     # contact-of-contact one hop further out can time its own trace from
@@ -814,8 +838,12 @@ function trace_contacts!(
     # Whether this batch spends `infector`'s ring budget is decided per pair in
     # `_trace_pair!`, and the same answer holds for every pair in the batch, so
     # the budget is marked spent once the batch is done rather than part way
-    # through it.
-    propagating = ct.depth > 1 && !is_infected(infector) && is_traced(infector)
+    # through it. An uninfected `infector` is always a ring member passed
+    # through (an infected one seeds), but on the continuous-time race an
+    # infected one can be a ring member too, marked `_ring_hop` by
+    # `_walk_ring!`.
+    propagating = ct.depth > 1 && is_traced(infector) &&
+        (!is_infected(infector) || get(infector.state, :_ring_hop, false)::Bool)
     for (i, ind) in enumerate(contacts)
         ind.id == infector.id && continue
         _trace_pair!(
@@ -926,15 +954,16 @@ reads_population_state(::TraceRate) = false
 reads_population_state(::TraceDelay) = false
 reads_population_state(::TraceAction) = false
 
-"""With `depth > 1`, keep following uninfected traced contacts for one more
-generation so tracing can reach their contacts. They do not infect those
-contacts. Returns the ids of those uninfected ring members (none for
-`depth == 1`)."""
+"""With `depth > 1`, keep following traced contacts with ring budget left for
+one more hop, whether or not they are themselves infected, so tracing can
+reach their own contacts: an infected one may already be settled, with no
+future turn of its own at which it could be offered as a fresh ring root (see
+`_walk_ring!` in sellke.jl). An uninfected one does not infect those contacts
+either way. Returns the ids of those ring members (none for `depth == 1`)."""
 function keep_active(ct::ContactTracing, state, targets, is_new)
     ct.depth > 1 || return ()
     ids = Int[]
     for t in targets
-        is_infected(t) && continue
         is_traced(t) || continue
         get(t.state, :_ring_remaining, 0)::Int > 0 || continue
         push!(ids, t.id)
@@ -1069,13 +1098,16 @@ function trace_contacts!(st::SourceTracing, state, case, contacts, not_before = 
         base = trigger_time(st.eligibility, case, source, state)
         nb = not_before === nothing ? -Inf : not_before[i]
         trace_time = max(base, nb) + trace_delay
+        # Recorded before the action runs, as `ContactTracing` does, so that
+        # an action reading the contact's own state, such as a `Quarantine`
+        # `duration` function, can see it.
+        _record_trace_time!(source, trace_time)
         apply_trace!(st.action, source, state, trace_time, rng)
         # The reverse of `ContactTracing`'s `:traced_by`: `source` was found
         # through `case`, a later-infected node, so it is kept under its own
         # key rather than break `compute_trace_level!`'s invariant that
         # `:traced_by` always points to an earlier one.
         source.state[:source_traced_by] = case.id
-        _record_trace_time!(source, trace_time)
     end
     return nothing
 end

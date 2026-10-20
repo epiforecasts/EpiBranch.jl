@@ -1,10 +1,14 @@
 # ── End-of-outbreak probability ─────────────────────────────────────
 #
-# π(τ; R, k, generation_time) is the probability that no further cases
-# occur in a cluster, given `τ` time has elapsed since the most recent
-# observed case. Used as a principled per-cluster `is_finished` weight
-# in the real-time chain-size mixture likelihood (see
-# `loglikelihood(::ChainSizes, ::Distribution)`).
+# π(τ; R, k, generation_time) is the probability that a single case causes
+# no further cases, given `τ` time has elapsed since it occurred. Used as a
+# per-case `is_finished` weight in the real-time chain-size mixture
+# likelihood (see `loglikelihood(::ChainSizes, ::Distribution)`); exact for a
+# whole cluster only when every other case in it can no longer transmit
+# (for example a cluster of one). The vector method below combines the
+# per-case values, each raised to a power that reflects how many secondary
+# cases it is already known to have caused, into the probability for the
+# whole cluster.
 #
 # Closed form for full reporting (`ρ = 1`):
 #
@@ -22,16 +26,24 @@
 """
     end_of_outbreak_probability(R, k, generation_time::Distribution, τ::Real)
 
-Probability that a cluster is over, so no further cases will occur, given
-that its most recent case was `τ` days ago. Assumes `NegBin(R, k)` offspring,
-a generation time distribution `generation_time` (days) and that every case
-is reported. Following Thompson, Morgan & Jansen (2019, Phil Trans B), it is
+Probability that a single case causes no further cases, given that it was
+`τ` days ago. Assumes `NegBin(R, k)` offspring, a generation time
+distribution `generation_time` (days) and that every case is reported.
+Following Thompson, Morgan & Jansen (2019, Phil Trans B), it is
 
     ((k + R · (1 − S(τ))) / (k + R))^k
 
 where `S(τ)` is the probability that a generation time exceeds `τ`. It rises
 from the probability of a case infecting nobody at `τ = 0` towards 1 as `τ`
 grows.
+
+This is a per-case probability. It is the probability that a whole cluster is
+over only when the other cases in the cluster can no longer transmit either,
+for example a cluster of one case, or one where `τ` is measured from its
+earliest rather than its most recent case. For a cluster of several cases
+still capable of transmitting, pass every case's own `τ` to the vector method
+below instead, which combines them properly; using this method with only the
+most recent case's `τ` overstates the probability that the cluster is over.
 
 Use it as `prob_concluded` in `loglikelihood(::ChainSizes, ...)` or
 [`chain_size_distribution`](@ref) for real-time cluster data, where some
@@ -140,4 +152,62 @@ function end_of_outbreak_probability(
         τs::AbstractVector{<:Real}
     )
     return [end_of_outbreak_probability(R, k, generation_time, τ) for τ in τs]
+end
+
+"""
+    end_of_outbreak_probability(R, k, gt, τs::AbstractVector, secondary_cases::AbstractVector{<:Integer})
+    end_of_outbreak_probability(offspring::NegativeBinomial, gt, τs::AbstractVector, secondary_cases::AbstractVector{<:Integer})
+
+Probability that a whole cluster is over, given the time since onset of every
+one of its cases (`τs`) and the number of secondary cases each is already
+known to have caused (`secondary_cases`). A cluster is over only once none of
+its cases transmits again: this is the product, over its cases, of
+[`end_of_outbreak_probability`](@ref)`(R, k, gt, τs[i])` raised to the power
+`(k + secondary_cases[i]) / k`. Under `NegBin(R, k)` offspring, a case already
+known to have caused more secondary cases is more likely to cause further
+ones too, so it contributes less to the cluster being over than a case with
+the same `τ` and no known onward transmission.
+
+Pass `zeros(Int, length(τs))` for `secondary_cases` when the transmission
+tree within the cluster is unknown; this reduces to the plain product of the
+per-case values,
+`prod(end_of_outbreak_probability(R, k, gt, τ) for τ in τs)`.
+
+# Examples
+
+```julia
+offspring = NegBin(0.95, 0.18)
+gt = Gamma(2.7, 5.7)             # mean about 15 days
+onsets = [0.0, 3.0, 5.0, 6.0]    # four cases
+t = 10.0
+τs = t .- onsets
+secondary_cases = [2, 1, 0, 0]   # case 1 infected two, case 2 one
+end_of_outbreak_probability(offspring, gt, τs, secondary_cases)
+```
+"""
+function end_of_outbreak_probability(
+        R::Real, k::Real, generation_time::Distribution,
+        τs::AbstractVector{<:Real}, secondary_cases::AbstractVector{<:Integer}
+    )
+    length(secondary_cases) == length(τs) || throw(
+        ArgumentError(
+            "secondary_cases must have the same length as τs " *
+                "($(length(τs))); got $(length(secondary_cases))"
+        )
+    )
+    all(>=(0), secondary_cases) ||
+        throw(ArgumentError("secondary_cases must be non-negative"))
+    return prod(
+        end_of_outbreak_probability(R, k, generation_time, τ)^((k + a) / k)
+            for (τ, a) in zip(τs, secondary_cases)
+    )
+end
+
+function end_of_outbreak_probability(
+        offspring::NegativeBinomial, generation_time::Distribution,
+        τs::AbstractVector{<:Real}, secondary_cases::AbstractVector{<:Integer}
+    )
+    return end_of_outbreak_probability(
+        mean(offspring), offspring.r, generation_time, τs, secondary_cases
+    )
 end

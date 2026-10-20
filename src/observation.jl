@@ -91,7 +91,7 @@ it when something differentiates through `base`, such as fitting an offspring
 parameter with `ForwardDiff`.
 """
 struct ThinnedChainSize{D <: DiscreteUnivariateDistribution, T <: Real} <:
-    DiscreteUnivariateDistribution
+    ChainSizeLaw
     base::D
     detection_prob::Float64
     log_prob_any_detected::T
