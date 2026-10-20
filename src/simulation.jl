@@ -604,8 +604,8 @@ end
 """The `i`-th person's type, out of `n_types`: uniform at random by default,
 the `i`-th entry of `types` when it is a vector, or an independent draw from
 `types` when it is a `Distribution` (checked against `1:n_types` and for
-being an integer, since a `Distribution`'s support cannot be checked upfront
-in general)."""
+integrality, since a `Distribution`'s support cannot be checked upfront in
+general)."""
 _draw_type(rng, ::Nothing, i, n_types) = rand(rng, 1:n_types)
 _draw_type(rng, types::AbstractVector, i, n_types) = types[i]
 function _draw_type(rng, types::Distribution, i, n_types)
