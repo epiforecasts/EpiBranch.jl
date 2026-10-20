@@ -148,10 +148,11 @@ mutable struct _Offspring{W <: Infectiousness, T <: Real}
     tree::_Tree{T}
     pending::UnitRange{Int}
     reached::Dict{Int, UnitRange{Int}}
+    n_types::Int
 end
-function _Offspring(window::Infectiousness, route::Int, tree::_Tree{T}) where {T}
+function _Offspring(window::Infectiousness, route::Int, tree::_Tree{T}, n_types::Int) where {T}
     return _Offspring(
-        window, route, tree, 1:0, Dict{Int, UnitRange{Int}}()
+        window, route, tree, 1:0, Dict{Int, UnitRange{Int}}(), n_types
     )
 end
 
@@ -307,10 +308,18 @@ end
 # `OffspringTimes`: each contact's offset from `from_t` is already known, so
 # it stands in for `kernel` in `_draw_contact!`, which `_window_infection_time`
 # resolves to a time with no draw. `kernel` itself (always `NoGenerationTime`
-# here, from `_window_kernel`) is unused.
+# here, from `_window_kernel`) is unused. `OffspringTimes` carries no per-type
+# label, so a multi-type model has no type to give each contact; rather than
+# collapse them all to type 1, this refuses to guess.
 function _draw_counts!(
         o::_Offspring, race, ind, times::OffspringTimes, from_t, kernel, born
     )
+    o.n_types > 1 && throw(ArgumentError(
+        "an offspring function returned OffspringTimes for a multi-type model " *
+            "(n_types = $(o.n_types)); OffspringTimes has no per-type label, so " *
+            "it only works with n_types = 1. Return a per-type Vector{Int} of " *
+            "counts instead."
+    ))
     for Δt in times.times
         _draw_contact!(o, race, ind, from_t, Δt, 0, born)
     end
@@ -416,7 +425,8 @@ function _simulate_offspring(
     windows = model.infectiousness
     tree = _take_tree(T, length(state.individuals), map(w -> w.until, windows))
     routes = ntuple(
-        i -> (_offspring_window(windows[i]), _Offspring(windows[i], i, tree)), length(windows)
+        i -> (_offspring_window(windows[i]), _Offspring(windows[i], i, tree, model.n_types)),
+        length(windows)
     )
     sellke_race!(
         state, tree, rng, sim_opts;

@@ -17,7 +17,9 @@ different routes, such as community and funeral transmission of Ebola.
   already knows when each contact falls, for example because it builds
   transmission day by day, it can return an [`OffspringTimes`](@ref) instead
   of a count, giving each contact's time from `from` directly and skipping
-  the kernel.
+  the kernel. This only suits a single-type model: `OffspringTimes` carries
+  no per-type label, so a multi-type model's function must keep returning a
+  count.
 - `from`: the state at which transmission starts, `:infection` by default.
   Any other name refers to a state set by a step of the natural history, such
   as `:infectious` or `:died`; transmission starts only once the case reaches
@@ -82,6 +84,11 @@ offspring function that already knows when each contact falls, such as one
 built day by day, returns this to place every contact at its own time rather
 than losing that to an independent draw from the window's `kernel`, which
 this makes unnecessary and which the engine then does not call.
+
+Carries no per-type label, so it only works with a single-type model
+(`n_types = 1`); a multi-type model raises an error rather than assigning
+every contact to type 1. A multi-type offspring function still returns a
+per-type `Vector{Int}` of counts.
 
 # Examples
 ```julia

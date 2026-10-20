@@ -143,6 +143,14 @@
         @test only(kids).infection_time ≈ 5.0
     end
 
+    @testset "OffspringTimes raises in a multi-type model, which it cannot label" begin
+        off = (rng, ind) -> OffspringTimes([1.0, 4.5])
+        m = BranchingProcess(Infectiousness(off); n_types = 2)
+        @test_throws ArgumentError simulate(
+            m; n_initial = 1, max_generations = 1, rng = StableRNG(1)
+        )
+    end
+
     @testset "analytics: single window closed-form, multi-window directs to simulation" begin
         single = BranchingProcess(NegBin(2.0, 0.5), LogNormal(1.6, 0.5))
         @test single_type_offspring(single) isa NegativeBinomial
