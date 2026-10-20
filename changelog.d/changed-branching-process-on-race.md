@@ -43,8 +43,7 @@ across generations. This changes a run in these ways:
 
 On every model the race now offers the `intervention_actions` of each
 intervention once a case settles, to the case and the contacts the model
-names. A
-network or household model now stops with an error when `CapacityConstrained`
+names. A network or household model now stops with an error when `CapacityConstrained`
 wraps an intervention with nothing to ration, such as `Isolation` or
 `ContactTracing`, as a branching process already did. Before, it warned or ran
 the wrapped intervention without a budget.

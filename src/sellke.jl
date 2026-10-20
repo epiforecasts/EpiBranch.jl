@@ -32,7 +32,8 @@ function _close_at(ind::Individual{T}, keys) where {T}
 end
 
 # ── Interventions on the race ────────────────────────────────────────
-# Two seams carry an intervention's effect on transmission. The first is the infectious window: an
+# An intervention's effect on transmission runs through two seams. The first
+# is the infectious window: an
 # intervention that removes a case from onward transmission (isolation)
 # shortens it. Each case is settled as the race pops it (`_settle_case!`): its
 # natural history first, then each intervention's `resolve_individual!`, which
