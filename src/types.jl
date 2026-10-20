@@ -109,7 +109,7 @@ specialise this to get correct, if not always fastest, behaviour.
 
 This `hasmethod` check is on the offspring's type, not the particular
 instance: a [`GeneratingFunctionOffspring`](@ref) has the method whether or
-not it carries a pmf, so calling `chain_size_distribution` on the result can
+not it has a pmf, so calling `chain_size_distribution` on the result can
 still throw for one built from a bare generating function. Callers still
 wrap that call in their own `try`/`catch` for this reason.
 """

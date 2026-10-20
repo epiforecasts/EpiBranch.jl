@@ -276,7 +276,7 @@ function chain_size_distribution(
         # `chain_size_distribution` on the bare offspring can still fail
         # despite `has_single_type_law`'s `hasmethod` check: a
         # `GeneratingFunctionOffspring` built from a bare pgf has the method
-        # but refuses at the instance level, since it carries no pmf. The
+        # but refuses at the instance level, since it has no pmf. The
         # `Reporting`-reading step (e.g. a callable per-individual
         # probability) can fail here too. Either falls through to the
         # simulation-based wrapper rather than crashing the primary `~`

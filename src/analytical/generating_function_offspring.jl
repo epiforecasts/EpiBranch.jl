@@ -103,7 +103,7 @@ Exact chain size distribution for an offspring law given by its probability
 mass function, from the hitting-time theorem
 ([`EpiBranch.HittingTimeChainSize`](@ref)). Needs `o` to have been built as
 `GeneratingFunctionOffspring(pmf)`: a law given only as a bare generating
-function carries no case-by-case probabilities to read, and raises an
+function has no case-by-case probabilities to read, and raises an
 `ArgumentError` instead.
 """
 function chain_size_distribution(o::GeneratingFunctionOffspring)

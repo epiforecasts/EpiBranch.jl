@@ -1594,7 +1594,7 @@
                 @test pdf(d, n) ≈ pdf(base, n) atol = 1.0e-8
             end
 
-            # A law given only as a bare pgf carries no case-by-case
+            # A law given only as a bare pgf has no case-by-case
             # probabilities to read, and refuses rather than erroring on
             # indexing into `nothing`.
             bare = GeneratingFunctionOffspring(s -> EpiBranch._pgf(nb, s), reproduction_number(nb))
