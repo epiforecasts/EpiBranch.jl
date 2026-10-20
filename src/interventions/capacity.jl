@@ -157,7 +157,7 @@ For extension authors: which of `intervention`'s budgets `individual` draws on,
 when [`CapacityConstrained`](@ref) is to track more than one at once — a
 budget per district or per treatment centre, say. The default, `nothing`, puts
 everyone on the same budget, exactly as a `CapacityConstrained` with no method
-of this behaves. Each distinct value `resource_key` returns gets its own usage,
+of it behaves. Each distinct value `resource_key` returns gets its own usage,
 counted separately under `budget_per_period`, `period` and `carry_over`.
 
 Dispatches on `individual` rather than a proposed action, so the same value is
