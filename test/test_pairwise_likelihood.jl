@@ -209,6 +209,15 @@ end
             rand(StableRNG(1), Exponential(2.0))
         @test EpiBranch._ext_draw(StableRNG(1), Gamma(2.0, 3.0)) ==
             rand(StableRNG(1), Gamma(2.0, 3.0))
+
+        # a calendar schedule is passed through unchanged, is always on, and
+        # draws from its own calendar-scaled survival distribution
+        schedule = Steps([2.0], [0.2, 0.05])
+        @test EpiBranch._valid_external(schedule)
+        @test EpiBranch._normalise_external(schedule) === schedule
+        @test EpiBranch._ext_active(schedule)
+        @test EpiBranch._ext_draw(StableRNG(1), schedule) ==
+            rand(StableRNG(1), EpiBranch._calendar_external_survival(schedule))
     end
 
     @testset "community hazard that differs between people" begin
@@ -224,6 +233,9 @@ end
         @test EpiBranch._ext_survival_of(v, 3) == Gamma(2.0, 3.0)
         @test EpiBranch._ext_survival_of(j -> v[j], 1) == Exponential(2.0)
         @test_throws ArgumentError EpiBranch._ext_survival_of(j -> -1.0, 1)
+        schedule = Steps([2.0], [0.2, 0.05])
+        @test EpiBranch._ext_survival_of(schedule, 1) ==
+            EpiBranch._calendar_external_survival(schedule)
         @test_throws DimensionMismatch EpiBranch._check_external(v, 4)
         @test EpiBranch._check_external(v, 3) === nothing
         # a person with no community hazard is never introduced, and the rest
