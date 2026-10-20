@@ -84,6 +84,11 @@ function simulate_once(
     # gets from the wrapper.
     max_time = EpiBranch._max_time(sim_opts)
     max_generation = EpiBranch._max_generation(sim_opts)
+    # Prepared once here rather than inside the loop below: a per-person vector
+    # or function is otherwise rebuilt on every race, costing O(households ×
+    # population) instead of O(population) over the whole simulation.
+    extsrc = _ext_active(model.external_hazard) ?
+        EpiBranch._ext_prepare(model.external_hazard) : nothing
     extinct = true
     for mem in races
         extinct &= EpiBranch._sellke_race!(
@@ -95,8 +100,7 @@ function simulate_once(
             seed! = (best, members, r) -> _seed_household_race!(
                 best, members, model, state, Tobs, r, initial_cases
             ),
-            introduction = _ext_active(model.external_hazard) ?
-                (EpiBranch._ext_prepare(model.external_hazard), Tobs) : nothing,
+            introduction = extsrc === nothing ? nothing : (extsrc, Tobs),
             targets = (inf, st) -> (
                 (oid, _pairkernel(model.kernel, inf, oid, st, from))
                     for oid in model.members[model.household_of[inf]] if oid != inf

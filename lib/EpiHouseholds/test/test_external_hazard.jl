@@ -113,4 +113,24 @@
         se = [sqrt(cov[k, k]) for k in eachindex(θhat)]
         @test all(abs.(θhat .- true_θ) .< 3 .* se)
     end
+
+    @testset "a vector hazard scales linearly, not quadratically, with the population" begin
+        # One race per one-person household; preparing the vector hazard
+        # inside that loop rather than once would allocate it again for every
+        # household, so a 4x larger population would cost ~16x rather than ~4x.
+        function bytes_for(n)
+            model = ModelSpec(
+                HouseholdProcess(
+                    fill(1, n), Exponential(1.0);
+                    external_hazard = fill(0.001, n), obs_end = 100.0
+                );
+                progression = sir
+            )
+            simulate(model; rng = StableRNG(1))
+            return @allocated simulate(model; rng = StableRNG(2))
+        end
+        small = bytes_for(1000)
+        large = bytes_for(4000)
+        @test large < 8 * small
+    end
 end
