@@ -555,7 +555,7 @@ contacts it goes on to expose.
 
 An offspring or generation time given as a function may read what settling the
 contact writes, such as its severity, and a generation time from
-[`incubation_linked_generation_time`](@ref) is such a function. There a
+[`incubation_linked_generation_time`](@ref) is such a function. With one, a
 contact's own contacts are drawn only once it settles as a case, and the ring
 stops at a contact who is never infected (see
 [`EpiBranch.reads_settled_state`](@ref)). Once an infected contact settles,
@@ -563,8 +563,9 @@ its contacts are traced from when the ring reached it. If it is eligible for
 tracing in its own right, they are traced again from its own trigger, as they
 would be had they been drawn early. A window that opens on a later state, such
 as `:infectious` after a latent period, has no opening time yet and waits the
-same way. When any of a contact's windows waits, all of them do, which keeps
-every contact an infected member makes within the ring's reach.
+same way. When any of a contact's windows waits, all of them do: the ring grows
+past a contact only once, so every contact an infected contact makes has to be
+known by then.
 
 A model written against `contacts_of` waits the same way, unless it declares
 that its `contacts_of` reads nothing settling writes (see
