@@ -32,13 +32,14 @@ function _close_at(ind::Individual{T}, keys) where {T}
 end
 
 # ── Interventions on the race ────────────────────────────────────────
-# Two seams carry an intervention's effect on transmission. The first is the infectious window: an
-# intervention that removes a case from onward transmission (isolation)
-# shortens it. Each case is settled as the race pops it (`_settle_case!`): its
-# natural history first, then each intervention's `resolve_individual!`, which
-# is where `Isolation` writes its isolation time. Its window is then closed at
-# the earliest removal across interventions as well as the `until` states. The
-# second is the per-contact competing risk, resolved against each candidate
+# Two seams carry an intervention's effect on transmission. The first is the
+# infectious window: an intervention that removes a case from onward
+# transmission (isolation) shortens it. Each case is settled as the race
+# pops it (`_settle_case!`): its natural history first, then each
+# intervention's `resolve_individual!`, which is where `Isolation` writes
+# its isolation time. Its window is then closed at the earliest removal
+# across interventions as well as the `until` states. The second is the
+# per-contact competing risk, resolved against each candidate
 # infection time the race proposes (see the next block).
 
 # ── Per-contact competing risks on the continuous-time path ──────────
@@ -47,9 +48,9 @@ end
 # probability, conditional on the risk having arrived before that transmission's
 # time. On the race, a potential transmission *is* a drawn time: the contact
 # interval from the infector's window opening to the moment it would infect that
-# neighbour. So the risks are resolved against that time, when the candidate is
-# popped rather than when it was proposed, so that a dose
-# or an isolation that arrived in between is in force (see the loop in
+# neighbour. So the risks are resolved against that time, when the candidate
+# is popped rather than when it was proposed, so that a dose or an isolation
+# that arrived in between is in force (see the loop in
 # `_sellke_race!`).
 #
 # A blocked contact does not transmit, and the pair goes on meeting: its next

@@ -296,8 +296,8 @@ itself.
 risk_applies(::AbstractIntervention, route) = true
 
 # A removal's duration, drawn or given. A negative or `NaN` one puts the
-# release before its own start, which would read as a removal that never
-# ends, so it is refused here. Zero is allowed and means no removal:
+# release before its own start, which would read as a permanent removal, so
+# it is refused here. Zero is allowed and means no removal:
 # `infectious_removal_time` reports nothing to close a window with.
 function _removal_duration(duration, rng, individual, what)
     d = _sample_value(duration, rng, individual)

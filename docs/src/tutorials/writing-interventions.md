@@ -168,7 +168,8 @@ In practice:
     by `1 - p`. A pair with a one-day mean contact interval and a two-day
     infectious period then infects `1 - exp(-1) = 0.63` of the time at
     efficacy 0.5. On a branching process, or a model written against
-    `contacts_of`, a case's contacts are a fixed set of draws, so a blocked contact is a transmission lost, and the same efficacy
+    `contacts_of`, a case's contacts are a fixed set of draws, so a blocked
+    contact is a transmission lost, and the same efficacy
     of 0.5 halves that pair's chance of transmission (0.43 in this example,
     against 0.63). The per-exposure reading on fixed-population models is what a
     leaky vaccine means there; check which one your scenario needs.
@@ -510,7 +511,8 @@ Six built-in risks are always present:
 - [`EpiBranch.HostImmunity`](@ref) blocks every exposure of a contact who has
   already been infected, until [`susceptible_again_time`](@ref) is in the
   past. It does nothing for a model whose `progression` never reaches
-  `:susceptible_again`. A model that does gets a new, separately recorded infection episode
+  `:susceptible_again`. A model that does gets a new, separately recorded
+  infection episode
   (see [Individual state and reserved keys](@ref)) instead of a reinfection
   overwriting the earlier one.
 
