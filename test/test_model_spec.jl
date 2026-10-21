@@ -397,7 +397,7 @@ EpiBranch.interventions(m::_ProcessWithInterventions) = m.interventions
             @test_throws r"ContactTracing" f(spec)
             @test_throws r"from simulated outbreaks, simulate\(spec, n\)" f(spec)
             @test_throws r"probability_contain\(R, k; ind_control, pop_control\)" f(spec)
-            @test_throws r"containment_probability\(simulate\(spec, n\)\)" f(spec)
+            @test_throws r"containment_probability\(spec, n\)" f(spec)
         end
 
         # A spec with no interventions is unaffected.

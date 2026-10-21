@@ -1,10 +1,10 @@
 using StableRNGs
 using Random
 
-# A minimal structure-driven model — a ring of nodes — exercising the shared
-# engine's structure-driven path from within core: `gather_by_target` (shared,
-# deduplicated exposures), a model-contributed competing risk, and the
-# "exposed but not infected" resolve branch. The network and household
+# A minimal structure-driven model — a ring of nodes — exercising the race's
+# `contacts_of` route from within core: a node exposed by both neighbours
+# (decided once, by the earliest exposure that transmits), a model-contributed
+# competing risk, and the "exposed but not infected" branch. The network and household
 # subpackages cover these too, but only under their own coverage flags; a tiny
 # model here keeps the extension contract tested in core.
 
@@ -27,11 +27,6 @@ function EpiBranch.initialise_state(
     return state
 end
 
-# Shared contacts across parents in a generation ⇒ gather by target.
-function EpiBranch.collect_exposures(m::RingModel, state::EpiBranch.SimulationState)
-    return EpiBranch.gather_by_target(m, state)
-end
-
 function EpiBranch.contacts_of(m::RingModel, parent, state::EpiBranch.SimulationState)
     i = parent.id
     neighbours = (i == 1 ? m.n : i - 1, i == m.n ? 1 : i + 1)
@@ -45,7 +40,7 @@ function EpiBranch.contacts_of(m::RingModel, parent, state::EpiBranch.Simulation
 end
 
 # The per-edge probability enters as a model competing risk (the `model_risks`
-# loop in the engine's resolution); p < 1 lets some exposed nodes escape.
+# the race resolves on each exposure); p < 1 lets some exposed nodes escape.
 struct RingRisk
     p::Float64
 end
@@ -56,7 +51,7 @@ end
 
 @testset "Structure-driven model (core extension path)" begin
     # p < 1 so some exposures fail — exercises the exposed-but-not-infected
-    # resolve branch; the ring guarantees a node is reached from both sides.
+    # branch; the ring guarantees a node is reached from both sides.
     state = simulate(
         RingModel(50, 0.5); n_initial = 1, rng = StableRNG(11),
         stopping_rules = [Extinction(), MaxGenerations(50)]
@@ -74,16 +69,13 @@ end
     @test count(ind -> get(ind.state, :infected, false), full.individuals) == 20
 end
 
-# A structure-driven model whose `contacts_of` *mints* fresh contacts (the other
-# `gather_by_target` branch, where a contact's id is past the generation's
-# starting count). It uses the default `initialise_state` (offspring-style seeds).
+# A structure-driven model whose `contacts_of` *mints* fresh contacts with
+# `make_contact!`, so the race grows its members as it goes. It uses the default
+# `initialise_state` (offspring-style seeds).
 struct MintModel <: EpiBranch.TransmissionModel
     k::Int
 end
 EpiBranch.population_size(::MintModel) = EpiBranch.NoPopulation()
-function EpiBranch.collect_exposures(m::MintModel, state::EpiBranch.SimulationState)
-    return EpiBranch.gather_by_target(m, state)
-end
 function EpiBranch.contacts_of(m::MintModel, parent, state::EpiBranch.SimulationState)
     result = Tuple{eltype(state.individuals), Float64}[]
     for _ in 1:(m.k)
@@ -102,8 +94,27 @@ end
     @test EpiBranch._timetype(state) === Float64
 end
 
+struct MintRiskModel <: EpiBranch.TransmissionModel
+    k::Int
+end
+EpiBranch.population_size(::MintRiskModel) = EpiBranch.NoPopulation()
+EpiBranch.contacts_of(m::MintRiskModel, parent, state::EpiBranch.SimulationState) =
+    EpiBranch.contacts_of(MintModel(m.k), parent, state)
+EpiBranch.transmission_risks(::MintRiskModel) = (RingRisk(0.5),)
+
+@testset "A blocked contact a model creates is listed once" begin
+    spec = ModelSpec(MintRiskModel(2); recorder = ExposedContactRecorder())
+    state = simulate(
+        spec; n_initial = 1, rng = StableRNG(1),
+        stopping_rules = [Extinction(), MaxGenerations(4)]
+    )
+    pairs = contacts(state)
+    @test any(!, pairs.infected)
+    @test allunique(zip(pairs.from, pairs.to))
+end
+
 # A pool of pre-created nodes, each parent reaching random members, so a node
-# can be exposed, escape, and be exposed again in a later generation. That is
+# can be exposed, escape, and be exposed again by a later case. That is
 # the path on which a post-exposure abort drawn for one exposure could outlive
 # it.
 struct AbortPoolModel <: EpiBranch.TransmissionModel
@@ -120,9 +131,6 @@ function EpiBranch.initialise_state(
     EpiBranch.add_individuals!(state, m.n, interventions)
     EpiBranch.seed!(state, 1:(sim_opts.n_initial), interventions, transitions)
     return state
-end
-function EpiBranch.collect_exposures(m::AbortPoolModel, state::EpiBranch.SimulationState)
-    return EpiBranch.gather_by_target(m, state)
 end
 function EpiBranch.contacts_of(m::AbortPoolModel, parent, state::EpiBranch.SimulationState)
     result = Tuple{eltype(state.individuals), Float64}[]
@@ -283,4 +291,153 @@ end
     end
     @test aborted + not_aborted >= 50
     @test 0.35 < aborted / (aborted + not_aborted) < 0.65
+end
+
+# Two cases expose the same person, who is half as susceptible as usual.
+struct TwoToOneModel <: EpiBranch.TransmissionModel end
+EpiBranch.population_size(::TwoToOneModel) = EpiBranch.NoPopulation()
+function EpiBranch.initialise_state(
+        m::TwoToOneModel, sim_opts::EpiBranch.SimOpts,
+        interventions, transitions, attributes, rng::AbstractRNG
+    )
+    state = EpiBranch.new_state(m, transitions, attributes, rng)
+    EpiBranch.add_individuals!(state, 3, interventions)
+    EpiBranch.seed!(state, 1:2, interventions, transitions)
+    state.individuals[3].susceptibility = 0.5
+    return state
+end
+function EpiBranch.contacts_of(::TwoToOneModel, parent, state::EpiBranch.SimulationState)
+    result = Tuple{eltype(state.individuals), Float64}[]
+    parent.id == 3 && return result
+    push!(result, (state.individuals[3], parent.infection_time + parent.id))
+    return result
+end
+
+@testset "A person whose earliest exposure is blocked can be infected by a later one" begin
+    n = 4000
+    infected = count(1:n) do seed
+        s = simulate(
+            TwoToOneModel(); n_initial = 2, rng = StableRNG(seed),
+            stopping_rules = [Extinction(), MaxGenerations(5)]
+        )
+        is_infected(s.individuals[3])
+    end
+    # Each exposure gets through with probability 0.5, so at least one does
+    # with probability 0.75.
+    @test abs(infected / n - 0.75) < 4 * sqrt(0.75 * 0.25 / n)
+end
+
+@testset "A contact a model creates lists no exposure after the run ends" begin
+    late = 0
+    for seed in 1:10
+        s = simulate(
+            MintModel(2); n_initial = 1, rng = StableRNG(seed), max_time = 2.0,
+            max_cases = 10^6, max_generations = 100
+        )
+        late += count(i -> i.infection_time > 2.0, s.individuals)
+    end
+    @test late == 0
+end
+
+# A line of four people, the first an index case and the second never
+# infected. `LineEarly` says its `contacts_of` reads nothing settling writes.
+abstract type AbstractLine <: EpiBranch.TransmissionModel end
+struct LineLate <: AbstractLine end
+struct LineEarly <: AbstractLine end
+EpiBranch.reads_settled_state(::LineEarly) = false
+EpiBranch.population_size(::AbstractLine) = EpiBranch.NoPopulation()
+function EpiBranch.initialise_state(
+        m::AbstractLine, sim_opts::EpiBranch.SimOpts,
+        interventions, transitions, attributes, rng::AbstractRNG
+    )
+    state = EpiBranch.new_state(m, transitions, attributes, rng)
+    EpiBranch.add_individuals!(state, 4, interventions)
+    state.individuals[2].susceptibility = 0.0
+    EpiBranch.seed!(state, [1], interventions, transitions)
+    return state
+end
+function EpiBranch.contacts_of(::AbstractLine, parent, state::EpiBranch.SimulationState)
+    neighbours = filter(in(1:4), [parent.id - 1, parent.id + 1])
+    return [(state.individuals[j], parent.infection_time + 1.0) for j in neighbours]
+end
+
+@testset "A ring grows past an uninfected person on a model that says it can" begin
+    ct = ContactTracing(OnIsolation(), 1.0, Dirac(0.1), Quarantine(duration = Inf); depth = 2)
+    iso = Isolation(onset_to_isolation_delay = Dirac(0.1), duration = Inf)
+    attributes = clinical_presentation(incubation_period = Dirac(0.2))
+    for (model, reached) in ((LineEarly(), true), (LineLate(), false))
+        s = simulate(
+            ModelSpec(model; interventions = [iso, ct], attributes);
+            n_initial = 1, rng = StableRNG(1), max_generations = 10
+        )
+        @test is_traced(s.individuals[2]) && !is_infected(s.individuals[2])
+        @test is_traced(s.individuals[3]) == reached
+    end
+end
+
+# A model that says how many contacts each case makes, with and without saying
+# the count reads nothing settling writes.
+struct CountLate <: EpiBranch.TransmissionModel end
+struct CountEarly <: EpiBranch.TransmissionModel end
+const _CountModel = Union{CountLate, CountEarly}
+EpiBranch.reads_settled_state(::CountEarly) = false
+EpiBranch.population_size(::_CountModel) = EpiBranch.NoPopulation()
+EpiBranch.model_generation_time(::_CountModel) = Gamma(2.0, 2.0)
+EpiBranch.generate_offspring(::_CountModel, parent, state) = rand(state.rng, Poisson(2.0))
+
+@testset "A model that counts its contacts can let a ring grow early" begin
+    ct = ContactTracing(OnIsolation(), 0.8, Exponential(0.5), Quarantine(duration = Inf); depth = 2)
+    iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
+    attributes = clinical_presentation(incubation_period = Gamma(3.0, 1.0))
+    run(model, seed) = simulate(
+        ModelSpec(model; interventions = [iso, ct], attributes);
+        max_cases = 200, rng = StableRNG(seed)
+    )
+    sizes(model) = [length(run(model, seed).individuals) for seed in 1:50]
+    bp = sizes(BranchingProcess(Poisson(2.0), Gamma(2.0, 2.0)))
+    @test sizes(CountEarly()) == bp
+    @test sizes(CountLate()) != bp
+end
+
+# `MintModel` that says its `contacts_of` reads nothing settling writes.
+struct MintEarly <: EpiBranch.TransmissionModel end
+EpiBranch.reads_settled_state(::MintEarly) = false
+EpiBranch.population_size(::MintEarly) = EpiBranch.NoPopulation()
+EpiBranch.contacts_of(::MintEarly, parent, state::EpiBranch.SimulationState) =
+    EpiBranch.contacts_of(MintModel(2), parent, state)
+
+@testset "A ring that asks early names the contacts a case goes on to expose" begin
+    ct = ContactTracing(OnIsolation(), 1.0, Dirac(0.1), Quarantine(duration = Inf); depth = 2)
+    iso = Isolation(onset_to_isolation_delay = Dirac(0.1), duration = Inf)
+    attributes = clinical_presentation(incubation_period = Dirac(0.2))
+    early = 0
+    for seed in 1:10
+        s = simulate(
+            ModelSpec(MintEarly(); interventions = [iso, ct], attributes);
+            n_initial = 1, rng = StableRNG(seed), max_generations = 6
+        )
+        for ind in s.individuals
+            # Each person the model is asked about has two contacts, however
+            # often it is asked.
+            @test length(ind.secondary_case_ids) in (0, 2)
+            is_infected(ind) || isempty(ind.secondary_case_ids) || (early += 1)
+            # A contact's exposure follows its case's infection.
+            for cid in ind.secondary_case_ids
+                c = s.individuals[cid]
+                is_infected(c) && @test c.infection_time > ind.infection_time
+            end
+        end
+    end
+    # Some uninfected ring members had their contacts named early.
+    @test early > 0
+    # A case at the generation bound has no contacts, as without the opt-in.
+    for seed in 1:20
+        s = simulate(
+            ModelSpec(MintEarly(); interventions = [iso, ct], attributes);
+            n_initial = 1, rng = StableRNG(seed), max_generations = 3
+        )
+        for ind in s.individuals
+            ind.generation >= 3 && @test isempty(ind.secondary_case_ids)
+        end
+    end
 end

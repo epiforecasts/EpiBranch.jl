@@ -87,7 +87,6 @@ using StableRNGs
             group_key = :patch, dose_delay = 0.0
         )
         process = MixingProcess(; population_size = N, mixing_by = (:patch,), rate)
-        @test EpiBranch._sellke_honours(process, gv)
         state = simulate(
             ModelSpec(
                 process; progression = prog, attributes = [patch, clinical],

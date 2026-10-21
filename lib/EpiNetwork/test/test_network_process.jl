@@ -217,7 +217,7 @@ end
     @testset "per-individual susceptibility and infectiousness apply" begin
         # Both multipliers thin the edge's hazard, folded into the
         # contact-interval draw as `S(t)^m`, rather than blocking each contact
-        # with probability `1 - m` as they do on the generation engine.
+        # with probability `1 - m`.
         n = 300
         ring = ring_adjacency(n, 2)
         build(attrs) = ModelSpec(
@@ -1414,8 +1414,7 @@ end
             ).cumulative_cases for s in 1:60
         ) / 60
 
-        # Tracing is honoured on the continuous-time path, so no warning and a
-        # real reduction on top of isolation alone.
+        # Tracing gives a real reduction on top of isolation alone.
         @test meansize([iso, ct]) < meansize([iso])
 
         # Contacts are actually marked, and a quarantined contact carries a
@@ -1438,13 +1437,11 @@ end
         )
         @test meansize([iso, late]) <= meansize([iso]) * 1.05
 
-        # Exposure-dependent eligibility is honoured too: a dose given to a
+        # Exposure-dependent eligibility applies too: a dose given to a
         # still-pending member is admitted as though the window were open,
         # and reconsidered once the race settles that member's own
         # infection, the same way a post-exposure dose already was.
-        model = build([iso]).process
         windowed = RingVaccination(efficacy = 0.8, eligibility_window = 21.0)
-        @test EpiBranch._sellke_honours(model, windowed)
         dosed_within_window = @test_logs min_level = Base.CoreLogging.Warn simulate(
             build([iso, ct, windowed]); n_initial = 1, rng = StableRNG(4)
         )
@@ -1462,27 +1459,23 @@ end
         # it to every member before it starts, without needing the contacts
         # the network does name.
         mv = MassVaccination(efficacy = 0.8, eligibility_time = 0.0)
-        @test EpiBranch._sellke_honours(model, mv)
         dosed = @test_logs min_level = Base.CoreLogging.Warn simulate(
             build([iso, ct, mv]); n_initial = 1, rng = StableRNG(4)
         )
         @test all(is_vaccinated, dosed.individuals)
 
         # Tracing and actions share the continuous-time candidate state. A
-        # post-exposure dose is honoured too: a contact traced while still
+        # post-exposure dose applies too: a contact traced while still
         # pending is dosed, and the dose is reconsidered against its own
         # exposure once its infection settles.
         pep = RingVaccination(efficacy = 0.0, post_exposure_efficacy = 0.8)
-        @test EpiBranch._sellke_honours(model, pep)
         dosed = @test_logs min_level = Base.CoreLogging.Warn simulate(
             build([iso, ct, pep]); n_initial = 1, rng = StableRNG(4)
         )
         @test any(is_vaccinated, dosed.individuals)
 
-        honoured = [iso, ct, RingVaccination(efficacy = 0.8)]
-        @test all(iv -> EpiBranch._sellke_honours(model, iv), honoured)
         @test_logs min_level = Base.CoreLogging.Warn simulate(
-            build(honoured);
+            build([iso, ct, RingVaccination(efficacy = 0.8)]);
             n_initial = 1, rng = StableRNG(4)
         )
     end
@@ -1528,6 +1521,41 @@ end
         st1 = simulate(depth1; initial_cases = [1], rng = StableRNG(1))
         @test is_traced(st1.individuals[2])
         @test !is_traced(st1.individuals[3])
+    end
+
+    @testset "ContactTracing reaches a neighbour infected before the traced case" begin
+        # Person 1 has no symptoms and infects person 2 before tracing from
+        # person 2 ever begins. By the time person 1 is discovered as person
+        # 2's neighbour, it is already a settled case. Person 4 is a
+        # neighbour of person 1 only, and the kernel from 1 to 4 is
+        # effectively infinite, so person 4 can never be infected. Reaching
+        # person 4 is entirely down to the depth-2 ring growing through
+        # person 1.
+        adjacency = [[2, 4], [1, 3], [2], [1]]
+        fast, never = Exponential(0.01), Exponential(1.0e9)
+        kernel = [[fast, never], [never, never], [never], [never]]
+        model = ModelSpec(
+            NetworkProcess(adjacency, kernel);
+            attributes = clinical_presentation(
+                incubation_period = Dirac(1.0),
+                prob_asymptomatic = (rng, ind) -> ind.id == 1 ? 1.0 : 0.0
+            ),
+            progression = [
+                Transition(:recovered; from = :infection, delay = 10.0, terminal = true),
+            ],
+            interventions = [
+                Isolation(onset_to_isolation_delay = Dirac(0.0), duration = Inf),
+                ContactTracing(
+                    OnSymptomOnset(), 1.0, Dirac(0.0), Quarantine(duration = Inf); depth = 2
+                ),
+            ]
+        )
+        st = simulate(model; initial_cases = [1], rng = StableRNG(1))
+        @test is_infected(st.individuals[1])
+        @test is_infected(st.individuals[2])
+        @test !is_infected(st.individuals[4])
+        @test is_traced(st.individuals[1])
+        @test is_traced(st.individuals[4])
     end
 
     @testset "Whether a ring member is interviewed again is the policy's call" begin
