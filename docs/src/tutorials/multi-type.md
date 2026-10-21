@@ -125,6 +125,17 @@ println("Simulated:  $(round(containment_probability(results), digits = 3))")
 The two agree up to simulation noise and the small chance that an outbreak
 passes 200 cases and would still have died out.
 
+Checking one type's own extinction probability this way would otherwise mean
+discarding every run that happened to start with a different type. The
+`index_types` keyword picks the index cases' types directly instead, so every
+run counts:
+
+```@example multitype
+elderly_results = simulate(model, 1000; max_cases = 200, index_types = [3], rng = StableRNG(1))
+println("Analytical (65+): $(round(q[3], digits = 3))")
+println("Simulated (65+):  $(round(containment_probability(elderly_results), digits = 3))")
+```
+
 ## Custom offspring function
 
 For full control over who infects whom, pass your own function in place of the

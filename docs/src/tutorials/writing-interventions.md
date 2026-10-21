@@ -178,9 +178,9 @@ In practice:
   actions once each case settles, narrowed to the case and the contacts it can
   still reach. One that chooses its own candidates, such as everyone not yet
   infected, writes a method of `EpiBranch.action_candidates`. Such actions
-  must work without knowing the infection time of a
-  contact not yet infected, and must not change a case already settled. That
-  narrowing needs a model that can name contacts, unless the intervention
+  must work without knowing the infection time of a contact not yet infected,
+  and must not change a case already settled. That narrowing needs a model
+  that can name contacts, unless the intervention
   declares `EpiBranch.needs_contacts(iv) = false`, as group vaccination does,
   since its candidates come from a case's group rather than its contacts. A
   branching process also offers such an intervention each contact as it is
@@ -501,9 +501,8 @@ Six built-in risks are always present:
   already been infected, until [`susceptible_again_time`](@ref) is in the
   past. It does nothing for a model whose `progression` never reaches
   `:susceptible_again`. A model that does gets a new, separately recorded
-  infection episode
-  (see [Individual state and reserved keys](@ref)) instead of a reinfection
-  overwriting the earlier one.
+  infection episode (see [Individual state and reserved keys](@ref)) instead
+  of a reinfection overwriting the earlier one.
 
 A susceptibility or infectiousness of `1.0` blocks nothing, and these risks have
 no effect unless a population characteristic sets a value below one. You can
@@ -516,9 +515,10 @@ fixed-population models apply the same two values as multipliers on the rate
 of transmission instead (see [Continuous-time models: further details](@ref)),
 so they do not decide them contact by contact. Of the remaining four,
 `InfectiousSource` never has anything to block on any model, since the race
-proposes only from cases that have settled and are infected by construction, and the end of
-an infectiousness window is enforced by the window closing rather than by
-`competing_risk`. `AbortedInfection` and `HostImmunity`, by contrast, are both
+proposes only from cases that have settled and are infected by construction,
+and the end of an infectiousness window is enforced by the window closing
+rather than by `competing_risk`. `AbortedInfection` and `HostImmunity`, by
+contrast, are both
 resolved through `competing_risk` there: a settled member can become a target
 again and is blocked by `HostImmunity` until their immunity has waned, exactly
 when the `progression` reaches `:susceptible_again`, with no change needed to
@@ -686,6 +686,16 @@ dose-label names.
 Every proposed recipient is known before admission, including group members
 found by searching a whole group. See [Intervention actions](@ref) for how to
 propose actions and the rules on timing.
+
+By default everyone draws on the same budget. Define
+`EpiBranch.resource_key(iv, individual, state)` to split it instead, returning
+whichever value identifies the group `individual` belongs to — a district, a
+treatment centre. Each distinct value gets its own budget, tracked under the
+same `budget_per_period`, `period`, `carry_over` and `priority`, independently
+of every other. It dispatches on the individual rather than a proposed action,
+so someone already served can be placed in their group again from their
+recorded state alone, with nothing of the original proposal kept around.
+`capacity_usage(cc, state, key)` reads one group's own usage.
 
 ## Requiring values on each person
 

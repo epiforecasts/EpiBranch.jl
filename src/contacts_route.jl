@@ -13,7 +13,7 @@
 # exposure, as in a branching process.
 
 # The race's members when a model creates people as it goes: everyone in the
-# state, numbered by id: a member's position is its id, and the population
+# state, numbered by id. A member's position is its id, and the population
 # grows by appending.
 mutable struct _Grown <: AbstractVector{Int}
     n::Int
