@@ -162,6 +162,80 @@ function ChainSizes(; membership::AbstractVector{<:Integer}, singletons::Integer
 end
 
 """
+    ChainSizeClasses(lower, upper, counts)
+
+Observed chain sizes recorded only in size classes: `counts[i]` chains had a
+size between `lower[i]` and `upper[i]` cases, inclusive. Use `Inf` as `upper`
+for the top class to mean "or more". Passing this to `loglikelihood` with an
+offspring distribution or any chain-size law gives the exact likelihood of
+the classes,
+
+    Σᵢ counts[i] log P(lower[i] ≤ X ≤ upper[i])
+
+instead of the likelihood of exact sizes invented to stand in for them.
+
+# Examples
+
+```julia
+# 120 isolated cases, 40 chains of 2-9 cases, 5 chains of 10 or more
+data = ChainSizeClasses([1, 2, 10], [1, 9, Inf], [120, 40, 5])
+loglikelihood(data, NegBin(0.5, 0.3))
+```
+"""
+struct ChainSizeClasses
+    lower::Vector{Int}
+    upper::Vector{Float64}
+    counts::Vector{Int}
+    function ChainSizeClasses(
+            lower::AbstractVector{<:Integer}, upper::AbstractVector{<:Real},
+            counts::AbstractVector{<:Integer}
+        )
+        isempty(lower) && throw(ArgumentError("lower must be non-empty"))
+        length(upper) == length(lower) ||
+            throw(ArgumentError("upper must have the same length as lower"))
+        length(counts) == length(lower) ||
+            throw(ArgumentError("counts must have the same length as lower"))
+        all(x -> x >= 1, lower) || throw(ArgumentError("lower bounds must be ≥ 1"))
+        all(x -> x >= 0, counts) || throw(ArgumentError("counts must be non-negative"))
+        all(l <= u for (l, u) in zip(lower, upper)) ||
+            throw(ArgumentError("each upper bound must be ≥ its lower bound"))
+        all(u -> isinf(u) || isinteger(u), upper) ||
+            throw(ArgumentError("upper bounds must be integers or Inf"))
+        order = sortperm(lower)
+        all(
+            lower[order[i + 1]] > upper[order[i]] for i in 1:(length(order) - 1)
+        ) || throw(ArgumentError("classes must not overlap"))
+        return new(
+            convert(Vector{Int}, lower), convert(Vector{Float64}, upper),
+            convert(Vector{Int}, counts)
+        )
+    end
+end
+
+"""
+    ChainSizeClasses(data)
+
+One class per distinct value in `data`: a compact form of exact chain sizes,
+with the same likelihood as `ChainSizes(data)` (one seed per chain) but
+evaluating each distinct size once rather than each chain individually. This
+is faster for large datasets with many repeated sizes.
+
+# Examples
+
+```julia
+data = ChainSizeClasses([1, 1, 3, 1, 5])
+loglikelihood(data, NegBin(0.8, 0.5))
+```
+"""
+function ChainSizeClasses(data::AbstractVector{<:Integer})
+    isempty(data) && throw(ArgumentError("data must be non-empty"))
+    all(x -> x >= 1, data) || throw(ArgumentError("chain sizes must be ≥ 1"))
+    sizes = sort(unique(data))
+    counts = [count(==(s), data) for s in sizes]
+    return ChainSizeClasses(sizes, sizes, counts)
+end
+
+"""
     ChainLengths(data)
 
 Observed chain lengths: the number of generations of onward transmission in

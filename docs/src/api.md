@@ -362,6 +362,7 @@ contact networks are fitted by a pairwise survival likelihood.
 ```@docs
 OffspringCounts
 ChainSizes
+ChainSizeClasses
 ChainLengths
 IncidenceCounts
 ```
@@ -375,6 +376,7 @@ estimated by maximum likelihood or in a Bayesian model:
 loglikelihood(OffspringCounts(data), Poisson(0.5))
 loglikelihood(OffspringCounts(data), NegBin.(μ, 0.5))  # one distribution per case
 loglikelihood(ChainSizes(data), NegBin(0.8, 0.5))
+loglikelihood(ChainSizeClasses(lower, upper, counts), NegBin(0.8, 0.5))
 loglikelihood(ChainLengths(data), Poisson(0.5))
 loglikelihood(ChainSizes(data), model)   # interventions/observation read from model
 loglikelihood(IncidenceCounts(data), NegBin(0.8, 0.5), LogNormal(1.6, 0.5))
@@ -431,10 +433,12 @@ ObservationModel
 NoObservation
 PerCaseObservation
 MinimumSize
+ChainDetection
 observe
 ChainSizeLaw
 ThinnedChainSize
 TruncatedChainSize
+DetectedChainSize
 ```
 
 ### Reproduction number varying between chains

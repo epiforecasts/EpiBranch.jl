@@ -748,8 +748,7 @@ creates new people inside its [`contacts_of`](@ref) calls it directly,
 returning each contact with its infection time. A model whose contacts are
 all new and share one generation time is simpler written as
 `generate_offspring`; `contacts_of` earns its keep where the model times each
-contact itself, as here, where every route
-out of a case has its own delay:
+contact itself, as here, where every route out of a case has its own delay:
 
 ```julia
 function EpiBranch.contacts_of(m::MyModel, parent, state::SimulationState)
@@ -934,8 +933,8 @@ built in or written against [`contacts_of`](@ref), applies it to every settled
 member once its `progression` can reach `:susceptible_again`, with no change
 needed to how it names contacts. A model allows reinfection by adding a step
 to its `progression` that sets `:susceptible_again_time`; the earlier
-infection is then kept as a past
-episode (see [`close_episode!`](@ref)) when the person is reinfected."""
+infection is then kept as a past episode (see [`close_episode!`](@ref)) when
+the person is reinfected."""
 struct HostImmunity end
 function competing_risk(::HostImmunity, parent, contact, state)
     is_infected(contact) || return nothing
