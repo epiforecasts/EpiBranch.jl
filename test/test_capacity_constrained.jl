@@ -230,6 +230,40 @@ end
         @test capacity_usage(cc, state).used == 1
     end
 
+    @testset "A resource_key splits isolation's budget per group" begin
+        EpiBranch.resource_key(::Isolation, individual, state) =
+            individual.state[:district]
+        iso = Isolation(onset_to_isolation_delay = Dirac(0.0), duration = Inf)
+        cc = CapacityConstrained(iso; budget_per_period = 1.0)
+        state = EpiBranch.new_state(
+            BranchingProcess(Poisson(1.0), Exponential(5.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1)
+        )
+        a = Individual(
+            id = 1,
+            state = Dict{Symbol, Any}(
+                :district => :A, :test_positive => true, :onset_time => 1.0,
+                :asymptomatic => false
+            )
+        )
+        b = Individual(
+            id = 2,
+            state = Dict{Symbol, Any}(
+                :district => :B, :test_positive => true, :onset_time => 1.0,
+                :asymptomatic => false
+            )
+        )
+        append!(state.individuals, [a, b])
+
+        EpiBranch.resolve_individual!(cc, b, state)
+        EpiBranch.resolve_individual!(cc, a, state)
+
+        @test is_isolated(a)
+        @test is_isolated(b)
+        @test capacity_usage(cc, state, :A).used == 1
+        @test capacity_usage(cc, state, :B).used == 1
+    end
+
     @testset "Rations a quarantine, leaving the trace itself unrationed" begin
         ct = ContactTracing(TraceEveryone(), 1.0, Dirac(0.0), Quarantine(duration = Inf))
         cc = CapacityConstrained(ct; budget_per_period = 1.0)

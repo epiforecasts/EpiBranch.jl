@@ -419,17 +419,19 @@ function resolve_individual!(cc::CapacityConstrained, ind, state)
     return nothing
 end
 
-# As `_dose_times`, but leaving out `excluded`'s own record: used to judge
-# whether admitting the effect `resolve_individual!` just wrote on `excluded`
-# keeps every period within budget, which must not count that same use
-# twice.
+# As `_dose_times`, but restricted to `excluded`'s own `resource_key` group
+# and leaving out `excluded`'s own record: used to judge whether admitting
+# the effect `resolve_individual!` just wrote on `excluded` keeps every
+# period within budget, which must not count that same use twice.
 function _dose_times(cc::CapacityConstrained, state, excluded::Individual)
     key = capacity_key(cc.intervention)
     time_key = capacity_time_key(cc.intervention)
+    resource = resource_key(cc.intervention, excluded, state)
     times = Float64[]
     for ind in state.individuals
         ind.id == excluded.id && continue
         get(ind.state, key, false) || continue
+        resource_key(cc.intervention, ind, state) == resource || continue
         push!(times, get(ind.state, time_key, -Inf))
     end
     sort!(times)
