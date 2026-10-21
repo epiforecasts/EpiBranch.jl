@@ -10,13 +10,6 @@ function EpiBranch.resolve_individual!(::RecordKernelClock, ind, state)
     return nothing
 end
 
-# A kernel type that always asks for one shared race, regardless of what it
-# watches: the point of `race_groups` being dispatched on the kernel is that a
-# process does not have to be told this through `watched_records` alone.
-struct _AlwaysSharedKernel end
-EpiBranch.race_groups(m::HouseholdProcess, ::_AlwaysSharedKernel) =
-    (collect(eachindex(m.household_of)),)
-
 @testset "Live kernels share one household clock" begin
     kernel = PairKernel(
         (c, a, b) -> Exponential(1.0);
@@ -45,7 +38,8 @@ end
     # slow one: its index also at t = 0, its second case at t = 10. The real
     # 4th case (one of household 1's three t = 1 infections) has not happened
     # when household 2's index case resolves at t = 0. `start_after_cases = 4`
-    # must not yet be satisfied for it, whichever household races first.
+    # must not yet be satisfied for it, although household 2's case is seeded
+    # as early as household 1's.
     clinical = clinical_presentation(incubation_period = Dirac(0.0))
     iso = Scheduled(
         Isolation(onset_to_isolation_delay = Dirac(0.0), duration = Inf);
@@ -62,10 +56,9 @@ end
     @test !is_isolated(state.individuals[5])
 end
 
-@testset "A kernel watching no record keeps separate household races" begin
-    # A projection reading no state key has nothing that can move, so neither
-    # redrawing nor a shared clock is needed and the run must match an ordinary
-    # kernel exactly.
+@testset "A kernel watching no record matches an ordinary kernel" begin
+    # A projection reading no state key has nothing that can move, so no
+    # contact is redrawn and the run must match an ordinary kernel exactly.
     scales = fill(2.0, 7)
     by_id(ind) = (scale = scales[ind.id],)
     progression = [Transition(:recovered; delay = 4.0, terminal = true)]
@@ -86,65 +79,24 @@ end
     end
 end
 
-@testset "A watched record puts every household on one clock" begin
-    # Declaring a record is what asks for the shared clock, whether or not an
-    # intervention is the thing that moves it: an attribute builder or a
-    # transition can move one too. One clock seeds and races the households
-    # together, so the stream differs from the separate-clock run while the
-    # outbreak stays the same distribution.
-    project(ind) = (tag = get(ind.state, :tag, 0.0)::Float64,)
-    progression = [Transition(:recovered; delay = 4.0, terminal = true)]
-    household_run(watches, seed) = simulate(
-        ModelSpec(
-            HouseholdProcess(
-                [2, 3, 2],
-                PairKernel(
-                    (c, a, b) -> Exponential(2.0); state = project, watches = watches
-                ); external_hazard = 0.1, obs_end = 10.0
-            );
-            progression = progression
-        );
-        rng = StableRNG(seed)
-    )
-    times(state) = [i.infection_time for i in state.individuals]
-    @test any(
-        !isequal(times(household_run((:tag,), seed)), times(household_run((), seed)))
-            for seed in 1:5
-    )
-    means = map(((:tag,), ())) do watches
-        mean(household_run(watches, seed).cumulative_cases for seed in 1:400)
-    end
-    @test isapprox(means[1], means[2]; atol = 0.25)
-end
-
-@testset "race_groups is a dispatched seam" begin
-    model = HouseholdProcess([2, 3, 2], Exponential(2.0))
-    idle = PairKernel((c, a, b) -> Exponential(1.0); state = ind -> (;), watches = ())
-    live = PairKernel(
-        (c, a, b) -> Exponential(1.0); state = ind -> (tag = 0,), watches = (:tag,)
-    )
-    @test EpiBranch.race_groups(model, idle) == model.members
-    @test EpiBranch.race_groups(model, live) == (collect(1:7),)
-    # A kernel type can pick a different partition outright, which is what lets
-    # a process replace the choice rather than have it decided inline.
-    @test EpiBranch.race_groups(model, _AlwaysSharedKernel()) == (collect(1:7),)
-end
-
-# A kernel type whose `race_groups` merges some, but not all, households into
-# one race: households 1 and 2 (members 1-4) share a clock, household 3
-# (members 5-6) does not.
-struct _MergeTwoHouseholds{K}
-    kernel::K
-end
-EpiBranch.pair_kernel(k::_MergeTwoHouseholds, i, j, infection_time) = k.kernel
-EpiBranch.race_groups(m::HouseholdProcess, ::_MergeTwoHouseholds) = ([1, 2, 3, 4], [5, 6])
-
-@testset "A race merging only some households still seeds every household" begin
-    model = HouseholdProcess([2, 2, 2], _MergeTwoHouseholds(Exponential(2.0)))
+@testset "Every household is seeded with its own index case" begin
+    model = HouseholdProcess([2, 2, 2], Exponential(2.0))
     for seed in 1:20
         state = simulate(model; rng = StableRNG(seed))
-        @test count(i -> get(i.state, :index, false), state.individuals[1:2]) == 1
-        @test count(i -> get(i.state, :index, false), state.individuals[3:4]) == 1
-        @test count(i -> get(i.state, :index, false), state.individuals[5:6]) == 1
+        for members in ((1, 2), (3, 4), (5, 6))
+            @test count(i -> get(i.state, :index, false), state.individuals[[members...]]) == 1
+        end
     end
+end
+
+@testset "Households are seeded in household order" begin
+    # Each household's index case is the next draw from the stream, taken in
+    # household order, so a seed gives the same outbreak on every Julia version.
+    state = simulate(HouseholdProcess(fill(3, 20), Exponential(2.0)); rng = StableRNG(3))
+    index = [
+        findfirst(i -> get(i.state, :index, false), state.individuals[(3h - 2):3h])
+            for h in 1:20
+    ]
+    rng = StableRNG(3)
+    @test index == [rand(rng, 1:3) for _ in 1:20]
 end

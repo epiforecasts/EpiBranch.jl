@@ -94,6 +94,25 @@ end
     @test EpiBranch._timetype(state) === Float64
 end
 
+struct MintRiskModel <: EpiBranch.TransmissionModel
+    k::Int
+end
+EpiBranch.population_size(::MintRiskModel) = EpiBranch.NoPopulation()
+EpiBranch.contacts_of(m::MintRiskModel, parent, state::EpiBranch.SimulationState) =
+    EpiBranch.contacts_of(MintModel(m.k), parent, state)
+EpiBranch.transmission_risks(::MintRiskModel) = (RingRisk(0.5),)
+
+@testset "A blocked contact a model creates is listed once" begin
+    spec = ModelSpec(MintRiskModel(2); recorder = ExposedContactRecorder())
+    state = simulate(
+        spec; n_initial = 1, rng = StableRNG(1),
+        stopping_rules = [Extinction(), MaxGenerations(4)]
+    )
+    pairs = contacts(state)
+    @test any(!, pairs.infected)
+    @test allunique(zip(pairs.from, pairs.to))
+end
+
 # A pool of pre-created nodes, each parent reaching random members, so a node
 # can be exposed, escape, and be exposed again by a later case. That is
 # the path on which a post-exposure abort drawn for one exposure could outlive
@@ -354,6 +373,30 @@ end
         @test is_traced(s.individuals[2]) && !is_infected(s.individuals[2])
         @test is_traced(s.individuals[3]) == reached
     end
+end
+
+# A model that says how many contacts each case makes, with and without saying
+# the count reads nothing settling writes.
+struct CountLate <: EpiBranch.TransmissionModel end
+struct CountEarly <: EpiBranch.TransmissionModel end
+const _CountModel = Union{CountLate, CountEarly}
+EpiBranch.reads_settled_state(::CountEarly) = false
+EpiBranch.population_size(::_CountModel) = EpiBranch.NoPopulation()
+EpiBranch.model_generation_time(::_CountModel) = Gamma(2.0, 2.0)
+EpiBranch.generate_offspring(::_CountModel, parent, state) = rand(state.rng, Poisson(2.0))
+
+@testset "A model that counts its contacts can let a ring grow early" begin
+    ct = ContactTracing(OnIsolation(), 0.8, Exponential(0.5), Quarantine(duration = Inf); depth = 2)
+    iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
+    attributes = clinical_presentation(incubation_period = Gamma(3.0, 1.0))
+    run(model, seed) = simulate(
+        ModelSpec(model; interventions = [iso, ct], attributes);
+        max_cases = 200, rng = StableRNG(seed)
+    )
+    sizes(model) = [length(run(model, seed).individuals) for seed in 1:50]
+    bp = sizes(BranchingProcess(Poisson(2.0), Gamma(2.0, 2.0)))
+    @test sizes(CountEarly()) == bp
+    @test sizes(CountLate()) != bp
 end
 
 # `MintModel` that says its `contacts_of` reads nothing settling writes.
