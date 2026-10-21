@@ -282,8 +282,16 @@ function _discovers_actions(cc::CapacityConstrained)
 end
 # Asked for its actions on every settled case even when the intervention it
 # wraps proposes none, so that wrapping one with nothing to ration fails when
-# the run starts rather than going unrationed (see `intervention_actions`).
-_proposes_actions(cc::CapacityConstrained) = !acts_on_population(cc)
+# the run starts rather than going unrationed (see `intervention_actions`) —
+# unless it instead rations through `resolve_individual!` and `reset!`, as
+# `Isolation` does (`_resolves_under_capacity`): that seam needs no candidates
+# or contacts, so routing it through the action funnel too would only cost a
+# contactless model (`HomogeneousProcess`, `MixingProcess`) a spurious warning
+# that it has nothing for `Isolation` to act on.
+function _proposes_actions(cc::CapacityConstrained)
+    acts_on_population(cc) && return false
+    return !_resolves_under_capacity(cc.intervention)
+end
 
 """
     capacity_usage(cc::CapacityConstrained, state::SimulationState) -> (used, available)

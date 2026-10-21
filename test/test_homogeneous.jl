@@ -368,6 +368,13 @@ end
                 );
                 start_time = 1.0
             ),
+            # Rations through `resolve_individual!` and `reset!`, needing no
+            # candidates or contacts: must not be mistaken for an action
+            # producer either, the same as `cc_scheduled` above.
+            CapacityConstrained(
+                Isolation(onset_to_isolation_delay = Exponential(0.5), duration = Inf);
+                budget_per_period = 1.0
+            ),
         ]
         @test_logs min_level = Base.CoreLogging.Warn simulate(
             ModelSpec(
