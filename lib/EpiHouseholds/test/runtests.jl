@@ -528,8 +528,8 @@ struct _MaskLessRule <: EpiHouseholds.ConditionOn end
 
     @testset "the community hazard can differ by person, as between trial arms" begin
         # two arms of 100 households each, as a trial comparing an unprotected
-        # control arm against a community intervention's indirect effect might
-        # have: arm two's (control) community hazard is five times arm one's
+        # control arm against the indirect effect of a community intervention
+        # might have: arm two's (control) community hazard is five times arm one's
         n_arm = 100
         rate1, rate2 = 0.01, 0.05
         sizes = fill(4, 2n_arm)

@@ -117,7 +117,7 @@ function _rand_chain_size_setup(model::TransmissionModel, sim_kwargs::NamedTuple
     _warn_incomplete_terminal_coverage(_progression(model))
     sim_opts = _build_sim_opts(
         model, get(sim_kwargs, :n_initial, nothing),
-        get(sim_kwargs, :initial_cases, nothing),
+        get(sim_kwargs, :initial_cases, nothing), nothing,
         get(sim_kwargs, :max_cases, _DEFAULT_MAX_CASES),
         get(sim_kwargs, :max_generations, _DEFAULT_MAX_GENERATIONS),
         get(sim_kwargs, :max_time, nothing), get(sim_kwargs, :stopping_rules, nothing)
@@ -135,7 +135,7 @@ function _rand_chain_size_setup(spec::ModelSpec, sim_kwargs::NamedTuple)
     _warn_contactless(spec.process, spec.interventions)
     sim_opts = _build_sim_opts(
         spec.process, get(sim_kwargs, :n_initial, nothing),
-        get(sim_kwargs, :initial_cases, nothing),
+        get(sim_kwargs, :initial_cases, nothing), nothing,
         get(sim_kwargs, :max_cases, _DEFAULT_MAX_CASES),
         get(sim_kwargs, :max_generations, _DEFAULT_MAX_GENERATIONS),
         get(sim_kwargs, :max_time, nothing), get(sim_kwargs, :stopping_rules, nothing)
