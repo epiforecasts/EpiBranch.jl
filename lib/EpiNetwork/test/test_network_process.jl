@@ -926,9 +926,9 @@ end
     end
 
     @testset "RoutedNetwork: a self-proposing route traces every case end to end" begin
-        # Each case's own proposals, read back for tracing, are what a
-        # simulated run with `ContactTracing` reaches: tracing a just-settled
-        # case must not depend on a route having already opened for it.
+        # A simulated run with `ContactTracing` reads back each case's own
+        # proposals for tracing, so tracing a just-settled case must not
+        # depend on a route having already opened for it.
         route = _EveryoneElse(1000.0, 20)
         w = RouteWindow(:community; until = (:recovered,), kernel = nothing, reach = route)
         m = RoutedNetwork([w]; n = 20)

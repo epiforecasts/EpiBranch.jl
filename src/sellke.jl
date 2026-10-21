@@ -1348,17 +1348,18 @@ function _sellke_race!(
         # Unrolled over `rts` rather than looped over (see `_mint_all!`), for
         # the reason given there.
         _mint_all!(rts, race, ind, max_generation)
-        # `_settle_case!` has already resolved this case's own traits, so this
-        # is read ahead of the self-proposing routes opened next, which need
-        # it just as much as the routes opened below do.
+        # `_settle_case!` has already resolved this case's own traits, read
+        # here ahead of the self-proposing routes opened next; they need the
+        # traits just as much as the routes opened below do.
         traits |= ind.susceptibility != 1 || ind.infectiousness != 1
         # A route that proposes its own contacts (`proposes_own_contacts`) has
-        # nothing for tracing to read until it is opened, so it opens here,
-        # before tracing, rather than with the rest below: tracing then reads
+        # nothing for tracing to read until it opens. It therefore opens here,
+        # before tracing, rather than with the rest below, so tracing reads
         # back the same proposals this case's own transmission will use. Such
-        # a route never watches host records (`_propose_along!` refuses a
-        # live one), so opening it ahead of this case's own actions costs it
-        # nothing the later routes below still need from them.
+        # a route never watches host records (`_propose_along!` refuses a live
+        # one), so opening it ahead of this case's own actions does not take
+        # from the later routes below anything they still need from those
+        # records.
         capped_generation = _open_routes!(
             rts,
             (;
