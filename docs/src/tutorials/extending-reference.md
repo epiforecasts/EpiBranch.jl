@@ -813,20 +813,21 @@ returns `nothing` before delivery. The default is `false`, for risks that apply
 only while the scheduled policy is active. `Scheduled` and
 `CapacityConstrained` pass this declaration on from the intervention they hold.
 
-`ContactTracing` follows up a contact this same way: `trace_contacts!` records
-who was reached and from when directly, since ring growth and later
-eligibility checks need that before any action is admitted, and proposes the
+`ContactTracing` follows up a contact this same way. `trace_contacts!` records
+who was reached and from when directly, because ring growth and later
+eligibility checks need that before any action is admitted, then proposes the
 follow-up itself (a quarantine's removal, or a plain flag) as an
 `InterventionAction` dated at the trace time. A `CapacityConstrained` wrapper
 rations that action exactly as it rations a dose, through `capacity_key` and
 `capacity_time_key` defined on the `TraceAction` the policy carries
 (`Quarantine` defines them; `FlagOnly`, which removes nobody, does not). A
 trace with no arrival time (`Inf`) has nothing to ration and applies directly.
-`Isolation` instead writes its effect straight into `resolve_individual!`, so
-a `CapacityConstrained` wrapping it has nothing to admit: it checks the budget
-itself, right after `resolve_individual!` runs, through `intervention_time`
-and `reset!`, the same seam `Scheduled` already uses for an intervention with
-no actions of its own.
+
+`Isolation` instead writes its effect straight into `resolve_individual!`. A
+`CapacityConstrained` wrapping it therefore has nothing to admit: it checks
+the budget itself, right after `resolve_individual!` runs, through
+`intervention_time` and `reset!`, the same seam `Scheduled` already uses for
+an intervention with no actions of its own.
 
 Use `EpiBranch.action_draw!(sample, individual, key)` to keep a delay or
 acceptance draw when the same action is proposed again. Keys identify an action
