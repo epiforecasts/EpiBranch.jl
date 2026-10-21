@@ -159,7 +159,7 @@ end
     loglikelihood(data::HouseholdFinalStatuses, model::ModelSpec{<:HouseholdProcess};
                   susceptibility = 1.0, infectiousness = 1.0) -> Float64
 
-Log-likelihood of a household study's final statuses — who in each household
+Log-likelihood of the final statuses from a household study — who in each household
 was ever infected by the end of follow-up, with `missing` for anyone not
 followed up — under `model`'s community hazard and within-household kernel,
 with no infection times observed at all.
