@@ -275,6 +275,17 @@
 
             @test_throws ArgumentError ChainDetection(0.0)
             @test_throws ArgumentError ChainDetection(1.5)
+
+            # A rule with two or more consecutive zeros at the start of
+            # `base`'s support must not poison the streaming log-sum-exp
+            # with a -Inf − -Inf term.
+            d_threshold = observe(base, ChainDetection(n -> n < 3 ? 0.0 : 1.0))
+            @test isfinite(d_threshold.log_prob_recorded)
+            @test pdf(d_threshold, 1) == 0.0
+            @test pdf(d_threshold, 2) == 0.0
+            unnormalised_threshold = n -> n < 3 ? 0.0 : pdf(base, n)
+            manual_threshold = unnormalised_threshold(3) / sum(unnormalised_threshold, 1:10_000)
+            @test pdf(d_threshold, 3) ≈ manual_threshold atol = 1.0e-8
         end
     end
 

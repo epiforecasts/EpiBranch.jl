@@ -156,7 +156,7 @@ function _streaming_logsumexp(
         if x > m
             S = 1.0 + S * exp(m - x)
             m = x
-        else
+        elseif isfinite(x - m)
             S += exp(x - m)
         end
         cur = m + log(S)
