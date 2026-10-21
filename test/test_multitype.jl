@@ -318,6 +318,26 @@ using DataFrames
         end
     end
 
+    @testset "Attributes see a case's own type, index cases and contacts alike" begin
+        # Each contact's type comes from its parent's offspring draw, and each
+        # index case's type is drawn independently. Both must be set before
+        # an attributes function runs: it must never see the type-1 default
+        # every new `IndividualState` starts with.
+        function record_type_when_drawn!(rng, ind)
+            ind.state[:type_when_drawn] = individual_type(ind)
+            return nothing
+        end
+        model = ModelSpec(
+            BranchingProcess([0.0 1.5; 1.5 0.0], R -> Poisson(R), Exponential(1.0));
+            attributes = record_type_when_drawn!
+        )
+        state = simulate(model; n_initial = 4, max_cases = 200, rng = Xoshiro(1))
+        @test all(
+            ind.state[:type_when_drawn] == individual_type(ind)
+                for ind in state.individuals
+        )
+    end
+
     @testset "index_types chooses the index cases' types" begin
         M = [
             1.2 0.0;

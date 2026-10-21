@@ -555,9 +555,9 @@ known by then.
 A model written against `generate_offspring` or `contacts_of` waits the same
 way, unless it declares that its count, or its `contacts_of`, reads nothing
 settling writes (see [`EpiBranch.reads_settled_state`](@ref)). A
-`generate_offspring` model that declares it has its count drawn when the ring
-reaches a person, as on a [`BranchingProcess`](@ref) with a `Distribution` of
-offspring.
+`generate_offspring` model that declares this draws its count as soon as the
+ring reaches a person, the way a [`BranchingProcess`](@ref) with a
+`Distribution` of offspring does.
 
 [`ContactTracing`](@ref) with `depth > 1` is the built-in intervention that
 uses this: it grows the ring from its members until the ring's depth is
