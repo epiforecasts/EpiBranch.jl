@@ -177,6 +177,61 @@ function _logsumexp2(a, b)
     return m + log(exp(a - m) + exp(b - m))
 end
 
+"""
+    loglikelihood(data::ChainSizeClasses, offspring::Distribution)
+    loglikelihood(data::ChainSizeClasses, d::ChainSizeLaw)
+
+Log-likelihood of chain sizes recorded in classes
+([`ChainSizeClasses`](@ref)): `Σᵢ counts[i] log P(lower[i] ≤ X ≤ upper[i])`
+under the chain-size distribution of `offspring`, or directly under any
+[`ChainSizeLaw`](@ref) `d`, such as a [`TruncatedChainSize`](@ref) or
+[`ThinnedChainSize`](@ref).
+
+# Examples
+
+```julia
+data = ChainSizeClasses([1, 2, 10], [1, 9, Inf], [120, 40, 5])
+loglikelihood(data, NegBin(0.5, 0.3))
+```
+"""
+function loglikelihood(data::ChainSizeClasses, offspring::Distribution)
+    dist = chain_size_distribution(offspring)
+    return _chain_size_classes_loglik(dist, data)
+end
+
+function loglikelihood(data::ChainSizeClasses, d::ChainSizeLaw)
+    return _chain_size_classes_loglik(d, data)
+end
+
+"""
+    _chain_size_class_logprob(dist, lower, upper)
+
+Internal: `log P(lower ≤ X ≤ upper)` under the chain-size law `dist`, as the
+log of the sum of its PMF over the class (or, for `upper == Inf`, the
+right-tail log-probability already used by [`_chain_size_right_tail_logprob`](@ref)).
+"""
+function _chain_size_class_logprob(dist, lower::Integer, upper::Real)
+    isinf(upper) && return _chain_size_right_tail_logprob(dist, lower, 1)
+    p = sum(pdf(dist, j) for j in lower:Int(upper))
+    return p > 0 ? log(p) : oftype(p, -Inf)
+end
+
+"""
+    _chain_size_classes_loglik(dist, data::ChainSizeClasses)
+
+Sum over classes of `counts[i] * log P(lower[i] ≤ X ≤ upper[i])` under the
+chain-size law `dist`.
+"""
+function _chain_size_classes_loglik(dist, data::ChainSizeClasses)
+    first_val = _chain_size_class_logprob(dist, data.lower[1], data.upper[1])
+    total = zero(first_val)
+    for i in eachindex(data.lower)
+        lp = _chain_size_class_logprob(dist, data.lower[i], data.upper[i])
+        total += data.counts[i] == 0 ? zero(lp) : data.counts[i] * lp
+    end
+    return total
+end
+
 # AD-compatible chain length: Poisson — PGF iteration on G(s) = exp(λ(s − 1)).
 """
     loglikelihood(data::ChainLengths, offspring::Poisson; n_initial = 1)

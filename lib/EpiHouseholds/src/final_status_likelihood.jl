@@ -120,8 +120,8 @@ function _household_final_status_loglik(
     # alone, every one of them ends up infected, whether seeded by the
     # community or by each other. Exactly one proper submask `c` of `mask` is
     # the set actually reached that way, with the rest of `mask` escaping both
-    # the community and every contact from `c` — a partition of probability
-    # that fixes `H[mask]` from the `H[c]` of its own (already known) subsets.
+    # the community and every contact from `c`. That partition of probability
+    # fixes `H[mask]` from the already known `H[c]` of its own subsets.
     H = Vector{Float64}(undef, full + 1)
     H[1] = 1.0
     for mask in 1:full
@@ -159,10 +159,10 @@ end
     loglikelihood(data::HouseholdFinalStatuses, model::ModelSpec{<:HouseholdProcess};
                   susceptibility = 1.0, infectiousness = 1.0) -> Float64
 
-Log-likelihood of the final statuses from a household study — who in each household
-was ever infected by the end of follow-up, with `missing` for anyone not
-followed up — under `model`'s community hazard and within-household kernel,
-with no infection times observed at all.
+Log-likelihood of a household study's final statuses, under `model`'s
+community hazard and within-household kernel, with no infection times
+observed at all: who in each household was ever infected by the end of
+follow-up, with `missing` for anyone not followed up.
 
 `data.status` holds one entry per person, in the same order as `model`'s
 members (as `household_of` numbers them): `true` for someone infected by the
@@ -183,7 +183,7 @@ from its own population in simulation.
 one, nothing seeds a household's outbreak at all, since every household here
 starts from scratch rather than from a fixed set of index cases.
 
-# How it is calculated
+# Calculation
 
 A community contact reaches each susceptible independently over `obs_end`,
 and an infectious case's contact with each household-mate over the window
