@@ -1,3 +1,15 @@
+# Records the name of every route `risk_applies` is asked about, so a test
+# can check which named windows a model's routes reach it as.
+struct _SeenRoutes <: EpiBranch.AbstractIntervention
+    seen::Vector{Symbol}
+end
+function EpiBranch.risk_applies(iv::_SeenRoutes, route)
+    route === nothing || push!(iv.seen, route.name)
+    return true
+end
+# Acts only through `risk_applies`, which `ModelSpec`'s check does not scan.
+EpiBranch.has_effect(::_SeenRoutes) = true
+
 @testset "Infectiousness windows" begin
     @testset "explicit single window holds offspring + kernel" begin
         m = BranchingProcess(Infectiousness(NegBin(2.5, 0.16); kernel = LogNormal(1.6, 0.5)))
@@ -5,6 +17,22 @@
         @test m.infectiousness[1].from == :infection
         @test single_type_offspring(m) isa NegativeBinomial
         @test m.infectiousness[1].kernel isa LogNormal
+        @test m.infectiousness[1].name === :transmission
+    end
+
+    @testset "a named window reaches risk_applies by that name" begin
+        # `risk_applies` could not previously tell the two windows apart: both
+        # reached the race as a `RouteWindow` named `:transmission`. Naming
+        # them lets an intervention select one and leave the other alone.
+        household = Infectiousness(Poisson(1.0); kernel = Uniform(0, 5), name = :household)
+        community = Infectiousness(Poisson(2.0); kernel = Uniform(0, 5), name = :community)
+        model = BranchingProcess(household, community)
+        seen = _SeenRoutes(Symbol[])
+        simulate(
+            ModelSpec(model; interventions = [seen]);
+            max_generations = 1, rng = StableRNG(1)
+        )
+        @test Set(seen.seen) == Set([:household, :community])
     end
 
     @testset "from-state offsets the generation interval" begin

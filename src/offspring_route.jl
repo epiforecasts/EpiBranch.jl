@@ -157,10 +157,11 @@ end
 
 # The window the race closes this route on: the window's own `until` states,
 # and removal by an intervention, which a branching process applies on every
-# route.
+# route unless an intervention's `risk_applies` narrows that to the window's
+# own `name` (see `OnRoutes`).
 function _offspring_window(w::Infectiousness)
     return RouteWindow(
-        :transmission; until = (w.until..., INTERVENTION_REMOVAL), kernel = nothing
+        w.name; until = (w.until..., INTERVENTION_REMOVAL), kernel = nothing
     )
 end
 

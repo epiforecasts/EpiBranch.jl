@@ -1,7 +1,7 @@
 include(joinpath(@__DIR__, "..", "..", "..", "test", "testutils", "continuous_actions.jl"))
 test_continuous_vaccine_actions(k -> HouseholdProcess([4], k))
 
-@testset "Capacity across separate household races" begin
+@testset "Capacity shared across households" begin
     process = HouseholdProcess([3, 3], (i, j) -> Dirac(2.0))
     clinical = clinical_presentation(incubation_period = Dirac(0.0))
     iso = Isolation(
@@ -33,8 +33,8 @@ test_continuous_vaccine_actions(k -> HouseholdProcess([4], k))
                 ),
             )
 
-        # A periodic budget is shared across households. The one clock a
-        # `CapacityConstrained` asks for makes its admission chronological.
+        # A periodic budget is shared across households, and the one clock
+        # they share makes its admission chronological.
         state = simulate(build(process, wrap(rv)); rng = StableRNG(32))
         @test count(is_vaccinated, state.individuals) >= 1
         state = simulate(build(HouseholdProcess([3], (i, j) -> Dirac(2.0)), wrap(rv)); rng = StableRNG(32))
@@ -51,8 +51,7 @@ test_continuous_vaccine_actions(k -> HouseholdProcess([4], k))
         budget_per_period = 1.0
     )
     # A periodic budget nested inside a lifetime one is admitted for the same
-    # reason. The inner `CapacityConstrained` asks for the one clock; the outer
-    # budget caps what the inner one lets through.
+    # reason; the outer budget caps what the inner one lets through.
     state = simulate(build(process, nested); rng = StableRNG(32))
     @test count(is_vaccinated, state.individuals) == 1
 end

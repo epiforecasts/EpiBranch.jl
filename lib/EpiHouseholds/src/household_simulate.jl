@@ -53,64 +53,37 @@ function simulate_once(
         setup = (ind, i) -> (ind.state[:household] = model.household_of[i])
     )
 
-    # Reuse the population lookup across household races. The population is
-    # extinct only when every household's race ran to its own extinction,
-    # rather than being cut off at `max_time` with candidates still pending.
     initial_cases = sim_opts.initial_cases === nothing ? nothing :
         Set(sim_opts.initial_cases)
-    # The keys the kernel's hazards depend on, for `_sellke_race!` to redraw a
-    # pending contact when one moves, and the projection it reads them
-    # through, so the race can check that declaration against what the
-    # projection actually reads.
+    # The keys the kernel's hazards depend on, for the race to redraw a pending
+    # contact when one moves, and the projection it reads them through, so the
+    # race can check that declaration against what the projection actually
+    # reads.
     watched = EpiBranch.watched_records(model.kernel)
     projection = EpiBranch.kernel_projection(model.kernel)
-    # Only a policy that can read population-wide state — cases in other
-    # households, a kernel reading host records an intervention can move, a
-    # capacity budget shared across households, or a stopping rule that polls
-    # `should_stop` (`poll_rules` below) — needs every household on one clock,
-    # so that its view of the population reflects cases in true time order
-    # rather than each household's race running to completion before the
-    # next begins. `reads_population_state` is how an intervention declares that;
-    # `race_groups` is how the process itself partitions races for a kernel,
-    # which `HouseholdProcess` narrows to one race per household unless the
-    # kernel's watched records say otherwise.
-    poll_rules = EpiBranch._poll_rules(sim_opts)
-    races = any(EpiBranch.reads_population_state, interventions) || !isempty(poll_rules) ?
-        (collect(eachindex(model.household_of)),) : race_groups(model, model.kernel)
-    # One race per household, each reconciled against the whole state once the
-    # loop is done rather than per race: `sellke_race!`'s per-call reconciliation
-    # scans every individual, which would cost O(households × population) here
-    # instead of O(population) for the one reconciliation a single-race model
-    # gets from the wrapper.
-    max_time = EpiBranch._max_time(sim_opts)
-    max_generation = EpiBranch._max_generation(sim_opts)
-    extinct = true
-    for mem in races
-        extinct &= EpiBranch._sellke_race!(
-            state, mem, rng;
-            from = from, until = model.until, interventions = interventions,
-            max_time = max_time, max_generation = max_generation,
-            stopping_rules = poll_rules, risks = EpiBranch.transmission_risks(model),
-            watches = (watched,), projections = (projection,), recorder = recorder,
-            seed! = (best, members, r) -> _seed_household_race!(
-                best, members, model, state, Tobs, r, initial_cases
-            ),
-            introduction = _ext_active(model.external_hazard) ?
-                (EpiBranch._ext_prepare(model.external_hazard), Tobs) : nothing,
-            targets = (inf, st) -> (
-                (oid, _pairkernel(model.kernel, inf, oid, st, from))
-                    for oid in model.members[model.household_of[inf]] if oid != inf
-            ),
-            # A case's contacts are its household-mates, traced whether or not
-            # transmission reached them.
-            contacts = (inf, st) -> (
-                oid
-                    for oid in model.members[model.household_of[inf]] if oid != inf
-            )
+    # Every household runs on one clock, so an intervention, stopping rule or
+    # kernel that reads the whole population sees cases in time order.
+    EpiBranch.sellke_race!(
+        state, collect(eachindex(model.household_of)), rng, sim_opts;
+        from = from, until = model.until, interventions = interventions,
+        risks = EpiBranch.transmission_risks(model),
+        watches = (watched,), projections = (projection,), recorder = recorder,
+        seed! = (best, members, r) -> _seed_household_race!(
+            best, members, model, state, Tobs, r, initial_cases
+        ),
+        introduction = _ext_active(model.external_hazard) ?
+            (EpiBranch._ext_prepare(model.external_hazard), Tobs) : nothing,
+        targets = (inf, st) -> (
+            (oid, _pairkernel(model.kernel, inf, oid, st, from))
+                for oid in model.members[model.household_of[inf]] if oid != inf
+        ),
+        # A case's contacts are its household-mates, traced whether or not
+        # transmission reached them.
+        contacts = (inf, st) -> (
+            oid for oid in model.members[model.household_of[inf]] if oid != inf
         )
-    end
+    )
 
-    EpiBranch._reconcile_sellke_bookkeeping!(state, extinct)
     # Apply the observation model (under-reporting, report delays), as core
     # `simulate` does. A no-op for the default `NoObservation`.
     apply_observation!(observation, state, rng)
@@ -163,28 +136,13 @@ function EpiBranch._validate_initial_cases(model::HouseholdProcess, opts::SimOpt
     return EpiBranch._validate_initial_case_ids(opts, length(model.household_of))
 end
 
-# One race per household by default, since each household's outbreak is
-# otherwise independent; a kernel whose watched records name any key needs
-# every household sharing one clock instead, so a key moving on one
-# household's host redraws a pending contact in another that reads it.
-function race_groups(model::HouseholdProcess, kernel)
-    return isempty(EpiBranch.watched_records(kernel)) ?
-        model.members : (collect(eachindex(model.household_of)),)
-end
-
-# A race's `members` can span more than one household (sharing a clock, per
-# `race_groups`), so each household within it is seeded as its own clique
-# rather than drawing one index case across the merged group. `best` and
-# `members` are grouped by household, using position within the race rather
-# than global id, before `_seed_clique!` sees them.
+# The race's `members` are every person in id order, so a household's ids are
+# also its positions in `best`. Each household is seeded as its own clique, in
+# household order, rather than drawing one index case across the population.
 function _seed_household_race!(best, members, model, state, Tobs, rng, initial_cases)
-    households = Dict{Int, Vector{Int}}()
-    for k in eachindex(members)
-        push!(get!(() -> Int[], households, model.household_of[members[k]]), k)
-    end
-    for idxs in values(households)
+    for hh in model.members
         _seed_clique!(
-            view(best, idxs), view(members, idxs), state, model.external_hazard, Tobs,
+            view(best, hh), view(members, hh), state, model.external_hazard, Tobs,
             rng; initial_cases
         )
     end
