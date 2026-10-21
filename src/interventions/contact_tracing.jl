@@ -1000,7 +1000,7 @@ reads_population_state(::TraceAction) = false
 """With `depth > 1`, keep following traced contacts with ring budget left for
 one more hop, whether or not they are themselves infected, so tracing can
 reach their own contacts: an infected one may already be settled, with no
-future turn of its own at which it could be offered as a fresh ring root (see
+further turn at which it could be offered as a fresh ring root (see
 `_walk_ring!` in sellke.jl). An uninfected one does not infect those contacts
 either way. Returns the ids of those ring members (none for `depth == 1`)."""
 function keep_active(ct::ContactTracing, state, targets, is_new)

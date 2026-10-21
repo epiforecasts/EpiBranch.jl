@@ -320,6 +320,48 @@ EpiBranch.records_contacts(::AlwaysRecord, parent, contact, state, t) = true
         ) == [true, false, true]
     end
 
+    @testset "OnRoutes narrows an intervention to only the named routes" begin
+        # Both routes list INTERVENTION_REMOVAL here, so a bare isolation
+        # closes both before either contact, due at 5. Wrapping it in
+        # `OnRoutes` leaves every route it does not name running — the same
+        # outcome the household route above gets by never opting in, but
+        # chosen by the intervention instead of the window.
+        REM = EpiBranch.INTERVENTION_REMOVAL
+        prog = [Transition(:recovered; from = :infection, delay = 10.0, terminal = true)]
+        onsets = clinical_presentation(
+            incubation_period = Dirac(1.0), prob_asymptomatic = 0.0
+        )
+        function infected_after(interventions)
+            rng = StableRNG(1)
+            state = EpiBranch.new_state(
+                BranchingProcess(Poisson(1.0), Exponential(1.0)),
+                prog, onsets, rng
+            )
+            EpiBranch.add_individuals!(state, 3, interventions)
+            edge(to) = (inf, st) -> inf == 1 &&
+                !get(st.individuals[to].state, :infected, false) ?
+                ((to, Dirac(5.0)),) : ()
+            routes = (
+                (
+                    RouteWindow(:community; until = (:recovered, REM), kernel = Dirac(5.0)),
+                    edge(2),
+                ),
+                (
+                    RouteWindow(:household; until = (:recovered, REM), kernel = Dirac(5.0)),
+                    edge(3),
+                ),
+            )
+            EpiBranch._sellke_race!(
+                state, [1, 2, 3], rng; routes, interventions,
+                seed! = (best, members, r) -> (best[1] = 0.0)
+            )
+            return [get(ind.state, :infected, false) for ind in state.individuals]
+        end
+        isolate = Isolation(onset_to_isolation_delay = Dirac(0.0), duration = Inf)
+        @test infected_after([isolate]) == [true, false, false]
+        @test infected_after([OnRoutes(isolate, (:community,))]) == [true, false, true]
+    end
+
     @testset "the race traces a settled case's contacts" begin
         # Node 1 infects node 2 on a household route at 5; node 2 infects node 3
         # half a day later on a community route. Every case has onset one day
