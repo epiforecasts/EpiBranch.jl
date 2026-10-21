@@ -388,12 +388,12 @@ model_generation_time(model::TransmissionModel) = model.generation_time
 _has_contacts(n::Int) = n > 0
 _has_contacts(counts::Vector{Int}) = any(>(0), counts)
 
-# Wraps the per-contact offset an `OffspringTimes` already gives, so
-# `offspring_route.jl` can pass it here in place of a kernel without
-# `_draw_contact!` branching on where the offset came from. Kept distinct
-# from a bare `Real` so a kernel that mistakenly returns a number (one must
-# return a `Distribution`) still raises a `MethodError` rather than being
-# silently treated as a fixed offset.
+# Wraps the per-contact offset an `OffspringTimes` already gives, letting
+# `offspring_route.jl` pass it here in place of a kernel without
+# `_draw_contact!` branching on where the offset came from. It is kept
+# distinct from a bare `Real` because a kernel that mistakenly returns a
+# number (one must return a `Distribution`) should still raise a
+# `MethodError` instead of being silently treated as a fixed offset.
 struct _FixedOffset{T <: Real}
     offset::T
 end
