@@ -187,7 +187,7 @@ EpiBranch.time_bound(r::TimeOrCasesRule) = r.t
         )
         @test any(r -> r isa MaxCases, given_opts.stopping_rules)
 
-        # The generation-based engine is untouched either way.
+        # A branching process keeps both defaults.
         branching = BranchingProcess(Poisson(1.5), Exponential(2.0))
         engine_opts = EpiBranch._build_sim_opts(
             branching, nothing, nothing, EpiBranch._DEFAULT_MAX_CASES,
