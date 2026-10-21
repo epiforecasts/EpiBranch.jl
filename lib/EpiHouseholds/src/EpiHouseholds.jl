@@ -11,8 +11,8 @@ using Random
 # `Transition`, `Individual`, `linelist`, …) is exported by EpiBranch, and the
 # population/progression helpers are called qualified. The package also uses
 # some EpiBranch internals on purpose: the community-hazard helpers and the
-# race's seeding and window helpers. Reusing them keeps the household simulator
-# and pairwise likelihood consistent with the shared engine.
+# seeding and window helpers for the race. Reusing them keeps the household
+# simulator and pairwise likelihood consistent with the shared engine.
 import EpiBranch: new_state, add_individuals!, apply_observation!,
     simulate_once, SimOpts, infectious_from,
     _honours_termination_controls, _validate_process_windows,
