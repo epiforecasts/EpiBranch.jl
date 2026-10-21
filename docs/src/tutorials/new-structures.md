@@ -378,9 +378,13 @@ infected; that is the only place they affect transmission. The simulation also
 runs `initialise_individual!` on the new contacts and the interventions' hooks
 on each case's contacts, the clinical transitions and `resolve_individual!` on
 each new case, and keeps the running totals (`cumulative_cases`,
-`current_generation`, `extinct`, `max_infection_time`). The count may read the
-case's state, so a ring of contact tracing reaches a case's contacts only once
-the case's own infection is decided.
+`current_generation`, `extinct`, `max_infection_time`). Because the count may
+read the case's state, a ring of contact tracing reaches a case's contacts only
+once the case's own infection is decided, unless the model declares
+[`EpiBranch.reads_settled_state`](@ref)`(::YourModel) = false`. Then a ring
+that reaches a person not yet infected draws their contacts at once and grows
+through them, as it does on a [`BranchingProcess`](@ref) with a `Distribution`
+of offspring.
 
 A **structure-driven** model has contacts a count cannot describe: a contact
 network, or a household or metapopulation model in which a susceptible can be

@@ -561,10 +561,12 @@ same way. When any of a contact's windows waits, all of them do: the ring grows
 past a contact only once, so every contact an infected contact makes has to be
 known by then.
 
-A model written against `generate_offspring` always waits, since its count may
-read anything. One written against `contacts_of` waits the same way, unless it
-declares that its `contacts_of` reads nothing settling writes (see
-[`EpiBranch.reads_settled_state`](@ref)).
+A model written against `generate_offspring` or `contacts_of` waits the same
+way, unless it declares that its count, or its `contacts_of`, reads nothing
+settling writes (see [`EpiBranch.reads_settled_state`](@ref)). A
+`generate_offspring` model that declares it has its count drawn when the ring
+reaches a person, as on a [`BranchingProcess`](@ref) with a `Distribution` of
+offspring.
 
 [`ContactTracing`](@ref) with `depth > 1` is the built-in intervention that
 uses this: it grows the ring from its members until the ring's depth is

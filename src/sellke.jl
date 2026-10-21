@@ -32,9 +32,10 @@ function _close_at(ind::Individual{T}, keys) where {T}
 end
 
 # ── Interventions on the race ────────────────────────────────────────
-# Two seams carry an intervention's effect on transmission. The first is the infectious window: an
-# intervention that removes a case from onward transmission (isolation)
-# shortens it. Each case is settled as the race pops it (`_settle_case!`): its
+# An intervention's effect on transmission reaches the race through two
+# seams. The first is the infectious window: an intervention that removes a
+# case from onward transmission (isolation) shortens it. Each case is
+# settled as the race pops it (`_settle_case!`): its
 # natural history first, then each intervention's `resolve_individual!`, which
 # is where `Isolation` writes its isolation time. Its window is then closed at
 # the earliest removal across interventions as well as the `until` states. The
@@ -1216,7 +1217,7 @@ function _sellke_race!(
                 # a recorder that wants the stream can log each one. Tracing
                 # and ring construction read the standing contacts, not these
                 # proposals, so the pair itself is unaffected either way.
-                keeps_drawing = _logs_blocked(members) &&
+                keeps_drawing = _logs_blocked(members, source, ind) &&
                     records_contacts(recorder, source, ind, state, bt)
                 if !may_block
                     _discard_proposal!(members, best, j)
@@ -1460,9 +1461,10 @@ end
 _proposal_fallback(members) = true
 # The members offered actions for the whole population before the race starts.
 _population_members(members) = members
-# Whether a blocked proposal is offered to the recorder. Members created as
-# contacts are already listed as their infector's contacts, blocked or not.
-_logs_blocked(members) = true
+# Whether a blocked proposal from `source` to `ind` is offered to the recorder.
+# Members created as contacts are already listed as their infector's contacts,
+# blocked or not.
+_logs_blocked(members, source, ind) = true
 
 # Each member's position in `members`, by id.
 _member_positions(members) = Dict{Int, Int}(id => k for (k, id) in enumerate(members))
