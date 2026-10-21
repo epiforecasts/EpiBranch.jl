@@ -375,27 +375,9 @@ EpiBranch.records_contacts(::AlwaysRecord, parent, contact, state, t) = true
         # with no contacts supplied there is nothing to trace along
         @test infected(race([iso, ct])) == [true, true, true]
 
-        # Ring vaccination needs a model that names each case's contacts.
+        # A homogeneous model names no contacts for tracing to walk.
         nameless = HomogeneousProcess(transmission_rate = 1.0, population_size = 10)
         @test !EpiBranch.supplies_contacts(nameless)
-        @test !EpiBranch._sellke_honours(nameless, RingVaccination(efficacy = 0.9))
-        # Mass vaccination declares `acts_on_population`, so it reaches
-        # everybody before the race starts, with no contacts at all.
-        @test EpiBranch._sellke_honours(
-            nameless,
-            MassVaccination(efficacy = 0.9, eligibility_time = 0.0)
-        )
-        # Group vaccination declares `needs_contacts = false`, finding a
-        # case's group through its `group_key` rather than a contact.
-        @test EpiBranch._sellke_honours(nameless, GroupVaccination(efficacy = 0.9))
-        # A leaky isolation is a per-contact block, and the race now resolves it.
-        @test EpiBranch._sellke_honours(
-            nameless,
-            Isolation(
-                onset_to_isolation_delay = Dirac(1.0),
-                post_isolation_transmission = 0.5, duration = Inf
-            )
-        )
     end
 
     @testset "a per-contact risk thins the pair's hazard" begin
@@ -1118,4 +1100,45 @@ end
     @test state.cumulative_cases == 1
     @test length(state.individuals) == 1
     @test state.extinct
+end
+
+# An offspring law written from outside the package, so that each window's
+# `_Offspring` is parameterised on its own concrete `Infectiousness` type
+# rather than sharing one, as `MultiTypeOffspring`'s per-type laws do.
+struct FixedDayOffspring
+    day::Int
+end
+(d::FixedDayOffspring)(rng, ind) = rand(rng, Poisson(0.5))
+
+@testset "A route of another type among many does not box the per-case loop" begin
+    # Regression test for #586: `_sellke_race!` settled every case by looping
+    # over its routes, which boxed every visit once the routes were not all
+    # the same type (a different offspring law, kernel or `until`), costing
+    # memory in proportion to how many cases settled rather than to how many
+    # routes there were.
+    stop_soon(rng, ind) = (ind.state[:stopped_time] = ind.infection_time + 5.0; nothing)
+    same_type = BranchingProcess(
+        Tuple(
+            Infectiousness(
+                FixedDayOffspring(d); kernel = Dirac(d + 0.5), until = (:stopped,)
+            ) for d in 0:19
+        )
+    )
+    mixed_types = BranchingProcess(
+        (
+            Infectiousness(Poisson(0.0); kernel = Uniform(0, 1)), same_type.infectiousness...,
+        )
+    )
+    run_once(model) = simulate(
+        ModelSpec(model; attributes = stop_soon);
+        n_initial = 2000, max_generations = 1, max_cases = nothing, rng = StableRNG(1)
+    )
+    run_once(same_type) # compile both before timing either
+    run_once(mixed_types)
+    same_type_bytes = @allocated run_once(same_type)
+    mixed_types_bytes = @allocated run_once(mixed_types)
+    # One extra route among twenty costs proportionally more, not the
+    # order-of-magnitude more that boxing every visit to a heterogeneous
+    # tuple did.
+    @test mixed_types_bytes < 5 * same_type_bytes
 end

@@ -209,6 +209,15 @@ end
             rand(StableRNG(1), Exponential(2.0))
         @test EpiBranch._ext_draw(StableRNG(1), Gamma(2.0, 3.0)) ==
             rand(StableRNG(1), Gamma(2.0, 3.0))
+
+        # a calendar schedule passes through unchanged, is always active, and
+        # draws from its own calendar-scaled survival distribution
+        schedule = Steps([2.0], [0.2, 0.05])
+        @test EpiBranch._valid_external(schedule)
+        @test EpiBranch._normalise_external(schedule) === schedule
+        @test EpiBranch._ext_active(schedule)
+        @test EpiBranch._ext_draw(StableRNG(1), schedule) ==
+            rand(StableRNG(1), EpiBranch._calendar_external_survival(schedule))
     end
 
     @testset "community hazard that differs between people" begin
@@ -224,6 +233,9 @@ end
         @test EpiBranch._ext_survival_of(v, 3) == Gamma(2.0, 3.0)
         @test EpiBranch._ext_survival_of(j -> v[j], 1) == Exponential(2.0)
         @test_throws ArgumentError EpiBranch._ext_survival_of(j -> -1.0, 1)
+        schedule = Steps([2.0], [0.2, 0.05])
+        @test EpiBranch._ext_survival_of(schedule, 1) ==
+            EpiBranch._calendar_external_survival(schedule)
         @test_throws DimensionMismatch EpiBranch._check_external(v, 4)
         @test EpiBranch._check_external(v, 3) === nothing
         # a person with no community hazard is never introduced, and the rest
@@ -423,6 +435,33 @@ end
             @test pairwise_surv_loglik(k, data, L; external_hazard = ext) ≈
                 pairwise_surv_loglik(rowk, rows)
         end
+    end
+
+    @testset "a community hazard can follow a calendar schedule" begin
+        # two people in separate households, so every row is a community one;
+        # 1 is a community case at 2.5, after the rate drops at day 2; 2
+        # escapes the community hazard to obs_end = 4
+        schedule = Steps([2.0], [0.2, 0.05])
+        data = _TestInfections(
+            [1, 2], [2.5, NaN], [2.5, NaN], [10.0, Inf], [true, false];
+            obs_end = 4.0
+        )
+        L = compile_contact_pairs(data; external = true)
+        integrated(t) = 0.2 * min(t, 2.0) + 0.05 * max(t - 2.0, 0.0)
+        expected = log(0.05) - integrated(2.5) - integrated(4.0)
+        @test pairwise_surv_loglik(Exponential(1.0), data, L; external_hazard = schedule) ≈
+            expected
+        @test pairwise_surv_loglik(Exponential(1.0), data; external_hazard = schedule) ≈
+            expected
+
+        # a schedule is not a valid per-element of a per-person vector or
+        # function, only a hazard shared by everyone
+        @test_throws ArgumentError pairwise_surv_loglik(
+            Exponential(1.0), data; external_hazard = [schedule, schedule]
+        )
+        @test_throws ArgumentError pairwise_surv_loglik(
+            Exponential(1.0), data; external_hazard = j -> schedule
+        )
     end
 
     @testset "a community case at time 0 is counted" begin

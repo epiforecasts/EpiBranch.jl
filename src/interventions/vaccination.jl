@@ -882,16 +882,15 @@ function _withdraw_dose!(rv::RingVaccination, ind)
     return nothing
 end
 
-# A dose given to a pending, still-uninfected member of a continuous-time race
-# (household, network, routed network) is recorded on it before its own
+# A dose given to a pending, still-uninfected member of the race is recorded on it before its own
 # infection is settled, with the window assumed open and, for
 # `_abort_infection!`, nothing yet to check against
 # (`contact.infection_time` is still `NaN`, so it does not draw). Once the
 # race settles that member's infection, this reconsiders both against the
 # now-final exposure: a dose the window turns out not to cover is withdrawn
 # outright, and one it does cover has its post-exposure protection
-# reconsidered, which suppresses onset and the clinical transitions exactly as
-# a dose given after the exposure does on the generation engine.
+# reconsidered, which suppresses onset and the clinical transitions as a dose
+# given after the exposure does.
 #
 # The protection derives from the recorded dose rather than from a schedule's
 # clock, as `persistent_competing_risks` says, so a `Scheduled` wrapper that

@@ -325,6 +325,24 @@
         end
     end
 
+    @testset "ThinnedChainSize" begin
+        @testset "rand matches the pdf" begin
+            d = ThinnedChainSize(chain_size_distribution(NegBin(0.6, 0.5)), 0.7)
+            rng = StableRNG(1)
+            draws = [rand(rng, d) for _ in 1:20_000]
+            @test all(>=(1), draws)
+            @test mean(==(1), draws) ≈ pdf(d, 1) atol = 0.01
+            @test mean(==(2), draws) ≈ pdf(d, 2) atol = 0.01
+        end
+
+        @testset "rejects a non-positive detection_prob" begin
+            base = chain_size_distribution(Poisson(0.5))
+            @test_throws ArgumentError ThinnedChainSize(base, 0.0)
+            @test_throws ArgumentError ThinnedChainSize(base, -0.1)
+            @test_throws ArgumentError ThinnedChainSize(base, 1.1)
+        end
+    end
+
     @testset "Chain size likelihood" begin
         @testset "Basic evaluation" begin
             ll = loglikelihood(ChainSizes([1, 1, 2, 1, 3]), Poisson(0.5))
@@ -764,6 +782,43 @@
             # Vector-of-τ overload returns same elements.
             πs_vec = end_of_outbreak_probability(R, k, GT, collect(taus))
             @test πs_vec ≈ πs
+
+            # Whole-cluster probability (reproducing the issue): the single
+            # most-recent-case value overstates the probability that a
+            # multi-case cluster is over; the correct value is the product
+            # of every case's own per-case value.
+            off = NegBin(0.95, 0.18)
+            gt = Gamma(2.7, 5.7)
+            onsets = [0.0, 3.0, 5.0, 6.0]
+            t = 10.0
+            τs_cluster = t .- onsets
+            π_single = end_of_outbreak_probability(off, gt, t - maximum(onsets))
+            π_cluster = end_of_outbreak_probability(off, gt, τs_cluster, zeros(Int, 4))
+            @test π_single ≈ 0.7526241613762737 atol = 1.0e-10
+            @test π_cluster ≈ 0.4035540261764777 atol = 1.0e-10
+            @test π_cluster < π_single
+
+            # Known secondary case counts weight each case's own value by
+            # (k + a) / k: a case already known to have transmitted counts
+            # for less towards the cluster being over.
+            secondary_cases = [2, 1, 0, 0]
+            π_known = end_of_outbreak_probability(off, gt, τs_cluster, secondary_cases)
+            @test π_known ≈ 0.023324192270623437 atol = 1.0e-10
+            @test π_known < π_cluster
+
+            # All-zero secondary_cases matches the plain product of the
+            # per-case values.
+            @test π_cluster ≈ prod(end_of_outbreak_probability(off, gt, τ) for τ in τs_cluster)
+
+            # The (R, k) and offspring-dispatched forms agree.
+            @test end_of_outbreak_probability(mean(off), off.r, gt, τs_cluster, secondary_cases) ≈
+                π_known
+
+            # Validation: mismatched lengths and negative counts are rejected.
+            @test_throws ArgumentError end_of_outbreak_probability(off, gt, τs_cluster, [0, 0])
+            @test_throws ArgumentError end_of_outbreak_probability(
+                off, gt, τs_cluster, [-1, 0, 0, 0]
+            )
 
             # End-to-end: end_of_outbreak_probability feeds the prob_concluded kwarg
             # and the mixture likelihood evaluates without error.
