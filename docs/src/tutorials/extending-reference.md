@@ -788,9 +788,8 @@ member of a group in which a case was found. Every model calls it once each
 case settles, for every intervention with a method of it, with the people
 `EpiBranch.action_candidates` chooses as candidates: by default the case and
 the contacts it can still reach. An intervention that chooses its own, such as
-everyone in the run not yet infected, writes a method of
-`action_candidates`. What it returns goes through the schedule and capacity
-limits.
+everyone in the run not yet infected, writes a method of `action_candidates`.
+The schedule and capacity limits then apply to what it returns.
 
 `Scheduled` checks the proposed action time before delivery. A condition
 function sees that time as `state.max_infection_time`, with the current case
@@ -820,9 +819,9 @@ these draws per policy and person. A refused admission may be considered again
 when it is proposed again, but is not queued. An earlier trigger can bring
 forward an action not yet admitted, using the same delay. Admission fixes the
 recorded date and effect draws, and later triggers do not change completed
-actions, with one exception below: a group dose for
-a person whose infection is not yet final moves to a trigger found later that
-turns out to be earlier than the one the dose was first given from. Dose
+actions, with one exception below: a group dose for a person whose infection
+is not yet final moves to a trigger found later that turns out to be earlier
+than the one the dose was first given from. Dose
 prerequisites are checked against the proposed date before admission.
 
 For example, draw one visit time and reuse it if admission is attempted again:
@@ -842,8 +841,9 @@ The result is `true`: the second call uses the stored draw. Give a new visit a
 different key, and keep the same key when the same visit is proposed again.
 
 Actions run in one of two ways. By default they run after a newly final case
-is traced, offered to the people `action_candidates` chooses, and must work without the infection time of a contact whose
-infection is not yet final. That narrowing needs a model that names contacts
+is traced, offered to the people `action_candidates` chooses, and must work
+without the infection time of a contact whose infection is not yet final.
+That narrowing needs a model that names contacts
 (`EpiBranch.supplies_contacts(model) = true`), unless the intervention
 declares `EpiBranch.needs_contacts(iv) = false`, as group delivery does,
 since it finds a case's group through its `group_key` rather than through a
