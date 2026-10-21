@@ -273,14 +273,18 @@ function chain_size_distribution(
             isempty(interventions(model)) && has_single_type_law(model) &&
             offspring_law_unchanged(model) && offspring_law_unchanged(attributes(model)) &&
             all(offspring_law_unchanged, _progression(model))
-        base = chain_size_distribution(single_type_offspring(model))
-        # Only the `Reporting`-reading step can fail here (e.g. a callable
-        # per-individual probability); fall through to the simulation-based
-        # wrapper rather than crash the primary `~` entry point.
-        # `_chain_size_model_loglik` does the same. A failure from `observe`
-        # itself (e.g. a non-scalar `PerCaseObservation`) is a user error,
-        # and should propagate rather than be swallowed here.
+        # `chain_size_distribution` on the bare offspring can still fail
+        # despite `has_single_type_law`'s `hasmethod` check: a
+        # `GeneratingFunctionOffspring` built from a bare pgf has the method
+        # but refuses at the instance level, since it has no pmf. The
+        # `Reporting`-reading step (e.g. a callable per-individual
+        # probability) can fail here too. Either falls through to the
+        # simulation-based wrapper rather than crashing the primary `~`
+        # entry point; `_chain_size_model_loglik` does the same. A failure
+        # from `observe` itself (e.g. a non-scalar `PerCaseObservation`) is
+        # a user error, and should propagate rather than be swallowed here.
         folded = try
+            base = chain_size_distribution(single_type_offspring(model))
             _fold_reporting(_progression(model), base, observation(model))
         catch e
             (e isa MethodError || e isa ArgumentError) || rethrow()
@@ -301,8 +305,8 @@ function chain_size_distribution(
             isempty(interventions(spec)) && has_single_type_law(spec) &&
             offspring_law_unchanged(spec) && offspring_law_unchanged(attributes(spec)) &&
             all(offspring_law_unchanged, _progression(spec))
-        base = chain_size_distribution(single_type_offspring(spec.process))
         folded = try
+            base = chain_size_distribution(single_type_offspring(spec.process))
             _fold_reporting(_progression(spec), base, observation(spec))
         catch e
             (e isa MethodError || e isa ArgumentError) || rethrow()

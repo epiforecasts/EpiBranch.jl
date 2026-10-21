@@ -23,13 +23,12 @@ days throughout.
   index cases, if there are more of them), leaves out any infection after
   `max_time`, and draws no contacts for a case at generation
   `max_generations`. The last cases of a run stopped by `max_cases` or
-  `max_time` have not made all their contacts, so
-  per-case quantities such as offspring counts or realised generation
-  intervals are right-truncated; `max_generations` alone leaves every case
-  below the bound complete. On a branching process, a contact whose infection was
-  still to be decided when the run stopped is left out, unless tracing or an
-  intervention's actions had already reached it; it is then kept with no
-  infection time.
+  `max_time` have not made all their contacts, so per-case quantities such as
+  offspring counts or realised generation intervals are right-truncated;
+  `max_generations` alone leaves every case below the bound complete. On a
+  branching process, a contact whose infection was still to be decided when
+  the run stopped is left out, unless tracing or an intervention's actions
+  had already reached it; it is then kept with no infection time.
 - `stopping_rules`: a vector of [`AbstractStoppingRule`](@ref)s for finer
   control over when the run ends. When given, `max_cases`,
   `max_generations` and `max_time` are ignored.
