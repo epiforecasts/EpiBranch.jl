@@ -201,6 +201,10 @@ struct ChainSizeClasses
             throw(ArgumentError("each upper bound must be ≥ its lower bound"))
         all(u -> isinf(u) || isinteger(u), upper) ||
             throw(ArgumentError("upper bounds must be integers or Inf"))
+        order = sortperm(lower)
+        all(
+            lower[order[i + 1]] > upper[order[i]] for i in 1:(length(order) - 1)
+        ) || throw(ArgumentError("classes must not overlap"))
         return new(
             convert(Vector{Int}, lower), convert(Vector{Float64}, upper),
             convert(Vector{Int}, counts)

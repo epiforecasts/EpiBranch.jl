@@ -1034,6 +1034,8 @@
             @test_throws ArgumentError ChainSizeClasses([1], [1], [-1])
             @test_throws ArgumentError ChainSizeClasses([2], [1], [1])
             @test_throws ArgumentError ChainSizeClasses([1], [1.5], [1])
+            @test_throws ArgumentError ChainSizeClasses([1, 1], [1, 5], [10, 3])
+            @test_throws ArgumentError ChainSizeClasses([5, 1], [10, 5], [3, 10])
             @test ChainSizeClasses([1], [Inf], [1]) isa ChainSizeClasses
         end
 
