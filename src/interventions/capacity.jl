@@ -47,13 +47,27 @@ order: both check each action's own proposed date.
     the budget it used becomes available to the next candidate. The
     mass-action models,
     [`HomogeneousProcess`](@ref) and [`MixingProcess`](@ref), do not trace
-    contacts, so ring vaccination cannot act in either. Contact tracing itself
-    cannot be capacity-limited in any model.
+    contacts, so ring vaccination cannot act in either.
+
+    [`ContactTracing`](@ref) can be capacity-limited too, when its `action` is
+    a [`Quarantine`](@ref): a contact is still found and still grows a ring
+    once budget runs out, but is not itself quarantined until a place frees
+    up. `FlagOnly` has no removal to ration. [`Isolation`](@ref) can also be
+    capacity-limited, as a count of isolations admitted per period rather than
+    beds held at once: a case isolated once the period's budget is spent is
+    released again, the same way `Scheduled` releases one isolated outside
+    its window.
 
 For extension authors: a new intervention can be capacity-limited by defining
 [`intervention_actions`](@ref EpiBranch.intervention_actions) and
 [`capacity_key`](@ref EpiBranch.capacity_key). Group vaccination offers every
-eligible member of a triggered group as a separate person to serve.
+eligible member of a triggered group as a separate person to serve. One that
+instead sets its effect directly in
+[`resolve_individual!`](@ref EpiBranch.resolve_individual!), as `Isolation`
+does, defines [`intervention_time`](@ref EpiBranch.intervention_time),
+[`reset!`](@ref EpiBranch.reset!) and `capacity_key` instead:
+`CapacityConstrained` then undoes the effect once the budget is spent, the
+way `Scheduled` already undoes one outside its own window.
 """
 struct CapacityConstrained{I <: AbstractIntervention, F} <: InterventionWrapper
     intervention::I
@@ -143,6 +157,40 @@ capacity_time_key(v::MassVaccination) = _vaccination_time_key(dose_label(v))
 
 capacity_key(v::GroupVaccination) = _vaccinated_key(dose_label(v))
 capacity_time_key(v::GroupVaccination) = _vaccination_time_key(dose_label(v))
+
+# `Isolation` sets its own effect directly in `resolve_individual!` rather
+# than proposing an action; `:_isolated_by_isolation` is the flag it already
+# keeps to tell its own isolation from a quarantine layered under it (see its
+# `reset!`), which is exactly "this budget was spent on this person".
+capacity_key(::Isolation) = :_isolated_by_isolation
+capacity_time_key(::Isolation) = :isolation_time
+
+# `ContactTracing` proposes its follow-up as an `InterventionAction` (see
+# `_trace_action`) whose own resource key depends on what the action does:
+# a `Quarantine` has a removal to ration, `FlagOnly` does not.
+capacity_key(ct::ContactTracing) = capacity_key(ct.action)
+capacity_time_key(ct::ContactTracing) = capacity_time_key(ct.action)
+
+function capacity_key(action::TraceAction)
+    throw(
+        ArgumentError(
+            "CapacityConstrained needs a `capacity_key` method for $(typeof(action)) " *
+                "to know which state key measures how much of `ContactTracing`'s " *
+                "follow-up capacity a person has used. See the Extending guide."
+        )
+    )
+end
+function capacity_time_key(action::TraceAction)
+    throw(
+        ArgumentError(
+            "CapacityConstrained needs a `capacity_time_key` method for " *
+                "$(typeof(action)) to measure usage within a period. See the " *
+                "Extending guide."
+        )
+    )
+end
+capacity_key(::Quarantine) = :_quarantined_by_tracing
+capacity_time_key(::Quarantine) = :trace_time
 
 # The start and end of the period containing `at`, in the scope `carry_over`
 # implies: `(0.0, Inf)`, a single period for the whole outbreak, when `period`
@@ -258,11 +306,83 @@ end
 # `keep_active` is inherited from `InterventionWrapper`'s plain forwarding:
 # a ring's growth spends no budget, so capacity has nothing to gate there.
 
-# Tracing records no resource use for the budget to count, so passing it
-# through would let the wrapped intervention act with no budget at all. Opting
-# out leaves the tracing undone.
-traces_contacts(::CapacityConstrained) = false
-trace_contacts!(::CapacityConstrained, state, infector, contacts) = nothing
+# Tracing's own bookkeeping (who was reached, and from when) runs
+# unconditionally, so that ring growth and later eligibility checks, decided
+# before any action is admitted, see it; only the follow-up action it
+# proposes (see `_trace_action`) is rationed. `state.scratch` carries this
+# wrapper down to the span of the wrapped intervention's own
+# `trace_contacts!` call, which admits through it instead of itself (see
+# `_admit_trace_actions!`) — composing with `Scheduled` in either order, as a
+# dose already does.
+traces_contacts(cc::CapacityConstrained) = traces_contacts(cc.intervention)
+function trace_contacts!(cc::CapacityConstrained, state, infector, contacts, not_before = nothing)
+    key = (:trace_admitter, _innermost(cc))
+    previous = get(state.scratch, key, nothing)
+    state.scratch[key] = cc
+    try
+        if not_before === nothing
+            trace_contacts!(cc.intervention, state, infector, contacts)
+        else
+            trace_contacts!(cc.intervention, state, infector, contacts, not_before)
+        end
+    finally
+        previous === nothing ? delete!(state.scratch, key) : (state.scratch[key] = previous)
+    end
+    return nothing
+end
+
+# Whether `iv` (unwrapped past anything that only forwards the hook) writes
+# its own effect directly in `resolve_individual!`, as `Isolation` does, and
+# has declared a `capacity_key` for it. `CapacityConstrained` then gates that
+# effect through `intervention_time` and `reset!`, the way `Scheduled`
+# already does for its own window, rather than through the action funnel an
+# intervention proposing no effect of its own in `resolve_individual!` (a
+# dose) uses instead.
+function _resolves_under_capacity(iv::AbstractIntervention)
+    owner = _hook_owner(resolve_individual!, iv)
+    _has_own_method(resolve_individual!, typeof(owner), AbstractIntervention) || return false
+    return _has_own_method(
+        capacity_key, typeof(_hook_owner(capacity_key, iv)), AbstractIntervention
+    )
+end
+
+function resolve_individual!(cc::CapacityConstrained, ind, state)
+    resolve_individual!(cc.intervention, ind, state)
+    _resolves_under_capacity(cc.intervention) && _reset_unless_within_budget!(cc, ind, state)
+    return nothing
+end
+
+# As `_dose_times`, but leaving out `excluded`'s own record: used to judge
+# whether admitting the effect `resolve_individual!` just wrote on `excluded`
+# keeps every period within budget, which must not count that same use
+# twice.
+function _dose_times(cc::CapacityConstrained, state, excluded::Individual)
+    key = capacity_key(cc.intervention)
+    time_key = capacity_time_key(cc.intervention)
+    times = Float64[]
+    for ind in state.individuals
+        ind.id == excluded.id && continue
+        get(ind.state, key, false) || continue
+        push!(times, get(ind.state, time_key, -Inf))
+    end
+    sort!(times)
+    return times
+end
+
+# Undo the effect `resolve_individual!` just wrote on `ind` unless it fits
+# the budget at its own date, the same check a proposed action's own date
+# goes through. An effect that never ran (the capacity key not actually set
+# on `ind` — for instance a quarantine `Isolation` is layered over, which is
+# not its own effect) has nothing to check.
+function _reset_unless_within_budget!(cc::CapacityConstrained, ind::Individual, state)
+    key = capacity_key(cc.intervention)
+    get(ind.state, key, false)::Bool || return nothing
+    t = intervention_time(cc.intervention, ind)
+    isfinite(t) || return nothing
+    times = _dose_times(cc, state, ind)
+    _fits_budget(cc, times, Float64[], t) || reset!(cc.intervention, ind)
+    return nothing
+end
 
 # Capacity gates who a removal reaches, never whether one already delivered
 # still stands, so the stretches it recorded are read back unchanged.
