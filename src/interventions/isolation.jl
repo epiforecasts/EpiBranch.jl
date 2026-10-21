@@ -123,6 +123,10 @@ the line list do not count it.
 [`records_isolation`](@ref EpiBranch.records_isolation) makes that choice and
 can be changed through a custom eligibility rule.
 
+Wrap it in [`OnRoutes`](@ref) to isolate a case out of only some of a model's
+named routes, for example community contact while household contact
+continues.
+
 # Examples
 ```julia
 iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = Inf)
@@ -220,13 +224,6 @@ end
 # Leaky isolation's residual block stands in for the removal perfect isolation
 # makes, so it reaches the same routes: those the case is isolated from.
 risk_applies(::Isolation, route) = route !== nothing && INTERVENTION_REMOVAL in route.until
-
-# Isolation itself reads and writes only the case it resolves, but its
-# eligibility receives the whole state, and it answers for that too. The
-# built-in eligibilities read only the individual; one written outside the
-# package declares its own read.
-reads_population_state(iso::Isolation) = reads_population_state(iso.eligibility)
-reads_population_state(::IsolationEligibility) = false
 
 function reset!(::Isolation, ind::Individual)
     # Only undo an isolation this Isolation set. `:isolated`/`:isolation_time`

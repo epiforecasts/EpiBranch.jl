@@ -449,25 +449,6 @@ timeline values (`:onset_time`, `:outcome_time`, ...) that the line list, the
 likelihoods and interventions such as `Isolation` read. `simulate` and `loglikelihood` on a `ModelSpec` call `simulate_once`
 with the spec's parts.
 
-A model whose population splits naturally into groups that can be simulated
-independently, as a household model splits into households, defines
-[`EpiBranch.race_groups`](@ref)`(model, kernel)` to say how it splits for a
-given kernel, and its `simulate_once` runs one race per group. Each
-`sellke_race!` call sets `state.extinct` from its own group alone, so such a
-loop reads `state.extinct` after each call, keeps whether every group died out
-(`extinct &= sellke_race!(...).extinct`), and sets `state.extinct = extinct`
-after the last race. `HouseholdProcess` in the `EpiHouseholds` package does
-the same through the internal `_sellke_race!`, which skips the per-call
-bookkeeping. A new kernel type can define the method for a given model to choose a
-different split:
-
-```julia
-# One race per household for your kernel, whatever it watches. Typing the
-# kernel is what makes this a method of your own rather than a replacement
-# for the one `HouseholdProcess` already has for every other kernel.
-EpiBranch.race_groups(model::HouseholdProcess, kernel::MyKernel) = model.members
-```
-
 For the **analytical functions** that work from the offspring distribution
 (`reproduction_number`, `extinction_probability`, `epidemic_probability`,
 `probability_contain`, `proportion_transmission`, `chain_size_distribution`),

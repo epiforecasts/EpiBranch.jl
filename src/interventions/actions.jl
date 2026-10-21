@@ -409,7 +409,7 @@ tracing reached from it where there was tracing, as for
 
 `traced` is the set tracing reached, or `nothing` if there was no tracing. A
 ring wider than one step reaches people who are not `current`'s direct
-contacts, so a list built from `current`'s contacts alone would miss them.
+contacts; a list built from `current`'s contacts alone would miss them.
 `is_pending(id)` reports whether `id` has not yet been settled, so an action
 may still reach it. `members` are the ids of everyone in the run, and
 `contacts(id, state)` yields the contacts of the case `id`; an intervention

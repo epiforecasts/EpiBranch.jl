@@ -116,8 +116,8 @@ println("Isolation + tracing + ring vaccination: $(round(containment_probability
 
 Tracing that starts at the infector's symptom onset, before isolation, and
 does not quarantine, leaves contacts exposed after the trace, and there the
-dose acts. These comparisons need many outbreaks, so they call
-[`containment_probability`](@ref) on the model, which keeps one outbreak in
+dose acts. These comparisons need many outbreaks; calling
+[`containment_probability`](@ref) on the model keeps one outbreak in
 memory at a time:
 
 ```@example vaccination

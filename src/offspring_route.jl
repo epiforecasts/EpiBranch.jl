@@ -158,10 +158,11 @@ end
 
 # The window the race closes this route on: the window's own `until` states,
 # and removal by an intervention, which a branching process applies on every
-# route.
+# route unless an intervention's `risk_applies` narrows that to the window's
+# own `name` (see `OnRoutes`).
 function _offspring_window(w::Infectiousness)
     return RouteWindow(
-        :transmission; until = (w.until..., INTERVENTION_REMOVAL), kernel = nothing
+        w.name; until = (w.until..., INTERVENTION_REMOVAL), kernel = nothing
     )
 end
 
@@ -207,7 +208,7 @@ person whose infection is not yet decided. If neither the window's offspring
 nor its generation time reads settled state, the person's contacts are drawn
 then and the ring grows through them, whether or not the person is infected.
 Otherwise they are drawn only once the person settles as a case, so the ring
-does not grow past a ring member who is never infected.
+stops at a ring member who is never infected.
 
 The default is `true`, the safe answer for a function, which may read
 anything. A `Distribution`, a [`MultiTypeOffspring`](@ref) (which reads only

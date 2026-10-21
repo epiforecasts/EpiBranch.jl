@@ -260,10 +260,7 @@ both simulation and the likelihood compute this exactly.
     through `state`, since those records are all the likelihood is given.
 
 A simulation in which no watched record changes draws outbreaks from the same
-distribution as an ordinary kernel. In a household model, a kernel with
-`watches` simulates all households together on one timeline, so that a policy
-can depend on cases in other households; this gives the same distribution of
-outbreaks from a different sequence of random numbers.
+distribution as an ordinary kernel.
 
 A plain distribution remains the simplest kernel and needs no `PairKernel`.
 """
