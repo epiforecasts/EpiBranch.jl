@@ -432,10 +432,12 @@ ObservationModel
 NoObservation
 PerCaseObservation
 MinimumSize
+ChainDetection
 observe
 ChainSizeLaw
 ThinnedChainSize
 TruncatedChainSize
+DetectedChainSize
 ```
 
 ### Reproduction number varying between chains
