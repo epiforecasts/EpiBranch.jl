@@ -45,7 +45,7 @@ run but not rise above that bound, which is how the race already reads it: as se
 when the member is created. The route also records what it left past the run's
 time limit, so build one for each run.
 """
-struct _MassAction{T <: Real, S <: Real}
+struct _MassAction{T <: Real, S <: Real, U <: Real}
     groups::Vector{Vector{Int}}  # member ids in each mixing group
     group_of::Dict{Int, Int}     # member id → index of its group
     rate::Matrix{T}              # rate[a, b]: one infective in a to one member of b
@@ -53,6 +53,10 @@ struct _MassAction{T <: Real, S <: Real}
     # cut[a, b]: an unbounded window of an infective in a was sampled only up to
     # the run's time limit, while it could still reach b.
     cut::Matrix{Bool}
+    # Reused across every `propose_along` call on this route, which otherwise
+    # runs once per infectious window: one race never calls it concurrently
+    # with itself, so the allocation it would make each time is spared instead.
+    contacts::Vector{Tuple{Int, U}}
 end
 
 function _MassAction(state::SimulationState, members; mixing_by::Tuple = (), rate)
@@ -80,7 +84,8 @@ function _MassAction(state::SimulationState, members; mixing_by::Tuple = (), rat
     ]
     return _MassAction(
         groups, group_of, float.(rates), max_susceptibility,
-        zeros(Bool, length(groups), length(groups))
+        zeros(Bool, length(groups), length(groups)),
+        Tuple{Int, _timetype(state)}[]
     )
 end
 
@@ -109,8 +114,7 @@ function propose_along(m::_MassAction, infector_id, state, open_t, close_t, capp
     infector = state.individuals[infector_id]
     a = m.group_of[infector_id]
     window = close_t - open_t
-    T = typeof(open_t)
-    contacts = Tuple{Int, T}[]
+    contacts = empty!(m.contacts)
     for (b, group) in enumerate(m.groups)
         r = traits ? m.rate[a, b] * infector.infectiousness : m.rate[a, b]
         bound = traits ? r * m.max_susceptibility[b] : r
