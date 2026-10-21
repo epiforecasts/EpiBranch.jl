@@ -456,6 +456,22 @@ function apply_trace!(q::Quarantine, contact, state, trace_time, rng)
         q.duration, rng, contact, "`Quarantine`'s `duration`"
     )
     record_removal!(contact, trace_time, release_time; key = QUARANTINE_STRETCHES_KEY)
+    # Stash what isolation, if any, stood before this quarantine, so a
+    # `Scheduled` reset can restore exactly that rather than wiping out an
+    # isolation another intervention recorded (the mirror image of what
+    # `Isolation`'s own `reset!` does for a quarantine it is layered over). A
+    # contact already quarantined by an earlier trace keeps the baseline
+    # recorded before that first trace, instead of taking this trace's own
+    # combined outcome as the new baseline.
+    if !get(contact.state, :_quarantined_by_tracing, false)::Bool
+        contact.state[:_isolation_time_before_quarantine] = isolation_time(contact)
+        contact.state[:_isolation_release_time_before_quarantine] = isolation_release_time(contact)
+        if _isolation_unrecorded(contact)
+            contact.state[:_isolation_unrecorded_before_quarantine] = true
+        else
+            delete!(contact.state, :_isolation_unrecorded_before_quarantine)
+        end
+    end
     if _isolation_in_force(contact)
         standing = isolation_time(contact)
         was_unrecorded = _isolation_unrecorded(contact)
@@ -471,6 +487,7 @@ function apply_trace!(q::Quarantine, contact, state, trace_time, rng)
     else
         set_isolated!(contact, trace_time; release_time = release_time)
     end
+    contact.state[:_quarantined_by_tracing] = true
     return nothing
 end
 
@@ -735,7 +752,34 @@ function _reset_traced!(ind::Individual)
     haskey(ind.state, :_ring_remaining) && delete!(ind.state, :_ring_remaining)
     haskey(ind.state, :_ring_propagated) && delete!(ind.state, :_ring_propagated)
     delete!(ind.state, QUARANTINE_STRETCHES_KEY)
-    _isolation_in_force(ind) && clear_isolated!(ind)
+    _undo_quarantine_isolation!(ind)
+    return nothing
+end
+
+# Undo only the isolation `Quarantine` itself recorded, restoring whatever
+# stood before it (another intervention's isolation, or none), rather than
+# clearing the field outright: a standing isolation from a separate
+# intervention such as `Isolation` is not tracing's to undo. Mirrors
+# `Isolation`'s own `reset!`, which protects a quarantine it was layered over
+# the same way.
+function _undo_quarantine_isolation!(ind::Individual)
+    get(ind.state, :_quarantined_by_tracing, false)::Bool || return nothing
+    previous = _state_real(ind.state, :_isolation_time_before_quarantine, Inf)
+    if isfinite(previous)
+        previous_release = _state_real(
+            ind.state, :_isolation_release_time_before_quarantine, Inf
+        )
+        clear_isolated!(ind)
+        set_isolated!(ind, previous; release_time = previous_release)
+        get(ind.state, :_isolation_unrecorded_before_quarantine, false) &&
+            (ind.state[:_isolation_unrecorded] = true)
+    else
+        clear_isolated!(ind)
+    end
+    delete!(ind.state, :_isolation_time_before_quarantine)
+    delete!(ind.state, :_isolation_release_time_before_quarantine)
+    delete!(ind.state, :_isolation_unrecorded_before_quarantine)
+    ind.state[:_quarantined_by_tracing] = false
     return nothing
 end
 
@@ -773,7 +817,7 @@ function _trace_pair!(
     # contacts that early does not change how they are traced.
     #
     # Requiring the seed's infector to be infected stops an uninfected ring
-    # member, which carries its own clinical state, from re-seeding a fresh
+    # member, which has its own clinical state, from re-seeding a fresh
     # full-radius ring and letting the fringe grow without bound. The ring
     # walk can also pass through an already-infected neighbour (see
     # `_walk_ring!` in sellke.jl); that walk marks the infector with
@@ -1068,8 +1112,9 @@ function initialise_individual!(::SourceTracing, individual, state)
 end
 
 # `trace_contacts!` below traces backward; the forward ring walk the race
-# builds for `traces_contacts` has nothing for `SourceTracing` to do. `traces_source` asks them to call it through a
-# second route instead (see `trace_contacts!`'s docstring).
+# builds for `traces_contacts` has nothing for `SourceTracing` to do.
+# `traces_source` asks the race to call it through a second route instead
+# (see `trace_contacts!`'s docstring).
 traces_contacts(::SourceTracing) = false
 traces_source(::SourceTracing) = true
 
