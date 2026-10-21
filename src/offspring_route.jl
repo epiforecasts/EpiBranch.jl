@@ -452,7 +452,7 @@ function _simulate_offspring(
     T = _timetype(state)
     tree = _take_tree(T, length(state.individuals), map(w -> w.until, windows))
     routes = ntuple(
-        i -> (_offspring_window(windows[i]), _Offspring(windows[i], i, tree, model.n_types)),
+        i -> (_offspring_window(windows[i]), _Offspring(windows[i], i, tree, n_types(model))),
         length(windows)
     )
     sellke_race!(
