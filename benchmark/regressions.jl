@@ -7,8 +7,9 @@
 #   julia benchmark/regressions.jl pr.json base.json [threshold]
 #
 # The threshold is a ratio of minimum times (default 1.25, i.e. 25% slower).
-# Pull requests that leave performance alone stay within about 7% of their
-# base on the hosted runners, so a smaller threshold would fail on noise.
+# On the hosted runners, pull requests that leave performance alone have shown
+# single benchmarks up to about 1.17x slower than their base, so a threshold
+# much below 1.25 would fail on noise.
 
 using BenchmarkTools
 using BenchmarkTools: leaves
