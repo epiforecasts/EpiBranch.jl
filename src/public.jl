@@ -19,7 +19,6 @@ public reset!
 public required_fields
 public infectious_removal_time
 public risk_applies
-public reads_population_state
 public standing_block
 public analytic_offspring_effect
 # End an infection early from any intervention hook, and read when it ended.
@@ -53,10 +52,6 @@ public model_generation_time
 #   - `transmission_risks` to contribute per-pair competing risks (e.g. a
 #     network's per-edge probability), resolved alongside the built-ins.
 public transmission_risks
-#   - a model with more than one natural race partition (a household process,
-#     over its households) defines `race_groups` to say how it splits into
-#     independent `_sellke_race!` calls for a given kernel.
-public race_groups
 
 # Helpers an `initialise_state` / `contacts_of` builds on, so a model never
 # touches the engine's bookkeeping directly.

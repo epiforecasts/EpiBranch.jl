@@ -51,7 +51,7 @@ end
 
 # The route a `contacts_of` model transmits along. `pending` holds the settling
 # case's exposures until the race proposes them, `reached` who each case
-# exposed, which is what tracing acts on, and `early` the exposures a ring asked
+# exposed, the field tracing acts on, and `early` the exposures a ring asked
 # for before a person settled, as delays from their infection.
 struct _ContactsOf{M, T <: Real}
     model::M

@@ -9,11 +9,9 @@ race settles cases in time order rather than generation order: the new
 `EpiBranch.generation_bound(rule)` trait, alongside `time_bound`, drops a
 settled case's own proposals once its generation reaches the bound, leaving
 every case beyond that depth undrawn, while everything within it still runs
-to its own extinction or `max_time`. A `HouseholdProcess` puts every household
-on one shared clock whenever such a rule is set, as it already does for an
-intervention that reads population-wide state, so the cap lands on the
-chronologically earliest cases rather than on whichever household's own race
-happened to run first.
+to its own extinction or `max_time`. A `HouseholdProcess` runs every household
+on one shared clock, so the cap lands on the chronologically earliest cases
+rather than on whichever household happened to run first.
 
 The `max_cases` and `max_generations` keyword *defaults* still stay off on
 these five models, so an existing run over a large fixed population is not
