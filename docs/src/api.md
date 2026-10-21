@@ -548,6 +548,21 @@ EpiBranch.seed!
 close_episode!
 ```
 
+### Writing a route that proposes its own contacts
+
+A route whose contacts are cheaper to sample than to list, such as a spatial
+kernel over a large population, declares
+[`EpiBranch.proposes_own_contacts`](@ref) and finds its own contacts through
+the functions below instead of listing them for the race to walk; see
+[New transmission structures](@ref) for how they fit together.
+
+```@docs
+EpiBranch.proposes_own_contacts
+EpiBranch.propose_along
+EpiBranch.route_pair_kernel
+EpiBranch.pending_beyond
+```
+
 ### Stopping rules
 
 ```@docs
