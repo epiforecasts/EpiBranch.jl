@@ -424,7 +424,7 @@ Internal: the coefficient of `z^degree` in `G(z)^power`, where `G` is
 `offspring`'s probability generating function; the single-degree case of
 [`_hitting_time_coefficients`](@ref), so it costs `power * degree^2`. Used by
 [`HittingTimeChainSize`](@ref EpiBranch.HittingTimeChainSize) with `power ==
-degree + s`, so this is the cube of the chain size it is evaluating.
+degree + s`: the cube of the chain size it is evaluating.
 """
 function _hitting_time_coefficient(offspring, power::Integer, degree::Integer)
     degree < 0 && return 0.0
@@ -437,8 +437,8 @@ end
 Internal: `pdf(HittingTimeChainSize(offspring), n)` for every `n` from 1 to
 `max_n`, read off the diagonal of the same power-series build-up as
 [`_hitting_time_coefficients`](@ref) instead of restarting it from scratch
-for each `n`. Costs `max_n^3` in total — the same as a single
-`_hitting_time_coefficient` call at `max_n` — rather than `max_n^4` from
+for each `n`. Costs `max_n^3` in total, the same as a single
+`_hitting_time_coefficient` call at `max_n`, rather than `max_n^4` from
 `max_n` independent calls. Used by `HittingTimeChainSize`'s `cdf` and
 `logccdf`, which otherwise sum this many terms one at a time.
 """
@@ -468,7 +468,7 @@ branching process:
 where `G` is `offspring`'s probability generating function and the power of
 `G` is taken as a power series truncated at degree `n - s`.
 [`chain_size_distribution`](@ref) returns it for any discrete offspring law
-with no dedicated method — a plain `Distributions.jl` law such as
+with no dedicated method: a plain `Distributions.jl` law such as
 `DiscreteNonParametric`, or a [`GeneratingFunctionOffspring`](@ref) built from
 a probability mass function. Offspring laws with a simpler closed form
 (`Poisson`, `NegativeBinomial`, [`ClusterMixed`](@ref)`(Poisson, ::Gamma)`)
@@ -642,7 +642,7 @@ whole range of secondary-case counts. The general fallback calls
 `_chain_size_logpdf` term by term; [`HittingTimeChainSize`](@ref
 EpiBranch.HittingTimeChainSize) overrides it to build the hitting-time
 coefficient table once and read every seed count off it, since they all
-share the same power `x` and differ only in degree — without this, calling
+share the same power `x` and differ only in degree. Without this, calling
 `_chain_size_logpdf` once per seed count rebuilds that table from scratch
 each time.
 """

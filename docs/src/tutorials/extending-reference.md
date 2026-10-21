@@ -806,14 +806,14 @@ Ring vaccination uses this for protection from an existing dose at a new
 exposure, with the current simulation time as its action time.
 
 By default every recipient draws on one budget. `EpiBranch.resource_key(iv,
-individual, state)` splits it: each distinct value it returns — a district, a
-treatment centre — gets its own usage, checked independently under the same
-`budget_per_period`, `period` and `carry_over`. It is asked of the individual
-rather than the proposed action, so a person already served in an earlier
-call is placed in the same group again from their recorded state, with
-nothing of that call's own proposal kept around. The default, `nothing`, puts
-everyone in a single group, unchanged from an intervention with no method of
-it.
+individual, state)` splits it: each distinct value it returns (a district, a
+treatment centre, say) gets its own usage, checked independently under the
+same `budget_per_period`, `period` and `carry_over`. It is asked of the
+individual rather than the proposed action, so a person already served in an
+earlier call is placed in the same group again from their recorded state,
+with nothing of that call's own proposal kept around. The default, `nothing`,
+puts everyone in a single group, unchanged from an intervention with no
+method of it.
 
 Recorded protection follows its effect date even when the delivery schedule is
 no longer active. Vaccination declares this with
