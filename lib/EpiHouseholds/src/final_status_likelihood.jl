@@ -9,6 +9,26 @@
 # infected set is then the set reachable, through those independent edges,
 # from whoever the community reaches directly.
 
+"""
+    HouseholdFinalStatuses(status)
+
+Who in each household was ever infected by the end of follow-up, with no
+infection times at all: one entry per person, in the same order as a
+`HouseholdProcess`'s members (as `household_of` numbers them). `true` for
+someone infected by the end of follow-up, `false` for someone who was not,
+`missing` for someone whose status was not recorded. Pass it to
+`loglikelihood` with a [`HouseholdProcess`](@ref) or `ModelSpec` to score it
+under the community hazard and within-household kernel (Ball 1986).
+"""
+struct HouseholdFinalStatuses
+    status::Vector{Union{Bool, Missing}}
+end
+
+HouseholdFinalStatuses(status::AbstractVector) =
+    HouseholdFinalStatuses(convert(Vector{Union{Bool, Missing}}, status))
+
+Base.length(d::HouseholdFinalStatuses) = length(d.status)
+
 # One person's own trait value: a number shared by everyone, or a vector with
 # one entry per person (as `HouseholdProcess`'s `external_hazard` is either).
 _trait_value(x::Real, ::Int) = x
@@ -32,9 +52,9 @@ _pair_escape_kernel(k, i::Int, j::Int) = k(i, j)
 function _pair_escape_kernel(::PairKernel, ::Int, ::Int)
     throw(
         ArgumentError(
-            "final_status_loglik needs a shared or (infector, susceptible) -> " *
-                "Distribution kernel; a PairKernel reads infection times and host " *
-                "state that final statuses alone do not carry"
+            "loglikelihood(::HouseholdFinalStatuses, ...) needs a shared or " *
+                "(infector, susceptible) -> Distribution kernel; a PairKernel reads " *
+                "infection times and host state that final statuses alone do not carry"
         )
     )
 end
@@ -134,22 +154,22 @@ function _household_final_status_loglik(
 end
 
 """
-    final_status_loglik(model::HouseholdProcess, statuses::AbstractVector;
-                        window, susceptibility = 1.0, infectiousness = 1.0) -> Float64
-    final_status_loglik(model::ModelSpec{<:HouseholdProcess}, statuses::AbstractVector;
-                        susceptibility = 1.0, infectiousness = 1.0) -> Float64
+    loglikelihood(data::HouseholdFinalStatuses, model::HouseholdProcess;
+                  window, susceptibility = 1.0, infectiousness = 1.0) -> Float64
+    loglikelihood(data::HouseholdFinalStatuses, model::ModelSpec{<:HouseholdProcess};
+                  susceptibility = 1.0, infectiousness = 1.0) -> Float64
 
 Log-likelihood of a household study's final statuses — who in each household
 was ever infected by the end of follow-up, with `missing` for anyone not
 followed up — under `model`'s community hazard and within-household kernel,
 with no infection times observed at all.
 
-`statuses` holds one entry per person, in the same order as `model`'s members
-(as `household_of` numbers them): `true` for someone infected by the end of
-follow-up, `false` for someone who was not, `missing` for someone whose status
-was not recorded. `window` is the length of every case's infectious period, a
-fixed number or a distribution, as [`household_final_size`](@ref)'s `window`
-is. For a `ModelSpec`, it instead comes from the progression, as
+`data.status` holds one entry per person, in the same order as `model`'s
+members (as `household_of` numbers them): `true` for someone infected by the
+end of follow-up, `false` for someone who was not, `missing` for someone whose
+status was not recorded. `window` is the length of every case's infectious
+period, a fixed number or a distribution, as [`household_final_size`](@ref)'s
+`window` is. For a `ModelSpec`, it instead comes from the progression, as
 [`household_offspring`](@ref)'s exact calculation reads it, and reading it
 that way fails the same way theirs does: with more than one delay closing the
 infectious period, or a probability gate on the way there.
@@ -174,7 +194,7 @@ escaping the community, nobody in the subset ever reaching outside it, and the
 subset being fully reachable, by those within it, from whoever the community
 reaches directly. The last piece is itself a triangular recursion over the
 subset's own subsets, so computing it for a household of `n` costs about 3ⁿ;
-scoring `statuses` sums the resulting probability over every subset consistent
+scoring `data` sums the resulting probability over every subset consistent
 with what was observed, `2^k` of them for `k` members of unknown status.
 
 # Example
@@ -183,13 +203,15 @@ with what was observed, `2^k` of them for `k` members of unknown status.
 using EpiHouseholds, EpiBranch, Distributions
 
 process = HouseholdProcess([3], Exponential(1 / 0.3); external_hazard = 0.1, obs_end = 1.0)
-final_status_loglik(process, [true, false, missing]; window = 6.0)
+data = HouseholdFinalStatuses([true, false, missing])
+loglikelihood(data, process; window = 6.0)
 ```
 """
-function final_status_loglik(
-        model::HouseholdProcess, statuses::AbstractVector;
+function Distributions.loglikelihood(
+        data::HouseholdFinalStatuses, model::HouseholdProcess;
         window, susceptibility = 1.0, infectiousness = 1.0
     )
+    statuses = data.status
     n = length(model.household_of)
     length(statuses) == n || throw(
         ArgumentError("statuses must have one entry per person ($n), got $(length(statuses))")
@@ -198,9 +220,10 @@ function final_status_loglik(
     _check_trait_length(infectiousness, n, "infectiousness")
     _ext_active(model.external_hazard) || throw(
         ArgumentError(
-            "final_status_loglik needs a community `external_hazard`: without one " *
-                "nothing seeds a household's outbreak, since every household here " *
-                "starts from scratch rather than from a fixed set of index cases"
+            "loglikelihood(::HouseholdFinalStatuses, ...) needs a community " *
+                "`external_hazard`: without one nothing seeds a household's outbreak, " *
+                "since every household here starts from scratch rather than from a " *
+                "fixed set of index cases"
         )
     )
     isfinite(model.obs_end) || throw(
@@ -232,20 +255,20 @@ function final_status_loglik(
     return ll
 end
 
-function final_status_loglik(
-        model::ModelSpec{<:HouseholdProcess}, statuses::AbstractVector;
+function Distributions.loglikelihood(
+        data::HouseholdFinalStatuses, model::ModelSpec{<:HouseholdProcess};
         susceptibility = 1.0, infectiousness = 1.0
     )
     window = _window_length_law(model)
     window === nothing && throw(
         ArgumentError(
-            "final_status_loglik needs a single fixed-length (or fixed-distribution) " *
-                "infectious window; pass `window` directly to " *
-                "`final_status_loglik(model.process, statuses; window, ...)` instead, " *
-                "or simplify the progression to a single delay out of the infectious state"
+            "loglikelihood(::HouseholdFinalStatuses, ...) needs a single fixed-length " *
+                "(or fixed-distribution) infectious window; pass `window` directly to " *
+                "`loglikelihood(data, model.process; window, ...)` instead, or simplify " *
+                "the progression to a single delay out of the infectious state"
         )
     )
-    return final_status_loglik(
-        model.process, statuses; window, susceptibility, infectiousness
+    return loglikelihood(
+        data, model.process; window, susceptibility, infectiousness
     )
 end

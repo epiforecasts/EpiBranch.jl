@@ -740,7 +740,7 @@ end
 # `m`-th power, averaged over the window. `m` is a plain count (an integer)
 # for `household_final_size`'s exchangeable members, and the product of one
 # person's infectiousness and another's susceptibility for
-# `final_status_loglik`'s single pair; either way the power is taken in `T`,
+# `HouseholdFinalStatuses`'s single pair; either way the power is taken in `T`,
 # since the recursion amplifies any inconsistency between the escape
 # probabilities of different set sizes, so rounding each power separately in
 # Float64 would undo the extended precision.

@@ -44,7 +44,7 @@ export HouseholdPairsLayout, compile_household_pairs
 export ConditionOn, RecruitedIndex, EarliestInfected
 export HouseholdOffspring, household_offspring, household_offspring_law
 export household_final_size
-export final_status_loglik
+export HouseholdFinalStatuses
 
 include("household_process.jl")
 include("household_simulate.jl")
