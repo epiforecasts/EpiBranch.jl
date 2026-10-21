@@ -925,6 +925,30 @@ end
         @test sort(first.(named)) == [2, 3, 4, 5]
     end
 
+    @testset "RoutedNetwork: a self-proposing route traces every case end to end" begin
+        # Each case's own proposals, read back for tracing, are what a
+        # simulated run with `ContactTracing` reaches: tracing a just-settled
+        # case must not depend on a route having already opened for it.
+        route = _EveryoneElse(1000.0, 20)
+        w = RouteWindow(:community; until = (:recovered,), kernel = nothing, reach = route)
+        m = RoutedNetwork([w]; n = 20)
+        model = ModelSpec(
+            m;
+            progression = [
+                Transition(:recovered; from = :infection, delay = 5.0, terminal = true),
+            ],
+            interventions = [
+                ContactTracing(
+                    eligibility = TraceEveryone(), probability = 1.0,
+                    isolation_to_trace_delay = Dirac(0.0), action = Quarantine(duration = Inf)
+                ),
+            ]
+        )
+        state = simulate(model; n_initial = 1, rng = StableRNG(1))
+        @test state.cumulative_cases == 20
+        @test count(is_traced, state.individuals) == 20
+    end
+
     @testset "RoutedNetwork: conditioned simulation" begin
         # `condition` retries until the outbreak size falls in the range
         route = RouteWindow(

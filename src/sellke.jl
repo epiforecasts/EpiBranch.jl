@@ -1348,6 +1348,26 @@ function _sellke_race!(
         # Unrolled over `rts` rather than looped over (see `_mint_all!`), for
         # the reason given there.
         _mint_all!(rts, race, ind, max_generation)
+        # `_settle_case!` has already resolved this case's own traits, so this
+        # is read ahead of the self-proposing routes opened next, which need
+        # it just as much as the routes opened below do.
+        traits |= ind.susceptibility != 1 || ind.infectiousness != 1
+        # A route that proposes its own contacts (`proposes_own_contacts`) has
+        # nothing for tracing to read until it is opened, so it opens here,
+        # before tracing, rather than with the rest below: tracing then reads
+        # back the same proposals this case's own transmission will use. Such
+        # a route never watches host records (`_propose_along!` refuses a
+        # live one), so opening it ahead of this case's own actions costs it
+        # nothing the later routes below still need from them.
+        capped_generation = _open_routes!(
+            rts,
+            (;
+                race, ind, members, openings, j, max_generation, close_keys,
+                removable, watch, live, live_route, route_projections,
+                full_snapshot, traits, route_interventions, T,
+            ),
+            capped_generation, true
+        )
         traced = _trace_from!(
             state, ind, interventions, case_contacts, pos, tracing
         )
@@ -1356,7 +1376,6 @@ function _sellke_race!(
             _apply_case_actions!(
             state, ind, acting, members, processed, case_contacts, pos, traced
         )
-        traits |= ind.susceptibility != 1 || ind.infectiousness != 1
 
         # Only a live kernel whose host records actually moved needs its pending
         # contacts redrawn. Resolving a case usually leaves every record alone —
@@ -1392,7 +1411,7 @@ function _sellke_race!(
                 removable, watch, live, live_route, route_projections,
                 full_snapshot, traits, route_interventions, T,
             ),
-            capped_generation
+            capped_generation, false
         )
     end
     return _finish_race!(
@@ -1513,17 +1532,25 @@ end
 # Open every route a settling case reaches and offer its targets a proposal,
 # unrolled over `rts`'s literal length for the same reason `_mint_all!` is.
 # `ctx` bundles what every route reads alike, and `capped` threads the "cut
-# off by `max_generation`" flag through the unrolled calls.
-@generated function _open_routes!(rts::Tuple, ctx, capped)
+# off by `max_generation`" flag through the unrolled calls. `only_proposing`
+# restricts the pass to routes that propose their own contacts, or to every
+# other route, so a route that finds its own contacts can be opened before
+# tracing runs (see the call in `_sellke_race!`) without opening any route
+# twice.
+@generated function _open_routes!(rts::Tuple, ctx, capped, only_proposing)
     body = Expr(:block)
     for i in 1:length(rts.parameters)
-        push!(body.args, :(capped = _open_route!(rts[$i][1], rts[$i][2], $i, ctx, capped)))
+        push!(
+            body.args,
+            :(capped = _open_route!(rts[$i][1], rts[$i][2], $i, ctx, capped, only_proposing))
+        )
     end
     push!(body.args, :(return capped))
     return body
 end
 
-function _open_route!(w, route_targets, ri, ctx, capped)
+function _open_route!(w, route_targets, ri, ctx, capped, only_proposing)
+    proposes_own_contacts(route_targets) == only_proposing || return capped
     (;
         race, ind, members, openings, j, max_generation, close_keys, removable,
         watch, live, live_route, route_projections, full_snapshot, traits,
