@@ -813,6 +813,21 @@ returns `nothing` before delivery. The default is `false`, for risks that apply
 only while the scheduled policy is active. `Scheduled` and
 `CapacityConstrained` pass this declaration on from the intervention they hold.
 
+`ContactTracing` follows up a contact this same way: `trace_contacts!` records
+who was reached and from when directly, since ring growth and later
+eligibility checks need that before any action is admitted, and proposes the
+follow-up itself (a quarantine's removal, or a plain flag) as an
+`InterventionAction` dated at the trace time. A `CapacityConstrained` wrapper
+rations that action exactly as it rations a dose, through `capacity_key` and
+`capacity_time_key` defined on the `TraceAction` the policy carries
+(`Quarantine` defines them; `FlagOnly`, which removes nobody, does not). A
+trace with no arrival time (`Inf`) has nothing to ration and applies directly.
+`Isolation` instead writes its effect straight into `resolve_individual!`, so
+a `CapacityConstrained` wrapping it has nothing to admit: it checks the budget
+itself, right after `resolve_individual!` runs, through `intervention_time`
+and `reset!`, the same seam `Scheduled` already uses for an intervention with
+no actions of its own.
+
 Use `EpiBranch.action_draw!(sample, individual, key)` to keep a delay or
 acceptance draw when the same action is proposed again. Keys identify an action
 or visit, so distinct visits need distinct keys. Ring and group delivery store
@@ -954,7 +969,7 @@ before.
 | A vaccine effect mode | A type `<: AbstractEffectMode` and `realised_efficacy`; `realise_prior_dose!` only to change what a dose recorded before the run gets | When a dose is recorded, or when a person is created |
 | A start date for an intervention | `Scheduled(iv; start_time = ...)`, with `intervention_time` and `reset!` for `iv` | After each hook |
 | A condition that starts a schedule | A type `<: AbstractTrigger` with `is_triggered!`; `trigger_can_lapse` and `required_transitions` if the defaults do not fit | Each time the schedule is checked |
-| A capacity limit | `CapacityConstrained(iv; budget_per_period = ...)`, with `capacity_key` and `capacity_time_key` for `iv` | When actions are admitted, once per case |
+| A capacity limit | `CapacityConstrained(iv; budget_per_period = ...)`, with `capacity_key` and `capacity_time_key` for `iv` (or for its `TraceAction`, for `ContactTracing`) | When actions are admitted, once per case; or, for an effect `iv` writes directly in `resolve_individual!`, right after that hook runs |
 | An exact effect on the offspring distribution | `analytic_offspring_effect` for an intervention | Closed-form results on a `ModelSpec` |
 | A model, attribute or progression transition that leaves the single-type offspring law exactly as drawn | `EpiBranch.offspring_law_unchanged` | The chain-size and incidence likelihoods' analytical path |
 | A stopping rule | A type `<: AbstractStoppingRule` and `should_stop` | Each step |
