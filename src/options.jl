@@ -182,6 +182,13 @@ function SimOpts(;
         !isempty(types) || throw(ArgumentError("index_types must not be empty"))
         all(>(0), types) || throw(ArgumentError("index_types must contain positive type indices"))
     end
+    if ids !== nothing && types isa Vector{Int} && length(ids) != length(types)
+        throw(
+            ArgumentError(
+                "initial_cases and index_types must have the same length"
+            )
+        )
+    end
     count = if ids !== nothing
         length(ids)
     elseif types isa Vector{Int}

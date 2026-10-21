@@ -368,6 +368,15 @@ using DataFrames
             @test_throws ArgumentError simulate(model; n_initial = 2, index_types = [1])
         end
 
+        @testset "initial_cases and index_types of different lengths is rejected" begin
+            @test_throws ArgumentError simulate(
+                model; initial_cases = [1, 2, 3], index_types = [1, 2]
+            )
+            @test_throws ArgumentError simulate(
+                model; initial_cases = [1, 2], index_types = [2, 1, 2]
+            )
+        end
+
         @testset "works through a ModelSpec too" begin
             spec = ModelSpec(model)
             state = simulate(spec; index_types = [2], max_cases = 10, rng = StableRNG(1))
