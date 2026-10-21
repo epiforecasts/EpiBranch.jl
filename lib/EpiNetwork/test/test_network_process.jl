@@ -106,6 +106,21 @@ end
             external_hazard = -1.0
         )
 
+        # so is a vector with one entry per node, or a function of a node's
+        # number, for a community hazard that differs between them
+        @test NetworkProcess(
+            ring, Exponential(2.0); external_hazard = fill(0.05, 5)
+        ) isa NetworkProcess
+        @test NetworkProcess(
+            ring, Exponential(2.0); external_hazard = j -> j <= 2 ? 0.05 : 0.01
+        ) isa NetworkProcess
+        @test_throws ArgumentError NetworkProcess(
+            ring, Exponential(2.0); external_hazard = [0.05, -0.01, 0.0, 0.0, 0.0]
+        )
+        @test_throws DimensionMismatch NetworkProcess(
+            ring, Exponential(2.0); external_hazard = fill(0.05, 4)
+        )
+
         # a matrix builds the same ring structure
         A = zeros(5, 5)
         for i in 1:5
@@ -814,6 +829,12 @@ end
         # as on NetworkProcess, the importation window must be non-negative
         @test_throws ArgumentError RoutedNetwork([w(:a, a)]; obs_end = -1.0)
         @test_throws ArgumentError RoutedNetwork([w(:a, a)]; obs_end = NaN)
+        # an external_hazard vector not matching the node count is rejected
+        @test RoutedNetwork([w(:a, a)]; external_hazard = fill(0.01, 6)) isa
+            RoutedNetwork
+        @test_throws DimensionMismatch RoutedNetwork(
+            [w(:a, a)]; external_hazard = fill(0.01, 5)
+        )
     end
 
     @testset "RoutedNetwork: conditioned simulation" begin
