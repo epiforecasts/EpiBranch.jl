@@ -231,10 +231,14 @@ end
     end
 
     @testset "A resource_key splits isolation's budget per group" begin
-        EpiBranch.resource_key(::Isolation, individual, state) =
+        struct _DistrictIsolation <: EpiBranch.InterventionWrapper
+            intervention::Isolation
+        end
+        EpiBranch.resource_key(::_DistrictIsolation, individual, state) =
             individual.state[:district]
+
         iso = Isolation(onset_to_isolation_delay = Dirac(0.0), duration = Inf)
-        cc = CapacityConstrained(iso; budget_per_period = 1.0)
+        cc = CapacityConstrained(_DistrictIsolation(iso); budget_per_period = 1.0)
         state = EpiBranch.new_state(
             BranchingProcess(Poisson(1.0), Exponential(5.0)),
             EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1)
