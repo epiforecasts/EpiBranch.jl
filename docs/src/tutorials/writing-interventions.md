@@ -158,8 +158,8 @@ In practice:
     infectious period then infects `1 - exp(-1) = 0.63` of the time at
     efficacy 0.5. On a branching process, or a model written against
     `contacts_of`, a case's contacts are a fixed set of draws, so a blocked
-    contact is a transmission lost, and the same efficacy of 0.5 halves that
-    pair's chance of transmission (0.43 in this example,
+    contact is a transmission lost, and the same efficacy
+    of 0.5 halves that pair's chance of transmission (0.43 in this example,
     against 0.63). The per-exposure reading on fixed-population models is what a
     leaky vaccine means there; check which one your scenario needs.
 

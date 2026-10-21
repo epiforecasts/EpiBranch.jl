@@ -820,9 +820,9 @@ these draws per policy and person. A refused admission may be considered again
 when it is proposed again, but is not queued. An earlier trigger can bring
 forward an action not yet admitted, using the same delay. Admission fixes the
 recorded date and effect draws, and later triggers do not change completed
-actions, with one exception below: a group dose for
-a person whose infection is not yet final moves to a trigger found later that
-turns out to be earlier than the one the dose was first given from. Dose
+actions, with one exception below: a group dose for a person whose infection
+is not yet final moves to a trigger found later that turns out to be earlier
+than the one the dose was first given from. Dose
 prerequisites are checked against the proposed date before admission.
 
 For example, draw one visit time and reuse it if admission is attempted again:

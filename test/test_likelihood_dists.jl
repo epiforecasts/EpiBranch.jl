@@ -117,6 +117,15 @@
         @test logpdf(d, data) ≈ loglikelihood(ChainSizes(data), obs)
     end
 
+    @testset "chain_size_distribution — whole-chain detection" begin
+        data = [1, 2, 1, 3, 1]
+        obs = ModelSpec(
+            BranchingProcess(Poisson(0.5)); observation = ChainDetection(0.4)
+        )
+        d = chain_size_distribution(obs; n_sim = 0)
+        @test logpdf(d, data) ≈ loglikelihood(ChainSizes(data), obs)
+    end
+
     @testset "prob_concluded keeps the model's observation" begin
         # With every cluster marked concluded, the mixture must reduce to
         # the plain closed form under the observation, not to the bare
@@ -127,6 +136,7 @@
         specs = (
             ModelSpec(bp; observation = MinimumSize(2)),
             ModelSpec(bp; observation = PerCaseObservation(; detection_prob = 0.5)),
+            ModelSpec(bp; observation = ChainDetection(0.4)),
             ModelSpec(bp; progression = [Reporting(delay = Dirac(0.0), probability = 0.5)]),
         )
         for spec in specs

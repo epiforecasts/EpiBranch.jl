@@ -70,8 +70,8 @@ end
 end
 
 # A structure-driven model whose `contacts_of` *mints* fresh contacts with
-# `make_contact!`, so the race grows its members as it goes. It uses the default
-# `initialise_state` (offspring-style seeds).
+# `make_contact!`, so the race grows its members as it goes. It uses the
+# default `initialise_state` (offspring-style seeds).
 struct MintModel <: EpiBranch.TransmissionModel
     k::Int
 end

@@ -742,9 +742,8 @@ from [`generate_offspring`](@ref) in a model that defines it. A model that
 creates new people inside its [`contacts_of`](@ref) calls it directly,
 returning each contact with its infection time. A model whose contacts are
 all new and share one generation time is simpler written as
-`generate_offspring`; `contacts_of` earns its keep where the model times
-each contact itself, as here, where every route out of a case has its own
-delay:
+`generate_offspring`; `contacts_of` earns its keep where the model times each
+contact itself, as here, where every route out of a case has its own delay:
 
 ```julia
 function EpiBranch.contacts_of(m::MyModel, parent, state::SimulationState)
