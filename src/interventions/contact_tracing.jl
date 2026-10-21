@@ -456,7 +456,7 @@ function apply_trace!(q::Quarantine, contact, state, trace_time, rng)
         q.duration, rng, contact, "`Quarantine`'s `duration`"
     )
     record_removal!(contact, trace_time, release_time; key = QUARANTINE_STRETCHES_KEY)
-    # Stash what isolation, if any, stood before this quarantine, so a
+    # Record what isolation, if any, stood before this quarantine, so a
     # `Scheduled` reset can restore exactly that rather than wiping out an
     # isolation another intervention recorded (the mirror image of what
     # `Isolation`'s own `reset!` does for a quarantine it is layered over). A
@@ -758,10 +758,9 @@ end
 
 # Undo only the isolation `Quarantine` itself recorded, restoring whatever
 # stood before it (another intervention's isolation, or none), rather than
-# clearing the field outright: a standing isolation from a separate
-# intervention such as `Isolation` is not tracing's to undo. Mirrors
-# `Isolation`'s own `reset!`, which protects a quarantine it was layered over
-# the same way.
+# clearing the field outright: tracing should not undo a standing isolation
+# set by a separate intervention such as `Isolation`. Mirrors `Isolation`'s
+# own `reset!`, which protects a quarantine it was layered over the same way.
 function _undo_quarantine_isolation!(ind::Individual)
     get(ind.state, :_quarantined_by_tracing, false)::Bool || return nothing
     previous = _state_real(ind.state, :_isolation_time_before_quarantine, Inf)

@@ -36,6 +36,13 @@ label share one budget, and doses given by another intervention under that
 label count against it; use different labels for separate budgets.
 [`capacity_usage`](@ref) reports the capacity used and available.
 
+By default everyone draws on the same budget. An intervention with a
+[`resource_key`](@ref EpiBranch.resource_key) method splits it instead: each
+distinct value — a district, a treatment centre — gets its own
+`budget_per_period`, tracked under the same `period`, `carry_over` and
+`priority` independently of every other. Pass the value to `capacity_usage`
+to read one group's own usage.
+
 [`Scheduled`](@ref) and `CapacityConstrained` can be combined in either
 order: both check each action's own proposed date.
 
@@ -146,10 +153,28 @@ function capacity_time_key(iv::AbstractIntervention)
     )
 end
 
+"""
+    resource_key(intervention, individual, state) -> Any
+
+For extension authors: which of `intervention`'s budgets `individual` draws on,
+when [`CapacityConstrained`](@ref) is to track more than one at once — a
+budget per district or per treatment centre, say. The default, `nothing`, puts
+everyone on the same budget, exactly as a `CapacityConstrained` with no method
+of it behaves. Each distinct value `resource_key` returns gets its own usage,
+counted separately under `budget_per_period`, `period` and `carry_over`.
+
+Dispatches on `individual` rather than a proposed action, so the same value is
+found again for someone already served in an earlier call, from their recorded
+state alone, with nothing of the original proposal kept around.
+"""
+resource_key(::AbstractIntervention, individual, state) = nothing
+
 # Read through any wrapper, so `CapacityConstrained` composes with
 # `Scheduled` in either order.
 capacity_key(w::InterventionWrapper) = capacity_key(w.intervention)
 capacity_time_key(w::InterventionWrapper) = capacity_time_key(w.intervention)
+resource_key(w::InterventionWrapper, individual, state) =
+    resource_key(w.intervention, individual, state)
 capacity_key(v::RingVaccination) = _vaccinated_key(dose_label(v))
 capacity_time_key(v::RingVaccination) = _vaccination_time_key(dose_label(v))
 capacity_key(v::MassVaccination) = _vaccinated_key(dose_label(v))
@@ -201,22 +226,31 @@ function _period_bounds(cc::CapacityConstrained, at)
     return (period_start, period_start + cc.period)
 end
 
-# The time each already-given dose counts against, sorted: the dose's own
-# recorded date, so a dose a delay dates later than its admission is charged
-# to the day it is actually given rather than to whichever call admitted it.
-# Built once per call, so the admission loop below can test
-# each candidate's own date against cumulative usage without rescanning the
-# population once per candidate.
-function _dose_times(cc::CapacityConstrained, state)
+# The time each already-given dose counts against, sorted and grouped by
+# `resource_key`: the dose's own recorded date, so a dose a delay dates later
+# than its admission is charged to the day it is actually given rather than to
+# whichever call admitted it. Built once per call, in a single pass over the
+# population regardless of how many distinct keys are in play, so the
+# admission loop below can test each candidate's own date against cumulative
+# usage without rescanning the population once per candidate or once per key.
+function _dose_times_by_key(cc::CapacityConstrained, state)
     key = capacity_key(cc.intervention)
     time_key = capacity_time_key(cc.intervention)
-    times = Float64[]
+    times = Dict{Any, Vector{Float64}}()
     for ind in state.individuals
         get(ind.state, key, false) || continue
-        push!(times, get(ind.state, time_key, -Inf))
+        t = get(ind.state, time_key, -Inf)
+        push!(get!(Vector{Float64}, times, resource_key(cc.intervention, ind, state)), t)
     end
-    sort!(times)
+    foreach(sort!, values(times))
     return times
+end
+
+# The sorted dose times for one `resource_key` value, `nothing` for an
+# intervention with no method of it, putting every recipient on one shared
+# budget as before.
+function _dose_times(cc::CapacityConstrained, state, key = nothing)
+    return get(_dose_times_by_key(cc, state), key, Float64[])
 end
 
 # How many of the sorted `times`, together with `extra` (doses admitted so far
@@ -263,8 +297,25 @@ function _fits_budget(cc::CapacityConstrained, times, extra, at)
     return true
 end
 
-function _capacity_usage(cc::CapacityConstrained, state, at = state.max_infection_time)
-    return _usage_at(cc, _dose_times(cc, state), Float64[], at)
+function _capacity_usage(cc::CapacityConstrained, state, at = state.max_infection_time, key = nothing)
+    return _usage_at(cc, _dose_times(cc, state, key), Float64[], at)
+end
+
+# The indices of `individuals` sharing each `resource_key` value, as a vector
+# of groups in the order their key is first seen, so processing one group
+# ahead of another never depends on the order a `Dict`'s own hashing would
+# iterate them in. An intervention with no `resource_key` method of its own
+# puts everyone in a single group, `nothing`, unchanged from before this
+# existed.
+function _resource_groups(cc::CapacityConstrained, state, individuals)
+    order = Any[]
+    groups = Dict{Any, Vector{Int}}()
+    for (i, ind) in enumerate(individuals)
+        key = resource_key(cc.intervention, ind, state)
+        haskey(groups, key) || push!(order, key)
+        push!(get!(Vector{Int}, groups, key), i)
+    end
+    return [groups[key] for key in order], order
 end
 
 # `CapacityConstrained` always has its own `intervention_actions` method, to
@@ -294,7 +345,8 @@ function _proposes_actions(cc::CapacityConstrained)
 end
 
 """
-    capacity_usage(cc::CapacityConstrained, state::SimulationState) -> (used, available)
+    capacity_usage(cc::CapacityConstrained, state::SimulationState, key = nothing)
+        -> (used, available)
 
 The number of doses (or other units of capacity) dated by now, and the number
 that could have been given by now, at the end of a simulation or at the point
@@ -304,9 +356,14 @@ far, and `used` counts every dose dated no later than it. With
 `carry_over = false` both refer to the current period only: `available` is one
 `budget_per_period`, and `used` counts the doses dated within it, including
 one given in that period by another intervention sharing the same capacity.
+
+`key` selects which budget to report when [`resource_key`](@ref
+EpiBranch.resource_key) splits `cc`'s intervention into more than one; the
+default, `nothing`, is the one budget an intervention with no method of it
+keeps everyone on.
 """
-function capacity_usage(cc::CapacityConstrained, state::SimulationState)
-    return _capacity_usage(cc, state)
+function capacity_usage(cc::CapacityConstrained, state::SimulationState, key = nothing)
+    return _capacity_usage(cc, state, state.max_infection_time, key)
 end
 
 # ── Delegation of every other hook ────────────────────────────────────

@@ -43,6 +43,12 @@ function _observe_sizes(o::PerCaseObservation, true_sizes, rng::AbstractRNG)
     return filter(>(0), obs)
 end
 
+function _observe_sizes(o::ChainDetection, true_sizes, rng::AbstractRNG)
+    # A whole chain is kept or dropped as one draw, matching
+    # `apply_observation!`: never partly reported.
+    return filter(n -> rand(rng) < o.recording_probability(n), true_sizes)
+end
+
 """
     sim_analytical_consistent(model; n_chains=5000, sizes=1:4, rng, max_cases=500)
 

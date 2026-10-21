@@ -609,6 +609,48 @@ end
         @test count(is_vaccinated, contacts2) == 0
     end
 
+    @testset "resource_key defaults to nothing, one budget for everyone" begin
+        rv = RingVaccination(efficacy = 0.9)
+        ind = _traced_contact(rv, 1, 1.0)
+        @test EpiBranch.resource_key(rv, ind, nothing) === nothing
+    end
+
+    @testset "resource_key splits the budget per group" begin
+        struct _GroupedAppointment <: EpiBranch.AbstractIntervention end
+        function EpiBranch.intervention_actions(::_GroupedAppointment, state, candidates)
+            return [
+                EpiBranch.InterventionAction(
+                    ind, ind.state[:time],
+                    (person, at, st) -> person.state[:attended] = true
+                ) for ind in candidates
+            ]
+        end
+        EpiBranch.capacity_key(::_GroupedAppointment) = :attended
+        EpiBranch.capacity_time_key(::_GroupedAppointment) = :time
+        EpiBranch.resource_key(::_GroupedAppointment, individual, state) =
+            individual.state[:district]
+
+        cc = CapacityConstrained(_GroupedAppointment(); budget_per_period = 1.0)
+        state = EpiBranch.new_state(
+            BranchingProcess(Poisson(1.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1)
+        )
+        a1 = Individual(id = 1, state = Dict{Symbol, Any}(:district => :A, :time => 1.0))
+        a2 = Individual(id = 2, state = Dict{Symbol, Any}(:district => :A, :time => 2.0))
+        b1 = Individual(id = 3, state = Dict{Symbol, Any}(:district => :B, :time => 1.0))
+        append!(state.individuals, [a1, a2, b1])
+        state.max_infection_time = 2.0
+
+        EpiBranch.apply_actions!(cc, state, [a1, a2, b1])
+        @test get(a1.state, :attended, false)
+        @test !get(a2.state, :attended, false)
+        @test get(b1.state, :attended, false)
+
+        @test capacity_usage(cc, state, :A).used == 1
+        @test capacity_usage(cc, state, :B).used == 1
+        @test capacity_usage(cc, state, :C).used == 0
+    end
+
     @testset "Fewer doses under a binding capacity constraint than without one" begin
         clinical = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
         iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = Inf)
