@@ -276,9 +276,9 @@
             @test_throws ArgumentError ChainDetection(0.0)
             @test_throws ArgumentError ChainDetection(1.5)
 
-            # A rule with two or more consecutive zeros at the start of
-            # `base`'s support must not poison the streaming log-sum-exp
-            # with a -Inf − -Inf term.
+            # Regression: two or more consecutive zeros at the start of
+            # `base`'s support fed the streaming log-sum-exp a
+            # -Inf − -Inf term, giving a NaN normalising constant.
             d_threshold = observe(base, ChainDetection(n -> n < 3 ? 0.0 : 1.0))
             @test isfinite(d_threshold.log_prob_recorded)
             @test pdf(d_threshold, 1) == 0.0
