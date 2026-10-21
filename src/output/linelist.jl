@@ -158,13 +158,12 @@ stopping rule leaves out the exposures that would have come after it stopped,
 a case at `max_generations` makes no contacts, and a contact timed before its
 infector's own infection is no exposure and is left out too. A model written
 against [`generate_offspring`](@ref) records its contacts the same way. A
-model written against
-[`contacts_of`](@ref) lists an uninfected exposure only of a person it creates,
-not of one who already existed. The models of a fixed population
-(`HomogeneousProcess`, `MixingProcess`, `NetworkProcess`, `RoutedNetwork`,
-`HouseholdProcess`) record only who infected whom by default, so every row
-has `infected = true`: a household member or network neighbour who was
-exposed but not infected does not appear. Attach an
+model written against [`contacts_of`](@ref) lists an uninfected exposure only
+of a person it creates, not of one who already existed. The models of a
+fixed population (`HomogeneousProcess`, `MixingProcess`, `NetworkProcess`,
+`RoutedNetwork`, `HouseholdProcess`) record only who infected whom by
+default, so every row has `infected = true`: a household member or network
+neighbour who was exposed but not infected does not appear. Attach an
 [`ExposedContactRecorder`](@ref) as the `ModelSpec`'s `recorder` to have such
 a pair listed too, with `infected = false`.
 

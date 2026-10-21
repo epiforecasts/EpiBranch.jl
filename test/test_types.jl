@@ -117,9 +117,10 @@ struct _UndeclaredTransition <: EpiBranch.AbstractClinicalTransition end
         model = BranchingProcess(NegBin(2.5, 0.16), LogNormal(1.6, 0.5))
         @test EpiBranch.has_single_type_law(model)
 
-        # A single-type law with no `chain_size_distribution` method.
-        no_law_model = BranchingProcess(Binomial(5, 0.3))
-        @test !EpiBranch.has_single_type_law(no_law_model)
+        # The hitting-time theorem gives every discrete offspring law a
+        # chain_size_distribution, Binomial included, so this is now true too.
+        binomial_model = BranchingProcess(Binomial(5, 0.3))
+        @test EpiBranch.has_single_type_law(binomial_model)
 
         # `single_type_offspring` throwing `ArgumentError` (multi-type offspring).
         multi_type_model = BranchingProcess(

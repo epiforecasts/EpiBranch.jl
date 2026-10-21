@@ -65,17 +65,35 @@
         @test chain_size_distribution(ModelSpec(bp_mt)) isa Distribution
     end
 
-    @testset "chain_size_distribution — single-type offspring with no closed-form law falls back" begin
-        # Binomial offspring has a single-type law but no `chain_size_distribution`
-        # method; this must fall back to simulation rather than throwing a
-        # bare MethodError from inside the analytical fast path.
+    @testset "chain_size_distribution — Binomial offspring takes the analytical path" begin
+        # The hitting-time theorem gives Binomial offspring a
+        # chain_size_distribution too, so the bare model now takes the
+        # analytical fast path rather than needing simulation.
         bp = BranchingProcess(Binomial(5, 0.3))
         data = [1, 2, 3]
+        d = chain_size_distribution(bp)
+        @test d isa EpiBranch.HittingTimeChainSize
+        @test sum(logpdf(d, n) for n in data) ≈ loglikelihood(ChainSizes(data), Binomial(5, 0.3))
+
+        # Explicit kwargs still force the simulation-based wrapper.
         @test chain_size_distribution(bp; n_sim = 500, rng = StableRNG(1)) isa
             Distribution
         @test isfinite(
             loglikelihood(ChainSizes(data), bp; n_sim = 500, rng = StableRNG(1))
         )
+    end
+
+    @testset "chain_size_distribution — bare-pgf GeneratingFunctionOffspring falls back" begin
+        # Regression: a GeneratingFunctionOffspring has a chain_size_distribution
+        # method, so has_single_type_law's hasmethod check passes, but calling
+        # it on a bare-pgf instance (no stored pmf) throws ArgumentError.
+        # The analytical fast path must catch that and fall through to the
+        # simulation-based wrapper, rather than let it escape the primary
+        # `~` entry point as an uncaught error.
+        R, k = 2.5, 0.16
+        off = GeneratingFunctionOffspring(s -> EpiBranch._pgf(NegBin(R, k), s), R)
+        bp = BranchingProcess(off, Exponential(5.0))
+        @test chain_size_distribution(bp) isa Distribution
     end
 
     @testset "chain_length_distribution" begin

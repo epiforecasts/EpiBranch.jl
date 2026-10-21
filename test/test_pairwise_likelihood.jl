@@ -437,7 +437,7 @@ end
         end
 
         # a vector or a function of the person's number varies the community
-        # hazard between people, as a cluster-randomised trial's arms would
+        # hazard between people, as the arms of a cluster-randomised trial would
         sus = [1, 2, 2, 3, 3, 3, 4]
         rates = [0.05, 0.2, 0.01, 0.1]
         rowk_by_person = r -> is_ext[r] ? Exponential(1 / rates[sus[r]]) : k

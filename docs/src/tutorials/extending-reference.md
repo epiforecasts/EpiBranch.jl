@@ -789,8 +789,8 @@ case settles, for every intervention with a method of it, with the people
 `EpiBranch.action_candidates` chooses as candidates: by default the case and
 the contacts it can still reach. An intervention that chooses its own, such as
 everyone in the run not yet infected, writes a method of
-`action_candidates`. The actions it proposes then go through the schedule and
-capacity limits.
+`action_candidates`. The actions `intervention_actions` returns go through the
+schedule and capacity limits.
 
 `Scheduled` checks the proposed action time before delivery. A condition
 function sees that time as `state.max_infection_time`, with the current case
@@ -804,6 +804,16 @@ successful delivery. An action on a person who already has that flag passes
 the capacity check without another charge, though the schedule still applies.
 Ring vaccination uses this for protection from an existing dose at a new
 exposure, with the current simulation time as its action time.
+
+By default every recipient draws on one budget. `EpiBranch.resource_key(iv,
+individual, state)` splits it: each distinct value it returns — a district, a
+treatment centre — gets its own usage, checked independently under the same
+`budget_per_period`, `period` and `carry_over`. It is asked of the individual
+rather than the proposed action, so a person already served in an earlier
+call is placed in the same group again from their recorded state, with
+nothing of that call's own proposal kept around. The default, `nothing`, puts
+everyone in a single group, unchanged from an intervention with no method of
+it.
 
 Recorded protection follows its effect date even when the delivery schedule is
 no longer active. Vaccination declares this with
@@ -955,6 +965,7 @@ before.
 | A start date for an intervention | `Scheduled(iv; start_time = ...)`, with `intervention_time` and `reset!` for `iv` | After each hook |
 | A condition that starts a schedule | A type `<: AbstractTrigger` with `is_triggered!`; `trigger_can_lapse` and `required_transitions` if the defaults do not fit | Each time the schedule is checked |
 | A capacity limit | `CapacityConstrained(iv; budget_per_period = ...)`, with `capacity_key` and `capacity_time_key` for `iv` | When actions are admitted, once per case |
+| A capacity limit per group | `resource_key(iv, individual, state)` for `iv` | When actions are admitted, once per case |
 | An exact effect on the offspring distribution | `analytic_offspring_effect` for an intervention | Closed-form results on a `ModelSpec` |
 | A model, attribute or progression transition that leaves the single-type offspring law exactly as drawn | `EpiBranch.offspring_law_unchanged` | The chain-size and incidence likelihoods' analytical path |
 | A stopping rule | A type `<: AbstractStoppingRule` and `should_stop` | Each step |
