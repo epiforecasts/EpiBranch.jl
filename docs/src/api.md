@@ -552,8 +552,8 @@ close_episode!
 
 A route whose contacts are cheaper to sample than to list, such as a spatial
 kernel over a large population, declares
-[`EpiBranch.proposes_own_contacts`](@ref) and finds its own contacts through
-the functions below instead of listing them for the race to walk; see
+[`EpiBranch.proposes_own_contacts`](@ref) and uses the functions below to find
+its own contacts rather than listing them for the race to walk; see
 [New transmission structures](@ref) for how they fit together.
 
 ```@docs
