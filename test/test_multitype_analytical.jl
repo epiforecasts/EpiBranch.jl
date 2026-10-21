@@ -47,7 +47,7 @@ EpiBranch.single_type_offspring(m::LawOnlyModel) = m.law
         iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
         spec = ModelSpec(model; interventions = [iso])
         @test_throws r"Isolation" reproduction_number(spec)
-        @test_throws r"containment_probability\(simulate\(spec, n\)\)" reproduction_number(spec)
+        @test_throws r"containment_probability\(spec, n\)" reproduction_number(spec)
 
         M3 = [
             2.0 0.5 0.1;

@@ -360,7 +360,7 @@ end
 """
     generate_offspring(model::BranchingProcess, parent, state)
 
-Draw how many contacts the case `parent` makes in this generation, before
+Draw how many contacts the case `parent` makes, before
 susceptibility and interventions decide which are infected: one number, or one
 number per type in a multi-type model. Only defined for a process with a single
 [`Infectiousness`](@ref) window. The simulation does not use it, since each

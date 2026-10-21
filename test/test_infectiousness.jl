@@ -241,3 +241,42 @@ end
         @test traced == reached
     end
 end
+
+@testset "A deep ring traces a member's contacts from the earlier of ring and trigger" begin
+    # Whether the offspring is a distribution, whose contacts are drawn as soon
+    # as the ring reaches a member, or a function, whose contacts are drawn
+    # only once the member settles, each contact of a traced member is traced
+    # from whichever came first: the ring reaching the member, or the member's
+    # own trigger as an eligible case.
+    attributes = clinical_presentation(
+        incubation_period = Exponential(2.0), prob_asymptomatic = 0.0
+    )
+    iso = Isolation(onset_to_isolation_delay = Dirac(4.0), duration = Inf)
+    ct = ContactTracing(
+        probability = 1.0, isolation_to_trace_delay = Dirac(0.5),
+        action = FlagOnly(), depth = 2
+    )
+    for offspring in (Dirac(2), (rng, ind) -> 2)
+        m = ModelSpec(
+            BranchingProcess(offspring, Exponential(3.0));
+            interventions = [iso, ct], attributes
+        )
+        checked = 0
+        wrong = 0
+        for seed in 1:10
+            s = simulate(m; max_generations = 4, max_cases = nothing, rng = StableRNG(seed))
+            for c in s.individuals
+                c.parent_id == 0 && continue
+                b = s.individuals[c.parent_id]
+                b.parent_id != 0 && is_traced(b) && is_infected(b) || continue
+                haskey(c.state, :trace_time) || continue
+                trigger = EpiBranch.trigger_time(ct.eligibility, b, c, s)
+                expected = min(b.state[:trace_time], trigger) + 0.5
+                checked += 1
+                c.state[:trace_time] ≈ expected || (wrong += 1)
+            end
+        end
+        @test checked > 0
+        @test wrong == 0
+    end
+end

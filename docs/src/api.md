@@ -535,8 +535,6 @@ EpiBranch.reads_settled_state
 EpiBranch.simulate_once
 generate_offspring
 contacts_of
-collect_exposures
-gather_by_target
 EpiBranch.model_generation_time
 EpiBranch.transmission_risks
 EpiBranch.race_groups
@@ -565,7 +563,6 @@ EpiBranch.honoured_without_should_stop
 ```@docs
 EpiBranch.initialise_individual!
 EpiBranch.resolve_individual!
-EpiBranch.apply_post_transmission!
 EpiBranch.on_infection_settled!
 EpiBranch.trace_contacts!
 EpiBranch.traces_contacts
@@ -620,11 +617,9 @@ EpiBranch.intervention_actions
 EpiBranch.action_draw!
 EpiBranch._action_cache
 EpiBranch.apply_actions!
-EpiBranch.continuous_actions
-EpiBranch.continuous_candidates
+EpiBranch.action_candidates
 EpiBranch.acts_on_population
 EpiBranch.needs_contacts
-EpiBranch.settles_generation_batch
 EpiBranch.may_revise
 EpiBranch.is_settled
 EpiBranch.persistent_competing_risks
@@ -706,16 +701,8 @@ helpers the package may change at any time.
 
 ```@docs
 EpiBranch.get_generation_time
-EpiBranch._advance_generation!
-EpiBranch._settle_generation!
-EpiBranch._offer_continuous_actions!
 EpiBranch._settle_case!
 EpiBranch._at_case!
-EpiBranch._intervene!
-EpiBranch._act_per_case!
-EpiBranch._case_hooks!
-EpiBranch._resolve!
-EpiBranch._decide_infected
 EpiBranch.population_size
 EpiBranch._create_individual
 EpiBranch.logsumexp
