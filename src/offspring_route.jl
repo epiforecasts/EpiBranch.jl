@@ -318,11 +318,13 @@ function _draw_counts!(
     return nothing
 end
 # `OffspringTimes`: each contact's offset from `from_t` is already known, so
-# it stands in for `kernel` in `_draw_contact!`, which `_window_infection_time`
-# resolves to a time with no draw. `kernel` itself (always `NoGenerationTime`
-# here, from `_window_kernel`) is unused. `OffspringTimes` lacks a per-type
-# label, so a multi-type model has no type to give each contact; rather than
-# collapse them all to type 1, this refuses to guess.
+# it stands in for `kernel` in `_draw_contact!`, wrapped as a `_FixedOffset`
+# so `_window_infection_time` resolves it to a time with no draw without
+# also matching a kernel that mistakenly returns a bare number. `kernel`
+# itself (always `NoGenerationTime` here, from `_window_kernel`) is unused.
+# `OffspringTimes` lacks a per-type label, so a multi-type model has no type
+# to give each contact; rather than collapse them all to type 1, this
+# refuses to guess.
 function _draw_counts!(
         o::_Offspring, race, ind, times::OffspringTimes, from_t, kernel, born
     )
@@ -335,7 +337,7 @@ function _draw_counts!(
         )
     )
     for Δt in times.times
-        _draw_contact!(o, race, ind, from_t, Δt, 0, born)
+        _draw_contact!(o, race, ind, from_t, _FixedOffset(Δt), 0, born)
     end
     return nothing
 end

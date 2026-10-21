@@ -388,13 +388,21 @@ model_generation_time(model::TransmissionModel) = model.generation_time
 _has_contacts(n::Int) = n > 0
 _has_contacts(counts::Vector{Int}) = any(>(0), counts)
 
+# Wraps the per-contact offset an `OffspringTimes` already gives, so
+# `offspring_route.jl` can pass it here in place of a kernel without
+# `_draw_contact!` branching on where the offset came from. Kept distinct
+# from a bare `Real` so a kernel that mistakenly returns a number (one must
+# return a `Distribution`) still raises a `MethodError` rather than being
+# silently treated as a fixed offset.
+struct _FixedOffset{T <: Real}
+    offset::T
+end
+
 # A contact's infection time is the window's `from`-state time plus a draw
 # from its kernel (the contact interval measured from `from`), or the time
-# an `OffspringTimes` already gave, for which `offspring_route.jl` passes the
-# bare offset here in place of a kernel so `_draw_contact!` need not branch on
-# where the offset came from.
+# an `OffspringTimes` already gave.
 _window_infection_time(::NoGenerationTime, from_t::Real, state) = from_t
-_window_infection_time(offset::Real, from_t::Real, state) = from_t + offset
+_window_infection_time(offset::_FixedOffset, from_t::Real, state) = from_t + offset.offset
 function _window_infection_time(kernel::Distribution, from_t::Real, state)
     return from_t + rand(state.rng, kernel)
 end
