@@ -220,6 +220,47 @@ record changed, without any warning if `projections` is left out too; with
 `projections`, the simulation stops with an error when a record the kernel
 reads changes without being declared.
 
+### A route that finds its own contacts
+
+Listing a route's contacts costs nothing when there are few of them: a
+household, a handful of named neighbours. It costs more when there are many,
+such as a spatial kernel over a large population or contact with everyone in
+an area, where listing them first turns an *O(contacts)* process into an
+*O(candidates)* one. Mass action (`EpiBranch._MassAction`, behind
+[`HomogeneousProcess`](@ref) and [`MixingProcess`](@ref)) is the package's own
+example: rather than list every member as a candidate contact and discard
+most of them, it samples directly the pairs that do have one, by skipping
+ahead through each mixing group at the group's bound rate.
+
+A route of your own takes the same seam. Declare
+[`EpiBranch.proposes_own_contacts`](@ref) `true` for whatever value your
+route's `reach` holds, and give it:
+
+- [`EpiBranch.propose_along`](@ref)`(route, infector_id, state, open_t, close_t,
+  capped, traits)`, returning the `(target_id, time)` pairs `route` proposes
+  from `infector_id`'s window, open at `open_t` and due to close at `close_t`.
+  `capped` is set when the window has no natural close and `close_t` is the
+  run's time limit instead: propose only up to it, and remember enough, on
+  `route` itself, for `pending_beyond` to answer afterwards. The race submits
+  each pair itself — dropping a target already settled, or the infector
+  itself — so `route` need not check either, and scales nothing further: read
+  `state.individuals[...].susceptibility` and `.infectiousness` directly if
+  `route`'s own contacts should depend on them.
+- [`EpiBranch.route_pair_kernel`](@ref)`(route, infector_id, target_id, state)`,
+  the unscaled contact-interval kernel between one pair, asked only when a
+  proposed contact is blocked by a competing risk and the race needs to draw
+  that pair's next one.
+- [`EpiBranch.pending_beyond`](@ref)`(route, state, reinfects)`, if `propose_along`
+  can ever set `capped`: whether members `route` left unsampled past the time
+  limit might still be reachable, so the race reports a run cut off rather
+  than claiming an extinction it cannot vouch for. The default, `false`, suits
+  a route that always proposes everything it draws.
+
+On `RoutedNetwork` (in `EpiNetwork`), a route built this way carries
+`kernel = nothing`, since the route times its own contacts; see its docstring
+for the `n` keyword it needs once no route's `reach` is an adjacency list to
+read the node count from.
+
 ## Seasonal or time-varying transmission
 
 A [`PairKernel`](@ref)'s `calendar` multiplies its contact rate by a function
