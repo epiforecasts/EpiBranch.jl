@@ -1188,3 +1188,4 @@ include("test_isolation_duration_likelihood.jl")
 
 include("test_pair_kernels.jl")
 include("test_external_hazard.jl")
+include("test_final_status_likelihood.jl")
