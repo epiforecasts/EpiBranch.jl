@@ -817,7 +817,7 @@ function _trace_pair!(
     # contacts that early does not change how they are traced.
     #
     # Requiring the seed's infector to be infected stops an uninfected ring
-    # member, which carries its own clinical state, from re-seeding a fresh
+    # member, which has its own clinical state, from re-seeding a fresh
     # full-radius ring and letting the fringe grow without bound. The ring
     # walk can also pass through an already-infected neighbour (see
     # `_walk_ring!` in sellke.jl); that walk marks the infector with
@@ -1112,8 +1112,9 @@ function initialise_individual!(::SourceTracing, individual, state)
 end
 
 # `trace_contacts!` below traces backward; the forward ring walk the race
-# builds for `traces_contacts` has nothing for `SourceTracing` to do. `traces_source` asks them to call it through a
-# second route instead (see `trace_contacts!`'s docstring).
+# builds for `traces_contacts` has nothing for `SourceTracing` to do.
+# `traces_source` asks the race to call it through a second route instead
+# (see `trace_contacts!`'s docstring).
 traces_contacts(::SourceTracing) = false
 traces_source(::SourceTracing) = true
 
