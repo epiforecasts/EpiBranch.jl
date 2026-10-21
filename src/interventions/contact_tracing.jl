@@ -978,25 +978,6 @@ function risk_applies(::ContactTracing, route)
     return route !== nothing && INTERVENTION_REMOVAL in route.until
 end
 
-# Tracing itself reads and writes only the infector's own contacts, but it
-# hands each decision to a component that receives the whole state, and
-# answers for those components too. The built-in ones read only the infector
-# or the contact; one written outside the package declares its own read.
-function reads_population_state(ct::ContactTracing)
-    return reads_population_state(ct.eligibility) ||
-        reads_population_state(ct.trace_rate) ||
-        reads_population_state(ct.isolation_to_trace_delay) ||
-        reads_population_state(ct.action)
-end
-reads_population_state(::TraceEligibility) = false
-# A combinator is an eligibility too, and answers for what it wraps.
-reads_population_state(e::AnyOf) = any(reads_population_state, e.conditions)
-reads_population_state(e::AllOf) = any(reads_population_state, e.conditions)
-reads_population_state(e::NoneOf) = any(reads_population_state, e.conditions)
-reads_population_state(::TraceRate) = false
-reads_population_state(::TraceDelay) = false
-reads_population_state(::TraceAction) = false
-
 """With `depth > 1`, keep following traced contacts with ring budget left for
 one more hop, whether or not they are themselves infected, so tracing can
 reach their own contacts: an infected one may already be settled, with no
@@ -1169,10 +1150,3 @@ end
 
 # A quarantine is a removal, so it reaches only the routes a removal can cut.
 risk_applies(::SourceTracing, route) = route !== nothing && INTERVENTION_REMOVAL in route.until
-
-function reads_population_state(st::SourceTracing)
-    return reads_population_state(st.eligibility) ||
-        reads_population_state(st.trace_rate) ||
-        reads_population_state(st.isolation_to_trace_delay) ||
-        reads_population_state(st.action)
-end

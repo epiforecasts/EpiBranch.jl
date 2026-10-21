@@ -537,7 +537,6 @@ generate_offspring
 contacts_of
 EpiBranch.model_generation_time
 EpiBranch.transmission_risks
-EpiBranch.race_groups
 EpiBranch.sellke_race!
 EpiBranch.infectious_from
 make_contact!
