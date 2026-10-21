@@ -339,19 +339,21 @@ function trace_contacts!(cc::CapacityConstrained, state, infector, contacts, not
     return nothing
 end
 
-# Whether `iv` (unwrapped past anything that only forwards the hook) writes
-# its own effect directly in `resolve_individual!`, as `Isolation` does, and
-# has declared a `capacity_key` for it. `CapacityConstrained` then gates that
-# effect through `intervention_time` and `reset!`, the way `Scheduled`
+# Whether the intervention that owns `iv`'s `capacity_key` (unwrapped past
+# anything that only forwards it) writes its own effect directly in
+# `resolve_individual!`, as `Isolation` does. `CapacityConstrained` then gates
+# that effect through `intervention_time` and `reset!`, the way `Scheduled`
 # already does for its own window, rather than through the action funnel an
 # intervention proposing no effect of its own in `resolve_individual!` (a
-# dose) uses instead.
+# dose) uses instead. Found through `capacity_key`'s owner rather than
+# `resolve_individual!`'s: `Scheduled` always defines the latter itself, to
+# gate whatever it wraps through its own window, which would otherwise stop
+# the search there and credit it to a dose a `Scheduled(RingVaccination(...))`
+# still proposes through the funnel.
 function _resolves_under_capacity(iv::AbstractIntervention)
-    owner = _hook_owner(resolve_individual!, iv)
-    _has_own_method(resolve_individual!, typeof(owner), AbstractIntervention) || return false
-    return _has_own_method(
-        capacity_key, typeof(_hook_owner(capacity_key, iv)), AbstractIntervention
-    )
+    owner = _hook_owner(capacity_key, iv)
+    _has_own_method(capacity_key, typeof(owner), AbstractIntervention) || return false
+    return _has_own_method(resolve_individual!, typeof(owner), AbstractIntervention)
 end
 
 function resolve_individual!(cc::CapacityConstrained, ind, state)
