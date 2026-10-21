@@ -33,6 +33,15 @@ public records_isolation
 public watched_records
 public kernel_projection
 
+# Routes that find their own contacts rather than listing them (a spatial
+# kernel, or contact with everyone in an area): the race submits what
+# `propose_along` proposes itself, and asks `route_pair_kernel` and
+# `pending_beyond` only when it needs to.
+public proposes_own_contacts
+public propose_along
+public route_pair_kernel
+public pending_beyond
+
 # Transmission-model interface. A new process subtypes `TransmissionModel`
 # and extends these seam methods:
 #   - candidate generation: `generate_offspring` (offspring-driven) or

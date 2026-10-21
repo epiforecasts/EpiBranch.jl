@@ -254,8 +254,11 @@ function _route_pair_kernel(rts, route, infector_id, target_id, state)
 end
 
 # The kernel of one pair on one route, asked of the model again. Only a blocked
-# contact needs it.
+# contact needs it. A route that finds its own contacts answers through the
+# public `route_pair_kernel` instead of being walked for the pair.
 function _pair_kernel(route_targets, infector_id, target_id, state)
+    proposes_own_contacts(route_targets) &&
+        return route_pair_kernel(route_targets, infector_id, target_id, state)
     for (tid, kernel) in route_targets(infector_id, state)
         tid == target_id && return kernel
     end
@@ -1567,19 +1570,123 @@ function _record_infection!(route_targets, infector, ind, w, named)
     return nothing
 end
 
+"""
+    proposes_own_contacts(route) -> Bool
+
+For route authors: whether `route` finds its own contacts for
+[`propose_along`](@ref EpiBranch.propose_along), rather than listing them for
+the race to walk as `(target_id, kernel)` pairs (an adjacency list, or
+anything callable that way). `false` by default. Declare `true` for a route
+whose contacts are cheaper to sample than to list, such as a spatial kernel
+over a large population or contact with everyone in an area: mass action
+(`_MassAction`) declares it for exactly this reason. A route declaring `true`
+must also implement [`propose_along`](@ref EpiBranch.propose_along) and
+[`route_pair_kernel`](@ref EpiBranch.route_pair_kernel), and may implement
+[`pending_beyond`](@ref EpiBranch.pending_beyond).
+"""
+proposes_own_contacts(route) = false
+
+"""
+    propose_along(route, infector_id, state, open_t, close_t, capped, traits) -> contacts
+
+For route authors: the infections `route` proposes from `infector_id`'s
+window on this route, open at `open_t`. `close_t` is the window's close, or
+the run's time limit where the window has none and `capped` is `true`;
+either way, propose only contacts up to `close_t`. Returns an iterable of
+`(target_id, time)` pairs, each an absolute time at which that contact would
+transmit if nothing blocked it.
+
+Only asked of a route declaring [`proposes_own_contacts`](@ref
+EpiBranch.proposes_own_contacts); every other route lists its targets instead
+(a `RouteWindow`'s adjacency `reach`), and the race draws each pair's contact
+time itself. The race does the rest: a target already settled, or the
+infector itself, is dropped from what this returns, without `route` having to
+check either; the per-individual `susceptibility` and `infectiousness` `route`
+reads off `state.individuals[...]` are not scaled again afterwards. `traits`
+is whether any individual in the run departs from the defaults of each, which
+`route` may use to skip the pair-by-pair lookup where neither does, as mass
+action does; it is only ever a hint, since reading the records directly gives
+the same answer.
+
+With `capped` set, more contacts than this proposes may exist past `close_t`:
+remember enough, on `route` itself, for [`pending_beyond`](@ref
+EpiBranch.pending_beyond) to answer afterwards, so the race reports a run cut
+off rather than one that reached extinction it cannot vouch for.
+"""
+function propose_along end
+
+"""
+    route_pair_kernel(route, infector_id, target_id, state) -> Union{Nothing, Distribution}
+
+For route authors: the contact-interval kernel between `infector_id` and
+`target_id` on this route. Only asked of a route declaring
+[`proposes_own_contacts`](@ref EpiBranch.proposes_own_contacts), and only for
+a pair whose proposed contact was blocked by a competing risk: the race draws
+that pair's next contact from this kernel, conditioned on falling after the
+blocked one, exactly as it would for a route that lists its targets. Return
+`nothing` for a pair this route does not reach at all. Unlike
+[`propose_along`](@ref EpiBranch.propose_along)'s proposals, the race scales
+this kernel's draw by the pair's own `susceptibility` and `infectiousness`
+itself, so return the unscaled kernel here.
+"""
+function route_pair_kernel end
+
+"""
+    pending_beyond(route, state, reinfects::Bool) -> Bool
+
+For route authors: whether `route` left proposals beyond what
+[`propose_along`](@ref EpiBranch.propose_along) has already made, because a
+window with no natural close was sampled only up to the run's time limit
+(`propose_along`'s `capped`). `false` by default, right for a route that
+proposes every contact it draws. Asked once the race has otherwise run out of
+candidates, so a route that samples for efficiency, as mass action does,
+answers from what it recorded during `propose_along` and the final state,
+rather than leaving the race to claim an extinction it cannot vouch for.
+
+`reinfects` is whether the model's progression can ever bring a settled host
+back as a target (see [`susceptible_again_time`](@ref)): a route with members
+still reachable through it, though already infected, answers `true` when one
+of them could still wane and `reinfects` holds.
+"""
+pending_beyond(route, state, reinfects::Bool) = false
+
 # Whether a route left contacts past the time limit that it never proposed, so
 # that a race which ran out of candidates was cut off rather than extinct. A
-# route that proposes every contact it draws leaves none.
-_pending_beyond(route_targets, race) = false
+# route that proposes every contact it draws leaves none. Dispatches to the
+# public `pending_beyond` for a route that proposes its own contacts.
+function _pending_beyond(route_targets, race)
+    proposes_own_contacts(route_targets) || return false
+    return pending_beyond(route_targets, race.state, race.reinfects)
+end
 
 # Propose the infections one case's window on one route leads to. The default
 # asks the route for every susceptible target and its pair kernel, and draws one
-# contact per pair, keeping those inside the window. A route that can find the
-# pairs with a contact inside the window without drawing every pair, such as
-# mass action (`_MassAction`), has a method of its own.
+# contact per pair, keeping those inside the window. A route that finds its own
+# contacts (`proposes_own_contacts`), such as mass action (`_MassAction`),
+# answers through the public `propose_along` instead: it returns the
+# `(target_id, time)` pairs themselves, and the race does the submitting and
+# the processed/reinfects bookkeeping that every other route gets through
+# `_propose!` below.
 function _propose_along!(
         route_targets, race, infector_id, opening_id, open_t, close_t, traits, live, ri
     )
+    if proposes_own_contacts(route_targets)
+        live && throw(
+            ArgumentError(
+                "a route that proposes its own contacts reads no host records, " *
+                    "so none can be watched"
+            )
+        )
+        window = close_t - open_t
+        capped = !isfinite(window) && isfinite(race.max_time)
+        capped && (close_t = race.max_time)
+        for (target_id, t) in propose_along(
+                route_targets, infector_id, race.state, open_t, close_t, capped, traits
+            )
+            _propose_contact!(race, target_id, infector_id, opening_id, t)
+        end
+        return nothing
+    end
     (;
         state, rng, pos, processed, watch, snapshot, watched_keys,
         route_projections, full_snapshot, reinfects,
@@ -1620,6 +1727,20 @@ function _propose_along!(
         _propose!(race, k, opening_id, cand)
     end
     return nothing
+end
+
+# A contact with a member who is the infector is wasted, as it would be under
+# any route. A settled member is wasted too, unless the progression allows
+# reinfection (`race.reinfects`; see `HostImmunity`), in which case the
+# proposal is still recorded and held back until their immunity has waned.
+# Shared by every route that proposes a target by id rather than listing it
+# for the race to walk: a route that finds its own contacts (`propose_along`)
+# and a model written against `contacts_of` alike.
+function _propose_contact!(race, id, infector_id, opening_id, t)
+    id == infector_id && return nothing
+    k = race.pos[id]
+    race.processed[k] && !race.reinfects && return nothing
+    return _propose!(race, k, opening_id, t)
 end
 
 # Record a proposal through the race's own queues.
