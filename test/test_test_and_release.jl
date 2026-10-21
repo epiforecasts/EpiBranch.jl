@@ -130,7 +130,7 @@ using StableRNGs
         # scenario the issue reports getting wrong, by reading the infection
         # before the race had settled it, is covered by the unit tests above
         # instead, where a contact not yet infected can be built directly.
-        # What this exercises is the dispatch through the full engine: that a
+        # This exercises the dispatch through the full engine: that a
         # contact's test is granted, deferred until settlement where it is
         # not yet known, and resolved to the true outcome either way.
         iso = Isolation(onset_to_isolation_delay = Dirac(1.0), duration = Inf)
