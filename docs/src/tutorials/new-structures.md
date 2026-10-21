@@ -256,7 +256,7 @@ route's `reach` holds, and give it:
   than claiming an extinction it cannot vouch for. The default, `false`, suits
   a route that always proposes everything it draws.
 
-On `RoutedNetwork` (in `EpiNetwork`), a route built this way carries
+On `RoutedNetwork` (in `EpiNetwork`), a route built this way has
 `kernel = nothing`, since the route times its own contacts; see its docstring
 for the `n` keyword it needs once no route's `reach` is an adjacency list to
 read the node count from.

@@ -904,8 +904,8 @@ end
 
     @testset "RoutedNetwork: tracing a self-proposing route reads back its own proposals" begin
         # At this rate every window of length 10 reaches every other node, so
-        # the proposed set is deterministic enough to check against a fresh
-        # walk's would-be answer.
+        # the proposed set is deterministic enough to check against what a
+        # fresh walk would find.
         route = _EveryoneElse(1000.0, 5)
         w = RouteWindow(:community; until = (:recovered,), kernel = nothing, reach = route)
         wrapped = EpiNetwork._route_targets(w, true)

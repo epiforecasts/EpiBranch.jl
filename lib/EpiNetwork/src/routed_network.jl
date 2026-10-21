@@ -56,7 +56,7 @@ secondary cases falls according to which routes isolation cuts.
   infect on this route), so different routes can connect different pairs of the
   same people. A route whose contacts are cheaper to sample than to list, such
   as a spatial kernel over a large population or contact with everyone in an
-  area, can instead carry a `reach` that proposes its own: a value with
+  area, can instead have a `reach` that proposes its own: a value with
   [`EpiBranch.proposes_own_contacts`](@ref) true, and methods for
   [`EpiBranch.propose_along`](@ref) and [`EpiBranch.route_pair_kernel`](@ref).
   Its `kernel` is then unused (pass `kernel = nothing`), since such a `reach`
@@ -86,7 +86,7 @@ secondary cases falls according to which routes isolation cuts.
 
 All routes cover the same people, so every adjacency `reach` must have the
 same length. `n`, the number of nodes, is read from one of those lists when
-any route carries one, and must agree with it if given; with no adjacency
+any route has one, and must agree with it if given; with no adjacency
 list anywhere, because every route proposes its own contacts, pass `n`
 yourself. `external_hazard` and `obs_end` are as for [`NetworkProcess`](@ref).
 
@@ -167,7 +167,7 @@ function RoutedNetwork(
     end
     # A route's kernel accepts the same forms as `NetworkProcess`'s edge
     # kernel; a per-edge vector is validated and normalised against this
-    # route's own adjacency. A route that proposes its own contacts carries no
+    # route's own adjacency. A route that proposes its own contacts has no
     # kernel to validate.
     windows = [_validate_route_kernel(w) for w in windows]
     _check_external(external_hazard, n)
