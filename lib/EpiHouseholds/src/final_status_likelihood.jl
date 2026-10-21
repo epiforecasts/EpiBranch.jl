@@ -183,7 +183,7 @@ from its own population in simulation.
 one, nothing seeds a household's outbreak at all, since every household here
 starts from scratch rather than from a fixed set of index cases.
 
-# How it is calculated
+# Calculation
 
 A community contact reaches each susceptible independently over `obs_end`,
 and an infectious case's contact with each household-mate over the window

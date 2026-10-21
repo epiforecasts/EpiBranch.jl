@@ -740,10 +740,10 @@ end
 # `m`-th power, averaged over the window. `m` is a plain count (an integer)
 # for `household_final_size`'s exchangeable members, and the product of one
 # person's infectiousness and another's susceptibility for
-# `HouseholdFinalStatuses`'s single pair; either way the power is taken in `T`,
-# since the recursion amplifies any inconsistency between the escape
-# probabilities of different set sizes, so rounding each power separately in
-# Float64 would undo the extended precision.
+# `HouseholdFinalStatuses`'s single pair; either way the power is taken in `T`:
+# the recursion amplifies any inconsistency between the escape probabilities
+# of different set sizes, and rounding each power separately in Float64 would
+# undo the extended precision.
 _escape(T::Type, kernel, window::Real, m::Real) = T(ccdf(kernel, window))^m
 function _escape(T::Type, kernel, window::UnivariateDistribution, m::Real)
     m == 0 && return one(T)
