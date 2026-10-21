@@ -456,6 +456,22 @@ function apply_trace!(q::Quarantine, contact, state, trace_time, rng)
         q.duration, rng, contact, "`Quarantine`'s `duration`"
     )
     record_removal!(contact, trace_time, release_time; key = QUARANTINE_STRETCHES_KEY)
+    # Stash what isolation, if any, stood before this quarantine, so a
+    # `Scheduled` reset can restore exactly that rather than wiping out an
+    # isolation another intervention recorded (the mirror image of what
+    # `Isolation`'s own `reset!` does for a quarantine it is layered over). A
+    # contact already quarantined by an earlier trace keeps the baseline
+    # recorded before that first trace, instead of taking this trace's own
+    # combined outcome as the new baseline.
+    if !get(contact.state, :_quarantined_by_tracing, false)::Bool
+        contact.state[:_isolation_time_before_quarantine] = isolation_time(contact)
+        contact.state[:_isolation_release_time_before_quarantine] = isolation_release_time(contact)
+        if _isolation_unrecorded(contact)
+            contact.state[:_isolation_unrecorded_before_quarantine] = true
+        else
+            delete!(contact.state, :_isolation_unrecorded_before_quarantine)
+        end
+    end
     if _isolation_in_force(contact)
         standing = isolation_time(contact)
         was_unrecorded = _isolation_unrecorded(contact)
@@ -471,6 +487,7 @@ function apply_trace!(q::Quarantine, contact, state, trace_time, rng)
     else
         set_isolated!(contact, trace_time; release_time = release_time)
     end
+    contact.state[:_quarantined_by_tracing] = true
     return nothing
 end
 
@@ -735,7 +752,34 @@ function _reset_traced!(ind::Individual)
     haskey(ind.state, :_ring_remaining) && delete!(ind.state, :_ring_remaining)
     haskey(ind.state, :_ring_propagated) && delete!(ind.state, :_ring_propagated)
     delete!(ind.state, QUARANTINE_STRETCHES_KEY)
-    _isolation_in_force(ind) && clear_isolated!(ind)
+    _undo_quarantine_isolation!(ind)
+    return nothing
+end
+
+# Undo only the isolation `Quarantine` itself recorded, restoring whatever
+# stood before it (another intervention's isolation, or none), rather than
+# clearing the field outright: a standing isolation from a separate
+# intervention such as `Isolation` is not tracing's to undo. Mirrors
+# `Isolation`'s own `reset!`, which protects a quarantine it was layered over
+# the same way.
+function _undo_quarantine_isolation!(ind::Individual)
+    get(ind.state, :_quarantined_by_tracing, false)::Bool || return nothing
+    previous = _state_real(ind.state, :_isolation_time_before_quarantine, Inf)
+    if isfinite(previous)
+        previous_release = _state_real(
+            ind.state, :_isolation_release_time_before_quarantine, Inf
+        )
+        clear_isolated!(ind)
+        set_isolated!(ind, previous; release_time = previous_release)
+        get(ind.state, :_isolation_unrecorded_before_quarantine, false) &&
+            (ind.state[:_isolation_unrecorded] = true)
+    else
+        clear_isolated!(ind)
+    end
+    delete!(ind.state, :_isolation_time_before_quarantine)
+    delete!(ind.state, :_isolation_release_time_before_quarantine)
+    delete!(ind.state, :_isolation_unrecorded_before_quarantine)
+    ind.state[:_quarantined_by_tracing] = false
     return nothing
 end
 
@@ -934,29 +978,10 @@ function risk_applies(::ContactTracing, route)
     return route !== nothing && INTERVENTION_REMOVAL in route.until
 end
 
-# Tracing itself reads and writes only the infector's own contacts, but it
-# hands each decision to a component that receives the whole state, and
-# answers for those components too. The built-in ones read only the infector
-# or the contact; one written outside the package declares its own read.
-function reads_population_state(ct::ContactTracing)
-    return reads_population_state(ct.eligibility) ||
-        reads_population_state(ct.trace_rate) ||
-        reads_population_state(ct.isolation_to_trace_delay) ||
-        reads_population_state(ct.action)
-end
-reads_population_state(::TraceEligibility) = false
-# A combinator is an eligibility too, and answers for what it wraps.
-reads_population_state(e::AnyOf) = any(reads_population_state, e.conditions)
-reads_population_state(e::AllOf) = any(reads_population_state, e.conditions)
-reads_population_state(e::NoneOf) = any(reads_population_state, e.conditions)
-reads_population_state(::TraceRate) = false
-reads_population_state(::TraceDelay) = false
-reads_population_state(::TraceAction) = false
-
 """With `depth > 1`, keep following traced contacts with ring budget left for
 one more hop, whether or not they are themselves infected, so tracing can
 reach their own contacts: an infected one may already be settled, with no
-future turn of its own at which it could be offered as a fresh ring root (see
+further turn at which it could be offered as a fresh ring root (see
 `_walk_ring!` in sellke.jl). An uninfected one does not infect those contacts
 either way. Returns the ids of those ring members (none for `depth == 1`)."""
 function keep_active(ct::ContactTracing, state, targets, is_new)
@@ -1068,8 +1093,9 @@ function initialise_individual!(::SourceTracing, individual, state)
 end
 
 # `trace_contacts!` below traces backward; the forward ring walk the race
-# builds for `traces_contacts` has nothing for `SourceTracing` to do. `traces_source` asks them to call it through a
-# second route instead (see `trace_contacts!`'s docstring).
+# builds for `traces_contacts` has nothing for `SourceTracing` to do.
+# `traces_source` asks the race to call it through a second route instead
+# (see `trace_contacts!`'s docstring).
 traces_contacts(::SourceTracing) = false
 traces_source(::SourceTracing) = true
 
@@ -1124,10 +1150,3 @@ end
 
 # A quarantine is a removal, so it reaches only the routes a removal can cut.
 risk_applies(::SourceTracing, route) = route !== nothing && INTERVENTION_REMOVAL in route.until
-
-function reads_population_state(st::SourceTracing)
-    return reads_population_state(st.eligibility) ||
-        reads_population_state(st.trace_rate) ||
-        reads_population_state(st.isolation_to_trace_delay) ||
-        reads_population_state(st.action)
-end

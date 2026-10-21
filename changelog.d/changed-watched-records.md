@@ -10,6 +10,4 @@ case of the same mechanism.
 
 A record that an attribute builder, a `Transition` or an observation model
 moves is now followed as well: the engine no longer infers from the
-intervention stack that nothing else can move one. A household model puts every
-household on one clock when its kernel declares a record, whether or not an
-intervention is in the stack.
+intervention stack that nothing else can move one.
