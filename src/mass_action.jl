@@ -45,7 +45,7 @@ run but not rise above that bound, which is how the race already reads it: as se
 when the member is created. The route also records what it left past the run's
 time limit, so build one for each run.
 """
-struct _MassAction{T <: Real, S <: Real}
+struct _MassAction{T <: Real, S <: Real, U <: Real}
     groups::Vector{Vector{Int}}  # member ids in each mixing group
     group_of::Dict{Int, Int}     # member id → index of its group
     rate::Matrix{T}              # rate[a, b]: one infective in a to one member of b
@@ -53,6 +53,10 @@ struct _MassAction{T <: Real, S <: Real}
     # cut[a, b]: an unbounded window of an infective in a was sampled only up to
     # the run's time limit, while it could still reach b.
     cut::Matrix{Bool}
+    # Reused across every `propose_along` call on this route, which otherwise
+    # runs once per infectious window, since one race never calls it
+    # concurrently with itself; reuse spares an allocation on each call.
+    contacts::Vector{Tuple{Int, U}}
 end
 
 function _MassAction(state::SimulationState, members; mixing_by::Tuple = (), rate)
@@ -80,13 +84,15 @@ function _MassAction(state::SimulationState, members; mixing_by::Tuple = (), rat
     ]
     return _MassAction(
         groups, group_of, float.(rates), max_susceptibility,
-        zeros(Bool, length(groups), length(groups))
+        zeros(Bool, length(groups), length(groups)),
+        Tuple{Int, _timetype(state)}[]
     )
 end
 
-# The route as any other: every susceptible member with its pair kernel. The race
-# itself proposes through `_propose_along!` below and asks for single pairs through
-# `_pair_kernel`; this is for anything that walks a route's targets.
+# The route as any other: every susceptible member with its pair kernel. This
+# is for anything that walks a route's targets; the race itself proposes
+# through `propose_along` below and asks for single pairs through
+# `route_pair_kernel`.
 function (m::_MassAction)(infector_id, state)
     a = m.group_of[infector_id]
     return (
@@ -97,38 +103,33 @@ function (m::_MassAction)(infector_id, state)
     )
 end
 
-function _pair_kernel(m::_MassAction, infector_id, target_id, state)
+proposes_own_contacts(::_MassAction) = true
+
+function route_pair_kernel(m::_MassAction, infector_id, target_id, state)
     r = m.rate[m.group_of[infector_id], m.group_of[target_id]]
     return r > 0 ? Exponential(inv(r)) : nothing
 end
 
-function _propose_along!(
-        m::_MassAction, race, infector_id, opening_id, open_t, close_t, traits, live, ri
-    )
-    live && throw(
-        ArgumentError("a mass-action route reads no host records, so none can be watched")
-    )
-    infector = race.state.individuals[infector_id]
+function propose_along(m::_MassAction, infector_id, state, open_t, close_t, capped, traits)
+    infector = state.individuals[infector_id]
     a = m.group_of[infector_id]
-    # A window that never closes would have this case contact every member. A
-    # contact after `max_time` is never used, so with a time limit the window is
-    # sampled only up to it, and the run remembers that contacts were left
-    # beyond it (`_pending_beyond`). A window that closes is sampled whole, which
-    # keeps a run cut at `max_time` the same draw as the full run.
     window = close_t - open_t
-    unbounded = !isfinite(window) && isfinite(race.max_time)
-    unbounded && (window = race.max_time - open_t)
+    contacts = empty!(m.contacts)
     for (b, group) in enumerate(m.groups)
         r = traits ? m.rate[a, b] * infector.infectiousness : m.rate[a, b]
         bound = traits ? r * m.max_susceptibility[b] : r
         bound > 0 || continue
-        unbounded && (m.cut[a, b] = true)
+        # A window that never closes would have this case contact every
+        # member. A contact after the run's time limit is never used, so with
+        # one in force the window is sampled only up to it, and the route
+        # remembers that contacts were left beyond it (`pending_beyond`). A
+        # window that closes on its own is sampled whole, which keeps a run
+        # cut at the time limit the same draw as the full run.
+        capped && (m.cut[a, b] = true)
         window > 0 || continue
-        _propose_sampled!(
-            race, group, infector_id, r, bound, traits, opening_id, open_t, window
-        )
+        _sample_contacts!(contacts, state, group, r, bound, traits, open_t, window)
     end
-    return nothing
+    return contacts
 end
 
 # Every pair in `group`, at rate `r` scaled by the member's susceptibility when
@@ -140,16 +141,14 @@ end
 # lower rate, with probability `pk`, is kept with probability `pk/p`, and its
 # time is the exponential at its own rate conditioned on `dt ≤ window`,
 # `-log(1 - u·pk)/rate`.
-function _propose_sampled!(
-        race, group, infector_id, r, bound, traits, opening_id, open_t, window
-    )
-    (; rng, state) = race
+function _sample_contacts!(contacts, state, group, r, bound, traits, open_t, window)
+    rng = state.rng
     pair_rate(id) = traits ? r * state.individuals[id].susceptibility : r
     if !isfinite(window)
         for id in group
             rate = pair_rate(id)
             rate > 0 || continue
-            _propose_contact!(race, id, infector_id, opening_id, open_t + randexp(rng) / rate)
+            push!(contacts, (id, open_t + randexp(rng) / rate))
         end
         return nothing
     end
@@ -175,33 +174,21 @@ function _propose_sampled!(
             rand(rng) * p < pk || continue
         end
         dt = -log1p(-rand(rng) * pk) / rate
-        _propose_contact!(race, id, infector_id, opening_id, open_t + dt)
+        push!(contacts, (id, open_t + dt))
     end
     return nothing
 end
 
 # Whether a window sampled only up to the time limit could still have reached a
 # member left uninfected, in which case the run was cut off rather than extinct.
-function _pending_beyond(m::_MassAction, race)
+function pending_beyond(m::_MassAction, state, reinfects::Bool)
     any(m.cut) || return false
     return any(CartesianIndices(m.cut)) do ab
         a, b = Tuple(ab)
         m.cut[a, b] && any(m.groups[b]) do id
-            ind = race.state.individuals[id]
-            settled = race.processed[race.pos[id]]
-            (!settled || (race.reinfects && isfinite(susceptible_again_time(ind)))) &&
+            ind = state.individuals[id]
+            (!is_infected(ind) || (reinfects && isfinite(susceptible_again_time(ind)))) &&
                 ind.susceptibility > 0
         end
     end
-end
-
-# A contact with a member who is the infector is wasted, as it would be under
-# any route. A settled member is wasted too, unless the progression allows
-# reinfection (`race.reinfects`; see `HostImmunity`), in which case the
-# proposal is still recorded and held back until their immunity has waned.
-function _propose_contact!(race, id, infector_id, opening_id, t)
-    id == infector_id && return nothing
-    k = race.pos[id]
-    race.processed[k] && !race.reinfects && return nothing
-    return _propose!(race, k, opening_id, t)
 end

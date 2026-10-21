@@ -1000,7 +1000,8 @@ end
         # stays > 0 throughout), so it is still reachable once the
         # progression reinfects and their draw gave them a finite wait.
         m = EpiBranch._MassAction(
-            [[1]], Dict(1 => 1), reshape([1.0], 1, 1), [1.0], reshape([true], 1, 1)
+            [[1]], Dict(1 => 1), reshape([1.0], 1, 1), [1.0], reshape([true], 1, 1),
+            Tuple{Int, Float64}[]
         )
         waiting = Individual(; id = 1)
         waiting.state[:susceptible_again_time] = 5.0
