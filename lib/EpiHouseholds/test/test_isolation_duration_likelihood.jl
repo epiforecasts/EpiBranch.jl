@@ -8,7 +8,9 @@
     progression = [
         Transition(:recovered; from = :infection, delay = 30.0, terminal = true),
     ]
-    process = HouseholdProcess(fill(5, 120), Exponential(0.4))
+    # Contacts slow enough that many infections fall inside an isolated
+    # stretch, so the comparison below holds for a single run.
+    process = HouseholdProcess(fill(5, 120), Exponential(2.0))
 
     finite = Isolation(
         onset_to_isolation_delay = Dirac(1.0), duration = Dirac(7.0)
@@ -34,10 +36,11 @@
 
     @test isfinite(loglikelihood(data, m))
 
-    # The round trip's job is the plumbing: the recorded stretches reach the
-    # likelihood and change its total. The arithmetic is pinned exactly on a
-    # layer built by hand below, where nothing is infected inside a gap.
-    @test pairwise_surv_loglik(process.kernel, data) != pairwise_surv_loglik(
+    # The round trip's job is the plumbing: taking the recorded stretches out
+    # of each pair's exposure raises the total. The arithmetic is pinned
+    # exactly on a layer built by hand below, where nothing is infected inside
+    # a gap.
+    @test pairwise_surv_loglik(process.kernel, data) > pairwise_surv_loglik(
         process.kernel,
         HouseholdInfections(
             [ind.state[:household]::Int for ind in state.individuals],
