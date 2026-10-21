@@ -1025,6 +1025,52 @@
         end
     end
 
+    @testset "ChainSizeClasses" begin
+        @testset "Construction validates bounds" begin
+            @test_throws ArgumentError ChainSizeClasses(Int[], Float64[], Int[])
+            @test_throws ArgumentError ChainSizeClasses([1, 2], [1], [1, 2])
+            @test_throws ArgumentError ChainSizeClasses([1, 2], [1, 2], [1])
+            @test_throws ArgumentError ChainSizeClasses([0], [1], [1])
+            @test_throws ArgumentError ChainSizeClasses([1], [1], [-1])
+            @test_throws ArgumentError ChainSizeClasses([2], [1], [1])
+            @test_throws ArgumentError ChainSizeClasses([1], [1.5], [1])
+            @test_throws ArgumentError ChainSizeClasses([1, 1], [1, 5], [10, 3])
+            @test_throws ArgumentError ChainSizeClasses([5, 1], [10, 5], [3, 10])
+            @test ChainSizeClasses([1], [Inf], [1]) isa ChainSizeClasses
+        end
+
+        @testset "Matches the sum of exact probabilities" begin
+            d = chain_size_distribution(NegBin(0.5, 0.3))
+            data = ChainSizeClasses([1, 2, 10], [1, 9, Inf], [120, 40, 5])
+            manual = 120 * logpdf(d, 1) +
+                40 * log(sum(pdf(d, n) for n in 2:9)) +
+                5 * logccdf(d, 9)
+            @test loglikelihood(data, NegBin(0.5, 0.3)) ≈ manual
+            @test loglikelihood(data, d) ≈ manual
+        end
+
+        @testset "Compact form of exact data matches ChainSizes" begin
+            sizes = [1, 1, 3, 1, 5]
+            exact_ll = loglikelihood(ChainSizes(sizes), NegBin(0.8, 0.5))
+            compact_ll = loglikelihood(ChainSizeClasses(sizes), NegBin(0.8, 0.5))
+            @test compact_ll ≈ exact_ll
+        end
+
+        @testset "Classes with zero counts contribute nothing" begin
+            d = NegBin(0.8, 0.5)
+            with_zero = ChainSizeClasses([1, 2, 5], [1, 4, Inf], [10, 0, 3])
+            without = ChainSizeClasses([1, 5], [1, Inf], [10, 3])
+            @test loglikelihood(with_zero, d) ≈ loglikelihood(without, d)
+        end
+
+        @testset "ClusterMixed dispatch" begin
+            o = ClusterMixed(Poisson, Gamma(2.0, 0.4))
+            data = ChainSizeClasses([1, 2, 10], [1, 9, Inf], [120, 40, 5])
+            d = chain_size_distribution(o)
+            @test loglikelihood(data, o) ≈ loglikelihood(data, d)
+        end
+    end
+
     @testset "Chain length likelihood" begin
         @testset "Poisson offspring" begin
             ll = loglikelihood(ChainLengths([0, 1, 0, 2, 1]), Poisson(0.5))

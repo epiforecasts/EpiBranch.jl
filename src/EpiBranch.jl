@@ -227,7 +227,7 @@ export proportion_cases_individual, proportion_cases_offspring
 export probability_contain
 
 # Exports — unified inference interface
-export OffspringCounts, ChainSizes, ChainLengths, IncidenceCounts
+export OffspringCounts, ChainSizes, ChainSizeClasses, ChainLengths, IncidenceCounts
 export incidence_moments
 export IncidenceApproximation, NormalApproximation, LognormalApproximation
 # Entry points returning a Distribution that wraps a model; use with

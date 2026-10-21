@@ -15,9 +15,9 @@ household line list is an EpiBranch line list.
 
 `HouseholdProcess` is a structure-driven `TransmissionModel`, like
 `NetworkProcess` in [epiNetwork](../epiNetwork). It simulates by the
-**Sellke construction** in continuous time — the
-exact generative model of its pairwise likelihood — because a finite, depleting
-clique needs time-ordered competing-risk resolution.
+**Sellke construction** in continuous time — the exact generative model of its
+pairwise likelihood — because a finite, depleting clique needs time-ordered
+competing-risk resolution.
 
 ## Inference
 

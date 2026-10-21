@@ -156,10 +156,9 @@ public records_contacts
 public INTERVENTION_REMOVAL
 
 # The run seam a model with its own simulation loop defines, and the public
-# wrapper around
-# its construction: it resolves `max_time` from the run's `SimOpts` and
-# reconciles the aggregate bookkeeping, so a single-race model never touches
-# `_max_time` or `_reconcile_sellke_bookkeeping!` directly.
+# wrapper around its construction: it resolves `max_time` from the run's
+# `SimOpts` and reconciles the aggregate bookkeeping, so a single-race model
+# never touches `_max_time` or `_reconcile_sellke_bookkeeping!` directly.
 public simulate_once
 public sellke_race!
 
