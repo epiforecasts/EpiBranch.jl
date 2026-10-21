@@ -54,8 +54,8 @@ struct _MassAction{T <: Real, S <: Real, U <: Real}
     # the run's time limit, while it could still reach b.
     cut::Matrix{Bool}
     # Reused across every `propose_along` call on this route, which otherwise
-    # runs once per infectious window: one race never calls it concurrently
-    # with itself, so the allocation it would make each time is spared instead.
+    # runs once per infectious window, since one race never calls it
+    # concurrently with itself; reuse spares an allocation on each call.
     contacts::Vector{Tuple{Int, U}}
 end
 

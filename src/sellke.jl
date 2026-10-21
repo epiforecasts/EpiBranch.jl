@@ -1112,8 +1112,8 @@ function _sellke_race!(
     # contact has nothing to fall back on and needs no lists.
     checks = may_block || any(((_, rt),) -> _route_may_block(rt), rts)
     # Whether each of the two `_open_routes!` passes below has a route to
-    # open, so a model with only one kind of route (every benchmarked model
-    # so far) skips the pass that would open none of them, rather than
+    # open. A model with only one kind of route (every benchmarked model so
+    # far) then skips the pass that would open none of them, rather than
     # walking every route only to find none match it.
     self_proposing = any(((_, rt),) -> proposes_own_contacts(rt), rts)
     listed_routes = any(((_, rt),) -> !proposes_own_contacts(rt), rts)
