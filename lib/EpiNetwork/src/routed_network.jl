@@ -12,7 +12,7 @@
 # another running.
 
 """
-    RoutedNetwork(windows; from = nothing, external_hazard = 0.0, obs_end = Inf)
+    RoutedNetwork(windows; from = nothing, external_hazard = 0.0, obs_end = Inf, n = nothing)
 
 Transmission over a contact network with several routes, such as household and
 community, each with its own contacts, timing and response to control
@@ -54,7 +54,13 @@ secondary cases falls according to which routes isolation cuts.
 
 - `reach`: the route's contact list (`reach[i]` lists the people `i` can
   infect on this route), so different routes can connect different pairs of the
-  same people;
+  same people. A route whose contacts are cheaper to sample than to list, such
+  as a spatial kernel over a large population or contact with everyone in an
+  area, can instead carry a `reach` that proposes its own: a value with
+  [`EpiBranch.proposes_own_contacts`](@ref) true, and methods for
+  [`EpiBranch.propose_along`](@ref) and [`EpiBranch.route_pair_kernel`](@ref).
+  Its `kernel` is then unused (pass `kernel = nothing`), since such a `reach`
+  times its own contacts;
 - `kernel`: the contact interval along those contacts, in days, in any of the
   forms [`NetworkProcess`](@ref) accepts (one distribution, a function
   `(infector, susceptible) -> Distribution`, a [`PairKernel`](@ref), or a
@@ -78,8 +84,17 @@ secondary cases falls according to which routes isolation cuts.
   people a case can always name, such as their household, and lower it for
   casual contact.
 
-All routes cover the same people, so every `reach` must have the same length.
-`external_hazard` and `obs_end` are as for [`NetworkProcess`](@ref).
+All routes cover the same people, so every adjacency `reach` must have the
+same length. `n`, the number of nodes, is read from one of those lists when
+any route carries one, and must agree with it if given; with no adjacency
+list anywhere, because every route proposes its own contacts, pass `n`
+yourself. `external_hazard` and `obs_end` are as for [`NetworkProcess`](@ref).
+
+A route that proposes its own contacts is traced on what it actually
+proposed, read back from the same call `propose_along` made for
+transmission, rather than a fresh walk of its full reach: tracing and
+transmission then never disagree about who a case's contacts were, and
+tracing costs nothing beyond what proposing already paid.
 
 Whether a case names a given contact is decided once, when the case's
 contacts are passed to tracing. A contact reachable on several routes is
@@ -104,26 +119,56 @@ end
 
 function RoutedNetwork(
         windows::AbstractVector{<:RouteWindow};
-        from = nothing, external_hazard = 0.0, obs_end = Inf
+        from = nothing, external_hazard = 0.0, obs_end = Inf, n = nothing
     )
     isempty(windows) && throw(ArgumentError("RoutedNetwork needs at least one route"))
     for w in windows
-        w.reach isa AbstractVector{<:AbstractVector{<:Integer}} || throw(
+        if EpiBranch.proposes_own_contacts(w.reach)
+            w.kernel === nothing || throw(
+                ArgumentError(
+                    "route :$(w.name) proposes its own contacts, so its `kernel` is " *
+                        "unused; pass `kernel = nothing`"
+                )
+            )
+        else
+            w.reach isa AbstractVector{<:AbstractVector{<:Integer}} || throw(
+                ArgumentError(
+                    "route :$(w.name) must carry an adjacency list, or a `reach` " *
+                        "that proposes its own contacts (see `EpiBranch.proposes_own_contacts`)"
+                )
+            )
+        end
+    end
+    adjacency_lengths = [
+        length(w.reach) for w in windows
+            if w.reach isa AbstractVector{<:AbstractVector{<:Integer}}
+    ]
+    if isempty(adjacency_lengths)
+        n === nothing && throw(
             ArgumentError(
-                "route :$(w.name) must carry an adjacency list as its `reach`"
+                "RoutedNetwork needs `n`, the number of nodes, when no route's " *
+                    "`reach` is an adjacency list to read it from"
             )
         )
-    end
-    n = length(first(windows).reach)
-    all(length(w.reach) == n for w in windows) || throw(
-        ArgumentError(
-            "every route's adjacency must cover the same nodes (got lengths " *
-                "$(join([length(w.reach) for w in windows], ", ")))"
+    else
+        all(==(first(adjacency_lengths)), adjacency_lengths) || throw(
+            ArgumentError(
+                "every route's adjacency must cover the same nodes (got lengths " *
+                    "$(join(adjacency_lengths, ", ")))"
+            )
         )
-    )
+        (n === nothing || n == first(adjacency_lengths)) || throw(
+            ArgumentError(
+                "n = $n does not match the $(first(adjacency_lengths)) nodes the " *
+                    "adjacency lists cover"
+            )
+        )
+        n = first(adjacency_lengths)
+    end
     # A route's kernel accepts the same forms as `NetworkProcess`'s edge
     # kernel; a per-edge vector is validated and normalised against this
-    # route's own adjacency.
+    # route's own adjacency. A route that proposes its own contacts carries no
+    # kernel to validate.
     windows = [_validate_route_kernel(w) for w in windows]
     _check_external(external_hazard, n)
     obs_end_value = Float64(obs_end)
@@ -200,15 +245,21 @@ EpiBranch.supplies_contacts(::RoutedNetwork) = true
 # named on. Routes at exactly 0 or 1 decide without a draw, as does a neighbour
 # that a route at 1 already names from its earliest time, so a fully traceable
 # model uses no random numbers here.
+#
+# `routes` are the `(window, route_targets)` pairs built for the race itself,
+# not just the windows: a route that proposes its own contacts has nothing in
+# `w.reach[i]` to read, and its neighbours come from `route_targets` instead,
+# the ones its own `propose_along` call actually proposed (see
+# `_TracedProposals`).
 function _route_contacts(
-        windows, interventions, ind::Individual, i::Integer,
+        routes, interventions, ind::Individual, i::Integer,
         rng::AbstractRNG
     )
     T = typeof(ind.infection_time)
     ids = Int[]
     certain = T[]                      # earliest time on a route at traceable 1
     uncertain = Tuple{Int, T, Float64}[]  # (contact slot, time, traceable) in (0, 1)
-    for w in windows
+    for (w, route_targets) in routes
         w.traceable > 0 || continue
         if w.contacts_from === :infection
             t = T(-Inf)
@@ -216,7 +267,9 @@ function _route_contacts(
             t = _state_real(ind.state, Symbol(w.contacts_from, :_time), T(Inf))
             (isfinite(t) && window_close(ind, w, interventions) > t) || continue
         end
-        for nb in w.reach[i]
+        neighbours = EpiBranch.proposes_own_contacts(route_targets) ?
+            get(route_targets.proposed, i, Int[]) : w.reach[i]
+        for nb in neighbours
             k = findfirst(==(nb), ids)
             if k === nothing
                 push!(ids, nb)
@@ -275,7 +328,11 @@ function simulate_once(
     )
 
     windows = [_start_unset(w, derived) for w in model.windows]
-    routes = Tuple((w, _route_targets(w)) for w in windows)
+    # A route that proposes its own contacts records what it proposed only
+    # when tracing can read it back; interventions never change over a run,
+    # so this is decided once.
+    tracing = any(EpiBranch.traces_contacts, interventions)
+    routes = Tuple((w, _route_targets(w, tracing)) for w in windows)
 
     EpiBranch.sellke_race!(
         state, collect(1:model.n), rng, sim_opts;
@@ -290,7 +347,7 @@ function simulate_once(
         introduction = _ext_active(model.external_hazard) ?
             (EpiBranch._ext_prepare(model.external_hazard), Tobs) : nothing,
         contacts = (inf, st) -> _route_contacts(
-            windows, interventions, st.individuals[inf], inf, st.rng
+            routes, interventions, st.individuals[inf], inf, st.rng
         )
     )
 
@@ -301,14 +358,47 @@ end
 # One route's susceptible targets, each with that route's kernel resolved for
 # the pair: a shared distribution, a per-edge vector, a covariate callable or a
 # `PairKernel`, exactly as `NetworkProcess` resolves its edge kernel (see
-# `_resolve_kernel`).
-function _route_targets(w::RouteWindow)
+# `_resolve_kernel`). A `reach` that proposes its own contacts is wrapped so
+# that what it proposes can be read back for tracing (`_TracedProposals`).
+function _route_targets(w::RouteWindow, tracing::Bool)
+    EpiBranch.proposes_own_contacts(w.reach) && return _TracedProposals(w.reach, tracing)
     adjacency, kernel = w.reach, w.kernel
     return (inf, st) -> (
         (nb, _resolve_kernel(kernel, adjacency, inf, pos, st, w.from))
             for (pos, nb) in enumerate(adjacency[inf])
             if !is_infected(st.individuals[nb])
     )
+end
+
+# A route whose `reach` proposes its own contacts, rather than listing them,
+# has nothing for `_route_contacts` to read `w.reach[i]` from. Wrapping it
+# records each infector's own proposals as they are made, so tracing reads
+# back exactly the contacts transmission considered, at no extra cost beyond
+# that one call: a fresh walk of the reach, which such a `reach` exists to
+# avoid, would reintroduce the per-case cost it is meant to spare. Recording
+# is skipped unless some intervention traces, since nothing else reads it.
+struct _TracedProposals{R}
+    reach::R
+    proposed::Dict{Int, Vector{Int}}
+    tracing::Bool
+end
+_TracedProposals(reach, tracing::Bool) = _TracedProposals(reach, Dict{Int, Vector{Int}}(), tracing)
+
+EpiBranch.proposes_own_contacts(::_TracedProposals) = true
+EpiBranch.route_pair_kernel(t::_TracedProposals, infector_id, target_id, state) =
+    EpiBranch.route_pair_kernel(t.reach, infector_id, target_id, state)
+EpiBranch.pending_beyond(t::_TracedProposals, state, reinfects::Bool) =
+    EpiBranch.pending_beyond(t.reach, state, reinfects)
+
+function EpiBranch.propose_along(
+        t::_TracedProposals, infector_id, state, open_t, close_t, capped, traits
+    )
+    contacts = EpiBranch.propose_along(t.reach, infector_id, state, open_t, close_t, capped, traits)
+    if t.tracing
+        contacts = collect(contacts)
+        t.proposed[infector_id] = [id for (id, _) in contacts if id != infector_id]
+    end
+    return contacts
 end
 
 function EpiBranch._validate_initial_cases(model::RoutedNetwork, opts::SimOpts)
