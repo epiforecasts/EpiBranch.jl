@@ -250,10 +250,8 @@ end
 
 # ── Shared helpers for the race's models ─────────────────────────────
 # The race writes each case's state directly, so the outbreak's aggregate
-# bookkeeping is reconciled from it afterwards. A single-race model gets this
-# from the public `sellke_race!` wrapper; a model with several independent
-# races (a household process, over its households) reconciles once after its
-# own loop instead, directly through `_reconcile_sellke_bookkeeping!` below.
+# bookkeeping is reconciled from it afterwards, which the public `sellke_race!`
+# wrapper does through `_reconcile_sellke_bookkeeping!` below.
 
 # Whether a model's simulation honours the `max_cases`/`max_generations`
 # keyword shortcuts' *defaults* out of the box: a branching process and a model

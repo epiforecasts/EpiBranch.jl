@@ -8,7 +8,9 @@
     progression = [
         Transition(:recovered; from = :infection, delay = 30.0, terminal = true),
     ]
-    process = HouseholdProcess(fill(5, 120), Exponential(0.4))
+    # Contacts slow enough that many infections fall inside an isolated
+    # stretch, so the comparison below holds for a single run.
+    process = HouseholdProcess(fill(5, 120), Exponential(2.0))
 
     finite = Isolation(
         onset_to_isolation_delay = Dirac(1.0), duration = Dirac(7.0)
@@ -34,9 +36,10 @@
 
     @test isfinite(loglikelihood(data, m))
 
-    # The round trip's job is the plumbing; the arithmetic is pinned exactly
-    # on a layer built by hand, where nothing is infected inside a gap, so the
-    # whole difference between the two totals is the stretch taken out.
+    # The round trip's job is the plumbing: taking the recorded stretches out
+    # of each pair's exposure raises the total. The arithmetic is pinned
+    # exactly on a layer built by hand below, where nothing is infected inside
+    # a gap.
     @test pairwise_surv_loglik(process.kernel, data) > pairwise_surv_loglik(
         process.kernel,
         HouseholdInfections(
@@ -140,7 +143,9 @@ end
     progression = [
         Transition(:recovered; from = :infection, delay = 30.0, terminal = true),
     ]
-    process = HouseholdProcess(fill(5, 120), Exponential(0.4))
+    # Contacts slow enough that many infections fall inside an isolated
+    # stretch, so the comparisons below hold for a single run.
+    process = HouseholdProcess(fill(5, 120), Exponential(2.0))
 
     leaky = Isolation(
         onset_to_isolation_delay = Dirac(1.0), duration = Dirac(7.0),
@@ -234,14 +239,13 @@ end
     q = Quarantine(duration = Dirac(7.0))
     contact = Individual(id = 1)
     EpiBranch.set_isolated!(contact, 2.0; release_time = 6.0)
-    # Eligibility from onset rather than isolation: `OnIsolation` would time a
-    # case's own forward trace from `isolation_time`, which already holds a
-    # quarantine recorded on it earlier as a susceptible contact. A case
-    # infected while still within that quarantine's own stretch would then
-    # trace from a time before its own infection. `onset_time` always
-    # reflects this case's own infection, whichever route reached it, and
-    # stays clear of that composition, measuring only the quarantine's own
-    # effect.
+    # Eligibility from onset rather than isolation: `OnIsolation` would start
+    # the case's forward trace from `isolation_time`, which can already hold
+    # a quarantine recorded earlier, when the case was still a susceptible
+    # contact. A case infected during that earlier quarantine would then
+    # trace from a time before its infection. `onset_time` always reflects
+    # the case's actual infection, whatever route caused it, avoiding that
+    # overlap and isolating just the effect of the quarantine.
     ct = ContactTracing(OnSymptomOnset(), 1.0, Exponential(0.5), q)
     @test EpiBranch.competing_risk(ct, contact, Individual(id = 2), nothing) === nothing
     @test EpiBranch.removal_gap_host_times(ct) == (EpiBranch.QUARANTINE_STRETCHES_KEY,)

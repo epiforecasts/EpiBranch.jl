@@ -93,9 +93,6 @@ struct Scheduled{I <: AbstractIntervention, F, T <: Tuple} <: InterventionWrappe
     intervention::I
     condition::F
     start_time::Float64
-    # Whether `condition` can read population-wide state (a case count) rather
-    # than only the time of the case being resolved. See `reads_population_state`.
-    population_dependent::Bool
     # Whether the active window can close again once open. Of the conditions
     # the keyword constructor builds, `start_time` and `start_after_cases`
     # only ever open; `end_time`, and a `start_after` trigger whose
@@ -115,22 +112,20 @@ end
 # call a hook makes.
 function Scheduled(
         intervention::AbstractIntervention, condition, start_time::Float64,
-        population_dependent::Bool, can_lapse::Bool, triggers::Tuple
+        can_lapse::Bool, triggers::Tuple
     )
     return Scheduled(
-        intervention, condition, start_time, population_dependent, can_lapse,
-        triggers, _time_aware(intervention)
+        intervention, condition, start_time, can_lapse, triggers,
+        _time_aware(intervention)
     )
 end
 
 # Pre-existing callers build a `Scheduled` without the trigger record.
 function Scheduled(
         intervention::AbstractIntervention, condition, start_time::Float64,
-        population_dependent::Bool, can_lapse::Bool
+        can_lapse::Bool
     )
-    return Scheduled(
-        intervention, condition, start_time, population_dependent, can_lapse, ()
-    )
+    return Scheduled(intervention, condition, start_time, can_lapse, ())
 end
 
 # Whether `iv` has declared its own `intervention_time`, which by that hook's
@@ -153,8 +148,8 @@ Base type for a `start_after` trigger passed to [`Scheduled`](@ref), as in
 `Scheduled(iv; start_after = ReportedCases(20))`. A subtype implements
 [`is_triggered!`](@ref) to say whether its condition holds now, and may
 override the trait [`trigger_can_lapse`](@ref) to say whether that can turn
-false again. `Scheduled` reads both to set its own `population_dependent`
-and `can_lapse` flags, so a trigger written outside the package works
+false again. `Scheduled` reads `trigger_can_lapse` to set its own `can_lapse`
+flag, so a trigger written outside the package works
 without editing `Scheduled`.
 
 A trigger that also implements the three-argument [`is_triggered!`](@ref)
@@ -433,19 +428,16 @@ function Scheduled(
         s -> all(c -> c(s), conditions)
     end
     t = start_time === nothing ? 0.0 : start_time
-    population_dependent = start_after_cases !== nothing || start_after !== nothing
     can_lapse = end_time !== nothing ||
         (start_after !== nothing && trigger_can_lapse(start_after))
     triggers = start_after === nothing ? () : (start_after,)
-    return Scheduled(
-        intervention, condition, t, population_dependent, can_lapse, triggers
-    )
+    return Scheduled(intervention, condition, t, can_lapse, triggers)
 end
 
 # Predicate constructor: no individual-level reset. The predicate is opaque, so
-# `population_dependent` stays conservatively `true` — see `reads_population_state`.
+# it is assumed able to lapse.
 function Scheduled(intervention::AbstractIntervention, condition)
-    return Scheduled(intervention, condition, 0.0, true, true)
+    return Scheduled(intervention, condition, 0.0, true)
 end
 
 # ── Protocol delegation ──────────────────────────────────────────────
@@ -575,13 +567,6 @@ function removal_gap_host_times(s::Scheduled)
     return removal_gap_host_times(s.intervention)
 end
 removal_block_probability(s::Scheduled) = removal_block_probability(s.intervention)
-
-# A `start_after_cases` count, or a `start_after` trigger, reads state the
-# whole population contributes to; a `start_time`/`end_time`-only schedule
-# compares against the time of the case being resolved and does not.
-function reads_population_state(s::Scheduled)
-    return s.population_dependent || reads_population_state(s.intervention)
-end
 
 function competing_risk(s::Scheduled, parent, contact, state)
     (persistent_competing_risks(s.intervention) || is_active(s, state)) || return nothing

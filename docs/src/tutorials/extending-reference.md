@@ -789,7 +789,7 @@ case settles, for every intervention with a method of it, with the people
 `EpiBranch.action_candidates` chooses as candidates: by default the case and
 the contacts it can still reach. An intervention that chooses its own, such as
 everyone in the run not yet infected, writes a method of
-`action_candidates`. The actions it returns go through the schedule and
+`action_candidates`. The actions it proposes then go through the schedule and
 capacity limits.
 
 `Scheduled` checks the proposed action time before delivery. A condition
@@ -842,8 +842,9 @@ The result is `true`: the second call uses the stored draw. Give a new visit a
 different key, and keep the same key when the same visit is proposed again.
 
 Actions run in one of two ways. By default they run after a newly final case
-is traced, offered to the people `action_candidates` chooses, and must work without the infection time of a contact whose
-infection is not yet final. That narrowing needs a model that names contacts
+is traced, are offered to the people `action_candidates` chooses, and must
+work without the infection time of a contact whose infection is not yet
+final. That narrowing needs a model that names contacts
 (`EpiBranch.supplies_contacts(model) = true`), unless the intervention
 declares `EpiBranch.needs_contacts(iv) = false`, as group delivery does,
 since it finds a case's group through its `group_key` rather than through a

@@ -1,7 +1,8 @@
 # ── Infectiousness window ────────────────────────────────────────────
 
 """
-    Infectiousness(offspring; from = :infection, until = (), kernel = NoGenerationTime())
+    Infectiousness(offspring; from = :infection, until = (), kernel = NoGenerationTime(),
+                   name = :transmission)
 
 When, and how much, a case transmits by one route. `offspring` is the
 distribution of the number of people infected by this route; transmission
@@ -35,6 +36,12 @@ different routes, such as community and funeral transmission of Ebola.
   then, so that contact is dropped, and a case makes fewer contacts on
   average than its offspring distribution draws, by the share of the kernel
   that falls before infection.
+- `name`: the name interventions see this window as, through
+  [`risk_applies`](@ref EpiBranch.risk_applies)'s `route`. The default,
+  `:transmission`, suits a process with a single window; give each of several
+  windows its own name, for example `:community` and `:household`, so
+  wrapping a measure in [`OnRoutes`](@ref) can act on one and leave the rest
+  open.
 
 # Examples
 ```julia
@@ -48,9 +55,9 @@ progression = [
         terminal = true),
     Transition(:buried, from = :died, delay = 2.0),
 ]
-community = Infectiousness(NegBin(1.2, 0.5);
+community = Infectiousness(NegBin(1.2, 0.5); name = :community,
     from = :infectious, until = (:recovered, :died), kernel = Exponential(4.0))
-funeral = Infectiousness(Poisson(0.5);
+funeral = Infectiousness(Poisson(0.5); name = :funeral,
     from = :died, until = (:buried,), kernel = Uniform(0.0, 2.0))
 model = ModelSpec(BranchingProcess(community, funeral); progression)
 ```
@@ -60,12 +67,13 @@ struct Infectiousness{O, F, U, K}
     from::F
     until::U
     kernel::K
+    name::Symbol
 end
 function Infectiousness(
         offspring; from = :infection, until = (),
-        kernel = NoGenerationTime()
+        kernel = NoGenerationTime(), name::Symbol = :transmission
     )
-    return Infectiousness(offspring, from, until, kernel)
+    return Infectiousness(offspring, from, until, kernel, name)
 end
 
 # ── BranchingProcess type and constructors ──────────────────────────
