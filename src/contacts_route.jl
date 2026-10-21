@@ -7,13 +7,13 @@
 # gave. Someone exposed by several cases is decided once, by the earliest
 # exposure that transmits.
 #
-# An exposure is one contact at one time, so a blocked one is lost, as in a
+# An exposure is one contact at one time. A blocked one is lost, as in a
 # branching process: there is no pair kernel to draw a later contact from. The
 # model's times are already drawn, so the built-in risks are those of a single
 # exposure, as in a branching process.
 
 # The race's members when a model creates people as it goes: everyone in the
-# state, numbered by id, so a member's position is its id and the population
+# state, numbered by id: a member's position is its id, and the population
 # grows by appending.
 mutable struct _Grown <: AbstractVector{Int}
     n::Int
@@ -24,7 +24,7 @@ Base.@propagate_inbounds function Base.getindex(g::_Grown, k::Int)
     return k
 end
 _member_positions(g::_Grown) = g
-# A person the infector created is listed as its contact when created, so only
+# A person the infector created is listed as its contact when created; only
 # a blocked exposure of someone else is offered to the recorder.
 _logs_blocked(::_Grown, source, ind) = !_created_by(ind, source)
 
@@ -51,7 +51,7 @@ end
 
 # The route a `contacts_of` model transmits along. `pending` holds the settling
 # case's exposures until the race proposes them, `reached` who each case
-# exposed, which is what tracing acts on, and `early` the exposures a ring asked
+# exposed, the field tracing acts on, and `early` the exposures a ring asked
 # for before a person settled, as delays from their infection.
 struct _ContactsOf{M, T <: Real}
     model::M
@@ -63,7 +63,7 @@ _ContactsOf(model, ::Type{T}) where {T} = _ContactsOf(
     model, Tuple{Int, T}[], Dict{Int, Vector{Int}}(), Dict{Int, Vector{Tuple{Int, T}}}()
 )
 
-# The exposures exist only as the model names them, so the route names no
+# The exposures exist only as the model names them: the route names no
 # targets for a walker and no pair kernel to redraw from.
 (::_ContactsOf)(infector_id, state) = ()
 _pair_kernel(::_ContactsOf, infector_id, target_id, state) = nothing
@@ -131,7 +131,7 @@ function _case_contacts(
         named === nothing || return named
         race.processed[id] && return ()
         ind = state.individuals[id]
-        # A person at the generation bound exposes nobody, so the model is not
+        # A person at the generation bound exposes nobody; the model is not
         # asked to create anyone for them.
         ind.generation >= max_generation && return ()
         infection_time = ind.infection_time

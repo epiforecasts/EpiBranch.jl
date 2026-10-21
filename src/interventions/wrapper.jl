@@ -50,7 +50,6 @@ _unwrap_scheduled(w::InterventionWrapper) = _unwrap_scheduled(w.intervention)
 
 binding_release(w::InterventionWrapper) = binding_release(w.intervention)
 risk_applies(w::InterventionWrapper, route) = risk_applies(w.intervention, route)
-reads_population_state(w::InterventionWrapper) = reads_population_state(w.intervention)
 # A wrapper that can withdraw the inner block part-way through a stretch
 # already recorded cannot have those stretches read back: one per-host record
 # says nothing about when the gating closed. The default is therefore to
