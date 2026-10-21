@@ -628,6 +628,7 @@ EpiBranch.is_settled
 EpiBranch.persistent_competing_risks
 EpiBranch.capacity_key
 EpiBranch.capacity_time_key
+EpiBranch.resource_key
 ```
 
 #### Start triggers

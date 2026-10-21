@@ -686,6 +686,16 @@ Every proposed recipient is known before admission, including group members
 found by searching a whole group. See [Intervention actions](@ref) for how to
 propose actions and the rules on timing.
 
+By default everyone draws on the same budget. Define
+`EpiBranch.resource_key(iv, individual, state)` to split it instead, returning
+whichever value identifies the group `individual` belongs to — a district, a
+treatment centre. Each distinct value gets its own budget, tracked under the
+same `budget_per_period`, `period`, `carry_over` and `priority`, independently
+of every other. It dispatches on the individual rather than a proposed action,
+so someone already served can be placed in their group again from their
+recorded state alone, with nothing of the original proposal kept around.
+`capacity_usage(cc, state, key)` reads one group's own usage.
+
 ## Requiring values on each person
 
 If your intervention depends on values set by a population characteristic
