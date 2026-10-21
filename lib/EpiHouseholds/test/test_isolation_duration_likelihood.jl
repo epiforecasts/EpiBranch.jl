@@ -240,13 +240,13 @@ end
     contact = Individual(id = 1)
     EpiBranch.set_isolated!(contact, 2.0; release_time = 6.0)
     # Eligibility from onset rather than isolation: `OnIsolation` would time
-    # the case's forward trace from `isolation_time`, but that already holds
-    # a quarantine recorded earlier, while this individual was still a
-    # susceptible contact. A case infected within that quarantine's stretch
-    # would then trace from a time before its own infection. `onset_time`
-    # always reflects the case's actual infection, whichever route reached
-    # it, so the test below measures only the quarantine's effect, not that
-    # composition.
+    # the case's forward trace from `isolation_time`, but that can already
+    # hold a quarantine recorded earlier, from when this individual was
+    # still a susceptible contact. A case infected during that earlier
+    # quarantine would then trace from a time before its own infection.
+    # `onset_time` always reflects the case's actual infection, whichever
+    # route caused it, so this test measures only the effect of the
+    # quarantine, not that overlap.
     ct = ContactTracing(OnSymptomOnset(), 1.0, Exponential(0.5), q)
     @test EpiBranch.competing_risk(ct, contact, Individual(id = 2), nothing) === nothing
     @test EpiBranch.removal_gap_host_times(ct) == (EpiBranch.QUARANTINE_STRETCHES_KEY,)
