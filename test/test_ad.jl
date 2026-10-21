@@ -70,6 +70,19 @@ using StableRNGs
             ),
             [0.5], sizes_data
         ),
+        # Whole-chain detection reweights the chain-size law through
+        # `DetectedChainSize`, whose cached normalising constant must also
+        # hold a `Dual` for this to differentiate.
+        scenario(
+            (R, d) -> loglikelihood(
+                ChainSizes(d),
+                ModelSpec(
+                    BranchingProcess(Poisson(R[1]));
+                    observation = ChainDetection(0.4)
+                )
+            ),
+            [0.5], sizes_data
+        ),
         # Nested automatic differentiation: `incidence_moments` itself calls
         # ForwardDiff on the calendar-time PGF, so this differentiates
         # ForwardDiff through ForwardDiff.

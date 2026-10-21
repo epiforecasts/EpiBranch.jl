@@ -111,6 +111,11 @@ function loglikelihood(data::ChainSizes, o::ClusterMixed)
     return _chain_size_loglik(d, data)
 end
 
+function loglikelihood(data::ChainSizeClasses, o::ClusterMixed)
+    d = chain_size_distribution(o)
+    return _chain_size_classes_loglik(d, data)
+end
+
 """
     BranchingProcess(offspring::ClusterMixed, gt; population_size=NoPopulation())
     BranchingProcess(offspring::ClusterMixed; population_size=NoPopulation())
