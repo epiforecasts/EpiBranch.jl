@@ -284,8 +284,8 @@ end
 # wraps proposes none, so that wrapping one with nothing to ration fails when
 # the run starts rather than going unrationed (see `intervention_actions`) —
 # unless it instead rations through `resolve_individual!` and `reset!`, as
-# `Isolation` does (`_resolves_under_capacity`): that seam needs no candidates
-# or contacts, so routing it through the action funnel too would only cost a
+# `Isolation` does (`_resolves_under_capacity`). That seam needs no candidates
+# or contacts, and routing it through the action funnel too would only cost a
 # contactless model (`HomogeneousProcess`, `MixingProcess`) a spurious warning
 # that it has nothing for `Isolation` to act on.
 function _proposes_actions(cc::CapacityConstrained)
