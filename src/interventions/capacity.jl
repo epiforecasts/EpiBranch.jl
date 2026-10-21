@@ -47,8 +47,9 @@ order: both check each action's own proposed date.
     the budget it used becomes available to the next candidate. The
     mass-action models,
     [`HomogeneousProcess`](@ref) and [`MixingProcess`](@ref), do not trace
-    contacts, so ring vaccination cannot act in either. Contact tracing itself
-    cannot be capacity-limited in any model.
+    contacts, so ring vaccination cannot act in either. Contact tracing and
+    quarantine themselves cannot be capacity-limited in any model, except a
+    [`TestAndRelease`](@ref) action's own test, which can.
 
 For extension authors: a new intervention can be capacity-limited by defining
 [`intervention_actions`](@ref EpiBranch.intervention_actions) and
@@ -143,6 +144,14 @@ capacity_time_key(v::MassVaccination) = _vaccination_time_key(dose_label(v))
 
 capacity_key(v::GroupVaccination) = _vaccinated_key(dose_label(v))
 capacity_time_key(v::GroupVaccination) = _vaccination_time_key(dose_label(v))
+
+# A `ContactTracing` wrapping a `TestAndRelease` rations its test, dated at
+# the test day; wrapping any other action still has nothing to ration, and
+# falls through to the generic method's error.
+capacity_key(::ContactTracing{E, F, D, <:TestAndRelease}) where {E, F, D} = TEST_RELEASE_GRANTED_KEY
+function capacity_time_key(::ContactTracing{E, F, D, <:TestAndRelease}) where {E, F, D}
+    return TEST_RELEASE_DAY_KEY
+end
 
 # The start and end of the period containing `at`, in the scope `carry_over`
 # implies: `(0.0, Inf)`, a single period for the whole outbreak, when `period`
