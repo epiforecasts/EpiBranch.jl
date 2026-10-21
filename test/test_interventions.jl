@@ -76,20 +76,6 @@ struct _UnboundedDelay <: ContinuousUnivariateDistribution end
 Base.rand(::AbstractRNG, ::_UnboundedDelay) = 30.0
 Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
 
-# Uses the deprecated whole-generation `apply_post_transmission!` hook but
-# still declares its own `intervention_time`, so a `Scheduled` wrapping it is
-# time-aware too.
-struct _TimedBatchDose <: AbstractIntervention end
-function EpiBranch.apply_post_transmission!(::_TimedBatchDose, state, new_contacts)
-    for c in new_contacts
-        c.state[:_dosed_at] = c.infection_time + 5.0
-    end
-    return nothing
-end
-EpiBranch.intervention_time(::_TimedBatchDose, ind::Individual) =
-    get(ind.state, :_dosed_at, -Inf)
-EpiBranch.reset!(::_TimedBatchDose, ind::Individual) = delete!(ind.state, :_dosed_at)
-
 @testset "Interventions" begin
     clinical = clinical_presentation(
         incubation_period = LogNormal(1.5, 0.5),
@@ -349,29 +335,39 @@ EpiBranch.reset!(::_TimedBatchDose, ind::Individual) = delete!(ind.state, :_dose
         # The structure-driven processes that call this walk live in the
         # companion packages, so it is driven directly here on a path graph
         # 1-2-3-4 in which only node 1 is a case.
-        function walk(depth; timed = false, wrap = identity, delay = Dirac(0.0), clock = nothing)
+        function walk(
+                depth; timed = false, wrap = identity, delay = Dirac(0.0), clock = nothing,
+                infected_before = Int[], n = 4
+            )
             ct = wrap(ContactTracing(TraceEveryone(), 1.0, delay, Quarantine(duration = Inf); depth))
             state = EpiBranch.new_state(
                 BranchingProcess(Poisson(1.0), Exponential(5.0)),
                 EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
             )
-            EpiBranch.add_individuals!(state, 4, [ct])
+            EpiBranch.add_individuals!(state, n, [ct])
             clock === nothing || (state.max_infection_time = clock)
             case = state.individuals[1]
             case.state[:infected] = true
             case.infection_time = 0.0
             set_isolated!(case, 2.0; release_time = Inf)
-            neighbours = [[2], [1, 3], [2, 4], [3]]
+            # A neighbour already settled before this case, as a node infected
+            # earlier on a persistent network would be: its own infection is
+            # final, but the walk still reaches it and grows past it.
+            for id in infected_before
+                state.individuals[id].state[:infected] = true
+            end
+            neighbours = [
+                filter(j -> 1 <= j <= n, [i - 1, i + 1]) for i in 1:n
+            ]
             # Node 3 cannot be reached before time 50, as on a route that
             # opens late.
             opens = Dict(3 => 50.0)
             contacts = timed ?
                 (i, st) -> ((j, get(opens, j, -Inf)) for j in neighbours[i]) :
                 (i, st) -> neighbours[i]
-            pos = Dict(i => i for i in 1:4)
-            processed = [true, false, false, false]
+            pos = Dict(i => i for i in 1:n)
             reached = EpiBranch._trace_from!(
-                state, case, [ct], contacts, pos, processed
+                state, case, [ct], contacts, pos
             )
             return state.individuals, reached
         end
@@ -390,6 +386,24 @@ EpiBranch.reset!(::_TimedBatchDose, ind::Individual) = delete!(ind.state, :_dose
         @test is_traced(inds[3])
         @test !is_traced(inds[4])
         @test reached == Set([2, 3])
+
+        # A neighbour already infected before this case settles — as it would
+        # be on a network or a household, where the same adjacency is shared
+        # by more than one case — is traced and grows the ring past it all the
+        # same, rather than being skipped as already settled.
+        inds, reached = walk(3; infected_before = [2])
+        @test all(is_traced, inds[2:4])
+        @test reached == Set([2, 3, 4])
+
+        # An infected, eligible neighbour reached by propagation is not a
+        # fresh seed: it must spend down the ring's existing budget rather
+        # than restart it, so the ring still stops at its configured radius
+        # even though it passes through an infected member partway there.
+        inds, reached = walk(2; infected_before = [2], n = 5)
+        @test reached == Set([2, 3])
+        @test inds[2].state[:_ring_remaining] == 1
+        @test inds[3].state[:_ring_remaining] == 0
+        @test !is_traced(inds[4])
 
         # A contact reached late on its route is traced no earlier than that,
         # and the ring past it is timed from its trace.
@@ -906,11 +920,11 @@ EpiBranch.reset!(::_TimedBatchDose, ind::Individual) = delete!(ind.state, :_dose
         @test !is_isolated(ind)
     end
 
-    @testset "A zero-length removal removes nobody on either engine" begin
+    @testset "A zero-length removal removes nobody" begin
         # A day-resolution duration can legitimately draw 0, so it is accepted
-        # and means no removal: the generation engine needs
-        # `event_t <= t < release_t` and blocks nothing, and the continuous-time
-        # engines find nothing to close a window with.
+        # and means no removal: a per-contact block needs
+        # `event_t <= t < release_t` and blocks nothing, and the race finds
+        # nothing to close a window with.
         iso = Isolation(
             onset_to_isolation_delay = Dirac(1.0), duration = Dirac(0.0)
         )
@@ -930,9 +944,9 @@ EpiBranch.reset!(::_TimedBatchDose, ind::Individual) = delete!(ind.state, :_dose
     end
 
     @testset "A removal duration must not be negative" begin
-        # A release before its own start reads as no removal on the generation
-        # engine and a permanent one on the continuous-time engines, so it is
-        # refused at the draw rather than left to disagree.
+        # A release before its own start would read as no removal to a
+        # per-contact block and as a permanent one to the race's window, so it
+        # is refused at the draw rather than left to disagree.
         rng = StableRNG(1)
         for bad in (-1.0, NaN)
             contact = Individual(id = 1)
@@ -1771,7 +1785,6 @@ EpiBranch.reset!(::_TimedBatchDose, ind::Individual) = delete!(ind.state, :_dose
                 state = Dict{Symbol, Any}(:traced => true, :trace_time => 5.0)
             )
             EpiBranch.initialise_individual!(rv, ind, state)
-            @test EpiBranch.continuous_actions(rv)
             action = only(EpiBranch.intervention_actions(rv, state, [ind]))
             action.effect!(ind, action.time, state)
             @test is_vaccinated(ind)
@@ -3609,23 +3622,6 @@ EpiBranch.reset!(::_TimedBatchDose, ind::Individual) = delete!(ind.state, :_dose
             EpiBranch.trace_contacts!(ct, state, infector, [contact])
             @test is_traced(contact)
             @test isolation_time(contact) == 11.0 # infector's isolation (4.0) plus the 7-day delay
-        end
-
-        @testset "start_time reaches a contact dosed through the deprecated batch hook before it, once its own dose time falls inside" begin
-            # The same check applies to the deprecated `apply_post_transmission!`
-            # hook: the running clock predates the policy, but each contact's
-            # own dose time is checked individually once the hook has run.
-            dosed = Scheduled(_TimedBatchDose(); start_time = 10.0)
-            early = Individual(id = 1, infection_time = 1.0) # dose time 6.0: outside
-            late = Individual(id = 2, infection_time = 6.0) # dose time 11.0: inside
-            state = SimulationState(
-                [early, late], Int[], 0, StableRNG(1), 0, false, nothing, 0.0, nothing,
-                AbstractClinicalTransition[]
-            )
-            state.max_infection_time = 0.0
-            EpiBranch.apply_post_transmission!(dosed, state, [early, late])
-            @test !haskey(early.state, :_dosed_at)
-            @test late.state[:_dosed_at] == 11.0
         end
 
         @testset "requires at least one condition" begin

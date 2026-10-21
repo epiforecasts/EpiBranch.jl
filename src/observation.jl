@@ -99,6 +99,7 @@ end
 
 function ThinnedChainSize(base::D, detection_prob) where {D <: DiscreteUnivariateDistribution}
     p = Float64(detection_prob)
+    0.0 < p <= 1.0 || throw(ArgumentError("detection_prob must be in (0, 1], got $p"))
     log_prob_any_detected = _log_prob_any_detected(base, p)
     return ThinnedChainSize{D, typeof(log_prob_any_detected)}(base, p, log_prob_any_detected)
 end
@@ -169,6 +170,20 @@ Distributions.pdf(d::ThinnedChainSize, n::Integer) = exp(logpdf(d, n))
 Distributions.cdf(d::ThinnedChainSize, n::Integer) = _chain_size_cdf(d, n)
 function Distributions.logccdf(d::ThinnedChainSize, n::Integer)
     return _chain_size_right_tail_logprob(d, n + 1, 1)
+end
+
+"""
+Sample an observed chain size: draw a true size from `base`, thin it to a
+`Binomial(n, detection_prob)` number of detected cases, and redraw when none
+are detected, matching the conditioning `logpdf` applies.
+"""
+function Base.rand(rng::AbstractRNG, d::ThinnedChainSize)
+    obs = 0
+    while obs == 0
+        n = rand(rng, d.base)
+        obs = rand(rng, Binomial(n, d.detection_prob))
+    end
+    return obs
 end
 
 """

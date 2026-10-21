@@ -162,7 +162,7 @@ end
         EpiBranch.apply_actions!(gv, state, first_gen)
         @test is_vaccinated(confirmed)
 
-        # A member of the same group appearing only in a later generation
+        # A member of the same group appearing only later
         # (the trigger already occurred) must still be vaccinated, at the same
         # group trigger time.
         latecomer = _group_member(gv, 2, :A, test_positive = false)
@@ -174,11 +174,11 @@ end
         @test latecomer.state[:vaccination_time] == confirmed.state[:vaccination_time]
     end
 
-    @testset "A dose from an earlier generation keeps its date on a later, earlier trigger" begin
-        # The ordinary generation engine has no settled/pending distinction
-        # of its own: unlike a continuous-time race, it never excludes an
-        # already-decided member from a later call's candidates by itself, so
-        # `intervention_actions` must keep that member out on its own.
+    @testset "An already-dosed member keeps its date on a later, earlier trigger" begin
+        # `apply_actions!` has no settled/pending distinction of its own: it
+        # never excludes an already-decided member from a later call's
+        # candidates, so `intervention_actions` must keep that member's date
+        # on its own.
         gv = GroupVaccination(
             efficacy = 0.9, eligibility = OnLabConfirmation(),
             dose_delay = 1.0
@@ -196,7 +196,7 @@ end
         EpiBranch.apply_actions!(gv, state, first_gen)
         @test member.state[:vaccination_time] == 5.0
 
-        # A later generation's own case is confirmed earlier (isolated at 1),
+        # A later call's own case is confirmed earlier (isolated at 1),
         # moving the group's trigger earlier still.
         earlier_confirmed = _group_member(gv, 3, :A, test_positive = true)
         set_isolated!(earlier_confirmed, 1.0; release_time = Inf)
@@ -234,7 +234,7 @@ end
         set_isolated!(a, 20.0; release_time = Inf)
         processed[1] = true
         state.max_infection_time = 5.0
-        EpiBranch._apply_continuous_actions!(state, a, [gv], members, processed)
+        EpiBranch._apply_case_actions!(state, a, [gv], members, processed)
         @test b.state[:vaccination_time] == 21.0
         @test c.state[:vaccination_time] == 21.0
 
@@ -244,7 +244,7 @@ end
         set_isolated!(b, 8.0; release_time = Inf)
         processed[2] = true
         state.max_infection_time = 6.0
-        EpiBranch._apply_continuous_actions!(state, b, [gv], members, processed)
+        EpiBranch._apply_case_actions!(state, b, [gv], members, processed)
 
         # `c` is still pending and had not yet been evaluated against the
         # stale dose, so it moves to the true, earlier trigger.
@@ -283,9 +283,9 @@ end
 
     @testset "A case confirmed only after its own settlement still reaches its group" begin
         # The group's trigger (the confirmed case's own isolation) is set by
-        # `resolve_individual!` during this same settlement, after the
-        # generation's contact-based offer to the group already ran and found
-        # nothing to trigger on.
+        # `resolve_individual!` while the case settles, after an offer to the
+        # contacts it made already ran and found nothing to trigger on; the
+        # per-case offer made once it has settled must still reach the group.
         gv = GroupVaccination(
             efficacy = 0.9, eligibility = OnLabConfirmation(),
             dose_delay = 1.0
@@ -299,57 +299,21 @@ end
         member = _group_member(gv, 2, :A, test_positive = false)
         append!(state.individuals, [confirmed, member])
 
-        # The contact-based offer the generation engine already makes
-        # (`apply_actions!` on the contacts a case made) finds no trigger yet.
         EpiBranch.apply_actions!(gv, state, [confirmed, member])
         @test !is_vaccinated(confirmed)
         @test !is_vaccinated(member)
 
-        # `confirmed` tests positive and is isolated only as part of settling
-        # this same generation, so its own lab confirmation becomes the
-        # group's trigger only once `_settle_generation!` reaches this point.
         confirmed.state[:test_positive] = true
         set_isolated!(confirmed, 3.0; release_time = Inf)
         confirmed.infection_time = 3.0
-        EpiBranch._settle_generation!(state, [gv], [confirmed], 0)
+        state.max_infection_time = 3.0
+        processed = BitVector([true, false])
+        EpiBranch._apply_case_actions!(state, confirmed, [gv], [1, 2], processed)
 
         @test is_vaccinated(confirmed)
         @test is_vaccinated(member)
         @test confirmed.state[:vaccination_time] == 4.0
         @test member.state[:vaccination_time] == 4.0
-    end
-
-    @testset "A capacity-constrained settled-batch dose is billed to its own case's time" begin
-        # `unrelated`, infected much later in the same generation, pushes the
-        # generation's maximum infection time well past `confirmed`'s own: the
-        # dose the settled-batch offer admits for `confirmed`'s group must
-        # still be billed to time 2, not to `unrelated`'s time of 50.
-        gv = GroupVaccination(efficacy = 0.9, eligibility = OnLabConfirmation())
-        cc = CapacityConstrained(gv; budget_per_period = 1.0, period = 10.0, carry_over = false)
-        state = EpiBranch.new_state(
-            BranchingProcess(Poisson(1.0), Exponential(5.0)),
-            EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
-        )
-
-        confirmed = _group_member(gv, 1, :A, test_positive = true)
-        set_isolated!(confirmed, 2.0; release_time = Inf)
-        confirmed.infection_time = 2.0
-        unrelated = Individual(id = 2, state = Dict{Symbol, Any}())
-        unrelated.infection_time = 50.0
-        append!(state.individuals, [confirmed, unrelated])
-        state.max_infection_time = 50.0
-
-        EpiBranch._settle_generation!(state, [cc], [confirmed, unrelated], 0)
-
-        @test is_vaccinated(confirmed)
-        @test confirmed.state[:vaccination_time] == 2.0
-
-        # The dose is billed to the period its own date (2.0) falls in, not
-        # to the period of `unrelated`'s time (50.0).
-        state.max_infection_time = 9.0
-        @test capacity_usage(cc, state).used == 1
-        state.max_infection_time = 59.0
-        @test capacity_usage(cc, state).used == 0
     end
 
     @testset "No triggering case leaves the group unvaccinated" begin

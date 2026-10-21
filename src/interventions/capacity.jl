@@ -44,13 +44,8 @@ order: both check each action's own proposed date.
     be capacity-limited, with any `eligibility_window`: a dose a network or
     household race withdraws for falling outside the window (see
     [`RingVaccination`](@ref)) counts against no capacity from then on, and
-    the budget it used becomes available to the next candidate. `simulate`
-    warns that an intervention will have no effect when it relies on a hook
-    these models do not call, such as one that reaches its targets only
-    through the deprecated
-    [`apply_post_transmission!`](@ref EpiBranch.apply_post_transmission!)
-    batch hook; for a custom intervention, the warning is the thing to check.
-    The mass-action models,
+    the budget it used becomes available to the next candidate. The
+    mass-action models,
     [`HomogeneousProcess`](@ref) and [`MixingProcess`](@ref), do not trace
     contacts, so ring vaccination cannot act in either. Contact tracing itself
     cannot be capacity-limited in any model.
@@ -59,10 +54,6 @@ For extension authors: a new intervention can be capacity-limited by defining
 [`intervention_actions`](@ref EpiBranch.intervention_actions) and
 [`capacity_key`](@ref EpiBranch.capacity_key). Group vaccination offers every
 eligible member of a triggered group as a separate person to serve.
-Interventions without `intervention_actions`, offered through the deprecated
-[`apply_post_transmission!`](@ref EpiBranch.apply_post_transmission!) batch
-hook, propose no dated action, so each is checked against the budget of the
-period the admitting call itself falls in rather than the day it is given.
 """
 struct CapacityConstrained{I <: AbstractIntervention, F} <: InterventionWrapper
     intervention::I
@@ -153,14 +144,6 @@ capacity_time_key(v::MassVaccination) = _vaccination_time_key(dose_label(v))
 capacity_key(v::GroupVaccination) = _vaccinated_key(dose_label(v))
 capacity_time_key(v::GroupVaccination) = _vaccination_time_key(dose_label(v))
 
-# The `Individual.state` key `CapacityConstrained`'s deprecated
-# `apply_post_transmission!` branch stamps with the time of the call that
-# admitted an individual: that legacy protocol proposes no dated action, so
-# it has nothing but its own clock to place the dose by. `_admit_actions!`,
-# which every action-based intervention goes through, never sets it, since
-# its candidates already name the date the dose is to be given.
-_capacity_admission_key(key::Symbol) = Symbol("capacity_admission_time_", key)
-
 # The start and end of the period containing `at`, in the scope `carry_over`
 # implies: `(0.0, Inf)`, a single period for the whole outbreak, when `period`
 # is infinite.
@@ -170,23 +153,19 @@ function _period_bounds(cc::CapacityConstrained, at)
     return (period_start, period_start + cc.period)
 end
 
-# The time each already-given dose counts against, sorted: the admission
-# stamp above where the deprecated branch left one, or otherwise the dose's
-# own recorded date, so a dose a delay dates later than its admission is
-# charged to the day it is actually given rather than to whichever call
-# admitted it. Built once per call, so the admission loop below can test
+# The time each already-given dose counts against, sorted: the dose's own
+# recorded date, so a dose a delay dates later than its admission is charged
+# to the day it is actually given rather than to whichever call admitted it.
+# Built once per call, so the admission loop below can test
 # each candidate's own date against cumulative usage without rescanning the
 # population once per candidate.
 function _dose_times(cc::CapacityConstrained, state)
     key = capacity_key(cc.intervention)
     time_key = capacity_time_key(cc.intervention)
-    admission_key = _capacity_admission_key(key)
     times = Float64[]
     for ind in state.individuals
         get(ind.state, key, false) || continue
-        t = get(ind.state, admission_key, nothing)
-        isnothing(t) && (t = get(ind.state, time_key, -Inf))
-        push!(times, t)
+        push!(times, get(ind.state, time_key, -Inf))
     end
     sort!(times)
     return times
@@ -240,32 +219,12 @@ function _capacity_usage(cc::CapacityConstrained, state, at = state.max_infectio
     return _usage_at(cc, _dose_times(cc, state), Float64[], at)
 end
 
-# A candidate already carrying `capacity_key` (dosed in an earlier call, now
-# re-exposed) does not draw on the budget when it is handed to the wrapped
-# intervention again — `RingVaccination`/`MassVaccination` only redraw a
-# post-exposure-efficacy abort for it, so it is always passed through. Fresh
-# candidates are ranked by `priority` (computed once each, not on every
-# comparison a sort makes, so a random `priority` is not resampled mid-sort)
-# and admitted one at a time in that order for as long as the budget has
-# anything left. Usage is counted once per call and then grows by each
-# candidate whose `capacity_key` the wrapped intervention sets, which spares
-# rescanning the whole population per candidate. Each of those candidates is
-# stamped with the time of this call, so a dose uses the budget of the period
-# that admitted it whatever date the dose itself bears, and later calls in
-# that period see it.
-# Some candidates fail the wrapped intervention's own checks (coverage,
-# eligibility window, a missing required dose, an unresolved trace time)
-# without using a dose; this keeps offering the budget to the next-ranked
-# candidate instead of stopping after a fixed count, which would otherwise
-# leave it under-used.
-_uses_batch_hook(cc::CapacityConstrained) = _uses_batch_hook(cc.intervention)
 # `CapacityConstrained` always has its own `intervention_actions` method, to
 # add the `capacity_key` check above, so asking `iv` directly would credit
 # every instance with discovering actions whether or not the one it wraps
-# does. Unwrapping through `_hook_owner`, as `_generation_hooks` already does
-# for `keep_active`/`continuous_actions`/`on_infection_settled!`, reaches past
-# any further `InterventionWrapper` nested inside (`Scheduled`, say) to the
-# intervention that would answer `intervention_actions`.
+# does. Unwrapping through `_hook_owner` reaches past any further
+# `InterventionWrapper` nested inside (`Scheduled`, say) to the intervention
+# that would answer `intervention_actions`.
 function _discovers_actions(cc::CapacityConstrained)
     return _has_own_method(
         intervention_actions,
@@ -277,32 +236,6 @@ end
 # wraps proposes none, so that wrapping one with nothing to ration fails when
 # the run starts rather than going unrationed (see `intervention_actions`).
 _proposes_actions(cc::CapacityConstrained) = !acts_on_population(cc)
-function apply_post_transmission!(cc::CapacityConstrained, state, new_contacts)
-    actions = intervention_actions(cc, state, new_contacts)
-    if actions !== nothing
-        _admit_actions!(cc, state, actions)
-        return nothing
-    end
-    key = capacity_key(cc.intervention)
-    already_used = filter(ind -> get(ind.state, key, false), new_contacts)
-    candidates = filter(ind -> !get(ind.state, key, false), new_contacts)
-    isempty(already_used) || apply_post_transmission!(cc.intervention, state, already_used)
-    isempty(candidates) && return nothing
-    order = sortperm([cc.priority(ind, state) for ind in candidates]; alg = MergeSort)
-    usage = _capacity_usage(cc, state)
-    used = usage.used
-    admission_key = _capacity_admission_key(key)
-    for i in order
-        used + 1 <= usage.available || break
-        candidate = candidates[i]
-        apply_post_transmission!(cc.intervention, state, [candidate])
-        if get(candidate.state, key, false)
-            candidate.state[admission_key] = state.max_infection_time
-            used += 1
-        end
-    end
-    return nothing
-end
 
 """
     capacity_usage(cc::CapacityConstrained, state::SimulationState) -> (used, available)
@@ -327,8 +260,7 @@ end
 
 # Tracing records no resource use for the budget to count, so passing it
 # through would let the wrapped intervention act with no budget at all. Opting
-# out leaves the tracing undone; on the generation engine a wrapped intervention
-# without a `capacity_key` fails instead, when its actions are first sought.
+# out leaves the tracing undone.
 traces_contacts(::CapacityConstrained) = false
 trace_contacts!(::CapacityConstrained, state, infector, contacts) = nothing
 

@@ -536,8 +536,7 @@ end
 
     # An action naming no key removes the contact through `set_isolated!`, and
     # the window closes where that removal starts, as it did before the removal
-    # seam existed. It blocks per contact from there too, which is what reaches
-    # the generation engine.
+    # seam existed. It blocks per contact from there too.
     shared = Individual(id = 1)
     EpiBranch.apply_trace!(SharedKeyQuarantine(), shared, nothing, 4.0, StableRNG(1))
     @test isempty(EpiBranch.removal_gap_host_times(ct_shared))
