@@ -789,8 +789,8 @@ case settles, for every intervention with a method of it, with the people
 `EpiBranch.action_candidates` chooses as candidates: by default the case and
 the contacts it can still reach. An intervention that chooses its own, such as
 everyone in the run not yet infected, writes a method of
-`action_candidates`. What it returns goes through the schedule and capacity
-limits.
+`action_candidates`. The actions it proposes then go through the schedule and
+capacity limits.
 
 `Scheduled` checks the proposed action time before delivery. A condition
 function sees that time as `state.max_infection_time`, with the current case
@@ -842,9 +842,9 @@ The result is `true`: the second call uses the stored draw. Give a new visit a
 different key, and keep the same key when the same visit is proposed again.
 
 Actions run in one of two ways. By default they run after a newly final case
-is traced, offered to the people `action_candidates` chooses, and must work
-without the infection time of a contact whose infection is not yet final.
-That narrowing needs a model that names contacts
+is traced, are offered to the people `action_candidates` chooses, and must
+work without the infection time of a contact whose infection is not yet
+final. That narrowing needs a model that names contacts
 (`EpiBranch.supplies_contacts(model) = true`), unless the intervention
 declares `EpiBranch.needs_contacts(iv) = false`, as group delivery does,
 since it finds a case's group through its `group_key` rather than through a
@@ -965,7 +965,7 @@ before.
 | Offspring as a function | A function `(rng, ind) -> Int` | Offspring draw |
 | Multi-type offspring as a function | A function `(rng, ind) -> Vector{Int}` | Offspring draw |
 | An offspring specification | A type with `draw_offspring` and `chain_size_distribution` | Offspring draw and closed-form results |
-| An offspring specification or generation time that reads nothing a case's settlement writes | `EpiBranch.reads_settled_state(::YourType) = false` | Tracing rings of depth 2 or more on a branching process |
+| An offspring specification, generation time or transmission model that reads nothing a case's settlement writes | `EpiBranch.reads_settled_state(::YourType) = false` | Tracing rings of depth 2 or more |
 | A transmission model | A type `<: TransmissionModel` with `generate_offspring` (offspring-driven) or `initialise_state` and `contacts_of` (structure-driven), or `EpiBranch.simulate_once` running `EpiBranch.sellke_race!` (its own continuous-time loop); optionally `single_type_offspring` and accessors | Simulation and closed-form results |
 | A transmission route | `RouteWindow(name; from, until, kernel, reach)` on a model that reads routes | Continuous-time models, each case |
 | Structured mixing in a closed population | `MixingProcess(; population_size, mixing_by, rate)`: the characteristics that define the groups, and the contact rate between one person in each of two groups | Simulation |

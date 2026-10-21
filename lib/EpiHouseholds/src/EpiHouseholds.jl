@@ -9,17 +9,14 @@ using Random
 # are part of EpiBranch's public extension API but not brought into scope by
 # `using EpiBranch`. Everything else this package builds on (`TransmissionModel`,
 # `Transition`, `Individual`, `linelist`, …) is exported by EpiBranch, and the
-# population/progression helpers are called qualified. The package also uses two
-# sets of EpiBranch internals on purpose: the shared continuous-time engine
-# (`EpiBranch._sellke_race!`, called directly rather than through the public
-# `sellke_race!` wrapper because the simulator reconciles once after racing each
-# household rather than after every race; see `household_simulate.jl`) and the
-# community-hazard helpers. Reusing them keeps the household simulator and
-# pairwise likelihood consistent with the shared engine.
+# population/progression helpers are called qualified. The package also uses
+# some EpiBranch internals on purpose: the community-hazard helpers and the
+# race's seeding and window helpers. Reusing them keeps the household simulator
+# and pairwise likelihood consistent with the shared engine.
 import EpiBranch: new_state, add_individuals!, apply_observation!,
     simulate_once, SimOpts, infectious_from,
     _honours_termination_controls, _validate_process_windows,
-    _warn_uncovered_terminal_states, race_groups
+    _warn_uncovered_terminal_states
 # The infection layer is built and read out of a simulation by EpiBranch's
 # helpers, which close each case's window where the simulator's race does.
 import EpiBranch: _infection_layer_columns, _infection_layer_fields,
@@ -35,7 +32,7 @@ import EpiBranch: removal_gap_host_times, removal_block_probability, removal_str
 # The simulator and the likelihood share EpiBranch's community-hazard helpers
 # and agree on when that term applies and what it is.
 import EpiBranch: pairwise_surv_loglik, _ext_active, _ext_draw, _check_external,
-    _normalise_external
+    _normalise_external, _ext_survival_of
 
 export HouseholdProcess, household_sizes, household_members, external_hazard, observation_end
 export HouseholdInfections, household_infections
@@ -44,10 +41,12 @@ export HouseholdPairsLayout, compile_household_pairs
 export ConditionOn, RecruitedIndex, EarliestInfected
 export HouseholdOffspring, household_offspring, household_offspring_law
 export household_final_size
+export HouseholdFinalStatuses
 
 include("household_process.jl")
 include("household_simulate.jl")
 include("likelihood.jl")
 include("offspring.jl")
+include("final_status_likelihood.jl")
 
 end # module

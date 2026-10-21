@@ -270,8 +270,3 @@ function removal_gap_host_times(c::CapacityConstrained)
     return removal_gap_host_times(c.intervention)
 end
 removal_block_probability(c::CapacityConstrained) = removal_block_probability(c.intervention)
-
-# Admission reads `_capacity_usage`, how much of the shared budget every other
-# individual has already used — population-wide state regardless of what the
-# wrapped intervention declares.
-reads_population_state(::CapacityConstrained) = true

@@ -94,18 +94,7 @@ many people each case infects](@ref).
 | `on_infection_settled!(iv, individual, state, rng)` | Every built-in model: once a case's infection time is fixed, before its onset or clinical transitions read it | The case, and the random number generator to use | `nothing`; sets values on the case (default: does nothing) |
 | `risk_applies(iv, route)` | Every built-in model choosing the risks for a route or infectiousness window | The route's `RouteWindow`, or `nothing` for an introduction from outside | `Bool`; default `true` |
 | `standing_block(iv)` | Fixed-population models deciding whether a certain block ends a pair's contacts for good | Nothing | `Bool`; default `false` |
-| `reads_population_state(iv)` | Before a structure-driven model (such as `HouseholdProcess`) decides whether to simulate each household separately or all on one shared clock | Nothing | `Bool`: whether what the intervention does can depend on population-wide quantities such as a running case count or a shared budget (default `true`, the safe choice) |
 | `analytic_offspring_effect(iv, offspring)`, `analytic_offspring_effect(iv, offspring, spec)` | When an analytical function such as [`extinction_probability`](@ref) is called on a `ModelSpec` holding the intervention | The offspring distribution without the intervention (the three-argument form also receives the `ModelSpec`, for an effect that needs more than the offspring law) | The offspring distribution a case has under the intervention. Without a method of either arity the function stops with an error |
-
-`reads_population_state` covers everything an intervention hands work to: a
-component or function you supply counts towards its owner's answer. A built-in
-intervention asks its own components (`ContactTracing` its eligibility, rate,
-delay and action; `Isolation` its eligibility), each answering `false` by
-default. An eligibility, rate, delay or action of yours that tests a running
-case count, or anything else beyond the person being considered, declares
-`true` for itself, and its owner then answers `true` too. A plain function
-passed as a parameter has nowhere to declare this, and such a test belongs in a
-component type.
 
 `analytic_offspring_effect` is for the rare intervention whose effect on the
 offspring distribution is exact in closed form. One that cuts every case's R
@@ -563,10 +552,12 @@ same way. When any of a contact's windows waits, all of them do: the ring grows
 past a contact only once, so every contact an infected contact makes has to be
 known by then.
 
-A model written against `generate_offspring` always waits, since its count may
-read anything. One written against `contacts_of` waits the same way, unless it
-declares that its `contacts_of` reads nothing settling writes (see
-[`EpiBranch.reads_settled_state`](@ref)).
+A model written against `generate_offspring` or `contacts_of` waits the same
+way, unless it declares that its count, or its `contacts_of`, reads nothing
+settling writes (see [`EpiBranch.reads_settled_state`](@ref)). A
+`generate_offspring` model that declares it has its count drawn when the ring
+reaches a person, as on a [`BranchingProcess`](@ref) with a `Distribution` of
+offspring.
 
 [`ContactTracing`](@ref) with `depth > 1` is the built-in intervention that
 uses this: it grows the ring from its members until the ring's depth is
