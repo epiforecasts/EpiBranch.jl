@@ -329,9 +329,15 @@ function simulate_once(
 
     windows = [_start_unset(w, derived) for w in model.windows]
     # A route that proposes its own contacts records what it proposed only
-    # when tracing can read it back; interventions never change over a run,
-    # so this is decided once.
-    tracing = any(EpiBranch.traces_contacts, interventions)
+    # when something reads contacts back: tracing, or an intervention that
+    # proposes actions needing them (`_route_contacts` is also how
+    # `_apply_case_actions!` reaches a case's contacts). Interventions never
+    # change over a run, so this is decided once.
+    tracing = any(
+        iv -> EpiBranch.traces_contacts(iv) ||
+            (EpiBranch._proposes_actions(iv) && EpiBranch.needs_contacts(iv)),
+        interventions
+    )
     routes = Tuple((w, _route_targets(w, tracing)) for w in windows)
 
     EpiBranch.sellke_race!(
