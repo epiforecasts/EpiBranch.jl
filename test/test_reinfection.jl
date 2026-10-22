@@ -22,8 +22,8 @@ using Random
         @test susceptible_again_time(ind) == 10.0
     end
 
-    # Two nodes that keep exposing each other, a day after each infection. Transmission
-    # always succeeds (no susceptibility/infectiousness block), so a
+    # Two nodes that keep exposing each other, a day after each infection.
+    # Transmission always succeeds (no susceptibility/infectiousness block), so a
     # recovered node's only barrier to a fresh exposure is `HostImmunity`:
     # blocked while `susceptible_again_time` is still ahead of the exposure,
     # open once it is behind it. `delay = 0.0` on `:susceptible_again` makes

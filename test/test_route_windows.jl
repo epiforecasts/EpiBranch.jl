@@ -323,7 +323,7 @@ EpiBranch.records_contacts(::AlwaysRecord, parent, contact, state, t) = true
     @testset "OnRoutes narrows an intervention to only the named routes" begin
         # Both routes list INTERVENTION_REMOVAL here, so a bare isolation
         # closes both before either contact, due at 5. Wrapping it in
-        # `OnRoutes` leaves every route it does not name running — the same
+        # `OnRoutes` leaves every route it does not name running, the same
         # outcome the household route above gets by never opting in, but
         # chosen by the intervention instead of the window.
         REM = EpiBranch.INTERVENTION_REMOVAL

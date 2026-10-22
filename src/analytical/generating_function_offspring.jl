@@ -26,27 +26,35 @@ and `end_of_outbreak_probability` need a negative binomial or Poisson's own
 dispersion or rate. A law known only through its generating function has
 none, so these raise an `ArgumentError` pointing at simulation instead.
 
+[`chain_size_distribution`](@ref) needs the pmf itself, not just the
+generating function it sums to, so it only works when `GeneratingFunctionOffspring`
+is built from `pmf`.
+
 # Examples
 ```julia
 # Poisson(1.5) thinned by keeping each secondary case with probability 0.6
 g = GeneratingFunctionOffspring(s -> exp(1.5 * (0.6 * s + 0.4 - 1)), 1.5 * 0.6)
 extinction_probability(g)
 
-# the same law from its probability mass function
+# the same law from its probability mass function, which also gives
+# chain_size_distribution
 using Distributions
 pmf = [pdf(Poisson(0.9), n) for n in 0:200]
-GeneratingFunctionOffspring(pmf)
+chain_size_distribution(GeneratingFunctionOffspring(pmf))
 ```
 """
-struct GeneratingFunctionOffspring{G}
+struct GeneratingFunctionOffspring{G, P}
     pgf::G
     mean::Float64
+    pmf::P
 end
+
+GeneratingFunctionOffspring(pgf, mean::Real) = GeneratingFunctionOffspring(pgf, float(mean), nothing)
 
 function GeneratingFunctionOffspring(pmf::AbstractVector{<:Real})
     mean_ = sum((i - 1) * p for (i, p) in enumerate(pmf))
     pgf(s) = sum(p * s^(i - 1) for (i, p) in enumerate(pmf))
-    return GeneratingFunctionOffspring(pgf, float(mean_))
+    return GeneratingFunctionOffspring(pgf, float(mean_), float.(pmf))
 end
 
 function Base.show(io::IO, o::GeneratingFunctionOffspring)
@@ -62,6 +70,46 @@ _law_mean(o::GeneratingFunctionOffspring) = o.mean
 The law's own `mean`.
 """
 reproduction_number(o::GeneratingFunctionOffspring) = o.mean
+
+# A bare generating function has no case-by-case probabilities to read, so
+# `pdf` and `chain_size_distribution` both refuse a GeneratingFunctionOffspring
+# built that way rather than reaching `o.pmf[k]` as a confusing `MethodError`
+# on `nothing`.
+function _no_pmf(o::GeneratingFunctionOffspring)
+    throw(
+        ArgumentError(
+            "chain_size_distribution needs a GeneratingFunctionOffspring built " *
+                "from its probability mass function, GeneratingFunctionOffspring(pmf), " *
+                "not a bare generating function, which carries no case-by-case " *
+                "probabilities to read."
+        )
+    )
+end
+
+# `pdf` on a GeneratingFunctionOffspring built from a pmf is just that pmf,
+# padded with zero past its stored length (the truncation the caller already
+# chose when they built it). Needed only by `chain_size_distribution`'s
+# hitting-time theorem, which reads an offspring law's secondary-case
+# probabilities one at a time.
+function Distributions.pdf(o::GeneratingFunctionOffspring, k::Integer)
+    o.pmf === nothing && _no_pmf(o)
+    return 0 <= k < length(o.pmf) ? o.pmf[k + 1] : 0.0
+end
+
+"""
+    chain_size_distribution(o::GeneratingFunctionOffspring)
+
+Exact chain size distribution for an offspring law given by its probability
+mass function, from the hitting-time theorem
+([`EpiBranch.HittingTimeChainSize`](@ref)). Needs `o` to have been built as
+`GeneratingFunctionOffspring(pmf)`: a law given only as a bare generating
+function has no case-by-case probabilities to read, and raises an
+`ArgumentError` instead.
+"""
+function chain_size_distribution(o::GeneratingFunctionOffspring)
+    o.pmf === nothing && _no_pmf(o)
+    return HittingTimeChainSize(o)
+end
 
 """
     extinction_probability(o::GeneratingFunctionOffspring; tol=1e-10, max_iter=1000)

@@ -280,7 +280,7 @@ acts on infections through a given transmission route, and whether its
 [`infectious_removal_time`](@ref EpiBranch.infectious_removal_time) can close
 that route. `route` is a [`RouteWindow`](@ref), or `nothing` for an infection
 from outside the population. A model with a single route names it
-`:transmission`, and so does each [`Infectiousness`](@ref) window of a
+`:transmission`, as does each [`Infectiousness`](@ref) window of a
 [`BranchingProcess`](@ref) that is not given its own `name`; the window's
 `until` as seen here also holds [`EpiBranch.INTERVENTION_REMOVAL`](@ref),
 appended to whatever states the window itself lists, and the window names no
@@ -302,8 +302,8 @@ affect protection set by the model itself.
 risk_applies(::AbstractIntervention, route) = true
 
 # A removal's duration, drawn or given. A negative or `NaN` one puts the
-# release before its own start, which would read as a removal that never
-# ends, so it is refused here. Zero is allowed and means no removal:
+# release before its own start, which would read as a permanent removal, so
+# it is refused here. Zero is allowed and means no removal:
 # `infectious_removal_time` reports nothing to close a window with.
 function _removal_duration(duration, rng, individual, what)
     d = _sample_value(duration, rng, individual)

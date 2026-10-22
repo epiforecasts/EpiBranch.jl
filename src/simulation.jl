@@ -1,7 +1,8 @@
 """
     simulate(model::TransmissionModel;
              max_cases=10_000, max_generations=100, max_time=nothing,
-             n_initial=nothing, initial_cases=nothing, stopping_rules=nothing,
+             n_initial=nothing, initial_cases=nothing, index_types=nothing,
+             stopping_rules=nothing,
              rng=Random.default_rng(), condition=nothing, max_attempts=10_000)
 
 Simulate one outbreak and return it as a [`SimulationState`](@ref). Pass the
@@ -23,13 +24,12 @@ days throughout.
   index cases, if there are more of them), leaves out any infection after
   `max_time`, and draws no contacts for a case at generation
   `max_generations`. The last cases of a run stopped by `max_cases` or
-  `max_time` have not made all their contacts, so
-  per-case quantities such as offspring counts or realised generation
-  intervals are right-truncated; `max_generations` alone leaves every case
-  below the bound complete. On a branching process, a contact whose infection was
-  still to be decided when the run stopped is left out, unless tracing or an
-  intervention's actions had already reached it; it is then kept with no
-  infection time.
+  `max_time` have not made all their contacts, so per-case quantities such as
+  offspring counts or realised generation intervals are right-truncated;
+  `max_generations` alone leaves every case below the bound complete. On a
+  branching process, a contact whose infection was still to be decided when
+  the run stopped is left out, unless tracing or an intervention's actions
+  had already reached it; it is then kept with no infection time.
 - `stopping_rules`: a vector of [`AbstractStoppingRule`](@ref)s for finer
   control over when the run ends. When given, `max_cases`,
   `max_generations` and `max_time` are ignored.
@@ -49,6 +49,15 @@ days throughout.
   the population raise an error. With an `external_hazard`, everyone else can
   still be infected from outside from time zero. Other models raise an error
   when given a vector here.
+- `index_types`: for a multi-type [`BranchingProcess`](@ref) only, the types of
+  the index cases, in place of the default uniform random choice among
+  `1:n_types`. A vector gives each index case's type directly and sets their
+  number, so `index_types = [1]` starts the outbreak with a single type-1
+  case (give either `index_types` as a vector or `n_initial`, not both); a
+  `Distribution` draws each of the `n_initial` index cases' types
+  independently, such as `Categorical([0.9, 0.1])` for a 9:1 mix. A type
+  outside `1:n_types` raises an error. A single-type model raises an error
+  when given either here.
 
 The probability and delay of each step in a case's natural history are set
 on the transitions in the `progression` of a [`ModelSpec`](@ref). Each takes
@@ -79,6 +88,7 @@ function simulate(
         model::TransmissionModel;
         n_initial::Union{Int, Nothing} = nothing,
         initial_cases::Union{AbstractVector{<:Integer}, Nothing} = nothing,
+        index_types::Union{AbstractVector{<:Integer}, Distribution, Nothing} = nothing,
         max_cases::Union{Int, Nothing} = _DEFAULT_MAX_CASES,
         max_generations::Union{Int, Nothing} = _DEFAULT_MAX_GENERATIONS,
         max_time::Union{Real, Nothing} = nothing,
@@ -93,10 +103,11 @@ function simulate(
     _validate_process_windows(model, _progression(model))
     _warn_incomplete_terminal_coverage(_progression(model))
     sim_opts = _build_sim_opts(
-        model, n_initial, initial_cases, max_cases, max_generations, max_time,
-        stopping_rules
+        model, n_initial, initial_cases, index_types, max_cases, max_generations,
+        max_time, stopping_rules
     )
     _validate_initial_cases(model, sim_opts)
+    _validate_index_types(model, sim_opts)
     return _run_once_or_retry(
         model, sim_opts, condition, max_attempts;
         interventions = interventions(model), attributes = attributes(model),
@@ -148,8 +159,8 @@ end
 Simulate `n` independent outbreaks from the same model and return them as a
 vector of [`SimulationState`](@ref)s. It takes the same stopping keywords
 (`max_cases`, `max_generations`, `max_time`, `stopping_rules`), `n_initial`,
-`initial_cases` and `rng` as the single-outbreak method; `condition` is not
-available here. The usual next step is
+`initial_cases`, `index_types` and `rng` as the single-outbreak method;
+`condition` is not available here. The usual next step is
 [`containment_probability`](@ref), the share of these outbreaks that died out;
 `containment_probability(model, n)` gives it directly, without keeping the
 outbreaks.
@@ -178,6 +189,7 @@ function _simulate_each(
         each, ::Type{T}, model::TransmissionModel, n::Int;
         n_initial::Union{Int, Nothing} = nothing,
         initial_cases::Union{AbstractVector{<:Integer}, Nothing} = nothing,
+        index_types::Union{AbstractVector{<:Integer}, Distribution, Nothing} = nothing,
         max_cases::Union{Int, Nothing} = _DEFAULT_MAX_CASES,
         max_generations::Union{Int, Nothing} = _DEFAULT_MAX_GENERATIONS,
         max_time::Union{Real, Nothing} = nothing,
@@ -188,10 +200,11 @@ function _simulate_each(
     _validate_process_windows(model, _progression(model))
     _warn_incomplete_terminal_coverage(_progression(model))
     sim_opts = _build_sim_opts(
-        model, n_initial, initial_cases, max_cases, max_generations, max_time,
-        stopping_rules
+        model, n_initial, initial_cases, index_types, max_cases, max_generations,
+        max_time, stopping_rules
     )
     _validate_initial_cases(model, sim_opts)
+    _validate_index_types(model, sim_opts)
     return _simulate_n(
         each, T, model, n, sim_opts; interventions = interventions(model),
         attributes = attributes(model), progression = _progression(model),
@@ -279,18 +292,19 @@ function _drop_default_shortcuts(model, sim_opts, max_cases, max_generations, st
         (rules = filter(r -> !(r isa MaxCases && r.n == max_cases), rules))
     max_generations == _DEFAULT_MAX_GENERATIONS &&
         (rules = filter(r -> !(r isa MaxGenerations && r.n == max_generations), rules))
-    return SimOpts(sim_opts.n_initial, sim_opts.initial_cases, rules)
+    return SimOpts(sim_opts.n_initial, sim_opts.initial_cases, sim_opts.index_types, rules)
 end
 
 # Shared by all four `simulate` entry points (a bare process or a `ModelSpec`,
 # each for one outbreak or `n`): build the `SimOpts` the termination keywords
 # describe, with the defaults dropped per `_drop_default_shortcuts`.
 function _build_sim_opts(
-        model, n_initial, initial_cases, max_cases, max_generations,
+        model, n_initial, initial_cases, index_types, max_cases, max_generations,
         max_time, stopping_rules
     )
     sim_opts = SimOpts(;
-        n_initial, initial_cases, max_cases, max_generations, max_time, stopping_rules
+        n_initial, initial_cases, index_types, max_cases, max_generations, max_time,
+        stopping_rules
     )
     return _drop_default_shortcuts(model, sim_opts, max_cases, max_generations, stopping_rules)
 end
@@ -388,9 +402,21 @@ model_generation_time(model::TransmissionModel) = model.generation_time
 _has_contacts(n::Int) = n > 0
 _has_contacts(counts::Vector{Int}) = any(>(0), counts)
 
+# Wraps the per-contact offset an `OffspringTimes` already gives, letting
+# `offspring_route.jl` pass it here in place of a kernel without
+# `_draw_contact!` branching on where the offset came from. It is kept
+# distinct from a bare `Real` because a kernel that mistakenly returns a
+# number (one must return a `Distribution`) should still raise a
+# `MethodError` instead of being silently treated as a fixed offset.
+struct _FixedOffset{T <: Real}
+    offset::T
+end
+
 # A contact's infection time is the window's `from`-state time plus a draw
-# from its kernel (the contact interval measured from `from`).
+# from its kernel (the contact interval measured from `from`), or the time
+# an `OffspringTimes` already gave.
 _window_infection_time(::NoGenerationTime, from_t::Real, state) = from_t
+_window_infection_time(offset::_FixedOffset, from_t::Real, state) = from_t + offset.offset
 function _window_infection_time(kernel::Distribution, from_t::Real, state)
     return from_t + rand(state.rng, kernel)
 end
@@ -540,7 +566,7 @@ end
 
 """
     add_individuals!(state, n, interventions; n_types = 1, setup = (ind, i) -> nothing,
-                     infection_time = NaN)
+                     infection_time = NaN, types = nothing)
 
 Add `n` people to the outbreak's population and return them. Used by a new
 transmission model's `initialise_state` to build its population.
@@ -551,25 +577,28 @@ and the model sets everyone else's if they are infected later. Pass
 `infection_time = 0` when everyone added is an index case, so that population
 characteristics drawn at creation see the time of their infection.
 
-For each person, the population characteristics are drawn first, then
-`setup(ind, i)` runs (to record model-specific information such as a network
-node or household id), then a random type is drawn for multi-type models, and
-finally each intervention sets up its own information on that person.
+For each person, a type is drawn first for multi-type models, then the
+population characteristics are drawn, then `setup(ind, i)` runs (to record
+model-specific information such as a network node or household id), and
+finally each intervention sets up its own information on that person. By
+default each person's type is drawn uniformly from `1:n_types`; pass `types`
+(a vector giving the `i`-th person's type, or a `Distribution` to draw each
+one from independently) to choose otherwise, as [`simulate`](@ref)'s
+`index_types` does for the index cases.
 """
 function add_individuals!(
         state::SimulationState, n::Integer, interventions;
-        n_types::Integer = 1, setup = (ind, i) -> nothing, infection_time::Real = NaN
+        n_types::Integer = 1, setup = (ind, i) -> nothing, infection_time::Real = NaN,
+        types = nothing
     )
     base = length(state.individuals)
     added = eltype(state.individuals)[]
     for i in 1:n
-        ind = _create_individual(state, 0, base + i, base + i, infection_time)
+        type_idx = n_types > 1 ? _draw_type(state.rng, types, i, n_types) : NoTypeLabels()
+        ind = _create_individual(
+            state, 0, base + i, base + i, infection_time; type_idx
+        )
         setup(ind, i)
-        # Match the new-contact path's ordering (`make_contact!` sets
-        # `:type` before the engine calls `initialise_individual!`) so an
-        # intervention that reads `:type` at init sees the same state for
-        # seed cases and downstream contacts.
-        n_types > 1 && (ind.state[:type] = rand(state.rng, 1:n_types))
         for intervention in interventions
             initialise_individual!(intervention, ind, state)
         end
@@ -577,6 +606,22 @@ function add_individuals!(
         push!(added, ind)
     end
     return added
+end
+
+"""The `i`-th person's type, out of `n_types`: uniform at random by default,
+the `i`-th entry of `types` when it is a vector, or an independent draw from
+`types` when it is a `Distribution` (checked against `1:n_types` and for
+integrality, since a `Distribution`'s support cannot be checked upfront in
+general)."""
+_draw_type(rng, ::Nothing, i, n_types) = rand(rng, 1:n_types)
+_draw_type(rng, types::AbstractVector, i, n_types) = types[i]
+function _draw_type(rng, types::Distribution, i, n_types)
+    t = rand(rng, types)
+    isinteger(t) || throw(ArgumentError("drew non-integer type $t"))
+    1 <= t <= n_types || throw(
+        ArgumentError("drew type $t, which is outside 1:$n_types")
+    )
+    return Int(t)
 end
 
 """
@@ -653,7 +698,7 @@ function initialise_state(
     # the infection time at creation must see the time of 0 they are seeded at.
     add_individuals!(
         state, sim_opts.n_initial, interventions;
-        n_types = n_types(model), infection_time = 0
+        n_types = n_types(model), infection_time = 0, types = sim_opts.index_types
     )
     seed!(state, 1:(sim_opts.n_initial), interventions, transitions)
     return state
@@ -698,15 +743,21 @@ function susceptible_fraction(
     return n_susceptible / state.population_size
 end
 
-"""Create a new person and draw their population characteristics. They
-start as not infected; only the infection decision later in the generation
-marks them infected. Interventions set up their information on the person
-later in the generation, so creating a contact (in `make_contact!` or a
-model's [`contacts_of`](@ref)) involves no intervention.
+"""Create a new person, give them their type (if any) and draw their
+population characteristics. They start as not infected; only the infection
+decision later in the generation marks them infected. Interventions set up
+their information on the person later in the generation, so creating a
+contact (in `make_contact!` or a model's [`contacts_of`](@ref)) involves no
+intervention.
+
+`type_idx` is set before the population characteristics are drawn, so an
+attributes function sees each person's actual type rather than the type-1
+default every new `IndividualState` starts with.
 """
 function _create_individual(
         state::SimulationState, parent_id::Int,
-        chain_id::Int, next_id::Int, inf_time::Real
+        chain_id::Int, next_id::Int, inf_time::Real;
+        type_idx::Union{Int, NoTypeLabels} = NoTypeLabels()
     )
     T = _timetype(state)
     s = IndividualState{T}()
@@ -722,6 +773,7 @@ function _create_individual(
         InfectionEpisode{T}[]
     )
 
+    _set_type!(ind, type_idx)
     _apply_attributes!(state.attributes, state.rng, ind)
 
     return ind
@@ -742,9 +794,9 @@ for every contact drawn from a branching process's offspring distribution, or
 from [`generate_offspring`](@ref) in a model that defines it. A model that
 creates new people inside its [`contacts_of`](@ref) calls it directly,
 returning each contact with its infection time. A model whose contacts are
-all new and share one generation time is simpler written as `generate_offspring`; `contacts_of` earns its
-keep where the model times each contact itself, as here, where every route
-out of a case has its own delay:
+all new and share one generation time is simpler written as
+`generate_offspring`; `contacts_of` earns its keep where the model times each
+contact itself, as here, where every route out of a case has its own delay:
 
 ```julia
 function EpiBranch.contacts_of(m::MyModel, parent, state::SimulationState)
@@ -767,9 +819,8 @@ function make_contact!(
     next_id = length(state.individuals) + 1
     contact = _create_individual(
         state, parent.id, parent.chain_id,
-        next_id, infection_time
+        next_id, infection_time; type_idx
     )
-    _set_type!(contact, type_idx)
     push!(parent.secondary_case_ids, next_id)
     push!(state.individuals, contact)
     return contact
@@ -927,9 +978,10 @@ infected again until [`susceptible_again_time`](@ref), which is `Inf` (never)
 unless a natural-history step sets it. Every model over a fixed population,
 built in or written against [`contacts_of`](@ref), applies it to every settled
 member once its `progression` can reach `:susceptible_again`, with no change
-needed to how it names contacts. A model allows reinfection by adding a step to its `progression` that
-sets `:susceptible_again_time`; the earlier infection is then kept as a past
-episode (see [`close_episode!`](@ref)) when the person is reinfected."""
+needed to how it names contacts. A model allows reinfection by adding a step
+to its `progression` that sets `:susceptible_again_time`; the earlier
+infection is then kept as a past episode (see [`close_episode!`](@ref)) when
+the person is reinfected."""
 struct HostImmunity end
 function competing_risk(::HostImmunity, parent, contact, state)
     is_infected(contact) || return nothing
@@ -987,14 +1039,14 @@ end
 # pair draws its contact times from a kernel. Only two of the six apply there.
 # Two can never apply: an infector has settled and so is infected by
 # construction, and route censoring is the infectious window's job rather than
-# a tag written on a contact. The other two, the per-individual susceptibility and
-# infectiousness, are rate multipliers on those models rather than per-contact
-# blocks: each one scales the hazard a pair meets at (`_traits_scaled_draw`)
-# or the pressure a susceptible absorbs, so resolving them here again would
-# count them twice. `HostImmunity` does apply: a candidate the race proposes
-# can be a settled member offered again once the race allows reinfection (see
-# `_allows_reinfection` in sellke.jl), and this is where that candidate is
-# held back until `susceptible_again_time`.
+# a tag written on a contact. The other two, the per-individual
+# susceptibility and infectiousness, are rate multipliers on those models
+# rather than per-contact blocks: each one scales the hazard a pair meets at
+# (`_traits_scaled_draw`) or the pressure a susceptible absorbs, so resolving
+# them here again would count them twice. `HostImmunity` does apply: a
+# candidate the race proposes can be a settled member offered again once the
+# race allows reinfection (see `_allows_reinfection` in sellke.jl), and this
+# is where that candidate is held back until `susceptible_again_time`.
 function _sellke_builtin_risk_blocks(parent, contact, state, transmission_time)
     _risk_blocks(HostImmunity(), parent, contact, state, transmission_time) &&
         return true
@@ -1047,7 +1099,7 @@ first to block wins.
 
 Every model resolves a transmission through this one function, on each
 candidate infection time the race proposes, so an intervention writes one
-[`Risk`](@ref) for all of them. What that risk does to the epidemic still
+[`Risk`](@ref) for all of them. The risk's effect on the epidemic still
 differs: a single exposure (a branching-process contact, or one a model names
 through [`contacts_of`](@ref)) is lost when it is blocked, while a pair that
 draws its contacts from a kernel comes round again, as the race redraws its

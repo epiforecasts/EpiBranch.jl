@@ -449,7 +449,7 @@ end
             [infector, contact], Int[], 1, StableRNG(1), 0, false, nothing, Inf,
             nothing, AbstractClinicalTransition[]
         )
-        EpiBranch._trace_pair!(ct, state, infector, contact, StableRNG(1))
+        EpiBranch._trace_pair!(ct, state, infector, contact, StableRNG(1), EpiBranch.InterventionAction[])
         @test is_traced(contact)
         @test contact.state[:trace_time] == Inf
         @test !EpiBranch._isolation_in_force(contact)

@@ -5,8 +5,8 @@ Narrow `intervention` to only the named transmission routes, through
 [`risk_applies`](@ref EpiBranch.risk_applies): its
 [`competing_risk`](@ref EpiBranch.competing_risk), and any removal it reports
 through [`infectious_removal_time`](@ref EpiBranch.infectious_removal_time),
-then reach only a route — an [`Infectiousness`](@ref) window of a
-[`BranchingProcess`](@ref), or a [`RouteWindow`](@ref) of a structured model —
+then reach only a route (an [`Infectiousness`](@ref) window of a
+[`BranchingProcess`](@ref), or a [`RouteWindow`](@ref) of a structured model)
 whose `name` is in `routes`. Everything else about `intervention`, such as
 who is eligible and when it acts, stays its own.
 

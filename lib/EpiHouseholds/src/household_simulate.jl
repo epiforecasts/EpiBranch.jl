@@ -2,10 +2,10 @@
 #
 # A household outbreak is a finite, depleting clique, so it is simulated by the
 # Sellke/Dijkstra construction in continuous time — the exact generative model
-# of the pairwise likelihood. Members
-# are processed in increasing infection-time order; popping the earliest pending
-# infection makes it final, because any not-yet-processed infector has a later
-# infection time, becomes infectious no earlier, and so reaches it later.
+# of the pairwise likelihood. Members are processed in increasing
+# infection-time order; popping the earliest pending infection makes it final,
+# because any not-yet-processed infector has a later infection time, becomes
+# infectious no earlier, and so reaches it later.
 #
 # Every other concern is the shared engine: the population is built with the
 # public `new_state`/`add_individuals!`, each infected member's natural history
