@@ -6,8 +6,8 @@
 The offspring distribution of a multi-type branching process (for example
 children and adults, or health-care workers and the community), built from a
 next-generation matrix `M`: `M[i, j]` is the mean number of type-`i` cases
-infected by one type-`j` case, so column `j` holds a type-`j` case's
-offspring and its sum is that type's reproduction number.
+infected by one type-`j` case: column `j` holds a type-`j` case's offspring,
+and its sum is that type's reproduction number.
 
 !!! warning "Contact matrices are usually the other way round"
     A contact matrix from a survey typically has the respondent as the row

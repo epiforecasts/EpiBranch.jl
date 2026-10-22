@@ -47,8 +47,8 @@ DataFrame(type = ["Children", "Adults", "Elderly"], R = vec(sum(M, dims = 1)))
 The `R` column is the column sum of `M`: the expected number of secondary
 cases, of any age, caused by one case in that age group. Adults have the
 highest reproduction number here. Passing `contacts` straight in, without
-transposing, gives a different, wrong, answer, because it reads each
-respondent's row as if it were an infector's column:
+transposing, gives the wrong answer, because it reads each respondent's row
+as if it were an infector's column:
 
 ```@example multitype
 println("R by type, matrix as given: ", vec(sum(contacts .* q .* D, dims = 1)))
@@ -82,7 +82,8 @@ combine(groupby(cases, :type), nrow => :cases)
 the delay, not of the delay itself. The line list numbers types in matrix
 order (1 = 0-14, 2 = 15-64, 3 = 65+). The case counts by age group follow the
 structure of `M`: children and adults, who have the higher reproduction
-numbers, make up most of the cases, and elderly, with the lowest, the fewest.
+numbers, make up most of the cases; elderly, with the lowest, make up the
+fewest.
 
 Each case first draws its total number of secondary cases from the negative
 binomial, then divides them between types in proportion to its column of `M`.
