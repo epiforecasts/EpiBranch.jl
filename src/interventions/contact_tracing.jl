@@ -606,25 +606,52 @@ end
 # and only once (`_resolve_test_release!` calls this at most once per
 # contact, before anything has read either key for this contact as a parent
 # — see `on_infection_settled!`). A stretch that can no longer be found this
-# way — merged with a later trace's, or combined with a standing isolation
-# when it was first recorded — is left as it stands rather than guessed at.
+# way — merged with a later trace's — is left as it stands rather than
+# guessed at; one merged with a standing isolation is instead redone from
+# scratch, below.
 function _shorten_quarantine!(ind, start, backstop, release)
     (release < backstop && release > start) || return nothing
-    _retime_stretch!(ind, QUARANTINE_STRETCHES_KEY, start, backstop, release) || return nothing
-    _retime_stretch!(ind, REMOVAL_STRETCHES_KEY, start, backstop, release)
-    if ind.state[:isolation_time] == start && ind.state[:isolation_release_time] == backstop
-        ind.state[:isolation_release_time] = release
+    _retime_stretch!(ind, QUARANTINE_STRETCHES_KEY, (start, backstop), (start, release)) ||
+        return nothing
+    if _retime_stretch!(ind, REMOVAL_STRETCHES_KEY, (start, backstop), (start, release))
+        if ind.state[:isolation_time] == start && ind.state[:isolation_release_time] == backstop
+            ind.state[:isolation_release_time] = release
+        end
+        return nothing
+    end
+    _shorten_combined_isolation!(ind, start, backstop, release)
+    return nothing
+end
+
+# `apply_trace!`'s `_isolation_in_force` branch combines the quarantine's own
+# `(start, backstop)` with whatever isolation stood before it into a single
+# `REMOVAL_STRETCHES_KEY` stretch, so `_shorten_quarantine!`'s own exact-match
+# lookup above cannot find `(start, backstop)` there. Redo that combination
+# with the shortened `(start, release)` instead, from the standing isolation
+# `apply_trace!` recorded before combining it (see its own comment on
+# `_isolation_time_before_quarantine`).
+function _shorten_combined_isolation!(ind, start, backstop, release)
+    standing_start = _state_real(ind.state, :_isolation_time_before_quarantine, Inf)
+    isfinite(standing_start) || return nothing
+    standing_release = _state_real(
+        ind.state, :_isolation_release_time_before_quarantine, Inf
+    )
+    old_combined = _combine_removal(standing_start, standing_release, start, backstop)
+    new_combined = _combine_removal(standing_start, standing_release, start, release)
+    _retime_stretch!(ind, REMOVAL_STRETCHES_KEY, old_combined, new_combined)
+    if (ind.state[:isolation_time], ind.state[:isolation_release_time]) == old_combined
+        ind.state[:isolation_time], ind.state[:isolation_release_time] = new_combined
     end
     return nothing
 end
 
-function _retime_stretch!(ind, key, start, old_release, new_release)
+function _retime_stretch!(ind, key, old, new)
     stretches = get(ind.state, key, nothing)
     stretches === nothing && return false
-    i = findfirst(==((start, old_release)), stretches)
+    i = findfirst(==(old), stretches)
     i === nothing && return false
     revised = copy(stretches)
-    revised[i] = (start, new_release)
+    revised[i] = new
     ind.state[key] = revised
     return true
 end

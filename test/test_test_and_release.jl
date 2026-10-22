@@ -103,6 +103,31 @@ using StableRNGs
         @test isolation_release_time(contact) == 19.0
     end
 
+    @testset "A negative test shortens a quarantine combined with a standing isolation" begin
+        # `apply_trace!` folds the quarantine into a standing isolation
+        # already in force at the trace (its `_isolation_in_force` branch),
+        # so the shortened release has to be redone against that standing
+        # isolation rather than written in directly.
+        rng = StableRNG(10)
+        t = TestAndRelease(duration = 14.0, test_day = 3.0, sensitivity = 1.0)
+        ct = ContactTracing(TraceEveryone(), 1.0, Dirac(0.0), t)
+
+        contact = Individual(id = 1, infection_time = NaN)
+        EpiBranch.set_isolated!(contact, 2.0; release_time = 10.0)
+        EpiBranch.apply_trace!(t, contact, nothing, 5.0, rng)
+        @test isolation_release_time(contact) == 19.0 # the backstop: 5.0 + 14.0
+
+        # The test day (8.0) comes back negative, below the standing
+        # isolation's own release (10.0), which keeps the contact removed
+        # regardless of the negative test.
+        contact.state[EpiBranch.TEST_RELEASE_GRANTED_KEY] = true
+        contact.infection_time = 100.0
+        EpiBranch.on_infection_settled!(ct, contact, nothing, rng)
+        @test isolation_time(contact) == 2.0
+        @test isolation_release_time(contact) == 10.0
+        @test EpiBranch.removal_stretches(contact) == [(2.0, 10.0)]
+    end
+
     @testset "A quarantine merged with another trace is left as it stands" begin
         # A second trace of the same contact appends its own stretch under
         # `QUARANTINE_STRETCHES_KEY`, which can merge with the first; the
