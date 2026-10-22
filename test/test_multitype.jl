@@ -291,6 +291,50 @@ using DataFrames
         @test model.type_labels == ["children", "adults"]
     end
 
+    @testset "Built from a contact matrix, q and D" begin
+        # row = respondent, column = contact, as a survey matrix is laid out
+        contacts = [10.0 1.0; 4.0 2.0]
+        q, D = 0.05, 5.0
+        model = BranchingProcess(
+            contacts, q, D, R -> NegBin(R, 0.5), LogNormal(1.6, 0.5);
+            type_labels = ["child", "adult"]
+        )
+        expected = permutedims(contacts) .* q .* D
+        @test model.infectiousness[1].offspring.offspring_matrix == expected
+        @test model.type_labels == ["child", "adult"]
+
+        # Equivalent to transposing and scaling by hand first.
+        by_hand = BranchingProcess(
+            expected, R -> NegBin(R, 0.5), LogNormal(1.6, 0.5);
+            type_labels = ["child", "adult"]
+        )
+        rng_seed = StableRNG(1)
+        a = simulate(model; max_cases = 100, rng = copy(rng_seed))
+        b = simulate(by_hand; max_cases = 100, rng = copy(rng_seed))
+        @test individual_type.(a.individuals) == individual_type.(b.individuals)
+
+        @testset "q as a per-type susceptibility vector scales each row" begin
+            q_vec = [0.05, 0.1]
+            with_vector = BranchingProcess(
+                contacts, q_vec, D, R -> NegBin(R, 0.5), LogNormal(1.6, 0.5)
+            )
+            expected_vec = permutedims(contacts) .* q_vec .* D
+            @test with_vector.infectiousness[1].offspring.offspring_matrix == expected_vec
+        end
+
+        @testset "non-square contacts throws" begin
+            @test_throws ArgumentError BranchingProcess(
+                [1.0 0.5 0.3; 0.5 1.0 0.3], q, D, R -> NegBin(R, 0.5), LogNormal(1.6, 0.5)
+            )
+        end
+
+        @testset "mismatched q length throws" begin
+            @test_throws ArgumentError BranchingProcess(
+                contacts, [0.05, 0.1, 0.2], D, R -> NegBin(R, 0.5), LogNormal(1.6, 0.5)
+            )
+        end
+    end
+
     @testset "3-type model" begin
         M = [
             2.0 0.5 0.1;
