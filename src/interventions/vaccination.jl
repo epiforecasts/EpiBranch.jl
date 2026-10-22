@@ -866,10 +866,11 @@ end
 # leaving `ind` reading as never given this dose: `_dose_time`,
 # `vaccine_efficacy`, `immunity_time`, `severity_efficacy` and the per-dose
 # post-exposure and onward efficacies all fall back to their unvaccinated
-# defaults. `CapacityConstrained` counts usage by rescanning `_vaccinated_key`
-# on every call it admits, rather than keeping a running total, so clearing it
-# here is itself the refund: the next call sees one fewer dose used and can
-# spend it on another candidate.
+# defaults. `CapacityConstrained` keeps a running count of `_vaccinated_key`
+# uses rather than rescanning for it on every call, so clearing it here is
+# itself the refund only once that count notices: its own cache's
+# `_drop_withdrawn!` sees the flag gone the next time it is consulted, and
+# the dose it had counted becomes available to another candidate again.
 function _withdraw_dose!(rv::RingVaccination, ind)
     label = dose_label(rv)
     ind.state[_vaccinated_key(label)] = false
