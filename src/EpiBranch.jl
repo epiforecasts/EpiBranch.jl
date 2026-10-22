@@ -149,8 +149,8 @@ include("pairwise_survival.jl")
 include("progression_likelihood.jl")
 
 # Exports — types
-export TransmissionModel, BranchingProcess, Infectiousness, HomogeneousProcess,
-    MixingProcess, ModelSpec
+export TransmissionModel, BranchingProcess, Infectiousness, OffspringTimes,
+    HomogeneousProcess, MixingProcess, ModelSpec
 export Individual, InfectionEpisode, close_episode!, SimulationState
 export SimOpts
 export AbstractStoppingRule, Extinction, MaxCases, MaxGenerations, MaxTime, should_stop

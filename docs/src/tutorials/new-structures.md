@@ -21,7 +21,9 @@ Infectiousness(offspring; from = :infection, until = (), kernel = NoGenerationTi
 
 - `offspring`: how many contacts this source makes (a `Distribution`, or a
   function `(rng, ind) -> n` of the case, giving one count per type in a
-  multi-type model).
+  multi-type model). A function that already knows when each contact falls can
+  return an [`OffspringTimes`](@ref) instead of `n`, giving the times directly
+  and skipping `kernel`.
 - `from`: the state at which the window opens. `:infection` (the default) is
   the infection time; any other state `s` is read from the person's
   `<s>_time` value, so `from = :infectious` reads `:infectious_time`. The window
@@ -463,8 +465,8 @@ susceptibility, infectiousness and interventions. The example below does this.
 
 A model can also run **its own simulation loop**, as the continuous-time
 household and network models do, with a race of its own. Such a model
-receives the other model parts as
-arguments: define [`EpiBranch.simulate_once`](@ref)`(m::MyModel, sim_opts; interventions,
+receives the other model parts as arguments: define
+[`EpiBranch.simulate_once`](@ref)`(m::MyModel, sim_opts; interventions,
 attributes, progression, observation, recorder, rng)`, read the parts from the
 arguments, and work out anything you need there from `progression`, such as
 the start of the infectious period with

@@ -402,9 +402,21 @@ model_generation_time(model::TransmissionModel) = model.generation_time
 _has_contacts(n::Int) = n > 0
 _has_contacts(counts::Vector{Int}) = any(>(0), counts)
 
+# Wraps the per-contact offset an `OffspringTimes` already gives, letting
+# `offspring_route.jl` pass it here in place of a kernel without
+# `_draw_contact!` branching on where the offset came from. It is kept
+# distinct from a bare `Real` because a kernel that mistakenly returns a
+# number (one must return a `Distribution`) should still raise a
+# `MethodError` instead of being silently treated as a fixed offset.
+struct _FixedOffset{T <: Real}
+    offset::T
+end
+
 # A contact's infection time is the window's `from`-state time plus a draw
-# from its kernel (the contact interval measured from `from`).
+# from its kernel (the contact interval measured from `from`), or the time
+# an `OffspringTimes` already gave.
 _window_infection_time(::NoGenerationTime, from_t::Real, state) = from_t
+_window_infection_time(offset::_FixedOffset, from_t::Real, state) = from_t + offset.offset
 function _window_infection_time(kernel::Distribution, from_t::Real, state)
     return from_t + rand(state.rng, kernel)
 end
@@ -1027,14 +1039,14 @@ end
 # pair draws its contact times from a kernel. Only two of the six apply there.
 # Two can never apply: an infector has settled and so is infected by
 # construction, and route censoring is the infectious window's job rather than
-# a tag written on a contact. The other two, the per-individual susceptibility and
-# infectiousness, are rate multipliers on those models rather than per-contact
-# blocks: each one scales the hazard a pair meets at (`_traits_scaled_draw`)
-# or the pressure a susceptible absorbs, so resolving them here again would
-# count them twice. `HostImmunity` does apply: a candidate the race proposes
-# can be a settled member offered again once the race allows reinfection (see
-# `_allows_reinfection` in sellke.jl), and this is where that candidate is
-# held back until `susceptible_again_time`.
+# a tag written on a contact. The other two, the per-individual
+# susceptibility and infectiousness, are rate multipliers on those models
+# rather than per-contact blocks: each one scales the hazard a pair meets at
+# (`_traits_scaled_draw`) or the pressure a susceptible absorbs, so resolving
+# them here again would count them twice. `HostImmunity` does apply: a
+# candidate the race proposes can be a settled member offered again once the
+# race allows reinfection (see `_allows_reinfection` in sellke.jl), and this
+# is where that candidate is held back until `susceptible_again_time`.
 function _sellke_builtin_risk_blocks(parent, contact, state, transmission_time)
     _risk_blocks(HostImmunity(), parent, contact, state, transmission_time) &&
         return true
