@@ -140,6 +140,7 @@ TraceDelay
 ConstantDelay
 TraceAction
 Quarantine
+TestAndRelease
 FlagOnly
 ```
 

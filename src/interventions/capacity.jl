@@ -38,7 +38,7 @@ label count against it; use different labels for separate budgets.
 
 By default everyone draws on the same budget. An intervention with a
 [`resource_key`](@ref EpiBranch.resource_key) method splits it instead: each
-distinct value — a district, a treatment centre — gets its own
+distinct value (a district, a treatment centre) gets its own
 `budget_per_period`, tracked under the same `period`, `carry_over` and
 `priority` independently of every other. Pass the value to `capacity_usage`
 to read one group's own usage.
@@ -59,11 +59,13 @@ order: both check each action's own proposed date.
     [`ContactTracing`](@ref) can be capacity-limited too, when its `action` is
     a [`Quarantine`](@ref): a contact is still found and still grows a ring
     once budget runs out, but is not itself quarantined until a place frees
-    up. `FlagOnly` has no removal to ration. [`Isolation`](@ref) can also be
-    capacity-limited, as a count of isolations admitted per period rather than
-    beds held at once: a case isolated once the period's budget is spent is
-    released again, the same way `Scheduled` releases one isolated outside
-    its window.
+    up. With a [`TestAndRelease`](@ref) action, the quarantine itself is not
+    rationed but its own test is, so a contact denied a test keeps the full
+    backstop duration. `FlagOnly` has no removal to ration. [`Isolation`](@ref)
+    can also be capacity-limited, as a count of isolations admitted per period
+    rather than beds held at once: a case isolated once the period's budget is
+    spent is released again, the same way `Scheduled` releases one isolated
+    outside its window.
 
 For extension authors: a new intervention can be capacity-limited by defining
 [`intervention_actions`](@ref EpiBranch.intervention_actions) and
@@ -157,7 +159,7 @@ end
     resource_key(intervention, individual, state) -> Any
 
 For extension authors: which of `intervention`'s budgets `individual` draws on,
-when [`CapacityConstrained`](@ref) is to track more than one at once — a
+when [`CapacityConstrained`](@ref) is to track more than one at once, a
 budget per district or per treatment centre, say. The default, `nothing`, puts
 everyone on the same budget, exactly as a `CapacityConstrained` with no method
 of it behaves. Each distinct value `resource_key` returns gets its own usage,
@@ -192,7 +194,8 @@ capacity_time_key(::Isolation) = :isolation_time
 
 # `ContactTracing` proposes its follow-up as an `InterventionAction` (see
 # `_trace_action`) whose own resource key depends on what the action does:
-# a `Quarantine` has a removal to ration, `FlagOnly` does not.
+# a `Quarantine` has a removal to ration, `FlagOnly` does not, and
+# `TestAndRelease` rations its own test rather than the quarantine itself.
 capacity_key(ct::ContactTracing) = capacity_key(ct.action)
 capacity_time_key(ct::ContactTracing) = capacity_time_key(ct.action)
 
@@ -216,6 +219,8 @@ function capacity_time_key(action::TraceAction)
 end
 capacity_key(::Quarantine) = :_quarantined_by_tracing
 capacity_time_key(::Quarantine) = :trace_time
+capacity_key(::TestAndRelease) = TEST_RELEASE_GRANTED_KEY
+capacity_time_key(::TestAndRelease) = TEST_RELEASE_DAY_KEY
 
 # The start and end of the period containing `at`, in the scope `carry_over`
 # implies: `(0.0, Inf)`, a single period for the whole outbreak, when `period`
@@ -333,7 +338,7 @@ function _discovers_actions(cc::CapacityConstrained)
 end
 # Asked for its actions on every settled case even when the intervention it
 # wraps proposes none, so that wrapping one with nothing to ration fails when
-# the run starts rather than going unrationed (see `intervention_actions`) —
+# the run starts rather than going unrationed (see `intervention_actions`),
 # unless it instead rations through `resolve_individual!` and `reset!`, as
 # `Isolation` does (`_resolves_under_capacity`). That seam needs no candidates
 # or contacts, and routing it through the action funnel too would only cost a
@@ -377,7 +382,7 @@ end
 # proposes (see `_trace_action`) is rationed. `state.scratch` carries this
 # wrapper down to the span of the wrapped intervention's own
 # `trace_contacts!` call, which admits through it instead of itself (see
-# `_admit_trace_actions!`) — composing with `Scheduled` in either order, as a
+# `_admit_trace_actions!`), composing with `Scheduled` in either order, as a
 # dose already does.
 traces_contacts(cc::CapacityConstrained) = traces_contacts(cc.intervention)
 function trace_contacts!(cc::CapacityConstrained, state, infector, contacts, not_before = nothing)
@@ -441,7 +446,7 @@ end
 # Undo the effect `resolve_individual!` just wrote on `ind` unless it fits
 # the budget at its own date, the same check a proposed action's own date
 # goes through. An effect that never ran (the capacity key not actually set
-# on `ind` — for instance a quarantine `Isolation` is layered over, which is
+# on `ind`, for instance a quarantine `Isolation` is layered over, which is
 # not its own effect) has nothing to check.
 function _reset_unless_within_budget!(cc::CapacityConstrained, ind::Individual, state)
     key = capacity_key(cc.intervention)

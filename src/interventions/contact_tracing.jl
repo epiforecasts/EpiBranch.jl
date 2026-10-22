@@ -491,6 +491,171 @@ function apply_trace!(q::Quarantine, contact, state, trace_time, rng)
     return nothing
 end
 
+# Where `TestAndRelease` keeps the day a contact is due to be tested, the
+# exact `(start, release)` its own quarantine recorded for a negative test to
+# shorten, whether the test has been granted (by a wrapping
+# `CapacityConstrained`, or unconditionally with none), and whether the
+# outcome has been decided.
+const TEST_RELEASE_DAY_KEY = :_test_release_day
+const TEST_RELEASE_BACKSTOP_KEY = :_test_release_backstop
+const TEST_RELEASE_GRANTED_KEY = :_test_release_granted
+const TEST_RELEASE_RESOLVED_KEY = :_test_release_resolved
+
+"""
+    TestAndRelease(; duration, test_day, sensitivity = 1.0)
+
+Quarantine a traced contact as [`Quarantine`](@ref) does, for up to `duration`
+days, but release them early if a test taken `test_day` days after the trace
+comes back negative.
+
+A test cannot be read against an infection the race has not yet settled, so
+the outcome is decided once the contact's own infection time is fixed (see
+[`on_infection_settled!`](@ref EpiBranch.on_infection_settled!)): a contact
+not yet infected by `test_day` tests negative, and one already infected by
+then tests positive with probability `sensitivity`, the test's chance of
+detecting a true infection (perfect specificity is assumed). A positive test,
+or one never reached, leaves the full `duration` standing; a negative one
+shortens the quarantine to end at `test_day` instead.
+
+`duration` must stay finite: an indefinite quarantine closes the person's
+infectious window outright (see [`Quarantine`](@ref)), and a closed window
+cannot reopen for a later test to shorten.
+
+`test_day` and `sensitivity` take the same forms as `duration`: a number, a
+distribution, or a function `(rng, ind) -> ...`, drawn once per trace.
+
+Wrap the [`ContactTracing`](@ref) in [`CapacityConstrained`](@ref) to ration
+how many tests are available per day; a contact turned down keeps its full
+`duration`.
+
+# Examples
+```julia
+# Quarantine for up to 14 days, released on a negative test taken on day 3
+ContactTracing(
+    OnSymptomOnset(), 0.8, Exponential(1.0),
+    TestAndRelease(duration = 14.0, test_day = 3.0, sensitivity = 0.9)
+)
+```
+"""
+struct TestAndRelease{D, TD, S} <: TraceAction
+    duration::D
+    test_day::TD
+    sensitivity::S
+
+    function TestAndRelease(duration::D, test_day::TD, sensitivity::S) where {D, TD, S}
+        duration isa Real && !isfinite(duration) && throw(
+            ArgumentError(
+                "`TestAndRelease`'s `duration` must be finite, got $duration. " *
+                    "Use `Quarantine(duration = Inf)` for a quarantine with no " *
+                    "test to shorten it."
+            )
+        )
+        return new{D, TD, S}(duration, test_day, sensitivity)
+    end
+end
+function TestAndRelease(; duration, test_day, sensitivity = 1.0)
+    return TestAndRelease(duration, test_day, sensitivity)
+end
+
+# Only a contact's first trace through tracing schedules a test: a second one
+# (ring propagation, or another infector reaching the same contact) extends
+# the same quarantine rather than starting a fresh one (see `Quarantine`), and
+# the backstop `apply_trace!` records below would no longer name an exact
+# stretch to shorten once the two have merged. `:_quarantined_by_tracing` is
+# what `Quarantine`'s own `apply_trace!` sets, shared by every `TraceAction`,
+# so it is read before delegating to it.
+function apply_trace!(t::TestAndRelease, contact, state, trace_time, rng)
+    first_trace = !get(contact.state, :_quarantined_by_tracing, false)::Bool
+    apply_trace!(Quarantine(t.duration), contact, state, trace_time, rng)
+    (isfinite(trace_time) && first_trace) || return nothing
+    # No quarantine stood on this contact before this call (a first trace,
+    # and nothing else records under this key), so the stretch it just
+    # recorded is this one alone, with nothing to merge it with.
+    release = only(contact.state[QUARANTINE_STRETCHES_KEY])[2]
+    contact.state[TEST_RELEASE_BACKSTOP_KEY] = (trace_time, release)
+    contact.state[TEST_RELEASE_DAY_KEY] = trace_time + _sample_value(t.test_day, rng, contact)
+    return nothing
+end
+
+# Read `ind.infection_time` to decide the test, trusting the caller to have
+# checked it is final: `on_infection_settled!` calls this directly, under its
+# own guarantee that the time is now fixed; the test's own grant
+# (`intervention_actions`, below) calls it only once `is_settled` confirms the
+# same for a contact already settled by the time the test is granted. Neither
+# site may use `isfinite(ind.infection_time)` as that check instead — a
+# proposal still being raced against others holds a provisional time there
+# too (see `_proposal_blocked`), not yet the one the race will keep.
+# Idempotent, so it is harmless if both sites end up calling it.
+function _resolve_test_release!(t::TestAndRelease, ind, rng)
+    get(ind.state, TEST_RELEASE_RESOLVED_KEY, false) && return nothing
+    ind.state[TEST_RELEASE_RESOLVED_KEY] = true
+    day = ind.state[TEST_RELEASE_DAY_KEY]
+    positive = ind.infection_time <= day && action_draw!(ind, (t, :result)) do
+        rand(rng) < _sample_value(t.sensitivity, rng, ind)
+    end
+    positive && return nothing
+    start, backstop = ind.state[TEST_RELEASE_BACKSTOP_KEY]
+    _shorten_quarantine!(ind, start, backstop, day)
+    return nothing
+end
+
+# Shorten the quarantine `apply_trace!` recorded, from `(start, backstop)` to
+# `(start, release)` instead, keeping both its own key and the shared removal
+# history append-only: each is revised only by replacing the one stretch
+# `apply_trace!` itself wrote there, found by its exact start and release,
+# and only once (`_resolve_test_release!` calls this at most once per
+# contact, before anything has read either key for this contact as a parent
+# — see `on_infection_settled!`). A stretch that can no longer be found this
+# way — merged with a later trace's — is left as it stands rather than
+# guessed at; one merged with a standing isolation is instead redone from
+# scratch, below.
+function _shorten_quarantine!(ind, start, backstop, release)
+    (release < backstop && release > start) || return nothing
+    _retime_stretch!(ind, QUARANTINE_STRETCHES_KEY, (start, backstop), (start, release)) ||
+        return nothing
+    if _retime_stretch!(ind, REMOVAL_STRETCHES_KEY, (start, backstop), (start, release))
+        if ind.state[:isolation_time] == start && ind.state[:isolation_release_time] == backstop
+            ind.state[:isolation_release_time] = release
+        end
+        return nothing
+    end
+    _shorten_combined_isolation!(ind, start, backstop, release)
+    return nothing
+end
+
+# `apply_trace!`'s `_isolation_in_force` branch combines the quarantine's own
+# `(start, backstop)` with whatever isolation stood before it into a single
+# `REMOVAL_STRETCHES_KEY` stretch, so `_shorten_quarantine!`'s own exact-match
+# lookup above cannot find `(start, backstop)` there. Redo that combination
+# with the shortened `(start, release)` instead, from the standing isolation
+# `apply_trace!` recorded before combining it (see its own comment on
+# `_isolation_time_before_quarantine`).
+function _shorten_combined_isolation!(ind, start, backstop, release)
+    standing_start = _state_real(ind.state, :_isolation_time_before_quarantine, Inf)
+    isfinite(standing_start) || return nothing
+    standing_release = _state_real(
+        ind.state, :_isolation_release_time_before_quarantine, Inf
+    )
+    old_combined = _combine_removal(standing_start, standing_release, start, backstop)
+    new_combined = _combine_removal(standing_start, standing_release, start, release)
+    _retime_stretch!(ind, REMOVAL_STRETCHES_KEY, old_combined, new_combined)
+    if (ind.state[:isolation_time], ind.state[:isolation_release_time]) == old_combined
+        ind.state[:isolation_time], ind.state[:isolation_release_time] = new_combined
+    end
+    return nothing
+end
+
+function _retime_stretch!(ind, key, old, new)
+    stretches = get(ind.state, key, nothing)
+    stretches === nothing && return false
+    i = findfirst(==(old), stretches)
+    i === nothing && return false
+    revised = copy(stretches)
+    revised[i] = new
+    ind.state[key] = revised
+    return true
+end
+
 """Record the contact as traced without quarantining them: they keep
 transmitting until they would be isolated as a case. If they develop
 symptoms, [`Isolation`](@ref) then isolates them at whichever comes first,
@@ -537,9 +702,10 @@ traced contacts who are not yet known cases.
   case starts (its isolation by default, onset for `OnSymptomOnset`) to each
   contact being reached.
 - `action` (required): what happens to a contact who is found,
-  [`Quarantine`](@ref) for a given `duration` or [`FlagOnly`](@ref) to record
-  the trace without quarantining. There is no default, because policies differ
-  in whether and for how long traced contacts are quarantined.
+  [`Quarantine`](@ref) for a given `duration`, [`TestAndRelease`](@ref) to
+  release them early on a negative test, or [`FlagOnly`](@ref) to record the
+  trace without quarantining. There is no default, because policies differ in
+  whether and for how long traced contacts are quarantined.
 - `depth`: how far tracing reaches: 1 (default) traces contacts, 2 also
   contacts of contacts, and so on. Must be at least 1.
 
@@ -752,6 +918,10 @@ function _reset_traced!(ind::Individual)
     haskey(ind.state, :_ring_remaining) && delete!(ind.state, :_ring_remaining)
     haskey(ind.state, :_ring_propagated) && delete!(ind.state, :_ring_propagated)
     delete!(ind.state, QUARANTINE_STRETCHES_KEY)
+    delete!(ind.state, TEST_RELEASE_DAY_KEY)
+    delete!(ind.state, TEST_RELEASE_BACKSTOP_KEY)
+    delete!(ind.state, TEST_RELEASE_GRANTED_KEY)
+    delete!(ind.state, TEST_RELEASE_RESOLVED_KEY)
     _undo_quarantine_isolation!(ind)
     return nothing
 end
@@ -841,8 +1011,8 @@ end
 
 # One attempt to trace `ind` from `infector`, the trace delay running from
 # `base`, leaving the ring `remaining` hops to grow from `ind`. Who was
-# reached, and from when, is recorded immediately — ring growth and later
-# eligibility checks read it before any action is admitted — and only the
+# reached, and from when, is recorded immediately, since ring growth and later
+# eligibility checks read it before any action is admitted. Only the
 # action that follows up the contact (`apply_trace!`, a quarantine's removal
 # or a flag) is queued, so `CapacityConstrained` can still turn it down.
 function _trace_attempt!(
@@ -967,6 +1137,9 @@ binding_release(::ContactTracing) = true
 removal_gap_host_times(ct::ContactTracing) = removal_gap_host_times(ct.action)
 removal_gap_host_times(::TraceAction) = ()
 removal_gap_host_times(::Quarantine) = (QUARANTINE_STRETCHES_KEY,)
+# `TestAndRelease` records under the same key, through the `Quarantine` it
+# delegates to in `apply_trace!`.
+removal_gap_host_times(::TestAndRelease) = (QUARANTINE_STRETCHES_KEY,)
 removal_block_probability(ct::ContactTracing) = removal_block_probability(ct.action)
 
 removal_gap_host_times_withdrawn(ct::ContactTracing) = removal_gap_host_times_withdrawn(ct.action)
@@ -976,6 +1149,7 @@ removal_gap_host_times_withdrawn(::TraceAction) = ()
 # `REMOVAL_STRETCHES_KEY` too. Since `QUARANTINE_STRETCHES_KEY` already names
 # the same days, the shared one is withdrawn rather than read twice.
 removal_gap_host_times_withdrawn(::Quarantine) = (REMOVAL_STRETCHES_KEY,)
+removal_gap_host_times_withdrawn(::TestAndRelease) = (REMOVAL_STRETCHES_KEY,)
 
 # Where the action recorded the removals this tracing should honour. An action
 # written outside the package names its own key, as the built-in quarantine
@@ -1034,6 +1208,17 @@ function keep_active(ct::ContactTracing, state, targets, is_new)
         push!(ids, t.id)
     end
     return ids
+end
+
+# A contact's `TestAndRelease` test cannot be read until its own infection
+# time is fixed (see `_resolve_test_release!`); for a contact not yet settled
+# when its test is granted, this is where that happens. A granted test
+# already resolved (because the contact was already settled when it was
+# granted) is a no-op here, as is a test never granted at all.
+function on_infection_settled!(ct::ContactTracing{E, F, D, <:TestAndRelease}, ind, state, rng) where {E, F, D}
+    get(ind.state, TEST_RELEASE_GRANTED_KEY, false) || return nothing
+    _resolve_test_release!(ct.action, ind, rng)
+    return nothing
 end
 
 # ── SourceTracing intervention ─────────────────────────────────────────

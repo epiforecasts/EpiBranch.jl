@@ -344,6 +344,30 @@ function intervention_actions(mv::MassVaccination, state, candidates)
     return actions
 end
 
+# The test `TestAndRelease` schedules when a contact is traced, as an
+# `InterventionAction` dated at the test day so `CapacityConstrained` can
+# ration it like a dose. Granting it records that the contact had a test, not
+# its outcome: the outcome needs the contact's own infection time, resolved by
+# `_resolve_test_release!` here (for a contact already settled) or from
+# `on_infection_settled!` (for one not yet).
+function intervention_actions(ct::ContactTracing{E, F, D, A}, state, candidates) where {E, F, D, A <: TestAndRelease}
+    actions = InterventionAction[]
+    t = ct.action
+    for ind in candidates
+        haskey(ind.state, TEST_RELEASE_DAY_KEY) || continue
+        get(ind.state, TEST_RELEASE_GRANTED_KEY, false) && continue
+        day = ind.state[TEST_RELEASE_DAY_KEY]
+        effect! = (person, at, st) -> begin
+            person.state[TEST_RELEASE_GRANTED_KEY] = true
+            # Only a contact already settled by now has a final infection
+            # time to read; one still pending is left to `on_infection_settled!`.
+            is_settled(st, person) && _resolve_test_release!(t, person, st.rng)
+        end
+        push!(actions, InterventionAction(ind, day, effect!))
+    end
+    return actions
+end
+
 """
     acts_on_population(intervention) -> Bool
 
