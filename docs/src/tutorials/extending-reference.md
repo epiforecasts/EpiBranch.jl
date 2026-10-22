@@ -806,14 +806,14 @@ Ring vaccination uses this for protection from an existing dose at a new
 exposure, with the current simulation time as its action time.
 
 By default every recipient draws on one budget. `EpiBranch.resource_key(iv,
-individual, state)` splits it: each distinct value it returns — a district, a
-treatment centre — gets its own usage, checked independently under the same
-`budget_per_period`, `period` and `carry_over`. It is asked of the individual
-rather than the proposed action, so a person already served in an earlier
-call is placed in the same group again from their recorded state, with
-nothing of that call's own proposal kept around. The default, `nothing`, puts
-everyone in a single group, unchanged from an intervention with no method of
-it.
+individual, state)` splits it: each distinct value it returns (a district, a
+treatment centre, say) gets its own usage, checked independently under the
+same `budget_per_period`, `period` and `carry_over`. It is asked of the
+individual rather than the proposed action, so a person already served in an
+earlier call is placed in the same group again from their recorded state,
+with nothing of that call's own proposal kept around. The default, `nothing`,
+puts everyone in a single group, unchanged from an intervention with no
+method of it.
 
 Recorded protection follows its effect date even when the delivery schedule is
 no longer active. Vaccination declares this with
@@ -822,6 +822,22 @@ can use the same method when its `competing_risk` reads recorded effects and
 returns `nothing` before delivery. The default is `false`, for risks that apply
 only while the scheduled policy is active. `Scheduled` and
 `CapacityConstrained` pass this declaration on from the intervention they hold.
+
+`ContactTracing` follows up a contact this same way. `trace_contacts!` records
+who was reached and from when directly, because ring growth and later
+eligibility checks need that before any action is admitted, then proposes the
+follow-up itself (a quarantine's removal, or a plain flag) as an
+`InterventionAction` dated at the trace time. A `CapacityConstrained` wrapper
+rations that action exactly as it rations a dose, through `capacity_key` and
+`capacity_time_key` defined on the `TraceAction` the policy carries
+(`Quarantine` defines them; `FlagOnly`, which removes nobody, does not). A
+trace with no arrival time (`Inf`) has nothing to ration and applies directly.
+
+`Isolation` instead writes its effect straight into `resolve_individual!`. A
+`CapacityConstrained` wrapping it therefore has nothing to admit: it checks
+the budget itself, right after `resolve_individual!` runs, through
+`intervention_time` and `reset!`, the same seam `Scheduled` already uses for
+an intervention with no actions of its own.
 
 Use `EpiBranch.action_draw!(sample, individual, key)` to keep a delay or
 acceptance draw when the same action is proposed again. Keys identify an action
@@ -964,7 +980,7 @@ before.
 | A vaccine effect mode | A type `<: AbstractEffectMode` and `realised_efficacy`; `realise_prior_dose!` only to change what a dose recorded before the run gets | When a dose is recorded, or when a person is created |
 | A start date for an intervention | `Scheduled(iv; start_time = ...)`, with `intervention_time` and `reset!` for `iv` | After each hook |
 | A condition that starts a schedule | A type `<: AbstractTrigger` with `is_triggered!`; `trigger_can_lapse` and `required_transitions` if the defaults do not fit | Each time the schedule is checked |
-| A capacity limit | `CapacityConstrained(iv; budget_per_period = ...)`, with `capacity_key` and `capacity_time_key` for `iv` | When actions are admitted, once per case |
+| A capacity limit | `CapacityConstrained(iv; budget_per_period = ...)`, with `capacity_key` and `capacity_time_key` for `iv` (or for its `TraceAction`, for `ContactTracing`) | When actions are admitted, once per case; or, for an effect `iv` writes directly in `resolve_individual!`, right after that hook runs |
 | A capacity limit per group | `resource_key(iv, individual, state)` for `iv` | When actions are admitted, once per case |
 | An exact effect on the offspring distribution | `analytic_offspring_effect` for an intervention | Closed-form results on a `ModelSpec` |
 | A model, attribute or progression transition that leaves the single-type offspring law exactly as drawn | `EpiBranch.offspring_law_unchanged` | The chain-size and incidence likelihoods' analytical path |

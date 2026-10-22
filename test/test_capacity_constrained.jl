@@ -200,35 +200,117 @@ end
         @test EpiBranch.reset!(cc, contact) === EpiBranch.reset!(rv, contact)
     end
 
-    @testset "Continuous-time tracing is not passed through unrationed" begin
-        ct = ContactTracing(
-            probability = 1.0,
-            isolation_to_trace_delay = Exponential(1.0), action = Quarantine(duration = Inf)
+    @testset "Rations isolation through intervention_time and reset!, like Scheduled" begin
+        iso = Isolation(onset_to_isolation_delay = Dirac(0.0), duration = Inf)
+        cc = CapacityConstrained(iso; budget_per_period = 1.0)
+        state = EpiBranch.new_state(
+            BranchingProcess(Poisson(1.0), Exponential(5.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1)
         )
+        earlier = Individual(
+            id = 1,
+            state = Dict{Symbol, Any}(
+                :test_positive => true, :onset_time => 1.0, :asymptomatic => false
+            )
+        )
+        later = Individual(
+            id = 2,
+            state = Dict{Symbol, Any}(
+                :test_positive => true, :onset_time => 2.0, :asymptomatic => false
+            )
+        )
+        append!(state.individuals, [earlier, later])
+
+        EpiBranch.resolve_individual!(cc, earlier, state)
+        EpiBranch.resolve_individual!(cc, later, state)
+
+        @test is_isolated(earlier)
+        @test !is_isolated(later)
+        @test isolation_time(later) == Inf
+        @test capacity_usage(cc, state).used == 1
+    end
+
+    @testset "A resource_key splits isolation's budget per group" begin
+        struct _DistrictIsolation <: EpiBranch.InterventionWrapper
+            intervention::Isolation
+        end
+        EpiBranch.resource_key(::_DistrictIsolation, individual, state) =
+            individual.state[:district]
+
+        iso = Isolation(onset_to_isolation_delay = Dirac(0.0), duration = Inf)
+        cc = CapacityConstrained(_DistrictIsolation(iso); budget_per_period = 1.0)
+        state = EpiBranch.new_state(
+            BranchingProcess(Poisson(1.0), Exponential(5.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1)
+        )
+        a = Individual(
+            id = 1,
+            state = Dict{Symbol, Any}(
+                :district => :A, :test_positive => true, :onset_time => 1.0,
+                :asymptomatic => false
+            )
+        )
+        b = Individual(
+            id = 2,
+            state = Dict{Symbol, Any}(
+                :district => :B, :test_positive => true, :onset_time => 1.0,
+                :asymptomatic => false
+            )
+        )
+        append!(state.individuals, [a, b])
+
+        EpiBranch.resolve_individual!(cc, b, state)
+        EpiBranch.resolve_individual!(cc, a, state)
+
+        @test is_isolated(a)
+        @test is_isolated(b)
+        @test capacity_usage(cc, state, :A).used == 1
+        @test capacity_usage(cc, state, :B).used == 1
+    end
+
+    @testset "Rations a quarantine, leaving the trace itself unrationed" begin
+        ct = ContactTracing(TraceEveryone(), 1.0, Dirac(0.0), Quarantine(duration = Inf))
         cc = CapacityConstrained(ct; budget_per_period = 1.0)
         state = EpiBranch.new_state(
             BranchingProcess(Poisson(1.0), Exponential(5.0)),
             EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1)
         )
         infector = Individual(id = 1)
-        contact = Individual(id = 2)
+        set_isolated!(infector, 0.0; release_time = Inf)
+        earlier = Individual(id = 2)
+        later = Individual(id = 3)
+        append!(state.individuals, [earlier, later])
 
-        @test EpiBranch.traces_contacts(ct)
-        @test !EpiBranch.traces_contacts(cc)
-        @test EpiBranch.trace_contacts!(cc, state, infector, [contact]) === nothing
-        @test EpiBranch.trace_contacts!(cc, state, infector, [contact], [-Inf]) === nothing
-        @test !haskey(contact.state, :traced)
+        @test EpiBranch.traces_contacts(cc)
+        EpiBranch.trace_contacts!(cc, state, infector, [earlier, later], [1.0, 2.0])
 
-        # Tracing has nothing to ration, so a run that would silently drop it
-        # fails instead.
+        # Both are found, and the ring could grow past either; only the
+        # earlier one's own place in the budget is actually quarantined.
+        @test is_traced(earlier) && is_traced(later)
+        @test is_quarantined(earlier)
+        @test !is_quarantined(later)
+    end
+
+    @testset "A quarantine over budget leaves the contact traced but not removed" begin
         model = ModelSpec(
             BranchingProcess(Poisson(2.0), Exponential(5.0));
             interventions = [
-                Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf), cc,
+                Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf),
+                CapacityConstrained(
+                    ContactTracing(
+                        probability = 1.0, isolation_to_trace_delay = Dirac(0.0),
+                        action = Quarantine(duration = Inf)
+                    );
+                    budget_per_period = 1.0
+                ),
             ],
             attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
         )
-        @test_throws ArgumentError simulate(model; max_cases = 20, rng = StableRNG(2))
+        state = simulate(model; max_cases = 20, rng = StableRNG(2))
+
+        traced = filter(is_traced, state.individuals)
+        @test !isempty(traced)
+        @test count(is_quarantined, traced) < length(traced)
     end
 
     @testset "Group actions ration actual members" begin
@@ -288,8 +370,26 @@ end
             EpiBranch.capacity_time_key(rv)
 
         iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
-        @test_throws ArgumentError EpiBranch.capacity_key(iso)
-        @test_throws ArgumentError EpiBranch.capacity_time_key(iso)
+        @test EpiBranch.capacity_key(iso) == :_isolated_by_isolation
+        @test EpiBranch.capacity_time_key(iso) == :isolation_time
+
+        quarantining = ContactTracing(
+            probability = 1.0, isolation_to_trace_delay = Exponential(1.0),
+            action = Quarantine(duration = Inf)
+        )
+        @test EpiBranch.capacity_key(quarantining) == :_quarantined_by_tracing
+        @test EpiBranch.capacity_time_key(quarantining) == :trace_time
+        @test EpiBranch.capacity_key(Scheduled(quarantining; start_time = 1.0)) ==
+            EpiBranch.capacity_key(quarantining)
+
+        # `FlagOnly` has no removal to ration, so it has no capacity key of
+        # its own.
+        flagging = ContactTracing(
+            probability = 1.0, isolation_to_trace_delay = Exponential(1.0),
+            action = FlagOnly()
+        )
+        @test_throws ArgumentError EpiBranch.capacity_key(flagging)
+        @test_throws ArgumentError EpiBranch.capacity_time_key(flagging)
     end
 
     @testset "A dose's own date decides its period, not the call's clock" begin
