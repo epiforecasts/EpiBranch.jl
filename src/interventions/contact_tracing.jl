@@ -984,8 +984,8 @@ end
 
 # One attempt to trace `ind` from `infector`, the trace delay running from
 # `base`, leaving the ring `remaining` hops to grow from `ind`. Who was
-# reached, and from when, is recorded immediately — ring growth and later
-# eligibility checks read it before any action is admitted — and only the
+# reached, and from when, is recorded immediately, since ring growth and later
+# eligibility checks read it before any action is admitted. Only the
 # action that follows up the contact (`apply_trace!`, a quarantine's removal
 # or a flag) is queued, so `CapacityConstrained` can still turn it down.
 function _trace_attempt!(
