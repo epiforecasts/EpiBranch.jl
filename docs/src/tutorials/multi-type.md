@@ -78,9 +78,9 @@ cases = linelist(state)
 combine(groupby(cases, :type), nrow => :cases)
 ```
 
-[`BranchingProcess`](@ref) also builds `M` for you, from the contact matrix,
-the transmission probability and the infectious period directly, transposing
-as it goes — this is the same `model` as above:
+[`BranchingProcess`](@ref) also builds `M` for you directly from the contact
+matrix, the transmission probability and the infectious period, transposing
+as it goes. This is the same `model` as above:
 
 ```@example multitype
 model = BranchingProcess(

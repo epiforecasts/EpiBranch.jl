@@ -132,8 +132,8 @@ end
 # below: `contacts[j, i]`, the daily contacts a type-`j` respondent makes
 # with type `i` (row = respondent, as a survey matrix is laid out), is
 # transposed so that columns are infectors, then scaled by the transmission
-# probability `q` (per infectee type, when given as a vector, since that is
-# a susceptibility and so belongs to the row) and the infectious period `D`.
+# probability `q` (per infectee type when given as a vector, because
+# susceptibility belongs to the row) and the infectious period `D`.
 function _contact_offspring_matrix(contacts::AbstractMatrix{<:Real}, q, D)
     n = size(contacts, 1)
     size(contacts, 2) == n || throw(
@@ -150,9 +150,10 @@ end
 
 A multi-type branching process built directly from a contact matrix, rather
 than a next-generation matrix: the common case for a contact matrix from a
-social contact survey, laid out respondent by contact (socialmixr's
-`contact_matrix()` in R, cntmosaic's summaries in Python, or a published
-matrix), together with a transmission probability and an infectious period.
+social contact survey, laid out respondent by contact (the `contact_matrix()`
+function from socialmixr in R, a summary from cntmosaic in Python, or a
+published matrix), together with a transmission probability and an
+infectious period.
 
 `contacts[j, i]` is the mean number of type-`i` contacts a type-`j`
 respondent makes per day, the layout such a survey matrix comes in. This
@@ -165,7 +166,7 @@ matrix, whose rows are the respondent.
 susceptible person results in transmission: a single number applied to
 every contact, or a vector of one probability per infectee type, for a
 per-type susceptibility. `D` is the mean infectious period in days. `dist_fn`
-and `gt` are as in [`BranchingProcess`](@ref)'s next-generation-matrix form:
+and `gt` are as in the next-generation-matrix form of [`BranchingProcess`](@ref):
 the offspring law for a type's column sum, and the generation time.
 
 # Examples
