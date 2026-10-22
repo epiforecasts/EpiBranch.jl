@@ -78,6 +78,17 @@ cases = linelist(state)
 combine(groupby(cases, :type), nrow => :cases)
 ```
 
+[`BranchingProcess`](@ref) also builds `M` for you, from the contact matrix,
+the transmission probability and the infectious period directly, transposing
+as it goes — this is the same `model` as above:
+
+```@example multitype
+model = BranchingProcess(
+    contacts, 0.05, 5.0, R_j -> NegBin(R_j, 0.5), LogNormal(1.6, 0.5);
+    type_labels = ["0-14", "15-64", "65+"],
+)
+```
+
 `LogNormal(μ, σ)` takes the mean and standard deviation of the logarithm of
 the delay, not of the delay itself. The line list numbers types in matrix
 order (1 = 0-14, 2 = 15-64, 3 = 65+). The case counts by age group follow the

@@ -128,6 +128,68 @@ function BranchingProcess(
     )
 end
 
+# The next-generation matrix for `BranchingProcess(contacts, q, D, ...)`
+# below: `contacts[j, i]`, the daily contacts a type-`j` respondent makes
+# with type `i` (row = respondent, as a survey matrix is laid out), is
+# transposed so that columns are infectors, then scaled by the transmission
+# probability `q` (per infectee type, when given as a vector, since that is
+# a susceptibility and so belongs to the row) and the infectious period `D`.
+function _contact_offspring_matrix(contacts::AbstractMatrix{<:Real}, q, D)
+    n = size(contacts, 1)
+    size(contacts, 2) == n || throw(
+        ArgumentError("contacts must be square, got $(size(contacts))")
+    )
+    q isa AbstractVector && length(q) != n && throw(
+        ArgumentError("q has $(length(q)) entries for $n types, expected $n")
+    )
+    return Matrix{Float64}(permutedims(contacts) .* q .* D)
+end
+
+"""
+    BranchingProcess(contacts, q, D, dist_fn, gt; kwargs...)
+
+A multi-type branching process built directly from a contact matrix, rather
+than a next-generation matrix: the common case for a contact matrix from a
+social contact survey, laid out respondent by contact (socialmixr's
+`contact_matrix()` in R, cntmosaic's summaries in Python, or a published
+matrix), together with a transmission probability and an infectious period.
+
+`contacts[j, i]` is the mean number of type-`i` contacts a type-`j`
+respondent makes per day, the layout such a survey matrix comes in. This
+builds the next-generation matrix `permutedims(contacts) .* q .* D`,
+transposing for the caller: a next-generation matrix has columns for
+infectors and rows for infectees, the other way round from a contact
+matrix, whose rows are the respondent.
+
+`q` is the probability that a contact between an infectious and a
+susceptible person results in transmission: a single number applied to
+every contact, or a vector of one probability per infectee type, for a
+per-type susceptibility. `D` is the mean infectious period in days. `dist_fn`
+and `gt` are as in [`BranchingProcess`](@ref)'s next-generation-matrix form:
+the offspring law for a type's column sum, and the generation time.
+
+# Examples
+```julia
+using EpiBranch, Distributions
+
+contacts = [10.0 1.0; 4.0 2.0]  # row = respondent, column = contact
+q, D = 0.05, 5.0
+model = BranchingProcess(
+    contacts, q, D, R -> NegBin(R, 0.5), LogNormal(1.6, 0.5);
+    type_labels = ["child", "adult"],
+)
+```
+"""
+function BranchingProcess(
+        contacts::AbstractMatrix{<:Real}, q::Union{Real, AbstractVector{<:Real}},
+        D::Real, dist_fn, gt;
+        population_size::Union{Int, NoPopulation} = NoPopulation(),
+        type_labels::Union{Vector{String}, NoTypeLabels} = NoTypeLabels()
+    )
+    M = _contact_offspring_matrix(contacts, q, D)
+    return BranchingProcess(M, dist_fn, gt; population_size, type_labels)
+end
+
 """
     draw_offspring(rng, offspring::MultiTypeOffspring, individual, state)
 
