@@ -6,7 +6,16 @@
 The offspring distribution of a multi-type branching process (for example
 children and adults, or health-care workers and the community), built from a
 next-generation matrix `M`: `M[i, j]` is the mean number of type-`i` cases
-infected by one type-`j` case.
+infected by one type-`j` case: column `j` holds a type-`j` case's offspring,
+and its sum is that type's reproduction number.
+
+!!! warning "Contact matrices are often the other way round"
+    A contact matrix from a survey frequently has the respondent as the row
+    and the contact as the column (as with socialmixr's `contact_matrix`),
+    so a person's number of contacts is a row sum. Transpose such a matrix
+    (`permutedims`) before passing it as `M`; the multi-type tutorial works
+    through an example. Passing it as given runs without error but gives the
+    wrong type-specific reproduction numbers.
 
 A type-`j` case draws how many people it infects in total, then splits them
 at random between types in proportion to column `j`. `dist_fn` gives that
