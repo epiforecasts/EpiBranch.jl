@@ -37,9 +37,9 @@ using StableRNGs
 contacts = [8.0 3.0 0.5;
             5.0 6.0 2.0;
             1.0 3.0 4.0]
-q, D = 0.05, 5.0  # transmission probability, mean infectious period in days
+beta, D = 0.05, 5.0  # transmission probability, mean infectious period in days
 
-M = permutedims(contacts) .* q .* D  # transpose: rows become infectors
+M = permutedims(contacts) .* beta .* D  # transpose: rows become infectors
 
 DataFrame(type = ["Children", "Adults", "Elderly"], R = vec(sum(M, dims = 1)))
 ```
@@ -51,7 +51,7 @@ transposing, gives the wrong answer, because it reads each respondent's row
 as if it were an infector's column:
 
 ```@example multitype
-println("R by type, matrix as given: ", vec(sum(contacts .* q .* D, dims = 1)))
+println("R by type, matrix as given: ", vec(sum(contacts .* beta .* D, dims = 1)))
 println("R by type, transposed (correct): ", vec(sum(M, dims = 1)))
 ```
 
