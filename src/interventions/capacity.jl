@@ -253,6 +253,82 @@ function _dose_times(cc::CapacityConstrained, state, key = nothing)
     return get(_dose_times_by_key(cc, state), key, Float64[])
 end
 
+# `_admit_actions!`'s own record of who has already drawn on each of `cc`'s
+# resources, kept in `state.scratch` so it survives from one call to the next
+# for the same wrapper. Seeded once by a population scan like
+# `_dose_times_by_key`'s own, then grown one person at a time as each dose is
+# admitted, so a run with many settled cases no longer rescans everyone on
+# every one of them. `recorded` remembers which resource and date each
+# person's own use was filed under, so a dose later withdrawn outside this
+# cache's own admission path (`on_infection_settled!` undoing one that missed
+# its eligibility window, say) can be taken back out again. `capacity_usage`
+# and `_reset_unless_within_budget!` keep using the plain scan above instead:
+# each is called far less often than an action is admitted, so there is no
+# scan there worth avoiding.
+mutable struct _CapacityCache
+    times::Dict{Any, Vector{Float64}}
+    recorded::Dict{Int, Tuple{Any, Float64}}
+    seeded::Bool
+end
+_CapacityCache() = _CapacityCache(Dict{Any, Vector{Float64}}(), Dict{Int, Tuple{Any, Float64}}(), false)
+
+function _capacity_cache(cc::CapacityConstrained, state)
+    cache = get!(_CapacityCache, state.scratch, (:capacity_cache, cc))::_CapacityCache
+    if !cache.seeded
+        cache.seeded = true
+        key = capacity_key(cc.intervention)
+        time_key = capacity_time_key(cc.intervention)
+        for ind in state.individuals
+            get(ind.state, key, false) || continue
+            resource = resource_key(cc.intervention, ind, state)
+            t = get(ind.state, time_key, -Inf)
+            push!(get!(Vector{Float64}, cache.times, resource), t)
+            cache.recorded[ind.id] = (resource, t)
+        end
+        # A single sort per resource key here, rather than this scan calling
+        # `_record_capacity_use!`'s one-at-a-time sorted insert, so seeding a
+        # resource with many uses already recorded before this cache ever ran
+        # costs one sort each, not one insertion's own shift per use.
+        foreach(sort!, values(cache.times))
+    end
+    _drop_withdrawn!(cache, cc, state)
+    return cache
+end
+
+# Add `ind`'s own use to `cache`, at the sorted position its date belongs:
+# cases settle in infection order, so a dose dated earlier is often admitted
+# after later ones (see `_fits_budget`), and `times` must stay searchable by
+# date regardless of the order doses are recorded in. A no-op for anyone
+# already in `cache.recorded`, whether from the population scan that seeded
+# it or from an earlier call, so nobody is counted twice.
+function _record_capacity_use!(
+        cache::_CapacityCache, cc::CapacityConstrained, ind, state,
+        times = get!(Vector{Float64}, cache.times, resource_key(cc.intervention, ind, state))
+    )
+    haskey(cache.recorded, ind.id) && return times
+    t = get(ind.state, capacity_time_key(cc.intervention), -Inf)
+    cache.recorded[ind.id] = (resource_key(cc.intervention, ind, state), t)
+    insert!(times, searchsortedfirst(times, t), t)
+    return times
+end
+
+# Take back out anyone `cache` counted whose own flag has since been unset
+# directly on `state`, without going through this cache's own admission
+# path: the budget they used becomes available again, exactly as a fresh
+# scan would show. Costs the number of uses this cache has ever recorded,
+# not the size of the population, so it stays worth paying on every call.
+function _drop_withdrawn!(cache::_CapacityCache, cc::CapacityConstrained, state)
+    isempty(cache.recorded) && return nothing
+    key = capacity_key(cc.intervention)
+    for id in collect(keys(cache.recorded))
+        get(state.individuals[id].state, key, false) && continue
+        resource, t = pop!(cache.recorded, id)
+        times = cache.times[resource]
+        deleteat!(times, searchsortedfirst(times, t))
+    end
+    return nothing
+end
+
 # How many of the sorted `times`, together with `extra` (doses admitted so far
 # within the current call, not yet visible to a fresh scan of `state`), fall
 # strictly before `before`.
