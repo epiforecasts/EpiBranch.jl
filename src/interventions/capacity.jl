@@ -253,18 +253,21 @@ function _dose_times(cc::CapacityConstrained, state, key = nothing)
     return get(_dose_times_by_key(cc, state), key, Float64[])
 end
 
-# `_admit_actions!`'s own record of who has already drawn on each of `cc`'s
-# resources, kept in `state.scratch` so it survives from one call to the next
-# for the same wrapper. Seeded once by a population scan like
-# `_dose_times_by_key`'s own, then grown one person at a time as each dose is
-# admitted, so a run with many settled cases no longer rescans everyone on
-# every one of them. `recorded` remembers which resource and date each
-# person's own use was filed under, so a dose later withdrawn outside this
-# cache's own admission path (`on_infection_settled!` undoing one that missed
-# its eligibility window, say) can be taken back out again. `capacity_usage`
-# and `_reset_unless_within_budget!` keep using the plain scan above instead:
-# each is called far less often than an action is admitted, so there is no
-# scan there worth avoiding.
+# `_admit_actions!`'s own record of who has already drawn on each capacity
+# key's resources, kept in `state.scratch` so it survives from one call to
+# the next. Keyed on `capacity_key(cc.intervention)` rather than on `cc`
+# itself, so that two different `CapacityConstrained` wrappers sharing a dose
+# label (per the docstring above) see each other's admissions through the
+# same cache instead of each keeping its own, unaware, copy. Seeded once by a
+# population scan like `_dose_times_by_key`'s own, then grown one person at a
+# time as each dose is admitted, so a run with many settled cases no longer
+# rescans everyone on every one of them. `recorded` remembers which resource
+# and date each person's own use was filed under, so a dose later withdrawn
+# outside this cache's own admission path (`on_infection_settled!` undoing one
+# that missed its eligibility window, say) can be taken back out again.
+# `capacity_usage` and `_reset_unless_within_budget!` keep using the plain
+# scan above instead: each is called far less often than an action is
+# admitted, so there is no scan there worth avoiding.
 mutable struct _CapacityCache
     times::Dict{Any, Vector{Float64}}
     recorded::Dict{Int, Tuple{Any, Float64}}
@@ -273,7 +276,7 @@ end
 _CapacityCache() = _CapacityCache(Dict{Any, Vector{Float64}}(), Dict{Int, Tuple{Any, Float64}}(), false)
 
 function _capacity_cache(cc::CapacityConstrained, state)
-    cache = get!(_CapacityCache, state.scratch, (:capacity_cache, cc))::_CapacityCache
+    cache = get!(_CapacityCache, state.scratch, (:capacity_cache, capacity_key(cc.intervention)))::_CapacityCache
     if !cache.seeded
         cache.seeded = true
         key = capacity_key(cc.intervention)
