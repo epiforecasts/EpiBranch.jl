@@ -394,7 +394,7 @@ draw_trace_delay(d::ConstantDelay, infector, contact, state, rng) = float(rand(r
 What happens to a contact once traced: [`Quarantine`](@ref) or
 [`FlagOnly`](@ref). To write a new action, define a subtype and a method of
 [`apply_trace!`](@ref EpiBranch.apply_trace!). `ContactTracing` forwards two
-further hooks to the action it carries, each with a no-op default: an action
+further hooks to the action it holds, each with a no-op default: an action
 that proposes its own [`InterventionAction`](@ref EpiBranch.InterventionAction)s
 (rationed like a dose under [`CapacityConstrained`](@ref) through its own
 [`capacity_key`](@ref EpiBranch.capacity_key)) defines
@@ -1125,7 +1125,7 @@ function keep_active(ct::ContactTracing, state, targets, is_new)
     return ids
 end
 
-# Forwarded to the `TraceAction` `ct` carries, the same way `apply_trace!`,
+# Forwarded to the `TraceAction` `ct` holds, the same way `apply_trace!`,
 # `capacity_key` and `capacity_time_key` already are, so a `TraceAction`
 # needing to act once a contact's infection time is fixed (a test read
 # against it, say) need not be built into the package. The default on

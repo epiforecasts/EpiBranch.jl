@@ -947,9 +947,9 @@ are in [Proposing, admitting and keeping actions](@ref).
 [`Quarantine`](@ref)'s own duration is drawn when a contact is traced, at the
 tracing case's own settlement, often before the contact's own infection time
 is decided. Releasing a contact early on a negative test needs that test read
-only once the contact's own infection time is fixed, which needs two further
-hooks `ContactTracing` forwards to its [`TraceAction`](@ref), each with a
-no-op default: `EpiBranch.intervention_actions`, so the test itself can be
+only once the contact's own infection time is fixed. `ContactTracing` forwards
+two further hooks to its [`TraceAction`](@ref) for this, each with a no-op
+default: `EpiBranch.intervention_actions`, so the test itself can be
 proposed (and, under `CapacityConstrained`, rationed, like the clinic
 appointment above); and `EpiBranch.on_infection_settled!`, so its outcome is
 read once that time is fixed rather than at the trace itself.
