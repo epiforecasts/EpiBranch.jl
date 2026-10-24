@@ -244,8 +244,8 @@ route's `reach` holds, and give it:
   `capped` is set when the window has no natural close and `close_t` is the
   run's time limit instead: propose only up to it, and remember enough, on
   `route` itself, for `pending_beyond` to answer afterwards. The race submits
-  each pair itself — dropping a target already settled, or the infector
-  itself — so `route` need not check either, and scales nothing further: read
+  each pair itself, dropping a target already settled or the infector itself,
+  so `route` need not check either. It scales nothing further: read
   `state.individuals[...].susceptibility` and `.infectiousness` directly if
   `route`'s own contacts should depend on them.
 - [`EpiBranch.route_pair_kernel`](@ref)`(route, infector_id, target_id, state)`,
