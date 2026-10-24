@@ -163,7 +163,7 @@ export PreviouslyTraced
 export AnyOf, AllOf, NoneOf
 export TraceRate, ConstantRate
 export TraceDelay, ConstantDelay
-export TraceAction, Quarantine, TestAndRelease, FlagOnly
+export TraceAction, Quarantine, FlagOnly
 export AbstractVaccination, VaccineEffect, RingVaccination, MassVaccination,
     GroupVaccination
 export AbstractEffectMode, LeakyMode, AllOrNothingMode

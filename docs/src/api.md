@@ -140,7 +140,6 @@ TraceDelay
 ConstantDelay
 TraceAction
 Quarantine
-TestAndRelease
 FlagOnly
 ```
 
@@ -621,6 +620,7 @@ EpiBranch.trigger_time
 EpiBranch.traces
 EpiBranch.draw_trace_delay
 EpiBranch.apply_trace!
+EpiBranch.shorten_quarantine!
 ```
 
 #### Vaccination

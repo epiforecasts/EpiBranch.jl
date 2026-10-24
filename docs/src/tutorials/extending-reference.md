@@ -51,11 +51,7 @@ underscore are internal.
 | `:isolation_release_time` | `Float64` | `Inf` | `Isolation`, `ContactTracing`/`SourceTracing`'s `Quarantine` | `resolve_individual!` / `apply_trace!`; when the block ends |
 | `:_removal_stretches` | `Vector{Tuple{Float64,Float64}}` | `[]` | `set_isolated!` | Internal. Every `(start, release)` a removal took the person out for, merged and sorted; a release of `Inf` for one that never ends |
 | `:_leaky_removal_stretches` | `Vector{Tuple{Float64,Float64}}` | `[]` | `Isolation` | `resolve_individual!`; internal. The stretches of a leaky isolation, apart from `:_removal_stretches`'s complete ones |
-| `:_quarantine_stretches` | `Vector{Tuple{Float64,Float64}}` | `[]` | `ContactTracing`/`SourceTracing`'s `Quarantine`/`TestAndRelease` | `apply_trace!`; internal. The quarantine's own stretches, apart from the shared history |
-| `:_test_release_day` | `Float64` | — | `ContactTracing`'s `TestAndRelease` | `apply_trace!`; internal. The day the contact's test is due |
-| `:_test_release_backstop` | `Tuple{Float64,Float64}` | — | `ContactTracing`'s `TestAndRelease` | `apply_trace!`; internal. The `(start, release)` of the quarantine a negative test shortens |
-| `:_test_release_granted` | `Bool` | `false` | `ContactTracing`'s `TestAndRelease` | When the test's `InterventionAction` is admitted; internal |
-| `:_test_release_resolved` | `Bool` | `false` | `ContactTracing`'s `TestAndRelease` | `on_infection_settled!`, or at admission for a contact already settled; internal |
+| `:_quarantine_stretches` | `Vector{Tuple{Float64,Float64}}` | `[]` | `ContactTracing`/`SourceTracing`'s `Quarantine` | `apply_trace!`; internal. The quarantine's own stretches, apart from the shared history; shorten one with [`EpiBranch.shorten_quarantine!`](@ref) |
 | `:_lapsing_removal_keys` | `Tuple{Vararg{Symbol}}` | `()` | `record_removal!` | Internal. The keys under which a releasing stretch has been recorded, checked against `removal_gap_host_times` when the infection layer is built |
 | `:_isolated_by_isolation` | `Bool` | `false` | `Isolation` | `resolve_individual!`; internal |
 | `:_isolation_unrecorded` | `Bool` | `false` | `Isolation`, `ContactTracing`/`SourceTracing` | `resolve_individual!` / `apply_trace!`; internal. The isolation removes the case from transmission without counting as a detection |
@@ -836,6 +832,22 @@ rations that action exactly as it rations a dose, through `capacity_key` and
 `capacity_time_key` defined on the `TraceAction` the policy carries
 (`Quarantine` defines them; `FlagOnly`, which removes nobody, does not). A
 trace with no arrival time (`Inf`) has nothing to ration and applies directly.
+
+A `TraceAction` of your own is not limited to `apply_trace!`. `ContactTracing`
+forwards two further hooks to it, each with a no-op default on `TraceAction`:
+`EpiBranch.intervention_actions`, so an action can propose further
+`InterventionAction`s of its own, rationed under `CapacityConstrained` through
+its own `capacity_key` the same way `Quarantine`'s removal is; and
+`EpiBranch.on_infection_settled!`, so an action can read something that is
+only known once a contact's own infection time is fixed, such as a test's
+result. Build such an action on `Quarantine`, delegating to its `apply_trace!`
+for the backstop duration, and end that quarantine early once the finding
+decides it with [`EpiBranch.shorten_quarantine!`](@ref)`(ind, start,
+old_release, new_release)`, which keeps the quarantine's own stretches and the
+shared removal history the likelihood reads consistent with each other. See
+[Proposing actions of your own](@ref) for `TestAndRelease`, a worked example
+quarantining a traced contact for a backstop duration but releasing them early
+on a negative test.
 
 `Isolation` instead writes its effect straight into `resolve_individual!`. A
 `CapacityConstrained` wrapping it therefore has nothing to admit: it checks

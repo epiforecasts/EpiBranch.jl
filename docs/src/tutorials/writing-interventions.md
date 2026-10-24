@@ -942,6 +942,124 @@ is considered again only if the intervention proposes it again; nothing keeps
 a queue of appointments. The rules for proposing, admitting and keeping effects
 are in [Proposing, admitting and keeping actions](@ref).
 
+### A trace action that proposes its own actions
+
+[`Quarantine`](@ref)'s own duration is drawn when a contact is traced, at the
+tracing case's own settlement, often before the contact's own infection time
+is decided. Releasing a contact early on a negative test needs that test read
+only once the contact's own infection time is fixed, which needs two further
+hooks `ContactTracing` forwards to its [`TraceAction`](@ref), each with a
+no-op default: `EpiBranch.intervention_actions`, so the test itself can be
+proposed (and, under `CapacityConstrained`, rationed, like the clinic
+appointment above); and `EpiBranch.on_infection_settled!`, so its outcome is
+read once that time is fixed rather than at the trace itself.
+
+`TestAndRelease` below quarantines a traced contact for a backstop `duration`,
+as `Quarantine` does, but drops a test `test_day` days after the trace. A
+positive test, or one never granted, leaves the backstop standing; a negative
+one shortens the quarantine already recorded, through
+[`EpiBranch.shorten_quarantine!`](@ref), rather than redrawing it:
+
+```@example test_and_release
+using EpiBranch, Distributions, Random
+
+struct TestAndRelease <: EpiBranch.TraceAction
+    duration::Float64
+    test_day::Float64
+    sensitivity::Float64
+end
+
+const TEST_DAY_KEY = :test_release_day
+const TEST_BACKSTOP_KEY = :test_release_backstop
+const TEST_GRANTED_KEY = :test_release_granted
+const TEST_RESOLVED_KEY = :test_release_resolved
+
+# A second trace of an already-quarantined contact extends the same
+# quarantine (see `Quarantine`), so only a first trace has a single, unmerged
+# stretch of its own for a negative test to shorten later.
+function EpiBranch.apply_trace!(t::TestAndRelease, contact, state, trace_time, rng)
+    first_trace = !get(contact.state, :_quarantined_by_tracing, false)::Bool
+    EpiBranch.apply_trace!(Quarantine(duration = t.duration), contact, state, trace_time, rng)
+    (isfinite(trace_time) && first_trace) || return nothing
+    release = only(EpiBranch.removal_stretches(contact, EpiBranch.QUARANTINE_STRETCHES_KEY))[2]
+    contact.state[TEST_BACKSTOP_KEY] = (trace_time, release)
+    contact.state[TEST_DAY_KEY] = trace_time + t.test_day
+    return nothing
+end
+
+function resolve_test!(t::TestAndRelease, ind, rng)
+    get(ind.state, TEST_RESOLVED_KEY, false) && return nothing
+    ind.state[TEST_RESOLVED_KEY] = true
+    day = ind.state[TEST_DAY_KEY]
+    positive = ind.infection_time <= day && rand(rng) < t.sensitivity
+    positive && return nothing
+    start, backstop = ind.state[TEST_BACKSTOP_KEY]
+    EpiBranch.shorten_quarantine!(ind, start, backstop, day)
+    return nothing
+end
+
+function EpiBranch.intervention_actions(t::TestAndRelease, state, candidates)
+    actions = EpiBranch.InterventionAction[]
+    for ind in candidates
+        haskey(ind.state, TEST_DAY_KEY) || continue
+        get(ind.state, TEST_GRANTED_KEY, false) && continue
+        day = ind.state[TEST_DAY_KEY]
+        effect! = (person, at, st) -> begin
+            person.state[TEST_GRANTED_KEY] = true
+            EpiBranch.is_settled(st, person) && resolve_test!(t, person, st.rng)
+        end
+        push!(actions, EpiBranch.InterventionAction(ind, day, effect!))
+    end
+    return actions
+end
+
+function EpiBranch.on_infection_settled!(t::TestAndRelease, ind, state, rng)
+    get(ind.state, TEST_GRANTED_KEY, false) || return nothing
+    resolve_test!(t, ind, rng)
+    return nothing
+end
+
+EpiBranch.capacity_key(::TestAndRelease) = TEST_GRANTED_KEY
+EpiBranch.capacity_time_key(::TestAndRelease) = TEST_DAY_KEY
+EpiBranch.removal_gap_host_times(::TestAndRelease) = (EpiBranch.QUARANTINE_STRETCHES_KEY,)
+EpiBranch.removal_gap_host_times_withdrawn(::TestAndRelease) = (EpiBranch.REMOVAL_STRETCHES_KEY,)
+nothing # hide
+```
+
+A contact traced on day 5, with a 14-day backstop and a test 3 days later, is
+quarantined to day 19 until the test is read:
+
+```@example test_and_release
+t = TestAndRelease(14.0, 3.0, 1.0)
+ct = ContactTracing(TraceEveryone(), 1.0, Dirac(0.0), t)
+rng = Xoshiro(1)
+
+contact = Individual(id = 1, infection_time = NaN)
+EpiBranch.apply_trace!(t, contact, nothing, 5.0, rng)
+isolation_release_time(contact)
+```
+
+Once the contact's infection settles, with no infection by the test day, the
+test (granted here outside `CapacityConstrained`, which would otherwise grant
+it through its own `InterventionAction`) reads negative and shortens the
+quarantine already recorded, rather than the backstop `apply_trace!` drew:
+
+```@example test_and_release
+contact.state[TEST_GRANTED_KEY] = true
+contact.infection_time = 100.0
+EpiBranch.on_infection_settled!(ct, contact, nothing, rng)
+isolation_release_time(contact)
+```
+
+`capacity_key` and `capacity_time_key` ration the test itself under
+`CapacityConstrained(ct; budget_per_period = ...)`, exactly as
+`ClinicAppointment` above rations an appointment, leaving a contact denied a
+test at its full backstop duration. `removal_gap_host_times` and
+`removal_gap_host_times_withdrawn` name `TestAndRelease`'s stretches the same
+way `Quarantine` does, so the likelihood reads the shortened quarantine rather
+than the backstop. See [`EpiBranch.record_removal!`](@ref EpiBranch.record_removal!)
+and [Removals that end and resume](@ref) for what naming a key is for.
+
 ## Custom clinical transitions
 
 A case's own progression (testing, reporting, admission, treatment, recovery or

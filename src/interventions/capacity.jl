@@ -59,9 +59,10 @@ order: both check each action's own proposed date.
     [`ContactTracing`](@ref) can be capacity-limited too, when its `action` is
     a [`Quarantine`](@ref): a contact is still found and still grows a ring
     once budget runs out, but is not itself quarantined until a place frees
-    up. With a [`TestAndRelease`](@ref) action, the quarantine itself is not
-    rationed but its own test is, so a contact denied a test keeps the full
-    backstop duration. `FlagOnly` has no removal to ration. [`Isolation`](@ref)
+    up. `FlagOnly` has no removal to ration. A `TraceAction` of your own can
+    ration something else again, such as a test it proposes rather than the
+    quarantine itself, through its own `capacity_key` and `capacity_time_key`
+    (see [Proposing, admitting and keeping actions](@ref)). [`Isolation`](@ref)
     can also be capacity-limited, as a count of isolations admitted per period
     rather than beds held at once: a case isolated once the period's budget is
     spent is released again, the same way `Scheduled` releases one isolated
@@ -194,8 +195,10 @@ capacity_time_key(::Isolation) = :isolation_time
 
 # `ContactTracing` proposes its follow-up as an `InterventionAction` (see
 # `_trace_action`) whose own resource key depends on what the action does:
-# a `Quarantine` has a removal to ration, `FlagOnly` does not, and
-# `TestAndRelease` rations its own test rather than the quarantine itself.
+# a `Quarantine` has a removal to ration, `FlagOnly` does not. A `TraceAction`
+# of your own that proposes further actions of its own (through
+# `intervention_actions`) can ration those the same way, through its own
+# `capacity_key` and `capacity_time_key`.
 capacity_key(ct::ContactTracing) = capacity_key(ct.action)
 capacity_time_key(ct::ContactTracing) = capacity_time_key(ct.action)
 
@@ -219,8 +222,6 @@ function capacity_time_key(action::TraceAction)
 end
 capacity_key(::Quarantine) = :_quarantined_by_tracing
 capacity_time_key(::Quarantine) = :trace_time
-capacity_key(::TestAndRelease) = TEST_RELEASE_GRANTED_KEY
-capacity_time_key(::TestAndRelease) = TEST_RELEASE_DAY_KEY
 
 # The start and end of the period containing `at`, in the scope `carry_over`
 # implies: `(0.0, Inf)`, a single period for the whole outbreak, when `period`

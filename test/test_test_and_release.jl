@@ -1,6 +1,96 @@
 using Distributions
 using StableRNGs
 
+# A `TraceAction` built entirely on the seams `ContactTracing` forwards to its
+# action (`EpiBranch.intervention_actions`, `EpiBranch.on_infection_settled!`)
+# and on `EpiBranch.shorten_quarantine!`, kept here as a fixture rather than in
+# `src/`: a worked example of what those seams let an extension do, checked
+# against the same expectations a built-in version would have to meet. See
+# "A trace action that proposes its own actions" in the extending guide for
+# the same policy explained step by step.
+struct TestAndRelease <: EpiBranch.TraceAction
+    duration::Float64
+    test_day::Float64
+    sensitivity::Float64
+
+    function TestAndRelease(duration::Float64, test_day::Float64, sensitivity::Float64)
+        isfinite(duration) || throw(
+            ArgumentError(
+                "`TestAndRelease`'s `duration` must be finite, got $duration"
+            )
+        )
+        return new(duration, test_day, sensitivity)
+    end
+end
+function TestAndRelease(; duration, test_day, sensitivity = 1.0)
+    return TestAndRelease(Float64(duration), Float64(test_day), Float64(sensitivity))
+end
+
+const TAR_DAY_KEY = :test_release_day
+const TAR_BACKSTOP_KEY = :test_release_backstop
+const TAR_GRANTED_KEY = :test_release_granted
+const TAR_RESOLVED_KEY = :test_release_resolved
+
+# A second trace of an already-quarantined contact extends the same
+# quarantine (see `Quarantine`), so only the first trace has a single,
+# unmerged stretch of its own for a negative test to shorten later.
+function EpiBranch.apply_trace!(t::TestAndRelease, contact, state, trace_time, rng)
+    first_trace = !get(contact.state, :_quarantined_by_tracing, false)::Bool
+    EpiBranch.apply_trace!(Quarantine(duration = t.duration), contact, state, trace_time, rng)
+    (isfinite(trace_time) && first_trace) || return nothing
+    release = only(EpiBranch.removal_stretches(contact, EpiBranch.QUARANTINE_STRETCHES_KEY))[2]
+    contact.state[TAR_BACKSTOP_KEY] = (trace_time, release)
+    contact.state[TAR_DAY_KEY] = trace_time + t.test_day
+    return nothing
+end
+
+# Read `ind.infection_time` only once it is final: called either from
+# `intervention_actions` below, for a contact already settled when its test is
+# granted, or from `on_infection_settled!`, under its own guarantee that the
+# time is now fixed. Idempotent, so it is harmless if both end up calling it.
+function _resolve_test!(t::TestAndRelease, ind, rng)
+    get(ind.state, TAR_RESOLVED_KEY, false) && return nothing
+    ind.state[TAR_RESOLVED_KEY] = true
+    day = ind.state[TAR_DAY_KEY]
+    positive = ind.infection_time <= day && rand(rng) < t.sensitivity
+    positive && return nothing
+    start, backstop = ind.state[TAR_BACKSTOP_KEY]
+    EpiBranch.shorten_quarantine!(ind, start, backstop, day)
+    return nothing
+end
+
+# The test itself is proposed as an `InterventionAction` dated at the test
+# day, so `CapacityConstrained` can ration it like a dose. Granting it records
+# that the contact had a test, not its outcome.
+function EpiBranch.intervention_actions(t::TestAndRelease, state, candidates)
+    actions = EpiBranch.InterventionAction[]
+    for ind in candidates
+        haskey(ind.state, TAR_DAY_KEY) || continue
+        get(ind.state, TAR_GRANTED_KEY, false) && continue
+        day = ind.state[TAR_DAY_KEY]
+        effect! = (person, at, st) -> begin
+            person.state[TAR_GRANTED_KEY] = true
+            EpiBranch.is_settled(st, person) && _resolve_test!(t, person, st.rng)
+        end
+        push!(actions, EpiBranch.InterventionAction(ind, day, effect!))
+    end
+    return actions
+end
+
+# A contact's infection time cannot be read until the race has settled it; for
+# a contact not yet settled when its test was granted, this is where its
+# outcome is finally decided.
+function EpiBranch.on_infection_settled!(t::TestAndRelease, ind, state, rng)
+    get(ind.state, TAR_GRANTED_KEY, false) || return nothing
+    _resolve_test!(t, ind, rng)
+    return nothing
+end
+
+EpiBranch.capacity_key(::TestAndRelease) = TAR_GRANTED_KEY
+EpiBranch.capacity_time_key(::TestAndRelease) = TAR_DAY_KEY
+EpiBranch.removal_gap_host_times(::TestAndRelease) = (EpiBranch.QUARANTINE_STRETCHES_KEY,)
+EpiBranch.removal_gap_host_times_withdrawn(::TestAndRelease) = (EpiBranch.REMOVAL_STRETCHES_KEY,)
+
 @testset "TestAndRelease" begin
     @testset "A non-finite duration is rejected" begin
         @test_throws ArgumentError TestAndRelease(duration = Inf, test_day = 3.0)
@@ -18,7 +108,7 @@ using StableRNGs
         # The race settles the contact's infection well after the test day
         # (8.0 = trace time 5.0 + test_day 3.0): not yet infected then, so the
         # test, once granted, reads as negative.
-        contact.state[EpiBranch.TEST_RELEASE_GRANTED_KEY] = true
+        contact.state[TAR_GRANTED_KEY] = true
         contact.infection_time = 100.0
         EpiBranch.on_infection_settled!(ct, contact, nothing, rng)
         @test isolation_release_time(contact) == 8.0
@@ -32,7 +122,7 @@ using StableRNGs
 
         contact = Individual(id = 1, infection_time = NaN)
         EpiBranch.apply_trace!(t, contact, nothing, 5.0, rng)
-        contact.state[EpiBranch.TEST_RELEASE_GRANTED_KEY] = true
+        contact.state[TAR_GRANTED_KEY] = true
         contact.infection_time = 6.0 # infected before the test day, 8.0
         EpiBranch.on_infection_settled!(ct, contact, nothing, rng)
         @test isolation_release_time(contact) == 19.0
@@ -45,7 +135,7 @@ using StableRNGs
 
         contact = Individual(id = 1, infection_time = NaN)
         EpiBranch.apply_trace!(t, contact, nothing, 5.0, rng)
-        contact.state[EpiBranch.TEST_RELEASE_GRANTED_KEY] = true
+        contact.state[TAR_GRANTED_KEY] = true
         contact.infection_time = 6.0 # infected, but sensitivity 0 never detects it
         EpiBranch.on_infection_settled!(ct, contact, nothing, rng)
         @test isolation_release_time(contact) == 8.0
@@ -81,7 +171,7 @@ using StableRNGs
             EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(6)
         )
         EpiBranch.apply_actions!(ct, state, [contact])
-        @test contact.state[EpiBranch.TEST_RELEASE_GRANTED_KEY]
+        @test contact.state[TAR_GRANTED_KEY]
         @test isolation_release_time(contact) == 8.0
     end
 
@@ -99,7 +189,7 @@ using StableRNGs
             EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(8)
         )
         EpiBranch.apply_actions!(cc, state, [contact])
-        @test !get(contact.state, EpiBranch.TEST_RELEASE_GRANTED_KEY, false)
+        @test !get(contact.state, TAR_GRANTED_KEY, false)
         @test isolation_release_time(contact) == 19.0
     end
 
@@ -120,7 +210,7 @@ using StableRNGs
         # The test day (8.0) comes back negative, below the standing
         # isolation's own release (10.0), which keeps the contact removed
         # regardless of the negative test.
-        contact.state[EpiBranch.TEST_RELEASE_GRANTED_KEY] = true
+        contact.state[TAR_GRANTED_KEY] = true
         contact.infection_time = 100.0
         EpiBranch.on_infection_settled!(ct, contact, nothing, rng)
         @test isolation_time(contact) == 2.0
@@ -142,7 +232,7 @@ using StableRNGs
         EpiBranch.apply_trace!(t, contact, nothing, 10.0, rng) # merges into [5, 24)
         @test isolation_release_time(contact) == 24.0
 
-        contact.state[EpiBranch.TEST_RELEASE_GRANTED_KEY] = true
+        contact.state[TAR_GRANTED_KEY] = true
         contact.infection_time = 100.0
         EpiBranch.on_infection_settled!(ct, contact, nothing, rng)
         @test isolation_release_time(contact) == 24.0
@@ -174,14 +264,14 @@ using StableRNGs
 
         # Only a resolved test has a decided outcome to check; one granted but
         # never resolved belongs to a contact the run stopped before settling,
-        # which is left at its backstop duration (see `TestAndRelease`).
+        # which is left at its backstop duration.
         tested = filter(
-            ind -> get(ind.state, EpiBranch.TEST_RELEASE_RESOLVED_KEY, false),
+            ind -> get(ind.state, TAR_RESOLVED_KEY, false),
             state.individuals
         )
         @test !isempty(tested)
         for ind in tested
-            day = ind.state[EpiBranch.TEST_RELEASE_DAY_KEY]
+            day = ind.state[TAR_DAY_KEY]
             @test ind.infection_time <= day
             @test isolation_release_time(ind) > day
         end
