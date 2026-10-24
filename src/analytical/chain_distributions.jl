@@ -382,6 +382,208 @@ chain_size_distribution(d::NegativeBinomial) = GammaBorel(d.r, mean(d))
 # analytical fallback share a single definition.
 
 """
+Internal: one convolution of `coeffs` (the coefficients of `z^0, …,
+z^max_degree` in `G(z)^k`) with `pmf` (`G`'s own coefficients over the same
+range), giving `G(z)^(k+1)`'s. Shared by [`_hitting_time_coefficients`](@ref)
+and [`_hitting_time_pdf_walk`](@ref), which both build up a power of `G` one
+factor at a time; costs `max_degree^2`.
+"""
+function _hitting_time_convolve(coeffs::Vector{Float64}, pmf::Vector{Float64}, max_degree::Integer)
+    next = zeros(Float64, max_degree + 1)
+    for j in 0:max_degree
+        next[j + 1] = sum(coeffs[i + 1] * pmf[j - i + 1] for i in 0:j)
+    end
+    return next
+end
+
+"""
+    _hitting_time_coefficients(offspring, power::Integer, max_degree::Integer)
+
+Internal: the coefficients of `z^0, z^1, …, z^max_degree` in `G(z)^power` all
+at once, where `G` is `offspring`'s probability generating function. Built up
+one factor of `G` at a time via [`_hitting_time_convolve`](@ref); costs
+`power * max_degree^2`. Used where several degrees are needed at the same
+power, as [`IndexChainSize`](@ref)'s log-PDF does across index-case counts,
+so that the coefficient table is built once rather than once per degree.
+"""
+function _hitting_time_coefficients(offspring, power::Integer, max_degree::Integer)
+    max_degree < 0 && return Float64[]
+    pmf = [pdf(offspring, k) for k in 0:max_degree]
+    coeffs = zeros(Float64, max_degree + 1)
+    coeffs[1] = 1.0
+    for _ in 1:power
+        coeffs = _hitting_time_convolve(coeffs, pmf, max_degree)
+    end
+    return coeffs
+end
+
+"""
+    _hitting_time_coefficient(offspring, power::Integer, degree::Integer)
+
+Internal: the coefficient of `z^degree` in `G(z)^power`, where `G` is
+`offspring`'s probability generating function; the single-degree case of
+[`_hitting_time_coefficients`](@ref), so it costs `power * degree^2`. Used by
+[`HittingTimeChainSize`](@ref EpiBranch.HittingTimeChainSize) with `power ==
+degree + s`: the cube of the chain size it is evaluating.
+"""
+function _hitting_time_coefficient(offspring, power::Integer, degree::Integer)
+    degree < 0 && return 0.0
+    return _hitting_time_coefficients(offspring, power, degree)[degree + 1]
+end
+
+"""
+    _hitting_time_pdf_walk(offspring, max_n::Integer)
+
+Internal: `pdf(HittingTimeChainSize(offspring), n)` for every `n` from 1 to
+`max_n`, read off the diagonal of the same power-series build-up as
+[`_hitting_time_coefficients`](@ref) instead of restarting it from scratch
+for each `n`. Costs `max_n^3` in total, the same as a single
+`_hitting_time_coefficient` call at `max_n`, rather than `max_n^4` from
+`max_n` independent calls. Used by `HittingTimeChainSize`'s `cdf` and
+`logccdf`, which otherwise sum this many terms one at a time.
+"""
+function _hitting_time_pdf_walk(offspring, max_n::Integer)
+    max_n < 1 && return Float64[]
+    degree = max_n - 1
+    pmf = [pdf(offspring, k) for k in 0:degree]
+    coeffs = zeros(Float64, degree + 1)
+    coeffs[1] = 1.0
+    pdfs = Vector{Float64}(undef, max_n)
+    for power in 1:max_n
+        coeffs = _hitting_time_convolve(coeffs, pmf, degree)
+        pdfs[power] = coeffs[power] / power
+    end
+    return pdfs
+end
+
+"""
+    HittingTimeChainSize(offspring)
+
+Chain size distribution for a discrete offspring law with no dedicated
+closed form, from the hitting-time theorem for the total progeny of a
+branching process:
+
+    P(N = n | s index cases) = (s / n) [zⁿ⁻ˢ] G(z)ⁿ
+
+where `G` is `offspring`'s probability generating function and the power of
+`G` is taken as a power series truncated at degree `n - s`.
+[`chain_size_distribution`](@ref) returns it for any discrete offspring law
+with no dedicated method: a plain `Distributions.jl` law such as
+`DiscreteNonParametric`, or a [`GeneratingFunctionOffspring`](@ref) built from
+a probability mass function. Offspring laws with a simpler closed form
+(`Poisson`, `NegativeBinomial`, [`ClusterMixed`](@ref)`(Poisson, ::Gamma)`)
+use that instead.
+
+A single evaluation reads `offspring`'s pmf at `0, 1, …, n - s` and builds up
+`G(z), G(z)^2, …, G(z)^n` term by term, so it costs order `n * (n - s)^2`:
+the cube of the chain size it is evaluating.
+"""
+struct HittingTimeChainSize{D} <: ChainSizeLaw
+    offspring::D
+end
+
+Distributions.minimum(::HittingTimeChainSize) = 1
+Distributions.maximum(::HittingTimeChainSize) = Inf
+Distributions.insupport(::HittingTimeChainSize, n::Integer) = n >= 1
+
+function _chain_size_logpdf(d::HittingTimeChainSize, x::Integer, s::Integer)
+    (s < 1 || x < s) && return oftype(float(_law_mean(d.offspring)), -Inf)
+    p = (s / x) * _hitting_time_coefficient(d.offspring, x, x - s)
+    return p > 0.0 ? log(p) : oftype(p, -Inf)
+end
+
+Distributions.logpdf(d::HittingTimeChainSize, n::Integer) = _chain_size_logpdf(d, n, 1)
+Distributions.pdf(d::HittingTimeChainSize, n::Integer) = exp(logpdf(d, n))
+
+# Expected total progeny of a subcritical branching process is 1/(1-R)
+# whatever the offspring law (see the comment on GammaBorel's mean above).
+function Distributions.mean(d::HittingTimeChainSize)
+    R = float(_law_mean(d.offspring))
+    R >= 1.0 && return Inf
+    return 1.0 / (1.0 - R)
+end
+
+"""
+Draws one offspring count from the pmf of `offspring` by walking its CDF.
+Each term costs a single `pdf` lookup, unlike a term from the pdf of
+`HittingTimeChainSize` itself, so this stays cheap even though it is capped
+at the same 10,000 terms.
+"""
+function _offspring_rand(rng::AbstractRNG, offspring)
+    u = rand(rng)
+    cumprob = 0.0
+    for k in 0:9999
+        cumprob += pdf(offspring, k)
+        u <= cumprob && return k
+    end
+    @warn "Offspring inverse CDF did not converge in 10,000 terms, returning 10,000"
+    return 10_000
+end
+
+"""
+Samples `HittingTimeChainSize` by directly simulating the branching process
+it is the total progeny of, generation by generation, rather than inverting
+its own pdf. Reaching a chain of size `n` this way costs `O(n)` offspring
+draws, against the `O(n^3)` of walking the pdf of `HittingTimeChainSize`
+itself up to `n`. That made `rand` impractically slow for a moderately
+subcritical law whose typical chain size is already in the thousands.
+"""
+function _hitting_time_rand(rng::AbstractRNG, offspring)
+    total = 1
+    generation = 1
+    while generation > 0 && total < 1_000_000
+        generation = sum(_offspring_rand(rng, offspring) for _ in 1:generation)
+        total += generation
+    end
+    if total >= 1_000_000
+        @warn "HittingTimeChainSize did not go extinct within 1,000,000 cases, returning 1,000,000"
+        return 1_000_000
+    end
+    return total
+end
+
+function Base.rand(rng::AbstractRNG, d::HittingTimeChainSize)
+    _law_mean(d.offspring) >= 1.0 && throw(
+        ArgumentError(
+            "rand is not defined for a supercritical HittingTimeChainSize " *
+                "(mean offspring ≥ 1): total mass is < 1 and the chain is " *
+                "infinite with positive probability"
+        )
+    )
+    return _hitting_time_rand(rng, d.offspring)
+end
+
+function Distributions.cdf(d::HittingTimeChainSize, n::Integer)
+    n < 1 && return 0.0
+    return sum(_hitting_time_pdf_walk(d.offspring, n))
+end
+function Distributions.logccdf(d::HittingTimeChainSize, n::Integer)
+    n < 1 && return 0.0
+    cum = sum(_hitting_time_pdf_walk(d.offspring, n))
+    cum >= 1.0 && return oftype(cum, -Inf)
+    p = 1.0 - cum
+    return p > 0.0 ? log(p) : oftype(p, -Inf)
+end
+
+"""
+    chain_size_distribution(offspring::DiscreteUnivariateDistribution)
+
+Exact chain size distribution for a discrete offspring law with no dedicated
+method, such as `DiscreteNonParametric`, from the hitting-time theorem
+([`EpiBranch.HittingTimeChainSize`](@ref)).
+"""
+function chain_size_distribution(d::DiscreteUnivariateDistribution)
+    d isa ChainSizeLaw && throw(
+        ArgumentError(
+            "chain_size_distribution expects an offspring law, the number of " *
+                "secondary cases per case, not a chain-size law, the number of " *
+                "cases in a whole chain; $(typeof(d)) is already one."
+        )
+    )
+    return HittingTimeChainSize(d)
+end
+
+"""
     IndexChainSize(index_offspring, offspring)
 
 Chain size distribution when the index case has a different offspring
@@ -401,10 +603,12 @@ Only chains started by a single index case are supported (`seeds == 1` in
         P(N = n) = P(J = 0) 1{n = 1} + Σ_{j ≥ 1} P(J = j) P(chains from j cases have n - 1 cases)
 
     This needs the chain size distribution of `offspring` from several
-    starting cases, which exists for `Poisson`, `NegativeBinomial` and
-    `ClusterMixed(Poisson, ::Gamma)`. For other [`ClusterMixed`](@ref)
-    offspring, `pdf` and `logpdf` give an error once `n` is large enough to
-    need it.
+    starting cases, which [`HittingTimeChainSize`](@ref EpiBranch.HittingTimeChainSize)
+    gives for any discrete `offspring`. The one exception is
+    [`ClusterMixed`](@ref) with a mixing distribution other than `Poisson`
+    with `Gamma`: its [`ChainSizeMixture`](@ref) has no multi-seed formula,
+    and `pdf` and `logpdf` give an error once `n` is large enough to need
+    one.
 
 # Examples
 
@@ -430,6 +634,28 @@ Distributions.maximum(::IndexChainSize) = Inf
 Distributions.insupport(::IndexChainSize, n::Integer) = n >= 1
 
 """
+    _multi_seed_pdfs(dist, x::Integer)
+
+Internal: `P(X = x | s seeds)` for every seed count `s` from 1 to `x` at
+once, as [`IndexChainSize`](@ref)'s log-PDF needs across the index case's
+whole range of secondary-case counts. The general fallback calls
+`_chain_size_logpdf` term by term; [`HittingTimeChainSize`](@ref
+EpiBranch.HittingTimeChainSize) overrides it to build the hitting-time
+coefficient table once and read every seed count off it, since they all
+share the same power `x` and differ only in degree. Without this, calling
+`_chain_size_logpdf` once per seed count rebuilds that table from scratch
+each time.
+"""
+function _multi_seed_pdfs(dist, x::Integer)
+    return [exp(_chain_size_logpdf(dist, x, s)) for s in 1:x]
+end
+
+function _multi_seed_pdfs(dist::HittingTimeChainSize, x::Integer)
+    coeffs = _hitting_time_coefficients(dist.offspring, x, x - 1)
+    return [(s / x) * coeffs[x - s + 1] for s in 1:x]
+end
+
+"""
 Log-PDF of [`IndexChainSize`](@ref). The sum over the index case's
 secondary-case count `j` only needs `j` up to `n - 1` (a chain of `j`
 non-index seeds has at least `j` cases), so it is a finite loop rather
@@ -438,11 +664,13 @@ than a truncated infinite series.
 function Distributions.logpdf(d::IndexChainSize, n::Integer)
     n < 1 && return -Inf
     p0 = pdf(d.index_offspring, 0)
-    total = n == 1 ? float(p0) : zero(float(p0))
+    n == 1 && return p0 > 0.0 ? log(p0) : oftype(float(p0), -Inf)
+    total = zero(float(p0))
+    probs = _multi_seed_pdfs(d.dist, n - 1)
     for j in 1:(n - 1)
         pj = pdf(d.index_offspring, j)
         pj == 0 && continue
-        total += pj * exp(_chain_size_logpdf(d.dist, n - 1, j))
+        total += pj * probs[j]
     end
     return total > zero(total) ? log(total) : oftype(total, -Inf)
 end

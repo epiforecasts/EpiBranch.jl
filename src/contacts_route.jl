@@ -13,7 +13,7 @@
 # exposure, as in a branching process.
 
 # The race's members when a model creates people as it goes: everyone in the
-# state, numbered by id: a member's position is its id, and the population
+# state, numbered by id. A member's position is its id, and the population
 # grows by appending.
 mutable struct _Grown <: AbstractVector{Int}
     n::Int
@@ -111,8 +111,8 @@ end
 # who already existed.
 _created_by(contact, case) = contact.parent_id == case.id && !is_infected(contact)
 
-# What tracing reads as a case's contacts: the people the model named when the
-# case settled. A ring that grows through someone not yet settled needs their
+# Tracing reads a case's contacts as the people the model named when the case
+# settled. A ring that grows through someone not yet settled needs their
 # contacts too. A model whose `contacts_of` reads nothing settling writes says
 # so with `reads_settled_state`, and is then asked about that person when the
 # ring reaches them, as though infected at time zero. Its answer is kept as

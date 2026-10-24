@@ -149,8 +149,8 @@ include("pairwise_survival.jl")
 include("progression_likelihood.jl")
 
 # Exports — types
-export TransmissionModel, BranchingProcess, Infectiousness, HomogeneousProcess,
-    MixingProcess, ModelSpec
+export TransmissionModel, BranchingProcess, Infectiousness, OffspringTimes,
+    HomogeneousProcess, MixingProcess, ModelSpec
 export Individual, InfectionEpisode, close_episode!, SimulationState
 export SimOpts
 export AbstractStoppingRule, Extinction, MaxCases, MaxGenerations, MaxTime, should_stop
@@ -176,7 +176,8 @@ export RouteWindow, window_open, window_close
 export is_active, intervention_time
 export AbstractClinicalTransition, Transition, Reporting, Hospitalisation, Death, Recovery
 export is_terminal, terminal_event, terminal_target, exclusive_probabilities
-export ObservationModel, PerCaseObservation, NoObservation, MinimumSize, observe
+export ObservationModel, PerCaseObservation, NoObservation, MinimumSize, ChainDetection,
+    observe
 export ContactRecorder, NoContactRecorder, ExposedContactRecorder
 export single_type_offspring
 
@@ -203,7 +204,7 @@ export Borel, chain_size_distribution
 # Chain-size law with a separate offspring distribution for the index case.
 export IndexChainSize
 # Observation-side chain-size distribution (binomial thinning of any base)
-export ThinnedChainSize, TruncatedChainSize
+export ThinnedChainSize, TruncatedChainSize, DetectedChainSize
 
 # Exports — attributes functions
 export clinical_presentation, demographics, transmission_traits, groups,
@@ -227,7 +228,7 @@ export proportion_cases_individual, proportion_cases_offspring
 export probability_contain
 
 # Exports — unified inference interface
-export OffspringCounts, ChainSizes, ChainLengths, IncidenceCounts
+export OffspringCounts, ChainSizes, ChainSizeClasses, ChainLengths, IncidenceCounts
 export incidence_moments
 export IncidenceApproximation, NormalApproximation, LognormalApproximation
 # Entry points returning a Distribution that wraps a model; use with

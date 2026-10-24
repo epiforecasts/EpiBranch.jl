@@ -13,15 +13,19 @@ type-`j` case. Each column is an infector type and each row an infectee type.
 The sum of column `j` is the reproduction number of a type-`j` case.
 
 !!! warning "Columns are infectors, rows are infectees"
-    Contact matrices from surveys are often laid out the other way round, with
-    rows for the participant. Check the orientation of your matrix, and
-    transpose it (`permutedims(M)`) if its rows are the infectors. A matrix
-    the wrong way round runs without error and gives the wrong type-specific
-    reproduction numbers.
+    Contact matrices from surveys are usually laid out the other way round:
+    the row is the participant and the column the contact, so the number of
+    contacts a person makes is a row sum. Transpose such a matrix
+    (`permutedims(M)`) before using it as the next-generation matrix. A
+    matrix the wrong way round runs without error and gives the wrong
+    type-specific reproduction numbers.
 
 A common way to build the next-generation matrix is contact rate per day ×
 probability of transmission per contact × mean infectious period in days. In
-Julia, `.*` multiplies element by element, as `*` does on a matrix in R:
+Julia, `.*` multiplies element by element, as `*` does on a matrix in R. The
+contact matrix below is asymmetric, so getting the orientation wrong is
+visible: adults make more contacts with children than children make with
+adults.
 
 ```@example multitype
 using EpiBranch
@@ -29,30 +33,26 @@ using Distributions
 using DataFrames
 using StableRNGs
 
-# 3 age groups: children, adults, elderly
-contacts = [8.0 3.0 1.0;
-            3.0 6.0 2.0;
-            1.0 2.0 4.0]  # daily contacts between groups
-M = contacts .* 0.05 .* 5.0  # transmission probability 0.05, infectious for 5 days
+# 3 age groups: children, adults, elderly; row = respondent, column = contact
+contacts = [8.0 3.0 0.5;
+            5.0 6.0 2.0;
+            1.0 3.0 4.0]
+beta, D = 0.05, 5.0  # transmission probability, mean infectious period in days
+
+M = permutedims(contacts) .* beta .* D  # transpose: rows become infectors
 
 DataFrame(type = ["Children", "Adults", "Elderly"], R = vec(sum(M, dims = 1)))
 ```
 
 The `R` column is the column sum of `M`: the expected number of secondary
-cases, of any age, caused by one case in that age group. Children have the
-highest reproduction number because they have the most contacts.
-
-Because this contact matrix is symmetric, it does not show which way round
-the indices go. In the next matrix, an adult (column 2) causes 1.2 secondary cases
-among children (row 1), but a child (column 1) causes only 0.3 among adults
-(row 2):
+cases, of any age, caused by one case in that age group. Adults have the
+highest reproduction number here. Passing `contacts` straight in, without
+transposing, gives the wrong answer, because it reads each respondent's row
+as if it were an infector's column:
 
 ```@example multitype
-asymmetric = [1.0 1.2;
-              0.3 0.9]
-println("an adult infects $(asymmetric[1, 2]) children")
-println("a child infects $(asymmetric[2, 1]) adults")
-println("R for a child: $(sum(asymmetric[:, 1])), for an adult: $(sum(asymmetric[:, 2]))")
+println("R by type, matrix as given: ", vec(sum(contacts .* beta .* D, dims = 1)))
+println("R by type, transposed (correct): ", vec(sum(M, dims = 1)))
 ```
 
 ## Simulation
@@ -78,11 +78,23 @@ cases = linelist(state)
 combine(groupby(cases, :type), nrow => :cases)
 ```
 
+[`BranchingProcess`](@ref) also builds `M` for you directly from the contact
+matrix, the transmission probability and the infectious period, transposing
+as it goes. This is the same `model` as above:
+
+```@example multitype
+model = BranchingProcess(
+    contacts, 0.05, 5.0, R_j -> NegBin(R_j, 0.5), LogNormal(1.6, 0.5);
+    type_labels = ["0-14", "15-64", "65+"],
+)
+```
+
 `LogNormal(μ, σ)` takes the mean and standard deviation of the logarithm of
 the delay, not of the delay itself. The line list numbers types in matrix
 order (1 = 0-14, 2 = 15-64, 3 = 65+). The case counts by age group follow the
-structure of `M`: children and adults, who have the most contacts, make up
-most of the cases.
+structure of `M`: children and adults, who have the higher reproduction
+numbers, make up most of the cases; elderly, with the lowest, make up the
+fewest.
 
 Each case first draws its total number of secondary cases from the negative
 binomial, then divides them between types in proportion to its column of `M`.
@@ -108,7 +120,7 @@ end
 ```
 
 An outbreak started by an older person is the most likely to die out, because
-older people have the fewest contacts.
+elderly have the lowest reproduction number.
 
 The closed-form extinction probability can be checked against simulation. The
 containment probability is the proportion of simulated outbreaks that end
@@ -124,6 +136,17 @@ println("Simulated:  $(round(containment_probability(results), digits = 3))")
 
 The two agree up to simulation noise and the small chance that an outbreak
 passes 200 cases and would still have died out.
+
+Checking one type's own extinction probability this way would otherwise mean
+discarding every run that happened to start with a different type. The
+`index_types` keyword picks the index cases' types directly instead, so every
+run counts:
+
+```@example multitype
+elderly_results = simulate(model, 1000; max_cases = 200, index_types = [3], rng = StableRNG(1))
+println("Analytical (65+): $(round(q[3], digits = 3))")
+println("Simulated (65+):  $(round(containment_probability(elderly_results), digits = 3))")
+```
 
 ## Custom offspring function
 

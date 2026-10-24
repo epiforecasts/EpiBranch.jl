@@ -456,7 +456,7 @@ function apply_trace!(q::Quarantine, contact, state, trace_time, rng)
         q.duration, rng, contact, "`Quarantine`'s `duration`"
     )
     record_removal!(contact, trace_time, release_time; key = QUARANTINE_STRETCHES_KEY)
-    # Stash what isolation, if any, stood before this quarantine, so a
+    # Record what isolation, if any, stood before this quarantine, so a
     # `Scheduled` reset can restore exactly that rather than wiping out an
     # isolation another intervention recorded (the mirror image of what
     # `Isolation`'s own `reset!` does for a quarantine it is layered over). A
@@ -758,10 +758,9 @@ end
 
 # Undo only the isolation `Quarantine` itself recorded, restoring whatever
 # stood before it (another intervention's isolation, or none), rather than
-# clearing the field outright: a standing isolation from a separate
-# intervention such as `Isolation` is not tracing's to undo. Mirrors
-# `Isolation`'s own `reset!`, which protects a quarantine it was layered over
-# the same way.
+# clearing the field outright: tracing should not undo a standing isolation
+# set by a separate intervention such as `Isolation`. Mirrors `Isolation`'s
+# own `reset!`, which protects a quarantine it was layered over the same way.
 function _undo_quarantine_isolation!(ind::Individual)
     get(ind.state, :_quarantined_by_tracing, false)::Bool || return nothing
     previous = _state_real(ind.state, :_isolation_time_before_quarantine, Inf)
@@ -801,9 +800,13 @@ function _record_trace_time!(ind::Individual, trace_time)
     return nothing
 end
 
-# The trace attempts for a single infector → contact pair.
+# The trace attempts for a single infector → contact pair, pushing an
+# `InterventionAction` for each one that succeeds onto `actions` rather than
+# acting immediately, so the batch collected over a whole `trace_contacts!`
+# call can be admitted (and, under `CapacityConstrained`, rationed) together.
 function _trace_pair!(
-        ct::ContactTracing, state, infector, ind, rng; ring::Bool = false, not_before = -Inf
+        ct::ContactTracing, state, infector, ind, rng, actions;
+        ring::Bool = false, not_before = -Inf
     )
     # A contact enters the ring two ways. As a *seed*, when its infector is an
     # infected case meeting the eligibility condition (a symptomatic case,
@@ -817,28 +820,34 @@ function _trace_pair!(
     # contacts that early does not change how they are traced.
     #
     # Requiring the seed's infector to be infected stops an uninfected ring
-    # member, which has its own clinical state, from re-seeding a fresh
-    # full-radius ring and letting the fringe grow without bound. The ring
-    # walk can also pass through an already-infected neighbour (see
-    # `_walk_ring!` in sellke.jl); that walk marks the infector with
-    # `_ring_hop`, so it is traced from as a ring member only, rather than
-    # reseeding a second time.
+    # member, which gets its own clinical state once infected, from
+    # re-seeding a fresh full-radius ring and letting the fringe grow
+    # without bound. The ring walk can also pass through an already-infected
+    # neighbour (see `_walk_ring!` in sellke.jl); that walk marks the
+    # infector with `_ring_hop`, so it is traced from as a ring member only,
+    # rather than reseeding a second time.
     if ring
         base = _state_real(infector.state, :trace_time, _recorded_isolation_time(infector))
         remaining = get(infector.state, :_ring_remaining, 0)::Int - 1
-        _trace_attempt!(ct, state, infector, ind, rng, base, remaining, not_before)
+        _trace_attempt!(ct, state, infector, ind, rng, base, remaining, not_before, actions)
     end
     if is_infected(infector) && is_eligible(ct.eligibility, infector, ind, state) &&
             !get(infector.state, :_ring_hop, false)::Bool
         base = trigger_time(ct.eligibility, infector, ind, state)
-        _trace_attempt!(ct, state, infector, ind, rng, base, ct.depth - 1, not_before)
+        _trace_attempt!(ct, state, infector, ind, rng, base, ct.depth - 1, not_before, actions)
     end
     return nothing
 end
 
 # One attempt to trace `ind` from `infector`, the trace delay running from
-# `base`, leaving the ring `remaining` hops to grow from `ind`.
-function _trace_attempt!(ct::ContactTracing, state, infector, ind, rng, base, remaining, not_before)
+# `base`, leaving the ring `remaining` hops to grow from `ind`. Who was
+# reached, and from when, is recorded immediately — ring growth and later
+# eligibility checks read it before any action is admitted — and only the
+# action that follows up the contact (`apply_trace!`, a quarantine's removal
+# or a flag) is queued, so `CapacityConstrained` can still turn it down.
+function _trace_attempt!(
+        ct::ContactTracing, state, infector, ind, rng, base, remaining, not_before, actions
+    )
     traces(ct.trace_rate, infector, ind, state, rng) || return nothing
     trace_delay = draw_trace_delay(
         ct.isolation_to_trace_delay, infector, ind, state, rng
@@ -853,7 +862,17 @@ function _trace_attempt!(ct::ContactTracing, state, infector, ind, rng, base, re
     # contact time themselves from this, which is the same whatever the
     # trace action and the contact's own clinical course.
     _record_trace_time!(ind, trace_time)
-    apply_trace!(ct.action, ind, state, trace_time, rng)
+    ind.state[:traced] = true
+    if isfinite(trace_time)
+        push!(actions, _trace_action(ct, ind, trace_time))
+    else
+        # A trace with no arrival time (`Inf`) follows nobody up, so it is
+        # applied directly rather than queued: `InterventionAction` admission
+        # always skips a non-finite time (see `_admit_actions!`), and this
+        # contact is traced, not scheduled or rationed, as `Quarantine`'s own
+        # docstring says.
+        apply_trace!(ct.action, ind, state, trace_time, rng)
+    end
 
     # Record the source this contact was traced from: the latest case whose
     # trace reached it, which on a tree is its parent. `compute_trace_level!`
@@ -870,6 +889,14 @@ function _trace_attempt!(ct::ContactTracing, state, infector, ind, rng, base, re
         )
     )
     return nothing
+end
+
+# The `InterventionAction` that follows up `ind` at `trace_time`, exactly as
+# `apply_trace!` always has, so `Scheduled` and `CapacityConstrained` can
+# admit it the same way they admit a dose.
+function _trace_action(ct::ContactTracing, ind, trace_time)
+    effect! = (person, at, state) -> apply_trace!(ct.action, person, state, at, state.rng)
+    return InterventionAction(ind, trace_time, effect!)
 end
 
 traces_contacts(::ContactTracing) = true
@@ -889,14 +916,28 @@ function trace_contacts!(
     ring = ct.depth > 1 && is_traced(infector) &&
         !get(infector.state, :_ring_propagated, false)::Bool &&
         get(infector.state, :_ring_remaining, 0)::Int > 0
+    actions = InterventionAction[]
     for (i, ind) in enumerate(contacts)
         ind.id == infector.id && continue
         _trace_pair!(
-            ct, state, infector, ind, rng;
+            ct, state, infector, ind, rng, actions;
             ring, not_before = not_before === nothing ? -Inf : not_before[i]
         )
     end
     ring && !isempty(contacts) && (infector.state[:_ring_propagated] = true)
+    _admit_trace_actions!(ct, state, actions)
+    return nothing
+end
+
+# Who admits `ct`'s follow-up actions: `ct` itself by default, admitting
+# unconditionally exactly as `apply_trace!` always ran; or, for the span of
+# its own call, whatever wrapper is rationing it, recorded in
+# `state.scratch` by that wrapper (see `CapacityConstrained`'s own
+# `trace_contacts!`) so a `Scheduled` in between still finds it.
+function _admit_trace_actions!(ct::ContactTracing, state, actions)
+    isempty(actions) && return nothing
+    admitter = get(state.scratch, (:trace_admitter, ct), ct)
+    _admit_actions!(admitter, state, actions)
     return nothing
 end
 
@@ -1094,8 +1135,8 @@ end
 
 # `trace_contacts!` below traces backward; the forward ring walk the race
 # builds for `traces_contacts` has nothing for `SourceTracing` to do.
-# `traces_source` asks the race to call it through a second route instead
-# (see `trace_contacts!`'s docstring).
+# `traces_source` asks the race to call `trace_contacts!` through a second
+# route instead (see `trace_contacts!`'s docstring).
 traces_contacts(::SourceTracing) = false
 traces_source(::SourceTracing) = true
 

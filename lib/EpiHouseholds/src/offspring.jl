@@ -742,7 +742,7 @@ end
 # person's infectiousness and another's susceptibility for
 # `HouseholdFinalStatuses`'s single pair; either way the power is taken in `T`:
 # the recursion amplifies any inconsistency between the escape probabilities
-# of different set sizes, so rounding each power separately in Float64 would
+# of different set sizes, and rounding each power separately in Float64 would
 # undo the extended precision.
 _escape(T::Type, kernel, window::Real, m::Real) = T(ccdf(kernel, window))^m
 function _escape(T::Type, kernel, window::UnivariateDistribution, m::Real)
