@@ -38,7 +38,7 @@ label count against it; use different labels for separate budgets.
 
 By default everyone draws on the same budget. An intervention with a
 [`resource_key`](@ref EpiBranch.resource_key) method splits it instead: each
-distinct value — a district, a treatment centre — gets its own
+distinct value (a district, a treatment centre) gets its own
 `budget_per_period`, tracked under the same `period`, `carry_over` and
 `priority` independently of every other. Pass the value to `capacity_usage`
 to read one group's own usage.
@@ -157,8 +157,8 @@ end
     resource_key(intervention, individual, state) -> Any
 
 For extension authors: which of `intervention`'s budgets `individual` draws on,
-when [`CapacityConstrained`](@ref) is to track more than one at once — a
-budget per district or per treatment centre, say. The default, `nothing`, puts
+when [`CapacityConstrained`](@ref) is to track more than one at once, such as a
+budget per district or per treatment centre. The default, `nothing`, puts
 everyone on the same budget, exactly as a `CapacityConstrained` with no method
 of it behaves. Each distinct value `resource_key` returns gets its own usage,
 counted separately under `budget_per_period`, `period` and `carry_over`.
@@ -333,7 +333,7 @@ function _discovers_actions(cc::CapacityConstrained)
 end
 # Asked for its actions on every settled case even when the intervention it
 # wraps proposes none, so that wrapping one with nothing to ration fails when
-# the run starts rather than going unrationed (see `intervention_actions`) —
+# the run starts rather than going unrationed (see `intervention_actions`),
 # unless it instead rations through `resolve_individual!` and `reset!`, as
 # `Isolation` does (`_resolves_under_capacity`). That seam needs no candidates
 # or contacts, and routing it through the action funnel too would only cost a
@@ -374,11 +374,11 @@ end
 # Tracing's own bookkeeping (who was reached, and from when) runs
 # unconditionally, so that ring growth and later eligibility checks, decided
 # before any action is admitted, see it; only the follow-up action it
-# proposes (see `_trace_action`) is rationed. `state.scratch` carries this
+# proposes (see `_trace_action`) is rationed. `state.scratch` passes this
 # wrapper down to the span of the wrapped intervention's own
 # `trace_contacts!` call, which admits through it instead of itself (see
-# `_admit_trace_actions!`) — composing with `Scheduled` in either order, as a
-# dose already does.
+# `_admit_trace_actions!`). This composes with `Scheduled` in either order, as
+# a dose already does.
 traces_contacts(cc::CapacityConstrained) = traces_contacts(cc.intervention)
 function trace_contacts!(cc::CapacityConstrained, state, infector, contacts, not_before = nothing)
     key = (:trace_admitter, _innermost(cc))
@@ -441,8 +441,8 @@ end
 # Undo the effect `resolve_individual!` just wrote on `ind` unless it fits
 # the budget at its own date, the same check a proposed action's own date
 # goes through. An effect that never ran (the capacity key not actually set
-# on `ind` — for instance a quarantine `Isolation` is layered over, which is
-# not its own effect) has nothing to check.
+# on `ind`, for instance when a quarantine `Isolation` is layered over, which
+# is not its own effect) has nothing to check.
 function _reset_unless_within_budget!(cc::CapacityConstrained, ind::Individual, state)
     key = capacity_key(cc.intervention)
     get(ind.state, key, false)::Bool || return nothing
