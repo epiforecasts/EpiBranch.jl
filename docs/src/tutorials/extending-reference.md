@@ -845,9 +845,9 @@ for the backstop duration, and end that quarantine early once the finding
 decides it with [`EpiBranch.shorten_quarantine!`](@ref)`(ind, start,
 old_release, new_release)`, which keeps the quarantine's own stretches and the
 shared removal history the likelihood reads consistent with each other. See
-[Proposing actions of your own](@ref) for `TestAndRelease`, a worked example
-quarantining a traced contact for a backstop duration but releasing them early
-on a negative test.
+[A trace action that proposes its own actions](@ref) for `TestAndRelease`, a
+worked example quarantining a traced contact for a backstop duration but
+releasing them early on a negative test.
 
 `Isolation` instead writes its effect straight into `resolve_individual!`. A
 `CapacityConstrained` wrapping it therefore has nothing to admit: it checks
