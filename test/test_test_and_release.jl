@@ -193,6 +193,24 @@ EpiBranch.removal_gap_host_times_withdrawn(::TestAndRelease) = (EpiBranch.REMOVA
         @test isolation_release_time(contact) == 19.0
     end
 
+    @testset "CapacityConstrained(ContactTracing(...)) still quarantines when it rations the test away" begin
+        t = TestAndRelease(duration = 14.0, test_day = 3.0, sensitivity = 1.0)
+        ct = ContactTracing(TraceEveryone(), 1.0, Dirac(0.0), t)
+        cc = CapacityConstrained(ct; budget_per_period = 0.0)
+
+        infector = Individual(id = 1)
+        EpiBranch.set_isolated!(infector, 5.0; release_time = Inf)
+        contact = Individual(id = 2)
+
+        state = EpiBranch.new_state(
+            BranchingProcess(Poisson(0.0), Exponential(5.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(14)
+        )
+        EpiBranch.trace_contacts!(cc, state, infector, [contact])
+        @test is_quarantined(contact)
+        @test isolation_release_time(contact) == 19.0 # the backstop: 5.0 + 14.0
+    end
+
     @testset "A negative test shortens a quarantine combined with a standing isolation" begin
         # `apply_trace!` folds the quarantine into a standing isolation
         # already in force at the trace (its `_isolation_in_force` branch),

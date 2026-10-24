@@ -1062,10 +1062,20 @@ end
 # unconditionally exactly as `apply_trace!` always ran; or, for the span of
 # its own call, whatever wrapper is rationing it, recorded in
 # `state.scratch` by that wrapper (see `CapacityConstrained`'s own
-# `trace_contacts!`) so a `Scheduled` in between still finds it.
+# `trace_contacts!`) so a `Scheduled` in between still finds it. An action
+# that proposes its own actions (`intervention_actions`) owns its
+# `capacity_key` for that resource, not for this follow-up, so admitting it
+# through the recorded wrapper would ration it against a budget meant for
+# something else; such a follow-up is admitted unconditionally instead, and
+# `CapacityConstrained` is left to ration only what `intervention_actions`
+# proposes.
 function _admit_trace_actions!(ct::ContactTracing, state, actions)
     isempty(actions) && return nothing
-    admitter = get(state.scratch, (:trace_admitter, ct), ct)
+    admitter = if _has_own_method(intervention_actions, typeof(ct.action), TraceAction)
+        ct
+    else
+        get(state.scratch, (:trace_admitter, ct), ct)
+    end
     _admit_actions!(admitter, state, actions)
     return nothing
 end
