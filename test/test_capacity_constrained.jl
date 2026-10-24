@@ -465,6 +465,57 @@ end
         @test count(is_vaccinated, contacts) == 2
     end
 
+    @testset "Rationing across many calls does not depend on a bystander population" begin
+        # Usage is now kept as a running count rather than rescanning
+        # `state.individuals` on every call, so a large population nobody
+        # ever proposes a dose for must not change what gets rationed.
+        rv = RingVaccination(efficacy = 0.9)
+        cc = CapacityConstrained(rv; budget_per_period = 1.0, period = 1.0)
+        state = EpiBranch.new_state(
+            BranchingProcess(Poisson(1.0), Exponential(5.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1)
+        )
+        append!(state.individuals, [Individual(id = i) for i in 1:500])
+
+        for day in 1:20
+            contact = _traced_contact(rv, 500 + day, Float64(day))
+            append!(state.individuals, [contact])
+            state.max_infection_time = Float64(day)
+            EpiBranch.apply_actions!(cc, state, [contact])
+        end
+
+        dosed = filter(is_vaccinated, state.individuals)
+        @test length(dosed) == 20
+        @test capacity_usage(cc, state).used == 20
+    end
+
+    @testset "Two wrappers sharing a dose label share one running budget" begin
+        # Both default to dose_label :default, so per the docstring they
+        # share one budget: an admission through either must be visible to
+        # the other's own running count, not just to a fresh rescan.
+        rv_a = RingVaccination(efficacy = 0.9)
+        rv_b = RingVaccination(efficacy = 0.5)
+        cc_a = CapacityConstrained(rv_a; budget_per_period = 2.0)
+        cc_b = CapacityConstrained(rv_b; budget_per_period = 2.0)
+        state = EpiBranch.new_state(
+            BranchingProcess(Poisson(1.0), Exponential(5.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1)
+        )
+
+        first = _traced_contact(rv_a, 1, 1.0)
+        second = _traced_contact(rv_b, 2, 2.0)
+        third = _traced_contact(rv_a, 3, 3.0)
+        append!(state.individuals, [first, second, third])
+        state.max_infection_time = 3.0
+
+        EpiBranch.apply_actions!(cc_a, state, [first])
+        EpiBranch.apply_actions!(cc_b, state, [second])
+        EpiBranch.apply_actions!(cc_a, state, [third])
+
+        @test count(is_vaccinated, [first, second, third]) == 2
+        @test !is_vaccinated(third)
+    end
+
     @testset "Constructor validates its arguments" begin
         rv = RingVaccination(efficacy = 0.9)
         @test_throws ArgumentError CapacityConstrained(rv; budget_per_period = -1.0)

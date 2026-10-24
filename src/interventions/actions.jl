@@ -117,26 +117,28 @@ end
 # therefore skips to the next-ranked one (`continue`, not `break`), which may
 # fall in a different, still-open period.
 function _admit_actions!(cc::CapacityConstrained, state, actions)
+    isempty(actions) && return nothing
     key = capacity_key(cc.intervention)
     already_used = filter(a -> get(a.individual.state, key, false), actions)
     candidates = filter(a -> !get(a.individual.state, key, false), actions)
     _admit_actions!(cc.intervention, state, already_used)
-    # The usage scan covers the whole population, which only a call with
-    # someone to admit needs.
+    cache = _capacity_cache(cc, state)
+    for a in already_used
+        _record_capacity_use!(cache, cc, a.individual, state)
+    end
     isempty(candidates) && return nothing
-    times_by_key = _dose_times_by_key(cc, state)
     group_idxs, group_keys = _resource_groups(cc, state, [a.individual for a in candidates])
     for (idxs, group_key) in zip(group_idxs, group_keys)
         group = candidates[idxs]
         order = sortperm([cc.priority(a.individual, state) for a in group]; alg = MergeSort)
-        times = get(times_by_key, group_key, Float64[])
-        extra = Float64[]
+        times = get!(Vector{Float64}, cache.times, group_key)
         for i in order
             action = group[i]
             get(action.individual.state, key, false) && continue
-            _fits_budget(cc, times, extra, action.time) || continue
+            _fits_budget(cc, times, Float64[], action.time) || continue
             _admit_actions!(cc.intervention, state, [action])
-            get(action.individual.state, key, false) && push!(extra, action.time)
+            get(action.individual.state, key, false) || continue
+            _record_capacity_use!(cache, cc, action.individual, state, times)
         end
     end
     return nothing
