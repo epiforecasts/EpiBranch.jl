@@ -368,6 +368,13 @@ end
                 );
                 start_time = 1.0
             ),
+            # Rations through `resolve_individual!` and `reset!`, needing no
+            # candidates or contacts: must not be mistaken for an action
+            # producer either, the same as `cc_scheduled` above.
+            CapacityConstrained(
+                Isolation(onset_to_isolation_delay = Exponential(0.5), duration = Inf);
+                budget_per_period = 1.0
+            ),
         ]
         @test_logs min_level = Base.CoreLogging.Warn simulate(
             ModelSpec(
@@ -1000,7 +1007,8 @@ end
         # stays > 0 throughout), so it is still reachable once the
         # progression reinfects and their draw gave them a finite wait.
         m = EpiBranch._MassAction(
-            [[1]], Dict(1 => 1), reshape([1.0], 1, 1), [1.0], reshape([true], 1, 1)
+            [[1]], Dict(1 => 1), reshape([1.0], 1, 1), [1.0], reshape([true], 1, 1),
+            Tuple{Int, Float64}[]
         )
         waiting = Individual(; id = 1)
         waiting.state[:susceptible_again_time] = 5.0

@@ -435,6 +435,22 @@ end
             @test pairwise_surv_loglik(k, data, L; external_hazard = ext) ≈
                 pairwise_surv_loglik(rowk, rows)
         end
+
+        # a vector or a function of the person's number varies the community
+        # hazard between people, as the arms of a cluster-randomised trial would
+        sus = [1, 2, 2, 3, 3, 3, 4]
+        rates = [0.05, 0.2, 0.01, 0.1]
+        rowk_by_person = r -> is_ext[r] ? Exponential(1 / rates[sus[r]]) : k
+        reference = pairwise_surv_loglik(rowk_by_person, rows)
+        @test pairwise_surv_loglik(k, data, L; external_hazard = rates) ≈ reference
+        @test pairwise_surv_loglik(k, data, L; external_hazard = j -> rates[j]) ≈
+            reference
+
+        # a vector not matching the population the layout was compiled for is
+        # rejected rather than indexed out of bounds
+        @test_throws DimensionMismatch pairwise_surv_loglik(
+            k, data, L; external_hazard = rates[1:3]
+        )
     end
 
     @testset "a community hazard can follow a calendar schedule" begin

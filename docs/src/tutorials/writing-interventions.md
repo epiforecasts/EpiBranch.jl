@@ -94,18 +94,7 @@ many people each case infects](@ref).
 | `on_infection_settled!(iv, individual, state, rng)` | Every built-in model: once a case's infection time is fixed, before its onset or clinical transitions read it | The case, and the random number generator to use | `nothing`; sets values on the case (default: does nothing) |
 | `risk_applies(iv, route)` | Every built-in model choosing the risks for a route or infectiousness window | The route's `RouteWindow`, or `nothing` for an introduction from outside | `Bool`; default `true` |
 | `standing_block(iv)` | Fixed-population models deciding whether a certain block ends a pair's contacts for good | Nothing | `Bool`; default `false` |
-| `reads_population_state(iv)` | Before a structure-driven model (such as `HouseholdProcess`) decides whether to simulate each household separately or all on one shared clock | Nothing | `Bool`: whether what the intervention does can depend on population-wide quantities such as a running case count or a shared budget (default `true`, the safe choice) |
 | `analytic_offspring_effect(iv, offspring)`, `analytic_offspring_effect(iv, offspring, spec)` | When an analytical function such as [`extinction_probability`](@ref) is called on a `ModelSpec` holding the intervention | The offspring distribution without the intervention (the three-argument form also receives the `ModelSpec`, for an effect that needs more than the offspring law) | The offspring distribution a case has under the intervention. Without a method of either arity the function stops with an error |
-
-`reads_population_state` covers everything an intervention hands work to: a
-component or function you supply counts towards its owner's answer. A built-in
-intervention asks its own components (`ContactTracing` its eligibility, rate,
-delay and action; `Isolation` its eligibility), each answering `false` by
-default. An eligibility, rate, delay or action of yours that tests a running
-case count, or anything else beyond the person being considered, declares
-`true` for itself, and its owner then answers `true` too. A plain function
-passed as a parameter has nowhere to declare this, and such a test belongs in a
-component type.
 
 `analytic_offspring_effect` is for the rare intervention whose effect on the
 offspring distribution is exact in closed form. One that cuts every case's R
@@ -168,7 +157,8 @@ In practice:
     by `1 - p`. A pair with a one-day mean contact interval and a two-day
     infectious period then infects `1 - exp(-1) = 0.63` of the time at
     efficacy 0.5. On a branching process, or a model written against
-    `contacts_of`, a case's contacts are a fixed set of draws, so a blocked contact is a transmission lost, and the same efficacy
+    `contacts_of`, a case's contacts are a fixed set of draws, so a blocked
+    contact is a transmission lost, and the same efficacy
     of 0.5 halves that pair's chance of transmission (0.43 in this example,
     against 0.63). The per-exposure reading on fixed-population models is what a
     leaky vaccine means there; check which one your scenario needs.
@@ -188,9 +178,9 @@ In practice:
   actions once each case settles, narrowed to the case and the contacts it can
   still reach. One that chooses its own candidates, such as everyone not yet
   infected, writes a method of `EpiBranch.action_candidates`. Such actions
-  must work without knowing the infection time of a
-  contact not yet infected, and must not change a case already settled. That
-  narrowing needs a model that can name contacts, unless the intervention
+  must work without knowing the infection time of a contact not yet infected,
+  and must not change a case already settled. That narrowing needs a model
+  that can name contacts, unless the intervention
   declares `EpiBranch.needs_contacts(iv) = false`, as group vaccination does,
   since its candidates come from a case's group rather than its contacts. A
   branching process also offers such an intervention each contact as it is
@@ -510,9 +500,9 @@ Six built-in risks are always present:
 - [`EpiBranch.HostImmunity`](@ref) blocks every exposure of a contact who has
   already been infected, until [`susceptible_again_time`](@ref) is in the
   past. It does nothing for a model whose `progression` never reaches
-  `:susceptible_again`. A model that does gets a new, separately recorded infection episode
-  (see [Individual state and reserved keys](@ref)) instead of a reinfection
-  overwriting the earlier one.
+  `:susceptible_again`. A model that does gets a new, separately recorded
+  infection episode (see [Individual state and reserved keys](@ref)) instead
+  of a reinfection overwriting the earlier one.
 
 A susceptibility or infectiousness of `1.0` blocks nothing, and these risks have
 no effect unless a population characteristic sets a value below one. You can
@@ -525,9 +515,10 @@ fixed-population models apply the same two values as multipliers on the rate
 of transmission instead (see [Continuous-time models: further details](@ref)),
 so they do not decide them contact by contact. Of the remaining four,
 `InfectiousSource` never has anything to block on any model, since the race
-proposes only from cases that have settled and are infected by construction, and the end of
-an infectiousness window is enforced by the window closing rather than by
-`competing_risk`. `AbortedInfection` and `HostImmunity`, by contrast, are both
+proposes only from cases that have settled and are infected by construction,
+and the end of an infectiousness window is enforced by the window closing
+rather than by `competing_risk`. `AbortedInfection` and `HostImmunity`, by
+contrast, are both
 resolved through `competing_risk` there: a settled member can become a target
 again and is blocked by `HostImmunity` until their immunity has waned, exactly
 when the `progression` reaches `:susceptible_again`, with no change needed to
@@ -564,9 +555,9 @@ known by then.
 A model written against `generate_offspring` or `contacts_of` waits the same
 way, unless it declares that its count, or its `contacts_of`, reads nothing
 settling writes (see [`EpiBranch.reads_settled_state`](@ref)). A
-`generate_offspring` model that declares it has its count drawn when the ring
-reaches a person, as on a [`BranchingProcess`](@ref) with a `Distribution` of
-offspring.
+`generate_offspring` model that declares this draws its count as soon as the
+ring reaches a person, the way a [`BranchingProcess`](@ref) with a
+`Distribution` of offspring does.
 
 [`ContactTracing`](@ref) with `depth > 1` is the built-in intervention that
 uses this: it grows the ring from its members until the ring's depth is
@@ -695,6 +686,17 @@ dose-label names.
 Every proposed recipient is known before admission, including group members
 found by searching a whole group. See [Intervention actions](@ref) for how to
 propose actions and the rules on timing.
+
+By default everyone draws on the same budget. Define
+`EpiBranch.resource_key(iv, individual, state)` to split it instead,
+returning whichever value identifies the group `individual` belongs to, such
+as a district or a treatment centre. Each distinct value gets its own
+budget, tracked under the same `budget_per_period`, `period`, `carry_over`
+and `priority`, independently of every other. It dispatches on the
+individual rather than a proposed action, so someone already served can be
+placed in their group again from their recorded state alone, with nothing of
+the original proposal kept around. `capacity_usage(cc, state, key)` reads
+one group's own usage.
 
 ## Requiring values on each person
 

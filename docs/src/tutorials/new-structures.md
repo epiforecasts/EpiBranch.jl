@@ -21,7 +21,9 @@ Infectiousness(offspring; from = :infection, until = (), kernel = NoGenerationTi
 
 - `offspring`: how many contacts this source makes (a `Distribution`, or a
   function `(rng, ind) -> n` of the case, giving one count per type in a
-  multi-type model).
+  multi-type model). A function that already knows when each contact falls can
+  return an [`OffspringTimes`](@ref) instead of `n`, giving the times directly
+  and skipping `kernel`.
 - `from`: the state at which the window opens. `:infection` (the default) is
   the infection time; any other state `s` is read from the person's
   `<s>_time` value, so `from = :infectious` reads `:infectious_time`. The window
@@ -219,6 +221,47 @@ A kernel that reads per-person records then keeps contacts drawn before a
 record changed, without any warning if `projections` is left out too; with
 `projections`, the simulation stops with an error when a record the kernel
 reads changes without being declared.
+
+### A route that finds its own contacts
+
+Listing a route's contacts costs nothing when there are few of them: a
+household, a handful of named neighbours. It costs more when there are many,
+such as a spatial kernel over a large population or contact with everyone in
+an area, where listing them first turns an *O(contacts)* process into an
+*O(candidates)* one. Mass action (`EpiBranch._MassAction`, behind
+[`HomogeneousProcess`](@ref) and [`MixingProcess`](@ref)) is the package's own
+example: rather than list every member as a candidate contact and discard
+most of them, it samples directly the pairs that do have one, by skipping
+ahead through each mixing group at the group's bound rate.
+
+A route of your own takes the same seam. Declare
+[`EpiBranch.proposes_own_contacts`](@ref) `true` for whatever value your
+route's `reach` holds, and give it:
+
+- [`EpiBranch.propose_along`](@ref)`(route, infector_id, state, open_t, close_t,
+  capped, traits)`, returning the `(target_id, time)` pairs `route` proposes
+  from `infector_id`'s window, open at `open_t` and due to close at `close_t`.
+  `capped` is set when the window has no natural close and `close_t` is the
+  run's time limit instead: propose only up to it, and remember enough, on
+  `route` itself, for `pending_beyond` to answer afterwards. The race submits
+  each pair itself — dropping a target already settled, or the infector
+  itself — so `route` need not check either, and scales nothing further: read
+  `state.individuals[...].susceptibility` and `.infectiousness` directly if
+  `route`'s own contacts should depend on them.
+- [`EpiBranch.route_pair_kernel`](@ref)`(route, infector_id, target_id, state)`,
+  the unscaled contact-interval kernel between one pair, asked only when a
+  proposed contact is blocked by a competing risk and the race needs to draw
+  that pair's next one.
+- [`EpiBranch.pending_beyond`](@ref)`(route, state, reinfects)`, if `propose_along`
+  can ever set `capped`: whether members `route` left unsampled past the time
+  limit might still be reachable, so the race reports a run cut off rather
+  than claiming an extinction it cannot vouch for. The default, `false`, suits
+  a route that always proposes everything it draws.
+
+On `RoutedNetwork` (in `EpiNetwork`), a route built this way has
+`kernel = nothing`, since the route times its own contacts; see its docstring
+for the `n` keyword it needs once no route's `reach` is an adjacency list to
+read the node count from.
 
 ## Seasonal or time-varying transmission
 
@@ -421,8 +464,9 @@ tracing and ring vaccination reach it, and the probability is weighed together w
 susceptibility, infectiousness and interventions. The example below does this.
 
 A model can also run **its own simulation loop**, as the continuous-time
-household and network models do, with a race of its own. Such a model receives the other model parts as
-arguments: define [`EpiBranch.simulate_once`](@ref)`(m::MyModel, sim_opts; interventions,
+household and network models do, with a race of its own. Such a model
+receives the other model parts as arguments: define
+[`EpiBranch.simulate_once`](@ref)`(m::MyModel, sim_opts; interventions,
 attributes, progression, observation, recorder, rng)`, read the parts from the
 arguments, and work out anything you need there from `progression`, such as
 the start of the infectious period with
@@ -445,25 +489,6 @@ individual, state)`. The first runs the clinical transitions and records the
 timeline values (`:onset_time`, `:outcome_time`, ...) that the line list, the
 likelihoods and interventions such as `Isolation` read. `simulate` and `loglikelihood` on a `ModelSpec` call `simulate_once`
 with the spec's parts.
-
-A model whose population splits naturally into groups that can be simulated
-independently, as a household model splits into households, defines
-[`EpiBranch.race_groups`](@ref)`(model, kernel)` to say how it splits for a
-given kernel, and its `simulate_once` runs one race per group. Each
-`sellke_race!` call sets `state.extinct` from its own group alone, so such a
-loop reads `state.extinct` after each call, keeps whether every group died out
-(`extinct &= sellke_race!(...).extinct`), and sets `state.extinct = extinct`
-after the last race. `HouseholdProcess` in the `EpiHouseholds` package does
-the same through the internal `_sellke_race!`, which skips the per-call
-bookkeeping. A new kernel type can define the method for a given model to choose a
-different split:
-
-```julia
-# One race per household for your kernel, whatever it watches. Typing the
-# kernel is what makes this a method of your own rather than a replacement
-# for the one `HouseholdProcess` already has for every other kernel.
-EpiBranch.race_groups(model::HouseholdProcess, kernel::MyKernel) = model.members
-```
 
 For the **analytical functions** that work from the offspring distribution
 (`reproduction_number`, `extinction_probability`, `epidemic_probability`,

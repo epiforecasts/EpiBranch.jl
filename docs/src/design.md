@@ -55,9 +55,9 @@ population. The network, household, homogeneous and mixing models simulate such
 a population in continuous time, working out when each person is infected from
 the contacts between pairs. A structure-driven model can also list the people
 each case exposes and when, and a person exposed by several cases is infected
-at most once, by the earliest exposure that gets through; the hospital bay in [New transmission
-structures](tutorials/new-structures.md) is an example. Either way the model
-only says who is in contact with whom.
+at most once, by the earliest exposure that gets through; the hospital bay in
+[New transmission structures](tutorials/new-structures.md) is an example.
+Either way the model only says who is in contact with whom.
 
 ### 2. When (the same for every model)
 

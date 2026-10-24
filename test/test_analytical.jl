@@ -49,6 +49,22 @@
             @test q ≈ q2
         end
 
+        @testset "Discrete offspring with no dedicated method" begin
+            # DiscreteNonParametric has no Poisson/NegativeBinomial-specific
+            # method, so this exercises the generic Newton's-method fallback.
+            d = DiscreteNonParametric([0, 1, 4], [0.4, 0.3, 0.3])  # mean 1.5
+            q = extinction_probability(d)
+            @test 0.0 < q < 1.0
+            # The extinction probability solves q = G(q) for the law's own pgf.
+            @test 0.4 + 0.3 * q + 0.3 * q^4 ≈ q atol = 1.0e-8
+
+            subcritical = DiscreteNonParametric([0, 1], [0.6, 0.4])
+            @test extinction_probability(subcritical) == 1.0
+
+            # A chain-size law is not itself an offspring law.
+            @test_throws r"already one" extinction_probability(Borel(0.5))
+        end
+
         @testset "Delegates through Observed" begin
             # Regression: extinction_probability goes via
             # single_type_offspring, which must delegate through
@@ -176,6 +192,34 @@
             d = chain_size_distribution(NegBin(0.8, 0.5))
             @test d isa GammaBorel
         end
+
+        @testset "Discrete offspring with no dedicated method → HittingTimeChainSize" begin
+            nb = NegBin(0.8, 0.5)
+            d = chain_size_distribution(nb)
+
+            # Reached through the hitting-time theorem rather than GammaBorel's
+            # own closed form, built from nb's own pmf via a
+            # GeneratingFunctionOffspring and via a plain DiscreteNonParametric,
+            # both of which must match it exactly.
+            via_gfo = chain_size_distribution(
+                GeneratingFunctionOffspring([pdf(nb, k) for k in 0:200])
+            )
+            @test via_gfo isa EpiBranch.HittingTimeChainSize
+            for n in 1:8
+                @test pdf(via_gfo, n) ≈ pdf(d, n) atol = 1.0e-8
+            end
+
+            dnp = DiscreteNonParametric([0, 1, 2], [0.5, 0.3, 0.2])  # mean 0.7
+            via_dnp = chain_size_distribution(dnp)
+            @test via_dnp isa EpiBranch.HittingTimeChainSize
+            # Chain size 1 is exactly "no secondary cases".
+            @test pdf(via_dnp, 1) ≈ pdf(dnp, 0)
+            # Subcritical mean matches the universal 1/(1-R) total-progeny formula.
+            @test mean(via_dnp) ≈ 1.0 / (1.0 - mean(dnp))
+
+            # A chain-size law is not itself an offspring law.
+            @test_throws r"already one" chain_size_distribution(Borel(0.5))
+        end
     end
 
     @testset "cdf of chain-size distributions" begin
@@ -202,6 +246,21 @@
             @test cdf(d, 5) ≈ sum(pdf(d, n) for n in 1:5)
             @test cdf(d, 5) + ccdf(d, 5) ≈ 1.0
             @test logccdf(d, 5) ≈ log(ccdf(d, 5))
+        end
+
+        @testset "HittingTimeChainSize" begin
+            d = chain_size_distribution(DiscreteNonParametric([0, 1, 2], [0.5, 0.3, 0.2]))
+            @test cdf(d, 5) ≈ sum(pdf(d, n) for n in 1:5)
+            @test cdf(d, 5) + ccdf(d, 5) ≈ 1.0
+            @test logccdf(d, 5) ≈ log(ccdf(d, 5))
+
+            # Regression: cdf/logccdf/rand summed pdf(d, n) one n at a time,
+            # each restarting the hitting-time coefficient build-up from
+            # scratch, so a walk of a few hundred terms used to be
+            # impractically slow.
+            @test cdf(d, 150) ≈ sum(pdf(d, n) for n in 1:150)
+            rng = StableRNG(1)
+            @test rand(rng, d) isa Integer
         end
 
         @testset "IndexChainSize" begin
@@ -245,6 +304,48 @@
             ll = loglikelihood(data, d)
             @test ll ≈ sum(logpdf(d, n) for n in data.data)
         end
+
+        @testset "DetectedChainSize" begin
+            base = chain_size_distribution(NegBin(0.5, 0.3))
+            q = 0.3
+            d = observe(base, ChainDetection(q))
+            @test d isa DetectedChainSize
+
+            # Reproduced directly from the issue: P(n) r(n) / Σ_m P(m) r(m),
+            # with r(n) = 1 - (1 - q)^n.
+            unnormalised = n -> pdf(base, n) * (1 - (1 - q)^n)
+            manual = unnormalised(3) / sum(unnormalised, 1:10_000)
+            @test pdf(d, 3) ≈ manual atol = 1.0e-8
+
+            @test cdf(d, 5) ≈ sum(pdf(d, n) for n in 1:5)
+            @test cdf(d, 5) + ccdf(d, 5) ≈ 1.0
+            @test logccdf(d, 5) ≈ log(ccdf(d, 5))
+            @test sum(pdf(d, n) for n in 1:10_000) ≈ 1.0 atol = 1.0e-6
+
+            # q = 1 records every chain, so it is the unconditioned law.
+            @test pdf(observe(base, ChainDetection(1.0)), 3) ≈ pdf(base, 3)
+
+            # A detection rule of the caller's own choosing.
+            d_custom = observe(base, ChainDetection(n -> min(1.0, 0.1 * n)))
+            @test sum(pdf(d_custom, n) for n in 1:10_000) ≈ 1.0 atol = 1.0e-6
+
+            data = ChainSizes([1, 1, 2, 5])
+            @test loglikelihood(data, d) ≈ sum(logpdf(d, n) for n in data.data)
+
+            @test_throws ArgumentError ChainDetection(0.0)
+            @test_throws ArgumentError ChainDetection(1.5)
+
+            # Regression: two or more consecutive zeros at the start of
+            # `base`'s support fed the streaming log-sum-exp a
+            # -Inf − -Inf term, giving a NaN normalising constant.
+            d_threshold = observe(base, ChainDetection(n -> n < 3 ? 0.0 : 1.0))
+            @test isfinite(d_threshold.log_prob_recorded)
+            @test pdf(d_threshold, 1) == 0.0
+            @test pdf(d_threshold, 2) == 0.0
+            unnormalised_threshold = n -> n < 3 ? 0.0 : pdf(base, n)
+            manual_threshold = unnormalised_threshold(3) / sum(unnormalised_threshold, 1:10_000)
+            @test pdf(d_threshold, 3) ≈ manual_threshold atol = 1.0e-8
+        end
     end
 
     @testset "IndexChainSize" begin
@@ -268,6 +369,30 @@
             @test pdf(d, 0) == 0.0
         end
 
+        @testset "PMF matches the manual formula for a generic offspring" begin
+            # Regression: for a HittingTimeChainSize dist, the mixture sum
+            # used to rebuild the hitting-time coefficient table from
+            # scratch for every secondary-case count, instead of sharing one
+            # table across them, so a chain size of a few hundred was
+            # impractically slow.
+            index = Poisson(0.4)
+            off = DiscreteNonParametric([0, 1, 2], [0.5, 0.3, 0.2])
+            d = IndexChainSize(index, off)
+            dist = chain_size_distribution(off)
+            @test dist isa EpiBranch.HittingTimeChainSize
+
+            for n in 1:10
+                manual = n == 1 ? pdf(index, 0) : 0.0
+                for j in 1:(n - 1)
+                    manual += pdf(index, j) *
+                        exp(EpiBranch._chain_size_logpdf(dist, n - 1, j))
+                end
+                @test pdf(d, n) ≈ manual atol = 1.0e-12
+            end
+
+            @test isfinite(pdf(d, 150))
+        end
+
         @testset "Normalises to 1 for subcritical later-generation offspring" begin
             d = IndexChainSize(Poisson(2.5), NegBin(0.6, 0.5))
             @test sum(pdf(d, n) for n in 1:300) ≈ 1.0 atol = 1.0e-6
@@ -289,6 +414,18 @@
             base = chain_size_distribution(off)
             for n in 1:8
                 @test pdf(d, n) ≈ pdf(base, n) atol = 1.0e-10
+            end
+        end
+
+        @testset "Later-case offspring given only as a pmf (the issue's reproduction)" begin
+            # Previously a MethodError: a GeneratingFunctionOffspring built
+            # from a pmf had no chain_size_distribution to build on.
+            later = NegBin(0.6, 0.5)
+            off = GeneratingFunctionOffspring([pdf(later, k) for k in 0:200])
+            d = IndexChainSize(Poisson(0.4), off)
+            base = IndexChainSize(Poisson(0.4), later)
+            for n in 1:8
+                @test pdf(d, n) ≈ pdf(base, n) atol = 1.0e-8
             end
         end
 
@@ -881,6 +1018,52 @@
             @test_throws ArgumentError MinimumSize(0)
         end
 
+        @testset "ChainDetection records whole chains by size" begin
+            off = NegBin(0.8, 0.5)
+            dist = chain_size_distribution(off)
+            q = 0.4
+            data = ChainSizes([1, 2, 3, 5])
+            d = observe(dist, ChainDetection(q))
+
+            ll = loglikelihood(data, d)
+            manual = sum(
+                log(pdf(dist, x) * (1 - (1 - q)^x)) - d.log_prob_recorded
+                    for x in data.data
+            )
+            @test ll ≈ manual atol = 1.0e-10
+
+            # Simulation marks every case in a chain with the same flag.
+            rng = StableRNG(11)
+            state = simulate(
+                ModelSpec(BranchingProcess(off); observation = ChainDetection(q));
+                max_cases = 300, rng = rng
+            )
+            by_chain = Dict{Int, Bool}()
+            consistent = true
+            for ind in state.individuals
+                is_infected(ind) || continue
+                flag = ind.state[:reported]
+                if haskey(by_chain, ind.chain_id) && by_chain[ind.chain_id] != flag
+                    consistent = false
+                else
+                    by_chain[ind.chain_id] = flag
+                end
+            end
+            @test consistent
+
+            # Combined with a `Reporting` step, both would write `:reported`.
+            rep = Reporting(delay = Dirac(0.0), probability = 0.5, from = ind -> ind.infection_time)
+            bad_model = ModelSpec(
+                BranchingProcess(off);
+                progression = [rep], observation = ChainDetection(q)
+            )
+            @test_throws ArgumentError simulate(bad_model; rng = StableRNG(3))
+            @test_throws ArgumentError loglikelihood(data, bad_model)
+
+            @test_throws ArgumentError ChainDetection(0.0)
+            @test_throws ArgumentError ChainDetection(1.1)
+        end
+
         @testset "Per-case observation: simulation decoration" begin
             R, k = 0.6, 0.3
             gt = Gamma(2.0, 2.5)
@@ -976,6 +1159,21 @@
                 @test e ≈ a atol = 0.02
             end
 
+            # BranchingProcess with a ChainDetection(q): simulate bare, keep
+            # whole chains at random with probability growing in size,
+            # compare against DetectedChainSize.
+            emp_cd,
+                ana_cd = sim_analytical_consistent(
+                ModelSpec(
+                    BranchingProcess(NegBin(0.6, 0.5), Exponential(5.0));
+                    observation = ChainDetection(0.4)
+                );
+                n_chains = 5000, rng = StableRNG(13)
+            )
+            for (e, a) in zip(emp_cd, ana_cd)
+                @test e ≈ a atol = 0.02
+            end
+
             # Verify the per-chain θ invariant: all individuals in a
             # chain share :cluster_theta, and chains with distinct
             # chain_id get independent θ draws (including the
@@ -1022,6 +1220,52 @@
             end
             @test length(thetas) > 1
             @test length(unique(thetas)) > 1
+        end
+    end
+
+    @testset "ChainSizeClasses" begin
+        @testset "Construction validates bounds" begin
+            @test_throws ArgumentError ChainSizeClasses(Int[], Float64[], Int[])
+            @test_throws ArgumentError ChainSizeClasses([1, 2], [1], [1, 2])
+            @test_throws ArgumentError ChainSizeClasses([1, 2], [1, 2], [1])
+            @test_throws ArgumentError ChainSizeClasses([0], [1], [1])
+            @test_throws ArgumentError ChainSizeClasses([1], [1], [-1])
+            @test_throws ArgumentError ChainSizeClasses([2], [1], [1])
+            @test_throws ArgumentError ChainSizeClasses([1], [1.5], [1])
+            @test_throws ArgumentError ChainSizeClasses([1, 1], [1, 5], [10, 3])
+            @test_throws ArgumentError ChainSizeClasses([5, 1], [10, 5], [3, 10])
+            @test ChainSizeClasses([1], [Inf], [1]) isa ChainSizeClasses
+        end
+
+        @testset "Matches the sum of exact probabilities" begin
+            d = chain_size_distribution(NegBin(0.5, 0.3))
+            data = ChainSizeClasses([1, 2, 10], [1, 9, Inf], [120, 40, 5])
+            manual = 120 * logpdf(d, 1) +
+                40 * log(sum(pdf(d, n) for n in 2:9)) +
+                5 * logccdf(d, 9)
+            @test loglikelihood(data, NegBin(0.5, 0.3)) ≈ manual
+            @test loglikelihood(data, d) ≈ manual
+        end
+
+        @testset "Compact form of exact data matches ChainSizes" begin
+            sizes = [1, 1, 3, 1, 5]
+            exact_ll = loglikelihood(ChainSizes(sizes), NegBin(0.8, 0.5))
+            compact_ll = loglikelihood(ChainSizeClasses(sizes), NegBin(0.8, 0.5))
+            @test compact_ll ≈ exact_ll
+        end
+
+        @testset "Classes with zero counts contribute nothing" begin
+            d = NegBin(0.8, 0.5)
+            with_zero = ChainSizeClasses([1, 2, 5], [1, 4, Inf], [10, 0, 3])
+            without = ChainSizeClasses([1, 5], [1, Inf], [10, 3])
+            @test loglikelihood(with_zero, d) ≈ loglikelihood(without, d)
+        end
+
+        @testset "ClusterMixed dispatch" begin
+            o = ClusterMixed(Poisson, Gamma(2.0, 0.4))
+            data = ChainSizeClasses([1, 2, 10], [1, 9, Inf], [120, 40, 5])
+            d = chain_size_distribution(o)
+            @test loglikelihood(data, o) ≈ loglikelihood(data, d)
         end
     end
 
@@ -1211,6 +1455,27 @@
                     BranchingProcess(Poisson(1.5), Exponential(5.0));
                     interventions = [iso],
                     observation = MinimumSize(2),
+                    attributes = clinical_presentation(
+                        incubation_period = LogNormal(1.5, 0.5)
+                    )
+                );
+                max_cases = 500,
+                n_sim = 2000,
+                rng = StableRNG(42)
+            )
+            @test isfinite(ll)
+        end
+
+        @testset "ChainDetection falls through to the simulation path" begin
+            # With interventions present, the same whole-chain draw the
+            # closed form uses has to come from the simulated chains instead.
+            iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
+            ll = loglikelihood(
+                ChainSizes([2, 3, 2]),
+                ModelSpec(
+                    BranchingProcess(Poisson(1.5), Exponential(5.0));
+                    interventions = [iso],
+                    observation = ChainDetection(0.5),
                     attributes = clinical_presentation(
                         incubation_period = LogNormal(1.5, 0.5)
                     )
@@ -1571,6 +1836,27 @@
             law = GeneratingFunctionOffspring(pmf)
             @test reproduction_number(law) ≈ mean(d) atol = 1.0e-8
             @test extinction_probability(law) ≈ extinction_probability(d) atol = 1.0e-8
+        end
+
+        @testset "chain_size_distribution needs a pmf, not a bare pgf" begin
+            # The issue's reproduction: a GeneratingFunctionOffspring built
+            # from a pmf had no chain_size_distribution at all.
+            nb = NegBin(2.0, 0.1)
+            law = GeneratingFunctionOffspring([pdf(nb, k) for k in 0:500])
+            @test extinction_probability(law) ≈ 0.8904 atol = 1.0e-4
+
+            d = chain_size_distribution(law)
+            base = chain_size_distribution(nb)
+            for n in 1:8
+                @test pdf(d, n) ≈ pdf(base, n) atol = 1.0e-8
+            end
+
+            # A law given only as a bare pgf has no case-by-case
+            # probabilities to read, and refuses rather than erroring on
+            # indexing into `nothing`.
+            bare = GeneratingFunctionOffspring(s -> EpiBranch._pgf(nb, s), reproduction_number(nb))
+            @test_throws r"built from its probability mass function" chain_size_distribution(bare)
+            @test_throws r"built from its probability mass function" pdf(bare, 3)
         end
 
         @testset "Subcritical mean skips the fixed-point iteration" begin

@@ -19,7 +19,6 @@ public reset!
 public required_fields
 public infectious_removal_time
 public risk_applies
-public reads_population_state
 public standing_block
 public analytic_offspring_effect
 # End an infection early from any intervention hook, and read when it ended.
@@ -33,6 +32,15 @@ public records_isolation
 # projection against which the race checks that declaration.
 public watched_records
 public kernel_projection
+
+# Routes that find their own contacts rather than listing them (a spatial
+# kernel, or contact with everyone in an area): the race submits what
+# `propose_along` proposes itself, and asks `route_pair_kernel` and
+# `pending_beyond` only when it needs to.
+public proposes_own_contacts
+public propose_along
+public route_pair_kernel
+public pending_beyond
 
 # Transmission-model interface. A new process subtypes `TransmissionModel`
 # and extends these seam methods:
@@ -53,10 +61,6 @@ public model_generation_time
 #   - `transmission_risks` to contribute per-pair competing risks (e.g. a
 #     network's per-edge probability), resolved alongside the built-ins.
 public transmission_risks
-#   - a model with more than one natural race partition (a household process,
-#     over its households) defines `race_groups` to say how it splits into
-#     independent `_sellke_race!` calls for a given kernel.
-public race_groups
 
 # Helpers an `initialise_state` / `contacts_of` builds on, so a model never
 # touches the engine's bookkeeping directly.
@@ -161,10 +165,9 @@ public records_contacts
 public INTERVENTION_REMOVAL
 
 # The run seam a model with its own simulation loop defines, and the public
-# wrapper around
-# its construction: it resolves `max_time` from the run's `SimOpts` and
-# reconciles the aggregate bookkeeping, so a single-race model never touches
-# `_max_time` or `_reconcile_sellke_bookkeeping!` directly.
+# wrapper around its construction: it resolves `max_time` from the run's
+# `SimOpts` and reconciles the aggregate bookkeeping, so a single-race model
+# never touches `_max_time` or `_reconcile_sellke_bookkeeping!` directly.
 public simulate_once
 public sellke_race!
 

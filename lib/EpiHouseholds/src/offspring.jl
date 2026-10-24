@@ -733,15 +733,19 @@ function _final_size_recursion(
     return p
 end
 
-# The probability that a specified set of `m` susceptibles all escape one case:
-# its contacts with them are independent given its infectious window, so each
-# escapes with the kernel's survival at the window length and the set escapes
-# with the `m`-th power, averaged over the window. The power is taken in `T`: the
-# recursion amplifies any inconsistency between the escape probabilities of
-# different set sizes, so rounding each power separately in Float64 would undo
-# the extended precision.
-_escape(T::Type, kernel, window::Real, m::Int) = T(ccdf(kernel, window))^m
-function _escape(T::Type, kernel, window::UnivariateDistribution, m::Int)
+# The probability that a specified set of susceptibles, whose combined
+# infectiousness and susceptibility is `m`, all escape one case: its contacts
+# with them are independent given its infectious window, so each escapes with
+# the kernel's survival at the window length and the set escapes with the
+# `m`-th power, averaged over the window. `m` is a plain count (an integer)
+# for `household_final_size`'s exchangeable members, and the product of one
+# person's infectiousness and another's susceptibility for
+# `HouseholdFinalStatuses`'s single pair; either way the power is taken in `T`:
+# the recursion amplifies any inconsistency between the escape probabilities
+# of different set sizes, and rounding each power separately in Float64 would
+# undo the extended precision.
+_escape(T::Type, kernel, window::Real, m::Real) = T(ccdf(kernel, window))^m
+function _escape(T::Type, kernel, window::UnivariateDistribution, m::Real)
     m == 0 && return one(T)
     # Integrating over the window's quantiles keeps the range bounded whatever
     # the window distribution is. The tolerance is as tight as Float64 allows,
@@ -757,7 +761,7 @@ function _escape(T::Type, kernel, window::UnivariateDistribution, m::Int)
 end
 # Both exponential, the escape probability is the window's Laplace transform at
 # `m` times the kernel's rate.
-function _escape(T::Type, kernel::Exponential, window::Exponential, m::Int)
+function _escape(T::Type, kernel::Exponential, window::Exponential, m::Real)
     return T(rate(window)) / (T(rate(window)) + m * T(rate(kernel)))
 end
 

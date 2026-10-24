@@ -3,10 +3,9 @@
 # subtype stores the wrapped intervention in an `intervention` field and
 # inherits the plain delegation of every hook below, then overrides only the
 # hooks it gates. `trace_contacts!` has no default here, so each wrapper
-# states what it does with it. `keep_active`
-# does default to plain forwarding below, for a wrapper with nothing of its
-# own to gate there; a wrapper that does gate it overrides the default just
-# like the others.
+# states what it does with it. `keep_active` does default to plain forwarding
+# below, for a wrapper with nothing of its own to gate there; a wrapper that
+# does gate it overrides the default just like the others.
 abstract type InterventionWrapper <: AbstractIntervention end
 
 function initialise_individual!(w::InterventionWrapper, ind, state)
@@ -51,7 +50,6 @@ _unwrap_scheduled(w::InterventionWrapper) = _unwrap_scheduled(w.intervention)
 
 binding_release(w::InterventionWrapper) = binding_release(w.intervention)
 risk_applies(w::InterventionWrapper, route) = risk_applies(w.intervention, route)
-reads_population_state(w::InterventionWrapper) = reads_population_state(w.intervention)
 # A wrapper that can withdraw the inner block part-way through a stretch
 # already recorded cannot have those stretches read back: one per-host record
 # says nothing about when the gating closed. The default is therefore to

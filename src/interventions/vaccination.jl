@@ -882,9 +882,9 @@ function _withdraw_dose!(rv::RingVaccination, ind)
     return nothing
 end
 
-# A dose given to a pending, still-uninfected member of the race is recorded on it before its own
-# infection is settled, with the window assumed open and, for
-# `_abort_infection!`, nothing yet to check against
+# A dose given to a pending, still-uninfected member of the race is recorded
+# on it before its own infection is settled, with the window assumed open
+# and, for `_abort_infection!`, nothing yet to check against
 # (`contact.infection_time` is still `NaN`, so it does not draw). Once the
 # race settles that member's infection, this reconsiders both against the
 # now-final exposure: a dose the window turns out not to cover is withdrawn
@@ -923,11 +923,6 @@ function competing_risk(rv::RingVaccination, parent, contact, state)
     onward === nothing && return exposure
     return (exposure, onward)
 end
-
-# A ring doses the infector's own traced contacts: delivery depends on the
-# individual being resolved. A shared budget wrapped around one is
-# `CapacityConstrained`'s own declaration.
-reads_population_state(::RingVaccination) = false
 
 # Scalar defaults short-circuit without drawing from the rng so that
 # coverage = 1.0 and eligibility_window = Inf reproduce the previous
@@ -1223,10 +1218,6 @@ end
 # `new_contacts`) meets `eligibility`, tested against the member itself in
 # both the infector and contact slots since the policy describes a property
 # of a case, not a pair. `Inf` if no member has triggered yet.
-# A group's trigger is the earliest eligible time among every member
-# under the group key, wherever they live. The trigger a race sees
-# therefore depends on which cliques have raced already.
-reads_population_state(::GroupVaccination) = true
 
 function _group_trigger_time(gv::GroupVaccination, state, group)
     key = gv.group_key
@@ -1346,9 +1337,6 @@ end
 
 vaccine_effect(mv::MassVaccination) = getfield(mv, :effect)
 
-# Each contact's eligibility time is drawn when the contact is created:
-# delivery depends on the individual being resolved.
-reads_population_state(::MassVaccination) = false
 Base.getproperty(mv::MassVaccination, name::Symbol) = _effect_getproperty(mv, name)
 Base.propertynames(mv::MassVaccination, ::Bool = false) = _effect_propertynames(mv)
 Base.show(io::IO, mv::MassVaccination) = _show_keywords(io, mv)

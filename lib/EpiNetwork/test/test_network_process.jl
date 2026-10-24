@@ -14,6 +14,31 @@ function ring_adjacency(n, k = 1)
     return [vcat([mod1(i - d, n) for d in 1:k], [mod1(i + d, n) for d in 1:k]) for i in 1:n]
 end
 
+# A route that proposes its own contacts instead of listing them: every one of
+# `n` nodes at a constant rate, as mass action would, but with no groups and
+# no bound sampling, just a direct draw per candidate.
+struct _EveryoneElse
+    rate::Float64
+    n::Int
+end
+EpiBranch.proposes_own_contacts(::_EveryoneElse) = true
+function EpiBranch.propose_along(
+        r::_EveryoneElse, infector_id, state, open_t, close_t, capped, traits
+    )
+    T = typeof(open_t)
+    contacts = Tuple{Int, T}[]
+    window = close_t - open_t
+    window > 0 || return contacts
+    for id in 1:r.n
+        id == infector_id && continue
+        t = open_t + rand(state.rng, Exponential(inv(r.rate)))
+        t <= close_t && push!(contacts, (id, t))
+    end
+    return contacts
+end
+EpiBranch.route_pair_kernel(r::_EveryoneElse, infector_id, target_id, state) =
+    infector_id == target_id ? nothing : Exponential(inv(r.rate))
+
 # Moves one host record on every case, so a route whose kernel declares that
 # record redraws its pending contacts at each step.
 struct _TickHosts <: EpiBranch.AbstractIntervention end
@@ -104,6 +129,21 @@ end
         @test_throws ArgumentError NetworkProcess(
             ring, Exponential(2.0);
             external_hazard = -1.0
+        )
+
+        # so is a vector with one entry per node, or a function of a node's
+        # number, for a community hazard that differs between them
+        @test NetworkProcess(
+            ring, Exponential(2.0); external_hazard = fill(0.05, 5)
+        ) isa NetworkProcess
+        @test NetworkProcess(
+            ring, Exponential(2.0); external_hazard = j -> j <= 2 ? 0.05 : 0.01
+        ) isa NetworkProcess
+        @test_throws ArgumentError NetworkProcess(
+            ring, Exponential(2.0); external_hazard = [0.05, -0.01, 0.0, 0.0, 0.0]
+        )
+        @test_throws DimensionMismatch NetworkProcess(
+            ring, Exponential(2.0); external_hazard = fill(0.05, 4)
         )
 
         # a matrix builds the same ring structure
@@ -814,6 +854,99 @@ end
         # as on NetworkProcess, the importation window must be non-negative
         @test_throws ArgumentError RoutedNetwork([w(:a, a)]; obs_end = -1.0)
         @test_throws ArgumentError RoutedNetwork([w(:a, a)]; obs_end = NaN)
+        # an external_hazard vector not matching the node count is rejected
+        @test RoutedNetwork([w(:a, a)]; external_hazard = fill(0.01, 6)) isa
+            RoutedNetwork
+        @test_throws DimensionMismatch RoutedNetwork(
+            [w(:a, a)]; external_hazard = fill(0.01, 5)
+        )
+    end
+
+    @testset "RoutedNetwork: a route that proposes its own contacts" begin
+        community(reach; kernel = nothing) = RouteWindow(
+            :community; until = (:recovered,), kernel = kernel, reach = reach
+        )
+        # its own `kernel` would go unused, so it is refused rather than
+        # silently ignored
+        @test_throws ArgumentError RoutedNetwork(
+            [community(_EveryoneElse(0.05, 10); kernel = Exponential(1.0))]
+        )
+        # with no adjacency list anywhere to read the node count from, `n`
+        # must be given
+        @test_throws ArgumentError RoutedNetwork([community(_EveryoneElse(0.05, 10))])
+        m = RoutedNetwork([community(_EveryoneElse(0.05, 10))]; n = 10)
+        @test m.n == 10
+        # `n` is cross-checked against an adjacency route alongside it
+        mixed = RoutedNetwork(
+            [
+                RouteWindow(:household; until = (:recovered,), kernel = Exponential(2.0), reach = ring_adjacency(10)),
+                community(_EveryoneElse(0.05, 10)),
+            ];
+            n = 10
+        )
+        @test mixed.n == 10
+        @test_throws ArgumentError RoutedNetwork(
+            [
+                RouteWindow(:household; until = (:recovered,), kernel = Exponential(2.0), reach = ring_adjacency(10)),
+                community(_EveryoneElse(0.05, 10)),
+            ];
+            n = 11
+        )
+
+        prog = _sir(5.0)
+        state = simulate(ModelSpec(m; progression = prog); n_initial = 1, rng = StableRNG(1))
+        @test 1 < state.cumulative_cases <= 10
+        @test all(
+            ind.state[:infection_route] == :community
+                for ind in state.individuals if !get(ind.state, :index, false) && is_infected(ind)
+        )
+    end
+
+    @testset "RoutedNetwork: tracing a self-proposing route reads back its own proposals" begin
+        # At this rate every window of length 10 reaches every other node, so
+        # the proposed set is deterministic enough to check against what a
+        # fresh walk would find.
+        route = _EveryoneElse(1000.0, 5)
+        w = RouteWindow(:community; until = (:recovered,), kernel = nothing, reach = route)
+        wrapped = EpiNetwork._route_targets(w, true)
+        @test EpiBranch.proposes_own_contacts(wrapped)
+        state = (; individuals = Dict(id => Individual(; id = id) for id in 1:5), rng = StableRNG(1))
+        contacts = EpiBranch.propose_along(wrapped, 1, state, 0.0, 10.0, false, false)
+        @test sort(first.(contacts)) == [2, 3, 4, 5]
+        @test sort(wrapped.proposed[1]) == [2, 3, 4, 5]
+        # with no intervention tracing, nothing is recorded
+        untraced = EpiNetwork._route_targets(w, false)
+        EpiBranch.propose_along(untraced, 1, state, 0.0, 10.0, false, false)
+        @test isempty(untraced.proposed)
+        # `_route_contacts` reads the recorded proposals back, not `w.reach`
+        ind = Individual(; id = 1)
+        ind.infection_time = 0.0
+        named = EpiNetwork._route_contacts([(w, wrapped)], (), ind, 1, StableRNG(1))
+        @test sort(first.(named)) == [2, 3, 4, 5]
+    end
+
+    @testset "RoutedNetwork: a self-proposing route traces every case end to end" begin
+        # A simulated run with `ContactTracing` reads back each case's own
+        # proposals for tracing, so tracing a just-settled case must not
+        # depend on a route having already opened for it.
+        route = _EveryoneElse(1000.0, 20)
+        w = RouteWindow(:community; until = (:recovered,), kernel = nothing, reach = route)
+        m = RoutedNetwork([w]; n = 20)
+        model = ModelSpec(
+            m;
+            progression = [
+                Transition(:recovered; from = :infection, delay = 5.0, terminal = true),
+            ],
+            interventions = [
+                ContactTracing(
+                    eligibility = TraceEveryone(), probability = 1.0,
+                    isolation_to_trace_delay = Dirac(0.0), action = Quarantine(duration = Inf)
+                ),
+            ]
+        )
+        state = simulate(model; n_initial = 1, rng = StableRNG(1))
+        @test state.cumulative_cases == 20
+        @test count(is_traced, state.individuals) == 20
     end
 
     @testset "RoutedNetwork: conditioned simulation" begin
@@ -1226,7 +1359,9 @@ end
     @testset "RoutedNetwork: naming contacts draws only when a route is uncertain" begin
         ind = Individual(id = 1)
         ind.infection_time = 0.0
-        named(ws, rng) = EpiNetwork._route_contacts(ws, (), ind, 1, rng)
+        named(ws, rng) = EpiNetwork._route_contacts(
+            [(w, EpiNetwork._route_targets(w, false)) for w in ws], (), ind, 1, rng
+        )
         route(name, adj, p) = RouteWindow(
             name; until = (:recovered,),
             kernel = Exponential(1.0), reach = adj, traceable = p
@@ -1271,8 +1406,9 @@ end
         )
         rng = StableRNG(11)
         reps = 20_000
+        routes = [(w, EpiNetwork._route_targets(w, false)) for w in (standing, funeral)]
         draws = [
-            EpiNetwork._route_contacts([standing, funeral], (), ind, 1, rng)
+            EpiNetwork._route_contacts(routes, (), ind, 1, rng)
                 for _ in 1:reps
         ]
         @test all(d -> length(d) <= 1, draws)

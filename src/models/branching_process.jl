@@ -1,7 +1,8 @@
 # ── Infectiousness window ────────────────────────────────────────────
 
 """
-    Infectiousness(offspring; from = :infection, until = (), kernel = NoGenerationTime())
+    Infectiousness(offspring; from = :infection, until = (), kernel = NoGenerationTime(),
+                   name = :transmission)
 
 When, and how much, a case transmits by one route. `offspring` is the
 distribution of the number of people infected by this route; transmission
@@ -13,7 +14,13 @@ different routes, such as community and funeral transmission of Ebola.
   (mean `R`, dispersion `k`), or a function `(rng, ind) -> n` returning the
   number infected by a given case (one count per type in a multi-type
   model). The function may also take the outbreak state as a third argument
-  (see [`draw_offspring`](@ref EpiBranch.draw_offspring)).
+  (see [`draw_offspring`](@ref EpiBranch.draw_offspring)). When the function
+  already knows when each contact falls, for example because it builds
+  transmission day by day, it can return an [`OffspringTimes`](@ref) instead
+  of a count, giving each contact's time from `from` directly and skipping
+  the kernel. This only suits a single-type model: `OffspringTimes` has no
+  per-type label, so a multi-type model's function must keep returning a
+  count.
 - `from`: the state at which transmission starts, `:infection` by default.
   Any other name refers to a state set by a step of the natural history, such
   as `:infectious` or `:died`; transmission starts only once the case reaches
@@ -34,7 +41,14 @@ different routes, such as community and funeral transmission of Ebola.
   can put a contact before the case's own infection. No exposure happens
   then, so that contact is dropped, and a case makes fewer contacts on
   average than its offspring distribution draws, by the share of the kernel
-  that falls before infection.
+  that falls before infection. Unused for a contact whose time `offspring`
+  already gave as an `OffspringTimes`.
+- `name`: the name interventions see this window as, through
+  [`risk_applies`](@ref EpiBranch.risk_applies)'s `route`. The default,
+  `:transmission`, suits a process with a single window; give each of several
+  windows its own name, for example `:community` and `:household`, so
+  wrapping a measure in [`OnRoutes`](@ref) can act on one and leave the rest
+  open.
 
 # Examples
 ```julia
@@ -48,9 +62,9 @@ progression = [
         terminal = true),
     Transition(:buried, from = :died, delay = 2.0),
 ]
-community = Infectiousness(NegBin(1.2, 0.5);
+community = Infectiousness(NegBin(1.2, 0.5); name = :community,
     from = :infectious, until = (:recovered, :died), kernel = Exponential(4.0))
-funeral = Infectiousness(Poisson(0.5);
+funeral = Infectiousness(Poisson(0.5); name = :funeral,
     from = :died, until = (:buried,), kernel = Uniform(0.0, 2.0))
 model = ModelSpec(BranchingProcess(community, funeral); progression)
 ```
@@ -60,12 +74,44 @@ struct Infectiousness{O, F, U, K}
     from::F
     until::U
     kernel::K
+    name::Symbol
 end
 function Infectiousness(
         offspring; from = :infection, until = (),
-        kernel = NoGenerationTime()
+        kernel = NoGenerationTime(), name::Symbol = :transmission
     )
-    return Infectiousness(offspring, from, until, kernel)
+    return Infectiousness(offspring, from, until, kernel, name)
+end
+
+"""
+    OffspringTimes(times)
+
+The times of one case's contacts on a window, measured from the window's
+`from` state, returned by an offspring function in place of a count. An
+offspring function that already knows when each contact falls, such as one
+built day by day, returns this to place every contact at its own time rather
+than losing that to an independent draw from the window's `kernel`, which
+this makes unnecessary and which the engine then does not call.
+
+Has no per-type label, so it only works with a single-type model
+(`n_types = 1`); a multi-type model raises an error rather than assigning
+every contact to type 1. A multi-type offspring function still returns a
+per-type `Vector{Int}` of counts.
+
+# Examples
+```julia
+using EpiBranch
+
+# a case infects 10 people on each of the days its state records an event
+function offspring(rng, ind)
+    days = findall(ind.state[:events]) .- 0.5
+    return OffspringTimes(repeat(days, inner = 10))
+end
+Infectiousness(offspring; until = (:stopped,))
+```
+"""
+struct OffspringTimes{T <: Real}
+    times::Vector{T}
 end
 
 # ── BranchingProcess type and constructors ──────────────────────────
@@ -353,7 +399,8 @@ end
 function, written either as `(rng, individual) -> n` or as
 `(rng, individual, state) -> n`. The second form can read the state of the
 whole outbreak, for example to reduce transmission once the case count
-passes a threshold."""
+passes a threshold. Either form may return an [`OffspringTimes`](@ref)
+instead of `n`, giving each contact's time directly."""
 function draw_offspring(rng, offspring, individual, state)
     if applicable(offspring, rng, individual, state)
         return offspring(rng, individual, state)

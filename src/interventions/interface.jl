@@ -235,10 +235,11 @@ intervention_time(::AbstractIntervention, ::Individual) = -Inf
 The time (days) at which this intervention ends `individual`'s infectious
 period for good. Every built-in model, the [`BranchingProcess`](@ref) as much
 as [`HomogeneousProcess`](@ref), [`MixingProcess`](@ref) and the network and
-household models, ends a case's infectious period at the earliest such time
-across interventions: `Isolation` at the isolation time (perfect
-isolation only, `post_isolation_transmission = 0`) and `ContactTracing` at a
-quarantined contact's trace time, when the isolation or quarantine has no end
+household models, ends each of a case's routes at the earliest such time
+across the interventions [`risk_applies`](@ref EpiBranch.risk_applies) lets
+reach it: `Isolation` at the isolation time (perfect isolation only,
+`post_isolation_transmission = 0`) and `ContactTracing` at a quarantined
+contact's trace time, when the isolation or quarantine has no end
 (`duration = Inf`). The default `Inf`
 (no removal) suits an intervention that reduces transmission per contact,
 such as a leaky vaccine, which acts through
@@ -275,29 +276,34 @@ reset!(::AbstractIntervention, ::Individual) = nothing
     risk_applies(intervention, route) -> Bool
 
 Whether this intervention's [`competing_risk`](@ref EpiBranch.competing_risk)
-acts on infections through a given transmission route. `route` is a
-[`RouteWindow`](@ref), or `nothing` for an infection from outside the
-population. A model with a single route names it `:transmission`. Each
-[`Infectiousness`](@ref) window of a [`BranchingProcess`](@ref) is a route
-named `:transmission`, whose `until` holds the window's own states and
-[`EpiBranch.INTERVENTION_REMOVAL`](@ref); it names no `from`. A model written
-against [`generate_offspring`](@ref) has one such window, and one written
-against [`contacts_of`](@ref) a single `:transmission` route listing
-`INTERVENTION_REMOVAL`. The default is `true`, so protection such as vaccination
-follows a person across routes. [`Scheduled`](@ref) and
-[`CapacityConstrained`](@ref) answer for the intervention they contain.
+acts on infections through a given transmission route, and whether its
+[`infectious_removal_time`](@ref EpiBranch.infectious_removal_time) can close
+that route. `route` is a [`RouteWindow`](@ref), or `nothing` for an infection
+from outside the population. A model with a single route names it
+`:transmission`, as does each [`Infectiousness`](@ref) window of a
+[`BranchingProcess`](@ref) that is not given its own `name`; the window's
+`until` as seen here also holds [`EpiBranch.INTERVENTION_REMOVAL`](@ref),
+appended to whatever states the window itself lists, and the window names no
+`from`. A model written against [`generate_offspring`](@ref) has one such
+window, and one written against [`contacts_of`](@ref) a single `:transmission`
+route listing `INTERVENTION_REMOVAL`. The default is `true`, so protection
+such as vaccination follows a person across routes. [`Scheduled`](@ref) and
+[`CapacityConstrained`](@ref) answer for the intervention they contain, and so
+does [`OnRoutes`](@ref), narrowed further to the routes it names.
 
 [`Isolation`](@ref) and [`ContactTracing`](@ref) act only on routes listing
 [`EpiBranch.INTERVENTION_REMOVAL`](@ref) in `until`, and not on infections
-from outside the population. Other interventions may select routes by any
-property of the route. This does not affect protection set by the model
-itself.
+from outside the population; wrap either in [`OnRoutes`](@ref) to isolate or
+quarantine a case out of only some of a model's named routes, such as
+community contact while a household it still lives in stays open. Other
+interventions may select routes by any property of the route. This does not
+affect protection set by the model itself.
 """
 risk_applies(::AbstractIntervention, route) = true
 
 # A removal's duration, drawn or given. A negative or `NaN` one puts the
-# release before its own start, which would read as a removal that never
-# ends, so it is refused here. Zero is allowed and means no removal:
+# release before its own start, which would read as a permanent removal, so
+# it is refused here. Zero is allowed and means no removal:
 # `infectious_removal_time` reports nothing to close a window with.
 function _removal_duration(duration, rng, individual, what)
     d = _sample_value(duration, rng, individual)
@@ -355,38 +361,6 @@ function _combine_removal(standing_start, standing_release, new_start, new_relea
     return standing_start < new_start ? (new_start, new_release) :
         (standing_start, standing_release)
 end
-
-"""
-    reads_population_state(intervention) -> Bool
-
-Whether who receives this intervention, or when, can depend on the whole
-population (a running case count, a capacity shared by everyone) rather than
-only on the person concerned. A household model can simulate one household at
-a time only when no intervention reads population-wide information; otherwise
-all households are simulated together on one clock so the information is in
-calendar order.
-
-The default is `true`, the safe choice for an intervention written outside the
-package.
-
-`RingVaccination` and `MassVaccination` return `false`, each acting on one
-person at a time. `GroupVaccination` returns `true`, since a
-group's trigger is the earliest eligible time among members who may live
-anywhere in the population. `CapacityConstrained` returns `true`, because
-whether a person is served depends on how much of the shared capacity others
-have used. A `Scheduled` built with `start_after_cases` or `start_after`
-returns `true`, the case count or trigger being exactly such a read; one built
-with only
-`start_time`/`end_time` compares against the time of the case concerned
-and answers for the intervention it contains.
-
-`Isolation` and `ContactTracing` answer for their parts (`ContactTracing` its
-eligibility, rate, delay and action; `Isolation` its eligibility), each
-`false` by default, and a combined eligibility rule answers for its
-conditions. A part of your own that reads population-wide information returns
-`true`, which makes the intervention containing it return `true`.
-"""
-reads_population_state(::AbstractIntervention) = true
 
 """
     analytic_offspring_effect(intervention, offspring) -> offspring

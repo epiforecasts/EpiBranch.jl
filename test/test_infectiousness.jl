@@ -1,3 +1,15 @@
+# Records the name of every route `risk_applies` is asked about, so a test
+# can check which named windows a model's routes reach it as.
+struct _SeenRoutes <: EpiBranch.AbstractIntervention
+    seen::Vector{Symbol}
+end
+function EpiBranch.risk_applies(iv::_SeenRoutes, route)
+    route === nothing || push!(iv.seen, route.name)
+    return true
+end
+# Acts only through `risk_applies`, which `ModelSpec`'s check does not scan.
+EpiBranch.has_effect(::_SeenRoutes) = true
+
 @testset "Infectiousness windows" begin
     @testset "explicit single window holds offspring + kernel" begin
         m = BranchingProcess(Infectiousness(NegBin(2.5, 0.16); kernel = LogNormal(1.6, 0.5)))
@@ -5,6 +17,22 @@
         @test m.infectiousness[1].from == :infection
         @test single_type_offspring(m) isa NegativeBinomial
         @test m.infectiousness[1].kernel isa LogNormal
+        @test m.infectiousness[1].name === :transmission
+    end
+
+    @testset "a named window reaches risk_applies by that name" begin
+        # `risk_applies` could not previously tell the two windows apart: both
+        # reached the race as a `RouteWindow` named `:transmission`. Naming
+        # them lets an intervention select one and leave the other alone.
+        household = Infectiousness(Poisson(1.0); kernel = Uniform(0, 5), name = :household)
+        community = Infectiousness(Poisson(2.0); kernel = Uniform(0, 5), name = :community)
+        model = BranchingProcess(household, community)
+        seen = _SeenRoutes(Symbol[])
+        simulate(
+            ModelSpec(model; interventions = [seen]);
+            max_generations = 1, rng = StableRNG(1)
+        )
+        @test Set(seen.seen) == Set([:household, :community])
     end
 
     @testset "from-state offsets the generation interval" begin
@@ -115,6 +143,40 @@
         @test !EpiBranch.offspring_law_unchanged(spec.process)
         ll = loglikelihood(ChainSizes([1]), spec; rng = StableRNG(1), n_sim = 500)
         @test isapprox(ll, 0.0; atol = 1.0e-9)
+    end
+
+    @testset "an offspring function can return OffspringTimes instead of a count" begin
+        # The kernel draws from an exponential with mean 1000, so a contact
+        # timed from it would almost never land at exactly 1.0 or 4.5.
+        off = (rng, ind) -> OffspringTimes([1.0, 1.0, 4.5])
+        m = BranchingProcess(Infectiousness(off; kernel = Exponential(1000.0)))
+        s = simulate(m; n_initial = 1, max_generations = 1, rng = StableRNG(1))
+        kids = filter(i -> i.parent_id != 0 && is_infected(i), s.individuals)
+        @test sort([k.infection_time for k in kids]) == [1.0, 1.0, 4.5]
+    end
+
+    @testset "OffspringTimes before the case's own infection drops that contact" begin
+        # `from = :infectious` opens 4 days after infection; an offset of
+        # -5.0 then falls before the case's own infection, so it is dropped
+        # exactly as a kernel draw landing there would be.
+        latent = Transition(:infectious, from = :infection, delay = (rng, ind) -> 4.0)
+        off = (rng, ind) -> OffspringTimes([-5.0, 1.0])
+        m = ModelSpec(
+            BranchingProcess(Infectiousness(off; from = :infectious));
+            progression = [latent]
+        )
+        s = simulate(m; n_initial = 1, max_generations = 1, rng = StableRNG(1))
+        kids = filter(i -> i.parent_id != 0 && is_infected(i), s.individuals)
+        @test length(kids) == 1
+        @test only(kids).infection_time ≈ 5.0
+    end
+
+    @testset "OffspringTimes raises in a multi-type model, which it cannot label" begin
+        off = (rng, ind) -> OffspringTimes([1.0, 4.5])
+        m = BranchingProcess(Infectiousness(off); n_types = 2)
+        @test_throws ArgumentError simulate(
+            m; n_initial = 1, max_generations = 1, rng = StableRNG(1)
+        )
     end
 
     @testset "analytics: single window closed-form, multi-window directs to simulation" begin

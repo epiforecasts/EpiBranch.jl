@@ -124,15 +124,20 @@ function _admit_actions!(cc::CapacityConstrained, state, actions)
     # The usage scan covers the whole population, which only a call with
     # someone to admit needs.
     isempty(candidates) && return nothing
-    order = sortperm([cc.priority(a.individual, state) for a in candidates]; alg = MergeSort)
-    times = _dose_times(cc, state)
-    extra = Float64[]
-    for i in order
-        action = candidates[i]
-        get(action.individual.state, key, false) && continue
-        _fits_budget(cc, times, extra, action.time) || continue
-        _admit_actions!(cc.intervention, state, [action])
-        get(action.individual.state, key, false) && push!(extra, action.time)
+    times_by_key = _dose_times_by_key(cc, state)
+    group_idxs, group_keys = _resource_groups(cc, state, [a.individual for a in candidates])
+    for (idxs, group_key) in zip(group_idxs, group_keys)
+        group = candidates[idxs]
+        order = sortperm([cc.priority(a.individual, state) for a in group]; alg = MergeSort)
+        times = get(times_by_key, group_key, Float64[])
+        extra = Float64[]
+        for i in order
+            action = group[i]
+            get(action.individual.state, key, false) && continue
+            _fits_budget(cc, times, extra, action.time) || continue
+            _admit_actions!(cc.intervention, state, [action])
+            get(action.individual.state, key, false) && push!(extra, action.time)
+        end
     end
     return nothing
 end
@@ -409,7 +414,7 @@ tracing reached from it where there was tracing, as for
 
 `traced` is the set tracing reached, or `nothing` if there was no tracing. A
 ring wider than one step reaches people who are not `current`'s direct
-contacts, so a list built from `current`'s contacts alone would miss them.
+contacts; a list built from `current`'s contacts alone would miss them.
 `is_pending(id)` reports whether `id` has not yet been settled, so an action
 may still reach it. `members` are the ids of everyone in the run, and
 `contacts(id, state)` yields the contacts of the case `id`. An intervention

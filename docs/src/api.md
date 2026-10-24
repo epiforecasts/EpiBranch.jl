@@ -40,6 +40,7 @@ fixed set of contacts. [`ModelSpec`](@ref) adds the rest of the scenario.
 ```@docs
 BranchingProcess
 Infectiousness
+OffspringTimes
 EpiBranch.MultiTypeOffspring
 HomogeneousProcess
 MixingProcess
@@ -186,6 +187,7 @@ RouteWindow
 window_open
 window_close
 EpiBranch.INTERVENTION_REMOVAL
+OnRoutes
 ```
 
 ## Running simulations
@@ -319,11 +321,14 @@ Borel
 These are returned by `chain_size_distribution` and are rarely built by hand.
 `GammaBorel` is the chain-size distribution for negative binomial offspring.
 `PoissonGammaChainSize` is the one for Poisson offspring whose mean varies
-between chains following a gamma distribution.
+between chains following a gamma distribution. `HittingTimeChainSize` is the
+exact chain-size distribution for any other discrete offspring law, from the
+hitting-time theorem.
 
 ```@docs
 EpiBranch.GammaBorel
 EpiBranch.PoissonGammaChainSize
+EpiBranch.HittingTimeChainSize
 ```
 
 ### A different offspring distribution for the index case
@@ -360,6 +365,7 @@ contact networks are fitted by a pairwise survival likelihood.
 ```@docs
 OffspringCounts
 ChainSizes
+ChainSizeClasses
 ChainLengths
 IncidenceCounts
 ```
@@ -373,6 +379,7 @@ estimated by maximum likelihood or in a Bayesian model:
 loglikelihood(OffspringCounts(data), Poisson(0.5))
 loglikelihood(OffspringCounts(data), NegBin.(μ, 0.5))  # one distribution per case
 loglikelihood(ChainSizes(data), NegBin(0.8, 0.5))
+loglikelihood(ChainSizeClasses(lower, upper, counts), NegBin(0.8, 0.5))
 loglikelihood(ChainLengths(data), Poisson(0.5))
 loglikelihood(ChainSizes(data), model)   # interventions/observation read from model
 loglikelihood(IncidenceCounts(data), NegBin(0.8, 0.5), LogNormal(1.6, 0.5))
@@ -429,10 +436,12 @@ ObservationModel
 NoObservation
 PerCaseObservation
 MinimumSize
+ChainDetection
 observe
 ChainSizeLaw
 ThinnedChainSize
 TruncatedChainSize
+DetectedChainSize
 ```
 
 ### Reproduction number varying between chains
@@ -536,7 +545,6 @@ generate_offspring
 contacts_of
 EpiBranch.model_generation_time
 EpiBranch.transmission_risks
-EpiBranch.race_groups
 EpiBranch.sellke_race!
 EpiBranch.infectious_from
 make_contact!
@@ -546,6 +554,21 @@ EpiBranch.new_state
 EpiBranch.add_individuals!
 EpiBranch.seed!
 close_episode!
+```
+
+### Writing a route that proposes its own contacts
+
+A route whose contacts are cheaper to sample than to list, such as a spatial
+kernel over a large population, declares
+[`EpiBranch.proposes_own_contacts`](@ref) and uses the functions below to find
+its own contacts rather than listing them for the race to walk; see
+[New transmission structures](@ref) for how they fit together.
+
+```@docs
+EpiBranch.proposes_own_contacts
+EpiBranch.propose_along
+EpiBranch.route_pair_kernel
+EpiBranch.pending_beyond
 ```
 
 ### Stopping rules
@@ -624,6 +647,7 @@ EpiBranch.is_settled
 EpiBranch.persistent_competing_risks
 EpiBranch.capacity_key
 EpiBranch.capacity_time_key
+EpiBranch.resource_key
 ```
 
 #### Start triggers

@@ -4,9 +4,9 @@ using Random
 # A minimal structure-driven model — a ring of nodes — exercising the race's
 # `contacts_of` route from within core: a node exposed by both neighbours
 # (decided once, by the earliest exposure that transmits), a model-contributed
-# competing risk, and the "exposed but not infected" branch. The network and household
-# subpackages cover these too, but only under their own coverage flags; a tiny
-# model here keeps the extension contract tested in core.
+# competing risk, and the "exposed but not infected" branch. The network and
+# household subpackages cover these too, but only under their own coverage
+# flags; a tiny model here keeps the extension contract tested in core.
 
 struct RingModel <: EpiBranch.TransmissionModel
     n::Int
@@ -70,8 +70,8 @@ end
 end
 
 # A structure-driven model whose `contacts_of` *mints* fresh contacts with
-# `make_contact!`, so the race grows its members as it goes. It uses the default
-# `initialise_state` (offspring-style seeds).
+# `make_contact!`, so the race grows its members as it goes. It uses the
+# default `initialise_state` (offspring-style seeds).
 struct MintModel <: EpiBranch.TransmissionModel
     k::Int
 end

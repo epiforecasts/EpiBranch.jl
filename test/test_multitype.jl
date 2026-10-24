@@ -291,6 +291,50 @@ using DataFrames
         @test model.type_labels == ["children", "adults"]
     end
 
+    @testset "Built from a contact matrix, q and D" begin
+        # row = respondent, column = contact, as a survey matrix is laid out
+        contacts = [10.0 1.0; 4.0 2.0]
+        q, D = 0.05, 5.0
+        model = BranchingProcess(
+            contacts, q, D, R -> NegBin(R, 0.5), LogNormal(1.6, 0.5);
+            type_labels = ["child", "adult"]
+        )
+        expected = permutedims(contacts) .* q .* D
+        @test model.infectiousness[1].offspring.offspring_matrix == expected
+        @test model.type_labels == ["child", "adult"]
+
+        # Equivalent to transposing and scaling by hand first.
+        by_hand = BranchingProcess(
+            expected, R -> NegBin(R, 0.5), LogNormal(1.6, 0.5);
+            type_labels = ["child", "adult"]
+        )
+        rng_seed = StableRNG(1)
+        a = simulate(model; max_cases = 100, rng = copy(rng_seed))
+        b = simulate(by_hand; max_cases = 100, rng = copy(rng_seed))
+        @test individual_type.(a.individuals) == individual_type.(b.individuals)
+
+        @testset "q as a per-type susceptibility vector scales each row" begin
+            q_vec = [0.05, 0.1]
+            with_vector = BranchingProcess(
+                contacts, q_vec, D, R -> NegBin(R, 0.5), LogNormal(1.6, 0.5)
+            )
+            expected_vec = permutedims(contacts) .* q_vec .* D
+            @test with_vector.infectiousness[1].offspring.offspring_matrix == expected_vec
+        end
+
+        @testset "non-square contacts throws" begin
+            @test_throws ArgumentError BranchingProcess(
+                [1.0 0.5 0.3; 0.5 1.0 0.3], q, D, R -> NegBin(R, 0.5), LogNormal(1.6, 0.5)
+            )
+        end
+
+        @testset "mismatched q length throws" begin
+            @test_throws ArgumentError BranchingProcess(
+                contacts, [0.05, 0.1, 0.2], D, R -> NegBin(R, 0.5), LogNormal(1.6, 0.5)
+            )
+        end
+    end
+
     @testset "3-type model" begin
         M = [
             2.0 0.5 0.1;
@@ -315,6 +359,97 @@ using DataFrames
         # Should have all 3 types represented in a large enough outbreak
         if length(infected) > 20
             @test length(unique(types)) == 3
+        end
+    end
+
+    @testset "Attributes see a case's own type, index cases and contacts alike" begin
+        # Each contact's type comes from its parent's offspring draw, and each
+        # index case's type is drawn independently. Both must be set before
+        # an attributes function runs: it must never see the type-1 default
+        # every new `IndividualState` starts with.
+        function record_type_when_drawn!(rng, ind)
+            ind.state[:type_when_drawn] = individual_type(ind)
+            return nothing
+        end
+        model = ModelSpec(
+            BranchingProcess([0.0 1.5; 1.5 0.0], R -> Poisson(R), Exponential(1.0));
+            attributes = record_type_when_drawn!
+        )
+        state = simulate(model; n_initial = 4, max_cases = 200, rng = Xoshiro(1))
+        @test all(
+            ind.state[:type_when_drawn] == individual_type(ind)
+                for ind in state.individuals
+        )
+    end
+
+    @testset "index_types chooses the index cases' types" begin
+        M = [
+            1.2 0.0;
+            0.0 0.5
+        ]
+        model = BranchingProcess(M, R_j -> Poisson(R_j), Exponential(1.0))
+
+        @testset "a vector fixes each index case's type and their number" begin
+            state = simulate(model; index_types = [1], max_cases = 10, rng = StableRNG(1))
+            @test individual_type(state.individuals[1]) == 1
+
+            state = simulate(
+                model; index_types = [2, 1, 2], max_cases = 10, rng = StableRNG(1)
+            )
+            @test sort(individual_type.(state.individuals[1:3])) == [1, 2, 2]
+        end
+
+        @testset "a Distribution draws each index case's type independently" begin
+            types = [
+                individual_type(
+                    simulate(
+                        model; n_initial = 1, index_types = Categorical([0.9, 0.1]),
+                        max_cases = 10, rng = StableRNG(i)
+                    ).individuals[1]
+                )
+                    for i in 1:1000
+            ]
+            @test count(==(1), types) > count(==(2), types)
+            @test all(t -> t in 1:2, types)
+        end
+
+        @testset "a single-type model rejects index_types" begin
+            single_type = BranchingProcess(Poisson(1.2), Exponential(1.0))
+            @test_throws ArgumentError simulate(single_type; index_types = [1])
+        end
+
+        @testset "a type outside 1:n_types is rejected" begin
+            @test_throws ArgumentError simulate(model; index_types = [3])
+        end
+
+        @testset "a Distribution drawing a non-integer type is rejected" begin
+            @test_throws ArgumentError simulate(
+                model; index_types = Normal(1.5, 0.01), max_cases = 5, rng = StableRNG(1)
+            )
+        end
+
+        @testset "index_types as a vector and n_initial together is rejected" begin
+            @test_throws ArgumentError simulate(model; n_initial = 2, index_types = [1])
+        end
+
+        @testset "initial_cases and index_types of different lengths is rejected" begin
+            @test_throws ArgumentError simulate(
+                model; initial_cases = [1, 2, 3], index_types = [1, 2]
+            )
+            @test_throws ArgumentError simulate(
+                model; initial_cases = [1, 2], index_types = [2, 1, 2]
+            )
+        end
+
+        @testset "works through a ModelSpec too" begin
+            spec = ModelSpec(model)
+            state = simulate(spec; index_types = [2], max_cases = 10, rng = StableRNG(1))
+            @test individual_type(state.individuals[1]) == 2
+        end
+
+        @testset "works with the multi-outbreak method too" begin
+            states = simulate(model, 5; index_types = [1], max_cases = 10, rng = StableRNG(1))
+            @test all(s -> individual_type(s.individuals[1]) == 1, states)
         end
     end
 end
