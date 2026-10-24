@@ -222,8 +222,8 @@ EpiBranch.removal_gap_host_times_withdrawn(::TestAndRelease) = (EpiBranch.REMOVA
         # The standing isolation starts after the quarantine, so once the
         # negative test shortens the quarantine's own release ahead of it,
         # the two fall apart again: the standing isolation must keep its own
-        # release rather than being folded into, or erased by, the
-        # quarantine's.
+        # release rather than being folded into the quarantine's, or erased
+        # by it.
         rng = StableRNG(11)
         t = TestAndRelease(duration = 14.0, test_day = 3.0, sensitivity = 1.0)
         ct = ContactTracing(TraceEveryone(), 1.0, Dirac(0.0), t)
