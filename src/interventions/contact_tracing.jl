@@ -909,12 +909,12 @@ function _trace_pair!(
     # contacts that early does not change how they are traced.
     #
     # Requiring the seed's infector to be infected stops an uninfected ring
-    # member, which gets its own clinical state once infected, from
-    # re-seeding a fresh full-radius ring and letting the fringe grow
-    # without bound. The ring walk can also pass through an already-infected
-    # neighbour (see `_walk_ring!` in sellke.jl); that walk marks the
-    # infector with `_ring_hop`, so it is traced from as a ring member only,
-    # rather than reseeding a second time.
+    # member, which has its own clinical state, from re-seeding a fresh
+    # full-radius ring and letting the fringe grow without bound. The ring
+    # walk can also pass through an already-infected neighbour (see
+    # `_walk_ring!` in sellke.jl); that walk marks the infector with
+    # `_ring_hop`, so it is traced from as a ring member only, rather than
+    # reseeding a second time.
     if ring
         base = _state_real(infector.state, :trace_time, _recorded_isolation_time(infector))
         remaining = get(infector.state, :_ring_remaining, 0)::Int - 1

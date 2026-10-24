@@ -160,8 +160,8 @@ end
     resource_key(intervention, individual, state) -> Any
 
 For extension authors: which of `intervention`'s budgets `individual` draws on,
-when [`CapacityConstrained`](@ref) is to track more than one at once, a
-budget per district or per treatment centre, say. The default, `nothing`, puts
+when [`CapacityConstrained`](@ref) is to track more than one at once, such as a
+budget per district or per treatment centre. The default, `nothing`, puts
 everyone on the same budget, exactly as a `CapacityConstrained` with no method
 of it behaves. Each distinct value `resource_key` returns gets its own usage,
 counted separately under `budget_per_period`, `period` and `carry_over`.
@@ -380,11 +380,11 @@ end
 # Tracing's own bookkeeping (who was reached, and from when) runs
 # unconditionally, so that ring growth and later eligibility checks, decided
 # before any action is admitted, see it; only the follow-up action it
-# proposes (see `_trace_action`) is rationed. `state.scratch` carries this
+# proposes (see `_trace_action`) is rationed. `state.scratch` passes this
 # wrapper down to the span of the wrapped intervention's own
 # `trace_contacts!` call, which admits through it instead of itself (see
-# `_admit_trace_actions!`), composing with `Scheduled` in either order, as a
-# dose already does.
+# `_admit_trace_actions!`). This composes with `Scheduled` in either order, as
+# a dose already does.
 traces_contacts(cc::CapacityConstrained) = traces_contacts(cc.intervention)
 function trace_contacts!(cc::CapacityConstrained, state, infector, contacts, not_before = nothing)
     key = (:trace_admitter, _innermost(cc))
@@ -447,8 +447,8 @@ end
 # Undo the effect `resolve_individual!` just wrote on `ind` unless it fits
 # the budget at its own date, the same check a proposed action's own date
 # goes through. An effect that never ran (the capacity key not actually set
-# on `ind`, for instance a quarantine `Isolation` is layered over, which is
-# not its own effect) has nothing to check.
+# on `ind`, for instance when a quarantine `Isolation` is layered over, which
+# is not its own effect) has nothing to check.
 function _reset_unless_within_budget!(cc::CapacityConstrained, ind::Individual, state)
     key = capacity_key(cc.intervention)
     get(ind.state, key, false)::Bool || return nothing

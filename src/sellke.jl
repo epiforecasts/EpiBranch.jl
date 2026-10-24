@@ -685,7 +685,7 @@ supplies_contacts(model::TransmissionModel) =
 
 # Warn once per run about an intervention that cannot act on a model naming no
 # contacts: one that traces, or proposes actions that need a case's contacts.
-# What it does to each case itself, such as isolating it, still applies.
+# Its hooks on the case itself, such as isolating it, still apply.
 function _warn_contactless(model, interventions)
     supplies_contacts(model) && return nothing
     names = unique(
