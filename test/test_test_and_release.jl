@@ -218,6 +218,51 @@ EpiBranch.removal_gap_host_times_withdrawn(::TestAndRelease) = (EpiBranch.REMOVA
         @test EpiBranch.removal_stretches(contact) == [(2.0, 10.0)]
     end
 
+    @testset "Shortening a quarantine combined with a later standing isolation keeps both" begin
+        # The standing isolation starts after the quarantine, so once the
+        # negative test shortens the quarantine's own release ahead of it,
+        # the two fall apart again: the standing isolation must keep its own
+        # release rather than being folded into, or erased by, the
+        # quarantine's.
+        rng = StableRNG(11)
+        t = TestAndRelease(duration = 14.0, test_day = 3.0, sensitivity = 1.0)
+        ct = ContactTracing(TraceEveryone(), 1.0, Dirac(0.0), t)
+
+        contact = Individual(id = 1, infection_time = NaN)
+        EpiBranch.set_isolated!(contact, 10.0; release_time = 25.0)
+        EpiBranch.apply_trace!(t, contact, nothing, 5.0, rng)
+        @test isolation_release_time(contact) == 25.0 # combined with the standing isolation
+
+        contact.state[TAR_GRANTED_KEY] = true
+        contact.infection_time = 100.0
+        EpiBranch.on_infection_settled!(ct, contact, nothing, rng)
+        @test isolation_time(contact) == 10.0
+        @test isolation_release_time(contact) == 25.0
+        @test EpiBranch.removal_stretches(contact) == [(5.0, 8.0), (10.0, 25.0)]
+    end
+
+    @testset "Shortening a quarantine combined with a nested standing isolation keeps it" begin
+        # The standing isolation falls entirely inside the quarantine's own
+        # span, so the merged entry happens to equal the quarantine's own
+        # `(start, old_release)` exactly; shortening it must still leave the
+        # standing isolation's own release in place.
+        rng = StableRNG(12)
+        t = TestAndRelease(duration = 14.0, test_day = 3.0, sensitivity = 1.0)
+        ct = ContactTracing(TraceEveryone(), 1.0, Dirac(0.0), t)
+
+        contact = Individual(id = 1, infection_time = NaN)
+        EpiBranch.set_isolated!(contact, 10.0; release_time = 15.0)
+        EpiBranch.apply_trace!(t, contact, nothing, 5.0, rng)
+        @test isolation_release_time(contact) == 19.0 # the backstop: 5.0 + 14.0
+
+        contact.state[TAR_GRANTED_KEY] = true
+        contact.infection_time = 100.0
+        EpiBranch.on_infection_settled!(ct, contact, nothing, rng)
+        @test isolation_time(contact) == 10.0
+        @test isolation_release_time(contact) == 15.0
+        @test EpiBranch.removal_stretches(contact) == [(5.0, 8.0), (10.0, 15.0)]
+    end
+
     @testset "A quarantine merged with another trace is left as it stands" begin
         # A second trace of the same contact appends its own stretch under
         # `QUARANTINE_STRETCHES_KEY`, which can merge with the first; the

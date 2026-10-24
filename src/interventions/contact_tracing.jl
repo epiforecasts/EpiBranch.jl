@@ -534,36 +534,76 @@ function shorten_quarantine!(ind, start, old_release, new_release)
     _retime_stretch!(
         ind, QUARANTINE_STRETCHES_KEY, (start, old_release), (start, new_release)
     ) || return nothing
-    if _retime_stretch!(ind, REMOVAL_STRETCHES_KEY, (start, old_release), (start, new_release))
+    if _standing_isolation_overlapped(ind, start, old_release)
+        _shorten_combined_isolation!(ind, start, old_release, new_release)
+    elseif _retime_stretch!(ind, REMOVAL_STRETCHES_KEY, (start, old_release), (start, new_release))
         if ind.state[:isolation_time] == start && ind.state[:isolation_release_time] == old_release
             ind.state[:isolation_release_time] = new_release
         end
-        return nothing
     end
-    _shorten_combined_isolation!(ind, start, old_release, new_release)
     return nothing
+end
+
+# Whether the isolation standing before this quarantine (see
+# `_isolation_time_before_quarantine`) overlapped `(start, old_release)` at
+# the trace that recorded it, using the same test `_combine_removal` does.
+# Only then did `apply_trace!`'s `_isolation_in_force` branch fold the two
+# into one `REMOVAL_STRETCHES_KEY` entry; a merged entry that happens to
+# equal `(start, old_release)` exactly (a standing isolation nested inside
+# the quarantine's own span) would otherwise pass `shorten_quarantine!`'s
+# plain exact-match lookup, overwriting the standing isolation's own release
+# with the quarantine's.
+function _standing_isolation_overlapped(ind, start, old_release)
+    standing_start = _state_real(ind.state, :_isolation_time_before_quarantine, Inf)
+    isfinite(standing_start) || return false
+    standing_release = _state_real(
+        ind.state, :_isolation_release_time_before_quarantine, Inf
+    )
+    return start <= standing_release && standing_start <= old_release
 end
 
 # `apply_trace!`'s `_isolation_in_force` branch combines the quarantine's own
 # `(start, old_release)` with whatever isolation stood before it into a single
 # `REMOVAL_STRETCHES_KEY` stretch, so `shorten_quarantine!`'s own exact-match
-# lookup above cannot find `(start, old_release)` there. Redo that combination
-# with the shortened `(start, new_release)` instead, from the standing
-# isolation `apply_trace!` recorded before combining it (see its own comment
-# on `_isolation_time_before_quarantine`).
+# lookup above cannot find `(start, old_release)` there. Rebuild that entry
+# from the standing isolation `apply_trace!` recorded before combining it (see
+# its own comment on `_isolation_time_before_quarantine`) and the shortened
+# quarantine, rather than just retiming the combined entry in place: once
+# shortened, the two can fall apart into two disjoint stretches, which a
+# single retime cannot express.
 function _shorten_combined_isolation!(ind, start, old_release, new_release)
     standing_start = _state_real(ind.state, :_isolation_time_before_quarantine, Inf)
-    isfinite(standing_start) || return nothing
     standing_release = _state_real(
         ind.state, :_isolation_release_time_before_quarantine, Inf
     )
     old_combined = _combine_removal(standing_start, standing_release, start, old_release)
     new_combined = _combine_removal(standing_start, standing_release, start, new_release)
-    _retime_stretch!(ind, REMOVAL_STRETCHES_KEY, old_combined, new_combined)
+    _replace_removal_stretch!(
+        ind, REMOVAL_STRETCHES_KEY, old_combined,
+        ((standing_start, standing_release), (start, new_release))
+    )
     if (ind.state[:isolation_time], ind.state[:isolation_release_time]) == old_combined
         ind.state[:isolation_time], ind.state[:isolation_release_time] = new_combined
     end
     return nothing
+end
+
+# Replace `old` in `ind.state[key]` with `news`, re-merging the result so
+# that two of `news` left disjoint by the shortening stay as separate
+# stretches rather than one that silently drops the gap between them.
+function _replace_removal_stretch!(ind, key, old, news)
+    stretches = get(ind.state, key, nothing)
+    stretches === nothing && return false
+    i = findfirst(==(old), stretches)
+    i === nothing && return false
+    revised = copy(stretches)
+    deleteat!(revised, i)
+    for new in news
+        push!(revised, new)
+    end
+    sort!(revised; by = first)
+    ind.state[key] = _merge_stretches!(revised)
+    return true
 end
 
 function _retime_stretch!(ind, key, old, new)
