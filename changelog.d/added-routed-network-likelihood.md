@@ -9,6 +9,5 @@ removal, such as an `Isolation` with a finite `duration`, is taken out of a
 route's exposure only where that route lists
 `EpiBranch.INTERVENTION_REMOVAL`, matching what the simulation does.
 
-A route kernel that is a `PairKernel`, and an intervention that changes
-susceptibility (such as vaccination), are not yet represented in this
-likelihood and raise a clear error rather than a silently wrong answer.
+A route kernel that is a `PairKernel` is not yet represented in this
+likelihood and raises a clear error rather than a silently wrong answer.

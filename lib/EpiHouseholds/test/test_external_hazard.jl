@@ -115,9 +115,9 @@
     end
 
     @testset "a vector hazard scales linearly, not quadratically, with the population" begin
-        # Preparing the vector hazard once per simulation rather than once per
-        # household guards against the cost growing as population squared, so
-        # a 4x larger population should cost ~4x rather than ~16x.
+        # Preparing the vector hazard once per simulation, rather than once
+        # per household, keeps the cost linear in population size rather
+        # than quadratic: a 4x larger population should cost ~4x, not ~16x.
         function bytes_for(n)
             model = ModelSpec(
                 HouseholdProcess(
