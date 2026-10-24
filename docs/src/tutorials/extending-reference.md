@@ -829,7 +829,7 @@ eligibility checks need that before any action is admitted, then proposes the
 follow-up itself (a quarantine's removal, or a plain flag) as an
 `InterventionAction` dated at the trace time. A `CapacityConstrained` wrapper
 rations that action exactly as it rations a dose, through `capacity_key` and
-`capacity_time_key` defined on the `TraceAction` the policy carries
+`capacity_time_key` defined on the `TraceAction` the policy holds
 (`Quarantine` defines them; `FlagOnly`, which removes nobody, does not). A
 trace with no arrival time (`Inf`) has nothing to ration and applies directly.
 
