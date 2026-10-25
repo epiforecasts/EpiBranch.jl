@@ -282,11 +282,11 @@ EpiBranch.removal_gap_host_times_withdrawn(::TestAndRelease) = (EpiBranch.REMOVA
     end
 
     @testset "Shortening a quarantine bridging two standing isolations is left as it stands" begin
-        # An unrelated, already-lapsed isolation on the far side of the
-        # standing one gets folded into the same combined stretch by
-        # `apply_trace!`. The combined stretch this leaves behind no longer
-        # matches what shortening the quarantine alone would rebuild, so the
-        # shorten is skipped rather than silently misreported.
+        # `apply_trace!` folds an unrelated, already-lapsed isolation on the
+        # far side of the standing one into the same combined stretch. That
+        # combined stretch no longer matches what shortening the quarantine
+        # alone would rebuild, so the shorten is skipped rather than
+        # silently misreported.
         rng = StableRNG(13)
         t = TestAndRelease(duration = 9.0, test_day = 3.0, sensitivity = 1.0)
         ct = ContactTracing(TraceEveryone(), 1.0, Dirac(0.0), t)
