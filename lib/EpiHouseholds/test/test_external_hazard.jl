@@ -21,6 +21,11 @@
         @test_throws ArgumentError HouseholdProcess(
             sizes, Exponential(3.0); external_hazard = [arm[1:39]; -1.0], obs_end = 60.0
         )
+        # a function is checked for every person at construction, as a vector's
+        # entries already are, rather than only once the model is simulated
+        @test_throws ArgumentError HouseholdProcess(
+            sizes, Exponential(3.0); external_hazard = j -> "not a hazard", obs_end = 60.0
+        )
     end
 
     @testset "the same rate for everyone matches the shared rate" begin
@@ -172,5 +177,34 @@ end
         @test any(is_infected, state.individuals)
         data = household_infections(state, model)
         @test isfinite(loglikelihood(data, model))
+    end
+
+    @testset "a schedule can differ between people, as a vector or a function" begin
+        # two clusters whose community incidence peaks at different times, as a
+        # multi-site trial's would
+        early = Steps([7.0], [0.01, 0.002])
+        late = Steps([14.0], [0.002, 0.01])
+        for source in ([fill(early, 100); fill(late, 100)], j -> j <= 100 ? early : late)
+            model = ModelSpec(
+                HouseholdProcess(
+                    sizes, Exponential(3.0); external_hazard = source, obs_end = 30.0
+                );
+                progression = sir
+            )
+            data = household_infections(simulate(model; rng = StableRNG(13)), model)
+            layout = compile_household_pairs(data; external = true)
+            per_schedule = [
+                pairwise_surv_loglik_by_component(
+                    Exponential(3.0), data, layout; external_hazard = s
+                ) for s in (early, late)
+            ]
+            mixed = pairwise_surv_loglik_by_component(
+                Exponential(3.0), data, layout;
+                external_hazard = model.process.external_hazard
+            )
+            @test mixed[1:100] ≈ per_schedule[1][1:100]
+            @test mixed[101:200] ≈ per_schedule[2][101:200]
+            @test loglikelihood(data, model) ≈ sum(mixed)
+        end
     end
 end

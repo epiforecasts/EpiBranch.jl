@@ -54,11 +54,10 @@ the states that end the infectious period, so adding a
 per person per day, a continuous distribution of the time (in days) at which
 each person would be infected from outside, or a piecewise-constant calendar
 schedule such as `Steps` giving the daily rate directly. To let it differ
-between people, give a vector with one rate or distribution per node, or a
-function `j -> rate or distribution` of node `j`'s number; a calendar
-schedule is shared by every node rather than given per node. These
-introductions happen only in the first `obs_end` days, which must be finite
-when `external_hazard` is used.
+between people, give a vector with one rate, distribution or schedule per
+node, or a function `j -> rate, distribution or schedule` of node `j`'s
+number. These introductions happen only in the first `obs_end` days, which
+must be finite when `external_hazard` is used.
 
 # Example
 
