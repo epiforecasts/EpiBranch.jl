@@ -3,6 +3,11 @@
 # are not brought into scope by `using EpiBranch` (call them qualified,
 # e.g. `EpiBranch.initialise_state`).
 
+# Draw a parameter given as a number, a distribution or a function, as every
+# built-in delay, probability and attribute does. A method added for a form
+# of its own is then read by the built-ins too.
+public sample_value
+
 # Intervention interface: a package subtyping `AbstractIntervention`
 # overrides these.
 public initialise_individual!

@@ -247,7 +247,7 @@ function intervention_actions(rv::RingVaccination, state, candidates)
             prior = get(_action_cache(ind), _trigger_cache_key(rv), nothing)
             if isfinite(trace_t) && prior !== nothing && may_revise(rv, prior, trace_t)
                 delay = action_draw!(ind, (rv, :delay)) do
-                    _sample_value(rv.dose_delay, state.rng, ind)
+                    sample_value(rv.dose_delay, state.rng, ind)
                 end
                 time = trace_t + delay
                 # An earlier date must still follow the dose this one requires.
@@ -258,13 +258,13 @@ function intervention_actions(rv::RingVaccination, state, candidates)
         end
         isfinite(trace_t) || continue
         delay = action_draw!(ind, (rv, :delay)) do
-            _sample_value(rv.dose_delay, state.rng, ind)
+            sample_value(rv.dose_delay, state.rng, ind)
         end
         time = trace_t + delay
         isfinite(time) || continue
         _has_required_dose(rv, ind, time) || continue
         window = action_draw!(ind, (rv, :eligibility_window)) do
-            _sample_value(rv.eligibility_window, state.rng, ind)
+            sample_value(rv.eligibility_window, state.rng, ind)
         end
         _within_window(window, ind, time) || continue
         accepted = action_draw!(ind, (rv, :acceptance)) do
@@ -300,7 +300,7 @@ function intervention_actions(gv::GroupVaccination, state, candidates)
                 prior = get(_action_cache(ind), _trigger_cache_key(gv), nothing)
                 (prior !== nothing && may_revise(gv, prior, trigger)) || continue
                 delay = action_draw!(ind, (gv, :delay)) do
-                    _sample_value(gv.dose_delay, state.rng, ind)
+                    sample_value(gv.dose_delay, state.rng, ind)
                 end
                 push!(actions, _revisable_dose_action(gv, ind, trigger, trigger + delay))
                 continue
@@ -314,7 +314,7 @@ function intervention_actions(gv::GroupVaccination, state, candidates)
                 continue
             end
             delay = action_draw!(ind, (gv, :delay)) do
-                _sample_value(gv.dose_delay, state.rng, ind)
+                sample_value(gv.dose_delay, state.rng, ind)
             end
             push!(actions, _revisable_dose_action(gv, ind, trigger, trigger + delay))
         end
@@ -329,7 +329,7 @@ function intervention_actions(mv::MassVaccination, state, candidates)
         get(ind.state, _vaccinated_key(label), false) && continue
         get(ind.state, _coverage_declined_key(label), false) && continue
         time = action_draw!(ind, (mv, :time)) do
-            _sample_value(mv.eligibility_time, state.rng, ind)
+            sample_value(mv.eligibility_time, state.rng, ind)
         end
         isfinite(time) || continue
         accepted = action_draw!(ind, (mv, :acceptance)) do

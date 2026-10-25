@@ -123,14 +123,19 @@ function Distributions.logpdf(d::_TruncatedSkewNormal, x::Real)
 end
 
 """
-    _sample_value(x, rng, args...) -> Float64
+    sample_value(x, rng, args...) -> Float64
 
 Turn a parameter given as a number, a distribution or a function into a
 number: the number itself, a draw from the distribution, or `f(rng, args...)`.
 Used wherever a parameter accepts any of the three, such as
 [`transmission_traits`](@ref), [`clinical_presentation`](@ref), isolation
 delays, vaccination parameters and [`Risk`](@ref) fields.
+
+`public` in Julia's sense: an extension reads its own such parameter through
+this function, rather than writing the three methods again, and a method
+added for a form of its own (a lookup on a state key, say) is then read by
+the built-ins too.
 """
-_sample_value(x::Real, rng, args...) = float(x)
-_sample_value(d::Distribution, rng, args...) = float(rand(rng, d))
-_sample_value(f, rng, args...) = float(f(rng, args...))
+sample_value(x::Real, rng, args...) = float(x)
+sample_value(d::Distribution, rng, args...) = float(rand(rng, d))
+sample_value(f, rng, args...) = float(f(rng, args...))
