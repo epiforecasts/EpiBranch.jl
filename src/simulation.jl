@@ -100,8 +100,8 @@ function simulate(
     # A bare process is composed with no ModelSpec, so run the checks the spec
     # constructor would otherwise do (a ModelSpec routes here via its own
     # `simulate`, already validated at composition, so it never double-warns).
-    _validate_process_windows(model, _progression(model))
-    _warn_incomplete_terminal_coverage(_progression(model))
+    _validate_process_windows(model, progression(model))
+    _warn_incomplete_terminal_coverage(progression(model))
     sim_opts = _build_sim_opts(
         model, n_initial, initial_cases, index_types, max_cases, max_generations,
         max_time, stopping_rules
@@ -111,7 +111,7 @@ function simulate(
     return _run_once_or_retry(
         model, sim_opts, condition, max_attempts;
         interventions = interventions(model), attributes = attributes(model),
-        progression = _progression(model), observation = observation(model),
+        progression = progression(model), observation = observation(model),
         recorder = recorder(model), rng
     )
 end
@@ -197,8 +197,8 @@ function _simulate_each(
         rng::AbstractRNG = Random.default_rng(),
         parallel::Bool = false
     ) where {T}
-    _validate_process_windows(model, _progression(model))
-    _warn_incomplete_terminal_coverage(_progression(model))
+    _validate_process_windows(model, progression(model))
+    _warn_incomplete_terminal_coverage(progression(model))
     sim_opts = _build_sim_opts(
         model, n_initial, initial_cases, index_types, max_cases, max_generations,
         max_time, stopping_rules
@@ -207,7 +207,7 @@ function _simulate_each(
     _validate_index_types(model, sim_opts)
     return _simulate_n(
         each, T, model, n, sim_opts; interventions = interventions(model),
-        attributes = attributes(model), progression = _progression(model),
+        attributes = attributes(model), progression = progression(model),
         observation = observation(model), recorder = recorder(model), rng,
         parallel
     )

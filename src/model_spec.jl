@@ -421,7 +421,7 @@ state = simulate(model; max_cases = 500)
 """
 function ModelSpec(
         process::TransmissionModel;
-        progression = _progression(process),
+        progression = progression(process),
         interventions = interventions(process),
         attributes = attributes(process),
         observation = observation(process),
@@ -437,12 +437,33 @@ function ModelSpec(
     return ModelSpec(process, prog, ivs, attributes, observation, recorder)
 end
 
+"""
+    ModelSpec(spec::ModelSpec; progression, interventions, attributes, observation, recorder)
+
+Rebuild a spec with some of its layers replaced. Every keyword left out keeps
+the value `spec` already has, so this is how an extension adds a layer —
+another attribute, say — without taking the spec apart:
+
+```julia
+ModelSpec(spec; attributes = [attributes(spec); extra])
+```
+"""
+ModelSpec(
+    spec::ModelSpec;
+    progression = progression(spec),
+    interventions = interventions(spec),
+    attributes = attributes(spec),
+    observation = observation(spec),
+    recorder = recorder(spec)
+) = ModelSpec(process(spec); progression, interventions, attributes, observation, recorder)
+
 # Convenience accessors — the spec's own modelling layers.
 interventions(s::ModelSpec) = s.interventions
 attributes(s::ModelSpec) = s.attributes
 observation(s::ModelSpec) = s.observation
 recorder(s::ModelSpec) = s.recorder
-_progression(s::ModelSpec) = s.progression
+progression(s::ModelSpec) = s.progression
+process(s::ModelSpec) = s.process
 population_size(s::ModelSpec) = population_size(s.process)
 
 # Structural accessors delegate to the wrapped process, so the analytical
