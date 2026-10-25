@@ -449,6 +449,9 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
   first trigger found even once a genuinely earlier one turned up. A settled
   member's dose, and a dose another vaccination already gave, still keep
   their date.
+- `is_eligible` and `trigger_time`, the methods a `TraceEligibility` subtype
+  defines to extend contact tracing, are now declared `public`, alongside
+  `TraceEligibility` itself.
 
 ## [0.1.0] - 2026-06-16
 

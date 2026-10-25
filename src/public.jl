@@ -28,6 +28,13 @@ public infection_aborted_time
 # Isolation eligibility: whether an isolation time counts as a detection.
 public records_isolation
 
+# Trace eligibility: a `TraceEligibility` subtype says which cases have
+# their contacts traced (`is_eligible`) and from when (`trigger_time`).
+# `GroupVaccination` reads the same two methods to decide when a group
+# counts as having a case.
+public is_eligible
+public trigger_time
+
 # Pair kernels: the host records a kernel's hazards depend on, and the
 # projection against which the race checks that declaration.
 public watched_records
