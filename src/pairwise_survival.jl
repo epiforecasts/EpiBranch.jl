@@ -1197,8 +1197,8 @@ _normalise_external(source) = source
 _is_person_external(s) = (s isa Real || s isa ContinuousUnivariateDistribution) &&
     _valid_external(s) || _is_calendar_external(s)
 
-# Throws unless person `j`'s own hazard `s` is a valid one, for the message a
-# vector element or a function's return value gets alike.
+# Throws unless person `j`'s own hazard `s` is a valid one, giving the same
+# message for a vector element and a function's return value alike.
 function _check_person_external(s, j)
     _is_person_external(s) || throw(
         ArgumentError(

@@ -180,8 +180,8 @@ end
     end
 
     @testset "a schedule can differ between people, as a vector or a function" begin
-        # two clusters whose community incidence peaks at different times, as a
-        # multi-site trial's would
+        # two clusters whose community incidence peaks at different times, as the
+        # clusters of a multi-site trial would
         early = Steps([7.0], [0.01, 0.002])
         late = Steps([14.0], [0.002, 0.01])
         for source in ([fill(early, 100); fill(late, 100)], j -> j <= 100 ? early : late)

@@ -46,8 +46,8 @@ infected from outside, or a piecewise-constant calendar schedule such as
 weekly incidence. To let it differ between people, households or trial arms,
 give a vector with one rate, distribution or schedule per person, or a
 function `j -> rate, distribution or schedule` of person `j`'s number, as the
-kernel is a function of two people's numbers — so, for example, each cluster
-in a multi-site trial can carry its own calendar of community incidence. A
+kernel is a function of two people's numbers. Each cluster in a multi-site
+trial can then have its own calendar of community incidence, for example. A
 person with a zero rate is never infected from outside. These introductions
 happen only in the first `obs_end` days, which must be finite when
 `external_hazard` is used. Without an external hazard, each household starts
