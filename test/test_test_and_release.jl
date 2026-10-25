@@ -281,6 +281,31 @@ EpiBranch.removal_gap_host_times_withdrawn(::TestAndRelease) = (EpiBranch.REMOVA
         @test EpiBranch.removal_stretches(contact) == [(5.0, 8.0), (10.0, 15.0)]
     end
 
+    @testset "Shortening a quarantine bridging two standing isolations is left as it stands" begin
+        # An unrelated, already-lapsed isolation on the far side of the
+        # standing one gets folded into the same combined stretch by
+        # `apply_trace!`. The combined stretch this leaves behind no longer
+        # matches what shortening the quarantine alone would rebuild, so the
+        # shorten is skipped rather than silently misreported.
+        rng = StableRNG(13)
+        t = TestAndRelease(duration = 9.0, test_day = 3.0, sensitivity = 1.0)
+        ct = ContactTracing(TraceEveryone(), 1.0, Dirac(0.0), t)
+
+        contact = Individual(id = 1, infection_time = NaN)
+        EpiBranch.set_isolated!(contact, 0.0; release_time = 2.0)
+        EpiBranch.set_isolated!(contact, 8.0; release_time = 10.0)
+        EpiBranch.apply_trace!(t, contact, nothing, 2.0, rng)
+        @test isolation_release_time(contact) == 11.0 # combined: 2.0 + 9.0
+        @test EpiBranch.removal_stretches(contact) == [(0.0, 11.0)] # bridges both
+
+        contact.state[TAR_GRANTED_KEY] = true
+        contact.infection_time = 100.0
+        EpiBranch.on_infection_settled!(ct, contact, nothing, rng)
+        @test isolation_time(contact) == 2.0
+        @test isolation_release_time(contact) == 11.0
+        @test EpiBranch.removal_stretches(contact) == [(0.0, 11.0)]
+    end
+
     @testset "A quarantine merged with another trace is left as it stands" begin
         # A second trace of the same contact appends its own stretch under
         # `QUARANTINE_STRETCHES_KEY`, which can merge with the first; the
