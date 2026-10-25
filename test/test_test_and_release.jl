@@ -306,7 +306,7 @@ EpiBranch.removal_gap_host_times_withdrawn(::TestAndRelease) = (EpiBranch.REMOVA
         @test EpiBranch.removal_stretches(contact) == [(0.0, 11.0)]
         # The quarantine's own record must be left standing too: shortening
         # it alone, while the shared history above stays unmatched, would
-        # have the two keys disagree on when the contact was released.
+        # leave the two keys disagreeing on when the contact was released.
         @test EpiBranch.removal_stretches(contact, EpiBranch.QUARANTINE_STRETCHES_KEY) ==
             [(2.0, 11.0)]
     end

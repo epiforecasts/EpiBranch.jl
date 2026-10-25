@@ -548,11 +548,11 @@ function shorten_quarantine!(ind, start, old_release, new_release)
             true
         end
     end
-    # Only once the shared history is confirmed updated is the quarantine's
-    # own record retimed to match: committing this first, regardless of
-    # whether the shared update below succeeds, is what let the two drift
-    # apart (see the "bridging two standing isolations" test, where the
-    # shared update finds nothing to retime).
+    # The quarantine's own record is retimed to match only once the shared
+    # history update has succeeded; committing it unconditionally, before
+    # confirming that, let the two drift apart (see the "bridging two
+    # standing isolations" test, where the shared update finds nothing to
+    # retime).
     if shared_updated
         revised = copy(quarantine_stretches)
         revised[i] = (start, new_release)
