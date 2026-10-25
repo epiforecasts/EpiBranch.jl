@@ -14,10 +14,10 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
 
 ### Added
 
-- `EpiBranch.sample_value` is now `public`: an extension reads a parameter
-  given as a number, a distribution or a function through it, the same way
-  every built-in delay, probability and attribute does, and a method it adds
-  for a form of its own is then read by the built-ins too.
+- `EpiBranch.sample_value` is now `public`: an extension can use it to read a
+  parameter given as a number, a distribution or a function, the same way
+  every built-in delay, probability and attribute does. A method it adds for
+  a form of its own is then read by the built-ins too.
 - `pairwise_surv_loglik_by_component` splits the pairwise survival
   log-likelihood by connected component of the contact structure (households,
   under a household partition), reusing one compiled `ContactPairsLayout` so

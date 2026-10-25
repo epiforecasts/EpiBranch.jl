@@ -131,8 +131,8 @@ Used wherever a parameter accepts any of the three, such as
 [`transmission_traits`](@ref), [`clinical_presentation`](@ref), isolation
 delays, vaccination parameters and [`Risk`](@ref) fields.
 
-`public` in Julia's sense: an extension reads its own such parameter through
-this function, rather than writing the three methods again, and a method
+`public` in Julia's sense: an extension can read its own such parameter
+through this function instead of writing the three methods again. A method
 added for a form of its own (a lookup on a state key, say) is then read by
 the built-ins too.
 """
