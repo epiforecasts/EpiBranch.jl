@@ -441,8 +441,8 @@ end
     ModelSpec(spec::ModelSpec; progression, interventions, attributes, observation, recorder)
 
 Rebuild a spec with some of its layers replaced. Every keyword left out keeps
-the value `spec` already has, so this is how an extension adds a layer —
-another attribute, say — without taking the spec apart:
+the value `spec` already has. An extension can use this to add a layer,
+another attribute, say, without taking the spec apart:
 
 ```julia
 ModelSpec(spec; attributes = [attributes(spec); extra])

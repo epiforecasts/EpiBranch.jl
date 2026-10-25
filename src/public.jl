@@ -58,7 +58,7 @@ public recorder
 public population_size
 public n_types
 public model_generation_time
-# A `ModelSpec`'s two remaining layers, alongside the four above: the
+# The two remaining layers of a `ModelSpec`, alongside the four above: the
 # within-host progression and the transmission model it wraps.
 public progression
 public process
