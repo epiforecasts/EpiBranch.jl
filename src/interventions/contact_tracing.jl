@@ -579,9 +579,9 @@ function _shorten_combined_isolation!(ind, start, old_release, new_release)
     old_combined = _combine_removal(standing_start, standing_release, start, old_release)
     new_combined = _combine_removal(standing_start, standing_release, start, new_release)
     if _replace_removal_stretch!(
-        ind, REMOVAL_STRETCHES_KEY, old_combined,
-        ((standing_start, standing_release), (start, new_release))
-    ) && (ind.state[:isolation_time], ind.state[:isolation_release_time]) == old_combined
+            ind, REMOVAL_STRETCHES_KEY, old_combined,
+            ((standing_start, standing_release), (start, new_release))
+        ) && (ind.state[:isolation_time], ind.state[:isolation_release_time]) == old_combined
         ind.state[:isolation_time], ind.state[:isolation_release_time] = new_combined
     end
     return nothing
