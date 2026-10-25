@@ -531,15 +531,32 @@ nothing to shorten, having already replaced it.
 """
 function shorten_quarantine!(ind, start, old_release, new_release)
     (new_release < old_release && new_release > start) || return nothing
-    _retime_stretch!(
-        ind, QUARANTINE_STRETCHES_KEY, (start, old_release), (start, new_release)
-    ) || return nothing
-    if _standing_isolation_overlapped(ind, start, old_release)
+    quarantine_stretches = get(ind.state, QUARANTINE_STRETCHES_KEY, nothing)
+    quarantine_stretches === nothing && return nothing
+    i = findfirst(==((start, old_release)), quarantine_stretches)
+    i === nothing && return nothing
+    shared_updated = if _standing_isolation_overlapped(ind, start, old_release)
         _shorten_combined_isolation!(ind, start, old_release, new_release)
-    elseif _retime_stretch!(ind, REMOVAL_STRETCHES_KEY, (start, old_release), (start, new_release))
-        if ind.state[:isolation_time] == start && ind.state[:isolation_release_time] == old_release
-            ind.state[:isolation_release_time] = new_release
+    else
+        _retime_stretch!(
+            ind, REMOVAL_STRETCHES_KEY, (start, old_release), (start, new_release)
+        ) && begin
+            if ind.state[:isolation_time] == start &&
+                    ind.state[:isolation_release_time] == old_release
+                ind.state[:isolation_release_time] = new_release
+            end
+            true
         end
+    end
+    # Only once the shared history is confirmed updated is the quarantine's
+    # own record retimed to match: committing this first, regardless of
+    # whether the shared update below succeeds, is what let the two drift
+    # apart (see the "bridging two standing isolations" test, where the
+    # shared update finds nothing to retime).
+    if shared_updated
+        revised = copy(quarantine_stretches)
+        revised[i] = (start, new_release)
+        ind.state[QUARANTINE_STRETCHES_KEY] = revised
     end
     return nothing
 end
@@ -578,13 +595,14 @@ function _shorten_combined_isolation!(ind, start, old_release, new_release)
     )
     old_combined = _combine_removal(standing_start, standing_release, start, old_release)
     new_combined = _combine_removal(standing_start, standing_release, start, new_release)
-    if _replace_removal_stretch!(
-            ind, REMOVAL_STRETCHES_KEY, old_combined,
-            ((standing_start, standing_release), (start, new_release))
-        ) && (ind.state[:isolation_time], ind.state[:isolation_release_time]) == old_combined
+    replaced = _replace_removal_stretch!(
+        ind, REMOVAL_STRETCHES_KEY, old_combined,
+        ((standing_start, standing_release), (start, new_release))
+    )
+    if replaced && (ind.state[:isolation_time], ind.state[:isolation_release_time]) == old_combined
         ind.state[:isolation_time], ind.state[:isolation_release_time] = new_combined
     end
-    return nothing
+    return replaced
 end
 
 # Replace `old` in `ind.state[key]` with `news`, re-merging the result so
