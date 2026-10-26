@@ -781,8 +781,7 @@ quarantine dates when a provisional onset time was used during the simulation.
 
 An intervention that proposes actions (see [Intervention actions](@ref))
 defines `EpiBranch.intervention_actions(iv, state, candidates)` and returns
-`EpiBranch.InterventionAction(individual, time, effect!)` values.
-`effect!(individual, time, state)` records an action once admitted. Proposing
+`EpiBranch.InterventionAction(individual, time, effect!)` values. Proposing
 can add people beyond the input, as group vaccination does when it finds every
 member of a group in which a case was found. Every model calls it once each
 case settles, for every intervention with a method of it, with the people
@@ -790,7 +789,23 @@ case settles, for every intervention with a method of it, with the people
 the contacts it can still reach. An intervention that chooses its own, such as
 everyone in the run not yet infected, writes a method of
 `action_candidates`. The actions `intervention_actions` returns go through the
-schedule and capacity limits.
+schedule and capacity limits, which decide admission on the current
+simulation clock.
+
+`effect!(individual, time, state)` is what an admitted action does, run
+against the state as it stands once `time` arrives: immediately, outside a
+continuous-time race, and on the race's own event queue within one, rather
+than against the state as it stood at admission. It may return a vector of
+further `InterventionAction`s in place of `nothing`, admitted through the same
+funnel the first one was, so an effect can schedule what follows from it —
+releasing a bed once a stay ends, or an offer renewed after a delay. A
+proposal must not record anything; only an admitted action may, and
+`InterventionAction(individual, time, effect!; claim! = nothing)` takes a
+second callable for that, run once, at admission, on whichever clock that
+falls on, for bookkeeping a later proposal needs straight away rather than
+once a deferred `effect!` finally runs. Ring and group vaccination use it:
+`claim!` records the dose, exactly as it always has, so a later trigger still
+finds an existing one to revise.
 
 `Scheduled` checks the proposed action time before delivery. A condition
 function sees that time as `state.max_infection_time`, with the current case
