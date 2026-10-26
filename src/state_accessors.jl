@@ -262,6 +262,12 @@ const LEAKY_REMOVAL_STRETCHES_KEY = :_leaky_removal_stretches
 
 const _NO_STRETCHES = Tuple{Float64, Float64}[]
 
+# Element types of the two handle-tracked entry vectors below, concrete in
+# `Individual{T}`'s own number type rather than `Any`, so a `set_isolated!`
+# call pushes one inline tuple instead of boxing it.
+const _RemovalEntry{T} = Tuple{Int, Symbol, T, T}
+const _IsolationSpanEntry{T} = Tuple{Int, T, T, Bool}
+
 """Record that a person is isolated from `time` (days) until `release_time`.
 Used by interventions that isolate or quarantine people. `release_time` is
 required: pass `Inf` for isolation that never ends, so that indefinite
@@ -418,12 +424,12 @@ _find_removal_entry(entries, handle) = findfirst(e -> e[1] == handle, entries)
 # `removal_stretches`' per-key cache below is recomputed from, so that
 # `withdraw_removal!` can drop exactly one without disturbing another entry a
 # `_merge_stretches!` once folded it together with.
-function _push_removal_entry!(ind::Individual, handle::Int, key::Symbol, start, release)
-    old = get(ind.state, :_removal_entries, nothing)
-    entry = (handle, key, start, release)
+function _push_removal_entry!(ind::Individual{T}, handle::Int, key::Symbol, start, release) where {T}
+    old = get(ind.state, :_removal_entries, nothing)::Union{Nothing, Vector{_RemovalEntry{T}}}
+    entry = (handle, key, convert(T, start), convert(T, release))
     # A fresh vector each time rather than one grown in place: an archived
     # episode holds a copy of the state that shares the old one.
-    ind.state[:_removal_entries] = old === nothing ? Any[entry] : push!(copy(old), entry)
+    ind.state[:_removal_entries] = old === nothing ? _RemovalEntry{T}[entry] : push!(copy(old), entry)
     return nothing
 end
 
@@ -524,10 +530,12 @@ end
 # whichever key (the shared one or the leaky one) each call's stretch also
 # went to, so a leaky isolation still moves them even though it records no
 # stretch under the shared key.
-function _push_isolation_span_entry!(ind::Individual, handle::Int, start, release, unrecorded::Bool)
-    old = get(ind.state, :_isolation_span_entries, nothing)
-    entry = (handle, start, release, unrecorded)
-    ind.state[:_isolation_span_entries] = old === nothing ? Any[entry] : push!(copy(old), entry)
+function _push_isolation_span_entry!(
+        ind::Individual{T}, handle::Int, start, release, unrecorded::Bool
+    ) where {T}
+    old = get(ind.state, :_isolation_span_entries, nothing)::Union{Nothing, Vector{_IsolationSpanEntry{T}}}
+    entry = (handle, convert(T, start), convert(T, release), unrecorded)
+    ind.state[:_isolation_span_entries] = old === nothing ? _IsolationSpanEntry{T}[entry] : push!(copy(old), entry)
     return nothing
 end
 
@@ -568,11 +576,15 @@ end
 # still isolates for an instant, but an inverted one isolates for none at all.
 # `nothing` if no entry remains.
 function _fold_isolation_span(entries)
-    valid = Iterators.filter(e -> e[3] >= e[2], entries)
-    spans = sort(collect(valid); by = e -> e[2])
+    length(entries) == 0 && return nothing
+    if length(entries) == 1
+        _, s, r, u = entries[1]
+        return r >= s ? (s, r, u) : nothing
+    end
+    spans = sort!(filter(e -> e[3] >= e[2], entries); by = e -> e[2])
     isempty(spans) && return nothing
     _, cur_start, cur_release, cur_unrecorded = spans[1]
-    for e in spans[2:end]
+    for e in @view spans[2:end]
         _, s, r, u = e
         if s <= cur_release
             cur_release = max(cur_release, r)
@@ -586,7 +598,8 @@ end
 # Recompute `:isolated`, `:isolation_time`, `:isolation_release_time` and
 # `:_isolation_unrecorded` from every surviving isolation span entry.
 function _refresh_isolation_span!(ind::Individual{T}) where {T}
-    span = _fold_isolation_span(get(ind.state, :_isolation_span_entries, ()))
+    entries = get(ind.state, :_isolation_span_entries, ())::Union{Tuple{}, Vector{_IsolationSpanEntry{T}}}
+    span = _fold_isolation_span(entries)
     if span === nothing
         ind.state[:isolated] = false
         ind.state[:isolation_time] = T(Inf)
