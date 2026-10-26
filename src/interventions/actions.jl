@@ -325,8 +325,12 @@ function intervention_actions(rv::RingVaccination, state, candidates)
             min(_recorded_isolation_time(ind), _state_real(ind.state, :_traced_isolation_time, Inf))
         prior = get(_action_cache(ind), _trigger_cache_key(rv), nothing)
         applied = get(ind.state, _vaccinated_key(label), false)
-        if prior !== nothing || applied
-            if applied && _maybe_positive(rv.post_exposure_efficacy)
+        # Gated on `applied` alone: `_withdraw_dose!` clears it on a dose the
+        # window turns out not to cover, but leaves `prior` in the cache, and
+        # a withdrawn candidate must retake the genuine first-dose branch
+        # below rather than be read as already having one.
+        if applied
+            if _maybe_positive(rv.post_exposure_efficacy)
                 # Reconsider protection at this exposure without recording a new dose.
                 effect! = (person, at, st) -> _abort_infection!(
                     rv, person, person.state[_vaccination_time_key(label)], st.rng

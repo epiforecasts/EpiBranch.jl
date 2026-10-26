@@ -238,6 +238,38 @@ end
     @test ind.state[boost_time] == 21.0
 end
 
+@testset "A withdrawn ring dose is not read as already given" begin
+    # `_withdraw_dose!` clears the dose when the window it was given outside
+    # of is discovered at settlement, but a later, earlier-trigger call must
+    # still take the genuine first-dose path below, not the "already has a
+    # dose" branch its stale cached trigger would otherwise route it into.
+    state = EpiBranch.new_state(
+        BranchingProcess(Poisson(0.0)),
+        EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
+    )
+    rv = RingVaccination(efficacy = 0.9, dose_delay = 1.0, eligibility_window = 2.0)
+    ind = Individual(id = 1, state = Dict{Symbol, Any}(:traced => true))
+    EpiBranch.initialise_individual!(rv, ind, state)
+    ind.infection_time = NaN
+    push!(state.individuals, ind)
+
+    ind.state[:trace_time] = 20.0
+    first_dose = only(EpiBranch.intervention_actions(rv, state, [ind]))
+    first_dose.claim!(ind, first_dose.time, state)
+    @test ind.state[:vaccination_time] == 21.0
+
+    # Settling an exposure far outside the window withdraws the dose.
+    ind.infection_time = 0.0
+    EpiBranch.on_infection_settled!(rv, ind, state, StableRNG(1))
+    @test !ind.state[:vaccinated]
+
+    # An earlier re-trace would revise a genuine dose, but one given at 6.0
+    # against an exposure at 0.0 is still outside the window, so this must
+    # reject it exactly as a first offer would, rather than re-vaccinate.
+    ind.state[:trace_time] = 5.0
+    @test isempty(EpiBranch.intervention_actions(rv, state, [ind]))
+end
+
 @testset "Ring vaccination times a dose only from a recorded isolation" begin
     # A traced contact with no `:trace_time` falls back to its isolation, which
     # counts only when the isolation was recorded as a detection.
