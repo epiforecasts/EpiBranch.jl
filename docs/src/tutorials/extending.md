@@ -219,9 +219,7 @@ Several of a builder's own parameters, such as `transmission_traits`'
 described for intervention parameters in [Rules with parameters of their
 own](@ref). An attribute builder of your own reads such a parameter with
 [`EpiBranch.sample_value`](@ref), the function every built-in uses for this,
-rather than writing the three methods again. Adding a method of
-`EpiBranch.sample_value` for a form of your own, such as a lookup on a state
-key, makes the built-ins accept that form too.
+rather than writing the three methods again.
 
 Characteristics can feed each other. Here `transmission_traits` sets each
 person's susceptibility (a number between 0 and 1) from the risk group:

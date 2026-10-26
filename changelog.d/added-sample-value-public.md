@@ -1,4 +1,3 @@
 `EpiBranch.sample_value` is now `public`: an extension can use it to read a
 parameter given as a number, a distribution or a function, the same way
-every built-in delay, probability and attribute does. A method the extension
-adds for a form of its own is read by the built-ins too.
+every built-in delay, probability and attribute does.

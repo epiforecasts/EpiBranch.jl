@@ -132,9 +132,8 @@ Used wherever a parameter accepts any of the three, such as
 delays, vaccination parameters and [`Risk`](@ref) fields.
 
 `public` in Julia's sense: an extension can read its own such parameter
-through this function instead of writing the three methods again. A method
-added for a form of its own (a lookup on a state key, say) is then read by
-the built-ins too.
+through this function instead of writing the three methods again, with the
+same float conversion and function arguments as the built-ins.
 """
 sample_value(x::Real, rng, args...) = float(x)
 sample_value(d::Distribution, rng, args...) = float(rand(rng, d))

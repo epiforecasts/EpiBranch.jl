@@ -4,8 +4,9 @@
 # e.g. `EpiBranch.initialise_state`).
 
 # Draw a parameter given as a number, a distribution or a function, as every
-# built-in delay, probability and attribute does. A method added for a form
-# of its own is then read by the built-ins too.
+# built-in delay, probability and attribute does. An extension reading its
+# own such parameter should use the same reader, with the same float
+# conversion and function arguments.
 public sample_value
 
 # Intervention interface: a package subtyping `AbstractIntervention`
