@@ -473,8 +473,7 @@ end
 
             # An unrecorded standing isolation stays unrecorded.
             unrecorded = Individual(id = 4)
-            set_isolated!(unrecorded, 4.0; release_time = Inf)
-            unrecorded.state[:_isolation_unrecorded] = true
+            set_isolated!(unrecorded, 4.0; release_time = Inf, unrecorded = true)
             EpiBranch.apply_trace!(
                 Quarantine(duration = Inf), unrecorded, state, unreachable, StableRNG(1)
             )

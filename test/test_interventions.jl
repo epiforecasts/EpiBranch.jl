@@ -158,10 +158,11 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         @test is_isolated(traced)               # preserved
         @test isolation_time(traced) == 3.0
 
-        # An isolation Isolation itself set (marked) is still reset.
+        # An isolation Isolation itself set (named by its own handle) is still
+        # reset.
         own = Individual(id = 2)
-        set_isolated!(own, 3.0; release_time = Inf)
-        own.state[:_isolated_by_isolation] = true
+        handle = EpiBranch._set_isolated!(own, 3.0; release_time = Inf)
+        own.state[:_isolation_handle] = handle
         EpiBranch.reset!(iso, own)
         @test !is_isolated(own)
     end
@@ -481,7 +482,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         set_isolated!(late, 50.0; release_time = Inf)
         EpiBranch.resolve_individual!(iso, late, state)
         @test isolation_time(late) ≈ 2.0 atol = 1.0e-6
-        @test get(late.state, :_isolated_by_isolation, false)
+        @test haskey(late.state, :_isolation_handle)
 
         # Quarantined early with no release: onset falls inside the standing
         # quarantine, so the two merge into the same open-ended removal.
@@ -491,7 +492,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         set_isolated!(early, 1.0; release_time = Inf)
         EpiBranch.resolve_individual!(iso, early, state)
         @test isolation_time(early) == 1.0
-        @test get(early.state, :_isolated_by_isolation, false)
+        @test haskey(early.state, :_isolation_handle)
 
         # A short quarantine that ends before onset: isolation from onset is
         # its own separate removal after the lapsed one, rather than being
@@ -737,8 +738,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
     @testset "A later quarantine leaves an unrecorded isolation unrecorded" begin
         function unrecorded_isolation()
             ind = Individual(id = 1)
-            set_isolated!(ind, 6.0; release_time = Inf)
-            ind.state[:_isolation_unrecorded] = true
+            set_isolated!(ind, 6.0; release_time = Inf, unrecorded = true)
             return ind
         end
         rng = StableRNG(1)
@@ -835,8 +835,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         # isolation-triggered tracing.
         rng = StableRNG(1)
         replaced = Individual(id = 1)
-        set_isolated!(replaced, 5.0; release_time = 7.0)
-        replaced.state[:_isolation_unrecorded] = true
+        set_isolated!(replaced, 5.0; release_time = 7.0, unrecorded = true)
         EpiBranch.apply_trace!(
             Quarantine(duration = Dirac(14.0)), replaced, nothing, 20.0, rng
         )
@@ -1107,8 +1106,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             ind.state[:onset_time] = 1.0
             ind.state[:test_positive] = true
             ind.state[:outcome_time] = 2.0
-            set_isolated!(ind, 6.0; release_time = 9.0)
-            standing_unrecorded && (ind.state[:_isolation_unrecorded] = true)
+            set_isolated!(ind, 6.0; release_time = 9.0, unrecorded = standing_unrecorded)
             EpiBranch.resolve_individual!(iso, ind, state)
             @test isolation_time(ind) ≈ 3.0 atol = 1.0e-6
             EpiBranch.reset!(iso, ind)
@@ -1120,8 +1118,6 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         @test isolation_release_time(unrecorded) == 9.0
         @test EpiBranch._isolation_in_force(unrecorded)
         @test !is_isolated(unrecorded)
-        @test !haskey(unrecorded.state, :_isolation_unrecorded_before_isolation)
-        @test !haskey(unrecorded.state, :_isolation_release_time_before_isolation)
 
         recorded = revised_and_reset(false)
         @test isolation_time(recorded) == 6.0

@@ -370,14 +370,14 @@ end
             EpiBranch.capacity_time_key(rv)
 
         iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
-        @test EpiBranch.capacity_key(iso) == :_isolated_by_isolation
+        @test EpiBranch.capacity_key(iso) == :_isolation_handle
         @test EpiBranch.capacity_time_key(iso) == :isolation_time
 
         quarantining = ContactTracing(
             probability = 1.0, isolation_to_trace_delay = Exponential(1.0),
             action = Quarantine(duration = Inf)
         )
-        @test EpiBranch.capacity_key(quarantining) == :_quarantined_by_tracing
+        @test EpiBranch.capacity_key(quarantining) == :_quarantine_removal_handles
         @test EpiBranch.capacity_time_key(quarantining) == :trace_time
         @test EpiBranch.capacity_key(Scheduled(quarantining; start_time = 1.0)) ==
             EpiBranch.capacity_key(quarantining)
