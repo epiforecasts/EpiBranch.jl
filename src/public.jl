@@ -65,6 +65,10 @@ public recorder
 public population_size
 public n_types
 public model_generation_time
+# The two remaining layers of a `ModelSpec`, alongside the four above: the
+# within-host progression and the transmission model it wraps.
+public progression
+public process
 #   - `transmission_risks` to contribute per-pair competing risks (e.g. a
 #     network's per-edge probability), resolved alongside the built-ins.
 public transmission_risks
