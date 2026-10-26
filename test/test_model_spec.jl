@@ -351,8 +351,13 @@ EpiBranch.interventions(m::_ProcessWithInterventions) = m.interventions
             bp; progression = prog, interventions = [iso], attributes = attr
         )
 
-        @test Base.ispublic(EpiBranch, :progression)
-        @test Base.ispublic(EpiBranch, :process)
+        if VERSION >= v"1.11"
+            @test Base.ispublic(EpiBranch, :progression)
+            @test Base.ispublic(EpiBranch, :process)
+        else
+            @info "Skipping Base.ispublic check on Julia $VERSION"
+            @test_skip true
+        end
         @test EpiBranch.progression(spec) == prog
         @test EpiBranch.process(spec) === bp
 
