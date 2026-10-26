@@ -239,10 +239,10 @@ end
 end
 
 @testset "A withdrawn ring dose is not read as already given" begin
-    # `_withdraw_dose!` clears the dose when the window it was given outside
-    # of is discovered at settlement, but a later, earlier-trigger call must
-    # still take the genuine first-dose path below, not the "already has a
-    # dose" branch its stale cached trigger would otherwise route it into.
+    # `_withdraw_dose!` clears the dose once settlement shows it was given
+    # outside the window, but a later, earlier-trigger call must still take
+    # the genuine first-dose path below. Its stale cached trigger would
+    # otherwise route it into the "already has a dose" branch instead.
     state = EpiBranch.new_state(
         BranchingProcess(Poisson(0.0)),
         EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
@@ -263,9 +263,9 @@ end
     EpiBranch.on_infection_settled!(rv, ind, state, StableRNG(1))
     @test !ind.state[:vaccinated]
 
-    # An earlier re-trace would revise a genuine dose, but one given at 6.0
-    # against an exposure at 0.0 is still outside the window, so this must
-    # reject it exactly as a first offer would, rather than re-vaccinate.
+    # An earlier re-trace would revise a genuine dose, but a dose given at
+    # 6.0 against an exposure at 0.0 is still outside the window. This call
+    # must reject it exactly as a first offer would, not re-vaccinate.
     ind.state[:trace_time] = 5.0
     @test isempty(EpiBranch.intervention_actions(rv, state, [ind]))
 end

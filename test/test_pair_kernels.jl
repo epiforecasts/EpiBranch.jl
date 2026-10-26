@@ -584,9 +584,10 @@ end
 end
 
 @testset "Compaction keeps a deferred action's own event" begin
-    # `member == 0` marks a deferred action's event, queued by the race's
-    # `action_sink` rather than built from `proposals`, so compaction must
-    # put it back rather than let the rebuild below silently drop it.
+    # `member == 0` marks the event of a deferred action; `action_sink` on
+    # the race queues it directly instead of building it from `proposals`.
+    # Compaction must restore it, since the rebuild below would otherwise
+    # drop it silently.
     P = EpiBranch._Pending{Float64}
     proposals = [P(1, 0, 1.0, true)]
     head = [1]

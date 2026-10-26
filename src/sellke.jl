@@ -2316,10 +2316,10 @@ end
 # kept too when `reinfects`, since a proposal to them held back by
 # `HostImmunity` is still due once they wane, not abandoned.
 #
-# A deferred action's own event (`member == 0`) names no proposal this walk
-# knows how to rebuild, so it is saved here and put straight back once the
-# queue holds everything else again; left alone, `empty!(queue)` below would
-# drop it on the floor with its `effect!` never run.
+# A deferred action owns an event (`member == 0`) that names no proposal
+# this walk knows how to rebuild. It is saved here and put straight back
+# once the queue holds everything else again; left alone, `empty!(queue)`
+# below would drop it on the floor with its `effect!` never run.
 function _compact_proposals!(queue, proposals, head, best, represents, processed, reinfects = false)
     deferred = eltype(queue.heap)[]
     _each_event(e -> e.member == 0 && push!(deferred, e), queue)
