@@ -366,9 +366,9 @@ entry, for example one already withdrawn. [`removal_stretches`](@ref),
 [`isolation_time`](@ref) and [`isolation_release_time`](@ref) reflect the
 change immediately, recomputed from every entry that still stands.
 
-For extension authors: this is how a policy that can shorten or lengthen a
-removal already recorded, such as a negative test ending a quarantine early,
-revises it directly rather than finding and re-combining whatever else was
+For extension authors: a policy that can shorten or lengthen a removal
+already recorded, such as a negative test ending a quarantine early, revises
+it directly here, rather than finding and re-combining whatever else was
 recorded alongside it.
 """
 function revise_removal!(ind::Individual, handle; release::Real)
@@ -386,9 +386,9 @@ recorded as `handle`, as though it had never been recorded. Does nothing if
 [`isolation_time`](@ref) and [`isolation_release_time`](@ref) reflect the
 withdrawal immediately, recomputed from whatever else still stands.
 
-For extension authors: this is what [`Scheduled`](@ref)'s own reset calls to
-undo an isolation or quarantine that falls outside its window, and what a
-policy that cancels a removal outright calls too.
+For extension authors: [`Scheduled`](@ref)'s own reset calls this to undo an
+isolation or quarantine that falls outside its window; a policy that cancels
+a removal outright calls it too.
 """
 function withdraw_removal!(ind::Individual, handle)
     _withdraw_removal_entry!(ind, handle)
