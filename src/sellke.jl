@@ -1434,10 +1434,10 @@ function _sellke_race!(
             state, ind, interventions, case_contacts, pos, tracing
         )
         _trace_source!(state, ind, interventions, tracing_source)
-        # A model with nothing in `acting` has no `_admit_actions!` call to
-        # make inside `_apply_case_actions!`, so installing the sink (a
-        # `Dict{Any, Any}` write and delete on every settled case) would
-        # cost every case its share of a feature this model never uses.
+        # A model with nothing in `acting` never calls `_admit_actions!`
+        # inside `_apply_case_actions!`. Installing the sink anyway, a
+        # `Dict{Any, Any}` write and delete per settled case, would cost
+        # every case for a feature it never uses.
         if contacts !== nothing || contactless_actions
             if isempty(acting)
                 _apply_case_actions!(
