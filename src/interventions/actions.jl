@@ -6,23 +6,23 @@ A proposed action of an intervention (such as giving one dose) on
 [`CapacityConstrained`](@ref) can accept or turn down before it happens.
 
 For extension authors: acceptance happens on the current simulation clock,
-against the state as it then stands. `effect!(individual, time, state)` is
-what the action does; it runs then and there outside a continuous-time race,
-and on the race's own event queue within one, against the state as it stands
-once `time` arrives rather than as it stood at acceptance. It may return a
-vector of further `InterventionAction`s in place of `nothing` — exactly
-[`intervention_actions`](@ref)'s own shape — admitted through the same
-funnel the first one was, so an effect can schedule what follows from it —
-releasing a bed once a stay ends, or an offer renewed after a delay — rather
+against the state as it then stands. `effect!(individual, time, state)` runs
+the action itself: then and there outside a continuous-time race, or on the
+race's own event queue within one, against the state as it stands once
+`time` arrives rather than as it stood at acceptance. It may return a vector
+of further `InterventionAction`s in place of `nothing` (exactly
+[`intervention_actions`](@ref)'s own shape), admitted through the same
+funnel the first one was, so an effect can schedule what follows from it:
+releasing a bed once a stay ends, or renewing an offer after a delay, rather
 than needing a second action proposed and accepted up front. Anything else
 `effect!` returns, such as the value Julia gives back from a bare
-assignment, is not mistaken for one and is simply discarded.
+assignment, is simply discarded rather than mistaken for one.
 
 Proposing an action must not record anything; only an accepted one may.
-`claim!(individual, time, state)`, given when a later proposal needs to read
-something back straight away rather than wait for a deferred `effect!`, runs
-once, at acceptance, whichever simulation clock that falls on. An effect
-limited by capacity sets its intervention's [`capacity_key`](@ref
+`claim!(individual, time, state)` runs once, at acceptance, on whichever
+simulation clock acceptance falls on, for when a later proposal needs to
+read something back straight away rather than wait for a deferred `effect!`.
+An effect limited by capacity sets its intervention's [`capacity_key`](@ref
 EpiBranch.capacity_key) only when it uses up capacity.
 """
 struct InterventionAction{I, T, F, C}
@@ -119,16 +119,17 @@ function _admit_actions!(iv::AbstractIntervention, state, actions, admitter = iv
     return nothing
 end
 
-# Where an accepted action's effect actually runs: now, by default, or,
-# within a continuous-time race, handed to the race's own event queue to run
-# at `action.time` instead. `_sellke_race!` is the only place that installs a
-# sink, for the span of its own per-case offer and of firing a queued action
-# (see `_with_action_sink`), so every other caller of `_admit_actions!` keeps
+# An accepted action's effect runs now by default, or, within a
+# continuous-time race, is handed to the race's own event queue to run at
+# `action.time` instead. Only `_sellke_race!` installs a sink, for the span
+# of its own per-case offer and of firing a queued action (see
+# `_with_action_sink`); every other caller of `_admit_actions!` keeps
 # running the effect the moment it is admitted. `admitter` is threaded down
 # unchanged from the intervention `actions` was first offered to, past any
-# `Scheduled` or `CapacityConstrained` wrapping it, so a further action an
-# effect returns is gated by the same schedule and budget the first one was,
-# rather than by whichever layer happened to call `_admit_actions!` last.
+# `Scheduled` or `CapacityConstrained` wrapping it; a further action an
+# effect returns is therefore gated by the same schedule and budget the
+# first one was, rather than by whichever layer happened to call
+# `_admit_actions!` last.
 const _ACTION_SINK_KEY = :_action_sink
 # `state` is usually a `SimulationState`, but `apply_actions!` is public and
 # documented to work against the minimal state a custom effect itself reads
@@ -145,11 +146,11 @@ function _run_action!(admitter, state, action)
     return nothing
 end
 
-# Where a queued action's own effect runs once its time comes: never through
+# A queued action's own effect runs once its time comes, never through
 # `_run_action!`, which would only hand it straight back to the sink that
 # just dequeued it. A further action the effect returns is a fresh proposal,
-# admitted through `_admit_actions!`, so it reaches the sink installed for
-# the span of firing this one (see `_with_action_sink`) if it is itself to be
+# admitted through `_admit_actions!`; it reaches the sink installed for the
+# span of firing this one (see `_with_action_sink`) if it is itself to be
 # deferred.
 function _fire_action!(admitter, state, action)
     further = action.effect!(action.individual, action.time, state)
@@ -172,7 +173,7 @@ Run `f()` with `sink` installed as `state`'s deferred-action sink, returning
 what `f` returns, and restoring whatever was installed before once `f`
 returns, throws, or is itself run re-entrantly (a dose action admitted while
 another is being fired). A continuous-time race calls this around each span
-whose admitted actions belong on its own event queue.
+during which admitted actions belong on its own event queue.
 """
 function _with_action_sink(f, state, sink)
     previous = get(state.scratch, _ACTION_SINK_KEY, nothing)
@@ -283,14 +284,15 @@ may_revise(::RingVaccination, prior_trigger, new_trigger) = new_trigger < prior_
 
 _trigger_cache_key(v::AbstractVaccination) = (v, :trigger)
 
-# A dose reads whether its candidate already carries one, and where from, to
+# A dose reads whether its candidate already has one, and from where, to
 # decide whether it is a first dose or a revision (see the two
 # `intervention_actions` methods below), so recording it must not wait for a
 # continuous-time race to reach its own day: it runs as `claim!`, at
-# acceptance, on whichever clock that falls on, exactly as a dose always has.
-# `effect!` is a no-op only because nothing about a dose depends on the state
-# a later day brings; an action whose own effect does needs no `claim!` at
-# all, and runs it there instead (see `InterventionAction`).
+# acceptance, on whichever clock acceptance falls on, exactly as a dose
+# always has. `effect!` is a no-op only because nothing about a dose depends
+# on the state a later day brings. An action that does depend on that later
+# state needs no `claim!` at all; it simply runs its own `effect!` there
+# instead (see `InterventionAction`).
 #
 # A revision moves `:vaccination_time` to the new trigger plus the person's
 # own (already-drawn) delay, and shifts `:immunity_time` by the same amount,

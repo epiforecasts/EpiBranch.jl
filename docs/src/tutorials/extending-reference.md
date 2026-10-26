@@ -792,20 +792,20 @@ everyone in the run not yet infected, writes a method of
 schedule and capacity limits, which decide admission on the current
 simulation clock.
 
-`effect!(individual, time, state)` is what an admitted action does, run
-against the state as it stands once `time` arrives: immediately, outside a
-continuous-time race, and on the race's own event queue within one, rather
+`effect!(individual, time, state)` runs once an admitted action's `time`
+arrives, against the state as it then stands: immediately, outside a
+continuous-time race, or on the race's own event queue within one, rather
 than against the state as it stood at admission. It may return a vector of
 further `InterventionAction`s in place of `nothing`, admitted through the same
-funnel the first one was, so an effect can schedule what follows from it —
-releasing a bed once a stay ends, or an offer renewed after a delay. A
-proposal must not record anything; only an admitted action may, and
+funnel the first one was, so an effect can schedule what follows from it:
+releasing a bed once a stay ends, or renewing an offer after a delay. A
+proposal must not record anything; only an admitted action may.
 `InterventionAction(individual, time, effect!; claim! = nothing)` takes a
-second callable for that, run once, at admission, on whichever clock that
-falls on, for bookkeeping a later proposal needs straight away rather than
-once a deferred `effect!` finally runs. Ring and group vaccination use it:
-`claim!` records the dose, exactly as it always has, so a later trigger still
-finds an existing one to revise.
+second callable for that, run once, at admission, on whichever clock
+admission falls on, for bookkeeping a later proposal needs straight away
+rather than waiting until a deferred `effect!` finally runs. Ring and group
+vaccination use it: `claim!` records the dose, exactly as it always has; a
+later trigger then finds an existing one to revise.
 
 `Scheduled` checks the proposed action time before delivery. A condition
 function sees that time as `state.max_infection_time`, with the current case

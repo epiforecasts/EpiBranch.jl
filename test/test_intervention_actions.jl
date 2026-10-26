@@ -11,7 +11,7 @@ function EpiBranch.intervention_actions(iv::AppointmentAction, state, candidates
     ]
 end
 
-# Proposes one action dated well into the future, whose effect reads the
+# Proposes one action dated well into the future; its effect reads the
 # clock it actually runs on (`state.max_infection_time`) rather than the one
 # in force when it was admitted, and returns a further action of its own.
 struct DeferredCheckIn <: EpiBranch.AbstractIntervention end

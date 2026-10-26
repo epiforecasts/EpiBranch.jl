@@ -1135,13 +1135,14 @@ function _sellke_race!(
     # event naming no member (`0`, which no case position ever is) and
     # indexing `pending_actions` instead of a proposal. `_apply_case_actions!`
     # installs this sink in `state.scratch` for the span of its own call, the
-    # only place `acting` is ever offered a case to act on, so a dose given
+    # only place `acting` is ever offered a case to act on; a dose given
     # upfront to the whole population, or to a contact as it is created,
-    # still runs the moment it is admitted. An action timed in a type other
-    # than the race's own, such as a dose delay differentiated by a parameter
-    # the race's own candidate times do not carry, cannot share this queue, so
-    # it runs there and then instead, which a `claim!`-only effect (a dose's
-    # own) never needed deferred in the first place.
+    # therefore still runs the moment it is admitted. An action timed in a
+    # type other than the race's own, such as a dose delay differentiated by
+    # a parameter the race's own candidate times do not include, cannot
+    # share this queue and runs there and then instead. A `claim!`-only
+    # effect, such as a dose's, never needed deferring in the first place,
+    # so this restriction never touches it.
     pending_actions = empty!(buffers.pending_actions)
     action_sink = (action, admitter) -> begin
         if action.time isa T
@@ -1196,9 +1197,9 @@ function _sellke_race!(
         bt > max_time && return _finish_race!(rts, race, false, max_time)
         # A deferred action's own event: no member settles from it, so it
         # skips the pop bookkeeping below, which is about resolving a case.
-        # Firing it may admit further actions of its own (an effect's return),
-        # which belong on this same queue too, so the sink is reinstalled for
-        # the span of running it.
+        # Firing it may admit further actions of its own (an effect's
+        # return); those belong on this same queue too, so the sink is
+        # reinstalled for the span of running it.
         if j == 0
             action, admitter = pending_actions[p]
             _with_action_sink(state, action_sink) do
