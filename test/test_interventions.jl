@@ -943,6 +943,24 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         end
     end
 
+    @testset "Revising a release to before its own start drops the entry" begin
+        # A negative test ending a quarantine early (`revise_removal!`'s own
+        # documented use case) must not be able to invert the interval: a
+        # release at or before the start describes no removal at all, the
+        # same as `record_removal!` refusing one up front.
+        ind = Individual(id = 1)
+        handle = EpiBranch.record_removal!(ind, 5.0, 10.0)
+        EpiBranch.revise_removal!(ind, handle; release = 2.0)
+        @test EpiBranch.removal_stretches(ind) == EpiBranch._NO_STRETCHES
+
+        isolated = Individual(id = 2)
+        iso_handle = EpiBranch._set_isolated!(isolated, 5.0; release_time = 10.0)
+        EpiBranch.revise_removal!(isolated, iso_handle; release = 2.0)
+        @test !is_isolated(isolated)
+        @test isolation_time(isolated) == Inf
+        @test isolation_release_time(isolated) == Inf
+    end
+
     @testset "A released quarantine does not block a later, unrelated infection" begin
         # Reproduces the bug: a contact traced and quarantined long before it is
         # actually infected, through another route, must not still be carrying

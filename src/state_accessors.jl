@@ -364,7 +364,11 @@ Change the release of the removal [`record_removal!`](@ref) or
 sooner or letting it run longer. Does nothing if `handle` no longer names an
 entry, for example one already withdrawn. [`removal_stretches`](@ref),
 [`isolation_time`](@ref) and [`isolation_release_time`](@ref) reflect the
-change immediately, recomputed from every entry that still stands.
+change immediately, recomputed from every entry that still stands. A
+`release` at or before the entry's own start leaves it out of
+`removal_stretches` altogether, as a zero-length removal already does; one
+strictly before the start leaves it out of the isolation span too, as though
+withdrawn, rather than isolating for negative time.
 
 For extension authors: a policy that can shorten or lengthen a removal
 already recorded, such as a negative test ending a quarantine early, revises
@@ -482,6 +486,11 @@ function _recompute_removal_cache!(ind::Individual, key::Symbol)
     if entries !== nothing
         for (_, k, s, r) in entries
             k === key || continue
+            # The same qualifying condition `_push_qualifying_removal!` applies
+            # on the fast path: a revise that leaves a release at or before its
+            # own start describes no removal at all, so it drops out here too
+            # rather than leaving an inverted interval behind.
+            (isfinite(s) && r > s) || continue
             push!(pairs, (s, r))
             isfinite(r) && (lapses = true)
         end
@@ -554,10 +563,14 @@ end
 # eligibility about a start the group's own earliest already settled). The
 # last group — the one with the greatest start — is the current isolation;
 # an earlier, disjoint one is history `removal_stretches` still holds, but no
-# longer the removal in force. `nothing` if `entries` is empty.
+# longer the removal in force. An entry whose release has been revised to
+# before its own start is dropped, as though withdrawn: a zero-length span
+# still isolates for an instant, but an inverted one isolates for none at all.
+# `nothing` if no entry remains.
 function _fold_isolation_span(entries)
-    isempty(entries) && return nothing
-    spans = sort(collect(entries); by = e -> e[2])
+    valid = Iterators.filter(e -> e[3] >= e[2], entries)
+    spans = sort(collect(valid); by = e -> e[2])
+    isempty(spans) && return nothing
     _, cur_start, cur_release, cur_unrecorded = spans[1]
     for e in spans[2:end]
         _, s, r, u = e
