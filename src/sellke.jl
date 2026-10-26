@@ -2315,7 +2315,14 @@ end
 # and a blocked contact requeues the next earliest. A settled member's chain is
 # kept too when `reinfects`, since a proposal to them held back by
 # `HostImmunity` is still due once they wane, not abandoned.
+#
+# A deferred action's own event (`member == 0`) names no proposal this walk
+# knows how to rebuild, so it is saved here and put straight back once the
+# queue holds everything else again; left alone, `empty!(queue)` below would
+# drop it on the floor with its `effect!` never run.
 function _compact_proposals!(queue, proposals, head, best, represents, processed, reinfects = false)
+    deferred = eltype(queue.heap)[]
+    _each_event(e -> e.member == 0 && push!(deferred, e), queue)
     kept = empty(proposals)
     empty!(queue)
     for j in eachindex(head)
@@ -2339,5 +2346,6 @@ function _compact_proposals!(queue, proposals, head, best, represents, processed
         end
     end
     copy!(proposals, kept)
+    foreach(e -> _enqueue!(queue, e), deferred)
     return nothing
 end
