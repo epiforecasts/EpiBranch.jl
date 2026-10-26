@@ -11,6 +11,28 @@ function EpiBranch.intervention_actions(iv::AppointmentAction, state, candidates
     ]
 end
 
+# Proposes one action dated well into the future, whose effect reads the
+# clock it actually runs on (`state.max_infection_time`) rather than the one
+# in force when it was admitted, and returns a further action of its own.
+struct DeferredCheckIn <: EpiBranch.AbstractIntervention end
+function EpiBranch.intervention_actions(::DeferredCheckIn, state, candidates)
+    return [
+        EpiBranch.InterventionAction(
+            ind, 10.0,
+            (person, at, st) -> begin
+                person.state[:seen_max_infection_time] = st.max_infection_time
+                return [
+                    EpiBranch.InterventionAction(
+                        person, at + 1.0,
+                        (follow, at2, st2) -> (follow.state[:followed_up] = true)
+                    ),
+                ]
+            end
+        )
+            for ind in candidates if !haskey(ind.state, :seen_max_infection_time)
+    ]
+end
+
 # An intervention with an `action_candidates` method of its own, narrowing its
 # candidates to a single, fixed person rather than taking the default's
 # "current plus the contacts it can reach".
@@ -596,4 +618,18 @@ end
     append!(state.individuals, none_candidates)
     EpiBranch.apply_actions!(none, state, none_candidates)
     @test !any(is_vaccinated, none_candidates)
+end
+
+@testset "An admitted action runs at its own time and may return further actions" begin
+    # One offspring, five days after its parent, so the index case's own
+    # action, dated day 10, falls after the contact has settled and moved
+    # `max_infection_time` on from the day the action was admitted (day 0).
+    state = simulate(
+        ModelSpec(BranchingProcess(Dirac(1), Dirac(5.0)); interventions = [DeferredCheckIn()]);
+        n_initial = 1, max_generations = 1, rng = StableRNG(1)
+    )
+    index = state.individuals[1]
+    @test index.infection_time == 0.0
+    @test index.state[:seen_max_infection_time] == 5.0
+    @test index.state[:followed_up]
 end

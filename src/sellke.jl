@@ -1131,6 +1131,27 @@ function _sellke_race!(
     head = fill!(resize!(buffers.head, may_block ? m : 0), 0) # first proposal to each member
     represents = fill!(resize!(buffers.represents, m), 0) # what each member's heap entry names
     queue = empty!(buffers.queue)
+    # An admitted action's effect is deferred onto this same queue, as an
+    # event naming no member (`0`, which no case position ever is) and
+    # indexing `pending_actions` instead of a proposal. `_apply_case_actions!`
+    # installs this sink in `state.scratch` for the span of its own call, the
+    # only place `acting` is ever offered a case to act on, so a dose given
+    # upfront to the whole population, or to a contact as it is created,
+    # still runs the moment it is admitted. An action timed in a type other
+    # than the race's own, such as a dose delay differentiated by a parameter
+    # the race's own candidate times do not carry, cannot share this queue, so
+    # it runs there and then instead, which a `claim!`-only effect (a dose's
+    # own) never needed deferred in the first place.
+    pending_actions = empty!(buffers.pending_actions)
+    action_sink = (action, admitter) -> begin
+        if action.time isa T
+            push!(pending_actions, (action, admitter))
+            _enqueue!(queue, _Event(action.time, 0, length(pending_actions)))
+        else
+            _fire_action!(admitter, state, action)
+        end
+        return nothing
+    end
 
     # The seeds' own opening: no infector, so nothing about it is ever read.
     push!(openings, _RouteOpening(0, 0, zero(T), T(Inf)))
@@ -1173,6 +1194,35 @@ function _sellke_race!(
         # after `max_time`: those individuals stay uninfected, and the race
         # was cut off rather than reaching extinction on its own.
         bt > max_time && return _finish_race!(rts, race, false, max_time)
+        # A deferred action's own event: no member settles from it, so it
+        # skips the pop bookkeeping below, which is about resolving a case.
+        # Firing it may admit further actions of its own (an effect's return),
+        # which belong on this same queue too, so the sink is reinstalled for
+        # the span of running it.
+        if j == 0
+            action, admitter = pending_actions[p]
+            _with_action_sink(state, action_sink) do
+                _fire_action!(admitter, state, action)
+            end
+            if live && _records_changed!(
+                    snapshot, watched_keys, key_routes, state, members,
+                    0, bt, watch, openings, processed,
+                    full_snapshot, route_projections, route_names
+                )
+                orphans += _redraw_moved!(
+                    queue, proposals, head, best, represents,
+                    watch, openings, processed, pos, rts, state, bt, pops, passed, rng,
+                    reinfects
+                )
+                if orphans > max(m, length(proposals) ÷ 2)
+                    _compact_proposals!(
+                        queue, proposals, head, best, represents, processed, reinfects
+                    )
+                    orphans = 0
+                end
+            end
+            continue
+        end
         # Only a redraw of a live kernel reads which pops happened at this clock.
         if live
             if bt != clock
@@ -1383,10 +1433,13 @@ function _sellke_race!(
             state, ind, interventions, case_contacts, pos, tracing
         )
         _trace_source!(state, ind, interventions, tracing_source)
-        (contacts !== nothing || contactless_actions) &&
+        (contacts !== nothing || contactless_actions) && _with_action_sink(
+            state, action_sink
+        ) do
             _apply_case_actions!(
-            state, ind, acting, members, processed, case_contacts, pos, traced
-        )
+                state, ind, acting, members, processed, case_contacts, pos, traced
+            )
+        end
 
         # Only a live kernel whose host records actually moved needs its pending
         # contacts redrawn. Resolving a case usually leaves every record alone —
@@ -1469,10 +1522,12 @@ struct _RaceBuffers{T <: Real}
     head::Vector{Int}
     openings::Vector{_RouteOpening{T}}
     proposals::Vector{_Pending{T}}
+    pending_actions::Vector{Tuple{InterventionAction, AbstractIntervention}}
 end
 function _RaceBuffers{T}() where {T}
     return _RaceBuffers{T}(
-        _EventQueue{T}(), T[], falses(0), Int[], Int[], _RouteOpening{T}[], _Pending{T}[]
+        _EventQueue{T}(), T[], falses(0), Int[], Int[], _RouteOpening{T}[], _Pending{T}[],
+        Tuple{InterventionAction, AbstractIntervention}[]
     )
 end
 
@@ -2010,7 +2065,10 @@ function _records_changed!(
         w::_LiveWatch, openings, processed,
         full_snapshot = nothing, route_projections = nothing, route_names = nothing
     )
-    _refresh_host!(snapshot, watched_keys, state.individuals[members[case]], case)
+    # `case == 0` is a deferred action's own event, which settles nobody: it
+    # has no position of its own to pre-stamp against its own writes, and the
+    # scan below, over every tracked host, already covers whomever it wrote to.
+    case == 0 || _refresh_host!(snapshot, watched_keys, state.individuals[members[case]], case)
     kept = 0
     for oi in w.open
         if openings[oi].close_t >= now
