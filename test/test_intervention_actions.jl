@@ -328,6 +328,14 @@ end
     @test EpiBranch.may_revise(Scheduled(gv; start_time = 1.0), 20.0, 5.0)
 end
 
+@testset "InterventionAction accepts claim! as a keyword, as documented" begin
+    action = EpiBranch.InterventionAction(
+        nothing, 1.0, (ind, time, state) -> nothing;
+        claim! = (ind, time, state) -> :claimed
+    )
+    @test action.claim!(nothing, 1.0, nothing) == :claimed
+end
+
 @testset "is_settled reflects a continuous-time race's own round of discovery" begin
     state = EpiBranch.new_state(
         BranchingProcess(Poisson(0.0)),

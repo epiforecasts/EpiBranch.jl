@@ -31,8 +31,8 @@ struct InterventionAction{I, T, F, C}
     effect!::F
     claim!::C
 end
-InterventionAction(individual, time, effect!) =
-    InterventionAction(individual, time, effect!, nothing)
+InterventionAction(individual, time, effect!; claim! = nothing) =
+    InterventionAction(individual, time, effect!, claim!)
 
 """
     intervention_actions(intervention, state, candidates)
