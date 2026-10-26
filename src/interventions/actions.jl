@@ -254,11 +254,11 @@ vaccination's own [`intervention_actions`](@ref) method returns one of these
 per candidate it will dose, so [`Scheduled`](@ref) and
 [`CapacityConstrained`](@ref) admit it the same way they admit a
 [`MassVaccination`](@ref) dose. The dose is recorded in `claim!`, at
-acceptance, like [`RingVaccination`](@ref) and [`GroupVaccination`](@ref)'s
-own doses, so a candidate's `_vaccinated_key` and `capacity_key` are set
-before the same case's later candidates, or a later case, can be checked
-against them, rather than waiting on a continuous-time race's own event
-queue to reach `time`.
+acceptance, just as [`RingVaccination`](@ref) and [`GroupVaccination`](@ref)
+already record their own doses, so a candidate's `_vaccinated_key` and
+`capacity_key` are set before the same case's later candidates, or a later
+case, can be checked against them, rather than waiting for the event queue
+of a continuous-time race to reach `time`.
 """
 function dose_action(v::AbstractVaccination, ind, time)
     claim! = (person, at, state) -> record_dose!(v, person, at, state.rng)
