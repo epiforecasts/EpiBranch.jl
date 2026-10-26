@@ -1434,12 +1434,22 @@ function _sellke_race!(
             state, ind, interventions, case_contacts, pos, tracing
         )
         _trace_source!(state, ind, interventions, tracing_source)
-        (contacts !== nothing || contactless_actions) && _with_action_sink(
-            state, action_sink
-        ) do
-            _apply_case_actions!(
-                state, ind, acting, members, processed, case_contacts, pos, traced
-            )
+        # A model with nothing in `acting` has no `_admit_actions!` call to
+        # make inside `_apply_case_actions!`, so installing the sink (a
+        # `Dict{Any, Any}` write and delete on every settled case) would
+        # cost every case its share of a feature this model never uses.
+        if contacts !== nothing || contactless_actions
+            if isempty(acting)
+                _apply_case_actions!(
+                    state, ind, acting, members, processed, case_contacts, pos, traced
+                )
+            else
+                _with_action_sink(state, action_sink) do
+                    _apply_case_actions!(
+                        state, ind, acting, members, processed, case_contacts, pos, traced
+                    )
+                end
+            end
         end
 
         # Only a live kernel whose host records actually moved needs its pending
