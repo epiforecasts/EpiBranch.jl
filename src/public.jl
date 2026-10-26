@@ -5,7 +5,7 @@
 
 # Draw a parameter given as a number, a distribution or a function, as every
 # built-in delay, probability and attribute does. An extension reading its
-# own such parameter should use the same reader, with the same float
+# own such parameter should use this function too, with the same float
 # conversion and function arguments.
 public sample_value
 
