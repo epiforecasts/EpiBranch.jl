@@ -945,9 +945,9 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
 
     @testset "Revising a release to before its own start drops the entry" begin
         # A negative test ending a quarantine early (`revise_removal!`'s own
-        # documented use case) must not be able to invert the interval: a
-        # release at or before the start describes no removal at all, the
-        # same as `record_removal!` refusing one up front.
+        # documented use case) must not invert the interval: a release at or
+        # before the start describes no removal at all, the same as
+        # `record_removal!` refusing one up front.
         ind = Individual(id = 1)
         handle = EpiBranch.record_removal!(ind, 5.0, 10.0)
         EpiBranch.revise_removal!(ind, handle; release = 2.0)
