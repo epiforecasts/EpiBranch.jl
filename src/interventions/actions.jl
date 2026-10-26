@@ -118,8 +118,8 @@ end
 # fall in a different, still-open period.
 function _admit_actions!(cc::CapacityConstrained, state, actions)
     key = capacity_key(cc.intervention)
-    already_used = filter(a -> get(a.individual.state, key, false), actions)
-    candidates = filter(a -> !get(a.individual.state, key, false), actions)
+    already_used = filter(a -> _capacity_used(get(a.individual.state, key, nothing)), actions)
+    candidates = filter(a -> !_capacity_used(get(a.individual.state, key, nothing)), actions)
     _admit_actions!(cc.intervention, state, already_used)
     # The usage scan covers the whole population, which only a call with
     # someone to admit needs.
@@ -133,10 +133,10 @@ function _admit_actions!(cc::CapacityConstrained, state, actions)
         extra = Float64[]
         for i in order
             action = group[i]
-            get(action.individual.state, key, false) && continue
+            _capacity_used(get(action.individual.state, key, nothing)) && continue
             _fits_budget(cc, times, extra, action.time) || continue
             _admit_actions!(cc.intervention, state, [action])
-            get(action.individual.state, key, false) && push!(extra, action.time)
+            _capacity_used(get(action.individual.state, key, nothing)) && push!(extra, action.time)
         end
     end
     return nothing

@@ -184,10 +184,10 @@ capacity_key(v::GroupVaccination) = _vaccinated_key(dose_label(v))
 capacity_time_key(v::GroupVaccination) = _vaccination_time_key(dose_label(v))
 
 # `Isolation` sets its own effect directly in `resolve_individual!` rather
-# than proposing an action; `:_isolated_by_isolation` is the flag it already
+# than proposing an action; `:_isolation_handle` is the handle it already
 # keeps to tell its own isolation from a quarantine layered under it (see its
-# `reset!`), which is exactly "this budget was spent on this person".
-capacity_key(::Isolation) = :_isolated_by_isolation
+# `reset!`), present exactly when "this budget was spent on this person".
+capacity_key(::Isolation) = :_isolation_handle
 capacity_time_key(::Isolation) = :isolation_time
 
 # `ContactTracing` proposes its follow-up as an `InterventionAction` (see
@@ -214,7 +214,10 @@ function capacity_time_key(action::TraceAction)
         )
     )
 end
-capacity_key(::Quarantine) = :_quarantined_by_tracing
+# `:_quarantine_removal_handles` is the list of handles `apply_trace!` keeps
+# for the entries it has recorded (see `_undo_quarantine_isolation!`),
+# present and non-empty exactly when a quarantine has used the budget.
+capacity_key(::Quarantine) = :_quarantine_removal_handles
 capacity_time_key(::Quarantine) = :trace_time
 
 # The start and end of the period containing `at`, in the scope `carry_over`
@@ -225,6 +228,15 @@ function _period_bounds(cc::CapacityConstrained, at)
     period_start = floor(at / cc.period) * cc.period
     return (period_start, period_start + cc.period)
 end
+
+# Whether `value`, as held under a `capacity_key`, marks its budget spent: a
+# vaccination's own key is a plain `Bool`; `Isolation`'s and `Quarantine`'s
+# are the handle, or list of handles, of the removal entry (entries) they
+# wrote, present exactly when the budget was used, however many there are.
+_capacity_used(value::Bool) = value
+_capacity_used(::Nothing) = false
+_capacity_used(value::AbstractVector) = !isempty(value)
+_capacity_used(value) = true
 
 # The time each already-given dose counts against, sorted and grouped by
 # `resource_key`: the dose's own recorded date, so a dose a delay dates later
@@ -238,7 +250,7 @@ function _dose_times_by_key(cc::CapacityConstrained, state)
     time_key = capacity_time_key(cc.intervention)
     times = Dict{Any, Vector{Float64}}()
     for ind in state.individuals
-        get(ind.state, key, false) || continue
+        _capacity_used(get(ind.state, key, nothing)) || continue
         t = get(ind.state, time_key, -Inf)
         push!(get!(Vector{Float64}, times, resource_key(cc.intervention, ind, state)), t)
     end
@@ -430,7 +442,7 @@ function _dose_times(cc::CapacityConstrained, state, excluded::Individual)
     times = Float64[]
     for ind in state.individuals
         ind.id == excluded.id && continue
-        get(ind.state, key, false) || continue
+        _capacity_used(get(ind.state, key, nothing)) || continue
         resource_key(cc.intervention, ind, state) == resource || continue
         push!(times, get(ind.state, time_key, -Inf))
     end
@@ -445,7 +457,7 @@ end
 # is not its own effect) has nothing to check.
 function _reset_unless_within_budget!(cc::CapacityConstrained, ind::Individual, state)
     key = capacity_key(cc.intervention)
-    get(ind.state, key, false)::Bool || return nothing
+    _capacity_used(get(ind.state, key, nothing)) || return nothing
     t = intervention_time(cc.intervention, ind)
     isfinite(t) || return nothing
     times = _dose_times(cc, state, ind)

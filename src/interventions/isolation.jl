@@ -226,38 +226,22 @@ end
 risk_applies(::Isolation, route) = route !== nothing && INTERVENTION_REMOVAL in route.until
 
 function reset!(::Isolation, ind::Individual)
-    # Only undo an isolation this Isolation set. `:isolated`/`:isolation_time`
-    # are shared keys — ContactTracing's Quarantine writes them directly too —
-    # so resetting unconditionally would un-quarantine a validly-traced contact
-    # when a Scheduled(Isolation) sees its pre-start isolation time.
-    get(ind.state, :_isolated_by_isolation, false) || return nothing
-    # If this isolation was layered over a quarantine, restore that quarantine
-    # rather than clearing the individual outright — undoing Isolation's own
-    # effect must not also undo another intervention's.
-    previous = _state_real(ind.state, :_isolation_time_before_isolation, Inf)
-    if isfinite(previous)
-        previous_release = _state_real(ind.state, :_isolation_release_time_before_isolation, Inf)
-        # The recorded stretches are cleared and the quarantine's own re-recorded,
-        # so this isolation's stretch is not left for a likelihood to take out of
-        # an exposure the simulation never blocked. A quarantine keeps its own
-        # record under its own key, which this does not touch.
-        clear_isolated!(ind)
-        set_isolated!(ind, previous; release_time = previous_release)
-        get(ind.state, :_isolation_unrecorded_before_isolation, false) &&
-            (ind.state[:_isolation_unrecorded] = true)
-        delete!(ind.state, :_isolation_time_before_isolation)
-        delete!(ind.state, :_isolation_release_time_before_isolation)
-        delete!(ind.state, :_isolation_unrecorded_before_isolation)
-    else
-        clear_isolated!(ind)
-    end
-    ind.state[:_isolated_by_isolation] = false
+    # Only undo an isolation this Isolation set, named by the handle it kept
+    # when it recorded one. Withdrawing exactly that entry leaves any
+    # quarantine Isolation was layered over, or layered under, standing on
+    # its own record untouched — resetting unconditionally would
+    # un-quarantine a validly-traced contact when a Scheduled(Isolation) sees
+    # its pre-start isolation time.
+    handle = get(ind.state, :_isolation_handle, nothing)
+    handle === nothing && return nothing
+    withdraw_removal!(ind, handle)
+    delete!(ind.state, :_isolation_handle)
     return nothing
 end
 
 function initialise_individual!(iso::Isolation, individual, state)
     clear_isolated!(individual)
-    individual.state[:_isolated_by_isolation] = false
+    delete!(individual.state, :_isolation_handle)
     if is_eligible_for_isolation(iso.eligibility, individual, state)
         rng = stream(state.rng, individual.id, (:isolation, :test))
         sens = _sample_value(iso.test_sensitivity, rng, individual)
@@ -273,10 +257,10 @@ function resolve_individual!(iso::Isolation, individual, state)
     # `ContactTracing`: a case's contacts are traced when the *infector* is
     # settled, which is before the contact itself resolves. Self-isolation from
     # onset applies on top of it regardless of which started first: `_isolate!`
-    # below combines the two, layering over the quarantine where they overlap
-    # and adding a separate removal where they do not. That way a quarantine
-    # that ends, or never covered anything, before onset still gets the case
-    # isolated.
+    # below records its own entry either way, read back merged with the
+    # quarantine's where they overlap and apart from it where they do not. That
+    # way a quarantine that ends, or never covered anything, before onset still
+    # gets the case isolated.
     if _isolation_in_force(individual)
         is_test_positive(individual) || return nothing
         self_t = onset_time(individual) +
@@ -285,19 +269,6 @@ function resolve_individual!(iso::Isolation, individual, state)
             stream(state.rng, individual.id, (:isolation, :delay)), individual
         )
         isfinite(self_t) || return nothing
-        # Remember what we are overwriting. Claiming provenance below tells a
-        # `Scheduled` reset that this isolation is Isolation's to undo, but the
-        # standing quarantine underneath it belongs to ContactTracing and must
-        # survive that reset, so stash it, and whether it was recorded, for
-        # `reset!` to restore.
-        individual.state[:_isolation_time_before_isolation] = isolation_time(individual)
-        individual.state[:_isolation_release_time_before_isolation] =
-            isolation_release_time(individual)
-        if _isolation_unrecorded(individual)
-            individual.state[:_isolation_unrecorded_before_isolation] = true
-        else
-            delete!(individual.state, :_isolation_unrecorded_before_isolation)
-        end
         _isolate!(iso, individual, state, self_t)
         return nothing
     end
@@ -333,35 +304,27 @@ function resolve_individual!(iso::Isolation, individual, state)
     return nothing
 end
 
-# Remove the case from transmission at `time`, until `time + duration`,
-# recording it as a detection only if the eligibility does. The provenance mark
-# lets a Scheduled reset undo only Isolation's own effect.
+# Remove the case from transmission at `time`, until `time + duration`, as
+# its own entry, whether or not a removal already stands: a quarantine
+# already in force keeps its own entry untouched, so `isolation_time` reads
+# as the union of the two where they overlap or touch, and as this one alone
+# where they do not — the later of the two, since a disjoint one earlier than
+# `time` is already spent. The handle this entry gets is kept so a `reset!`
+# can later withdraw exactly it, leaving any other entry be.
 function _isolate!(iso::Isolation, individual, state, time)
     duration = _removal_duration(
         iso.duration, state.rng, individual, "`Isolation`'s `duration`"
     )
-    start, release = time, time + duration
-    # A removal already standing is layered under this one by the same rule the
-    # trace path uses, so neither side's release is lost.
-    was_unrecorded = _isolation_unrecorded(individual)
-    if _isolation_in_force(individual)
-        start, release = _combine_removal(
-            isolation_time(individual), isolation_release_time(individual),
-            start, release
-        )
-    end
+    release = time + duration
     # Leaky isolation records under its own key, apart from the shared one,
     # keeping a likelihood from mistaking this stretch for a complete
     # removal's.
     record_key = iso.post_isolation_transmission == 0 ?
         REMOVAL_STRETCHES_KEY : LEAKY_REMOVAL_STRETCHES_KEY
-    set_isolated!(individual, start; release_time = release, key = record_key)
-    individual.state[:_isolated_by_isolation] = true
-    # Whether this counts as a detection is a question about the start in
-    # force, so a standing start that won keeps its own answer, and only an
-    # isolation starting here is put to this eligibility.
-    unrecorded = start == time ?
-        !records_isolation(iso.eligibility, individual, state, start) : was_unrecorded
-    unrecorded && (individual.state[:_isolation_unrecorded] = true)
+    unrecorded = !records_isolation(iso.eligibility, individual, state, time)
+    handle = _set_isolated!(
+        individual, time; release_time = release, key = record_key, unrecorded
+    )
+    individual.state[:_isolation_handle] = handle
     return nothing
 end
