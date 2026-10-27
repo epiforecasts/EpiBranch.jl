@@ -114,6 +114,142 @@ struct OffspringTimes{T <: Real}
     times::Vector{T}
 end
 
+# ── Transmission timing from natural history ─────────────────────────
+
+"""
+    transmission_timing(contact_interval; offspring = nothing, contacts = nothing,
+                        latent_period = nothing, infectious_period = nothing,
+                        name::Symbol = :transmission)
+
+Build the [`Transition`](@ref)s and the [`Infectiousness`](@ref) window that a
+case's natural history needs, from whichever timing is known: a plain
+generation time, or a latent and an infectious period with a contact
+interval. Returns `(progression, window)`: `progression` for a
+[`ModelSpec`](@ref), `window` for a [`BranchingProcess`](@ref).
+
+With neither `latent_period` nor `infectious_period`, `contact_interval` is a
+generation time: `progression` is empty and `window` opens at infection and
+never closes, exactly as `BranchingProcess(offspring, contact_interval)`
+builds it. Give either to place transmission on the case's own natural
+history instead: `window` opens at `:infectious` once `latent_period` moves
+it there, and closes at `:recovered` once `infectious_period` gives that
+step something to wait for. `contact_interval` is then the contact interval,
+drawn independently of `infectious_period`.
+
+Exactly one of `contacts` and `offspring` sets how many people a case
+reaches; both mean the same thing as the `offspring` distribution of a
+[`BranchingProcess`](@ref) built from a plain generation time, but only one
+keeps it so once there is a `:recovered` to cut transmission short:
+
+- `contacts`: the number of contacts the case would make if it stayed
+  infectious for as long as `contact_interval` ever needs, independent of how
+  long its own infectious period turns out to be. One whose draw from
+  `contact_interval` falls after `:recovered` is thinned away by the window
+  closing, as `until` ordinarily works, so the realised reproduction number is
+  `mean(contacts)` times the chance a draw from `contact_interval` falls
+  before `infectious_period`, lower than `mean(contacts)` itself (see
+  [`implied_R`](@ref)). A case's infectious period length and its number of
+  secondary cases are linked through this thinning, as they are for a real
+  infection.
+- `offspring`: the number of secondary cases, with `mean` and dispersion
+  exactly as given, unaffected by `infectious_period`. Each is still timed
+  from `contact_interval`, but conditioned on falling before the case's own
+  `:recovered` rather than thinned away if it would not, so every one of them
+  is realised. This keeps R and its dispersion exact at the cost of the link
+  `contacts` keeps: how many secondary cases a case has no longer depends on
+  how long it happens to stay infectious, only on when within that period
+  each one falls.
+
+# Examples
+
+```julia
+using EpiBranch, Distributions
+
+# a generation time: nothing `BranchingProcess(offspring, gt)` does not already do
+timing = transmission_timing(LogNormal(1.6, 0.5); offspring = NegBin(2.5, 0.16))
+model = BranchingProcess(timing.window)
+
+# latent and infectious periods with a contact interval; R realised after
+# thinning by recovery
+timing = transmission_timing(
+    Exponential(4.0); contacts = NegBin(2.5, 0.16),
+    latent_period = LogNormal(1.6, 0.5), infectious_period = Gamma(5.0, 2.0)
+)
+model = ModelSpec(BranchingProcess(timing.window); progression = timing.progression)
+
+# the same natural history, keeping R and its dispersion exact instead
+timing = transmission_timing(
+    Exponential(4.0); offspring = NegBin(2.5, 0.16),
+    latent_period = LogNormal(1.6, 0.5), infectious_period = Gamma(5.0, 2.0)
+)
+```
+"""
+function transmission_timing(
+        contact_interval;
+        offspring = nothing, contacts = nothing,
+        latent_period = nothing, infectious_period = nothing,
+        name::Symbol = :transmission
+    )
+    (offspring === nothing) == (contacts === nothing) && throw(
+        ArgumentError("transmission_timing needs exactly one of `offspring` or `contacts`")
+    )
+
+    from = latent_period === nothing ? :infection : :infectious
+    until = infectious_period === nothing ? () : (:recovered,)
+
+    progression = AbstractClinicalTransition[]
+    latent_period === nothing ||
+        push!(progression, Transition(:infectious; from = :infection, delay = latent_period))
+    infectious_period === nothing ||
+        push!(progression, Transition(:recovered; from, delay = infectious_period, terminal = true))
+
+    kernel = offspring === nothing ? contact_interval :
+        _conditioned_on_recovery(contact_interval, from, infectious_period)
+    window = Infectiousness(something(offspring, contacts); from, until, kernel, name)
+
+    return (progression = progression, window = window)
+end
+
+# The `offspring` form's kernel: `contact_interval`, conditioned on falling
+# before the case's own `:recovered` rather than thinned away if it would
+# not, so every one of `offspring`'s draws is realised. A plain generation
+# time (no `infectious_period`, hence no `:recovered` to fall before) has
+# nothing to condition on.
+_conditioned_on_recovery(contact_interval, from::Symbol, ::Nothing) = contact_interval
+function _conditioned_on_recovery(contact_interval, from::Symbol, infectious_period)
+    return function (ind)
+        open_t = from === :infection ? ind.infection_time : ind.state[:infectious_time]
+        duration = ind.state[:recovered_time] - open_t
+        return truncated(get_generation_time(contact_interval, ind), 0.0, duration)
+    end
+end
+
+"""
+    implied_R(contacts, contact_interval, infectious_period)
+
+The reproduction number [`transmission_timing`](@ref)'s `contacts` form
+realises once recovery thins its contacts: `mean(contacts)` times the
+probability that a draw from `contact_interval` falls before
+`infectious_period`, the two assumed independent, as `transmission_timing`
+draws them.
+
+`contact_interval` is a `Distribution`; `infectious_period` is a
+`Distribution` or a fixed number of days. The distribution case integrates
+over `infectious_period` numerically (with QuadGK.jl).
+
+# Examples
+```julia
+implied_R(NegBin(2.5, 0.16), Exponential(4.0), Gamma(5.0, 2.0))
+```
+"""
+function implied_R(contacts, contact_interval::Distribution, infectious_period::Real)
+    return mean(contacts) * cdf(contact_interval, infectious_period)
+end
+function implied_R(contacts, contact_interval::Distribution, infectious_period::Distribution)
+    p = first(quadgk(x -> cdf(contact_interval, x) * pdf(infectious_period, x), 0.0, Inf))
+    return mean(contacts) * p
+end
+
 # ── BranchingProcess type and constructors ──────────────────────────
 
 """

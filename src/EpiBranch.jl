@@ -151,6 +151,7 @@ include("progression_likelihood.jl")
 # Exports — types
 export TransmissionModel, BranchingProcess, Infectiousness, OffspringTimes,
     HomogeneousProcess, MixingProcess, ModelSpec
+export transmission_timing, implied_R
 export Individual, InfectionEpisode, close_episode!, SimulationState
 export SimOpts
 export AbstractStoppingRule, Extinction, MaxCases, MaxGenerations, MaxTime, should_stop

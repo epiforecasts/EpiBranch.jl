@@ -193,6 +193,109 @@ EpiBranch.has_effect(::_SeenRoutes) = true
     end
 end
 
+@testset "transmission_timing" begin
+    @testset "a plain generation time matches BranchingProcess(offspring, gt)" begin
+        gt = LogNormal(1.6, 0.5)
+        off = NegBin(2.0, 0.3)
+        timing = transmission_timing(gt; offspring = off)
+        @test isempty(timing.progression)
+        @test timing.window.from == :infection
+        @test timing.window.until == ()
+        @test timing.window.kernel === gt
+        @test timing.window.offspring === off
+
+        s1 = simulate(BranchingProcess(off, gt); n_initial = 20, max_generations = 3, rng = StableRNG(1))
+        s2 = simulate(BranchingProcess(timing.window); n_initial = 20, max_generations = 3, rng = StableRNG(1))
+        @test s1.cumulative_cases == s2.cumulative_cases
+    end
+
+    @testset "needs exactly one of offspring or contacts" begin
+        gt = Exponential(4.0)
+        @test_throws ArgumentError transmission_timing(gt)
+        @test_throws ArgumentError transmission_timing(
+            gt; offspring = NegBin(2.0, 0.3), contacts = NegBin(2.0, 0.3)
+        )
+    end
+
+    @testset "a latent and infectious period builds the matching progression and window" begin
+        timing = transmission_timing(
+            Exponential(4.0); contacts = NegBin(5.0, 0.3),
+            latent_period = LogNormal(1.0, 0.3), infectious_period = Gamma(5.0, 2.0)
+        )
+        @test length(timing.progression) == 2
+        @test timing.progression[1].state == :infectious
+        @test timing.progression[1].from == :infection
+        @test timing.progression[2].state == :recovered
+        @test timing.progression[2].from == :infectious
+        @test timing.progression[2].terminal
+        @test timing.window.from == :infectious
+        @test timing.window.until == (:recovered,)
+    end
+
+    @testset "an infectious period with no latent period opens the window at infection" begin
+        timing = transmission_timing(
+            Exponential(4.0); contacts = NegBin(5.0, 0.3), infectious_period = Gamma(5.0, 2.0)
+        )
+        @test length(timing.progression) == 1
+        @test timing.progression[1].state == :recovered
+        @test timing.progression[1].from == :infection
+        @test timing.window.from == :infection
+        @test timing.window.until == (:recovered,)
+    end
+
+    @testset "contacts are thinned by recovery, close to implied_R" begin
+        latent = LogNormal(1.0, 0.3)
+        infectious = Gamma(5.0, 2.0)
+        ci = Exponential(4.0)
+        contacts = NegBin(5.0, 0.3)
+        timing = transmission_timing(
+            ci; contacts, latent_period = latent, infectious_period = infectious
+        )
+        model = ModelSpec(BranchingProcess(timing.window); progression = timing.progression)
+        n = 3000
+        s = simulate(model; n_initial = n, max_generations = 1, max_cases = nothing, rng = StableRNG(2))
+        kids = count(i -> i.parent_id != 0 && is_infected(i), s.individuals)
+        @test isapprox(kids / n, implied_R(contacts, ci, infectious); rtol = 0.1)
+        @test implied_R(contacts, ci, infectious) < mean(contacts)
+    end
+
+    @testset "offspring keeps R exact, timed before recovery" begin
+        latent = LogNormal(1.0, 0.3)
+        infectious = Gamma(5.0, 2.0)
+        ci = Exponential(4.0)
+        offspring = NegBin(5.0, 0.3)
+        timing = transmission_timing(
+            ci; offspring, latent_period = latent, infectious_period = infectious
+        )
+        model = ModelSpec(BranchingProcess(timing.window); progression = timing.progression)
+        n = 3000
+        s = simulate(model; n_initial = n, max_generations = 1, max_cases = nothing, rng = StableRNG(3))
+        kids = filter(i -> i.parent_id != 0 && is_infected(i), s.individuals)
+        @test isapprox(length(kids) / n, mean(offspring); rtol = 0.1)
+        @test all(kids) do k
+            parent = s.individuals[k.parent_id]
+            k.infection_time <= parent.state[:recovered_time]
+        end
+    end
+end
+
+@testset "implied_R" begin
+    @testset "matches the contact-interval cdf for a fixed infectious period" begin
+        contacts = NegBin(3.0, 0.5)
+        ci = Exponential(2.0)
+        @test implied_R(contacts, ci, 5.0) ≈ mean(contacts) * cdf(ci, 5.0)
+    end
+
+    @testset "integrates over a distributed infectious period" begin
+        contacts = NegBin(3.0, 0.5)
+        ci = Exponential(2.0)
+        infectious = Gamma(5.0, 2.0)
+        # A fixed infectious period at the distribution's mean is a rough but
+        # directionally sound cross-check for the quadrature.
+        @test implied_R(contacts, ci, infectious) ≈ implied_R(contacts, ci, mean(infectious)) atol = 0.5
+    end
+end
+
 @testset "A deep ring leaves a case's settled state to its offspring" begin
     # Severe cases make three contacts and others one. Tracing that changes
     # nothing must leave every case with the count its own severity implies,
