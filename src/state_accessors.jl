@@ -431,12 +431,16 @@ _find_removal_entry(entries, handle) = findfirst(e -> e[1] == handle, entries)
 # `removal_stretches`' per-key cache below is recomputed from, so that
 # `withdraw_removal!` can drop exactly one without disturbing another entry a
 # `_merge_stretches!` once folded it together with.
-function _push_removal_entry!(ind::Individual{T}, handle::Int, key::Symbol, start, release) where {T}
-    old = get(ind.state, :_removal_entries, nothing)::Union{Nothing, Vector{_RemovalEntry{T}}}
-    entry = (handle, key, convert(T, start), convert(T, release))
+# `start` and `release` arrive already converted to their shared promoted
+# type (see `record_removal!` and `_set_isolated!`), which can be wider than
+# `ind`'s own element type `T` (an AD dual isolation time, say): the entry
+# keeps that wider type rather than narrowing it back down to `T`.
+function _push_removal_entry!(ind::Individual, handle::Int, key::Symbol, start::S, release::S) where {S}
+    old = get(ind.state, :_removal_entries, nothing)::Union{Nothing, Vector{_RemovalEntry{S}}}
+    entry = (handle, key, start, release)
     # A fresh vector each time rather than one grown in place: an archived
     # episode holds a copy of the state that shares the old one.
-    ind.state[:_removal_entries] = old === nothing ? _RemovalEntry{T}[entry] : push!(copy(old), entry)
+    ind.state[:_removal_entries] = old === nothing ? _RemovalEntry{S}[entry] : push!(copy(old), entry)
     return nothing
 end
 
@@ -537,12 +541,14 @@ end
 # whichever key (the shared one or the leaky one) each call's stretch also
 # went to, so a leaky isolation still moves them even though it records no
 # stretch under the shared key.
+# As `_push_removal_entry!`, `start` and `release` already share a promoted
+# type that can be wider than `ind`'s own `T`, and the entry keeps it.
 function _push_isolation_span_entry!(
-        ind::Individual{T}, handle::Int, start, release, unrecorded::Bool
-    ) where {T}
-    old = get(ind.state, :_isolation_span_entries, nothing)::Union{Nothing, Vector{_IsolationSpanEntry{T}}}
-    entry = (handle, convert(T, start), convert(T, release), unrecorded)
-    ind.state[:_isolation_span_entries] = old === nothing ? _IsolationSpanEntry{T}[entry] : push!(copy(old), entry)
+        ind::Individual, handle::Int, start::S, release::S, unrecorded::Bool
+    ) where {S}
+    old = get(ind.state, :_isolation_span_entries, nothing)::Union{Nothing, Vector{_IsolationSpanEntry{S}}}
+    entry = (handle, start, release, unrecorded)
+    ind.state[:_isolation_span_entries] = old === nothing ? _IsolationSpanEntry{S}[entry] : push!(copy(old), entry)
     return nothing
 end
 
@@ -605,7 +611,9 @@ end
 # Recompute `:isolated`, `:isolation_time`, `:isolation_release_time` and
 # `:_isolation_unrecorded` from every surviving isolation span entry.
 function _refresh_isolation_span!(ind::Individual{T}) where {T}
-    entries = get(ind.state, :_isolation_span_entries, ())::Union{Tuple{}, Vector{_IsolationSpanEntry{T}}}
+    # Entries may be wider than `T` (an AD dual isolation time, say), so read
+    # them untyped rather than asserting `ind`'s own element type here.
+    entries = get(ind.state, :_isolation_span_entries, ())
     span = _fold_isolation_span(entries)
     if span === nothing
         ind.state[:isolated] = false
