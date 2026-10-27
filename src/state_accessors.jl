@@ -444,17 +444,20 @@ function _push_removal_entry!(ind::Individual, handle::Int, key::Symbol, start::
     return nothing
 end
 
-# Record a qualifying stretch (start finite, release after it) as its own
-# entry, and fold it into `key`'s merged cache the fast way `record_removal!`
-# always has, by merging the one new stretch into whatever already stands
-# rather than recomputing the whole cache from every entry (`revise_removal!`
-# and `withdraw_removal!` do that instead, since they must also account for
-# another entry changing or disappearing). A non-qualifying call (`set_isolated!`
-# accepts one, such as a zero-length isolation) is dropped here, leaving
-# `isolation_time` as the only place it is seen.
+# Record every stretch, qualifying or not, as its own `_removal_entries`
+# entry, so a later `revise_removal!` that lengthens a non-qualifying one
+# (a zero-length `set_isolated!` call, say) past its start still has
+# something to find and recompute from. A qualifying stretch (start finite,
+# release after it) also folds into `key`'s merged cache the fast way
+# `record_removal!` always has, by merging the one new stretch into whatever
+# already stands rather than recomputing the whole cache from every entry
+# (`revise_removal!` and `withdraw_removal!` do that instead, since they
+# must also account for another entry changing or disappearing). A
+# non-qualifying call leaves that cache untouched, `isolation_time` being
+# the only place it is seen until a revision makes it qualify.
 function _push_qualifying_removal!(ind::Individual, handle::Int, key::Symbol, start, release)
-    (isfinite(start) && release > start) || return nothing
     _push_removal_entry!(ind, handle, key, start, release)
+    (isfinite(start) && release > start) || return nothing
     old = get(ind.state, key, nothing)
     ind.state[key] = old === nothing ? [(start, release)] : _with_stretch(old, (start, release))
     # Only a stretch that releases its host needs a named key: one that never

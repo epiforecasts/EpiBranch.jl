@@ -961,6 +961,18 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         @test isolation_release_time(isolated) == Inf
     end
 
+    @testset "Revising a zero-length isolation to qualify records a stretch" begin
+        # A zero-length `_set_isolated!` call leaves no `removal_stretches`
+        # entry, but must still leave something for a later `revise_removal!`
+        # to find: lengthening it past its own start should block transmission
+        # over the new window, not just move the isolation span.
+        ind = Individual(id = 1)
+        handle = EpiBranch._set_isolated!(ind, 5.0; release_time = 5.0)
+        EpiBranch.revise_removal!(ind, handle; release = 10.0)
+        @test isolation_release_time(ind) == 10.0
+        @test EpiBranch.removal_stretches(ind) == [(5.0, 10.0)]
+    end
+
     @testset "A released quarantine does not block a later, unrelated infection" begin
         # Reproduces the bug: a contact traced and quarantined long before it is
         # actually infected, through another route, must not still be carrying
