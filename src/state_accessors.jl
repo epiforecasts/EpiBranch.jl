@@ -380,10 +380,10 @@ For extension authors: a policy that can shorten or lengthen a removal
 already recorded, such as a negative test ending a quarantine early, revises
 it directly here, rather than finding and re-combining whatever else was
 recorded alongside it. [`set_isolated!`](@ref) records an entry the same
-way, but returns `release_time` rather than the handle, so only the
-package's own built-in components, which keep the handle under a key of
-their own (see [`Isolation`](@ref)'s `:_isolation_handle`), can revise or
-withdraw an entry it recorded.
+way but returns `release_time` instead of the handle. Only built-in
+components of the package itself can revise or withdraw an entry it
+recorded this way, because they keep the handle under a key of their own
+(see the `:_isolation_handle` key in [`Isolation`](@ref)).
 """
 function revise_removal!(ind::Individual, handle; release::Real)
     _revise_removal_entry!(ind, handle, release)
@@ -404,7 +404,7 @@ For extension authors: [`Scheduled`](@ref)'s own reset calls this to undo an
 isolation or quarantine that falls outside its window; a policy that cancels
 a removal outright calls it too. A policy that wants the same for its own
 `set_isolated!` call cannot reach this: [`set_isolated!`](@ref) returns
-`release_time` rather than the handle it recorded, so an entry it made can
+`release_time` rather than the handle it recorded. An entry it made can
 only be withdrawn wholesale, with [`clear_isolated!`](@ref).
 """
 function withdraw_removal!(ind::Individual, handle)
