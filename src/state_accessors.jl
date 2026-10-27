@@ -365,21 +365,25 @@ end
 """
     revise_removal!(ind, handle; release)
 
-Change the release of the removal [`record_removal!`](@ref) or
-[`set_isolated!`](@ref) recorded as `handle` to `release` (days), ending it
-sooner or letting it run longer. Does nothing if `handle` no longer names an
-entry, for example one already withdrawn. [`removal_stretches`](@ref),
-[`isolation_time`](@ref) and [`isolation_release_time`](@ref) reflect the
-change immediately, recomputed from every entry that still stands. A
-`release` at or before the entry's own start leaves it out of
-`removal_stretches` altogether, as a zero-length removal already does; one
-strictly before the start leaves it out of the isolation span too, as though
-withdrawn, rather than isolating for negative time.
+Change the release of the removal [`record_removal!`](@ref) recorded as
+`handle` to `release` (days), ending it sooner or letting it run longer.
+Does nothing if `handle` no longer names an entry, for example one already
+withdrawn. [`removal_stretches`](@ref), [`isolation_time`](@ref) and
+[`isolation_release_time`](@ref) reflect the change immediately, recomputed
+from every entry that still stands. A `release` at or before the entry's own
+start leaves it out of `removal_stretches` altogether, as a zero-length
+removal already does; one strictly before the start leaves it out of the
+isolation span too, as though withdrawn, rather than isolating for negative
+time.
 
 For extension authors: a policy that can shorten or lengthen a removal
 already recorded, such as a negative test ending a quarantine early, revises
 it directly here, rather than finding and re-combining whatever else was
-recorded alongside it.
+recorded alongside it. [`set_isolated!`](@ref) records an entry the same
+way, but returns `release_time` rather than the handle, so only the
+package's own built-in components, which keep the handle under a key of
+their own (see [`Isolation`](@ref)'s `:_isolation_handle`), can revise or
+withdraw an entry it recorded.
 """
 function revise_removal!(ind::Individual, handle; release::Real)
     _revise_removal_entry!(ind, handle, release)
@@ -390,15 +394,18 @@ end
 """
     withdraw_removal!(ind, handle)
 
-Undo the removal [`record_removal!`](@ref) or [`set_isolated!`](@ref)
-recorded as `handle`, as though it had never been recorded. Does nothing if
-`handle` no longer names an entry. [`removal_stretches`](@ref),
-[`isolation_time`](@ref) and [`isolation_release_time`](@ref) reflect the
-withdrawal immediately, recomputed from whatever else still stands.
+Undo the removal [`record_removal!`](@ref) recorded as `handle`, as though
+it had never been recorded. Does nothing if `handle` no longer names an
+entry. [`removal_stretches`](@ref), [`isolation_time`](@ref) and
+[`isolation_release_time`](@ref) reflect the withdrawal immediately,
+recomputed from whatever else still stands.
 
 For extension authors: [`Scheduled`](@ref)'s own reset calls this to undo an
 isolation or quarantine that falls outside its window; a policy that cancels
-a removal outright calls it too.
+a removal outright calls it too. A policy that wants the same for its own
+`set_isolated!` call cannot reach this: [`set_isolated!`](@ref) returns
+`release_time` rather than the handle it recorded, so an entry it made can
+only be withdrawn wholesale, with [`clear_isolated!`](@ref).
 """
 function withdraw_removal!(ind::Individual, handle)
     _withdraw_removal_entry!(ind, handle)
