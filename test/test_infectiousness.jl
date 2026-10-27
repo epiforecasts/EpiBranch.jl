@@ -290,8 +290,8 @@ end
         contacts = NegBin(3.0, 0.5)
         ci = Exponential(2.0)
         infectious = Gamma(5.0, 2.0)
-        # A fixed infectious period at the distribution's mean is a rough but
-        # directionally sound cross-check for the quadrature.
+        # A fixed infectious period at the mean of the distribution is a rough
+        # but directionally sound cross-check for the quadrature.
         @test implied_R(contacts, ci, infectious) ≈ implied_R(contacts, ci, mean(infectious)) atol = 0.5
     end
 end

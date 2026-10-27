@@ -156,9 +156,9 @@ keeps it so once there is a `:recovered` to cut transmission short:
   from `contact_interval`, but conditioned on falling before the case's own
   `:recovered` rather than thinned away if it would not, so every one of them
   is realised. This keeps R and its dispersion exact at the cost of the link
-  `contacts` keeps: how many secondary cases a case has no longer depends on
-  how long it happens to stay infectious, only on when within that period
-  each one falls.
+  `contacts` keeps: the number of secondary cases a case has no longer
+  depends on how long it happens to stay infectious, only on when within
+  that period each one falls.
 
 # Examples
 
@@ -210,9 +210,9 @@ function transmission_timing(
     return (progression = progression, window = window)
 end
 
-# The `offspring` form's kernel: `contact_interval`, conditioned on falling
-# before the case's own `:recovered` rather than thinned away if it would
-# not, so every one of `offspring`'s draws is realised. A plain generation
+# The kernel for the `offspring` form: `contact_interval`, conditioned on
+# falling before the case's own `:recovered` rather than thinned away if it
+# would not, so every draw from `offspring` is realised. A plain generation
 # time (no `infectious_period`, hence no `:recovered` to fall before) has
 # nothing to condition on.
 _conditioned_on_recovery(contact_interval, from::Symbol, ::Nothing) = contact_interval
@@ -227,11 +227,11 @@ end
 """
     implied_R(contacts, contact_interval, infectious_period)
 
-The reproduction number [`transmission_timing`](@ref)'s `contacts` form
-realises once recovery thins its contacts: `mean(contacts)` times the
-probability that a draw from `contact_interval` falls before
-`infectious_period`, the two assumed independent, as `transmission_timing`
-draws them.
+The reproduction number realised by the `contacts` form of
+[`transmission_timing`](@ref) once recovery thins its contacts:
+`mean(contacts)` times the probability that a draw from `contact_interval`
+falls before `infectious_period`, the two assumed independent, as
+`transmission_timing` draws them.
 
 `contact_interval` is a `Distribution`; `infectious_period` is a
 `Distribution` or a fixed number of days. The distribution case integrates
