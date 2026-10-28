@@ -221,12 +221,29 @@ function _admit_actions!(cc::CapacityConstrained, state, actions, admitter = cc)
             action = group[i]
             get(action.individual.state, key, false) && continue
             _fits_budget(cc, times, Float64[], action.time) || continue
-            _admit_actions!(cc.intervention, state, [action], admitter)
+            _admit_actions!(cc.intervention, state, [_filing_use(cc, action)], admitter)
             get(action.individual.state, key, false) || continue
             _record_capacity_use!(cache, action.individual, state, times)
         end
     end
     return nothing
+end
+
+# An effect that uses capacity sets `capacity_key` itself (see
+# `InterventionAction`), and within a continuous-time race it runs only once
+# the race's own queue reaches `action.time`, after the admission above has
+# returned and found the flag still unset. The action handed down therefore
+# files the use itself as soon as its effect has set the flag, so the running
+# count learns of it without a rescan. A dose, which records in `claim!`, is
+# filed by the admission above and this then finds nothing left to do.
+function _filing_use(cc::CapacityConstrained, action)
+    key = capacity_key(cc.intervention)
+    effect! = function (person, at, state)
+        further = action.effect!(person, at, state)
+        get(person.state, key, false) && _note_capacity_use!(state, key, person)
+        return further
+    end
+    return InterventionAction(action.individual, action.time, effect!, action.claim!)
 end
 
 """

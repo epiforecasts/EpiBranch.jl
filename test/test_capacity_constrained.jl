@@ -1,6 +1,23 @@
 # Build an already-traced contact, ready to be considered for a dose:
 # `initialise_individual!` sets the vaccination flags to their unset
 # defaults, exactly as the engine does for a real contact.
+# An intervention whose effect, not its `claim!`, uses up capacity, as the
+# extending guide's clinic appointment does; a race runs that effect later.
+struct _ClinicVisit <: EpiBranch.AbstractIntervention end
+EpiBranch.capacity_key(::_ClinicVisit) = :attended
+EpiBranch.capacity_time_key(::_ClinicVisit) = :appointment_time
+function _attend!(person, time, state)
+    person.state[:attended] = true
+    person.state[:appointment_time] = time
+    return nothing
+end
+function EpiBranch.intervention_actions(::_ClinicVisit, state, candidates)
+    return [
+        EpiBranch.InterventionAction(ind, state.max_infection_time + 1.0, _attend!)
+            for ind in candidates if !get(ind.state, :attended, false)
+    ]
+end
+
 function _traced_contact(iv, id, trace_time)
     ind = Individual(
         id = id, state = Dict{Symbol, Any}(
@@ -626,6 +643,37 @@ end
         append!(state.individuals, [third])
         EpiBranch.apply_actions!(cc, state, [third])
         @test !is_vaccinated(third)
+        @test capacity_usage(cc, state).used == 2
+    end
+
+    @testset "An effect a race runs later files its own use" begin
+        # Inside a race an admitted action waits on the event queue, so the
+        # flag its effect sets is still unset when it is admitted; the use
+        # must be filed when the effect runs, as the next admission relies
+        # on it.
+        cc = CapacityConstrained(_ClinicVisit(); budget_per_period = 2.0)
+        state = EpiBranch.new_state(
+            BranchingProcess(Poisson(1.0), Exponential(5.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1)
+        )
+        visitors = [Individual(id = i) for i in 1:3]
+        append!(state.individuals, visitors)
+        state.max_infection_time = 1.0
+
+        deferred = Any[]
+        EpiBranch._with_action_sink(state, (action, admitter) -> push!(deferred, (action, admitter))) do
+            EpiBranch.apply_actions!(cc, state, visitors[1:2])
+        end
+        @test length(deferred) == 2
+        @test !any(ind -> get(ind.state, :attended, false), visitors)
+        for (action, admitter) in deferred
+            EpiBranch._fire_action!(admitter, state, action)
+        end
+        @test count(ind -> get(ind.state, :attended, false), visitors) == 2
+
+        state.max_infection_time = 5.0
+        EpiBranch.apply_actions!(cc, state, visitors[3:3])
+        @test !get(visitors[3].state, :attended, false)
         @test capacity_usage(cc, state).used == 2
     end
 
