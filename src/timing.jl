@@ -21,6 +21,7 @@ of contacts is drawn. A case making none is never asked for a distribution,
 so the function need not handle a case lacking whatever it reads.
 """
 get_generation_time(gt::Distribution, individual) = gt
+get_generation_time(gt::HazardKernel, individual) = gt
 get_generation_time(ngt::NoGenerationTime, individual) = ngt
 get_generation_time(gt, individual) = gt(individual)
 

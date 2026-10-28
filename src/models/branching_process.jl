@@ -237,19 +237,20 @@ The reproduction number realised by the `contacts` form of
 falls before `infectious_period`, the two assumed independent, as
 `transmission_timing` draws them.
 
-`contact_interval` is a `Distribution`; `infectious_period` is a
-`Distribution` or a fixed number of days. The distribution case integrates
-over `infectious_period` numerically (with QuadGK.jl).
+`contact_interval` is a `Distribution` or a [`HazardKernel`](@ref);
+`infectious_period` is a `Distribution` or a fixed number of days. The
+distribution case integrates over `infectious_period` numerically (with
+QuadGK.jl).
 
 # Examples
 ```julia
 implied_R(NegBin(2.5, 0.16), Exponential(4.0), Gamma(5.0, 2.0))
 ```
 """
-function implied_R(contacts, contact_interval::Distribution, infectious_period::Real)
+function implied_R(contacts, contact_interval, infectious_period::Real)
     return mean(contacts) * cdf(contact_interval, infectious_period)
 end
-function implied_R(contacts, contact_interval::Distribution, infectious_period::Distribution)
+function implied_R(contacts, contact_interval, infectious_period::Distribution)
     p = first(quadgk(x -> cdf(contact_interval, x) * pdf(infectious_period, x), 0.0, Inf))
     return mean(contacts) * p
 end

@@ -177,7 +177,7 @@ Generation time, incubation period and serial interval are then whatever the
 trajectory and its links to each clinical event imply, instead of separate
 inputs drawn independently of one another.
 """
-struct HazardKernel{F, T <: AbstractFloat} <: ContinuousUnivariateDistribution
+struct HazardKernel{F, T <: AbstractFloat}
     hazard::F
     upper::T
 end
@@ -191,7 +191,7 @@ SurvivalDistributions.loghazard(k::HazardKernel, t::Real) = log(k.hazard(t))
 function SurvivalDistributions.cumhazard(k::HazardKernel, τ::Real)
     τ >= 0 || throw(ArgumentError("τ must be non-negative, got $τ"))
     iszero(τ) && return zero(float(τ))
-    return first(quadgk(k.hazard, 0.0, min(float(τ), k.upper)))
+    return _hazard_integral(k.hazard, 0.0, min(float(τ), k.upper))
 end
 
 function Distributions.logccdf(k::HazardKernel, τ::Real)
@@ -209,74 +209,59 @@ function Distributions.invlogccdf(k::HazardKernel, lp::Real)
 end
 
 # Define `cdf`/`logcdf` so a `HazardKernel` passed as a bare `contact_interval`
-# (rather than built per case through `kernel`) meets the same `Distribution`
-# contract as a named distribution: `truncated` calls `cdf` on construction,
-# and `implied_R` calls it directly.
+# (rather than built per case through `kernel`) works wherever `implied_R` and
+# `transmission_timing`'s `offspring` form call `cdf`/`truncated` on it
+# directly, the same as a named distribution.
 Distributions.cdf(k::HazardKernel, τ::Real) = -expm1(logccdf(k, τ))
 Distributions.logcdf(k::HazardKernel, τ::Real) = _log1mexp(logccdf(k, τ))
 
 Base.rand(rng::AbstractRNG, k::HazardKernel) = invlogccdf(k, log(rand(rng)))
-
-# `Distributions.rand(::Truncated)` dispatches to `quantile`, not `invlogccdf`,
-# whenever the truncation probability isn't tiny; without this, truncating a
-# `HazardKernel` (as `_conditioned_on_recovery` does) throws on sampling.
 Distributions.quantile(k::HazardKernel, p::Real) = invlogccdf(k, log1p(-p))
 Base.minimum(::HazardKernel) = 0.0
 Base.maximum(k::HazardKernel) = k.upper
 Distributions.partype(::HazardKernel{F, T}) where {F, T} = T
 
-# Grow a bracket from 0 until the integrated hazard reaches `target`, doubling
-# each step; `k.upper` caps the bracket, so a `target` beyond the total hazard
-# there is met by returning `upper` rather than doubling forever. With `upper`
-# left unbounded, a window adding nothing to `hi_acc` is ambiguous on its own:
-# it could mean the hazard has converged to a finite total below `target` (a
-# case that clears and never becomes infectious again), or just that the
-# window hasn't yet reached a later onset (a hazard that switches on after a
-# flat zero run-up). Telling them apart needs the tail: quadgk run to `Inf`
-# returns a value together with an error estimate, and that estimate is small
-# only when the tail converges; a hazard still to switch on makes it diverge
-# instead, because the quadrature then spans both the flat run-up and
-# whatever comes after. A stalled window returns `upper` only once that tail
-# check confirms there is no more hazard left to integrate.
-function _hazard_invert(k::HazardKernel, target::Real)
-    upper = k.upper
-    lo = zero(target)
-    acc = zero(target)
-    width = one(target)
-    while true
-        hi = min(lo + width, upper)
-        hi_acc = acc + first(quadgk(k.hazard, lo, hi))
-        (hi_acc >= target || hi == upper) &&
-            return _bisect_hazard(k, lo, hi, acc, hi_acc, target)
-        if isinf(upper) && isapprox(hi_acc, acc; rtol = 1.0e-9, atol = 1.0e-12)
-            tail, tail_err = quadgk(k.hazard, hi, Inf)
-            tail_err < 1.0e-6 * max(hi_acc + tail, 1.0) && hi_acc + tail < target &&
-                return upper
-        end
-        lo, acc = hi, hi_acc
-        width *= 2
-    end
-    return
+# `k.upper` caps the bracket `_invert_hazard` grows, so a `target` beyond the
+# total hazard there is met by returning `upper` rather than doubling forever;
+# that cap, not a certain event, is why it does not treat `upper` as the
+# survival's own end the way a calendar-scaled profile's own bounded support
+# does.
+_hazard_invert(k::HazardKernel, target::Real) = first(_invert_hazard(k.hazard, k.upper, false, true, target))
+
+"""
+A [`HazardKernel`](@ref) conditioned on falling at or before `hi`: what
+`transmission_timing`'s `offspring` form needs so every draw is realised
+rather than thinned away by the case's own recovery. The lower bound is
+always 0, since a `HazardKernel`'s own support already starts there.
+
+This is `Distributions.truncated`'s usual meaning, a rescaled conditional
+distribution, not `HazardKernel`'s own censoring at `upper` (which piles
+draws up there instead of excluding them).
+"""
+struct _TruncatedHazardKernel{K, T <: AbstractFloat}
+    kernel::K
+    hi::T
+    logF_hi::T
+end
+function Distributions.truncated(k::HazardKernel, lo::Real, hi::Real)
+    iszero(lo) || throw(
+        ArgumentError("truncated(::HazardKernel, lo, hi) needs lo = 0")
+    )
+    hi = float(hi)
+    return _TruncatedHazardKernel(k, hi, logcdf(k, hi))
 end
 
-# Bisect `[lo, hi]` down to adjacent floats; `acc` and `hi_acc`, the
-# cumulative hazards from 0 at its two ends, bracket `target`. `hi == k.upper`
-# short of `target` never reaches it, so the loop returns `hi` there instead
-# of bisecting further.
-function _bisect_hazard(k::HazardKernel, lo::Real, hi::Real, acc::Real, hi_acc::Real, target::Real)
-    hi_acc >= target || return hi
-    while true
-        mid = lo + (hi - lo) / 2
-        (lo < mid < hi) || return hi
-        mid_acc = acc + first(quadgk(k.hazard, lo, mid))
-        if mid_acc >= target
-            hi = mid
-        else
-            lo, acc = mid, mid_acc
-        end
-    end
-    return
+function Distributions.logcdf(k::_TruncatedHazardKernel, τ::Real)
+    return τ >= k.hi ? zero(k.logF_hi) : logcdf(k.kernel, τ) - k.logF_hi
 end
+Distributions.cdf(k::_TruncatedHazardKernel, τ::Real) = exp(logcdf(k, τ))
+Distributions.logccdf(k::_TruncatedHazardKernel, τ::Real) = _log1mexp(logcdf(k, τ))
+function Distributions.quantile(k::_TruncatedHazardKernel, p::Real)
+    return quantile(k.kernel, exp(k.logF_hi + log(p)))
+end
+Base.rand(rng::AbstractRNG, k::_TruncatedHazardKernel) = quantile(k, rand(rng))
+Base.minimum(::_TruncatedHazardKernel) = 0.0
+Base.maximum(k::_TruncatedHazardKernel) = k.hi
 
 """
     sample_value(x, rng, args...) -> Float64

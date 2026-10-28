@@ -651,10 +651,6 @@ function _calendar_hazard(k::_CalendarScaledKernel, s)
     return iszero(m) ? zero(m) * zero(s) : m * exp(loghazard(k.profile, s))
 end
 
-function _calendar_integral(k::_CalendarScaledKernel, lo, hi)
-    return first(quadgk(s -> _calendar_hazard(k, s), lo, hi))
-end
-
 # The profile's survival reaches zero at the top of a bounded support, beyond
 # which its hazard is undefined, so the contact interval ends there. Quadrature
 # cannot settle an integral over an unbounded horizon for a multiplier that
@@ -662,61 +658,100 @@ end
 function _calendar_cumhazard(::SmoothCalendar, k::_CalendarScaledKernel, τ)
     (isfinite(τ) && τ < maximum(k.profile)) || return oftype(float(τ), Inf)
     iszero(τ) && return zero(float(τ))
-    return _calendar_integral(k, zero(float(τ)), float(τ))
+    return _hazard_integral(s -> _calendar_hazard(k, s), zero(float(τ)), float(τ))
 end
 
-# Find the time at which the integrated hazard reaches `target`: grow a bracket
-# by doubling until it does, then bisect the last interval to adjacent floats.
-# Each step integrates only the new interval and adds it to the running total,
-# which is monotone because the scaled hazard is non-negative.
 function _calendar_invlogccdf(::SmoothCalendar, k::_CalendarScaledKernel, target)
-    iszero(target) && return target
-    upper = float(maximum(k.profile))
-    lo = zero(target)
-    acc = zero(target)
-    width = one(target)
-    while true
-        hi = lo + width
-        hi >= upper && (hi = oftype(lo, upper))
-        isfinite(hi) || return oftype(target, Inf)
-        hi_acc = hi == upper ? oftype(target, Inf) : acc + _calendar_integral(k, lo, hi)
-        if hi_acc >= target
-            t, t_acc = _bisect_calendar(k, lo, hi, acc, hi_acc, target)
-            return _implicit_step(k, t, t_acc, target)
-        end
-        lo, acc = hi, hi_acc
-        width *= 2
-    end
-    return
+    rate = s -> _calendar_hazard(k, s)
+    t, t_acc = _invert_hazard(rate, float(maximum(k.profile)), true, false, target)
+    return _implicit_hazard_step(rate, t, t_acc, target)
 end
 
-# The bisection compares values only, so the time it finds carries no
-# derivative in the schedule's parameters. One implicit-function step
-# `t + (target - Λ(t)) / λ(t)` gives it the derivative `-(∂Λ/∂θ) / λ` that the
-# drawn time has. `Λ(t)` is the bisection's own running integral, which
-# brackets `target` within one bisection step, so the step moves the value by
-# no more than that step even where the hazard is small; a separately computed
-# integral would carry a different quadrature error, which a small hazard
-# would magnify into the drawn time.
-function _implicit_step(k::_CalendarScaledKernel, t, t_acc, target)
-    isfinite(t_acc) || return t
-    rate = _calendar_hazard(k, t)
-    (iszero(rate) || !isfinite(rate)) && return t
-    return t + (target - t_acc) / rate
-end
+# ── Shared quadrature hazard inversion ───────────────────────────────
+#
+# A `HazardKernel`'s own hazard and a calendar-scaled smooth schedule's
+# combined hazard are both given only as a function to integrate, with no
+# closed form for their cumulative hazard or its inverse. Both find a time
+# from a target cumulative hazard the same way, so they share the machinery
+# below rather than each doubling and bisecting on their own.
 
-# Bisect `[lo, hi]`, whose running integrals `acc` and `hi_acc` bracket
-# `target`, down to adjacent floats; return the upper end and its integral.
-function _bisect_calendar(k::_CalendarScaledKernel, lo, hi, acc, hi_acc, target)
+# Integrate `rate` over `[lo, hi]` by quadrature.
+_hazard_integral(rate, lo, hi) = first(quadgk(rate, lo, hi))
+
+# Bisect `[lo, hi]` down to adjacent floats; `acc` and `hi_acc`, the integrals
+# of `rate` from 0 to each end, bracket `target`. Returns the bisected time
+# and its own integral, the second needed only by a caller that refines it
+# further.
+function _hazard_bisect(rate, lo, hi, acc, hi_acc, target)
+    hi_acc >= target || return hi, hi_acc
     while true
         mid = lo + (hi - lo) / 2
         (lo < mid < hi) || return hi, hi_acc
-        mid_acc = acc + _calendar_integral(k, lo, mid)
+        mid_acc = acc + _hazard_integral(rate, lo, mid)
         if mid_acc >= target
             hi, hi_acc = mid, mid_acc
         else
             lo, acc = mid, mid_acc
         end
+    end
+    return
+end
+
+# The bisection compares values only, so the time it finds carries no
+# derivative in `rate`'s own parameters. One implicit-function step
+# `t + (target - Λ(t)) / λ(t)` gives it the derivative `-(∂Λ/∂θ) / λ` that the
+# drawn time has. `Λ(t)` is the bisection's own running integral, which
+# brackets `target` within one bisection step, so the step moves the value by
+# no more than that step even where the rate is small; a separately computed
+# integral would carry a different quadrature error, which a small rate
+# would magnify into the drawn time.
+function _implicit_hazard_step(rate, t, t_acc, target)
+    isfinite(t_acc) || return t
+    r = rate(t)
+    (iszero(r) || !isfinite(r)) && return t
+    return t + (target - t_acc) / r
+end
+
+# Grow a bracket `[0, hi]` from 0 by doubling `width` each step until the
+# integral of `rate` reaches `target` or `hi` meets `upper`, then bisect the
+# last interval. `boundary_is_certain` says what the cumulative hazard is once
+# `hi` reaches `upper` without reaching `target`: `true` for a profile whose
+# survival has certainly ended there, so the remaining hazard is treated as
+# infinite rather than integrated through what may be a singularity at the
+# edge (a calendar-scaled profile's own bounded support); `false` for a hard
+# cap a draw simply piles up at instead (a `HazardKernel`'s `upper`).
+#
+# With `upper` unbounded, a bracket that stops growing the integral is
+# ambiguous on its own: it could mean `rate` has converged to a finite total
+# below `target`, so the time is never reached, or that it is merely flat for
+# now and resumes later. `check_stall` asks the tail from the bracket onwards,
+# integrated by quadrature with its own error estimate, to tell them apart,
+# giving up and returning `upper` only once that tail is shown to add nothing
+# more; it must stay off for a `rate` that can grow without bound; such a tail
+# integral then diverges instead of converging, which is exactly what rules
+# out a stall, but quadrature run to `Inf` over a divergent integrand can fail
+# outright rather than merely report a large value, so asking it is only safe
+# where the rate is already known to have a finite total, as `HazardKernel`'s
+# own docstring assumes of whatever hazard it is given.
+function _invert_hazard(rate, upper, boundary_is_certain::Bool, check_stall::Bool, target::Real)
+    iszero(target) && return zero(target), zero(target)
+    lo = zero(target)
+    acc = zero(target)
+    width = one(target)
+    while true
+        hi = min(lo + width, upper)
+        isfinite(hi) || return oftype(target, Inf), oftype(target, Inf)
+        hi_acc = hi == upper && boundary_is_certain ? oftype(target, Inf) :
+            acc + _hazard_integral(rate, lo, hi)
+        hi_acc >= target && return _hazard_bisect(rate, lo, hi, acc, hi_acc, target)
+        hi == upper && return upper, hi_acc
+        if check_stall && isinf(upper) && isapprox(hi_acc, acc; rtol = 1.0e-9, atol = 1.0e-12)
+            tail, tail_err = quadgk(rate, hi, Inf)
+            tail_err < 1.0e-6 * max(hi_acc + tail, 1.0) && hi_acc + tail < target &&
+                return upper, hi_acc
+        end
+        lo, acc = hi, hi_acc
+        width *= 2
     end
     return
 end
