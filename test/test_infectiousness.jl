@@ -259,8 +259,8 @@ end
 
     @testset "truncation to a short infectious period still draws a contact time" begin
         # `truncated` picks `quantile` over `invlogccdf` once the truncation
-        # probability isn't tiny, which a short infectious period relative to
-        # the kernel's rate forces here.
+        # probability isn't tiny; a short infectious period relative to the
+        # kernel's rate forces that here.
         k = HazardKernel(t -> 2.0)
         timing = transmission_timing(
             k;
