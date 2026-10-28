@@ -131,7 +131,7 @@ time `t` since the window opened, for `t` from 0 up to `upper` (unbounded by
 default). Use it as the `kernel` of an [`Infectiousness`](@ref) window, built
 fresh for each case from a function of the individual, `kernel = ind -> ...`,
 when transmission should follow something computed on the fly rather than a
-named distribution — most usefully a per-case within-host trajectory, drawn
+named distribution: most usefully a per-case within-host trajectory, drawn
 once at infection and stored on the individual, read through a link that
 turns it into a rate.
 
@@ -174,7 +174,7 @@ model = ModelSpec(BranchingProcess(community); attributes)
 ```
 
 Generation time, incubation period and serial interval are then whatever the
-trajectory and its links to each clinical event imply, rather than separate
+trajectory and its links to each clinical event imply, instead of separate
 inputs drawn independently of one another.
 """
 struct HazardKernel{F, T <: AbstractFloat} <: ContinuousUnivariateDistribution
@@ -232,9 +232,10 @@ function _hazard_invert(k::HazardKernel, target::Real)
     return
 end
 
-# Bisect `[lo, hi]`, whose cumulative hazards from 0 (`acc`, `hi_acc`) bracket
-# `target`, down to adjacent floats; `hi == k.upper` short of `target` never
-# reaches it, so the loop returns `hi` there instead of bisecting further.
+# Bisect `[lo, hi]` down to adjacent floats; `acc` and `hi_acc`, the
+# cumulative hazards from 0 at its two ends, bracket `target`. `hi == k.upper`
+# short of `target` never reaches it, so the loop returns `hi` there instead
+# of bisecting further.
 function _bisect_hazard(k::HazardKernel, lo::Real, hi::Real, acc::Real, hi_acc::Real, target::Real)
     hi_acc >= target || return hi
     while true
