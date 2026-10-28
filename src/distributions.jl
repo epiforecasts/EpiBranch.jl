@@ -128,8 +128,8 @@ end
 A parameter with a distribution that depends on the case: wherever a delay or a
 probability accepts a number, a `Distribution` or a function, it also
 accepts `Conditional(dist)`, where `dist(args...)` returns the
-`Distribution` for the case given the same arguments a function parameter
-would take (typically the case's `Individual`).
+`Distribution` for the case given the arguments a function parameter would
+take after `rng` (typically just the case's `Individual`).
 
 Unlike a plain `(rng, args...) -> value` function, the distribution behind a
 `Conditional` can be read back through [`resolve`](@ref EpiBranch.resolve)
