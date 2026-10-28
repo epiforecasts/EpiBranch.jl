@@ -310,19 +310,27 @@ function _forget_capacity_cache!(state, key)
     return nothing
 end
 
-# Add `ind`'s own use to `cache`, at the sorted position its date belongs:
+# File `ind`'s own use in `cache`, at the sorted position its date belongs:
 # cases settle in infection order, so a dose dated earlier is often admitted
 # after later ones (see `_fits_budget`), and `times` must stay searchable by
-# date regardless of the order doses are recorded in. A no-op for anyone
-# already in `cache.recorded`, whether from the population scan that seeded
-# it or from an earlier call, so nobody is counted twice.
+# date regardless of the order doses are recorded in. Someone already in
+# `cache.recorded`, whether from the population scan that seeded it or from
+# an earlier call, is counted once: left alone when their date and resource
+# are unchanged, and moved when either has changed, as a dose revised to an
+# earlier trigger (see `may_revise`) moves its date.
 function _record_capacity_use!(
         cache::_CapacityCache, cc::CapacityConstrained, ind, state,
         times = get!(Vector{Float64}, cache.times, resource_key(cc.intervention, ind, state))
     )
-    haskey(cache.recorded, ind.id) && return times
+    resource = resource_key(cc.intervention, ind, state)
     t = get(ind.state, capacity_time_key(cc.intervention), -Inf)
-    cache.recorded[ind.id] = (resource_key(cc.intervention, ind, state), t)
+    if haskey(cache.recorded, ind.id)
+        old_resource, old_t = cache.recorded[ind.id]
+        old_resource == resource && old_t == t && return times
+        old_times = cache.times[old_resource]
+        deleteat!(old_times, searchsortedfirst(old_times, old_t))
+    end
+    cache.recorded[ind.id] = (resource, t)
     insert!(times, searchsortedfirst(times, t), t)
     return times
 end

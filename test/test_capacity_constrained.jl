@@ -516,6 +516,35 @@ end
         @test !is_vaccinated(third)
     end
 
+    @testset "A dose revised to an earlier trigger is charged to its new day" begin
+        # A contact reached again from an earlier trace has its dose moved
+        # earlier (`may_revise`); the running count must move it too, or
+        # the old day stays charged and the new one is not.
+        rv = RingVaccination(efficacy = 0.9)
+        cc = CapacityConstrained(rv; budget_per_period = 1.0, period = 1.0, carry_over = false)
+        state = EpiBranch.new_state(
+            BranchingProcess(Poisson(1.0), Exponential(5.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1)
+        )
+        revised = _traced_contact(rv, 1, 5.0)
+        append!(state.individuals, [revised])
+        state.max_infection_time = 5.0
+        EpiBranch.apply_actions!(cc, state, [revised])
+        @test revised.state[:vaccination_time] == 5.0
+
+        revised.state[:trace_time] = 3.0
+        EpiBranch.apply_actions!(cc, state, [revised])
+        @test revised.state[:vaccination_time] == 3.0
+
+        same_day = _traced_contact(rv, 2, 3.0)
+        freed_day = _traced_contact(rv, 3, 5.0)
+        append!(state.individuals, [same_day, freed_day])
+        EpiBranch.apply_actions!(cc, state, [same_day])
+        EpiBranch.apply_actions!(cc, state, [freed_day])
+        @test !is_vaccinated(same_day)
+        @test is_vaccinated(freed_day)
+    end
+
     @testset "A dose recorded directly counts against the running budget" begin
         # `record_dose!` is public for a custom `trace_contacts!` to call
         # outside the action protocol; a dose it records must still count
