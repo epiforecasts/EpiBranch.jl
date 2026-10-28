@@ -232,12 +232,12 @@ Distributions.partype(::HazardKernel{F, T}) where {F, T} = T
 # it could mean the hazard has converged to a finite total below `target` (a
 # case that clears and never becomes infectious again), or just that the
 # window hasn't yet reached a later onset (a hazard that switches on after a
-# flat zero run-up). Telling them apart needs the actual tail: quadgk run to
-# `Inf` returns a value together with an error estimate, and that estimate is
-# small only when the tail genuinely converges; a hazard still to switch on
-# makes it diverge instead, since the quadrature then spans both the flat
-# run-up and whatever comes after. So a stalled window only returns `upper`
-# once that tail check confirms there is no more hazard left to integrate.
+# flat zero run-up). Telling them apart needs the tail: quadgk run to `Inf`
+# returns a value together with an error estimate, and that estimate is small
+# only when the tail converges; a hazard still to switch on makes it diverge
+# instead, because the quadrature then spans both the flat run-up and
+# whatever comes after. A stalled window returns `upper` only once that tail
+# check confirms there is no more hazard left to integrate.
 function _hazard_invert(k::HazardKernel, target::Real)
     upper = k.upper
     lo = zero(target)
