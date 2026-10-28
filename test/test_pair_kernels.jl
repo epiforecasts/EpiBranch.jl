@@ -583,6 +583,24 @@ end
     ]
 end
 
+@testset "Compaction keeps a deferred action's own event" begin
+    # `member == 0` marks the event of a deferred action; `action_sink` on
+    # the race queues it directly instead of building it from `proposals`.
+    # Compaction must restore it, since the rebuild below would otherwise
+    # drop it silently.
+    P = EpiBranch._Pending{Float64}
+    proposals = [P(1, 0, 1.0, true)]
+    head = [1]
+    best = [1.0]
+    represents = [1]
+    queue = EpiBranch._EventQueue{Float64}()
+    EpiBranch._enqueue!(queue, EpiBranch._Event(1.0, 1, 1))
+    EpiBranch._enqueue!(queue, EpiBranch._Event(0.5, 0, 3))
+    EpiBranch._compact_proposals!(queue, proposals, head, best, represents, [false])
+    @test EpiBranch._Event(0.5, 0, 3) in queue.heap
+    @test EpiBranch._Event(1.0, 1, represents[1]) in queue.heap
+end
+
 @testset "Shared race refreshes live pair kernels" begin
     ties = PairKernel((c, a, b) -> Dirac(1.0); state = tick_state, watches = (:tick,))
     state = stateful_test_race(ties, [0.0, Inf, Inf]; interventions = [TickEveryCase()])

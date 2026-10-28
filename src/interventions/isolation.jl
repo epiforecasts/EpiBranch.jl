@@ -244,7 +244,7 @@ function initialise_individual!(iso::Isolation, individual, state)
     delete!(individual.state, :_isolation_handle)
     if is_eligible_for_isolation(iso.eligibility, individual, state)
         rng = stream(state.rng, individual.id, (:isolation, :test))
-        sens = _sample_value(iso.test_sensitivity, rng, individual)
+        sens = sample_value(iso.test_sensitivity, rng, individual)
         individual.state[:test_positive] = rand(rng) < sens
     else
         individual.state[:test_positive] = false
@@ -264,7 +264,7 @@ function resolve_individual!(iso::Isolation, individual, state)
     if _isolation_in_force(individual)
         is_test_positive(individual) || return nothing
         self_t = onset_time(individual) +
-            _sample_value(
+            sample_value(
             iso.onset_to_isolation_delay,
             stream(state.rng, individual.id, (:isolation, :delay)), individual
         )
@@ -291,7 +291,7 @@ function resolve_individual!(iso::Isolation, individual, state)
         max(_state_real(individual.state, :_traced_isolation_time, Inf), onset)
     test_time = if is_test_positive(individual)
         onset +
-            _sample_value(
+            sample_value(
             iso.onset_to_isolation_delay,
             stream(state.rng, individual.id, (:isolation, :delay)), individual
         )

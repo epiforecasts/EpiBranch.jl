@@ -98,6 +98,16 @@ function _dequeue!(q::_EventQueue)
     return e
 end
 
+# Every event still in `q`, visited once each without removing it, wherever it
+# currently sits: the binary heap, or, once migrated, the radix buckets. Used
+# only where an operation otherwise discards the whole queue and must first
+# save events it cannot itself rebuild (see `_compact_proposals!`).
+function _each_event(f, q::_EventQueue)
+    foreach(f, q.heap)
+    foreach(bucket -> foreach(f, bucket), q.buckets)
+    return nothing
+end
+
 function _heap_push!(h::Vector{E}, e::E) where {E <: _Event}
     push!(h, e)
     i = length(h)

@@ -100,8 +100,8 @@ function simulate(
     # A bare process is composed with no ModelSpec, so run the checks the spec
     # constructor would otherwise do (a ModelSpec routes here via its own
     # `simulate`, already validated at composition, so it never double-warns).
-    _validate_process_windows(model, _progression(model))
-    _warn_incomplete_terminal_coverage(_progression(model))
+    _validate_process_windows(model, progression(model))
+    _warn_incomplete_terminal_coverage(progression(model))
     sim_opts = _build_sim_opts(
         model, n_initial, initial_cases, index_types, max_cases, max_generations,
         max_time, stopping_rules
@@ -111,7 +111,7 @@ function simulate(
     return _run_once_or_retry(
         model, sim_opts, condition, max_attempts;
         interventions = interventions(model), attributes = attributes(model),
-        progression = _progression(model), observation = observation(model),
+        progression = progression(model), observation = observation(model),
         recorder = recorder(model), rng
     )
 end
@@ -197,8 +197,8 @@ function _simulate_each(
         rng::AbstractRNG = Random.default_rng(),
         parallel::Bool = false
     ) where {T}
-    _validate_process_windows(model, _progression(model))
-    _warn_incomplete_terminal_coverage(_progression(model))
+    _validate_process_windows(model, progression(model))
+    _warn_incomplete_terminal_coverage(progression(model))
     sim_opts = _build_sim_opts(
         model, n_initial, initial_cases, index_types, max_cases, max_generations,
         max_time, stopping_rules
@@ -207,7 +207,7 @@ function _simulate_each(
     _validate_index_types(model, sim_opts)
     return _simulate_n(
         each, T, model, n, sim_opts; interventions = interventions(model),
-        attributes = attributes(model), progression = _progression(model),
+        attributes = attributes(model), progression = progression(model),
         observation = observation(model), recorder = recorder(model), rng,
         parallel
     )
@@ -1066,11 +1066,11 @@ end
 function _risks_block(risks, parent, contact, state, transmission_time)
     rng = state.rng
     for risk in risks
-        event_t = _sample_value(risk.event_time, rng, parent, contact, state)
+        event_t = sample_value(risk.event_time, rng, parent, contact, state)
         event_t > transmission_time && continue
-        release_t = _sample_value(risk.release_time, rng, parent, contact, state)
+        release_t = sample_value(risk.release_time, rng, parent, contact, state)
         transmission_time < release_t || continue
-        prob = _sample_value(risk.block_probability, rng, parent, contact, state)
+        prob = sample_value(risk.block_probability, rng, parent, contact, state)
         prob <= 0.0 && continue
         prob >= 1.0 && return true
         rand(rng) < prob && return true
@@ -1172,7 +1172,7 @@ function _apply_attributes!(attribute::GroupAttribute, rng, ind)
         )
     )
     ind.state[attribute.key] = get!(attribute.cache, ind.state[attribute.group_key]) do
-        _sample_value(attribute.propensity, rng, ind)
+        sample_value(attribute.propensity, rng, ind)
     end
     return nothing
 end
@@ -1261,7 +1261,7 @@ struct ClinicalPresentation{D, P}
 end
 
 function (clinical::ClinicalPresentation)(rng, ind)
-    pa = _sample_value(clinical.prob_asymptomatic, rng, ind)
+    pa = sample_value(clinical.prob_asymptomatic, rng, ind)
     is_asymp = rand(rng) < pa
     ind.state[:asymptomatic] = is_asymp
     ind.state[:incubation_period] = is_asymp ? NaN : rand(rng, clinical.incubation_period)

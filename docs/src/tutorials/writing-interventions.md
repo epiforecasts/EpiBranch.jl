@@ -271,7 +271,7 @@ function resolve_individual!(iso::Isolation, individual, state)
     onset = onset_time(individual)
     # Self-isolation after a positive test.
     test_time = if is_test_positive(individual)
-        onset + _sample_value(iso.onset_to_isolation_delay, state.rng, individual)
+        onset + sample_value(iso.onset_to_isolation_delay, state.rng, individual)
     else
         Inf
     end

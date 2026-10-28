@@ -356,7 +356,7 @@ method for an effect only some vaccinations have.
 """
 store_draw!(x::Real, key, label, ind, rng) = nothing
 function store_draw!(x, key, label, ind, rng)
-    ind.state[key(label)] = _sample_value(x, rng, ind)
+    ind.state[key(label)] = sample_value(x, rng, ind)
     return nothing
 end
 
@@ -458,7 +458,7 @@ realised_efficacy(::AllOrNothingMode, eff, rng) = float(rand(rng, Bernoulli(eff)
 
 # Helper for concrete subtypes: write per-dose state on a contact at
 # vaccination time. Samples efficacy, severity efficacy, and the
-# immunity delay via `_sample_value` so scalar, distribution, and
+# immunity delay via `sample_value` so scalar, distribution, and
 # function forms all work. The delay is drawn here, once, rather than
 # inside `competing_risk`, so a given individual's immunity time is the
 # same against every exposure it faces. Storing the resulting immunity
@@ -474,13 +474,13 @@ function _record_vaccination!(v::AbstractVaccination, contact, vacc_t, rng)
     contact.state[_vaccinated_key(label)] = true
     contact.state[_vaccination_time_key(label)] = vacc_t
     contact.state[_vaccine_efficacy_key(label)] = realised_efficacy(
-        effect_mode(v), _sample_value(efficacy(v), rng, contact), rng
+        effect_mode(v), sample_value(efficacy(v), rng, contact), rng
     )
     contact.state[_immunity_time_key(label)] = vacc_t +
-        _sample_value(
+        sample_value(
         delay_to_immunity(v), rng, contact
     )
-    contact.state[_severity_efficacy_key(label)] = _sample_value(
+    contact.state[_severity_efficacy_key(label)] = sample_value(
         severity_efficacy(v), rng, contact
     )
     record_effect_draws!(v, contact, label, rng)
@@ -899,7 +899,7 @@ function on_infection_settled!(rv::RingVaccination, ind, state, rng)
     vacc_t = _dose_time(dose_label(rv), ind)
     vacc_t === nothing && return nothing
     window = action_draw!(ind, (rv, :eligibility_window)) do
-        _sample_value(rv.eligibility_window, rng, ind)
+        sample_value(rv.eligibility_window, rng, ind)
     end
     if !_within_window(window, ind, vacc_t)
         _withdraw_dose!(rv, ind)
@@ -929,7 +929,7 @@ end
 # deterministic behaviour exactly.
 _within_eligibility_window(w::Real, ind, vacc_t, rng) = _within_window(w, ind, vacc_t)
 function _within_eligibility_window(w, ind, vacc_t, rng)
-    return _within_window(_sample_value(w, rng, ind), ind, vacc_t)
+    return _within_window(sample_value(w, rng, ind), ind, vacc_t)
 end
 
 # A contact with no exposure yet (a `NaN` infection time) has not exceeded any
@@ -939,7 +939,7 @@ function _within_window(w, ind, vacc_t)
 end
 
 _covers(p::Real, ind, rng) = p >= 1.0 || rand(rng) < p
-_covers(p, ind, rng) = rand(rng) < _sample_value(p, rng, ind)
+_covers(p, ind, rng) = rand(rng) < sample_value(p, rng, ind)
 
 # A dose that requires an earlier one is given only to contacts who
 # received it by the time this dose falls due, so `coverage` on the later

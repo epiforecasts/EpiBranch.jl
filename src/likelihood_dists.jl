@@ -96,7 +96,7 @@ end
 function Base.rand(rng::AbstractRNG, d::_ChainSizeLaw, n::Int)
     model = _underlying_model(d)
     obs = observation(model)
-    prog = _progression(model)
+    prog = progression(model)
     sim_kwargs = _simulate_kwargs(d.kwargs, _SIMULATE_ONCE_KWARGS)
     # `seeds`/`prob_concluded` describe the grouping of *observed* data and
     # have no role in generating new draws, and `simulate`'s window/coverage/
@@ -113,8 +113,8 @@ end
 # public single-outbreak `simulate`'s checks (and any `@warn` it raises) on
 # every attempt.
 function _rand_chain_size_setup(model::TransmissionModel, sim_kwargs::NamedTuple)
-    _validate_process_windows(model, _progression(model))
-    _warn_incomplete_terminal_coverage(_progression(model))
+    _validate_process_windows(model, progression(model))
+    _warn_incomplete_terminal_coverage(progression(model))
     sim_opts = _build_sim_opts(
         model, get(sim_kwargs, :n_initial, nothing),
         get(sim_kwargs, :initial_cases, nothing), nothing,
@@ -272,7 +272,7 @@ function chain_size_distribution(
     if seeds === nothing && prob_concluded === nothing && isempty(kwargs) &&
             isempty(interventions(model)) && has_single_type_law(model) &&
             offspring_law_unchanged(model) && offspring_law_unchanged(attributes(model)) &&
-            all(offspring_law_unchanged, _progression(model))
+            all(offspring_law_unchanged, progression(model))
         # `chain_size_distribution` on the bare offspring can still fail
         # despite `has_single_type_law`'s `hasmethod` check: a
         # `GeneratingFunctionOffspring` built from a bare pgf has the method
@@ -285,7 +285,7 @@ function chain_size_distribution(
         # a user error, and should propagate rather than be swallowed here.
         folded = try
             base = chain_size_distribution(single_type_offspring(model))
-            _fold_reporting(_progression(model), base, observation(model))
+            _fold_reporting(progression(model), base, observation(model))
         catch e
             (e isa MethodError || e isa ArgumentError) || rethrow()
             nothing
@@ -304,10 +304,10 @@ function chain_size_distribution(
     if seeds === nothing && prob_concluded === nothing && isempty(kwargs) &&
             isempty(interventions(spec)) && has_single_type_law(spec) &&
             offspring_law_unchanged(spec) && offspring_law_unchanged(attributes(spec)) &&
-            all(offspring_law_unchanged, _progression(spec))
+            all(offspring_law_unchanged, progression(spec))
         folded = try
             base = chain_size_distribution(single_type_offspring(spec.process))
-            _fold_reporting(_progression(spec), base, observation(spec))
+            _fold_reporting(progression(spec), base, observation(spec))
         catch e
             (e isa MethodError || e isa ArgumentError) || rethrow()
             nothing
