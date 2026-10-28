@@ -305,10 +305,14 @@ function trace_contacts!(ct::ContactTracing, state, infector, contacts)
         trace_delay = draw_trace_delay(ct.isolation_to_trace_delay, infector, ind, state, rng)
         trace_time = trigger_time(ct.eligibility, infector, ind, state) + trace_delay
         apply_trace!(ct.action, ind, state, trace_time, rng)
+        record_capacity_use!(ct.action, ind, state)
     end
     return nothing
 end
 ```
+
+The last call tells a `CapacityConstrained` sharing the action's resource that
+it was used, and does nothing when none is.
 
 `competing_risk`: see [A custom intervention: closing a border](@ref).
 

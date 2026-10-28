@@ -193,27 +193,34 @@ capacity_time_key(::Isolation) = :isolation_time
 # `ContactTracing` proposes its follow-up as an `InterventionAction` (see
 # `_trace_action`) whose own resource key depends on what the action does:
 # a `Quarantine` has a removal to ration, `FlagOnly` does not.
-capacity_key(ct::ContactTracing) = capacity_key(ct.action)
-capacity_time_key(ct::ContactTracing) = capacity_time_key(ct.action)
-
-function capacity_key(action::TraceAction)
-    throw(
+function capacity_key(ct::ContactTracing)
+    key = capacity_key(ct.action)
+    key === nothing && throw(
         ArgumentError(
-            "CapacityConstrained needs a `capacity_key` method for $(typeof(action)) " *
+            "CapacityConstrained needs a `capacity_key` method for $(typeof(ct.action)) " *
                 "to know which state key measures how much of `ContactTracing`'s " *
                 "follow-up capacity a person has used. See the Extending guide."
         )
     )
+    return key
 end
-function capacity_time_key(action::TraceAction)
-    throw(
+function capacity_time_key(ct::ContactTracing)
+    key = capacity_time_key(ct.action)
+    key === nothing && throw(
         ArgumentError(
             "CapacityConstrained needs a `capacity_time_key` method for " *
-                "$(typeof(action)) to measure usage within a period. See the " *
+                "$(typeof(ct.action)) to measure usage within a period. See the " *
                 "Extending guide."
         )
     )
+    return key
 end
+# An action with no resource to ration, such as `FlagOnly`, answers
+# `nothing`; the tracer above turns that into the error a wrapper needs, and
+# a tracer applying the action can tell by dispatch alone, without reflection
+# on every trace, whether there is a use to file.
+capacity_key(::TraceAction) = nothing
+capacity_time_key(::TraceAction) = nothing
 capacity_key(::Quarantine) = :_quarantined_by_tracing
 capacity_time_key(::Quarantine) = :trace_time
 
@@ -332,6 +339,24 @@ function _note_capacity_use!(state, key, ind)
     cache = get(state.scratch, (:capacity_cache, key), nothing)
     cache === nothing && return nothing
     _record_capacity_use!(cache::_CapacityCache, ind, state)
+    return nothing
+end
+
+"""
+    record_capacity_use!(intervention, person, state)
+
+For extension authors: tell any [`CapacityConstrained`](@ref) sharing
+`intervention`'s resource that `person` has just used it, after setting its
+[`capacity_key`](@ref EpiBranch.capacity_key) outside an action admitted
+through the wrapper, as a tracer of your own does when it applies a
+[`TraceAction`](@ref) directly. An action admitted through the wrapper, a
+dose recorded by [`record_dose!`](@ref) and a trace applied by the built-in
+tracers are all counted without it. Does nothing when nothing is rationed.
+"""
+function record_capacity_use!(intervention, person, state)
+    key = capacity_key(intervention)
+    key === nothing && return nothing
+    _note_capacity_use!(state, key, person)
     return nothing
 end
 

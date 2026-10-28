@@ -40,6 +40,7 @@ function EpiBranch.trace_contacts!(tr::_OwnTracer, state, infector, contacts, tr
         EpiBranch._record_trace_time!(contact, trace_time)
         contact.state[:traced] = true
         EpiBranch.apply_trace!(tr.action, contact, state, trace_time, state.rng)
+        EpiBranch.record_capacity_use!(tr.action, contact, state)
     end
     return nothing
 end
@@ -808,6 +809,38 @@ end
         EpiBranch.trace_contacts!(cc, state, infector, contacts[3:3], [3.0])
         @test !is_quarantined(contacts[3])
         @test capacity_usage(cc, state).used == 2
+    end
+
+    @testset "A custom action by a tracer written outside the package counts" begin
+        ct = ContactTracing(TraceEveryone(), 1.0, Dirac(0.0), _Bed())
+        cc = CapacityConstrained(ct; budget_per_period = 2.0)
+        own = _OwnTracer(_Bed())
+        state = EpiBranch.new_state(
+            BranchingProcess(Poisson(1.0), Exponential(5.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1)
+        )
+        infector = Individual(id = 1)
+        set_isolated!(infector, 0.0; release_time = Inf)
+        contacts = [Individual(id = i) for i in 2:4]
+        append!(state.individuals, [infector; contacts])
+        state.max_infection_time = 3.0
+
+        EpiBranch.trace_contacts!(cc, state, infector, contacts[1:1], [1.0])
+        EpiBranch.trace_contacts!(own, state, infector, contacts[2:2], [2.0])
+        @test get(contacts[2].state, :bedded, false)
+        @test capacity_usage(cc, state).used == 2
+
+        EpiBranch.trace_contacts!(cc, state, infector, contacts[3:3], [3.0])
+        @test !get(contacts[3].state, :bedded, false)
+        @test capacity_usage(cc, state).used == 2
+    end
+
+    @testset "A trace action with nothing to ration cannot be wrapped" begin
+        cc = CapacityConstrained(
+            ContactTracing(TraceEveryone(), 1.0, Dirac(0.0), FlagOnly()); budget_per_period = 1.0
+        )
+        @test_throws ArgumentError EpiBranch.capacity_key(cc)
+        @test EpiBranch.capacity_key(FlagOnly()) === nothing
     end
 
     @testset "Constructor validates its arguments" begin

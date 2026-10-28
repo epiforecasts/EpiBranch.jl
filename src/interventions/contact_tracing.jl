@@ -411,8 +411,8 @@ apply_trace!(::TraceAction, contact, state, trace_time, rng) = nothing
 # against the budget a wrapped one shares, whatever the action's type.
 function _apply_trace!(action::TraceAction, contact, state, trace_time, rng)
     apply_trace!(action, contact, state, trace_time, rng)
-    _has_own_method(capacity_key, typeof(action), TraceAction) || return nothing
     key = capacity_key(action)
+    key === nothing && return nothing
     get(contact.state, key, false) && _note_capacity_use!(state, key, contact)
     return nothing
 end

@@ -156,6 +156,9 @@ public realise_prior_dose!
 public vaccine_effect
 public dose_action
 public record_dose!
+# `record_capacity_use!` tells a capacity wrapper of a use made outside an
+# action it admitted.
+public record_capacity_use!
 public record_effect_draws!
 public store_draw!
 public dose_value
