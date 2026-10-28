@@ -516,6 +516,32 @@ end
         @test !is_vaccinated(third)
     end
 
+    @testset "A dose recorded directly counts against the running budget" begin
+        # `record_dose!` is public for a custom `trace_contacts!` to call
+        # outside the action protocol; a dose it records must still count
+        # once the wrapper's running count has been seeded.
+        rv = RingVaccination(efficacy = 0.9)
+        cc = CapacityConstrained(rv; budget_per_period = 2.0)
+        state = EpiBranch.new_state(
+            BranchingProcess(Poisson(1.0), Exponential(5.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1)
+        )
+        first = _traced_contact(rv, 1, 1.0)
+        second = _traced_contact(rv, 2, 2.0)
+        third = _traced_contact(rv, 3, 3.0)
+        append!(state.individuals, [first, second, third])
+        state.max_infection_time = 3.0
+
+        EpiBranch.apply_actions!(cc, state, [first])
+        EpiBranch.record_dose!(rv, second, 2.0, state)
+        EpiBranch.apply_actions!(cc, state, [third])
+
+        @test is_vaccinated(first)
+        @test is_vaccinated(second)
+        @test !is_vaccinated(third)
+        @test capacity_usage(cc, state).used == 2
+    end
+
     @testset "Constructor validates its arguments" begin
         rv = RingVaccination(efficacy = 0.9)
         @test_throws ArgumentError CapacityConstrained(rv; budget_per_period = -1.0)

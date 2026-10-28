@@ -298,6 +298,18 @@ function _capacity_cache(cc::CapacityConstrained, state)
     return cache
 end
 
+# Drop the running count kept under `key`, if any, so the next admission
+# through a wrapper on that key seeds it afresh from the population.
+# `record_dose!` calls this for a dose recorded outside any wrapper's own
+# admission path, the one use the count cannot otherwise learn of; a run
+# that records no dose that way never pays the rescan. The `scratch` check
+# is for the minimal state `record_dose!` accepts outside a run.
+function _forget_capacity_cache!(state, key)
+    hasproperty(state, :scratch) || return nothing
+    delete!(state.scratch, (:capacity_cache, key))
+    return nothing
+end
+
 # Add `ind`'s own use to `cache`, at the sorted position its date belongs:
 # cases settle in infection order, so a dose dated earlier is often admitted
 # after later ones (see `_fits_budget`), and `times` must stay searchable by

@@ -832,7 +832,7 @@ end
 partial = RingVaccination(efficacy = 0.6, mode = PartialResponseMode(0.2))
 draws = map(1:8) do i
     contact = Individual(id = i, parent_id = 0, infection_time = 10.0)
-    EpiBranch.record_dose!(partial, contact, 0.0, StableRNG(i))
+    EpiBranch.record_dose!(partial, contact, 0.0, (; rng = StableRNG(i)))
     vaccine_efficacy(contact)
 end
 draws

@@ -230,17 +230,30 @@ function _admit_actions!(cc::CapacityConstrained, state, actions, admitter = cc)
 end
 
 """
-    record_dose!(v::AbstractVaccination, person, at, rng)
+    record_dose!(v::AbstractVaccination, person, at, state)
 
-Record one dose of `v` on `person` at time `at`, skipping a `person` already
-recorded as vaccinated under `v`'s own `dose_label`, and reconsidering a
-post-exposure abort ([`RingVaccination`](@ref)'s `post_exposure_efficacy`)
-against the dose just given. The action protocol calls this through
-[`dose_action`](@ref); call it directly to record a dose outside that
-protocol, for example from a custom `trace_contacts!` or when
-seeding a dose before a run starts.
+Record one dose of `v` on `person` at time `at`, drawing from `state.rng`,
+skipping a `person` already recorded as vaccinated under `v`'s own
+`dose_label`, and reconsidering a post-exposure abort
+([`RingVaccination`](@ref)'s `post_exposure_efficacy`) against the dose just
+given. The action protocol calls this through [`dose_action`](@ref); call it
+directly to record a dose outside that protocol, for example from a custom
+`trace_contacts!` or when seeding a dose before a run starts. A dose recorded
+this way counts against any [`CapacityConstrained`](@ref) budget under `v`'s
+dose label, exactly as one admitted through the action protocol does. Outside
+a run, `state` can be anything with an `rng` field, such as
+`(; rng = StableRNG(1))`.
 """
-function record_dose!(v::AbstractVaccination, person, at, rng)
+function record_dose!(v::AbstractVaccination, person, at, state)
+    _record_dose!(v, person, at, state.rng)
+    _forget_capacity_cache!(state, _vaccinated_key(dose_label(v)))
+    return nothing
+end
+
+# The dose itself, without the capacity bookkeeping `record_dose!` adds: a
+# wrapper's own admission path records what it admits in its running count as
+# it goes, so a dose given there must not throw that count away.
+function _record_dose!(v::AbstractVaccination, person, at, rng)
     get(person.state, _vaccinated_key(dose_label(v)), false) && return nothing
     _record_vaccination!(v, person, at, rng)
     _after_action_dose!(v, person, at, rng)
@@ -263,7 +276,7 @@ case, can be checked against them, rather than waiting for the event queue
 of a continuous-time race to reach `time`.
 """
 function dose_action(v::AbstractVaccination, ind, time)
-    claim! = (person, at, state) -> record_dose!(v, person, at, state.rng)
+    claim! = (person, at, state) -> _record_dose!(v, person, at, state.rng)
     return InterventionAction(ind, time, (person, at, state) -> nothing; claim! = claim!)
 end
 
@@ -315,7 +328,7 @@ function _revisable_dose_action(v::AbstractVaccination, ind, trigger, time)
             person.state[_vaccination_time_key(label)] = at
             person.state[_immunity_time_key(label)] += at - old_time
         else
-            record_dose!(v, person, at, state.rng)
+            _record_dose!(v, person, at, state.rng)
         end
         _action_cache(person)[_trigger_cache_key(v)] = trigger
         return nothing
