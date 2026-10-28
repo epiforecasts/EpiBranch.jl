@@ -470,13 +470,23 @@ end
         @test pairwise_surv_loglik(Exponential(1.0), data; external_hazard = schedule) ≈
             expected
 
-        # a schedule is not a valid per-element of a per-person vector or
-        # function, only a hazard shared by everyone
+        # a vector or a function of the person's number can instead give each
+        # person their own schedule, read through the same piecewise code
+        other = Steps([2.0], [0.1, 0.3])
+        other_integrated(t) = 0.1 * min(t, 2.0) + 0.3 * max(t - 2.0, 0.0)
+        expected_mixed = log(0.05) - integrated(2.5) - other_integrated(4.0)
+        @test pairwise_surv_loglik(
+            Exponential(1.0), data; external_hazard = [schedule, other]
+        ) ≈ expected_mixed
+        @test pairwise_surv_loglik(
+            Exponential(1.0), data;
+            external_hazard = j -> j == 1 ? schedule : other
+        ) ≈ expected_mixed
+
+        # a non-hazard value from a per-person function is rejected, as it
+        # would be from a vector
         @test_throws ArgumentError pairwise_surv_loglik(
-            Exponential(1.0), data; external_hazard = [schedule, schedule]
-        )
-        @test_throws ArgumentError pairwise_surv_loglik(
-            Exponential(1.0), data; external_hazard = j -> schedule
+            Exponential(1.0), data; external_hazard = j -> "not a hazard"
         )
     end
 

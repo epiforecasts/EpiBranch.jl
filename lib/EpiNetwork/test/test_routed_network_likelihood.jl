@@ -1,7 +1,8 @@
 # Tests for the RoutedNetwork pairwise survival likelihood: the per-route
 # infection layer read out of a simulation, the exact simulate → loglikelihood
 # round trip with several routes and a lapsing removal gated to one of them,
-# and the error paths for what it does not yet evaluate.
+# a vaccination's change in susceptibility evaluated across every route, and
+# the error paths for what it does not yet evaluate.
 
 # Households of `hs` as cliques, and a ring of community contacts (each
 # linked to its `k` nearest neighbours either side) over the same `nh * hs`
@@ -59,6 +60,29 @@ end
 
         @test_throws ArgumentError pairwise_surv_loglik(windows[1:1], data)
         @test_throws ArgumentError pairwise_surv_loglik(reverse(windows), data)
+    end
+
+    @testset "a per-edge route kernel's own parameter type is still found" begin
+        # A per-edge kernel has no `partype` of its own to read directly, unlike
+        # a shared distribution, so `_route_kernel_partype` must probe an actual
+        # edge of the route instead. The household route here is resolved pair
+        # by pair for the same reason, rather than through one distribution.
+        hh, comm = _routed_adjacency(20, 4)
+        per_edge = [
+            [Exponential(0.2 + 0.1 * mod1(i + k, 5)) for k in eachindex(hh[i])]
+                for i in eachindex(hh)
+        ]
+        windows = [
+            RouteWindow(:household; until = (:recovered,), kernel = per_edge, reach = hh),
+            RouteWindow(:community; until = (:recovered,), kernel = Exponential(10.0), reach = comm),
+        ]
+        process = RoutedNetwork(windows)
+        m = ModelSpec(process; progression = _sir(8.0))
+        data = routed_network_infections(simulate(m; n_initial = 3, rng = StableRNG(11)), m)
+
+        direct = pairwise_surv_loglik(windows, data)
+        @test isfinite(direct)
+        @test loglikelihood(data, process) == direct
     end
 
     @testset "a community hazard per node matches a shared one when all equal" begin
@@ -189,26 +213,155 @@ end
         )
     end
 
-    @testset "a susceptibility effect is refused" begin
+    @testset "a vaccination's change in susceptibility is evaluated structurally" begin
         hh, comm = _routed_adjacency(20, 4)
         windows = [
             RouteWindow(:household; until = (:recovered,), kernel = Exponential(3.0), reach = hh),
             RouteWindow(:community; until = (:recovered,), kernel = Exponential(10.0), reach = comm),
         ]
         ct = ContactTracing(OnSymptomOnset(), 1.0, Dirac(0.0), FlagOnly())
-        rv = RingVaccination(efficacy = 0.5, mode = LeakyMode())
         process = RoutedNetwork(windows)
         clinical = clinical_presentation(incubation_period = Dirac(0.0))
-        m = ModelSpec(
-            process; progression = _sir(8.0), attributes = clinical,
-            interventions = [ct, rv]
-        )
-        state = simulate(m; n_initial = 2, rng = StableRNG(5))
-        data = routed_network_infections(state, m)
-        @test_throws ArgumentError loglikelihood(data, m)
-        # the same data fits fine once the effect it cannot represent is dropped
-        unvaccinated = ModelSpec(process; progression = _sir(8.0), attributes = clinical)
-        @test isfinite(loglikelihood(data, unvaccinated))
+
+        @testset "the structured likelihood matches an explicit vaccine effect" begin
+            rv = RingVaccination(efficacy = 0.5, mode = LeakyMode())
+            m = ModelSpec(
+                process; progression = _sir(8.0), attributes = clinical,
+                interventions = [ct, rv]
+            )
+            state = simulate(m; n_initial = 2, rng = StableRNG(5))
+            data = routed_network_infections(state, m)
+            @test any(!ismissing, data.host_times.immunity_time)
+
+            explicit = pairwise_surv_loglik(
+                windows, data; susceptibility = EpiBranch.vaccine_effect(rv)
+            )
+            @test loglikelihood(data, m) ≈ explicit
+
+            unvaccinated = ModelSpec(
+                process; progression = _sir(8.0), attributes = clinical,
+                interventions = [ct]
+            )
+            @test loglikelihood(data, m) != loglikelihood(data, unvaccinated)
+        end
+
+        @testset "AllOrNothingMode round-trips through the structured likelihood too" begin
+            rv = RingVaccination(efficacy = 0.4, mode = AllOrNothingMode())
+            m = ModelSpec(
+                process; progression = _sir(8.0), attributes = clinical,
+                interventions = [ct, rv]
+            )
+            state = simulate(m; n_initial = 2, rng = StableRNG(6))
+            data = routed_network_infections(state, m)
+            explicit = pairwise_surv_loglik(
+                windows, data; susceptibility = EpiBranch.vaccine_effect(rv)
+            )
+            @test loglikelihood(data, m) ≈ explicit
+            @test isfinite(loglikelihood(data, m))
+        end
+
+        @testset "a single route matches NetworkProcess with the same vaccination" begin
+            # A single-route `RoutedNetworkInfections` has exactly the columns
+            # a `NetworkInfections` over the same adjacency does, so the two
+            # likelihoods must agree on the same recorded outbreak and vaccine
+            # effect, regardless of how each simulator arrived at it.
+            adj = ring_adjacency(80)
+            k = Exponential(2.0)
+            rv = RingVaccination(efficacy = 0.5, mode = LeakyMode())
+            routed_m = ModelSpec(
+                RoutedNetwork([RouteWindow(:all; until = (:recovered,), kernel = k, reach = adj)]);
+                progression = _sir(8.0), attributes = clinical, interventions = [ct, rv]
+            )
+            state = simulate(routed_m; n_initial = 2, rng = StableRNG(7))
+            routed_data = routed_network_infections(state, routed_m)
+
+            plain_m = ModelSpec(
+                NetworkProcess(adj, k; until = (:recovered,));
+                progression = _sir(8.0), attributes = clinical, interventions = [ct, rv]
+            )
+            plain_data = NetworkInfections(
+                adj, routed_data.infection_time, routed_data.infectious_time[1],
+                routed_data.removal_time[1], routed_data.is_index;
+                obs_end = routed_data.obs_end, followup_end = routed_data.followup_end,
+                host_times = routed_data.host_times
+            )
+            @test loglikelihood(routed_data, routed_m) ≈ loglikelihood(plain_data, plain_m)
+        end
+
+        @testset "an onward or post-exposure effect is still refused" begin
+            rv = RingVaccination(efficacy = 0.5, onward_efficacy = 0.3)
+            m = ModelSpec(
+                process; progression = _sir(8.0), attributes = clinical,
+                interventions = [ct, rv]
+            )
+            state = simulate(m; n_initial = 2, rng = StableRNG(8))
+            data = routed_network_infections(state, m)
+            @test_throws ArgumentError loglikelihood(data, m)
+        end
+
+        @testset "fitting efficacy on a simulated routed outbreak recovers it" begin
+            true_efficacy = 0.6
+            hh2, comm2 = _routed_adjacency(150, 4)
+            windows2 = [
+                RouteWindow(:household; until = (:recovered,), kernel = Exponential(3.0), reach = hh2),
+                RouteWindow(:community; until = (:recovered,), kernel = Exponential(10.0), reach = comm2),
+            ]
+            rv = RingVaccination(efficacy = true_efficacy, mode = LeakyMode())
+            m = ModelSpec(
+                RoutedNetwork(windows2); progression = _sir(8.0), attributes = clinical,
+                interventions = [ct, rv]
+            )
+            state = simulate(m; n_initial = 5, rng = StableRNG(9))
+            data = routed_network_infections(state, m)
+            @test any(!ismissing, data.host_times.immunity_time)
+
+            logit(p) = log(p / (1 - p))
+            invlogit(x) = 1 / (1 + exp(-x))
+            g(x) = pairwise_surv_loglik(
+                windows2, data;
+                susceptibility = VaccineEffect(efficacy = invlogit(x), mode = LeakyMode())
+            )
+            θ = logit(true_efficacy)
+            θhat, se = _newton_mle(g, θ)
+            @test abs(θhat - θ) < 3 * se
+        end
+
+        @testset "a vaccinated host still gets a gated route and an external hazard" begin
+            # A vaccinated host's mixture goes through `_routed_modifier_loglik`
+            # for every route and the external hazard alike. A route gated to
+            # `INTERVENTION_REMOVAL` and a non-zero `external_hazard` must both
+            # reach the survival and event terms in that function, just as an
+            # unvaccinated host's plain sum does.
+            REM = EpiBranch.INTERVENTION_REMOVAL
+            windows3 = [
+                RouteWindow(:household; until = (:recovered,), kernel = Exponential(3.0), reach = hh),
+                RouteWindow(
+                    :community; until = (:recovered, REM),
+                    kernel = Exponential(10.0), reach = comm
+                ),
+            ]
+            iso = Isolation(
+                onset_to_isolation_delay = Exponential(1.5),
+                test_sensitivity = 1.0, duration = 7.0
+            )
+            rv = RingVaccination(efficacy = 0.5, mode = LeakyMode())
+            process3 = RoutedNetwork(windows3; external_hazard = 0.02, obs_end = 20.0)
+            m = ModelSpec(
+                process3; progression = _sir(10.0), attributes = clinical,
+                interventions = [ct, rv, iso]
+            )
+            state = simulate(m; n_initial = 5, rng = StableRNG(10))
+            data = routed_network_infections(state, m)
+            @test any(!ismissing, data.host_times.immunity_time)
+            @test haskey(data.host_times, EpiBranch.REMOVAL_STRETCHES_KEY)
+
+            explicit = pairwise_surv_loglik(
+                windows3, data;
+                susceptibility = EpiBranch.vaccine_effect(rv), external_hazard = 0.02
+            )
+            @test loglikelihood(data, m) ≈ explicit
+            @test isfinite(loglikelihood(data, m))
+        end
     end
 
     @testset "differentiable in the route kernels' parameters (ForwardDiff)" begin
@@ -228,6 +381,79 @@ end
                 for e in ([1.0, 0.0], [0.0, 1.0])
         ]
         @test ForwardDiff.gradient(f, x) ≈ fd rtol = 1.0e-5
+    end
+
+    @testset "still differentiable in the route kernels' parameters under a susceptibility effect" begin
+        # A vaccinated host's term goes through `_routed_mixture_loglik`, whose
+        # `T` must cover the route kernels' own parameter type as well as the
+        # mixture's, or its `T(-Inf)`/`T(l)` conversions throw once `θ` is a
+        # `Dual` from differentiating the kernels rather than the mixture.
+        hh, comm = _routed_adjacency(30, 4)
+        windows(θ) = [
+            RouteWindow(:household; until = (:recovered,), kernel = Exponential(exp(θ[1])), reach = hh),
+            RouteWindow(:community; until = (:recovered,), kernel = Exponential(exp(θ[2])), reach = comm),
+        ]
+        ct = ContactTracing(OnSymptomOnset(), 1.0, Dirac(0.0), FlagOnly())
+        rv = RingVaccination(efficacy = 0.5, mode = LeakyMode())
+        clinical = clinical_presentation(incubation_period = Dirac(0.0))
+        m = ModelSpec(
+            RoutedNetwork(windows([log(3.0), log(10.0)])); progression = _sir(8.0),
+            attributes = clinical, interventions = [ct, rv]
+        )
+        state = simulate(m; n_initial = 3, rng = StableRNG(6))
+        data = routed_network_infections(state, m)
+        @test any(!ismissing, data.host_times.immunity_time)
+
+        f(θ) = pairwise_surv_loglik(
+            windows(θ), data; susceptibility = EpiBranch.vaccine_effect(rv)
+        )
+        x = [log(3.0), log(10.0)]
+        h = 1.0e-6
+        fd = [
+            (f(x + h * e) - f(x - h * e)) / 2h
+                for e in ([1.0, 0.0], [0.0, 1.0])
+        ]
+        @test ForwardDiff.gradient(f, x) ≈ fd rtol = 1.0e-5
+    end
+
+    @testset "differentiable in the external hazard under a susceptibility effect" begin
+        # A vaccinated host's term goes through `_routed_mixture_loglik`, whose
+        # `T` must cover the parameter type of the external hazard as well as
+        # that of the mixture, or its `T(-Inf)`/`T(l)` conversions throw once
+        # the external hazard is a `Dual` from being differentiated.
+        hh, comm = _routed_adjacency(30, 4)
+        REM = EpiBranch.INTERVENTION_REMOVAL
+        ws = [
+            RouteWindow(:household; until = (:recovered,), kernel = Exponential(3.0), reach = hh),
+            RouteWindow(
+                :community; until = (:recovered, REM),
+                kernel = Exponential(10.0), reach = comm
+            ),
+        ]
+        ct = ContactTracing(OnSymptomOnset(), 1.0, Dirac(0.0), FlagOnly())
+        clinical = clinical_presentation(incubation_period = Dirac(0.0))
+        iso = Isolation(
+            onset_to_isolation_delay = Exponential(1.5),
+            test_sensitivity = 1.0, duration = 7.0
+        )
+        rv = RingVaccination(efficacy = 0.5, mode = LeakyMode())
+        m = ModelSpec(
+            RoutedNetwork(ws; external_hazard = 0.02, obs_end = 20.0);
+            progression = _sir(10.0), attributes = clinical, interventions = [ct, rv, iso]
+        )
+        state = simulate(m; n_initial = 5, rng = StableRNG(10))
+        data = routed_network_infections(state, m)
+        @test any(!ismissing, data.host_times.immunity_time)
+
+        f(θ) = pairwise_surv_loglik(
+            ws, data;
+            susceptibility = EpiBranch.vaccine_effect(rv), external_hazard = exp(θ[1])
+        )
+        x = [log(0.02)]
+        @test isfinite(f(x))
+        h = 1.0e-6
+        fd = (f(x .+ h) - f(x .- h)) / 2h
+        @test ForwardDiff.gradient(f, x) ≈ [fd] rtol = 1.0e-5
     end
 
     @testset "a structurally infeasible host has a zero gradient, not just -Inf" begin

@@ -685,7 +685,7 @@ supplies_contacts(model::TransmissionModel) =
 
 # Warn once per run about an intervention that cannot act on a model naming no
 # contacts: one that traces, or proposes actions that need a case's contacts.
-# What it does to each case itself, such as isolating it, still applies.
+# Its hooks on the case itself, such as isolating it, still apply.
 function _warn_contactless(model, interventions)
     supplies_contacts(model) && return nothing
     names = unique(
@@ -1131,6 +1131,28 @@ function _sellke_race!(
     head = fill!(resize!(buffers.head, may_block ? m : 0), 0) # first proposal to each member
     represents = fill!(resize!(buffers.represents, m), 0) # what each member's heap entry names
     queue = empty!(buffers.queue)
+    # An admitted action's effect is deferred onto this same queue, as an
+    # event naming no member (`0`, which no case position ever is) and
+    # indexing `pending_actions` instead of a proposal. `_apply_case_actions!`
+    # installs this sink in `state.scratch` for the span of its own call, the
+    # only place `acting` is ever offered a case to act on; a dose given
+    # upfront to the whole population, or to a contact as it is created,
+    # therefore still runs the moment it is admitted. An action timed in a
+    # type other than the race's own, such as a dose delay differentiated by
+    # a parameter the race's own candidate times do not include, cannot
+    # share this queue and runs there and then instead. A `claim!`-only
+    # effect, such as a dose's, never needed deferring in the first place,
+    # so this restriction never touches it.
+    pending_actions = empty!(buffers.pending_actions)
+    action_sink = (action, admitter) -> begin
+        if action.time isa T
+            push!(pending_actions, (action, admitter))
+            _enqueue!(queue, _Event(action.time, 0, length(pending_actions)))
+        else
+            _fire_action!(admitter, state, action)
+        end
+        return nothing
+    end
 
     # The seeds' own opening: no infector, so nothing about it is ever read.
     push!(openings, _RouteOpening(0, 0, zero(T), T(Inf)))
@@ -1173,6 +1195,35 @@ function _sellke_race!(
         # after `max_time`: those individuals stay uninfected, and the race
         # was cut off rather than reaching extinction on its own.
         bt > max_time && return _finish_race!(rts, race, false, max_time)
+        # A deferred action's own event: no member settles from it, so it
+        # skips the pop bookkeeping below, which is about resolving a case.
+        # Firing it may admit further actions of its own (an effect's
+        # return); those belong on this same queue too, so the sink is
+        # reinstalled for the span of running it.
+        if j == 0
+            action, admitter = pending_actions[p]
+            _with_action_sink(state, action_sink) do
+                _fire_action!(admitter, state, action)
+            end
+            if live && _records_changed!(
+                    snapshot, watched_keys, key_routes, state, members,
+                    0, bt, watch, openings, processed,
+                    full_snapshot, route_projections, route_names
+                )
+                orphans += _redraw_moved!(
+                    queue, proposals, head, best, represents,
+                    watch, openings, processed, pos, rts, state, bt, pops, passed, rng,
+                    reinfects
+                )
+                if orphans > max(m, length(proposals) ÷ 2)
+                    _compact_proposals!(
+                        queue, proposals, head, best, represents, processed, reinfects
+                    )
+                    orphans = 0
+                end
+            end
+            continue
+        end
         # Only a redraw of a live kernel reads which pops happened at this clock.
         if live
             if bt != clock
@@ -1383,10 +1434,23 @@ function _sellke_race!(
             state, ind, interventions, case_contacts, pos, tracing
         )
         _trace_source!(state, ind, interventions, tracing_source)
-        (contacts !== nothing || contactless_actions) &&
-            _apply_case_actions!(
-            state, ind, acting, members, processed, case_contacts, pos, traced
-        )
+        # A model with nothing in `acting` never calls `_admit_actions!`
+        # inside `_apply_case_actions!`. Installing the sink anyway, a
+        # `Dict{Any, Any}` write and delete per settled case, would cost
+        # every case for a feature it never uses.
+        if contacts !== nothing || contactless_actions
+            if isempty(acting)
+                _apply_case_actions!(
+                    state, ind, acting, members, processed, case_contacts, pos, traced
+                )
+            else
+                _with_action_sink(state, action_sink) do
+                    _apply_case_actions!(
+                        state, ind, acting, members, processed, case_contacts, pos, traced
+                    )
+                end
+            end
+        end
 
         # Only a live kernel whose host records actually moved needs its pending
         # contacts redrawn. Resolving a case usually leaves every record alone —
@@ -1469,10 +1533,12 @@ struct _RaceBuffers{T <: Real}
     head::Vector{Int}
     openings::Vector{_RouteOpening{T}}
     proposals::Vector{_Pending{T}}
+    pending_actions::Vector{Tuple{InterventionAction, AbstractIntervention}}
 end
 function _RaceBuffers{T}() where {T}
     return _RaceBuffers{T}(
-        _EventQueue{T}(), T[], falses(0), Int[], Int[], _RouteOpening{T}[], _Pending{T}[]
+        _EventQueue{T}(), T[], falses(0), Int[], Int[], _RouteOpening{T}[], _Pending{T}[],
+        Tuple{InterventionAction, AbstractIntervention}[]
     )
 end
 
@@ -2010,7 +2076,10 @@ function _records_changed!(
         w::_LiveWatch, openings, processed,
         full_snapshot = nothing, route_projections = nothing, route_names = nothing
     )
-    _refresh_host!(snapshot, watched_keys, state.individuals[members[case]], case)
+    # `case == 0` is a deferred action's own event, which settles nobody: it
+    # has no position of its own to pre-stamp against its own writes, and the
+    # scan below, over every tracked host, already covers whomever it wrote to.
+    case == 0 || _refresh_host!(snapshot, watched_keys, state.individuals[members[case]], case)
     kept = 0
     for oi in w.open
         if openings[oi].close_t >= now
@@ -2256,7 +2325,14 @@ end
 # and a blocked contact requeues the next earliest. A settled member's chain is
 # kept too when `reinfects`, since a proposal to them held back by
 # `HostImmunity` is still due once they wane, not abandoned.
+#
+# A deferred action owns an event (`member == 0`) that names no proposal
+# this walk knows how to rebuild. It is saved here and put straight back
+# once the queue holds everything else again; left alone, `empty!(queue)`
+# below would drop it on the floor with its `effect!` never run.
 function _compact_proposals!(queue, proposals, head, best, represents, processed, reinfects = false)
+    deferred = eltype(queue.heap)[]
+    _each_event(e -> e.member == 0 && push!(deferred, e), queue)
     kept = empty(proposals)
     empty!(queue)
     for j in eachindex(head)
@@ -2280,5 +2356,6 @@ function _compact_proposals!(queue, proposals, head, best, represents, processed
         end
     end
     copy!(proposals, kept)
+    foreach(e -> _enqueue!(queue, e), deferred)
     return nothing
 end

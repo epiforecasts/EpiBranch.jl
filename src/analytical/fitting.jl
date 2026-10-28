@@ -348,13 +348,13 @@ taken against the simulated clusters' empirical distribution.
 function loglikelihood(data::ChainSizes, model::TransmissionModel; kwargs...)
     return _chain_size_model_loglik(
         data, model, interventions(model), attributes(model),
-        _progression(model), observation(model), recorder(model); kwargs...
+        progression(model), observation(model), recorder(model); kwargs...
     )
 end
 function loglikelihood(data::ChainSizes, spec::ModelSpec; kwargs...)
     return _chain_size_model_loglik(
         data, spec.process, interventions(spec), attributes(spec),
-        _progression(spec), observation(spec), recorder(spec); kwargs...
+        progression(spec), observation(spec), recorder(spec); kwargs...
     )
 end
 
@@ -454,13 +454,13 @@ chain with undetected cases has no well-defined observed length.
 function loglikelihood(data::ChainLengths, model::TransmissionModel; kwargs...)
     return _chain_length_model_loglik(
         data, model, interventions(model), attributes(model),
-        _progression(model), observation(model), recorder(model); kwargs...
+        progression(model), observation(model), recorder(model); kwargs...
     )
 end
 function loglikelihood(data::ChainLengths, spec::ModelSpec; kwargs...)
     return _chain_length_model_loglik(
         data, spec.process, interventions(spec), attributes(spec),
-        _progression(spec), observation(spec), recorder(spec); kwargs...
+        progression(spec), observation(spec), recorder(spec); kwargs...
     )
 end
 

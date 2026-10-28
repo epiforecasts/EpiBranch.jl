@@ -44,7 +44,7 @@ function SingleSpawnModel(;
     )
 end
 EpiBranch.generate_offspring(::SingleSpawnModel, parent, state) = 1
-EpiBranch._progression(m::SingleSpawnModel) = m.progression
+EpiBranch.progression(m::SingleSpawnModel) = m.progression
 # Carry the model inputs so the model joins the engine.
 EpiBranch.interventions(m::SingleSpawnModel) = m.interventions
 EpiBranch.attributes(m::SingleSpawnModel) = m.attributes

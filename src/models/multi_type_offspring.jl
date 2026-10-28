@@ -6,7 +6,16 @@
 The offspring distribution of a multi-type branching process (for example
 children and adults, or health-care workers and the community), built from a
 next-generation matrix `M`: `M[i, j]` is the mean number of type-`i` cases
-infected by one type-`j` case.
+infected by one type-`j` case: column `j` holds a type-`j` case's offspring,
+and its sum is that type's reproduction number.
+
+!!! warning "Contact matrices are often the other way round"
+    A contact matrix from a survey frequently has the respondent as the row
+    and the contact as the column (as with socialmixr's `contact_matrix`),
+    so a person's number of contacts is a row sum. Transpose such a matrix
+    (`permutedims`) before passing it as `M`; the multi-type tutorial works
+    through an example. Passing it as given runs without error but gives the
+    wrong type-specific reproduction numbers.
 
 A type-`j` case draws how many people it infects in total, then splits them
 at random between types in proportion to column `j`. `dist_fn` gives that
@@ -126,6 +135,69 @@ function BranchingProcess(
         (Infectiousness(offspring; kernel = gt),), population_size,
         _n_types(offspring), type_labels
     )
+end
+
+# The next-generation matrix for `BranchingProcess(contacts, q, D, ...)`
+# below: `contacts[j, i]`, the daily contacts a type-`j` respondent makes
+# with type `i` (row = respondent, as a survey matrix is laid out), is
+# transposed so that columns are infectors, then scaled by the transmission
+# probability `q` (per infectee type when given as a vector, because
+# susceptibility belongs to the row) and the infectious period `D`.
+function _contact_offspring_matrix(contacts::AbstractMatrix{<:Real}, q, D)
+    n = size(contacts, 1)
+    size(contacts, 2) == n || throw(
+        ArgumentError("contacts must be square, got $(size(contacts))")
+    )
+    q isa AbstractVector && length(q) != n && throw(
+        ArgumentError("q has $(length(q)) entries for $n types, expected $n")
+    )
+    return Matrix{Float64}(permutedims(contacts) .* q .* D)
+end
+
+"""
+    BranchingProcess(contacts, q, D, dist_fn, gt; kwargs...)
+
+A multi-type branching process built directly from a contact matrix, rather
+than a next-generation matrix: the common case for a contact matrix from a
+social contact survey, laid out respondent by contact (the `contact_matrix()`
+function from socialmixr in R, a summary from cntmosaic in Python, or a
+published matrix), together with a transmission probability and an
+infectious period.
+
+`contacts[j, i]` is the mean number of type-`i` contacts a type-`j`
+respondent makes per day, the layout such a survey matrix comes in. This
+builds the next-generation matrix `permutedims(contacts) .* q .* D`,
+transposing for the caller: a next-generation matrix has columns for
+infectors and rows for infectees, the other way round from a contact
+matrix, whose rows are the respondent.
+
+`q` is the probability that a contact between an infectious and a
+susceptible person results in transmission: a single number applied to
+every contact, or a vector of one probability per infectee type, for a
+per-type susceptibility. `D` is the mean infectious period in days. `dist_fn`
+and `gt` are as in the next-generation-matrix form of [`BranchingProcess`](@ref):
+the offspring law for a type's column sum, and the generation time.
+
+# Examples
+```julia
+using EpiBranch, Distributions
+
+contacts = [10.0 1.0; 4.0 2.0]  # row = respondent, column = contact
+q, D = 0.05, 5.0
+model = BranchingProcess(
+    contacts, q, D, R -> NegBin(R, 0.5), LogNormal(1.6, 0.5);
+    type_labels = ["child", "adult"],
+)
+```
+"""
+function BranchingProcess(
+        contacts::AbstractMatrix{<:Real}, q::Union{Real, AbstractVector{<:Real}},
+        D::Real, dist_fn, gt;
+        population_size::Union{Int, NoPopulation} = NoPopulation(),
+        type_labels::Union{Vector{String}, NoTypeLabels} = NoTypeLabels()
+    )
+    M = _contact_offspring_matrix(contacts, q, D)
+    return BranchingProcess(M, dist_fn, gt; population_size, type_labels)
 end
 
 """
