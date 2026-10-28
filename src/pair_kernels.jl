@@ -725,14 +725,16 @@ end
 # ambiguous on its own: it could mean `rate` has converged to a finite total
 # below `target`, so the time is never reached, or that it is merely flat for
 # now and resumes later. `check_stall` asks the tail from the bracket onwards,
-# integrated by quadrature with its own error estimate, to tell them apart,
-# giving up and returning `upper` only once that tail is shown to add nothing
-# more; it must stay off for a `rate` that can grow without bound; such a tail
-# integral then diverges instead of converging, which is exactly what rules
-# out a stall, but quadrature run to `Inf` over a divergent integrand can fail
-# outright rather than merely report a large value, so asking it is only safe
-# where the rate is already known to have a finite total, as `HazardKernel`'s
-# own docstring assumes of whatever hazard it is given.
+# integrated by quadrature with its own error estimate, to tell them apart;
+# it gives up and returns `upper` only once that tail is shown to add nothing
+# more.
+#
+# `check_stall` must stay off for a `rate` that can grow without bound: such a
+# tail integral then diverges instead of converging, which is exactly what
+# rules out a stall, but quadrature run to `Inf` over a divergent integrand
+# can fail outright rather than merely report a large value. Asking it is
+# only safe where the rate is already known to have a finite total, as
+# `HazardKernel`'s own docstring assumes of whatever hazard it is given.
 function _invert_hazard(rate, upper, boundary_is_certain::Bool, check_stall::Bool, target::Real)
     iszero(target) && return zero(target), zero(target)
     lo = zero(target)

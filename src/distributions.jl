@@ -222,8 +222,8 @@ Base.maximum(k::HazardKernel) = k.upper
 Distributions.partype(::HazardKernel{F, T}) where {F, T} = T
 
 # `k.upper` caps the bracket `_invert_hazard` grows, so a `target` beyond the
-# total hazard there is met by returning `upper` rather than doubling forever;
-# that cap, not a certain event, is why it does not treat `upper` as the
+# total hazard there is met by returning `upper` rather than doubling forever.
+# Because `upper` is a cap here, not a certain event, it is not treated as the
 # survival's own end the way a calendar-scaled profile's own bounded support
 # does.
 _hazard_invert(k::HazardKernel, target::Real) = first(_invert_hazard(k.hazard, k.upper, false, true, target))
