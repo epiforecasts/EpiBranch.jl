@@ -228,26 +228,30 @@ Distributions.partype(::HazardKernel{F, T}) where {F, T} = T
 # Grow a bracket from 0 until the integrated hazard reaches `target`, doubling
 # each step; `k.upper` caps the bracket, so a `target` beyond the total hazard
 # there is met by returning `upper` rather than doubling forever. With `upper`
-# left unbounded, the bracket would otherwise double forever when the integral
-# of the hazard converges to a finite total below `target` (as for a case
-# that clears and never becomes infectious again): four doublings in a row
-# that add nothing to `hi_acc` are taken as that convergence, and `upper`
-# (`Inf` here) is returned without doubling further.
+# left unbounded, a window adding nothing to `hi_acc` is ambiguous on its own:
+# it could mean the hazard has converged to a finite total below `target` (a
+# case that clears and never becomes infectious again), or just that the
+# window hasn't yet reached a later onset (a hazard that switches on after a
+# flat zero run-up). Telling them apart needs the actual tail: quadgk run to
+# `Inf` returns a value together with an error estimate, and that estimate is
+# small only when the tail genuinely converges; a hazard still to switch on
+# makes it diverge instead, since the quadrature then spans both the flat
+# run-up and whatever comes after. So a stalled window only returns `upper`
+# once that tail check confirms there is no more hazard left to integrate.
 function _hazard_invert(k::HazardKernel, target::Real)
     upper = k.upper
     lo = zero(target)
     acc = zero(target)
     width = one(target)
-    stalled = 0
     while true
         hi = min(lo + width, upper)
         hi_acc = acc + first(quadgk(k.hazard, lo, hi))
         (hi_acc >= target || hi == upper) &&
             return _bisect_hazard(k, lo, hi, acc, hi_acc, target)
-        if isinf(upper)
-            stalled = isapprox(hi_acc, acc; rtol = 1.0e-9, atol = 1.0e-12) ?
-                stalled + 1 : 0
-            stalled >= 4 && return upper
+        if isinf(upper) && isapprox(hi_acc, acc; rtol = 1.0e-9, atol = 1.0e-12)
+            tail, tail_err = quadgk(k.hazard, hi, Inf)
+            tail_err < 1.0e-6 * max(hi_acc + tail, 1.0) && hi_acc + tail < target &&
+                return upper
         end
         lo, acc = hi, hi_acc
         width *= 2
