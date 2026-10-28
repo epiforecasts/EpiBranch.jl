@@ -50,6 +50,10 @@ different routes, such as community and funeral transmission of Ebola.
   wrapping a measure in [`OnRoutes`](@ref) can act on one and leave the rest
   open.
 
+See also [`HazardKernel`](@ref) for a `kernel` whose rate follows something
+computed per case, such as a within-host trajectory, rather than a named
+distribution.
+
 # Examples
 ```julia
 using EpiBranch, Distributions

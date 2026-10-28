@@ -123,6 +123,134 @@ function Distributions.logpdf(d::_TruncatedSkewNormal, x::Real)
 end
 
 """
+    HazardKernel(hazard; upper = Inf)
+
+A contact-interval distribution built directly from an instantaneous hazard
+rather than from a named family: `hazard(t)` is the rate of transmission at
+time `t` since the window opened, for `t` from 0 up to `upper` (unbounded by
+default). Use it as the `kernel` of an [`Infectiousness`](@ref) window, built
+fresh for each case from a function of the individual, `kernel = ind -> ...`,
+when transmission should follow something computed on the fly rather than a
+named distribution — most usefully a per-case within-host trajectory, drawn
+once at infection and stored on the individual, read through a link that
+turns it into a rate.
+
+`hazard` is called many times to integrate and invert the cumulative hazard
+by quadrature, so it should be cheap and non-negative throughout `(0, upper)`.
+One that falls to zero and stays there leaves a case uninfectious from then
+on: draws pile up at `upper`, or run to arbitrarily late times when `upper`
+is left unbounded, exactly as `Weibull`'s or `Gamma`'s own tails do.
+
+# Examples
+
+A constant hazard gives the same contact-interval law as an exponential with
+the reciprocal rate:
+
+```julia
+using EpiBranch, Distributions
+HazardKernel(t -> 0.5)   # the same law as Exponential(2.0)
+```
+
+A case's infectiousness follows a within-host pathogen-load trajectory,
+drawn once per case (an ordinary attribute, see [`ModelSpec`](@ref)) and read
+through a link turning load into a transmission rate:
+
+```julia
+# user-supplied within-host model: load rises to a peak, then clears
+function load_curve(rng)
+    peak_time = rand(rng, Gamma(3.0, 1.5))
+    peak_height = rand(rng, LogNormal(0.0, 0.3))
+    clearance = rand(rng, Gamma(4.0, 0.5))
+    return t -> t < peak_time ? peak_height * t / peak_time :
+        peak_height * exp(-clearance * (t - peak_time))
+end
+
+attributes = (rng, ind) -> ind.state[:trajectory] = load_curve(rng)
+community = Infectiousness(
+    NegBin(1.2, 0.5);
+    kernel = ind -> HazardKernel(t -> 0.1 * ind.state[:trajectory](t))
+)
+model = ModelSpec(BranchingProcess(community); attributes)
+```
+
+Generation time, incubation period and serial interval are then whatever the
+trajectory and its links to each clinical event imply, rather than separate
+inputs drawn independently of one another.
+"""
+struct HazardKernel{F, T <: AbstractFloat} <: ContinuousUnivariateDistribution
+    hazard::F
+    upper::T
+end
+function HazardKernel(hazard; upper::Real = Inf)
+    upper > 0 || throw(ArgumentError("upper must be positive, got $upper"))
+    return HazardKernel(hazard, float(upper))
+end
+
+SurvivalDistributions.hazard(k::HazardKernel, t::Real) = k.hazard(t)
+SurvivalDistributions.loghazard(k::HazardKernel, t::Real) = log(k.hazard(t))
+function SurvivalDistributions.cumhazard(k::HazardKernel, τ::Real)
+    τ >= 0 || throw(ArgumentError("τ must be non-negative, got $τ"))
+    iszero(τ) && return zero(float(τ))
+    return first(quadgk(k.hazard, 0.0, min(float(τ), k.upper)))
+end
+
+function Distributions.logccdf(k::HazardKernel, τ::Real)
+    τ < 0 && return zero(float(τ))
+    τ >= k.upper && return oftype(float(τ), -Inf)
+    return -cumhazard(k, τ)
+end
+
+function Distributions.invlogccdf(k::HazardKernel, lp::Real)
+    isfinite(lp) || return oftype(float(lp), Inf)
+    lp <= 0 || throw(ArgumentError("invlogccdf needs a non-positive log-survival, got $lp"))
+    target = -lp
+    iszero(target) && return 0.0
+    return _hazard_invert(k, float(target))
+end
+
+Base.rand(rng::AbstractRNG, k::HazardKernel) = invlogccdf(k, log(rand(rng)))
+Base.minimum(::HazardKernel) = 0.0
+Base.maximum(k::HazardKernel) = k.upper
+Distributions.partype(::HazardKernel{F, T}) where {F, T} = T
+
+# Grow a bracket from 0 until the integrated hazard reaches `target`, doubling
+# each step; `k.upper` caps the bracket, so a `target` beyond the total hazard
+# there is met by returning `upper` rather than doubling forever.
+function _hazard_invert(k::HazardKernel, target::Real)
+    upper = k.upper
+    lo = zero(target)
+    acc = zero(target)
+    width = one(target)
+    while true
+        hi = min(lo + width, upper)
+        hi_acc = acc + first(quadgk(k.hazard, lo, hi))
+        (hi_acc >= target || hi == upper) &&
+            return _bisect_hazard(k, lo, hi, acc, hi_acc, target)
+        lo, acc = hi, hi_acc
+        width *= 2
+    end
+    return
+end
+
+# Bisect `[lo, hi]`, whose cumulative hazards from 0 (`acc`, `hi_acc`) bracket
+# `target`, down to adjacent floats; `hi == k.upper` short of `target` never
+# reaches it, so the loop returns `hi` there instead of bisecting further.
+function _bisect_hazard(k::HazardKernel, lo::Real, hi::Real, acc::Real, hi_acc::Real, target::Real)
+    hi_acc >= target || return hi
+    while true
+        mid = lo + (hi - lo) / 2
+        (lo < mid < hi) || return hi
+        mid_acc = acc + first(quadgk(k.hazard, lo, mid))
+        if mid_acc >= target
+            hi = mid
+        else
+            lo, acc = mid, mid_acc
+        end
+    end
+    return
+end
+
+"""
     _sample_value(x, rng, args...) -> Float64
 
 Turn a parameter given as a number, a distribution or a function into a

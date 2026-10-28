@@ -193,6 +193,59 @@ EpiBranch.has_effect(::_SeenRoutes) = true
     end
 end
 
+@testset "HazardKernel" begin
+    @testset "a constant hazard matches the corresponding exponential" begin
+        rate = 0.4
+        k = HazardKernel(t -> rate)
+        e = Exponential(1 / rate)
+        for tau in (0.1, 1.0, 5.0)
+            @test EpiBranch.cumhazard(k, tau) ≈ EpiBranch.cumhazard(e, tau)
+        end
+        draws = [rand(StableRNG(seed), k) for seed in 1:2000]
+        @test isapprox(sum(draws) / length(draws), mean(e); rtol = 0.1)
+    end
+
+    @testset "a hazard built from a named distribution reproduces its cumulative hazard" begin
+        w = Weibull(1.5, 3.0)
+        k = HazardKernel(t -> EpiBranch.hazard(w, t))
+        for tau in (0.1, 1.0, 3.0, 8.0)
+            @test EpiBranch.cumhazard(k, tau) ≈ EpiBranch.cumhazard(w, tau) rtol = 1.0e-6
+        end
+    end
+
+    @testset "upper caps the support" begin
+        k = HazardKernel(t -> 2.0; upper = 1.0)
+        @test maximum(k) == 1.0
+        @test minimum(k) == 0.0
+        draws = [rand(StableRNG(seed), k) for seed in 1:500]
+        @test all(d -> d <= 1.0, draws)
+        @test any(==(1.0), draws)   # some draws exhaust the hazard before `upper`
+    end
+
+    @testset "rejects a non-positive upper" begin
+        @test_throws ArgumentError HazardKernel(t -> 1.0; upper = 0.0)
+    end
+
+    @testset "a per-case trajectory times contacts through a hazard built from it" begin
+        # Each case's own switch-on time, drawn as an ordinary attribute, gates
+        # when its hazard turns on: the window's own kernel reads it back off
+        # the individual, so no contact can be timed before it.
+        attributes = (rng, ind) -> ind.state[:switch_on] = rand(rng, Uniform(1.0, 6.0))
+        kernel = ind -> HazardKernel(t -> t < ind.state[:switch_on] ? 0.0 : 2.0)
+        m = ModelSpec(
+            BranchingProcess(Infectiousness(NegBin(3.0, 0.5); kernel));
+            attributes
+        )
+        s = simulate(m; n_initial = 50, max_generations = 1, rng = StableRNG(1))
+        kids = filter(i -> i.parent_id != 0 && is_infected(i), s.individuals)
+        @test length(kids) > 0
+        @test all(kids) do k
+            parent = s.individuals[k.parent_id]
+            k.infection_time - parent.infection_time >= parent.state[:switch_on]
+        end
+    end
+end
+
 @testset "A deep ring leaves a case's settled state to its offspring" begin
     # Severe cases make three contacts and others one. Tracing that changes
     # nothing must leave every case with the count its own severity implies,

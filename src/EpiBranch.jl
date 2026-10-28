@@ -193,7 +193,7 @@ export is_vaccinated, immunity_time, severity_efficacy, vaccine_efficacy, is_asy
 export individual_type, set_isolated!, clear_isolated!
 
 # Exports — distributions
-export NegBin, scale_distribution, incubation_linked_generation_time
+export NegBin, scale_distribution, incubation_linked_generation_time, HazardKernel
 # Parent type of every chain-size law, so a user-defined one gets
 # `loglikelihood(::ChainSizes, ...)` for free by subtyping it.
 export ChainSizeLaw
