@@ -259,6 +259,18 @@ end
         @test length(kids) > 0
     end
 
+    @testset "a bare kernel (not a per-case function) still drives a simulation" begin
+        # The `contacts` form leaves `contact_interval` as the window's own
+        # kernel rather than closing over it per case, so this is the only
+        # path that exercises a `HazardKernel` sitting there directly.
+        k = HazardKernel(t -> 0.4)
+        timing = transmission_timing(k; contacts = NegBin(3.0, 0.5))
+        model = ModelSpec(BranchingProcess(timing.window))
+        s = simulate(model; n_initial = 200, max_generations = 1, rng = StableRNG(1))
+        kids = filter(i -> i.parent_id != 0 && is_infected(i), s.individuals)
+        @test length(kids) > 0
+    end
+
     @testset "truncation to a short infectious period still draws a contact time" begin
         # `truncated` picks `quantile` over `invlogccdf` once the truncation
         # probability isn't tiny; a short infectious period relative to the
