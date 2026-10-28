@@ -216,6 +216,11 @@ Distributions.cdf(k::HazardKernel, τ::Real) = -expm1(logccdf(k, τ))
 Distributions.logcdf(k::HazardKernel, τ::Real) = _log1mexp(logccdf(k, τ))
 
 Base.rand(rng::AbstractRNG, k::HazardKernel) = invlogccdf(k, log(rand(rng)))
+
+# `Distributions.rand(::Truncated)` dispatches to `quantile`, not `invlogccdf`,
+# whenever the truncation probability isn't tiny; without this, truncating a
+# `HazardKernel` (as `_conditioned_on_recovery` does) throws on sampling.
+Distributions.quantile(k::HazardKernel, p::Real) = invlogccdf(k, log1p(-p))
 Base.minimum(::HazardKernel) = 0.0
 Base.maximum(k::HazardKernel) = k.upper
 Distributions.partype(::HazardKernel{F, T}) where {F, T} = T

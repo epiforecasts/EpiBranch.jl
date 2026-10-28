@@ -257,6 +257,23 @@ end
         @test length(kids) > 0
     end
 
+    @testset "truncation to a short infectious period still draws a contact time" begin
+        # `truncated` picks `quantile` over `invlogccdf` once the truncation
+        # probability isn't tiny, which a short infectious period relative to
+        # the kernel's rate forces here.
+        k = HazardKernel(t -> 2.0)
+        timing = transmission_timing(
+            k;
+            offspring = NegBin(3.0, 0.5),
+            latent_period = LogNormal(1.0, 0.3),
+            infectious_period = Gamma(2.0, 0.3)
+        )
+        model = ModelSpec(BranchingProcess(timing.window); progression = timing.progression)
+        s = simulate(model; n_initial = 200, max_generations = 1, rng = StableRNG(1))
+        kids = filter(i -> i.parent_id != 0 && is_infected(i), s.individuals)
+        @test length(kids) > 0
+    end
+
     @testset "a per-case trajectory times contacts through a hazard built from it" begin
         # Each case's own switch-on time, drawn as an ordinary attribute, gates
         # when its hazard turns on: the window's own kernel reads it back off
