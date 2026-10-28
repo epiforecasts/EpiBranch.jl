@@ -1,3 +1,5 @@
+using ForwardDiff
+
 struct _CaseSensitivity end
 (::_CaseSensitivity)(rng, ind) = isodd(ind.id) ? 1.0 : 0.0
 struct _PolicyEnabled
@@ -971,6 +973,38 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         EpiBranch.revise_removal!(ind, handle; release = 10.0)
         @test isolation_release_time(ind) == 10.0
         @test EpiBranch.removal_stretches(ind) == [(5.0, 10.0)]
+    end
+
+    @testset "record_removal! widens the entry store for a later dual release" begin
+        # A plain first call followed by one whose release is an AD dual must
+        # not throw trying to fit the dual into a vector already committed to
+        # `Float64` entries.
+        ind = Individual(id = 1)
+        EpiBranch.record_removal!(ind, 1.0, 2.0)
+        dual_release = ForwardDiff.Dual(20.0, 1.0)
+        handle = EpiBranch.record_removal!(ind, 5.0, dual_release)
+        @test EpiBranch.removal_stretches(ind) == [(1.0, 2.0), (5.0, dual_release)]
+        EpiBranch.revise_removal!(ind, handle; release = ForwardDiff.Dual(25.0, 1.0))
+        @test last(EpiBranch.removal_stretches(ind))[2] == ForwardDiff.Dual(25.0, 1.0)
+    end
+
+    @testset "revise_removal! widens an entry to a dual release" begin
+        # The entry itself started out `Float64`; revising it to a dual
+        # release must widen it rather than narrowing the dual back down.
+        ind = Individual(id = 1)
+        handle = EpiBranch.record_removal!(ind, 5.0, 10.0)
+        EpiBranch.revise_removal!(ind, handle; release = ForwardDiff.Dual(20.0, 1.0))
+        @test only(EpiBranch.removal_stretches(ind)) == (5.0, ForwardDiff.Dual(20.0, 1.0))
+
+        # The isolation-span store keeps its own entries apart from
+        # `:_removal_entries`; read it directly, since `isolation_release_time`
+        # narrows every entry back to the individual's own element type
+        # regardless of how wide the entry it is reading from is.
+        isolated = Individual(id = 2)
+        iso_handle = EpiBranch._set_isolated!(isolated, 5.0; release_time = 10.0)
+        EpiBranch.revise_removal!(isolated, iso_handle; release = ForwardDiff.Dual(20.0, 1.0))
+        span_entry = only(isolated.state[:_isolation_span_entries])
+        @test span_entry[3] == ForwardDiff.Dual(20.0, 1.0)
     end
 
     @testset "A released quarantine does not block a later, unrelated infection" begin

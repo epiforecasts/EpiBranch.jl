@@ -262,11 +262,14 @@ const LEAKY_REMOVAL_STRETCHES_KEY = :_leaky_removal_stretches
 
 const _NO_STRETCHES = Tuple{Float64, Float64}[]
 
-# Element types of the two handle-tracked entry vectors below, concrete in
-# `Individual{T}`'s own number type rather than `Any`, so a `set_isolated!`
-# call pushes one inline tuple instead of boxing it.
-const _RemovalEntry{T} = Tuple{Int, Symbol, T, T}
-const _IsolationSpanEntry{T} = Tuple{Int, T, T, Bool}
+# Start and release are kept `Any` rather than `ind`'s own element type, or
+# even one call's own promoted type: a later `record_removal!`/
+# `_set_isolated!` call on the same individual can promote to a wider type
+# than an earlier one did (an AD dual isolation time following a plain
+# `Float64` one, say), and the vector must hold both without narrowing
+# either back down.
+const _RemovalEntry = Tuple{Int, Symbol, Any, Any}
+const _IsolationSpanEntry = Tuple{Int, Any, Any, Bool}
 
 """Record that a person is isolated from `time` (days) until `release_time`.
 Used by interventions that isolate or quarantine people. `release_time` is
@@ -431,16 +434,12 @@ _find_removal_entry(entries, handle) = findfirst(e -> e[1] == handle, entries)
 # `removal_stretches`' per-key cache below is recomputed from, so that
 # `withdraw_removal!` can drop exactly one without disturbing another entry a
 # `_merge_stretches!` once folded it together with.
-# `start` and `release` arrive already converted to their shared promoted
-# type (see `record_removal!` and `_set_isolated!`), which can be wider than
-# `ind`'s own element type `T` (an AD dual isolation time, say): the entry
-# keeps that wider type rather than narrowing it back down to `T`.
-function _push_removal_entry!(ind::Individual, handle::Int, key::Symbol, start::S, release::S) where {S}
-    old = get(ind.state, :_removal_entries, nothing)::Union{Nothing, Vector{_RemovalEntry{S}}}
+function _push_removal_entry!(ind::Individual, handle::Int, key::Symbol, start, release)
+    old = get(ind.state, :_removal_entries, nothing)::Union{Nothing, Vector{_RemovalEntry}}
     entry = (handle, key, start, release)
     # A fresh vector each time rather than one grown in place: an archived
     # episode holds a copy of the state that shares the old one.
-    ind.state[:_removal_entries] = old === nothing ? _RemovalEntry{S}[entry] : push!(copy(old), entry)
+    ind.state[:_removal_entries] = old === nothing ? _RemovalEntry[entry] : push!(copy(old), entry)
     return nothing
 end
 
@@ -544,14 +543,12 @@ end
 # whichever key (the shared one or the leaky one) each call's stretch also
 # went to, so a leaky isolation still moves them even though it records no
 # stretch under the shared key.
-# As `_push_removal_entry!`, `start` and `release` already share a promoted
-# type that can be wider than `ind`'s own `T`, and the entry keeps it.
 function _push_isolation_span_entry!(
-        ind::Individual, handle::Int, start::S, release::S, unrecorded::Bool
-    ) where {S}
-    old = get(ind.state, :_isolation_span_entries, nothing)::Union{Nothing, Vector{_IsolationSpanEntry{S}}}
+        ind::Individual, handle::Int, start, release, unrecorded::Bool
+    )
+    old = get(ind.state, :_isolation_span_entries, nothing)::Union{Nothing, Vector{_IsolationSpanEntry}}
     entry = (handle, start, release, unrecorded)
-    ind.state[:_isolation_span_entries] = old === nothing ? _IsolationSpanEntry{S}[entry] : push!(copy(old), entry)
+    ind.state[:_isolation_span_entries] = old === nothing ? _IsolationSpanEntry[entry] : push!(copy(old), entry)
     return nothing
 end
 
@@ -672,8 +669,12 @@ function _lapsing_removal_keys(state::SimulationState)
     return keys
 end
 
-function _with_stretch(old::Vector{E}, stretch) where {E}
-    new = Vector{E}(undef, length(old) + 1)
+# A call recorded at a wider type than an earlier one left this cache at (an
+# AD dual release following a plain `Float64` one, say) widens the cache to
+# match, rather than narrowing the new stretch back down to fit it.
+function _with_stretch(old::Vector{Tuple{T, T}}, stretch::Tuple{S, S}) where {T, S}
+    P = promote_type(T, S)
+    new = Vector{Tuple{P, P}}(undef, length(old) + 1)
     copyto!(new, old)
     new[end] = stretch
     sort!(new; by = first)
