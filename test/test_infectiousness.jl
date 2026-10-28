@@ -220,6 +220,7 @@ end
         draws = [rand(StableRNG(seed), k) for seed in 1:500]
         @test all(d -> d <= 1.0, draws)
         @test any(==(1.0), draws)   # some draws exhaust the hazard before `upper`
+        @test invlogccdf(k, -Inf) == maximum(k)
     end
 
     @testset "rejects a non-positive upper" begin
