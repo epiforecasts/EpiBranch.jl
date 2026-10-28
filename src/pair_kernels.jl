@@ -599,9 +599,10 @@ Distributions.partype(k::_CalendarScaledKernel) = Distributions.partype(k.profil
 # The segment starting at calendar time `calendar_lo`: its multiplier and the
 # calendar time its schedule step ends at (`Inf` for the last step). The walk
 # stays in calendar time throughout rather than converting back from
-# time-since-opening, so a break this segment reaches is carried into the next
-# segment unrounded; converting would let `opening + t_lo` round short of the
-# break it was meant to equal, repeating the same segment forever.
+# time-since-opening: a break the segment reaches is carried into the next
+# segment unrounded. Converting would let `opening + t_lo` round short of the
+# break it was meant to equal, so the walk would keep reaching the same break
+# without moving past it.
 function _calendar_segment(k::_CalendarScaledKernel, calendar_lo)
     m = calendar_multiplier(k.calendar, calendar_lo)
     calendar_hi = next_calendar_break(k.calendar, calendar_lo)
