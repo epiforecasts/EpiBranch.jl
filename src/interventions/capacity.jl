@@ -351,7 +351,9 @@ For extension authors: tell any [`CapacityConstrained`](@ref) sharing
 through the wrapper, as a tracer of your own does when it applies a
 [`TraceAction`](@ref) directly. An action admitted through the wrapper, a
 dose recorded by `record_dose!` and a trace applied by the built-in
-tracers are all counted without it. Does nothing when nothing is rationed.
+tracers are all counted without it. `intervention` is a `TraceAction` or an
+intervention with a `capacity_key` of its own; the call does nothing when no
+wrapper shares that resource, or when a `TraceAction` has none to ration.
 """
 function record_capacity_use!(intervention, person, state)
     key = capacity_key(intervention)
