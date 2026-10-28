@@ -77,8 +77,8 @@ function apply_observation!(o::PerCaseObservation, state, rng)
                     "of them."
             )
         )
-        ρ = _sample_value(o.detection_prob, rng, ind)
-        d = _sample_value(o.delay, rng, ind)
+        ρ = sample_value(o.detection_prob, rng, ind)
+        d = sample_value(o.delay, rng, ind)
         anchor = _percase_anchor(o.from, ind)
         reported = rand(rng) < ρ
         ind.state[:reported] = reported

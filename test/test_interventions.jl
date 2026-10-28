@@ -1382,7 +1382,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             probs = map(dts) do dt
                 contact.infection_time = dt
                 risk = EpiBranch._susceptibility_risk(rv, contact)
-                EpiBranch._sample_value(
+                EpiBranch.sample_value(
                     risk.block_probability, StableRNG(1), nothing, contact, nothing
                 )
             end
@@ -1397,7 +1397,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                 EpiBranch._record_vaccination!(rv0, contact0, 0.0, StableRNG(1))
                 contact0.infection_time = 50.0
                 risk = EpiBranch._susceptibility_risk(rv0, contact0)
-                @test EpiBranch._sample_value(
+                @test EpiBranch.sample_value(
                     risk.block_probability, StableRNG(1), nothing, contact0, nothing
                 ) == 0.0
             end
@@ -1408,7 +1408,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                 EpiBranch._record_vaccination!(rv1, contact1, 0.0, StableRNG(1))
                 contact1.infection_time = 30.0
                 risk = EpiBranch._susceptibility_risk(rv1, contact1)
-                @test EpiBranch._sample_value(
+                @test EpiBranch.sample_value(
                     risk.block_probability, StableRNG(1), nothing, contact1, nothing
                 ) == 0.9
             end
@@ -1423,11 +1423,11 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                 risk = EpiBranch._onward_risk(rv2, parent)
 
                 contact2.infection_time = 0.0
-                prob_now = EpiBranch._sample_value(
+                prob_now = EpiBranch.sample_value(
                     risk.block_probability, StableRNG(1), parent, contact2, nothing
                 )
                 contact2.infection_time = 40.0
-                prob_later = EpiBranch._sample_value(
+                prob_later = EpiBranch.sample_value(
                     risk.block_probability, StableRNG(1), parent, contact2, nothing
                 )
 
@@ -1443,7 +1443,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                 EpiBranch._record_vaccination!(rv, c, 0.0, StableRNG(1))
                 c.infection_time = exposure
                 risk = EpiBranch._contact_risk(rv, c)
-                return EpiBranch._sample_value(
+                return EpiBranch.sample_value(
                     risk.block_probability, StableRNG(1), nothing, c, nothing
                 )
             end
@@ -1517,14 +1517,14 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
 
                     c.infection_time = imm_t + 20.0
                     retained = decay(20.0)
-                    @test EpiBranch._sample_value(
+                    @test EpiBranch.sample_value(
                         EpiBranch._contact_risk(rv8, c).block_probability,
                         StableRNG(1), nothing, c, nothing
                     ) ≈
                         1 - (1 - eff * retained) * (1 - 0.6 * retained)
 
                     other = Individual(id = 10, infection_time = imm_t + 20.0)
-                    @test EpiBranch._sample_value(
+                    @test EpiBranch.sample_value(
                         EpiBranch._onward_risk(rv8, c).block_probability,
                         StableRNG(1), c, other, nothing
                     ) ≈ onward * retained
@@ -1761,7 +1761,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             )
             EpiBranch.initialise_individual!(rv, ind, state)
             action = only(EpiBranch.intervention_actions(rv, state, [ind]))
-            action.effect!(ind, action.time, state)
+            EpiBranch._admit_actions!(rv, state, [action])
             @test is_vaccinated(ind)
             @test ind.state[:vaccination_time] == 5.0
 
@@ -1786,7 +1786,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             )
             EpiBranch.initialise_individual!(rv, ind, state)
             action = only(EpiBranch.intervention_actions(rv, state, [ind]))
-            action.effect!(ind, action.time, state)
+            EpiBranch._admit_actions!(rv, state, [action])
 
             ind.infection_time = 4.0
             EpiBranch.on_infection_settled!(rv, ind, state, StableRNG(2))
