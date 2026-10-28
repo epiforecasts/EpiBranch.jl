@@ -27,8 +27,8 @@ early (recovery, isolation) therefore cuts their onward transmission.
 
 The network is the whole population. `adjacency[i]` lists the people person
 `i` is in contact with (numbered from 1). When `adjacency` is already a
-`Vector{Vector{Int}}`, it is kept as given rather than copied, so it must not
-be changed afterwards.
+`Vector{Vector{Int}}`, it is kept as given rather than copied. It must not be
+changed afterwards.
 
 `kernel` is the **contact interval**, the delay in days from a person becoming
 infectious to their infecting contact with a neighbour. It can be:
