@@ -276,6 +276,18 @@ end
         @test length(kids) > 0
     end
 
+    @testset "a late onset still inverts to a finite quantile" begin
+        # A window that hasn't yet reached the switch-on looks just like a
+        # hazard that has permanently converged: both add nothing to the
+        # integral over several doublings in a row. Push the onset far
+        # enough out that this happens before the window reaches it.
+        switch_on = 15.0
+        k = HazardKernel(t -> t < switch_on ? 0.0 : 2.0)
+        m = quantile(k, 0.5)
+        @test isfinite(m)
+        @test m ≈ switch_on + quantile(Exponential(0.5), 0.5)
+    end
+
     @testset "a per-case trajectory times contacts through a hazard built from it" begin
         # Each case's own switch-on time, drawn as an ordinary attribute, gates
         # when its hazard turns on: the window's own kernel reads it back off
