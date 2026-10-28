@@ -227,6 +227,36 @@ end
         @test_throws ArgumentError HazardKernel(t -> 1.0; upper = 0.0)
     end
 
+    @testset "cdf and logcdf match the corresponding exponential" begin
+        rate = 0.4
+        k = HazardKernel(t -> rate)
+        e = Exponential(1 / rate)
+        for tau in (0.1, 1.0, 5.0)
+            @test cdf(k, tau) ≈ cdf(e, tau)
+            @test logcdf(k, tau) ≈ logcdf(e, tau)
+        end
+    end
+
+    @testset "works as a bare contact_interval, not just a per-case kernel" begin
+        # transmission_timing's `offspring` form and implied_R both call
+        # `cdf`/`truncated` on `contact_interval` directly.
+        rate = 0.4
+        k = HazardKernel(t -> rate)
+        e = Exponential(1 / rate)
+        offspring = NegBin(3.0, 0.5)
+        infectious_period = Gamma(5.0, 2.0)
+        @test implied_R(offspring, k, infectious_period) ≈
+            implied_R(offspring, e, infectious_period)
+
+        timing = transmission_timing(
+            k; offspring, latent_period = LogNormal(1.0, 0.3), infectious_period
+        )
+        model = ModelSpec(BranchingProcess(timing.window); progression = timing.progression)
+        s = simulate(model; n_initial = 200, max_generations = 1, rng = StableRNG(4))
+        kids = filter(i -> i.parent_id != 0 && is_infected(i), s.individuals)
+        @test length(kids) > 0
+    end
+
     @testset "a per-case trajectory times contacts through a hazard built from it" begin
         # Each case's own switch-on time, drawn as an ordinary attribute, gates
         # when its hazard turns on: the window's own kernel reads it back off
