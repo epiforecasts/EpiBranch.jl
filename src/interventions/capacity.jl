@@ -261,7 +261,10 @@ end
 # same cache instead of each keeping its own, unaware copy. Seeded once by a
 # population scan like `_dose_times_by_key`'s own, then grown one person at a
 # time as each dose is admitted, so a run with many settled cases no longer
-# rescans everyone on every one of them. `recorded` remembers which resource
+# rescans everyone on every one of them; `scanned` is how far along
+# `state.individuals` that scan has reached, so that someone created since,
+# already carrying the flag from an attribute builder, is picked up by
+# scanning only the people appended since. `recorded` remembers which resource
 # and date each person's own use was filed under, so a dose later withdrawn
 # outside this cache's own admission path (`on_infection_settled!` undoing one
 # that missed its eligibility window, say) can be taken back out again.
@@ -269,7 +272,8 @@ end
 # wrapper's admission at all, an unwrapped vaccination sharing the dose
 # label or a direct `record_dose!` call, which the docstring above promises
 # count too: `record_dose!` files its own dose through `_note_capacity_use!`
-# whenever a cache for its label exists. `intervention` is the one the cache
+# whenever a cache for its label exists, as the tracers do for a trace
+# action's. `intervention` is the one the cache
 # was first built for, whose `resource_key` and `capacity_time_key` every
 # use is filed under, since those paths have no wrapper to ask.
 # `capacity_usage` and `_reset_unless_within_budget!` keep using the plain
@@ -279,18 +283,18 @@ mutable struct _CapacityCache
     intervention::AbstractIntervention
     times::Dict{Any, Vector{Float64}}
     recorded::Dict{Int, Tuple{Any, Float64}}
-    seeded::Bool
+    scanned::Int
 end
-_CapacityCache(iv) = _CapacityCache(iv, Dict{Any, Vector{Float64}}(), Dict{Int, Tuple{Any, Float64}}(), false)
+_CapacityCache(iv) = _CapacityCache(iv, Dict{Any, Vector{Float64}}(), Dict{Int, Tuple{Any, Float64}}(), 0)
 
 function _capacity_cache(cc::CapacityConstrained, state)
     cache = get!(
         () -> _CapacityCache(cc.intervention), state.scratch,
         (:capacity_cache, capacity_key(cc.intervention))
     )::_CapacityCache
-    if !cache.seeded
-        cache.seeded = true
-        key = capacity_key(cc.intervention)
+    key = capacity_key(cc.intervention)
+    n = length(state.individuals)
+    if cache.scanned == 0
         time_key = capacity_time_key(cc.intervention)
         for ind in state.individuals
             get(ind.state, key, false) || continue
@@ -304,7 +308,16 @@ function _capacity_cache(cc::CapacityConstrained, state)
         # resource with many uses already recorded before this cache ever ran
         # costs one sort each, not one insertion's own shift per use.
         foreach(sort!, values(cache.times))
+    else
+        # Ids are positional in `state.individuals` (as `_drop_withdrawn!`
+        # relies on too), so the people appended since the last call are
+        # exactly those past the watermark; few arrive between admissions.
+        for i in (cache.scanned + 1):n
+            ind = state.individuals[i]
+            get(ind.state, key, false) && _record_capacity_use!(cache, ind, state)
+        end
     end
+    cache.scanned = n
     _drop_withdrawn!(cache, state)
     return cache
 end
@@ -313,8 +326,7 @@ end
 # none does, the scan that seeds it will see the flag. Called where a dose is
 # written, so that a dose given outside any wrapper's own admission counts
 # as the docstring promises. The `scratch` check is for the minimal state
-# `record_dose!` accepts outside a run, and for `initialise_individual!`
-# called with none.
+# `record_dose!` accepts outside a run.
 function _note_capacity_use!(state, key, ind)
     hasproperty(state, :scratch) || return nothing
     cache = get(state.scratch, (:capacity_cache, key), nothing)

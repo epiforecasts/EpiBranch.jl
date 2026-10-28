@@ -746,6 +746,31 @@ end
         @test capacity_usage(cc, state).used == 2
     end
 
+    @testset "A prior use of any resource on a person created mid-run counts" begin
+        cc = CapacityConstrained(_ClinicVisit(); budget_per_period = 2.0)
+        state = EpiBranch.new_state(
+            BranchingProcess(Poisson(1.0), Exponential(5.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1)
+        )
+        first = Individual(id = 1)
+        append!(state.individuals, [first])
+        state.max_infection_time = 1.0
+        EpiBranch.apply_actions!(cc, state, [first])
+
+        prior = Individual(
+            id = 2, state = Dict{Symbol, Any}(:attended => true, :appointment_time => -10.0)
+        )
+        EpiBranch.initialise_individual!(cc, prior, state)
+        append!(state.individuals, [prior])
+
+        third = Individual(id = 3)
+        append!(state.individuals, [third])
+        state.max_infection_time = 5.0
+        EpiBranch.apply_actions!(cc, state, [third])
+        @test !get(third.state, :attended, false)
+        @test capacity_usage(cc, state).used == 2
+    end
+
     @testset "Constructor validates its arguments" begin
         rv = RingVaccination(efficacy = 0.9)
         @test_throws ArgumentError CapacityConstrained(rv; budget_per_period = -1.0)
