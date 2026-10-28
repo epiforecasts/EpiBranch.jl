@@ -125,17 +125,17 @@ end
 """
     Conditional(dist)
 
-A parameter whose distribution depends on the case: wherever a delay or a
+A parameter with a distribution that depends on the case: wherever a delay or a
 probability accepts a number, a `Distribution` or a function, it also
 accepts `Conditional(dist)`, where `dist(args...)` returns the
 `Distribution` for the case given the same arguments a function parameter
 would take (typically the case's `Individual`).
 
-Unlike a plain `(rng, args...) -> value` function, a `Conditional`'s
-distribution can be read back through [`resolve`](@ref EpiBranch.resolve)
-without sampling it, which is what lets a likelihood over timing data — a
-serial interval, say — use the case's delay distribution directly rather
-than only ever drawing from it.
+Unlike a plain `(rng, args...) -> value` function, the distribution behind a
+`Conditional` can be read back through [`resolve`](@ref EpiBranch.resolve)
+without sampling it. That lets a likelihood over timing data, such as a
+serial interval, use the case's delay distribution directly instead of only
+ever drawing from it.
 
 # Examples
 ```julia
@@ -150,13 +150,13 @@ end
     resolve(x, args...) -> Distribution
 
 Turn a parameter given as a number, a `Distribution` or a [`Conditional`](@ref)
-into the `Distribution` it stands for the case: `Dirac(x)` for a number, the
+into the `Distribution` it stands for: `Dirac(x)` for a number, the
 distribution unchanged, or `c.dist(args...)` for a `Conditional` `c`. A plain
 `(rng, args...) -> value` function resolves to an adapter that samples by
-calling the function; it carries no density, so it only ever supports
+calling the function; it has no density, so it only ever supports
 drawing a value, not reading one back.
 
-[`sample_value`](@ref) draws from the result, which is what every built-in
+[`sample_value`](@ref) draws from the result, as every built-in
 delay and probability does. A likelihood that needs the density itself,
 rather than a draw from it, calls `resolve` directly.
 """

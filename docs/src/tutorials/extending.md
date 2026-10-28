@@ -310,9 +310,10 @@ their usual meaning wherever those are accepted.
 A parameter given this way can also be a [`Conditional`](@ref), wrapping a
 function that returns a `Distribution` rather than a value: `Conditional(ind
 -> Gamma(5.95, 1 / ind.state[:scale]))` draws from a different `Gamma` for
-each case. Unlike a plain function, a `Conditional`'s distribution can be read
-back through [`EpiBranch.resolve`](@ref) without drawing from it, which is
-what a likelihood over timing data needs rather than a simulated value.
+each case. Unlike a plain function, the distribution behind a `Conditional`
+can be read back through [`EpiBranch.resolve`](@ref) without drawing from
+it. A likelihood over timing data needs that distribution directly, not a
+simulated value.
 
 ## Stopping rules
 

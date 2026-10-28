@@ -7,8 +7,9 @@
 # function, as every built-in delay, probability and attribute does. An
 # extension reading its own such parameter should use this function too,
 # with the same float conversion and function arguments. `resolve` is the
-# same dispatch without the draw, for a likelihood that needs the parameter's
-# distribution rather than a sample from it; `Conditional` is exported.
+# same dispatch without the draw, for a likelihood that needs the
+# distribution itself rather than a sample from it; `Conditional` is
+# exported.
 public sample_value
 public resolve
 
