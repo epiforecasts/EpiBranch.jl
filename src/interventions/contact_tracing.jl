@@ -501,6 +501,10 @@ function apply_trace!(q::Quarantine, contact, state, trace_time, rng)
         set_isolated!(contact, trace_time; release_time = release_time)
     end
     contact.state[:_quarantined_by_tracing] = true
+    # Filed here as well as by the built-in tracers (`_apply_trace!`), so a
+    # tracer written outside the package, which calls this directly, still
+    # counts the quarantine against the budget a wrapped tracer shares.
+    _note_capacity_use!(state, capacity_key(q), contact)
     return nothing
 end
 

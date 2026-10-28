@@ -29,6 +29,21 @@ end
 EpiBranch.capacity_key(::_Bed) = :bedded
 EpiBranch.capacity_time_key(::_Bed) = :bed_time
 
+# A tracer written outside the package, acting through the public
+# `apply_trace!` as the extending guide's listing does.
+struct _OwnTracer <: EpiBranch.AbstractIntervention
+    action::EpiBranch.TraceAction
+end
+EpiBranch.traces_contacts(::_OwnTracer) = true
+function EpiBranch.trace_contacts!(tr::_OwnTracer, state, infector, contacts, trace_times)
+    for (contact, trace_time) in zip(contacts, trace_times)
+        EpiBranch._record_trace_time!(contact, trace_time)
+        contact.state[:traced] = true
+        EpiBranch.apply_trace!(tr.action, contact, state, trace_time, state.rng)
+    end
+    return nothing
+end
+
 function _traced_contact(iv, id, trace_time)
     ind = Individual(
         id = id, state = Dict{Symbol, Any}(
@@ -768,6 +783,30 @@ end
         state.max_infection_time = 5.0
         EpiBranch.apply_actions!(cc, state, [third])
         @test !get(third.state, :attended, false)
+        @test capacity_usage(cc, state).used == 2
+    end
+
+    @testset "A quarantine by a tracer written outside the package counts" begin
+        ct = ContactTracing(TraceEveryone(), 1.0, Dirac(0.0), Quarantine(duration = Inf))
+        cc = CapacityConstrained(ct; budget_per_period = 2.0)
+        own = _OwnTracer(Quarantine(duration = Inf))
+        state = EpiBranch.new_state(
+            BranchingProcess(Poisson(1.0), Exponential(5.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1)
+        )
+        infector = Individual(id = 1)
+        set_isolated!(infector, 0.0; release_time = Inf)
+        contacts = [Individual(id = i) for i in 2:4]
+        append!(state.individuals, [infector; contacts])
+        state.max_infection_time = 3.0
+
+        EpiBranch.trace_contacts!(cc, state, infector, contacts[1:1], [1.0])
+        EpiBranch.trace_contacts!(own, state, infector, contacts[2:2], [2.0])
+        @test is_quarantined(contacts[2])
+        @test capacity_usage(cc, state).used == 2
+
+        EpiBranch.trace_contacts!(cc, state, infector, contacts[3:3], [3.0])
+        @test !is_quarantined(contacts[3])
         @test capacity_usage(cc, state).used == 2
     end
 
