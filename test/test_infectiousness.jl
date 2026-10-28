@@ -238,7 +238,7 @@ end
     end
 
     @testset "works as a bare contact_interval, not just a per-case kernel" begin
-        # transmission_timing's `offspring` form and implied_R both call
+        # Both implied_R and the `offspring` form of transmission_timing call
         # `cdf`/`truncated` on `contact_interval` directly.
         rate = 0.4
         k = HazardKernel(t -> rate)

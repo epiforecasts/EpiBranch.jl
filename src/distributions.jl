@@ -208,7 +208,7 @@ function Distributions.invlogccdf(k::HazardKernel, lp::Real)
     return _hazard_invert(k, float(target))
 end
 
-# `cdf`/`logcdf` so a `HazardKernel` passed as a bare `contact_interval`
+# Define `cdf`/`logcdf` so a `HazardKernel` passed as a bare `contact_interval`
 # (rather than built per case through `kernel`) meets the same `Distribution`
 # contract as a named distribution: `truncated` calls `cdf` on construction,
 # and `implied_R` calls it directly.
