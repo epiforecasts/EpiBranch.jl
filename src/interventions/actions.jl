@@ -209,7 +209,7 @@ function _admit_actions!(cc::CapacityConstrained, state, actions, admitter = cc)
     _admit_actions!(cc.intervention, state, already_used, admitter)
     cache = _capacity_cache(cc, state)
     for a in already_used
-        _record_capacity_use!(cache, cc, a.individual, state)
+        _record_capacity_use!(cache, a.individual, state)
     end
     isempty(candidates) && return nothing
     group_idxs, group_keys = _resource_groups(cc, state, [a.individual for a in candidates])
@@ -223,7 +223,7 @@ function _admit_actions!(cc::CapacityConstrained, state, actions, admitter = cc)
             _fits_budget(cc, times, Float64[], action.time) || continue
             _admit_actions!(cc.intervention, state, [action], admitter)
             get(action.individual.state, key, false) || continue
-            _record_capacity_use!(cache, cc, action.individual, state, times)
+            _record_capacity_use!(cache, action.individual, state, times)
         end
     end
     return nothing
@@ -245,18 +245,11 @@ a run, `state` can be anything with an `rng` field, such as
 `(; rng = StableRNG(1))`.
 """
 function record_dose!(v::AbstractVaccination, person, at, state)
-    _record_dose!(v, person, at, state.rng)
-    _forget_capacity_cache!(state, _vaccinated_key(dose_label(v)))
-    return nothing
-end
-
-# The dose itself, without the capacity bookkeeping `record_dose!` adds: a
-# wrapper's own admission path records what it admits in its running count as
-# it goes, so a dose given there must not throw that count away.
-function _record_dose!(v::AbstractVaccination, person, at, rng)
-    get(person.state, _vaccinated_key(dose_label(v)), false) && return nothing
-    _record_vaccination!(v, person, at, rng)
-    _after_action_dose!(v, person, at, rng)
+    key = _vaccinated_key(dose_label(v))
+    get(person.state, key, false) && return nothing
+    _record_vaccination!(v, person, at, state.rng)
+    _after_action_dose!(v, person, at, state.rng)
+    _note_capacity_use!(state, key, person)
     return nothing
 end
 
@@ -276,7 +269,7 @@ case, can be checked against them, rather than waiting for the event queue
 of a continuous-time race to reach `time`.
 """
 function dose_action(v::AbstractVaccination, ind, time)
-    claim! = (person, at, state) -> _record_dose!(v, person, at, state.rng)
+    claim! = (person, at, state) -> record_dose!(v, person, at, state)
     return InterventionAction(ind, time, (person, at, state) -> nothing; claim! = claim!)
 end
 
@@ -327,8 +320,9 @@ function _revisable_dose_action(v::AbstractVaccination, ind, trigger, time)
             old_time = person.state[_vaccination_time_key(label)]
             person.state[_vaccination_time_key(label)] = at
             person.state[_immunity_time_key(label)] += at - old_time
+            _note_capacity_use!(state, _vaccinated_key(label), person)
         else
-            _record_dose!(v, person, at, state.rng)
+            record_dose!(v, person, at, state)
         end
         _action_cache(person)[_trigger_cache_key(v)] = trigger
         return nothing

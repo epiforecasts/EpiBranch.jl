@@ -265,18 +265,29 @@ end
 # and date each person's own use was filed under, so a dose later withdrawn
 # outside this cache's own admission path (`on_infection_settled!` undoing one
 # that missed its eligibility window, say) can be taken back out again.
+# A dose under the key is also recorded by paths that never pass through a
+# wrapper's admission at all, an unwrapped vaccination sharing the dose
+# label or a direct `record_dose!` call, which the docstring above promises
+# count too: `record_dose!` files its own dose through `_note_capacity_use!`
+# whenever a cache for its label exists. `intervention` is the one the cache
+# was first built for, whose `resource_key` and `capacity_time_key` every
+# use is filed under, since those paths have no wrapper to ask.
 # `capacity_usage` and `_reset_unless_within_budget!` keep using the plain
 # scan above instead: each is called far less often than an action is
 # admitted, so there is no scan there worth avoiding.
 mutable struct _CapacityCache
+    intervention::AbstractIntervention
     times::Dict{Any, Vector{Float64}}
     recorded::Dict{Int, Tuple{Any, Float64}}
     seeded::Bool
 end
-_CapacityCache() = _CapacityCache(Dict{Any, Vector{Float64}}(), Dict{Int, Tuple{Any, Float64}}(), false)
+_CapacityCache(iv) = _CapacityCache(iv, Dict{Any, Vector{Float64}}(), Dict{Int, Tuple{Any, Float64}}(), false)
 
 function _capacity_cache(cc::CapacityConstrained, state)
-    cache = get!(_CapacityCache, state.scratch, (:capacity_cache, capacity_key(cc.intervention)))::_CapacityCache
+    cache = get!(
+        () -> _CapacityCache(cc.intervention), state.scratch,
+        (:capacity_cache, capacity_key(cc.intervention))
+    )::_CapacityCache
     if !cache.seeded
         cache.seeded = true
         key = capacity_key(cc.intervention)
@@ -294,19 +305,20 @@ function _capacity_cache(cc::CapacityConstrained, state)
         # costs one sort each, not one insertion's own shift per use.
         foreach(sort!, values(cache.times))
     end
-    _drop_withdrawn!(cache, cc, state)
+    _drop_withdrawn!(cache, state)
     return cache
 end
 
-# Drop the running count kept under `key`, if any, so the next admission
-# through a wrapper on that key seeds it afresh from the population.
-# `record_dose!` calls this for a dose recorded outside any wrapper's own
-# admission path, the one use the count cannot otherwise learn of; a run
-# that records no dose that way never pays the rescan. The `scratch` check
-# is for the minimal state `record_dose!` accepts outside a run.
-function _forget_capacity_cache!(state, key)
+# File `ind`'s use under `key` in the running count, if one exists yet; if
+# none does, the scan that seeds it will see the flag. Called where a dose is
+# written, so that a dose given outside any wrapper's own admission counts
+# as the docstring promises. The `scratch` check is for the minimal state
+# `record_dose!` accepts outside a run.
+function _note_capacity_use!(state, key, ind)
     hasproperty(state, :scratch) || return nothing
-    delete!(state.scratch, (:capacity_cache, key))
+    cache = get(state.scratch, (:capacity_cache, key), nothing)
+    cache === nothing && return nothing
+    _record_capacity_use!(cache::_CapacityCache, ind, state)
     return nothing
 end
 
@@ -319,11 +331,11 @@ end
 # are unchanged, and moved when either has changed, as a dose revised to an
 # earlier trigger (see `may_revise`) moves its date.
 function _record_capacity_use!(
-        cache::_CapacityCache, cc::CapacityConstrained, ind, state,
-        times = get!(Vector{Float64}, cache.times, resource_key(cc.intervention, ind, state))
+        cache::_CapacityCache, ind, state,
+        times = get!(Vector{Float64}, cache.times, resource_key(cache.intervention, ind, state))
     )
-    resource = resource_key(cc.intervention, ind, state)
-    t = get(ind.state, capacity_time_key(cc.intervention), -Inf)
+    resource = resource_key(cache.intervention, ind, state)
+    t = get(ind.state, capacity_time_key(cache.intervention), -Inf)
     if haskey(cache.recorded, ind.id)
         old_resource, old_t = cache.recorded[ind.id]
         old_resource == resource && old_t == t && return times
@@ -340,9 +352,9 @@ end
 # path: the budget they used becomes available again, exactly as a fresh
 # scan would show. Costs the number of uses this cache has ever recorded,
 # not the size of the population, so it stays worth paying on every call.
-function _drop_withdrawn!(cache::_CapacityCache, cc::CapacityConstrained, state)
+function _drop_withdrawn!(cache::_CapacityCache, state)
     isempty(cache.recorded) && return nothing
-    key = capacity_key(cc.intervention)
+    key = capacity_key(cache.intervention)
     for id in collect(keys(cache.recorded))
         get(state.individuals[id].state, key, false) && continue
         resource, t = pop!(cache.recorded, id)
