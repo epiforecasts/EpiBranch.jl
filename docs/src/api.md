@@ -673,6 +673,7 @@ EpiBranch.transition_term
 ```@docs
 EpiBranch.GroupAttribute
 EpiBranch.records_contacts
+EpiBranch.sample_value
 ```
 
 ### Writing an observation model

@@ -306,7 +306,7 @@ risk_applies(::AbstractIntervention, route) = true
 # it is refused here. Zero is allowed and means no removal:
 # `infectious_removal_time` reports nothing to close a window with.
 function _removal_duration(duration, rng, individual, what)
-    d = _sample_value(duration, rng, individual)
+    d = sample_value(duration, rng, individual)
     (isnan(d) || d < 0) && throw(
         ArgumentError(
             "$what must not be negative, got $d for individual $(individual.id)"
