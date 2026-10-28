@@ -18,6 +18,17 @@ function EpiBranch.intervention_actions(::_ClinicVisit, state, candidates)
     ]
 end
 
+# A trace action of its own, with a resource to ration, as the extending
+# guide describes one.
+struct _Bed <: EpiBranch.TraceAction end
+function EpiBranch.apply_trace!(::_Bed, contact, state, trace_time, rng)
+    contact.state[:bedded] = true
+    contact.state[:bed_time] = trace_time
+    return nothing
+end
+EpiBranch.capacity_key(::_Bed) = :bedded
+EpiBranch.capacity_time_key(::_Bed) = :bed_time
+
 function _traced_contact(iv, id, trace_time)
     ind = Individual(
         id = id, state = Dict{Symbol, Any}(
@@ -704,6 +715,34 @@ end
 
         EpiBranch.trace_contacts!(cc, state, infector, [third], [3.0])
         @test !is_quarantined(third)
+        @test capacity_usage(cc, state).used == 2
+    end
+
+    @testset "A custom trace action by an unwrapped tracer counts too" begin
+        ct = ContactTracing(TraceEveryone(), 1.0, Dirac(0.0), _Bed())
+        cc = CapacityConstrained(ct; budget_per_period = 2.0)
+        st = SourceTracing(TraceEveryone(), 1.0, Dirac(0.0), _Bed())
+        state = EpiBranch.new_state(
+            BranchingProcess(Poisson(1.0), Exponential(5.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1)
+        )
+        infector = Individual(id = 1)
+        set_isolated!(infector, 0.0; release_time = Inf)
+        forward = Individual(id = 2)
+        source = Individual(id = 3)
+        case = Individual(id = 4, parent_id = 3, infection_time = 1.0)
+        set_isolated!(case, 2.0; release_time = Inf)
+        third = Individual(id = 5)
+        append!(state.individuals, [infector, forward, source, case, third])
+        state.max_infection_time = 3.0
+
+        EpiBranch.trace_contacts!(cc, state, infector, [forward], [1.0])
+        EpiBranch.trace_contacts!(st, state, case, [source])
+        @test get(source.state, :bedded, false)
+        @test capacity_usage(cc, state).used == 2
+
+        EpiBranch.trace_contacts!(cc, state, infector, [third], [3.0])
+        @test !get(third.state, :bedded, false)
         @test capacity_usage(cc, state).used == 2
     end
 
