@@ -122,7 +122,7 @@ end
 # An accepted action's effect runs now by default, or, within a
 # continuous-time race, is handed to the race's own event queue to run at
 # `action.time` instead. Only `_sellke_race!` installs a sink, for the span
-# of its own per-case offer and of firing a queued action (see
+# of its own per-case offer and of running a queued action (see
 # `_with_action_sink`); every other caller of `_admit_actions!` keeps
 # running the effect the moment it is admitted. `admitter` is threaded down
 # unchanged from the intervention `actions` was first offered to, past any
@@ -133,7 +133,7 @@ end
 const _ACTION_SINK_KEY = :_action_sink
 # `state` is usually a `SimulationState`, but `apply_actions!` is public and
 # documented to work against the minimal state a custom effect itself reads
-# (see the extending guide), which need carry no `scratch` of its own.
+# (see the extending guide), which need not hold a `scratch` of its own.
 _action_sink(state) = hasproperty(state, :scratch) ? get(state.scratch, _ACTION_SINK_KEY, nothing) : nothing
 
 function _run_action!(admitter, state, action)
@@ -150,7 +150,7 @@ end
 # `_run_action!`, which would only hand it straight back to the sink that
 # just dequeued it. A further action the effect returns is a fresh proposal,
 # admitted through `_admit_actions!`; it reaches the sink installed for the
-# span of firing this one (see `_with_action_sink`) if it is itself to be
+# span of running this one (see `_with_action_sink`) if it is itself to be
 # deferred.
 function _fire_action!(admitter, state, action)
     further = action.effect!(action.individual, action.time, state)
@@ -172,7 +172,7 @@ _is_further_actions(::Any) = false
 Run `f()` with `sink` installed as `state`'s deferred-action sink, returning
 what `f` returns, and restoring whatever was installed before once `f`
 returns, throws, or is itself run re-entrantly (a dose action admitted while
-another is being fired). A continuous-time race calls this around each span
+another is still running). A continuous-time race calls this around each span
 during which admitted actions belong on its own event queue.
 """
 function _with_action_sink(f, state, sink)
