@@ -201,7 +201,7 @@ function Distributions.logccdf(k::HazardKernel, τ::Real)
 end
 
 function Distributions.invlogccdf(k::HazardKernel, lp::Real)
-    isfinite(lp) || return oftype(float(lp), k.upper)
+    isinf(lp) && lp < 0 && return oftype(float(lp), k.upper)
     lp <= 0 || throw(ArgumentError("invlogccdf needs a non-positive log-survival, got $lp"))
     target = -lp
     iszero(target) && return 0.0

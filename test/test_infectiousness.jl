@@ -221,6 +221,8 @@ end
         @test all(d -> d <= 1.0, draws)
         @test any(==(1.0), draws)   # some draws exhaust the hazard before `upper`
         @test invlogccdf(k, -Inf) == maximum(k)
+        @test_throws ArgumentError invlogccdf(k, Inf)
+        @test_throws ArgumentError invlogccdf(k, NaN)
     end
 
     @testset "rejects a non-positive upper" begin
