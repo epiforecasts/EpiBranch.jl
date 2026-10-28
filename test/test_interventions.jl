@@ -976,8 +976,8 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
     end
 
     @testset "record_removal! widens the entry store for a later dual release" begin
-        # A plain first call followed by one whose release is an AD dual must
-        # not throw trying to fit the dual into a vector already committed to
+        # A plain first call followed by one with an AD dual release must not
+        # throw trying to fit the dual into a vector already committed to
         # `Float64` entries.
         ind = Individual(id = 1)
         EpiBranch.record_removal!(ind, 1.0, 2.0)
@@ -998,8 +998,8 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
 
         # The isolation-span store keeps its own entries apart from
         # `:_removal_entries`; read it directly, since `isolation_release_time`
-        # narrows every entry back to the individual's own element type
-        # regardless of how wide the entry it is reading from is.
+        # narrows every entry back to the individual's own element type no
+        # matter how wide the stored entry is.
         isolated = Individual(id = 2)
         iso_handle = EpiBranch._set_isolated!(isolated, 5.0; release_time = 10.0)
         EpiBranch.revise_removal!(isolated, iso_handle; release = ForwardDiff.Dual(20.0, 1.0))

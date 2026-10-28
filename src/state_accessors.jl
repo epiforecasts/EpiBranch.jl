@@ -263,11 +263,11 @@ const LEAKY_REMOVAL_STRETCHES_KEY = :_leaky_removal_stretches
 const _NO_STRETCHES = Tuple{Float64, Float64}[]
 
 # Start and release are kept `Any` rather than `ind`'s own element type, or
-# even one call's own promoted type: a later `record_removal!`/
+# even one call's own promoted type. A later `record_removal!`/
 # `_set_isolated!` call on the same individual can promote to a wider type
 # than an earlier one did (an AD dual isolation time following a plain
-# `Float64` one, say), and the vector must hold both without narrowing
-# either back down.
+# `Float64` one, say). The vector must hold both without narrowing either
+# back down.
 const _RemovalEntry = Tuple{Int, Symbol, Any, Any}
 const _IsolationSpanEntry = Tuple{Int, Any, Any, Bool}
 
@@ -669,9 +669,9 @@ function _lapsing_removal_keys(state::SimulationState)
     return keys
 end
 
-# A call recorded at a wider type than an earlier one left this cache at (an
-# AD dual release following a plain `Float64` one, say) widens the cache to
-# match, rather than narrowing the new stretch back down to fit it.
+# When a call records at a type wider than the one already in this cache
+# (an AD dual release following a plain `Float64` one, say), the cache
+# widens to match, rather than narrowing the new stretch down to fit it.
 function _with_stretch(old::Vector{Tuple{T, T}}, stretch::Tuple{S, S}) where {T, S}
     P = promote_type(T, S)
     new = Vector{Tuple{P, P}}(undef, length(old) + 1)
