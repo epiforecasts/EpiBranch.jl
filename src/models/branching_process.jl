@@ -165,7 +165,7 @@ keeps it so once there is a `:recovered` to cut transmission short:
 ```julia
 using EpiBranch, Distributions
 
-# a generation time: nothing `BranchingProcess(offspring, gt)` does not already do
+# a generation time: the same thing `BranchingProcess(offspring, gt)` already builds
 timing = transmission_timing(LogNormal(1.6, 0.5); offspring = NegBin(2.5, 0.16))
 model = BranchingProcess(timing.window)
 

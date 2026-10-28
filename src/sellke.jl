@@ -1197,9 +1197,9 @@ function _sellke_race!(
         bt > max_time && return _finish_race!(rts, race, false, max_time)
         # A deferred action's own event: no member settles from it, so it
         # skips the pop bookkeeping below, which is about resolving a case.
-        # Firing it may admit further actions of its own (an effect's
+        # Running it may admit further actions of its own (an effect's
         # return); those belong on this same queue too, so the sink is
-        # reinstalled for the span of running it.
+        # reinstalled for the span of executing it.
         if j == 0
             action, admitter = pending_actions[p]
             _with_action_sink(state, action_sink) do
