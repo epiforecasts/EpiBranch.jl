@@ -41,6 +41,8 @@ fixed set of contacts. [`ModelSpec`](@ref) adds the rest of the scenario.
 BranchingProcess
 Infectiousness
 OffspringTimes
+transmission_timing
+implied_R
 EpiBranch.MultiTypeOffspring
 HomogeneousProcess
 MixingProcess
