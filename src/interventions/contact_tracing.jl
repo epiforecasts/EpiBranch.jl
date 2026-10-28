@@ -488,6 +488,9 @@ function apply_trace!(q::Quarantine, contact, state, trace_time, rng)
         set_isolated!(contact, trace_time; release_time = release_time)
     end
     contact.state[:_quarantined_by_tracing] = true
+    # A tracer not under `CapacityConstrained`, such as `SourceTracing`, still
+    # draws on the quarantine budget, so the use is filed where it is written.
+    _note_capacity_use!(state, capacity_key(q), contact)
     return nothing
 end
 

@@ -677,6 +677,36 @@ end
         @test capacity_usage(cc, state).used == 2
     end
 
+    @testset "A quarantine by an unwrapped tracer counts against the budget" begin
+        # Backward tracing shares the quarantine key with the rationed
+        # forward tracing, so a source it quarantines uses up the budget.
+        ct = ContactTracing(TraceEveryone(), 1.0, Dirac(0.0), Quarantine(duration = Inf))
+        cc = CapacityConstrained(ct; budget_per_period = 2.0)
+        st = SourceTracing(TraceEveryone(), 1.0, Dirac(0.0), Quarantine(duration = Inf))
+        state = EpiBranch.new_state(
+            BranchingProcess(Poisson(1.0), Exponential(5.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1)
+        )
+        infector = Individual(id = 1)
+        set_isolated!(infector, 0.0; release_time = Inf)
+        forward = Individual(id = 2)
+        source = Individual(id = 3)
+        case = Individual(id = 4, parent_id = 3, infection_time = 1.0)
+        set_isolated!(case, 2.0; release_time = Inf)
+        third = Individual(id = 5)
+        append!(state.individuals, [infector, forward, source, case, third])
+        state.max_infection_time = 3.0
+
+        EpiBranch.trace_contacts!(cc, state, infector, [forward], [1.0])
+        EpiBranch.trace_contacts!(st, state, case, [source])
+        @test is_quarantined(source)
+        @test capacity_usage(cc, state).used == 2
+
+        EpiBranch.trace_contacts!(cc, state, infector, [third], [3.0])
+        @test !is_quarantined(third)
+        @test capacity_usage(cc, state).used == 2
+    end
+
     @testset "Constructor validates its arguments" begin
         rv = RingVaccination(efficacy = 0.9)
         @test_throws ArgumentError CapacityConstrained(rv; budget_per_period = -1.0)
