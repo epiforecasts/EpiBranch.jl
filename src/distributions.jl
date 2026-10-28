@@ -227,17 +227,28 @@ Distributions.partype(::HazardKernel{F, T}) where {F, T} = T
 
 # Grow a bracket from 0 until the integrated hazard reaches `target`, doubling
 # each step; `k.upper` caps the bracket, so a `target` beyond the total hazard
-# there is met by returning `upper` rather than doubling forever.
+# there is met by returning `upper` rather than doubling forever. With `upper`
+# left unbounded, a hazard whose cumulative integral converges to a finite
+# total below `target` (a case that clears and never becomes infectious
+# again) would otherwise double forever: four doublings in a row that add
+# nothing to `hi_acc` are taken as that convergence, and `Inf` is returned
+# without doubling further.
 function _hazard_invert(k::HazardKernel, target::Real)
     upper = k.upper
     lo = zero(target)
     acc = zero(target)
     width = one(target)
+    stalled = 0
     while true
         hi = min(lo + width, upper)
         hi_acc = acc + first(quadgk(k.hazard, lo, hi))
         (hi_acc >= target || hi == upper) &&
             return _bisect_hazard(k, lo, hi, acc, hi_acc, target)
+        if isinf(upper)
+            stalled = isapprox(hi_acc, acc; rtol = 1.0e-9, atol = 1.0e-12) ?
+                stalled + 1 : 0
+            stalled >= 4 && return upper
+        end
         lo, acc = hi, hi_acc
         width *= 2
     end
