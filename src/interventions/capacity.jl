@@ -350,7 +350,7 @@ For extension authors: tell any [`CapacityConstrained`](@ref) sharing
 [`capacity_key`](@ref EpiBranch.capacity_key) outside an action admitted
 through the wrapper, as a tracer of your own does when it applies a
 [`TraceAction`](@ref) directly. An action admitted through the wrapper, a
-dose recorded by [`record_dose!`](@ref) and a trace applied by the built-in
+dose recorded by `record_dose!` and a trace applied by the built-in
 tracers are all counted without it. Does nothing when nothing is rationed.
 """
 function record_capacity_use!(intervention, person, state)
