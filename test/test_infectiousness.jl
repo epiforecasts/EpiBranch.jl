@@ -261,7 +261,7 @@ end
 
     @testset "a bare kernel (not a per-case function) still drives a simulation" begin
         # The `contacts` form leaves `contact_interval` as the window's own
-        # kernel rather than closing over it per case, so this is the only
+        # kernel, rather than closing over it per case. This is the only
         # path that exercises a `HazardKernel` sitting there directly.
         k = HazardKernel(t -> 0.4)
         timing = transmission_timing(k; contacts = NegBin(3.0, 0.5))
