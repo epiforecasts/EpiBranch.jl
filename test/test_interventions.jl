@@ -1761,7 +1761,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             )
             EpiBranch.initialise_individual!(rv, ind, state)
             action = only(EpiBranch.intervention_actions(rv, state, [ind]))
-            action.effect!(ind, action.time, state)
+            EpiBranch._admit_actions!(rv, state, [action])
             @test is_vaccinated(ind)
             @test ind.state[:vaccination_time] == 5.0
 
@@ -1786,7 +1786,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             )
             EpiBranch.initialise_individual!(rv, ind, state)
             action = only(EpiBranch.intervention_actions(rv, state, [ind]))
-            action.effect!(ind, action.time, state)
+            EpiBranch._admit_actions!(rv, state, [action])
 
             ind.infection_time = 4.0
             EpiBranch.on_infection_settled!(rv, ind, state, StableRNG(2))
