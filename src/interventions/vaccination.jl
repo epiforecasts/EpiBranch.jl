@@ -381,9 +381,14 @@ full or no protection here, once, as for a dose given during the simulation.
 A recorded efficacy of 0 or 1 is kept as it is."""
 function initialise_individual!(v::AbstractVaccination, individual, state)
     label = dose_label(v)
-    get!(individual.state, _vaccinated_key(label), false)
+    key = _vaccinated_key(label)
+    get!(individual.state, key, false)
     get!(individual.state, _vaccination_time_key(label), Inf)
     realise_prior_dose!(effect_mode(v), individual, label, state)
+    # A dose given before the run draws on a capacity budget like any other,
+    # and a person created mid-run arrives after the running count was
+    # seeded, so it is filed here.
+    individual.state[key] && _note_capacity_use!(state, key, individual)
     return nothing
 end
 

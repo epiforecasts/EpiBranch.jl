@@ -313,7 +313,8 @@ end
 # none does, the scan that seeds it will see the flag. Called where a dose is
 # written, so that a dose given outside any wrapper's own admission counts
 # as the docstring promises. The `scratch` check is for the minimal state
-# `record_dose!` accepts outside a run.
+# `record_dose!` accepts outside a run, and for `initialise_individual!`
+# called with none.
 function _note_capacity_use!(state, key, ind)
     hasproperty(state, :scratch) || return nothing
     cache = get(state.scratch, (:capacity_cache, key), nothing)

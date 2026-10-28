@@ -598,6 +598,37 @@ end
         @test capacity_usage(cc, state).used == 2
     end
 
+    @testset "A prior dose on a person created mid-run counts" begin
+        # An attribute builder can give a person a dose from before the run;
+        # one created after the running count was seeded must still draw on
+        # the budget, as `capacity_usage` reports them doing.
+        rv = RingVaccination(efficacy = 0.9)
+        cc = CapacityConstrained(rv; budget_per_period = 2.0)
+        state = EpiBranch.new_state(
+            BranchingProcess(Poisson(1.0), Exponential(5.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1)
+        )
+        first = _traced_contact(rv, 1, 1.0)
+        append!(state.individuals, [first])
+        state.max_infection_time = 3.0
+        EpiBranch.apply_actions!(cc, state, [first])
+
+        prior = Individual(
+            id = 2, state = Dict{Symbol, Any}(
+                :vaccinated => true, :vaccination_time => -10.0,
+                :vaccine_efficacy => 0.9
+            )
+        )
+        EpiBranch.initialise_individual!(rv, prior, state)
+        append!(state.individuals, [prior])
+
+        third = _traced_contact(rv, 3, 3.0)
+        append!(state.individuals, [third])
+        EpiBranch.apply_actions!(cc, state, [third])
+        @test !is_vaccinated(third)
+        @test capacity_usage(cc, state).used == 2
+    end
+
     @testset "Constructor validates its arguments" begin
         rv = RingVaccination(efficacy = 0.9)
         @test_throws ArgumentError CapacityConstrained(rv; budget_per_period = -1.0)
