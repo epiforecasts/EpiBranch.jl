@@ -193,27 +193,34 @@ capacity_time_key(::Isolation) = :isolation_time
 # `ContactTracing` proposes its follow-up as an `InterventionAction` (see
 # `_trace_action`) whose own resource key depends on what the action does:
 # a `Quarantine` has a removal to ration, `FlagOnly` does not.
-capacity_key(ct::ContactTracing) = capacity_key(ct.action)
-capacity_time_key(ct::ContactTracing) = capacity_time_key(ct.action)
-
-function capacity_key(action::TraceAction)
-    throw(
+function capacity_key(ct::ContactTracing)
+    key = capacity_key(ct.action)
+    key === nothing && throw(
         ArgumentError(
-            "CapacityConstrained needs a `capacity_key` method for $(typeof(action)) " *
+            "CapacityConstrained needs a `capacity_key` method for $(typeof(ct.action)) " *
                 "to know which state key measures how much of `ContactTracing`'s " *
                 "follow-up capacity a person has used. See the Extending guide."
         )
     )
+    return key
 end
-function capacity_time_key(action::TraceAction)
-    throw(
+function capacity_time_key(ct::ContactTracing)
+    key = capacity_time_key(ct.action)
+    key === nothing && throw(
         ArgumentError(
             "CapacityConstrained needs a `capacity_time_key` method for " *
-                "$(typeof(action)) to measure usage within a period. See the " *
+                "$(typeof(ct.action)) to measure usage within a period. See the " *
                 "Extending guide."
         )
     )
+    return key
 end
+# An action with no resource to ration, such as `FlagOnly`, answers
+# `nothing`; the tracer above turns that into the error a wrapper needs, and
+# a tracer applying the action can tell by dispatch alone, without reflection
+# on every trace, whether there is a use to file.
+capacity_key(::TraceAction) = nothing
+capacity_time_key(::TraceAction) = nothing
 capacity_key(::Quarantine) = :_quarantined_by_tracing
 capacity_time_key(::Quarantine) = :trace_time
 
@@ -251,6 +258,150 @@ end
 # budget as before.
 function _dose_times(cc::CapacityConstrained, state, key = nothing)
     return get(_dose_times_by_key(cc, state), key, Float64[])
+end
+
+# `_admit_actions!`'s own record of who has already drawn on each capacity
+# key's resources, kept in `state.scratch` so it survives from one call to
+# the next. Keyed on `capacity_key(cc.intervention)` rather than on `cc`
+# itself, so that two different `CapacityConstrained` wrappers sharing a dose
+# label (per the docstring above) see each other's admissions through the
+# same cache instead of each keeping its own, unaware copy. Seeded once by a
+# population scan like `_dose_times_by_key`'s own, then grown one person at a
+# time as each dose is admitted, so a run with many settled cases no longer
+# rescans everyone on every one of them; `scanned` is how far along
+# `state.individuals` that scan has reached, so that someone created since,
+# already carrying the flag from an attribute builder, is picked up by
+# scanning only the people appended since. `recorded` remembers which resource
+# and date each person's own use was filed under, so a dose later withdrawn
+# outside this cache's own admission path (`on_infection_settled!` undoing one
+# that missed its eligibility window, say) can be taken back out again.
+# A dose under the key is also recorded by paths that never pass through a
+# wrapper's admission at all, an unwrapped vaccination sharing the dose
+# label or a direct `record_dose!` call, which the docstring above promises
+# count too: `record_dose!` files its own dose through `_note_capacity_use!`
+# whenever a cache for its label exists, as the tracers do for a trace
+# action's. `intervention` is the one the cache
+# was first built for, whose `resource_key` and `capacity_time_key` every
+# use is filed under, since those paths have no wrapper to ask.
+# `capacity_usage` and `_reset_unless_within_budget!` keep using the plain
+# scan above instead: each is called far less often than an action is
+# admitted, so there is no scan there worth avoiding.
+mutable struct _CapacityCache
+    intervention::AbstractIntervention
+    times::Dict{Any, Vector{Float64}}
+    recorded::Dict{Int, Tuple{Any, Float64}}
+    scanned::Int
+end
+_CapacityCache(iv) = _CapacityCache(iv, Dict{Any, Vector{Float64}}(), Dict{Int, Tuple{Any, Float64}}(), 0)
+
+function _capacity_cache(cc::CapacityConstrained, state)
+    cache = get!(
+        () -> _CapacityCache(cc.intervention), state.scratch,
+        (:capacity_cache, capacity_key(cc.intervention))
+    )::_CapacityCache
+    key = capacity_key(cc.intervention)
+    n = length(state.individuals)
+    if cache.scanned == 0
+        time_key = capacity_time_key(cc.intervention)
+        for ind in state.individuals
+            get(ind.state, key, false) || continue
+            resource = resource_key(cc.intervention, ind, state)
+            t = get(ind.state, time_key, -Inf)
+            push!(get!(Vector{Float64}, cache.times, resource), t)
+            cache.recorded[ind.id] = (resource, t)
+        end
+        # A single sort per resource key here, rather than this scan calling
+        # `_record_capacity_use!`'s one-at-a-time sorted insert, so seeding a
+        # resource with many uses already recorded before this cache ever ran
+        # costs one sort each, not one insertion's own shift per use.
+        foreach(sort!, values(cache.times))
+    else
+        # Ids are positional in `state.individuals` (as `_drop_withdrawn!`
+        # relies on too), so the people appended since the last call are
+        # exactly those past the watermark; few arrive between admissions.
+        for i in (cache.scanned + 1):n
+            ind = state.individuals[i]
+            get(ind.state, key, false) && _record_capacity_use!(cache, ind, state)
+        end
+    end
+    cache.scanned = n
+    _drop_withdrawn!(cache, state)
+    return cache
+end
+
+# File `ind`'s use under `key` in the running count, if one exists yet; if
+# none does, the scan that seeds it will see the flag. Called where a dose is
+# written, so that a dose given outside any wrapper's own admission counts
+# as the docstring promises. The `scratch` check is for the minimal state
+# `record_dose!` accepts outside a run.
+function _note_capacity_use!(state, key, ind)
+    hasproperty(state, :scratch) || return nothing
+    cache = get(state.scratch, (:capacity_cache, key), nothing)
+    cache === nothing && return nothing
+    _record_capacity_use!(cache::_CapacityCache, ind, state)
+    return nothing
+end
+
+"""
+    record_capacity_use!(intervention, person, state)
+
+For extension authors: tell any [`CapacityConstrained`](@ref) sharing
+`intervention`'s resource that `person` has just used it, after setting its
+[`capacity_key`](@ref EpiBranch.capacity_key) outside an action admitted
+through the wrapper, as a tracer of your own does when it applies a
+[`TraceAction`](@ref) directly. An action admitted through the wrapper, a
+dose recorded by `record_dose!` and a trace applied by the built-in
+tracers are all counted without it. `intervention` is a `TraceAction` or an
+intervention with a `capacity_key` of its own; the call does nothing when no
+wrapper shares that resource, or when a `TraceAction` has none to ration.
+"""
+function record_capacity_use!(intervention, person, state)
+    key = capacity_key(intervention)
+    key === nothing && return nothing
+    _note_capacity_use!(state, key, person)
+    return nothing
+end
+
+# File `ind`'s own use in `cache`, at the sorted position its date belongs:
+# cases settle in infection order, so a dose dated earlier is often admitted
+# after later ones (see `_fits_budget`), and `times` must stay searchable by
+# date regardless of the order doses are recorded in. Someone already in
+# `cache.recorded`, whether from the population scan that seeded it or from
+# an earlier call, is counted once: left alone when their date and resource
+# are unchanged, and moved when either has changed, as a dose revised to an
+# earlier trigger (see `may_revise`) moves its date.
+function _record_capacity_use!(
+        cache::_CapacityCache, ind, state,
+        times = get!(Vector{Float64}, cache.times, resource_key(cache.intervention, ind, state))
+    )
+    resource = resource_key(cache.intervention, ind, state)
+    t = get(ind.state, capacity_time_key(cache.intervention), -Inf)
+    if haskey(cache.recorded, ind.id)
+        old_resource, old_t = cache.recorded[ind.id]
+        old_resource == resource && old_t == t && return times
+        old_times = cache.times[old_resource]
+        deleteat!(old_times, searchsortedfirst(old_times, old_t))
+    end
+    cache.recorded[ind.id] = (resource, t)
+    insert!(times, searchsortedfirst(times, t), t)
+    return times
+end
+
+# Take back out anyone `cache` counted whose own flag has since been unset
+# directly on `state`, without going through this cache's own admission
+# path: the budget they used becomes available again, exactly as a fresh
+# scan would show. Costs the number of uses this cache has ever recorded,
+# not the size of the population, so it stays worth paying on every call.
+function _drop_withdrawn!(cache::_CapacityCache, state)
+    isempty(cache.recorded) && return nothing
+    key = capacity_key(cache.intervention)
+    for id in collect(keys(cache.recorded))
+        get(state.individuals[id].state, key, false) && continue
+        resource, t = pop!(cache.recorded, id)
+        times = cache.times[resource]
+        deleteat!(times, searchsortedfirst(times, t))
+    end
+    return nothing
 end
 
 # How many of the sorted `times`, together with `extra` (doses admitted so far

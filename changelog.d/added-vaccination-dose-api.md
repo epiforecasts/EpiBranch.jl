@@ -7,11 +7,13 @@ not meant to call:
   `intervention_actions` method returns one per candidate, so `Scheduled`
   and `CapacityConstrained` admit it exactly as they admit a
   `MassVaccination` dose.
-- `EpiBranch.record_dose!(v, ind, time, rng)` records a dose directly,
-  outside the action protocol, skipping an already-vaccinated individual and
-  reconsidering a post-exposure abort against the dose just given — what
-  `RingVaccination` and `GroupVaccination` already got through their own
-  actions.
+- `EpiBranch.record_dose!(v, ind, time, state)` records a dose directly,
+  outside the action protocol, drawing from `state.rng`, skipping an
+  already-vaccinated individual and reconsidering a post-exposure abort
+  against the dose just given — what `RingVaccination` and
+  `GroupVaccination` already got through their own actions. Outside a run,
+  `state` can be anything with an `rng` field, such as
+  `(; rng = StableRNG(1))`.
 - `EpiBranch.record_effect_draws!` is now the public hook, with its no-op
   default, for drawing a per-dose effect only some vaccinations have (such
   as `RingVaccination`'s `post_exposure_efficacy`); `EpiBranch.store_draw!`
