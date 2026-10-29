@@ -1261,6 +1261,7 @@ struct ClinicalPresentation{D, P}
 end
 
 function (clinical::ClinicalPresentation)(rng, ind)
+    rng = stream(rng, ind.id, :clinical_presentation)
     pa = sample_value(clinical.prob_asymptomatic, rng, ind)
     is_asymp = rand(rng) < pa
     ind.state[:asymptomatic] = is_asymp
@@ -1330,6 +1331,7 @@ struct Demographics{D}
 end
 
 function (d::Demographics)(rng, ind)
+    rng = stream(rng, ind.id, :demographics)
     ind.state[:age] = _sample_age(rng, d.age_distribution, d.age_range)
     return ind.state[:sex] = rand(rng) < d.prob_female ? :female : :male
 end
@@ -1385,7 +1387,7 @@ struct Groups
 end
 
 function (g::Groups)(rng, ind)
-    return ind.state[g.key] = rand(rng, 1:g.n_groups)
+    return ind.state[g.key] = rand(stream(rng, ind.id, :groups), 1:g.n_groups)
 end
 
 """
