@@ -404,6 +404,19 @@ Act on `contact`, traced at `trace_time` (days); changes `contact` in place.
 """
 apply_trace!(::TraceAction, contact, state, trace_time, rng) = nothing
 
+# Every tracer acts through this rather than `apply_trace!` directly: an
+# action that draws on a capacity (one with a `capacity_key`) is filed in
+# the running count as soon as it has set its flag, so a tracer that is not
+# itself under `CapacityConstrained`, such as `SourceTracing`, still counts
+# against the budget a wrapped one shares, whatever the action's type.
+function _apply_trace!(action::TraceAction, contact, state, trace_time, rng)
+    apply_trace!(action, contact, state, trace_time, rng)
+    key = capacity_key(action)
+    key === nothing && return nothing
+    _capacity_used(get(contact.state, key, nothing)) && _note_capacity_use!(state, key, contact)
+    return nothing
+end
+
 # The key a quarantine records its own removals under, apart from the shared
 # history `set_isolated!` keeps, so that its block covers its own days only.
 const QUARANTINE_STRETCHES_KEY = :_quarantine_stretches
@@ -470,6 +483,10 @@ function apply_trace!(q::Quarantine, contact, state, trace_time, rng)
     handles = get(contact.state, :_quarantine_removal_handles, nothing)
     contact.state[:_quarantine_removal_handles] =
         handles === nothing ? [handle] : push!(copy(handles), handle)
+    # Filed here as well as by the built-in tracers (`_apply_trace!`), so a
+    # tracer written outside the package, which calls this directly, still
+    # counts the quarantine against the budget a wrapped tracer shares.
+    _note_capacity_use!(state, capacity_key(q), contact)
     return nothing
 end
 
@@ -843,7 +860,7 @@ function _trace_attempt!(
         # always skips a non-finite time (see `_admit_actions!`), and this
         # contact is traced, not scheduled or rationed, as `Quarantine`'s own
         # docstring says.
-        apply_trace!(ct.action, ind, state, trace_time, rng)
+        _apply_trace!(ct.action, ind, state, trace_time, rng)
     end
 
     # Record the source this contact was traced from: the latest case whose
@@ -867,7 +884,7 @@ end
 # `apply_trace!` always has, so `Scheduled` and `CapacityConstrained` can
 # admit it the same way they admit a dose.
 function _trace_action(ct::ContactTracing, ind, trace_time)
-    effect! = (person, at, state) -> apply_trace!(ct.action, person, state, at, state.rng)
+    effect! = (person, at, state) -> _apply_trace!(ct.action, person, state, at, state.rng)
     return InterventionAction(ind, trace_time, effect!)
 end
 
@@ -1139,7 +1156,7 @@ function trace_contacts!(st::SourceTracing, state, case, contacts, not_before = 
         # an action reading the contact's own state, such as a `Quarantine`
         # `duration` function, can see it.
         _record_trace_time!(source, trace_time)
-        apply_trace!(st.action, source, state, trace_time, rng)
+        _apply_trace!(st.action, source, state, trace_time, rng)
         # The reverse of `ContactTracing`'s `:traced_by`: `source` was found
         # through `case`, a later-infected node, so it is kept under its own
         # key rather than break `compute_trace_level!`'s invariant that

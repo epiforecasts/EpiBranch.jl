@@ -307,6 +307,14 @@ A reference time given to `Reporting` as a function (`from`) takes only `ind`, a
 [`Scheduled`](@ref) takes the simulation state. Numbers and distributions keep
 their usual meaning wherever those are accepted.
 
+A parameter given this way can also be a [`Conditional`](@ref), wrapping a
+function that returns a `Distribution` rather than a value: `Conditional(ind
+-> Gamma(5.95, 1 / ind.state[:scale]))` draws from a different `Gamma` for
+each case. Unlike a plain function, the distribution behind a `Conditional`
+can be read back through [`EpiBranch.resolve`](@ref) without drawing from
+it. A likelihood over timing data needs that distribution directly, not a
+simulated value.
+
 ## Stopping rules
 
 A simulation stops at the first step where any of its stopping rules says so.

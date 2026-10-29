@@ -1,6 +1,50 @@
 # Build an already-traced contact, ready to be considered for a dose:
 # `initialise_individual!` sets the vaccination flags to their unset
 # defaults, exactly as the engine does for a real contact.
+# An intervention whose effect, not its `claim!`, uses up capacity, as the
+# extending guide's clinic appointment does; a race runs that effect later.
+struct _ClinicVisit <: EpiBranch.AbstractIntervention end
+EpiBranch.capacity_key(::_ClinicVisit) = :attended
+EpiBranch.capacity_time_key(::_ClinicVisit) = :appointment_time
+function _attend!(person, time, state)
+    person.state[:attended] = true
+    person.state[:appointment_time] = time
+    return nothing
+end
+function EpiBranch.intervention_actions(::_ClinicVisit, state, candidates)
+    return [
+        EpiBranch.InterventionAction(ind, state.max_infection_time + 1.0, _attend!)
+            for ind in candidates if !get(ind.state, :attended, false)
+    ]
+end
+
+# A trace action of its own, with a resource to ration, as the extending
+# guide describes one.
+struct _Bed <: EpiBranch.TraceAction end
+function EpiBranch.apply_trace!(::_Bed, contact, state, trace_time, rng)
+    contact.state[:bedded] = true
+    contact.state[:bed_time] = trace_time
+    return nothing
+end
+EpiBranch.capacity_key(::_Bed) = :bedded
+EpiBranch.capacity_time_key(::_Bed) = :bed_time
+
+# A tracer written outside the package, acting through the public
+# `apply_trace!` as the extending guide's listing does.
+struct _OwnTracer <: EpiBranch.AbstractIntervention
+    action::EpiBranch.TraceAction
+end
+EpiBranch.traces_contacts(::_OwnTracer) = true
+function EpiBranch.trace_contacts!(tr::_OwnTracer, state, infector, contacts, trace_times)
+    for (contact, trace_time) in zip(contacts, trace_times)
+        EpiBranch._record_trace_time!(contact, trace_time)
+        contact.state[:traced] = true
+        EpiBranch.apply_trace!(tr.action, contact, state, trace_time, state.rng)
+        EpiBranch.record_capacity_use!(tr.action, contact, state)
+    end
+    return nothing
+end
+
 function _traced_contact(iv, id, trace_time)
     ind = Individual(
         id = id, state = Dict{Symbol, Any}(
@@ -463,6 +507,340 @@ end
         EpiBranch.apply_actions!(cc, state, contacts)
 
         @test count(is_vaccinated, contacts) == 2
+    end
+
+    @testset "Rationing across many calls does not depend on a bystander population" begin
+        # Usage is now kept as a running count rather than rescanning
+        # `state.individuals` on every call, so a large population nobody
+        # ever proposes a dose for must not change what gets rationed.
+        rv = RingVaccination(efficacy = 0.9)
+        cc = CapacityConstrained(rv; budget_per_period = 1.0, period = 1.0)
+        state = EpiBranch.new_state(
+            BranchingProcess(Poisson(1.0), Exponential(5.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1)
+        )
+        append!(state.individuals, [Individual(id = i) for i in 1:500])
+
+        for day in 1:20
+            contact = _traced_contact(rv, 500 + day, Float64(day))
+            append!(state.individuals, [contact])
+            state.max_infection_time = Float64(day)
+            EpiBranch.apply_actions!(cc, state, [contact])
+        end
+
+        dosed = filter(is_vaccinated, state.individuals)
+        @test length(dosed) == 20
+        @test capacity_usage(cc, state).used == 20
+    end
+
+    @testset "Two wrappers sharing a dose label share one running budget" begin
+        # Both default to dose_label :default, so per the docstring they
+        # share one budget: an admission through either must be visible to
+        # the other's own running count, not just to a fresh rescan.
+        rv_a = RingVaccination(efficacy = 0.9)
+        rv_b = RingVaccination(efficacy = 0.5)
+        cc_a = CapacityConstrained(rv_a; budget_per_period = 2.0)
+        cc_b = CapacityConstrained(rv_b; budget_per_period = 2.0)
+        state = EpiBranch.new_state(
+            BranchingProcess(Poisson(1.0), Exponential(5.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1)
+        )
+
+        first = _traced_contact(rv_a, 1, 1.0)
+        second = _traced_contact(rv_b, 2, 2.0)
+        third = _traced_contact(rv_a, 3, 3.0)
+        append!(state.individuals, [first, second, third])
+        state.max_infection_time = 3.0
+
+        EpiBranch.apply_actions!(cc_a, state, [first])
+        EpiBranch.apply_actions!(cc_b, state, [second])
+        EpiBranch.apply_actions!(cc_a, state, [third])
+
+        @test count(is_vaccinated, [first, second, third]) == 2
+        @test !is_vaccinated(third)
+    end
+
+    @testset "A dose revised to an earlier trigger is charged to its new day" begin
+        # A contact reached again from an earlier trace has its dose moved
+        # earlier (`may_revise`); the running count must move it too, or
+        # the old day stays charged and the new one is not.
+        rv = RingVaccination(efficacy = 0.9)
+        cc = CapacityConstrained(rv; budget_per_period = 1.0, period = 1.0, carry_over = false)
+        state = EpiBranch.new_state(
+            BranchingProcess(Poisson(1.0), Exponential(5.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1)
+        )
+        revised = _traced_contact(rv, 1, 5.0)
+        append!(state.individuals, [revised])
+        state.max_infection_time = 5.0
+        EpiBranch.apply_actions!(cc, state, [revised])
+        @test revised.state[:vaccination_time] == 5.0
+
+        revised.state[:trace_time] = 3.0
+        EpiBranch.apply_actions!(cc, state, [revised])
+        @test revised.state[:vaccination_time] == 3.0
+
+        same_day = _traced_contact(rv, 2, 3.0)
+        freed_day = _traced_contact(rv, 3, 5.0)
+        append!(state.individuals, [same_day, freed_day])
+        EpiBranch.apply_actions!(cc, state, [same_day])
+        EpiBranch.apply_actions!(cc, state, [freed_day])
+        @test !is_vaccinated(same_day)
+        @test is_vaccinated(freed_day)
+    end
+
+    @testset "A dose recorded directly counts against the running budget" begin
+        # `record_dose!` is public for a custom `trace_contacts!` to call
+        # outside the action protocol; a dose it records must still count
+        # once the wrapper's running count has been seeded.
+        rv = RingVaccination(efficacy = 0.9)
+        cc = CapacityConstrained(rv; budget_per_period = 2.0)
+        state = EpiBranch.new_state(
+            BranchingProcess(Poisson(1.0), Exponential(5.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1)
+        )
+        first = _traced_contact(rv, 1, 1.0)
+        second = _traced_contact(rv, 2, 2.0)
+        third = _traced_contact(rv, 3, 3.0)
+        append!(state.individuals, [first, second, third])
+        state.max_infection_time = 3.0
+
+        EpiBranch.apply_actions!(cc, state, [first])
+        EpiBranch.record_dose!(rv, second, 2.0, state)
+        EpiBranch.apply_actions!(cc, state, [third])
+
+        @test is_vaccinated(first)
+        @test is_vaccinated(second)
+        @test !is_vaccinated(third)
+        @test capacity_usage(cc, state).used == 2
+    end
+
+    @testset "A dose from an unwrapped intervention on the same label counts" begin
+        # The docstring promises that doses given by another intervention
+        # under the label count against the budget; that other intervention
+        # need not be wrapped itself.
+        rv = RingVaccination(efficacy = 0.9)
+        other = RingVaccination(efficacy = 0.5)
+        cc = CapacityConstrained(rv; budget_per_period = 2.0)
+        state = EpiBranch.new_state(
+            BranchingProcess(Poisson(1.0), Exponential(5.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1)
+        )
+        first = _traced_contact(rv, 1, 1.0)
+        second = _traced_contact(other, 2, 2.0)
+        third = _traced_contact(rv, 3, 3.0)
+        append!(state.individuals, [first, second, third])
+        state.max_infection_time = 3.0
+
+        EpiBranch.apply_actions!(cc, state, [first])
+        EpiBranch.apply_actions!(other, state, [second])
+        EpiBranch.apply_actions!(cc, state, [third])
+
+        @test is_vaccinated(first)
+        @test is_vaccinated(second)
+        @test !is_vaccinated(third)
+        @test capacity_usage(cc, state).used == 2
+    end
+
+    @testset "A prior dose on a person created mid-run counts" begin
+        # An attribute builder can give a person a dose from before the run;
+        # one created after the running count was seeded must still draw on
+        # the budget, as `capacity_usage` reports them doing.
+        rv = RingVaccination(efficacy = 0.9)
+        cc = CapacityConstrained(rv; budget_per_period = 2.0)
+        state = EpiBranch.new_state(
+            BranchingProcess(Poisson(1.0), Exponential(5.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1)
+        )
+        first = _traced_contact(rv, 1, 1.0)
+        append!(state.individuals, [first])
+        state.max_infection_time = 3.0
+        EpiBranch.apply_actions!(cc, state, [first])
+
+        prior = Individual(
+            id = 2, state = Dict{Symbol, Any}(
+                :vaccinated => true, :vaccination_time => -10.0,
+                :vaccine_efficacy => 0.9
+            )
+        )
+        EpiBranch.initialise_individual!(rv, prior, state)
+        append!(state.individuals, [prior])
+
+        third = _traced_contact(rv, 3, 3.0)
+        append!(state.individuals, [third])
+        EpiBranch.apply_actions!(cc, state, [third])
+        @test !is_vaccinated(third)
+        @test capacity_usage(cc, state).used == 2
+    end
+
+    @testset "An effect a race runs later files its own use" begin
+        # Inside a race an admitted action waits on the event queue, so the
+        # flag its effect sets is still unset when it is admitted; the use
+        # must be filed when the effect runs, as the next admission relies
+        # on it.
+        cc = CapacityConstrained(_ClinicVisit(); budget_per_period = 2.0)
+        state = EpiBranch.new_state(
+            BranchingProcess(Poisson(1.0), Exponential(5.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1)
+        )
+        visitors = [Individual(id = i) for i in 1:3]
+        append!(state.individuals, visitors)
+        state.max_infection_time = 1.0
+
+        deferred = Any[]
+        EpiBranch._with_action_sink(state, (action, admitter) -> push!(deferred, (action, admitter))) do
+            EpiBranch.apply_actions!(cc, state, visitors[1:2])
+        end
+        @test length(deferred) == 2
+        @test !any(ind -> get(ind.state, :attended, false), visitors)
+        for (action, admitter) in deferred
+            EpiBranch._fire_action!(admitter, state, action)
+        end
+        @test count(ind -> get(ind.state, :attended, false), visitors) == 2
+
+        state.max_infection_time = 5.0
+        EpiBranch.apply_actions!(cc, state, visitors[3:3])
+        @test !get(visitors[3].state, :attended, false)
+        @test capacity_usage(cc, state).used == 2
+    end
+
+    @testset "A quarantine by an unwrapped tracer counts against the budget" begin
+        # Backward tracing shares the quarantine key with the rationed
+        # forward tracing, so a source it quarantines uses up the budget.
+        ct = ContactTracing(TraceEveryone(), 1.0, Dirac(0.0), Quarantine(duration = Inf))
+        cc = CapacityConstrained(ct; budget_per_period = 2.0)
+        st = SourceTracing(TraceEveryone(), 1.0, Dirac(0.0), Quarantine(duration = Inf))
+        state = EpiBranch.new_state(
+            BranchingProcess(Poisson(1.0), Exponential(5.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1)
+        )
+        infector = Individual(id = 1)
+        set_isolated!(infector, 0.0; release_time = Inf)
+        forward = Individual(id = 2)
+        source = Individual(id = 3)
+        case = Individual(id = 4, parent_id = 3, infection_time = 1.0)
+        set_isolated!(case, 2.0; release_time = Inf)
+        third = Individual(id = 5)
+        append!(state.individuals, [infector, forward, source, case, third])
+        state.max_infection_time = 3.0
+
+        EpiBranch.trace_contacts!(cc, state, infector, [forward], [1.0])
+        EpiBranch.trace_contacts!(st, state, case, [source])
+        @test is_quarantined(source)
+        @test capacity_usage(cc, state).used == 2
+
+        EpiBranch.trace_contacts!(cc, state, infector, [third], [3.0])
+        @test !is_quarantined(third)
+        @test capacity_usage(cc, state).used == 2
+    end
+
+    @testset "A custom trace action by an unwrapped tracer counts too" begin
+        ct = ContactTracing(TraceEveryone(), 1.0, Dirac(0.0), _Bed())
+        cc = CapacityConstrained(ct; budget_per_period = 2.0)
+        st = SourceTracing(TraceEveryone(), 1.0, Dirac(0.0), _Bed())
+        state = EpiBranch.new_state(
+            BranchingProcess(Poisson(1.0), Exponential(5.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1)
+        )
+        infector = Individual(id = 1)
+        set_isolated!(infector, 0.0; release_time = Inf)
+        forward = Individual(id = 2)
+        source = Individual(id = 3)
+        case = Individual(id = 4, parent_id = 3, infection_time = 1.0)
+        set_isolated!(case, 2.0; release_time = Inf)
+        third = Individual(id = 5)
+        append!(state.individuals, [infector, forward, source, case, third])
+        state.max_infection_time = 3.0
+
+        EpiBranch.trace_contacts!(cc, state, infector, [forward], [1.0])
+        EpiBranch.trace_contacts!(st, state, case, [source])
+        @test get(source.state, :bedded, false)
+        @test capacity_usage(cc, state).used == 2
+
+        EpiBranch.trace_contacts!(cc, state, infector, [third], [3.0])
+        @test !get(third.state, :bedded, false)
+        @test capacity_usage(cc, state).used == 2
+    end
+
+    @testset "A prior use of any resource on a person created mid-run counts" begin
+        cc = CapacityConstrained(_ClinicVisit(); budget_per_period = 2.0)
+        state = EpiBranch.new_state(
+            BranchingProcess(Poisson(1.0), Exponential(5.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1)
+        )
+        first = Individual(id = 1)
+        append!(state.individuals, [first])
+        state.max_infection_time = 1.0
+        EpiBranch.apply_actions!(cc, state, [first])
+
+        prior = Individual(
+            id = 2, state = Dict{Symbol, Any}(:attended => true, :appointment_time => -10.0)
+        )
+        EpiBranch.initialise_individual!(cc, prior, state)
+        append!(state.individuals, [prior])
+
+        third = Individual(id = 3)
+        append!(state.individuals, [third])
+        state.max_infection_time = 5.0
+        EpiBranch.apply_actions!(cc, state, [third])
+        @test !get(third.state, :attended, false)
+        @test capacity_usage(cc, state).used == 2
+    end
+
+    @testset "A quarantine by a tracer written outside the package counts" begin
+        ct = ContactTracing(TraceEveryone(), 1.0, Dirac(0.0), Quarantine(duration = Inf))
+        cc = CapacityConstrained(ct; budget_per_period = 2.0)
+        own = _OwnTracer(Quarantine(duration = Inf))
+        state = EpiBranch.new_state(
+            BranchingProcess(Poisson(1.0), Exponential(5.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1)
+        )
+        infector = Individual(id = 1)
+        set_isolated!(infector, 0.0; release_time = Inf)
+        contacts = [Individual(id = i) for i in 2:4]
+        append!(state.individuals, [infector; contacts])
+        state.max_infection_time = 3.0
+
+        EpiBranch.trace_contacts!(cc, state, infector, contacts[1:1], [1.0])
+        EpiBranch.trace_contacts!(own, state, infector, contacts[2:2], [2.0])
+        @test is_quarantined(contacts[2])
+        @test capacity_usage(cc, state).used == 2
+
+        EpiBranch.trace_contacts!(cc, state, infector, contacts[3:3], [3.0])
+        @test !is_quarantined(contacts[3])
+        @test capacity_usage(cc, state).used == 2
+    end
+
+    @testset "A custom action by a tracer written outside the package counts" begin
+        ct = ContactTracing(TraceEveryone(), 1.0, Dirac(0.0), _Bed())
+        cc = CapacityConstrained(ct; budget_per_period = 2.0)
+        own = _OwnTracer(_Bed())
+        state = EpiBranch.new_state(
+            BranchingProcess(Poisson(1.0), Exponential(5.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1)
+        )
+        infector = Individual(id = 1)
+        set_isolated!(infector, 0.0; release_time = Inf)
+        contacts = [Individual(id = i) for i in 2:4]
+        append!(state.individuals, [infector; contacts])
+        state.max_infection_time = 3.0
+
+        EpiBranch.trace_contacts!(cc, state, infector, contacts[1:1], [1.0])
+        EpiBranch.trace_contacts!(own, state, infector, contacts[2:2], [2.0])
+        @test get(contacts[2].state, :bedded, false)
+        @test capacity_usage(cc, state).used == 2
+
+        EpiBranch.trace_contacts!(cc, state, infector, contacts[3:3], [3.0])
+        @test !get(contacts[3].state, :bedded, false)
+        @test capacity_usage(cc, state).used == 2
+    end
+
+    @testset "A trace action with nothing to ration cannot be wrapped" begin
+        cc = CapacityConstrained(
+            ContactTracing(TraceEveryone(), 1.0, Dirac(0.0), FlagOnly()); budget_per_period = 1.0
+        )
+        @test_throws ArgumentError EpiBranch.capacity_key(cc)
+        @test EpiBranch.capacity_key(FlagOnly()) === nothing
     end
 
     @testset "Constructor validates its arguments" begin
