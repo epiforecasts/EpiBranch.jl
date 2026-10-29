@@ -3,11 +3,15 @@
 # are not brought into scope by `using EpiBranch` (call them qualified,
 # e.g. `EpiBranch.initialise_state`).
 
-# Draw a parameter given as a number, a distribution or a function, as every
-# built-in delay, probability and attribute does. An extension reading its
-# own such parameter should use this function too, with the same float
-# conversion and function arguments.
+# Draw a parameter given as a number, a distribution, a `Conditional` or a
+# function, as every built-in delay, probability and attribute does. An
+# extension reading its own such parameter should use this function too,
+# with the same float conversion and function arguments. `resolve` is the
+# same dispatch without the draw, for a likelihood that needs the
+# distribution itself rather than a sample from it; `Conditional` is
+# exported.
 public sample_value
+public resolve
 
 # Intervention interface: a package subtyping `AbstractIntervention`
 # overrides these.

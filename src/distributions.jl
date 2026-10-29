@@ -267,18 +267,68 @@ Base.minimum(::_TruncatedHazardKernel) = 0.0
 Base.maximum(k::_TruncatedHazardKernel) = k.hi
 
 """
+    Conditional(dist)
+
+A parameter with a distribution that depends on the case: wherever a delay or a
+probability accepts a number, a `Distribution` or a function, it also
+accepts `Conditional(dist)`, where `dist(args...)` returns the
+`Distribution` for the case given the arguments a function parameter would
+take after `rng` (typically just the case's `Individual`).
+
+Unlike a plain `(rng, args...) -> value` function, the distribution behind a
+`Conditional` can be read back through [`resolve`](@ref EpiBranch.resolve)
+without sampling it. That lets a likelihood over timing data, such as a
+serial interval, use the case's delay distribution directly instead of only
+ever drawing from it.
+
+# Examples
+```julia
+latent_period = Conditional(ind -> Gamma(5.95, 1 / 0.77))
+```
+"""
+struct Conditional{F}
+    dist::F
+end
+
+"""
+    resolve(x, args...) -> Distribution
+
+Turn a parameter given as a number, a `Distribution` or a [`Conditional`](@ref)
+into the `Distribution` it stands for: `Dirac(x)` for a number, the
+distribution unchanged, or `c.dist(args...)` for a `Conditional` `c`. A plain
+`(rng, args...) -> value` function resolves to an adapter that samples by
+calling the function; it has no density, so it only ever supports
+drawing a value, not reading one back.
+
+[`sample_value`](@ref) draws from the result, as every built-in
+delay and probability does. A likelihood that needs the density itself,
+rather than a draw from it, calls `resolve` directly.
+"""
+resolve(x::Real, args...) = Dirac(x)
+resolve(d::Distribution, args...) = d
+resolve(c::Conditional, args...) = c.dist(args...)
+resolve(f, args...) = _FunctionSampler(f, args)
+
+"""A plain `(rng, args...) -> value` function wrapped as a `Sampleable`, so
+`resolve` can return it alongside the `Distribution`s the other parameter
+forms resolve to. It has no density: only `rand` is defined, for simulation."""
+struct _FunctionSampler{F, A <: Tuple} <: Sampleable{Univariate, Continuous}
+    f::F
+    args::A
+end
+Base.rand(rng::AbstractRNG, s::_FunctionSampler) = s.f(rng, s.args...)
+
+"""
     sample_value(x, rng, args...) -> Float64
 
-Turn a parameter given as a number, a distribution or a function into a
-number: the number itself, a draw from the distribution, or `f(rng, args...)`.
-Used wherever a parameter accepts any of the three, such as
+Turn a parameter given as a number, a distribution, a [`Conditional`](@ref)
+or a function into a number: `rand(rng, resolve(x, args...))`, converted to
+`Float64`. Used wherever a parameter accepts any of these, such as
 [`transmission_traits`](@ref), [`clinical_presentation`](@ref), isolation
 delays, vaccination parameters and [`Risk`](@ref) fields.
 
 `public` in Julia's sense: an extension can read its own such parameter
-through this function instead of writing the three methods again, with the
-same float conversion and function arguments as the built-ins.
+through this function instead of writing the dispatch again, with the same
+float conversion and function arguments as the built-ins.
 """
-sample_value(x::Real, rng, args...) = float(x)
-sample_value(d::Distribution, rng, args...) = float(rand(rng, d))
-sample_value(f, rng, args...) = float(f(rng, args...))
+sample_value(x, rng, args...) = float(rand(rng, resolve(x, args...)))
