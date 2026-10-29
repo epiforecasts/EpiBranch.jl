@@ -279,7 +279,7 @@ Unlike a plain `(rng, args...) -> value` function, the distribution behind a
 `Conditional` can be read back through [`resolve`](@ref EpiBranch.resolve)
 without sampling it. That lets a likelihood over timing data, such as a
 serial interval, use the case's delay distribution directly instead of only
-ever drawing from it.
+drawing from it.
 
 # Examples
 ```julia
@@ -297,7 +297,7 @@ Turn a parameter given as a number, a `Distribution` or a [`Conditional`](@ref)
 into the `Distribution` it stands for: `Dirac(x)` for a number, the
 distribution unchanged, or `c.dist(args...)` for a `Conditional` `c`. A plain
 `(rng, args...) -> value` function resolves to an adapter that samples by
-calling the function; it has no density, so it only ever supports
+calling the function; it has no density, so it only supports
 drawing a value, not reading one back.
 
 [`sample_value`](@ref) draws from the result, as every built-in
