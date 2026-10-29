@@ -848,6 +848,14 @@ rations that action exactly as it rations a dose, through `capacity_key` and
 (`Quarantine` defines them; `FlagOnly`, which removes nobody, does not). A
 trace with no arrival time (`Inf`) has nothing to ration and applies directly.
 
+`CapacityConstrained` keeps count of who has used a resource as uses are
+admitted, rather than reading every person on every call. A use made outside
+an action it admitted, by a tracer of your own applying a `TraceAction`
+directly, say, is reported to it with
+`EpiBranch.record_capacity_use!(action, person, state)` once the flag is set.
+A dose recorded with `record_dose!` and a trace applied by the built-in
+tracers report themselves.
+
 `Isolation` instead writes its effect straight into `resolve_individual!`. A
 `CapacityConstrained` wrapping it therefore has nothing to admit: it checks
 the budget itself, right after `resolve_individual!` runs, through

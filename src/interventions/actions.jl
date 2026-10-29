@@ -122,7 +122,7 @@ end
 # An accepted action's effect runs now by default, or, within a
 # continuous-time race, is handed to the race's own event queue to run at
 # `action.time` instead. Only `_sellke_race!` installs a sink, for the span
-# of its own per-case offer and of firing a queued action (see
+# of its own per-case offer and of running a queued action (see
 # `_with_action_sink`); every other caller of `_admit_actions!` keeps
 # running the effect the moment it is admitted. `admitter` is threaded down
 # unchanged from the intervention `actions` was first offered to, past any
@@ -133,7 +133,7 @@ end
 const _ACTION_SINK_KEY = :_action_sink
 # `state` is usually a `SimulationState`, but `apply_actions!` is public and
 # documented to work against the minimal state a custom effect itself reads
-# (see the extending guide), which need carry no `scratch` of its own.
+# (see the extending guide), which need not hold a `scratch` of its own.
 _action_sink(state) = hasproperty(state, :scratch) ? get(state.scratch, _ACTION_SINK_KEY, nothing) : nothing
 
 function _run_action!(admitter, state, action)
@@ -150,7 +150,7 @@ end
 # `_run_action!`, which would only hand it straight back to the sink that
 # just dequeued it. A further action the effect returns is a fresh proposal,
 # admitted through `_admit_actions!`; it reaches the sink installed for the
-# span of firing this one (see `_with_action_sink`) if it is itself to be
+# span of running this one (see `_with_action_sink`) if it is itself to be
 # deferred.
 function _fire_action!(admitter, state, action)
     further = action.effect!(action.individual, action.time, state)
@@ -172,7 +172,7 @@ _is_further_actions(::Any) = false
 Run `f()` with `sink` installed as `state`'s deferred-action sink, returning
 what `f` returns, and restoring whatever was installed before once `f`
 returns, throws, or is itself run re-entrantly (a dose action admitted while
-another is being fired). A continuous-time race calls this around each span
+another is still running). A continuous-time race calls this around each span
 during which admitted actions belong on its own event queue.
 """
 function _with_action_sink(f, state, sink)
@@ -202,46 +202,71 @@ end
 # therefore skips to the next-ranked one (`continue`, not `break`), which may
 # fall in a different, still-open period.
 function _admit_actions!(cc::CapacityConstrained, state, actions, admitter = cc)
+    isempty(actions) && return nothing
     key = capacity_key(cc.intervention)
     already_used = filter(a -> get(a.individual.state, key, false), actions)
     candidates = filter(a -> !get(a.individual.state, key, false), actions)
     _admit_actions!(cc.intervention, state, already_used, admitter)
-    # The usage scan covers the whole population, which only a call with
-    # someone to admit needs.
+    cache = _capacity_cache(cc, state)
+    for a in already_used
+        _record_capacity_use!(cache, a.individual, state)
+    end
     isempty(candidates) && return nothing
-    times_by_key = _dose_times_by_key(cc, state)
     group_idxs, group_keys = _resource_groups(cc, state, [a.individual for a in candidates])
     for (idxs, group_key) in zip(group_idxs, group_keys)
         group = candidates[idxs]
         order = sortperm([cc.priority(a.individual, state) for a in group]; alg = MergeSort)
-        times = get(times_by_key, group_key, Float64[])
-        extra = Float64[]
+        times = get!(Vector{Float64}, cache.times, group_key)
         for i in order
             action = group[i]
             get(action.individual.state, key, false) && continue
-            _fits_budget(cc, times, extra, action.time) || continue
-            _admit_actions!(cc.intervention, state, [action], admitter)
-            get(action.individual.state, key, false) && push!(extra, action.time)
+            _fits_budget(cc, times, Float64[], action.time) || continue
+            _admit_actions!(cc.intervention, state, [_filing_use(cc, action)], admitter)
+            get(action.individual.state, key, false) || continue
+            _record_capacity_use!(cache, action.individual, state, times)
         end
     end
     return nothing
 end
 
-"""
-    record_dose!(v::AbstractVaccination, person, at, rng)
+# An effect that uses capacity sets `capacity_key` itself (see
+# `InterventionAction`), and within a continuous-time race it runs only once
+# the race's own queue reaches `action.time`, after the admission above has
+# returned and found the flag still unset. The action handed down therefore
+# files the use itself as soon as its effect has set the flag, so the running
+# count learns of it without a rescan. A dose, which records in `claim!`, is
+# filed by the admission above and this then finds nothing left to do.
+function _filing_use(cc::CapacityConstrained, action)
+    key = capacity_key(cc.intervention)
+    effect! = function (person, at, state)
+        further = action.effect!(person, at, state)
+        get(person.state, key, false) && _note_capacity_use!(state, key, person)
+        return further
+    end
+    return InterventionAction(action.individual, action.time, effect!, action.claim!)
+end
 
-Record one dose of `v` on `person` at time `at`, skipping a `person` already
-recorded as vaccinated under `v`'s own `dose_label`, and reconsidering a
-post-exposure abort ([`RingVaccination`](@ref)'s `post_exposure_efficacy`)
-against the dose just given. The action protocol calls this through
-[`dose_action`](@ref); call it directly to record a dose outside that
-protocol, for example from a custom `trace_contacts!` or when
-seeding a dose before a run starts.
 """
-function record_dose!(v::AbstractVaccination, person, at, rng)
-    get(person.state, _vaccinated_key(dose_label(v)), false) && return nothing
-    _record_vaccination!(v, person, at, rng)
-    _after_action_dose!(v, person, at, rng)
+    record_dose!(v::AbstractVaccination, person, at, state)
+
+Record one dose of `v` on `person` at time `at`, drawing from `state.rng`,
+skipping a `person` already recorded as vaccinated under `v`'s own
+`dose_label`, and reconsidering a post-exposure abort
+([`RingVaccination`](@ref)'s `post_exposure_efficacy`) against the dose just
+given. The action protocol calls this through [`dose_action`](@ref); call it
+directly to record a dose outside that protocol, for example from a custom
+`trace_contacts!` or when seeding a dose before a run starts. A dose recorded
+this way counts against any [`CapacityConstrained`](@ref) budget under `v`'s
+dose label, exactly as one admitted through the action protocol does. Outside
+a run, `state` can be anything with an `rng` field, such as
+`(; rng = StableRNG(1))`.
+"""
+function record_dose!(v::AbstractVaccination, person, at, state)
+    key = _vaccinated_key(dose_label(v))
+    get(person.state, key, false) && return nothing
+    _record_vaccination!(v, person, at, state.rng)
+    _after_action_dose!(v, person, at, state.rng)
+    _note_capacity_use!(state, key, person)
     return nothing
 end
 
@@ -261,7 +286,7 @@ case, can be checked against them, rather than waiting for the event queue
 of a continuous-time race to reach `time`.
 """
 function dose_action(v::AbstractVaccination, ind, time)
-    claim! = (person, at, state) -> record_dose!(v, person, at, state.rng)
+    claim! = (person, at, state) -> record_dose!(v, person, at, state)
     return InterventionAction(ind, time, (person, at, state) -> nothing; claim! = claim!)
 end
 
@@ -312,8 +337,9 @@ function _revisable_dose_action(v::AbstractVaccination, ind, trigger, time)
             old_time = person.state[_vaccination_time_key(label)]
             person.state[_vaccination_time_key(label)] = at
             person.state[_immunity_time_key(label)] += at - old_time
+            _note_capacity_use!(state, _vaccinated_key(label), person)
         else
-            record_dose!(v, person, at, state.rng)
+            record_dose!(v, person, at, state)
         end
         _action_cache(person)[_trigger_cache_key(v)] = trigger
         return nothing
