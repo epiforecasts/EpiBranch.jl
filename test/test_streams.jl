@@ -115,8 +115,8 @@ end
         run_sim(ivs, rng) = simulate(spec(ivs); n_initial = 5, rng = rng).individuals
 
         # Under `CommonRandomNumbers`, a group's shared value comes from its
-        # own stream, so an unrelated draw for another person changes nothing
-        # about it, whichever member happens to populate the cache first.
+        # own stream. An unrelated draw for another person leaves it
+        # unchanged, whichever member happens to populate the cache first.
         baseline_crn = run_sim(AbstractIntervention[], CommonRandomNumbers(42))
         noisy_crn = run_sim([_NoiseForOne(1)], CommonRandomNumbers(42))
         for i in 1:5
