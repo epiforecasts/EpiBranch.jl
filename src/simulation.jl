@@ -1171,8 +1171,9 @@ function _apply_attributes!(attribute::GroupAttribute, rng, ind)
                 "another attributes function setting that key, ahead of it."
         )
     )
-    ind.state[attribute.key] = get!(attribute.cache, ind.state[attribute.group_key]) do
-        sample_value(attribute.propensity, rng, ind)
+    group = ind.state[attribute.group_key]
+    ind.state[attribute.key] = get!(attribute.cache, group) do
+        sample_value(attribute.propensity, stream(rng, group, attribute.key), ind)
     end
     return nothing
 end
