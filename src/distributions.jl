@@ -226,7 +226,10 @@ Distributions.partype(::HazardKernel{F, T}) where {F, T} = T
 # Because `upper` is a cap here, not a certain event, it is not treated as the
 # survival's own end the way a calendar-scaled profile's own bounded support
 # does.
-_hazard_invert(k::HazardKernel, target::Real) = first(_invert_hazard(k.hazard, k.upper, false, true, target))
+function _hazard_invert(k::HazardKernel, target::Real)
+    t, t_acc = _invert_hazard(k.hazard, k.upper, false, true, target)
+    return t < k.upper ? _implicit_hazard_step(k.hazard, t, t_acc, target) : t
+end
 
 """
 A [`HazardKernel`](@ref) conditioned on falling at or before `hi`: what
