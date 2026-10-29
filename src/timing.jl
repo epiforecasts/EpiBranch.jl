@@ -31,6 +31,6 @@ generation time. Any biological constraint, such as a minimum latent period,
 belongs in the generation time distribution itself, for example
 `truncated(gt_dist, lower, Inf)` or a shifted distribution."""
 transmission_time(::NoGenerationTime, parent, state) = parent.infection_time
-function transmission_time(gt_dist::Distribution, parent, state)
+function transmission_time(gt_dist::Union{Distribution, HazardKernel}, parent, state)
     return parent.infection_time + rand(state.rng, gt_dist)
 end
