@@ -277,7 +277,7 @@ end
 # the next. Keyed on `capacity_key(cc.intervention)` rather than on `cc`
 # itself, so that two different `CapacityConstrained` wrappers sharing a dose
 # label (per the docstring above) see each other's admissions through the
-# same cache instead of each keeping its own, unaware copy. Seeded once by a
+# same cache instead of each keeping its own, separate copy. Seeded once by a
 # population scan like `_dose_times_by_key`'s own, then grown one person at a
 # time as each dose is admitted, so a run with many settled cases no longer
 # rescans everyone on every one of them; `scanned` is how far along

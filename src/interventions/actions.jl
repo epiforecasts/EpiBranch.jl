@@ -233,8 +233,8 @@ end
 # `InterventionAction`), and within a continuous-time race it runs only once
 # the race's own queue reaches `action.time`, after the admission above has
 # returned and found the flag still unset. The action handed down therefore
-# files the use itself as soon as its effect has set the flag, so the running
-# count learns of it without a rescan. A dose, which records in `claim!`, is
+# files the use itself as soon as its effect has set the flag, updating the
+# running count without a rescan. A dose, which records in `claim!`, is
 # filed by the admission above and this then finds nothing left to do.
 function _filing_use(cc::CapacityConstrained, action)
     key = capacity_key(cc.intervention)
