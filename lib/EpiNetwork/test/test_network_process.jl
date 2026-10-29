@@ -105,6 +105,15 @@ end
         @test length(m.adjacency) == 5
         @test m.adjacency[1] == [5, 2]
         @test m.from === nothing              # window start derived from the progression
+
+        # a Vector{Vector{Int}} is kept as given rather than copied
+        @test m.adjacency === ring
+
+        # other element types are still converted to Vector{Vector{Int}}
+        ring32 = [Int32.(nbrs) for nbrs in ring]
+        m32 = NetworkProcess(ring32, Exponential(2.0))
+        @test m32.adjacency isa Vector{Vector{Int}}
+        @test m32.adjacency == ring
         @test m.external_hazard == 0.0
         @test EpiBranch.population_size(m) isa EpiBranch.NoPopulation
 
