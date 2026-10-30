@@ -47,8 +47,7 @@ gives it a later one), read back when a blocked pair's next contact needs the
 calendar day its window opened on. With no `calendar`, a pair is sampled at
 the bound described below, at a cost per contact; with one, the schedule's
 value cannot be bounded in advance, so every pair in a group is drawn
-directly, at a cost of O(N) per case, the same price an unbounded window
-already pays.
+directly, at O(N) per case, the cost an unbounded window already incurs.
 
 Each group's largest susceptibility is also read when the route is built, as the
 bound its proposals are sampled at. A member's susceptibility may fall during the
@@ -128,7 +127,7 @@ function route_pair_kernel(m::_MassAction, infector_id, target_id, state)
     m.calendar === nothing && return kernel
     # The race scales this kernel's redraw by elapsed time since the window
     # opened (see `_next_contact`), so the opening it needs is this infector's
-    # own, recovered from `from` exactly as it was when the window was opened.
+    # own, recovered from `from` exactly as it was then.
     opening = _window_open(state.individuals[infector_id], m.from)
     return _CalendarScaledKernel(kernel, m.calendar, opening)
 end
@@ -160,8 +159,8 @@ end
 # Every pair in `group`, at rate `r` scaled by the member's susceptibility when
 # `traits` is set, sampled by the pairs with a contact in the window. With an
 # unbounded window, or a `calendar` schedule in force, every pair has a
-# contact to try, so each draws its time directly, at O(N) per case: a
-# schedule's value cannot be bounded in advance, so the geometric-skip
+# contact to try, so each draws its time directly, at O(N) per case, because
+# the schedule's value cannot be bounded in advance and the geometric-skip
 # sampling below, which needs a bound on the rate, does not apply to it.
 #
 # Otherwise pairs are selected at the `bound` rate: the gap to the next pair with

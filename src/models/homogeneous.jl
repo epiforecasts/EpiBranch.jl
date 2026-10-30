@@ -116,8 +116,8 @@ function _prepared_transmission_rate(β::Real)
 end
 _prepared_transmission_rate(schedule) = schedule
 
-# The timing type a rate carries: a fixed β's own type, or a schedule's, where
-# one is declared (`Steps`, `Seasonal`); a plain callable declares none, so its
+# A rate's timing type: a fixed β's own type, or a schedule's, where one is
+# declared (`Steps`, `Seasonal`); a plain callable declares none, so its
 # contacts are timed in `Float64`.
 _rate_time_type(β::Real) = typeof(β)
 _rate_time_type(s::Steps{T}) where {T} = T
