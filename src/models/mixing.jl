@@ -11,7 +11,7 @@
 # from that progression when the model is simulated.
 
 """
-    MixingProcess(; population_size, mixing_by = (), rate,
+    MixingProcess(; population_size, mixing_by = (), rate, calendar = nothing,
                  from = nothing, until = (:recovered, :died, :isolated))
 
 A closed population of `population_size` individuals, split into mixing
@@ -27,6 +27,14 @@ the first group contacts one member of the second. Homogeneous mixing is
 infective in group `a` contacts the `n[b]` members of group `b` between them
 gives `M[b, a]/n[b]`. It is simulated as mass action on the same
 continuous-time race as `HomogeneousProcess`.
+
+`calendar`, a [`Steps`](@ref) or [`Seasonal`](@ref) schedule or a callable
+`t -> multiplier`, scales every group's rate by the schedule's value on the
+calendar day, exactly as a [`PairKernel`](@ref)'s `calendar` does — a
+lockdown or a seasonal pattern applied on top of a fixed contact matrix. With
+a calendar, contacts are drawn exactly from the schedule's integrated
+hazard, but every member of each group is sampled directly rather than at a
+bound, which costs O(N) per case.
 
 The process describes the transmission alone. The natural history is a
 `progression` of [`Transition`](@ref)s attached with a [`ModelSpec`](@ref),
@@ -59,10 +67,11 @@ model = ModelSpec(
 state = simulate(model; n_initial = 5)
 ```
 """
-struct MixingProcess{F} <: TransmissionModel
+struct MixingProcess{F, C} <: TransmissionModel
     population_size::Int
     mixing_by::Tuple
     rate::F
+    calendar::C
     from::Union{Symbol, Nothing}
     until::Tuple
 end
@@ -71,11 +80,14 @@ function MixingProcess(;
         population_size::Integer,
         mixing_by::Tuple = (),
         rate,
+        calendar = nothing,
         from = nothing,
         until = (:recovered, :died, :isolated)
     )
     population_size >= 1 || throw(ArgumentError("population_size must be ≥ 1"))
-    return MixingProcess(Int(population_size), mixing_by, rate, from, Tuple(until))
+    return MixingProcess(
+        Int(population_size), mixing_by, rate, calendar, from, Tuple(until)
+    )
 end
 
 population_size(m::MixingProcess) = m.population_size
@@ -133,7 +145,10 @@ function simulate_once(
     sellke_race!(
         state, members, rng, sim_opts;
         seed! = (best, _, r) -> (best[randperm(r, N)[1:n_initial]] .= 0),
-        targets = _MassAction(state, members; mixing_by = model.mixing_by, rate = model.rate),
+        targets = _MassAction(
+            state, members; mixing_by = model.mixing_by, rate = model.rate,
+            calendar = model.calendar, from
+        ),
         from = from, until = model.until, interventions,
         risks = transmission_risks(model), recorder
     )

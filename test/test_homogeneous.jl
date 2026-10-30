@@ -797,6 +797,75 @@ end
         )
     end
 
+    @testset "transmission_rate as a calendar schedule" begin
+        # A `Steps` schedule stands for β itself, so it must not be checked
+        # with `isfinite`, which only a plain number supports.
+        p = HomogeneousProcess(;
+            transmission_rate = Steps([30.0], [0.4, 0.2]), population_size = 1000
+        )
+        @test p.transmission_rate isa Steps
+
+        N = 3000
+        β = 2.0
+        prog = [
+            Transition(:recovered; from = :infection, delay = Exponential(1.0), terminal = true),
+        ]
+        attack_rate(process, s) = count(
+            is_infected,
+            simulate(
+                ModelSpec(process; progression = prog); n_initial = 5, rng = StableRNG(s)
+            ).individuals
+        ) / N
+
+        # A schedule with its one break far beyond any outbreak's reach is a
+        # constant rate in disguise, so it reproduces the same final-size law
+        # as a plain β (z ≈ 0.7968 at R0 = 2, mean infectious period 1).
+        steady = HomogeneousProcess(;
+            transmission_rate = Steps([1.0e6], [β, β]), population_size = N
+        )
+        finals = [attack_rate(steady, s) for s in 1:40]
+        major = filter(>(0.3), finals)
+        @test length(major) > 20
+        @test isapprox(mean(major), 0.7968; atol = 0.03)
+
+        # A lockdown that turns transmission off shortly after the outbreak
+        # starts leaves far fewer cases than one that never does.
+        lockdown = HomogeneousProcess(;
+            transmission_rate = Steps([0.2], [β, 0.0]), population_size = N
+        )
+        unrestricted = HomogeneousProcess(; transmission_rate = β, population_size = N)
+        cut = mean(attack_rate(lockdown, s) for s in 1:40)
+        full = mean(attack_rate(unrestricted, s) for s in 1:40)
+        @test cut < full / 2
+    end
+
+    @testset "a blocked mass-action contact redraws against the same calendar" begin
+        # `route_pair_kernel` is asked only once a proposed contact is blocked
+        # by a competing risk, to redraw the pair's next one; with a calendar
+        # in force it must scale that redraw too, phased from the infector's
+        # own window opening.
+        N = 10
+        schedule = Steps([1.5], [1.0, 0.25])
+        process = HomogeneousProcess(; transmission_rate = schedule, population_size = N)
+        state = EpiBranch.new_state(process, Transition[], NoAttributes(), StableRNG(1))
+        EpiBranch.add_individuals!(
+            state, N, AbstractIntervention[]; setup = (ind, i) -> nothing
+        )
+        m = EpiBranch._MassAction(
+            state, collect(1:N);
+            rate = (_, _) -> 1 / N, calendar = schedule, from = :infection
+        )
+        infector = state.individuals[1]
+        infector.infection_time = 2.0
+        kernel = EpiBranch.route_pair_kernel(m, 1, 2, state)
+        integrated(t) = min(t, 1.5) + 0.25 * max(t - 1.5, 0.0)
+        for d in (2.3, 4.0)
+            τ = d - infector.infection_time
+            @test EpiBranch.cumhazard(kernel, τ) ≈
+                (integrated(d) - integrated(infector.infection_time)) / N
+        end
+    end
+
     # A small helper that runs structured mass action on the race directly: tag
     # a real attribute (`:age_band`) on a fixed population of size N via
     # `band_of`, name it as the mixing attribute with `mixing_by = (:age_band,)`,
@@ -825,7 +894,9 @@ end
         EpiBranch._sellke_race!(
             state, members, rng;
             seed! = (best, _, r) -> (best[randperm(r, N)[1:n_initial]] .= 0),
-            targets = EpiBranch._MassAction(state, members; mixing_by = (:age_band,), rate),
+            targets = EpiBranch._MassAction(
+                state, members; mixing_by = (:age_band,), rate, from = :infection
+            ),
             from = :infection, until = (:recovered, EpiBranch.INTERVENTION_REMOVAL),
             interventions
         )
@@ -1008,7 +1079,7 @@ end
         # progression reinfects and their draw gave them a finite wait.
         m = EpiBranch._MassAction(
             [[1]], Dict(1 => 1), reshape([1.0], 1, 1), [1.0], reshape([true], 1, 1),
-            Tuple{Int, Float64}[]
+            Tuple{Int, Float64}[], nothing, :infection
         )
         waiting = Individual(; id = 1)
         waiting.state[:susceptible_again_time] = 5.0
