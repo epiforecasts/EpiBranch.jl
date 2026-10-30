@@ -417,6 +417,77 @@ isolation and the cap on outbreak size.
     Each likelihood evaluation runs `n_sim` simulations, and fitting takes
     much longer than with an exact formula.
 
+## Gradients of simulated outcomes
+
+A gradient-based sampler needs the slope of what it samples, and a discrete
+simulated outcome — whether a contact is infected, how many secondary cases a
+draw gives — has none almost everywhere: nudge a parameter and the outcome
+stays the same until, at some threshold, it jumps. That is why `MH()` above
+takes only a likelihood value, not its slope.
+[StochasticAD.jl](https://github.com/gaurav-arya/StochasticAD.jl) gives an
+*unbiased estimator* of the derivative of an expectation over a choice like
+this, without relaxing the model into something continuous, by tracking
+what a draw would have been under a hypothetical change to the parameter
+alongside the draw actually taken. Each estimate is noisy; only its average
+over many calls should match a reference derivative.
+
+!!! note
+    StochasticAD.jl is not installed with EpiBranch; add it with
+    `using Pkg; Pkg.add("StochasticAD")`. It is an experimental package, and
+    the parts of the engine below are what it has been checked against so
+    far — not the whole of `simulate`.
+
+The offspring distributions already compose with it, with no change needed in
+EpiBranch: `draw_offspring` calls `rand(rng, offspring)` on a plain
+Distributions.jl object, and StochasticAD overloads `rand` for `Poisson`
+directly and for `NegativeBinomial` (what `NegBin` returns) through its own
+Gamma-Poisson mixture. Averaging many single-draw estimates gives the
+derivative of the mean offspring count with respect to R:
+
+```@example inference
+using StochasticAD
+
+R0, k0 = 2.5, 0.5
+rng_sad = StableRNG(1)
+negbin_grad = mean(
+    StochasticAD.derivative_estimate(R -> rand(rng_sad, NegBin(R, k0)), R0)
+        for _ in 1:4000
+)
+println("d(mean offspring)/dR ≈ $(round(negbin_grad, digits = 2)) (exact: 1.0)")
+```
+
+The engine's competing-risk draw — which decides whether host
+susceptibility, infector infectiousness or an intervention's leaky effect
+blocks a transmission — draws from `Bernoulli(prob)` rather than comparing a
+raw uniform against `prob`, so `prob` is already free to be a
+`StochasticTriple`. That alone is not enough: the decision that follows the
+draw is itself a step function of `prob`, and StochasticAD refuses to branch
+on a triple directly. `StochasticAD.propagate` reruns a decision like that on
+each alternative the draw represents, instead of comparing against it:
+
+```@example inference
+_survives(blocked::Integer) = blocked == 0 ? 1.0 : 0.0
+_survives(x::StochasticAD.StochasticTriple) = StochasticAD.propagate(_survives, x)
+
+function contacts_surviving(rng, prob, n)
+    return sum(_survives(rand(rng, Bernoulli(prob))) for _ in 1:n)
+end
+
+p0, n_contacts = 0.3, 2000
+rng_block = StableRNG(1)
+block_grad = mean(
+    StochasticAD.derivative_estimate(p -> contacts_surviving(rng_block, p, n_contacts), p0)
+        for _ in 1:300
+)
+println("d(# surviving)/dp ≈ $(round(block_grad, digits = 1)) (exact: $(-n_contacts))")
+```
+
+Wiring this into `simulate`'s own short-circuiting risk loop, so a
+`chain_size_distribution` under interventions yields a usable gradient
+for a gradient-based sampler, is follow-up work: the loop decides and
+returns inside the same function that draws, which needs restructuring
+rather than a call-site change like the two above.
+
 ## Clusters started by more than one case
 
 Some clusters start from more than one introduced case: for example, two

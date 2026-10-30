@@ -1073,7 +1073,12 @@ function _risks_block(risks, parent, contact, state, transmission_time)
         prob = sample_value(risk.block_probability, rng, parent, contact, state)
         prob <= 0.0 && continue
         prob >= 1.0 && return true
-        rand(rng) < prob && return true
+        # Drawn from `Bernoulli(prob)` rather than compared against a raw
+        # uniform, so `prob` can be a number type a differentiation backend
+        # recognises as a distribution parameter (see docs/src/tutorials/
+        # inference.md, "Gradients of simulated outcomes") instead of only a
+        # `Float64` threshold.
+        rand(rng, Bernoulli(prob)) == 1 && return true
     end
     return false
 end

@@ -56,6 +56,7 @@ include("testutils/progression.jl")
     include("test_integration.jl")
     include("test_r_targets.jl")
     include("test_ad.jl")
+    include("test_stochastic_ad.jl")
 end
 
 include("test_pair_kernels.jl")
