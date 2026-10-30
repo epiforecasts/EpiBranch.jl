@@ -31,7 +31,7 @@ using StableRNGs
 #    around the draw still has to decide, for a given run, whether the
 #    contact was blocked, and a decision that depends on the parameter is
 #    itself non-smooth. `StochasticAD.propagate` is the documented way to
-#    make a non-smooth decision like that carry a derivative — it reruns the
+#    make a non-smooth decision like that produce a derivative — it reruns the
 #    decision on each alternative the draw's `StochasticTriple` represents,
 #    rather than branching on the triple directly, which StochasticAD
 #    rejects ("non-boolean used in boolean context"/"boolean predicate
@@ -85,7 +85,7 @@ end
     _draw_blocked(rng, prob) = rand(rng, Bernoulli(prob))
 
     # Whether *any* source blocked decides the contact's outcome — the
-    # non-smooth step `_risks_block`'s `&&`/`return` loop also makes. Wrapped
+    # non-smooth step that `_risks_block`'s `&&`/`return` loop also makes. Wrapped
     # in `propagate` so each of the draw's alternatives reruns this decision
     # instead of being compared against directly.
     _survives(any_blocked::Integer) = any_blocked == 0 ? 1.0 : 0.0

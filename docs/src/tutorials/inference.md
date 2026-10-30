@@ -483,8 +483,8 @@ println("d(# surviving)/dp ≈ $(round(block_grad, digits = 1)) (exact: $(-n_con
 ```
 
 Wiring this into `simulate`'s own short-circuiting risk loop, so a
-`chain_size_distribution` under interventions carries a usable gradient
-through to a gradient-based sampler, is follow-up work: the loop decides and
+`chain_size_distribution` under interventions yields a usable gradient
+for a gradient-based sampler, is follow-up work: the loop decides and
 returns inside the same function that draws, which needs restructuring
 rather than a call-site change like the two above.
 
