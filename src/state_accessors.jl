@@ -449,10 +449,16 @@ end
 function _push_removal_entry!(ind::Individual, handle::Int, key::Symbol, start::S, release::S) where {S}
     old = get(ind.state, :_removal_entries, nothing)
     entry = (handle, key, start, release)
-    # A fresh vector each time rather than one grown in place: an archived
-    # episode holds a copy of the state that shares the old one.
-    ind.state[:_removal_entries] = old === nothing ? _RemovalEntry{S}[entry] :
-        push!(_widen_removal_entries(old, S), entry)
+    # Grown in place when the type already matches: `_detach_removal_history!`
+    # copies this vector itself when `InfectionEpisode` archives a closed
+    # episode, so a push here never needs to protect that copy from seeing it.
+    if old === nothing
+        ind.state[:_removal_entries] = _RemovalEntry{S}[entry]
+    elseif old isa Vector{_RemovalEntry{S}}
+        push!(old, entry)
+    else
+        ind.state[:_removal_entries] = push!(_widen_removal_entries(old, S), entry)
+    end
     return nothing
 end
 
@@ -537,6 +543,20 @@ function _recompute_removal_cache!(ind::Individual, key::Symbol)
     return nothing
 end
 
+# Breaks the sharing `copy(ind.state)` otherwise leaves between a reinfected
+# `ind`'s own removal history and the episode `InfectionEpisode` just
+# archived: `_push_removal_entry!` and `_push_isolation_span_entry!` grow
+# their vectors in place, so without this a later isolation on `ind` would
+# reach back and rewrite the closed episode's. Runs once per reinfection,
+# rather than on every push.
+function _detach_removal_history!(state::IndividualState)
+    haskey(state, :_removal_entries) &&
+        (state[:_removal_entries] = copy(state[:_removal_entries]))
+    haskey(state, :_isolation_span_entries) &&
+        (state[:_isolation_span_entries] = copy(state[:_isolation_span_entries]))
+    return state
+end
+
 # Drop every stretch entry filed under `key`, as though none had ever been
 # recorded. Used by `clear_isolated!` and by `_reset_traced!` for a
 # quarantine's own key, so that a fresh removal recorded under the same key
@@ -567,8 +587,15 @@ function _push_isolation_span_entry!(
     ) where {S}
     old = get(ind.state, :_isolation_span_entries, nothing)
     entry = (handle, start, release, unrecorded)
-    ind.state[:_isolation_span_entries] = old === nothing ? _IsolationSpanEntry{S}[entry] :
-        push!(_widen_isolation_span_entries(old, S), entry)
+    # Grown in place when the type already matches, as `_push_removal_entry!`
+    # above.
+    if old === nothing
+        ind.state[:_isolation_span_entries] = _IsolationSpanEntry{S}[entry]
+    elseif old isa Vector{_IsolationSpanEntry{S}}
+        push!(old, entry)
+    else
+        ind.state[:_isolation_span_entries] = push!(_widen_isolation_span_entries(old, S), entry)
+    end
     return nothing
 end
 
