@@ -383,7 +383,7 @@ function EpiBranch.pairwise_surv_loglik(
     n = length(data)
     external = _ext_active(external_hazard)
     external && _check_external(external_hazard, n)
-    extsrc = external ? _ext_prepare(external_hazard) : nothing
+    extsrc = external ? _ext_prepare(external_hazard, data) : nothing
     tfollow = followup_end(data)
     (!isnan(tfollow) && tfollow >= 0) || throw(
         ArgumentError("followup_end must be a non-negative number (Inf allowed), got $tfollow")
