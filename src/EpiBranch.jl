@@ -45,6 +45,11 @@ include("transitions/reporting.jl")
 include("transitions/hospitalisation.jl")
 include("transitions/outcome.jl")
 
+# Signals: population quantities read off a simulated state, which every
+# engine that produces one can compute (transition counts per step,
+# prevalence of a state).
+include("signals.jl")
+
 """
     generate_offspring(model, parent, state) -> count
 
@@ -136,6 +141,7 @@ include("analytical/generating_function_offspring.jl")
 include("analytical/isolation_offspring.jl")
 include("analytical/end_of_outbreak_probability.jl")
 include("analytical/incidence_likelihood.jl")
+include("analytical/signal_likelihood.jl")
 
 # Distribution wrappers so models work directly with Turing's `~`.
 include("likelihood_dists.jl")
@@ -177,6 +183,7 @@ export RouteWindow, window_open, window_close
 export is_active, intervention_time
 export AbstractClinicalTransition, Transition, Reporting, Hospitalisation, Death, Recovery
 export is_terminal, terminal_event, terminal_target, exclusive_probabilities
+export Signal, TransitionCount, Prevalence
 export ObservationModel, PerCaseObservation, NoObservation, MinimumSize, ChainDetection,
     observe
 export ContactRecorder, NoContactRecorder, ExposedContactRecorder
@@ -230,6 +237,7 @@ export probability_contain
 
 # Exports — unified inference interface
 export OffspringCounts, ChainSizes, ChainSizeClasses, ChainLengths, IncidenceCounts
+export SignalSeries, SignalData
 export incidence_moments
 export IncidenceApproximation, NormalApproximation, LognormalApproximation
 # Entry points returning a Distribution that wraps a model; use with
