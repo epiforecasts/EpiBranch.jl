@@ -449,9 +449,9 @@ end
 function _push_removal_entry!(ind::Individual, handle::Int, key::Symbol, start::S, release::S) where {S}
     old = get(ind.state, :_removal_entries, nothing)
     entry = (handle, key, start, release)
-    # Grown in place when the type already matches: `_detach_removal_history!`
-    # copies this vector itself when `InfectionEpisode` archives a closed
-    # episode, so a push here never needs to protect that copy from seeing it.
+    # Grown in place when the type already matches. `_detach_removal_history!`
+    # already copies this vector when `InfectionEpisode` archives a closed
+    # episode; a push here never reaches into that copy.
     if old === nothing
         ind.state[:_removal_entries] = _RemovalEntry{S}[entry]
     elseif old isa Vector{_RemovalEntry{S}}
