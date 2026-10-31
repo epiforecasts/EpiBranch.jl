@@ -154,6 +154,10 @@ include("pairwise_survival.jl")
 # the pairwise survival likelihood above.
 include("progression_likelihood.jl")
 
+# The serial interval between a linked pair, for fitting timing data; the
+# method lives in a package extension (see the file for why).
+include("serial_interval.jl")
+
 # Exports — types
 export TransmissionModel, BranchingProcess, Infectiousness, OffspringTimes,
     HomogeneousProcess, MixingProcess, ModelSpec
@@ -253,5 +257,8 @@ export InfectionLayer, PairwiseSurvivalData, ContactPairsLayout
 export compile_contact_pairs, pairwise_surv_loglik, pairwise_surv_loglik_by_component
 # Progression (natural-history) likelihood
 export progression_loglik
+
+# Serial interval between a linked pair (see ext/EpiBranchCensoredDistributionsExt.jl)
+export serial_interval
 
 end # module

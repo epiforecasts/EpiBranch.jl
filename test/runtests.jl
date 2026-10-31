@@ -5,6 +5,9 @@ using EpiBranch: GammaBorel, PoissonGammaChainSize
 using Distributions
 using Random
 using StableRNGs
+# Activates the serial_interval(model, infector, infectee) extension method.
+using CensoredDistributions
+using ConvolvedDistributions
 
 include("testutils/sim_analytical_consistency.jl")
 include("testutils/progression.jl")
@@ -50,6 +53,7 @@ include("testutils/progression.jl")
     include("test_likelihood_dists.jl")
     include("test_pairwise_likelihood.jl")
     include("test_progression_likelihood.jl")
+    include("test_serial_interval.jl")
     include("test_vaccine_likelihood.jl")
     include("test_likelihood_compatibility.jl")
     include("test_multitype.jl")

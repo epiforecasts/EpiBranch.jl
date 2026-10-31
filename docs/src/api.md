@@ -526,6 +526,16 @@ routed_network_infections
 RoutedNetworkInfections
 ```
 
+### Serial interval likelihood
+
+The distribution of the serial interval between a linked pair, for fitting
+timing data such as serial intervals from contact-traced pairs. Available
+once CensoredDistributions.jl is loaded, through a package extension.
+
+```@docs
+serial_interval
+```
+
 ## Distribution helpers
 
 ```@docs
