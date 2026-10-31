@@ -496,6 +496,7 @@ PairwiseSurvivalData
 InfectionLayer
 compile_contact_pairs
 ContactPairsLayout
+MassActionHazard
 PairKernel
 EpiBranch.watched_records
 Steps
@@ -524,6 +525,7 @@ network_infections
 NetworkInfections
 routed_network_infections
 RoutedNetworkInfections
+RoutedMassActionHazard
 ```
 
 ## Distribution helpers
