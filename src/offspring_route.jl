@@ -380,11 +380,19 @@ end
 # with what was done to it, but with no infection time, as a network leaves a
 # member the run never reached; the others were never created. Routes share
 # the places, so the first route to finish does this for all of them.
-function _finish!(o::_Offspring, race, stop_t)
+#
+# A returned state still reads as though it were finished for good, whether
+# or not the race is kept rather than finished (`extinct` false): the places
+# this leaves undecided are marked just the same. Only releasing their draws
+# is skipped then, since a continuation (`simulate`'s continuation method)
+# still has every one of them to decide, and releasing one here would leave
+# its queue pointing at a slot this route had already recycled; the decision
+# it eventually makes overwrites the `NaN` this still sets.
+function _finish!(o::_Offspring, race, stop_t, extinct)
     (; state) = race
     for k in eachindex(o.tree.slots)
         undecided = o.tree.slots[k] != 0
-        undecided && _release_draw!(o.tree, k)
+        undecided && extinct && _release_draw!(o.tree, k)
         id = o.tree.ids[k]
         id == 0 && continue
         contact = state.individuals[id]
@@ -464,7 +472,11 @@ function _simulate_offspring(
         interventions, contacts = (id, state) -> state.individuals[id].secondary_case_ids,
         risks = transmission_risks(model), recorder
     )
-    _return_pooled!(tree)
+    # A race cut off rather than reaching extinction keeps `tree` as its
+    # continuation's `members` (see `_RaceContinuation`); returning it to the
+    # pool here would hand the very same, still-referenced tree to an
+    # unrelated race.
+    state.continuation === nothing && _return_pooled!(tree)
     apply_observation!(observation, state, rng)
     return state
 end

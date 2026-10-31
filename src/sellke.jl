@@ -977,12 +977,12 @@ the negatives would break the shortest-path race with no error.
 """
 function _sellke_race!(
         state::SimulationState, members::AbstractVector{Int},
-        rng::AbstractRNG; seed!, targets = nothing,
+        rng::AbstractRNG; seed! = nothing, targets = nothing,
         from::Union{Symbol, Nothing} = nothing, until::Union{Tuple, Nothing} = nothing,
         routes = nothing, interventions = (), contacts = nothing, risks = (),
         introduction = nothing, watches = nothing, projections = nothing,
         max_time = Inf, max_generation = typemax(Int), stopping_rules = (),
-        recorder::ContactRecorder = NoContactRecorder()
+        recorder::ContactRecorder = NoContactRecorder(), resume = nothing
     )
     # A model either passes `routes`, a collection of `(RouteWindow, targets)`
     # pairs, or the single-route shorthand `from`/`until`/`targets`. The
@@ -1007,14 +1007,20 @@ function _sellke_race!(
         )
         rts = routes
     end
+    resume === nothing && seed! === nothing && throw(
+        ArgumentError("_sellke_race! needs `seed!` unless it is resuming a cut race")
+    )
     m = length(members)
     # Candidate times share the state's timing type (a dual under automatic
     # differentiation), so a gradient with respect to a transmission parameter
     # flows through the contact draws into the infection times.
     T = _timetype(state)
-    buffers = _take_buffers(T)
-    best = fill!(resize!(buffers.best, m), T(Inf))
-    processed = fill!(resize!(buffers.processed, m), false)
+    # Resuming a cut race reuses the buffers it left its queue in, rather than
+    # a fresh pool entry, so popping continues from exactly where it stopped.
+    buffers = resume === nothing ? _take_buffers(T) : resume.buffers
+    best = resume === nothing ? fill!(resize!(buffers.best, m), T(Inf)) : buffers.best
+    processed = resume === nothing ? fill!(resize!(buffers.processed, m), false) :
+        buffers.processed
     pos = _member_positions(members)
     # A route an intervention does not apply to, by `risk_applies`, is neither
     # cut by that intervention's removal nor blocked by the per-contact risks
@@ -1039,9 +1045,11 @@ function _sellke_race!(
 
     # An intervention declaring `acts_on_population` needs no case settled to
     # propose its actions, so it is offered every member before the race
-    # starts rather than case by case as the race goes.
-    _apply_population_actions!(state, interventions, _population_members(members))
-    seed!(best, members, rng)
+    # starts rather than case by case as the race goes; a resumed race already
+    # did this on its first call.
+    resume === nothing &&
+        _apply_population_actions!(state, interventions, _population_members(members))
+    resume === nothing && seed!(best, members, rng)
     # The host state each route's kernel reads, as the keys it declares through
     # `watched_records`. A route that declares nothing draws from hazards fixed
     # for the run, so its contacts are never redrawn; the race watches the union
@@ -1078,9 +1086,12 @@ function _sellke_race!(
     # people, so a race where none is set can leave the target's record alone
     # when it draws — a saving worth having on a dense graph, where that record
     # is a pointer chase per proposal. A trait an intervention writes as a case
-    # is resolved turns it on from there.
+    # is resolved turns it on from there. A branching process's `members`
+    # (`_Tree`) names a place drawn but not yet born as `0`, which only shows
+    # up here on a resumed race: a growing population's tree has already grown
+    # past its index cases by the time one is cut off.
     traits = any(
-        id -> (
+        id -> id != 0 && (
             ind = state.individuals[id];
             ind.susceptibility != 1 || ind.infectiousness != 1
         ),
@@ -1111,6 +1122,21 @@ function _sellke_race!(
     # fall back (`_Offspring`), it proposes each member once, so a blocked
     # contact has nothing to fall back on and needs no lists.
     checks = may_block || any(((_, rt),) -> _route_may_block(rt), rts)
+    # `head`/`represents`/`proposals` below are sized, on the call that cut
+    # the race off, to the `may_block` value that call's `interventions`/
+    # `risks` gave. A resumed race reuses them unconditionally: a
+    # continuation call whose own `interventions`/`risks` recompute
+    # `may_block` differently would index buffers sized for the old value
+    # instead of resizing them. Refuse that up front rather than let it run
+    # into a `BoundsError` partway through the race.
+    resume !== nothing && resume.may_block != may_block && throw(
+        ArgumentError(
+            "a continuation call's `interventions`/`risks` must leave " *
+                "`may_block` ($may_block) as it was on the call that cut the " *
+                "race off ($(resume.may_block)); continue a race with the " *
+                "same model it was started with"
+        )
+    )
     # Whether each of the two `_open_routes!` passes below has a route to
     # open. A model with only one kind of route (every benchmarked model so
     # far) then skips the pass that would open none of them, rather than
@@ -1126,11 +1152,18 @@ function _sellke_race!(
     # Those a person a route creates as it goes is offered on creation.
     creating = filter(iv -> !acts_on_population(iv) && !needs_contacts(iv), acting)
     contactless_actions = any(iv -> !needs_contacts(iv), acting)
-    openings = empty!(buffers.openings) # one per case and route it transmits along
-    proposals = empty!(buffers.proposals) # proposals retained for fallback
-    head = fill!(resize!(buffers.head, may_block ? m : 0), 0) # first proposal to each member
-    represents = fill!(resize!(buffers.represents, m), 0) # what each member's heap entry names
-    queue = empty!(buffers.queue)
+    # A resumed race keeps every one of these exactly as its last pop left
+    # them, rather than starting them fresh: that is its leftover queue.
+    if resume === nothing
+        openings = empty!(buffers.openings) # one per case and route it transmits along
+        proposals = empty!(buffers.proposals) # proposals retained for fallback
+        head = fill!(resize!(buffers.head, may_block ? m : 0), 0) # first proposal to each member
+        represents = fill!(resize!(buffers.represents, m), 0) # what each member's heap entry names
+        queue = empty!(buffers.queue)
+    else
+        openings, proposals, head, represents, queue =
+            buffers.openings, buffers.proposals, buffers.head, buffers.represents, buffers.queue
+    end
     # An admitted action's effect is deferred onto this same queue, as an
     # event naming no member (`0`, which no case position ever is) and
     # indexing `pending_actions` instead of a proposal. `_apply_case_actions!`
@@ -1143,7 +1176,8 @@ function _sellke_race!(
     # share this queue and runs there and then instead. A `claim!`-only
     # effect, such as a dose's, never needed deferring in the first place,
     # so this restriction never touches it.
-    pending_actions = empty!(buffers.pending_actions)
+    pending_actions = resume === nothing ? empty!(buffers.pending_actions) :
+        buffers.pending_actions
     action_sink = (action, admitter) -> begin
         if action.time isa T
             push!(pending_actions, (action, admitter))
@@ -1155,7 +1189,7 @@ function _sellke_race!(
     end
 
     # The seeds' own opening: no infector, so nothing about it is ever read.
-    push!(openings, _RouteOpening(0, 0, zero(T), T(Inf)))
+    resume === nothing && push!(openings, _RouteOpening(0, 0, zero(T), T(Inf)))
     # Proposals a redraw has unlinked, which stay in `proposals` and the heap
     # until they are compacted away.
     orphans = 0
@@ -1168,24 +1202,43 @@ function _sellke_race!(
     passed = 0
     # Whether `max_generation` has suppressed a case's own transmission, so
     # the run finishing with no candidates left is reported as cut off rather
-    # than as having reached extinction on its own.
-    capped_generation = false
+    # than as having reached extinction on its own. A resumed race inherits
+    # this from the run it continues.
+    capped_generation = resume === nothing ? false : resume.capped_generation
     # What a route needs to propose from an opening (see `_propose_along!`).
     # Every field is bound once and only mutated in place.
     race = (;
         queue, proposals, head, best, represents, processed, pos, state, rng, members,
         watch, snapshot, watched_keys, may_block, max_time, reinfects,
         route_projections, full_snapshot, interventions, creating, buffers,
+        # Kept only so a race cut off by `max_time` can be resumed later
+        # (`_finish_race!`): everything `_sellke_race!` would otherwise need
+        # to be called with again, besides `max_time` itself.
+        rts, contacts, introduction, watches, projections, max_generation, stopping_rules,
     )
     # What tracing and the interventions' actions read as a case's contacts. A
     # route that creates contacts as it goes creates a ring member's when the
     # ring reaches it.
     case_contacts = _case_contacts(contacts, rts, race, max_generation)
-    for k in 1:m
-        best[k] < Inf || continue
-        seeded = best[k]
-        best[k] = T(Inf)
-        _propose!(race, k, 1, seeded)
+    if resume === nothing
+        for k in 1:m
+            best[k] < Inf || continue
+            seeded = best[k]
+            best[k] = T(Inf)
+            _propose!(race, k, 1, seeded)
+        end
+    else
+        # A route that samples its own contacts rather than listing them
+        # (`_MassAction`) only drew them up to the race's own time limit where
+        # its window never closes, and remembered which group pairs it cut
+        # short (see `propose_along`'s `capped`). Resuming redraws exactly
+        # those, from the limit the previous call stopped at: the exponential
+        # kernel behind mass action is memoryless, so that redraw over the
+        # extended window is the same draw as sampling the whole window at
+        # once would have been.
+        for (ri, (_, route_targets)) in enumerate(rts)
+            _resume_route!(route_targets, race, ri, resume.max_time, traits)
+        end
     end
 
     while !isempty(queue)
@@ -1193,8 +1246,14 @@ function _sellke_race!(
         bt, j, p = event.time, event.member, event.ref
         # Pops come in increasing time, so every later infection also falls
         # after `max_time`: those individuals stay uninfected, and the race
-        # was cut off rather than reaching extinction on its own.
-        bt > max_time && return _finish_race!(rts, race, false, max_time)
+        # was cut off rather than reaching extinction on its own. The pop
+        # above took this event out of the queue to read its time; put it
+        # back before leaving, so a continuation (`simulate`'s continuation
+        # method) pops the very same event first rather than losing it.
+        if bt > max_time
+            _enqueue!(queue, event)
+            return _finish_race!(rts, race, false, max_time, capped_generation)
+        end
         # A deferred action's own event: no member settles from it, so it
         # skips the pop bookkeeping below, which is about resolving a case.
         # Running it may admit further actions of its own (an effect's
@@ -1399,7 +1458,7 @@ function _sellke_race!(
         # is what a rule not already captured by `max_time`/`max_generation`
         # reads; ending here rather than after this case transmits matches
         # `MaxCases` stopping at the first `n` infections in time.
-        _any_stop(stopping_rules, state) && return _finish_race!(rts, race, false, bt)
+        _any_stop(stopping_rules, state) && return _finish_race!(rts, race, false, bt, capped_generation)
         # A route that creates its contacts as it goes creates this case's now,
         # so that tracing and the interventions' actions can reach them.
         # Unrolled over `rts` rather than looped over (see `_mint_all!`), for
@@ -1497,20 +1556,38 @@ function _sellke_race!(
         rts, race,
         !capped_generation &&
             !any(((_, route_targets),) -> _pending_beyond(route_targets, race), rts),
-        race.max_time
+        race.max_time, capped_generation
     )
 end
 
 # Let each route tidy up what the race left undecided when it ended at
-# `stop_t`, then report whether the race reached extinction.
-function _finish_race!(rts, race, extinct, stop_t = Inf)
+# `stop_t`, then report whether the race reached extinction. A race that
+# did not — cut off by `max_time`, a stopping rule, or `max_generation` —
+# leaves its leftover queue on `state`, as a [`_RaceContinuation`](@ref), for
+# [`simulate`](@ref)'s continuation method to resume; one that did clears it
+# and returns the buffers to the pool as before.
+function _finish_race!(rts, race, extinct, stop_t, capped_generation)
     for (_, route_targets) in rts
-        _finish!(route_targets, race, stop_t)
+        _finish!(route_targets, race, stop_t, extinct)
     end
-    _return_buffers!(race.buffers)
+    if extinct
+        race.state.continuation = nothing
+        _return_buffers!(race.buffers)
+    else
+        # `stop_t` is `max_time` as the caller gave it, a plain `Float64`
+        # even under automatic differentiation; converted to the state's own
+        # timing type to match `race.buffers`, so the two share one type
+        # parameter in `_RaceContinuation`.
+        race.state.continuation = _RaceContinuation(
+            rts, race.members, race.contacts, race.introduction, race.watches,
+            race.projections, race.max_generation, race.stopping_rules,
+            capped_generation, convert(_timetype(race.state), stop_t), race.buffers,
+            race.may_block
+        )
+    end
     return extinct
 end
-_finish!(route_targets, race, stop_t) = nothing
+_finish!(route_targets, race, stop_t, extinct) = nothing
 
 # Whether any of the stopping rules ends the run now.
 function _any_stop(rules, state)
@@ -1544,6 +1621,35 @@ end
 
 _take_buffers(::Type{T}) where {T} = _take_pooled!(_RaceBuffers{T})
 _return_buffers!(b::_RaceBuffers) = _return_pooled!(b)
+
+"""
+    _RaceContinuation
+
+A race cut off by `max_time`, a stopping rule or `max_generation`, kept on
+[`SimulationState`](@ref)'s `continuation` field so [`simulate`](@ref)'s
+continuation method can pop up where it stopped: the routes it was running,
+with whatever bookkeeping a route keeps on itself (such as `_MassAction`'s
+cut group pairs), the members it raced over, its `contacts`/`introduction`/
+`watches`/`projections`, the case and generation caps besides `max_time`
+itself, and the buffers its queue and every other pending proposal live in.
+`may_block` is kept too, since it sized those buffers: a continuation call
+whose `interventions`/`risks` would recompute it differently is refused
+rather than indexing buffers sized for the old value.
+"""
+struct _RaceContinuation{T <: Real, RT, M, C, I, W, J, SR} <: AbstractRaceContinuation
+    rts::RT
+    members::M
+    contacts::C
+    introduction::I
+    watches::W
+    projections::J
+    max_generation::Int
+    stopping_rules::SR
+    capped_generation::Bool
+    max_time::T
+    buffers::_RaceBuffers{T}
+    may_block::Bool
+end
 
 # One of this task's spare objects of type `B`, or a new one. Each race takes
 # its own, so two races never share one.
@@ -1757,6 +1863,15 @@ still reachable through it, though already infected, answers `true` when one
 of them could still wane and `reinfects` holds.
 """
 pending_beyond(route, state, reinfects::Bool) = false
+
+# Resuming a cut race (`simulate`'s continuation method): redraw, from
+# `old_max_time`, whatever `route_targets` sampled only up to the previous
+# call's `max_time` because a window with no natural close left it capped
+# (`propose_along`'s `capped`; see `pending_beyond`). The default is a no-op,
+# right for a route that lists its targets instead and so never caps a window
+# in the first place; `_MassAction` is the only built-in route that needs
+# this, in `mass_action.jl`.
+_resume_route!(route_targets, race, ri, old_max_time, traits) = nothing
 
 # Whether a route left contacts past the time limit that it never proposed, so
 # that a race which ran out of candidates was cut off rather than extinct. A

@@ -127,6 +127,74 @@ function _run_once_or_retry(model, sim_opts, condition, max_attempts; kwargs...)
 end
 
 """
+    simulate(model::TransmissionModel, state::SimulationState; max_time::Real,
+             rng::AbstractRNG = state.rng)
+
+Continue `state`, a [`SimulationState`](@ref) returned by [`simulate`](@ref)
+or by this method itself, up to a later `max_time`. The race underneath picks
+up exactly where it stopped: every contact already decided stands, and
+nothing already drawn is redrawn, so a run continued this way to `max_time`
+agrees with one run straight through to it from the same seed (the one
+exception is mass action with an infectious window that never closes, which
+agrees in distribution rather than bit for bit). `model` supplies the
+interventions, transmission risks and contact recorder again; `state` does
+not hold them, so a particle filter can keep `model` once as the dynamics
+and copy only `state` as the particle.
+
+`state` is mutated in place and returned. No observation model is applied:
+continuation is for a caller, such as a particle filter, that scores each
+step itself against its own data, rather than drawing a synthetic one.
+`state` is returned unchanged if it had already reached extinction, or
+stopped for a reason other than `max_time` — there is nothing left for a
+later `max_time` to continue.
+
+```julia
+using EpiBranch, Distributions
+model = ModelSpec(
+    HomogeneousProcess(transmission_rate = 0.4, population_size = 10_000);
+    progression = [Transition(:recovered; rate = 0.2, terminal = true)],
+)
+state = simulate(model; max_time = 20.0)
+simulate(model, state; max_time = 27.0)
+```
+"""
+function simulate(
+        model::TransmissionModel, state::SimulationState; max_time::Real,
+        rng::AbstractRNG = state.rng
+    )
+    return _continue_sellke!(
+        state, rng, max_time, interventions(model), transmission_risks(model),
+        recorder(model)
+    )
+end
+
+# Shared by both `simulate` continuation methods (a bare process and a
+# `ModelSpec`): resume `state`'s leftover race to `max_time`, with the
+# modelling layers a continuation needs (not `attributes`, `progression` or
+# `observation`, which do not reach the race again) supplied explicitly.
+function _continue_sellke!(state::SimulationState, rng, max_time, ivs, risks, recorder_)
+    continuation = state.continuation
+    continuation === nothing && return state
+    max_time > continuation.max_time || throw(
+        ArgumentError(
+            "max_time ($max_time) must be past the state's own " *
+                "($(continuation.max_time)) to continue it"
+        )
+    )
+    extinct = _sellke_race!(
+        state, continuation.members, rng;
+        routes = continuation.rts, interventions = isempty(ivs) ? () : ivs,
+        contacts = continuation.contacts, risks,
+        introduction = continuation.introduction, watches = continuation.watches,
+        projections = continuation.projections, max_time,
+        max_generation = continuation.max_generation,
+        stopping_rules = continuation.stopping_rules, recorder = recorder_,
+        resume = continuation
+    )
+    return _reconcile_sellke_bookkeeping!(state, extinct)
+end
+
+"""
     simulate_once(model, sim_opts; interventions, attributes, progression,
                   observation, recorder, rng)
 
