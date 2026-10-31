@@ -53,11 +53,11 @@ underscore are internal.
 | `:_leaky_removal_stretches` | `Vector{Tuple{Float64,Float64}}` | `[]` | `Isolation` | `resolve_individual!`; internal. The stretches of a leaky isolation, apart from `:_removal_stretches`'s complete ones |
 | `:_quarantine_stretches` | `Vector{Tuple{Float64,Float64}}` | `[]` | `ContactTracing`/`SourceTracing`'s `Quarantine` | `apply_trace!`; internal. The quarantine's own stretches, apart from the shared history |
 | `:_lapsing_removal_keys` | `Tuple{Vararg{Symbol}}` | `()` | `record_removal!` | Internal. The keys under which a releasing stretch has been recorded, checked against `removal_gap_host_times` when the infection layer is built |
-| `:_isolated_by_isolation` | `Bool` | `false` | `Isolation` | `resolve_individual!`; internal |
+| `:_removal_handle_counter` | `Int` | `0` | `record_removal!` | Internal. Counts up so every entry gets its own handle |
+| `:_removal_entries` | `Vector{Any}` | — | `record_removal!`, `set_isolated!` | Internal. Every stretch ever recorded, as `(handle, key, start, release, isolation_span, unrecorded)`. Each key's merged `removal_stretches` cache is rebuilt from it on a `revise_removal!`/`withdraw_removal!` call; `isolation_span` entries (`set_isolated!`'s) are also folded to recompute `:isolation_time`, `:isolation_release_time` and `:_isolation_unrecorded` |
 | `:_isolation_unrecorded` | `Bool` | `false` | `Isolation`, `ContactTracing`/`SourceTracing` | `resolve_individual!` / `apply_trace!`; internal. The isolation removes the case from transmission without counting as a detection |
-| `:_isolation_time_before_isolation` | `Float64` | — | `Isolation` | `resolve_individual!`; internal. The time of an isolation already in place before this one |
-| `:_isolation_release_time_before_isolation` | `Float64` | — | `Isolation` | `resolve_individual!`; internal. The release time of an isolation already in place before this one |
-| `:_isolation_unrecorded_before_isolation` | `Bool` | — | `Isolation` | `resolve_individual!`; internal |
+| `:_isolation_handle` | `Int` | — | `Isolation` | `resolve_individual!`; internal. The handle of `Isolation`'s own entry, so `reset!` can withdraw exactly it |
+| `:_quarantine_removal_handles` | `Vector{Int}` | — | `ContactTracing`/`SourceTracing`'s `Quarantine` | `apply_trace!`; internal. The handles of every entry a quarantine has recorded, so a full reset withdraws each one |
 | `:test_positive` | `Bool` | `false` | `Isolation` | `initialise_individual!` |
 | `:traced` | `Bool` | `false` | `ContactTracing`, `SourceTracing` | `trace_contacts!` |
 | `:quarantined` | `Bool` | `false` | `ContactTracing`, `SourceTracing` | `trace_contacts!` |
@@ -225,10 +225,10 @@ tag for your package so they clash neither with built-in keys nor with those of
 other packages.
 
 A key an intervention keeps purely for its own records (where a value came
-from, such as `Isolation`'s `:_isolated_by_isolation`, or a stored earlier
-value, such as its `:_isolation_time_before_isolation`) starts with an
-underscore, as [`EpiBranch._action_cache`](@ref)'s `:_intervention_actions`
-does. The underscored names in the table are reserved along with the others, so
+from, such as `Isolation`'s `:_isolation_handle`, naming the entry its own
+isolation was recorded as) starts with an underscore, as
+[`EpiBranch._action_cache`](@ref)'s `:_intervention_actions` does. The
+underscored names in the table are reserved along with the others, so
 a key of your own puts your package's tag after the underscore:
 `:_mypkg_budget`, not `:_budget`. [`linelist`](@ref) drops every key starting
 with an underscore. Any other key becomes a line-list column once a model part

@@ -262,6 +262,23 @@ const LEAKY_REMOVAL_STRETCHES_KEY = :_leaky_removal_stretches
 
 const _NO_STRETCHES = Tuple{Float64, Float64}[]
 
+# Element type of the handle-tracked entry vector below, concrete in
+# whatever type its entries were last pushed at, rather than `Any`, so a
+# `set_isolated!` call pushes one inline tuple instead of boxing it. A later
+# call on the same individual can promote to a wider type than an earlier one
+# did (an AD dual isolation time following a plain `Float64` one, say);
+# `_push_removal_entry!` widens the whole vector to match rather than
+# letting the push narrow the new entry back down.
+#
+# A `set_isolated!` entry is a `record_removal!` one with two more columns:
+# `isolation_span` (whether it feeds the isolation-span fold `isolation_time`
+# and `isolation_release_time` read) and `unrecorded` (its detection status
+# within that fold). A plain `record_removal!` entry carries `false` in both,
+# since it plays no part in the isolation span. Keeping every entry in one
+# vector, keyed by handle, means a revise or withdraw never has to keep two
+# stores in step with each other.
+const _RemovalEntry{T} = Tuple{Int, Symbol, T, T, Bool, Bool}
+
 """Record that a person is isolated from `time` (days) until `release_time`.
 Used by interventions that isolate or quarantine people. `release_time` is
 required: pass `Inf` for isolation that never ends, so that indefinite
@@ -275,26 +292,56 @@ for leaky isolation. `:isolated` in an `until` instead refers to a
 `key` names the [`record_removal!`](@ref EpiBranch.record_removal!) key the
 stretch goes under, the shared key by default. A removal that only blocks a
 fraction of the hazard passes its own key instead, apart from the shared one,
-so a likelihood never mistakes one for the other."""
+so a likelihood never mistakes one for the other.
+
+`unrecorded` says whether this particular removal counts as a detection (see
+[`is_isolated`](@ref)): `false` (the default) records it, `true` keeps it out
+of the line list and of isolation-triggered tracing. [`Isolation`](@ref)
+passes whatever its [`records_isolation`](@ref EpiBranch.records_isolation)
+says for its own start; a quarantine is always recorded. Where this call
+overlaps or touches a removal already standing, whichever of the two starts
+earliest decides the combined span's detection status, the same way its own
+start and release decide [`isolation_time`](@ref) and
+[`isolation_release_time`](@ref)."""
 function set_isolated!(
         ind::Individual, time::Real;
-        release_time::Real, key::Symbol = REMOVAL_STRETCHES_KEY
+        release_time::Real, key::Symbol = REMOVAL_STRETCHES_KEY,
+        unrecorded::Bool = false
     )
-    ind.state[:isolated] = true
-    delete!(ind.state, :_isolation_unrecorded)
-    ind.state[:isolation_time] = time
-    ind.state[:isolation_release_time] = release_time
-    record_removal!(ind, time, release_time; key = key)
+    _set_isolated!(ind, time; release_time, key, unrecorded)
     return release_time
 end
 
+# As `set_isolated!`, but returns the handle the entry was recorded under, so
+# a component that isolates or quarantines someone can revise or withdraw
+# exactly its own effect later (see `Isolation`'s `reset!` and
+# `_undo_quarantine_isolation!`), without disturbing another's record left
+# under the same key.
+function _set_isolated!(
+        ind::Individual{T}, time::Real;
+        release_time::Real, key::Symbol = REMOVAL_STRETCHES_KEY,
+        unrecorded::Bool = false
+    ) where {T}
+    S = promote_type(T, typeof(time), typeof(release_time))
+    t, rt = convert(S, time), convert(S, release_time)
+    handle = _next_removal_handle!(ind)
+    _push_qualifying_removal!(ind, handle, key, t, rt; isolation_span = true, unrecorded)
+    _refresh_isolation_span!(ind)
+    return handle
+end
+
 """
-    record_removal!(ind, start, release; key = :_removal_stretches)
+    record_removal!(ind, start, release; key = :_removal_stretches) -> handle
 
 Record that `ind` could not transmit from `start` until `release` (days;
-`Inf` if never released), for example while isolated or quarantined.
-[`set_isolated!`](@ref) records under the default key, shared by isolation
-and quarantine.
+`Inf` if never released), for example while isolated or quarantined. Returns a
+handle identifying this entry, or `nothing` if `start` and `release` describe
+no removal at all (`start` not finite, or `release` not after it). Pass the
+handle to [`revise_removal!`](@ref EpiBranch.revise_removal!) or
+[`withdraw_removal!`](@ref EpiBranch.withdraw_removal!) to change or undo
+exactly this entry later, leaving every other entry recorded under `key`
+untouched, whatever it overlaps. [`set_isolated!`](@ref) records under the
+default key, shared by isolation and quarantine.
 
 An intervention of your own that removes people in its own way passes its own
 `key`, and names it in
@@ -305,6 +352,12 @@ records a stretch with a finite `release` here is checked against
 [`removal_gap_host_times`](@ref EpiBranch.removal_gap_host_times) when the
 infection layer is built, and the likelihood stops with an error for one that
 no component names or withdraws.
+
+Each call is its own entry: recording a second stretch under the same `key`
+never merges it into the first, whatever their overlap.
+[`removal_stretches`](@ref) still reads the merged, non-overlapping view over
+every entry recorded under `key`, recomputed whenever one is added, revised
+or withdrawn.
 """
 function record_removal!(
         ind::Individual{T}, start::Real, release::Real;
@@ -314,16 +367,290 @@ function record_removal!(
     # The stretch keeps the individual's own number type, so that an AD dual
     # isolation time flows through as the time accessors promise.
     S = promote_type(T, typeof(start), typeof(release))
-    stretch = (convert(S, start), convert(S, release))
+    handle = _next_removal_handle!(ind)
+    _push_qualifying_removal!(ind, handle, key, convert(S, start), convert(S, release))
+    return handle
+end
+
+"""
+    revise_removal!(ind, handle; release)
+
+Change the release of the removal [`record_removal!`](@ref) recorded as
+`handle` to `release` (days), ending it sooner or letting it run longer.
+Does nothing if `handle` no longer names an entry, for example one already
+withdrawn. [`removal_stretches`](@ref), [`isolation_time`](@ref) and
+[`isolation_release_time`](@ref) reflect the change immediately, recomputed
+from every entry that still stands. A `release` at or before the entry's own
+start leaves it out of `removal_stretches` altogether, as a zero-length
+removal already does; one strictly before the start leaves it out of the
+isolation span too, as though withdrawn, rather than isolating for negative
+time.
+
+For extension authors: a policy that can shorten or lengthen a removal
+already recorded, such as a negative test ending a quarantine early, revises
+it directly here, rather than finding and re-combining whatever else was
+recorded alongside it. [`set_isolated!`](@ref) records an entry the same
+way but returns `release_time` instead of the handle. Only built-in
+components of the package itself can revise or withdraw an entry it
+recorded this way, because they keep the handle under a key of their own
+(see the `:_isolation_handle` key in [`Isolation`](@ref)).
+"""
+function revise_removal!(ind::Individual, handle; release::Real)
+    _revise_removal_entry!(ind, handle, release)
+    return nothing
+end
+
+"""
+    withdraw_removal!(ind, handle)
+
+Undo the removal [`record_removal!`](@ref) recorded as `handle`, as though
+it had never been recorded. Does nothing if `handle` no longer names an
+entry. [`removal_stretches`](@ref), [`isolation_time`](@ref) and
+[`isolation_release_time`](@ref) reflect the withdrawal immediately,
+recomputed from whatever else still stands.
+
+For extension authors: [`Scheduled`](@ref)'s own reset calls this to undo an
+isolation or quarantine that falls outside its window; a policy that cancels
+a removal outright calls it too. A policy that wants the same for its own
+`set_isolated!` call cannot reach this: [`set_isolated!`](@ref) returns
+`release_time` rather than the handle it recorded. An entry it made can
+only be withdrawn wholesale, with [`clear_isolated!`](@ref).
+"""
+function withdraw_removal!(ind::Individual, handle)
+    _withdraw_removal_entry!(ind, handle)
+    return nothing
+end
+
+# A handle unique to `ind`, identifying one entry in `:_removal_entries` so
+# `revise_removal!`/`withdraw_removal!` can find it again.
+function _next_removal_handle!(ind::Individual)
+    n = get(ind.state, :_removal_handle_counter, 0)::Int + 1
+    ind.state[:_removal_handle_counter] = n
+    return n
+end
+
+_find_removal_entry(entries::Nothing, handle) = nothing
+_find_removal_entry(entries, handle) = findfirst(e -> e[1] == handle, entries)
+
+# A copy of `old`, widened to the type promoted from its own element type
+# and `S` (an AD dual release following a plain `Float64` one, say), so that
+# neither `_push_removal_entry!`'s push nor `_revise_removal_entry!`'s
+# `setindex!` narrows the new entry back down to fit. `old` already at `S`,
+# the common case, takes the plain `copy` the generic conversion below would
+# reach the same place by, more slowly.
+_widen_removal_entries(old::Vector{_RemovalEntry{S}}, ::Type{S}) where {S} = copy(old)
+function _widen_removal_entries(old::Vector{_RemovalEntry{T}}, ::Type{S}) where {T, S}
+    return Vector{_RemovalEntry{promote_type(T, S)}}(old)
+end
+
+# Every stretch ever recorded under any key, as `(handle, key, start,
+# release, isolation_span, unrecorded)`, each entry kept for as long as it
+# stands: the unmerged source `removal_stretches`' per-key cache below is
+# recomputed from, so that `withdraw_removal!` can drop exactly one without
+# disturbing another entry a `_merge_stretches!` once folded it together
+# with. `isolation_span` and `unrecorded` matter only to an entry
+# `_set_isolated!` made; a plain `record_removal!` entry carries `false` in
+# both, so `_fold_isolation_span` leaves it out of the isolation span.
+function _push_removal_entry!(
+        ind::Individual, handle::Int, key::Symbol, start::S, release::S,
+        isolation_span::Bool, unrecorded::Bool
+    ) where {S}
+    old = get(ind.state, :_removal_entries, nothing)
+    entry = (handle, key, start, release, isolation_span, unrecorded)
+    # Grown in place when the type already matches. `_detach_removal_history!`
+    # already copies this vector when `InfectionEpisode` archives a closed
+    # episode; a push here never reaches into that copy.
+    if old === nothing
+        ind.state[:_removal_entries] = _RemovalEntry{S}[entry]
+    elseif old isa Vector{_RemovalEntry{S}}
+        push!(old, entry)
+    else
+        ind.state[:_removal_entries] = push!(_widen_removal_entries(old, S), entry)
+    end
+    return nothing
+end
+
+# Record every stretch, qualifying or not, as its own `_removal_entries`
+# entry. That way a later `revise_removal!` that lengthens a non-qualifying
+# one (a zero-length `set_isolated!` call, say) past its start still has
+# something to find and recompute from. A qualifying stretch (start finite,
+# release after it) also folds into the merged cache for `key`, the fast way
+# `record_removal!` always has, by merging the one new stretch into whatever
+# already stands rather than recomputing the whole cache from every entry
+# (`revise_removal!` and `withdraw_removal!` do that instead, since they
+# must also account for another entry changing or disappearing). A
+# non-qualifying call leaves that cache untouched; `isolation_time` is the
+# only place it is seen until a revision makes it qualify. `isolation_span`
+# and `unrecorded` are `_set_isolated!`'s to pass; a plain `record_removal!`
+# call leaves both `false`.
+function _push_qualifying_removal!(
+        ind::Individual, handle::Int, key::Symbol, start, release;
+        isolation_span::Bool = false, unrecorded::Bool = false
+    )
+    _push_removal_entry!(ind, handle, key, start, release, isolation_span, unrecorded)
+    (isfinite(start) && release > start) || return nothing
     old = get(ind.state, key, nothing)
-    # A fresh vector each time rather than one grown in place: an archived
-    # episode holds a copy of the state that shares the old one.
-    ind.state[key] = old === nothing ? [stretch] : _with_stretch(old, stretch)
+    ind.state[key] = old === nothing ? [(start, release)] : _with_stretch(old, (start, release))
     # Only a stretch that releases its host needs a named key: one that never
     # does closes the infectious window instead (see `infectious_removal_time`),
     # which the likelihood already reads with no key of its own.
     isfinite(release) && _note_lapsing_removal_key!(ind, key)
     return nothing
+end
+
+function _revise_removal_entry!(ind::Individual, handle, release::Real)
+    entries = get(ind.state, :_removal_entries, nothing)
+    i = _find_removal_entry(entries, handle)
+    i === nothing && return nothing
+    h, key, start, _, isolation_span, unrecorded = entries[i]
+    S = promote_type(typeof(start), typeof(release))
+    new_entries = _widen_removal_entries(entries, S)
+    new_entries[i] = (h, key, start, convert(S, release), isolation_span, unrecorded)
+    ind.state[:_removal_entries] = new_entries
+    _recompute_removal_cache!(ind, key)
+    isolation_span && _refresh_isolation_span!(ind)
+    return nothing
+end
+
+function _withdraw_removal_entry!(ind::Individual, handle)
+    entries = get(ind.state, :_removal_entries, nothing)
+    i = _find_removal_entry(entries, handle)
+    i === nothing && return nothing
+    key, isolation_span = entries[i][2], entries[i][5]
+    new_entries = copy(entries)
+    deleteat!(new_entries, i)
+    ind.state[:_removal_entries] = new_entries
+    _recompute_removal_cache!(ind, key)
+    isolation_span && _refresh_isolation_span!(ind)
+    return nothing
+end
+
+# Rebuild `key`'s merged cache from scratch, from every entry still recorded
+# under it: the only way to drop or revise one entry without assuming which
+# other it was folded together with. Rare, called only by `revise_removal!`
+# and `withdraw_removal!`, never by the fast path a plain `record_removal!`
+# call takes, so it need not keep the specialised `Vector{Tuple{T,T}}` type
+# that path does for `removal_stretches`' fast reader; one that wants it
+# falls back to its own slower, generic path.
+function _recompute_removal_cache!(ind::Individual, key::Symbol)
+    entries = get(ind.state, :_removal_entries, nothing)
+    pairs = Any[]
+    lapses = false
+    if entries !== nothing
+        for (_, k, s, r, _, _) in entries
+            k === key || continue
+            # The same qualifying condition `_push_qualifying_removal!` applies
+            # on the fast path: a revise that leaves a release at or before its
+            # own start describes no removal at all, so it drops out here too
+            # rather than leaving an inverted interval behind.
+            (isfinite(s) && r > s) || continue
+            push!(pairs, (s, r))
+            isfinite(r) && (lapses = true)
+        end
+    end
+    if isempty(pairs)
+        delete!(ind.state, key)
+    else
+        sort!(pairs; by = first)
+        ind.state[key] = _merge_stretches!(pairs)
+    end
+    lapses && _note_lapsing_removal_key!(ind, key)
+    return nothing
+end
+
+# Breaks the sharing `copy(ind.state)` otherwise leaves between a reinfected
+# `ind`'s own removal history and the episode `InfectionEpisode` just
+# archived: `_push_removal_entry!` grows its vector in place, so without this
+# a later isolation on `ind` would reach back and rewrite the closed
+# episode's. Runs once per reinfection, rather than on every push.
+function _detach_removal_history!(state::IndividualState)
+    haskey(state, :_removal_entries) &&
+        (state[:_removal_entries] = copy(state[:_removal_entries]))
+    return state
+end
+
+# Drop every stretch entry filed under `key`, as though none had ever been
+# recorded. Used by `clear_isolated!` and by `_reset_traced!` for a
+# quarantine's own key, so that a fresh removal recorded under the same key
+# later starts from nothing rather than resurrecting what a full reset undid.
+function _withdraw_all_removals!(ind::Individual, key::Symbol)
+    entries = get(ind.state, :_removal_entries, nothing)
+    entries === nothing && return nothing
+    any(e -> e[2] === key, entries) || return nothing
+    ind.state[:_removal_entries] = filter(e -> e[2] !== key, entries)
+    delete!(ind.state, key)
+    return nothing
+end
+
+# The isolation span's current group, folded from every `:_removal_entries`
+# entry with `isolation_span` set (a plain `record_removal!` entry carries
+# `false` there and plays no part): sorted by start, merged into disjoint
+# groups the way `_merge_stretches!` merges stretches, with the
+# earliest-starting entry of a group deciding whether the whole group is
+# recorded (so a later isolation or quarantine landing on a standing one does
+# not turn it into a detection by asking its own eligibility about a start
+# the group's own earliest already settled). The last group — the one with
+# the greatest start — is the current isolation; an earlier, disjoint one is
+# history `removal_stretches` still holds, but no longer the removal in
+# force. An entry whose release has been revised to before its own start is
+# left out, as though withdrawn: a zero-length span still isolates for an
+# instant, but an inverted one isolates for none at all. `nothing` if no
+# entry remains.
+function _fold_isolation_span(entries)
+    spans = [(e[3], e[4], e[6]) for e in entries if e[5] && e[4] >= e[3]]
+    isempty(spans) && return nothing
+    sort!(spans; by = first)
+    cur_start, cur_release, cur_unrecorded = spans[1]
+    for (s, r, u) in @view spans[2:end]
+        if s <= cur_release
+            cur_release = max(cur_release, r)
+        else
+            cur_start, cur_release, cur_unrecorded = s, r, u
+        end
+    end
+    return (cur_start, cur_release, cur_unrecorded)
+end
+
+# Recompute `:isolated`, `:isolation_time`, `:isolation_release_time` and
+# `:_isolation_unrecorded` from every surviving isolation span entry.
+function _refresh_isolation_span!(ind::Individual{T}) where {T}
+    # Entries may be wider than `T` (an AD dual isolation time, say), so read
+    # them untyped rather than asserting `ind`'s own element type here.
+    entries = get(ind.state, :_removal_entries, ())
+    span = _fold_isolation_span(entries)
+    if span === nothing
+        ind.state[:isolated] = false
+        ind.state[:isolation_time] = T(Inf)
+        ind.state[:isolation_release_time] = T(Inf)
+        delete!(ind.state, :_isolation_unrecorded)
+        return nothing
+    end
+    start, release, unrecorded = span
+    ind.state[:isolated] = true
+    ind.state[:isolation_time] = start
+    ind.state[:isolation_release_time] = release
+    if unrecorded
+        ind.state[:_isolation_unrecorded] = true
+    else
+        delete!(ind.state, :_isolation_unrecorded)
+    end
+    return nothing
+end
+
+# The isolation span as it would read with `handle`'s own entry left out,
+# without touching `ind`'s real state: what the line list reports for an
+# uninfected contact in place of a self-isolation `Isolation` based on a
+# provisional onset that never happened, since nothing ever calls `reset!`
+# to withdraw that entry for a contact nobody schedules or rations.
+# `nothing` if nothing would stand without it.
+function _isolation_span_excluding(ind::Individual, handle)
+    entries = get(ind.state, :_removal_entries, nothing)
+    entries === nothing && return nothing
+    i = _find_removal_entry(entries, handle)
+    i === nothing && return _fold_isolation_span(entries)
+    others = copy(entries)
+    deleteat!(others, i)
+    return _fold_isolation_span(others)
 end
 
 # The keys under which `ind` has had at least one releasing stretch recorded,
@@ -345,8 +672,12 @@ function _lapsing_removal_keys(state::SimulationState)
     return keys
 end
 
-function _with_stretch(old::Vector{E}, stretch) where {E}
-    new = Vector{E}(undef, length(old) + 1)
+# When a call records at a type wider than the one already in this cache
+# (an AD dual release following a plain `Float64` one, say), the cache
+# widens to match, rather than narrowing the new stretch down to fit it.
+function _with_stretch(old::Vector{Tuple{T, T}}, stretch::Tuple{S, S}) where {T, S}
+    P = promote_type(T, S)
+    new = Vector{Tuple{P, P}}(undef, length(old) + 1)
     copyto!(new, old)
     new[end] = stretch
     sort!(new; by = first)
@@ -406,9 +737,11 @@ function clear_isolated!(ind::Individual)
     delete!(ind.state, :_isolation_unrecorded)
     ind.state[:isolation_time] = Inf
     ind.state[:isolation_release_time] = Inf
-    delete!(ind.state, REMOVAL_STRETCHES_KEY)
+    # Every isolation-span entry (`_set_isolated!`'s) is filed under one of
+    # these two keys, so dropping both also clears the span.
+    _withdraw_all_removals!(ind, REMOVAL_STRETCHES_KEY)
     # Leaky isolation's own record, apart from the shared history above; only
     # `Isolation` ever writes it, so clearing it unconditionally is safe.
-    delete!(ind.state, LEAKY_REMOVAL_STRETCHES_KEY)
+    _withdraw_all_removals!(ind, LEAKY_REMOVAL_STRETCHES_KEY)
     return nothing
 end

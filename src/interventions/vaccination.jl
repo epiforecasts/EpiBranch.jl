@@ -868,8 +868,8 @@ end
 # post-exposure and onward efficacies all fall back to their unvaccinated
 # defaults. `CapacityConstrained` keeps a running count of `_vaccinated_key`
 # uses rather than rescanning for it on every call, so clearing it here only
-# becomes the refund once that count notices: its own cache's
-# `_drop_withdrawn!` sees the flag gone the next time it is consulted, and
+# becomes the refund once that count is updated: its own cache's
+# `_drop_withdrawn!` finds the flag gone the next time it is consulted, and
 # the dose it had counted becomes available to another candidate again.
 function _withdraw_dose!(rv::RingVaccination, ind)
     label = dose_label(rv)

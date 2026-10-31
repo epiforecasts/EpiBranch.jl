@@ -1,3 +1,5 @@
+using ForwardDiff
+
 struct _CaseSensitivity end
 (::_CaseSensitivity)(rng, ind) = isodd(ind.id) ? 1.0 : 0.0
 struct _PolicyEnabled
@@ -158,10 +160,11 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         @test is_isolated(traced)               # preserved
         @test isolation_time(traced) == 3.0
 
-        # An isolation Isolation itself set (marked) is still reset.
+        # An isolation Isolation itself set (named by its own handle) is still
+        # reset.
         own = Individual(id = 2)
-        set_isolated!(own, 3.0; release_time = Inf)
-        own.state[:_isolated_by_isolation] = true
+        handle = EpiBranch._set_isolated!(own, 3.0; release_time = Inf)
+        own.state[:_isolation_handle] = handle
         EpiBranch.reset!(iso, own)
         @test !is_isolated(own)
     end
@@ -481,7 +484,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         set_isolated!(late, 50.0; release_time = Inf)
         EpiBranch.resolve_individual!(iso, late, state)
         @test isolation_time(late) ≈ 2.0 atol = 1.0e-6
-        @test get(late.state, :_isolated_by_isolation, false)
+        @test haskey(late.state, :_isolation_handle)
 
         # Quarantined early with no release: onset falls inside the standing
         # quarantine, so the two merge into the same open-ended removal.
@@ -491,7 +494,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         set_isolated!(early, 1.0; release_time = Inf)
         EpiBranch.resolve_individual!(iso, early, state)
         @test isolation_time(early) == 1.0
-        @test get(early.state, :_isolated_by_isolation, false)
+        @test haskey(early.state, :_isolation_handle)
 
         # A short quarantine that ends before onset: isolation from onset is
         # its own separate removal after the lapsed one, rather than being
@@ -737,8 +740,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
     @testset "A later quarantine leaves an unrecorded isolation unrecorded" begin
         function unrecorded_isolation()
             ind = Individual(id = 1)
-            set_isolated!(ind, 6.0; release_time = Inf)
-            ind.state[:_isolation_unrecorded] = true
+            set_isolated!(ind, 6.0; release_time = Inf, unrecorded = true)
             return ind
         end
         rng = StableRNG(1)
@@ -835,8 +837,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         # isolation-triggered tracing.
         rng = StableRNG(1)
         replaced = Individual(id = 1)
-        set_isolated!(replaced, 5.0; release_time = 7.0)
-        replaced.state[:_isolation_unrecorded] = true
+        set_isolated!(replaced, 5.0; release_time = 7.0, unrecorded = true)
         EpiBranch.apply_trace!(
             Quarantine(duration = Dirac(14.0)), replaced, nothing, 20.0, rng
         )
@@ -942,6 +943,67 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                 )
             )
         end
+    end
+
+    @testset "Revising a release to before its own start drops the entry" begin
+        # A negative test ending a quarantine early (`revise_removal!`'s own
+        # documented use case) must not invert the interval: a release at or
+        # before the start describes no removal at all, the same as
+        # `record_removal!` refusing one up front.
+        ind = Individual(id = 1)
+        handle = EpiBranch.record_removal!(ind, 5.0, 10.0)
+        EpiBranch.revise_removal!(ind, handle; release = 2.0)
+        @test EpiBranch.removal_stretches(ind) == EpiBranch._NO_STRETCHES
+
+        isolated = Individual(id = 2)
+        iso_handle = EpiBranch._set_isolated!(isolated, 5.0; release_time = 10.0)
+        EpiBranch.revise_removal!(isolated, iso_handle; release = 2.0)
+        @test !is_isolated(isolated)
+        @test isolation_time(isolated) == Inf
+        @test isolation_release_time(isolated) == Inf
+    end
+
+    @testset "Revising a zero-length isolation to qualify records a stretch" begin
+        # A zero-length `_set_isolated!` call leaves no `removal_stretches`
+        # entry, but must still leave something for a later `revise_removal!`
+        # to find: lengthening it past its own start should block transmission
+        # over the new window, not just move the isolation span.
+        ind = Individual(id = 1)
+        handle = EpiBranch._set_isolated!(ind, 5.0; release_time = 5.0)
+        EpiBranch.revise_removal!(ind, handle; release = 10.0)
+        @test isolation_release_time(ind) == 10.0
+        @test EpiBranch.removal_stretches(ind) == [(5.0, 10.0)]
+    end
+
+    @testset "record_removal! widens the entry store for a later dual release" begin
+        # A plain first call followed by one with an AD dual release must not
+        # throw trying to fit the dual into a vector already committed to
+        # `Float64` entries.
+        ind = Individual(id = 1)
+        EpiBranch.record_removal!(ind, 1.0, 2.0)
+        dual_release = ForwardDiff.Dual(20.0, 1.0)
+        handle = EpiBranch.record_removal!(ind, 5.0, dual_release)
+        @test EpiBranch.removal_stretches(ind) == [(1.0, 2.0), (5.0, dual_release)]
+        EpiBranch.revise_removal!(ind, handle; release = ForwardDiff.Dual(25.0, 1.0))
+        @test last(EpiBranch.removal_stretches(ind))[2] == ForwardDiff.Dual(25.0, 1.0)
+    end
+
+    @testset "revise_removal! widens an entry to a dual release" begin
+        # The entry itself started out `Float64`; revising it to a dual
+        # release must widen it rather than narrowing the dual back down.
+        ind = Individual(id = 1)
+        handle = EpiBranch.record_removal!(ind, 5.0, 10.0)
+        EpiBranch.revise_removal!(ind, handle; release = ForwardDiff.Dual(20.0, 1.0))
+        @test only(EpiBranch.removal_stretches(ind)) == (5.0, ForwardDiff.Dual(20.0, 1.0))
+
+        # Read `:_removal_entries` directly, since `isolation_release_time`
+        # narrows every entry back to the individual's own element type no
+        # matter how wide the stored entry is.
+        isolated = Individual(id = 2)
+        iso_handle = EpiBranch._set_isolated!(isolated, 5.0; release_time = 10.0)
+        EpiBranch.revise_removal!(isolated, iso_handle; release = ForwardDiff.Dual(20.0, 1.0))
+        span_entry = only(isolated.state[:_removal_entries])
+        @test span_entry[4] == ForwardDiff.Dual(20.0, 1.0)
     end
 
     @testset "A released quarantine does not block a later, unrelated infection" begin
@@ -1107,8 +1169,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             ind.state[:onset_time] = 1.0
             ind.state[:test_positive] = true
             ind.state[:outcome_time] = 2.0
-            set_isolated!(ind, 6.0; release_time = 9.0)
-            standing_unrecorded && (ind.state[:_isolation_unrecorded] = true)
+            set_isolated!(ind, 6.0; release_time = 9.0, unrecorded = standing_unrecorded)
             EpiBranch.resolve_individual!(iso, ind, state)
             @test isolation_time(ind) ≈ 3.0 atol = 1.0e-6
             EpiBranch.reset!(iso, ind)
@@ -1120,8 +1181,6 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         @test isolation_release_time(unrecorded) == 9.0
         @test EpiBranch._isolation_in_force(unrecorded)
         @test !is_isolated(unrecorded)
-        @test !haskey(unrecorded.state, :_isolation_unrecorded_before_isolation)
-        @test !haskey(unrecorded.state, :_isolation_release_time_before_isolation)
 
         recorded = revised_and_reset(false)
         @test isolation_time(recorded) == 6.0

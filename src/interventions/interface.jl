@@ -349,19 +349,6 @@ Base.@propagate_inbounds function Base.getindex(r::_StretchRisks, i::Int)
     return Risk(event_time = a, block_probability = r.block_probability, release_time = b)
 end
 
-# The start and release holding two removals at once. Where they overlap or
-# touch, the smallest interval covering both is their union and loses nothing,
-# and keeping one side's release alone would drop a removal still in force.
-# Where they are disjoint, one pair cannot hold both: the later removal is kept,
-# the earlier one being spent before the other begins.
-function _combine_removal(standing_start, standing_release, new_start, new_release)
-    if new_start <= standing_release && standing_start <= new_release
-        return (min(new_start, standing_start), max(new_release, standing_release))
-    end
-    return standing_start < new_start ? (new_start, new_release) :
-        (standing_start, standing_release)
-end
-
 """
     analytic_offspring_effect(intervention, offspring) -> offspring
     analytic_offspring_effect(intervention, offspring, spec) -> offspring
