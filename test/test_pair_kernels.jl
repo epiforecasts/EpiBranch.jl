@@ -138,6 +138,16 @@ end
         pairwise_surv_loglik(kernel, data, layout)
     @test EpiBranch.pair_kernel(PairKernel(c -> (profile = Exponential(2.0),)), 1, 2, 0.0) ==
         Exponential(2.0)
+
+    # An opening for which `opening + (break - opening) < break` must still
+    # reach the break rather than repeating the same segment forever.
+    b, o = 55.123, 21.26132005631202
+    @test o + (b - o) < b
+    loop_risk = EpiBranch.pair_kernel(
+        PairKernel(ctx -> Exponential(100.0); calendar = Steps([b], [1.0, 0.5])),
+        1, 2, 0.0, o
+    )
+    @test invlogccdf(loop_risk, -1.0) ≈ (b - o) + (100 - (b - o)) / 0.5
 end
 
 include("testutils/pair_kernels.jl")
