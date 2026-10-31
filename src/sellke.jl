@@ -1123,12 +1123,12 @@ function _sellke_race!(
     # contact has nothing to fall back on and needs no lists.
     checks = may_block || any(((_, rt),) -> _route_may_block(rt), rts)
     # `head`/`represents`/`proposals` below are sized, on the call that cut
-    # the race off, to the `may_block` that call's `interventions`/`risks`
-    # gave; a resumed race reuses them unconditionally, so a continuation
-    # call whose own `interventions`/`risks` recompute `may_block`
-    # differently would index buffers sized for the old value instead of
-    # resizing them. Refuse that up front rather than let it run into a
-    # `BoundsError` partway through the race.
+    # the race off, to the `may_block` value that call's `interventions`/
+    # `risks` gave. A resumed race reuses them unconditionally: a
+    # continuation call whose own `interventions`/`risks` recompute
+    # `may_block` differently would index buffers sized for the old value
+    # instead of resizing them. Refuse that up front rather than let it run
+    # into a `BoundsError` partway through the race.
     resume !== nothing && resume.may_block != may_block && throw(
         ArgumentError(
             "a continuation call's `interventions`/`risks` must leave " *

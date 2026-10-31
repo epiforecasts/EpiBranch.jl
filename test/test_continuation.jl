@@ -118,9 +118,9 @@ end
     @testset "a continuation that changes may_block is refused" begin
         # The first call has no intervention that can block a proposal; the
         # second adds a leaky `Isolation`, which defines `competing_risk` and
-        # so turns on the blocking that sizes the race's buffers. Resuming
-        # with it must be refused rather than index buffers sized for the
-        # first call.
+        # turns on the blocking that sizes the race's buffers. Resuming with
+        # it must be refused rather than index buffers sized for the first
+        # call.
         model = ModelSpec(
             HomogeneousProcess(transmission_rate = 0.4, population_size = 2000);
             progression = [Transition(:recovered; rate = 0.2, terminal = true)]
