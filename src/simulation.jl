@@ -406,8 +406,9 @@ _has_contacts(counts::Vector{Int}) = any(>(0), counts)
 # `offspring_route.jl` pass it here in place of a kernel without
 # `_draw_contact!` branching on where the offset came from. It is kept
 # distinct from a bare `Real` because a kernel that mistakenly returns a
-# number (one must return a `Distribution`) should still raise a
-# `MethodError` instead of being silently treated as a fixed offset.
+# number (one must return something `rand` draws from, such as a
+# `Distribution` or a `HazardKernel`) should still raise a `MethodError`
+# instead of being silently treated as a fixed offset.
 struct _FixedOffset{T <: Real}
     offset::T
 end
@@ -417,9 +418,7 @@ end
 # an `OffspringTimes` already gave.
 _window_infection_time(::NoGenerationTime, from_t::Real, state) = from_t
 _window_infection_time(offset::_FixedOffset, from_t::Real, state) = from_t + offset.offset
-function _window_infection_time(kernel::Distribution, from_t::Real, state)
-    return from_t + rand(state.rng, kernel)
-end
+_window_infection_time(kernel, from_t::Real, state) = from_t + rand(state.rng, kernel)
 
 # Tag a contact with its window's `until` states so `WindowCensor` can
 # block it after the infector is removed. Skipped for windows with no
@@ -534,6 +533,7 @@ end
 _time_type(::TransmissionModel) = Float64
 _kernel_time_type(::NoGenerationTime) = Float64
 _kernel_time_type(k::Distribution) = float(Distributions.partype(k))
+_kernel_time_type(k::HazardKernel) = float(Distributions.partype(k))
 _kernel_time_type(::Any) = Float64
 function _time_type(m::BranchingProcess)
     return mapreduce(

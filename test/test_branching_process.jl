@@ -94,6 +94,16 @@
         end
     end
 
+    @testset "transmission_time accepts a HazardKernel, as get_generation_time does" begin
+        parent = Individual(id = 1, infection_time = 2.0)
+        state = (; rng = StableRNG(1))
+        k = HazardKernel(t -> 0.4)
+        t = EpiBranch.transmission_time(
+            EpiBranch.get_generation_time(k, parent), parent, state
+        )
+        @test t > parent.infection_time
+    end
+
     @testset "Generation time function not called for a case with no contacts" begin
         # Only the index case makes a contact; a generation_time function
         # that fails for any other case must still simulate fine.

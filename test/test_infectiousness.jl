@@ -193,6 +193,133 @@ EpiBranch.has_effect(::_SeenRoutes) = true
     end
 end
 
+@testset "HazardKernel" begin
+    @testset "a constant hazard matches the corresponding exponential" begin
+        rate = 0.4
+        k = HazardKernel(t -> rate)
+        e = Exponential(1 / rate)
+        for tau in (0.1, 1.0, 5.0)
+            @test EpiBranch.cumhazard(k, tau) ≈ EpiBranch.cumhazard(e, tau)
+        end
+        draws = [rand(StableRNG(seed), k) for seed in 1:2000]
+        @test isapprox(sum(draws) / length(draws), mean(e); rtol = 0.1)
+    end
+
+    @testset "a hazard built from a named distribution reproduces its cumulative hazard" begin
+        w = Weibull(1.5, 3.0)
+        k = HazardKernel(t -> EpiBranch.hazard(w, t))
+        for tau in (0.1, 1.0, 3.0, 8.0)
+            @test EpiBranch.cumhazard(k, tau) ≈ EpiBranch.cumhazard(w, tau) rtol = 1.0e-6
+        end
+    end
+
+    @testset "upper caps the support" begin
+        k = HazardKernel(t -> 2.0; upper = 1.0)
+        @test maximum(k) == 1.0
+        @test minimum(k) == 0.0
+        draws = [rand(StableRNG(seed), k) for seed in 1:500]
+        @test all(d -> d <= 1.0, draws)
+        @test any(==(1.0), draws)   # some draws exhaust the hazard before `upper`
+        @test invlogccdf(k, -Inf) == maximum(k)
+        @test_throws ArgumentError invlogccdf(k, Inf)
+        @test_throws ArgumentError invlogccdf(k, NaN)
+    end
+
+    @testset "rejects a non-positive upper" begin
+        @test_throws ArgumentError HazardKernel(t -> 1.0; upper = 0.0)
+    end
+
+    @testset "cdf and logcdf match the corresponding exponential" begin
+        rate = 0.4
+        k = HazardKernel(t -> rate)
+        e = Exponential(1 / rate)
+        for tau in (0.1, 1.0, 5.0)
+            @test cdf(k, tau) ≈ cdf(e, tau)
+            @test logcdf(k, tau) ≈ logcdf(e, tau)
+        end
+    end
+
+    @testset "works as a bare contact_interval, not just a per-case kernel" begin
+        # Both implied_R and the `offspring` form of transmission_timing call
+        # `cdf`/`truncated` on `contact_interval` directly.
+        rate = 0.4
+        k = HazardKernel(t -> rate)
+        e = Exponential(1 / rate)
+        offspring = NegBin(3.0, 0.5)
+        infectious_period = Gamma(5.0, 2.0)
+        @test implied_R(offspring, k, infectious_period) ≈
+            implied_R(offspring, e, infectious_period)
+
+        timing = transmission_timing(
+            k; offspring, latent_period = LogNormal(1.0, 0.3), infectious_period
+        )
+        model = ModelSpec(BranchingProcess(timing.window); progression = timing.progression)
+        s = simulate(model; n_initial = 200, max_generations = 1, rng = StableRNG(4))
+        kids = filter(i -> i.parent_id != 0 && is_infected(i), s.individuals)
+        @test length(kids) > 0
+    end
+
+    @testset "a bare kernel (not a per-case function) still drives a simulation" begin
+        # The `contacts` form leaves `contact_interval` as the window's own
+        # kernel, rather than closing over it per case. This is the only
+        # path that exercises a `HazardKernel` sitting there directly.
+        k = HazardKernel(t -> 0.4)
+        timing = transmission_timing(k; contacts = NegBin(3.0, 0.5))
+        model = ModelSpec(BranchingProcess(timing.window))
+        s = simulate(model; n_initial = 200, max_generations = 1, rng = StableRNG(1))
+        kids = filter(i -> i.parent_id != 0 && is_infected(i), s.individuals)
+        @test length(kids) > 0
+    end
+
+    @testset "truncation to a short infectious period still draws a contact time" begin
+        # `truncated` picks `quantile` over `invlogccdf` once the truncation
+        # probability isn't tiny; a short infectious period relative to the
+        # kernel's rate forces that here.
+        k = HazardKernel(t -> 2.0)
+        timing = transmission_timing(
+            k;
+            offspring = NegBin(3.0, 0.5),
+            latent_period = LogNormal(1.0, 0.3),
+            infectious_period = Gamma(2.0, 0.3)
+        )
+        model = ModelSpec(BranchingProcess(timing.window); progression = timing.progression)
+        s = simulate(model; n_initial = 200, max_generations = 1, rng = StableRNG(1))
+        kids = filter(i -> i.parent_id != 0 && is_infected(i), s.individuals)
+        @test length(kids) > 0
+    end
+
+    @testset "a late onset still inverts to a finite quantile" begin
+        # A window that hasn't yet reached the switch-on looks just like a
+        # hazard that has permanently converged: both add nothing to the
+        # integral over several doublings in a row. Push the onset far
+        # enough out that this happens before the window reaches it.
+        switch_on = 15.0
+        k = HazardKernel(t -> t < switch_on ? 0.0 : 2.0)
+        m = quantile(k, 0.5)
+        @test isfinite(m)
+        @test m ≈ switch_on + quantile(Exponential(0.5), 0.5)
+    end
+
+    @testset "a per-case trajectory times contacts through a hazard built from it" begin
+        # Each case's own switch-on time, drawn as an ordinary attribute, gates
+        # when its hazard turns on: the window's own kernel reads it back off
+        # the individual, so no contact can be timed before it.
+        attributes = (rng, ind) -> ind.state[:switch_on] = rand(rng, Uniform(1.0, 6.0))
+        kernel = ind -> HazardKernel(t -> t < ind.state[:switch_on] ? 0.0 : 2.0)
+        m = ModelSpec(
+            BranchingProcess(Infectiousness(NegBin(3.0, 0.5); kernel));
+            attributes
+        )
+        s = simulate(m; n_initial = 50, max_generations = 1, rng = StableRNG(1))
+        kids = filter(i -> i.parent_id != 0 && is_infected(i), s.individuals)
+        @test length(kids) > 0
+        @test all(kids) do k
+            parent = s.individuals[k.parent_id]
+            k.infection_time - parent.infection_time >= parent.state[:switch_on]
+        end
+    end
+end
+
 @testset "transmission_timing" begin
     @testset "a plain generation time matches BranchingProcess(offspring, gt)" begin
         gt = LogNormal(1.6, 0.5)

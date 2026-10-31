@@ -503,6 +503,7 @@ RoutedNetworkInfections
 NegBin
 scale_distribution
 incubation_linked_generation_time
+HazardKernel
 Conditional
 EpiBranch.resolve
 ```

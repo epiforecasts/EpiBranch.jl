@@ -123,6 +123,150 @@ function Distributions.logpdf(d::_TruncatedSkewNormal, x::Real)
 end
 
 """
+    HazardKernel(hazard; upper = Inf)
+
+A contact-interval distribution built directly from an instantaneous hazard
+rather than from a named family: `hazard(t)` is the rate of transmission at
+time `t` since the window opened, for `t` from 0 up to `upper` (unbounded by
+default). Use it as the `kernel` of an [`Infectiousness`](@ref) window, built
+fresh for each case from a function of the individual, `kernel = ind -> ...`,
+when transmission should follow something computed on the fly rather than a
+named distribution: most usefully a per-case within-host trajectory, drawn
+once at infection and stored on the individual, read through a link that
+turns it into a rate.
+
+`hazard` is called many times to integrate and invert the cumulative hazard
+by quadrature, so it should be cheap and non-negative throughout `(0, upper)`.
+One that falls to zero and stays there leaves a case uninfectious from then
+on: draws pile up at `upper`, or run to arbitrarily late times when `upper`
+is left unbounded, exactly as `Weibull`'s or `Gamma`'s own tails do.
+
+# Examples
+
+A constant hazard gives the same contact-interval law as an exponential with
+the reciprocal rate:
+
+```julia
+using EpiBranch, Distributions
+HazardKernel(t -> 0.5)   # the same law as Exponential(2.0)
+```
+
+A case's infectiousness follows a within-host pathogen-load trajectory,
+drawn once per case (an ordinary attribute, see [`ModelSpec`](@ref)) and read
+through a link turning load into a transmission rate:
+
+```julia
+# user-supplied within-host model: load rises to a peak, then clears
+function load_curve(rng)
+    peak_time = rand(rng, Gamma(3.0, 1.5))
+    peak_height = rand(rng, LogNormal(0.0, 0.3))
+    clearance = rand(rng, Gamma(4.0, 0.5))
+    return t -> t < peak_time ? peak_height * t / peak_time :
+        peak_height * exp(-clearance * (t - peak_time))
+end
+
+attributes = (rng, ind) -> ind.state[:trajectory] = load_curve(rng)
+community = Infectiousness(
+    NegBin(1.2, 0.5);
+    kernel = ind -> HazardKernel(t -> 0.1 * ind.state[:trajectory](t))
+)
+model = ModelSpec(BranchingProcess(community); attributes)
+```
+
+Generation time, incubation period and serial interval are then whatever the
+trajectory and its links to each clinical event imply, instead of separate
+inputs drawn independently of one another.
+"""
+struct HazardKernel{F, T <: AbstractFloat}
+    hazard::F
+    upper::T
+end
+function HazardKernel(hazard; upper::Real = Inf)
+    upper > 0 || throw(ArgumentError("upper must be positive, got $upper"))
+    return HazardKernel(hazard, float(upper))
+end
+
+SurvivalDistributions.hazard(k::HazardKernel, t::Real) = k.hazard(t)
+SurvivalDistributions.loghazard(k::HazardKernel, t::Real) = log(k.hazard(t))
+function SurvivalDistributions.cumhazard(k::HazardKernel, τ::Real)
+    τ >= 0 || throw(ArgumentError("τ must be non-negative, got $τ"))
+    iszero(τ) && return zero(float(τ))
+    return _hazard_integral(k.hazard, 0.0, min(float(τ), k.upper))
+end
+
+function Distributions.logccdf(k::HazardKernel, τ::Real)
+    τ < 0 && return zero(float(τ))
+    τ >= k.upper && return oftype(float(τ), -Inf)
+    return -cumhazard(k, τ)
+end
+
+function Distributions.invlogccdf(k::HazardKernel, lp::Real)
+    isinf(lp) && lp < 0 && return oftype(float(lp), k.upper)
+    lp <= 0 || throw(ArgumentError("invlogccdf needs a non-positive log-survival, got $lp"))
+    target = -lp
+    iszero(target) && return 0.0
+    return _hazard_invert(k, float(target))
+end
+
+# Define `cdf`/`logcdf` so a `HazardKernel` passed as a bare `contact_interval`
+# (rather than built per case through `kernel`) works wherever `implied_R` and
+# `transmission_timing`'s `offspring` form call `cdf`/`truncated` on it
+# directly, the same as a named distribution.
+Distributions.cdf(k::HazardKernel, τ::Real) = -expm1(logccdf(k, τ))
+Distributions.logcdf(k::HazardKernel, τ::Real) = _log1mexp(logccdf(k, τ))
+
+Base.rand(rng::AbstractRNG, k::HazardKernel) = invlogccdf(k, log(rand(rng)))
+Distributions.quantile(k::HazardKernel, p::Real) = invlogccdf(k, log1p(-p))
+Base.minimum(::HazardKernel) = 0.0
+Base.maximum(k::HazardKernel) = k.upper
+Distributions.partype(::HazardKernel{F, T}) where {F, T} = T
+
+# `k.upper` caps the bracket `_invert_hazard` grows, so a `target` beyond the
+# total hazard there is met by returning `upper` rather than doubling forever.
+# Because `upper` is a cap here, not a certain event, it is not treated as the
+# survival's own end the way a calendar-scaled profile's own bounded support
+# does.
+function _hazard_invert(k::HazardKernel, target::Real)
+    t, t_acc = _invert_hazard(k.hazard, k.upper, false, true, target)
+    return t < k.upper ? _implicit_hazard_step(k.hazard, t, t_acc, target) : t
+end
+
+"""
+A [`HazardKernel`](@ref) conditioned on falling at or before `hi`: what
+`transmission_timing`'s `offspring` form needs so every draw is realised
+rather than thinned away by the case's own recovery. The lower bound is
+always 0, since a `HazardKernel`'s own support already starts there.
+
+This is `Distributions.truncated`'s usual meaning, a rescaled conditional
+distribution, not `HazardKernel`'s own censoring at `upper` (which piles
+draws up there instead of excluding them).
+"""
+struct _TruncatedHazardKernel{K, T <: AbstractFloat}
+    kernel::K
+    hi::T
+    logF_hi::T
+end
+function Distributions.truncated(k::HazardKernel, lo::Real, hi::Real)
+    iszero(lo) || throw(
+        ArgumentError("truncated(::HazardKernel, lo, hi) needs lo = 0")
+    )
+    hi = float(hi)
+    return _TruncatedHazardKernel(k, hi, logcdf(k, hi))
+end
+
+function Distributions.logcdf(k::_TruncatedHazardKernel, τ::Real)
+    return τ >= k.hi ? zero(k.logF_hi) : logcdf(k.kernel, τ) - k.logF_hi
+end
+Distributions.cdf(k::_TruncatedHazardKernel, τ::Real) = exp(logcdf(k, τ))
+Distributions.logccdf(k::_TruncatedHazardKernel, τ::Real) = _log1mexp(logcdf(k, τ))
+function Distributions.quantile(k::_TruncatedHazardKernel, p::Real)
+    return quantile(k.kernel, exp(k.logF_hi + log(p)))
+end
+Base.rand(rng::AbstractRNG, k::_TruncatedHazardKernel) = quantile(k, rand(rng))
+Base.minimum(::_TruncatedHazardKernel) = 0.0
+Base.maximum(k::_TruncatedHazardKernel) = k.hi
+
+"""
     Conditional(dist)
 
 A parameter with a distribution that depends on the case: wherever a delay or a
@@ -135,7 +279,7 @@ Unlike a plain `(rng, args...) -> value` function, the distribution behind a
 `Conditional` can be read back through [`resolve`](@ref EpiBranch.resolve)
 without sampling it. That lets a likelihood over timing data, such as a
 serial interval, use the case's delay distribution directly instead of only
-ever drawing from it.
+drawing from it.
 
 # Examples
 ```julia
@@ -153,7 +297,7 @@ Turn a parameter given as a number, a `Distribution` or a [`Conditional`](@ref)
 into the `Distribution` it stands for: `Dirac(x)` for a number, the
 distribution unchanged, or `c.dist(args...)` for a `Conditional` `c`. A plain
 `(rng, args...) -> value` function resolves to an adapter that samples by
-calling the function; it has no density, so it only ever supports
+calling the function; it has no density, so it only supports
 drawing a value, not reading one back.
 
 [`sample_value`](@ref) draws from the result, as every built-in

@@ -263,18 +263,18 @@ end
 # `_admit_actions!`'s own record of who has already drawn on each capacity
 # key's resources, kept in `state.scratch` so it survives from one call to
 # the next. Keyed on `capacity_key(cc.intervention)` rather than on `cc`
-# itself, so that two different `CapacityConstrained` wrappers sharing a dose
-# label (per the docstring above) see each other's admissions through the
+# itself: two different `CapacityConstrained` wrappers sharing a dose label
+# (per the docstring above) then see each other's admissions through the
 # same cache instead of each keeping its own, unaware copy. Seeded once by a
 # population scan like `_dose_times_by_key`'s own, then grown one person at a
-# time as each dose is admitted, so a run with many settled cases no longer
-# rescans everyone on every one of them; `scanned` is how far along
-# `state.individuals` that scan has reached, so that someone created since,
-# already carrying the flag from an attribute builder, is picked up by
-# scanning only the people appended since. `recorded` remembers which resource
-# and date each person's own use was filed under, so a dose later withdrawn
-# outside this cache's own admission path (`on_infection_settled!` undoing one
-# that missed its eligibility window, say) can be taken back out again.
+# time as each dose is admitted; a run with many settled cases no longer
+# rescans everyone on every one of them. `scanned` is how far along
+# `state.individuals` that scan has reached: someone created since, already
+# holding the flag from an attribute builder, is then picked up by scanning
+# only the people appended since. `recorded` remembers which resource and
+# date each person's own use was filed under; a dose later withdrawn outside
+# this cache's own admission path (`on_infection_settled!` undoing one that
+# missed its eligibility window, say) can then be taken back out again.
 # A dose under the key is also recorded by paths that never pass through a
 # wrapper's admission at all, an unwrapped vaccination sharing the dose
 # label or a direct `record_dose!` call, which the docstring above promises
