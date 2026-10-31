@@ -1,3 +1,7 @@
+using Distributions
+using Statistics
+using StableRNGs
+
 # A tiny observation model that only counts how often it ran, to check that
 # a continued run never applies it (see "no observation on continuation"
 # below).
@@ -102,6 +106,36 @@ end
         @test state.extinct
         continued = simulate(model, state; max_time = 100.0)
         @test continued === state
+    end
+
+    @testset "a stop by a stopping rule or max_generation is not continued" begin
+        # `MaxCases` settles its triggering case before it fires, so the
+        # leftover queue still has further events pending; popping them would
+        # let more cases through the cap. Resuming such a state must leave it
+        # alone, not pop its queue further.
+        model = ModelSpec(
+            HomogeneousProcess(transmission_rate = 2.0, population_size = 500);
+            progression = [Transition(:recovered; from = :infection, delay = 1.0, terminal = true)]
+        )
+        capped_cases = simulate(
+            model; n_initial = 3,
+            stopping_rules = [Extinction(), MaxCases(5)], rng = StableRNG(4)
+        )
+        @test capped_cases.cumulative_cases == 5
+        @test !is_extinct(capped_cases)
+        continued_cases = simulate(model, capped_cases; max_time = 1000.0)
+        @test continued_cases === capped_cases
+        @test continued_cases.cumulative_cases == 5
+
+        capped_generations = simulate(
+            model; n_initial = 3,
+            stopping_rules = [Extinction(), MaxGenerations(3)], rng = StableRNG(4)
+        )
+        @test !is_extinct(capped_generations)
+        before = capped_generations.cumulative_cases
+        continued_generations = simulate(model, capped_generations; max_time = 1000.0)
+        @test continued_generations === capped_generations
+        @test continued_generations.cumulative_cases == before
     end
 
     @testset "max_time must move past the state's own" begin

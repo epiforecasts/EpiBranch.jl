@@ -174,7 +174,7 @@ end
 # `observation`, which do not reach the race again) supplied explicitly.
 function _continue_sellke!(state::SimulationState, rng, max_time, ivs, risks, recorder_)
     continuation = state.continuation
-    continuation === nothing && return state
+    (continuation === nothing || !continuation.cut_by_max_time) && return state
     max_time > continuation.max_time || throw(
         ArgumentError(
             "max_time ($max_time) must be past the state's own " *

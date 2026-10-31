@@ -1252,7 +1252,7 @@ function _sellke_race!(
         # method) pops the very same event first rather than losing it.
         if bt > max_time
             _enqueue!(queue, event)
-            return _finish_race!(rts, race, false, max_time, capped_generation)
+            return _finish_race!(rts, race, false, max_time, capped_generation, true)
         end
         # A deferred action's own event: no member settles from it, so it
         # skips the pop bookkeeping below, which is about resolving a case.
@@ -1458,7 +1458,8 @@ function _sellke_race!(
         # is what a rule not already captured by `max_time`/`max_generation`
         # reads; ending here rather than after this case transmits matches
         # `MaxCases` stopping at the first `n` infections in time.
-        _any_stop(stopping_rules, state) && return _finish_race!(rts, race, false, bt, capped_generation)
+        _any_stop(stopping_rules, state) &&
+            return _finish_race!(rts, race, false, bt, capped_generation, false)
         # A route that creates its contacts as it goes creates this case's now,
         # so that tracing and the interventions' actions can reach them.
         # Unrolled over `rts` rather than looped over (see `_mint_all!`), for
@@ -1556,17 +1557,22 @@ function _sellke_race!(
         rts, race,
         !capped_generation &&
             !any(((_, route_targets),) -> _pending_beyond(route_targets, race), rts),
-        race.max_time, capped_generation
+        race.max_time, capped_generation, !capped_generation
     )
 end
 
 # Let each route tidy up what the race left undecided when it ended at
-# `stop_t`, then report whether the race reached extinction. A race that
-# did not — cut off by `max_time`, a stopping rule, or `max_generation` —
-# leaves its leftover queue on `state`, as a [`_RaceContinuation`](@ref), for
+# `stop_t`, then report whether the race reached extinction. A race that did
+# not — cut off by `max_time`, a stopping rule, or `max_generation` — leaves
+# its leftover queue on `state`, as a [`_RaceContinuation`](@ref), for
 # [`simulate`](@ref)'s continuation method to resume; one that did clears it
-# and returns the buffers to the pool as before.
-function _finish_race!(rts, race, extinct, stop_t, capped_generation)
+# and returns the buffers to the pool as before. `cut_by_max_time` tells that
+# continuation method whether resuming is sound at all: only a race cut off
+# by `max_time` (or, short of that, mass action still owed a redraw past it)
+# leaves a leftover queue safe to pop further — a stopping rule or
+# `max_generation` has already let through everything up to its own cap, and
+# popping on would let through more.
+function _finish_race!(rts, race, extinct, stop_t, capped_generation, cut_by_max_time)
     for (_, route_targets) in rts
         _finish!(route_targets, race, stop_t, extinct)
     end
@@ -1582,7 +1588,7 @@ function _finish_race!(rts, race, extinct, stop_t, capped_generation)
             rts, race.members, race.contacts, race.introduction, race.watches,
             race.projections, race.max_generation, race.stopping_rules,
             capped_generation, convert(_timetype(race.state), stop_t), race.buffers,
-            race.may_block
+            race.may_block, cut_by_max_time
         )
     end
     return extinct
@@ -1634,7 +1640,11 @@ cut group pairs), the members it raced over, its `contacts`/`introduction`/
 itself, and the buffers its queue and every other pending proposal live in.
 `may_block` is kept too, since it sized those buffers: a continuation call
 whose `interventions`/`risks` would recompute it differently is refused
-rather than indexing buffers sized for the old value.
+rather than indexing buffers sized for the old value. `cut_by_max_time` is
+`false` when a stopping rule or `max_generation` ended the race rather than
+`max_time`: everything up to that cap has already been let through, so
+[`simulate`](@ref)'s continuation method leaves such a race alone rather
+than popping its leftover queue further.
 """
 struct _RaceContinuation{T <: Real, RT, M, C, I, W, J, SR} <: AbstractRaceContinuation
     rts::RT
@@ -1649,6 +1659,7 @@ struct _RaceContinuation{T <: Real, RT, M, C, I, W, J, SR} <: AbstractRaceContin
     max_time::T
     buffers::_RaceBuffers{T}
     may_block::Bool
+    cut_by_max_time::Bool
 end
 
 # One of this task's spare objects of type `B`, or a new one. Each race takes
