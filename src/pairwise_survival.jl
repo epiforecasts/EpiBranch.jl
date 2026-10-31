@@ -1273,6 +1273,11 @@ _ext_prepare(v::AbstractVector) = map(s -> _ext_survival_of(s, 0), v)
 _ext_prepare(f::Function) = f
 _ext_prepare(source) = _calendar_external_survival(source)
 
+# `pairwise_surv_loglik` is the only caller that has an `InfectionLayer` to
+# offer, for a source such as `MassActionHazard` that is read off its infection
+# record rather than drawn independently of it; every other source ignores it.
+_ext_prepare(source, data) = _ext_prepare(source)
+
 # The parameter type of the community hazard over the `n` people, so that AD
 # values in a fitted rate survive the reduction.
 _ext_partype(d::ContinuousUnivariateDistribution, n) = Distributions.partype(d)
@@ -1297,6 +1302,208 @@ function _ext_draw(rng::AbstractRNG, source, j::Integer, susceptibility)
     d === nothing && return oftype(float(susceptibility), Inf)
     return _traits_scaled_draw(rng, d, susceptibility)
 end
+
+# ── Mass action as an external hazard ────────────────────────────────
+#
+# Mass action gives every susceptible the same hazard, the force of infection
+# β·I(t)/N, with I(t) the number of people the infection layer records as
+# infectious at calendar time t. That count comes straight from the layer's own
+# (known or augmented) infectious and removal times, so there is no ODE and no
+# mean-field approximation: it is the same exact count the pairwise sources
+# already read those times for. The count changes only where someone's window
+# opens or closes, so it is a piecewise-constant calendar hazard, built once per
+# evaluation and read through the same seam as a `Steps` schedule.
+
+"""
+    MassActionHazard(; transmission_rate, population_size)
+
+A density-dependent hazard for [`pairwise_surv_loglik`](@ref)'s
+`external_hazard`: the mass-action force of infection, `transmission_rate *
+I(t) / population_size`, where `I(t)` is the number of people the data's
+[`InfectionLayer`](@ref) records as infectious at calendar time `t`. It is
+read exactly off the layer's own `infectious_time` and `removal_time`, known or
+augmented, with no ODE and no further approximation.
+
+Pass it alone, for an outbreak with no structure beyond its size, or beside a
+household or network contact structure, for mass action from the wider
+community on top of exposure within it; `population_size` need not match the
+number of people the data covers; it is the size of the mixing population mass
+action spreads through, which a traced household or network may be a part of.
+A person is never counted as their own source of hazard: their own
+infectiousness is left out of `I(t)` while they are still susceptible, exactly
+as a possible infector in a contact structure is never themselves.
+
+`transmission_rate` may be an automatic-differentiation value, as for
+[`HomogeneousProcess`](@ref)'s field of the same name, so the likelihood stays
+differentiable in it. Interventions enter as for any other source: one that
+only starts or ends infectious windows is already reflected in `I(t)`, and one
+that changes a person's own susceptibility, such as vaccination, reaches it
+through [`susceptibility_components`](@ref EpiBranch.susceptibility_components)
+like every other hazard they face.
+
+This is a likelihood-only hazard: unlike a constant rate or a `Steps` schedule,
+it cannot be passed as a process's own `external_hazard` to simulate from,
+because it is read off an outbreak that already exists.
+
+# Example
+
+Mass action from a community of 800 on top of exposure within traced
+households of 4:
+
+```julia
+using EpiBranch, EpiHouseholds, Distributions, StableRNGs
+truth = ModelSpec(
+    HouseholdProcess(fill(4, 200), Exponential(4.0));
+    progression = [Transition(:recovered; from = :infection, delay = 6.0, terminal = true)]
+)
+data = household_infections(simulate(truth; rng = StableRNG(3)), truth)
+mass_action = MassActionHazard(; transmission_rate = 0.05, population_size = 800)
+pairwise_surv_loglik(Exponential(4.0), data; external_hazard = mass_action)
+```
+"""
+struct MassActionHazard{T <: Real}
+    transmission_rate::T
+    population_size::Int
+end
+
+function MassActionHazard(; transmission_rate, population_size::Integer)
+    population_size >= 1 || throw(ArgumentError("population_size must be ≥ 1"))
+    (isfinite(transmission_rate) && transmission_rate >= 0) || throw(
+        ArgumentError("transmission_rate must be a finite, non-negative number (β ≥ 0)")
+    )
+    return MassActionHazard(float(transmission_rate), Int(population_size))
+end
+
+_valid_external(::MassActionHazard) = true
+_ext_active(m::MassActionHazard) = m.transmission_rate > 0
+
+# A process's own `external_hazard` prepares without an outbreak to read, so a
+# `MassActionHazard` given there (rather than to `pairwise_surv_loglik`) is
+# caught here, before simulation reaches for a schedule it cannot build.
+function _ext_prepare(::MassActionHazard)
+    throw(
+        ArgumentError(
+            "MassActionHazard is read off an outbreak's own infection record and " *
+                "cannot be simulated from; pass it as the `external_hazard` of " *
+                "`pairwise_surv_loglik`, not of a process"
+        )
+    )
+end
+
+# The number infectious at calendar time t, population-wide, as a
+# piecewise-constant calendar schedule: `counts[1]` before `breaks[1]`,
+# `counts[k + 1]` from `breaks[k]` on, exactly as `Steps` lays out its values.
+# `calendar_multiplier` gives the hazard itself (β·I(t)/N) rather than a
+# multiplier on some other profile, as the community hazard's own calendar
+# schedules already do.
+struct _MassActionSchedule{Tt <: Real, Tv <: Real}
+    β::Tv
+    N::Int
+    breaks::Vector{Tt}
+    counts::Vector{Int}
+end
+
+function _mass_action_count(s::_MassActionSchedule, t::Real)
+    return s.counts[searchsortedlast(s.breaks, t) + 1]
+end
+
+calendar_multiplier(s::_MassActionSchedule, t::Real) = s.β * _mass_action_count(s, t) / s.N
+
+function next_calendar_break(s::_MassActionSchedule, t::Real)
+    idx = searchsortedlast(s.breaks, t) + 1
+    return idx <= length(s.breaks) ? s.breaks[idx] : oftype(float(t), Inf)
+end
+
+Distributions.partype(s::_MassActionSchedule{Tt, Tv}) where {Tt, Tv} = promote_type(Tt, Tv)
+
+# Every window opening or closing, population-wide, folded into the running
+# count between them. An open window with no recorded close (still infectious
+# at the end of the data) never closes the count back down.
+function _mass_action_schedule(m::MassActionHazard, data::InfectionLayer)
+    infectious_time = data.infectious_time
+    removal_time = data.removal_time
+    Tt = promote_type(eltype(infectious_time), eltype(removal_time), Float64)
+    events = Tuple{Tt, Int}[]
+    for i in eachindex(infectious_time)
+        isfinite(infectious_time[i]) || continue
+        push!(events, (Tt(infectious_time[i]), 1))
+        isfinite(removal_time[i]) && push!(events, (Tt(removal_time[i]), -1))
+    end
+    sort!(events; by = first)
+
+    breaks = Tt[]
+    counts = Int[0]
+    count = 0
+    k = 1
+    while k <= length(events)
+        t = events[k][1]
+        while k <= length(events) && events[k][1] == t
+            count += events[k][2]
+            k += 1
+        end
+        push!(breaks, t)
+        push!(counts, count)
+    end
+    Tv = promote_type(typeof(m.transmission_rate), Float64)
+    return _MassActionSchedule(Tv(m.transmission_rate), m.population_size, breaks, counts)
+end
+
+# What `_ext_prepare` hands every person's `_ext_survival_of`: the
+# population-wide schedule (shared, for the escape term) alongside the
+# per-person window `_ext_survival_of` reads off to leave each person's own
+# infectiousness out of their own event hazard.
+struct _MassActionPrepared{K, T <: Real}
+    shared::K
+    infectious_time::Vector{T}
+    removal_time::Vector{T}
+end
+
+function _ext_prepare(m::MassActionHazard, data::InfectionLayer)
+    return _MassActionPrepared(
+        _calendar_external_survival(_mass_action_schedule(m, data)),
+        data.infectious_time, data.removal_time
+    )
+end
+
+_ext_partype(p::_MassActionPrepared, n) = Distributions.partype(p.shared.calendar)
+
+# One person's own window carried alongside the shared schedule: the escape
+# term (`cumhazard`) reads the population-wide hazard unchanged, since a single
+# person's own window touches it at no more than the single instant their own
+# infectious period opens, which an integral does not see; the event term
+# (`loghazard`, `hazard`) leaves that person's own share out, so nobody is ever
+# counted as their own source of hazard.
+struct _MassActionHostKernel{K, T <: Real}
+    shared::K
+    opens::T
+    closes::T
+end
+
+_ext_survival_of(p::_MassActionPrepared, j) = _MassActionHostKernel(p.shared, p.infectious_time[j], p.removal_time[j])
+
+function SurvivalDistributions.cumhazard(k::_MassActionHostKernel, τ::Real)
+    return cumhazard(k.shared, τ)
+end
+
+function _mass_action_own_rate(k::_MassActionHostKernel, t::Real)
+    s = k.shared.calendar
+    rate = calendar_multiplier(s, t)
+    (k.opens <= t < k.closes) && (rate -= s.β / s.N)
+    return rate
+end
+
+function SurvivalDistributions.hazard(k::_MassActionHostKernel, t::Real)
+    rate = _mass_action_own_rate(k, t)
+    return max(rate, zero(rate))
+end
+
+function SurvivalDistributions.loghazard(k::_MassActionHostKernel, t::Real)
+    rate = _mass_action_own_rate(k, t)
+    rate > 0 || return oftype(float(rate), -Inf)
+    return log(rate)
+end
+
+Base.maximum(::_MassActionHostKernel) = Inf
 
 # ── Evaluation ───────────────────────────────────────────────────────
 
@@ -1409,7 +1616,7 @@ function _pairwise_setup(kernel, data, layout::ContactPairsLayout, external_haza
         )
     )
     external && _check_external(external_hazard, layout.nhosts)
-    extsrc = external ? _ext_prepare(external_hazard) : nothing
+    extsrc = external ? _ext_prepare(external_hazard, data) : nothing
 
     tfollow = followup_end(data)
     (!isnan(tfollow) && tfollow >= 0) || throw(
@@ -1467,7 +1674,12 @@ distribution or schedule` of person `j`'s number, for example to give each
 cluster of a trial its own calendar of community incidence. A function or a
 calendar schedule is taken to be in force, so the likelihood explains index
 cases as described next even if a function returns zero for everyone. Such
-infections happen only in the first `data.obs_end` days.
+infections happen only in the first `data.obs_end` days. A
+[`MassActionHazard`](@ref) gives the whole population a shared, density-dependent
+hazard instead, the mean-field force of infection from mass action read off
+`data`'s own infectious windows, for example to add mass action from the wider
+community to spread within a traced household or network, or on its own for a
+population with no further structure.
 With an external hazard, index cases are explained like any other case;
 without one, the likelihood conditions on them. Each person is exposed to the
 external hazard until the earlier of their infection and `data.obs_end`, so a

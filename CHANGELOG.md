@@ -14,6 +14,10 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
 
 ### Added
 
+- `MassActionHazard` is a density-dependent `external_hazard` for
+  `pairwise_surv_loglik`: the mass-action force of infection, read exactly off
+  an infection layer's own infectious and removal times, so it can be fitted
+  on its own or added to a household or network contact structure.
 - `pairwise_surv_loglik_by_component` splits the pairwise survival
   log-likelihood by connected component of the contact structure (households,
   under a household partition), reusing one compiled `ContactPairsLayout` so

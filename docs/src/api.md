@@ -467,6 +467,7 @@ PairwiseSurvivalData
 InfectionLayer
 compile_contact_pairs
 ContactPairsLayout
+MassActionHazard
 PairKernel
 EpiBranch.watched_records
 Steps
