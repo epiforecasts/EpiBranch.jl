@@ -5,8 +5,8 @@
 # `analytical/data_types.jl`) pairs one with a density to score it against
 # observed data; `loglikelihood(::SignalData, ...)` (in
 # `analytical/signal_likelihood.jl`) scores several together against the
-# same simulated path, since separate `~` statements would each simulate
-# their own outbreak.
+# same simulated path instead of letting separate `~` statements each
+# simulate their own outbreak.
 
 """
 Parent type of every signal: a read of a population quantity off a simulated

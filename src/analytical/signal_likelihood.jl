@@ -1,10 +1,9 @@
 # ── Scoring several signals against one simulated path ───────────────
-# A `SignalData`'s series have to be scored against the same simulated
-# path: separate `~` statements would each simulate their own outbreak, so
-# the model and the observation have to be evaluated together rather than
-# left to compose on their own. `loglikelihood(::SignalData,
-# ::SimulationState)` is the primitive this comes down to; the model methods
-# below simulate once and call it.
+# A `SignalData`'s series have to be scored against one simulated path
+# rather than left to compose on their own: separate `~` statements would
+# each simulate their own outbreak. `loglikelihood(::SignalData,
+# ::SimulationState)` does the actual scoring; the model methods below
+# simulate once and call it.
 
 """
     loglikelihood(data::SignalData, state::SimulationState)

@@ -378,8 +378,8 @@ A [`Signal`](@ref) reads a population quantity off a simulated
 [`SimulationState`](@ref) over a reporting step: [`TransitionCount`](@ref)
 (new cases per step) or [`Prevalence`](@ref) (cases currently in a state).
 [`SignalData`](@ref) pairs several of these, each with a measurement density
-of your own, and scores them all against the same simulated path, since
-separate `~` statements would each simulate their own outbreak:
+of your own, and scores them all against the same simulated path, rather
+than letting separate `~` statements each simulate their own outbreak:
 
 ```julia
 steps = 0.0:7.0:70.0

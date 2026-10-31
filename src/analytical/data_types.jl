@@ -332,8 +332,8 @@ One observed series, scored against a [`Signal`](@ref): for each step a
 [`SignalData`](@ref) covers, `density(signal(state, interval))` gives the
 distribution `data` is scored against at that step. `density` is a function
 from a signal's value to any `Distribution`, such as `v -> NegBin(v, k)`;
-EpiBranch ships no measurement density of its own, since how a quantity is
-measured belongs to the data, not the package.
+EpiBranch ships no measurement density of its own, because measurement
+choices belong to the data, not the package.
 
 `data` holds one observed value per step.
 
@@ -363,8 +363,8 @@ weekly steps from day 0; every series' `data` holds one value per step
 (`length(steps) - 1`).
 
 Pass it to `loglikelihood` with a model: several series observed together
-need one simulated path scored against all of them, since separate `~`
-statements in Turing would each simulate their own outbreak. Unlike
+need one simulated path scored against all of them, because separate `~`
+statements in Turing would simulate a fresh outbreak for each. Unlike
 [`IncidenceCounts`](@ref) and the chain-size and chain-length data, there is
 no closed form here yet, only simulation.
 
