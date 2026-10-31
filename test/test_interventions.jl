@@ -996,15 +996,14 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         EpiBranch.revise_removal!(ind, handle; release = ForwardDiff.Dual(20.0, 1.0))
         @test only(EpiBranch.removal_stretches(ind)) == (5.0, ForwardDiff.Dual(20.0, 1.0))
 
-        # The isolation-span store keeps its own entries apart from
-        # `:_removal_entries`; read it directly, since `isolation_release_time`
+        # Read `:_removal_entries` directly, since `isolation_release_time`
         # narrows every entry back to the individual's own element type no
         # matter how wide the stored entry is.
         isolated = Individual(id = 2)
         iso_handle = EpiBranch._set_isolated!(isolated, 5.0; release_time = 10.0)
         EpiBranch.revise_removal!(isolated, iso_handle; release = ForwardDiff.Dual(20.0, 1.0))
-        span_entry = only(isolated.state[:_isolation_span_entries])
-        @test span_entry[3] == ForwardDiff.Dual(20.0, 1.0)
+        span_entry = only(isolated.state[:_removal_entries])
+        @test span_entry[4] == ForwardDiff.Dual(20.0, 1.0)
     end
 
     @testset "A released quarantine does not block a later, unrelated infection" begin
