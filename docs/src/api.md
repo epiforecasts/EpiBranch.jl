@@ -496,6 +496,7 @@ network_infections
 NetworkInfections
 routed_network_infections
 RoutedNetworkInfections
+RoutedMassActionHazard
 ```
 
 ## Distribution helpers

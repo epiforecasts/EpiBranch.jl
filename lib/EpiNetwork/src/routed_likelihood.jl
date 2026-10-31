@@ -116,6 +116,65 @@ function EpiBranch.contact_structure(data::RoutedNetworkInfections)
     )
 end
 
+# A bare `MassActionHazard` has one infectious window per person to read I(t)
+# off, but `RoutedNetworkInfections` carries one per route; a union across
+# routes would be wrong exactly where routes matter (isolation closing the
+# community route while the household one stays open would still count that
+# person). Caught here, before `_mass_action_schedule` is reached with a
+# vector of windows where it expects one.
+function EpiBranch._ext_prepare(::MassActionHazard, ::RoutedNetworkInfections)
+    throw(
+        ArgumentError(
+            "MassActionHazard reads a single infectious window per person, but " *
+                "RoutedNetworkInfections carries a separate one per route; wrap it in " *
+                "RoutedMassActionHazard(route, hazard), naming the route whose windows " *
+                "it should read"
+        )
+    )
+end
+
+"""
+    RoutedMassActionHazard(route, hazard::MassActionHazard)
+
+Mass action confined to one route of a [`RoutedNetworkInfections`](@ref):
+`hazard`'s `I(t)` is read off that route's own infectious windows alone,
+`route` naming which one (as given to [`RoutedNetwork`](@ref)'s windows),
+rather than a union across every route that would still count someone
+infectious on a route an intervention closed for them.
+
+Pass it as [`pairwise_surv_loglik`](@ref)'s `external_hazard` the way a bare
+[`MassActionHazard`](@ref) is passed for a single-route `InfectionLayer`; a
+bare `MassActionHazard` given directly for `RoutedNetworkInfections` is
+rejected with a message pointing here, since it has no one route's windows to
+read.
+"""
+struct RoutedMassActionHazard{T <: Real}
+    route::Symbol
+    hazard::MassActionHazard{T}
+end
+
+EpiBranch._valid_external(::RoutedMassActionHazard) = true
+EpiBranch._ext_active(m::RoutedMassActionHazard) = EpiBranch._ext_active(m.hazard)
+EpiBranch._ext_explains_index(m::RoutedMassActionHazard) = EpiBranch._ext_explains_index(m.hazard)
+
+function _routed_mass_action_index(data::RoutedNetworkInfections, route::Symbol)
+    r = findfirst(==(route), data.route_names)
+    r === nothing && throw(
+        ArgumentError(
+            "RoutedMassActionHazard names route :$route, not among data's routes " *
+                "$(data.route_names)"
+        )
+    )
+    return r
+end
+
+function EpiBranch._ext_prepare(m::RoutedMassActionHazard, data::RoutedNetworkInfections)
+    r = _routed_mass_action_index(data, m.route)
+    return EpiBranch._mass_action_schedule(
+        m.hazard, data.infectious_time[r], data.removal_time[r]
+    )
+end
+
 """
     routed_network_infections(state, model::ModelSpec{<:RoutedNetwork};
                               obs_end = model.process.obs_end, followup_end = Inf)
@@ -339,7 +398,10 @@ that does list it has that stretch, read from `data`'s `host_times` as the
 single-route likelihood reads it, taken out of its own exposure.
 
 `external_hazard` is community infection shared across every route, as for
-[`NetworkProcess`](@ref)'s likelihood.
+[`NetworkProcess`](@ref)'s likelihood. A bare [`MassActionHazard`](@ref) is
+rejected here, since it has no single infectious window to read when `data`
+carries one per route; pass a [`RoutedMassActionHazard`](@ref) naming the
+route whose windows it should read instead.
 
 `susceptibility` is an effect on people's own risk of infection, such as a
 candidate [`VaccineEffect`](@ref) or a model's interventions, exactly as for
@@ -382,6 +444,7 @@ function EpiBranch.pairwise_surv_loglik(
 
     n = length(data)
     external = _ext_active(external_hazard)
+    explain_index = external && EpiBranch._ext_explains_index(external_hazard)
     external && _check_external(external_hazard, n)
     extsrc = external ? _ext_prepare(external_hazard, data) : nothing
     tfollow = followup_end(data)
@@ -404,7 +467,7 @@ function EpiBranch.pairwise_surv_loglik(
 
     ll = zero(T)
     for j in 1:n
-        (!external && data.is_index[j]) && continue
+        (!explain_index && data.is_index[j]) && continue
         mixture = mixtures === nothing ? nothing : get(mixtures, j, nothing)
         if mixture !== nothing
             v = _routed_mixture_loglik(
