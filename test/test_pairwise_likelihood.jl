@@ -501,58 +501,73 @@ end
         @test EpiBranch._valid_external(m)
         @test EpiBranch._ext_active(m)
         @test !EpiBranch._ext_active(MassActionHazard(; transmission_rate = 0.0, population_size = 4))
+        # nobody is infectious before the first case, so it cannot explain an
+        # index case the way every other source can
+        @test !EpiBranch._ext_explains_index(m)
+        @test EpiBranch._ext_explains_index(0.1)
         # it reads an outbreak's own record, so it has nothing to simulate from
         @test_throws ArgumentError EpiBranch._ext_prepare(m)
+    end
 
-        # four singleton households: 1 and 2 are simultaneous index cases, so
-        # each still has the other's infectiousness to explain it; 3 is
-        # infected once both are still infectious; 4 is never infected
-        β, N = 0.6, 4
-        data = _TestInfections(
-            [1, 2, 3, 4], [0.0, 0.0, 1.5, NaN], [0.0, 0.0, 1.5, NaN],
-            [3.0, 3.0, 5.0, Inf], [true, true, false, false]; obs_end = 5.0
+    @testset "a lone index case is conditioned on, not explained" begin
+        # a single singleton case with nobody else to read I(t) off: without
+        # conditioning this would score -Inf, since nothing is infectious
+        # before the first case
+        data = _TestInfections([1], [0.0], [0.0], [3.0], [true]; obs_end = 5.0)
+        mass_action = MassActionHazard(; transmission_rate = 0.6, population_size = 4)
+        @test pairwise_surv_loglik(Exponential(1.0), data; external_hazard = mass_action) == 0.0
+        L = compile_contact_pairs(data; external = true, explain_index = false)
+        @test pairwise_surv_loglik(Exponential(1.0), data, L; external_hazard = mass_action) == 0.0
+    end
+
+    @testset "mass action counts I(t) over (open, close], matching a pairwise row" begin
+        # person 1 is a conditioned-on index case, infectious over (0, 3]; 2 is
+        # a secondary infected at the exact instant 1 is removed. A pairwise
+        # row and mass action must agree here, or a model mixing both kinds of
+        # source would score the same tie differently depending on which
+        # explained it.
+        household = _TestInfections(
+            [1, 1], [0.0, 3.0], [0.0, NaN], [3.0, Inf], [true, false]; obs_end = 5.0
         )
-        L = compile_contact_pairs(data; external = true)
-        mass_action = MassActionHazard(; transmission_rate = β, population_size = N)
+        @test pairwise_surv_loglik(Exponential(1.0), household) ≈ -3.0
 
-        # I(t) is 2 on [0, 1.5) (1 and 2), 3 on [1.5, 3) (1, 2 and 3), 1 on
-        # [3, 5) (3 alone); a person's own window never counts towards their
-        # own hazard, so 1 and 2 explain each other at 0 and 3 sees 1 and 2.
-        r = β / N
-        area(t) = r * (2 * min(t, 1.5) + 3 * max(min(t, 3.0) - 1.5, 0.0) + max(t - 3.0, 0.0))
-        expected = 2 * log(r) + log(2r) - area(1.5) - area(5.0)
-        @test pairwise_surv_loglik(Exponential(1.0), data, L; external_hazard = mass_action) ≈
-            expected
-        @test pairwise_surv_loglik(Exponential(1.0), data; external_hazard = mass_action) ≈
-            expected
+        N = 5
+        community = _TestInfections(
+            [1, 2], [0.0, 3.0], [0.0, NaN], [3.0, Inf], [true, false]; obs_end = 5.0
+        )
+        # β = N makes the force of infection β·I(t)/N equal to 1 whenever 1 is
+        # infectious, matching the household kernel's constant hazard above
+        mass_action = MassActionHazard(; transmission_rate = N, population_size = N)
+        @test pairwise_surv_loglik(Exponential(1.0), community; external_hazard = mass_action) ≈ -3.0
 
         # differentiable in the transmission rate
         f(β) = pairwise_surv_loglik(
-            Exponential(1.0), data, L;
+            Exponential(1.0), community;
             external_hazard = MassActionHazard(; transmission_rate = β, population_size = N)
         )
-        fd = (f(β + 1.0e-6) - f(β - 1.0e-6)) / 2.0e-6
-        @test ForwardDiff.derivative(f, β) ≈ fd rtol = 1.0e-4
+        fd = (f(N + 1.0e-6) - f(N - 1.0e-6)) / 2.0e-6
+        @test ForwardDiff.derivative(f, N) ≈ fd rtol = 1.0e-4
     end
 
     @testset "mass action beside a household contact structure" begin
-        # households {1, 2} and {3}: 1 and 3 are simultaneous community cases,
-        # 1 is infectious over [0, 3] and 2 is never infected, exposed to both
-        # the household kernel and the wider community's mass action
+        # households {1, 2} and {3}: 1 and 3 are simultaneous community index
+        # cases, conditioned on; 1 is infectious over (0, 3] and 2 is never
+        # infected, exposed to both the household kernel and the wider
+        # community's mass action
         β, N = 0.6, 3
         data = _TestInfections(
             [1, 1, 2], [0.0, NaN, 0.0], [0.0, NaN, 0.0],
             [3.0, Inf, 3.0], [true, false, true]; obs_end = 5.0
         )
-        L = compile_contact_pairs(data; external = true)
+        L = compile_contact_pairs(data; external = true, explain_index = false)
         k = Exponential(2.0)
         mass_action = MassActionHazard(; transmission_rate = β, population_size = N)
 
         r = β / N
-        area(t) = 2r * min(t, 3.0)
-        # 1 and 3 explain each other at time 0; 2 escapes the community hazard
-        # to obs_end and the household kernel over 1's infectious window
-        expected = 2 * log(r) - area(5.0) - 3 / 2
+        # 1 and 3 are conditioned on; 2 escapes the community hazard (I(t) = 2
+        # on (0, 3], both 1 and 3 infectious) to obs_end and the household
+        # kernel over 1's infectious window
+        expected = -2r * 3.0 - 3 / 2
         @test pairwise_surv_loglik(k, data, L; external_hazard = mass_action) ≈ expected
         @test pairwise_surv_loglik(k, data; external_hazard = mass_action) ≈ expected
     end

@@ -965,7 +965,7 @@ end
 # index cases without one) and have no possible infector are listed apart, since
 # an infection of one has zero density.
 function _contact_pairs_layout(
-        sus, infector, contact_index, is_ext, external,
+        sus, infector, contact_index, is_ext, external, explain_index,
         is_index, n, component, ncomponents
     )
     n_rows = length(sus)
@@ -989,7 +989,7 @@ function _contact_pairs_layout(
     end
     has_rows = falses(n)
     has_rows[sus_unique] .= true
-    no_rows = [j for j in 1:n if !has_rows[j] && (external || !is_index[j])]
+    no_rows = [j for j in 1:n if !has_rows[j] && (explain_index || !is_index[j])]
     return ContactPairsLayout(
         sus, infector, contact_index, is_ext, sus_unique,
         sus_row_ranges, sus_row_order, no_rows, external, n,
@@ -1017,20 +1017,24 @@ the layout will be used with (their infection time may still be imputed). Only
 infected people can infect others. `is_index` marks people infected from
 outside: without a community hazard the likelihood conditions on them and they
 appear only as infectors. With `external = true` every infection is explained,
-and each person gets an extra row for infection from outside. The
-single-argument form reads the contact structure from `data` with
-[`contact_structure`](@ref EpiBranch.contact_structure) and takes as infected
-everyone with a non-`NaN` `infection_time`.
+and each person gets an extra row for infection from outside. `explain_index`
+(default `external`) decides this for index cases alone, which a source read
+off the outbreak's own infectious windows, such as `MassActionHazard`, sets to
+`false` even with `external = true`, since it has nothing infectious before
+the first case to explain one. The single-argument form reads the contact
+structure from `data` with [`contact_structure`](@ref
+EpiBranch.contact_structure) and takes as infected everyone with a non-`NaN`
+`infection_time`.
 """
 function compile_contact_pairs(
         membership::AbstractVector{<:Integer},
         is_index::AbstractVector{Bool}, infected::AbstractVector{Bool};
-        external::Bool = false
+        external::Bool = false, explain_index::Bool = external
     )
     n = length(membership)
     _check_host_masks(n, is_index, infected)
     isempty(membership) && return _contact_pairs_layout(
-        Int[], Int[], Int[], Bool[], external, is_index, 0, Int[], 0
+        Int[], Int[], Int[], Bool[], external, explain_index, is_index, 0, Int[], 0
     )
 
     # Bucket hosts by label into a `Vector{Vector{Int}}` indexed by label offset,
@@ -1049,7 +1053,7 @@ function compile_contact_pairs(
         mem = buckets[h]
         isempty(mem) && continue
         for j in mem
-            (!external && is_index[j]) && continue
+            (!explain_index && is_index[j]) && continue
             if external
                 push!(sus, j)
                 push!(infector, 0)
@@ -1068,7 +1072,7 @@ function compile_contact_pairs(
     contact_index = zeros(Int, length(sus))
     component, ncomponents = _structure_components(membership)
     return _contact_pairs_layout(
-        sus, infector, contact_index, is_ext, external,
+        sus, infector, contact_index, is_ext, external, explain_index,
         is_index, n, component, ncomponents
     )
 end
@@ -1076,7 +1080,7 @@ end
 function compile_contact_pairs(
         contacts::AbstractVector{<:AbstractVector{<:Integer}},
         is_index::AbstractVector{Bool}, infected::AbstractVector{Bool};
-        external::Bool = false
+        external::Bool = false, explain_index::Bool = external
     )
     n = length(contacts)
     _check_host_masks(n, is_index, infected)
@@ -1111,7 +1115,7 @@ function compile_contact_pairs(
 
     n_rows = 0
     for j in 1:n
-        (!external && is_index[j]) && continue
+        (!explain_index && is_index[j]) && continue
         n_rows += (ptr[j + 1] - ptr[j]) + external
     end
     sus = Vector{Int}(undef, n_rows)
@@ -1120,7 +1124,7 @@ function compile_contact_pairs(
     is_ext = Vector{Bool}(undef, n_rows)
     r = 0
     for j in 1:n
-        (!external && is_index[j]) && continue
+        (!explain_index && is_index[j]) && continue
         if external
             r += 1
             sus[r] = j
@@ -1138,16 +1142,18 @@ function compile_contact_pairs(
     end
     component, ncomponents = _structure_components(contacts)
     return _contact_pairs_layout(
-        sus, infector, contact_index, is_ext, external,
+        sus, infector, contact_index, is_ext, external, explain_index,
         is_index, n, component, ncomponents
     )
 end
 
-function compile_contact_pairs(data::InfectionLayer; external::Bool = false)
+function compile_contact_pairs(
+        data::InfectionLayer; external::Bool = false, explain_index::Bool = external
+    )
     infected = .!isnan.(data.infection_time)
     return compile_contact_pairs(
         contact_structure(data), data.is_index, infected;
-        external
+        external, explain_index
     )
 end
 
@@ -1244,6 +1250,16 @@ _ext_active(v::AbstractVector) = any(_ext_active, v)
 _ext_active(::Function) = true
 _ext_active(source) = true
 
+# Whether a source can stand as the explanation for an index case, with
+# nobody infectious yet to draw on: true for every built-in source (a rate, a
+# distribution and a calendar schedule alike are in force from time 0), so
+# `compile_contact_pairs` explains index cases exactly when the hazard is
+# active. A source read off the outbreak's own infectious windows, such as
+# `MassActionHazard`, has nothing infectious before the first case and
+# overrides this to `false`, leaving index cases conditioned on as without an
+# external hazard.
+_ext_explains_index(source) = true
+
 # The community hazard as a calendar-time survival distribution: a constant rate
 # α is `Exponential(1/α)` (hazard α, cumulative α·t); a distribution is itself;
 # a calendar schedule is its daily rate integrated from day 0.
@@ -1329,9 +1345,17 @@ household or network contact structure, for mass action from the wider
 community on top of exposure within it; `population_size` need not match the
 number of people the data covers; it is the size of the mixing population mass
 action spreads through, which a traced household or network may be a part of.
-A person is never counted as their own source of hazard: their own
-infectiousness is left out of `I(t)` while they are still susceptible, exactly
-as a possible infector in a contact structure is never themselves.
+A person is counted in `I(t)` over `(infectious_time, removal_time]`, the same
+convention a pairwise row's own exposure uses, so a secondary infected at the
+exact moment their infector is removed is scored the same way by both. Since a
+person is infected no later than they become infectious, this already leaves
+everybody out of their own `I(t)` at their own infection time, with no
+separate bookkeeping needed.
+
+With nobody infectious before the first case, mass action alone cannot explain
+an index case: [`pairwise_surv_loglik`](@ref) conditions on index cases under
+a `MassActionHazard` exactly as it does with no external hazard at all, even
+though the hazard is otherwise in force for everybody else.
 
 `transmission_rate` may be an automatic-differentiation value, as for
 [`HomogeneousProcess`](@ref)'s field of the same name, so the likelihood stays
@@ -1376,6 +1400,9 @@ end
 
 _valid_external(::MassActionHazard) = true
 _ext_active(m::MassActionHazard) = m.transmission_rate > 0
+# Nobody is infectious before the first case, so mass action alone cannot
+# explain one; the likelihood conditions on index cases under it instead.
+_ext_explains_index(::MassActionHazard) = false
 
 # A process's own `external_hazard` prepares without an outbreak to read, so a
 # `MassActionHazard` given there (rather than to `pairwise_surv_loglik`) is
@@ -1391,11 +1418,15 @@ function _ext_prepare(::MassActionHazard)
 end
 
 # The number infectious at calendar time t, population-wide, as a
-# piecewise-constant calendar schedule: `counts[1]` before `breaks[1]`,
-# `counts[k + 1]` from `breaks[k]` on, exactly as `Steps` lays out its values.
-# `calendar_multiplier` gives the hazard itself (β·I(t)/N) rather than a
-# multiplier on some other profile, as the community hazard's own calendar
-# schedules already do.
+# piecewise-constant step function: `counts[1]` (always 0, nobody infectious
+# before the first window opens) up to `breaks[1]`, `counts[k + 1]` from
+# `breaks[k]` on. It is its own survival distribution, with its own
+# `cumhazard`, `hazard` and `loghazard` below, rather than a multiplier read
+# through a `Steps`-style calendar schedule, because the two kinds of query
+# need different conventions at a boundary (see `_mass_action_count`) that a
+# shared schedule type cannot give both of. `_mass_action_schedule` builds one
+# from a population's own windows; a companion package builds one from a
+# single named route's.
 struct _MassActionSchedule{Tt <: Real, Tv <: Real}
     β::Tv
     N::Int
@@ -1403,25 +1434,57 @@ struct _MassActionSchedule{Tt <: Real, Tv <: Real}
     counts::Vector{Int}
 end
 
+# A person counts over `(open, close]`, the same convention a pairwise row's
+# own exposure uses: counted from just after their window opens, and still
+# counted exactly when it closes. `searchsortedfirst` gives the count that was
+# in force *before* whichever break sits at `t` (the first break `>= t`),
+# which is the value that convention gives at `t` itself: a window opening
+# exactly at `t` has not yet added to it, and one closing exactly at `t` has
+# not yet been taken from it.
 function _mass_action_count(s::_MassActionSchedule, t::Real)
-    return s.counts[searchsortedlast(s.breaks, t) + 1]
+    return s.counts[searchsortedfirst(s.breaks, t)]
 end
 
-calendar_multiplier(s::_MassActionSchedule, t::Real) = s.β * _mass_action_count(s, t) / s.N
+_mass_action_rate(s::_MassActionSchedule, t::Real) = s.β * _mass_action_count(s, t) / s.N
 
-function next_calendar_break(s::_MassActionSchedule, t::Real)
-    idx = searchsortedlast(s.breaks, t) + 1
-    return idx <= length(s.breaks) ? s.breaks[idx] : oftype(float(t), Inf)
+SurvivalDistributions.hazard(s::_MassActionSchedule, t::Real) = _mass_action_rate(s, t)
+
+function SurvivalDistributions.loghazard(s::_MassActionSchedule, t::Real)
+    rate = _mass_action_rate(s, t)
+    rate > 0 || return oftype(float(rate), -Inf)
+    return log(rate)
 end
 
+# The step function's own area, summed segment by segment: an integral does
+# not see which side of a boundary `_mass_action_count` counts as closed, so
+# this is exact regardless of that convention.
+function SurvivalDistributions.cumhazard(s::_MassActionSchedule, τ::Real)
+    total = zero(float(τ))
+    lo = zero(τ)
+    for idx in eachindex(s.breaks)
+        hi = min(s.breaks[idx], τ)
+        if hi > lo
+            total += s.counts[idx] * (hi - lo)
+            lo = hi
+        end
+        lo < τ || break
+    end
+    lo < τ && (total += s.counts[end] * (τ - lo))
+    return total * s.β / s.N
+end
+
+Base.maximum(::_MassActionSchedule) = Inf
 Distributions.partype(s::_MassActionSchedule{Tt, Tv}) where {Tt, Tv} = promote_type(Tt, Tv)
 
-# Every window opening or closing, population-wide, folded into the running
+# Every window opening or closing, over whichever hosts and windows the caller
+# gives (the whole population's own infectious windows for a plain
+# `InfectionLayer`, or one route's for a routed one), folded into the running
 # count between them. An open window with no recorded close (still infectious
 # at the end of the data) never closes the count back down.
-function _mass_action_schedule(m::MassActionHazard, data::InfectionLayer)
-    infectious_time = data.infectious_time
-    removal_time = data.removal_time
+function _mass_action_schedule(
+        m::MassActionHazard, infectious_time::AbstractVector{<:Real},
+        removal_time::AbstractVector{<:Real}
+    )
     Tt = promote_type(eltype(infectious_time), eltype(removal_time), Float64)
     events = Tuple{Tt, Int}[]
     for i in eachindex(infectious_time)
@@ -1448,61 +1511,16 @@ function _mass_action_schedule(m::MassActionHazard, data::InfectionLayer)
     return _MassActionSchedule(Tv(m.transmission_rate), m.population_size, breaks, counts)
 end
 
-# The population-wide schedule (shared, for the escape term) alongside each
-# person's own window: what `_ext_prepare` passes to `_ext_survival_of`, so it
-# can leave each person's own infectiousness out of their own event hazard.
-struct _MassActionPrepared{K, T <: Real}
-    shared::K
-    infectious_time::Vector{T}
-    removal_time::Vector{T}
-end
-
 function _ext_prepare(m::MassActionHazard, data::InfectionLayer)
-    return _MassActionPrepared(
-        _calendar_external_survival(_mass_action_schedule(m, data)),
-        data.infectious_time, data.removal_time
-    )
+    return _mass_action_schedule(m, data.infectious_time, data.removal_time)
 end
 
-_ext_partype(p::_MassActionPrepared, n) = Distributions.partype(p.shared.calendar)
-
-# One person's own window kept alongside the shared schedule: the escape
-# term (`cumhazard`) reads the population-wide hazard unchanged, since a single
-# person's own window touches it at no more than the single instant their own
-# infectious period opens, which an integral does not see; the event term
-# (`loghazard`, `hazard`) leaves that person's own share out, so nobody is ever
-# counted as their own source of hazard.
-struct _MassActionHostKernel{K, T <: Real}
-    shared::K
-    opens::T
-    closes::T
-end
-
-_ext_survival_of(p::_MassActionPrepared, j) = _MassActionHostKernel(p.shared, p.infectious_time[j], p.removal_time[j])
-
-function SurvivalDistributions.cumhazard(k::_MassActionHostKernel, τ::Real)
-    return cumhazard(k.shared, τ)
-end
-
-function _mass_action_own_rate(k::_MassActionHostKernel, t::Real)
-    s = k.shared.calendar
-    rate = calendar_multiplier(s, t)
-    (k.opens <= t < k.closes) && (rate -= s.β / s.N)
-    return rate
-end
-
-function SurvivalDistributions.hazard(k::_MassActionHostKernel, t::Real)
-    rate = _mass_action_own_rate(k, t)
-    return max(rate, zero(rate))
-end
-
-function SurvivalDistributions.loghazard(k::_MassActionHostKernel, t::Real)
-    rate = _mass_action_own_rate(k, t)
-    rate > 0 || return oftype(float(rate), -Inf)
-    return log(rate)
-end
-
-Base.maximum(::_MassActionHostKernel) = Inf
+# Every person shares the one population-wide schedule: nobody is ever in
+# their own `I(t)`, since a person is infected no later than they become
+# infectious and `(open, close]` counting excludes their own window at and
+# before its own opening.
+_ext_survival_of(s::_MassActionSchedule, j) = s
+_ext_partype(s::_MassActionSchedule, n) = Distributions.partype(s)
 
 # ── Evaluation ───────────────────────────────────────────────────────
 
@@ -1680,9 +1698,11 @@ hazard instead, the mean-field force of infection from mass action read off
 community to spread within a traced household or network, or on its own for a
 population with no further structure.
 With an external hazard, index cases are explained like any other case;
-without one, the likelihood conditions on them. Each person is exposed to the
-external hazard until the earlier of their infection and `data.obs_end`, so a
-person infected after `obs_end` must have been infected by a possible infector.
+without one, the likelihood conditions on them, as it also does with a
+`MassActionHazard`, which has nothing infectious before the first case to
+explain one. Each person is exposed to the external hazard until the earlier
+of their infection and `data.obs_end`, so a person infected after `obs_end`
+must have been infected by a possible infector.
 Spread within households or the network continues after `obs_end`: a person
 never infected is exposed over each possible infector's whole infectious
 period.
@@ -1927,7 +1947,10 @@ function pairwise_surv_loglik(
         kernel, data::InfectionLayer; external_hazard = 0.0,
         susceptibility = nothing
     )
-    layout = compile_contact_pairs(data; external = _ext_active(external_hazard))
+    layout = compile_contact_pairs(
+        data; external = _ext_active(external_hazard),
+        explain_index = _ext_active(external_hazard) && _ext_explains_index(external_hazard)
+    )
     return pairwise_surv_loglik(kernel, data, layout; external_hazard, susceptibility)
 end
 
@@ -2258,6 +2281,9 @@ function pairwise_surv_loglik_by_component(
         kernel, data::InfectionLayer; external_hazard = 0.0,
         susceptibility = nothing
     )
-    layout = compile_contact_pairs(data; external = _ext_active(external_hazard))
+    layout = compile_contact_pairs(
+        data; external = _ext_active(external_hazard),
+        explain_index = _ext_active(external_hazard) && _ext_explains_index(external_hazard)
+    )
     return pairwise_surv_loglik_by_component(kernel, data, layout; external_hazard, susceptibility)
 end
