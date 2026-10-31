@@ -262,14 +262,15 @@ const LEAKY_REMOVAL_STRETCHES_KEY = :_leaky_removal_stretches
 
 const _NO_STRETCHES = Tuple{Float64, Float64}[]
 
-# Start and release are kept `Any` rather than `ind`'s own element type, or
-# even one call's own promoted type. A later `record_removal!`/
-# `_set_isolated!` call on the same individual can promote to a wider type
-# than an earlier one did (an AD dual isolation time following a plain
-# `Float64` one, say). The vector must hold both without narrowing either
-# back down.
-const _RemovalEntry = Tuple{Int, Symbol, Any, Any}
-const _IsolationSpanEntry = Tuple{Int, Any, Any, Bool}
+# Element types of the two handle-tracked entry vectors below, concrete in
+# whatever type their entries were last pushed at, rather than `Any`, so a
+# `set_isolated!` call pushes one inline tuple instead of boxing it. A later
+# call on the same individual can promote to a wider type than an earlier one
+# did (an AD dual isolation time following a plain `Float64` one, say);
+# `_push_removal_entry!` and `_push_isolation_span_entry!` widen the whole
+# vector to match rather than letting the push narrow the new entry back down.
+const _RemovalEntry{T} = Tuple{Int, Symbol, T, T}
+const _IsolationSpanEntry{T} = Tuple{Int, T, T, Bool}
 
 """Record that a person is isolated from `time` (days) until `release_time`.
 Used by interventions that isolate or quarantine people. `release_time` is
@@ -429,17 +430,29 @@ end
 _find_removal_entry(entries::Nothing, handle) = nothing
 _find_removal_entry(entries, handle) = findfirst(e -> e[1] == handle, entries)
 
+# A copy of `old`, widened to the type promoted from its own element type
+# and `S` (an AD dual release following a plain `Float64` one, say), so that
+# neither `_push_removal_entry!`'s push nor `_revise_removal_entry!`'s
+# `setindex!` narrows the new entry back down to fit. `old` already at `S`,
+# the common case, takes the plain `copy` the generic conversion below would
+# reach the same place by, more slowly.
+_widen_removal_entries(old::Vector{_RemovalEntry{S}}, ::Type{S}) where {S} = copy(old)
+function _widen_removal_entries(old::Vector{_RemovalEntry{T}}, ::Type{S}) where {T, S}
+    return Vector{_RemovalEntry{promote_type(T, S)}}(old)
+end
+
 # Every stretch ever recorded under any key, as `(handle, key, start,
 # release)`, each entry kept for as long as it stands: the unmerged source
 # `removal_stretches`' per-key cache below is recomputed from, so that
 # `withdraw_removal!` can drop exactly one without disturbing another entry a
 # `_merge_stretches!` once folded it together with.
-function _push_removal_entry!(ind::Individual, handle::Int, key::Symbol, start, release)
-    old = get(ind.state, :_removal_entries, nothing)::Union{Nothing, Vector{_RemovalEntry}}
+function _push_removal_entry!(ind::Individual, handle::Int, key::Symbol, start::S, release::S) where {S}
+    old = get(ind.state, :_removal_entries, nothing)
     entry = (handle, key, start, release)
     # A fresh vector each time rather than one grown in place: an archived
     # episode holds a copy of the state that shares the old one.
-    ind.state[:_removal_entries] = old === nothing ? _RemovalEntry[entry] : push!(copy(old), entry)
+    ind.state[:_removal_entries] = old === nothing ? _RemovalEntry{S}[entry] :
+                                    push!(_widen_removal_entries(old, S), entry)
     return nothing
 end
 
@@ -472,7 +485,7 @@ function _revise_removal_entry!(ind::Individual, handle, release::Real)
     i === nothing && return nothing
     h, key, start, _ = entries[i]
     S = promote_type(typeof(start), typeof(release))
-    new_entries = copy(entries)
+    new_entries = _widen_removal_entries(entries, S)
     new_entries[i] = (h, key, start, convert(S, release))
     ind.state[:_removal_entries] = new_entries
     _recompute_removal_cache!(ind, key)
@@ -537,6 +550,12 @@ function _withdraw_all_removals!(ind::Individual, key::Symbol)
     return nothing
 end
 
+# As `_widen_removal_entries`, for the isolation-span store.
+_widen_isolation_span_entries(old::Vector{_IsolationSpanEntry{S}}, ::Type{S}) where {S} = copy(old)
+function _widen_isolation_span_entries(old::Vector{_IsolationSpanEntry{T}}, ::Type{S}) where {T, S}
+    return Vector{_IsolationSpanEntry{promote_type(T, S)}}(old)
+end
+
 # Every `set_isolated!` call's own `(handle, start, release, unrecorded)`,
 # kept apart from the per-key stretch history above: `isolation_time`,
 # `isolation_release_time` and `is_isolated` read the merged view over these,
@@ -544,11 +563,12 @@ end
 # went to, so a leaky isolation still moves them even though it records no
 # stretch under the shared key.
 function _push_isolation_span_entry!(
-        ind::Individual, handle::Int, start, release, unrecorded::Bool
-    )
-    old = get(ind.state, :_isolation_span_entries, nothing)::Union{Nothing, Vector{_IsolationSpanEntry}}
+        ind::Individual, handle::Int, start::S, release::S, unrecorded::Bool
+    ) where {S}
+    old = get(ind.state, :_isolation_span_entries, nothing)
     entry = (handle, start, release, unrecorded)
-    ind.state[:_isolation_span_entries] = old === nothing ? _IsolationSpanEntry[entry] : push!(copy(old), entry)
+    ind.state[:_isolation_span_entries] = old === nothing ? _IsolationSpanEntry{S}[entry] :
+                                           push!(_widen_isolation_span_entries(old, S), entry)
     return nothing
 end
 
@@ -558,7 +578,7 @@ function _revise_isolation_span_entry!(ind::Individual, handle, release::Real)
     i === nothing && return nothing
     h, start, _, unrecorded = entries[i]
     S = promote_type(typeof(start), typeof(release))
-    new_entries = copy(entries)
+    new_entries = _widen_isolation_span_entries(entries, S)
     new_entries[i] = (h, start, convert(S, release), unrecorded)
     ind.state[:_isolation_span_entries] = new_entries
     _refresh_isolation_span!(ind)
