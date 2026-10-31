@@ -138,7 +138,7 @@ agrees with one run straight through to it from the same seed (the one
 exception is mass action with an infectious window that never closes, which
 agrees in distribution rather than bit for bit). `model` supplies the
 interventions, transmission risks and contact recorder again; `state` does
-not carry them, so a particle filter can keep `model` once as the dynamics
+not hold them, so a particle filter can keep `model` once as the dynamics
 and copy only `state` as the particle.
 
 `state` is mutated in place and returned. No observation model is applied:
