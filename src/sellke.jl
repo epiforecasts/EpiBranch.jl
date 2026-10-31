@@ -1562,21 +1562,19 @@ function _sellke_race!(
 end
 
 # Let each route tidy up what the race left undecided when it ended at
-# `stop_t`, then report whether the race reached extinction. A race that did
-# not — cut off by `max_time`, a stopping rule, or `max_generation` — leaves
+# `stop_t`, then report whether the race reached extinction. Only a race cut
+# off by `max_time` (or, short of that, mass action still owed a redraw past
+# it) leaves a leftover queue safe to pop further, so only that race keeps
 # its leftover queue on `state`, as a [`_RaceContinuation`](@ref), for
-# [`simulate`](@ref)'s continuation method to resume; one that did clears it
-# and returns the buffers to the pool as before. `cut_by_max_time` tells that
-# continuation method whether resuming is sound at all: only a race cut off
-# by `max_time` (or, short of that, mass action still owed a redraw past it)
-# leaves a leftover queue safe to pop further — a stopping rule or
-# `max_generation` has already let through everything up to its own cap, and
-# popping on would let through more.
+# [`simulate`](@ref)'s continuation method to resume. Extinction, a stopping
+# rule, or `max_generation` has already let through everything up to its own
+# cap — popping on would let through more — so each of those clears the
+# continuation and returns the buffers to the pool as before.
 function _finish_race!(rts, race, extinct, stop_t, capped_generation, cut_by_max_time)
     for (_, route_targets) in rts
         _finish!(route_targets, race, stop_t, extinct)
     end
-    if extinct
+    if extinct || !cut_by_max_time
         race.state.continuation = nothing
         _return_buffers!(race.buffers)
     else

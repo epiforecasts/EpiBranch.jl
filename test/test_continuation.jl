@@ -138,6 +138,54 @@ end
         @test continued_generations.cumulative_cases == before
     end
 
+    @testset "a stopping-rule or max_generation stop still returns buffers to the pool" begin
+        # A continuation built for such a stop can never be resumed (see
+        # above), so keeping it would withhold the race's buffers from the
+        # task-local pool forever instead of recycling them as an extinct
+        # run's are. Each check runs in its own task for a pool of its own.
+        pool_size(T) = begin
+            pool = get(task_local_storage(), T, nothing)
+            pool === nothing ? 0 : length(pool)
+        end
+        model = ModelSpec(
+            HomogeneousProcess(transmission_rate = 2.0, population_size = 500);
+            progression = [Transition(:recovered; from = :infection, delay = 1.0, terminal = true)]
+        )
+        extinct_buffers = fetch(Threads.@spawn begin
+            state = simulate(model; n_initial = 3, rng = StableRNG(4))
+            @assert is_extinct(state)
+            pool_size(EpiBranch._RaceBuffers{Float64})
+        end)
+        capped_buffers = fetch(Threads.@spawn begin
+            state = simulate(
+                model; n_initial = 3,
+                stopping_rules = [Extinction(), MaxCases(5)], rng = StableRNG(4)
+            )
+            @assert !is_extinct(state)
+            pool_size(EpiBranch._RaceBuffers{Float64})
+        end)
+        @test capped_buffers == extinct_buffers
+
+        branching_model = ModelSpec(BranchingProcess(NegBin(3.0, 0.15), Gamma(2.5, 2.0)))
+        extinct_tree = fetch(Threads.@spawn begin
+            state = simulate(
+                branching_model;
+                stopping_rules = [Extinction(), MaxCases(5)], rng = StableRNG(1)
+            )
+            @assert is_extinct(state)
+            pool_size(EpiBranch._Tree{Float64})
+        end)
+        capped_tree = fetch(Threads.@spawn begin
+            state = simulate(
+                branching_model;
+                stopping_rules = [Extinction(), MaxCases(5)], rng = StableRNG(3)
+            )
+            @assert !is_extinct(state)
+            pool_size(EpiBranch._Tree{Float64})
+        end)
+        @test capped_tree == extinct_tree
+    end
+
     @testset "max_time must move past the state's own" begin
         model = ModelSpec(
             HomogeneousProcess(transmission_rate = 0.4, population_size = 500);
