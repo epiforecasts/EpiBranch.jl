@@ -140,9 +140,9 @@ end
 
     @testset "a stopping-rule or max_generation stop still returns buffers to the pool" begin
         # A continuation built for such a stop can never be resumed (see
-        # above), so keeping it would withhold the race's buffers from the
-        # task-local pool forever instead of recycling them as an extinct
-        # run's are. Each check runs in its own task for a pool of its own.
+        # above). Keeping it would withhold its buffers from the task-local
+        # pool forever, instead of returning them as an extinct run does.
+        # Each check runs in its own task for a pool of its own.
         pool_size(T) = begin
             pool = get(task_local_storage(), T, nothing)
             pool === nothing ? 0 : length(pool)
