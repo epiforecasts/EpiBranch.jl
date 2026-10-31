@@ -21,6 +21,13 @@ same rate, which reproduces the exact stochastic SIR final-size law.
 Transmission is the per-infective rate `transmission_rate` (β, so β/N to each
 susceptible).
 
+`transmission_rate` is a fixed β by default, but it may also be a calendar
+schedule — a [`Steps`](@ref), a [`Seasonal`](@ref), or a callable
+`t -> β(t)` — giving β as a function of calendar day, for a lockdown or a
+seasonal rate. With a schedule, contacts are still drawn exactly, from the
+schedule's integrated hazard, but every member of the population is sampled
+directly rather than at the bound a fixed β allows, which costs O(N) per case.
+
 The natural history comes from the `progression` of a [`ModelSpec`](@ref),
 as for a [`BranchingProcess`](@ref). With only a recovery step,
 `Transition(:recovered; rate = γ, terminal = true)`, this is an SIR model;
@@ -71,9 +78,9 @@ model = ModelSpec(
 state = simulate(model; n_initial = 5)
 ```
 """
-struct HomogeneousProcess{T <: Real} <: TransmissionModel
+struct HomogeneousProcess{T <: Real, R} <: TransmissionModel
     population_size::Int
-    transmission_rate::T           # the per-infective rate β
+    transmission_rate::R            # β, fixed or a calendar schedule
     from::Union{Symbol, Nothing}   # infectious-window start; nothing → derive
     until::Tuple                   # removal states that close the infectious window
 end
@@ -85,18 +92,45 @@ function HomogeneousProcess(;
         until = (:recovered, :died, :isolated)
     )
     population_size >= 1 || throw(ArgumentError("population_size must be ≥ 1"))
-    (isfinite(transmission_rate) && transmission_rate >= 0) || throw(
+    rate = _prepared_transmission_rate(transmission_rate)
+    T = _rate_time_type(rate)
+    return HomogeneousProcess{T, typeof(rate)}(
+        Int(population_size), rate, from, Tuple(until)
+    )
+end
+
+# A fixed β is validated and floated as before; a calendar schedule validates
+# itself when it is built (`Steps`'s own values, say), so nothing further is
+# checked here.
+function _prepared_transmission_rate(β::Real)
+    (isfinite(β) && β >= 0) || throw(
         ArgumentError(
-            "transmission_rate must be a finite, non-negative number (β ≥ 0)"
+            "transmission_rate must be a finite, non-negative number (β ≥ 0), " *
+                "or a calendar schedule (a `Steps`, a `Seasonal`, or a function of time)"
         )
     )
     # Keep β at whatever real type it comes in as — a dual under automatic
     # differentiation — so a gradient with respect to β flows into the infection
     # times.
-    return HomogeneousProcess(
-        Int(population_size), float(transmission_rate), from, Tuple(until)
-    )
+    return float(β)
 end
+_prepared_transmission_rate(schedule) = schedule
+
+# A rate's timing type: a fixed β's own type, or a schedule's, where one is
+# declared (`Steps`, `Seasonal`); a plain callable declares none, so its
+# contacts are timed in `Float64`.
+_rate_time_type(β::Real) = typeof(β)
+_rate_time_type(s::Steps{T}) where {T} = T
+_rate_time_type(s::Seasonal{T}) where {T} = T
+_rate_time_type(schedule) = Float64
+
+# The mass-action route's own rate and calendar for β: a fixed β is the route's
+# rate, with no calendar; a schedule stands for β itself, so the route samples
+# at a constant 1/N and reads β(t) off the schedule.
+_homogeneous_rate(β::Real, N) = (_, _) -> β / N
+_homogeneous_rate(schedule, N) = (_, _) -> 1 / N
+_homogeneous_calendar(::Real) = nothing
+_homogeneous_calendar(schedule) = schedule
 
 population_size(m::HomogeneousProcess) = m.population_size
 
@@ -150,13 +184,18 @@ function simulate_once(
     )
 
     # Homogeneous mixing is mass action with a single group: every pair meets at
-    # β/N, scaled by the two members' infectiousness and susceptibility.
+    # β/N, scaled by the two members' infectiousness and susceptibility. A
+    # schedule stands for β itself, so the route's own rate is just 1/N and the
+    # schedule supplies the calendar day's value.
     N = model.population_size
     members = collect(1:N)
     sellke_race!(
         state, members, rng, sim_opts;
         seed! = (best, _, r) -> (best[randperm(r, N)[1:n_initial]] .= 0),
-        targets = _MassAction(state, members; rate = (_, _) -> β / N),
+        targets = _MassAction(
+            state, members; rate = _homogeneous_rate(β, N),
+            calendar = _homogeneous_calendar(β), from
+        ),
         from = from, until = model.until, interventions,
         risks = transmission_risks(model), recorder
     )

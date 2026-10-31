@@ -2,7 +2,7 @@
 
 """
     Infectiousness(offspring; from = :infection, until = (), kernel = NoGenerationTime(),
-                   name = :transmission)
+                   calendar = nothing, name = :transmission)
 
 When, and how much, a case transmits by one route. `offspring` is the
 distribution of the number of people infected by this route; transmission
@@ -43,6 +43,15 @@ different routes, such as community and funeral transmission of Ebola.
   average than its offspring distribution draws, by the share of the kernel
   that falls before infection. Unused for a contact whose time `offspring`
   already gave as an `OffspringTimes`.
+- `calendar`: a [`Steps`](@ref) or [`Seasonal`](@ref) schedule, or a callable
+  `t -> multiplier`, scaling `kernel`'s hazard by the schedule's value on the
+  calendar day, exactly as a [`PairKernel`](@ref)'s `calendar` does — a
+  lockdown or a seasonal pattern that changes how quickly this window's
+  contacts arrive. Unused where `kernel` draws no contact
+  (`NoGenerationTime()`) or where `offspring` already timed them
+  (`OffspringTimes`). Closed-form results that read a window's `kernel`
+  directly, such as `Isolation`'s analytic effect, are not aware of a
+  `calendar`; simulate a model that needs one instead.
 - `name`: the name interventions see this window as, through
   [`risk_applies`](@ref EpiBranch.risk_applies)'s `route`. The default,
   `:transmission`, suits a process with a single window; give each of several
@@ -69,18 +78,19 @@ funeral = Infectiousness(Poisson(0.5); name = :funeral,
 model = ModelSpec(BranchingProcess(community, funeral); progression)
 ```
 """
-struct Infectiousness{O, F, U, K}
+struct Infectiousness{O, F, U, K, C}
     offspring::O
     from::F
     until::U
     kernel::K
+    calendar::C
     name::Symbol
 end
 function Infectiousness(
         offspring; from = :infection, until = (),
-        kernel = NoGenerationTime(), name::Symbol = :transmission
+        kernel = NoGenerationTime(), calendar = nothing, name::Symbol = :transmission
     )
-    return Infectiousness(offspring, from, until, kernel, name)
+    return Infectiousness(offspring, from, until, kernel, calendar, name)
 end
 
 """

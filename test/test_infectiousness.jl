@@ -20,6 +20,33 @@ EpiBranch.has_effect(::_SeenRoutes) = true
         @test m.infectiousness[1].name === :transmission
     end
 
+    @testset "a calendar scales the window's kernel over calendar time" begin
+        # One contact attempt per case, timed from an exponential hazard of 1
+        # per day; a calendar that drops the rate to 0 from day `cutoff` leaves
+        # a secondary case only when the attempt falls before `cutoff`, with
+        # probability `1 - exp(-cutoff)`.
+        cutoff = 1.5
+        off = Infectiousness(
+            Dirac(1); kernel = Exponential(1.0), calendar = Steps([cutoff], [1.0, 0.0])
+        )
+        @test off.calendar isa Steps
+        m = BranchingProcess(off)
+        n = 4000
+        has_case = [
+            simulate(m; n_initial = 1, max_generations = 1, rng = StableRNG(s)).cumulative_cases > 1
+                for s in 1:n
+        ]
+        @test mean(has_case) ≈ 1 - exp(-cutoff) atol = 0.02
+
+        # With no calendar at all, every attempt eventually lands a case.
+        uncut = BranchingProcess(Infectiousness(Dirac(1); kernel = Exponential(1.0)))
+        always = [
+            simulate(uncut; n_initial = 1, max_generations = 1, rng = StableRNG(s)).cumulative_cases
+                for s in 1:200
+        ]
+        @test all(==(2), always)
+    end
+
     @testset "a named window reaches risk_applies by that name" begin
         # `risk_applies` could not previously tell the two windows apart: both
         # reached the race as a `RouteWindow` named `:transmission`. Naming

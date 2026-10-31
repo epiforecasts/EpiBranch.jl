@@ -420,6 +420,12 @@ _window_infection_time(offset::_FixedOffset, from_t::Real, state) = from_t + off
 function _window_infection_time(kernel::Distribution, from_t::Real, state)
     return from_t + rand(state.rng, kernel)
 end
+# A window whose `calendar` scales its kernel draws from the resulting
+# calendar-scaled kernel directly, exactly as a `PairKernel` with a calendar
+# does on the structure-driven routes.
+function _window_infection_time(kernel::_CalendarScaledKernel, from_t::Real, state)
+    return from_t + rand(state.rng, kernel)
+end
 
 # Tag a contact with its window's `until` states so `WindowCensor` can
 # block it after the infector is removed. Skipped for windows with no

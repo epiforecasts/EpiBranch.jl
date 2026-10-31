@@ -46,6 +46,36 @@ using StableRNGs
         )
     end
 
+    @testset "calendar scales MixingProcess exactly as it does HomogeneousProcess" begin
+        # `HomogeneousProcess` folds a calendar schedule given as its
+        # `transmission_rate` into a rate of 1/N and that same schedule; built
+        # that way directly, `MixingProcess`'s own `calendar` must agree case
+        # for case, not just in distribution.
+        N = 500
+        schedule = Steps([2.0], [0.4, 1.5])
+        prog = [Transition(:recovered; from = :infection, delay = Exponential(1.0), terminal = true)]
+
+        homog = simulate(
+            ModelSpec(
+                HomogeneousProcess(; transmission_rate = schedule, population_size = N);
+                progression = prog
+            );
+            n_initial = 5, rng = StableRNG(1)
+        )
+        mixed = simulate(
+            ModelSpec(
+                MixingProcess(; population_size = N, rate = (from, to) -> 1 / N, calendar = schedule);
+                progression = prog
+            );
+            n_initial = 5, rng = StableRNG(1)
+        )
+        @test mixed.cumulative_cases == homog.cumulative_cases
+        @test isequal(
+            [i.infection_time for i in mixed.individuals],
+            [i.infection_time for i in homog.individuals]
+        )
+    end
+
     @testset "asymmetric mixing orders attack rates" begin
         # Band 1 mixes far more than band 2, so it suffers the higher attack
         # rate; the race engine's own statistics are tested in

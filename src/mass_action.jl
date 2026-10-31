@@ -25,7 +25,7 @@
 # the infector of a case is the member whose contact reached it first.
 
 """
-    _MassAction(state, members; mixing_by = (), rate)
+    _MassAction(state, members; mixing_by = (), rate, calendar = nothing, from)
 
 Mass-action contacts among `members` (global ids) of `state`, as the `targets`
 of a `_sellke_race!` route.
@@ -39,13 +39,23 @@ contact matrix `M[b, a]` giving the rate at which one infective in band `a`
 contacts the `n[b]` members of band `b` between them. The rate may be any real type,
 a dual under automatic differentiation included, and is fixed for the run.
 
+`calendar`, a [`Steps`](@ref) or [`Seasonal`](@ref) schedule or a callable
+`t -> multiplier`, scales every pair's rate by the schedule's value on the
+calendar day, exactly as a [`PairKernel`](@ref)'s `calendar` does. `from`
+names the state each member's window opens at (`:infection` unless the model
+gives it a later one), read back when a blocked pair's next contact needs the
+calendar day its window opened on. With no `calendar`, a pair is sampled at
+the bound described below, at a cost per contact; with one, the schedule's
+value cannot be bounded in advance, so every pair in a group is drawn
+directly, at O(N) per case, the cost an unbounded window already incurs.
+
 Each group's largest susceptibility is also read when the route is built, as the
 bound its proposals are sampled at. A member's susceptibility may fall during the
 run but not rise above that bound, which is how the race already reads it: as set
 when the member is created. The route also records what it left past the run's
 time limit, so build one for each run.
 """
-struct _MassAction{T <: Real, S <: Real, U <: Real}
+struct _MassAction{T <: Real, S <: Real, U <: Real, C}
     groups::Vector{Vector{Int}}  # member ids in each mixing group
     group_of::Dict{Int, Int}     # member id → index of its group
     rate::Matrix{T}              # rate[a, b]: one infective in a to one member of b
@@ -57,9 +67,14 @@ struct _MassAction{T <: Real, S <: Real, U <: Real}
     # runs once per infectious window, since one race never calls it
     # concurrently with itself; reuse spares an allocation on each call.
     contacts::Vector{Tuple{Int, U}}
+    calendar::C                  # `nothing`, or a schedule scaling every rate
+    from::Symbol                 # the state each member's window opens at
 end
 
-function _MassAction(state::SimulationState, members; mixing_by::Tuple = (), rate)
+function _MassAction(
+        state::SimulationState, members; mixing_by::Tuple = (), rate,
+        calendar = nothing, from::Symbol = :infection
+    )
     keys = Any[]
     index = Dict{Any, Int}()
     groups = Vector{Int}[]
@@ -85,7 +100,7 @@ function _MassAction(state::SimulationState, members; mixing_by::Tuple = (), rat
     return _MassAction(
         groups, group_of, float.(rates), max_susceptibility,
         zeros(Bool, length(groups), length(groups)),
-        Tuple{Int, _timetype(state)}[]
+        Tuple{Int, _timetype(state)}[], calendar, from
     )
 end
 
@@ -107,7 +122,14 @@ proposes_own_contacts(::_MassAction) = true
 
 function route_pair_kernel(m::_MassAction, infector_id, target_id, state)
     r = m.rate[m.group_of[infector_id], m.group_of[target_id]]
-    return r > 0 ? Exponential(inv(r)) : nothing
+    r > 0 || return nothing
+    kernel = Exponential(inv(r))
+    m.calendar === nothing && return kernel
+    # The race scales this kernel's redraw by elapsed time since the window
+    # opened (see `_next_contact`), so the opening it needs is this infector's
+    # own, recovered from `from` exactly as it was then.
+    opening = _window_open(state.individuals[infector_id], m.from)
+    return _CalendarScaledKernel(kernel, m.calendar, opening)
 end
 
 function propose_along(m::_MassAction, infector_id, state, open_t, close_t, capped, traits)
@@ -127,23 +149,39 @@ function propose_along(m::_MassAction, infector_id, state, open_t, close_t, capp
         # cut at the time limit the same draw as the full run.
         capped && (m.cut[a, b] = true)
         window > 0 || continue
-        _sample_contacts!(contacts, state, group, r, bound, traits, open_t, window)
+        _sample_contacts!(
+            contacts, state, group, r, bound, traits, open_t, window, m.calendar
+        )
     end
     return contacts
 end
 
 # Every pair in `group`, at rate `r` scaled by the member's susceptibility when
 # `traits` is set, sampled by the pairs with a contact in the window. With an
-# unbounded window every pair has one, so each draws its time directly, at O(N)
-# per case.
+# unbounded window, or a `calendar` schedule in force, every pair has a
+# contact to try, so each draws its time directly, at O(N) per case, because
+# the schedule's value cannot be bounded in advance and the geometric-skip
+# sampling below, which needs a bound on the rate, does not apply to it.
+#
 # Otherwise pairs are selected at the `bound` rate: the gap to the next pair with
 # a contact is geometric with the bound's per-pair probability `p`. A pair at a
 # lower rate, with probability `pk`, is kept with probability `pk/p`, and its
 # time is the exponential at its own rate conditioned on `dt ≤ window`,
 # `-log(1 - u·pk)/rate`.
-function _sample_contacts!(contacts, state, group, r, bound, traits, open_t, window)
+function _sample_contacts!(
+        contacts, state, group, r, bound, traits, open_t, window, calendar
+    )
     rng = state.rng
     pair_rate(id) = traits ? r * state.individuals[id].susceptibility : r
+    if calendar !== nothing
+        for id in group
+            rate = pair_rate(id)
+            rate > 0 || continue
+            dt = rand(rng, _CalendarScaledKernel(Exponential(inv(rate)), calendar, open_t))
+            isfinite(dt) && dt <= window && push!(contacts, (id, open_t + dt))
+        end
+        return nothing
+    end
     if !isfinite(window)
         for id in group
             rate = pair_rate(id)
