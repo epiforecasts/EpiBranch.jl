@@ -179,6 +179,38 @@ function _sample_contacts!(contacts, state, group, r, bound, traits, open_t, win
     return nothing
 end
 
+# Redraw the group pairs `propose_along` left capped (`m.cut`) from
+# `old_max_time` over the extended window: each still-infectious member with
+# an opening on this route whose window never closes (`close_t == Inf`) gets
+# one fresh call to `propose_along`, over `[old_max_time, Inf)`, exactly as
+# though their window had just opened there. The contact interval is
+# exponential and so memoryless, which is what makes that the same draw as
+# sampling the whole window at once would have been; a member whose window
+# did close before the race stopped was never capped and needs no redraw.
+# Only one redraw per infector: several resumes can each leave their own
+# now-superseded opening recorded for the same member, and resampling for
+# each would draw that member's remaining contacts more than once.
+function _resume_route!(m::_MassAction, race, ri, old_max_time, traits)
+    any(m.cut) || return nothing
+    (; buffers, members) = race
+    T = typeof(old_max_time)
+    seen = Set{Int}()
+    for idx in 1:length(buffers.openings)
+        opening = buffers.openings[idx]
+        (opening.route == ri && isinf(opening.close_t)) || continue
+        infector_id = opening.infector
+        (infector_id == 0 || infector_id in seen) && continue
+        push!(seen, infector_id)
+        opening_id = _store_opening!(
+            members, buffers.openings, infector_id, ri, old_max_time, T(Inf)
+        )
+        _propose_along!(
+            m, race, infector_id, opening_id, old_max_time, T(Inf), traits, false, ri
+        )
+    end
+    return nothing
+end
+
 # Whether a window sampled only up to the time limit could still have reached a
 # member left uninfected, in which case the run was cut off rather than extinct.
 function pending_beyond(m::_MassAction, state, reinfects::Bool)

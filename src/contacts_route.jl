@@ -168,8 +168,12 @@ end
 # A person the model created but the run never infected stays a contact of its
 # case. An exposure after the run ended is not part of the outbreak it
 # describes, so such a person is left with no infection time, as a branching
-# process leaves its undecided contacts.
-function _finish!(c::_ContactsOf, race, stop_t)
+# process leaves its undecided contacts. This marking stands whether or not
+# the race is kept rather than finished for good: the race's own queue, not
+# this field, is what a continuation (`simulate`'s continuation method) reads
+# to decide a pending exposure, and the decision it eventually makes
+# overwrites the `NaN` this sets.
+function _finish!(c::_ContactsOf, race, stop_t, extinct)
     for ind in race.state.individuals
         !is_infected(ind) && ind.infection_time > stop_t || continue
         ind.infection_time = oftype(ind.infection_time, NaN)

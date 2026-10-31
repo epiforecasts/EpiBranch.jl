@@ -509,6 +509,19 @@ end
 simulate(spec::ModelSpec, n::Int; kwargs...) =
     _simulate_each(identity, SimulationState, spec, n; kwargs...)
 
+# `simulate`'s continuation method unwraps the spec the same way: the
+# process's `transmission_risks` as before, the spec's own interventions and
+# recorder.
+function simulate(
+        spec::ModelSpec, state::SimulationState; max_time::Real,
+        rng::AbstractRNG = state.rng
+    )
+    return _continue_sellke!(
+        state, rng, max_time, spec.interventions, transmission_risks(spec.process),
+        spec.recorder
+    )
+end
+
 function _simulate_each(
         each, ::Type{T}, spec::ModelSpec, n::Int;
         n_initial::Union{Int, Nothing} = nothing,
