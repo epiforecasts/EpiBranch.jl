@@ -1642,7 +1642,7 @@ itself, and the buffers its queue and every other pending proposal live in.
 whose `interventions`/`risks` would recompute it differently is refused
 rather than indexing buffers sized for the old value. `cut_by_max_time` is
 `false` when a stopping rule or `max_generation` ended the race rather than
-`max_time`: everything up to that cap has already been let through, so
+`max_time`: everything up to that cap has already been let through.
 [`simulate`](@ref)'s continuation method leaves such a race alone rather
 than popping its leftover queue further.
 """
