@@ -151,38 +151,46 @@ end
             HomogeneousProcess(transmission_rate = 2.0, population_size = 500);
             progression = [Transition(:recovered; from = :infection, delay = 1.0, terminal = true)]
         )
-        extinct_buffers = fetch(Threads.@spawn begin
-            state = simulate(model; n_initial = 3, rng = StableRNG(4))
-            @assert is_extinct(state)
-            pool_size(EpiBranch._RaceBuffers{Float64})
-        end)
-        capped_buffers = fetch(Threads.@spawn begin
-            state = simulate(
-                model; n_initial = 3,
-                stopping_rules = [Extinction(), MaxCases(5)], rng = StableRNG(4)
-            )
-            @assert !is_extinct(state)
-            pool_size(EpiBranch._RaceBuffers{Float64})
-        end)
+        extinct_buffers = fetch(
+            Threads.@spawn begin
+                state = simulate(model; n_initial = 3, rng = StableRNG(4))
+                @assert is_extinct(state)
+                pool_size(EpiBranch._RaceBuffers{Float64})
+            end
+        )
+        capped_buffers = fetch(
+            Threads.@spawn begin
+                state = simulate(
+                    model; n_initial = 3,
+                    stopping_rules = [Extinction(), MaxCases(5)], rng = StableRNG(4)
+                )
+                @assert !is_extinct(state)
+                pool_size(EpiBranch._RaceBuffers{Float64})
+            end
+        )
         @test capped_buffers == extinct_buffers
 
         branching_model = ModelSpec(BranchingProcess(NegBin(3.0, 0.15), Gamma(2.5, 2.0)))
-        extinct_tree = fetch(Threads.@spawn begin
-            state = simulate(
-                branching_model;
-                stopping_rules = [Extinction(), MaxCases(5)], rng = StableRNG(1)
-            )
-            @assert is_extinct(state)
-            pool_size(EpiBranch._Tree{Float64})
-        end)
-        capped_tree = fetch(Threads.@spawn begin
-            state = simulate(
-                branching_model;
-                stopping_rules = [Extinction(), MaxCases(5)], rng = StableRNG(3)
-            )
-            @assert !is_extinct(state)
-            pool_size(EpiBranch._Tree{Float64})
-        end)
+        extinct_tree = fetch(
+            Threads.@spawn begin
+                state = simulate(
+                    branching_model;
+                    stopping_rules = [Extinction(), MaxCases(5)], rng = StableRNG(1)
+                )
+                @assert is_extinct(state)
+                pool_size(EpiBranch._Tree{Float64})
+            end
+        )
+        capped_tree = fetch(
+            Threads.@spawn begin
+                state = simulate(
+                    branching_model;
+                    stopping_rules = [Extinction(), MaxCases(5)], rng = StableRNG(3)
+                )
+                @assert !is_extinct(state)
+                pool_size(EpiBranch._Tree{Float64})
+            end
+        )
         @test capped_tree == extinct_tree
     end
 
