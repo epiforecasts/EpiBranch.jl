@@ -1579,8 +1579,8 @@ function _finish_race!(rts, race, extinct, stop_t, capped_generation, cut_by_max
         _return_buffers!(race.buffers)
     else
         # A route reporting a pending window but no working `_resume_route!`
-        # would otherwise have its leftover contacts dropped, without warning,
-        # the moment `simulate(model, state; max_time)` resumes this race.
+        # would otherwise lose its leftover contacts without warning the
+        # moment `simulate(model, state; max_time)` resumes this race.
         for (_, route_targets) in rts
             _pending_beyond(route_targets, race) && !_resumable_route(route_targets) &&
                 throw(
