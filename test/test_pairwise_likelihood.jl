@@ -518,6 +518,15 @@ end
         @test pairwise_surv_loglik(Exponential(1.0), data; external_hazard = mass_action) == 0.0
         L = compile_contact_pairs(data; external = true, explain_index = false)
         @test pairwise_surv_loglik(Exponential(1.0), data, L; external_hazard = mass_action) == 0.0
+
+        # a layout built the obvious way, with explain_index left at its
+        # default of external = true, disagrees with mass action's own
+        # explain_index = false and must be rejected rather than silently
+        # scoring every index case as unexplained
+        Lbad = compile_contact_pairs(data; external = true)
+        @test_throws ArgumentError pairwise_surv_loglik(
+            Exponential(1.0), data, Lbad; external_hazard = mass_action
+        )
     end
 
     @testset "mass action counts I(t) over (open, close], matching a pairwise row" begin

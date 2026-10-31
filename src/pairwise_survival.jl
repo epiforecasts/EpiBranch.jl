@@ -906,6 +906,7 @@ struct ContactPairsLayout
     sus_row_order::Vector{Int}             # row indices, susceptible-grouped
     no_rows::Vector{Int}                   # hosts not conditioned on that have no row
     external::Bool
+    explain_index::Bool                    # whether index cases got an external row too
     nhosts::Int                            # population the layout was compiled for
     component::Vector{Int}                 # host → connected-component id (1:ncomponents)
     ncomponents::Int                       # number of connected components of the contact structure
@@ -992,7 +993,7 @@ function _contact_pairs_layout(
     no_rows = [j for j in 1:n if !has_rows[j] && (explain_index || !is_index[j])]
     return ContactPairsLayout(
         sus, infector, contact_index, is_ext, sus_unique,
-        sus_row_ranges, sus_row_order, no_rows, external, n,
+        sus_row_ranges, sus_row_order, no_rows, external, explain_index, n,
         component, ncomponents
     )
 end
@@ -1620,6 +1621,14 @@ function _pairwise_setup(kernel, data, layout::ContactPairsLayout, external_haza
     external = _ext_active(external_hazard)
     external == layout.external ||
         throw(ArgumentError("layout.external = $(layout.external) but external_hazard = $external_hazard"))
+    explain_index = external && _ext_explains_index(external_hazard)
+    explain_index == layout.explain_index ||
+        throw(
+        ArgumentError(
+            "layout.explain_index = $(layout.explain_index) but external_hazard = " *
+                "$external_hazard needs $explain_index"
+        )
+    )
     # The @inbounds passes index the time vectors by host id up to the population
     # the layout was compiled for; guard against a `data` with fewer individuals.
     min(
