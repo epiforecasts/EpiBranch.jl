@@ -1448,10 +1448,9 @@ function _mass_action_schedule(m::MassActionHazard, data::InfectionLayer)
     return _MassActionSchedule(Tv(m.transmission_rate), m.population_size, breaks, counts)
 end
 
-# What `_ext_prepare` hands every person's `_ext_survival_of`: the
-# population-wide schedule (shared, for the escape term) alongside the
-# per-person window `_ext_survival_of` reads off to leave each person's own
-# infectiousness out of their own event hazard.
+# The population-wide schedule (shared, for the escape term) alongside each
+# person's own window: what `_ext_prepare` passes to `_ext_survival_of`, so it
+# can leave each person's own infectiousness out of their own event hazard.
 struct _MassActionPrepared{K, T <: Real}
     shared::K
     infectious_time::Vector{T}
@@ -1467,7 +1466,7 @@ end
 
 _ext_partype(p::_MassActionPrepared, n) = Distributions.partype(p.shared.calendar)
 
-# One person's own window carried alongside the shared schedule: the escape
+# One person's own window kept alongside the shared schedule: the escape
 # term (`cumhazard`) reads the population-wide hazard unchanged, since a single
 # person's own window touches it at no more than the single instant their own
 # infectious period opens, which an integral does not see; the event term
