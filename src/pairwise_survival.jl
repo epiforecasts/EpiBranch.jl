@@ -1018,8 +1018,8 @@ infected people can infect others. `is_index` marks people infected from
 outside: without a community hazard the likelihood conditions on them and they
 appear only as infectors. With `external = true` every infection is explained,
 and each person gets an extra row for infection from outside. `explain_index`
-(default `external`) decides this for index cases alone, which a source read
-off the outbreak's own infectious windows, such as `MassActionHazard`, sets to
+(default `external`) decides this for index cases alone. A source read off
+the outbreak's own infectious windows, such as `MassActionHazard`, sets it to
 `false` even with `external = true`, since it has nothing infectious before
 the first case to explain one. The single-argument form reads the contact
 structure from `data` with [`contact_structure`](@ref
@@ -1347,10 +1347,10 @@ number of people the data covers; it is the size of the mixing population mass
 action spreads through, which a traced household or network may be a part of.
 A person is counted in `I(t)` over `(infectious_time, removal_time]`, the same
 convention a pairwise row's own exposure uses, so a secondary infected at the
-exact moment their infector is removed is scored the same way by both. Since a
-person is infected no later than they become infectious, this already leaves
-everybody out of their own `I(t)` at their own infection time, with no
-separate bookkeeping needed.
+exact moment their infector is removed is scored the same way by both. This
+already leaves everybody out of their own `I(t)` at their own infection time,
+with no separate bookkeeping needed, since a person is infected no later than
+they become infectious.
 
 With nobody infectious before the first case, mass action alone cannot explain
 an index case: [`pairwise_surv_loglik`](@ref) conditions on index cases under
@@ -1423,8 +1423,8 @@ end
 # `breaks[k]` on. It is its own survival distribution, with its own
 # `cumhazard`, `hazard` and `loghazard` below, rather than a multiplier read
 # through a `Steps`-style calendar schedule, because the two kinds of query
-# need different conventions at a boundary (see `_mass_action_count`) that a
-# shared schedule type cannot give both of. `_mass_action_schedule` builds one
+# need different conventions at a boundary (see `_mass_action_count`), and a
+# shared schedule type cannot give both. `_mass_action_schedule` builds one
 # from a population's own windows; a companion package builds one from a
 # single named route's.
 struct _MassActionSchedule{Tt <: Real, Tv <: Real}
