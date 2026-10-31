@@ -14,6 +14,56 @@ function EpiBranch.apply_observation!(o::CountingObservation, state, rng)
     return state
 end
 
+# A route that proposes its own contacts (`proposes_own_contacts`) and can
+# leave some pending past a time limit (`pending_beyond`), exactly as
+# `EpiBranch._MassAction` does, but without `EpiBranch._resume_route!`: a
+# third-party route that implements the public seam without knowing it also
+# needs this private one (see "a continuation whose route cannot resume is
+# refused" below). It forwards every call to a real `_MassAction`.
+struct _UnresumableMassAction
+    inner::EpiBranch._MassAction
+end
+(r::_UnresumableMassAction)(infector_id, state) = r.inner(infector_id, state)
+EpiBranch.proposes_own_contacts(::_UnresumableMassAction) = true
+EpiBranch.route_pair_kernel(r::_UnresumableMassAction, infector_id, target_id, state) =
+    EpiBranch.route_pair_kernel(r.inner, infector_id, target_id, state)
+function EpiBranch.propose_along(
+        r::_UnresumableMassAction, infector_id, state, open_t, close_t, capped, traits
+    )
+    return EpiBranch.propose_along(r.inner, infector_id, state, open_t, close_t, capped, traits)
+end
+EpiBranch.pending_beyond(r::_UnresumableMassAction, state, reinfects::Bool) =
+    EpiBranch.pending_beyond(r.inner, state, reinfects)
+
+# A homogeneous population whose infectious window never closes (`until =
+# ()`), raced over `_UnresumableMassAction` instead of mass action directly.
+struct NoResumeHomogeneous <: EpiBranch.TransmissionModel
+    population_size::Int
+    transmission_rate::Float64
+end
+EpiBranch.population_size(m::NoResumeHomogeneous) = m.population_size
+function EpiBranch.simulate_once(
+        model::NoResumeHomogeneous, sim_opts::EpiBranch.SimOpts;
+        interventions, attributes, progression, observation, recorder, rng
+    )
+    N = model.population_size
+    β = model.transmission_rate
+    state = EpiBranch.new_state(model, progression, attributes, rng)
+    EpiBranch.add_individuals!(state, N, interventions)
+    members = collect(1:N)
+    EpiBranch.sellke_race!(
+        state, members, rng, sim_opts;
+        seed! = (best, _, _) -> (best[1:(sim_opts.n_initial)] .= 0),
+        targets = _UnresumableMassAction(
+            EpiBranch._MassAction(state, members; rate = (_, _) -> β / N)
+        ),
+        from = EpiBranch.infectious_from(progression), until = (), interventions,
+        risks = EpiBranch.transmission_risks(model), recorder
+    )
+    EpiBranch.apply_observation!(observation, state, rng)
+    return state
+end
+
 @testset "simulate(model, state; max_time) continuation" begin
     @testset "continuing a closing window agrees bit for bit with one run" begin
         model = ModelSpec(
@@ -228,6 +278,18 @@ end
         state = simulate(model; max_time = 5.0, n_initial = 5, rng = StableRNG(1))
         @test !state.extinct
         @test_throws ArgumentError simulate(blocking_model, state; max_time = 30.0)
+    end
+
+    @testset "a continuation whose route cannot resume is refused" begin
+        # `_UnresumableMassAction` reports a pending window just as mass
+        # action does, but has no `_resume_route!` to redraw it: the run that
+        # would otherwise need continuing is refused up front, rather than
+        # silently dropping those contacts on a later `simulate(model, state;
+        # max_time)` call.
+        model = ModelSpec(NoResumeHomogeneous(500, 2.0))
+        @test_throws ArgumentError simulate(
+            model; max_time = 0.01, n_initial = 3, rng = StableRNG(1)
+        )
     end
 
     @testset "no observation on continuation" begin

@@ -190,6 +190,7 @@ end
 # Only one redraw per infector: several resumes can each leave their own
 # now-superseded opening recorded for the same member, and resampling for
 # each would draw that member's remaining contacts more than once.
+_resumable_route(::_MassAction) = true
 function _resume_route!(m::_MassAction, race, ri, old_max_time, traits)
     any(m.cut) || return nothing
     (; buffers, members) = race

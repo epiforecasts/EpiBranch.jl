@@ -1578,6 +1578,20 @@ function _finish_race!(rts, race, extinct, stop_t, capped_generation, cut_by_max
         race.state.continuation = nothing
         _return_buffers!(race.buffers)
     else
+        # A route reporting a pending window but no working `_resume_route!`
+        # would otherwise have its leftover contacts dropped, without warning,
+        # the moment `simulate(model, state; max_time)` resumes this race.
+        for (_, route_targets) in rts
+            _pending_beyond(route_targets, race) && !_resumable_route(route_targets) &&
+                throw(
+                ArgumentError(
+                    "route `$(nameof(typeof(route_targets)))` reports pending_beyond " *
+                        "but has no matching `_resume_route!`, so the contacts its " *
+                        "capped window still owes cannot be redrawn on resume; " *
+                        "`simulate(model, state; max_time)` cannot continue this race"
+                )
+            )
+        end
         # `stop_t` is `max_time` as the caller gave it, a plain `Float64`
         # even under automatic differentiation; converted to the state's own
         # timing type to match `race.buffers`, so the two share one type
@@ -1881,6 +1895,14 @@ pending_beyond(route, state, reinfects::Bool) = false
 # in the first place; `_MassAction` is the only built-in route that needs
 # this, in `mass_action.jl`.
 _resume_route!(route_targets, race, ri, old_max_time, traits) = nothing
+
+# Whether `route_targets` has a `_resume_route!` method of its own, so a race
+# it leaves with a pending window (`pending_beyond`) can actually be redrawn
+# on resume rather than silently dropped by the no-op default above.
+# `_MassAction` is the only built-in route that overrides this, in
+# `mass_action.jl`; a third-party route declaring `proposes_own_contacts` and
+# a non-default `pending_beyond` needs to override it too.
+_resumable_route(route_targets) = false
 
 # Whether a route left contacts past the time limit that it never proposed, so
 # that a race which ran out of candidates was cut off rather than extinct. A
