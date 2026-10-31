@@ -324,3 +324,80 @@ struct IncidenceCounts{D <: VecOrMat{Int}, S <: Union{Int, Vector{Int}}}
         return new{typeof(d), typeof(seeds)}(d, seeds)
     end
 end
+
+"""
+    SignalSeries(signal, density, data)
+
+One observed series, scored against a [`Signal`](@ref): for each step a
+[`SignalData`](@ref) covers, `density(signal(state, interval))` gives the
+distribution `data` is scored against at that step. `density` is a function
+from a signal's value to any `Distribution`, such as `v -> NegBin(v, k)`;
+EpiBranch ships no measurement density of its own, since how a quantity is
+measured belongs to the data, not the package.
+
+`data` holds one observed value per step.
+
+# Examples
+
+```julia
+SignalSeries(TransitionCount(:onset), v -> Poisson(v), reported_onsets)
+```
+"""
+struct SignalSeries{S <: Signal, F}
+    signal::S
+    density::F
+    data::Vector{Float64}
+    function SignalSeries(signal::S, density::F, data::AbstractVector{<:Real}) where {S <: Signal, F}
+        isempty(data) && throw(ArgumentError("data must be non-empty"))
+        return new{S, F}(signal, density, convert(Vector{Float64}, data))
+    end
+end
+
+"""
+    SignalData(steps, series)
+
+Several [`SignalSeries`](@ref) observed over the same outbreak, each scored
+against the same simulated path (see `loglikelihood`). `steps` gives the
+boundaries of the reporting steps, in calendar time, such as `0:7:70` for ten
+weekly steps from day 0; every series' `data` holds one value per step
+(`length(steps) - 1`).
+
+Pass it to `loglikelihood` with a model: several series observed together
+need one simulated path scored against all of them, since separate `~`
+statements in Turing would each simulate their own outbreak. Unlike
+[`IncidenceCounts`](@ref) and the chain-size and chain-length data, there is
+no closed form here yet, only simulation.
+
+# Examples
+
+```julia
+steps = 0.0:7.0:70.0
+data = SignalData(
+    steps,
+    [
+        SignalSeries(TransitionCount(:onset), v -> Poisson(v), reported_onsets),
+        SignalSeries(Prevalence(:hospitalised), v -> Poisson(v), occupied_beds),
+    ]
+)
+loglikelihood(data, model)
+```
+"""
+struct SignalData{T <: Real}
+    steps::Vector{T}
+    series::Vector{SignalSeries}
+    function SignalData(steps::AbstractVector{<:Real}, series::AbstractVector{<:SignalSeries})
+        length(steps) >= 2 || throw(ArgumentError("steps must have at least two boundaries"))
+        issorted(steps) || throw(ArgumentError("steps must be increasing"))
+        isempty(series) && throw(ArgumentError("series must be non-empty"))
+        n = length(steps) - 1
+        for s in series
+            length(s.data) == n || throw(
+                ArgumentError(
+                    "every series' data must have one value per step ($n steps " *
+                        "from `steps`); got $(length(s.data))"
+                )
+            )
+        end
+        return new{eltype(steps)}(collect(steps), collect(series))
+    end
+end
