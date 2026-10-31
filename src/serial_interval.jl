@@ -3,11 +3,11 @@
 # A serial interval is the sum of three delays: the generation time from
 # infector to infectee, plus the infectee's incubation period, minus the
 # infector's. Building it needs `convolved` and `difference` from
-# ConvolvedDistributions.jl, so the method is defined once that package (and
+# ConvolvedDistributions.jl: the method is defined once that package (and
 # CensoredDistributions.jl, which depends on it and supplies
 # `double_interval_censored` for the censoring step around it) is loaded; see
 # `ext/EpiBranchCensoredDistributionsExt.jl`. The stub and its docstring stay
-# here so `serial_interval` is exported and documented either way.
+# here to keep `serial_interval` exported and documented either way.
 
 """
     serial_interval(model, infector, infectee)
@@ -42,11 +42,11 @@ ConvolvedDistributions.jl).
     sees an already-built `Difference`, not one of the literal families it
     recognises, so it always falls back to quadrature too. Separately,
     CensoredDistributions.jl's own closed forms for `double_interval_censored`
-    cover a gamma, lognormal or Weibull delay directly, which the distribution
-    `serial_interval` returns never is (it is always a sum of at least two
-    components), so that closed form never applies to it either. In practice
-    `serial_interval` is evaluated by nested numerical quadrature however the
-    components are built.
+    cover a gamma, lognormal or Weibull delay directly. The distribution
+    `serial_interval` returns is never one of those: it is always a sum of
+    at least two components. That closed form does not apply to it either.
+    In practice `serial_interval` is evaluated by nested numerical
+    quadrature however the components are built.
 
 # Examples
 

@@ -5,7 +5,7 @@ module EpiBranchCensoredDistributionsExt
 # `double_interval_censored` to score linked-pair data against. Loading
 # CensoredDistributions.jl (which depends on ConvolvedDistributions.jl,
 # declared here as its own weak dependency so this extension can call it
-# directly) is what turns this on, so both packages stay optional for users
+# directly) activates the method, keeping both packages optional for users
 # who only simulate.
 
 using EpiBranch
