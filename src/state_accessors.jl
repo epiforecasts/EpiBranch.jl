@@ -452,7 +452,7 @@ function _push_removal_entry!(ind::Individual, handle::Int, key::Symbol, start::
     # A fresh vector each time rather than one grown in place: an archived
     # episode holds a copy of the state that shares the old one.
     ind.state[:_removal_entries] = old === nothing ? _RemovalEntry{S}[entry] :
-                                    push!(_widen_removal_entries(old, S), entry)
+        push!(_widen_removal_entries(old, S), entry)
     return nothing
 end
 
@@ -568,7 +568,7 @@ function _push_isolation_span_entry!(
     old = get(ind.state, :_isolation_span_entries, nothing)
     entry = (handle, start, release, unrecorded)
     ind.state[:_isolation_span_entries] = old === nothing ? _IsolationSpanEntry{S}[entry] :
-                                           push!(_widen_isolation_span_entries(old, S), entry)
+        push!(_widen_isolation_span_entries(old, S), entry)
     return nothing
 end
 
