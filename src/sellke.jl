@@ -1122,6 +1122,21 @@ function _sellke_race!(
     # fall back (`_Offspring`), it proposes each member once, so a blocked
     # contact has nothing to fall back on and needs no lists.
     checks = may_block || any(((_, rt),) -> _route_may_block(rt), rts)
+    # `head`/`represents`/`proposals` below are sized, on the call that cut
+    # the race off, to the `may_block` that call's `interventions`/`risks`
+    # gave; a resumed race reuses them unconditionally, so a continuation
+    # call whose own `interventions`/`risks` recompute `may_block`
+    # differently would index buffers sized for the old value instead of
+    # resizing them. Refuse that up front rather than let it run into a
+    # `BoundsError` partway through the race.
+    resume !== nothing && resume.may_block != may_block && throw(
+        ArgumentError(
+            "a continuation call's `interventions`/`risks` must leave " *
+                "`may_block` ($may_block) as it was on the call that cut the " *
+                "race off ($(resume.may_block)); continue a race with the " *
+                "same model it was started with"
+        )
+    )
     # Whether each of the two `_open_routes!` passes below has a route to
     # open. A model with only one kind of route (every benchmarked model so
     # far) then skips the pass that would open none of them, rather than
@@ -1566,7 +1581,8 @@ function _finish_race!(rts, race, extinct, stop_t, capped_generation)
         race.state.continuation = _RaceContinuation(
             rts, race.members, race.contacts, race.introduction, race.watches,
             race.projections, race.max_generation, race.stopping_rules,
-            capped_generation, convert(_timetype(race.state), stop_t), race.buffers
+            capped_generation, convert(_timetype(race.state), stop_t), race.buffers,
+            race.may_block
         )
     end
     return extinct
@@ -1616,6 +1632,9 @@ with whatever bookkeeping a route keeps on itself (such as `_MassAction`'s
 cut group pairs), the members it raced over, its `contacts`/`introduction`/
 `watches`/`projections`, the case and generation caps besides `max_time`
 itself, and the buffers its queue and every other pending proposal live in.
+`may_block` is kept too, since it sized those buffers: a continuation call
+whose `interventions`/`risks` would recompute it differently is refused
+rather than indexing buffers sized for the old value.
 """
 struct _RaceContinuation{T <: Real, RT, M, C, I, W, J, SR} <: AbstractRaceContinuation
     rts::RT
@@ -1629,6 +1648,7 @@ struct _RaceContinuation{T <: Real, RT, M, C, I, W, J, SR} <: AbstractRaceContin
     capped_generation::Bool
     max_time::T
     buffers::_RaceBuffers{T}
+    may_block::Bool
 end
 
 # One of this task's spare objects of type `B`, or a new one. Each race takes

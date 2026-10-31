@@ -115,6 +115,31 @@ end
         @test_throws ArgumentError simulate(model, state; max_time = 2.0)
     end
 
+    @testset "a continuation that changes may_block is refused" begin
+        # The first call has no intervention that can block a proposal; the
+        # second adds a leaky `Isolation`, which defines `competing_risk` and
+        # so turns on the blocking that sizes the race's buffers. Resuming
+        # with it must be refused rather than index buffers sized for the
+        # first call.
+        model = ModelSpec(
+            HomogeneousProcess(transmission_rate = 0.4, population_size = 2000);
+            progression = [Transition(:recovered; rate = 0.2, terminal = true)]
+        )
+        blocking_model = ModelSpec(
+            HomogeneousProcess(transmission_rate = 0.4, population_size = 2000);
+            progression = [Transition(:recovered; rate = 0.2, terminal = true)],
+            interventions = [
+                Isolation(
+                    onset_to_isolation_delay = 1.0, duration = Inf,
+                    post_isolation_transmission = 0.5
+                ),
+            ]
+        )
+        state = simulate(model; max_time = 5.0, n_initial = 5, rng = StableRNG(1))
+        @test !state.extinct
+        @test_throws ArgumentError simulate(blocking_model, state; max_time = 30.0)
+    end
+
     @testset "no observation on continuation" begin
         counter = CountingObservation()
         model = ModelSpec(
