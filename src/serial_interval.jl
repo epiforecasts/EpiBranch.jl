@@ -3,9 +3,9 @@
 # A serial interval is the sum of three delays: the generation time from
 # infector to infectee, plus the infectee's incubation period, minus the
 # infector's. Building it needs `convolved` and `difference` from
-# ConvolvedDistributions.jl: the method is defined once that package (and
-# CensoredDistributions.jl, which depends on it and supplies
-# `double_interval_censored` for the censoring step around it) is loaded; see
+# ConvolvedDistributions.jl: the method is defined once that package and
+# CensoredDistributions.jl (which supplies `double_interval_censored` for the
+# censoring step around it) are both loaded; see
 # `ext/EpiBranchCensoredDistributionsExt.jl`. The stub and its docstring stay
 # here to keep `serial_interval` exported and documented either way.
 
@@ -28,8 +28,8 @@ general way to resolve a convolution for every possible case), and
 `clinical_presentation`'s incubation period does not yet vary between cases,
 so today they only name which pair the serial interval is for.
 
-Available once CensoredDistributions.jl is loaded (which pulls in
-ConvolvedDistributions.jl).
+Available once CensoredDistributions.jl and ConvolvedDistributions.jl are
+both loaded.
 
 !!! note "Closed forms rarely survive the composition"
     ConvolvedDistributions.jl has a closed form for the sum or the
@@ -51,7 +51,8 @@ ConvolvedDistributions.jl).
 # Examples
 
 ```julia
-using EpiBranch, CensoredDistributions, Distributions, StableRNGs
+using EpiBranch, CensoredDistributions, ConvolvedDistributions, Distributions,
+    StableRNGs
 
 model = ModelSpec(
     BranchingProcess(NegBin(2.5, 0.16), Gamma(5.95, 1 / 0.77));

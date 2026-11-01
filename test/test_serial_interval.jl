@@ -1,7 +1,8 @@
 # Tests for the CensoredDistributions.jl extension: the distribution of the
 # serial interval between a linked pair, and its use with
-# `double_interval_censored`. Loading CensoredDistributions.jl (which pulls in
-# ConvolvedDistributions.jl) activates `serial_interval`'s only method.
+# `double_interval_censored`. Loading CensoredDistributions.jl and
+# ConvolvedDistributions.jl together activates `serial_interval`'s only
+# method.
 
 @testset "Serial interval (CensoredDistributions.jl extension)" begin
     gt = Gamma(5.95, 1 / 0.77)
