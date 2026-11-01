@@ -530,7 +530,8 @@ RoutedNetworkInfections
 
 The distribution of the serial interval between a linked pair, for fitting
 timing data such as serial intervals from contact-traced pairs. Available
-once CensoredDistributions.jl is loaded, through a package extension.
+once CensoredDistributions.jl and ConvolvedDistributions.jl are loaded,
+through a package extension.
 
 ```@docs
 serial_interval
