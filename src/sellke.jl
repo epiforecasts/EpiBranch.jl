@@ -1153,17 +1153,12 @@ function _sellke_race!(
     creating = filter(iv -> !acts_on_population(iv) && !needs_contacts(iv), acting)
     contactless_actions = any(iv -> !needs_contacts(iv), acting)
     # A resumed race keeps every one of these exactly as its last pop left
-    # them, rather than starting them fresh: that is its leftover queue.
-    if resume === nothing
-        openings = empty!(buffers.openings) # one per case and route it transmits along
-        proposals = empty!(buffers.proposals) # proposals retained for fallback
-        head = fill!(resize!(buffers.head, may_block ? m : 0), 0) # first proposal to each member
-        represents = fill!(resize!(buffers.represents, m), 0) # what each member's heap entry names
-        queue = empty!(buffers.queue)
-    else
-        openings, proposals, head, represents, queue =
-            buffers.openings, buffers.proposals, buffers.head, buffers.represents, buffers.queue
-    end
+    # them, rather than starting them fresh: that is its leftover queue. Pulled
+    # out into its own function, rather than branched on inline: inlined here,
+    # this branch measurably slowed every case the race settles, resumed or
+    # not.
+    openings, proposals, head, represents, queue =
+        _race_queue_buffers(resume, buffers, may_block, m)
     # An admitted action's effect is deferred onto this same queue, as an
     # event naming no member (`0`, which no case position ever is) and
     # indexing `pending_actions` instead of a proposal. `_apply_case_actions!`
@@ -1211,10 +1206,6 @@ function _sellke_race!(
         queue, proposals, head, best, represents, processed, pos, state, rng, members,
         watch, snapshot, watched_keys, may_block, max_time, reinfects,
         route_projections, full_snapshot, interventions, creating, buffers,
-        # Kept only so a race cut off by `max_time` can be resumed later
-        # (`_finish_race!`): everything `_sellke_race!` would otherwise need
-        # to be called with again, besides `max_time` itself.
-        rts, contacts, introduction, watches, projections, max_generation, stopping_rules,
     )
     # What tracing and the interventions' actions read as a case's contacts. A
     # route that creates contacts as it goes creates a ring member's when the
@@ -1252,7 +1243,10 @@ function _sellke_race!(
         # method) pops the very same event first rather than losing it.
         if bt > max_time
             _enqueue!(queue, event)
-            return _finish_race!(rts, race, false, max_time, capped_generation, true)
+            return _finish_race!(
+                rts, race, false, max_time, capped_generation, true,
+                contacts, introduction, watches, projections, max_generation, stopping_rules
+            )
         end
         # A deferred action's own event: no member settles from it, so it
         # skips the pop bookkeeping below, which is about resolving a case.
@@ -1459,7 +1453,10 @@ function _sellke_race!(
         # reads; ending here rather than after this case transmits matches
         # `MaxCases` stopping at the first `n` infections in time.
         _any_stop(stopping_rules, state) &&
-            return _finish_race!(rts, race, false, bt, capped_generation, false)
+            return _finish_race!(
+            rts, race, false, bt, capped_generation, false,
+            contacts, introduction, watches, projections, max_generation, stopping_rules
+        )
         # A route that creates its contacts as it goes creates this case's now,
         # so that tracing and the interventions' actions can reach them.
         # Unrolled over `rts` rather than looped over (see `_mint_all!`), for
@@ -1557,7 +1554,8 @@ function _sellke_race!(
         rts, race,
         !capped_generation &&
             !any(((_, route_targets),) -> _pending_beyond(route_targets, race), rts),
-        race.max_time, capped_generation, !capped_generation
+        race.max_time, capped_generation, !capped_generation,
+        contacts, introduction, watches, projections, max_generation, stopping_rules
     )
 end
 
@@ -1570,7 +1568,16 @@ end
 # `max_generation` has already let through everything up to its own cap, and
 # popping on would let through more. Each of those clears the continuation
 # and returns the buffers to the pool as before.
-function _finish_race!(rts, race, extinct, stop_t, capped_generation, cut_by_max_time)
+#
+# `contacts`/`introduction`/`watches`/`projections`/`max_generation`/
+# `stopping_rules` are only needed for the `_RaceContinuation` built below, so
+# they are threaded through as plain arguments rather than carried on `race`
+# itself: `race` is passed to every route and intervention hook in the race's
+# hot loop, and the extra fields measurably slowed every one of those calls.
+function _finish_race!(
+        rts, race, extinct, stop_t, capped_generation, cut_by_max_time,
+        contacts, introduction, watches, projections, max_generation, stopping_rules
+    )
     for (_, route_targets) in rts
         _finish!(route_targets, race, stop_t, extinct)
     end
@@ -1597,8 +1604,8 @@ function _finish_race!(rts, race, extinct, stop_t, capped_generation, cut_by_max
         # timing type to match `race.buffers`, so the two share one type
         # parameter in `_RaceContinuation`.
         race.state.continuation = _RaceContinuation(
-            rts, race.members, race.contacts, race.introduction, race.watches,
-            race.projections, race.max_generation, race.stopping_rules,
+            rts, race.members, contacts, introduction, watches,
+            projections, max_generation, stopping_rules,
             capped_generation, convert(_timetype(race.state), stop_t), race.buffers,
             race.may_block, cut_by_max_time
         )
@@ -1606,6 +1613,18 @@ function _finish_race!(rts, race, extinct, stop_t, capped_generation, cut_by_max
     return extinct
 end
 _finish!(route_targets, race, stop_t, extinct) = nothing
+
+# A fresh race starts these empty (sized to `m`, or to nothing where
+# `may_block` lets the race skip them); a resumed one keeps them exactly as
+# its last pop left them, its leftover queue.
+function _race_queue_buffers(resume, buffers, may_block, m)
+    resume === nothing && return (
+        empty!(buffers.openings), empty!(buffers.proposals),
+        fill!(resize!(buffers.head, may_block ? m : 0), 0),
+        fill!(resize!(buffers.represents, m), 0), empty!(buffers.queue),
+    )
+    return buffers.openings, buffers.proposals, buffers.head, buffers.represents, buffers.queue
+end
 
 # Whether any of the stopping rules ends the run now.
 function _any_stop(rules, state)
