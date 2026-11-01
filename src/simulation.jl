@@ -882,6 +882,11 @@ end
 function _resolve_before_abort!(transitions, individual, state, aborted_t)
     kept = copy(individual.state)
     for transition in transitions
+        # `kept` still shares `individual.state`'s `:_removal_entries` vector
+        # from the last `copy` or restore below; `_push_removal_entry!` grows
+        # it in place, so without this a push here would reach back into
+        # `kept` and survive an undo that should have removed it.
+        _detach_removal_history!(individual.state)
         resolve_individual!(transition, individual, state)
         if _writes_time_from(individual.state, kept, aborted_t)
             # The uniform a group of siblings shares belongs to the group
