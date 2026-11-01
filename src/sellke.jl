@@ -1153,9 +1153,9 @@ function _sellke_race!(
     creating = filter(iv -> !acts_on_population(iv) && !needs_contacts(iv), acting)
     contactless_actions = any(iv -> !needs_contacts(iv), acting)
     # A resumed race keeps every one of these exactly as its last pop left
-    # them, rather than starting them fresh: that is its leftover queue. Pulled
-    # out into its own function, rather than branched on inline: inlined here,
-    # this branch measurably slowed every case the race settles, resumed or
+    # them, rather than starting them fresh: that is its leftover queue.
+    # Pulled out into its own function rather than left as an inline branch:
+    # inlined, it measurably slowed every case the race settles, resumed or
     # not.
     openings, proposals, head, represents, queue =
         _race_queue_buffers(resume, buffers, may_block, m)
@@ -1573,7 +1573,8 @@ end
 # `stopping_rules` are only needed for the `_RaceContinuation` built below, so
 # they are threaded through as plain arguments rather than carried on `race`
 # itself: `race` is passed to every route and intervention hook in the race's
-# hot loop, and the extra fields measurably slowed every one of those calls.
+# hot loop, and keeping these fields on it there measurably slowed every one
+# of those calls.
 function _finish_race!(
         rts, race, extinct, stop_t, capped_generation, cut_by_max_time,
         contacts, introduction, watches, projections, max_generation, stopping_rules
