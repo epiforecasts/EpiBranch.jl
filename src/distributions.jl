@@ -214,8 +214,15 @@ function HazardKernel(hazard; upper::Real = Inf, onset::Real = 0.0)
     return HazardKernel(hazard, onset, upper)
 end
 
-SurvivalDistributions.hazard(k::HazardKernel, t::Real) = k.hazard(t)
-SurvivalDistributions.loghazard(k::HazardKernel, t::Real) = log(k.hazard(t))
+# Zero outside `(onset, upper)` whatever `hazard` returns there, as
+# `cumhazard` already treats it: a calendar-scaled window integrates these
+# directly, and the pairwise likelihood reads them at observed times.
+function SurvivalDistributions.hazard(k::HazardKernel, t::Real)
+    return k.onset < t < k.upper ? k.hazard(t) : zero(float(t))
+end
+function SurvivalDistributions.loghazard(k::HazardKernel, t::Real)
+    return k.onset < t < k.upper ? log(k.hazard(t)) : oftype(float(t), -Inf)
+end
 function SurvivalDistributions.cumhazard(k::HazardKernel, τ::Real)
     τ >= 0 || throw(ArgumentError("τ must be non-negative, got $τ"))
     τ <= k.onset && return zero(float(τ))

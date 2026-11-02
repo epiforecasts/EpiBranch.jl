@@ -248,6 +248,30 @@ end
         end
     end
 
+    @testset "hazard and loghazard are zero outside (onset, upper)" begin
+        k = HazardKernel(t -> 2.0; onset = 15.0, upper = 30.0)
+        @test EpiBranch.hazard(k, 3.0) == 0.0
+        @test EpiBranch.loghazard(k, 3.0) == -Inf
+        @test EpiBranch.hazard(k, 30.0) == 0.0
+        @test EpiBranch.hazard(k, 16.0) == 2.0
+        # A calendar-scaled window integrates the kernel's own hazard rather
+        # than its `cumhazard`, so the onset has to hold there as well.
+        kernel = HazardKernel(t -> 2.0; onset = 15.0)
+        window = Infectiousness(
+            Poisson(3.0); kernel,
+            calendar = Seasonal(amplitude = 0.5, peak_day = 0.0, period = 365.0)
+        )
+        s = simulate(
+            ModelSpec(BranchingProcess(window));
+            n_initial = 50, max_generations = 1, rng = StableRNG(1)
+        )
+        kids = filter(i -> i.parent_id != 0 && is_infected(i), s.individuals)
+        @test length(kids) > 0
+        @test all(kids) do kid
+            kid.infection_time - s.individuals[kid.parent_id].infection_time >= 15.0
+        end
+    end
+
     @testset "upper caps the support" begin
         k = HazardKernel(t -> 2.0; upper = 1.0)
         @test maximum(k) == 1.0
