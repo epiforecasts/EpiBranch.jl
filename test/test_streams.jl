@@ -74,4 +74,53 @@ end
             onset_time(baseline_crn[i]) == onset_time(noisy_crn[i]) for i in 1:5
         )
     end
+
+    @testset "population characteristics draw from a per-person stream" begin
+        attrs = [
+            demographics(age_distribution = Uniform(0, 90)),
+            clinical_presentation(
+                incubation_period = LogNormal(1.6, 0.5), prob_asymptomatic = 0.3
+            ),
+            groups(5),
+        ]
+        spec(ivs) = ModelSpec(
+            BranchingProcess(Poisson(0.0), Exponential(5.0));
+            attributes = attrs, interventions = ivs
+        )
+        run_sim(ivs, rng) = simulate(spec(ivs); n_initial = 5, rng = rng).individuals
+
+        # Under `CommonRandomNumbers`, each person's age, symptom status,
+        # incubation period and group come from their own stream, so an
+        # unrelated draw for another person changes nothing about them.
+        baseline_crn = run_sim(AbstractIntervention[], CommonRandomNumbers(42))
+        noisy_crn = run_sim([_NoiseForOne(1)], CommonRandomNumbers(42))
+        for i in 1:5
+            @test baseline_crn[i].state[:age] == noisy_crn[i].state[:age]
+            @test baseline_crn[i].state[:sex] == noisy_crn[i].state[:sex]
+            @test baseline_crn[i].state[:asymptomatic] == noisy_crn[i].state[:asymptomatic]
+            @test isequal(
+                baseline_crn[i].state[:incubation_period],
+                noisy_crn[i].state[:incubation_period]
+            )
+            @test baseline_crn[i].state[:group] == noisy_crn[i].state[:group]
+        end
+    end
+
+    @testset "group_attribute draws from a per-group stream" begin
+        attrs = [groups(5), group_attribute(:risk; value = Beta(2, 2))]
+        spec(ivs) = ModelSpec(
+            BranchingProcess(Poisson(0.0), Exponential(5.0));
+            attributes = attrs, interventions = ivs
+        )
+        run_sim(ivs, rng) = simulate(spec(ivs); n_initial = 5, rng = rng).individuals
+
+        # Under `CommonRandomNumbers`, a group's shared value comes from its
+        # own stream. An unrelated draw for another person leaves it
+        # unchanged, whichever member happens to populate the cache first.
+        baseline_crn = run_sim(AbstractIntervention[], CommonRandomNumbers(42))
+        noisy_crn = run_sim([_NoiseForOne(1)], CommonRandomNumbers(42))
+        for i in 1:5
+            @test baseline_crn[i].state[:risk] == noisy_crn[i].state[:risk]
+        end
+    end
 end

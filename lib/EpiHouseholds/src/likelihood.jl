@@ -167,8 +167,10 @@ function Distributions.loglikelihood(
         data::HouseholdInfections, model::HouseholdProcess;
         condition_on::ConditionOn = RecruitedIndex(), susceptibility = nothing
     )
+    external = _ext_active(model.external_hazard)
     layout = compile_household_pairs(
-        data; external = _ext_active(model.external_hazard), condition_on
+        data; external, explain_index = external && _ext_explains_index(model.external_hazard),
+        condition_on
     )
     return pairwise_surv_loglik(
         model.kernel, data, layout; external_hazard = model.external_hazard, susceptibility
@@ -199,8 +201,8 @@ from households. Build it with [`compile_household_pairs`](@ref).
 const HouseholdPairsLayout = ContactPairsLayout
 
 """
-    compile_household_pairs(household_of, is_index, infected; external=false)
-    compile_household_pairs(data::HouseholdInfections; external=false, condition_on=RecruitedIndex())
+    compile_household_pairs(household_of, is_index, infected; external=false, explain_index=external)
+    compile_household_pairs(data::HouseholdInfections; external=false, explain_index=external, condition_on=RecruitedIndex())
 
 List once who could have infected whom in a household population, where
 household members are each other's possible infectors; this is
@@ -210,8 +212,8 @@ there. Evaluate the result with
 
 `condition_on` is a [`ConditionOn`](@ref) rule saying how to condition on the
 index case: which member of each household the likelihood takes as given,
-when there is no community hazard (`external = false`; with one, every
-infection is explained and the rule has no effect). [`RecruitedIndex`](@ref),
+when index cases are not explained (`explain_index = false`; when they are,
+every infection is explained and the rule has no effect). [`RecruitedIndex`](@ref),
 the default, conditions on the recruited index case, `data.is_index`, fixed
 when the data are read. [`EarliestInfected`](@ref) conditions on the household
 member with the earliest `infection_time` in `data`, worked out on every call.
@@ -226,18 +228,18 @@ function compile_household_pairs(
         household_of::AbstractVector{<:Integer},
         is_index::AbstractVector{Bool},
         infected::AbstractVector{Bool};
-        external::Bool = false
+        external::Bool = false, explain_index::Bool = external
     )
-    return compile_contact_pairs(household_of, is_index, infected; external)
+    return compile_contact_pairs(household_of, is_index, infected; external, explain_index)
 end
 
 function compile_household_pairs(
-        d::HouseholdInfections; external::Bool = false,
+        d::HouseholdInfections; external::Bool = false, explain_index::Bool = external,
         condition_on::ConditionOn = RecruitedIndex()
     )
     infected = .!isnan.(d.infection_time)
     return compile_contact_pairs(
-        d.household_of, condition_mask(condition_on, d), infected; external
+        d.household_of, condition_mask(condition_on, d), infected; external, explain_index
     )
 end
 

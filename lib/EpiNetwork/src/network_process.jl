@@ -26,7 +26,9 @@ provided they are still infectious by then. Ending someone's infectious period
 early (recovery, isolation) therefore cuts their onward transmission.
 
 The network is the whole population. `adjacency[i]` lists the people person
-`i` is in contact with (numbered from 1).
+`i` is in contact with (numbered from 1). When `adjacency` is already a
+`Vector{Vector{Int}}`, it is kept as given rather than copied. It must not be
+changed afterwards.
 
 `kernel` is the **contact interval**, the delay in days from a person becoming
 infectious to their infecting contact with a neighbour. It can be:
@@ -68,6 +70,12 @@ model = ModelSpec(NetworkProcess(adjacency, Exponential(2.0));
     progression = [Transition(:recovered; from = :infection, delay = 6.0, terminal = true)])
 ```
 """
+# Kept as-is when it is already a `Vector{Vector{Int}}`, since copying every
+# neighbour vector of a large network is the dominant cost of building a
+# `NetworkProcess` (see the constructor's docstring).
+_as_adjacency(adjacency::Vector{Vector{Int}}) = adjacency
+_as_adjacency(adjacency) = Vector{Int}[Int.(nbrs) for nbrs in adjacency]
+
 struct NetworkProcess{K, E} <: TransmissionModel
     adjacency::Vector{Vector{Int}}   # adjacency[i] = graph neighbours of node i
     edge_kernel::K                   # contact interval: shared, callable, or per-edge
@@ -85,7 +93,7 @@ function NetworkProcess(
         external_hazard = 0.0,
         obs_end = Inf
     )
-    adj = Vector{Int}[Int.(nbrs) for nbrs in adjacency]
+    adj = _as_adjacency(adjacency)
     edge_kernel = _validate_kernel(kernel, adj)
     _check_external(external_hazard, length(adj))
     obs_end_value = Float64(obs_end)

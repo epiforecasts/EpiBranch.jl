@@ -127,6 +127,74 @@ function _run_once_or_retry(model, sim_opts, condition, max_attempts; kwargs...)
 end
 
 """
+    simulate(model::TransmissionModel, state::SimulationState; max_time::Real,
+             rng::AbstractRNG = state.rng)
+
+Continue `state`, a [`SimulationState`](@ref) returned by [`simulate`](@ref)
+or by this method itself, up to a later `max_time`. The race underneath picks
+up exactly where it stopped: every contact already decided stands, and
+nothing already drawn is redrawn, so a run continued this way to `max_time`
+agrees with one run straight through to it from the same seed (the one
+exception is mass action with an infectious window that never closes, which
+agrees in distribution rather than bit for bit). `model` supplies the
+interventions, transmission risks and contact recorder again; `state` does
+not hold them, so a particle filter can keep `model` once as the dynamics
+and copy only `state` as the particle.
+
+`state` is mutated in place and returned. No observation model is applied:
+continuation is for a caller, such as a particle filter, that scores each
+step itself against its own data, rather than drawing a synthetic one.
+`state` is returned unchanged if it had already reached extinction, or
+stopped for a reason other than `max_time` — there is nothing left for a
+later `max_time` to continue.
+
+```julia
+using EpiBranch, Distributions
+model = ModelSpec(
+    HomogeneousProcess(transmission_rate = 0.4, population_size = 10_000);
+    progression = [Transition(:recovered; rate = 0.2, terminal = true)],
+)
+state = simulate(model; max_time = 20.0)
+simulate(model, state; max_time = 27.0)
+```
+"""
+function simulate(
+        model::TransmissionModel, state::SimulationState; max_time::Real,
+        rng::AbstractRNG = state.rng
+    )
+    return _continue_sellke!(
+        state, rng, max_time, interventions(model), transmission_risks(model),
+        recorder(model)
+    )
+end
+
+# Shared by both `simulate` continuation methods (a bare process and a
+# `ModelSpec`): resume `state`'s leftover race to `max_time`, with the
+# modelling layers a continuation needs (not `attributes`, `progression` or
+# `observation`, which do not reach the race again) supplied explicitly.
+function _continue_sellke!(state::SimulationState, rng, max_time, ivs, risks, recorder_)
+    continuation = state.continuation
+    (continuation === nothing || !continuation.cut_by_max_time) && return state
+    max_time > continuation.max_time || throw(
+        ArgumentError(
+            "max_time ($max_time) must be past the state's own " *
+                "($(continuation.max_time)) to continue it"
+        )
+    )
+    extinct = _sellke_race!(
+        state, continuation.members, rng;
+        routes = continuation.rts, interventions = isempty(ivs) ? () : ivs,
+        contacts = continuation.contacts, risks,
+        introduction = continuation.introduction, watches = continuation.watches,
+        projections = continuation.projections, max_time,
+        max_generation = continuation.max_generation,
+        stopping_rules = continuation.stopping_rules, recorder = recorder_,
+        resume = continuation
+    )
+    return _reconcile_sellke_bookkeeping!(state, extinct)
+end
+
+"""
     simulate_once(model, sim_opts; interventions, attributes, progression,
                   observation, recorder, rng)
 
@@ -418,7 +486,15 @@ end
 # an `OffspringTimes` already gave.
 _window_infection_time(::NoGenerationTime, from_t::Real, state) = from_t
 _window_infection_time(offset::_FixedOffset, from_t::Real, state) = from_t + offset.offset
-_window_infection_time(kernel, from_t::Real, state) = from_t + rand(state.rng, kernel)
+function _window_infection_time(kernel::Distribution, from_t::Real, state)
+    return from_t + rand(state.rng, kernel)
+end
+# A window whose `calendar` scales its kernel draws from the resulting
+# calendar-scaled kernel directly, exactly as a `PairKernel` with a calendar
+# does on the structure-driven routes.
+function _window_infection_time(kernel::_CalendarScaledKernel, from_t::Real, state)
+    return from_t + rand(state.rng, kernel)
+end
 
 # Tag a contact with its window's `until` states so `WindowCensor` can
 # block it after the infector is removed. Skipped for windows with no
@@ -882,6 +958,12 @@ end
 function _resolve_before_abort!(transitions, individual, state, aborted_t)
     kept = copy(individual.state)
     for transition in transitions
+        # `kept` still shares the `:_removal_entries` vector of
+        # `individual.state`, left over from the last `copy` or restore
+        # below. `_push_removal_entry!` grows that vector in place; without
+        # this call, a push here would reach back into `kept`, and the
+        # entry would survive an undo meant to remove it.
+        _detach_removal_history!(individual.state)
         resolve_individual!(transition, individual, state)
         if _writes_time_from(individual.state, kept, aborted_t)
             # The uniform a group of siblings shares belongs to the group
@@ -1073,7 +1155,12 @@ function _risks_block(risks, parent, contact, state, transmission_time)
         prob = sample_value(risk.block_probability, rng, parent, contact, state)
         prob <= 0.0 && continue
         prob >= 1.0 && return true
-        rand(rng) < prob && return true
+        # Drawn from `Bernoulli(prob)` rather than compared against a raw
+        # uniform, so `prob` can be a number type a differentiation backend
+        # recognises as a distribution parameter (see docs/src/tutorials/
+        # inference.md, "Gradients of simulated outcomes") instead of only a
+        # `Float64` threshold.
+        rand(rng, Bernoulli(prob)) == 1 && return true
     end
     return false
 end
@@ -1171,8 +1258,9 @@ function _apply_attributes!(attribute::GroupAttribute, rng, ind)
                 "another attributes function setting that key, ahead of it."
         )
     )
-    ind.state[attribute.key] = get!(attribute.cache, ind.state[attribute.group_key]) do
-        sample_value(attribute.propensity, rng, ind)
+    group = ind.state[attribute.group_key]
+    ind.state[attribute.key] = get!(attribute.cache, group) do
+        sample_value(attribute.propensity, stream(rng, group, attribute.key), ind)
     end
     return nothing
 end
@@ -1261,6 +1349,7 @@ struct ClinicalPresentation{D, P}
 end
 
 function (clinical::ClinicalPresentation)(rng, ind)
+    rng = stream(rng, ind.id, :clinical_presentation)
     pa = sample_value(clinical.prob_asymptomatic, rng, ind)
     is_asymp = rand(rng) < pa
     ind.state[:asymptomatic] = is_asymp
@@ -1330,6 +1419,7 @@ struct Demographics{D}
 end
 
 function (d::Demographics)(rng, ind)
+    rng = stream(rng, ind.id, :demographics)
     ind.state[:age] = _sample_age(rng, d.age_distribution, d.age_range)
     return ind.state[:sex] = rand(rng) < d.prob_female ? :female : :male
 end
@@ -1385,7 +1475,7 @@ struct Groups
 end
 
 function (g::Groups)(rng, ind)
-    return ind.state[g.key] = rand(rng, 1:g.n_groups)
+    return ind.state[g.key] = rand(stream(rng, ind.id, :groups), 1:g.n_groups)
 end
 
 """
