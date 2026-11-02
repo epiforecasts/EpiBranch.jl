@@ -83,17 +83,13 @@ dispatched-on trait.
    through PrimaryCensored.jl and Turing's `~` among it. A law with no standard
    family, such as a kernel defined by an arbitrary hazard, subtypes
    `Distribution` and implements `rand`, `logpdf`, `cdf`, `quantile`, `minimum`
-   and `maximum`, and `logccdf` and `invlogccdf` if it is a kernel. The
-   internal, unexported wrappers that exist each have a reason, and a new one
-   needs its own sentence here: `_ChainSizeLaw`/`_ChainLengthLaw` in
-   `src/likelihood_dists.jl` subtype `Distribution` solely so a model can sit
-   on the right-hand side of Turing's `~` and delegate to the existing
-   `loglikelihood` methods; `_TruncatedSkewNormal` in `src/distributions.jl`
-   truncates `SkewNormal` numerically because that family has no `cdf` in the
-   Distributions.jl version in use; `_CalendarScaledKernel` in
-   `src/pair_kernels.jl` scales a kernel's hazard by a calendar; `_DelaySum`
-   in `src/analytical/incidence_likelihood.jl` is the convolution of two
-   delays.
+   and `maximum`, and, if it is a kernel, the methods `_CalendarScaledKernel`
+   in `src/pair_kernels.jl` defines. An internal, unexported wrapper around a
+   standard type is allowed where that type cannot do the job, with the reason
+   in a comment at its definition, as `_TruncatedSkewNormal` in
+   `src/distributions.jl` (no `cdf` for `SkewNormal`) and `_ChainSizeLaw` in
+   `src/likelihood_dists.jl` (a model on the right-hand side of Turing's `~`)
+   do.
 2. **DataFrames output**: line lists and chain statistics returned as
    DataFrames, matching epidemiological conventions (one row per case or per
    contact pair).
