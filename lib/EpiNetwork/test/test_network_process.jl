@@ -958,6 +958,40 @@ end
         @test count(is_traced, state.individuals) == 20
     end
 
+    @testset "RoutedNetwork: a self-proposing route with a never-closing window continues" begin
+        # Mass action (`EpiBranch._MassAction`) only samples a window with no
+        # natural close up to the race's time limit, and must redraw what it
+        # left past that on `simulate(model, state; max_time)` (`EpiBranch`'s
+        # own continuation tests). Wrapped in a route's `_TracedProposals` for
+        # tracing, as every self-proposing route is, that redraw must still
+        # reach the mass action underneath.
+        n, β = 1500, 0.3
+        routed_model() = begin
+            state = EpiBranch.new_state(
+                HomogeneousProcess(transmission_rate = β, population_size = n),
+                Transition[], NoAttributes(), StableRNG(0)
+            )
+            EpiBranch.add_individuals!(state, n, AbstractIntervention[])
+            route = EpiBranch._MassAction(state, collect(1:n); rate = (_, _) -> β / n)
+            w = RouteWindow(:community; kernel = nothing, reach = route)
+            ModelSpec(RoutedNetwork([w]; n = n))
+        end
+        final_size(seed; split) = begin
+            if split === nothing
+                simulate(
+                    routed_model(); max_time = 20.0, n_initial = 5, rng = StableRNG(seed)
+                ).cumulative_cases
+            else
+                model = routed_model()
+                state = simulate(model; max_time = split, n_initial = 5, rng = StableRNG(seed))
+                simulate(model, state; max_time = 20.0).cumulative_cases
+            end
+        end
+        direct = [final_size(s; split = nothing) for s in 1:150]
+        continued = [final_size(s; split = 4.0) for s in 1:150]
+        @test isapprox(sum(direct) / length(direct), sum(continued) / length(continued); rtol = 0.1)
+    end
+
     @testset "RoutedNetwork: conditioned simulation" begin
         # `condition` retries until the outbreak size falls in the range
         route = RouteWindow(

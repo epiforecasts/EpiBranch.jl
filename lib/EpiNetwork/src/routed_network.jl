@@ -395,6 +395,9 @@ EpiBranch.route_pair_kernel(t::_TracedProposals, infector_id, target_id, state) 
     EpiBranch.route_pair_kernel(t.reach, infector_id, target_id, state)
 EpiBranch.pending_beyond(t::_TracedProposals, state, reinfects::Bool) =
     EpiBranch.pending_beyond(t.reach, state, reinfects)
+EpiBranch._resumable_route(t::_TracedProposals) = EpiBranch._resumable_route(t.reach)
+EpiBranch._resume_route!(t::_TracedProposals, race, ri, old_max_time, traits) =
+    EpiBranch._resume_route!(t.reach, race, ri, old_max_time, traits)
 
 function EpiBranch.propose_along(
         t::_TracedProposals, infector_id, state, open_t, close_t, capped, traits
