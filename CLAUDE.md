@@ -76,13 +76,17 @@ dispatched-on trait.
 
 ## Conventions
 
-1. **Distributions from Distributions.jl**: use standard `Distributions.jl`
-   types for offspring distributions, delay distributions, etc. Do not wrap
-   these in bespoke distribution types. The one sanctioned exception is the
-   internal `_ChainSizeLaw`/`_ChainLengthLaw` wrappers in
-   `src/likelihood_dists.jl`, which subtype `Distribution` solely so a model
-   can sit on the right-hand side of Turing's `~`; they delegate to the
-   existing `loglikelihood` methods and are not exported.
+1. **Distributions from Distributions.jl**: a delay, an offspring distribution
+   or a contact-interval kernel is a standard `Distributions.jl` type wherever
+   one exists, passed as it is. Never wrap one in a type of our own: the user
+   would lose the API that comes with it, `quantile`, censoring through
+   PrimaryCensored.jl and Turing's `~` among it. A law with no standard family,
+   such as a kernel defined by an arbitrary hazard (`HazardKernel`), may
+   subtype `Distribution` provided it implements that API in full. The internal
+   `_ChainSizeLaw`/`_ChainLengthLaw` wrappers in `src/likelihood_dists.jl` are
+   the one wrapper allowed: they subtype `Distribution` solely so a model can
+   sit on the right-hand side of Turing's `~`, delegate to the existing
+   `loglikelihood` methods and are not exported.
 2. **DataFrames output**: line lists and chain statistics returned as
    DataFrames, matching epidemiological conventions (one row per case or per
    contact pair).
