@@ -413,7 +413,7 @@ function _apply_trace!(action::TraceAction, contact, state, trace_time, rng)
     apply_trace!(action, contact, state, trace_time, rng)
     key = capacity_key(action)
     key === nothing && return nothing
-    get(contact.state, key, false) && _note_capacity_use!(state, key, contact)
+    _capacity_used(get(contact.state, key, nothing)) && _note_capacity_use!(state, key, contact)
     return nothing
 end
 
@@ -469,38 +469,20 @@ function apply_trace!(q::Quarantine, contact, state, trace_time, rng)
         q.duration, rng, contact, "`Quarantine`'s `duration`"
     )
     record_removal!(contact, trace_time, release_time; key = QUARANTINE_STRETCHES_KEY)
-    # Record what isolation, if any, stood before this quarantine, so a
-    # `Scheduled` reset can restore exactly that rather than wiping out an
-    # isolation another intervention recorded (the mirror image of what
-    # `Isolation`'s own `reset!` does for a quarantine it is layered over). A
-    # contact already quarantined by an earlier trace keeps the baseline
-    # recorded before that first trace, instead of taking this trace's own
-    # combined outcome as the new baseline.
-    if !get(contact.state, :_quarantined_by_tracing, false)::Bool
-        contact.state[:_isolation_time_before_quarantine] = isolation_time(contact)
-        contact.state[:_isolation_release_time_before_quarantine] = isolation_release_time(contact)
-        if _isolation_unrecorded(contact)
-            contact.state[:_isolation_unrecorded_before_quarantine] = true
-        else
-            delete!(contact.state, :_isolation_unrecorded_before_quarantine)
-        end
-    end
-    if _isolation_in_force(contact)
-        standing = isolation_time(contact)
-        was_unrecorded = _isolation_unrecorded(contact)
-        final_time, final_release = _combine_removal(
-            standing, isolation_release_time(contact), trace_time, release_time
-        )
-        # An isolation that was not recorded keeps that status only while its own
-        # start is the one in force. Where the trace's start wins, or replaces a
-        # spent removal, the removal is the trace's and is recorded as such.
-        unrecorded = was_unrecorded && final_time == standing
-        set_isolated!(contact, final_time; release_time = final_release)
-        unrecorded && (contact.state[:_isolation_unrecorded] = true)
-    else
-        set_isolated!(contact, trace_time; release_time = release_time)
-    end
-    contact.state[:_quarantined_by_tracing] = true
+    # This trace's own entry, read back merged with whatever isolation already
+    # stands where the two overlap or touch, and apart from it otherwise.
+    # Quarantine is never itself a detection; where it overlaps an unrecorded
+    # isolation that started earlier, the merged view keeps that status (see
+    # `_refresh_isolation_span!`), without this call having to ask.
+    handle = _set_isolated!(contact, trace_time; release_time)
+    # Every trace this contact has ever been quarantined by, so a full reset
+    # (see `_undo_quarantine_isolation!`) withdraws each one: a contact traced
+    # more than once (ring propagation, or more than one child triggering
+    # `SourceTracing` on the same parent) extends its quarantine with a fresh
+    # entry each time rather than revising the first.
+    handles = get(contact.state, :_quarantine_removal_handles, nothing)
+    contact.state[:_quarantine_removal_handles] =
+        handles === nothing ? [handle] : push!(copy(handles), handle)
     # Filed here as well as by the built-in tracers (`_apply_trace!`), so a
     # tracer written outside the package, which calls this directly, still
     # counts the quarantine against the budget a wrapped tracer shares.
@@ -768,34 +750,24 @@ function _reset_traced!(ind::Individual)
     haskey(ind.state, :trace_time) && delete!(ind.state, :trace_time)
     haskey(ind.state, :_ring_remaining) && delete!(ind.state, :_ring_remaining)
     haskey(ind.state, :_ring_propagated) && delete!(ind.state, :_ring_propagated)
-    delete!(ind.state, QUARANTINE_STRETCHES_KEY)
+    _withdraw_all_removals!(ind, QUARANTINE_STRETCHES_KEY)
     _undo_quarantine_isolation!(ind)
     return nothing
 end
 
-# Undo only the isolation `Quarantine` itself recorded, restoring whatever
-# stood before it (another intervention's isolation, or none), rather than
-# clearing the field outright: tracing should not undo a standing isolation
-# set by a separate intervention such as `Isolation`. Mirrors `Isolation`'s
-# own `reset!`, which protects a quarantine it was layered over the same way.
+# Undo only the isolation entries `Quarantine` itself recorded, named by the
+# handles it kept when it recorded them (see `apply_trace!`). Withdrawing
+# exactly those leaves whatever isolation `ind` stood under before, or after,
+# any trace — another intervention's, such as `Isolation`'s — on its own
+# record, untouched. Mirrors `Isolation`'s own `reset!`, which protects a
+# quarantine it was layered over the same way.
 function _undo_quarantine_isolation!(ind::Individual)
-    get(ind.state, :_quarantined_by_tracing, false)::Bool || return nothing
-    previous = _state_real(ind.state, :_isolation_time_before_quarantine, Inf)
-    if isfinite(previous)
-        previous_release = _state_real(
-            ind.state, :_isolation_release_time_before_quarantine, Inf
-        )
-        clear_isolated!(ind)
-        set_isolated!(ind, previous; release_time = previous_release)
-        get(ind.state, :_isolation_unrecorded_before_quarantine, false) &&
-            (ind.state[:_isolation_unrecorded] = true)
-    else
-        clear_isolated!(ind)
+    handles = get(ind.state, :_quarantine_removal_handles, nothing)
+    handles === nothing && return nothing
+    for handle in handles
+        withdraw_removal!(ind, handle)
     end
-    delete!(ind.state, :_isolation_time_before_quarantine)
-    delete!(ind.state, :_isolation_release_time_before_quarantine)
-    delete!(ind.state, :_isolation_unrecorded_before_quarantine)
-    ind.state[:_quarantined_by_tracing] = false
+    delete!(ind.state, :_quarantine_removal_handles)
     return nothing
 end
 

@@ -158,6 +158,13 @@ function analytic_offspring_effect(
         )
     )
     kernel = _single_kernel(spec)
+    _single_calendar(spec) === nothing || throw(
+        ArgumentError(
+            "Isolation's analytic effect reads the window's generation time " *
+                "directly and is not aware of a calendar scaling it; simulate a " *
+                "model that needs one instead."
+        )
+    )
     incubation = cp.incubation_period
     delay = iso.onset_to_isolation_delay
     ε = iso.post_isolation_transmission

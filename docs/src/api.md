@@ -496,6 +496,7 @@ PairwiseSurvivalData
 InfectionLayer
 compile_contact_pairs
 ContactPairsLayout
+MassActionHazard
 PairKernel
 EpiBranch.watched_records
 Steps
@@ -524,6 +525,7 @@ network_infections
 NetworkInfections
 routed_network_infections
 RoutedNetworkInfections
+RoutedMassActionHazard
 ```
 
 ## Distribution helpers
@@ -737,6 +739,8 @@ EpiBranch.removal_gap_host_times
 EpiBranch.removal_gap_host_times_withdrawn
 EpiBranch.removal_block_probability
 EpiBranch.record_removal!
+EpiBranch.revise_removal!
+EpiBranch.withdraw_removal!
 EpiBranch.removal_stretches
 EpiBranch.HazardScaling
 EpiBranch.contact_structure

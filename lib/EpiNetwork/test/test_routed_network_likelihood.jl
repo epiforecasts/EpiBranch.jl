@@ -213,6 +213,66 @@ end
         )
     end
 
+    @testset "a bare MassActionHazard is rejected; RoutedMassActionHazard reads one route" begin
+        # two unconnected people on both routes, so only the external hazard
+        # can score anything: 1 is a conditioned-on index case infectious on
+        # the community route over (0, 3]; 2 is a secondary infected at the
+        # exact instant 1 is removed, which a pairwise row and mass action
+        # must agree on (see the core likelihood's own boundary test)
+        empty_contacts = [Int[], Int[]]
+        windows = [
+            RouteWindow(:household; until = (:recovered,), kernel = Exponential(1.0), reach = empty_contacts),
+            RouteWindow(:community; until = (:recovered,), kernel = Exponential(1.0), reach = empty_contacts),
+        ]
+        data = RoutedNetworkInfections(
+            [:household, :community], [empty_contacts, empty_contacts],
+            [[0.0, NaN], [0.0, NaN]], [[3.0, Inf], [3.0, Inf]],
+            [0.0, 3.0], [true, false]; obs_end = 5.0
+        )
+
+        bare = MassActionHazard(; transmission_rate = 1.0, population_size = 5)
+        @test_throws ArgumentError pairwise_surv_loglik(windows, data; external_hazard = bare)
+
+        N = 5
+        routed = RoutedMassActionHazard(
+            :community, MassActionHazard(; transmission_rate = N, population_size = N)
+        )
+        @test pairwise_surv_loglik(windows, data; external_hazard = routed) ≈ -3.0
+
+        @test_throws ArgumentError pairwise_surv_loglik(
+            windows, data;
+            external_hazard = RoutedMassActionHazard(
+                :nonexistent, MassActionHazard(; transmission_rate = N, population_size = N)
+            )
+        )
+    end
+
+    @testset "RoutedMassActionHazard reads only its own route's windows" begin
+        # 1 is infectious on the household route over (0, 10] and on the
+        # community route over (0, 1] only (say isolation closed it early); 2
+        # is a secondary infected at t = 5, after 1's community window closed
+        # but while the household one is still open. Mass action confined to
+        # the community route must not count 1 any more, even though they are
+        # still infectious on the household route.
+        empty_contacts = [Int[], Int[]]
+        windows = [
+            RouteWindow(:household; until = (:recovered,), kernel = Exponential(1.0), reach = empty_contacts),
+            RouteWindow(:community; until = (:recovered,), kernel = Exponential(1.0), reach = empty_contacts),
+        ]
+        data = RoutedNetworkInfections(
+            [:household, :community], [empty_contacts, empty_contacts],
+            [[0.0, NaN], [0.0, NaN]], [[10.0, Inf], [1.0, Inf]],
+            [0.0, 5.0], [true, false]; obs_end = 10.0
+        )
+        N = 5
+        routed = RoutedMassActionHazard(
+            :community, MassActionHazard(; transmission_rate = N, population_size = N)
+        )
+        # nobody is infectious on the community route at t = 5, so the
+        # secondary has zero density under it
+        @test pairwise_surv_loglik(windows, data; external_hazard = routed) == -Inf
+    end
+
     @testset "a vaccination's change in susceptibility is evaluated structurally" begin
         hh, comm = _routed_adjacency(20, 4)
         windows = [

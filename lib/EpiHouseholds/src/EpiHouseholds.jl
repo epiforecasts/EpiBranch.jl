@@ -31,8 +31,8 @@ import EpiBranch: removal_gap_host_times, removal_block_probability, removal_str
 # EpiBranch, which handles a household population through `contact_structure`.
 # The simulator and the likelihood share EpiBranch's community-hazard helpers
 # and agree on when that term applies and what it is.
-import EpiBranch: pairwise_surv_loglik, _ext_active, _ext_draw, _check_external,
-    _normalise_external, _ext_survival_of
+import EpiBranch: pairwise_surv_loglik, _ext_active, _ext_explains_index, _ext_draw,
+    _check_external, _normalise_external, _ext_survival_of
 
 export HouseholdProcess, household_sizes, household_members, external_hazard, observation_end
 export HouseholdInfections, household_infections
