@@ -1913,8 +1913,12 @@ pending_beyond(route, state, reinfects::Bool) = false
 # (`propose_along`'s `capped`; see `pending_beyond`). The default is a no-op,
 # right for a route that lists its targets instead and so never caps a window
 # in the first place; `_MassAction` is the only built-in route that needs
-# this, in `mass_action.jl`.
-_resume_route!(route_targets, race, ri, old_max_time, traits) = nothing
+# this, in `mass_action.jl`. `proposer` is who the redrawn contacts are
+# submitted through (`propose_along(proposer, ...)`): a wrapper around
+# `route_targets` that itself needs to see them, such as a tracing wrapper
+# recording what the race considers, passes itself here rather than leaving
+# a route that proposes through a fixed inner object to bypass it.
+_resume_route!(route_targets, race, ri, old_max_time, traits, proposer = route_targets) = nothing
 
 # Whether `route_targets` has a `_resume_route!` method of its own, so a race
 # it leaves with a pending window (`pending_beyond`) can actually be redrawn
