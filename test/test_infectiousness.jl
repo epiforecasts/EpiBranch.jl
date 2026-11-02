@@ -395,6 +395,27 @@ end
         @test_throws ArgumentError HazardKernel(t -> t < switch_on ? 0.0 : 2.0; onset = 5.0)
     end
 
+    @testset "a window that closes before the onset draws no contact" begin
+        k = HazardKernel(t -> 2.0; onset = 10.0)
+        tk = truncated(k, 0.0, 5.0)
+        @test rand(StableRNG(1), tk) == Inf
+        @test cdf(tk, 3.0) == 0.0
+        @test cdf(tk, 5.0) == 0.0
+        # The `offspring` form builds exactly this truncation for a case whose
+        # infectious period ends before its kernel switches on; it must then
+        # infect nobody rather than place every contact at the opening.
+        timing = transmission_timing(
+            ind -> HazardKernel(t -> 2.0; onset = ind.state[:switch_on]);
+            offspring = Poisson(3.0), infectious_period = Gamma(2.0, 0.5)
+        )
+        attributes = (rng, ind) -> ind.state[:switch_on] = 10.0
+        model = ModelSpec(
+            BranchingProcess(timing.window); progression = timing.progression, attributes
+        )
+        s = simulate(model; n_initial = 100, max_generations = 1, rng = StableRNG(1))
+        @test count(i -> i.parent_id != 0 && is_infected(i), s.individuals) == 0
+    end
+
     @testset "a per-case trajectory times contacts through a hazard built from it" begin
         # Each case's own switch-on time, drawn as an ordinary attribute, is
         # given to the kernel as its onset: the window's own kernel reads it

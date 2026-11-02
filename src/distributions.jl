@@ -295,12 +295,20 @@ function Distributions.truncated(k::HazardKernel, lo::Real, hi::Real)
     return _TruncatedHazardKernel(k, hi, logcdf(k, hi))
 end
 
+# A window that closes at or before the kernel's onset has no mass to
+# condition on (`logF_hi == -Inf`): every draw is then `Inf`, a contact that
+# never happens, the counterpart of a named distribution's degenerate
+# truncation, which the window's `until` censors.
+_no_mass(k::_TruncatedHazardKernel) = isinf(k.logF_hi)
+
 function Distributions.logcdf(k::_TruncatedHazardKernel, τ::Real)
+    _no_mass(k) && return oftype(k.logF_hi, -Inf)
     return τ >= k.hi ? zero(k.logF_hi) : logcdf(k.kernel, τ) - k.logF_hi
 end
 Distributions.cdf(k::_TruncatedHazardKernel, τ::Real) = exp(logcdf(k, τ))
 Distributions.logccdf(k::_TruncatedHazardKernel, τ::Real) = _log1mexp(logcdf(k, τ))
 function Distributions.quantile(k::_TruncatedHazardKernel, p::Real)
+    _no_mass(k) && return oftype(k.hi, Inf)
     return quantile(k.kernel, exp(k.logF_hi + log(p)))
 end
 Base.rand(rng::AbstractRNG, k::_TruncatedHazardKernel) = quantile(k, rand(rng))
