@@ -272,16 +272,34 @@ end
         end
     end
 
-    @testset "upper caps the support" begin
+    @testset "upper bounds the integration, and a draw beyond it never happens" begin
         k = HazardKernel(t -> 2.0; upper = 1.0)
-        @test maximum(k) == 1.0
+        @test maximum(k) == Inf
         @test minimum(k) == 0.0
         draws = [rand(StableRNG(seed), k) for seed in 1:500]
-        @test all(d -> d <= 1.0, draws)
-        @test any(==(1.0), draws)   # some draws exhaust the hazard before `upper`
-        @test invlogccdf(k, -Inf) == maximum(k)
+        @test all(d -> d <= 1.0 || d == Inf, draws)
+        # The total hazard is 2, so about exp(-2) of the draws exhaust it.
+        @test isapprox(count(isinf, draws) / length(draws), exp(-2.0); atol = 0.05)
+        @test invlogccdf(k, -Inf) == Inf
+        @test logccdf(k, 1.0) ≈ -2.0
+        @test logccdf(k, 5.0) ≈ -2.0
+        @test EpiBranch.cumhazard(k, 5.0) ≈ 2.0
         @test_throws ArgumentError invlogccdf(k, Inf)
         @test_throws ArgumentError invlogccdf(k, NaN)
+    end
+
+    @testset "a bound on the integration leaves the realised R unchanged" begin
+        # A hazard that integrates to 0.1 infects about a tenth of the
+        # contacts it is offered, whether or not the user wrote a bound.
+        count_kids(upper) = begin
+            k = HazardKernel(t -> 0.1 * exp(-t); upper)
+            m = ModelSpec(BranchingProcess(Infectiousness(Poisson(10.0); kernel = k)))
+            s = simulate(m; n_initial = 200, max_generations = 1, rng = StableRNG(3))
+            count(i -> i.parent_id != 0 && is_infected(i), s.individuals)
+        end
+        bounded, unbounded = count_kids(50.0), count_kids(Inf)
+        @test isapprox(bounded / 200, 10 * (1 - exp(-0.1)); rtol = 0.15)
+        @test bounded == unbounded
     end
 
     @testset "rejects a non-positive upper" begin

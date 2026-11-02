@@ -751,8 +751,9 @@ end
 # profile whose survival has certainly ended there, so the remaining hazard
 # is treated as infinite rather than integrated through what may be a
 # singularity at the edge (a calendar-scaled profile's own bounded support);
-# `false` for a hard cap a draw simply piles up at instead (a `HazardKernel`'s
-# `upper`).
+# `false` for a bound the integration simply stops at, handing back a total
+# short of `target` for the caller to treat as a draw that never happens (a
+# `HazardKernel`'s `upper`).
 #
 # `start` must already be where `rate` is positive: a bracket that starts
 # where `rate` is zero cannot tell a `rate` still flat for now, about to

@@ -146,10 +146,11 @@ cleared.
 
 `hazard` is called many times to integrate and invert the cumulative hazard
 by quadrature, so it should be cheap and non-negative throughout
-`(onset, upper)`. One that falls to zero and stays there leaves a case
-uninfectious from then on: draws pile up at `upper`, or run to arbitrarily
-late times when `upper` is left unbounded, exactly as `Weibull`'s or
-`Gamma`'s own tails do.
+`(onset, upper)`. `upper` is where the integration stops: the hazard counts
+as zero beyond it, and a draw the total hazard up to there cannot reach is
+`Inf`, a contact that never happens. One that falls to zero and stays there
+leaves a case uninfectious from then on in the same way, however long
+`upper` is left unbounded.
 
 # Examples
 
@@ -231,12 +232,11 @@ end
 
 function Distributions.logccdf(k::HazardKernel, τ::Real)
     τ < 0 && return zero(float(τ))
-    τ >= k.upper && return oftype(float(τ), -Inf)
     return -cumhazard(k, τ)
 end
 
 function Distributions.invlogccdf(k::HazardKernel, lp::Real)
-    isinf(lp) && lp < 0 && return oftype(float(lp), k.upper)
+    isinf(lp) && lp < 0 && return oftype(float(lp), Inf)
     lp <= 0 || throw(ArgumentError("invlogccdf needs a non-positive log-survival, got $lp"))
     target = -lp
     iszero(target) && return 0.0
@@ -253,19 +253,22 @@ Distributions.logcdf(k::HazardKernel, τ::Real) = _log1mexp(logccdf(k, τ))
 Base.rand(rng::AbstractRNG, k::HazardKernel) = invlogccdf(k, log(rand(rng)))
 Distributions.quantile(k::HazardKernel, p::Real) = invlogccdf(k, log1p(-p))
 Base.minimum(::HazardKernel) = 0.0
-Base.maximum(k::HazardKernel) = k.upper
+# A draw beyond the total hazard is `Inf`, so the support is unbounded even
+# where `upper` cuts the integration short.
+Base.maximum(::HazardKernel) = Inf
 Distributions.partype(::HazardKernel{F, T}) where {F, T} = T
 
-# `k.upper` caps the bracket `_invert_hazard` grows, so a `target` beyond the
-# total hazard there is met by returning `upper` rather than doubling forever.
-# Because `upper` is a cap here, not a certain event, it is not treated as the
-# survival's own end the way a calendar-scaled profile's own bounded support
-# does. The bracket starts at `k.onset`, where the hazard is already known to
-# be positive (checked once, at construction), so it grows through territory
-# that integrates cleanly rather than risking the stall a flat run-up before
-# it would cause.
+# `k.upper` caps the bracket `_invert_hazard` grows. A `target` beyond the
+# total hazard up to there is a contact that never happens, returned as `Inf`
+# rather than doubled towards forever; `upper` only bounds the integration,
+# so it is not treated as the survival's own end the way a calendar-scaled
+# profile's bounded support is. The bracket starts at `k.onset`, where the
+# hazard is already known to be positive (checked once, at construction), so
+# it grows through territory that integrates cleanly rather than risking the
+# stall a flat run-up before it would cause.
 function _hazard_invert(k::HazardKernel, target::Real)
     t, t_acc = _invert_hazard(k.hazard, k.onset, k.upper, false, target)
+    t_acc < target && return oftype(t, Inf)
     return t < k.upper ? _implicit_hazard_step(k.hazard, t, t_acc, target) : t
 end
 
@@ -275,9 +278,9 @@ A [`HazardKernel`](@ref) conditioned on falling at or before `hi`: what
 rather than thinned away by the case's own recovery. The lower bound is
 always 0, since a `HazardKernel`'s own support already starts there.
 
-This is `Distributions.truncated`'s usual meaning, a rescaled conditional
-distribution, not `HazardKernel`'s own censoring at `upper` (which piles
-draws up there instead of excluding them).
+This is the usual meaning of `Distributions.truncated`, a rescaled
+conditional distribution; the kernel's own `upper` only bounds its
+integration and excludes nothing.
 """
 struct _TruncatedHazardKernel{K, T <: AbstractFloat}
     kernel::K
