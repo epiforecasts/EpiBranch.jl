@@ -208,6 +208,8 @@ end
         model = ModelSpec(RecordingHomogeneous(300, 0.6))
         state = simulate(model; max_time = 3.0, n_initial = 5, rng = StableRNG(2))
         route = model.process.route[]
+        @test EpiBranch.route_pair_kernel(route, 1, 2, state) ==
+            EpiBranch.route_pair_kernel(route.inner, 1, 2, state)
         before = deepcopy(route.proposed)
         @test !isempty(before)
         simulate(model, state; max_time = 20.0)
