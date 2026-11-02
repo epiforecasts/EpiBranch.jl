@@ -27,7 +27,7 @@ not people, by fourth-order Runge–Kutta with a fixed step of `step` days
 
 Pass the result to [`simulate`](@ref) for a [`MeanFieldState`](@ref), and that
 state back to [`simulate`](@ref), with a later `max_time`, to carry the
-integration on from where it stopped — the same interface the exact
+integration on from where it stopped: the same interface the exact
 simulation uses. See [`LinearNoiseProcess`](@ref) for the same dynamics with
 Gaussian noise around the mean path, and [`HybridProcess`](@ref) for
 switching between exact simulation and either one.

@@ -1,22 +1,23 @@
 # ── Hybrid exact/approximate population dynamics ───────────────────
 #
-# A model whose transition runs exact simulation while the outbreak is small
-# (chance-dominated, and cheap at that size) and switches, once and for all,
-# to a mean-field or linear-noise approximation once enough people are
-# infected for it to be both accurate and cheap. No filtering code lives
-# here: `HybridProcess` only carries the state across the switch, so an
-# external Kalman or particle filter sees one `simulate(model, state;
+# `HybridProcess` runs exact simulation while the outbreak is small
+# (chance-dominated, and cheap at that size), then switches, once and for
+# all, to a mean-field or linear-noise approximation once enough people are
+# infected for the approximation to be both accurate and cheap. No filtering
+# code lives here: `HybridProcess` only carries the state across the switch,
+# so an external Kalman or particle filter sees one `simulate(model, state;
 # max_time)` interface throughout, exactly as it would for either half on
 # its own.
 
 # The exact model a `HybridProcess` can drive: a `HomogeneousProcess`, or a
-# `ModelSpec` built on one, whose default termination controls are already
-# off (`_honours_termination_controls` is false for it), so a run under this
+# `ModelSpec` built on one. Its default termination controls are already off
+# (`_honours_termination_controls` is false for it), so a run under this
 # function's `simulate(exact; max_time, ...)` call stops only for extinction
-# or `max_time` — never silently capped by the `max_cases`/`max_generations`
-# shortcuts' defaults, which would otherwise leave a state `simulate(model,
-# state; max_time)` cannot continue (see `added-simulate-continuation.md`)
-# and so stuck for good partway through `_advance_exact!`'s loop below.
+# or `max_time`, never silently capped by the `max_cases`/`max_generations`
+# shortcuts' defaults. Those would otherwise leave a state that
+# `simulate(model, state; max_time)` cannot continue (see
+# `added-simulate-continuation.md`), stuck for good partway through
+# `_advance_exact!`'s loop below.
 _unwrap_homogeneous(m::HomogeneousProcess) = m
 _unwrap_homogeneous(s::ModelSpec) = _unwrap_homogeneous(process(s))
 function _unwrap_homogeneous(m)
