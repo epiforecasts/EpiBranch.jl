@@ -213,6 +213,14 @@ end
         end
     end
 
+    @testset "hazard and loghazard read back the stored hazard function" begin
+        k = HazardKernel(t -> 2.0 + t)
+        for tau in (0.1, 1.0, 3.0)
+            @test EpiBranch.hazard(k, tau) == 2.0 + tau
+            @test EpiBranch.loghazard(k, tau) ≈ log(2.0 + tau)
+        end
+    end
+
     @testset "upper caps the support" begin
         k = HazardKernel(t -> 2.0; upper = 1.0)
         @test maximum(k) == 1.0
@@ -237,6 +245,20 @@ end
             @test cdf(k, tau) ≈ cdf(e, tau)
             @test logcdf(k, tau) ≈ logcdf(e, tau)
         end
+    end
+
+    @testset "a truncated HazardKernel's cdf, logcdf and logccdf match truncating by hand" begin
+        rate = 0.4
+        hi = 2.0
+        tk = truncated(HazardKernel(t -> rate), 0.0, hi)
+        te = truncated(Exponential(1 / rate), 0.0, hi)
+        for tau in (0.1, 1.0, 1.9)
+            @test cdf(tk, tau) ≈ cdf(te, tau)
+            @test logcdf(tk, tau) ≈ logcdf(te, tau)
+            @test logccdf(tk, tau) ≈ logccdf(te, tau)
+        end
+        @test cdf(tk, hi) == 1.0
+        @test logcdf(tk, hi) == 0.0
     end
 
     @testset "works as a bare contact_interval, not just a per-case kernel" begin
