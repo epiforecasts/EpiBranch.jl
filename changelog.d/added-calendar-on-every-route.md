@@ -5,5 +5,4 @@ and `Infectiousness` takes one as `calendar` for a branching process's
 offspring windows; each route samples its contacts against it exactly,
 as `PairKernel` already did. `loglikelihood(IncidenceCounts, ...)` and
 `end_of_outbreak_probability` now throw an `ArgumentError` for a window
-with a `calendar`, rather than reading its kernel as if the calendar
-were not there.
+with a `calendar`, instead of silently reading its bare kernel.

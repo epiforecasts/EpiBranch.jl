@@ -893,8 +893,8 @@
                 end_of_outbreak_probability(R, k, GT, 5.0)
 
             # A calendar scaling the window's kernel is read as the bare
-            # kernel here, with no way to apply the schedule, so it must be
-            # refused rather than silently ignored.
+            # kernel here, with no way to apply the schedule, so this must
+            # be refused instead.
             scheduled = BranchingProcess(
                 Infectiousness(
                     NegBin(R, k); kernel = GT, calendar = Steps([5.0], [1.0, 0.1])

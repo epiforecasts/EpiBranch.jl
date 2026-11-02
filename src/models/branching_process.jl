@@ -51,8 +51,8 @@ different routes, such as community and funeral transmission of Ebola.
   (`NoGenerationTime()`) or where `offspring` already timed them
   (`OffspringTimes`). `loglikelihood(IncidenceCounts, ...)` and
   `end_of_outbreak_probability` throw an `ArgumentError` on a window with a
-  `calendar` rather than ignore it. `Isolation`'s analytic effect reads a
-  window's `kernel` directly with no such check and is not aware of a
+  `calendar`, rather than ignoring it. `Isolation`'s analytic effect has no
+  such check: it reads a window's `kernel` directly and is not aware of a
   `calendar`; simulate a model that needs one instead.
 - `name`: the name interventions see this window as, through
   [`risk_applies`](@ref EpiBranch.risk_applies)'s `route`. The default,
@@ -447,8 +447,8 @@ function _single_kernel(m::BranchingProcess)
     return m.infectiousness[1].kernel
 end
 
-# The calendar of a single-window model, for analytical helpers that read
-# `_single_kernel` directly and so cannot honour a schedule scaling it.
+# The calendar of a single-window model (used by analytical helpers that
+# read `_single_kernel` directly and have no way to apply it).
 _single_calendar(m::BranchingProcess) = m.infectiousness[1].calendar
 
 _offspring_label(off::Distribution) = string(typeof(off))
