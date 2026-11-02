@@ -187,7 +187,8 @@ function _cross_to_approx!(
         max_time::Real
     )
     _n_infectious(es, t) >= model.threshold || return false
-    state.exact = es
+    state.exact = nothing
+    state.exact_t = t
     state.phase = :approx
     state.approx = _to_approx_state(model.approx, es, t)
     remaining = max_time - t

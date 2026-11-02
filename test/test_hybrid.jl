@@ -51,6 +51,7 @@ using StableRNGs
 
         hybrid = simulate(model; n_initial = 5, max_time = 150.0, rng = StableRNG(2))
         @test hybrid.phase === :approx
+        @test hybrid.exact === nothing
         @test hybrid.approx.t == 150.0
 
         # The pure mean-field path from the same initial condition: once an
