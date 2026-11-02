@@ -103,6 +103,9 @@ mutable struct HybridState{S}
     exact::Union{Nothing, SimulationState}
     exact_t::Float64
     approx::Union{Nothing, S}
+
+    HybridState{S}(phase, exact, exact_t, approx) where {S} =
+        new{S}(phase, exact, exact_t, approx)
 end
 
 function Base.show(io::IO, s::HybridState)
