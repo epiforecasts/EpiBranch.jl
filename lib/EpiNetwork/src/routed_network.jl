@@ -396,10 +396,10 @@ EpiBranch.route_pair_kernel(t::_TracedProposals, infector_id, target_id, state) 
 EpiBranch.pending_beyond(t::_TracedProposals, state, reinfects::Bool) =
     EpiBranch.pending_beyond(t.reach, state, reinfects)
 EpiBranch._resumable_route(t::_TracedProposals) = EpiBranch._resumable_route(t.reach)
-# `t`, not `t.reach`, is who the redraw must propose through: `t.reach`'s own
-# `_resume_route!` calls `propose_along` on whichever object it is given, and
-# only passing `t` here lets that land on `t`'s `propose_along` method, which
-# is what records it in `t.proposed` for tracing to read back.
+# The redraw must propose through `t`, not `t.reach`. `t.reach`'s own
+# `_resume_route!` calls `propose_along` on whatever object it is given, so
+# passing `t` here routes the redraw to `t`'s `propose_along` method. That
+# method records it in `t.proposed`, for tracing to read back.
 EpiBranch._resume_route!(t::_TracedProposals, race, ri, old_max_time, traits) =
     EpiBranch._resume_route!(t.reach, race, ri, old_max_time, traits, t)
 

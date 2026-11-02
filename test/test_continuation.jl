@@ -200,10 +200,11 @@ end
 
     @testset "a resumed redraw is submitted through a wrapper around mass action" begin
         # A wrapper that records every infector it is asked to propose along,
-        # as `EpiNetwork`'s tracing wrapper does, must still see the pairs a
-        # continuation redraws once the race's time limit extends: otherwise
-        # the redraw lands on the `_MassAction` underneath, and the wrapper's
-        # record goes stale from the first `simulate` call on.
+        # as the tracing wrapper in `EpiNetwork` does, must still see the
+        # pairs a continuation redraws once the race resumes with a later
+        # time limit: otherwise the redraw lands on the `_MassAction`
+        # underneath, and its record goes stale from the first `simulate`
+        # call on.
         model = ModelSpec(RecordingHomogeneous(300, 0.6))
         state = simulate(model; max_time = 3.0, n_initial = 5, rng = StableRNG(2))
         route = model.process.route[]
