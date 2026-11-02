@@ -11,6 +11,28 @@ function EpiBranch.intervention_actions(iv::AppointmentAction, state, candidates
     ]
 end
 
+# Proposes one action dated well into the future; its effect reads the
+# clock it actually runs on (`state.max_infection_time`) rather than the one
+# in force when it was admitted, and returns a further action of its own.
+struct DeferredCheckIn <: EpiBranch.AbstractIntervention end
+function EpiBranch.intervention_actions(::DeferredCheckIn, state, candidates)
+    return [
+        EpiBranch.InterventionAction(
+            ind, 10.0,
+            (person, at, st) -> begin
+                person.state[:seen_max_infection_time] = st.max_infection_time
+                return [
+                    EpiBranch.InterventionAction(
+                        person, at + 1.0,
+                        (follow, at2, st2) -> (follow.state[:followed_up] = true)
+                    ),
+                ]
+            end
+        )
+            for ind in candidates if !haskey(ind.state, :seen_max_infection_time)
+    ]
+end
+
 # An intervention with an `action_candidates` method of its own, narrowing its
 # candidates to a single, fixed person rather than taking the default's
 # "current plus the contacts it can reach".
@@ -216,6 +238,38 @@ end
     @test ind.state[boost_time] == 21.0
 end
 
+@testset "A withdrawn ring dose is not read as already given" begin
+    # `_withdraw_dose!` clears the dose once settlement shows it was given
+    # outside the window, but a later, earlier-trigger call must still take
+    # the genuine first-dose path below. Its stale cached trigger would
+    # otherwise route it into the "already has a dose" branch instead.
+    state = EpiBranch.new_state(
+        BranchingProcess(Poisson(0.0)),
+        EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
+    )
+    rv = RingVaccination(efficacy = 0.9, dose_delay = 1.0, eligibility_window = 2.0)
+    ind = Individual(id = 1, state = Dict{Symbol, Any}(:traced => true))
+    EpiBranch.initialise_individual!(rv, ind, state)
+    ind.infection_time = NaN
+    push!(state.individuals, ind)
+
+    ind.state[:trace_time] = 20.0
+    first_dose = only(EpiBranch.intervention_actions(rv, state, [ind]))
+    first_dose.claim!(ind, first_dose.time, state)
+    @test ind.state[:vaccination_time] == 21.0
+
+    # Settling an exposure far outside the window withdraws the dose.
+    ind.infection_time = 0.0
+    EpiBranch.on_infection_settled!(rv, ind, state, StableRNG(1))
+    @test !ind.state[:vaccinated]
+
+    # An earlier re-trace would revise a genuine dose, but a dose given at
+    # 6.0 against an exposure at 0.0 is still outside the window. This call
+    # must reject it exactly as a first offer would, not re-vaccinate.
+    ind.state[:trace_time] = 5.0
+    @test isempty(EpiBranch.intervention_actions(rv, state, [ind]))
+end
+
 @testset "Ring vaccination times a dose only from a recorded isolation" begin
     # A traced contact with no `:trace_time` falls back to its isolation, which
     # counts only when the isolation was recorded as a detection.
@@ -304,6 +358,14 @@ end
     @test !EpiBranch.may_revise(gv, 5.0, 20.0)
     @test !EpiBranch.may_revise(gv, 5.0, 5.0)
     @test EpiBranch.may_revise(Scheduled(gv; start_time = 1.0), 20.0, 5.0)
+end
+
+@testset "InterventionAction accepts claim! as a keyword, as documented" begin
+    action = EpiBranch.InterventionAction(
+        nothing, 1.0, (ind, time, state) -> nothing;
+        claim! = (ind, time, state) -> :claimed
+    )
+    @test action.claim!(nothing, 1.0, nothing) == :claimed
 end
 
 @testset "is_settled reflects a continuous-time race's own round of discovery" begin
@@ -596,4 +658,18 @@ end
     append!(state.individuals, none_candidates)
     EpiBranch.apply_actions!(none, state, none_candidates)
     @test !any(is_vaccinated, none_candidates)
+end
+
+@testset "An admitted action runs at its own time and may return further actions" begin
+    # One offspring, five days after its parent, so the index case's own
+    # action, dated day 10, falls after the contact has settled and moved
+    # `max_infection_time` on from the day the action was admitted (day 0).
+    state = simulate(
+        ModelSpec(BranchingProcess(Dirac(1), Dirac(5.0)); interventions = [DeferredCheckIn()]);
+        n_initial = 1, max_generations = 1, rng = StableRNG(1)
+    )
+    index = state.individuals[1]
+    @test index.infection_time == 0.0
+    @test index.state[:seen_max_infection_time] == 5.0
+    @test index.state[:followed_up]
 end

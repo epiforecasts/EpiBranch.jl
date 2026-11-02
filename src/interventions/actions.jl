@@ -1,21 +1,38 @@
 """
-    InterventionAction(individual, time, effect!)
+    InterventionAction(individual, time, effect!; claim! = nothing)
 
 A proposed action of an intervention (such as giving one dose) on
 `individual` at day `time`, which [`Scheduled`](@ref) and
 [`CapacityConstrained`](@ref) can accept or turn down before it happens.
 
-For extension authors: `effect!(individual, time, state)` performs the
-action once accepted; proposing an action must not record it. The effect may
-record a future date, but acceptance happens on the current simulation clock.
-An effect limited by capacity sets its intervention's
-[`capacity_key`](@ref EpiBranch.capacity_key) only when it uses up capacity.
+For extension authors: acceptance happens on the current simulation clock,
+against the state as it then stands. `effect!(individual, time, state)` runs
+the action itself: then and there outside a continuous-time race, or on the
+race's own event queue within one, against the state as it stands once
+`time` arrives rather than as it stood at acceptance. It may return a vector
+of further `InterventionAction`s in place of `nothing` (exactly
+[`intervention_actions`](@ref)'s own shape), admitted through the same
+funnel the first one was, so an effect can schedule what follows from it:
+releasing a bed once a stay ends, or renewing an offer after a delay, rather
+than needing a second action proposed and accepted up front. Anything else
+`effect!` returns, such as the value Julia gives back from a bare
+assignment, is simply discarded rather than mistaken for one.
+
+Proposing an action must not record anything; only an accepted one may.
+`claim!(individual, time, state)` runs once, at acceptance, on whichever
+simulation clock acceptance falls on, for when a later proposal needs to
+read something back straight away rather than wait for a deferred `effect!`.
+An effect limited by capacity sets its intervention's [`capacity_key`](@ref
+EpiBranch.capacity_key) only when it uses up capacity.
 """
-struct InterventionAction{I, T, F}
+struct InterventionAction{I, T, F, C}
     individual::I
     time::T
     effect!::F
+    claim!::C
 end
+InterventionAction(individual, time, effect!; claim! = nothing) =
+    InterventionAction(individual, time, effect!, claim!)
 
 """
     intervention_actions(intervention, state, candidates)
@@ -93,20 +110,88 @@ function apply_actions!(iv, state, candidates)
     return nothing
 end
 
-function _admit_actions!(iv::AbstractIntervention, state, actions)
+function _admit_actions!(iv::AbstractIntervention, state, actions, admitter = iv)
     for action in actions
         isfinite(action.time) || continue
-        action.effect!(action.individual, action.time, state)
+        action.claim! === nothing || action.claim!(action.individual, action.time, state)
+        _run_action!(admitter, state, action)
     end
     return nothing
+end
+
+# An accepted action's effect runs now by default, or, within a
+# continuous-time race, is handed to the race's own event queue to run at
+# `action.time` instead. Only `_sellke_race!` installs a sink, for the span
+# of its own per-case offer and of running a queued action (see
+# `_with_action_sink`); every other caller of `_admit_actions!` keeps
+# running the effect the moment it is admitted. `admitter` is threaded down
+# unchanged from the intervention `actions` was first offered to, past any
+# `Scheduled` or `CapacityConstrained` wrapping it; a further action an
+# effect returns is therefore gated by the same schedule and budget the
+# first one was, rather than by whichever layer happened to call
+# `_admit_actions!` last.
+const _ACTION_SINK_KEY = :_action_sink
+# `state` is usually a `SimulationState`, but `apply_actions!` is public and
+# documented to work against the minimal state a custom effect itself reads
+# (see the extending guide), which need not hold a `scratch` of its own.
+_action_sink(state) = hasproperty(state, :scratch) ? get(state.scratch, _ACTION_SINK_KEY, nothing) : nothing
+
+function _run_action!(admitter, state, action)
+    sink = _action_sink(state)
+    if sink !== nothing
+        sink(action, admitter)
+        return nothing
+    end
+    _fire_action!(admitter, state, action)
+    return nothing
+end
+
+# A queued action's own effect runs once its time comes, never through
+# `_run_action!`, which would only hand it straight back to the sink that
+# just dequeued it. A further action the effect returns is a fresh proposal,
+# admitted through `_admit_actions!`; it reaches the sink installed for the
+# span of running this one (see `_with_action_sink`) if it is itself to be
+# deferred.
+function _fire_action!(admitter, state, action)
+    further = action.effect!(action.individual, action.time, state)
+    _is_further_actions(further) && _admit_actions!(admitter, state, further, admitter)
+    return nothing
+end
+
+# Only a vector of `InterventionAction`s, [`intervention_actions`](@ref)'s own
+# return shape, is read as further actions to admit; anything else, `nothing`
+# included, is left alone. An `effect!` written as a bare assignment, as
+# Julia's own syntax encourages, returns the assigned value rather than
+# `nothing`, and that value must not be mistaken for a further action.
+_is_further_actions(::AbstractVector{<:InterventionAction}) = true
+_is_further_actions(::Any) = false
+
+"""
+    _with_action_sink(f, state, sink)
+
+Run `f()` with `sink` installed as `state`'s deferred-action sink, returning
+what `f` returns, and restoring whatever was installed before once `f`
+returns, throws, or is itself run re-entrantly (a dose action admitted while
+another is still running). A continuous-time race calls this around each span
+during which admitted actions belong on its own event queue.
+"""
+function _with_action_sink(f, state, sink)
+    previous = get(state.scratch, _ACTION_SINK_KEY, nothing)
+    state.scratch[_ACTION_SINK_KEY] = sink
+    try
+        return f()
+    finally
+        previous === nothing ? delete!(state.scratch, _ACTION_SINK_KEY) :
+            (state.scratch[_ACTION_SINK_KEY] = previous)
+    end
 end
 
 function _action_in_schedule(s::Scheduled, action, state)
     return action.time >= s.start_time && _active_at(s, action.time, state, action)
 end
-function _admit_actions!(s::Scheduled, state, actions)
+function _admit_actions!(s::Scheduled, state, actions, admitter = s)
     selected = filter(a -> isfinite(a.time) && _action_in_schedule(s, a, state), actions)
-    return _admit_actions!(s.intervention, state, selected)
+    return _admit_actions!(s.intervention, state, selected, admitter)
 end
 
 # Each candidate action already names the day its dose would fall on, so it
@@ -116,47 +201,72 @@ end
 # own day's budget untouched. A period exhausted by an earlier candidate
 # therefore skips to the next-ranked one (`continue`, not `break`), which may
 # fall in a different, still-open period.
-function _admit_actions!(cc::CapacityConstrained, state, actions)
+function _admit_actions!(cc::CapacityConstrained, state, actions, admitter = cc)
+    isempty(actions) && return nothing
     key = capacity_key(cc.intervention)
     already_used = filter(a -> get(a.individual.state, key, false), actions)
     candidates = filter(a -> !get(a.individual.state, key, false), actions)
-    _admit_actions!(cc.intervention, state, already_used)
-    # The usage scan covers the whole population, which only a call with
-    # someone to admit needs.
+    _admit_actions!(cc.intervention, state, already_used, admitter)
+    cache = _capacity_cache(cc, state)
+    for a in already_used
+        _record_capacity_use!(cache, a.individual, state)
+    end
     isempty(candidates) && return nothing
-    times_by_key = _dose_times_by_key(cc, state)
     group_idxs, group_keys = _resource_groups(cc, state, [a.individual for a in candidates])
     for (idxs, group_key) in zip(group_idxs, group_keys)
         group = candidates[idxs]
         order = sortperm([cc.priority(a.individual, state) for a in group]; alg = MergeSort)
-        times = get(times_by_key, group_key, Float64[])
-        extra = Float64[]
+        times = get!(Vector{Float64}, cache.times, group_key)
         for i in order
             action = group[i]
             get(action.individual.state, key, false) && continue
-            _fits_budget(cc, times, extra, action.time) || continue
-            _admit_actions!(cc.intervention, state, [action])
-            get(action.individual.state, key, false) && push!(extra, action.time)
+            _fits_budget(cc, times, Float64[], action.time) || continue
+            _admit_actions!(cc.intervention, state, [_filing_use(cc, action)], admitter)
+            get(action.individual.state, key, false) || continue
+            _record_capacity_use!(cache, action.individual, state, times)
         end
     end
     return nothing
 end
 
-"""
-    record_dose!(v::AbstractVaccination, person, at, rng)
+# An effect that uses capacity sets `capacity_key` itself (see
+# `InterventionAction`), and within a continuous-time race it runs only once
+# the race's own queue reaches `action.time`, after the admission above has
+# returned and found the flag still unset. The action handed down therefore
+# files the use itself as soon as its effect has set the flag, so the running
+# count learns of it without a rescan. A dose, which records in `claim!`, is
+# filed by the admission above and this then finds nothing left to do.
+function _filing_use(cc::CapacityConstrained, action)
+    key = capacity_key(cc.intervention)
+    effect! = function (person, at, state)
+        further = action.effect!(person, at, state)
+        get(person.state, key, false) && _note_capacity_use!(state, key, person)
+        return further
+    end
+    return InterventionAction(action.individual, action.time, effect!, action.claim!)
+end
 
-Record one dose of `v` on `person` at time `at`, skipping a `person` already
-recorded as vaccinated under `v`'s own `dose_label`, and reconsidering a
-post-exposure abort ([`RingVaccination`](@ref)'s `post_exposure_efficacy`)
-against the dose just given. The action protocol calls this through
-[`dose_action`](@ref); call it directly to record a dose outside that
-protocol, for example from a custom `trace_contacts!` or when
-seeding a dose before a run starts.
 """
-function record_dose!(v::AbstractVaccination, person, at, rng)
-    get(person.state, _vaccinated_key(dose_label(v)), false) && return nothing
-    _record_vaccination!(v, person, at, rng)
-    _after_action_dose!(v, person, at, rng)
+    record_dose!(v::AbstractVaccination, person, at, state)
+
+Record one dose of `v` on `person` at time `at`, drawing from `state.rng`,
+skipping a `person` already recorded as vaccinated under `v`'s own
+`dose_label`, and reconsidering a post-exposure abort
+([`RingVaccination`](@ref)'s `post_exposure_efficacy`) against the dose just
+given. The action protocol calls this through [`dose_action`](@ref); call it
+directly to record a dose outside that protocol, for example from a custom
+`trace_contacts!` or when seeding a dose before a run starts. A dose recorded
+this way counts against any [`CapacityConstrained`](@ref) budget under `v`'s
+dose label, exactly as one admitted through the action protocol does. Outside
+a run, `state` can be anything with an `rng` field, such as
+`(; rng = StableRNG(1))`.
+"""
+function record_dose!(v::AbstractVaccination, person, at, state)
+    key = _vaccinated_key(dose_label(v))
+    get(person.state, key, false) && return nothing
+    _record_vaccination!(v, person, at, state.rng)
+    _after_action_dose!(v, person, at, state.rng)
+    _note_capacity_use!(state, key, person)
     return nothing
 end
 
@@ -168,11 +278,16 @@ via [`record_dose!`](@ref), exactly as the built-in vaccinations do. A custom
 vaccination's own [`intervention_actions`](@ref) method returns one of these
 per candidate it will dose, so [`Scheduled`](@ref) and
 [`CapacityConstrained`](@ref) admit it the same way they admit a
-[`MassVaccination`](@ref) dose.
+[`MassVaccination`](@ref) dose. The dose is recorded in `claim!`, at
+acceptance, just as [`RingVaccination`](@ref) and [`GroupVaccination`](@ref)
+already record their own doses, so a candidate's `_vaccinated_key` and
+`capacity_key` are set before the same case's later candidates, or a later
+case, can be checked against them, rather than waiting for the event queue
+of a continuous-time race to reach `time`.
 """
 function dose_action(v::AbstractVaccination, ind, time)
-    effect! = (person, at, state) -> record_dose!(v, person, at, state.rng)
-    return InterventionAction(ind, time, effect!)
+    claim! = (person, at, state) -> record_dose!(v, person, at, state)
+    return InterventionAction(ind, time, (person, at, state) -> nothing; claim! = claim!)
 end
 
 _after_action_dose!(::AbstractVaccination, ind, time, rng) = nothing
@@ -199,13 +314,15 @@ may_revise(::RingVaccination, prior_trigger, new_trigger) = new_trigger < prior_
 
 _trigger_cache_key(v::AbstractVaccination) = (v, :trigger)
 
-# Records the trigger a dose this action gave was timed from, so a later
-# discovery can tell whether its own trigger is a genuine revision of *this*
-# action's dose rather than a dose another vaccination (sharing the same
-# `dose_label`) already gave. Used for both a person's first dose and a
-# revision of one already given: the effect reads the person's own current
-# state at admission time to tell which it is, rather than two separate
-# action builders each hardcoding one.
+# A dose reads whether its candidate already has one, and from where, to
+# decide whether it is a first dose or a revision (see the two
+# `intervention_actions` methods below), so recording it must not wait for a
+# continuous-time race to reach its own day: it runs as `claim!`, at
+# acceptance, on whichever clock acceptance falls on, exactly as a dose
+# always has. `effect!` is a no-op only because nothing about a dose depends
+# on the state a later day brings. An action that does depend on that later
+# state needs no `claim!` at all; it simply runs its own `effect!` there
+# instead (see `InterventionAction`).
 #
 # A revision moves `:vaccination_time` to the new trigger plus the person's
 # own (already-drawn) delay, and shifts `:immunity_time` by the same amount,
@@ -215,18 +332,19 @@ _trigger_cache_key(v::AbstractVaccination) = (v, :trigger)
 # them.
 function _revisable_dose_action(v::AbstractVaccination, ind, trigger, time)
     label = dose_label(v)
-    effect! = function (person, at, state)
+    claim! = function (person, at, state)
         if get(person.state, _vaccinated_key(label), false)
             old_time = person.state[_vaccination_time_key(label)]
             person.state[_vaccination_time_key(label)] = at
             person.state[_immunity_time_key(label)] += at - old_time
+            _note_capacity_use!(state, _vaccinated_key(label), person)
         else
-            record_dose!(v, person, at, state.rng)
+            record_dose!(v, person, at, state)
         end
         _action_cache(person)[_trigger_cache_key(v)] = trigger
         return nothing
     end
-    return InterventionAction(ind, time, effect!)
+    return InterventionAction(ind, time, (person, at, state) -> nothing, claim!)
 end
 
 function intervention_actions(rv::RingVaccination, state, candidates)
@@ -236,7 +354,13 @@ function intervention_actions(rv::RingVaccination, state, candidates)
         is_traced(ind) || continue
         trace_t = haskey(ind.state, :trace_time) ? ind.state[:trace_time] :
             min(_recorded_isolation_time(ind), _state_real(ind.state, :_traced_isolation_time, Inf))
-        if get(ind.state, _vaccinated_key(label), false)
+        prior = get(_action_cache(ind), _trigger_cache_key(rv), nothing)
+        applied = get(ind.state, _vaccinated_key(label), false)
+        # Gated on `applied` alone: `_withdraw_dose!` clears it on a dose
+        # outside the window, but leaves `prior` in the cache. A withdrawn
+        # candidate must therefore retake the genuine first-dose branch
+        # below, not be read as already having one.
+        if applied
             if _maybe_positive(rv.post_exposure_efficacy)
                 # Reconsider protection at this exposure without recording a new dose.
                 effect! = (person, at, st) -> _abort_infection!(
@@ -244,10 +368,9 @@ function intervention_actions(rv::RingVaccination, state, candidates)
                 )
                 push!(actions, InterventionAction(ind, state.max_infection_time, effect!))
             end
-            prior = get(_action_cache(ind), _trigger_cache_key(rv), nothing)
             if isfinite(trace_t) && prior !== nothing && may_revise(rv, prior, trace_t)
                 delay = action_draw!(ind, (rv, :delay)) do
-                    _sample_value(rv.dose_delay, state.rng, ind)
+                    sample_value(rv.dose_delay, state.rng, ind)
                 end
                 time = trace_t + delay
                 # An earlier date must still follow the dose this one requires.
@@ -258,13 +381,13 @@ function intervention_actions(rv::RingVaccination, state, candidates)
         end
         isfinite(trace_t) || continue
         delay = action_draw!(ind, (rv, :delay)) do
-            _sample_value(rv.dose_delay, state.rng, ind)
+            sample_value(rv.dose_delay, state.rng, ind)
         end
         time = trace_t + delay
         isfinite(time) || continue
         _has_required_dose(rv, ind, time) || continue
         window = action_draw!(ind, (rv, :eligibility_window)) do
-            _sample_value(rv.eligibility_window, state.rng, ind)
+            sample_value(rv.eligibility_window, state.rng, ind)
         end
         _within_window(window, ind, time) || continue
         accepted = action_draw!(ind, (rv, :acceptance)) do
@@ -290,17 +413,17 @@ function intervention_actions(gv::GroupVaccination, state, candidates)
         isfinite(trigger) || continue
         for id in _group_members(state, gv.group_key, group)
             ind = state.individuals[id]
-            if get(ind.state, _vaccinated_key(dose_label(gv)), false)
+            prior = get(_action_cache(ind), _trigger_cache_key(gv), nothing)
+            if prior !== nothing || get(ind.state, _vaccinated_key(dose_label(gv)), false)
                 # A settled member's dose keeps its date; a member still
                 # pending in a continuous-time race (or the member currently
                 # being settled, mid-round) can still be reached by a
                 # genuinely earlier trigger. `ind.id in allowed` keeps this
                 # within the members this call actually received.
                 (ind.id in allowed && !is_settled(state, ind)) || continue
-                prior = get(_action_cache(ind), _trigger_cache_key(gv), nothing)
                 (prior !== nothing && may_revise(gv, prior, trigger)) || continue
                 delay = action_draw!(ind, (gv, :delay)) do
-                    _sample_value(gv.dose_delay, state.rng, ind)
+                    sample_value(gv.dose_delay, state.rng, ind)
                 end
                 push!(actions, _revisable_dose_action(gv, ind, trigger, trigger + delay))
                 continue
@@ -314,7 +437,7 @@ function intervention_actions(gv::GroupVaccination, state, candidates)
                 continue
             end
             delay = action_draw!(ind, (gv, :delay)) do
-                _sample_value(gv.dose_delay, state.rng, ind)
+                sample_value(gv.dose_delay, state.rng, ind)
             end
             push!(actions, _revisable_dose_action(gv, ind, trigger, trigger + delay))
         end
@@ -329,7 +452,7 @@ function intervention_actions(mv::MassVaccination, state, candidates)
         get(ind.state, _vaccinated_key(label), false) && continue
         get(ind.state, _coverage_declined_key(label), false) && continue
         time = action_draw!(ind, (mv, :time)) do
-            _sample_value(mv.eligibility_time, state.rng, ind)
+            sample_value(mv.eligibility_time, state.rng, ind)
         end
         isfinite(time) || continue
         accepted = action_draw!(ind, (mv, :acceptance)) do

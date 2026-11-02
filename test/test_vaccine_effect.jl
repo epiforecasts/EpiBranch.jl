@@ -212,7 +212,7 @@ EpiBranch.realised_efficacy(::_TestBlockedMode, eff, rng) =
         # `record_dose!`, unlike `_record_vaccination!`, skips a person already
         # given this dose rather than redrawing their efficacy.
         stored_efficacy = vaccine_efficacy(contact)
-        EpiBranch.record_dose!(v, contact, 9.0, StableRNG(2))
+        EpiBranch.record_dose!(v, contact, 9.0, (; rng = StableRNG(2)))
         @test vaccine_efficacy(contact) == stored_efficacy
         @test contact.state[:vaccination_time] == 5.0
 

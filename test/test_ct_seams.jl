@@ -113,6 +113,16 @@ end
         )
     end
 
+    @testset "is_eligible and trigger_time are public" begin
+        if VERSION >= v"1.11"
+            @test Base.ispublic(EpiBranch, :is_eligible)
+            @test Base.ispublic(EpiBranch, :trigger_time)
+        else
+            @info "Skipping Base.ispublic check on Julia $VERSION"
+            @test_skip true
+        end
+    end
+
     @testset "Stacked tracing keeps the earliest trace time" begin
         # A contact reached by two tracing systems was reached when the
         # first of them got there, so the recorded trace time must not

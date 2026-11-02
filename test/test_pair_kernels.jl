@@ -138,6 +138,16 @@ end
         pairwise_surv_loglik(kernel, data, layout)
     @test EpiBranch.pair_kernel(PairKernel(c -> (profile = Exponential(2.0),)), 1, 2, 0.0) ==
         Exponential(2.0)
+
+    # An opening for which `opening + (break - opening) < break` must still
+    # reach the break rather than repeating the same segment forever.
+    b, o = 55.123, 21.26132005631202
+    @test o + (b - o) < b
+    loop_risk = EpiBranch.pair_kernel(
+        PairKernel(ctx -> Exponential(100.0); calendar = Steps([b], [1.0, 0.5])),
+        1, 2, 0.0, o
+    )
+    @test invlogccdf(loop_risk, -1.0) ≈ (b - o) + (100 - (b - o)) / 0.5
 end
 
 include("testutils/pair_kernels.jl")
@@ -581,6 +591,24 @@ end
     @test sort(queue.heap) == [
         EpiBranch._Event(1.5, 2, represents[2]), EpiBranch._Event(3.0, 3, represents[3]),
     ]
+end
+
+@testset "Compaction keeps a deferred action's own event" begin
+    # `member == 0` marks the event of a deferred action; `action_sink` on
+    # the race queues it directly instead of building it from `proposals`.
+    # Compaction must restore it, since the rebuild below would otherwise
+    # drop it silently.
+    P = EpiBranch._Pending{Float64}
+    proposals = [P(1, 0, 1.0, true)]
+    head = [1]
+    best = [1.0]
+    represents = [1]
+    queue = EpiBranch._EventQueue{Float64}()
+    EpiBranch._enqueue!(queue, EpiBranch._Event(1.0, 1, 1))
+    EpiBranch._enqueue!(queue, EpiBranch._Event(0.5, 0, 3))
+    EpiBranch._compact_proposals!(queue, proposals, head, best, represents, [false])
+    @test EpiBranch._Event(0.5, 0, 3) in queue.heap
+    @test EpiBranch._Event(1.0, 1, represents[1]) in queue.heap
 end
 
 @testset "Shared race refreshes live pair kernels" begin

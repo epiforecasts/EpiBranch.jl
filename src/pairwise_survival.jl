@@ -1157,11 +1157,11 @@ end
 # non-negative rate (a constant hazard), a continuous distribution on the
 # non-negative reals (a calendar-time hazard), or a piecewise-constant calendar
 # schedule such as `Steps` giving the daily rate directly, for a community
-# hazard that changes on known days. Either is shared by everyone, or differs
-# between people, given as a vector with one entry per person or as a function
-# of the person's number returning their own rate or distribution (a schedule
-# is always shared). Its simulators and this likelihood share these helpers
-# and agree on when the term applies and what it is for each person.
+# hazard that changes on known days. Any of these is shared by everyone, or
+# differs between people, given as a vector with one entry per person or as a
+# function of the person's number returning their own rate, distribution or
+# schedule. Its simulators and this likelihood share these helpers and agree
+# on when the term applies and what it is for each person.
 
 # A calendar schedule is the hazard itself, not a multiplier on some other
 # kernel. Only one the package integrates exactly, like `Steps`, is accepted:
@@ -1177,7 +1177,8 @@ _is_calendar_external(source) = hasmethod(calendar_multiplier, Tuple{typeof(sour
 _calendar_external_survival(source) = _CalendarScaledKernel(Exponential(1.0), source, 0.0)
 
 # A distribution with negative support is rejected, because introductions cannot
-# happen before time 0. A function's values are checked as they are read.
+# happen before time 0. A function's values are checked as they are read, but
+# also eagerly at construction (`_check_external`), as a vector's are.
 _valid_external(α::Real) = α >= 0
 _valid_external(d::ContinuousUnivariateDistribution) = minimum(d) >= 0
 _valid_external(v::AbstractVector) = all(_is_person_external, v)
@@ -1189,17 +1190,35 @@ _normalise_external(v::AbstractVector) = map(_normalise_external, v)
 _normalise_external(f::Function) = f
 _normalise_external(source) = source
 
-# One person's own external hazard: a rate or a distribution.
+# One person's own external hazard: a rate, a distribution, or a calendar
+# schedule, read through `calendar_multiplier`/`next_calendar_break` rather
+# than a check for `Steps`, so a user-defined piecewise-constant schedule
+# works here too, inside a vector or returned from a function.
 _is_person_external(s) = (s isa Real || s isa ContinuousUnivariateDistribution) &&
-    _valid_external(s)
+    _valid_external(s) || _is_calendar_external(s)
+
+# Throws unless person `j`'s own hazard `s` is a valid one, giving the same
+# message for a vector element and a function's return value alike.
+function _check_person_external(s, j)
+    _is_person_external(s) || throw(
+        ArgumentError(
+            "external_hazard($j) must return a non-negative number, a " *
+                "continuous distribution, or a piecewise-constant calendar " *
+                "schedule such as `Steps`, got $s"
+        )
+    )
+    return s
+end
 
 # Throws unless `source` is a valid external hazard for a population of `n`.
+# A function is checked for every person here, as a vector's elements already
+# are by `_valid_external`.
 function _check_external(source, n::Integer)
     _valid_external(source) || throw(
         ArgumentError(
             "external_hazard must be a non-negative number, a continuous " *
                 "distribution, a piecewise-constant calendar schedule such as " *
-                "`Steps`, a vector of the first two with one per person, or a " *
+                "`Steps`, a vector of any of those with one per person, or a " *
                 "function of the person's number returning one of them"
         )
     )
@@ -1208,6 +1227,11 @@ function _check_external(source, n::Integer)
             "external_hazard has $(length(source)) entries for $n people"
         )
     )
+    if source isa Function
+        for j in 1:n
+            _check_person_external(source(j), j)
+        end
+    end
     return nothing
 end
 
@@ -1235,13 +1259,7 @@ _ext_survival_of(d::ContinuousUnivariateDistribution, j) = d
 _ext_survival_of(α::Real, j) = _ext_active(α) ? _ext_survival(α) : nothing
 _ext_survival_of(v::AbstractVector, j) = _ext_survival_of(v[j], j)
 function _ext_survival_of(f::Function, j)
-    s = f(j)
-    _is_person_external(s) || throw(
-        ArgumentError(
-            "external_hazard($j) must return a non-negative number or a " *
-                "continuous distribution on the non-negative reals, got $s"
-        )
-    )
+    s = _check_person_external(f(j), j)
     return _ext_survival_of(s, j)
 end
 _ext_survival_of(k::_CalendarScaledKernel, j) = k
@@ -1443,13 +1461,13 @@ a contact list (`kernel[i][k]` for person `i`'s `k`-th listed contact).
 constant rate per person per day, a distribution of the time of infection from
 outside, or a piecewise-constant calendar schedule such as [`Steps`](@ref)
 giving the daily rate directly, for a community hazard that changes on known
-days. A rate or distribution is shared by everyone, or differs between
-people: a vector with one per person, or a function `j -> rate or
-distribution` of person `j`'s number, for example to give each arm of a trial
-its own community hazard; a calendar schedule is always shared. A function
-or a calendar schedule is taken to be in force, so the likelihood explains
-index cases as described next even if a function returns zero for everyone.
-Such infections happen only in the first `data.obs_end` days.
+days. A rate, distribution or schedule is shared by everyone, or differs
+between people: a vector with one per person, or a function `j -> rate,
+distribution or schedule` of person `j`'s number, for example to give each
+cluster of a trial its own calendar of community incidence. A function or a
+calendar schedule is taken to be in force, so the likelihood explains index
+cases as described next even if a function returns zero for everyone. Such
+infections happen only in the first `data.obs_end` days.
 With an external hazard, index cases are explained like any other case;
 without one, the likelihood conditions on them. Each person is exposed to the
 external hazard until the earlier of their infection and `data.obs_end`, so a

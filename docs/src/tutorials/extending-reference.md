@@ -781,8 +781,7 @@ quarantine dates when a provisional onset time was used during the simulation.
 
 An intervention that proposes actions (see [Intervention actions](@ref))
 defines `EpiBranch.intervention_actions(iv, state, candidates)` and returns
-`EpiBranch.InterventionAction(individual, time, effect!)` values.
-`effect!(individual, time, state)` records an action once admitted. Proposing
+`EpiBranch.InterventionAction(individual, time, effect!)` values. Proposing
 can add people beyond the input, as group vaccination does when it finds every
 member of a group in which a case was found. Every model calls it once each
 case settles, for every intervention with a method of it, with the people
@@ -790,7 +789,23 @@ case settles, for every intervention with a method of it, with the people
 the contacts it can still reach. An intervention that chooses its own, such as
 everyone in the run not yet infected, writes a method of
 `action_candidates`. The actions `intervention_actions` returns go through the
-schedule and capacity limits.
+schedule and capacity limits, which decide admission on the current
+simulation clock.
+
+`effect!(individual, time, state)` runs once an admitted action's `time`
+arrives, against the state as it then stands: immediately, outside a
+continuous-time race, or on the race's own event queue within one, rather
+than against the state as it stood at admission. It may return a vector of
+further `InterventionAction`s in place of `nothing`, admitted through the same
+funnel the first one was, so an effect can schedule what follows from it:
+releasing a bed once a stay ends, or renewing an offer after a delay. A
+proposal must not record anything; only an admitted action may.
+`InterventionAction(individual, time, effect!; claim! = nothing)` takes a
+second callable for that, run once, at admission, on whichever clock
+admission falls on, for bookkeeping a later proposal needs straight away
+rather than waiting until a deferred `effect!` finally runs. Ring and group
+vaccination use it: `claim!` records the dose, exactly as it always has; a
+later trigger then finds an existing one to revise.
 
 `Scheduled` checks the proposed action time before delivery. A condition
 function sees that time as `state.max_infection_time`, with the current case
@@ -832,6 +847,14 @@ rations that action exactly as it rations a dose, through `capacity_key` and
 `capacity_time_key` defined on the `TraceAction` the policy holds
 (`Quarantine` defines them; `FlagOnly`, which removes nobody, does not). A
 trace with no arrival time (`Inf`) has nothing to ration and applies directly.
+
+`CapacityConstrained` keeps count of who has used a resource as uses are
+admitted, rather than reading every person on every call. A use made outside
+an action it admitted, by a tracer of your own applying a `TraceAction`
+directly, say, is reported to it with
+`EpiBranch.record_capacity_use!(action, person, state)` once the flag is set.
+A dose recorded with `record_dose!` and a trace applied by the built-in
+tracers report themselves.
 
 `Isolation` instead writes its effect straight into `resolve_individual!`. A
 `CapacityConstrained` wrapping it therefore has nothing to admit: it checks
@@ -1003,6 +1026,7 @@ before.
 | A grouping of pairwise likelihood terms | A type `<: EpiBranch.PairwiseReduction` with `EpiBranch.ngroups` and `EpiBranch.group`, run with `EpiBranch.pairwise_reduce` | Likelihood |
 | The likelihood of the natural history | `progression_loglik(spec, individuals)`; built-in transitions work as they are, one of your own needs `transition_loglik` | Likelihood |
 | An observation model | A type `<: ObservationModel` with `observe(base, ::YourObs)` (closed form) and/or `apply_observation!(::YourObs, state, rng)` (simulation) | Closed-form results and fitting |
+| A signal read off a simulated state | A type `<: Signal` callable as `sig(state, interval)` | `SignalData`'s `loglikelihood` |
 | A chain-size distribution to fit chain sizes with | A type `<: ChainSizeLaw` with `logpdf` | Likelihood |
 | Per-cluster information | Either computed into existing `ChainSizes` fields, or a new data type with a `loglikelihood` method that passes each group to `loglikelihood(ChainSizes(sizes; seeds), offspring)` | Likelihood |
 | A per-person or per-pair draw that should stay aligned under `CommonRandomNumbers` | `EpiBranch.stream(rng, id, purpose)` in place of `rng` | Wherever the draw happens |

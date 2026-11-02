@@ -596,25 +596,36 @@ Base.minimum(k::_CalendarScaledKernel) = minimum(k.profile)
 Base.maximum(k::_CalendarScaledKernel) = maximum(k.profile)
 Distributions.partype(k::_CalendarScaledKernel) = Distributions.partype(k.profile)
 
-# The segment starting at time-since-opening `t_lo`: its multiplier and the
-# time-since-opening its schedule step ends at (`Inf` for the last step).
-function _calendar_segment(k::_CalendarScaledKernel, t_lo)
-    calendar_t = k.opening + t_lo
-    m = calendar_multiplier(k.calendar, calendar_t)
-    next_break = next_calendar_break(k.calendar, calendar_t)
-    seg_hi = isfinite(next_break) ? next_break - k.opening : oftype(float(t_lo), Inf)
-    return m, seg_hi
+# The segment starting at calendar time `calendar_lo`: its multiplier and the
+# calendar time its schedule step ends at (`Inf` for the last step). The walk
+# stays in calendar time throughout rather than converting back from
+# time-since-opening: a break the segment reaches is carried into the next
+# segment unrounded. Converting would let `opening + t_lo` round short of the
+# break it was meant to equal, so the walk would keep reaching the same break
+# without moving past it.
+function _calendar_segment(k::_CalendarScaledKernel, calendar_lo)
+    m = calendar_multiplier(k.calendar, calendar_lo)
+    calendar_hi = next_calendar_break(k.calendar, calendar_lo)
+    while isfinite(calendar_hi) && calendar_hi <= calendar_lo
+        calendar_hi = next_calendar_break(k.calendar, calendar_hi)
+    end
+    return m, calendar_hi
 end
 
 function _calendar_cumhazard(::PiecewiseConstantCalendar, k::_CalendarScaledKernel, τ)
     total = zero(float(τ))
-    t_lo = zero(float(τ))
-    while t_lo < τ
-        m, seg_hi = _calendar_segment(k, t_lo)
-        t_hi = min(τ, seg_hi)
-        m == 0 ||
-            (total += m * (cumhazard(k.profile, t_hi) - cumhazard(k.profile, t_lo)))
-        t_lo = t_hi
+    calendar_end = k.opening + τ
+    calendar_lo = k.opening
+    while calendar_lo < calendar_end
+        m, calendar_hi = _calendar_segment(k, calendar_lo)
+        calendar_hi = min(calendar_end, calendar_hi)
+        m == 0 || (
+            total += m * (
+                cumhazard(k.profile, calendar_hi - k.opening) -
+                    cumhazard(k.profile, calendar_lo - k.opening)
+            )
+        )
+        calendar_lo = calendar_hi
     end
     return total
 end
@@ -625,21 +636,23 @@ end
 # used for a constant rate multiplier.
 function _calendar_invlogccdf(::PiecewiseConstantCalendar, k::_CalendarScaledKernel, target)
     acc = zero(target)
-    t_lo = zero(target)
+    calendar_lo = k.opening
     while true
-        m, seg_hi = _calendar_segment(k, t_lo)
+        m, calendar_hi = _calendar_segment(k, calendar_lo)
+        t_lo = calendar_lo - k.opening
         if m > 0
             base = cumhazard(k.profile, t_lo)
-            seg_cum = isfinite(seg_hi) ?
-                m * (cumhazard(k.profile, seg_hi) - base) : oftype(target, Inf)
+            seg_cum = isfinite(calendar_hi) ?
+                m * (cumhazard(k.profile, calendar_hi - k.opening) - base) :
+                oftype(target, Inf)
             if acc + seg_cum >= target
                 want = base + (target - acc) / m
                 return _time_at_log_survival(k.profile, -want)
             end
             acc += seg_cum
         end
-        isfinite(seg_hi) || return oftype(target, Inf)
-        t_lo = seg_hi
+        isfinite(calendar_hi) || return oftype(target, Inf)
+        calendar_lo = calendar_hi
     end
     return
 end

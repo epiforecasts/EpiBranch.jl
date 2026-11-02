@@ -271,7 +271,7 @@ function resolve_individual!(iso::Isolation, individual, state)
     onset = onset_time(individual)
     # Self-isolation after a positive test.
     test_time = if is_test_positive(individual)
-        onset + _sample_value(iso.onset_to_isolation_delay, state.rng, individual)
+        onset + sample_value(iso.onset_to_isolation_delay, state.rng, individual)
     else
         Inf
     end
@@ -305,10 +305,14 @@ function trace_contacts!(ct::ContactTracing, state, infector, contacts)
         trace_delay = draw_trace_delay(ct.isolation_to_trace_delay, infector, ind, state, rng)
         trace_time = trigger_time(ct.eligibility, infector, ind, state) + trace_delay
         apply_trace!(ct.action, ind, state, trace_time, rng)
+        record_capacity_use!(ct.action, ind, state)
     end
     return nothing
 end
 ```
+
+The last call tells a `CapacityConstrained` sharing the action's resource that
+it was used, and does nothing when none is.
 
 `competing_risk`: see [A custom intervention: closing a border](@ref).
 
@@ -832,7 +836,7 @@ end
 partial = RingVaccination(efficacy = 0.6, mode = PartialResponseMode(0.2))
 draws = map(1:8) do i
     contact = Individual(id = i, parent_id = 0, infection_time = 10.0)
-    EpiBranch.record_dose!(partial, contact, 0.0, StableRNG(i))
+    EpiBranch.record_dose!(partial, contact, 0.0, (; rng = StableRNG(i)))
     vaccine_efficacy(contact)
 end
 draws

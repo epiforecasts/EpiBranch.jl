@@ -342,6 +342,34 @@ EpiBranch.interventions(m::_ProcessWithInterventions) = m.interventions
         @test length(EpiBranch.interventions(ModelSpec(bp; interventions = [iso]))) == 1
     end
 
+    @testset "progression and process are public, and a spec rebuilds from itself" begin
+        bp = BranchingProcess(Poisson(1.5), Exponential(5.0))
+        prog = [Transition(:onset; from = :infection, delay = Exponential(3.0))]
+        iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
+        attr = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
+        spec = ModelSpec(
+            bp; progression = prog, interventions = [iso], attributes = attr
+        )
+
+        if VERSION >= v"1.11"
+            @test Base.ispublic(EpiBranch, :progression)
+            @test Base.ispublic(EpiBranch, :process)
+        else
+            @info "Skipping Base.ispublic check on Julia $VERSION"
+            @test_skip true
+        end
+        @test EpiBranch.progression(spec) == prog
+        @test EpiBranch.process(spec) === bp
+
+        # Every keyword left out keeps that layer of `spec`.
+        extra = demographics(age_distribution = Normal(50, 20))
+        rebuilt = ModelSpec(spec; attributes = [EpiBranch.attributes(spec); extra])
+        @test EpiBranch.progression(rebuilt) == prog
+        @test EpiBranch.interventions(rebuilt) == [iso]
+        @test EpiBranch.attributes(rebuilt) == [attr, extra]
+        @test EpiBranch.process(rebuilt) === bp
+    end
+
     @testset "first-class across the analytical and distribution API" begin
         bp = BranchingProcess(NegativeBinomial(2.5, 0.5), Exponential(5.0))
         spec = ModelSpec(bp)

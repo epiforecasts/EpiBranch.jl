@@ -41,6 +41,8 @@ fixed set of contacts. [`ModelSpec`](@ref) adds the rest of the scenario.
 BranchingProcess
 Infectiousness
 OffspringTimes
+transmission_timing
+implied_R
 EpiBranch.MultiTypeOffspring
 HomogeneousProcess
 MixingProcess
@@ -370,6 +372,35 @@ ChainLengths
 IncidenceCounts
 ```
 
+### Several signals from one simulated path
+
+A [`Signal`](@ref) reads a population quantity off a simulated
+[`SimulationState`](@ref) over a reporting step: [`TransitionCount`](@ref)
+(new cases per step) or [`Prevalence`](@ref) (cases currently in a state).
+[`SignalData`](@ref) pairs several of these, each with a measurement density
+of your own, and scores them all against the same simulated path, rather
+than letting separate `~` statements each simulate their own outbreak:
+
+```julia
+steps = 0.0:7.0:70.0
+data = SignalData(
+    steps,
+    [
+        SignalSeries(TransitionCount(:onset), v -> Poisson(v), reported_onsets),
+        SignalSeries(Prevalence(:hospitalised), v -> Poisson(v), occupied_beds),
+    ]
+)
+loglikelihood(data, model)
+```
+
+```@docs
+Signal
+TransitionCount
+Prevalence
+SignalSeries
+SignalData
+```
+
 ### Likelihood and fitting
 
 `loglikelihood` works on each kind of outbreak data, so parameters can be
@@ -501,6 +532,8 @@ RoutedNetworkInfections
 NegBin
 scale_distribution
 incubation_linked_generation_time
+Conditional
+EpiBranch.resolve
 ```
 
 ## Default placeholders
@@ -647,6 +680,7 @@ EpiBranch.is_settled
 EpiBranch.persistent_competing_risks
 EpiBranch.capacity_key
 EpiBranch.capacity_time_key
+EpiBranch.record_capacity_use!
 EpiBranch.resource_key
 ```
 
@@ -673,6 +707,7 @@ EpiBranch.transition_term
 ```@docs
 EpiBranch.GroupAttribute
 EpiBranch.records_contacts
+EpiBranch.sample_value
 ```
 
 ### Writing an observation model

@@ -16,6 +16,40 @@ struct _UndeclaredTransition <: EpiBranch.AbstractClinicalTransition end
         @test_throws ArgumentError NegBin(2.0, -0.1)
     end
 
+    @testset "resolve and sample_value" begin
+        @testset "A number resolves to a Dirac at that number" begin
+            @test EpiBranch.resolve(3.0) == Dirac(3.0)
+            @test EpiBranch.sample_value(3.0, StableRNG(1)) == 3.0
+        end
+
+        @testset "A distribution resolves to itself" begin
+            d = Gamma(2.0, 1.0)
+            @test EpiBranch.resolve(d) === d
+            @test EpiBranch.sample_value(d, StableRNG(1)) ≈ rand(StableRNG(1), d)
+        end
+
+        @testset "A Conditional resolves to the distribution its function returns" begin
+            ind = Individual(; id = 1)
+            ind.state[:scale] = 2.0
+            latent = Conditional(i -> Gamma(5.95, i.state[:scale]))
+            @test EpiBranch.resolve(latent, ind) == Gamma(5.95, 2.0)
+            @test EpiBranch.sample_value(latent, StableRNG(1), ind) ≈
+                rand(StableRNG(1), Gamma(5.95, 2.0))
+        end
+
+        @testset "A plain (rng, args...) function still works, unsampled" begin
+            f(rng, ind) = ind.state[:scale] * 2
+            ind = Individual(; id = 1)
+            ind.state[:scale] = 3.0
+            @test EpiBranch.sample_value(f, StableRNG(1), ind) == 6.0
+
+            # `resolve` wraps it rather than calling it: no density, only `rand`.
+            adapter = EpiBranch.resolve(f, ind)
+            @test rand(StableRNG(1), adapter) == 6.0
+            @test !applicable(logpdf, adapter, 6.0)
+        end
+    end
+
     @testset "Individual construction" begin
         ind = Individual(; id = 1, infection_time = 0.0)
         @test ind.id == 1

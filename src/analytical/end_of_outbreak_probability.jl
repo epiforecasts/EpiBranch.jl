@@ -107,7 +107,7 @@ throws an error that names the simulation-based alternative.
 function end_of_outbreak_probability(model::Union{BranchingProcess, ModelSpec}, τ::Real)
     # Refuse under per-case under-reporting rather than silently using
     # the bare offspring: makes the missing `ρ < 1` case discoverable.
-    _eoo_assert_full_reporting(observation(model), _progression(model))
+    _eoo_assert_full_reporting(observation(model), progression(model))
     off = _offspring_through_interventions(model, single_type_offspring(model))
     return end_of_outbreak_probability(off, _single_kernel(model), τ)
 end

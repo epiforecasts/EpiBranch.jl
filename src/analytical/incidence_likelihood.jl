@@ -559,9 +559,9 @@ function _incidence_reporting(model)
                 "implemented; report cases with a Reporting step instead."
         )
     )
-    progression = _progression(model)
-    _reporting_probability(progression) === nothing && return (;)
-    length(progression) == 1 || throw(
+    prog = progression(model)
+    _reporting_probability(prog) === nothing && return (;)
+    length(prog) == 1 || throw(
         ArgumentError(
             "loglikelihood(IncidenceCounts, model) supports a Reporting step only as " *
                 "the model's whole progression: another step can end a case before its " *
@@ -571,7 +571,7 @@ function _incidence_reporting(model)
                 "`reporting_probability` and `reporting_delay` measured from infection."
         )
     )
-    r = only(progression)
+    r = only(prog)
     r.delay isa Union{Real, Distribution} || throw(
         ArgumentError(
             "loglikelihood(IncidenceCounts, model) needs the Reporting delay to be a " *
@@ -580,7 +580,7 @@ function _incidence_reporting(model)
     )
     reached, to_anchor = _infection_to(r.from, attributes(model))
     return (
-        reporting_probability = _reporting_probability(progression) * reached,
+        reporting_probability = _reporting_probability(prog) * reached,
         reporting_delay = to_anchor === nothing ? r.delay : _DelaySum(to_anchor, r.delay),
     )
 end
@@ -696,7 +696,7 @@ function loglikelihood(
         )
     )
     offspring_law_unchanged(model) && offspring_law_unchanged(attributes(model)) &&
-        all(offspring_law_unchanged, _progression(model)) || throw(
+        all(offspring_law_unchanged, progression(model)) || throw(
         ArgumentError(
             "loglikelihood(IncidenceCounts, model) has no closed form: a finite " *
                 "population_size, an infectiousness window with `until`, or an " *

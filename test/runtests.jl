@@ -12,6 +12,7 @@ include("testutils/progression.jl")
 @testset "EpiBranch" begin
     include("test_quality.jl")
     include("test_types.jl")
+    include("test_signals.jl")
     include("test_streams.jl")
     include("test_branching_process.jl")
     include("test_attributes.jl")
@@ -56,6 +57,7 @@ include("testutils/progression.jl")
     include("test_integration.jl")
     include("test_r_targets.jl")
     include("test_ad.jl")
+    include("test_stochastic_ad.jl")
 end
 
 include("test_pair_kernels.jl")

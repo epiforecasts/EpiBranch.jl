@@ -214,6 +214,13 @@ acts. The built-in builders `clinical_presentation`, `demographics` and
 `transmission_traits` return such functions. For any other value, write your
 own, as `risk_group!` above does.
 
+Several of a builder's own parameters, such as `transmission_traits`'
+`susceptibility` below, accept a number, a distribution or a function, as
+described for intervention parameters in [Rules with parameters of their
+own](@ref). An attribute builder of your own reads such a parameter with
+[`EpiBranch.sample_value`](@ref), the function every built-in uses for this,
+rather than writing the three methods again.
+
 Characteristics can feed each other. Here `transmission_traits` sets each
 person's susceptibility (a number between 0 and 1) from the risk group:
 
@@ -299,6 +306,14 @@ age_reporting = Reporting(delay = Dirac(0.0), probability = AgeDetection(50.0))
 A reference time given to `Reporting` as a function (`from`) takes only `ind`, and a condition for
 [`Scheduled`](@ref) takes the simulation state. Numbers and distributions keep
 their usual meaning wherever those are accepted.
+
+A parameter given this way can also be a [`Conditional`](@ref), wrapping a
+function that returns a `Distribution` rather than a value: `Conditional(ind
+-> Gamma(5.95, 1 / ind.state[:scale]))` draws from a different `Gamma` for
+each case. Unlike a plain function, the distribution behind a `Conditional`
+can be read back through [`EpiBranch.resolve`](@ref) without drawing from
+it. A likelihood over timing data needs that distribution directly, not a
+simulated value.
 
 ## Stopping rules
 

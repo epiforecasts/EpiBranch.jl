@@ -3,6 +3,16 @@
 # are not brought into scope by `using EpiBranch` (call them qualified,
 # e.g. `EpiBranch.initialise_state`).
 
+# Draw a parameter given as a number, a distribution, a `Conditional` or a
+# function, as every built-in delay, probability and attribute does. An
+# extension reading its own such parameter should use this function too,
+# with the same float conversion and function arguments. `resolve` is the
+# same dispatch without the draw, for a likelihood that needs the
+# distribution itself rather than a sample from it; `Conditional` is
+# exported.
+public sample_value
+public resolve
+
 # Intervention interface: a package subtyping `AbstractIntervention`
 # overrides these.
 public initialise_individual!
@@ -27,6 +37,13 @@ public infection_aborted_time
 
 # Isolation eligibility: whether an isolation time counts as a detection.
 public records_isolation
+
+# Trace eligibility: a `TraceEligibility` subtype says which cases have
+# their contacts traced (`is_eligible`) and from when (`trigger_time`).
+# `GroupVaccination` reads the same two methods to decide when a group
+# counts as having a case.
+public is_eligible
+public trigger_time
 
 # Pair kernels: the host records a kernel's hazards depend on, and the
 # projection against which the race checks that declaration.
@@ -58,6 +75,10 @@ public recorder
 public population_size
 public n_types
 public model_generation_time
+# The two remaining layers of a `ModelSpec`, alongside the four above: the
+# within-host progression and the transmission model it wraps.
+public progression
+public process
 #   - `transmission_risks` to contribute per-pair competing risks (e.g. a
 #     network's per-edge probability), resolved alongside the built-ins.
 public transmission_risks
@@ -139,6 +160,9 @@ public realise_prior_dose!
 public vaccine_effect
 public dose_action
 public record_dose!
+# `record_capacity_use!` tells a capacity wrapper of a use made outside an
+# action it admitted.
+public record_capacity_use!
 public record_effect_draws!
 public store_draw!
 public dose_value

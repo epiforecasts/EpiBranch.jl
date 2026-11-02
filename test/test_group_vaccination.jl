@@ -137,7 +137,7 @@ end
         @test risk.event_time == 8.0
         for exposure in (8.0, 18.0, 58.0)
             member.infection_time = exposure
-            block = EpiBranch._sample_value(
+            block = EpiBranch.sample_value(
                 risk.block_probability, StableRNG(1), nothing, member, nothing
             )
             @test block ≈ 0.9 * decay(exposure - 8.0)
