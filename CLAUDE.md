@@ -78,18 +78,22 @@ dispatched-on trait.
 
 1. **Distributions from Distributions.jl**: a delay, an offspring distribution
    or a contact-interval kernel is a standard `Distributions.jl` type wherever
-   one exists, passed as it is. Do not wrap one in a type of our own: the user
-   would lose the API that comes with it, `quantile`, censoring through
-   PrimaryCensored.jl and Turing's `~` among it. A law with no standard family,
-   such as a kernel defined by an arbitrary hazard, subtypes `Distribution` and
-   implements the parts of its API the engine and the likelihoods call. Two
-   internal, unexported wrappers are allowed, each for a stated reason:
-   `_ChainSizeLaw`/`_ChainLengthLaw` in `src/likelihood_dists.jl` subtype
-   `Distribution` solely so a model can sit on the right-hand side of Turing's
-   `~` and delegate to the existing `loglikelihood` methods;
-   `_TruncatedSkewNormal` in `src/distributions.jl` truncates `SkewNormal`
-   numerically because that family has no `cdf` in the Distributions.jl
-   version in use.
+   one exists, passed as it is. Do not wrap one in a distribution type of our
+   own: the user would lose the API that comes with it, `quantile`, censoring
+   through PrimaryCensored.jl and Turing's `~` among it. A law with no standard
+   family, such as a kernel defined by an arbitrary hazard, subtypes
+   `Distribution` and implements `rand`, `logpdf`, `cdf`, `quantile`, `minimum`
+   and `maximum`, and `logccdf` and `invlogccdf` if it is a kernel. The
+   internal, unexported wrappers that exist each have a reason, and a new one
+   needs its own sentence here: `_ChainSizeLaw`/`_ChainLengthLaw` in
+   `src/likelihood_dists.jl` subtype `Distribution` solely so a model can sit
+   on the right-hand side of Turing's `~` and delegate to the existing
+   `loglikelihood` methods; `_TruncatedSkewNormal` in `src/distributions.jl`
+   truncates `SkewNormal` numerically because that family has no `cdf` in the
+   Distributions.jl version in use; `_CalendarScaledKernel` in
+   `src/pair_kernels.jl` scales a kernel's hazard by a calendar; `_DelaySum`
+   in `src/analytical/incidence_likelihood.jl` is the convolution of two
+   delays.
 2. **DataFrames output**: line lists and chain statistics returned as
    DataFrames, matching epidemiological conventions (one row per case or per
    contact pair).
