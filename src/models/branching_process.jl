@@ -49,11 +49,11 @@ different routes, such as community and funeral transmission of Ebola.
   lockdown or a seasonal pattern that changes how quickly this window's
   contacts arrive. Unused where `kernel` draws no contact
   (`NoGenerationTime()`) or where `offspring` already timed them
-  (`OffspringTimes`). `loglikelihood(IncidenceCounts, ...)` and
-  `end_of_outbreak_probability` throw an `ArgumentError` on a window with a
-  `calendar`, rather than ignoring it. `Isolation`'s analytic effect has no
-  such check: it reads a window's `kernel` directly and is not aware of a
-  `calendar`; simulate a model that needs one instead.
+  (`OffspringTimes`). `loglikelihood(IncidenceCounts, ...)`,
+  `end_of_outbreak_probability` and `Isolation`'s analytic effect all read a
+  window's `kernel` directly and throw an `ArgumentError` on a window with a
+  `calendar` rather than ignoring it; simulate a model that needs one
+  instead.
 - `name`: the name interventions see this window as, through
   [`risk_applies`](@ref EpiBranch.risk_applies)'s `route`. The default,
   `:transmission`, suits a process with a single window; give each of several

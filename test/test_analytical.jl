@@ -1938,6 +1938,30 @@
             @test extinction_probability(spec) >= extinction_probability(bare_spec)
         end
 
+        @testset "A calendar scaling the window's kernel is refused" begin
+            # Isolation's analytic effect reads the window's kernel
+            # directly, with no way to apply a schedule scaling it, so this
+            # must be refused rather than silently read as the bare kernel —
+            # here through `extinction_probability`, one of several routes
+            # that apply `analytic_offspring_effect` to an offspring law.
+            offspring = NegBin(2.0, 0.5)
+            iso = Isolation(onset_to_isolation_delay = 1.5, duration = 7.0)
+            scheduled_spec = ModelSpec(
+                BranchingProcess(
+                    Infectiousness(
+                        offspring; kernel = Exponential(5.0),
+                        calendar = Steps([5.0], [1.0, 0.1])
+                    )
+                );
+                interventions = [iso],
+                attributes = clinical_presentation(incubation_period = Gamma(2.0, 1.5))
+            )
+            @test_throws ArgumentError EpiBranch.analytic_offspring_effect(
+                iso, offspring, scheduled_spec
+            )
+            @test_throws ArgumentError extinction_probability(scheduled_spec)
+        end
+
         @testset "Perfect, unending isolation reduces to F_g(T) alone" begin
             # ε = 0 and D = Inf: every secondary case due before isolation
             # happens, none after.
