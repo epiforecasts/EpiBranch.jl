@@ -288,7 +288,7 @@ end
         @test length(kids) > 0
     end
 
-    @testset "an onset given shifts where the hazard switches on" begin
+    @testset "onset shifts where the hazard switches on" begin
         switch_on = 15.0
         k = HazardKernel(t -> 2.0; onset = switch_on)
         m = quantile(k, 0.5)
@@ -298,8 +298,8 @@ end
 
     @testset "a wrong onset raises an error" begin
         # A hazard still flat just past the declared onset looks just like one
-        # that has permanently converged; told the wrong onset, nothing could
-        # tell them apart, so construction rejects it outright.
+        # that has permanently converged; given the wrong onset, construction
+        # cannot tell them apart, so it rejects the hazard outright.
         switch_on = 15.0
         @test_throws ArgumentError HazardKernel(t -> t < switch_on ? 0.0 : 2.0; onset = 5.0)
     end
