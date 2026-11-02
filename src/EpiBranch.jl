@@ -120,6 +120,12 @@ include("models/mixing.jl")
 # ModelSpec: compose a process with its forcing/observation layers.
 include("model_spec.jl")
 
+# Approximate population dynamics as state-space models: mean-field and
+# linear-noise approximations of a closed population, and a hybrid that
+# switches from exact simulation to one of them.
+include("models/population_dynamics.jl")
+include("models/hybrid.jl")
+
 # Output
 include("output/linelist.jl")
 include("output/tracing.jl")
@@ -157,6 +163,8 @@ include("progression_likelihood.jl")
 # Exports — types
 export TransmissionModel, BranchingProcess, Infectiousness, OffspringTimes,
     HomogeneousProcess, MixingProcess, ModelSpec
+export MeanFieldProcess, MeanFieldState, LinearNoiseProcess, LinearNoiseState
+export HybridProcess, HybridState
 export transmission_timing, implied_R
 export Individual, InfectionEpisode, close_episode!, SimulationState
 export SimOpts
