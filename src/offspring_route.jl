@@ -291,6 +291,7 @@ function _draw_contacts!(o::_Offspring, race, ind, max_generation, born::Bool)
     (; state) = race
     counts = draw_offspring(state.rng, o.window.offspring, ind, state)
     kernel = _window_kernel(counts, o.window.kernel, ind)
+    kernel = _calendar_scaled_kernel(kernel, o.window.calendar, from_t)
     _draw_counts!(o, race, ind, counts, from_t, kernel, born)
     return first_place:length(o.tree)
 end
@@ -301,6 +302,17 @@ end
 _window_kernel(counts, window_kernel, ind) =
     _has_contacts(counts) ? get_generation_time(window_kernel, ind) : NoGenerationTime()
 _window_kernel(::OffspringTimes, window_kernel, ind) = NoGenerationTime()
+
+# A window's own `calendar`, scaling its kernel's hazard by the schedule's
+# value from `from_t` onwards, exactly as a `PairKernel`'s calendar does.
+# Nothing to scale with no calendar, with no kernel to draw from
+# (`NoGenerationTime()`), or with contact times `OffspringTimes` already gave
+# (discarded by `_draw_counts!` for those, so left alone here too).
+_calendar_scaled_kernel(kernel, calendar, from_t) =
+    calendar === nothing ? kernel : _offspring_calendar_scaled(kernel, calendar, from_t)
+_offspring_calendar_scaled(kernel::NoGenerationTime, calendar, from_t) = kernel
+_offspring_calendar_scaled(kernel::Distribution, calendar, from_t) =
+    _CalendarScaledKernel(kernel, calendar, from_t)
 
 # Single-type: one count. Multi-type: a count per type.
 function _draw_counts!(o::_Offspring, race, ind, n::Int, from_t, kernel, born)

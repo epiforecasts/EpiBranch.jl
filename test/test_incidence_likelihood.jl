@@ -256,6 +256,14 @@ struct _RiskFromAge end
         windowed = BranchingProcess(Infectiousness(offspring; until = (:recovered,), kernel = gt))
         @test_throws ArgumentError loglikelihood(data, windowed)
 
+        # A calendar scaling the kernel's hazard reshapes transmission over
+        # time too, and this closed form reads the kernel directly with no
+        # way to apply it.
+        scheduled = BranchingProcess(
+            Infectiousness(offspring; kernel = gt, calendar = Steps([5.0], [1.0, 0.1]))
+        )
+        @test_throws ArgumentError loglikelihood(data, scheduled)
+
         with_traits = ModelSpec(model; attributes = transmission_traits(susceptibility = 0.5))
         @test_throws ArgumentError loglikelihood(data, with_traits)
     end
