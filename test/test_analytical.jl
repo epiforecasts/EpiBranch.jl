@@ -892,6 +892,16 @@
             @test end_of_outbreak_probability(bp, 5.0) ≈
                 end_of_outbreak_probability(R, k, GT, 5.0)
 
+            # A calendar scaling the window's kernel is read as the bare
+            # kernel here, with no way to apply the schedule, so it must be
+            # refused rather than silently ignored.
+            scheduled = BranchingProcess(
+                Infectiousness(
+                    NegBin(R, k); kernel = GT, calendar = Steps([5.0], [1.0, 0.1])
+                )
+            )
+            @test_throws ArgumentError end_of_outbreak_probability(scheduled, 5.0)
+
             # The Observed{..., PerCaseObservation} wrapper is refused
             # explicitly: under-reporting (ρ < 1) needs the Volterra
             # recursion which is not implemented.

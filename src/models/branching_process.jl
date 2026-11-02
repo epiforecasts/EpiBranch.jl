@@ -49,8 +49,10 @@ different routes, such as community and funeral transmission of Ebola.
   lockdown or a seasonal pattern that changes how quickly this window's
   contacts arrive. Unused where `kernel` draws no contact
   (`NoGenerationTime()`) or where `offspring` already timed them
-  (`OffspringTimes`). Closed-form results that read a window's `kernel`
-  directly, such as `Isolation`'s analytic effect, are not aware of a
+  (`OffspringTimes`). `loglikelihood(IncidenceCounts, ...)` and
+  `end_of_outbreak_probability` throw an `ArgumentError` on a window with a
+  `calendar` rather than ignore it. `Isolation`'s analytic effect reads a
+  window's `kernel` directly with no such check and is not aware of a
   `calendar`; simulate a model that needs one instead.
 - `name`: the name interventions see this window as, through
   [`risk_applies`](@ref EpiBranch.risk_applies)'s `route`. The default,
@@ -401,13 +403,14 @@ _progvec(p) = convert(Vector{AbstractClinicalTransition}, p)
 population_size(m::BranchingProcess) = m.population_size
 n_types(m::BranchingProcess) = m.n_types
 
-# A finite population thins transmission as cases accumulate, and a window
-# with `until` stops it before every drawn contact happens — both reshape the
+# A finite population thins transmission as cases accumulate, a window with
+# `until` stops it before every drawn contact happens, and a window's
+# `calendar` scales its kernel's hazard over time — all three reshape the
 # offspring law away from the bare distribution, so the analytical chain-size
 # and incidence likelihoods must not take the model's offspring law as read.
 function offspring_law_unchanged(m::BranchingProcess)
     population_size(m) isa NoPopulation || return false
-    return all(w -> isempty(w.until), m.infectiousness)
+    return all(w -> isempty(w.until) && w.calendar === nothing, m.infectiousness)
 end
 
 function single_type_offspring(m::BranchingProcess)
@@ -443,6 +446,10 @@ function _single_kernel(m::BranchingProcess)
     )
     return m.infectiousness[1].kernel
 end
+
+# The calendar of a single-window model, for analytical helpers that read
+# `_single_kernel` directly and so cannot honour a schedule scaling it.
+_single_calendar(m::BranchingProcess) = m.infectiousness[1].calendar
 
 _offspring_label(off::Distribution) = string(typeof(off))
 _offspring_label(off) = "Function"
