@@ -25,8 +25,10 @@ susceptible).
 schedule — a [`Steps`](@ref), a [`Seasonal`](@ref), or a callable
 `t -> β(t)` — giving β as a function of calendar day, for a lockdown or a
 seasonal rate. With a schedule, contacts are still drawn exactly, from the
-schedule's integrated hazard, but every member of the population is sampled
-directly rather than at the bound a fixed β allows, which costs O(N) per case.
+schedule's integrated hazard. `Steps` and `Seasonal` have a known largest
+value, so the route keeps sampling at a bound, at a cost per contact; a
+callable has none, so every member of the population is sampled directly
+instead, which costs O(N) per case.
 
 The natural history comes from the `progression` of a [`ModelSpec`](@ref),
 as for a [`BranchingProcess`](@ref). With only a recovery step,

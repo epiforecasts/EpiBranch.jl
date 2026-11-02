@@ -33,8 +33,9 @@ continuous-time race as `HomogeneousProcess`.
 calendar day, exactly as a [`PairKernel`](@ref)'s `calendar` does — a
 lockdown or a seasonal pattern applied on top of a fixed contact matrix. With
 a calendar, contacts are drawn exactly from the schedule's integrated
-hazard, but every member of each group is sampled directly rather than at a
-bound, which costs O(N) per case.
+hazard. `Steps` and `Seasonal` have a known largest value, so the route keeps
+sampling at a bound, at a cost per contact; a callable has none, so every
+member of each group is sampled directly instead, which costs O(N) per case.
 
 The process describes the transmission alone. The natural history is a
 `progression` of [`Transition`](@ref)s attached with a [`ModelSpec`](@ref),

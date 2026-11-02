@@ -164,6 +164,12 @@ EpiBranch.calendar_multiplier(::BreaklessSchedule, t) = 1.0
     @test EpiBranch.calendar_multiplier(Steps([1.0], [1.0, 2.0]), 1.0) == 2.0
     @test EpiBranch.next_calendar_break(Steps([1.0, 2.0], [1.0, 2.0, 3.0]), 1.0) == 2.0
     @test EpiBranch.next_calendar_break(Steps([1.0], [1.0, 2.0]), 1.0) == Inf
+    # `Steps` and `Seasonal` both have a known largest multiplier; a plain
+    # function, or a schedule that declares none, does not.
+    @test EpiBranch.calendar_bound(Steps([1.0, 2.0], [0.4, 1.0, 0.2])) == 1.0
+    @test EpiBranch.calendar_bound(Seasonal(; amplitude = 0.3, peak_day = 5.0)) == 1.3
+    @test EpiBranch.calendar_bound(t -> 1 + t) === nothing
+    @test EpiBranch.calendar_bound(seasonal) === nothing
     # A piecewise-constant schedule must say where it breaks.
     breakless = PairKernel(ctx -> Exponential(1.0); calendar = BreaklessSchedule())
     @test_throws MethodError EpiBranch.cumhazard(

@@ -96,6 +96,8 @@ function next_calendar_break(s::Steps, t::Real)
     return idx <= length(s.breaks) ? s.breaks[idx] : oftype(float(t), Inf)
 end
 
+calendar_bound(s::Steps) = maximum(s.values)
+
 """
     PiecewiseConstantCalendar()
 
@@ -141,6 +143,22 @@ callable `t -> multiplier` is read as a smooth schedule too, with no
 calendar_shape(schedule) = PiecewiseConstantCalendar()
 
 """
+    calendar_bound(schedule)
+
+The largest value a calendar `schedule`'s multiplier takes, or `nothing` if
+none is known. [`Steps`](@ref) declares its largest step and
+[`Seasonal`](@ref) its `1 + amplitude`; a schedule written outside the
+package may add a method on its own type to declare a bound too.
+
+The mass-action route ([`HomogeneousProcess`](@ref), [`MixingProcess`](@ref))
+uses this to decide how to sample under a `calendar`: with a bound, it thins
+at it, keeping the per-contact cost a fixed rate allows; with none, a
+schedule's value cannot be bounded in advance, so every pair is sampled
+directly, at a cost per pair instead.
+"""
+calendar_bound(schedule) = nothing
+
+"""
     Seasonal(; amplitude, peak_day, period = 365.2425)
 
 A smoothly oscillating multiplier on calendar time: `1 + amplitude *
@@ -176,6 +194,7 @@ end
 
 calendar_multiplier(s::Seasonal, t::Real) = 1 + s.amplitude * cos(2π * (t - s.peak_day) / s.period)
 calendar_shape(::Seasonal) = SmoothCalendar()
+calendar_bound(s::Seasonal) = 1 + s.amplitude
 
 # A plain function read as a calendar schedule: `calendar = t -> multiplier`
 # for forcing of any shape, with no breaks to declare.

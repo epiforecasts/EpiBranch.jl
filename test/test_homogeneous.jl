@@ -839,6 +839,36 @@ end
         @test cut < full / 2
     end
 
+    @testset "a bounded calendar thins at its own bound" begin
+        # `Seasonal` declares a bound (`1 + amplitude`), so mass action thins at
+        # it rather than sampling every pair directly; a plain function with the
+        # same multiplier has no declared bound and takes the O(N) route
+        # instead. The two must still settle the same process.
+        N = 50
+        prog = [
+            Transition(:recovered; from = :infection, delay = Exponential(1.0), terminal = true),
+        ]
+        seasonal = Seasonal(; amplitude = 0.6, peak_day = 0.0, period = 20.0)
+        plain = t -> EpiBranch.calendar_multiplier(seasonal, t)
+        @test EpiBranch.calendar_bound(seasonal) !== nothing
+        @test EpiBranch.calendar_bound(plain) === nothing
+        attack_rate(rate, s) = count(
+            is_infected,
+            simulate(
+                ModelSpec(
+                    HomogeneousProcess(; transmission_rate = rate, population_size = N);
+                    progression = prog
+                );
+                n_initial = 5, rng = StableRNG(s)
+            ).individuals
+        ) / N
+        reps = 300
+        bounded = [attack_rate(seasonal, s) for s in 1:reps]
+        direct = [attack_rate(plain, s) for s in 10_000 .+ (1:reps)]
+        se = sqrt(var(bounded) / reps + var(direct) / reps)
+        @test abs(mean(bounded) - mean(direct)) < 4 * se
+    end
+
     @testset "a blocked mass-action contact redraws against the same calendar" begin
         # `route_pair_kernel` is asked only once a proposed contact is blocked
         # by a competing risk, to redraw the pair's next one; with a calendar

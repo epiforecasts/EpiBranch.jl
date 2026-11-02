@@ -44,9 +44,10 @@ a dual under automatic differentiation included, and is fixed for the run.
 calendar day, exactly as a [`PairKernel`](@ref)'s `calendar` does. `from`
 names the state each member's window opens at (`:infection` unless the model
 gives it a later one), read back when a blocked pair's next contact needs the
-calendar day its window opened on. With no `calendar`, a pair is sampled at
-the bound described below, at a cost per contact; with one, the schedule's
-value cannot be bounded in advance, so every pair in a group is drawn
+calendar day its window opened on. A `calendar` with a declared
+[`EpiBranch.calendar_bound`](@ref) (`Steps` and `Seasonal` both have one) is
+folded into the bound described below, keeping the cost per contact; a plain
+callable has none, so with it in force every pair in a group is drawn
 directly, at O(N) per case, the cost an unbounded window already incurs.
 
 Each group's largest susceptibility is also read when the route is built, as the
@@ -157,23 +158,36 @@ function propose_along(m::_MassAction, infector_id, state, open_t, close_t, capp
 end
 
 # Every pair in `group`, at rate `r` scaled by the member's susceptibility when
-# `traits` is set, sampled by the pairs with a contact in the window. With an
-# unbounded window, or a `calendar` schedule in force, every pair has a
-# contact to try, so each draws its time directly, at O(N) per case, because
-# the schedule's value cannot be bounded in advance and the geometric-skip
-# sampling below, which needs a bound on the rate, does not apply to it.
+# `traits` is set, sampled by the pairs with a contact in the window. A
+# `calendar` schedule with no `calendar_bound` (a plain function of time)
+# cannot be bounded in advance, so with one in force every pair has a contact
+# to try and each draws its time directly, at O(N) per case; the geometric-skip
+# sampling below, which needs a bound on the rate, does not apply to it. An
+# unbounded window with no calendar is drawn the same way, since every pair is
+# certain to contact eventually.
 #
-# Otherwise pairs are selected at the `bound` rate: the gap to the next pair with
-# a contact is geometric with the bound's per-pair probability `p`. A pair at a
-# lower rate, with probability `pk`, is kept with probability `pk/p`, and its
-# time is the exponential at its own rate conditioned on `dt ≤ window`,
-# `-log(1 - u·pk)/rate`.
+# Otherwise pairs are selected at a `bound` rate — `bound` itself, or `bound`
+# scaled by a `calendar`'s own bound where one is declared: the gap to the next
+# pair with a contact is geometric with the envelope's per-pair probability
+# `p`. A pair at its own, lower probability `pk` is kept with probability
+# `pk/p`, and its time is drawn from its own hazard conditioned on `dt ≤
+# window`. With no calendar that hazard is the plain exponential at `rate`;
+# with a bounded calendar it is the pair's own `_CalendarScaledKernel`, so a
+# `Steps` or `Seasonal` schedule keeps the per-contact cost a fixed rate
+# allows.
 function _sample_contacts!(
         contacts, state, group, r, bound, traits, open_t, window, calendar
     )
     rng = state.rng
     pair_rate(id) = traits ? r * state.individuals[id].susceptibility : r
-    if calendar !== nothing
+    check_bound(rate) = rate <= bound || throw(
+        ArgumentError(
+            "a member's susceptibility rose above its group's largest when " *
+                "the mass-action route was built; set it when the member is created"
+        )
+    )
+    cal_bound = calendar === nothing ? nothing : calendar_bound(calendar)
+    if calendar !== nothing && cal_bound === nothing
         for id in group
             rate = pair_rate(id)
             rate > 0 || continue
@@ -182,7 +196,7 @@ function _sample_contacts!(
         end
         return nothing
     end
-    if !isfinite(window)
+    if calendar === nothing && !isfinite(window)
         for id in group
             rate = pair_rate(id)
             rate > 0 || continue
@@ -190,7 +204,8 @@ function _sample_contacts!(
         end
         return nothing
     end
-    p = -expm1(-bound * window)
+    envelope = cal_bound === nothing ? bound : bound * cal_bound
+    p = -expm1(-envelope * window)
     logq = log1p(-p)
     n = length(group)
     i = 0
@@ -199,19 +214,24 @@ function _sample_contacts!(
         gap < n - i || break
         i += 1 + floor(Int, gap)
         id = group[i]
-        rate, pk = bound, p
-        if traits
-            rate = pair_rate(id)
-            rate <= bound || throw(
-                ArgumentError(
-                    "a member's susceptibility rose above its group's largest when " *
-                        "the mass-action route was built; set it when the member is created"
-                )
-            )
-            pk = -expm1(-rate * window)
+        if cal_bound === nothing
+            rate, pk = bound, p
+            if traits
+                rate = pair_rate(id)
+                check_bound(rate)
+                pk = -expm1(-rate * window)
+                rand(rng) * p < pk || continue
+            end
+            dt = -log1p(-rand(rng) * pk) / rate
+        else
+            rate = traits ? pair_rate(id) : r
+            traits && check_bound(rate)
+            rate > 0 || continue
+            kernel = _CalendarScaledKernel(Exponential(inv(rate)), calendar, open_t)
+            pk = -expm1(-cumhazard(kernel, window))
             rand(rng) * p < pk || continue
+            dt = _time_at_log_survival(kernel, log1p(-rand(rng) * pk))
         end
-        dt = -log1p(-rand(rng) * pk) / rate
         push!(contacts, (id, open_t + dt))
     end
     return nothing
