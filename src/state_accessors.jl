@@ -599,8 +599,22 @@ end
 # instant, but an inverted one isolates for none at all. `nothing` if no
 # entry remains.
 function _fold_isolation_span(entries)
-    spans = [(e[3], e[4], e[6]) for e in entries if e[5] && e[4] >= e[3]]
-    isempty(spans) && return nothing
+    found = false
+    cur_start = cur_release = cur_unrecorded = nothing
+    spans = nothing
+    for e in entries
+        (e[5] && e[4] >= e[3]) || continue
+        if !found
+            found = true
+            cur_start, cur_release, cur_unrecorded = e[3], e[4], e[6]
+        elseif spans === nothing
+            spans = [(cur_start, cur_release, cur_unrecorded), (e[3], e[4], e[6])]
+        else
+            push!(spans, (e[3], e[4], e[6]))
+        end
+    end
+    found || return nothing
+    spans === nothing && return (cur_start, cur_release, cur_unrecorded)
     sort!(spans; by = first)
     cur_start, cur_release, cur_unrecorded = spans[1]
     for (s, r, u) in @view spans[2:end]
