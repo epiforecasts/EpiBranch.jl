@@ -315,7 +315,7 @@ before a reinfection replaces it.
 """
 InfectionEpisode(ind::Individual{T}) where {T} = InfectionEpisode{T}(
     ind.infection_time, ind.parent_id, ind.generation, ind.chain_id,
-    copy(ind.secondary_case_ids), copy(ind.state)
+    copy(ind.secondary_case_ids), _detach_removal_history!(copy(ind.state))
 )
 
 """

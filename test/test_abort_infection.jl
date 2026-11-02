@@ -35,6 +35,18 @@ function EpiBranch.resolve_individual!(t::_OwnKeyVisit, ind, state)
     return nothing
 end
 
+# A transition that removes the person for a day from `delay`, the way a
+# custom clinical transition would via `record_removal!`.
+struct _RemovalVisit <: AbstractClinicalTransition
+    delay::Float64
+end
+function EpiBranch.resolve_individual!(t::_RemovalVisit, ind, state)
+    visit_time = ind.infection_time + t.delay
+    EpiBranch.record_removal!(ind, visit_time, visit_time + 1.0)
+    ind.state[Symbol(:visit_, t.delay, :_time)] = visit_time
+    return nothing
+end
+
 @testset "abort_infection!" begin
     function exposed(; infection_time = 1.0, incubation = 6.0)
         ind = Individual(id = 1, infection_time = infection_time)
@@ -118,6 +130,29 @@ end
         # The second transition lands before the abort, so it stands.
         @test ind.state[:early_step]
         @test ind.state[:early_step_time] == 0.1
+    end
+
+    @testset "the undo drops a removal entry rather than reaching into the snapshot" begin
+        # `_resolve_before_abort!` snapshots `individual.state` before each
+        # transition runs; without detaching `:_removal_entries` first, a
+        # removal the second transition records grows the same vector the
+        # snapshot shares, so undoing it leaves the entry behind.
+        prog = AbstractClinicalTransition[
+            _RemovalVisit(0.5),
+            _RemovalVisit(5.0),
+        ]
+        state = EpiBranch.new_state(
+            BranchingProcess(Poisson(0.0)), prog, NoAttributes(), StableRNG(1)
+        )
+        ind = Individual(id = 1, infection_time = 0.0)
+        ind.state[:infected] = true
+        EpiBranch.abort_infection!(ind, 1.0)
+        EpiBranch.resolve_transitions!(state, ind)
+        @test ind.state[Symbol(:visit_, 0.5, :_time)] == 0.5
+        @test !haskey(ind.state, Symbol(:visit_, 5.0, :_time))
+        entries = ind.state[:_removal_entries]
+        @test length(entries) == 1
+        @test entries[1][3] == 0.5
     end
 end
 

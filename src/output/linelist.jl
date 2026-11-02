@@ -284,12 +284,13 @@ provisional onset; where one replaced a recorded quarantine, that quarantine's
 time, and its release time, are reported in its place."""
 function _uninfected_event_time(ind, key::Symbol, metadata)
     if key === :isolation_time || key === :isolation_release_time
-        get(ind.state, :_isolated_by_isolation, false) ||
-            return _reported_state(ind, key)
-        get(ind.state, :_isolation_unrecorded_before_isolation, false) && return missing
-        before_key = key === :isolation_time ? :_isolation_time_before_isolation :
-            :_isolation_release_time_before_isolation
-        return get(ind.state, before_key, missing)
+        handle = get(ind.state, :_isolation_handle, nothing)
+        handle === nothing && return _reported_state(ind, key)
+        span = _isolation_span_excluding(ind, handle)
+        span === nothing && return missing
+        start, release, unrecorded = span
+        unrecorded && return missing
+        return key === :isolation_time ? start : release
     end
     return metadata.requires_infection ? missing : _reported_state(ind, key)
 end
