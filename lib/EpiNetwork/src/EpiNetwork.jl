@@ -33,7 +33,7 @@ import EpiBranch: _removal_gaps, _host_stretches, _gapped_cumhazard, _removed_at
 
 export NetworkProcess, RoutedNetwork
 export NetworkInfections, network_infections
-export RoutedNetworkInfections, routed_network_infections
+export RoutedNetworkInfections, routed_network_infections, RoutedMassActionHazard
 export pairwise_surv_loglik, compile_contact_pairs
 
 include("network_process.jl")

@@ -249,7 +249,7 @@ export GeneratingFunctionOffspring
 export end_of_outbreak_probability
 # Pairwise survival likelihood over a contact structure
 export PairKernel, PairContext, Steps, Seasonal, record_kernel, LayerHost
-export InfectionLayer, PairwiseSurvivalData, ContactPairsLayout
+export InfectionLayer, PairwiseSurvivalData, ContactPairsLayout, MassActionHazard
 export compile_contact_pairs, pairwise_surv_loglik, pairwise_surv_loglik_by_component
 # Progression (natural-history) likelihood
 export progression_loglik
