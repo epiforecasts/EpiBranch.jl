@@ -44,6 +44,13 @@ abstract type ChainSizeLaw <: DiscreteUnivariateDistribution end
 # `src/transitions/`.
 abstract type AbstractClinicalTransition end
 
+# Abstract supertype for a cut race's unfinished event queue (defined here,
+# for the same forward-reference reason as `AbstractClinicalTransition`; the
+# concrete type is `_RaceContinuation` in `sellke.jl`). `simulate`'s
+# continuation method pops up where the race it describes left off, rather
+# than redrawing contacts already decided.
+abstract type AbstractRaceContinuation end
+
 # ── Transmission models ─────────────────────────────────────────────
 
 """
@@ -353,6 +360,9 @@ model, and `scratch` is space in which an intervention can keep its own
 working information for the run (as `Individual.state` is for each person),
 named as the Extending EpiBranch guide describes. The simulation never reads
 `scratch`. `GroupVaccination` keeps its list of each group's members there.
+`continuation` is the unfinished race [`simulate`](@ref)'s continuation
+method resumes, `nothing` once the run has reached extinction or stopped for
+some other reason; nothing outside the simulation engine reads or writes it.
 """
 mutable struct SimulationState{T <: Real, R <: AbstractRNG, P, A}
     individuals::Vector{Individual{T}}
@@ -366,11 +376,12 @@ mutable struct SimulationState{T <: Real, R <: AbstractRNG, P, A}
     attributes::A
     transitions::Vector{AbstractClinicalTransition}
     scratch::Dict{Any, Any}
+    continuation::Union{Nothing, AbstractRaceContinuation}
 end
 
-# Pre-existing callers construct a `SimulationState` without `scratch`; it
-# always starts empty, so this fills it in rather than requiring every call
-# site to name it.
+# Pre-existing callers construct a `SimulationState` without `scratch` or
+# `continuation`; both start empty, so this fills them in rather than
+# requiring every call site to name them.
 function SimulationState(
         individuals, active_ids, current_generation, rng, cumulative_cases,
         extinct, population_size, max_infection_time, attributes, transitions
@@ -378,7 +389,7 @@ function SimulationState(
     return SimulationState(
         individuals, active_ids, current_generation, rng, cumulative_cases,
         extinct, population_size, max_infection_time, attributes, transitions,
-        Dict{Any, Any}()
+        Dict{Any, Any}(), nothing
     )
 end
 
