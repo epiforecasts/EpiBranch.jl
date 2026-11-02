@@ -78,15 +78,18 @@ dispatched-on trait.
 
 1. **Distributions from Distributions.jl**: a delay, an offspring distribution
    or a contact-interval kernel is a standard `Distributions.jl` type wherever
-   one exists, passed as it is. Never wrap one in a type of our own: the user
+   one exists, passed as it is. Do not wrap one in a type of our own: the user
    would lose the API that comes with it, `quantile`, censoring through
    PrimaryCensored.jl and Turing's `~` among it. A law with no standard family,
-   such as a kernel defined by an arbitrary hazard (`HazardKernel`), may
-   subtype `Distribution` provided it implements that API in full. The internal
-   `_ChainSizeLaw`/`_ChainLengthLaw` wrappers in `src/likelihood_dists.jl` are
-   the one wrapper allowed: they subtype `Distribution` solely so a model can
-   sit on the right-hand side of Turing's `~`, delegate to the existing
-   `loglikelihood` methods and are not exported.
+   such as a kernel defined by an arbitrary hazard, subtypes `Distribution` and
+   implements the parts of its API the engine and the likelihoods call. Two
+   internal, unexported wrappers are allowed, each for a stated reason:
+   `_ChainSizeLaw`/`_ChainLengthLaw` in `src/likelihood_dists.jl` subtype
+   `Distribution` solely so a model can sit on the right-hand side of Turing's
+   `~` and delegate to the existing `loglikelihood` methods;
+   `_TruncatedSkewNormal` in `src/distributions.jl` truncates `SkewNormal`
+   numerically because that family has no `cdf` in the Distributions.jl
+   version in use.
 2. **DataFrames output**: line lists and chain statistics returned as
    DataFrames, matching epidemiological conventions (one row per case or per
    contact pair).
