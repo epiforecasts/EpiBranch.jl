@@ -45,8 +45,8 @@ calendar day, exactly as a [`PairKernel`](@ref)'s `calendar` does. `from`
 names the state each member's window opens at (`:infection` unless the model
 gives it a later one), read back when a blocked pair's next contact needs the
 calendar day its window opened on. A `calendar` with a declared
-[`EpiBranch.calendar_bound`](@ref) (`Steps` and `Seasonal` both have one) is
-folded into the bound described below, keeping the cost per contact; a plain
+[`EpiBranch.calendar_bound`](@ref) (`Steps` and `Seasonal` both have one)
+folds into the bound described below, keeping the cost per contact; a plain
 callable has none, so with it in force every pair in a group is drawn
 directly, at O(N) per case, the cost an unbounded window already incurs.
 
@@ -166,8 +166,8 @@ end
 # unbounded window with no calendar is drawn the same way, since every pair is
 # certain to contact eventually.
 #
-# Otherwise pairs are selected at a `bound` rate — `bound` itself, or `bound`
-# scaled by a `calendar`'s own bound where one is declared: the gap to the next
+# Otherwise pairs are selected at a `bound` rate (`bound` itself, or `bound`
+# scaled by a `calendar`'s own bound where one is declared): the gap to the next
 # pair with a contact is geometric with the envelope's per-pair probability
 # `p`. A pair at its own, lower probability `pk` is kept with probability
 # `pk/p`, and its time is drawn from its own hazard conditioned on `dt ≤

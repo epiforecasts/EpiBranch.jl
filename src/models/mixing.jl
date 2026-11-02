@@ -34,7 +34,7 @@ calendar day, exactly as a [`PairKernel`](@ref)'s `calendar` does — a
 lockdown or a seasonal pattern applied on top of a fixed contact matrix. With
 a calendar, contacts are drawn exactly from the schedule's integrated
 hazard. `Steps` and `Seasonal` have a known largest value, so the route keeps
-sampling at a bound, at a cost per contact; a callable has none, so every
+sampling at a bound, at a cost per contact. A callable has none; every
 member of each group is sampled directly instead, which costs O(N) per case.
 
 The process describes the transmission alone. The natural history is a
