@@ -64,6 +64,70 @@ function EpiBranch.simulate_once(
     return state
 end
 
+# A route that forwards to a real `_MassAction` and records every infector it
+# is asked to propose along, as a tracing wrapper does (`_TracedProposals` in
+# EpiNetwork), to check that a resumed redraw (`EpiBranch._resume_route!`) is
+# submitted through the wrapper rather than the `_MassAction` underneath.
+struct _RecordingMassAction
+    inner::EpiBranch._MassAction
+    proposed::Dict{Int, Vector{Int}}
+end
+_RecordingMassAction(inner) = _RecordingMassAction(inner, Dict{Int, Vector{Int}}())
+(r::_RecordingMassAction)(infector_id, state) = r.inner(infector_id, state)
+EpiBranch.proposes_own_contacts(::_RecordingMassAction) = true
+EpiBranch.route_pair_kernel(r::_RecordingMassAction, infector_id, target_id, state) =
+    EpiBranch.route_pair_kernel(r.inner, infector_id, target_id, state)
+function EpiBranch.propose_along(
+        r::_RecordingMassAction, infector_id, state, open_t, close_t, capped, traits
+    )
+    contacts = collect(
+        EpiBranch.propose_along(r.inner, infector_id, state, open_t, close_t, capped, traits)
+    )
+    append!(get!(r.proposed, infector_id, Int[]), (id for (id, _) in contacts))
+    return contacts
+end
+EpiBranch.pending_beyond(r::_RecordingMassAction, state, reinfects::Bool) =
+    EpiBranch.pending_beyond(r.inner, state, reinfects)
+EpiBranch._resumable_route(r::_RecordingMassAction) = EpiBranch._resumable_route(r.inner)
+EpiBranch._resume_route!(r::_RecordingMassAction, race, ri, old_max_time, traits) =
+    EpiBranch._resume_route!(r.inner, race, ri, old_max_time, traits, r)
+
+# A homogeneous population whose infectious window never closes (`until =
+# ()`), raced over a `_RecordingMassAction`; `route` is filled in with the
+# instance `simulate_once` built, so a test can inspect what it recorded.
+struct RecordingHomogeneous <: EpiBranch.TransmissionModel
+    population_size::Int
+    transmission_rate::Float64
+    route::Base.RefValue{Union{Nothing, _RecordingMassAction}}
+end
+RecordingHomogeneous(population_size, transmission_rate) =
+    RecordingHomogeneous(
+    population_size, transmission_rate,
+    Base.RefValue{Union{Nothing, _RecordingMassAction}}(nothing)
+)
+EpiBranch.population_size(m::RecordingHomogeneous) = m.population_size
+function EpiBranch.simulate_once(
+        model::RecordingHomogeneous, sim_opts::EpiBranch.SimOpts;
+        interventions, attributes, progression, observation, recorder, rng
+    )
+    N = model.population_size
+    β = model.transmission_rate
+    state = EpiBranch.new_state(model, progression, attributes, rng)
+    EpiBranch.add_individuals!(state, N, interventions)
+    members = collect(1:N)
+    route = _RecordingMassAction(EpiBranch._MassAction(state, members; rate = (_, _) -> β / N))
+    model.route[] = route
+    EpiBranch.sellke_race!(
+        state, members, rng, sim_opts;
+        seed! = (best, _, _) -> (best[1:(sim_opts.n_initial)] .= 0),
+        targets = route,
+        from = EpiBranch.infectious_from(progression), until = (), interventions,
+        risks = EpiBranch.transmission_risks(model), recorder
+    )
+    EpiBranch.apply_observation!(observation, state, rng)
+    return state
+end
+
 @testset "simulate(model, state; max_time) continuation" begin
     @testset "continuing a closing window agrees bit for bit with one run" begin
         model = ModelSpec(
@@ -132,6 +196,27 @@ end
         direct = [final_size(s; split = nothing) for s in 1:150]
         continued = [final_size(s; split = 4.0) for s in 1:150]
         @test isapprox(mean(direct), mean(continued); rtol = 0.1)
+    end
+
+    @testset "a resumed redraw is submitted through a wrapper around mass action" begin
+        # A wrapper that records every infector it is asked to propose along,
+        # as the tracing wrapper in `EpiNetwork` does, must still see the
+        # pairs a continuation redraws once the race resumes with a later
+        # time limit: otherwise the redraw lands on the `_MassAction`
+        # underneath, and its record goes stale from the first `simulate`
+        # call on.
+        model = ModelSpec(RecordingHomogeneous(300, 0.6))
+        state = simulate(model; max_time = 3.0, n_initial = 5, rng = StableRNG(2))
+        route = model.process.route[]
+        @test EpiBranch.route_pair_kernel(route, 1, 2, state) ==
+            EpiBranch.route_pair_kernel(route.inner, 1, 2, state)
+        before = deepcopy(route.proposed)
+        @test !isempty(before)
+        simulate(model, state; max_time = 20.0)
+        @test any(
+            length(get(route.proposed, infector, Int[])) > length(contacts)
+                for (infector, contacts) in before
+        )
     end
 
     @testset "a branching process continues the same way" begin
