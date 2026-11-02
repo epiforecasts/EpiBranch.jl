@@ -84,6 +84,47 @@ using StableRNGs
         @test chained.approx.R ≈ direct.approx.R
     end
 
+    @testset "crosses to a LinearNoiseProcess approximation" begin
+        N = 20_000
+        β, γ = 0.6, 0.2
+        exact = ModelSpec(
+            HomogeneousProcess(; transmission_rate = β, population_size = N);
+            progression = [Transition(:recovered; rate = γ, terminal = true)]
+        )
+        approx = LinearNoiseProcess(; population_size = N, transmission_rate = β, removal_rate = γ)
+        model = HybridProcess(exact, approx; threshold = 10, check_interval = 1.0)
+
+        hybrid = simulate(model; n_initial = 5, max_time = 150.0, rng = StableRNG(2))
+        @test hybrid.phase === :approx
+        @test hybrid.approx isa LinearNoiseState
+        @test hybrid.approx.t == 150.0
+    end
+
+    @testset "continuing an approx-phase state at its own time is a no-op" begin
+        N = 20_000
+        β, γ = 0.6, 0.2
+        exact = ModelSpec(
+            HomogeneousProcess(; transmission_rate = β, population_size = N);
+            progression = [Transition(:recovered; rate = γ, terminal = true)]
+        )
+        approx = MeanFieldProcess(; population_size = N, transmission_rate = β, removal_rate = γ)
+        model = HybridProcess(exact, approx; threshold = 10, check_interval = 1.0)
+
+        state = simulate(model; n_initial = 5, max_time = 150.0, rng = StableRNG(2))
+        continued = simulate(model, state; max_time = state.approx.t)
+        @test continued.approx === state.approx
+    end
+
+    @testset "show" begin
+        exact = HomogeneousProcess(; transmission_rate = 0.4, population_size = 50)
+        approx = MeanFieldProcess(;
+            population_size = 50, transmission_rate = 0.4, removal_rate = 0.2
+        )
+        model = HybridProcess(exact, approx; threshold = 10)
+        state = simulate(model; n_initial = 2, max_time = 1.0, rng = StableRNG(1))
+        @test occursin("HybridState(phase=:exact)", sprint(show, state))
+    end
+
     @testset "an already-extinct exact phase is left alone" begin
         exact = ModelSpec(
             HomogeneousProcess(; transmission_rate = 0.4, population_size = 20);

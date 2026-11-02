@@ -44,6 +44,30 @@ using StableRNGs
         @test_throws ArgumentError simulate(model; n_initial = 0, max_time = 1.0)
         @test_throws ArgumentError simulate(model; n_initial = 11, max_time = 1.0)
     end
+
+    @testset "rejects invalid construction" begin
+        @test_throws ArgumentError MeanFieldProcess(;
+            population_size = 0, transmission_rate = 0.4, removal_rate = 0.2
+        )
+        @test_throws ArgumentError MeanFieldProcess(;
+            population_size = 10, transmission_rate = -0.4, removal_rate = 0.2
+        )
+        @test_throws ArgumentError MeanFieldProcess(;
+            population_size = 10, transmission_rate = 0.4, removal_rate = -0.2
+        )
+        @test_throws ArgumentError MeanFieldProcess(;
+            population_size = 10, transmission_rate = 0.4, removal_rate = 0.2, step = 0.0
+        )
+    end
+
+    @testset "show" begin
+        model = MeanFieldProcess(;
+            population_size = 10, transmission_rate = 0.4, removal_rate = 0.2
+        )
+        @test occursin("MeanFieldProcess(population_size=10", sprint(show, model))
+        state = simulate(model; max_time = 1.0)
+        @test occursin("MeanFieldState(S=", sprint(show, state))
+    end
 end
 
 @testset "LinearNoiseProcess" begin
@@ -77,5 +101,36 @@ end
         continued = simulate(model, state; max_time = 10.0)
         @test state.I < 0.1 * 8000   # still well before the epidemic turns over
         @test tr(continued.covariance) > tr(state.covariance)
+    end
+
+    @testset "max_time must move past the state's own" begin
+        model = LinearNoiseProcess(;
+            population_size = 500, transmission_rate = 0.4, removal_rate = 0.2
+        )
+        state = simulate(model; max_time = 10.0)
+        @test_throws ArgumentError simulate(model, state; max_time = 10.0)
+    end
+
+    @testset "rejects a bad n_initial" begin
+        model = LinearNoiseProcess(;
+            population_size = 10, transmission_rate = 0.4, removal_rate = 0.2
+        )
+        @test_throws ArgumentError simulate(model; n_initial = 0, max_time = 1.0)
+        @test_throws ArgumentError simulate(model; n_initial = 11, max_time = 1.0)
+    end
+
+    @testset "rejects invalid construction" begin
+        @test_throws ArgumentError LinearNoiseProcess(;
+            population_size = 0, transmission_rate = 0.4, removal_rate = 0.2
+        )
+    end
+
+    @testset "show" begin
+        model = LinearNoiseProcess(;
+            population_size = 10, transmission_rate = 0.4, removal_rate = 0.2
+        )
+        @test occursin("LinearNoiseProcess(population_size=10", sprint(show, model))
+        state = simulate(model; max_time = 1.0)
+        @test occursin("LinearNoiseState(S=", sprint(show, state))
     end
 end
