@@ -923,6 +923,11 @@ end
         contacts = EpiBranch.propose_along(wrapped, 1, state, 0.0, 10.0, false, false)
         @test sort(first.(contacts)) == [2, 3, 4, 5]
         @test sort(wrapped.proposed[1]) == [2, 3, 4, 5]
+        # a second call for the same infector, as a resumed redraw makes
+        # (`EpiBranch._resume_route!`), adds to what is recorded rather than
+        # replacing it
+        EpiBranch.propose_along(wrapped, 1, state, 10.0, 20.0, false, false)
+        @test sort(wrapped.proposed[1]) == [2, 2, 3, 3, 4, 4, 5, 5]
         # with no intervention tracing, nothing is recorded
         untraced = EpiNetwork._route_targets(w, false)
         EpiBranch.propose_along(untraced, 1, state, 0.0, 10.0, false, false)
