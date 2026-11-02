@@ -79,17 +79,21 @@ dispatched-on trait.
 1. **Distributions from Distributions.jl**: a delay, an offspring distribution
    or a contact-interval kernel is a standard `Distributions.jl` type wherever
    one exists, passed as it is. Do not wrap one in a distribution type of our
-   own: the user would lose the API that comes with it, `quantile`, censoring
-   through PrimaryCensored.jl and Turing's `~` among it. A law with no standard
-   family, such as a kernel defined by an arbitrary hazard, subtypes
-   `Distribution` and implements `rand`, `logpdf`, `cdf`, `quantile`, `minimum`
-   and `maximum`, and, if it is a kernel, the methods `_CalendarScaledKernel`
-   in `src/pair_kernels.jl` defines. An internal, unexported wrapper around a
-   standard type is allowed where that type cannot do the job, with the reason
-   in a comment at its definition, as `_TruncatedSkewNormal` in
-   `src/distributions.jl` (no `cdf` for `SkewNormal`) and `_ChainSizeLaw` in
-   `src/likelihood_dists.jl` (a model on the right-hand side of Turing's `~`)
-   do.
+   own: the user would lose the family's own methods and every one added to it
+   later, `truncated`, `convolve`, `fit_mle`, `partype` and whatever the
+   wrapper does not forward. A univariate law with no standard family subtypes
+   the matching `UnivariateDistribution` and implements `rand`, `logpdf`,
+   `cdf`, `minimum` and `maximum`. A kernel, such as one defined by an
+   arbitrary hazard, is a `ContinuousUnivariateDistribution` and also
+   implements `logccdf`, `invlogccdf`, `loghazard` and `cumhazard` directly,
+   as `_CalendarScaledKernel` in `src/pair_kernels.jl` does, because the
+   engine draws in log-survival and the pairwise likelihood works in hazards.
+   An internal, unexported wrapper is allowed where the standard types cannot
+   do the job, with the reason in a comment at its definition:
+   `_TruncatedSkewNormal` in `src/distributions.jl` truncates `SkewNormal`,
+   which has no `cdf`; `_ChainSizeLaw` and `_ChainLengthLaw` in
+   `src/likelihood_dists.jl` subtype `Distribution` only so a model can sit on
+   the right-hand side of Turing's `~`.
 2. **DataFrames output**: line lists and chain statistics returned as
    DataFrames, matching epidemiological conventions (one row per case or per
    contact pair).
