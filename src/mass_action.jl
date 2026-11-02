@@ -242,9 +242,10 @@ end
 # an opening on this route whose window never closes (`close_t == Inf`) gets
 # one fresh call to `propose_along`, over `[old_max_time, Inf)`, exactly as
 # though their window had just opened there. The contact interval is
-# exponential and so memoryless, which is what makes this the same draw as
-# sampling the whole window at once would have been; a member whose window
-# did close before the race stopped was never capped and needs no redraw.
+# exponential and so memoryless: this redraw therefore gives the same draw
+# as sampling the whole window at once would have given; a member whose
+# window did close before the race stopped was never capped and needs no
+# redraw.
 # Only one redraw per infector: several resumes can each leave their own
 # now-superseded opening recorded for the same member, and resampling for
 # each would draw that member's remaining contacts more than once.

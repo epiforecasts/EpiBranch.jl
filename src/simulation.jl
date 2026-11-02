@@ -489,10 +489,16 @@ _window_infection_time(offset::_FixedOffset, from_t::Real, state) = from_t + off
 function _window_infection_time(kernel::Distribution, from_t::Real, state)
     return from_t + rand(state.rng, kernel)
 end
-# A window whose `calendar` scales its kernel draws from the resulting
+# A window with a `calendar` scaling its kernel draws from the resulting
 # calendar-scaled kernel directly, exactly as a `PairKernel` with a calendar
 # does on the structure-driven routes.
 function _window_infection_time(kernel::_CalendarScaledKernel, from_t::Real, state)
+    return from_t + rand(state.rng, kernel)
+end
+# A `HazardKernel` conditioned on recovery (see `_conditioned_on_recovery`)
+# truncates to a `_TruncatedHazardKernel` rather than a `Distribution`, so it
+# needs its own dispatch here too.
+function _window_infection_time(kernel::_TruncatedHazardKernel, from_t::Real, state)
     return from_t + rand(state.rng, kernel)
 end
 

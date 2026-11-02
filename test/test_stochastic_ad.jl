@@ -80,7 +80,7 @@ end
 @testset "A competing-risk draw composes with StochasticAD via propagate" begin
     # `_draw_blocked` mirrors the engine's own `rand(rng, Bernoulli(prob))`
     # draw (one per active risk source). Its native StochasticAD dispatch
-    # fires automatically once `prob` is a `StochasticTriple` — nothing here
+    # runs automatically once `prob` is a `StochasticTriple` — nothing here
     # is StochasticAD-specific.
     _draw_blocked(rng, prob) = rand(rng, Bernoulli(prob))
 

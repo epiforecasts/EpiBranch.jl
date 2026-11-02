@@ -258,8 +258,8 @@ route's `reach` holds, and give it:
   than claiming an extinction it cannot vouch for. The default, `false`, suits
   a route that always proposes everything it draws.
 
-A route whose `pending_beyond` can answer `true` is one `simulate(model,
-state; max_time)` cannot yet continue: redrawing the capped window's leftover
+If a route's `pending_beyond` can answer `true`, `simulate(model, state;
+max_time)` cannot yet continue it: redrawing the capped window's leftover
 contacts on resume needs a private seam only mass action currently
 implements, so such a run is refused outright rather than silently dropping
 them.

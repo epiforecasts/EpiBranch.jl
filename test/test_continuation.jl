@@ -159,7 +159,7 @@ end
     end
 
     @testset "a stop by a stopping rule or max_generation is not continued" begin
-        # `MaxCases` settles its triggering case before it fires. The
+        # `MaxCases` settles its triggering case before it stops the race. The
         # leftover queue still has further events pending; popping them would
         # let more cases through the cap. Resuming such a state must leave it
         # alone, not pop its queue further.
