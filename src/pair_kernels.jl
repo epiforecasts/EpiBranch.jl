@@ -663,7 +663,7 @@ end
 
 function _calendar_invlogccdf(::SmoothCalendar, k::_CalendarScaledKernel, target)
     rate = s -> _calendar_hazard(k, s)
-    t, t_acc = _invert_hazard(rate, float(maximum(k.profile)), true, false, target)
+    t, t_acc = _invert_hazard(rate, zero(target), float(maximum(k.profile)), true, target)
     return _implicit_hazard_step(rate, t, t_acc, target)
 end
 
@@ -712,32 +712,27 @@ function _implicit_hazard_step(rate, t, t_acc, target)
     return t + (target - t_acc) / r
 end
 
-# Grow a bracket `[0, hi]` from 0 by doubling `width` each step until the
-# integral of `rate` reaches `target` or `hi` meets `upper`, then bisect the
-# last interval. `boundary_is_certain` says what the cumulative hazard is once
-# `hi` reaches `upper` without reaching `target`: `true` for a profile whose
-# survival has certainly ended there, so the remaining hazard is treated as
-# infinite rather than integrated through what may be a singularity at the
-# edge (a calendar-scaled profile's own bounded support); `false` for a hard
-# cap a draw simply piles up at instead (a `HazardKernel`'s `upper`).
+# Grow a bracket `[start, hi]` from `start` by doubling `width` each step
+# until the integral of `rate` reaches `target` or `hi` meets `upper`, then
+# bisect the last interval. `boundary_is_certain` says what the cumulative
+# hazard is once `hi` reaches `upper` without reaching `target`: `true` for a
+# profile whose survival has certainly ended there, so the remaining hazard
+# is treated as infinite rather than integrated through what may be a
+# singularity at the edge (a calendar-scaled profile's own bounded support);
+# `false` for a hard cap a draw simply piles up at instead (a `HazardKernel`'s
+# `upper`).
 #
-# With `upper` unbounded, a bracket that stops growing the integral is
-# ambiguous on its own: it could mean `rate` has converged to a finite total
-# below `target`, so the time is never reached, or that it is merely flat for
-# now and resumes later. `check_stall` asks the tail from the bracket onwards,
-# integrated by quadrature with its own error estimate, to tell them apart;
-# it gives up and returns `upper` only once that tail is shown to add nothing
-# more.
-#
-# `check_stall` must stay off for a `rate` that can grow without bound: such a
-# tail integral then diverges instead of converging, which is exactly what
-# rules out a stall, but quadrature run to `Inf` over a divergent integrand
-# can fail outright rather than merely report a large value. Asking it is
-# only safe where the rate is already known to have a finite total, as
-# `HazardKernel`'s own docstring assumes of whatever hazard it is given.
-function _invert_hazard(rate, upper, boundary_is_certain::Bool, check_stall::Bool, target::Real)
-    iszero(target) && return zero(target), zero(target)
-    lo = zero(target)
+# `start` must already be where `rate` is positive: a bracket that starts
+# where `rate` is zero cannot tell a `rate` still flat for now, about to
+# resume, from one that has converged to a finite total below `target` and
+# will never reach it, and grows all the way to `upper` (or, with `upper`
+# unbounded, until `hi` overflows to `Inf`) to find out either way. Callers
+# that let `rate` start flat, such as a `HazardKernel`'s own `onset`, rule
+# that out once, before the bracket is grown at all, rather than leaving this
+# loop to discover it slowly.
+function _invert_hazard(rate, start, upper, boundary_is_certain::Bool, target::Real)
+    iszero(target) && return start, zero(target)
+    lo = start
     acc = zero(target)
     width = one(target)
     while true
@@ -747,11 +742,6 @@ function _invert_hazard(rate, upper, boundary_is_certain::Bool, check_stall::Boo
             acc + _hazard_integral(rate, lo, hi)
         hi_acc >= target && return _hazard_bisect(rate, lo, hi, acc, hi_acc, target)
         hi == upper && return upper, hi_acc
-        if check_stall && isinf(upper) && isapprox(hi_acc, acc; rtol = 1.0e-9, atol = 1.0e-12)
-            tail, tail_err = quadgk(rate, hi, Inf)
-            tail_err < 1.0e-6 * max(hi_acc + tail, 1.0) && hi_acc + tail < target &&
-                return upper, hi_acc
-        end
         lo, acc = hi, hi_acc
         width *= 2
     end

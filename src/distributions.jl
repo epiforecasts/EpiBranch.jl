@@ -123,23 +123,33 @@ function Distributions.logpdf(d::_TruncatedSkewNormal, x::Real)
 end
 
 """
-    HazardKernel(hazard; upper = Inf)
+    HazardKernel(hazard; upper = Inf, onset = 0.0)
 
 A contact-interval distribution built directly from an instantaneous hazard
 rather than from a named family: `hazard(t)` is the rate of transmission at
-time `t` since the window opened, for `t` from 0 up to `upper` (unbounded by
-default). Use it as the `kernel` of an [`Infectiousness`](@ref) window, built
-fresh for each case from a function of the individual, `kernel = ind -> ...`,
-when transmission should follow something computed on the fly rather than a
-named distribution: most usefully a per-case within-host trajectory, drawn
-once at infection and stored on the individual, read through a link that
-turns it into a rate.
+time `t` since the window opened, for `t` from `onset` up to `upper`
+(unbounded by default). Use it as the `kernel` of an [`Infectiousness`](@ref)
+window, built fresh for each case from a function of the individual,
+`kernel = ind -> ...`, when transmission should follow something computed on
+the fly rather than a named distribution: most usefully a per-case
+within-host trajectory, drawn once at infection and stored on the
+individual, read through a link that turns it into a rate.
+
+`onset` is the time before which the hazard is zero, defaulting to 0, since a
+hazard built from a named distribution's own hazard already starts there. A
+trajectory whose hazard switches on later should give its own onset rather
+than leave `hazard` to encode a flat run-up: the kernel treats `hazard` as
+zero before `onset` regardless of what it returns there, and rejects an
+`onset` still followed by a flat stretch of zero, since nothing would then
+distinguish a trajectory still to switch on from one that has permanently
+cleared.
 
 `hazard` is called many times to integrate and invert the cumulative hazard
-by quadrature, so it should be cheap and non-negative throughout `(0, upper)`.
-One that falls to zero and stays there leaves a case uninfectious from then
-on: draws pile up at `upper`, or run to arbitrarily late times when `upper`
-is left unbounded, exactly as `Weibull`'s or `Gamma`'s own tails do.
+by quadrature, so it should be cheap and non-negative throughout
+`(onset, upper)`. One that falls to zero and stays there leaves a case
+uninfectious from then on: draws pile up at `upper`, or run to arbitrarily
+late times when `upper` is left unbounded, exactly as `Weibull`'s or
+`Gamma`'s own tails do.
 
 # Examples
 
@@ -177,21 +187,39 @@ Generation time, incubation period and serial interval are then whatever the
 trajectory and its links to each clinical event imply, instead of separate
 inputs drawn independently of one another.
 """
-struct HazardKernel{F, T <: AbstractFloat}
+struct HazardKernel{F, T <: AbstractFloat} <: ContinuousUnivariateDistribution
     hazard::F
+    onset::T
     upper::T
 end
-function HazardKernel(hazard; upper::Real = Inf)
+function HazardKernel(hazard; upper::Real = Inf, onset::Real = 0.0)
     upper > 0 || throw(ArgumentError("upper must be positive, got $upper"))
-    return HazardKernel(hazard, float(upper))
+    onset >= 0 || throw(ArgumentError("onset must be non-negative, got $onset"))
+    onset < upper || throw(
+        ArgumentError("onset must be below upper, got onset = $onset, upper = $upper")
+    )
+    T = float(promote_type(typeof(onset), typeof(upper)))
+    onset, upper = T(onset), T(upper)
+    # A point evaluation at `onset` cannot tell a hazard that switches on
+    # smoothly from zero there (as a named distribution's own hazard often
+    # does) from one still flat for a stretch beyond it, so this integrates
+    # the same first step the inverter's own bracket would grow.
+    window = _hazard_integral(hazard, onset, min(onset + one(T), upper))
+    window > 0 || throw(
+        ArgumentError(
+            "hazard is still zero just after onset = $onset; " *
+                "give the time it actually switches on"
+        )
+    )
+    return HazardKernel(hazard, onset, upper)
 end
 
 SurvivalDistributions.hazard(k::HazardKernel, t::Real) = k.hazard(t)
 SurvivalDistributions.loghazard(k::HazardKernel, t::Real) = log(k.hazard(t))
 function SurvivalDistributions.cumhazard(k::HazardKernel, τ::Real)
     τ >= 0 || throw(ArgumentError("τ must be non-negative, got $τ"))
-    iszero(τ) && return zero(float(τ))
-    return _hazard_integral(k.hazard, 0.0, min(float(τ), k.upper))
+    τ <= k.onset && return zero(float(τ))
+    return _hazard_integral(k.hazard, k.onset, min(float(τ), k.upper))
 end
 
 function Distributions.logccdf(k::HazardKernel, τ::Real)
@@ -225,9 +253,12 @@ Distributions.partype(::HazardKernel{F, T}) where {F, T} = T
 # total hazard there is met by returning `upper` rather than doubling forever.
 # Because `upper` is a cap here, not a certain event, it is not treated as the
 # survival's own end the way a calendar-scaled profile's own bounded support
-# does.
+# does. The bracket starts at `k.onset`, where the hazard is already known to
+# be positive (checked once, at construction), so it grows through territory
+# that integrates cleanly rather than risking the stall a flat run-up before
+# it would cause.
 function _hazard_invert(k::HazardKernel, target::Real)
-    t, t_acc = _invert_hazard(k.hazard, k.upper, false, true, target)
+    t, t_acc = _invert_hazard(k.hazard, k.onset, k.upper, false, target)
     return t < k.upper ? _implicit_hazard_step(k.hazard, t, t_acc, target) : t
 end
 

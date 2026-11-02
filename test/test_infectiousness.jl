@@ -288,24 +288,28 @@ end
         @test length(kids) > 0
     end
 
-    @testset "a late onset still inverts to a finite quantile" begin
-        # A window that hasn't yet reached the switch-on looks just like a
-        # hazard that has permanently converged: both add nothing to the
-        # integral over several doublings in a row. Push the onset far
-        # enough out that this happens before the window reaches it.
+    @testset "an onset given shifts where the hazard switches on" begin
         switch_on = 15.0
-        k = HazardKernel(t -> t < switch_on ? 0.0 : 2.0)
+        k = HazardKernel(t -> 2.0; onset = switch_on)
         m = quantile(k, 0.5)
         @test isfinite(m)
         @test m ≈ switch_on + quantile(Exponential(0.5), 0.5)
     end
 
+    @testset "a wrong onset raises an error" begin
+        # A hazard still flat just past the declared onset looks just like one
+        # that has permanently converged; told the wrong onset, nothing could
+        # tell them apart, so construction rejects it outright.
+        switch_on = 15.0
+        @test_throws ArgumentError HazardKernel(t -> t < switch_on ? 0.0 : 2.0; onset = 5.0)
+    end
+
     @testset "a per-case trajectory times contacts through a hazard built from it" begin
-        # Each case's own switch-on time, drawn as an ordinary attribute, gates
-        # when its hazard turns on: the window's own kernel reads it back off
-        # the individual, so no contact can be timed before it.
+        # Each case's own switch-on time, drawn as an ordinary attribute, is
+        # given to the kernel as its onset: the window's own kernel reads it
+        # back off the individual, so no contact can be timed before it.
         attributes = (rng, ind) -> ind.state[:switch_on] = rand(rng, Uniform(1.0, 6.0))
-        kernel = ind -> HazardKernel(t -> t < ind.state[:switch_on] ? 0.0 : 2.0)
+        kernel = ind -> HazardKernel(t -> 2.0; onset = ind.state[:switch_on])
         m = ModelSpec(
             BranchingProcess(Infectiousness(NegBin(3.0, 0.5); kernel));
             attributes
