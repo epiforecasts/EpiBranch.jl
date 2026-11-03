@@ -68,11 +68,14 @@ jobs:
           COMMENT: ${{ github.event.comment.body }}
           DISPATCH_SUBDIR: ${{ github.event.inputs.subdir }}
         run: |
-          SUBDIR=""
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             SUBDIR="$DISPATCH_SUBDIR"
-          elif echo "$COMMENT" | grep -qE '^/register[[:space:]]+lib/(EpiNetwork|EpiHouseholds)[[:space:]]*$'; then
-            SUBDIR=$(echo "$COMMENT" | sed -E 's#^/register[[:space:]]+(lib/[A-Za-z]+)[[:space:]]*$#\1#')
+          else
+            # Only the first matching line is kept: a comment may go on
+            # after the command, and an output must be a single line.
+            SUBDIR=$(printf '%s\n' "$COMMENT" \
+              | sed -nE 's#^/register[[:space:]]+(lib/(EpiNetwork|EpiHouseholds))[[:space:]]*$#\1#p' \
+              | head -n 1)
           fi
           echo "subdir=$SUBDIR" >> "$GITHUB_OUTPUT"
 
