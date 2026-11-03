@@ -71,11 +71,17 @@ jobs:
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             SUBDIR="$DISPATCH_SUBDIR"
           else
-            # Only the first matching line is kept: a comment may go on
-            # after the command, and an output must be a single line.
-            SUBDIR=$(printf '%s\n' "$COMMENT" \
-              | sed -nE 's#^/register[[:space:]]+(lib/(EpiNetwork|EpiHouseholds))[[:space:]]*$#\1#p' \
-              | head -n 1)
+            # The command is the first line, trailing whitespace and any
+            # carriage return dropped; a comment may go on after it. An
+            # argument that is not one of the two satellites is refused
+            # rather than taken as the root package.
+            LINE=$(printf '%s\n' "$COMMENT" | sed -nE '1s#[[:space:]]*$##p')
+            case "$LINE" in
+              /register) SUBDIR="" ;;
+              "/register lib/EpiNetwork"|"/register lib/EpiHouseholds")
+                SUBDIR="${LINE#/register }" ;;
+              *) echo "::error::unrecognised register command: $LINE"; exit 1 ;;
+            esac
           fi
           echo "subdir=$SUBDIR" >> "$GITHUB_OUTPUT"
 

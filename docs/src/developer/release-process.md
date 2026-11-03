@@ -28,5 +28,7 @@ once their registry pull requests merge.
 
 ## Release notes
 
-`CHANGELOG.md` holds the folded entries; the GitHub release that TagBot creates
-links the registry pull request and the commits since the previous tag.
+`CHANGELOG.md` holds the folded entries. The GitHub release that TagBot creates
+has a diff link to the previous tag, the merged pull requests and closed issues
+since it, and any release notes written under the `@JuliaRegistrator register`
+comment.
