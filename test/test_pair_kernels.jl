@@ -348,6 +348,16 @@ seasonal_integral(s::Seasonal, t) =
         @test EpiBranch.cumhazard(late_interval, tau) ≈ EpiBranch.cumhazard(bare, tau)
     end
 
+    # A support's bottom that holds the parameter keeps its own boundary
+    # term in the derivative.
+    for (shift_of, tau) in ((θ -> Exponential(5.0) + θ, 8.0), (θ -> Uniform(θ, θ + 5.0), 5.0))
+        d_shift = ForwardDiff.derivative(3.0) do θ
+            shifted = PairKernel(context -> shift_of(θ); calendar = t -> 1.0)
+            EpiBranch.cumhazard(EpiBranch.pair_kernel(shifted, 1, 2, 0.0, 100.0), tau)
+        end
+        @test d_shift ≈ ForwardDiff.derivative(θ -> EpiBranch.cumhazard(shift_of(θ), tau), 3.0)
+    end
+
     # The same holds for a named profile whose support starts above zero.
     for profile in (Uniform(15.0, 20.0), truncated(Exponential(5.0), 10.0, Inf))
         shifted = PairKernel(context -> profile; calendar = t -> 1.0)

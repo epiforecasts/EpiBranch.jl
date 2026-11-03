@@ -704,9 +704,13 @@ function _calendar_cumhazard(::SmoothCalendar, k::_CalendarScaledKernel, τ)
     isfinite(hi) || return oftype(hi, Inf)
     # From `start`, as the inverse brackets: a run of zero hazard before the
     # onset would otherwise hide a short positive stretch from quadrature's
-    # first pass over the whole range.
+    # first pass over the whole range. The range is mapped onto the unit
+    # interval so a dual at the support's bottom enters as part of the
+    # integrand, where its boundary term -λ(start) start' is picked up,
+    # rather than as an endpoint, which quadrature does not take.
     hi <= start && return zero(hi)
-    return _hazard_integral(s -> _calendar_hazard(k, s), oftype(hi, start), hi)
+    w = hi - start
+    return _hazard_integral(u -> _calendar_hazard(k, start + u * w) * w, 0.0, 1.0)
 end
 
 # Where a profile's hazard is first positive, where its integration stops,
@@ -714,19 +718,22 @@ end
 # hazard starts at the bottom of its support (or at zero, for one that
 # reaches below it) and the top of a bounded support ends it, while a
 # `HazardKernel` starts at its `onset` and its `upper` only bounds the
-# integration, as in `_hazard_invert`. The start is a plain float even where
-# the support's bottom holds a dual parameter: quadrature takes no dual
-# endpoint, and a lower limit contributes no boundary term in any case.
+# integration, as in `_hazard_invert`.
 function _profile_bounds(profile)
-    start = max(0.0, ForwardDiff.value(float(minimum(profile))))
-    return start, float(maximum(profile)), true
+    m = float(minimum(profile))
+    return max(zero(m), m), float(maximum(profile)), true
 end
 _profile_bounds(k::HazardKernel) = k.onset, k.upper, false
+
+# A value stripped of every dual level, for a bracket origin: the drawn time
+# does not keep a derivative in a support-end parameter on this path.
+_plain(x::Real) = x
+_plain(x::ForwardDiff.Dual) = _plain(ForwardDiff.value(x))
 
 function _calendar_invlogccdf(::SmoothCalendar, k::_CalendarScaledKernel, target)
     rate = s -> _calendar_hazard(k, s)
     start, upper, certain = _profile_bounds(k.profile)
-    t, t_acc = _invert_hazard(rate, oftype(target, start), upper, certain, target)
+    t, t_acc = _invert_hazard(rate, oftype(target, _plain(start)), upper, certain, target)
     t_acc < target && return oftype(t, Inf)
     return _implicit_hazard_step(rate, t, t_acc, target)
 end
