@@ -711,10 +711,16 @@ end
 
 # Where a profile's hazard is first positive, where its integration stops,
 # and whether its survival has certainly ended there: a named distribution's
-# hazard starts at zero and the top of a bounded support ends it, while a
+# hazard starts at the bottom of its support (or at zero, for one that
+# reaches below it) and the top of a bounded support ends it, while a
 # `HazardKernel` starts at its `onset` and its `upper` only bounds the
-# integration, as in `_hazard_invert`.
-_profile_bounds(profile) = 0.0, float(maximum(profile)), true
+# integration, as in `_hazard_invert`. The start is a plain float even where
+# the support's bottom holds a dual parameter: quadrature takes no dual
+# endpoint, and a lower limit contributes no boundary term in any case.
+function _profile_bounds(profile)
+    start = max(0.0, ForwardDiff.value(float(minimum(profile))))
+    return start, float(maximum(profile)), true
+end
 _profile_bounds(k::HazardKernel) = k.onset, k.upper, false
 
 function _calendar_invlogccdf(::SmoothCalendar, k::_CalendarScaledKernel, target)

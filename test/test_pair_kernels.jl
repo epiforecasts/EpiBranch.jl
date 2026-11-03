@@ -348,6 +348,16 @@ seasonal_integral(s::Seasonal, t) =
         @test EpiBranch.cumhazard(late_interval, tau) ≈ EpiBranch.cumhazard(bare, tau)
     end
 
+    # The same holds for a named profile whose support starts above zero.
+    for profile in (Uniform(15.0, 20.0), truncated(Exponential(5.0), 10.0, Inf))
+        shifted = PairKernel(context -> profile; calendar = t -> 1.0)
+        shifted_interval = EpiBranch.pair_kernel(shifted, 1, 2, 0.0, 100.0)
+        for tau in (minimum(profile) + 0.01, minimum(profile) + 0.05)
+            @test EpiBranch.cumhazard(shifted_interval, tau) ≈
+                EpiBranch.cumhazard(profile, tau)
+        end
+    end
+
     # A bounded named support whose top holds the parameter still
     # differentiates through the calendar.
     d_top = ForwardDiff.derivative(3.0) do θ
