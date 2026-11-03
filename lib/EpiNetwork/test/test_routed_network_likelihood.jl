@@ -251,8 +251,8 @@ end
         # RoutedMassActionHazard, like the bare hazard it wraps, is read off an
         # outbreak's own infection record and cannot be simulated from; passing
         # it to RoutedNetwork's own `external_hazard` must fail the same clear
-        # way a bare MassActionHazard does there, not with a MethodError out of
-        # the generic calendar-schedule fallback.
+        # way a bare MassActionHazard does there, rather than falling through
+        # to the generic calendar-schedule fallback's bare MethodError.
         hh, comm = _routed_adjacency(5, 4)
         windows = [
             RouteWindow(:household; until = (:recovered,), kernel = Exponential(1.0), reach = hh),
