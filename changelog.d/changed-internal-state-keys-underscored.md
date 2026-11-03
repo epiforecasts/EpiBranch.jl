@@ -5,10 +5,7 @@ intervention integrating with `Isolation` or `ContactTracing`, or analysis code
 reading them off `state.individuals` — needs the new name, and sees the
 default silently otherwise:
 
-- `:isolated_by_isolation` → `:_isolated_by_isolation`
 - `:isolation_unrecorded` → `:_isolation_unrecorded`
-- `:isolation_time_before_isolation` → `:_isolation_time_before_isolation`
-- `:isolation_unrecorded_before_isolation` → `:_isolation_unrecorded_before_isolation`
 - `:traced_isolation_time` → `:_traced_isolation_time`
 - `:ring_remaining` → `:_ring_remaining`
 - `:ring_propagated` → `:_ring_propagated`
