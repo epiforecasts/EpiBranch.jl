@@ -4,7 +4,8 @@
 # beyond `GITHUB_TOKEN` is needed. Two ways to fire it, both gated on the
 # actor having write access:
 #
-#   - Comment `/register` on any issue or pull request.
+#   - Comment `/register` on any issue or pull request, or
+#     `/register lib/EpiNetwork` (or `lib/EpiHouseholds`) for a satellite.
 #   - Run this workflow manually (Actions -> Register -> Run workflow).
 #
 # JuliaRegistrator (the org's GitHub App) then reacts to the commit comment,
@@ -16,6 +17,12 @@ on:
   issue_comment:
     types: [created]
   workflow_dispatch:
+    inputs:
+      subdir:
+        description: "Satellite package to register (blank for EpiBranch)"
+        type: choice
+        default: ""
+        options: ["", "lib/EpiNetwork", "lib/EpiHouseholds"]
 
 jobs:
   register:
@@ -50,13 +57,37 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      # A satellite package under `lib/` is registered from the same comment
+      # with its path: `/register lib/EpiNetwork`. The comment body is read
+      # through an environment variable and matched against the two known
+      # paths, never interpolated into the shell.
+      - name: Read which package to register
+        if: steps.check-permissions.outputs.has_permission == 'true'
+        id: target
+        env:
+          COMMENT: ${{ github.event.comment.body }}
+          DISPATCH_SUBDIR: ${{ github.event.inputs.subdir }}
+        run: |
+          SUBDIR=""
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            SUBDIR="$DISPATCH_SUBDIR"
+          elif echo "$COMMENT" | grep -qE '^/register[[:space:]]+lib/(EpiNetwork|EpiHouseholds)[[:space:]]*$'; then
+            SUBDIR=$(echo "$COMMENT" | sed -E 's#^/register[[:space:]]+(lib/[A-Za-z]+)[[:space:]]*$#\1#')
+          fi
+          echo "subdir=$SUBDIR" >> "$GITHUB_OUTPUT"
+
       - name: Trigger JuliaRegistrator
         if: steps.check-permissions.outputs.has_permission == 'true'
-        run: |
-          gh api "repos/${{ github.repository }}/commits/main/comments" \
-            --method POST --field body='@JuliaRegistrator register'
         env:
+          SUBDIR: ${{ steps.target.outputs.subdir }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BODY='@JuliaRegistrator register'
+          if [ -n "$SUBDIR" ]; then
+            BODY="$BODY subdir=$SUBDIR"
+          fi
+          gh api "repos/${{ github.repository }}/commits/main/comments" \
+            --method POST --field body="$BODY"
 
       - name: React with permission denied
         if: >-
