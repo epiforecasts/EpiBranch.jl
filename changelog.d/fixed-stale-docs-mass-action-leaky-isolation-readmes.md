@@ -6,10 +6,10 @@ one; only the two keyword *defaults* are off, an explicit cap or a
 and `ContactTracing` only, not `MassVaccination` or `GroupVaccination`. The
 network and household tutorials said leaky isolation is not recorded in the
 pairwise-likelihood data and that fitting it errors; the single-route
-likelihood has recorded and scored it for a while. The "what cannot be
-fitted yet" box in the network tutorial named vaccination as unrepresented in
-the routed likelihood, which a vaccinated `RoutedNetwork` already fits
-correctly; the real remaining gap is leaky isolation on a `RoutedNetwork`,
+likelihood already records and scores it. The "what cannot be fitted yet"
+box in the network tutorial named vaccination as unrepresented in the
+routed likelihood, which a vaccinated `RoutedNetwork` already fits
+correctly; the remaining gap is leaky isolation on a `RoutedNetwork`,
 which the routed likelihood silently ignores rather than erroring on. The
 `EpiNetwork` and `EpiHouseholds` READMEs are updated to match: a working
 example in place of a non-existent keyword, a corrected case-sensitive link,
