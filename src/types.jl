@@ -343,8 +343,8 @@ function close_episode!(ind::Individual, episode::InfectionEpisode)
     return ind
 end
 
-# What a lazily populated model (`NetworkProcess`, `RoutedNetwork`) needs to
-# create one of its own not-yet-existing nodes: the placeholder every
+# The three things a lazily populated model (`NetworkProcess`, `RoutedNetwork`)
+# needs to create one of its own not-yet-existing nodes: the placeholder every
 # unrealised slot in `individuals` points to until then, shared by every slot
 # in one state and never mutated, so checking for it is one pointer
 # comparison; the interventions the node is created with; and anything the
