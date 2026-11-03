@@ -187,6 +187,10 @@ function offspring_law_unchanged(xs::Union{Tuple, AbstractVector})
     return all(offspring_law_unchanged, xs)
 end
 
+"""The number of types of case `model` has, or `1` for a single-type model
+(the default). A multi-type model, such as a [`BranchingProcess`](@ref)
+built from an offspring matrix, overrides this with its own number of
+types; [`single_type_offspring`](@ref) raises an error for one."""
 n_types(::TransmissionModel) = 1
 
 # The offspring specification the analytical helpers dispatch on. By default it

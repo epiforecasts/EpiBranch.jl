@@ -68,14 +68,14 @@ function intervention_actions(cc::CapacityConstrained, state, candidates)
 end
 
 """
-    _action_cache(individual)
+    action_cache(individual)
 
 For extension authors: the per-person store of random draws made when
 proposing actions (see [`action_draw!`](@ref EpiBranch.action_draw!)). An
 intervention can also keep its own records there, such as which proposal a
 decision was made under. It does not appear in the line list.
 """
-function _action_cache(individual)
+function action_cache(individual)
     return get!(individual.state, :_intervention_actions) do
         Dict{Any, Any}()
     end
@@ -90,7 +90,7 @@ value whenever the action is proposed again, so a person who was turned down
 different visits or doses. The stored draws do not appear in the line list.
 """
 function action_draw!(sample, individual, key)
-    return get!(sample, _action_cache(individual), key)
+    return get!(sample, action_cache(individual), key)
 end
 
 """
@@ -341,7 +341,7 @@ function _revisable_dose_action(v::AbstractVaccination, ind, trigger, time)
         else
             record_dose!(v, person, at, state)
         end
-        _action_cache(person)[_trigger_cache_key(v)] = trigger
+        action_cache(person)[_trigger_cache_key(v)] = trigger
         return nothing
     end
     return InterventionAction(ind, time, (person, at, state) -> nothing, claim!)
@@ -354,7 +354,7 @@ function intervention_actions(rv::RingVaccination, state, candidates)
         is_traced(ind) || continue
         trace_t = haskey(ind.state, :trace_time) ? ind.state[:trace_time] :
             min(_recorded_isolation_time(ind), _state_real(ind.state, :_traced_isolation_time, Inf))
-        prior = get(_action_cache(ind), _trigger_cache_key(rv), nothing)
+        prior = get(action_cache(ind), _trigger_cache_key(rv), nothing)
         applied = get(ind.state, _vaccinated_key(label), false)
         # Gated on `applied` alone: `_withdraw_dose!` clears it on a dose
         # outside the window, but leaves `prior` in the cache. A withdrawn
@@ -413,7 +413,7 @@ function intervention_actions(gv::GroupVaccination, state, candidates)
         isfinite(trigger) || continue
         for id in _group_members(state, gv.group_key, group)
             ind = state.individuals[id]
-            prior = get(_action_cache(ind), _trigger_cache_key(gv), nothing)
+            prior = get(action_cache(ind), _trigger_cache_key(gv), nothing)
             if prior !== nothing || get(ind.state, _vaccinated_key(dose_label(gv)), false)
                 # A settled member's dose keeps its date; a member still
                 # pending in a continuous-time race (or the member currently

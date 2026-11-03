@@ -229,7 +229,7 @@ other packages.
 A key an intervention keeps purely for its own records (where a value came
 from, such as `Isolation`'s `:_isolation_handle`, which names the entry its own
 isolation was recorded under) starts with an underscore, as
-[`EpiBranch._action_cache`](@ref)'s `:_intervention_actions` does. The
+[`EpiBranch.action_cache`](@ref)'s `:_intervention_actions` does. The
 underscored names in the table are reserved along with the others, so
 a key of your own puts your package's tag after the underscore:
 `:_mypkg_budget`, not `:_budget`. [`linelist`](@ref) drops every key starting

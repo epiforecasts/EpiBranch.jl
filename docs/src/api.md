@@ -518,6 +518,7 @@ ContactPairsLayout
 MassActionHazard
 PairKernel
 EpiBranch.watched_records
+EpiBranch.kernel_projection
 Steps
 Seasonal
 record_kernel
@@ -535,6 +536,7 @@ compile_household_pairs
 ConditionOn
 RecruitedIndex
 EarliestInfected
+HouseholdFinalStatuses
 ```
 
 #### Network data
@@ -591,6 +593,15 @@ modelling layers passed in rather than read off the model, and
 [`sellke_race!`](@ref EpiBranch.sellke_race!) settles one continuous-time race
 and brings the state's running totals back into line afterwards.
 
+A process that has its own interventions, population characteristics,
+observation model, contact recorder or clinical progression, rather than
+having them composed on with a [`ModelSpec`](@ref), defines
+[`EpiBranch.interventions`](@ref), [`EpiBranch.attributes`](@ref),
+[`EpiBranch.observation`](@ref), [`EpiBranch.recorder`](@ref) or
+[`EpiBranch.progression`](@ref) to return them.
+[`EpiBranch.process`](@ref) reads the model a `ModelSpec` wraps, and
+[`EpiBranch.n_types`](@ref) the number of types of case a model has.
+
 ```@docs
 TransmissionModel
 EpiBranch.draw_offspring
@@ -599,6 +610,7 @@ EpiBranch.simulate_once
 generate_offspring
 contacts_of
 EpiBranch.model_generation_time
+EpiBranch.transmission_time
 EpiBranch.transmission_risks
 EpiBranch.sellke_race!
 EpiBranch.infectious_from
@@ -609,6 +621,13 @@ EpiBranch.new_state
 EpiBranch.add_individuals!
 EpiBranch.seed!
 close_episode!
+EpiBranch.interventions
+EpiBranch.attributes
+EpiBranch.observation
+EpiBranch.recorder
+EpiBranch.progression
+EpiBranch.process
+EpiBranch.n_types
 ```
 
 ### Writing a route that proposes its own contacts
@@ -681,6 +700,11 @@ EpiBranch.apply_trace!
 
 ```@docs
 EpiBranch.vaccine_effect
+EpiBranch.dose_action
+EpiBranch.record_dose!
+EpiBranch.record_effect_draws!
+EpiBranch.store_draw!
+EpiBranch.dose_value
 EpiBranch.realised_efficacy
 EpiBranch.realise_prior_dose!
 EpiBranch.supports_waning
@@ -692,7 +716,7 @@ EpiBranch.supports_waning
 EpiBranch.InterventionAction
 EpiBranch.intervention_actions
 EpiBranch.action_draw!
-EpiBranch._action_cache
+EpiBranch.action_cache
 EpiBranch.apply_actions!
 EpiBranch.action_candidates
 EpiBranch.acts_on_population

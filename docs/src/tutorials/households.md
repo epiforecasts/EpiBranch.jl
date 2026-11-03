@@ -700,3 +700,36 @@ outside the household alike.
     `Gamma` with a `MethodError` that comes from a dependency of this package.
     `Exponential` and `Weibull`, the distributions used above, work with the
     defaults.
+
+### Final statuses only, with no infection times
+
+Some household studies record only who was ever infected by the end of
+follow-up, not when, such as a serosurvey taken once the outbreak has run its
+course. [`HouseholdFinalStatuses`](@ref) scores that kind of data under the
+same community hazard and within-household kernel, from the final-size
+recursion of [Ball (1986)](https://doi.org/10.2307/1427301), with no
+infection times at all; `missing` marks anyone not followed up.
+
+```@example households
+final_truth = HouseholdProcess(fill(4, 300), Exponential(4.0);
+    external_hazard = 0.05, obs_end = 30.0)
+final_state = simulate(
+    ModelSpec(final_truth;
+        progression = [Transition(:recovered; from = :infection, delay = 6.0,
+            terminal = true)]);
+    rng = StableRNG(11))
+statuses = [is_infected(ind) for ind in final_state.individuals]
+
+# log-likelihood of an exponential contact interval with mean `scale` days
+ll(scale) = loglikelihood(
+    HouseholdFinalStatuses(statuses),
+    HouseholdProcess(fill(4, 300), Exponential(scale);
+        external_hazard = 0.05, obs_end = 30.0);
+    window = 6.0
+)
+grid = 2.0:0.5:6.0
+grid[argmax([ll(s) for s in grid])]
+```
+
+The estimate is close to the 4 days the outbreak was simulated with, recovered
+from final statuses alone.
