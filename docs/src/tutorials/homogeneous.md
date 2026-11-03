@@ -200,9 +200,10 @@ An [`Isolation`](@ref) that leaves some transmission after isolating
 
 !!! note "Stopping the simulation"
     A `HomogeneousProcess` runs until no one is infectious or until
-    `max_time`, whichever comes first. `max_cases`, `max_generations` and
-    stopping rules other than [`MaxTime`](@ref) do not apply, and `simulate`
-    warns if you set one.
+    `max_time`, whichever comes first. The `max_cases` and `max_generations`
+    keyword shortcuts default to off here, so a run keeps going to
+    extinction or `max_time` unless an explicit value, or a `stopping_rules`
+    entry, asks for a cap.
 
 ## Structured mixing
 

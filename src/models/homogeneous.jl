@@ -49,21 +49,20 @@ vaccine's efficacy, is resolved against each contact a pair makes, and a
 blocked contact leaves the pair to meet again, so blocking a fraction of the
 contacts thins the force of infection by the same fraction. Per-individual
 susceptibility and infectiousness reach that thinning directly: they scale the
-rate at which each pair meets. Four interventions are reported with a warning
-rather than applied, because mass action settles one case at a time and never
-produces the batches of new contacts their dosing and tracing act on:
-`MassVaccination`'s rollout, `GroupVaccination`, `RingVaccination` and
-`ContactTracing`, which has no contacts to trace under random mixing anyway.
-Doses a person already holds when the outbreak starts still protect them;
-only new dosing during the run is dropped. Control expressed as a removal
-`Transition` in the progression always applies.
+rate at which each pair meets. `MassVaccination` doses the whole population
+upfront, and `GroupVaccination` finds a case's group through its `group_key`
+rather than through a contact, so both apply here. `RingVaccination` and
+`ContactTracing` are reported with a warning rather than applied, because mass
+action settles one case at a time and never produces the batches of traced
+contacts they act on. Control expressed as a removal `Transition` in the
+progression always applies.
 
 The population is simulated until extinction or `max_time`, whichever comes
 first; with `max_time`, individuals whose infection would fall later stay
-uninfected. The other `simulate` termination controls (`max_cases`,
-`max_generations`, `stopping_rules` other than `MaxTime`) do not apply, and
-`simulate` warns if you set one. This holds for the structure-driven models
-generally.
+uninfected. The `max_cases` and `max_generations` keyword shortcuts default to
+off here, so a run keeps going to extinction or `max_time` unless an explicit
+value, or a `stopping_rules` entry, asks for a cap. This holds for the
+structure-driven models generally.
 
 A run costs about one draw per contact made inside an infectious window. A
 window that never closes, as in an SI model with no removal transition, makes
