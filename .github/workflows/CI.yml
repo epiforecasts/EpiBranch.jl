@@ -2,6 +2,9 @@ name: CI
 on:
   push:
     branches: [main]
+    # A release tag, pushed by TagBot with the deploy key, builds the
+    # versioned documentation.
+    tags: ['v*']
   pull_request:
 
 concurrency:
