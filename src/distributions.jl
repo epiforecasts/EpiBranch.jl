@@ -148,9 +148,12 @@ cleared.
 by quadrature, so it should be cheap and non-negative throughout
 `(onset, upper)`. `upper` is where the integration stops: the hazard counts
 as zero beyond it, and a draw the total hazard up to there cannot reach is
-`Inf`, a contact that never happens. One that falls to zero and stays there
-leaves a case uninfectious from then on in the same way, however long
-`upper` is left unbounded.
+`Inf`, a contact that never happens. Give a hazard that clears an `upper`
+past which it is negligible. Such a draw is then settled at `upper`, where
+with `upper` left unbounded the search for it has to double out to the
+largest float first, about a thousand quadratures of a zero hazard for every
+contact that never happens. A hazard that falls to zero and stays there
+leaves a case uninfectious from then on either way.
 
 # Examples
 
@@ -177,9 +180,10 @@ function load_curve(rng)
 end
 
 attributes = (rng, ind) -> ind.state[:trajectory] = load_curve(rng)
+# The load has cleared long before 100 days, so the integration stops there.
 community = Infectiousness(
     NegBin(1.2, 0.5);
-    kernel = ind -> HazardKernel(t -> 0.1 * ind.state[:trajectory](t))
+    kernel = ind -> HazardKernel(t -> 0.1 * ind.state[:trajectory](t); upper = 100.0)
 )
 model = ModelSpec(BranchingProcess(community); attributes)
 ```

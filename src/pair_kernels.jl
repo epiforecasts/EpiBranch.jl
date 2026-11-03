@@ -699,17 +699,18 @@ function _calendar_cumhazard(::SmoothCalendar, k::_CalendarScaledKernel, τ)
     return _hazard_integral(s -> _calendar_hazard(k, s), zero(float(τ)), float(τ))
 end
 
-# Where a profile's integration stops, and whether its survival has certainly
-# ended there: the top of a named distribution's bounded support ends it,
-# while a `HazardKernel`'s `upper` only bounds the integration, as in
-# `_hazard_invert`.
-_profile_bound(profile) = float(maximum(profile)), true
-_profile_bound(k::HazardKernel) = k.upper, false
+# Where a profile's hazard is first positive, where its integration stops,
+# and whether its survival has certainly ended there: a named distribution's
+# hazard starts at zero and the top of a bounded support ends it, while a
+# `HazardKernel` starts at its `onset` and its `upper` only bounds the
+# integration, as in `_hazard_invert`.
+_profile_bounds(profile) = 0.0, float(maximum(profile)), true
+_profile_bounds(k::HazardKernel) = k.onset, k.upper, false
 
 function _calendar_invlogccdf(::SmoothCalendar, k::_CalendarScaledKernel, target)
     rate = s -> _calendar_hazard(k, s)
-    upper, certain = _profile_bound(k.profile)
-    t, t_acc = _invert_hazard(rate, zero(target), upper, certain, target)
+    start, upper, certain = _profile_bounds(k.profile)
+    t, t_acc = _invert_hazard(rate, oftype(target, start), upper, certain, target)
     t_acc < target && return oftype(t, Inf)
     return _implicit_hazard_step(rate, t, t_acc, target)
 end
