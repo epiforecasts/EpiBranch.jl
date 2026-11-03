@@ -1,0 +1,36 @@
+#
+# Nudges a maintainer when this package's default branch has unreleased
+# changes (thin caller of the EpiAware/.github reusable). Runs weekly and
+# on demand; when main has commits since the last release/tag that are
+# not yet registered, it opens or refreshes a single `release-nudge`
+# issue explaining what to do (bump via `/version`, then `/register`;
+# the notes are written on the GitHub release itself). Closes that
+# issue once everything is released. See the
+# reusable workflow's own header for the mention-safety and staleness
+# rules it applies.
+
+name: Release Nudge
+
+on:
+  schedule:
+    # Weekly, Monday 06:00 UTC -- offset from template-sync's Monday
+    # 04:00 UTC run so the two scheduled jobs don't contend for runners.
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  # issues: write to create/comment/close the nudge issue; contents:
+  # read to check out history/tags. Capped by the caller here too, since
+  # the reusable's own job-level grant cannot exceed what the caller
+  # allows.
+  issues: write
+  contents: read
+
+jobs:
+  release-nudge:
+    uses: EpiAware/.github/.github/workflows/release-nudge.yml@2c7ce73459772f11dad46ac7f456e35f0d296faf
+    secrets: inherit  # pragma: allowlist secret

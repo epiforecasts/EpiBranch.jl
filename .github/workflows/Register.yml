@@ -1,0 +1,69 @@
+# Triggers Julia General Registry registration by posting the
+# `@JuliaRegistrator register` comment on `main`'s HEAD commit — the same
+# comment a maintainer would type by hand, so no extra service or token
+# beyond `GITHUB_TOKEN` is needed. Two ways to fire it, both gated on the
+# actor having write access:
+#
+#   - Comment `/register` on any issue or pull request.
+#   - Run this workflow manually (Actions -> Register -> Run workflow).
+#
+# JuliaRegistrator (the org's GitHub App) then reacts to the commit comment,
+# opens the registry PR, and TagBot creates the release once it merges.
+
+name: Register
+
+on:
+  issue_comment:
+    types: [created]
+  workflow_dispatch:
+
+jobs:
+  register:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      startsWith(github.event.comment.body, '/register')
+    runs-on: ubuntu-latest
+    # `contents: write` — posting the commit comment needs Contents write.
+    # `issues: write` — posting the permission-denied reaction needs Issues
+    # write (a PR conversation comment is an issue comment for this
+    # endpoint). The permission check itself needs no extra scope: Metadata
+    # read is always available to `GITHUB_TOKEN`.
+    permissions:
+      contents: write
+      issues: write
+    steps:
+      - name: Check permissions
+        id: check-permissions
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            ACTOR="${{ github.actor }}"
+          else
+            ACTOR="${{ github.event.comment.user.login }}"
+          fi
+          PERMISSION=$(gh api "repos/${{ github.repository }}/collaborators/$ACTOR/permission" --jq '.permission')
+          echo "$ACTOR has permission: $PERMISSION"
+          if [[ "$PERMISSION" == "admin" || "$PERMISSION" == "write" || "$PERMISSION" == "maintain" ]]; then
+            echo "has_permission=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_permission=false" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Trigger JuliaRegistrator
+        if: steps.check-permissions.outputs.has_permission == 'true'
+        run: |
+          gh api "repos/${{ github.repository }}/commits/main/comments" \
+            --method POST --field body='@JuliaRegistrator register'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: React with permission denied
+        if: >-
+          github.event_name == 'issue_comment' &&
+          steps.check-permissions.outputs.has_permission == 'false'
+        run: |
+          gh api "repos/${{ github.repository }}/issues/comments/${{ github.event.comment.id }}/reactions" \
+            --method POST --field content='-1'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
