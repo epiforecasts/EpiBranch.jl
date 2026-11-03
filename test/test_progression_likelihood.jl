@@ -73,6 +73,19 @@ struct _UntrackedTransition <: EpiBranch.AbstractClinicalTransition end
         @test progression_loglik(spec, state) ≈ progression_loglik(spec, infected_only)
     end
 
+    @testset "a hand-built individual with no :infected key is treated as infected" begin
+        reporting_delay = Exponential(2.0)
+        spec = ModelSpec(
+            BranchingProcess(Poisson(1.0));
+            progression = [Reporting(delay = reporting_delay, probability = 1.0, from = :infection)]
+        )
+        ind = Individual(
+            id = 1, infection_time = 0.0,
+            state = Dict(:reported => true, :reporting_time => 2.0)
+        )
+        @test progression_loglik(spec, [ind]) ≈ logpdf(reporting_delay, 2.0)
+    end
+
     @testset "an unreached anchor (asymptomatic case) contributes zero" begin
         all_asymp = clinical_presentation(
             incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 1.0
