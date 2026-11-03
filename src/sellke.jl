@@ -297,6 +297,10 @@ function _time_at_log_survival(kernel, lp)
     isfinite(lp) || return oftype(float(lp), Inf)
     t = invlogccdf(kernel, lp)
     isfinite(t) && isapprox(logccdf(kernel, t), lp; rtol = 1.0e-6, atol = 1.0e-12) && return t
+    # A kernel whose survival never falls to `lp` (a hazard with a finite
+    # total) has answered `Inf` correctly; a named distribution's survival
+    # reaches zero at infinity and still goes to the bisection.
+    isinf(t) && logccdf(kernel, t) > lp && return t
     return _bisect_log_survival(kernel, lp)
 end
 

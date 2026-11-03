@@ -307,6 +307,11 @@ end
         expected = 10 * (1 - exp(-0.15))
         @test isapprox(count_kids(50.0) / 200, expected; rtol = 0.15)
         @test isapprox(count_kids(Inf) / 200, expected; rtol = 0.15)
+        # The race's scaled draw takes the kernel's `Inf` as the answer rather
+        # than bisecting a survival that never reaches the target.
+        k = HazardKernel(t -> 0.1 * exp(-t); upper = 50.0)
+        @test EpiBranch._time_at_log_survival(k, -0.5) == Inf
+        @test EpiBranch._time_at_log_survival(k, -0.05) ≈ invlogccdf(k, -0.05)
     end
 
     @testset "a bound on the integration leaves the realised R unchanged" begin
