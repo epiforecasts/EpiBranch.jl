@@ -463,6 +463,10 @@ attributes(s::ModelSpec) = s.attributes
 observation(s::ModelSpec) = s.observation
 recorder(s::ModelSpec) = s.recorder
 progression(s::ModelSpec) = s.progression
+
+"""The transmission model `spec` wraps. [`simulate`](@ref) and
+`loglikelihood` run the same on `process(spec)` alone, without `spec`'s
+composed layers."""
 process(s::ModelSpec) = s.process
 population_size(s::ModelSpec) = population_size(s.process)
 
