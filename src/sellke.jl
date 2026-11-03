@@ -297,8 +297,20 @@ function _time_at_log_survival(kernel, lp)
     isfinite(lp) || return oftype(float(lp), Inf)
     t = invlogccdf(kernel, lp)
     isfinite(t) && isapprox(logccdf(kernel, t), lp; rtol = 1.0e-6, atol = 1.0e-12) && return t
+    # A kernel whose survival never falls to `lp` (a hazard with a finite
+    # total) has answered `Inf` correctly; a named distribution's survival
+    # reaches zero at infinity and still goes to the bisection.
+    isinf(t) && (_infinite_draw_is_final(kernel) || logccdf(kernel, t) > lp) && return t
     return _bisect_log_survival(kernel, lp)
 end
+
+# Whether an infinite answer from `invlogccdf` is the kernel's own verdict
+# that the draw never happens, so the bisection need not retrace it. A
+# calendar-scaled kernel inverts by growing a bracket and returns `Inf` only
+# once that bracket has run out with the total still short, which its
+# cumulative hazard over an unbounded horizon cannot confirm.
+_infinite_draw_is_final(kernel) = false
+_infinite_draw_is_final(::_CalendarScaledKernel) = true
 
 # Bisect `logccdf`, which decreases in `t`, for the earliest time at or past the
 # log-survival `lp`. The bracket starts at the time for a survival the direct

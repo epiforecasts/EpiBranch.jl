@@ -220,6 +220,400 @@ EpiBranch.has_effect(::_SeenRoutes) = true
     end
 end
 
+@testset "HazardKernel" begin
+    @testset "a constant hazard matches the corresponding exponential" begin
+        rate = 0.4
+        k = HazardKernel(t -> rate)
+        e = Exponential(1 / rate)
+        for tau in (0.1, 1.0, 5.0)
+            @test EpiBranch.cumhazard(k, tau) ≈ EpiBranch.cumhazard(e, tau)
+        end
+        draws = [rand(StableRNG(seed), k) for seed in 1:2000]
+        @test isapprox(sum(draws) / length(draws), mean(e); rtol = 0.1)
+    end
+
+    @testset "a hazard built from a named distribution reproduces its cumulative hazard" begin
+        w = Weibull(1.5, 3.0)
+        k = HazardKernel(t -> EpiBranch.hazard(w, t))
+        for tau in (0.1, 1.0, 3.0, 8.0)
+            @test EpiBranch.cumhazard(k, tau) ≈ EpiBranch.cumhazard(w, tau) rtol = 1.0e-6
+        end
+    end
+
+    @testset "hazard and loghazard read back the stored hazard function" begin
+        k = HazardKernel(t -> 2.0 + t)
+        for tau in (0.1, 1.0, 3.0)
+            @test EpiBranch.hazard(k, tau) == 2.0 + tau
+            @test EpiBranch.loghazard(k, tau) ≈ log(2.0 + tau)
+        end
+    end
+
+    @testset "hazard and loghazard are zero outside (onset, upper)" begin
+        k = HazardKernel(t -> 2.0; onset = 15.0, upper = 30.0)
+        @test EpiBranch.hazard(k, 3.0) == 0.0
+        @test EpiBranch.loghazard(k, 3.0) == -Inf
+        @test EpiBranch.hazard(k, 30.0) == 0.0
+        @test EpiBranch.hazard(k, 16.0) == 2.0
+        # A calendar-scaled window integrates the kernel's own hazard rather
+        # than its `cumhazard`, so the onset has to hold there as well.
+        kernel = HazardKernel(t -> 2.0; onset = 15.0)
+        window = Infectiousness(
+            Poisson(3.0); kernel,
+            calendar = Seasonal(amplitude = 0.5, peak_day = 0.0, period = 365.0)
+        )
+        s = simulate(
+            ModelSpec(BranchingProcess(window));
+            n_initial = 50, max_generations = 1, rng = StableRNG(1)
+        )
+        kids = filter(i -> i.parent_id != 0 && is_infected(i), s.individuals)
+        @test length(kids) > 0
+        @test all(kids) do kid
+            kid.infection_time - s.individuals[kid.parent_id].infection_time >= 15.0
+        end
+    end
+
+    @testset "upper bounds the integration, and a draw beyond it never happens" begin
+        k = HazardKernel(t -> 2.0; upper = 1.0)
+        @test maximum(k) == Inf
+        @test minimum(k) == 0.0
+        draws = [rand(StableRNG(seed), k) for seed in 1:500]
+        @test all(d -> d <= 1.0 || d == Inf, draws)
+        # The total hazard is 2, so about exp(-2) of the draws exhaust it.
+        @test isapprox(count(isinf, draws) / length(draws), exp(-2.0); atol = 0.05)
+        @test invlogccdf(k, -Inf) == Inf
+        @test logccdf(k, 1.0) ≈ -2.0
+        @test logccdf(k, 5.0) ≈ -2.0
+        @test EpiBranch.cumhazard(k, 5.0) ≈ 2.0
+        @test_throws ArgumentError invlogccdf(k, Inf)
+        @test_throws ArgumentError invlogccdf(k, NaN)
+    end
+
+    @testset "a finite total hazard under a smooth calendar drops the draws it cannot reach" begin
+        # The calendar-scaled path inverts the combined hazard itself, so a
+        # draw beyond the total must come back as `Inf` here too, whether or
+        # not the user bounded the integration, rather than growing the
+        # bracket until the calendar's phase overflows.
+        cal = Seasonal(amplitude = 0.5, peak_day = 0.0, period = 365.0)
+        count_kids(upper) = begin
+            kernel = ind -> HazardKernel(t -> 0.1 * exp(-t); upper)
+            w = Infectiousness(Poisson(10.0); kernel, calendar = cal)
+            s = simulate(
+                ModelSpec(BranchingProcess(w));
+                n_initial = 200, max_generations = 1, rng = StableRNG(3)
+            )
+            count(i -> i.parent_id != 0 && is_infected(i), s.individuals)
+        end
+        # The multiplier is about 1.5 over the few days the hazard lasts.
+        expected = 10 * (1 - exp(-0.15))
+        @test isapprox(count_kids(50.0) / 200, expected; rtol = 0.15)
+        @test isapprox(count_kids(Inf) / 200, expected; rtol = 0.15)
+        # The race's scaled draw takes the kernel's `Inf` as the answer rather
+        # than bisecting a survival that never reaches the target.
+        k = HazardKernel(t -> 0.1 * exp(-t); upper = 50.0)
+        @test EpiBranch._time_at_log_survival(k, -0.5) == Inf
+        @test EpiBranch._time_at_log_survival(k, -0.05) ≈ invlogccdf(k, -0.05)
+        # An unbounded kernel under the calendar is trusted too, rather than
+        # bisected again to overflow: the search itself is the whole cost.
+        calls = Ref(0)
+        counted = HazardKernel(t -> (calls[] += 1; 0.1 * exp(-t)))
+        ck = EpiBranch._CalendarScaledKernel(counted, cal, 0.0)
+        calls[] = 0
+        direct = invlogccdf(ck, -0.5)
+        search = calls[]
+        calls[] = 0
+        @test EpiBranch._time_at_log_survival(ck, -0.5) == Inf == direct
+        @test calls[] <= search + 10
+    end
+
+    @testset "a bound on the integration leaves the realised R unchanged" begin
+        # A hazard that integrates to 0.1 infects about a tenth of the
+        # contacts it is offered, whether or not the user wrote a bound.
+        count_kids(upper) = begin
+            k = HazardKernel(t -> 0.1 * exp(-t); upper)
+            m = ModelSpec(BranchingProcess(Infectiousness(Poisson(10.0); kernel = k)))
+            s = simulate(m; n_initial = 200, max_generations = 1, rng = StableRNG(3))
+            count(i -> i.parent_id != 0 && is_infected(i), s.individuals)
+        end
+        bounded, unbounded = count_kids(50.0), count_kids(Inf)
+        @test isapprox(bounded / 200, 10 * (1 - exp(-0.1)); rtol = 0.15)
+        @test bounded == unbounded
+    end
+
+    @testset "a hazard that has cleared is still summed over a long range" begin
+        # One quadrature pass over [0, 1000] has no node in [0, 2].
+        k = HazardKernel(t -> t < 2.0 ? 1.0 : 0.0; upper = 1000.0)
+        for tau in (50.0, 600.0, 1000.0, Inf)
+            @test EpiBranch.cumhazard(k, tau) ≈ 2.0
+        end
+        @test logccdf(k, Inf) ≈ -2.0
+        @test EpiBranch.cumhazard(HazardKernel(t -> t < 2.0 ? 1.0 : 0.0), 1000.0) ≈ 2.0
+        ck = EpiBranch._CalendarScaledKernel(k, t -> 1.0, 0.0)
+        @test EpiBranch.cumhazard(ck, 1000.0) ≈ 2.0
+        @test isfinite(truncated(k, 0.0, 900.0).logF_hi)
+        # The reads stay inferred, since the pairwise likelihood calls them
+        # once per pair.
+        @test only(Base.return_types(EpiBranch.cumhazard, (typeof(k), Float64))) == Float64
+        # A decaying hazard is not refined over the tail it has left: a long
+        # range costs about the evaluations a short one does.
+        calls = Ref(0)
+        decaying = HazardKernel(t -> (calls[] += 1; 0.1 * exp(-t)))
+        calls[] = 0
+        EpiBranch.cumhazard(decaying, 50.0)
+        short = calls[]
+        calls[] = 0
+        EpiBranch.cumhazard(decaying, 1000.0)
+        @test calls[] <= 2 * short
+        # Nor is a steep rise after a faint run-up refined without end.
+        calls[] = 0
+        rising = HazardKernel(t -> (calls[] += 1; 1 / (1 + exp(-2 * (t - 50.0)))))
+        @test EpiBranch.cumhazard(rising, 100.0) ≈ 50.0 rtol = 1.0e-6
+        @test calls[] < 2000
+    end
+
+    @testset "the total hazard over an unbounded horizon is infinite where it diverges" begin
+        @test logccdf(HazardKernel(t -> 2.0), Inf) == -Inf
+        @test EpiBranch.cumhazard(HazardKernel(t -> 0.1 * exp(-t)), Inf) ≈ 0.1
+    end
+
+    @testset "an onset or upper holding a parameter differentiates" begin
+        d_onset = ForwardDiff.derivative(1.0) do θ
+            EpiBranch.cumhazard(HazardKernel(t -> 0.5; onset = θ), 5.0)
+        end
+        @test d_onset ≈ ForwardDiff.derivative(θ -> EpiBranch.cumhazard(Exponential(2.0) + θ, 5.0), 1.0)
+        d_total = ForwardDiff.derivative(1.0) do θ
+            EpiBranch.cumhazard(HazardKernel(t -> 2.0 * exp(-t); onset = θ), Inf)
+        end
+        @test d_total ≈ -2 * exp(-1)
+        d_upper = ForwardDiff.derivative(3.0) do θ
+            EpiBranch.cumhazard(HazardKernel(t -> 2.0; upper = θ), 5.0)
+        end
+        @test d_upper ≈ 2.0
+        cal = Seasonal(amplitude = 0.5, peak_day = 0.0, period = 365.0)
+        d_upper_cal = ForwardDiff.derivative(3.0) do θ
+            EpiBranch.cumhazard(EpiBranch._CalendarScaledKernel(HazardKernel(t -> 2.0; upper = θ), cal, 0.0), Inf)
+        end
+        @test d_upper_cal ≈ 2 * EpiBranch.calendar_multiplier(cal, 3.0)
+        # Drawing through a dual bound runs, the bound's derivative aside.
+        @test isfinite(ForwardDiff.derivative(θ -> quantile(HazardKernel(t -> 2.0; onset = θ), 0.5), 1.0))
+        # The truncation the `offspring` form builds holds a dual too.
+        d_rate = ForwardDiff.derivative(2.0) do θ
+            quantile(truncated(HazardKernel(t -> θ), 0.0, 3.0), 0.5)
+        end
+        # Against the closed form of the exponential truncated at 3.
+        @test d_rate ≈ ForwardDiff.derivative(θ -> -log1p(-0.5 * (1 - exp(-3θ))) / θ, 2.0)
+        @test isfinite(ForwardDiff.derivative(θ -> quantile(truncated(HazardKernel(t -> 2.0; onset = θ), 0.0, 3.0), 0.5), 1.0))
+        @test isfinite(ForwardDiff.derivative(θ -> quantile(truncated(HazardKernel(t -> 2.0), 0.0, θ), 0.5), 3.0))
+    end
+
+    @testset "rejects a non-positive upper" begin
+        @test_throws ArgumentError HazardKernel(t -> 1.0; upper = 0.0)
+    end
+
+    @testset "cdf and logcdf match the corresponding exponential" begin
+        rate = 0.4
+        k = HazardKernel(t -> rate)
+        e = Exponential(1 / rate)
+        for tau in (0.1, 1.0, 5.0)
+            @test cdf(k, tau) ≈ cdf(e, tau)
+            @test logcdf(k, tau) ≈ logcdf(e, tau)
+        end
+    end
+
+    @testset "logpdf and pdf match the corresponding exponential" begin
+        rate = 0.4
+        k = HazardKernel(t -> rate)
+        e = Exponential(1 / rate)
+        for tau in (0.1, 1.0, 5.0)
+            @test logpdf(k, tau) ≈ logpdf(e, tau)
+            @test pdf(k, tau) ≈ pdf(e, tau)
+        end
+        @test logpdf(k, -1.0) == -Inf
+        # A delay drawn from a kernel can be scored like any other.
+        delay = HazardKernel(t -> 0.5)
+        @test EpiBranch._delay_loglik(delay, 2.0) ≈ logpdf(Exponential(2.0), 2.0)
+    end
+
+    @testset "a truncated HazardKernel's cdf, logcdf and logccdf match truncating by hand" begin
+        rate = 0.4
+        hi = 2.0
+        tk = truncated(HazardKernel(t -> rate), 0.0, hi)
+        te = truncated(Exponential(1 / rate), 0.0, hi)
+        for tau in (0.1, 1.0, 1.9)
+            @test cdf(tk, tau) ≈ cdf(te, tau)
+            @test logcdf(tk, tau) ≈ logcdf(te, tau)
+            @test logccdf(tk, tau) ≈ logccdf(te, tau)
+        end
+        @test cdf(tk, hi) == 1.0
+        @test logcdf(tk, hi) == 0.0
+    end
+
+    @testset "a truncated kernel is a Distribution, so every seam reaches it" begin
+        tk = truncated(HazardKernel(t -> 2.0), 0.0, 5.0)
+        @test tk isa Distribution
+        te = truncated(Exponential(0.5), 0.0, 5.0)
+        for tau in (0.1, 1.0, 4.9)
+            @test logpdf(tk, tau) ≈ logpdf(te, tau)
+            @test EpiBranch.loghazard(tk, tau) ≈ logpdf(te, tau) - logccdf(te, tau)
+            @test EpiBranch.cumhazard(tk, tau) ≈ -logccdf(te, tau)
+        end
+        @test logpdf(tk, 5.0) == -Inf
+        # Between the base kernel's `upper` and the cap the hazard is zero.
+        tu = truncated(HazardKernel(t -> 2.0; upper = 3.0), 0.0, 5.0)
+        @test EpiBranch.loghazard(tu, 4.0) == -Inf
+        @test EpiBranch.hazard(tu, 4.0) == 0.0
+        # Under a calendar the survival has ended at the base `upper` too.
+        cu = EpiBranch._CalendarScaledKernel(tu, Seasonal(amplitude = 0.5, peak_day = 0.0, period = 365.0), 0.0)
+        @test EpiBranch.cumhazard(cu, 4.0) == Inf
+        @test isfinite(EpiBranch.cumhazard(cu, 2.0))
+        interval(s, kid) = kid.infection_time - s.individuals[kid.parent_id].infection_time
+        # As a bare window kernel, through `get_generation_time`.
+        m = ModelSpec(BranchingProcess(Infectiousness(Poisson(3.0); kernel = tk)))
+        s = simulate(m; n_initial = 50, max_generations = 1, rng = StableRNG(1))
+        kids = filter(i -> i.parent_id != 0 && is_infected(i), s.individuals)
+        @test length(kids) > 0
+        @test all(kid -> interval(s, kid) <= 5.0, kids)
+        # Per case under a calendar, through the calendar-scaled wrapper.
+        cal = Seasonal(amplitude = 0.5, peak_day = 0.0, period = 365.0)
+        w = Infectiousness(
+            Poisson(3.0); kernel = ind -> truncated(HazardKernel(t -> 2.0), 0.0, 5.0),
+            calendar = cal
+        )
+        s2 = simulate(
+            ModelSpec(BranchingProcess(w)); n_initial = 50, max_generations = 1,
+            rng = StableRNG(1)
+        )
+        kids2 = filter(i -> i.parent_id != 0 && is_infected(i), s2.individuals)
+        @test length(kids2) > 0
+        @test all(kid -> interval(s2, kid) <= 5.0, kids2)
+        # A late onset under the calendar: contacts start at the onset and
+        # are not pushed past the short stretch just after it.
+        late = Infectiousness(
+            Poisson(3.0);
+            kernel = ind -> truncated(HazardKernel(t -> 2.0; onset = 15.0), 0.0, 20.0),
+            calendar = t -> 1.0
+        )
+        s3 = simulate(
+            ModelSpec(BranchingProcess(late)); n_initial = 200, max_generations = 1,
+            rng = StableRNG(1)
+        )
+        intervals = [interval(s3, kid) for kid in s3.individuals if kid.parent_id != 0 && is_infected(kid)]
+        @test minimum(intervals) >= 15.0
+        @test minimum(intervals) < 15.01
+        # Conditional on falling before 20, exp(-2 * 0.06) of the mass is
+        # gone by 15.06, so about 11% of intervals sit in [15, 15.06].
+        @test isapprox(count(<=(15.06), intervals) / length(intervals), 0.113; atol = 0.03)
+    end
+
+    @testset "works as a bare contact_interval, not just a per-case kernel" begin
+        # Both implied_R and the `offspring` form of transmission_timing call
+        # `cdf`/`truncated` on `contact_interval` directly.
+        rate = 0.4
+        k = HazardKernel(t -> rate)
+        e = Exponential(1 / rate)
+        offspring = NegBin(3.0, 0.5)
+        infectious_period = Gamma(5.0, 2.0)
+        @test implied_R(offspring, k, infectious_period) ≈
+            implied_R(offspring, e, infectious_period)
+
+        timing = transmission_timing(
+            k; offspring, latent_period = LogNormal(1.0, 0.3), infectious_period
+        )
+        model = ModelSpec(BranchingProcess(timing.window); progression = timing.progression)
+        s = simulate(model; n_initial = 200, max_generations = 1, rng = StableRNG(4))
+        kids = filter(i -> i.parent_id != 0 && is_infected(i), s.individuals)
+        @test length(kids) > 0
+    end
+
+    @testset "a bare kernel (not a per-case function) still drives a simulation" begin
+        # The `contacts` form leaves `contact_interval` as the window's own
+        # kernel, rather than closing over it per case. This is the only
+        # path that exercises a `HazardKernel` sitting there directly.
+        k = HazardKernel(t -> 0.4)
+        timing = transmission_timing(k; contacts = NegBin(3.0, 0.5))
+        model = ModelSpec(BranchingProcess(timing.window))
+        s = simulate(model; n_initial = 200, max_generations = 1, rng = StableRNG(1))
+        kids = filter(i -> i.parent_id != 0 && is_infected(i), s.individuals)
+        @test length(kids) > 0
+    end
+
+    @testset "truncation to a short infectious period still draws a contact time" begin
+        # `truncated` picks `quantile` over `invlogccdf` once the truncation
+        # probability isn't tiny; a short infectious period relative to the
+        # kernel's rate forces that here.
+        k = HazardKernel(t -> 2.0)
+        timing = transmission_timing(
+            k;
+            offspring = NegBin(3.0, 0.5),
+            latent_period = LogNormal(1.0, 0.3),
+            infectious_period = Gamma(2.0, 0.3)
+        )
+        model = ModelSpec(BranchingProcess(timing.window); progression = timing.progression)
+        s = simulate(model; n_initial = 200, max_generations = 1, rng = StableRNG(1))
+        kids = filter(i -> i.parent_id != 0 && is_infected(i), s.individuals)
+        @test length(kids) > 0
+    end
+
+    @testset "onset shifts where the hazard switches on" begin
+        switch_on = 15.0
+        k = HazardKernel(t -> 2.0; onset = switch_on)
+        m = quantile(k, 0.5)
+        @test isfinite(m)
+        @test m ≈ switch_on + quantile(Exponential(0.5), 0.5)
+    end
+
+    @testset "a wrong onset raises an error" begin
+        # A hazard still flat just past the declared onset looks just like one
+        # that has permanently converged; given the wrong onset, construction
+        # cannot tell them apart, so it rejects the hazard outright.
+        switch_on = 15.0
+        @test_throws ArgumentError HazardKernel(t -> t < switch_on ? 0.0 : 2.0; onset = 5.0)
+    end
+
+    @testset "a window that closes before the onset draws no contact" begin
+        k = HazardKernel(t -> 2.0; onset = 10.0)
+        tk = truncated(k, 0.0, 5.0)
+        @test rand(StableRNG(1), tk) == Inf
+        @test cdf(tk, 3.0) == 0.0
+        @test cdf(tk, 5.0) == 0.0
+        # The keyword spelling reaches the same truncation.
+        @test rand(StableRNG(1), truncated(k; upper = 5.0)) == Inf
+        @test truncated(k; lower = 0.0) === k
+        @test_throws ArgumentError truncated(k; lower = 1.0)
+        # The `offspring` form builds exactly this truncation for a case whose
+        # infectious period ends before its kernel switches on; it must then
+        # infect nobody rather than place every contact at the opening.
+        timing = transmission_timing(
+            ind -> HazardKernel(t -> 2.0; onset = ind.state[:switch_on]);
+            offspring = Poisson(3.0), infectious_period = Gamma(2.0, 0.5)
+        )
+        attributes = (rng, ind) -> ind.state[:switch_on] = 10.0
+        model = ModelSpec(
+            BranchingProcess(timing.window); progression = timing.progression, attributes
+        )
+        s = simulate(model; n_initial = 100, max_generations = 1, rng = StableRNG(1))
+        @test count(i -> i.parent_id != 0 && is_infected(i), s.individuals) == 0
+    end
+
+    @testset "a per-case trajectory times contacts through a hazard built from it" begin
+        # Each case's own switch-on time, drawn as an ordinary attribute, is
+        # given to the kernel as its onset: the window's own kernel reads it
+        # back off the individual, so no contact can be timed before it.
+        attributes = (rng, ind) -> ind.state[:switch_on] = rand(rng, Uniform(1.0, 6.0))
+        kernel = ind -> HazardKernel(t -> 2.0; onset = ind.state[:switch_on])
+        m = ModelSpec(
+            BranchingProcess(Infectiousness(NegBin(3.0, 0.5); kernel));
+            attributes
+        )
+        s = simulate(m; n_initial = 50, max_generations = 1, rng = StableRNG(1))
+        kids = filter(i -> i.parent_id != 0 && is_infected(i), s.individuals)
+        @test length(kids) > 0
+        @test all(kids) do k
+            parent = s.individuals[k.parent_id]
+            k.infection_time - parent.infection_time >= parent.state[:switch_on]
+        end
+    end
+end
+
 @testset "transmission_timing" begin
     @testset "a plain generation time matches BranchingProcess(offspring, gt)" begin
         gt = LogNormal(1.6, 0.5)

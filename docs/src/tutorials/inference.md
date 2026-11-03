@@ -422,7 +422,7 @@ isolation and the cap on outbreak size.
 A gradient-based sampler needs the slope of what it samples, and a discrete
 simulated outcome — whether a contact is infected, how many secondary cases a
 draw gives — has none almost everywhere: nudge a parameter and the outcome
-stays the same until, at some threshold, it jumps. That is why `MH()` above
+stays the same until, at some threshold, it jumps. `MH()` above therefore
 takes only a likelihood value, not its slope.
 [StochasticAD.jl](https://github.com/gaurav-arya/StochasticAD.jl) gives an
 *unbiased estimator* of the derivative of an expectation over a choice like
@@ -433,9 +433,9 @@ over many calls should match a reference derivative.
 
 !!! note
     StochasticAD.jl is not installed with EpiBranch; add it with
-    `using Pkg; Pkg.add("StochasticAD")`. It is an experimental package, and
-    the parts of the engine below are what it has been checked against so
-    far — not the whole of `simulate`.
+    `using Pkg; Pkg.add("StochasticAD")`. It is an experimental package,
+    checked so far only against the parts of the engine below, not the whole
+    of `simulate`.
 
 The offspring distributions already compose with it, with no change needed in
 EpiBranch: `draw_offspring` calls `rand(rng, offspring)` on a plain

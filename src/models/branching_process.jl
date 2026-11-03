@@ -61,6 +61,10 @@ different routes, such as community and funeral transmission of Ebola.
   wrapping a measure in [`OnRoutes`](@ref) can act on one and leave the rest
   open.
 
+See also [`HazardKernel`](@ref) for a `kernel` with a rate that follows
+something computed per case, such as a within-host trajectory, rather than a
+named distribution.
+
 # Examples
 ```julia
 using EpiBranch, Distributions
@@ -245,9 +249,10 @@ The reproduction number realised by the `contacts` form of
 falls before `infectious_period`, the two assumed independent, as
 `transmission_timing` draws them.
 
-`contact_interval` is a `Distribution`; `infectious_period` is a
-`Distribution` or a fixed number of days. The distribution case integrates
-over `infectious_period` numerically (with QuadGK.jl).
+`contact_interval` is a `Distribution`, a [`HazardKernel`](@ref) among
+them; `infectious_period` is a `Distribution` or a fixed number of days. The
+distribution case integrates over `infectious_period` numerically (with
+QuadGK.jl).
 
 # Examples
 ```julia

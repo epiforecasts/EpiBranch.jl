@@ -474,8 +474,9 @@ _has_contacts(counts::Vector{Int}) = any(>(0), counts)
 # `offspring_route.jl` pass it here in place of a kernel without
 # `_draw_contact!` branching on where the offset came from. It is kept
 # distinct from a bare `Real` because a kernel that mistakenly returns a
-# number (one must return a `Distribution`) should still raise a
-# `MethodError` instead of being silently treated as a fixed offset.
+# number (one must return something `rand` draws from, such as a
+# `Distribution`) should still raise a `MethodError`
+# instead of being silently treated as a fixed offset.
 struct _FixedOffset{T <: Real}
     offset::T
 end
@@ -488,7 +489,7 @@ _window_infection_time(offset::_FixedOffset, from_t::Real, state) = from_t + off
 function _window_infection_time(kernel::Distribution, from_t::Real, state)
     return from_t + rand(state.rng, kernel)
 end
-# A window whose `calendar` scales its kernel draws from the resulting
+# A window with a `calendar` scaling its kernel draws from the resulting
 # calendar-scaled kernel directly, exactly as a `PairKernel` with a calendar
 # does on the structure-driven routes.
 function _window_infection_time(kernel::_CalendarScaledKernel, from_t::Real, state)
