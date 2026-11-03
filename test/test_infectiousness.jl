@@ -342,6 +342,20 @@ end
         end
     end
 
+    @testset "logpdf and pdf match the corresponding exponential" begin
+        rate = 0.4
+        k = HazardKernel(t -> rate)
+        e = Exponential(1 / rate)
+        for tau in (0.1, 1.0, 5.0)
+            @test logpdf(k, tau) ≈ logpdf(e, tau)
+            @test pdf(k, tau) ≈ pdf(e, tau)
+        end
+        @test logpdf(k, -1.0) == -Inf
+        # A delay drawn from a kernel can be scored like any other.
+        delay = HazardKernel(t -> 0.5)
+        @test EpiBranch._delay_loglik(delay, 2.0) ≈ logpdf(Exponential(2.0), 2.0)
+    end
+
     @testset "a truncated HazardKernel's cdf, logcdf and logccdf match truncating by hand" begin
         rate = 0.4
         hi = 2.0

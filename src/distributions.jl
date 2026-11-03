@@ -260,6 +260,10 @@ end
 # directly, the same as a named distribution.
 Distributions.cdf(k::HazardKernel, τ::Real) = -expm1(logccdf(k, τ))
 Distributions.logcdf(k::HazardKernel, τ::Real) = _log1mexp(logccdf(k, τ))
+# The density is the hazard times the survival, which a clinical transition's
+# likelihood reads where the kernel times a delay.
+Distributions.logpdf(k::HazardKernel, x::Real) = loghazard(k, x) + logccdf(k, x)
+Distributions.pdf(k::HazardKernel, x::Real) = exp(logpdf(k, x))
 
 Base.rand(rng::AbstractRNG, k::HazardKernel) = invlogccdf(k, log(rand(rng)))
 Distributions.quantile(k::HazardKernel, p::Real) = invlogccdf(k, log1p(-p))
