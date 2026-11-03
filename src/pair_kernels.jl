@@ -773,12 +773,16 @@ function _hazard_integral_from(rate, lo, hi)
     reach = 1.0
     while reach < wp
         nxt = 2reach + 1
-        # What is already summed sets the scale for a tail segment, as one
-        # quadrature over the whole range would have it: a segment holding a
-        # negligible share of a decaying hazard is not refined on its own
-        # account. A hazard still zero so far keeps the relative tolerance.
-        atol = sqrt(eps(one(wp))) * abs(_plain(total))
-        total += first(quadgk(g, reach / wp, min(nxt, wp) / wp; atol))
+        # What is already summed sets an absolute scale for a tail segment,
+        # as one quadrature over the whole range would have it: a segment
+        # holding a negligible share of a decaying hazard is not refined on
+        # its own account. The relative tolerance is passed as well, since
+        # quadgk drops it once an absolute one is given, and a segment that
+        # dwarfs everything before it (a steep rise after a faint run-up)
+        # would otherwise be refined to the evaluation cap.
+        rtol = sqrt(eps(one(wp)))
+        atol = rtol * abs(_plain(total))
+        total += first(quadgk(g, reach / wp, min(nxt, wp) / wp; atol, rtol))
         reach = nxt
     end
     return total

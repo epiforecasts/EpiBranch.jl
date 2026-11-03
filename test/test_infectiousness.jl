@@ -363,6 +363,11 @@ end
         calls[] = 0
         EpiBranch.cumhazard(decaying, 1000.0)
         @test calls[] <= 2 * short
+        # Nor is a steep rise after a faint run-up refined without end.
+        calls[] = 0
+        rising = HazardKernel(t -> (calls[] += 1; 1 / (1 + exp(-2 * (t - 50.0)))))
+        @test EpiBranch.cumhazard(rising, 100.0) ≈ 50.0 rtol = 1.0e-6
+        @test calls[] < 2000
     end
 
     @testset "the total hazard over an unbounded horizon is infinite where it diverges" begin
