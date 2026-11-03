@@ -22,7 +22,9 @@ Each satellite has its own `Project.toml`, with its own version and a compat
 bound on EpiBranch; bump those in the release pull request. Once the EpiBranch
 version it needs is in the registry, comment `/register lib/EpiNetwork` or
 `/register lib/EpiHouseholds`, and the workflow adds the `subdir=` the
-Registrator needs. Register each satellite separately.
+Registrator needs. Register each satellite separately. TagBot has a step per
+satellite and tags them as `EpiNetwork-vX.Y.Z` and `EpiHouseholds-vX.Y.Z`
+once their registry pull requests merge.
 
 ## Release notes
 

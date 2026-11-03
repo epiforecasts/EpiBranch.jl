@@ -20,3 +20,14 @@ jobs:
       - uses: JuliaRegistries/TagBot@a3a48fad3c1d6c2abbb874970a3f9032493a7473 # v1.25.14
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+      # The satellite packages are registered from their subdirectories and
+      # need a step each, which tags them as EpiNetwork-vX.Y.Z and
+      # EpiHouseholds-vX.Y.Z.
+      - uses: JuliaRegistries/TagBot@a3a48fad3c1d6c2abbb874970a3f9032493a7473 # v1.25.14
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          subdir: lib/EpiNetwork
+      - uses: JuliaRegistries/TagBot@a3a48fad3c1d6c2abbb874970a3f9032493a7473 # v1.25.14
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          subdir: lib/EpiHouseholds
