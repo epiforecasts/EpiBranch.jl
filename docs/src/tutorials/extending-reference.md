@@ -65,6 +65,7 @@ underscore are internal.
 | `:trace_time` | `Float64` | — | `ContactTracing`, `SourceTracing` | `trace_contacts!` |
 | `:_ring_remaining` | `Int` | `0` | `ContactTracing` (`depth > 1`) | `trace_contacts!`; internal |
 | `:_ring_propagated` | `Bool` | `false` | `ContactTracing` (`depth > 1`) | `trace_contacts!`; internal |
+| `:_ring_hop` | `Bool` | `false` | `ContactTracing` (`depth > 1`) | Set and cleared around each `trace_contacts!` call in the ring walk; internal. Marks an already-settled case the walk passes through, so it is traced from as a ring member only, not reseeded |
 | `:traced_by` | `Int` | — | `ContactTracing` | `trace_contacts!` |
 | `:source_traced_by` | `Int` | — | `SourceTracing` | `trace_contacts!`; the reverse of `:traced_by` (names a *later*-infected node) |
 | `:trace_level` | `Int` | — | `compute_trace_level!` | After the simulation |
@@ -92,6 +93,7 @@ underscore are internal.
 | `:infectious_time` | `Float64` | `Inf` | `Transition(:infectious, …)` | `resolve_individual!` |
 | `:recovered_time` | `Float64` | `Inf` | `Transition(:recovered, …)` | `resolve_individual!` |
 | `:susceptible_again_time` | `Float64` | `Inf` | `Transition(:susceptible_again, …)` | `resolve_individual!` |
+| `:_exclusive_draw#N` | `Float64` | — | `exclusive_probabilities` | `resolve_individual!`; internal. The uniform draw a group of mutually exclusive outcomes shares, under a key unique to that call of `exclusive_probabilities` |
 
 !!! warning "Reporting transition and per-case observation clash"
     `:reported` and `:reporting_time` are written both by the `Reporting`
