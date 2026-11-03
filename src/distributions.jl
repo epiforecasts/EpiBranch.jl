@@ -237,7 +237,7 @@ function SurvivalDistributions.cumhazard(k::HazardKernel, τ::Real)
     # integral diverges, with an error estimate of the same order as the
     # value; the total is infinite then, which the race's guard against
     # redrawing from a window that never closes needs to see.
-    val, err = quadgk(s -> k.hazard(k.onset + s), 0.0, hi)
+    val, err = quadgk(s -> k.hazard(k.onset + s), 0.0, Inf)
     return err <= sqrt(eps(one(val))) * max(val, one(val)) ? val : oftype(val, Inf)
 end
 
