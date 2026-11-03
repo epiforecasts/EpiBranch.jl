@@ -689,14 +689,19 @@ function _calendar_hazard(k::_CalendarScaledKernel, s)
     return iszero(m) ? zero(m) * zero(s) : m * exp(lh)
 end
 
-# The profile's survival reaches zero at the top of a bounded support, beyond
-# which its hazard is undefined, so the contact interval ends there. Quadrature
-# cannot settle an integral over an unbounded horizon for a multiplier that
-# keeps oscillating, so that integral is taken to be infinite.
+# Where the profile's survival has certainly ended (the top of a bounded
+# support, beyond which its hazard is undefined) the contact interval ends
+# too. Where its integration merely stops (a `HazardKernel`'s `upper`) the
+# total up to there is the total, as `_calendar_invlogccdf` treats it.
+# Quadrature cannot settle an integral over an unbounded horizon for a
+# multiplier that keeps oscillating, so that integral is taken to be infinite.
 function _calendar_cumhazard(::SmoothCalendar, k::_CalendarScaledKernel, τ)
-    (isfinite(τ) && τ < maximum(k.profile)) || return oftype(float(τ), Inf)
-    iszero(τ) && return zero(float(τ))
-    return _hazard_integral(s -> _calendar_hazard(k, s), zero(float(τ)), float(τ))
+    _, upper, certain = _profile_bounds(k.profile)
+    certain && τ >= upper && return oftype(float(τ), Inf)
+    hi = min(float(τ), oftype(float(τ), upper))
+    isfinite(hi) || return oftype(float(τ), Inf)
+    iszero(hi) && return zero(float(τ))
+    return _hazard_integral(s -> _calendar_hazard(k, s), zero(hi), hi)
 end
 
 # Where a profile's hazard is first positive, where its integration stops,

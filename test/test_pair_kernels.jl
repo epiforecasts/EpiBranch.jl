@@ -326,6 +326,17 @@ seasonal_integral(s::Seasonal, t) =
         0.25 * (seasonal_integral(s, 102.0) - seasonal_integral(s, 100.0))
     @test EpiBranch.cumhazard(interval, 2.0) ≈ 0.6026949328797594
 
+    # A kernel whose integration stops at `upper` keeps a finite total under
+    # the calendar too, so the race can still tell it from a window that
+    # never closes.
+    bounded = PairKernel(context -> HazardKernel(t -> 2.0; upper = 1.0); calendar = s)
+    bounded_interval = EpiBranch.pair_kernel(bounded, 1, 2, 0.0, 100.0)
+    @test isfinite(logccdf(bounded_interval, Inf))
+    @test EpiBranch.cumhazard(bounded_interval, Inf) ≈
+        EpiBranch.cumhazard(bounded_interval, 1.0)
+    @test EpiBranch.cumhazard(bounded_interval, 50.0) ≈
+        EpiBranch.cumhazard(bounded_interval, 1.0)
+
     # A plain callable reproduces the same hazard, read as a smooth schedule.
     seasonal(t) = 1 + 0.6 * cos(2π * (t - 30.0) / 365.2425)
     @test EpiBranch.calendar_shape(seasonal) === EpiBranch.SmoothCalendar()
