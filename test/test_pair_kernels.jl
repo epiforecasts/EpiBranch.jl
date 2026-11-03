@@ -358,6 +358,19 @@ seasonal_integral(s::Seasonal, t) =
         @test d_shift ≈ ForwardDiff.derivative(θ -> EpiBranch.cumhazard(shift_of(θ), tau), 3.0)
     end
 
+    # Drawing through the calendar differentiates in a support end as the
+    # bare profile does, and runs for a shifted profile.
+    d_draw = ForwardDiff.derivative(3.0) do θ
+        top = PairKernel(context -> Uniform(0.0, θ); calendar = t -> 1.0)
+        invlogccdf(EpiBranch.pair_kernel(top, 1, 2, 0.0, 100.0), -0.5)
+    end
+    @test d_draw ≈ ForwardDiff.derivative(θ -> invlogccdf(Uniform(0.0, θ), -0.5), 3.0)
+    d_run = ForwardDiff.derivative(3.0) do θ
+        moved = PairKernel(context -> Exponential(5.0) + θ; calendar = t -> 1.0)
+        invlogccdf(EpiBranch.pair_kernel(moved, 1, 2, 0.0, 100.0), -0.5)
+    end
+    @test isfinite(d_run)
+
     # The same holds for a named profile whose support starts above zero.
     for profile in (Uniform(15.0, 20.0), truncated(Exponential(5.0), 10.0, Inf))
         shifted = PairKernel(context -> profile; calendar = t -> 1.0)

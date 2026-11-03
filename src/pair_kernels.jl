@@ -725,15 +725,14 @@ function _profile_bounds(profile)
 end
 _profile_bounds(k::HazardKernel) = k.onset, k.upper, false
 
-# A value stripped of every dual level, for a bracket origin: the drawn time
-# does not keep a derivative in a support-end parameter on this path.
+# A value stripped of every dual level, for the ends of a bracket.
 _plain(x::Real) = x
 _plain(x::ForwardDiff.Dual) = _plain(ForwardDiff.value(x))
 
 function _calendar_invlogccdf(::SmoothCalendar, k::_CalendarScaledKernel, target)
     rate = s -> _calendar_hazard(k, s)
     start, upper, certain = _profile_bounds(k.profile)
-    t, t_acc = _invert_hazard(rate, oftype(target, _plain(start)), upper, certain, target)
+    t, t_acc = _invert_hazard(rate, start, upper, certain, target)
     t_acc < target && return oftype(t, Inf)
     return _implicit_hazard_step(rate, t, t_acc, target)
 end
@@ -803,10 +802,14 @@ end
 # that out once, before the bracket is grown at all, rather than leaving this
 # loop to discover it slowly.
 function _invert_hazard(rate, start, upper, boundary_is_certain::Bool, target::Real)
+    # The bracket ends are plain floats: quadrature takes no dual endpoint,
+    # and the drawn time keeps its derivative through the integrand and the
+    # implicit step rather than through where the bracket happens to sit.
+    start, upper = _plain(start), _plain(upper)
     iszero(target) && return start, zero(target)
     lo = start
     acc = zero(target)
-    width = one(target)
+    width = one(lo)
     while true
         hi = min(lo + width, upper)
         isfinite(hi) || return oftype(target, Inf), oftype(target, Inf)
