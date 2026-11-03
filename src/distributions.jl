@@ -359,8 +359,11 @@ Distributions.pdf(k::_TruncatedHazardKernel, τ::Real) = exp(logpdf(k, τ))
 # The hazard of the conditional law, which a calendar-scaled window reads
 # directly, differs from the base kernel's: it blows up towards `hi`.
 function SurvivalDistributions.loghazard(k::_TruncatedHazardKernel, τ::Real)
-    τ < k.hi || return oftype(k.logF_hi, -Inf)
-    return logpdf(k, τ) - logccdf(k, τ)
+    lp = logpdf(k, τ)
+    # Past the base kernel's `upper` but below the cap both density and
+    # survival are gone; the hazard is zero there, not their ratio.
+    isfinite(lp) || return lp
+    return lp - logccdf(k, τ)
 end
 SurvivalDistributions.hazard(k::_TruncatedHazardKernel, τ::Real) = exp(loghazard(k, τ))
 SurvivalDistributions.cumhazard(k::_TruncatedHazardKernel, τ::Real) = -logccdf(k, τ)

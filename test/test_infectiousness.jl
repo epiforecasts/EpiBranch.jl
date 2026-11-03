@@ -404,6 +404,10 @@ end
             @test EpiBranch.cumhazard(tk, tau) ≈ -logccdf(te, tau)
         end
         @test logpdf(tk, 5.0) == -Inf
+        # Between the base kernel's `upper` and the cap the hazard is zero.
+        tu = truncated(HazardKernel(t -> 2.0; upper = 3.0), 0.0, 5.0)
+        @test EpiBranch.loghazard(tu, 4.0) == -Inf
+        @test EpiBranch.hazard(tu, 4.0) == 0.0
         interval(s, kid) = kid.infection_time - s.individuals[kid.parent_id].infection_time
         # As a bare window kernel, through `get_generation_time`.
         m = ModelSpec(BranchingProcess(Infectiousness(Poisson(3.0); kernel = tk)))
