@@ -593,7 +593,7 @@ modelling layers passed in rather than read off the model, and
 [`sellke_race!`](@ref EpiBranch.sellke_race!) settles one continuous-time race
 and brings the state's running totals back into line afterwards.
 
-A process that carries its own interventions, population characteristics,
+A process that has its own interventions, population characteristics,
 observation model, contact recorder or clinical progression, rather than
 having them composed on with a [`ModelSpec`](@ref), defines
 [`EpiBranch.interventions`](@ref), [`EpiBranch.attributes`](@ref),
