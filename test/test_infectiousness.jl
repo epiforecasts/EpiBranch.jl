@@ -288,6 +288,27 @@ end
         @test_throws ArgumentError invlogccdf(k, NaN)
     end
 
+    @testset "a finite total hazard under a smooth calendar drops the draws it cannot reach" begin
+        # The calendar-scaled path inverts the combined hazard itself, so a
+        # draw beyond the total must come back as `Inf` here too, whether or
+        # not the user bounded the integration, rather than growing the
+        # bracket until the calendar's phase overflows.
+        cal = Seasonal(amplitude = 0.5, peak_day = 0.0, period = 365.0)
+        count_kids(upper) = begin
+            kernel = ind -> HazardKernel(t -> 0.1 * exp(-t); upper)
+            w = Infectiousness(Poisson(10.0); kernel, calendar = cal)
+            s = simulate(
+                ModelSpec(BranchingProcess(w));
+                n_initial = 200, max_generations = 1, rng = StableRNG(3)
+            )
+            count(i -> i.parent_id != 0 && is_infected(i), s.individuals)
+        end
+        # The multiplier is about 1.5 over the few days the hazard lasts.
+        expected = 10 * (1 - exp(-0.15))
+        @test isapprox(count_kids(50.0) / 200, expected; rtol = 0.15)
+        @test isapprox(count_kids(Inf) / 200, expected; rtol = 0.15)
+    end
+
     @testset "a bound on the integration leaves the realised R unchanged" begin
         # A hazard that integrates to 0.1 infects about a tenth of the
         # contacts it is offered, whether or not the user wrote a bound.

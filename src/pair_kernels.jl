@@ -679,8 +679,14 @@ end
 # The scaled hazard at time-since-opening `s`. A zero multiplier gives zero
 # even where the profile's hazard is infinite.
 function _calendar_hazard(k::_CalendarScaledKernel, s)
+    # The profile first: where its hazard is already zero (a `HazardKernel`
+    # beyond `upper`, or a trajectory that has cleared) the calendar is not
+    # evaluated, since a bracket grown far past the profile's reach would
+    # otherwise hand a smooth calendar a time whose phase overflows.
+    lh = loghazard(k.profile, s)
+    isfinite(lh) || return zero(float(s))
     m = calendar_multiplier(k.calendar, k.opening + s)
-    return iszero(m) ? zero(m) * zero(s) : m * exp(loghazard(k.profile, s))
+    return iszero(m) ? zero(m) * zero(s) : m * exp(lh)
 end
 
 # The profile's survival reaches zero at the top of a bounded support, beyond
@@ -693,9 +699,18 @@ function _calendar_cumhazard(::SmoothCalendar, k::_CalendarScaledKernel, τ)
     return _hazard_integral(s -> _calendar_hazard(k, s), zero(float(τ)), float(τ))
 end
 
+# Where a profile's integration stops, and whether its survival has certainly
+# ended there: the top of a named distribution's bounded support ends it,
+# while a `HazardKernel`'s `upper` only bounds the integration, as in
+# `_hazard_invert`.
+_profile_bound(profile) = float(maximum(profile)), true
+_profile_bound(k::HazardKernel) = k.upper, false
+
 function _calendar_invlogccdf(::SmoothCalendar, k::_CalendarScaledKernel, target)
     rate = s -> _calendar_hazard(k, s)
-    t, t_acc = _invert_hazard(rate, zero(target), float(maximum(k.profile)), true, target)
+    upper, certain = _profile_bound(k.profile)
+    t, t_acc = _invert_hazard(rate, zero(target), upper, certain, target)
+    t_acc < target && return oftype(t, Inf)
     return _implicit_hazard_step(rate, t, t_acc, target)
 end
 
