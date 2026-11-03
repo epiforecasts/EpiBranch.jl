@@ -50,6 +50,7 @@ makedocs(;
         "Benchmarks" => "benchmarks.md",
         "Glossary" => "glossary.md",
         "Notes for contributors" => "contributing.md",
+        "Release process" => "developer/release-process.md",
         "API reference" => "api.md",
     ]
 )
