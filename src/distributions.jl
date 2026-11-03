@@ -231,7 +231,14 @@ end
 function SurvivalDistributions.cumhazard(k::HazardKernel, τ::Real)
     τ >= 0 || throw(ArgumentError("τ must be non-negative, got $τ"))
     τ <= k.onset && return zero(float(τ))
-    return _hazard_integral(k.hazard, k.onset, min(float(τ), k.upper))
+    hi = min(float(τ), k.upper)
+    isfinite(hi) && return _hazard_integral(k.hazard, k.onset, hi)
+    # Over an unbounded horizon quadgk hands back a number even where the
+    # integral diverges, with an error estimate of the same order as the
+    # value; the total is infinite then, which the race's guard against
+    # redrawing from a window that never closes needs to see.
+    val, err = quadgk(k.hazard, k.onset, hi)
+    return err <= sqrt(eps(one(val))) * max(val, one(val)) ? val : oftype(val, Inf)
 end
 
 function Distributions.logccdf(k::HazardKernel, τ::Real)

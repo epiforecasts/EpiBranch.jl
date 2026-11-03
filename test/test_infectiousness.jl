@@ -323,6 +323,11 @@ end
         @test bounded == unbounded
     end
 
+    @testset "the total hazard over an unbounded horizon is infinite where it diverges" begin
+        @test logccdf(HazardKernel(t -> 2.0), Inf) == -Inf
+        @test EpiBranch.cumhazard(HazardKernel(t -> 0.1 * exp(-t)), Inf) ≈ 0.1
+    end
+
     @testset "rejects a non-positive upper" begin
         @test_throws ArgumentError HazardKernel(t -> 1.0; upper = 0.0)
     end
