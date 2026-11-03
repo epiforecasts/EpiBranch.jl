@@ -413,6 +413,23 @@ end
         kids2 = filter(i -> i.parent_id != 0 && is_infected(i), s2.individuals)
         @test length(kids2) > 0
         @test all(kid -> interval(s2, kid) <= 5.0, kids2)
+        # A late onset under the calendar: contacts start at the onset and
+        # are not pushed past the short stretch just after it.
+        late = Infectiousness(
+            Poisson(3.0);
+            kernel = ind -> truncated(HazardKernel(t -> 2.0; onset = 15.0), 0.0, 20.0),
+            calendar = t -> 1.0
+        )
+        s3 = simulate(
+            ModelSpec(BranchingProcess(late)); n_initial = 200, max_generations = 1,
+            rng = StableRNG(1)
+        )
+        intervals = [interval(s3, kid) for kid in s3.individuals if kid.parent_id != 0 && is_infected(kid)]
+        @test minimum(intervals) >= 15.0
+        @test minimum(intervals) < 15.01
+        # Conditional on falling before 20, exp(-2 * 0.06) of the mass is
+        # gone by 15.06, so about 11% of intervals sit in [15, 15.06].
+        @test isapprox(count(<=(15.06), intervals) / length(intervals), 0.113; atol = 0.03)
     end
 
     @testset "works as a bare contact_interval, not just a per-case kernel" begin
