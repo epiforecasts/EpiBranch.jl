@@ -762,19 +762,21 @@ _hazard_integral(rate, lo, hi) = first(quadgk(rate, lo, hi))
 # doublings the inverter's bracket walks: a hazard active for a short stretch
 # at the start of a long range is otherwise missed by the first pass over the
 # whole range, every node of which reads zero.
+# The segments are walked one by one rather than handed to quadgk as
+# breakpoints, which would splat a vector of runtime length and lose the
+# return type on every cumulative-hazard read.
 function _hazard_integral_from(rate, lo, hi)
     w = hi - lo
-    return first(quadgk(u -> rate(lo + u * w) * w, _unit_knots(_plain(w))...))
-end
-function _unit_knots(w)
-    knots = [0.0]
+    wp = _plain(w)
+    g = u -> rate(lo + u * w) * w
+    total = _hazard_integral(g, 0.0, min(1.0, 1.0 / wp))
     reach = 1.0
-    while reach < w
-        push!(knots, reach / w)
-        reach = 2reach + 1
+    while reach < wp
+        nxt = 2reach + 1
+        total += _hazard_integral(g, reach / wp, min(nxt, wp) / wp)
+        reach = nxt
     end
-    push!(knots, 1.0)
-    return knots
+    return total
 end
 
 # Bisect `[lo, hi]` down to adjacent floats; `acc` and `hi_acc`, the integrals

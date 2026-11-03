@@ -350,6 +350,9 @@ end
         ck = EpiBranch._CalendarScaledKernel(k, t -> 1.0, 0.0)
         @test EpiBranch.cumhazard(ck, 1000.0) ≈ 2.0
         @test isfinite(truncated(k, 0.0, 900.0).logF_hi)
+        # The reads stay inferred, since the pairwise likelihood calls them
+        # once per pair.
+        @test only(Base.return_types(EpiBranch.cumhazard, (typeof(k), Float64))) == Float64
     end
 
     @testset "the total hazard over an unbounded horizon is infinite where it diverges" begin
