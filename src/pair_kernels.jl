@@ -696,12 +696,15 @@ end
 # Quadrature cannot settle an integral over an unbounded horizon for a
 # multiplier that keeps oscillating, so that integral is taken to be infinite.
 function _calendar_cumhazard(::SmoothCalendar, k::_CalendarScaledKernel, τ)
-    _, upper, certain = _profile_bounds(k.profile)
+    start, upper, certain = _profile_bounds(k.profile)
     certain && τ >= upper && return oftype(float(τ), Inf)
     hi = min(float(τ), oftype(float(τ), upper))
-    isfinite(hi) || return oftype(float(τ), Inf)
-    iszero(hi) && return zero(float(τ))
-    return _hazard_integral(s -> _calendar_hazard(k, s), zero(hi), hi)
+    isfinite(hi) || return oftype(hi, Inf)
+    # From `start`, as the inverse brackets: a run of zero hazard before the
+    # onset would otherwise hide a short positive stretch from quadrature's
+    # first pass over the whole range.
+    hi <= start && return zero(hi)
+    return _hazard_integral(s -> _calendar_hazard(k, s), oftype(hi, start), hi)
 end
 
 # Where a profile's hazard is first positive, where its integration stops,

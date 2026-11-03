@@ -337,6 +337,17 @@ seasonal_integral(s::Seasonal, t) =
     @test EpiBranch.cumhazard(bounded_interval, 50.0) ≈
         EpiBranch.cumhazard(bounded_interval, 1.0)
 
+    # Just past a late onset the integral must start where the hazard does,
+    # or quadrature's first pass over the whole range sees only zeros.
+    late = PairKernel(
+        context -> HazardKernel(t -> 2.0; onset = 15.0, upper = 20.0); calendar = t -> 1.0
+    )
+    late_interval = EpiBranch.pair_kernel(late, 1, 2, 0.0, 100.0)
+    bare = HazardKernel(t -> 2.0; onset = 15.0, upper = 20.0)
+    for tau in (15.01, 15.05, 17.0)
+        @test EpiBranch.cumhazard(late_interval, tau) ≈ EpiBranch.cumhazard(bare, tau)
+    end
+
     # A plain callable reproduces the same hazard, read as a smooth schedule.
     seasonal(t) = 1 + 0.6 * cos(2π * (t - 30.0) / 365.2425)
     @test EpiBranch.calendar_shape(seasonal) === EpiBranch.SmoothCalendar()
