@@ -348,6 +348,14 @@ seasonal_integral(s::Seasonal, t) =
         @test EpiBranch.cumhazard(late_interval, tau) ≈ EpiBranch.cumhazard(bare, tau)
     end
 
+    # A bounded named support whose top holds the parameter still
+    # differentiates through the calendar.
+    d_top = ForwardDiff.derivative(3.0) do θ
+        ck = EpiBranch._CalendarScaledKernel(Uniform(0.0, θ), s, 100.0)
+        EpiBranch.cumhazard(ck, 1.0)
+    end
+    @test isfinite(d_top) && d_top < 0
+
     # A plain callable reproduces the same hazard, read as a smooth schedule.
     seasonal(t) = 1 + 0.6 * cos(2π * (t - 30.0) / 365.2425)
     @test EpiBranch.calendar_shape(seasonal) === EpiBranch.SmoothCalendar()
