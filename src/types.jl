@@ -343,6 +343,20 @@ function close_episode!(ind::Individual, episode::InfectionEpisode)
     return ind
 end
 
+# The three things a lazily populated model (`NetworkProcess`, `RoutedNetwork`)
+# needs to create one of its own not-yet-existing nodes: the placeholder every
+# unrealised slot in `individuals` points to until then, shared by every slot
+# in one state and never mutated, so checking for it is one pointer
+# comparison; the interventions the node is created with; and anything the
+# model's own `add_individuals!`-style `setup` would have recorded about it
+# (a graph index, say). `nothing` on `SimulationState` for a model that
+# builds its whole population upfront, which is every model but these two.
+struct _LazyPopulation{T <: Real, F}
+    placeholder::Individual{T}
+    interventions::Any
+    setup::F
+end
+
 # ── Simulation state ───────────────────────────────────────────────
 
 """
@@ -354,7 +368,10 @@ Useful fields:
 
 - `individuals`: one [`Individual`](@ref) per person in the simulation: the
   cases and the contacts they exposed for a [`BranchingProcess`](@ref),
-  everyone for models with a fixed population.
+  everyone for models with a fixed population. `NetworkProcess` and
+  `RoutedNetwork` create a person here only once the outbreak reaches them
+  (see [`realise!`](@ref)); a person it never reached reads as never
+  infected and untouched by any intervention.
 - `cumulative_cases`: the total number of cases.
 - `extinct`: whether transmission had died out when the run stopped.
 - `current_generation`: the last generation simulated.
@@ -367,6 +384,9 @@ named as the Extending EpiBranch guide describes. The simulation never reads
 `continuation` is the unfinished race [`simulate`](@ref)'s continuation
 method resumes, `nothing` once the run has reached extinction or stopped for
 some other reason; nothing outside the simulation engine reads or writes it.
+`lazy` is set by [`EpiBranch.lazily_populate!`](@ref) for a model whose
+population is created as the race reaches it, `nothing` for one built
+upfront; nothing outside the simulation engine reads or writes it either.
 """
 mutable struct SimulationState{T <: Real, R <: AbstractRNG, P, A}
     individuals::Vector{Individual{T}}
@@ -381,11 +401,12 @@ mutable struct SimulationState{T <: Real, R <: AbstractRNG, P, A}
     transitions::Vector{AbstractClinicalTransition}
     scratch::Dict{Any, Any}
     continuation::Union{Nothing, AbstractRaceContinuation}
+    lazy::Union{Nothing, _LazyPopulation}
 end
 
-# Pre-existing callers construct a `SimulationState` without `scratch` or
-# `continuation`; both start empty, so this fills them in rather than
-# requiring every call site to name them.
+# Pre-existing callers construct a `SimulationState` without `scratch`,
+# `continuation` or `lazy`; all three start absent, so this fills them in
+# rather than requiring every call site to name them.
 function SimulationState(
         individuals, active_ids, current_generation, rng, cumulative_cases,
         extinct, population_size, max_infection_time, attributes, transitions
@@ -393,7 +414,7 @@ function SimulationState(
     return SimulationState(
         individuals, active_ids, current_generation, rng, cumulative_cases,
         extinct, population_size, max_infection_time, attributes, transitions,
-        Dict{Any, Any}(), nothing
+        Dict{Any, Any}(), nothing, nothing
     )
 end
 

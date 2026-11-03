@@ -474,9 +474,15 @@ function _pair_result(k::PairKernel{F, <:AbstractVector}, ctx, i, j, ::Simulatio
     return k.callback(ctx, k.state[i], k.state[j])
 end
 function _pair_result(k::PairKernel, ctx, i, j, state::SimulationState)
+    # A live projection reads both records whether or not either is
+    # `watched_records`-declared: an undeclared one is read only this once, a
+    # declared one again whenever it moves. Either way the target's record is
+    # needed on the first contact considered, so this realises it on a
+    # lazily populated model (see `EpiBranch.lazily_populate!`) rather than
+    # waiting for `traits` or a watched key to force it.
     return k.callback(
-        ctx, _pair_state(k.state, state.individuals[i]),
-        _pair_state(k.state, state.individuals[j])
+        ctx, _pair_state(k.state, _realised!(state, i)),
+        _pair_state(k.state, _realised!(state, j))
     )
 end
 function _pair_result(::PairKernel, ctx, i, j)

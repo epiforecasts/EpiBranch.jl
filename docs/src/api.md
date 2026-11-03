@@ -619,6 +619,8 @@ susceptible_fraction
 EpiBranch.initialise_state
 EpiBranch.new_state
 EpiBranch.add_individuals!
+EpiBranch.lazily_populate!
+realise!
 EpiBranch.seed!
 close_episode!
 EpiBranch.interventions

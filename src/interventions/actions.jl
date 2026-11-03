@@ -640,10 +640,13 @@ end
 # with every one of `members` as a candidate, before a network or household
 # race processes any of them. An intervention with no `intervention_actions`
 # method of its own contributes nothing, the same as `_apply_case_actions!`
-# does for the per-case path.
+# does for the per-case path. Every member is a candidate by definition, so
+# this realises the whole population on a lazily populated model (see
+# `EpiBranch.lazily_populate!`): offering a dose to everyone and creating
+# people only once the outbreak reaches them do not mix.
 function _apply_population_actions!(state, interventions, members)
     any(acts_on_population, interventions) || return nothing
-    candidates = [state.individuals[id] for id in members]
+    candidates = [_realised!(state, id) for id in members]
     for iv in interventions
         acts_on_population(iv) || continue
         actions = intervention_actions(iv, state, candidates)

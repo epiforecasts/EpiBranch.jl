@@ -175,6 +175,10 @@ end
         @test NetworkProcess(ring, Exponential(2.0); obs_end = 0.0) isa NetworkProcess
         @test_throws ArgumentError NetworkProcess(ring, Exponential(2.0); obs_end = -1.0)
         @test_throws ArgumentError NetworkProcess(ring, Exponential(2.0); obs_end = NaN)
+
+        # lazy population by default; `eager` opts into building it upfront
+        @test m.eager == false
+        @test NetworkProcess(ring, Exponential(2.0); eager = true).eager == true
     end
 
     @testset "moderate contact rate spreads to some of a ring" begin
@@ -299,6 +303,59 @@ end
             rng = StableRNG(1), n_initial = 3
         )
         @test silent.cumulative_cases == 3
+    end
+
+    @testset "lazy population" begin
+        # A node the outbreak never reaches costs nothing beyond its slot in
+        # `individuals`: no attribute draw, no intervention setup.
+        n = 2000
+        calls = Ref(0)
+        build(; eager = false) = ModelSpec(
+            NetworkProcess(ring_adjacency(n, 2), Exponential(1.5); eager);
+            progression = _sir(Exponential(4.0)), attributes = (rng, ind) -> (calls[] += 1)
+        )
+        calls[] = 0
+        lazy = simulate(build(); rng = StableRNG(1), n_initial = 1)
+        @test calls[] < n_infected(lazy) * 10   # a handful of neighbours per case, not the network
+        @test calls[] > 0
+
+        calls[] = 0
+        eager = simulate(build(; eager = true); rng = StableRNG(1), n_initial = 1)
+        @test calls[] == n
+
+        # A node never reached reads as never infected, untouched by any
+        # intervention, at the neutral susceptibility and infectiousness.
+        untouched = findfirst(ind -> !is_infected(ind) && ind.id == 0, lazy.individuals)
+        @test untouched !== nothing
+        placeholder = lazy.individuals[untouched]
+        @test placeholder.susceptibility == 1 && placeholder.infectiousness == 1
+        @test isempty(placeholder.state) || collect(keys(placeholder.state)) == [:infected]
+
+        # Under common random numbers, a lazy and an eager run draw the same
+        # attributes for everyone the outbreak reaches, whichever order they
+        # were created in; `realise!` then matches the eager run for everyone
+        # else too.
+        crn_build(; eager = false) = ModelSpec(
+            NetworkProcess(ring_adjacency(n, 2), Exponential(1.5); eager);
+            progression = _sir(Exponential(4.0)),
+            attributes = transmission_traits(susceptibility = Beta(2, 5))
+        )
+        lazy_crn = simulate(crn_build(); rng = CommonRandomNumbers(7), n_initial = 1)
+        eager_crn = simulate(crn_build(; eager = true); rng = CommonRandomNumbers(7), n_initial = 1)
+        @test lazy_crn.cumulative_cases == eager_crn.cumulative_cases
+        # `isequal` rather than `==`: an uninfected node's infection_time is
+        # NaN on both sides, which `==` never counts as a match.
+        @test all(
+            isequal.(
+                getfield.(lazy_crn.individuals, :infection_time),
+                getfield.(eager_crn.individuals, :infection_time)
+            )
+        )
+
+        EpiBranch.realise!(lazy_crn)
+        @test getfield.(lazy_crn.individuals, :susceptibility) ==
+            getfield.(eager_crn.individuals, :susceptibility)
+        @test all(i -> lazy_crn.individuals[i].id == i, eachindex(lazy_crn.individuals))
     end
 
     @testset "a risk reads another case's trace before exposure" begin
@@ -869,6 +926,31 @@ end
         @test_throws DimensionMismatch RoutedNetwork(
             [w(:a, a)]; external_hazard = fill(0.01, 5)
         )
+        # lazy population by default; `eager` opts into building it upfront
+        @test m.eager == false
+        @test RoutedNetwork([w(:a, a)]; eager = true).eager == true
+    end
+
+    @testset "RoutedNetwork: lazy population" begin
+        n = 1000
+        calls = Ref(0)
+        w(name) = RouteWindow(
+            name; until = (:recovered,), kernel = Exponential(1.5), reach = ring_adjacency(n, 2)
+        )
+        build(; eager = false) = ModelSpec(
+            RoutedNetwork([w(:community)]; eager);
+            progression = _sir(Exponential(4.0)), attributes = (rng, ind) -> (calls[] += 1)
+        )
+        calls[] = 0
+        lazy = simulate(build(); rng = StableRNG(1), n_initial = 1)
+        @test 0 < calls[] < n_infected(lazy) * 10
+
+        calls[] = 0
+        simulate(build(; eager = true); rng = StableRNG(1), n_initial = 1)
+        @test calls[] == n
+
+        untouched = findfirst(ind -> !is_infected(ind) && ind.id == 0, lazy.individuals)
+        @test untouched !== nothing
     end
 
     @testset "RoutedNetwork: a route that proposes its own contacts" begin

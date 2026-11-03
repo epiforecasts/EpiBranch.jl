@@ -775,7 +775,11 @@ function _walk_ring!(
             timed |= c isa Tuple
             k = get(pos, cid, 0)
             (k == 0 || cid in visited) && continue
-            push!(pending, state.individuals[cid])
+            # A contact tracing reaches is "reached by an intervention" (see
+            # `EpiBranch.lazily_populate!`), whether or not transmission ever
+            # proposed them one: realise it now, before `trace_contacts!`
+            # below can write to it.
+            push!(pending, _realised!(state, cid))
             push!(not_before, t0)
         end
         isempty(pending) && continue
@@ -1097,18 +1101,15 @@ function _sellke_race!(
     # Whether any per-individual trait is set. Both are constants of the two
     # people, so a race where none is set can leave the target's record alone
     # when it draws — a saving worth having on a dense graph, where that record
-    # is a pointer chase per proposal. A trait an intervention writes as a case
-    # is resolved turns it on from there. A branching process's `members`
-    # (`_Tree`) names a place drawn but not yet born as `0`, which only shows
-    # up here on a resumed race: a growing population's tree has already grown
-    # past its index cases by the time one is cut off.
-    traits = any(
-        id -> id != 0 && (
-            ind = state.individuals[id];
-            ind.susceptibility != 1 || ind.infectiousness != 1
-        ),
-        members
-    )
+    # is a pointer chase per proposal, and on a lazily populated model, where
+    # reading it would otherwise realise a node merely proposed a contact (see
+    # `EpiBranch.lazily_populate!`). Susceptibility and infectiousness are set
+    # only by `state.attributes`, never by an intervention (one changes
+    # transmission through the risks it declares instead), so whether either
+    # can depart from 1 is a static fact about the model, not the population:
+    # `offspring_law_unchanged` already answers `false` for exactly the
+    # attributes that can set them away from their neutral value.
+    traits = !offspring_law_unchanged(state.attributes)
     # A settled member only ever becomes a target again by going through the
     # same blocked-contact redraw every other risk uses (see `reinfects`
     # below), which needs every proposal kept rather than just each member's
@@ -1474,9 +1475,15 @@ function _sellke_race!(
         # Unrolled over `rts` rather than looped over (see `_mint_all!`), for
         # the reason given there.
         _mint_all!(rts, race, ind, max_generation)
-        # `_settle_case!` has already resolved this case's own traits, read
-        # here ahead of the self-proposing routes opened next; they need the
-        # traits just as much as the routes opened below do.
+        # `state.attributes` is not the only way a person's susceptibility or
+        # infectiousness can leave its neutral value of 1: an intervention's
+        # own `resolve_individual!`/`on_infection_settled!` can set either
+        # field directly too (`transmission_traits`'s own docstring
+        # recommends exactly this for rules it doesn't cover). `ind` has
+        # just resolved its own, so folding it in here, rather than scanning
+        # every member for it upfront, catches the change before this case's
+        # own contacts are proposed below, at the cost of one comparison per
+        # settled case rather than one per member of the population.
         traits |= ind.susceptibility != 1 || ind.infectiousness != 1
         # A route that proposes its own contacts (`proposes_own_contacts`) has
         # nothing for tracing to read until it opens. It therefore opens here,
@@ -1828,7 +1835,14 @@ end
 # draws. A route that creates contacts as it goes (`_Offspring`) answers each
 # of these differently.
 _mint!(route_targets, race, ind, max_generation) = nothing
-_member!(members, race, k) = race.state.individuals[members[k]]
+# A member over existing people (every model but a branching process's
+# `_Tree`, which overrides this to give birth instead) is realised here if a
+# lazily populated model had not needed it before now (see
+# `EpiBranch.lazily_populate!`): every popped event, blocked or settled, asks
+# for its member through this, so creating it here, rather than only once it
+# is finally infected, is the latest point that still comes before anything
+# mutates it.
+_member!(members, race, k) = _realised!(race.state, members[k])
 _case_contacts(contacts, rts, race, max_generation) = contacts
 _route_open(route_targets, ind, w::RouteWindow) = window_open(ind, w)
 _route_may_block(route_targets) = false
@@ -1989,16 +2003,22 @@ function _propose_along!(
         # reinfection: `HostImmunity`, on the pop, blocks it until the target's
         # immunity has waned.
         (k == 0 || (processed[k] && !reinfects)) && continue
+        # Neither branch below needs the target's record unless something
+        # reads it: `live` reads its watched keys, `traits` its
+        # susceptibility. Leaving both out on a plain race leaves a merely
+        # proposed target unrealised on a lazily populated model (see
+        # `EpiBranch.lazily_populate!`), so a run costs in proportion to the
+        # contacts the outbreak actually proposes rather than to every
+        # susceptible node. `_realised!` is a single pointer comparison once a
+        # target has been realised, so asking it again below costs nothing
+        # extra when both need it.
         if live
             # This opening's draws come from the target's record as it
             # stands now, which is what later comparisons start from.
+            target = _realised!(state, target_id)
             _watch_target!(watch, opening_id, k)
-            _refresh_host!(
-                snapshot, watched_keys, state.individuals[target_id], k
-            )
-            proj === nothing || (
-                full_snapshot[ri][k] = _remember(proj(state.individuals[target_id]))
-            )
+            _refresh_host!(snapshot, watched_keys, target, k)
+            proj === nothing || (full_snapshot[ri][k] = _remember(proj(target)))
         end
         # Both per-individual traits are rate multipliers on this
         # pair's contact interval, folded into the draw rather than
@@ -2008,8 +2028,7 @@ function _propose_along!(
         dt = traits ?
             _traits_scaled_draw(
                 pair_rng, kernel,
-                infector.infectiousness *
-                state.individuals[target_id].susceptibility
+                infector.infectiousness * _realised!(state, target_id).susceptibility
             ) :
             rand(pair_rng, kernel)
         cand = open_t + dt
@@ -2117,10 +2136,14 @@ function _race_watch(state, members, rts, watches, projections)
     ]
     # What each watched key held on each member when contacts were last drawn
     # from it. A key can change type as well as value (a date that was absent
-    # until a dose), so the store takes anything.
+    # until a dose), so the store takes anything. A live kernel needs every
+    # member's starting record, so a lazily populated model (see
+    # `EpiBranch.lazily_populate!`) realises its whole population here rather
+    # than only the people the outbreak reaches: watching a record and
+    # creating people as the outbreak needs them do not mix.
     snapshot = live ?
         Any[
-            _remember(_watched_value(state.individuals[id], key))
+            _remember(_watched_value(_realised!(state, id), key))
             for key in watched_keys, id in members
         ] : Matrix{Any}(undef, 0, 0)
     # The full record each route's projection read last from a host with a

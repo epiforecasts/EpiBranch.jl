@@ -122,6 +122,47 @@ struct _UndeclaredTransition <: EpiBranch.AbstractClinicalTransition end
         @test r[:t] === 2.5
     end
 
+    @testset "Lazy population" begin
+        # A transmission model's own `simulate_once` is the only caller that
+        # normally reaches `lazily_populate!`; these exercise it directly, as
+        # a new transmission model's `initialise_state` would.
+        state = EpiBranch.new_state(
+            BranchingProcess(Poisson(2.0), Exponential(5.0)), AbstractClinicalTransition[],
+            NoAttributes(), Xoshiro(1)
+        )
+        EpiBranch.lazily_populate!(state, 5, AbstractIntervention[])
+        @test length(state.individuals) == 5
+        # Every slot shares the one placeholder: never infected, untouched
+        # by any intervention, at neutral susceptibility and infectiousness.
+        placeholder = state.individuals[1]
+        @test all(ind -> ind === placeholder, state.individuals)
+        @test !is_infected(placeholder)
+        @test placeholder.susceptibility == 1 && placeholder.infectiousness == 1
+
+        # The first read of a slot creates a real, distinct person there;
+        # reading it again leaves that person alone rather than redrawing.
+        first_read = EpiBranch._realised!(state, 3)
+        @test first_read !== placeholder
+        @test first_read.id == 3
+        @test state.individuals[3] === first_read
+        @test EpiBranch._realised!(state, 3) === first_read
+
+        # `realise!` creates everyone left, and is a no-op on a model that
+        # was never set up lazily in the first place.
+        realise!(state)
+        @test all(ind -> ind !== placeholder, state.individuals)
+        @test [ind.id for ind in state.individuals] == 1:5
+
+        eager_state = EpiBranch.new_state(
+            BranchingProcess(Poisson(2.0), Exponential(5.0)), AbstractClinicalTransition[],
+            NoAttributes(), Xoshiro(1)
+        )
+        EpiBranch.add_individuals!(eager_state, 3, AbstractIntervention[])
+        before = copy(eager_state.individuals)
+        realise!(eager_state)
+        @test eager_state.individuals == before
+    end
+
     @testset "Individual with state" begin
         s = Dict{Symbol, Any}(:age => 30, :isolated => true)
         ind = Individual(; id = 1, state = s)

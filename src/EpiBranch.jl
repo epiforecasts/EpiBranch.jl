@@ -228,7 +228,7 @@ export clinical_presentation, demographics, transmission_traits, groups,
     group_attribute, vaccine_acceptance
 
 # Exports — simulation
-export simulate, make_contact!, susceptible_fraction
+export simulate, make_contact!, susceptible_fraction, realise!
 export CommonRandomNumbers
 export generate_offspring, contacts_of
 
