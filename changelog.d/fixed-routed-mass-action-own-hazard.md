@@ -1,5 +1,5 @@
 Setting `RoutedMassActionHazard` as a process's own `external_hazard` now gives
-the same clear `ArgumentError` a plain `MassActionHazard` gives, rather than a
+the same clear `ArgumentError` a plain `MassActionHazard` would, rather than a
 bare `MethodError`: such a hazard is prepared with no outbreak to read, and now
 delegates to the wrapped hazard's own rejection instead of falling through to
 the generic calendar-schedule fallback. `routed_network_infections` likewise
