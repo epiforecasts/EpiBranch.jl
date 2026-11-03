@@ -328,6 +328,19 @@ end
         @test EpiBranch.cumhazard(HazardKernel(t -> 0.1 * exp(-t)), Inf) ≈ 0.1
     end
 
+    @testset "an onset or upper holding a parameter differentiates" begin
+        d_onset = ForwardDiff.derivative(1.0) do θ
+            EpiBranch.cumhazard(HazardKernel(t -> 0.5; onset = θ), 5.0)
+        end
+        @test d_onset ≈ ForwardDiff.derivative(θ -> EpiBranch.cumhazard(Exponential(2.0) + θ, 5.0), 1.0)
+        d_upper = ForwardDiff.derivative(3.0) do θ
+            EpiBranch.cumhazard(HazardKernel(t -> 2.0; upper = θ), 5.0)
+        end
+        @test d_upper ≈ 2.0
+        # Drawing through a dual bound runs, the bound's derivative aside.
+        @test isfinite(ForwardDiff.derivative(θ -> quantile(HazardKernel(t -> 2.0; onset = θ), 0.5), 1.0))
+    end
+
     @testset "rejects a non-positive upper" begin
         @test_throws ArgumentError HazardKernel(t -> 1.0; upper = 0.0)
     end

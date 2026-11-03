@@ -192,7 +192,7 @@ Generation time, incubation period and serial interval are then whatever the
 trajectory and its links to each clinical event imply, instead of separate
 inputs drawn independently of one another.
 """
-struct HazardKernel{F, T <: AbstractFloat} <: ContinuousUnivariateDistribution
+struct HazardKernel{F, T <: Real} <: ContinuousUnivariateDistribution
     hazard::F
     onset::T
     upper::T
@@ -209,7 +209,7 @@ function HazardKernel(hazard; upper::Real = Inf, onset::Real = 0.0)
     # smoothly from zero there (as a named distribution's own hazard often
     # does) from one still flat for a stretch beyond it, so this integrates
     # the same first step the inverter's own bracket would grow.
-    window = _hazard_integral(hazard, onset, min(onset + one(T), upper))
+    window = _hazard_integral_from(hazard, onset, min(onset + one(T), upper))
     window > 0 || throw(
         ArgumentError(
             "hazard is still zero just after onset = $onset; " *
@@ -232,7 +232,7 @@ function SurvivalDistributions.cumhazard(k::HazardKernel, τ::Real)
     τ >= 0 || throw(ArgumentError("τ must be non-negative, got $τ"))
     τ <= k.onset && return zero(float(τ))
     hi = min(float(τ), k.upper)
-    isfinite(hi) && return _hazard_integral(k.hazard, k.onset, hi)
+    isfinite(hi) && return _hazard_integral_from(k.hazard, k.onset, hi)
     # Over an unbounded horizon quadgk hands back a number even where the
     # integral diverges, with an error estimate of the same order as the
     # value; the total is infinite then, which the race's guard against
@@ -272,6 +272,15 @@ Base.minimum(::HazardKernel) = 0.0
 # where `upper` cuts the integration short.
 Base.maximum(::HazardKernel) = Inf
 Distributions.partype(::HazardKernel{F, T}) where {F, T} = T
+
+# Integrate `rate` over `[lo, hi]` through the unit interval, so that a bound
+# holding a dual parameter (an `onset` or `upper` being fitted) enters as part
+# of the integrand, where its boundary term is kept, rather than as an
+# endpoint, which quadrature does not take.
+function _hazard_integral_from(rate, lo, hi)
+    w = hi - lo
+    return _hazard_integral(u -> rate(lo + u * w) * w, 0.0, 1.0)
+end
 
 # `k.upper` caps the bracket `_invert_hazard` grows. A `target` beyond the
 # total hazard up to there is a contact that never happens, returned as `Inf`
