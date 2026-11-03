@@ -29,10 +29,7 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
   a multi-type `BranchingProcess`, and the scope of the approximation.
 - `max_time` now ends homogeneous, household and network simulations at that
   time: people whose infection would fall later stay uninfected, matching the
-  full run restricted to infections up to `max_time`. The other termination
-  controls still do not apply to these models.
-- Clean-project installation checks for matching source revisions and published
-  companion-package installations.
+  full run restricted to infections up to `max_time`.
 - Callable objects can supply branching-process offspring rules, generation-time
   distributions and multi-type offspring families.
 - `EpiBranch.transition_time` shares clinical event sampling with external
@@ -47,8 +44,7 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
 - Candidate intervention actions separate discovery from scheduling and resource
   admission. Capacity constraints now ration actual group-vaccination members.
 - Network and household races support ring and group actions with cached discovery
-  draws. Ring delivery requires zero post-exposure efficacy and an infinite
-  eligibility window on these engines.
+  draws.
 
 - Callable objects can supply observation probabilities, delays and anchors,
   attribute-builder parameters, isolation test sensitivity and scheduling
@@ -72,15 +68,14 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
   same period — `budget_per_period` candidates may be admitted for the
   resource every `period` days, measured on the simulation's own continuous
   clock, though the dose one of them is admitted for is dated later and may
-  land on another day. It acts through
-  `apply_post_transmission!`, so it only takes effect on the generation-based
-  engine; a continuous-time model does not call that hook and warns that it
-  has no effect there. Demand in excess of what remains is ordered by a
+  land on another day. Demand in excess of what remains is ordered by a
   `priority` function (first-come-first-served by trace time, by default)
   and only the front of that order is admitted; `carry_over` decides
   whether an unused allowance rolls into the next period. Rations
-  `RingVaccination` and `MassVaccination` out of the box; a resource other
-  than doses needs its own `capacity_key` method, not yet defined for
+  `RingVaccination`, `MassVaccination` and `GroupVaccination` out of the box,
+  and, as a count of admissions per period rather than beds held at once,
+  `Isolation` and a `ContactTracing` whose action is `Quarantine`; a resource
+  other than these needs its own `capacity_key` method, not yet defined for
   anything else in this package. `capacity_usage` reads back doses used
   against doses available.
 - `household_offspring` (in `EpiHouseholds`) returns the household-level
@@ -283,34 +278,27 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
   reach only the routes that list `EpiBranch.INTERVENTION_REMOVAL` in their
   `until`, while vaccinations, and by default any other intervention, reach
   every route.
-- A fixed-size pool with more than one mixing type refuses risks that depend on
-  the infector (a leaky `Isolation`, or an intervention's own `competing_risk`
-  other than a vaccine's protection of the contact), because it draws each
-  contact's infector without weighting by the mixing structure. Risks acting on
-  the contact alone still apply, and so does per-individual infectiousness,
-  which is carried by the force itself.
 - The continuous-time models' warning about interventions they cannot honour
-  now names only those that reach their targets through the generation engine's
-  post-transmission hooks — vaccination delivery —
-  and `ContactTracing` on the mass-action
-  pool, which has no pairwise contact structure to act along. An intervention
-  defined outside the package is named too when it has its own
-  `apply_post_transmission!` or `keep_active` method and does not trace
-  contacts, with nothing for its author to declare.
+  now names only those that need a case's own contacts to trace or act
+  along on a mass-action pool (`HomogeneousProcess`, `MixingProcess`), which
+  random mixing names none of: `RingVaccination` and `ContactTracing`.
+  `MassVaccination` and `GroupVaccination` reach the whole population
+  without needing any, so are no longer named. An intervention defined
+  outside the package is named too when it traces contacts, or needs them
+  for its own actions, with nothing for its author to declare.
 - Individuals created up front by a structure-driven model and never infected
   now have `infection_time = NaN` in state, which is also the default of
   `add_individuals!`. They previously had `0.0`, which looked the same as a case
   infected at the start of the simulation.
-- The fixed-size population pool's mixing structure is now keyed on the
-  individual's real attributes: a model names which attributes define mixing via
-  `mixing_by` (a tuple of attribute keys, e.g. `(:age_band, :ses)`), and the pool
-  buckets susceptibles by the actual values of those attributes. The between-group
-  force of infection is a model-supplied `force(type, counts)`, where `type` is a
-  susceptible's tuple of attribute values and `counts` maps each mixing type to
-  its current infectious number. Structured mixing (age bands, sex, income
-  strata, spatial patches) is then written on the extension surface without
-  touching the pool primitive. The homogeneous case names no attributes
-  (`mixing_by = ()`, one type).
+- `MixingProcess`'s mixing structure is keyed on the individual's real
+  attributes: a model names which attributes define mixing via `mixing_by`
+  (a tuple of attribute keys, e.g. `(:age_band, :ses)`), and susceptibles are
+  bucketed by the actual values of those attributes. The between-group
+  contact rate is a model-supplied `rate(infector_group, target_group)`, the
+  rate at which one infective in the first group contacts one member of the
+  second. Structured mixing (age bands, sex, income strata, spatial patches)
+  is then written on the extension surface without touching the race itself.
+  The homogeneous case names no attributes (`mixing_by = ()`, one group).
 - `NetworkProcess` (in `EpiNetwork`) is now a continuous-time contact-rate
   model. Transmission along each edge is a contact hazard racing the
   infector's recovery or isolation, drawn from a contact-interval kernel,
@@ -340,7 +328,7 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
   `AbstractVaccination`, storing a `VaccineEffect` and returning it from
   `EpiBranch.vaccine_effect`. An effect only some vaccinations have, such as
   `RingVaccination`'s `post_exposure_efficacy`, stays on the type that has it
-  and records its per-dose draw through the `_record_effect_draws!` hook. The
+  and records its per-dose draw through the `record_effect_draws!` hook. The
   positional constructors now take the `VaccineEffect` followed by the type's
   own fields, and vaccinations print as their keyword constructor calls. A
   misspelt keyword now names the vaccination and the keywords it takes, unless
