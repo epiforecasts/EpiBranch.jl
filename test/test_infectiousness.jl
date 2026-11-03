@@ -347,7 +347,8 @@ end
         d_rate = ForwardDiff.derivative(2.0) do θ
             quantile(truncated(HazardKernel(t -> θ), 0.0, 3.0), 0.5)
         end
-        @test d_rate ≈ ForwardDiff.derivative(θ -> quantile(truncated(Exponential(1 / θ), 0.0, 3.0), 0.5), 2.0)
+        # Against the closed form of the exponential truncated at 3.
+        @test d_rate ≈ ForwardDiff.derivative(θ -> -log1p(-0.5 * (1 - exp(-3θ))) / θ, 2.0)
         @test isfinite(ForwardDiff.derivative(θ -> quantile(truncated(HazardKernel(t -> 2.0; onset = θ), 0.0, 3.0), 0.5), 1.0))
         @test isfinite(ForwardDiff.derivative(θ -> quantile(truncated(HazardKernel(t -> 2.0), 0.0, θ), 0.5), 3.0))
     end
