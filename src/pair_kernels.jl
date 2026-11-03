@@ -773,7 +773,12 @@ function _hazard_integral_from(rate, lo, hi)
     reach = 1.0
     while reach < wp
         nxt = 2reach + 1
-        total += _hazard_integral(g, reach / wp, min(nxt, wp) / wp)
+        # What is already summed sets the scale for a tail segment, as one
+        # quadrature over the whole range would have it: a segment holding a
+        # negligible share of a decaying hazard is not refined on its own
+        # account. A hazard still zero so far keeps the relative tolerance.
+        atol = sqrt(eps(one(wp))) * abs(_plain(total))
+        total += first(quadgk(g, reach / wp, min(nxt, wp) / wp; atol))
         reach = nxt
     end
     return total

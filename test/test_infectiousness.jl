@@ -353,6 +353,16 @@ end
         # The reads stay inferred, since the pairwise likelihood calls them
         # once per pair.
         @test only(Base.return_types(EpiBranch.cumhazard, (typeof(k), Float64))) == Float64
+        # A decaying hazard is not refined over the tail it has left: a long
+        # range costs about the evaluations a short one does.
+        calls = Ref(0)
+        decaying = HazardKernel(t -> (calls[] += 1; 0.1 * exp(-t)))
+        calls[] = 0
+        EpiBranch.cumhazard(decaying, 50.0)
+        short = calls[]
+        calls[] = 0
+        EpiBranch.cumhazard(decaying, 1000.0)
+        @test calls[] <= 2 * short
     end
 
     @testset "the total hazard over an unbounded horizon is infinite where it diverges" begin
