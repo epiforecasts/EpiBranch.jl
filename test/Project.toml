@@ -24,12 +24,7 @@ StochasticAD = "e4facb34-4f7e-4bec-b153-e122c37934ac"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [compat]
-# Aqua 0.8.17 changed `test_persistent_tasks` to walk the environment the
-# package is loaded from, and it cannot resolve a weak dependency it meets
-# there: from the test environment it stops at `ChangesOfVariables`, a weak
-# dependency of `LogExpFunctions`, and reports the package as having persistent
-# tasks. Unpin once that is fixed upstream.
-Aqua = "=0.8.16"
+Aqua = "0.8.18"
 # The pre-commit hook builds its own environment from a `Runic@1` floor, so
 # that spec and this bound are the two places a version enters. They stay in
 # step, or the hook and the suite disagree about whether a file is formatted.
