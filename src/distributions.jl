@@ -312,7 +312,7 @@ kernel's onset has no contact to draw; a `Distribution` subtype all the same,
 so a user who caps a kernel with `truncated` reaches every seam a named
 distribution does.
 """
-struct _TruncatedHazardKernel{K, T <: AbstractFloat} <: ContinuousUnivariateDistribution
+struct _TruncatedHazardKernel{K, T <: Real} <: ContinuousUnivariateDistribution
     kernel::K
     hi::T
     logF_hi::T
@@ -321,8 +321,8 @@ function Distributions.truncated(k::HazardKernel, lo::Real, hi::Real)
     iszero(lo) || throw(
         ArgumentError("truncated(::HazardKernel, lo, hi) needs lo = 0")
     )
-    hi = float(hi)
-    return _TruncatedHazardKernel(k, hi, logcdf(k, hi))
+    hi, logF_hi = promote(float(hi), logcdf(k, float(hi)))
+    return _TruncatedHazardKernel(k, hi, logF_hi)
 end
 # The keyword spellings, `truncated(k; upper = hi)` and `truncated(k; lower =
 # 0)`, reach Distributions' own `Truncated` otherwise, which knows nothing of

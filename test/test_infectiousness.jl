@@ -339,6 +339,13 @@ end
         @test d_upper ≈ 2.0
         # Drawing through a dual bound runs, the bound's derivative aside.
         @test isfinite(ForwardDiff.derivative(θ -> quantile(HazardKernel(t -> 2.0; onset = θ), 0.5), 1.0))
+        # The truncation the `offspring` form builds holds a dual too.
+        d_rate = ForwardDiff.derivative(2.0) do θ
+            quantile(truncated(HazardKernel(t -> θ), 0.0, 3.0), 0.5)
+        end
+        @test d_rate ≈ ForwardDiff.derivative(θ -> quantile(truncated(Exponential(1 / θ), 0.0, 3.0), 0.5), 2.0)
+        @test isfinite(ForwardDiff.derivative(θ -> quantile(truncated(HazardKernel(t -> 2.0; onset = θ), 0.0, 3.0), 0.5), 1.0))
+        @test isfinite(ForwardDiff.derivative(θ -> quantile(truncated(HazardKernel(t -> 2.0), 0.0, θ), 0.5), 3.0))
     end
 
     @testset "rejects a non-positive upper" begin
