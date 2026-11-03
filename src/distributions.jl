@@ -309,6 +309,16 @@ function Distributions.truncated(k::HazardKernel, lo::Real, hi::Real)
     hi = float(hi)
     return _TruncatedHazardKernel(k, hi, logcdf(k, hi))
 end
+# The keyword spellings, `truncated(k; upper = hi)` and `truncated(k; lower =
+# 0)`, reach Distributions' own `Truncated` otherwise, which knows nothing of
+# a window with no mass.
+Distributions.truncated(k::HazardKernel, ::Nothing, hi::Real) = truncated(k, 0.0, hi)
+function Distributions.truncated(k::HazardKernel, lo::Real, ::Nothing)
+    iszero(lo) || throw(
+        ArgumentError("truncated(::HazardKernel, lo, hi) needs lo = 0")
+    )
+    return k
+end
 
 # A window that closes at or before the kernel's onset has no mass to
 # condition on (`logF_hi == -Inf`): every draw is then `Inf`, a contact that

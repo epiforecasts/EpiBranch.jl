@@ -441,6 +441,10 @@ end
         @test rand(StableRNG(1), tk) == Inf
         @test cdf(tk, 3.0) == 0.0
         @test cdf(tk, 5.0) == 0.0
+        # The keyword spelling reaches the same truncation.
+        @test rand(StableRNG(1), truncated(k; upper = 5.0)) == Inf
+        @test truncated(k; lower = 0.0) === k
+        @test_throws ArgumentError truncated(k; lower = 1.0)
         # The `offspring` form builds exactly this truncation for a case whose
         # infectious period ends before its kernel switches on; it must then
         # infect nobody rather than place every contact at the opening.
