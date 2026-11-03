@@ -59,6 +59,25 @@ EpiBranch.has_single_type_law
 EpiBranch.offspring_law_unchanged
 ```
 
+## Approximate population dynamics
+
+[`MeanFieldProcess`](@ref) and [`LinearNoiseProcess`](@ref) approximate a
+closed, homogeneously-mixing SIR population (the dynamics
+[`HomogeneousProcess`](@ref) simulates exactly) as a state-space model, sharing
+`simulate(model, state; max_time)` with the exact simulation so an external
+Kalman or particle filter can run on either. [`HybridProcess`](@ref) combines
+the two: exact simulation while the outbreak is small, the approximation once
+it is large, with no filtering code of its own.
+
+```@docs
+MeanFieldProcess
+MeanFieldState
+LinearNoiseProcess
+LinearNoiseState
+HybridProcess
+HybridState
+```
+
 ## Population characteristics
 
 Functions that give each case its characteristics when it is created: symptom
