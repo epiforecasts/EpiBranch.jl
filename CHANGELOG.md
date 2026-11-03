@@ -449,6 +449,11 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
   first trigger found even once a genuinely earlier one turned up. A settled
   member's dose, and a dose another vaccination already gave, still keep
   their date.
+- `progression_loglik` now treats an individual with no `:infected` key as
+  infected, matching `is_infected`. A hand-built `Individual` holding only
+  progression event times, as its docstring invites, used to contribute
+  zero with no error, since the `Individual(; ...)` keyword constructor
+  sets no `:infected` key.
 
 ## [0.1.0] - 2026-06-16
 
