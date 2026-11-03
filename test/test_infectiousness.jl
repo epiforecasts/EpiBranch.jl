@@ -346,6 +346,11 @@ end
             EpiBranch.cumhazard(HazardKernel(t -> 2.0; upper = θ), 5.0)
         end
         @test d_upper ≈ 2.0
+        cal = Seasonal(amplitude = 0.5, peak_day = 0.0, period = 365.0)
+        d_upper_cal = ForwardDiff.derivative(3.0) do θ
+            EpiBranch.cumhazard(EpiBranch._CalendarScaledKernel(HazardKernel(t -> 2.0; upper = θ), cal, 0.0), Inf)
+        end
+        @test d_upper_cal ≈ 2 * EpiBranch.calendar_multiplier(cal, 3.0)
         # Drawing through a dual bound runs, the bound's derivative aside.
         @test isfinite(ForwardDiff.derivative(θ -> quantile(HazardKernel(t -> 2.0; onset = θ), 0.5), 1.0))
         # The truncation the `offspring` form builds holds a dual too.

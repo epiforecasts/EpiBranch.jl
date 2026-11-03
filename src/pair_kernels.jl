@@ -698,9 +698,9 @@ end
 function _calendar_cumhazard(::SmoothCalendar, k::_CalendarScaledKernel, τ)
     start, upper, certain = _profile_bounds(k.profile)
     certain && τ >= upper && return oftype(float(τ), Inf)
-    # Only a `HazardKernel`'s `upper` is ever converted: a bounded named
-    # support has returned above, and its top may hold a dual parameter.
-    hi = τ < upper ? float(τ) : oftype(float(τ), upper)
+    # `upper` is reached only by a `HazardKernel`, a bounded named support
+    # having returned above, and is kept as it is so a dual in it survives.
+    hi = τ < upper ? float(τ) : upper
     isfinite(hi) || return oftype(hi, Inf)
     # From `start`, as the inverse brackets: a run of zero hazard before the
     # onset would otherwise hide a short positive stretch from quadrature's
