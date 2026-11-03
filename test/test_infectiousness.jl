@@ -312,6 +312,17 @@ end
         k = HazardKernel(t -> 0.1 * exp(-t); upper = 50.0)
         @test EpiBranch._time_at_log_survival(k, -0.5) == Inf
         @test EpiBranch._time_at_log_survival(k, -0.05) ≈ invlogccdf(k, -0.05)
+        # An unbounded kernel under the calendar is trusted too, rather than
+        # bisected again to overflow: the search itself is the whole cost.
+        calls = Ref(0)
+        counted = HazardKernel(t -> (calls[] += 1; 0.1 * exp(-t)))
+        ck = EpiBranch._CalendarScaledKernel(counted, cal, 0.0)
+        calls[] = 0
+        direct = invlogccdf(ck, -0.5)
+        search = calls[]
+        calls[] = 0
+        @test EpiBranch._time_at_log_survival(ck, -0.5) == Inf == direct
+        @test calls[] <= search + 10
     end
 
     @testset "a bound on the integration leaves the realised R unchanged" begin
