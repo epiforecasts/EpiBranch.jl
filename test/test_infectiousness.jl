@@ -328,6 +328,19 @@ end
         @test bounded == unbounded
     end
 
+    @testset "a hazard that has cleared is still summed over a long range" begin
+        # One quadrature pass over [0, 1000] has no node in [0, 2].
+        k = HazardKernel(t -> t < 2.0 ? 1.0 : 0.0; upper = 1000.0)
+        for tau in (50.0, 600.0, 1000.0, Inf)
+            @test EpiBranch.cumhazard(k, tau) ≈ 2.0
+        end
+        @test logccdf(k, Inf) ≈ -2.0
+        @test EpiBranch.cumhazard(HazardKernel(t -> t < 2.0 ? 1.0 : 0.0), 1000.0) ≈ 2.0
+        ck = EpiBranch._CalendarScaledKernel(k, t -> 1.0, 0.0)
+        @test EpiBranch.cumhazard(ck, 1000.0) ≈ 2.0
+        @test isfinite(truncated(k, 0.0, 900.0).logF_hi)
+    end
+
     @testset "the total hazard over an unbounded horizon is infinite where it diverges" begin
         @test logccdf(HazardKernel(t -> 2.0), Inf) == -Inf
         @test EpiBranch.cumhazard(HazardKernel(t -> 0.1 * exp(-t)), Inf) ≈ 0.1

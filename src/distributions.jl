@@ -273,15 +273,6 @@ Base.minimum(::HazardKernel) = 0.0
 Base.maximum(::HazardKernel) = Inf
 Distributions.partype(::HazardKernel{F, T}) where {F, T} = T
 
-# Integrate `rate` over `[lo, hi]` through the unit interval, so that a bound
-# holding a dual parameter (an `onset` or `upper` being fitted) enters as part
-# of the integrand, where its boundary term is kept, rather than as an
-# endpoint, which quadrature does not take.
-function _hazard_integral_from(rate, lo, hi)
-    w = hi - lo
-    return _hazard_integral(u -> rate(lo + u * w) * w, 0.0, 1.0)
-end
-
 # `k.upper` caps the bracket `_invert_hazard` grows. A `target` beyond the
 # total hazard up to there is a contact that never happens, returned as `Inf`
 # rather than doubled towards forever; `upper` only bounds the integration,

@@ -709,8 +709,7 @@ function _calendar_cumhazard(::SmoothCalendar, k::_CalendarScaledKernel, τ)
     # integrand, where its boundary term -λ(start) start' is picked up,
     # rather than as an endpoint, which quadrature does not take.
     hi <= start && return zero(hi)
-    w = hi - start
-    return _hazard_integral(u -> _calendar_hazard(k, start + u * w) * w, 0.0, 1.0)
+    return _hazard_integral_from(s -> _calendar_hazard(k, s), start, hi)
 end
 
 # Where a profile's hazard is first positive, where its integration stops,
@@ -755,6 +754,28 @@ end
 
 # Integrate `rate` over `[lo, hi]` by quadrature.
 _hazard_integral(rate, lo, hi) = first(quadgk(rate, lo, hi))
+
+# Integrate `rate` over `[lo, hi]` through the unit interval, so that a bound
+# holding a dual parameter (an `onset` or `upper` being fitted) enters as part
+# of the integrand, where its boundary term is kept, rather than as an
+# endpoint, which quadrature does not take. The interior breakpoints are the
+# doublings the inverter's bracket walks: a hazard active for a short stretch
+# at the start of a long range is otherwise missed by the first pass over the
+# whole range, every node of which reads zero.
+function _hazard_integral_from(rate, lo, hi)
+    w = hi - lo
+    return first(quadgk(u -> rate(lo + u * w) * w, _unit_knots(_plain(w))...))
+end
+function _unit_knots(w)
+    knots = [0.0]
+    reach = 1.0
+    while reach < w
+        push!(knots, reach / w)
+        reach = 2reach + 1
+    end
+    push!(knots, 1.0)
+    return knots
+end
 
 # Bisect `[lo, hi]` down to adjacent floats; `acc` and `hi_acc`, the integrals
 # of `rate` from 0 to each end, bracket `target`. Returns the bisected time
