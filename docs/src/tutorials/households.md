@@ -462,7 +462,7 @@ grid[argmax([ll(s) for s in grid])]
 
 The estimate is close to the 4 days the outbreak was simulated with.
 
-!!! warning "Partial protection changes what is estimated"
+!!! note "Partial protection changes what is estimated"
     Suppose the model that produced the data had partial protection in place
     throughout, such as a vaccine's efficacy or differences in
     susceptibility or infectiousness. Each blocks a fraction
@@ -472,9 +472,9 @@ The estimate is close to the 4 days the outbreak was simulated with.
     includes the vaccination, allows for a vaccine's efficacy against
     infection. Isolation or quarantine that stops all transmission is
     recorded in the data, and the likelihood allows for it. Isolation that
-    still lets some transmission through is not in the likelihood:
-    `loglikelihood(data, model)` stops with an error for such a model, and
-    `pairwise_surv_loglik` ignores it.
+    still lets some transmission through is recorded too, as a stretch of
+    reduced rather than zero hazard, which both `pairwise_surv_loglik` and
+    `loglikelihood(data, model)` score.
 
 The contact-interval distribution can also depend on who infects whom, for
 example adults transmitting faster than children, through a function

@@ -557,13 +557,12 @@ quarantine a case, the data record when that happened, and their contacts
 are not at risk from them during it. A case isolated for good counts as infectious only
 up to isolation.
 
-!!! warning "Partial protection is not in the data"
-    Isolation that still lets some transmission through is not recorded in
-    the data. `pairwise_surv_loglik` ignores it, which pulls the estimated
-    rate of infecting contacts down, and `loglikelihood(data, model)` stops
-    with an error for such a model. A vaccine's efficacy against infection is
-    allowed for by `loglikelihood(data, model)` with the vaccination in
-    `model`.
+!!! note "Partial protection is in the data"
+    Isolation that still lets some transmission through is recorded in the
+    data as a stretch of reduced hazard rather than a gap, and both
+    `pairwise_surv_loglik` and `loglikelihood(data, model)` score it. A
+    vaccine's efficacy against infection is allowed for by
+    `loglikelihood(data, model)` with the vaccination in `model`.
 
 There is no one-call fitting function. Here we evaluate the log-likelihood at
 a grid of mean contact intervals and take the best one, the maximum likelihood
@@ -663,11 +662,11 @@ stretch a case is isolated for, and has it back once released.
     separately. [Fitting a community hazard](@ref) explains why.
 
 !!! warning "What cannot be fitted yet"
-    - A route kernel that is a [`PairKernel`](@ref), and an intervention that
-      changes susceptibility (such as vaccination) on a `RoutedNetwork`, are
-      not yet represented in the routed likelihood; `loglikelihood(data,
-      model)` stops with an error for such a model, as it does for leaky
-      isolation on `NetworkProcess`.
+    - A route kernel that is a [`PairKernel`](@ref) is not yet represented in
+      the routed likelihood; `loglikelihood(data, model)` stops with an
+      error for such a model. Leaky isolation on a `RoutedNetwork` is not
+      represented either, but silently: the routed likelihood scores it as
+      if it were not isolated at all, rather than erroring.
     - In real data infection times are not observed. They have to be estimated
       together with the parameters, from symptom onsets and the disease
       timeline (data augmentation), as described for [household
