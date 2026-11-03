@@ -49,7 +49,7 @@ progression_loglik(spec, state)
 function progression_loglik(spec::ModelSpec, individuals::AbstractVector{<:Individual})
     ll = 0.0
     for ind in individuals
-        get(ind.state, :infected, false) || continue
+        is_infected(ind) || continue
         for t in spec.progression
             ll += transition_loglik(t, ind)
         end
