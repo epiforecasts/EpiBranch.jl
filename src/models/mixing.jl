@@ -44,8 +44,9 @@ infectious window opens at, derived from the progression when left `nothing`;
 `until` names the removal states that close it.
 
 The population is simulated until extinction or `max_time`, whichever comes
-first; the other `simulate` termination controls do not apply, and `simulate`
-warns if you set one.
+first. The `max_cases` and `max_generations` keyword shortcuts default to off
+here, so a run keeps going to extinction or `max_time` unless an explicit
+value, or a `stopping_rules` entry, asks for a cap.
 
 Every contact is a contact between two named people, so competing risks,
 per-individual susceptibility and infectiousness, and risks that read the

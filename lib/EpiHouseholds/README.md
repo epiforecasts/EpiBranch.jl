@@ -14,7 +14,7 @@ testing are flexible `Transition`s on the shared natural-history timeline, so a
 household line list is an EpiBranch line list.
 
 `HouseholdProcess` is a structure-driven `TransmissionModel`, like
-`NetworkProcess` in [epiNetwork](../epiNetwork). It simulates by the
+`NetworkProcess` in [EpiNetwork](../EpiNetwork). It simulates by the
 **Sellke construction** in continuous time — the exact generative model of its
 pairwise likelihood — because a finite, depleting clique needs time-ordered
 competing-risk resolution.
@@ -60,11 +60,3 @@ layout = compile_household_pairs(household_of, is_index, infected)
     onset ~ ... infection_time .+ incubation ...           # progression observation, fit to data
 end
 ```
-
-## Status
-
-Work in progress. The `HouseholdProcess` model, its continuous-time (Sellke)
-`simulate`, and the pairwise contact-process likelihood — including the external
-(community) hazard term, scalar or time-varying — are in place, with an exact
-`simulate → loglikelihood` round trip. Still to come: helpers for the
-latent-infection `@model`, and the docs/CI wiring into the monorepo.

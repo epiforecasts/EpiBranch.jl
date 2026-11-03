@@ -15,6 +15,12 @@
 # infectious window early (recovery, isolation) genuinely curtails onward
 # transmission — the thing a coin-flip-per-edge model cannot express.
 
+# Kept as-is when it is already a `Vector{Vector{Int}}`, since copying every
+# neighbour vector of a large network is the dominant cost of building a
+# `NetworkProcess` (see the constructor's docstring).
+_as_adjacency(adjacency::Vector{Vector{Int}}) = adjacency
+_as_adjacency(adjacency) = Vector{Int}[Int.(nbrs) for nbrs in adjacency]
+
 """
     NetworkProcess(adjacency, kernel; from = nothing,
                    until = (:recovered, :died, :isolated), external_hazard = 0.0,
@@ -70,12 +76,6 @@ model = ModelSpec(NetworkProcess(adjacency, Exponential(2.0));
     progression = [Transition(:recovered; from = :infection, delay = 6.0, terminal = true)])
 ```
 """
-# Kept as-is when it is already a `Vector{Vector{Int}}`, since copying every
-# neighbour vector of a large network is the dominant cost of building a
-# `NetworkProcess` (see the constructor's docstring).
-_as_adjacency(adjacency::Vector{Vector{Int}}) = adjacency
-_as_adjacency(adjacency) = Vector{Int}[Int.(nbrs) for nbrs in adjacency]
-
 struct NetworkProcess{K, E} <: TransmissionModel
     adjacency::Vector{Vector{Int}}   # adjacency[i] = graph neighbours of node i
     edge_kernel::K                   # contact interval: shared, callable, or per-edge
