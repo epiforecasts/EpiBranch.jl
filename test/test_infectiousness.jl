@@ -333,6 +333,10 @@ end
             EpiBranch.cumhazard(HazardKernel(t -> 0.5; onset = θ), 5.0)
         end
         @test d_onset ≈ ForwardDiff.derivative(θ -> EpiBranch.cumhazard(Exponential(2.0) + θ, 5.0), 1.0)
+        d_total = ForwardDiff.derivative(1.0) do θ
+            EpiBranch.cumhazard(HazardKernel(t -> 2.0 * exp(-t); onset = θ), Inf)
+        end
+        @test d_total ≈ -2 * exp(-1)
         d_upper = ForwardDiff.derivative(3.0) do θ
             EpiBranch.cumhazard(HazardKernel(t -> 2.0; upper = θ), 5.0)
         end
