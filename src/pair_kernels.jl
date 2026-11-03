@@ -724,6 +724,9 @@ function _profile_bounds(profile)
     return max(zero(m), m), float(maximum(profile)), true
 end
 _profile_bounds(k::HazardKernel) = k.onset, k.upper, false
+# A truncated kernel's survival ends at `hi`, except where the window has no
+# mass at all: a draw is then `Inf` here as it is without a calendar.
+_profile_bounds(k::_TruncatedHazardKernel) = 0.0, k.hi, !_no_mass(k)
 
 # A value stripped of every dual level, for the ends of a bracket.
 _plain(x::Real) = x

@@ -495,12 +495,6 @@ end
 function _window_infection_time(kernel::_CalendarScaledKernel, from_t::Real, state)
     return from_t + rand(state.rng, kernel)
 end
-# A `HazardKernel` conditioned on recovery (see `_conditioned_on_recovery`)
-# truncates to a `_TruncatedHazardKernel` rather than a `Distribution`, so it
-# needs its own dispatch here too.
-function _window_infection_time(kernel::_TruncatedHazardKernel, from_t::Real, state)
-    return from_t + rand(state.rng, kernel)
-end
 
 # Tag a contact with its window's `until` states so `WindowCensor` can
 # block it after the infector is removed. Skipped for windows with no

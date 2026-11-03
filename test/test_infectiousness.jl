@@ -370,6 +370,38 @@ end
         @test logcdf(tk, hi) == 0.0
     end
 
+    @testset "a truncated kernel is a Distribution, so every seam reaches it" begin
+        tk = truncated(HazardKernel(t -> 2.0), 0.0, 5.0)
+        @test tk isa Distribution
+        te = truncated(Exponential(0.5), 0.0, 5.0)
+        for tau in (0.1, 1.0, 4.9)
+            @test logpdf(tk, tau) ≈ logpdf(te, tau)
+            @test EpiBranch.loghazard(tk, tau) ≈ logpdf(te, tau) - logccdf(te, tau)
+            @test EpiBranch.cumhazard(tk, tau) ≈ -logccdf(te, tau)
+        end
+        @test logpdf(tk, 5.0) == -Inf
+        interval(s, kid) = kid.infection_time - s.individuals[kid.parent_id].infection_time
+        # As a bare window kernel, through `get_generation_time`.
+        m = ModelSpec(BranchingProcess(Infectiousness(Poisson(3.0); kernel = tk)))
+        s = simulate(m; n_initial = 50, max_generations = 1, rng = StableRNG(1))
+        kids = filter(i -> i.parent_id != 0 && is_infected(i), s.individuals)
+        @test length(kids) > 0
+        @test all(kid -> interval(s, kid) <= 5.0, kids)
+        # Per case under a calendar, through the calendar-scaled wrapper.
+        cal = Seasonal(amplitude = 0.5, peak_day = 0.0, period = 365.0)
+        w = Infectiousness(
+            Poisson(3.0); kernel = ind -> truncated(HazardKernel(t -> 2.0), 0.0, 5.0),
+            calendar = cal
+        )
+        s2 = simulate(
+            ModelSpec(BranchingProcess(w)); n_initial = 50, max_generations = 1,
+            rng = StableRNG(1)
+        )
+        kids2 = filter(i -> i.parent_id != 0 && is_infected(i), s2.individuals)
+        @test length(kids2) > 0
+        @test all(kid -> interval(s2, kid) <= 5.0, kids2)
+    end
+
     @testset "works as a bare contact_interval, not just a per-case kernel" begin
         # Both implied_R and the `offspring` form of transmission_timing call
         # `cdf`/`truncated` on `contact_interval` directly.

@@ -296,8 +296,14 @@ always 0, since a `HazardKernel`'s own support already starts there.
 This is the usual meaning of `Distributions.truncated`, a rescaled
 conditional distribution; the kernel's own `upper` only bounds its
 integration and excludes nothing.
+
+An internal wrapper rather than Distributions' own `Truncated`, which draws
+through the base `quantile` and cannot say that a window closing before the
+kernel's onset has no contact to draw; a `Distribution` subtype all the same,
+so a user who caps a kernel with `truncated` reaches every seam a named
+distribution does.
 """
-struct _TruncatedHazardKernel{K, T <: AbstractFloat}
+struct _TruncatedHazardKernel{K, T <: AbstractFloat} <: ContinuousUnivariateDistribution
     kernel::K
     hi::T
     logF_hi::T
@@ -336,9 +342,23 @@ function Distributions.quantile(k::_TruncatedHazardKernel, p::Real)
     _no_mass(k) && return oftype(k.hi, Inf)
     return quantile(k.kernel, exp(k.logF_hi + log(p)))
 end
+function Distributions.logpdf(k::_TruncatedHazardKernel, τ::Real)
+    (_no_mass(k) || τ >= k.hi) && return oftype(k.logF_hi, -Inf)
+    return logpdf(k.kernel, τ) - k.logF_hi
+end
+Distributions.pdf(k::_TruncatedHazardKernel, τ::Real) = exp(logpdf(k, τ))
+# The hazard of the conditional law, which a calendar-scaled window reads
+# directly, differs from the base kernel's: it blows up towards `hi`.
+function SurvivalDistributions.loghazard(k::_TruncatedHazardKernel, τ::Real)
+    τ < k.hi || return oftype(k.logF_hi, -Inf)
+    return logpdf(k, τ) - logccdf(k, τ)
+end
+SurvivalDistributions.hazard(k::_TruncatedHazardKernel, τ::Real) = exp(loghazard(k, τ))
+SurvivalDistributions.cumhazard(k::_TruncatedHazardKernel, τ::Real) = -logccdf(k, τ)
 Base.rand(rng::AbstractRNG, k::_TruncatedHazardKernel) = quantile(k, rand(rng))
 Base.minimum(::_TruncatedHazardKernel) = 0.0
 Base.maximum(k::_TruncatedHazardKernel) = k.hi
+Distributions.partype(k::_TruncatedHazardKernel) = Distributions.partype(k.kernel)
 
 """
     Conditional(dist)
