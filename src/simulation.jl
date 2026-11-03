@@ -683,6 +683,89 @@ function add_individuals!(
     return added
 end
 
+"""
+    lazily_populate!(state, n, interventions; setup = (ind, i) -> nothing) -> state
+
+Set `state` up for `n` people none of which exist yet, in place of
+[`add_individuals!`](@ref). Used by a transmission model whose population is
+large relative to the outbreaks it simulates, such as `NetworkProcess` or
+`RoutedNetwork`, so that a run costs in proportion to the people the
+outbreak reaches rather than to the size of the population. Every slot in
+`state.individuals` starts out pointing to one placeholder, shared by every
+slot and never mutated: it reads as never infected (`is_infected` false),
+untouched by any intervention, with susceptibility and infectiousness at
+their neutral value of 1. The engine replaces it with a real person, drawing
+their population characteristics from the per-person streams [`stream`](@ref)
+gives every other draw, the first time it proposes that node an infection or
+an intervention reaches it; `setup` and `interventions` are applied then,
+exactly as `add_individuals!` applies them at creation. [`realise!`](@ref)
+creates everyone still unrealised once a run has finished.
+"""
+function lazily_populate!(
+        state::SimulationState, n::Integer, interventions;
+        setup = (ind, i) -> nothing
+    )
+    T = _timetype(state)
+    s = IndividualState{T}()
+    s[:infected] = false
+    placeholder = Individual{T}(
+        0, 0, 0, 0, T(NaN), one(T), one(T), Int[], s, InfectionEpisode{T}[]
+    )
+    state.lazy = _LazyPopulation(placeholder, interventions, setup)
+    resize!(state.individuals, n)
+    fill!(state.individuals, placeholder)
+    return state
+end
+
+# The individual at `id`, replacing it first if `state` is a lazily
+# populated model's and `id` has not been touched before. A model built
+# upfront (`state.lazy === nothing`) never stores the placeholder, so this
+# is one pointer comparison for every model but the lazily populated ones.
+@inline function _realised!(state::SimulationState, id::Int)
+    ind = @inbounds state.individuals[id]
+    lazy = state.lazy
+    (lazy === nothing || ind !== lazy.placeholder) && return ind
+    return _realise!(state, lazy, id)
+end
+
+function _realise!(state::SimulationState, lazy::_LazyPopulation, id::Int)
+    ind = _create_individual(state, 0, id, id, NaN)
+    lazy.setup(ind, id)
+    for intervention in lazy.interventions
+        initialise_individual!(intervention, ind, state)
+    end
+    state.individuals[id] = ind
+    return ind
+end
+
+"""
+    realise!(state::SimulationState) -> state
+
+Create every person a lazily populated model (`NetworkProcess`,
+`RoutedNetwork`) did not need during the run, drawing each one's population
+characteristics from the same per-person streams the run itself drew from
+(see [`CommonRandomNumbers`](@ref)): under common random numbers, a person's
+attributes are then the same whether the outbreak reached them or `realise!`
+created them afterwards. A no-op for a model whose population is built
+upfront, which is every model but these two.
+
+Call this when you need the characteristics of people the outbreak never
+reached, such as comparing susceptibility across the whole population rather
+than just the cases. Without it, `linelist(state; infected_only = false)`
+and anything else that reads every person in `state.individuals` sees an
+unrealised person as never infected, with no population characteristics
+drawn and susceptibility and infectiousness both at their neutral value of
+1.
+"""
+function realise!(state::SimulationState)
+    lazy = state.lazy
+    lazy === nothing && return state
+    for id in eachindex(state.individuals)
+        _realised!(state, id)
+    end
+    return state
+end
+
 """The `i`-th person's type, out of `n_types`: uniform at random by default,
 the `i`-th entry of `types` when it is a vector, or an independent draw from
 `types` when it is a `Distribution` (checked against `1:n_types` and for

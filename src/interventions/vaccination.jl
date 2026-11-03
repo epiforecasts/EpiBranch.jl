@@ -1199,14 +1199,18 @@ end
 # the tail added since the last query is scanned, rather than every individual
 # on every call. Correct because membership is set once, at creation, and never
 # changes afterwards (see `groups`/`group_attribute`), so an id already indexed
-# never needs revisiting.
+# never needs revisiting. On a lazily populated model (see
+# `EpiBranch.lazily_populate!`), `state.individuals` is already at its full
+# length from the start, so the first call realises everyone not yet created:
+# knowing who belongs to a group needs the whole population, the same as
+# `acts_on_population` does.
 function _group_members(state::SimulationState, key::Symbol, group)
     seen, index = get!(state.scratch, (:group_members, key)) do
         (Ref(0), Dict{Any, Vector{Int}}())
     end::Tuple{Base.RefValue{Int}, Dict{Any, Vector{Int}}}
     n = length(state.individuals)
     for id in (seen[] + 1):n
-        g = get(state.individuals[id].state, key, nothing)
+        g = get(_realised!(state, id).state, key, nothing)
         g === nothing && continue
         push!(get!(index, g, Int[]), id)
     end

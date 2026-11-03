@@ -24,7 +24,7 @@ _as_adjacency(adjacency) = Vector{Int}[Int.(nbrs) for nbrs in adjacency]
 """
     NetworkProcess(adjacency, kernel; from = nothing,
                    until = (:recovered, :died, :isolated), external_hazard = 0.0,
-                   obs_end = Inf)
+                   obs_end = Inf, eager = false)
 
 Transmission over a fixed contact network: who can infect whom is set by the
 network, and each infectious person infects a neighbour after a random delay,
@@ -67,6 +67,16 @@ node, or a function `j -> rate, distribution or schedule` of node `j`'s
 number. These introductions happen only in the first `obs_end` days, which
 must be finite when `external_hazard` is used.
 
+Each node is created only once an infectious neighbour proposes it a contact
+or an intervention reaches it (contact tracing reaches every neighbour,
+infected or not), drawing its population characteristics from the same
+per-person streams every other draw uses, so a run costs in proportion to
+the people the outbreak reaches rather than to the size of the network. Pass
+`eager = true` to create and draw every node upfront instead, as every
+version before this did; [`EpiBranch.realise!`](@ref) creates the rest of
+the population after a lazy run, for the characteristics of people the
+outbreak never reached.
+
 # Example
 
 ```julia
@@ -83,6 +93,7 @@ struct NetworkProcess{K, E} <: TransmissionModel
     until::Tuple                     # removal states that close the infectious window
     external_hazard::E               # community force of infection (0 = none)
     obs_end::Float64                 # end of the community-importation window
+    eager::Bool                      # build and draw every node upfront, rather than lazily
 end
 
 function NetworkProcess(
@@ -91,7 +102,8 @@ function NetworkProcess(
         from = nothing,
         until = (:recovered, :died, :isolated),
         external_hazard = 0.0,
-        obs_end = Inf
+        obs_end = Inf,
+        eager::Bool = false
     )
     adj = _as_adjacency(adjacency)
     edge_kernel = _validate_kernel(kernel, adj)
@@ -105,7 +117,7 @@ function NetworkProcess(
 
     return NetworkProcess(
         adj, edge_kernel, from, Tuple(until),
-        _normalise_external(external_hazard), obs_end_value
+        _normalise_external(external_hazard), obs_end_value, eager
     )
 end
 
