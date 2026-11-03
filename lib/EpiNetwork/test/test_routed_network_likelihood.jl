@@ -247,6 +247,44 @@ end
         )
     end
 
+    @testset "RoutedMassActionHazard rejected as a process's own external_hazard" begin
+        # RoutedMassActionHazard, like the bare hazard it wraps, is read off an
+        # outbreak's own infection record and cannot be simulated from; passing
+        # it to RoutedNetwork's own `external_hazard` must fail the same clear
+        # way a bare MassActionHazard does there, rather than falling through
+        # to the generic calendar-schedule fallback's bare MethodError.
+        hh, comm = _routed_adjacency(5, 4)
+        windows = [
+            RouteWindow(:household; until = (:recovered,), kernel = Exponential(1.0), reach = hh),
+            RouteWindow(:community; until = (:recovered,), kernel = Exponential(1.0), reach = comm),
+        ]
+        routed = RoutedMassActionHazard(
+            :community, MassActionHazard(; transmission_rate = 1.0, population_size = 5)
+        )
+        m = ModelSpec(
+            RoutedNetwork(windows; external_hazard = routed, obs_end = 10.0);
+            progression = _sir(8.0)
+        )
+        @test_throws ArgumentError simulate(m; rng = StableRNG(1))
+    end
+
+    @testset "routed_network_infections rejects a route that proposes its own contacts" begin
+        # a route whose `reach` proposes its own contacts has nothing for
+        # `routed_network_infections` to read as a fixed adjacency list;
+        # caught here with a clear message rather than left to fail inside
+        # `_route_kernel` once the likelihood tries to call a `nothing` kernel.
+        n = 10
+        windows = [
+            RouteWindow(
+                :community; until = (:recovered,), kernel = nothing,
+                reach = _EveryoneElse(0.5, n)
+            ),
+        ]
+        m = ModelSpec(RoutedNetwork(windows; n = n); progression = _sir(8.0))
+        state = simulate(m; n_initial = 2, rng = StableRNG(1))
+        @test_throws ArgumentError routed_network_infections(state, m)
+    end
+
     @testset "RoutedMassActionHazard reads only its own route's windows" begin
         # 1 is infectious on the household route over (0, 10] and on the
         # community route over (0, 1] only (say isolation closed it early); 2

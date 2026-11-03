@@ -157,6 +157,13 @@ EpiBranch._valid_external(::RoutedMassActionHazard) = true
 EpiBranch._ext_active(m::RoutedMassActionHazard) = EpiBranch._ext_active(m.hazard)
 EpiBranch._ext_explains_index(m::RoutedMassActionHazard) = EpiBranch._ext_explains_index(m.hazard)
 
+# A process's own `external_hazard` prepares without an outbreak to read, the
+# same gap a bare `MassActionHazard` falls into; delegating to its one-argument
+# rejection there gives the same clear message instead of reaching the generic
+# calendar-schedule fallback, which has no `calendar_multiplier` method for
+# this type and fails with a bare `MethodError`.
+EpiBranch._ext_prepare(m::RoutedMassActionHazard) = EpiBranch._ext_prepare(m.hazard)
+
 function _routed_mass_action_index(data::RoutedNetworkInfections, route::Symbol)
     r = findfirst(==(route), data.route_names)
     r === nothing && throw(
@@ -220,6 +227,14 @@ function routed_network_infections(
         end
     end
 
+    for w in windows
+        EpiBranch.proposes_own_contacts(w.reach) && throw(
+            ArgumentError(
+                "route :$(w.name) proposes its own contacts, which the routed-network " *
+                    "likelihood does not yet read back into a fixed adjacency list"
+            )
+        )
+    end
     contacts = [Vector{Int}[Int.(nb) for nb in w.reach] for w in windows]
     route_names = Symbol[w.name for w in windows]
     host_times = _layer_host_times(state, model, ())
