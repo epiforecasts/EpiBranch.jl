@@ -725,10 +725,13 @@ function _profile_bounds(profile)
 end
 _profile_bounds(k::HazardKernel) = k.onset, k.upper, false
 # A truncated kernel starts where its base kernel does and its survival ends
-# at `hi`, except where the window has no mass at all: the start then sits
-# at or past the end, nothing is integrated, and a draw is `Inf` here as it
-# is without a calendar.
-_profile_bounds(k::_TruncatedHazardKernel) = k.kernel.onset, k.hi, !_no_mass(k)
+# at the cap, or at the base kernel's `upper` where that comes first, beyond
+# which the conditional hazard has already diverged; except where the window
+# has no mass at all: the start then sits at or past the end, nothing is
+# integrated, and a draw is `Inf` here as it is without a calendar.
+function _profile_bounds(k::_TruncatedHazardKernel)
+    return k.kernel.onset, min(k.kernel.upper, k.hi), !_no_mass(k)
+end
 
 # A value stripped of every dual level, for the ends of a bracket.
 _plain(x::Real) = x

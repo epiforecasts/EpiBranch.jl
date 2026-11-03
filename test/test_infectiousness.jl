@@ -414,6 +414,10 @@ end
         tu = truncated(HazardKernel(t -> 2.0; upper = 3.0), 0.0, 5.0)
         @test EpiBranch.loghazard(tu, 4.0) == -Inf
         @test EpiBranch.hazard(tu, 4.0) == 0.0
+        # Under a calendar the survival has ended at the base `upper` too.
+        cu = EpiBranch._CalendarScaledKernel(tu, Seasonal(amplitude = 0.5, peak_day = 0.0, period = 365.0), 0.0)
+        @test EpiBranch.cumhazard(cu, 4.0) == Inf
+        @test isfinite(EpiBranch.cumhazard(cu, 2.0))
         interval(s, kid) = kid.infection_time - s.individuals[kid.parent_id].infection_time
         # As a bare window kernel, through `get_generation_time`.
         m = ModelSpec(BranchingProcess(Infectiousness(Poisson(3.0); kernel = tk)))
