@@ -110,6 +110,28 @@ using Random
         @test EpiBranch._allows_reinfection(state)
     end
 
+    @testset "A reinfection that reaches no terminal step drops the earlier outcome" begin
+        ind = Individual(; id = 1, infection_time = 5.0)
+        ind.state[:outcome] = :recovered
+        ind.state[:outcome_time] = 12.0
+        close_episode!(ind, InfectionEpisode(ind))
+        ind.infection_time = 30.0
+
+        # The only terminal step never fires, so `resolve_transitions!` finds
+        # no terminal candidate of its own for this episode.
+        progression = AbstractClinicalTransition[
+            Transition(:recovered, from = :infection, delay = 1.0, probability = 0.0, terminal = true),
+        ]
+        state = EpiBranch.new_state(
+            PingPongModel(), progression, NoAttributes(), MersenneTwister(1)
+        )
+        EpiBranch.resolve_transitions!(state, ind)
+
+        @test !haskey(ind.state, :outcome)
+        @test outcome_time(ind) == Inf
+        @test ind.episodes[1].state[:outcome_time] == 12.0
+    end
+
     @testset "A model that keeps offering a recovered host gets fresh episodes" begin
         progression = [
             Transition(:recovered, from = :infection, delay = 1.0),
