@@ -556,6 +556,20 @@ to, so their releases are binding. A block that comes and goes with the state,
 such as a ward that reopens, is not, and the simulation stops with an error
 instead of ending a pair whose contacts could still transmit.
 
+A release can still be revised once something that was not known when it was
+recorded settles: [`EpiBranch.revise_removal!`](@ref EpiBranch.revise_removal!)
+changes the release of the entry the handle
+[`record_removal!`](@ref EpiBranch.record_removal!) returned names, shortening
+or lengthening the stretch, and
+[`EpiBranch.withdraw_removal!`](@ref EpiBranch.withdraw_removal!) undoes it
+outright. `binding_release`'s promise still holds so long as the revision
+happens before anything reads the old release, such as in
+[`on_infection_settled!`](@ref EpiBranch.on_infection_settled!), called the
+moment a case's own infection is fixed and before it has made any
+transmissions of its own. [Releasing a quarantine early](@ref) works through
+this for a quarantine a negative test can end sooner than its recorded
+duration.
+
 !!! warning "Name the key, or the likelihood stops with an error"
     A removal that declares `infection_likelihood_compatible` must name its key
     with `removal_gap_host_times`, or withdraw it on purpose with

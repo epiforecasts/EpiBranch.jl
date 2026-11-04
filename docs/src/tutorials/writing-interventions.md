@@ -432,6 +432,127 @@ though the outbreaks under the narrower policy grow larger. Combined with a buil
 `SymptomaticOver65() | OnLabConfirmation()` traces the contacts of older
 symptomatic cases and of every laboratory-confirmed case.
 
+## Releasing a quarantine early
+
+A policy that releases a quarantined contact once a test comes back negative
+needs more than `Quarantine`'s plain `duration`: a day to test on, and a
+result that depends on whether the contact turns out to be infected.
+`ContactTracing` quarantines a traced contact the moment *its own infector*
+settles, which on every built-in model happens before the contact's own
+infection is decided (see [Order of steps on the two kinds of
+model](@ref)), so `duration` cannot read whether the contact would test
+positive.
+
+A [`EpiBranch.TraceAction`](@ref) can propose further actions on top of what
+[`EpiBranch.apply_trace!`](@ref) already did, through
+[`EpiBranch.intervention_actions`](@ref), exactly as a plain intervention
+does; `ContactTracing` forwards to it. It can also read what settles once the
+contact's own infection is fixed, through
+[`EpiBranch.on_infection_settled!`](@ref), again forwarded by
+`ContactTracing`. A removal `apply_trace!` recorded with
+[`EpiBranch.record_removal!`](@ref) can then be shortened with
+[`EpiBranch.revise_removal!`](@ref) once that is known.
+
+Here `TestAndRelease` quarantines a traced contact for `duration` days,
+proposes a test `test_day` days after the trace, and, once the contact's own
+infection is settled, shortens the quarantine to end at the test's day if it
+comes back negative:
+
+```@example quarantine_release
+using EpiBranch
+using Distributions
+using StableRNGs
+
+const TEST_RELEASE_STRETCHES = :test_release_stretches
+
+struct TestAndRelease{S} <: EpiBranch.TraceAction
+    duration::Float64
+    test_day::Float64
+    sensitivity::S
+end
+
+function EpiBranch.apply_trace!(ta::TestAndRelease, contact, state, trace_time, rng)
+    contact.state[:traced] = true
+    contact.state[:quarantined] = true
+    isfinite(trace_time) || return nothing
+    handle = EpiBranch.record_removal!(
+        contact, trace_time, trace_time + ta.duration; key = TEST_RELEASE_STRETCHES
+    )
+    contact.state[:_release_handle] = handle
+    return nothing
+end
+EpiBranch.removal_gap_host_times(::TestAndRelease) = (TEST_RELEASE_STRETCHES,)
+
+function EpiBranch.intervention_actions(ta::TestAndRelease, state, candidates)
+    actions = EpiBranch.InterventionAction[]
+    for ind in candidates
+        haskey(ind.state, :_release_handle) || continue
+        get(ind.state, :_test_claimed, false) && continue
+        test_time = ind.state[:trace_time] + ta.test_day
+        claim! = function (person, at, st)
+            person.state[:_test_claimed] = true
+            person.state[:_test_time] = at
+            return nothing
+        end
+        push!(
+            actions,
+            EpiBranch.InterventionAction(ind, test_time, (p, at, st) -> nothing; claim!)
+        )
+    end
+    return actions
+end
+EpiBranch.capacity_key(::TestAndRelease) = :_test_claimed
+EpiBranch.capacity_time_key(::TestAndRelease) = :_test_time
+
+function EpiBranch.on_infection_settled!(ta::TestAndRelease, ind, state, rng)
+    get(ind.state, :_test_claimed, false) || return nothing
+    handle = get(ind.state, :_release_handle, nothing)
+    handle === nothing && return nothing
+    sens = EpiBranch.sample_value(ta.sensitivity, rng, ind)
+    negative = !is_infected(ind) || rand(rng) >= sens
+    negative && EpiBranch.revise_removal!(ind, handle; release = ind.state[:_test_time])
+    return nothing
+end
+```
+
+`intervention_actions` proposes the test once per trace, dated at the test's
+own day, and claims it straight away so a later re-trace of the same contact
+does not propose it twice; `claim!` runs at admission, as
+[`RingVaccination`](@ref) records a dose. `on_infection_settled!` reads that
+claim once the contact's own infection is fixed: `is_infected` is reliable
+there, never before. A contact who is never infected keeps whatever
+`apply_trace!` recorded, which costs nothing, since such a contact makes no
+transmissions for the release to affect.
+
+Here a contact is infected on day 0.01, almost as soon as it is exposed,
+well before the trace, which only reaches it two days after the infector's
+own onset, could know that:
+
+```@example quarantine_release
+clinical = clinical_presentation(incubation_period = Dirac(1.0), prob_asymptomatic = 0.0)
+model = ModelSpec(
+    BranchingProcess(Dirac(1), Dirac(0.01));
+    interventions = [
+        ContactTracing(OnSymptomOnset(), 1.0, Dirac(2.0), TestAndRelease(14.0, 3.0, 0.0)),
+    ],
+    attributes = clinical)
+state = simulate(model; n_initial = 1, max_generations = 1, rng = StableRNG(1))
+contact = state.individuals[2]
+(infected_at = contact.infection_time, traced_at = contact.state[:trace_time],
+ released_at = only(EpiBranch.removal_stretches(contact, TEST_RELEASE_STRETCHES))[2])
+```
+
+The contact is traced on day 3, but its test (`sensitivity = 0.0` here always
+misses the infection) releases it on day 6 rather than holding it for the
+full 14-day `duration`. A `sensitivity` of 1 would instead leave the full
+duration standing, since the test would then correctly come back positive.
+
+`capacity_key` and `capacity_time_key` make the test itself subject to
+[`CapacityConstrained`](@ref) exactly as `Quarantine`'s own follow-up already
+is (see [Capacity limits](@ref)): wrap the `ContactTracing` holding
+`TestAndRelease` to cap how many tests, and so how many early releases, a
+day's budget allows.
+
 ## Ending an infection early
 
 A treatment that ends an infection before symptom onset, such as a
