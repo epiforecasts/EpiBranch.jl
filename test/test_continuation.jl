@@ -232,6 +232,34 @@ end
         )
     end
 
+    @testset "continuing a cut race agrees on uninfected contacts with risks" begin
+        # Isolation gives the race a risk that can block a proposal, and
+        # `clinical_presentation` closes each case's window at onset: between
+        # them, some contacts are undecided when `max_time` cuts the race, and
+        # some are born after their infector's window closed. Both groups must
+        # keep the time a straight run keeps, not the `NaN` a cut that is only
+        # kept for continuation should not yet write.
+        model = ModelSpec(
+            BranchingProcess(NegBin(3, 0.5), Gamma(2.5, 2));
+            attributes = clinical_presentation(incubation_period = Gamma(5, 1)),
+            interventions = [
+                Isolation(onset_to_isolation_delay = Dirac(0.5), duration = Inf),
+            ]
+        )
+        for seed in (4, 5, 7, 12)
+            state = simulate(model; max_time = 5.0, max_cases = 10_000, rng = StableRNG(seed))
+            continued = simulate(model, state; max_time = 20.0)
+            direct = simulate(
+                model; max_time = 20.0, max_cases = 10_000, rng = StableRNG(seed)
+            )
+            @test continued.cumulative_cases == direct.cumulative_cases
+            @test all(
+                isequal(a.infection_time, b.infection_time) for
+                    (a, b) in zip(continued.individuals, direct.individuals)
+            )
+        end
+    end
+
     @testset "continuing a state that already reached extinction is a no-op" begin
         model = ModelSpec(
             HomogeneousProcess(transmission_rate = 0.4, population_size = 20);
