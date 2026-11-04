@@ -180,12 +180,12 @@ end
 # case. An exposure after the run ended is not part of the outbreak it
 # describes, so such a person is left with no infection time, as a branching
 # process leaves its undecided contacts. This marking is redone at every cut,
-# including one the race is kept to continue, so a returned state always
-# reads as though it were finished for good; a contact the model created has
-# its drawn time in `minted`, read back here first so the mark is against the
-# time it was really exposed at, not a `NaN` an earlier, smaller cut wrote.
-# One the model named rather than created has no such record, and keeps
-# whatever an earlier cut already decided for it.
+# including one the race is kept to continue; a returned state always reads
+# as though it were finished for good. A contact the model created has its
+# drawn time in `minted`, read back here first, so the mark lands against
+# the time it was really exposed at rather than a `NaN` an earlier, smaller
+# cut wrote. One the model named rather than created has no such record, and
+# keeps whatever an earlier cut already decided for it.
 function _finish!(c::_ContactsOf, race, stop_t, extinct, cut_by_max_time)
     for ind in race.state.individuals
         is_infected(ind) && continue

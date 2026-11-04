@@ -409,17 +409,17 @@ end
 # the places, so the first route to finish does this for all of them.
 #
 # This marking is redone at every cut, including one the race is kept to
-# continue, so a returned state always reads as though it were finished for
+# continue; a returned state always reads as though it were finished for
 # good. A still-undecided place keeps its draw and is marked regardless of
 # `stop_t`; popping its queued event again restores its real time before the
 # next cut's mark can be made (see `_birth!`). An excluded place is already
-# decided, so it is marked only once its own drawn time falls past `stop_t`;
+# decided, and is marked only once its own drawn time falls past `stop_t`;
 # that time is read back from the draw first if an earlier, smaller cut left
-# a `NaN` on it, so the comparison is against the time it was really drawn
-# for, not that `NaN`. Both kinds of draw are released once the race's true
-# end is known: an undecided one only if the race reached extinction, since a
-# continuation still has it to decide; an excluded one is already decided and
-# is released regardless.
+# a `NaN` on it, so the comparison lands against the time it was really
+# drawn for rather than that `NaN`. Both kinds of draw are released once the
+# race's true end is known: an undecided one only if the race reached
+# extinction, since a continuation still has it to decide; an excluded one
+# is already decided and is released regardless.
 function _finish!(o::_Offspring, race, stop_t, extinct, cut_by_max_time)
     kept = !extinct && cut_by_max_time
     (; state) = race

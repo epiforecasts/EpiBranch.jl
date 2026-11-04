@@ -237,8 +237,8 @@ end
         # `clinical_presentation` closes each case's window at onset: between
         # them, some contacts are undecided when `max_time` cuts the race, and
         # some are born after their infector's window closed. Both groups must
-        # keep the time a straight run keeps, not the `NaN` a cut that is only
-        # kept for continuation should not yet write.
+        # keep the time a straight run keeps, not the `NaN` that a race only
+        # cut for continuation would write too soon.
         model = ModelSpec(
             BranchingProcess(NegBin(3, 0.5), Gamma(2.5, 2));
             attributes = clinical_presentation(incubation_period = Gamma(5, 1)),
