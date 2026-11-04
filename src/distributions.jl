@@ -107,12 +107,27 @@ function Base.rand(rng::AbstractRNG, d::_TruncatedSkewNormal)
     return 0.0
 end
 
+# Breakpoints bracketing the density's peak, which sits within a few `ω` of
+# `ξ` whatever `α` is: without them, `quadgk`'s adaptive refinement can step
+# clean over a peak much narrower than the integration range (small `ω`
+# relative to `ξ`, or to `x - ξ`) and return a spuriously small mass. Outside
+# the bracket the density is a smooth, featureless tail that plain adaptive
+# quadrature tracks fine regardless of how wide. Shared by `_trunc_logZ`
+# (integrating to `Inf`) and `logcdf` (integrating to `x`).
+function _peak_breakpoints(d::_TruncatedSkewNormal, upper::Real)
+    margin = 10 * float(d.ω)
+    inner = (float(d.ξ) - margin, float(d.ξ) + margin)
+    lo = zero(float(upper))
+    return (lo, filter(p -> lo < p < upper, inner)..., upper)
+end
+
 # The retained-mass constant `log P(inner ≥ 0)`, integrated lazily and cached on
 # first request — `rand` (the simulation path) never triggers it. SkewNormal has
 # no cdf in this Distributions.jl version, hence the numerical integral.
 function _trunc_logZ(d::_TruncatedSkewNormal{T}) where {T}
     isnan(d.logZ[]) || return d.logZ[]
-    Z = first(quadgk(x -> pdf(d.inner, x), zero(T), T(Inf)))
+    points = _peak_breakpoints(d, T(Inf))
+    Z = first(quadgk(x -> pdf(d.inner, x), points...))
     return d.logZ[] = T(log(Z))
 end
 
@@ -131,15 +146,7 @@ end
 function Distributions.logcdf(d::_TruncatedSkewNormal, x::Real)
     x <= 0.0 && return oftype(float(x), -Inf)
     fx = float(x)
-    # Breakpoints bracketing the density's peak, which sits within a few
-    # `ω` of `ξ` whatever `α` is: without them, `quadgk`'s adaptive
-    # refinement can step clean over a peak much narrower than `(0, x)`
-    # (small `ω` relative to `x - ξ`) and return a spuriously small mass.
-    # Outside the bracket the density is a smooth, featureless tail that
-    # plain adaptive quadrature tracks fine regardless of how wide.
-    margin = 10 * float(d.ω)
-    inner = (float(d.ξ) - margin, float(d.ξ) + margin)
-    points = (zero(fx), filter(p -> zero(fx) < p < fx, inner)..., fx)
+    points = _peak_breakpoints(d, fx)
     mass = first(quadgk(t -> pdf(d.inner, t), points...))
     # Clamped at 0: `mass` and `_trunc_logZ` come from separate quadrature
     # calls, so their ratio can round fractionally past 1 once `x` reaches

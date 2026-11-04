@@ -203,6 +203,16 @@ using Dates
         @test issorted(cdf.(d, xs))
     end
 
+    @testset "_TruncatedSkewNormal normalises correctly for a narrower omega" begin
+        # A narrower omega relative to xi than the previous test, matching a
+        # tight generation-time/incubation coupling: without a breakpoint at
+        # xi in the retained-mass integral too, this reduces the retained
+        # mass to zero, and every probability built on it is then wrong.
+        d = EpiBranch._TruncatedSkewNormal(10.0, 0.09, 1.5)
+        @test isapprox(quantile(d, 0.5), 10.0; atol = 1.0)
+        @test isfinite(logpdf(d, 10.0))
+    end
+
     @testset "incubation_linked_generation_time under a calendar" begin
         # A calendar scales the window's kernel, which reads the kernel's
         # `cdf` through `cumhazard`: the gap `_TruncatedSkewNormal` was
