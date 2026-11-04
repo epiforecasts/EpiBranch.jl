@@ -52,7 +52,7 @@
 # continuous with no atom there: the first bin is `cdf(generation_time, 1)`
 # alone, with no `cdf(generation_time, 0)` subtracted. That cdf is 0 for any
 # such distribution, so skipping it changes nothing, but calling it would:
-# a `Dual` parameter sends a distribution like `LogNormal`'s cdf through
+# a `Dual` parameter sends the cdf of a distribution like `LogNormal` through
 # `log(0) = -Inf`, and the 0 · Inf that falls out of differentiating that is
 # a `NaN`, not the 0 the mass being dropped actually gives.
 function _discretize_generation_interval(
