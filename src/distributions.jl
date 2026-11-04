@@ -122,6 +122,47 @@ function Distributions.logpdf(d::_TruncatedSkewNormal, x::Real)
     return x < 0.0 ? oftype(float(x), -Inf) : logpdf(d.inner, x) - _trunc_logZ(d)
 end
 
+# The mass below `x`, normalised the same way as `logpdf`: the integral of
+# the inner density up to `x`, over the retained mass `_trunc_logZ` already
+# caches. Needed because SkewNormal has no `cdf` in this Distributions.jl
+# version, so the engine's own `cumhazard` (derived from `cdf` by
+# SurvivalDistributions) and `truncated` (which Distributions builds from
+# `logcdf`) cannot reach it otherwise.
+function Distributions.logcdf(d::_TruncatedSkewNormal, x::Real)
+    x <= 0.0 && return oftype(float(x), -Inf)
+    mass = first(quadgk(t -> pdf(d.inner, t), zero(float(x)), x))
+    # Clamped at 0: `mass` and `_trunc_logZ` come from separate quadrature
+    # calls, so their ratio can round fractionally past 1 once `x` reaches
+    # into the far tail, where the true cdf is 1 already.
+    return min(log(mass) - _trunc_logZ(d), zero(float(x)))
+end
+Distributions.cdf(d::_TruncatedSkewNormal, x::Real) = exp(logcdf(d, x))
+Distributions.logccdf(d::_TruncatedSkewNormal, x::Real) = _log1mexp(logcdf(d, x))
+
+Base.minimum(::_TruncatedSkewNormal) = 0.0
+Base.maximum(::_TruncatedSkewNormal) = Inf
+Distributions.partype(::_TruncatedSkewNormal{T}) where {T} = T
+
+# Quantile by bisection on `cdf`, which has no closed form here either: what
+# `truncated` needs to draw the offspring form's generation time, and what
+# the race's `invlogccdf` reaches through Distributions' own fallback
+# `quantile(d, -expm1(lp))`.
+function Distributions.quantile(d::_TruncatedSkewNormal, p::Real)
+    0.0 <= p <= 1.0 || throw(DomainError(p, "quantile needs p in [0, 1]"))
+    iszero(p) && return 0.0
+    isone(p) && return Inf
+    lo, hi = 0.0, max(abs(d.ξ), d.ω, one(d.ξ))
+    while cdf(d, hi) < p
+        hi *= 2
+    end
+    while true
+        mid = lo + (hi - lo) / 2
+        (lo < mid < hi) || return hi
+        cdf(d, mid) < p ? (lo = mid) : (hi = mid)
+    end
+    return
+end
+
 """
     HazardKernel(hazard; upper = Inf, onset = 0.0)
 

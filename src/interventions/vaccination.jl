@@ -1040,12 +1040,11 @@ function _delay_bounds(d::Distribution)
 end
 _delay_bounds(_) = nothing
 
-# `minimum` and `maximum` are an optional part of the `Distribution` interface: a
-# distribution defining only `rand` and `logpdf` (the package's own
-# `_TruncatedSkewNormal` among them) falls through to `Base.minimum`, which tries
-# to iterate it and throws a `MethodError`. Such a bound comes back as `nothing`
-# and the caller makes the cautious assumption. Any other error is the
-# distribution failing for its own reasons and is rethrown.
+# `minimum` and `maximum` are an optional part of the `Distribution` interface:
+# a distribution defining neither falls through to `Base.minimum`, which
+# tries to iterate it and throws a `MethodError`. Such a bound comes back as
+# `nothing` and the caller makes the cautious assumption. Any other error is
+# the distribution failing for its own reasons and is rethrown.
 function _support_bound(f, d)
     bound = try
         f(d)
