@@ -303,13 +303,15 @@ function _reported_chain_sizes(state)
     return collect(values(counts))
 end
 
-# Observed chain sizes for one simulated state. With `NoObservation` and no
-# `Reporting` step in `progression`, detection is not thinned at all, so
-# every infected case counts; otherwise only `:reported` cases do.
+# Observed chain sizes for one simulated state, one entry per seed chain, not
+# yet summed to the cluster's total (the caller does that, then checks it
+# against a `MinimumSize` threshold with `_meets_min_size`). With
+# `NoObservation` and no `Reporting` step in `progression`, detection is not
+# thinned at all, so every infected case counts; otherwise only `:reported`
+# cases do.
 function _sim_chain_sizes(state, obs::MinimumSize, progression)
-    sizes = any(t -> t isa Reporting, progression) ?
+    return any(t -> t isa Reporting, progression) ?
         _reported_chain_sizes(state) : chain_statistics(state).size
-    return filter(>=(obs.min_size), sizes)
 end
 function _sim_chain_sizes(state, obs, progression)
     if obs isa NoObservation && !any(t -> t isa Reporting, progression)
@@ -317,6 +319,14 @@ function _sim_chain_sizes(state, obs, progression)
     end
     return _reported_chain_sizes(state)
 end
+
+# Whether a cluster's summed size would have been recorded under `obs`.
+# `TruncatedChainSize` (what `observe` builds from `MinimumSize`) conditions
+# on the cluster's total across its seed chains being at least `min_size`,
+# not on each seed chain individually, so the simulation path must filter the
+# same total it sums and reports.
+_meets_min_size(::ObservationModel, total::Int) = true
+_meets_min_size(obs::MinimumSize, total::Int) = total >= obs.min_size
 
 # The smallest size an observation could have recorded, which the empirical
 # likelihood bins from.
@@ -423,10 +433,13 @@ function _chain_size_model_loglik(
         for state in states
             # A multi-seed cluster is one simulation: its chains (one per
             # seed) are summed to the cluster's total observed size, rather
-            # than reported as separate single-seed sizes.
+            # than reported as separate single-seed sizes, and a `MinimumSize`
+            # threshold is checked against that same total.
             vals = _sim_chain_sizes(state, obs, prog)
             isempty(vals) && continue
-            push!(sim_values, sum(vals))
+            cluster_size = sum(vals)
+            _meets_min_size(obs, cluster_size) || continue
+            push!(sim_values, cluster_size)
             push!(censored, !state.extinct && state.cumulative_cases >= cap)
         end
         group_prob_concluded = prob_concluded === nothing ? nothing : prob_concluded[group]

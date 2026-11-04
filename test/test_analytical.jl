@@ -1476,6 +1476,26 @@
             @test isfinite(ll)
         end
 
+        @testset "MinimumSize on the simulation path conditions on the summed cluster" begin
+            # Two seeds, each chain capped at size 1 by zero offspring, so a
+            # simulated cluster is always 1 + 1 = 2: below `min_size` per
+            # seed chain, but at it once the seeds are summed.
+            iso = Isolation(onset_to_isolation_delay = Dirac(1000.0), duration = Inf)
+            ll = loglikelihood(
+                ChainSizes([2]; seeds = [2]),
+                ModelSpec(
+                    BranchingProcess(Poisson(0.0), Exponential(5.0));
+                    interventions = [iso],
+                    observation = MinimumSize(2),
+                    attributes = clinical_presentation(incubation_period = Dirac(0.2))
+                );
+                max_cases = 50,
+                n_sim = 100,
+                rng = StableRNG(42)
+            )
+            @test isfinite(ll)
+        end
+
         @testset "ChainDetection falls through to the simulation path" begin
             # With interventions present, the same whole-chain draw the
             # closed form uses has to come from the simulated chains instead.
