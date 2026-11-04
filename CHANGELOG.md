@@ -449,11 +449,11 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
   first trigger found even once a genuinely earlier one turned up. A settled
   member's dose, and a dose another vaccination already gave, still keep
   their date.
-- A `BranchingProcess`'s index cases are now offered a population-wide
-  intervention's actions before the race starts, as the fixed-population
-  models already do for their seeds. `MassVaccination` and other
-  interventions declaring `acts_on_population` previously reached a branching
-  process's contacts but never its index cases.
+- Index cases in a `BranchingProcess` are now offered the actions of a
+  population-wide intervention before the race starts, as the
+  fixed-population models already do for their seeds. `MassVaccination` and
+  other interventions declaring `acts_on_population` previously reached the
+  contacts of a branching process but never its index cases.
 
 ## [0.1.0] - 2026-06-16
 

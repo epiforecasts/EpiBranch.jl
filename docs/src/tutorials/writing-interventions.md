@@ -888,19 +888,19 @@ limited_state = simulate(limited_model; max_generations = 1, rng = Xoshiro(42))
  doses = count(is_vaccinated, limited_state.individuals))
 ```
 
-This gives three cases and one dose: the index case is offered before either
-contact, since the population's actions are proposed before the race starts,
-so it claims the one dose and both contacts are left unprotected.
+This gives three cases and one dose: the population's actions are proposed
+before the race starts, so the index case is offered the dose before either
+contact and claims it, leaving both contacts unprotected.
 `Scheduled(CapacityConstrained(vaccine; budget_per_period = 1.0);
 start_time = 10.0, end_time = 10.0)` gives the same result, because both orders
 check the proposed delivery date and count only doses that go ahead.
 
 Capacity counts a dose against the budget of the day it is dated, not the
-clock of the case that proposes it. Here the index case's and both contacts'
-doses are dated day 10, so they all draw on the same budget whatever day the
-index case was processed on; `period = 7.0` would charge the second week,
-`[7, 14)`, not the first. The default `period = Inf` gives one budget for the
-whole simulation.
+clock of the case that proposes it. Here the doses for the index case and
+both contacts are all dated day 10, so they draw on the same budget whatever
+day the index case was processed on; `period = 7.0` would charge the second
+week, `[7, 14)`, not the first. The default `period = Inf` gives one budget
+for the whole simulation.
 
 ### Proposing actions of your own
 
