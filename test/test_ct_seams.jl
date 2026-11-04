@@ -673,3 +673,21 @@ end
         @test EpiBranch.removal_stretches(contact, TEST_RELEASE_STRETCHES) == [(3.0, 17.0)]
     end
 end
+
+@testset "ContactTracing discovers actions only when its action does" begin
+    # `intervention_actions(ct::ContactTracing, ...)` always forwards to
+    # `ct.action`, so discovery must look at what the action itself overrides
+    # rather than trusting that forwarding method's mere existence; otherwise
+    # a `Quarantine` or `FlagOnly` contact tracer, which proposes nothing,
+    # would still pay the race's per-settled-case action-discovery cost.
+    plain = ContactTracing(OnSymptomOnset(), 1.0, Dirac(2.0), Quarantine(14.0))
+    flagged = ContactTracing(
+        OnSymptomOnset(), 1.0, Dirac(2.0), FlagOnly()
+    )
+    following_up = ContactTracing(
+        OnSymptomOnset(), 1.0, Dirac(2.0), TestAndRelease(14.0, 3.0, 0.0)
+    )
+    @test !EpiBranch._discovers_actions(plain)
+    @test !EpiBranch._discovers_actions(flagged)
+    @test EpiBranch._discovers_actions(following_up)
+end
