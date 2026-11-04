@@ -49,26 +49,29 @@
 # remaining tail is below `tol`, then renormalises away that negligible
 # truncation. Mass at or below 0 is dropped, which assumes (as every
 # generation-time distribution used elsewhere in the package does) that it is
-# continuous with no atom there.
+# continuous with no atom there: the first bin is `cdf(generation_time, 1)`
+# alone, with no `cdf(generation_time, 0)` subtracted. That cdf is 0 for any
+# such distribution, so skipping it changes nothing, but calling it would:
+# a `Dual` parameter sends a distribution like `LogNormal`'s cdf through
+# `log(0) = -Inf`, and the 0 · Inf that falls out of differentiating that is
+# a `NaN`, not the 0 the mass being dropped actually gives.
 function _discretize_generation_interval(
         generation_time::Distribution; tol::Real = 1.0e-8, max_lag::Int = 10_000
     )
-    w = Float64[]
-    c_prev = cdf(generation_time, 0)
     j = 1
-    while true
-        c = cdf(generation_time, j)
-        push!(w, c - c_prev)
-        c_prev = c
-        if 1 - c < tol
-            break
-        elseif j >= max_lag
+    c = cdf(generation_time, j)
+    w = [c]
+    while !(1 - c < tol)
+        if j >= max_lag
             @warn "The generation-time distribution has more than $tol of its mass " *
                 "above a lag of $max_lag steps, so the discretised pmf is truncated " *
                 "there." maxlog = 1
             break
         end
         j += 1
+        c_prev = c
+        c = cdf(generation_time, j)
+        push!(w, c - c_prev)
     end
     s = sum(w)
     s > 0 || throw(ArgumentError("generation_time has no mass on positive lags"))
@@ -143,7 +146,7 @@ function _incidence_log_pgf(
         u::AbstractVector{T}, w::AbstractVector{<:Real}, pgf, n::Integer, seeds::Real,
         ::Type{Toff}, ρ::Real = 1, d::AbstractVector{<:Real} = [1.0]
     ) where {T <: Real, Toff <: Real}
-    S = promote_type(T, Toff, typeof(ρ))
+    S = promote_type(T, eltype(w), eltype(d), Toff, typeof(ρ))
     U(m) = 1 <= m <= n ? S(u[m]) : one(S)
     function report(k)
         r = zero(S)
@@ -397,7 +400,7 @@ function _incidence_log_pgf(
     m = _n_types(o)
     laws = _total_count_laws(o)
     S = promote_type(
-        T, eltype(o.alloc_probs), eltype(o.R_by_type), typeof(ρ),
+        T, eltype(w), eltype(d), eltype(o.alloc_probs), eltype(o.R_by_type), typeof(ρ),
         map(Distributions.partype, laws)...
     )
     U(k, i) = 1 <= k <= n ? S(u[k + (i - 1) * n]) : one(S)
