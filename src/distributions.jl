@@ -124,10 +124,10 @@ end
 
 # The mass below `x`, normalised the same way as `logpdf`: the integral of
 # the inner density up to `x`, over the retained mass `_trunc_logZ` already
-# caches. Needed because SkewNormal has no `cdf` in this Distributions.jl
-# version, so the engine's own `cumhazard` (derived from `cdf` by
-# SurvivalDistributions) and `truncated` (which Distributions builds from
-# `logcdf`) cannot reach it otherwise.
+# caches. Needed because SkewNormal has no `cdf` in this version of
+# Distributions.jl; without it, neither the engine's own `cumhazard`
+# (derived from `cdf` by SurvivalDistributions) nor `truncated` (which
+# Distributions builds from `logcdf`) can reach it.
 function Distributions.logcdf(d::_TruncatedSkewNormal, x::Real)
     x <= 0.0 && return oftype(float(x), -Inf)
     mass = first(quadgk(t -> pdf(d.inner, t), zero(float(x)), x))
@@ -143,9 +143,9 @@ Base.minimum(::_TruncatedSkewNormal) = 0.0
 Base.maximum(::_TruncatedSkewNormal) = Inf
 Distributions.partype(::_TruncatedSkewNormal{T}) where {T} = T
 
-# Quantile by bisection on `cdf`, which has no closed form here either: what
-# `truncated` needs to draw the offspring form's generation time, and what
-# the race's `invlogccdf` reaches through Distributions' own fallback
+# Quantile by bisection on `cdf`, which has no closed form here either.
+# `truncated` needs it to draw the offspring form's generation time, and
+# the race's `invlogccdf` reaches it through Distributions' own fallback
 # `quantile(d, -expm1(lp))`.
 function Distributions.quantile(d::_TruncatedSkewNormal, p::Real)
     0.0 <= p <= 1.0 || throw(DomainError(p, "quantile needs p in [0, 1]"))
