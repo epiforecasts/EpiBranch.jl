@@ -490,6 +490,7 @@ function _simulated_person_time(
     _validate_removal_gap_keys(state, sample_spec)
 
     from = something(process.from, infectious_from(spec.progression))
+    window = EpiBranch._shorthand_window(from, process.until)
     # A removal that lapses, such as a finite-duration isolation or quarantine,
     # does not close the window (see `infectious_removal_time`); the fraction
     # of transmission it blocks comes out of the exposure here instead,
@@ -498,11 +499,8 @@ function _simulated_person_time(
     person_time = zeros(length(sample.members))
     for (i, ind) in enumerate(state.individuals)
         is_infected(ind) || continue
-        opened = EpiBranch._window_open(ind, from)
-        closed = min(
-            EpiBranch._window_close(ind, process.until),
-            EpiBranch._intervention_removal_time(ind, spec.interventions)
-        )
+        opened = window_open(ind, window)
+        closed = window_close(ind, window, spec.interventions)
         # A case that never becomes infectious, or is removed before it does (a
         # recovery or isolation during a latent period), makes no contacts.
         (isfinite(opened) && closed > opened) || continue

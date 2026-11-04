@@ -345,6 +345,34 @@ end
         @test r_leaky ≈ midpoint rtol = 0.2
     end
 
+    @testset "a post-exposure ring dose aborts cases without leaving their window open" begin
+        # An abort undoes the recovery transition, so an aborted case's
+        # `recovered_time` reads `Inf` even though the progression has a
+        # terminal transition every other case reaches: the window has to
+        # close the same way the simulator's own race does, through a post-
+        # exposure abort as well as the `until` states.
+        spec = ModelSpec(
+            HouseholdProcess(fill(4, 50), Exponential(1 / β));
+            progression = [
+                Transition(:recovered; from = :infection, rate = γ, terminal = true),
+            ],
+            interventions = [
+                Isolation(
+                    onset_to_isolation_delay = Exponential(1.0),
+                    eligibility = AllCases(), duration = Inf
+                ),
+                ContactTracing(
+                    probability = 1.0, isolation_to_trace_delay = Exponential(0.5),
+                    action = FlagOnly()
+                ),
+                RingVaccination(efficacy = 0.0, post_exposure_efficacy = 1.0),
+            ],
+            attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
+        )
+        o = household_offspring(spec; global_rate = λG, n_samples = 500, rng = StableRNG(1))
+        @test reproduction_number(o) >= 0.0
+    end
+
     @testset "two leaky isolations sharing a key cannot be reconciled" begin
         # Both components here record under the reserved
         # `REMOVAL_STRETCHES_KEY`, so their stretches merge before
