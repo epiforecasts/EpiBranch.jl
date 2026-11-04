@@ -1599,7 +1599,7 @@ function _finish_race!(
         contacts, introduction, watches, projections, max_generation, stopping_rules
     )
     for (_, route_targets) in rts
-        _finish!(route_targets, race, stop_t, extinct)
+        _finish!(route_targets, race, stop_t, extinct, cut_by_max_time)
     end
     if extinct || !cut_by_max_time
         race.state.continuation = nothing
@@ -1632,7 +1632,7 @@ function _finish_race!(
     end
     return extinct
 end
-_finish!(route_targets, race, stop_t, extinct) = nothing
+_finish!(route_targets, race, stop_t, extinct, cut_by_max_time) = nothing
 
 # A fresh race starts these empty (sized to `m`, or to nothing where
 # `may_block` lets the race skip them); a resumed one keeps them exactly as
