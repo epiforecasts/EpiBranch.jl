@@ -194,6 +194,15 @@ using Dates
         end
     end
 
+    @testset "_TruncatedSkewNormal cdf stays monotone for a narrow omega" begin
+        # omega much smaller than x - xi narrows the inner density's peak
+        # enough that quadgk's adaptive refinement can step clean over it
+        # without a breakpoint at xi.
+        d = EpiBranch._TruncatedSkewNormal(5.0, 0.05, 1.5)
+        xs = 0.0:1.0:100.0
+        @test issorted(cdf.(d, xs))
+    end
+
     @testset "incubation_linked_generation_time under a calendar" begin
         # A calendar scales the window's kernel, which reads the kernel's
         # `cdf` through `cumhazard`: the gap `_TruncatedSkewNormal` was

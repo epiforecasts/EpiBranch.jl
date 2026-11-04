@@ -130,7 +130,17 @@ end
 # Distributions builds from `logcdf`) can reach it.
 function Distributions.logcdf(d::_TruncatedSkewNormal, x::Real)
     x <= 0.0 && return oftype(float(x), -Inf)
-    mass = first(quadgk(t -> pdf(d.inner, t), zero(float(x)), x))
+    fx = float(x)
+    # Breakpoints bracketing the density's peak, which sits within a few
+    # `ω` of `ξ` whatever `α` is: without them, `quadgk`'s adaptive
+    # refinement can step clean over a peak much narrower than `(0, x)`
+    # (small `ω` relative to `x - ξ`) and return a spuriously small mass.
+    # Outside the bracket the density is a smooth, featureless tail that
+    # plain adaptive quadrature tracks fine regardless of how wide.
+    margin = 10 * float(d.ω)
+    inner = (float(d.ξ) - margin, float(d.ξ) + margin)
+    points = (zero(fx), filter(p -> zero(fx) < p < fx, inner)..., fx)
+    mass = first(quadgk(t -> pdf(d.inner, t), points...))
     # Clamped at 0: `mass` and `_trunc_logZ` come from separate quadrature
     # calls, so their ratio can round fractionally past 1 once `x` reaches
     # into the far tail, where the true cdf is 1 already.
