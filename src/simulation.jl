@@ -1010,6 +1010,13 @@ entries there rather than by changing a vector or dictionary it finds there.
 function resolve_transitions!(state::SimulationState, individual)
     transitions = state.transitions
     isempty(transitions) && return nothing
+    # A reinfection's `close_episode!` archives the previous episode's state
+    # wholesale, outcome included, before this runs again for the new one: an
+    # outcome left over from the archived episode would otherwise outlive it
+    # and backdate this episode's isolation, tracing and outcome-based
+    # likelihoods.
+    delete!(individual.state, :outcome)
+    delete!(individual.state, :outcome_time)
     for transition in transitions
         initialise_individual!(transition, individual, state)
     end
