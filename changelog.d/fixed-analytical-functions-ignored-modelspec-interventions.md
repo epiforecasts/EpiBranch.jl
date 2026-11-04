@@ -7,7 +7,7 @@
 one without them. They now apply each intervention's closed-form effect on the
 offspring distribution, declared through the new
 `EpiBranch.analytic_offspring_effect`. On a spec with an intervention that
-declares none, which for now includes every built-in intervention, they throw
-an error that points to simulating the spec. For containment it names
+declares none, they throw an error that points to simulating the spec. For
+containment it names
 `containment_probability(simulate(spec, n))` for the simulated answer and
 `probability_contain(R, k; ind_control, pop_control)` for an approximation.

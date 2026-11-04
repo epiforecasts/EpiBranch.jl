@@ -14,7 +14,7 @@ authors:
     email: sebastian.funk@lshtm.ac.uk
     orcid: "https://orcid.org/0000-0002-2842-3406"
     affiliation: "London School of Hygiene & Tropical Medicine"
-version: 0.1.0
+version: 0.2.0
 license: MIT
 repository-code: "https://github.com/epiforecasts/EpiBranch.jl"
 url: "https://github.com/epiforecasts/EpiBranch.jl"

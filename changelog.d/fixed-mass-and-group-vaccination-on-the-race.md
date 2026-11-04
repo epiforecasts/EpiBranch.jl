@@ -6,7 +6,7 @@ Two dispatched traits now let an intervention opt out of that requirement:
 `EpiBranch.acts_on_population(iv)` offers its actions once, before any case
 settles, to the whole population, which `MassVaccination` declares, since its
 rollout depends on nothing about who infected whom; `EpiBranch.needs_contacts(iv)`
-says whether a `continuous_actions` intervention's candidates need the
+says whether an intervention's own `intervention_actions` candidates need the
 model's named contacts at all, which `GroupVaccination` declares `false`,
 since its candidates come from a case's group. Both default conservatively to
 match every built-in intervention's previous behaviour except the two fixed
