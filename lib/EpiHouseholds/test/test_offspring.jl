@@ -349,8 +349,8 @@ end
         # An abort undoes the recovery transition, so an aborted case's
         # `recovered_time` reads `Inf` even though the progression has a
         # terminal transition every other case reaches: the window has to
-        # close the same way the simulator's own race does, through a post-
-        # exposure abort as well as the `until` states.
+        # close the same way the race inside the simulator does, through a
+        # post-exposure abort as well as the `until` states.
         spec = ModelSpec(
             HouseholdProcess(fill(4, 50), Exponential(1 / β));
             progression = [
