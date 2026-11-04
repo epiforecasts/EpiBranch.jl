@@ -1,3 +1,5 @@
+using ForwardDiff
+
 # A callable struct, not a bare closure, so offspring_law_unchanged keeps its
 # default true instead of conservatively assuming it touches transmission.
 struct _RiskFromAge end
@@ -201,6 +203,13 @@ struct _RiskFromAge end
         @test loglikelihood(
             data, offspring, gt; reporting_probability = 0.6, reporting_delay = Gamma(2.0, 1.5)
         ) ≈ logpdf(MvNormal(mr.mean, mr.cov), data.data)
+    end
+
+    @testset "ForwardDiff through the generation-time distribution" begin
+        data = IncidenceCounts([1, 2, 3, 5])
+        f(μ) = loglikelihood(data, Poisson(1.2), LogNormal(μ, 0.5))
+        fd = (f(1.5 + 1.0e-6) - f(1.5 - 1.0e-6)) / 2.0e-6
+        @test ForwardDiff.derivative(f, 1.5) ≈ fd rtol = 1.0e-4
     end
 
     @testset "LognormalApproximation needs strictly positive counts" begin
