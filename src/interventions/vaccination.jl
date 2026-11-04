@@ -1270,10 +1270,10 @@ Vaccinate the population on a schedule, independently of contact tracing.
 - `mode`, `dose_label`: see [`AbstractVaccination`](@ref). Use two
   `MassVaccination`s with different `dose_label`s for a multi-dose rollout.
 
-Each contact's vaccination day is drawn when a branching process creates
-the contact (index cases are not vaccinated), and they count as vaccinated
-if it is finite. They are protected against an exposure only if their
-vaccination day plus `delay_to_immunity` comes before it.
+On a branching process, the index cases' vaccination days are drawn before
+the race starts and each contact's when it is created; everyone counts as
+vaccinated if their day is finite. They are protected against an exposure
+only if their vaccination day plus `delay_to_immunity` comes before it.
 
 # Closed-form offspring distribution
 
