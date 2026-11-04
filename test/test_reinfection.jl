@@ -189,6 +189,26 @@ using Random
         @test two.state[:_init_count] == length(two.episodes) + 1
     end
 
+    @testset "MaxCases counts people, not reinfection episodes" begin
+        # Only two hosts ever exist, so a count of settled episodes passes 3
+        # within the first few ping-pong exchanges, while a count of people
+        # stays at 2 throughout; `MaxGenerations(10)` should stop this run,
+        # deterministically, since every exchange is exactly one case one
+        # generation on from the last.
+        progression = [
+            Transition(:recovered, from = :infection, delay = 1.0),
+            Transition(:susceptible_again, from = :recovered, delay = 0.0),
+        ]
+        spec = ModelSpec(PingPongModel(); progression)
+        state = simulate(
+            spec; n_initial = 1, stopping_rules = [MaxCases(3), MaxGenerations(10)]
+        )
+
+        @test state.current_generation == 10
+        @test state.cumulative_cases == 2
+        @test !state.extinct
+    end
+
     @testset "ReportedCases counts each episode's report once" begin
         # Every infection is reported half a day in, and each ping-pong
         # exchange reinfects a host, so the count has to find the reports
