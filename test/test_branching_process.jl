@@ -337,14 +337,14 @@ end
     @test any(!, rows.infected)
 end
 
-@testset "A population campaign does not dose a branching process's index cases" begin
+@testset "A population campaign doses a branching process's index cases too" begin
     # Two contacts each, all infected well after the rollout on day 10.
     spec = ModelSpec(
         BranchingProcess(Dirac(2), Dirac(20.0));
         interventions = [MassVaccination(efficacy = 1.0, eligibility_time = 10.0)]
     )
     s = simulate(spec; max_generations = 1, rng = StableRNG(1))
-    @test !is_vaccinated(s.individuals[1])
-    @test count(is_vaccinated, s.individuals) == 2
+    @test is_vaccinated(s.individuals[1])
+    @test count(is_vaccinated, s.individuals) == 3
     @test s.cumulative_cases == 1
 end

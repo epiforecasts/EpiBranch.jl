@@ -64,9 +64,10 @@ _member_positions(t::_Tree) = t.places
 _proposal_fallback(::_Tree) = false
 # A contact is listed on its infector when drawn, so the recorder need not log it.
 _logs_blocked(::_Tree, source, ind) = false
-# The index cases are infected from the start, and each contact is offered the
-# population's actions when it is created.
-_population_members(::_Tree) = ()
+# At race start the tree holds exactly the index cases, so this offers them
+# the population's actions; each contact is offered them again when it is
+# created.
+_population_members(t::_Tree) = copy(t.ids)
 
 # A new place for a contact `infector` drew on window `route`, at `time`.
 function _place!(tree::_Tree, race, infector, time, type_idx, route)
