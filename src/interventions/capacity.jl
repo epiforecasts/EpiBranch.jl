@@ -488,7 +488,7 @@ end
 # `InterventionWrapper` nested inside (`Scheduled`, say) to the intervention
 # that would answer `intervention_actions`; dispatching `_discovers_actions`
 # back onto it, rather than re-deriving the generic check here, reaches a
-# wrapped `ContactTracing`'s own override too, which looks past its
+# wrapped `ContactTracing`'s own override too. That override looks past its
 # always-present forwarding method to what its action overrides.
 function _discovers_actions(cc::CapacityConstrained)
     return _discovers_actions(_hook_owner(intervention_actions, cc.intervention))
