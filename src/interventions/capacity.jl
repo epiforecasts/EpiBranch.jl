@@ -486,13 +486,12 @@ end
 # every instance with discovering actions whether or not the one it wraps
 # does. Unwrapping through `_hook_owner` reaches past any further
 # `InterventionWrapper` nested inside (`Scheduled`, say) to the intervention
-# that would answer `intervention_actions`.
+# that would answer `intervention_actions`; dispatching `_discovers_actions`
+# back onto it, rather than re-deriving the generic check here, reaches a
+# wrapped `ContactTracing`'s own override too, which looks past its
+# always-present forwarding method to what its action overrides.
 function _discovers_actions(cc::CapacityConstrained)
-    return _has_own_method(
-        intervention_actions,
-        typeof(_hook_owner(intervention_actions, cc.intervention)),
-        AbstractIntervention
-    )
+    return _discovers_actions(_hook_owner(intervention_actions, cc.intervention))
 end
 # Asked for its actions on every settled case even when the intervention it
 # wraps proposes none, so that wrapping one with nothing to ration fails when

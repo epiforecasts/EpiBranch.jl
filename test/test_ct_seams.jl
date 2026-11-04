@@ -690,4 +690,15 @@ end
     @test !EpiBranch._discovers_actions(plain)
     @test !EpiBranch._discovers_actions(flagged)
     @test EpiBranch._discovers_actions(following_up)
+
+    # The same distinction must survive a `CapacityConstrained` wrapping the
+    # tracer: it has its own `intervention_actions` method too, so asking it
+    # directly must not credit every wrapped `ContactTracing` regardless of
+    # whether its action proposes anything.
+    @test !EpiBranch._discovers_actions(
+        CapacityConstrained(plain; budget_per_period = 1.0)
+    )
+    @test EpiBranch._discovers_actions(
+        CapacityConstrained(following_up; budget_per_period = 1.0)
+    )
 end
