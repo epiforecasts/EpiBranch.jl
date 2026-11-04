@@ -393,7 +393,12 @@ draw_trace_delay(d::ConstantDelay, infector, contact, state, rng) = float(rand(r
 
 What happens to a contact once traced: [`Quarantine`](@ref) or
 [`FlagOnly`](@ref). To write a new action, define a subtype and a method of
-[`apply_trace!`](@ref EpiBranch.apply_trace!).
+[`apply_trace!`](@ref EpiBranch.apply_trace!). An action that needs to follow
+a contact up later, such as a test some days after the trace, also defines
+[`intervention_actions`](@ref EpiBranch.intervention_actions) and, to read
+what the follow-up found once the contact's own infection is known,
+[`on_infection_settled!`](@ref EpiBranch.on_infection_settled!);
+[`ContactTracing`](@ref) forwards both to the action it holds.
 """
 abstract type TraceAction end
 
@@ -403,6 +408,39 @@ abstract type TraceAction end
 Act on `contact`, traced at `trace_time` (days); changes `contact` in place.
 """
 apply_trace!(::TraceAction, contact, state, trace_time, rng) = nothing
+
+"""
+    intervention_actions(action::TraceAction, state, candidates)
+
+Further actions a `TraceAction` proposes for its traced contacts, besides
+what [`apply_trace!`](@ref EpiBranch.apply_trace!) already did immediately,
+put through the same schedule and capacity machinery as any other
+[`InterventionAction`](@ref EpiBranch.InterventionAction): a test some days
+after the trace, say. Default: `nothing`, no further actions.
+[`ContactTracing`](@ref) forwards to this once per case, exactly as
+[`intervention_actions`](@ref EpiBranch.intervention_actions) does for a
+plain [`AbstractIntervention`](@ref).
+"""
+intervention_actions(::TraceAction, state, candidates) = nothing
+
+"""
+    on_infection_settled!(action::TraceAction, individual, state, rng)
+
+Continuous-time models only: called once a traced contact's own infection
+time is fixed, before its onset or clinical transitions are worked out from
+it, exactly as [`on_infection_settled!`](@ref EpiBranch.on_infection_settled!)
+is for a plain [`AbstractIntervention`](@ref). By then everything a trace
+recorded on the contact, such as a scheduled follow-up's day, already stands:
+a contact traced from its own infector always settles after being traced (see
+[`trace_contacts!`](@ref EpiBranch.trace_contacts!)). One reached only
+through a wider ring (`ContactTracing`'s `depth > 1`) can already be settled,
+in which case this has already run for it and does not run again. Use it for
+an action whose outcome depends on the contact's own infection, such as a
+test result that can shorten a quarantine already recorded with
+[`revise_removal!`](@ref EpiBranch.revise_removal!). Default: does nothing.
+[`ContactTracing`](@ref) forwards to this.
+"""
+on_infection_settled!(::TraceAction, individual, state, rng) = nothing
 
 # Every tracer acts through this rather than `apply_trace!` directly: an
 # action that draws on a capacity (one with a `capacity_key`) is filed in
@@ -928,6 +966,24 @@ function _admit_trace_actions!(ct::ContactTracing, state, actions)
     admitter = get(state.scratch, (:trace_admitter, ct), ct)
     _admit_actions!(admitter, state, actions)
     return nothing
+end
+
+# Forwarded to the action so a `TraceAction` that needs to follow a contact
+# up later, such as a test some days after the trace, can propose its own
+# further actions through the ordinary schedule and capacity funnel, apart
+# from the trace's own immediate follow-up `_admit_trace_actions!` admits.
+function intervention_actions(ct::ContactTracing, state, candidates)
+    return intervention_actions(ct.action, state, candidates)
+end
+
+# Forwarded so a `TraceAction` can read what a contact's own settlement
+# fixes, such as a test result that depends on whether the contact turned out
+# to be infected. A contact traced from its own infector always settles after
+# being traced, so whatever the trace recorded on it already stands; one
+# reached only through a wider ring can already be settled, in which case
+# this has already run for it (see the docstring).
+function on_infection_settled!(ct::ContactTracing, individual, state, rng)
+    return on_infection_settled!(ct.action, individual, state, rng)
 end
 
 """A quarantined contact stops transmitting from its quarantine time. A
