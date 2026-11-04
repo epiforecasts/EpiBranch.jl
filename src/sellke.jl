@@ -1457,9 +1457,14 @@ function _sellke_race!(
         # interventions, such as onset-triggered isolation, read it.
         _set_onset_from_incubation!(ind)
         # Cases are popped in increasing infection time: this case's infection
-        # time is the clock, and it is the next case in sequence. The post-loop
-        # reconcile (`_reconcile_sellke_bookkeeping!`) sets the final values.
-        _settle_case!(state, ind, interventions, state.cumulative_cases + 1)
+        # time is the clock, and it is the next case in sequence, unless it is
+        # a reinfection of someone already counted — `cumulative_cases` counts
+        # people, as the post-loop reconcile (`_reconcile_sellke_bookkeeping!`)
+        # does, not episodes, so a reinfection leaves the count unchanged.
+        _settle_case!(
+            state, ind, interventions,
+            reinfection ? state.cumulative_cases : state.cumulative_cases + 1
+        )
         # `_settle_case!` has just brought `state.cumulative_cases`,
         # `max_infection_time` and `current_generation` up to this case, which
         # is what a rule not already captured by `max_time`/`max_generation`
