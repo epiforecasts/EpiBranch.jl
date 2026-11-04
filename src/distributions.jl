@@ -143,10 +143,14 @@ Base.minimum(::_TruncatedSkewNormal) = 0.0
 Base.maximum(::_TruncatedSkewNormal) = Inf
 Distributions.partype(::_TruncatedSkewNormal{T}) where {T} = T
 
-# Quantile by bisection on `cdf`, which has no closed form here either.
-# `truncated` needs it to draw the offspring form's generation time, and
-# the race's `invlogccdf` reaches it through Distributions' own fallback
-# `quantile(d, -expm1(lp))`.
+# Quantile by Newton's method on `cdf`, which has no closed form here
+# either, bracketed by bisection as a safeguard. `truncated` needs it to
+# draw the offspring form's generation time, and the race's `invlogccdf`
+# reaches it through Distributions' own fallback `quantile(d, -expm1(lp))`,
+# both on a path run once per case or pair: bisecting `cdf` itself down to
+# full `Float64` precision took around fifty of its quadrature calls per
+# quantile, so this uses the closed-form `pdf` for the Newton step, which
+# converges in a handful.
 function Distributions.quantile(d::_TruncatedSkewNormal, p::Real)
     0.0 <= p <= 1.0 || throw(DomainError(p, "quantile needs p in [0, 1]"))
     iszero(p) && return 0.0
@@ -155,12 +159,15 @@ function Distributions.quantile(d::_TruncatedSkewNormal, p::Real)
     while cdf(d, hi) < p
         hi *= 2
     end
-    while true
-        mid = lo + (hi - lo) / 2
-        (lo < mid < hi) || return hi
-        cdf(d, mid) < p ? (lo = mid) : (hi = mid)
+    x = (lo + hi) / 2
+    for _ in 1:100
+        fx = cdf(d, x) - p
+        abs(fx) < 1.0e-12 && return x
+        fx < 0 ? (lo = x) : (hi = x)
+        step = x - fx / pdf(d, x)
+        x = lo < step < hi ? step : lo + (hi - lo) / 2
     end
-    return
+    return x
 end
 
 """
