@@ -170,9 +170,9 @@ using Random
     @testset "MaxCases counts people, not reinfection episodes" begin
         # Only two hosts ever exist, so a count of settled episodes passes 3
         # within the first few ping-pong exchanges, while a count of people
-        # never does; `MaxGenerations(10)` is what should actually stop this
-        # run, deterministically, since every exchange is exactly one case
-        # one generation on from the last.
+        # stays at 2 throughout; `MaxGenerations(10)` should stop this run,
+        # deterministically, since every exchange is exactly one case one
+        # generation on from the last.
         progression = [
             Transition(:recovered, from = :infection, delay = 1.0),
             Transition(:susceptible_again, from = :recovered, delay = 0.0),

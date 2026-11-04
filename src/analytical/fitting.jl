@@ -303,12 +303,11 @@ function _reported_chain_sizes(state)
     return collect(values(counts))
 end
 
-# Observed chain sizes for one simulated state, one entry per seed chain, not
-# yet summed to the cluster's total (the caller does that, then checks it
-# against a `MinimumSize` threshold with `_meets_min_size`). With
-# `NoObservation` and no `Reporting` step in `progression`, detection is not
-# thinned at all, so every infected case counts; otherwise only `:reported`
-# cases do.
+# Observed chain sizes for one simulated state, one entry per seed chain.
+# The caller sums these to the cluster's total and checks it against a
+# `MinimumSize` threshold with `_meets_min_size`. With `NoObservation` and no
+# `Reporting` step in `progression`, detection is not thinned at all, so
+# every infected case counts; otherwise only `:reported` cases do.
 function _sim_chain_sizes(state, obs::MinimumSize, progression)
     return any(t -> t isa Reporting, progression) ?
         _reported_chain_sizes(state) : chain_statistics(state).size

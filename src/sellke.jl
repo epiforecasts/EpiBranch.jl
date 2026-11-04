@@ -1459,8 +1459,9 @@ function _sellke_race!(
         # Cases are popped in increasing infection time: this case's infection
         # time is the clock, and it is the next case in sequence, unless it is
         # a reinfection of someone already counted — `cumulative_cases` counts
-        # people, as the post-loop reconcile (`_reconcile_sellke_bookkeeping!`)
-        # does, not episodes, so a reinfection leaves the count unchanged.
+        # people, not episodes, as the post-loop reconcile
+        # (`_reconcile_sellke_bookkeeping!`) does, so a reinfection leaves the
+        # count unchanged.
         _settle_case!(
             state, ind, interventions,
             reinfection ? state.cumulative_cases : state.cumulative_cases + 1

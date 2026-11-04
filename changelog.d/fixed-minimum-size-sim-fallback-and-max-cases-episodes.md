@@ -5,8 +5,8 @@ individually below `min_size` but summed above it. It now applies the
 threshold to the cluster's summed size, as the closed-form
 `TruncatedChainSize` already does.
 
-`cumulative_cases`, and so `MaxCases`, counted a settled episode rather than
-a person: on a model that reinfects, each reinfection added to the count
-again, so `max_cases = n` could stop a run early, before `n` people had
-actually been infected. Both now count people, matching what
-`cumulative_cases` reports once the run ends.
+`cumulative_cases`, and with it `MaxCases`, counted a settled episode rather
+than a person: on a model that reinfects, each reinfection added to the
+count again, so `max_cases = n` could stop a run early, before `n` people
+had been infected. Both now count people, matching what `cumulative_cases`
+reports once the run ends.
