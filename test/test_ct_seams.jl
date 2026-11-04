@@ -676,8 +676,8 @@ end
 
 @testset "ContactTracing discovers actions only when its action does" begin
     # `intervention_actions(ct::ContactTracing, ...)` always forwards to
-    # `ct.action`, so discovery must look at what the action itself overrides
-    # rather than trusting that forwarding method's mere existence; otherwise
+    # `ct.action`, so discovery must check what the action itself overrides
+    # rather than trust that the forwarding method merely exists; otherwise
     # a `Quarantine` or `FlagOnly` contact tracer, which proposes nothing,
     # would still pay the race's per-settled-case action-discovery cost.
     plain = ContactTracing(OnSymptomOnset(), 1.0, Dirac(2.0), Quarantine(14.0))

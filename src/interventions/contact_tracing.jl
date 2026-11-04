@@ -976,13 +976,14 @@ function intervention_actions(ct::ContactTracing, state, candidates)
     return intervention_actions(ct.action, state, candidates)
 end
 
-# `ContactTracing` always has its own `intervention_actions` method, to
-# forward to `ct.action` above, so asking `ct` directly would credit every
-# instance with discovering actions whether or not its action does: a plain
-# `Quarantine` or `FlagOnly`, which never override `intervention_actions`,
-# would then pay the race's per-settled-case cost for nothing. Judging the
-# action's own method instead, against the fallback `TraceAction` declares,
-# restores that for actions with nothing to propose.
+# `ContactTracing` always defines its own `intervention_actions` method,
+# forwarding to `ct.action` above, so checking `ct` directly would credit
+# every instance with discovering actions regardless of whether its action
+# does: a plain `Quarantine` or `FlagOnly`, neither of which overrides
+# `intervention_actions`, would still pay the race's per-settled-case cost
+# for nothing. Checking the action's own method instead, against the
+# fallback `TraceAction` declares, avoids that for actions with nothing to
+# propose.
 function _discovers_actions(ct::ContactTracing)
     return _has_own_method(intervention_actions, typeof(ct.action), TraceAction)
 end
