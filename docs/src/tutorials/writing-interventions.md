@@ -977,8 +977,8 @@ checks the budget, both before the effect is recorded.
 ### Schedule delivery and retain its protection
 
 Suppose an index case makes two contacts on day 20 (`Dirac(2)` always gives 2
-contacts, `Dirac(20.0)` always a generation time of 20 days). Both contacts can
-be vaccinated on day 10, while the campaign runs:
+contacts, `Dirac(20.0)` always a generation time of 20 days). The index case
+and both contacts can be vaccinated on day 10, while the campaign runs:
 
 ```@example action_delivery
 using EpiBranch, Distributions, Random
@@ -993,9 +993,10 @@ state = simulate(model; max_generations = 1, rng = Xoshiro(42))
  doses = count(is_vaccinated, state.individuals))
 ```
 
-The result is one case and two doses: the index case remains infected, and both
-contacts are protected before their exposures on day 20. The campaign ends on
-day 10, which stops new doses; the protection already given lasts.
+The result is one case and three doses: the index case remains infected despite
+its dose, and both contacts are protected before their exposures on day 20. The
+campaign ends on day 10, which stops new doses; the protection already given
+lasts.
 
 Now limit the campaign to one dose:
 
@@ -1008,16 +1009,19 @@ limited_state = simulate(limited_model; max_generations = 1, rng = Xoshiro(42))
  doses = count(is_vaccinated, limited_state.individuals))
 ```
 
-This gives two cases and one dose: only one of the two contacts is protected.
+This gives three cases and one dose: the population's actions are proposed
+before the race starts, so the index case is offered the dose before either
+contact and claims it, leaving both contacts unprotected.
 `Scheduled(CapacityConstrained(vaccine; budget_per_period = 1.0);
 start_time = 10.0, end_time = 10.0)` gives the same result, because both orders
 check the proposed delivery date and count only doses that go ahead.
 
 Capacity counts a dose against the budget of the day it is dated, not the
-clock of the case that proposes it. Here both contacts' doses are dated day
-10, so they draw on the same budget whatever day the index case was processed
-on; `period = 7.0` would charge the second week, `[7, 14)`, not the first. The
-default `period = Inf` gives one budget for the whole simulation.
+clock of the case that proposes it. Here the doses for the index case and
+both contacts are all dated day 10, so they draw on the same budget whatever
+day the index case was processed on; `period = 7.0` would charge the second
+week, `[7, 14)`, not the first. The default `period = Inf` gives one budget
+for the whole simulation.
 
 ### Proposing actions of your own
 
