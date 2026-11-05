@@ -638,11 +638,12 @@ function _calendar_segment(k::_CalendarScaledKernel, calendar_lo)
 end
 
 function _calendar_cumhazard(::PiecewiseConstantCalendar, k::_CalendarScaledKernel, τ)
-    # Once the profile's own survival has certainly ended, every later segment's
-    # cumulative hazard is `Inf` too, so a difference between two of them would
-    # read `Inf - Inf`. The walk below never reaches such a segment once this
-    # has already settled the total, matching the smooth calendar's convention
-    # of treating the deadline as certain regardless of what the calendar does.
+    # Once survival under the profile has certainly ended, the cumulative
+    # hazard of every later segment is also `Inf`, so a difference between two
+    # of them would read `Inf - Inf`. The walk below never reaches such a
+    # segment once the total has already settled, matching how a smooth
+    # calendar always treats the deadline as certain, regardless of what the
+    # calendar does.
     _, upper, certain = _profile_bounds(k.profile)
     certain && τ >= upper && return oftype(float(τ), Inf)
     total = zero(float(τ))
@@ -667,11 +668,12 @@ end
 # current step, then invert within the profile alone with the same machinery
 # used for a constant rate multiplier.
 function _calendar_invlogccdf(::PiecewiseConstantCalendar, k::_CalendarScaledKernel, target)
-    # The deadline settled the same way as `_calendar_cumhazard`: once it is
-    # reached, whether by a positive segment that was never examined because an
-    # earlier zero-multiplier one already crossed it, or by a zero-multiplier
+    # The deadline settles the same way as in `_calendar_cumhazard`: once
+    # reached, whether by a positive segment never examined because an earlier
+    # zero-multiplier segment already crossed it, or by a zero-multiplier
     # segment running past it forever, the draw sits at the deadline itself
-    # rather than never happening, matching the smooth calendar's inverter.
+    # instead of never happening, matching how a smooth calendar inverts the
+    # same deadline.
     _, upper, certain = _profile_bounds(k.profile)
     acc = zero(target)
     calendar_lo = k.opening
