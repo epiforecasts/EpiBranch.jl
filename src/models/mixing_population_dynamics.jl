@@ -111,8 +111,8 @@ input, so `spec` must have none: building the approximation from a model
 with any would silently leave their effect out rather than fold it in.
 
 Pass the result to [`simulate`](@ref) for a [`MixingMeanFieldState`](@ref),
-and that state back to [`simulate`](@ref), with a later `max_time`, to carry
-the integration on from where it stopped. See
+and that state back to [`simulate`](@ref), with a later `max_time`, to continue
+the integration from where it stopped. See
 [`MixingLinearNoiseProcess`](@ref) for the same dynamics with Gaussian noise
 around the mean path, and [`HybridProcess`](@ref) for switching between
 exact simulation of `spec` and this approximation.
@@ -282,7 +282,7 @@ end
                              rng = Random.default_rng())
 
 The same multi-group SIR dynamics as [`MixingMeanFieldProcess`](@ref),
-carried as a Gaussian process around the deterministic mean path (the
+represented as a Gaussian process around the deterministic mean path (the
 linear noise approximation): the state holds the mean compartment counts and
 their covariance, which grows from the demographic noise of the
 infection and removal reactions in every group and is damped by the
@@ -347,7 +347,7 @@ end
 The Gaussian state of a [`MixingLinearNoiseProcess`](@ref): mean compartment
 counts `S`, `I` and `R` (one per mixing group), time `t`, and `covariance`,
 the `2|groups| × 2|groups|` covariance of `(S_1, ..., S_g, I_1, ..., I_g)`
-(`R` carries no separate uncertainty, since each group's is
+(`R` has no separate uncertainty, since each group's is
 `group_sizes[g] - S[g] - I[g]`).
 """
 struct MixingLinearNoiseState{G}
