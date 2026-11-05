@@ -30,7 +30,7 @@ function _mixing_group_layout(spec::ModelSpec, mixing_by::Tuple, rng::AbstractRN
     bare = process(spec)
     state = new_state(bare, progression(spec), attributes(spec), rng)
     add_individuals!(state, population_size(bare), (); setup = (ind, i) -> nothing)
-    keys = Any[]
+    keys = Tuple[]
     index = Dict{Any, Int}()
     sizes = Int[]
     for ind in state.individuals
@@ -42,7 +42,7 @@ function _mixing_group_layout(spec::ModelSpec, mixing_by::Tuple, rng::AbstractRN
         end
         sizes[g] += 1
     end
-    return identity.(keys), sizes
+    return keys, sizes
 end
 
 # `spec` must be a `ModelSpec` built on a `MixingProcess`, so there is both a
