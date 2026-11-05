@@ -107,12 +107,27 @@ function Base.rand(rng::AbstractRNG, d::_TruncatedSkewNormal)
     return 0.0
 end
 
+# Breakpoints bracketing the density's peak, which sits within a few `ω` of
+# `ξ` whatever `α` is: without them, `quadgk`'s adaptive refinement can step
+# clean over a peak much narrower than the integration range (small `ω`
+# relative to `ξ`, or to `x - ξ`) and return a spuriously small mass. Outside
+# the bracket the density is a smooth, featureless tail that plain adaptive
+# quadrature tracks fine regardless of how wide. Shared by `_trunc_logZ`
+# (integrating to `Inf`) and `logcdf` (integrating to `x`).
+function _peak_breakpoints(d::_TruncatedSkewNormal, upper::Real)
+    margin = 10 * float(d.ω)
+    inner = (float(d.ξ) - margin, float(d.ξ) + margin)
+    lo = zero(float(upper))
+    return (lo, filter(p -> lo < p < upper, inner)..., upper)
+end
+
 # The retained-mass constant `log P(inner ≥ 0)`, integrated lazily and cached on
 # first request — `rand` (the simulation path) never triggers it. SkewNormal has
 # no cdf in this Distributions.jl version, hence the numerical integral.
 function _trunc_logZ(d::_TruncatedSkewNormal{T}) where {T}
     isnan(d.logZ[]) || return d.logZ[]
-    Z = first(quadgk(x -> pdf(d.inner, x), zero(T), T(Inf)))
+    points = _peak_breakpoints(d, T(Inf))
+    Z = first(quadgk(x -> pdf(d.inner, x), points...))
     return d.logZ[] = T(log(Z))
 end
 
@@ -120,6 +135,56 @@ end
 # integrates to 1 (the bare inner density does not on the truncated support).
 function Distributions.logpdf(d::_TruncatedSkewNormal, x::Real)
     return x < 0.0 ? oftype(float(x), -Inf) : logpdf(d.inner, x) - _trunc_logZ(d)
+end
+
+# The mass below `x`, normalised the same way as `logpdf`: the integral of
+# the inner density up to `x`, over the retained mass `_trunc_logZ` already
+# caches. Needed because SkewNormal has no `cdf` in this version of
+# Distributions.jl; without it, neither the engine's own `cumhazard`
+# (derived from `cdf` by SurvivalDistributions) nor `truncated` (which
+# Distributions builds from `logcdf`) can reach it.
+function Distributions.logcdf(d::_TruncatedSkewNormal, x::Real)
+    x <= 0.0 && return oftype(float(x), -Inf)
+    fx = float(x)
+    points = _peak_breakpoints(d, fx)
+    mass = first(quadgk(t -> pdf(d.inner, t), points...))
+    # Clamped at 0: `mass` and `_trunc_logZ` come from separate quadrature
+    # calls, so their ratio can round fractionally past 1 once `x` reaches
+    # into the far tail, where the true cdf is 1 already.
+    return min(log(mass) - _trunc_logZ(d), zero(float(x)))
+end
+Distributions.cdf(d::_TruncatedSkewNormal, x::Real) = exp(logcdf(d, x))
+Distributions.logccdf(d::_TruncatedSkewNormal, x::Real) = _log1mexp(logcdf(d, x))
+
+Base.minimum(::_TruncatedSkewNormal) = 0.0
+Base.maximum(::_TruncatedSkewNormal) = Inf
+Distributions.partype(::_TruncatedSkewNormal{T}) where {T} = T
+
+# Quantile by Newton's method on `cdf`, which has no closed form here
+# either, bracketed by bisection as a safeguard. `truncated` needs it to
+# draw the offspring form's generation time, and the race's `invlogccdf`
+# reaches it through Distributions' own fallback `quantile(d, -expm1(lp))`,
+# both on a path run once per case or pair: bisecting `cdf` itself down to
+# full `Float64` precision took around fifty of its quadrature calls per
+# quantile, so this uses the closed-form `pdf` for the Newton step, which
+# converges in a handful.
+function Distributions.quantile(d::_TruncatedSkewNormal, p::Real)
+    0.0 <= p <= 1.0 || throw(DomainError(p, "quantile needs p in [0, 1]"))
+    iszero(p) && return 0.0
+    isone(p) && return Inf
+    lo, hi = 0.0, max(abs(d.ξ), d.ω, one(d.ξ))
+    while cdf(d, hi) < p
+        hi *= 2
+    end
+    x = (lo + hi) / 2
+    for _ in 1:100
+        fx = cdf(d, x) - p
+        abs(fx) < 1.0e-12 && return x
+        fx < 0 ? (lo = x) : (hi = x)
+        step = x - fx / pdf(d, x)
+        x = lo < step < hi ? step : lo + (hi - lo) / 2
+    end
+    return x
 end
 
 """

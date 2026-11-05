@@ -47,8 +47,7 @@ end
 # defaults are inert.
 struct _NoTraceIntervention <: AbstractIntervention end
 
-# A distribution that draws and evaluates but reports no support, as the
-# package's own `_TruncatedSkewNormal` does.
+# A distribution that draws and evaluates but reports no support.
 struct _UnboundedDelay <: ContinuousUnivariateDistribution end
 Base.rand(::AbstractRNG, ::_UnboundedDelay) = 30.0
 Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
