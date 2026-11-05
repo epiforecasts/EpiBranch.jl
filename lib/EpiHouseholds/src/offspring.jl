@@ -118,27 +118,34 @@ household_offspring_law(offspring)    # distribution for a household reached by 
 
 The epidemic within each household is calculated exactly where a closed form
 exists, and by simulating households otherwise. An exponential contact
-interval and an exponential infectious period, with no interventions, give an
-exact result. With a shared kernel, `n_samples` households of each size are
-simulated. A covariate kernel `(infector, susceptible) -> Distribution` has no
-closed form: the whole model is simulated as many times as it takes to reach
-`n_samples` households (at least once), so each household's epidemic follows
-the covariates of its actual members. Households whose kernels agree pair for
-pair, in member order, share a type; the rest are types of their own. When
-every household is its own type, as with a continuous individual covariate,
-each type's distribution comes from those few runs and is rough, while the
-overall distribution and R* average over all of them. The step from household
-epidemic to number of households infected is exact either way, so simulation
-error enters only through the within-household epidemic.
+interval and an exponential infectious period, with no interventions and no
+attribute builder that can set susceptibility or infectiousness away from 1,
+give an exact result. With a shared kernel, `n_samples` households of each
+size are simulated. A covariate kernel `(infector, susceptible) -> Distribution`
+has no closed form: the whole model is simulated as many times as it takes
+to reach `n_samples` households (at least once), so each household's
+epidemic follows the covariates of its actual members. Households whose
+kernels agree pair for pair, in member order, share a type; the rest are
+types of their own. When every household is its own type, as with a
+continuous individual covariate, each type's distribution comes from those
+few runs and is rough, while the overall distribution and R* average over
+all of them. The step from household epidemic to number of households
+infected is exact either way, so simulation error enters only through the
+within-household epidemic.
 
 With a shared kernel and no interventions the mean is exact whenever the
 infectious period is a single delay in the progression, because the mean
 total time infectious is then the mean final size times the mean infectious
 period. An intervention cuts the window at a time that depends on the rest
-of the case's timeline, so with one in the model the mean is simulated. The exception is a
-large household with weak transmission and a random infectious period, where
-the exact calculation loses accuracy and the mean comes from the simulated
-households instead.
+of the case's timeline, so with one in the model the mean is simulated. The
+same holds for an exponential kernel and infectious period, resolved exactly
+by a Markov recursion instead: both that recursion and the exact mean treat
+every member as equally susceptible and infectious, so an attribute builder
+that is not known to leave susceptibility and infectiousness alone (see
+[`EpiBranch.offspring_law_unchanged`](@ref)) sends both to simulation too.
+The exception is a large household with weak transmission and a random
+infectious period, where the exact calculation loses accuracy and the mean
+comes from the simulated households instead.
 
 With a shared kernel the households of each size are simulated with
 interchangeable members, so the natural history and interventions must treat
@@ -210,7 +217,11 @@ function _household_offspring(
     sizes = sort(unique(all_sizes))
     households = [findall(==(n), all_sizes) for n in sizes]
 
-    window = _window_length_law(spec)
+    # The exact Markov recursion and `_mean_person_time` both treat every
+    # member as equally susceptible and infectious; an attribute that can set
+    # either away from 1 forfeits both, since `_size_offspring`'s exact
+    # dispatch and its mean override key off `window`'s type.
+    window = offspring_law_unchanged(spec.attributes) ? _window_length_law(spec) : nothing
     laws = _OffspringLaw[]
     means = Float64[]
     for n in sizes
