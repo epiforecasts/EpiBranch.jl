@@ -638,6 +638,13 @@ function _calendar_segment(k::_CalendarScaledKernel, calendar_lo)
 end
 
 function _calendar_cumhazard(::PiecewiseConstantCalendar, k::_CalendarScaledKernel, τ)
+    # Once the profile's own survival has certainly ended, every later segment's
+    # cumulative hazard is `Inf` too, so a difference between two of them would
+    # read `Inf - Inf`. The walk below never reaches such a segment once this
+    # has already settled the total, matching the smooth calendar's convention
+    # of treating the deadline as certain regardless of what the calendar does.
+    _, upper, certain = _profile_bounds(k.profile)
+    certain && τ >= upper && return oftype(float(τ), Inf)
     total = zero(float(τ))
     calendar_end = k.opening + τ
     calendar_lo = k.opening
@@ -660,11 +667,18 @@ end
 # current step, then invert within the profile alone with the same machinery
 # used for a constant rate multiplier.
 function _calendar_invlogccdf(::PiecewiseConstantCalendar, k::_CalendarScaledKernel, target)
+    # The deadline settled the same way as `_calendar_cumhazard`: once it is
+    # reached, whether by a positive segment that was never examined because an
+    # earlier zero-multiplier one already crossed it, or by a zero-multiplier
+    # segment running past it forever, the draw sits at the deadline itself
+    # rather than never happening, matching the smooth calendar's inverter.
+    _, upper, certain = _profile_bounds(k.profile)
     acc = zero(target)
     calendar_lo = k.opening
     while true
-        m, calendar_hi = _calendar_segment(k, calendar_lo)
         t_lo = calendar_lo - k.opening
+        certain && t_lo >= upper && return oftype(target, upper)
+        m, calendar_hi = _calendar_segment(k, calendar_lo)
         if m > 0
             base = cumhazard(k.profile, t_lo)
             seg_cum = isfinite(calendar_hi) ?
@@ -676,8 +690,11 @@ function _calendar_invlogccdf(::PiecewiseConstantCalendar, k::_CalendarScaledKer
             end
             acc += seg_cum
         end
-        isfinite(calendar_hi) || return oftype(target, Inf)
-        calendar_lo = calendar_hi
+        if isfinite(calendar_hi)
+            calendar_lo = calendar_hi
+        else
+            return certain ? oftype(target, upper) : oftype(target, Inf)
+        end
     end
     return
 end

@@ -148,6 +148,28 @@ end
         1, 2, 0.0, o
     )
     @test invlogccdf(loop_risk, -1.0) ≈ (b - o) + (100 - (b - o)) / 0.5
+
+    # A later segment that starts beyond a bounded profile's support must not
+    # subtract one infinite cumulative hazard from another: the contact is
+    # certain by then, whatever the calendar does after.
+    past_support = EpiBranch._CalendarScaledKernel(
+        Uniform(0.0, 5.0), Steps([30.0, 35.0], [1.0, 0.5, 0.25]), 20.0
+    )
+    @test EpiBranch.cumhazard(past_support, 12.0) == Inf
+    @test EpiBranch.cumhazard(past_support, 20.0) == Inf
+    @test logccdf(past_support, 12.0) == -Inf
+
+    # A zero-multiplier segment holding the support's top settles the draw at
+    # the top rather than treating the contact as never happening, the same
+    # way a smooth calendar forced to zero over the same stretch does.
+    halted_piecewise = EpiBranch._CalendarScaledKernel(
+        Uniform(0.0, 5.0), Steps([2.0], [1.0, 0.0]), 0.0
+    )
+    halted_smooth = EpiBranch._CalendarScaledKernel(
+        Uniform(0.0, 5.0), t -> t < 2.0 ? 1.0 : 0.0, 0.0
+    )
+    @test invlogccdf(halted_piecewise, -100.0) == 5.0
+    @test invlogccdf(halted_piecewise, -100.0) == invlogccdf(halted_smooth, -100.0)
 end
 
 include("testutils/pair_kernels.jl")
