@@ -78,6 +78,18 @@ HybridProcess
 HybridState
 ```
 
+## Simulating a branching process by generation
+
+[`simulate_by_generation`](@ref) simulates a [`BranchingProcess`](@ref) with
+discrete generations as case counts rather than individuals, much cheaper over
+a large or finite population. It shares `simulate(model, state;
+max_generations)` with the exact, individual-based simulation.
+
+```@docs
+simulate_by_generation
+GenerationCounts
+```
+
 ## Population characteristics
 
 Functions that give each case its characteristics when it is created: symptom
