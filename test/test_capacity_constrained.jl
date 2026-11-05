@@ -847,6 +847,58 @@ end
         rv = RingVaccination(efficacy = 0.9)
         @test_throws ArgumentError CapacityConstrained(rv; budget_per_period = -1.0)
         @test_throws ArgumentError CapacityConstrained(rv; budget_per_period = 1.0, period = 0.0)
+        @test_throws ArgumentError CapacityConstrained(
+            rv; budget_per_period = Steps([1.0], [1.0, 2.0])
+        )
+    end
+
+    @testset "A schedule for budget_per_period gives a different budget per period" begin
+        rv = RingVaccination(efficacy = 0.9)
+        doses = Steps([2.0], [1.0, 3.0])
+        cc = CapacityConstrained(
+            rv; budget_per_period = doses, period = 1.0, carry_over = false
+        )
+        state = EpiBranch.new_state(
+            BranchingProcess(Poisson(1.0), Exponential(5.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1)
+        )
+
+        # Demand (5 candidates) exceeds the schedule's own allowance on both
+        # days, so what is given matches the schedule exactly.
+        first_day = [_traced_contact(rv, i, 1.0 + i / 10) for i in 1:5]
+        append!(state.individuals, first_day)
+        state.max_infection_time = 1.9
+        EpiBranch.apply_actions!(cc, state, first_day)
+        @test count(is_vaccinated, first_day) == 1
+
+        second_day = [_traced_contact(rv, 10 + i, 2.0 + i / 10) for i in 1:5]
+        append!(state.individuals, second_day)
+        state.max_infection_time = 2.9
+        EpiBranch.apply_actions!(cc, state, second_day)
+        @test count(is_vaccinated, second_day) == 3
+
+        state.max_infection_time = 1.0
+        @test capacity_usage(cc, state).available == 1.0
+        state.max_infection_time = 2.0
+        @test capacity_usage(cc, state).available == 3.0
+    end
+
+    @testset "A schedule for budget_per_period accumulates with carry_over = true" begin
+        rv = RingVaccination(efficacy = 0.9)
+        doses = Steps([1.0, 2.0], [0.0, 1.0, 3.0])
+        cc = CapacityConstrained(rv; budget_per_period = doses, period = 1.0)
+        state = EpiBranch.new_state(
+            BranchingProcess(Poisson(1.0), Exponential(5.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1)
+        )
+
+        # Day 0's allowance is 0, day 1's own allowance of 1 goes unused, and
+        # day 2 adds its own 3: an available total of 4 by the end of day 2.
+        later = [_traced_contact(rv, i, 2.0 + i / 10) for i in 1:5]
+        append!(state.individuals, later)
+        state.max_infection_time = 2.9
+        EpiBranch.apply_actions!(cc, state, later)
+        @test count(is_vaccinated, later) == 4
     end
 
     @testset "Rejected candidates do not use up the budget" begin

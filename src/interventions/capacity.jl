@@ -12,15 +12,26 @@ CapacityConstrained(RingVaccination(efficacy = 0.8); budget_per_period = 5.0, pe
 
 # Group vaccination with 200 doses in total
 CapacityConstrained(GroupVaccination(efficacy = 0.8); budget_per_period = 200.0)
+
+# Group vaccination with a daily number of doses that changes over the campaign
+doses = Steps([10.0, 17.0], [0.0, 500.0, 0.0])
+CapacityConstrained(GroupVaccination(efficacy = 0.9); budget_per_period = doses, period = 1.0)
 ```
 
 # Arguments
-- `budget_per_period`: number of people that can be served per period.
+- `budget_per_period`: number of people that can be served per period, a fixed
+  number or a calendar schedule — a [`Steps`](@ref), a [`Seasonal`](@ref), or a
+  callable `t -> budget(t)` — giving a different number for the period
+  starting on each calendar day `t`. A finite `period` is required with a
+  schedule, since there is otherwise no single period whose start it could be
+  read at.
 - `period`: length of a period in days, measured on the date each dose is
   actually given. `Inf` (default) gives a single budget for the whole
   outbreak.
 - `carry_over`: whether unused capacity is added to later periods
-  (default `true`); with `false` each period has its own allowance.
+  (default `true`); with `false` each period has its own allowance. With a
+  schedule, a later period's own allowance is still read off the schedule
+  at its own start, not at the point a run has reached.
 - `priority`: function `(individual, state) -> number` ordering who is served
   first, lowest first, with ties kept in order. The default,
   [`default_capacity_priority`](@ref), serves traced contacts in the order
@@ -76,9 +87,9 @@ does, defines [`intervention_time`](@ref EpiBranch.intervention_time),
 `CapacityConstrained` then undoes the effect once the budget is spent, the
 way `Scheduled` already undoes one outside its own window.
 """
-struct CapacityConstrained{I <: AbstractIntervention, F} <: InterventionWrapper
+struct CapacityConstrained{I <: AbstractIntervention, F, B} <: InterventionWrapper
     intervention::I
-    budget_per_period::Float64
+    budget_per_period::B
     period::Float64
     carry_over::Bool
     priority::F
@@ -86,19 +97,29 @@ end
 
 function CapacityConstrained(
         intervention::AbstractIntervention;
-        budget_per_period::Real, period::Real = Inf, carry_over::Bool = true,
+        budget_per_period, period::Real = Inf, carry_over::Bool = true,
         priority = default_capacity_priority
     )
-    budget_per_period >= 0 || throw(
-        ArgumentError(
-            "budget_per_period must be non-negative, got $budget_per_period"
-        )
-    )
+    budget = _prepared_budget(budget_per_period)
     period > 0 || throw(ArgumentError("period must be positive, got $period"))
+    isfinite(period) || budget isa Real || throw(
+        ArgumentError("budget_per_period as a schedule needs a finite period")
+    )
     return CapacityConstrained(
-        intervention, Float64(budget_per_period), Float64(period), carry_over, priority
+        intervention, budget, Float64(period), carry_over, priority
     )
 end
+
+# A fixed budget is validated and floated as before; a calendar schedule
+# validates itself when it is built (`Steps`'s own values, say), so nothing
+# further is checked here.
+function _prepared_budget(budget::Real)
+    budget >= 0 || throw(
+        ArgumentError("budget_per_period must be non-negative, got $budget")
+    )
+    return Float64(budget)
+end
+_prepared_budget(schedule) = schedule
 
 """
     default_capacity_priority(individual, state) -> Float64
@@ -423,6 +444,24 @@ function _count_before(times::Vector{Float64}, extra::Vector{Float64}, before::F
     return searchsortedfirst(times, before) - 1 + count(<(before), extra)
 end
 
+# The budget in force for the period starting on calendar day `t`: a fixed
+# number unchanged by the day, or a schedule's own value there, read through
+# the same calendar interface `Steps` and `Seasonal` give a `PairKernel`.
+_period_budget(budget::Real, t) = budget
+_period_budget(schedule, t) = calendar_multiplier(schedule, t)
+
+# The total budget available across every period from the first up to, but
+# excluding, the one ending at `period_end`: a fixed number times the number
+# of periods begun, as before, or, for a schedule, each period's own number
+# summed, since a later period cannot be assumed to repeat an earlier one's.
+_cumulative_budget(cc::CapacityConstrained, period_end) =
+    _cumulative_budget(cc.budget_per_period, cc.period, period_end)
+_cumulative_budget(budget::Real, period, period_end) = (period_end / period) * budget
+function _cumulative_budget(schedule, period, period_end)
+    n = round(Int, period_end / period)
+    return sum((_period_budget(schedule, k * period) for k in 0:(n - 1)); init = 0.0)
+end
+
 # Doses used and available for the period containing `at`, in the scope
 # `carry_over` implies. Reused by the admission decision, once per candidate
 # with its own proposed date, and by `capacity_usage`, with the simulation's
@@ -430,11 +469,11 @@ end
 function _usage_at(cc::CapacityConstrained, times, extra, at)
     period_start, period_end = _period_bounds(cc, at)
     if cc.carry_over
-        available = isinf(cc.period) ? cc.budget_per_period :
-            (period_end / cc.period) * cc.budget_per_period
+        available = isinf(cc.period) ? _period_budget(cc.budget_per_period, period_start) :
+            _cumulative_budget(cc, period_end)
         used = _count_before(times, extra, period_end)
     else
-        available = cc.budget_per_period
+        available = _period_budget(cc.budget_per_period, period_start)
         used = _count_before(times, extra, period_end) -
             _count_before(times, extra, period_start)
     end
@@ -514,10 +553,12 @@ The number of doses (or other units of capacity) dated by now, and the number
 that could have been given by now, at the end of a simulation or at the point
 `state` has reached. With `carry_over = true` (the default) both count the
 whole outbreak: `available` is `budget_per_period` for every period begun so
-far, and `used` counts every dose dated no later than it. With
-`carry_over = false` both refer to the current period only: `available` is one
-`budget_per_period`, and `used` counts the doses dated within it, including
-one given in that period by another intervention sharing the same capacity.
+far, each read off its own start when `budget_per_period` is a schedule, and
+`used` counts every dose dated no later than it. With `carry_over = false`
+both refer to the current period only: `available` is `budget_per_period` at
+this period's own start, and `used` counts the doses dated within it,
+including one given in that period by another intervention sharing the same
+capacity.
 
 `key` selects which budget to report when [`resource_key`](@ref
 EpiBranch.resource_key) splits `cc`'s intervention into more than one; the
