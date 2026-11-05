@@ -177,7 +177,11 @@ infectious period, or a probability gate on the way there.
 `susceptibility` and `infectiousness` give each person's own multiplier on the
 rate of infection they face and cause, a number shared by everyone or a vector
 with one entry per person, exactly as [`HouseholdProcess`](@ref) reads them
-from its own population in simulation.
+from its own population in simulation. Neither is read from `model`'s own
+`attributes`: an attribute builder such as [`transmission_traits`](@ref) sets
+these multipliers for a simulation, but this likelihood takes no account of
+`model.attributes` at all, so pass the multipliers it would have set directly
+through these keywords.
 
 `model` needs a community `external_hazard` with a finite `obs_end`: without
 one, nothing seeds a household's outbreak at all, since every household here
