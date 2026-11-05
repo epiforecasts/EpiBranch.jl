@@ -230,7 +230,7 @@ end
         )
 
         # An exponential kernel and window would otherwise take the exact
-        # Markov recursion, which has no way to read a trait.
+        # Markov recursion, which cannot read a trait.
         exact_shape = household_offspring(
             spec(Exponential(1 / γ)); global_rate = λG,
             n_samples = 20_000, rng = StableRNG(11)

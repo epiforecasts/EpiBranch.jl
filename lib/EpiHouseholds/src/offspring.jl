@@ -140,7 +140,7 @@ period. An intervention cuts the window at a time that depends on the rest
 of the case's timeline, so with one in the model the mean is simulated. The
 same holds for an exponential kernel and infectious period, resolved exactly
 by a Markov recursion instead: both that recursion and the exact mean treat
-every member as equally susceptible and infectious, so an attribute builder
+every member as equally susceptible and infectious. An attribute builder
 that is not known to leave susceptibility and infectiousness alone (see
 [`EpiBranch.offspring_law_unchanged`](@ref)) sends both to simulation too.
 The exception is a large household with weak transmission and a random
