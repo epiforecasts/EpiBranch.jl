@@ -103,8 +103,16 @@
             M, R -> NegBin(R, 0.5), EpiBranch.NoGenerationTime();
             population_size = 5000
         )
+        @test_throws ArgumentError simulate_by_generation(
+            model; n_initial = [5, 5], max_generations = 10
+        )
+        model = BranchingProcess(
+            M, R -> NegBin(R, 0.5), EpiBranch.NoGenerationTime();
+            population_size = 5000
+        )
         state = simulate_by_generation(
-            model; n_initial = [5, 5], max_generations = 10, rng = StableRNG(1)
+            model; n_initial = [5, 5], max_generations = 10, rng = StableRNG(1),
+            population_by_type = [2000, 3000]
         )
         @test state.counts isa Vector{Int}
         @test length(state.counts) == 2

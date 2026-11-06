@@ -127,6 +127,7 @@ include("models/population_dynamics.jl")
 include("models/mixing_population_dynamics.jl")
 include("models/hybrid.jl")
 include("models/generation_counts.jl")
+include("models/generation_counts_interventions.jl")
 
 # Output
 include("output/linelist.jl")
@@ -170,6 +171,7 @@ export MixingMeanFieldProcess, MixingMeanFieldState
 export MixingLinearNoiseProcess, MixingLinearNoiseState
 export HybridProcess, HybridState
 export GenerationCounts, simulate_by_generation
+export AbstractDepletion, PerContactDepletion, StartOfGenerationDepletion
 export transmission_timing, implied_R
 export Individual, InfectionEpisode, close_episode!, SimulationState
 export SimOpts

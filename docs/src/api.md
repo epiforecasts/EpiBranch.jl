@@ -94,9 +94,24 @@ discrete generations as case counts rather than individuals, much cheaper over
 a large or finite population. It shares `simulate(model, state;
 max_generations)` with the exact, individual-based simulation.
 
+The state holds each type's susceptibles, set from the population size and
+the number immune. `PerContactDepletion` removes them one potential contact at
+a time, as the individual-based simulation does, and
+`StartOfGenerationDepletion` thins a type's contacts by its susceptible share
+at the start of the generation in one binomial draw capped at the susceptibles
+left, as discrete-generation models usually do. With the second, and an
+offspring law whose sum has a closed form (`Poisson`, `NegBin`, `Binomial`), a
+generation costs the same whatever the number of cases. Given a
+`generation_length` in days, a [`GroupVaccination`](@ref) inside
+[`Scheduled`](@ref) or [`CapacityConstrained`](@ref) removes susceptibles
+between generations.
+
 ```@docs
 simulate_by_generation
 GenerationCounts
+AbstractDepletion
+PerContactDepletion
+StartOfGenerationDepletion
 ```
 
 ## Population characteristics
@@ -830,6 +845,7 @@ helpers the package may change at any time.
 
 ```@docs
 EpiBranch.get_generation_time
+EpiBranch.count_removals
 EpiBranch._settle_case!
 EpiBranch._at_case!
 EpiBranch.population_size
