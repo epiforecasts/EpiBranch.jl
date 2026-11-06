@@ -670,7 +670,7 @@ function _calendar_invlogccdf(::PiecewiseConstantCalendar, k::_CalendarScaledKer
     # Zero-multiplier segments are skipped. A draw whose target outlasts every
     # positive segment is `Inf` (the contact never happens), even for a
     # bounded profile. A positive segment that starts at or beyond the end of
-    # a bounded profile settles the draw at the segment's start, where the
+    # a bounded profile settles the draw at the start of the segment, where the
     # cumulative hazard jumps to infinity immediately afterwards.
     _, upper, certain = _profile_bounds(k.profile)
     acc = zero(target)

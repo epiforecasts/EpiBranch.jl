@@ -176,7 +176,7 @@ end
     @test invlogccdf(off, -0.5) == Inf
 
     # If transmission resumes beyond the support, the cumulative hazard jumps
-    # immediately after the new segment starts. Its inverse is that boundary.
+    # immediately after the new segment starts. The inverse returns that boundary.
     resumed = EpiBranch._CalendarScaledKernel(
         Uniform(0.0, 5.0), Steps([7.0], [0.0, 1.0]), 0.0
     )
