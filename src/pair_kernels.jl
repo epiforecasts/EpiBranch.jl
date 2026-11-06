@@ -638,26 +638,25 @@ function _calendar_segment(k::_CalendarScaledKernel, calendar_lo)
 end
 
 function _calendar_cumhazard(::PiecewiseConstantCalendar, k::_CalendarScaledKernel, τ)
-    # Once survival under the profile has certainly ended, the cumulative
-    # hazard of every later segment is also `Inf`, so a difference between two
-    # of them would read `Inf - Inf`. The walk below never reaches such a
-    # segment once the total has already settled, matching how a smooth
-    # calendar always treats the deadline as certain, regardless of what the
-    # calendar does.
+    # A segment with a zero multiplier contributes nothing, even past the end
+    # of a bounded profile, so survival mass can remain there. A positive
+    # segment that starts at or beyond that end has an infinite total, which
+    # is returned directly: the difference of two infinite endpoint values
+    # would read `Inf - Inf`.
     _, upper, certain = _profile_bounds(k.profile)
-    certain && τ >= upper && return oftype(float(τ), Inf)
     total = zero(float(τ))
     calendar_end = k.opening + τ
     calendar_lo = k.opening
     while calendar_lo < calendar_end
         m, calendar_hi = _calendar_segment(k, calendar_lo)
         calendar_hi = min(calendar_end, calendar_hi)
-        m == 0 || (
+        if m != 0
+            certain && calendar_lo - k.opening >= upper && return oftype(total, Inf)
             total += m * (
                 cumhazard(k.profile, calendar_hi - k.opening) -
                     cumhazard(k.profile, calendar_lo - k.opening)
             )
-        )
+        end
         calendar_lo = calendar_hi
     end
     return total
@@ -668,20 +667,19 @@ end
 # current step, then invert within the profile alone with the same machinery
 # used for a constant rate multiplier.
 function _calendar_invlogccdf(::PiecewiseConstantCalendar, k::_CalendarScaledKernel, target)
-    # The deadline settles the same way as in `_calendar_cumhazard`: once
-    # reached, whether by a positive segment never examined because an earlier
-    # zero-multiplier segment already crossed it, or by a zero-multiplier
-    # segment running past it forever, the draw sits at the deadline itself
-    # instead of never happening, matching how a smooth calendar inverts the
-    # same deadline.
+    # Zero-multiplier segments are skipped, so a draw whose target outlasts
+    # every positive segment is `Inf` (the contact never happens), even for a
+    # bounded profile. A positive segment that starts at or beyond the end of
+    # a bounded profile settles the draw at that end, where survival is
+    # exhausted.
     _, upper, certain = _profile_bounds(k.profile)
     acc = zero(target)
     calendar_lo = k.opening
     while true
         t_lo = calendar_lo - k.opening
-        certain && t_lo >= upper && return upper
         m, calendar_hi = _calendar_segment(k, calendar_lo)
         if m > 0
+            certain && t_lo >= upper && return upper
             base = cumhazard(k.profile, t_lo)
             seg_cum = isfinite(calendar_hi) ?
                 m * (cumhazard(k.profile, calendar_hi - k.opening) - base) :
@@ -692,11 +690,8 @@ function _calendar_invlogccdf(::PiecewiseConstantCalendar, k::_CalendarScaledKer
             end
             acc += seg_cum
         end
-        if isfinite(calendar_hi)
-            calendar_lo = calendar_hi
-        else
-            return certain ? upper : oftype(target, Inf)
-        end
+        isfinite(calendar_hi) || return oftype(target, Inf)
+        calendar_lo = calendar_hi
     end
     return
 end

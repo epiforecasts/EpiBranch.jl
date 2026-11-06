@@ -159,25 +159,29 @@ end
     @test EpiBranch.cumhazard(past_support, 20.0) == Inf
     @test logccdf(past_support, 12.0) == -Inf
 
-    # A zero-multiplier segment holding the top of the support settles the
-    # draw at the top rather than treating the contact as never happening, the
-    # same way a smooth calendar forced to zero over the same stretch does.
-    halted_piecewise = EpiBranch._CalendarScaledKernel(
+    # Transmission stopped over the top of the support leaves survival mass:
+    # the cumulative hazard stays finite and a large enough target never
+    # happens. With transmission off throughout, nothing ever happens.
+    halted = EpiBranch._CalendarScaledKernel(
         Uniform(0.0, 5.0), Steps([2.0], [1.0, 0.0]), 0.0
     )
-    halted_smooth = EpiBranch._CalendarScaledKernel(
-        Uniform(0.0, 5.0), t -> t < 2.0 ? 1.0 : 0.0, 0.0
+    @test EpiBranch.cumhazard(halted, 5.0) ≈ -logccdf(Uniform(0.0, 5.0), 2.0)
+    @test EpiBranch.cumhazard(halted, 8.0) ≈ -logccdf(Uniform(0.0, 5.0), 2.0)
+    @test invlogccdf(halted, -100.0) == Inf
+    @test invlogccdf(halted, -0.1) ≈ invlogccdf(Uniform(0.0, 5.0), -0.1)
+    off = EpiBranch._CalendarScaledKernel(
+        Uniform(0.0, 5.0), Steps(Float64[], [0.0]), 0.0
     )
-    @test invlogccdf(halted_piecewise, -100.0) == 5.0
-    @test invlogccdf(halted_piecewise, -100.0) == invlogccdf(halted_smooth, -100.0)
+    @test EpiBranch.cumhazard(off, 5.0) == 0.0
+    @test invlogccdf(off, -0.5) == Inf
 
-    # A dual in the top of the profile is kept when the inversion settles
-    # there, at both exits of the loop.
+    # A positive segment reaching the top of the support still settles there,
+    # and a dual in the top is kept.
     settle_top(u, calendar) = invlogccdf(
         EpiBranch._CalendarScaledKernel(Uniform(0.0, u), calendar, 0.0), -100.0
     )
-    @test ForwardDiff.derivative(u -> settle_top(u, Steps([2.0], [1.0, 0.0])), 5.0) == 1.0
     @test ForwardDiff.derivative(u -> settle_top(u, Steps([2.0], [1.0, 1.0])), 5.0) == 1.0
+    @test settle_top(5.0, Steps([7.0], [1.0, 0.0])) == 5.0
 end
 
 include("testutils/pair_kernels.jl")
