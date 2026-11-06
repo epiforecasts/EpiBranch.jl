@@ -15,11 +15,11 @@
 #
 # Two depletion rules thin the contacts. `PerContactDepletion` decides them
 # one at a time, as `_offspring_builtin_risk_blocks` decides the fate of a
-# contact on the individual-based race when there is a single type: a contact of type `i` is kept
-# with probability `susceptibles[i] / type_sizes[i]`, and each kept contact
-# lowers `susceptibles[i]` before the next is decided. With several types the
-# individual-based simulation thins every contact against one shared population
-# fraction instead, so the two differ.
+# contact on the individual-based race when there is a single type. A contact
+# of type `i` is kept with probability `susceptibles[i] / type_sizes[i]`, and
+# each kept contact lowers `susceptibles[i]` before the next is decided. With
+# several types the individual-based simulation thins every contact against
+# one shared population fraction, so the two differ.
 # `StartOfGenerationDepletion` instead keeps a binomial share of the contacts
 # of a type, with the share set to the susceptible fraction of the type at the
 # start of the generation, capped at the susceptibles left, in one draw.
@@ -48,8 +48,9 @@ probability equal to the susceptible share of the type *at that moment*, and
 each kept contact lowers the share for the next. For a single type this is the
 rule of the individual-based simulation. For several types it differs, because
 the individual-based simulation thins every contact against one shared
-population fraction, while this rule uses the share of each type. It is the default of [`simulate_by_generation`](@ref),
-and its run time is proportional to the number of potential contacts.
+population fraction, while this rule uses the share of each type. It is the
+default of [`simulate_by_generation`](@ref), and its run time is proportional
+to the number of potential contacts.
 """
 struct PerContactDepletion <: AbstractDepletion end
 
@@ -464,7 +465,7 @@ end
 # is lowered by what is kept.
 
 # One at a time, as `_offspring_builtin_risk_blocks` decides each contact on
-# the individual-based race for a single type; each type has its own share.
+# the individual-based race for a single type. Each type has its own share.
 function _deplete!(rng, ::PerContactDepletion, potential, susceptibles, sizes)
     kept = similar(potential)
     for i in eachindex(potential)
