@@ -63,17 +63,26 @@ EpiBranch.offspring_law_unchanged
 
 [`MeanFieldProcess`](@ref) and [`LinearNoiseProcess`](@ref) approximate a
 closed, homogeneously-mixing SIR population (the dynamics
-[`HomogeneousProcess`](@ref) simulates exactly) as a state-space model, sharing
+[`HomogeneousProcess`](@ref) simulates exactly) as a state-space model.
+[`MixingMeanFieldProcess`](@ref) and [`MixingLinearNoiseProcess`](@ref) do the
+same for a population with several mixing groups ([`MixingProcess`](@ref)),
+built straight from the `ModelSpec` they approximate rather than given the
+group sizes and the between-group rate again. All four share
 `simulate(model, state; max_time)` with the exact simulation so an external
-Kalman or particle filter can run on either. [`HybridProcess`](@ref) combines
-the two: exact simulation while the outbreak is small, the approximation once
-it is large, with no filtering code of its own.
+Kalman or particle filter can run on any of them. [`HybridProcess`](@ref)
+combines an exact model with its approximation: exact simulation while the
+outbreak is small, the approximation once it is large, with no filtering
+code of its own.
 
 ```@docs
 MeanFieldProcess
 MeanFieldState
 LinearNoiseProcess
 LinearNoiseState
+MixingMeanFieldProcess
+MixingMeanFieldState
+MixingLinearNoiseProcess
+MixingLinearNoiseState
 HybridProcess
 HybridState
 ```
