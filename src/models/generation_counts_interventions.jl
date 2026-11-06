@@ -1,18 +1,19 @@
 # ── Interventions on generation counts ───────────────────────────────
 #
 # `simulate_by_generation` holds no individuals, so an intervention cannot act
-# on one. `count_removals` is the verb an intervention defines to act on the
-# counts instead: given what is left of each type, it returns how many
-# susceptibles of each type it removes over the days of one generation. The
-# wrappers pass a budget of doses down to the vaccination they wrap, as
-# `CapacityConstrained` does on individuals by admitting or refusing each
-# one, and `Scheduled` decides whether the generation is inside its window.
+# on one. An intervention defines `count_removals` to act on the counts
+# instead: given what is left of each type, it returns how many susceptibles of
+# each type it removes over the days of one generation. The wrappers pass a
+# budget of doses down to the vaccination they wrap, as `CapacityConstrained`
+# does on individuals by admitting or refusing each one, and `Scheduled`
+# decides whether the generation is inside its window.
 
 # What an intervention can see of the generation it acts before: the days it
-# covers, and each type's susceptibles and population. `susceptibles` is
-# `ledgers`' own copy, lowered as people are removed. `ledgers` holds what an
-# intervention keeps between generations, under a key naming its place in the
-# list of interventions, so identical interventions keep their own records.
+# covers, and the susceptibles and population of each type. `susceptibles` is
+# a copy owned by the context, lowered as people are removed. `ledgers` holds
+# what an intervention keeps between generations, under a key giving its place
+# in the list of interventions, so identical interventions keep separate
+# records.
 struct GenerationContext{R <: AbstractRNG}
     rng::R
     start_time::Float64
@@ -41,11 +42,11 @@ end
 For extension authors: what `intervention` does to the counts of
 [`simulate_by_generation`](@ref) over one generation. `ctx` holds the days the
 generation covers (`ctx.start_time`, `ctx.end_time`), the susceptibles of each
-type (`ctx.susceptibles`) and each type's population (`ctx.type_sizes`), with
-the run's `ctx.rng`. `budget` is the number of doses a wrapping
+type (`ctx.susceptibles`) and the population of each type (`ctx.type_sizes`),
+with the run's `ctx.rng`. `budget` is the number of doses a wrapping
 [`CapacityConstrained`](@ref) allows (`Inf` if none does). `key` is a tuple
-naming this intervention's place in the list, under which `ctx.ledgers` can
-keep what it must remember between generations.
+giving the place of this intervention in the list, under which `ctx.ledgers`
+can store what it must remember between generations.
 
 Returns the number of susceptibles of each type removed, a `Vector{Int}`, and
 the number of doses used, which a wrapping `CapacityConstrained` charges to its
@@ -80,9 +81,9 @@ _validate_counts(w::InterventionWrapper) = _validate_counts(w.intervention)
 
 # ── Scheduled ────────────────────────────────────────────────────────
 
-# `Scheduled`'s condition reads `max_infection_time`, `cumulative_cases` and
-# `current_generation` off the state; a count has all three at the first day
-# of the generation.
+# The condition of `Scheduled` reads `max_infection_time`, `cumulative_cases`
+# and `current_generation` off the state. A count has all three at the first
+# day of the generation.
 function _validate_counts(s::Scheduled)
     isempty(s.triggers) || throw(
         ArgumentError(
@@ -135,8 +136,8 @@ end
 
 # What a vaccination remembers per type between generations: how many of its
 # members have been given a dose, and how many of those doses reached a
-# susceptible they failed to protect (who stay susceptible, and cannot be
-# dosed again).
+# susceptible and failed to protect it. Those members stay susceptible and
+# cannot be dosed again.
 mutable struct _VaccinationLedger
     dosed::Vector{Int}
     unprotected::Vector{Int}
@@ -176,8 +177,8 @@ end
 function count_removals(gv::GroupVaccination, ctx::GenerationContext, budget, key)
     nt = length(ctx.susceptibles)
     ledger = get!(() -> _VaccinationLedger(zeros(Int, nt), zeros(Int, nt)), ctx.ledgers, key)
-    # Those the campaign can still reach: the covered share of each type's
-    # population, less those already dosed.
+    # Those the campaign can still reach: the covered share of the
+    # population of each type, less those already dosed.
     reachable = max.(round.(Int, gv.coverage .* ctx.type_sizes) .- ledger.dosed, 0)
     total = isfinite(budget) ? min(Int(budget), sum(reachable)) : sum(reachable)
     doses = min.(_split_doses(total, reachable), reachable)

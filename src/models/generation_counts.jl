@@ -9,18 +9,18 @@
 #
 # A generation draws its potential contacts, then thins them against the
 # susceptibles of each type left. Where the offspring law has a closed-form
-# sum (`Poisson`, `NegativeBinomial`, `Binomial`), a type's total is drawn in
-# one go, so the cost does not grow with the number of cases; any other law
-# draws every case's offspring one at a time.
+# sum (`Poisson`, `NegativeBinomial`, `Binomial`), the total of a type is drawn
+# in one step, so the cost does not grow with the number of cases. Any other
+# law draws the offspring of every case one at a time.
 #
 # Two depletion rules thin the contacts. `PerContactDepletion` decides them
-# one at a time, exactly as `_offspring_builtin_risk_blocks` decides a
-# contact's fate on the individual-based race: a contact of type `i` is kept
-# with probability `susceptibles[i] / type_sizes[i]`, a kept one lowering
-# `susceptibles[i]` before the next is decided.
-# `StartOfGenerationDepletion` instead keeps a binomial share of a type's
-# contacts, with the share the type's susceptible fraction at the start of the
-# generation, capped at the susceptibles left, in one draw.
+# one at a time, as `_offspring_builtin_risk_blocks` decides the fate of a
+# contact on the individual-based race: a contact of type `i` is kept
+# with probability `susceptibles[i] / type_sizes[i]`, and each kept contact
+# lowers `susceptibles[i]` before the next is decided.
+# `StartOfGenerationDepletion` instead keeps a binomial share of the contacts
+# of a type, with the share set to the susceptible fraction of the type at the
+# start of the generation, capped at the susceptibles left, in one draw.
 #
 # `multiplier`, when given, is drawn once per generation and scales the mean
 # of every case's offspring law before it draws: with `Poisson` offspring,
@@ -43,29 +43,28 @@ abstract type AbstractDepletion end
 
 Decide every potential contact one at a time, as the individual-based
 simulation does: a contact of a type is kept with probability equal to the
-type's susceptible share *at that moment*, and a kept contact lowers the
-share for the next. It is the default of [`simulate_by_generation`](@ref),
-and costs time in proportion to the number of potential contacts.
+susceptible share of the type *at that moment*, and each kept contact lowers
+the share for the next. It is the default of [`simulate_by_generation`](@ref),
+and its run time is proportional to the number of potential contacts.
 """
 struct PerContactDepletion <: AbstractDepletion end
 
 """
     StartOfGenerationDepletion()
 
-Thin a type's potential contacts by its susceptible share at the *start* of
-the generation, as the standard discrete-generation (TSIR) model does: one
+Thin the potential contacts of a type by its susceptible share at the *start*
+of the generation, as the standard discrete-generation (TSIR) model does: one
 binomial draw per type, capped at the susceptibles left, so that a generation
 costs the same whatever the number of cases. Where the offspring law has a
 closed-form sum, the whole generation is then drawn in a fixed number of
 steps.
 
-It differs from [`PerContactDepletion`](@ref) in the share not falling as the
-generation's own contacts are made: with many contacts relative to the
-susceptibles left, the binomial rule keeps more of them (and is held back
-only by the cap at the susceptibles), where the per-contact rule slows down as
-it uses them up. The two agree closely while a generation uses up only a small
-part of the susceptibles, as it does in a large population early in an
-outbreak.
+It differs from [`PerContactDepletion`](@ref) because the share does not fall
+as the contacts of the generation are made. With many contacts relative to the
+susceptibles left, the binomial rule keeps more of them (held back only by the
+cap at the susceptibles), while the per-contact rule slows down as it uses
+them up. The two agree closely while a generation uses only a small part of
+the susceptibles, as in a large population early in an outbreak.
 """
 struct StartOfGenerationDepletion <: AbstractDepletion end
 
@@ -80,9 +79,9 @@ single-type model holds an `Int` for each count below, a multi-type one a
 - `counts`: the current generation's case count.
 - `cumulative_cases`: the total number of cases so far.
 - `population_size`: the model's own (`NoPopulation()` if unlimited).
-- `susceptibles`: who is left to infect, `NoPopulation()` if the population
+- `susceptibles`: the number left to infect, `NoPopulation()` if the population
   is unlimited.
-- `type_sizes`: the size of each type's population, `NoPopulation()` if
+- `type_sizes`: the size of the population of each type, `NoPopulation()` if
   unlimited.
 - `generation`: the last generation simulated.
 - `generation_length`: the length of a generation in days, or `nothing` if
@@ -188,9 +187,9 @@ function _per_type_counts(model::BranchingProcess, x, name::Symbol)
     return collect(Int, x)
 end
 
-# The size of each type's population: the model's `population_size` for a
-# single-type model, `population_by_type` (which must add up to it) for a
-# multi-type one, as there is no one way to split a total between types.
+# The size of the population of each type: `population_size` for a
+# single-type model and `population_by_type` (which must add up to it) for a
+# multi-type one, because a total can be split between types in many ways.
 _type_sizes(::BranchingProcess, ::NoPopulation, ::Nothing, nt) = NoPopulation()
 function _type_sizes(model::BranchingProcess, pop::Int, by_type, nt)
     if nt == 1
@@ -249,25 +248,25 @@ offspring matrix (`MultiTypeOffspring`); any other model raises an
   built in; giving `multiplier` with another offspring law raises an
   `ArgumentError`.
 - `immune`: the number immune at the start, an `Int` or a vector with one
-  entry per type, as for `n_initial` (none by default). A type's susceptibles
-  start at its population minus those immune and its index cases.
-- `population_by_type`: the size of each type's population, for a multi-type
-  model with a finite `population_size`, to which they must add up. A
-  single-type model's population is its `population_size`.
+  entry per type, as for `n_initial` (none by default). The susceptibles of a
+  type start at its population minus those immune and its index cases.
+- `population_by_type`: the size of the population of each type, for a
+  multi-type model with a finite `population_size`, to which they must add up.
+  The population of a single-type model is its `population_size`.
 - `depletion`: how contacts are thinned against the susceptibles left,
   [`PerContactDepletion`](@ref) (the default) or
-  [`StartOfGenerationDepletion`](@ref). The second draws a type's kept
-  contacts in one binomial draw, so with an offspring law whose sum has a
-  closed form (`Poisson`, with or without `multiplier`, `NegBin` and
-  `Binomial`) a generation costs the same whatever the number of cases.
+  [`StartOfGenerationDepletion`](@ref). The second draws the kept contacts of
+  a type in one binomial draw. With an offspring law whose sum has a closed
+  form (`Poisson`, with or without `multiplier`, `NegBin` and `Binomial`), a
+  generation then costs the same whatever the number of cases.
 - `generation_length`: the length of a generation in days, needed for
   `interventions`, which are applied between generations.
 - `interventions`: interventions applied to the susceptibles between
   generations; see below.
 
-A multi-type model splits each type's offspring between types by the columns
-of the next-generation matrix, and thins each type's contacts by its own
-susceptible share, which scales the matrix's rows by that share.
+A multi-type model splits the offspring of each type between types by the
+columns of the next-generation matrix, and thins the contacts of each type by
+its own susceptible share, which scales the rows of the matrix by that share.
 
 # Interventions
 
@@ -275,29 +274,29 @@ A [`GroupVaccination`](@ref) can be given, optionally inside
 [`Scheduled`](@ref) and [`CapacityConstrained`](@ref), and removes
 susceptibles of each type between generations. Each type is a group of its own.
 A campaign during the days of generation `g` to `g + 1` (from day `g *
-generation_length`, for `generation_length` days) acts before that
-generation's contacts are made, so the generation's contacts are those a case
-infected `generation_length` days earlier makes at the end of the interval.
+generation_length`, for `generation_length` days) acts before the contacts of
+that generation are made. Those contacts are made by cases infected
+`generation_length` days earlier, at the end of the interval.
 
-- With no capacity, the group's `coverage` is reached at once.
-- With a [`CapacityConstrained`](@ref), the interval's budgets are given out
-  among the types in proportion to the members each still has to reach.
-  The doses are given to members at random, without regard to whether they
-  are still susceptible, so a type's doses reach susceptibles in proportion to
-  the susceptibles among the members not yet dosed; only a dose reaching a
-  susceptible does anything, and it removes that susceptible with probability
-  `efficacy`. A leaky vaccine is treated as this too, protecting a fraction
+- With no capacity, the `coverage` of the group is reached at once.
+- With a [`CapacityConstrained`](@ref), the budgets of the interval are given
+  out among the types in proportion to the members each still has to reach.
+  Doses go to members at random, whether or not they are still susceptible,
+  so the doses for a type reach susceptibles in proportion to the
+  susceptibles among the members not yet dosed. A dose that reaches a
+  susceptible removes it with probability `efficacy`; other doses have no
+  effect. A leaky vaccine is treated in the same way, protecting a fraction
   `efficacy` of those it reaches.
 - A [`Scheduled`](@ref) window is read once per generation, at its first day,
   so a `start_time` between two generations takes effect at the next. Only
-  `start_time`, `end_time`, `start_after_cases` and a `condition` of the
-  state's `max_infection_time`, `cumulative_cases` and `current_generation`
-  are available; a `start_after` trigger needs individuals to read and raises
-  an `ArgumentError`.
-- A vaccination's `eligibility` and `dose_delay` have nothing to act on in a
-  count (there is no case to trigger a group, or to time a delay from) and
-  are not read: use `Scheduled` for the start. `delay_to_immunity` other than
-  zero, or an `efficacy` that is not a number, raises an `ArgumentError`.
+  `start_time`, `end_time`, `start_after_cases` and a `condition` on
+  `max_infection_time`, `cumulative_cases` and `current_generation` of the
+  state are available. A `start_after` trigger needs individuals to read and
+  raises an `ArgumentError`.
+- The `eligibility` and `dose_delay` of a vaccination are not read, because a
+  count has no case to trigger a group or to time a delay from. Use
+  `Scheduled` for the start. A `delay_to_immunity` other than zero, or an
+  `efficacy` that is not a number, raises an `ArgumentError`.
 
 Returns a [`GenerationCounts`](@ref); continue it with
 `simulate(model, state; max_generations)`.
@@ -473,7 +472,7 @@ _like(::Vector{Int}, v::Vector{Int}) = v
 
 # The total offspring of `n` cases, each drawing independently from `law`.
 # Where the sum of `n` copies of `law` has a closed form it is drawn in one
-# go, at a cost that does not depend on `n`; otherwise every case draws.
+# step, at a cost that does not depend on `n`. Otherwise every case draws.
 _sum_offspring(rng::AbstractRNG, law::Poisson, n::Int) = rand(rng, Poisson(n * mean(law)))
 function _sum_offspring(rng::AbstractRNG, law::NegativeBinomial, n::Int)
     return rand(rng, NegativeBinomial(n * law.r, law.p))
@@ -485,10 +484,10 @@ function _sum_offspring(rng::AbstractRNG, law::Distribution, n::Int)
     return sum(rand(rng, law) for _ in 1:n)
 end
 
-# One entry per type of the contacts the generation's cases make, before any
-# of them is thinned against the susceptibles. A single-type offspring law
-# draws its one total; the shared multiplier `m`, when given, scales the law's
-# mean first.
+# One entry per type of the contacts made by the cases of the generation,
+# before any of them is thinned against the susceptibles. A single-type
+# offspring law draws its one total, after the shared multiplier `m`, when
+# given, has scaled the mean of the law.
 function _generation_potential(
         rng::AbstractRNG, offspring::Distribution, current::Vector{Int}, m
     )
@@ -525,8 +524,8 @@ end
 # The contacts kept after thinning `potential` against `susceptibles`, which
 # is lowered by what is kept.
 
-# One at a time, exactly as `_offspring_builtin_risk_blocks` decides each
-# contact on the individual-based race.
+# One at a time, as `_offspring_builtin_risk_blocks` decides each contact on
+# the individual-based race.
 function _deplete!(rng, ::PerContactDepletion, potential, susceptibles, sizes)
     kept = similar(potential)
     for i in eachindex(potential)

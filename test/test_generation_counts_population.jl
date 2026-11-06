@@ -160,7 +160,7 @@
             @test isapprox(removed(late), 5000; rtol = 0.01)
         end
 
-        # With no capacity, the group's coverage is reached at once
+        # With no capacity, the coverage of the group is reached at once
         covered = simulate_by_generation(
             model; n_initial = 1000, max_generations = 1, generation_length = 7.0,
             interventions = [GroupVaccination(efficacy = 1.0, coverage = 0.3)],
