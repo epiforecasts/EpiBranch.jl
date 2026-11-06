@@ -9,61 +9,81 @@ using StableRNGs
 include("testutils/sim_analytical_consistency.jl")
 include("testutils/progression.jl")
 
-@testset "EpiBranch" begin
-    include("test_quality.jl")
-    include("test_types.jl")
-    include("test_signals.jl")
-    include("test_streams.jl")
-    include("test_branching_process.jl")
-    include("test_attributes.jl")
-    include("test_interventions.jl")
-    include("test_settle_case.jl")
-    include("test_case_hooks.jl")
-    include("test_group_vaccination.jl")
-    include("test_vaccine_effect.jl")
-    include("test_capacity_constrained.jl")
-    include("test_intervention_actions.jl")
-    include("test_competing_risks.jl")
-    include("test_ct_seams.jl")
-    include("test_source_tracing.jl")
-    include("test_composable_eligibility.jl")
-    include("test_isolation_seams.jl")
-    include("test_pc_observation.jl")
-    include("test_stopping_rules.jl")
-    include("test_transitions.jl")
-    include("test_transition.jl")
-    include("test_infectiousness.jl")
-    include("test_funeral.jl")
-    include("test_density_dependent.jl")
-    include("test_structure_driven.jl")
-    include("test_reinfection.jl")
-    include("test_abort_infection.jl")
-    include("test_homogeneous.jl")
-    include("test_mixing.jl")
-    include("test_continuation.jl")
-    include("test_population_dynamics.jl")
-    include("test_mixing_population_dynamics.jl")
-    include("test_hybrid.jl")
-    include("test_generation_counts.jl")
-    include("test_model_spec.jl")
-    include("test_linelist.jl")
-    include("test_route_windows.jl")
-    include("test_chains.jl")
-    include("test_generation_intervals.jl")
-    include("test_analytical.jl")
-    include("test_incidence_likelihood.jl")
-    include("test_likelihood_dists.jl")
-    include("test_pairwise_likelihood.jl")
-    include("test_progression_likelihood.jl")
-    include("test_vaccine_likelihood.jl")
-    include("test_likelihood_compatibility.jl")
-    include("test_multitype.jl")
-    include("test_multitype_analytical.jl")
-    include("test_integration.jl")
-    include("test_r_targets.jl")
-    include("test_ad.jl")
-    include("test_stochastic_ad.jl")
-end
+# CI runs the suite as one job per group so that no job nears its timeout;
+# `EPIBRANCH_TEST_GROUP` selects a group and `Pkg.test()` without it runs
+# every file. A new file joins the group its subject belongs to, and the two
+# are kept close in running time.
+const TEST_GROUPS = (
+    engine = [
+        "test_quality.jl",
+        "test_types.jl",
+        "test_signals.jl",
+        "test_streams.jl",
+        "test_branching_process.jl",
+        "test_attributes.jl",
+        "test_interventions.jl",
+        "test_settle_case.jl",
+        "test_case_hooks.jl",
+        "test_group_vaccination.jl",
+        "test_vaccine_effect.jl",
+        "test_capacity_constrained.jl",
+        "test_intervention_actions.jl",
+        "test_competing_risks.jl",
+        "test_ct_seams.jl",
+        "test_source_tracing.jl",
+        "test_composable_eligibility.jl",
+        "test_isolation_seams.jl",
+        "test_pc_observation.jl",
+        "test_stopping_rules.jl",
+        "test_transitions.jl",
+        "test_transition.jl",
+        "test_infectiousness.jl",
+        "test_funeral.jl",
+        "test_density_dependent.jl",
+        "test_structure_driven.jl",
+        "test_reinfection.jl",
+        "test_abort_infection.jl",
+        "test_homogeneous.jl",
+        "test_mixing.jl",
+        "test_continuation.jl",
+        "test_population_dynamics.jl",
+        "test_mixing_population_dynamics.jl",
+        "test_hybrid.jl",
+        "test_generation_counts.jl",
+        "test_linelist.jl",
+        "test_route_windows.jl",
+        "test_event_queue.jl",
+    ],
+    inference = [
+        "test_model_spec.jl",
+        "test_chains.jl",
+        "test_generation_intervals.jl",
+        "test_analytical.jl",
+        "test_incidence_likelihood.jl",
+        "test_likelihood_dists.jl",
+        "test_pairwise_likelihood.jl",
+        "test_progression_likelihood.jl",
+        "test_vaccine_likelihood.jl",
+        "test_likelihood_compatibility.jl",
+        "test_multitype.jl",
+        "test_multitype_analytical.jl",
+        "test_integration.jl",
+        "test_r_targets.jl",
+        "test_ad.jl",
+        "test_stochastic_ad.jl",
+        "test_pair_kernels.jl",
+    ],
+)
 
-include("test_pair_kernels.jl")
-include("test_event_queue.jl")
+const TEST_GROUP = Symbol(get(ENV, "EPIBRANCH_TEST_GROUP", "all"))
+TEST_GROUP == :all || haskey(TEST_GROUPS, TEST_GROUP) ||
+    error("EPIBRANCH_TEST_GROUP must be one of $(join(keys(TEST_GROUPS), ", ")) or all")
+
+@testset "EpiBranch" begin
+    for group in keys(TEST_GROUPS)
+        TEST_GROUP in (:all, group) || continue
+        @testset "$group" begin
+            foreach(include, TEST_GROUPS[group])
+        end
+    end
+end
