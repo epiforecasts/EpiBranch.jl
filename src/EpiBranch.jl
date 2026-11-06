@@ -125,6 +125,7 @@ include("model_spec.jl")
 # switches from exact simulation to one of them.
 include("models/population_dynamics.jl")
 include("models/hybrid.jl")
+include("models/generation_counts.jl")
 
 # Output
 include("output/linelist.jl")
@@ -165,6 +166,7 @@ export TransmissionModel, BranchingProcess, Infectiousness, OffspringTimes,
     HomogeneousProcess, MixingProcess, ModelSpec
 export MeanFieldProcess, MeanFieldState, LinearNoiseProcess, LinearNoiseState
 export HybridProcess, HybridState
+export GenerationCounts, simulate_by_generation
 export transmission_timing, implied_R
 export Individual, InfectionEpisode, close_episode!, SimulationState
 export SimOpts
