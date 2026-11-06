@@ -102,8 +102,6 @@ struct GenerationCounts{
     generation::Int
     generation_length::L
     depletion::D
-    interventions::Vector{AbstractIntervention}
-    ledgers::Dict{Tuple, Any}
     rng::R
 end
 
@@ -229,7 +227,7 @@ end
                            multiplier = nothing, immune = 0,
                            population_by_type = nothing,
                            depletion = PerContactDepletion(),
-                           generation_length = nothing, interventions = ())
+                           generation_length = nothing)
 
 Simulate `model` by generation, as case counts rather than individuals: see
 [`GenerationCounts`](@ref). `model` needs a single infectiousness window with
@@ -259,44 +257,13 @@ offspring matrix (`MultiTypeOffspring`); any other model raises an
   a type in one binomial draw. With an offspring law whose sum has a closed
   form (`Poisson`, with or without `multiplier`, `NegBin` and `Binomial`), a
   generation then costs the same whatever the number of cases.
-- `generation_length`: the length of a generation in days, needed for
-  `interventions`, which are applied between generations.
-- `interventions`: interventions applied to the susceptibles between
-  generations; see below.
+- `generation_length`: the length of a generation in days, recorded in the
+  state, which is at day `generation * generation_length`; `nothing` (the
+  default) if none is given.
 
 A multi-type model splits the offspring of each type between types by the
 columns of the next-generation matrix, and thins the contacts of each type by
 its own susceptible share, which scales the rows of the matrix by that share.
-
-# Interventions
-
-A [`GroupVaccination`](@ref) can be given, optionally inside
-[`Scheduled`](@ref) and [`CapacityConstrained`](@ref), and removes
-susceptibles of each type between generations. Each type is a group of its own.
-A campaign during the days of generation `g` to `g + 1` (from day `g *
-generation_length`, for `generation_length` days) acts before the contacts of
-that generation are made. Those contacts are made by cases infected
-`generation_length` days earlier, at the end of the interval.
-
-- With no capacity, the `coverage` of the group is reached at once.
-- With a [`CapacityConstrained`](@ref), the budgets of the interval are given
-  out among the types in proportion to the members each still has to reach.
-  Doses go to members at random, whether or not they are still susceptible,
-  so the doses for a type reach susceptibles in proportion to the
-  susceptibles among the members not yet dosed. A dose that reaches a
-  susceptible removes it with probability `efficacy`; other doses have no
-  effect. A leaky vaccine is treated in the same way, protecting a fraction
-  `efficacy` of those it reaches.
-- A [`Scheduled`](@ref) window is read once per generation, at its first day,
-  so a `start_time` between two generations takes effect at the next. Only
-  `start_time`, `end_time`, `start_after_cases` and a `condition` on
-  `max_infection_time`, `cumulative_cases` and `current_generation` of the
-  state are available. A `start_after` trigger needs individuals to read and
-  raises an `ArgumentError`.
-- The `eligibility` and `dose_delay` of a vaccination are not read, because a
-  count has no case to trigger a group or to time a delay from. Use
-  `Scheduled` for the start. A `delay_to_immunity` other than zero, or an
-  `efficacy` that is not a number, raises an `ArgumentError`.
 
 Returns a [`GenerationCounts`](@ref); continue it with
 `simulate(model, state; max_generations)`.
@@ -321,19 +288,12 @@ state = simulate_by_generation(
 )
 
 # A generation drawn in a fixed number of steps, however many cases it has,
-# with 10% immune at the start and a vaccination campaign of 1,000 doses a
-# day from day 14, in weekly generations
+# with 10% immune at the start, in weekly generations
 model = BranchingProcess(Poisson(2.0); population_size = 2_500_000)
-campaign = Scheduled(
-    CapacityConstrained(
-        GroupVaccination(efficacy = 0.8); budget_per_period = 1_000.0, period = 1.0
-    );
-    start_time = 14.0,
-)
 state = simulate_by_generation(
     model; n_initial = 10, max_generations = 30, immune = 250_000,
     depletion = StartOfGenerationDepletion(), generation_length = 7.0,
-    interventions = [campaign], multiplier = Gamma(6.5, 1 / 6.5), rng = Xoshiro(1)
+    multiplier = Gamma(6.5, 1 / 6.5), rng = Xoshiro(1)
 )
 ```
 """
@@ -346,8 +306,7 @@ function simulate_by_generation(
         immune::Union{Integer, AbstractVector{<:Integer}} = 0,
         population_by_type::Union{Nothing, AbstractVector{<:Integer}} = nothing,
         depletion::AbstractDepletion = PerContactDepletion(),
-        generation_length::Union{Real, Nothing} = nothing,
-        interventions = ()
+        generation_length::Union{Real, Nothing} = nothing
     )
     nt = n_types(model)
     counts = _per_type_counts(model, n_initial, :n_initial)
@@ -358,32 +317,16 @@ function simulate_by_generation(
     susceptibles = _initial_susceptibles(
         model, sizes, counts, _per_type_counts(model, immune_counts, :immune)
     )
-    foreach(_validate_counts, interventions)
-    gl = _generation_length(generation_length, interventions, pop)
+    gl = _generation_length(generation_length)
     state = GenerationCounts(
-        counts, cumulative, pop, susceptibles, sizes, 0, gl, depletion,
-        AbstractIntervention[iv for iv in interventions], Dict{Tuple, Any}(), rng
+        counts, cumulative, pop, susceptibles, sizes, 0, gl, depletion, rng
     )
     return simulate(model, state; max_generations, multiplier)
 end
 
-function _generation_length(::Nothing, interventions, pop)
-    isempty(interventions) || throw(
-        ArgumentError(
-            "interventions are applied between generations, so they need `generation_length`, " *
-                "the length of a generation in days"
-        )
-    )
-    return nothing
-end
-function _generation_length(length::Real, interventions, pop)
+_generation_length(::Nothing) = nothing
+function _generation_length(length::Real)
     length > 0 || throw(ArgumentError("generation_length must be positive, got $length"))
-    isempty(interventions) || pop isa Int || throw(
-        ArgumentError(
-            "interventions remove susceptibles, so they need a model with a finite " *
-                "population_size"
-        )
-    )
     return Float64(length)
 end
 
@@ -405,8 +348,8 @@ end
 
 Continue `state`, a [`GenerationCounts`](@ref) returned by
 [`simulate_by_generation`](@ref) or by this method itself, up to a later
-`max_generations`, with the `depletion`, `generation_length` and
-`interventions` the state was started with. `multiplier` is as in
+`max_generations`, with the `depletion` and `generation_length` the state was
+started with. `multiplier` is as in
 `simulate_by_generation`, and is read fresh on every call, so a later
 continuation can turn it on, off, or change it. `state` is returned unchanged
 if its current generation has already gone extinct (every count 0): there is
@@ -436,17 +379,9 @@ function simulate(
     susceptibles = state.susceptibles isa NoPopulation ? nothing :
         copy(_as_vector(state.susceptibles))
     sizes = state.type_sizes isa NoPopulation ? nothing : _as_vector(state.type_sizes)
-    ledgers = deepcopy(state.ledgers)
     cumulative = state.cumulative_cases
     gen = state.generation
     while gen < max_generations && !all(iszero, counts)
-        if !isempty(state.interventions)
-            ctx = GenerationContext(
-                rng, gen * state.generation_length, (gen + 1) * state.generation_length,
-                gen, cumulative, susceptibles, sizes, ledgers
-            )
-            _apply_interventions!(state.interventions, ctx)
-        end
         m = multiplier === nothing ? nothing : rand(rng, multiplier)
         potential = _generation_potential(rng, offspring, counts, m)
         # Without a finite population nothing is thinned.
@@ -459,7 +394,7 @@ function simulate(
         _like(template, counts), cumulative, state.population_size,
         susceptibles === nothing ? NoPopulation() : _like(template, susceptibles),
         state.type_sizes, gen, state.generation_length, state.depletion,
-        state.interventions, ledgers, rng
+        rng
     )
 end
 

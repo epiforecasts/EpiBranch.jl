@@ -1048,4 +1048,3 @@ before.
 | A per-person or per-pair draw that should stay aligned under `CommonRandomNumbers` | `EpiBranch.stream(rng, id, purpose)` in place of `rng` | Wherever the draw happens |
 | An offspring family usable with `simulate_by_generation`'s `multiplier` | `EpiBranch._scale_mean(::YourDistribution, m::Real)`, returning the law with its mean scaled by `m` | Each generation, once, before every case of it draws |
 | An offspring family whose generation total `simulate_by_generation` draws in one step | `EpiBranch._sum_offspring(rng, ::YourDistribution, n::Int)`, returning the sum of `n` independent draws | Each generation, in place of `n` draws |
-| An intervention `simulate_by_generation` can apply between generations | `EpiBranch.count_removals(::YourIntervention, ctx, budget, key)`, returning the susceptibles of each type removed and the doses used | Each generation, before its contacts are made |

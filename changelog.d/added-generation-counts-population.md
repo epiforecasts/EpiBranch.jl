@@ -8,10 +8,6 @@ susceptibles left. This is the standard discrete-generation rule. The default,
 simulation. Where the offspring law has a closed-form sum (`Poisson`, with or
 without `multiplier`, `NegBin` and `Binomial`), the total of a generation is
 drawn in one step, so the cost of a generation does not depend on the number of
-cases. With a `generation_length` in days, `interventions` act between
-generations. A `GroupVaccination`, optionally inside `Scheduled` or
-`CapacityConstrained` with budget schedules, removes susceptibles of each type
-at a rate of doses times efficacy. Only the susceptible share of the doses for
-a type reaches susceptibles. A multi-type model with a finite `population_size`
-now needs `population_by_type`, because its types no longer share one
-population.
+cases. A `generation_length` in days can be recorded in the state. A multi-type
+model with a finite `population_size` now needs `population_by_type`, because
+its types no longer share one population.
