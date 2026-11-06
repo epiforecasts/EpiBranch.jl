@@ -339,6 +339,30 @@ end
     @test late == 0
 end
 
+@testset "Continuing a cut race agrees on a model's minted contacts" begin
+    # Some contacts `make_contact!` mints are still pending when `max_time`
+    # first cuts the race, so `_finish!` must restore their drawn time from
+    # `minted` before deciding whether each stays undecided once the race's
+    # true end is known.
+    model = MintModel(2)
+    for seed in 1:10
+        state = simulate(
+            model; n_initial = 1, rng = StableRNG(seed), max_time = 2.0,
+            max_cases = 10^4, max_generations = 100
+        )
+        continued = simulate(model, state; max_time = 6.0)
+        direct = simulate(
+            model; n_initial = 1, rng = StableRNG(seed), max_time = 6.0,
+            max_cases = 10^4, max_generations = 100
+        )
+        @test length(continued.individuals) == length(direct.individuals)
+        @test all(
+            isequal(a.infection_time, b.infection_time) for
+                (a, b) in zip(continued.individuals, direct.individuals)
+        )
+    end
+end
+
 # A line of four people, the first an index case and the second never
 # infected. `LineEarly` says its `contacts_of` reads nothing settling writes.
 abstract type AbstractLine <: EpiBranch.TransmissionModel end

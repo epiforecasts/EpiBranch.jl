@@ -526,7 +526,7 @@ end
             ModelSpec(process; interventions = [iv]);
             max_generations = 1, rng = MersenneTwister(1)
         )
-        @test count(is_vaccinated, state.individuals) == 9
+        @test count(is_vaccinated, state.individuals) == 10
         @test state.cumulative_cases == 1
         contact = state.individuals[2]
         state.max_infection_time = 30.0

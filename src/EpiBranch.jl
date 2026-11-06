@@ -124,7 +124,9 @@ include("model_spec.jl")
 # linear-noise approximations of a closed population, and a hybrid that
 # switches from exact simulation to one of them.
 include("models/population_dynamics.jl")
+include("models/mixing_population_dynamics.jl")
 include("models/hybrid.jl")
+include("models/generation_counts.jl")
 
 # Output
 include("output/linelist.jl")
@@ -164,7 +166,10 @@ include("progression_likelihood.jl")
 export TransmissionModel, BranchingProcess, Infectiousness, OffspringTimes,
     HomogeneousProcess, MixingProcess, ModelSpec
 export MeanFieldProcess, MeanFieldState, LinearNoiseProcess, LinearNoiseState
+export MixingMeanFieldProcess, MixingMeanFieldState
+export MixingLinearNoiseProcess, MixingLinearNoiseState
 export HybridProcess, HybridState
+export GenerationCounts, simulate_by_generation
 export transmission_timing, implied_R
 export Individual, InfectionEpisode, close_episode!, SimulationState
 export SimOpts
