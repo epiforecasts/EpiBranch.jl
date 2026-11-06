@@ -1,0 +1,109 @@
+# Triggers Julia General Registry registration by posting the
+# `@JuliaRegistrator register` comment on `main`'s HEAD commit — the same
+# comment a maintainer would type by hand, so no extra service or token
+# beyond `GITHUB_TOKEN` is needed. Two ways to fire it, both gated on the
+# actor having write access:
+#
+#   - Comment `/register` on any issue or pull request, or
+#     `/register lib/EpiNetwork` (or `lib/EpiHouseholds`) for a satellite.
+#   - Run this workflow manually (Actions -> Register -> Run workflow).
+#
+# JuliaRegistrator (the org's GitHub App) then reacts to the commit comment,
+# opens the registry PR, and TagBot creates the release once it merges.
+
+name: Register
+
+on:
+  issue_comment:
+    types: [created]
+  workflow_dispatch:
+    inputs:
+      subdir:
+        description: "Satellite package to register (blank for EpiBranch)"
+        type: choice
+        default: ""
+        options: ["", "lib/EpiNetwork", "lib/EpiHouseholds"]
+
+jobs:
+  register:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      startsWith(github.event.comment.body, '/register')
+    runs-on: ubuntu-latest
+    # `contents: write` — posting the commit comment needs Contents write.
+    # `issues: write` — posting the permission-denied reaction needs Issues
+    # write (a PR conversation comment is an issue comment for this
+    # endpoint). The permission check itself needs no extra scope: Metadata
+    # read is always available to `GITHUB_TOKEN`.
+    permissions:
+      contents: write
+      issues: write
+    steps:
+      - name: Check permissions
+        id: check-permissions
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            ACTOR="${{ github.actor }}"
+          else
+            ACTOR="${{ github.event.comment.user.login }}"
+          fi
+          PERMISSION=$(gh api "repos/${{ github.repository }}/collaborators/$ACTOR/permission" --jq '.permission')
+          echo "$ACTOR has permission: $PERMISSION"
+          if [[ "$PERMISSION" == "admin" || "$PERMISSION" == "write" || "$PERMISSION" == "maintain" ]]; then
+            echo "has_permission=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_permission=false" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # A satellite package under `lib/` is registered from the same comment
+      # with its path: `/register lib/EpiNetwork`. The comment body is read
+      # through an environment variable and matched against the two known
+      # paths, never interpolated into the shell.
+      - name: Read which package to register
+        if: steps.check-permissions.outputs.has_permission == 'true'
+        id: target
+        env:
+          COMMENT: ${{ github.event.comment.body }}
+          DISPATCH_SUBDIR: ${{ github.event.inputs.subdir }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            SUBDIR="$DISPATCH_SUBDIR"
+          else
+            # The command is the first line, trailing whitespace and any
+            # carriage return dropped; a comment may go on after it. An
+            # argument that is not one of the two satellites is refused
+            # rather than taken as the root package.
+            LINE=$(printf '%s\n' "$COMMENT" | sed -nE '1s#[[:space:]]*$##p')
+            case "$LINE" in
+              /register) SUBDIR="" ;;
+              "/register lib/EpiNetwork"|"/register lib/EpiHouseholds")
+                SUBDIR="${LINE#/register }" ;;
+              *) echo "::error::unrecognised register command: $LINE"; exit 1 ;;
+            esac
+          fi
+          echo "subdir=$SUBDIR" >> "$GITHUB_OUTPUT"
+
+      - name: Trigger JuliaRegistrator
+        if: steps.check-permissions.outputs.has_permission == 'true'
+        env:
+          SUBDIR: ${{ steps.target.outputs.subdir }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BODY='@JuliaRegistrator register'
+          if [ -n "$SUBDIR" ]; then
+            BODY="$BODY subdir=$SUBDIR"
+          fi
+          gh api "repos/${{ github.repository }}/commits/main/comments" \
+            --method POST --field body="$BODY"
+
+      - name: React with permission denied
+        if: >-
+          github.event_name == 'issue_comment' &&
+          steps.check-permissions.outputs.has_permission == 'false'
+        run: |
+          gh api "repos/${{ github.repository }}/issues/comments/${{ github.event.comment.id }}/reactions" \
+            --method POST --field content='-1'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

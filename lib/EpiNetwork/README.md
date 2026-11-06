@@ -15,22 +15,19 @@ period, onset and testing are flexible `Transition`s on the shared
 natural-history timeline, so a network line list is an EpiBranch line list.
 
 ```julia
-using EpiBranch, EpiNetwork, Distributions
+using EpiBranch, EpiNetwork, Distributions, Graphs, StableRNGs
 
-# Ring of 5 nodes; every edge shares a contact-interval kernel
-adjacency = [[2, 5], [1, 3], [2, 4], [3, 5], [4, 1]]
-model = NetworkProcess(adjacency, Exponential(2.0); infectious_period = 6.0)
+# A small-world network of 400 people: mostly local contacts, so that the
+# contacts of a person tend to be in contact with each other, with a few
+# long-range links.
+g = watts_strogatz(400, 6, 0.1; rng = StableRNG(1))
 
-state = simulate(model; n_initial = 1)
+model = ModelSpec(NetworkProcess(g, Exponential(3.0));
+    progression = [Transition(:recovered; from = :infection, delay = 7.0, terminal = true)])
+state = simulate(model; n_initial = 1, rng = StableRNG(3))
 ```
 
 `NetworkProcess` was originally part of EpiBranch.jl and was split into this
 subpackage so the core package stays focused on the branching-process models;
 the structured network model lives here alongside future network and household
 extensions.
-
-## Status
-
-EpiBranch.jl is not yet registered, so this subpackage depends on it by path
-(`[sources]` in `Project.toml`, pointing at the repository root). Once EpiBranch
-is registered the path source can be dropped.

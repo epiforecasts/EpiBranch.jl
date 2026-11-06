@@ -107,12 +107,27 @@ function Base.rand(rng::AbstractRNG, d::_TruncatedSkewNormal)
     return 0.0
 end
 
+# Breakpoints bracketing the density's peak, which sits within a few `ω` of
+# `ξ` whatever `α` is: without them, `quadgk`'s adaptive refinement can step
+# clean over a peak much narrower than the integration range (small `ω`
+# relative to `ξ`, or to `x - ξ`) and return a spuriously small mass. Outside
+# the bracket the density is a smooth, featureless tail that plain adaptive
+# quadrature tracks fine regardless of how wide. Shared by `_trunc_logZ`
+# (integrating to `Inf`) and `logcdf` (integrating to `x`).
+function _peak_breakpoints(d::_TruncatedSkewNormal, upper::Real)
+    margin = 10 * float(d.ω)
+    inner = (float(d.ξ) - margin, float(d.ξ) + margin)
+    lo = zero(float(upper))
+    return (lo, filter(p -> lo < p < upper, inner)..., upper)
+end
+
 # The retained-mass constant `log P(inner ≥ 0)`, integrated lazily and cached on
 # first request — `rand` (the simulation path) never triggers it. SkewNormal has
 # no cdf in this Distributions.jl version, hence the numerical integral.
 function _trunc_logZ(d::_TruncatedSkewNormal{T}) where {T}
     isnan(d.logZ[]) || return d.logZ[]
-    Z = first(quadgk(x -> pdf(d.inner, x), zero(T), T(Inf)))
+    points = _peak_breakpoints(d, T(Inf))
+    Z = first(quadgk(x -> pdf(d.inner, x), points...))
     return d.logZ[] = T(log(Z))
 end
 
@@ -121,6 +136,297 @@ end
 function Distributions.logpdf(d::_TruncatedSkewNormal, x::Real)
     return x < 0.0 ? oftype(float(x), -Inf) : logpdf(d.inner, x) - _trunc_logZ(d)
 end
+
+# The mass below `x`, normalised the same way as `logpdf`: the integral of
+# the inner density up to `x`, over the retained mass `_trunc_logZ` already
+# caches. Needed because SkewNormal has no `cdf` in this version of
+# Distributions.jl; without it, neither the engine's own `cumhazard`
+# (derived from `cdf` by SurvivalDistributions) nor `truncated` (which
+# Distributions builds from `logcdf`) can reach it.
+function Distributions.logcdf(d::_TruncatedSkewNormal, x::Real)
+    x <= 0.0 && return oftype(float(x), -Inf)
+    fx = float(x)
+    points = _peak_breakpoints(d, fx)
+    mass = first(quadgk(t -> pdf(d.inner, t), points...))
+    # Clamped at 0: `mass` and `_trunc_logZ` come from separate quadrature
+    # calls, so their ratio can round fractionally past 1 once `x` reaches
+    # into the far tail, where the true cdf is 1 already.
+    return min(log(mass) - _trunc_logZ(d), zero(float(x)))
+end
+Distributions.cdf(d::_TruncatedSkewNormal, x::Real) = exp(logcdf(d, x))
+Distributions.logccdf(d::_TruncatedSkewNormal, x::Real) = _log1mexp(logcdf(d, x))
+
+Base.minimum(::_TruncatedSkewNormal) = 0.0
+Base.maximum(::_TruncatedSkewNormal) = Inf
+Distributions.partype(::_TruncatedSkewNormal{T}) where {T} = T
+
+# Quantile by Newton's method on `cdf`, which has no closed form here
+# either, bracketed by bisection as a safeguard. `truncated` needs it to
+# draw the offspring form's generation time, and the race's `invlogccdf`
+# reaches it through Distributions' own fallback `quantile(d, -expm1(lp))`,
+# both on a path run once per case or pair: bisecting `cdf` itself down to
+# full `Float64` precision took around fifty of its quadrature calls per
+# quantile, so this uses the closed-form `pdf` for the Newton step, which
+# converges in a handful.
+function Distributions.quantile(d::_TruncatedSkewNormal, p::Real)
+    0.0 <= p <= 1.0 || throw(DomainError(p, "quantile needs p in [0, 1]"))
+    iszero(p) && return 0.0
+    isone(p) && return Inf
+    lo, hi = 0.0, max(abs(d.ξ), d.ω, one(d.ξ))
+    while cdf(d, hi) < p
+        hi *= 2
+    end
+    x = (lo + hi) / 2
+    for _ in 1:100
+        fx = cdf(d, x) - p
+        abs(fx) < 1.0e-12 && return x
+        fx < 0 ? (lo = x) : (hi = x)
+        step = x - fx / pdf(d, x)
+        x = lo < step < hi ? step : lo + (hi - lo) / 2
+    end
+    return x
+end
+
+"""
+    HazardKernel(hazard; upper = Inf, onset = 0.0)
+
+A contact-interval distribution built directly from an instantaneous hazard
+rather than from a named family: `hazard(t)` is the rate of transmission at
+time `t` since the window opened, for `t` from `onset` up to `upper`
+(unbounded by default). Use it as the `kernel` of an [`Infectiousness`](@ref)
+window, built fresh for each case from a function of the individual,
+`kernel = ind -> ...`, when transmission should follow something computed on
+the fly rather than a named distribution: most usefully a per-case
+within-host trajectory, drawn once at infection and stored on the
+individual, read through a link that turns it into a rate.
+
+`onset` is the time before which the hazard is zero, defaulting to 0, since a
+hazard built from a named distribution's own hazard already starts there. A
+trajectory whose hazard switches on later should give its own onset rather
+than leave `hazard` to encode a flat run-up: the kernel treats `hazard` as
+zero before `onset` regardless of what it returns there, and rejects an
+`onset` still followed by a flat stretch of zero, since nothing would then
+distinguish a trajectory still to switch on from one that has permanently
+cleared.
+
+`hazard` is called many times to integrate and invert the cumulative hazard
+by quadrature, so it should be cheap and non-negative throughout
+`(onset, upper)`. `upper` is where the integration stops: the hazard counts
+as zero beyond it, and a draw the total hazard up to there cannot reach is
+`Inf`, a contact that never happens. Give a hazard that clears an `upper`
+past which it is negligible. Such a draw is then settled at `upper`, where
+with `upper` left unbounded the search for it has to double out to the
+largest float first, about a thousand quadratures of a zero hazard for every
+contact that never happens. A hazard that falls to zero and stays there
+leaves a case uninfectious from then on either way.
+
+# Examples
+
+A constant hazard gives the same contact-interval law as an exponential with
+the reciprocal rate:
+
+```julia
+using EpiBranch, Distributions
+HazardKernel(t -> 0.5)   # the same law as Exponential(2.0)
+```
+
+A case's infectiousness follows a within-host pathogen-load trajectory,
+drawn once per case (an ordinary attribute, see [`ModelSpec`](@ref)) and read
+through a link turning load into a transmission rate:
+
+```julia
+# user-supplied within-host model: load rises to a peak, then clears
+function load_curve(rng)
+    peak_time = rand(rng, Gamma(3.0, 1.5))
+    peak_height = rand(rng, LogNormal(0.0, 0.3))
+    clearance = rand(rng, Gamma(4.0, 0.5))
+    return t -> t < peak_time ? peak_height * t / peak_time :
+        peak_height * exp(-clearance * (t - peak_time))
+end
+
+attributes = (rng, ind) -> ind.state[:trajectory] = load_curve(rng)
+# The load has cleared long before 100 days, so the integration stops there.
+community = Infectiousness(
+    NegBin(1.2, 0.5);
+    kernel = ind -> HazardKernel(t -> 0.1 * ind.state[:trajectory](t); upper = 100.0)
+)
+model = ModelSpec(BranchingProcess(community); attributes)
+```
+
+Generation time, incubation period and serial interval are then whatever the
+trajectory and its links to each clinical event imply, instead of separate
+inputs drawn independently of one another.
+"""
+struct HazardKernel{F, T <: Real} <: ContinuousUnivariateDistribution
+    hazard::F
+    onset::T
+    upper::T
+end
+function HazardKernel(hazard; upper::Real = Inf, onset::Real = 0.0)
+    upper > 0 || throw(ArgumentError("upper must be positive, got $upper"))
+    onset >= 0 || throw(ArgumentError("onset must be non-negative, got $onset"))
+    onset < upper || throw(
+        ArgumentError("onset must be below upper, got onset = $onset, upper = $upper")
+    )
+    T = float(promote_type(typeof(onset), typeof(upper)))
+    onset, upper = T(onset), T(upper)
+    # A point evaluation at `onset` cannot tell a hazard that switches on
+    # smoothly from zero there (as a named distribution's own hazard often
+    # does) from one still flat for a stretch beyond it, so this integrates
+    # the same first step the inverter's own bracket would grow.
+    window = _hazard_integral_from(hazard, onset, min(onset + one(T), upper))
+    window > 0 || throw(
+        ArgumentError(
+            "hazard is still zero just after onset = $onset; " *
+                "give the time it actually switches on"
+        )
+    )
+    return HazardKernel(hazard, onset, upper)
+end
+
+# Zero outside `(onset, upper)` whatever `hazard` returns there, as
+# `cumhazard` already treats it: a calendar-scaled window integrates these
+# directly, and the pairwise likelihood reads them at observed times.
+function SurvivalDistributions.hazard(k::HazardKernel, t::Real)
+    return k.onset < t < k.upper ? k.hazard(t) : zero(float(t))
+end
+function SurvivalDistributions.loghazard(k::HazardKernel, t::Real)
+    return k.onset < t < k.upper ? log(k.hazard(t)) : oftype(float(t), -Inf)
+end
+function SurvivalDistributions.cumhazard(k::HazardKernel, τ::Real)
+    τ >= 0 || throw(ArgumentError("τ must be non-negative, got $τ"))
+    τ <= k.onset && return zero(float(τ))
+    hi = min(float(τ), k.upper)
+    isfinite(hi) && return _hazard_integral_from(k.hazard, k.onset, hi)
+    # Over an unbounded horizon quadgk hands back a number even where the
+    # integral diverges, with an error estimate of the same order as the
+    # value; the total is infinite then, which the race's guard against
+    # redrawing from a window that never closes needs to see.
+    val, err = quadgk(s -> k.hazard(k.onset + s), 0.0, Inf)
+    return err <= sqrt(eps(one(val))) * max(val, one(val)) ? val : oftype(val, Inf)
+end
+
+function Distributions.logccdf(k::HazardKernel, τ::Real)
+    τ < 0 && return zero(float(τ))
+    return -cumhazard(k, τ)
+end
+
+function Distributions.invlogccdf(k::HazardKernel, lp::Real)
+    isinf(lp) && lp < 0 && return oftype(float(lp), Inf)
+    lp <= 0 || throw(ArgumentError("invlogccdf needs a non-positive log-survival, got $lp"))
+    target = -lp
+    iszero(target) && return 0.0
+    return _hazard_invert(k, float(target))
+end
+
+# Define `cdf`/`logcdf` so a `HazardKernel` passed as a bare `contact_interval`
+# (rather than built per case through `kernel`) works wherever `implied_R` and
+# `transmission_timing`'s `offspring` form call `cdf`/`truncated` on it
+# directly, the same as a named distribution.
+Distributions.cdf(k::HazardKernel, τ::Real) = -expm1(logccdf(k, τ))
+Distributions.logcdf(k::HazardKernel, τ::Real) = _log1mexp(logccdf(k, τ))
+# The density is the hazard times the survival, which a clinical transition's
+# likelihood reads where the kernel times a delay.
+Distributions.logpdf(k::HazardKernel, x::Real) = loghazard(k, x) + logccdf(k, x)
+Distributions.pdf(k::HazardKernel, x::Real) = exp(logpdf(k, x))
+
+Base.rand(rng::AbstractRNG, k::HazardKernel) = invlogccdf(k, log(rand(rng)))
+Distributions.quantile(k::HazardKernel, p::Real) = invlogccdf(k, log1p(-p))
+Base.minimum(::HazardKernel) = 0.0
+# A draw beyond the total hazard is `Inf`, so the support is unbounded even
+# where `upper` cuts the integration short.
+Base.maximum(::HazardKernel) = Inf
+Distributions.partype(::HazardKernel{F, T}) where {F, T} = T
+
+# `k.upper` caps the bracket `_invert_hazard` grows. A `target` beyond the
+# total hazard up to there is a contact that never happens, returned as `Inf`
+# rather than doubled towards forever; `upper` only bounds the integration,
+# so it is not treated as the survival's own end the way a calendar-scaled
+# profile's bounded support is. The bracket starts at `k.onset`, where the
+# hazard is already known to be positive (checked once, at construction), so
+# it grows through territory that integrates cleanly rather than risking the
+# stall a flat run-up before it would cause.
+function _hazard_invert(k::HazardKernel, target::Real)
+    t, t_acc = _invert_hazard(k.hazard, k.onset, k.upper, false, target)
+    t_acc < target && return oftype(t, Inf)
+    return t < k.upper ? _implicit_hazard_step(k.hazard, t, t_acc, target) : t
+end
+
+"""
+A [`HazardKernel`](@ref) conditioned on falling at or before `hi`: what
+`transmission_timing`'s `offspring` form needs so every draw is realised
+rather than thinned away by the case's own recovery. The lower bound is
+always 0, since a `HazardKernel`'s own support already starts there.
+
+This is the usual meaning of `Distributions.truncated`, a rescaled
+conditional distribution; the kernel's own `upper` only bounds its
+integration and excludes nothing.
+
+An internal wrapper rather than Distributions' own `Truncated`, which draws
+through the base `quantile` and cannot say that a window closing before the
+kernel's onset has no contact to draw; a `Distribution` subtype all the same,
+so a user who caps a kernel with `truncated` reaches every seam a named
+distribution does.
+"""
+struct _TruncatedHazardKernel{K, T <: Real} <: ContinuousUnivariateDistribution
+    kernel::K
+    hi::T
+    logF_hi::T
+end
+function Distributions.truncated(k::HazardKernel, lo::Real, hi::Real)
+    iszero(lo) || throw(
+        ArgumentError("truncated(::HazardKernel, lo, hi) needs lo = 0")
+    )
+    hi, logF_hi = promote(float(hi), logcdf(k, float(hi)))
+    return _TruncatedHazardKernel(k, hi, logF_hi)
+end
+# The keyword spellings, `truncated(k; upper = hi)` and `truncated(k; lower =
+# 0)`, reach Distributions' own `Truncated` otherwise, which knows nothing of
+# a window with no mass.
+Distributions.truncated(k::HazardKernel, ::Nothing, hi::Real) = truncated(k, 0.0, hi)
+function Distributions.truncated(k::HazardKernel, lo::Real, ::Nothing)
+    iszero(lo) || throw(
+        ArgumentError("truncated(::HazardKernel, lo, hi) needs lo = 0")
+    )
+    return k
+end
+
+# A window that closes at or before the kernel's onset has no mass to
+# condition on (`logF_hi == -Inf`): every draw is then `Inf`, a contact that
+# never happens, the counterpart of a named distribution's degenerate
+# truncation, which the window's `until` censors.
+_no_mass(k::_TruncatedHazardKernel) = isinf(k.logF_hi)
+
+function Distributions.logcdf(k::_TruncatedHazardKernel, τ::Real)
+    _no_mass(k) && return oftype(k.logF_hi, -Inf)
+    return τ >= k.hi ? zero(k.logF_hi) : logcdf(k.kernel, τ) - k.logF_hi
+end
+Distributions.cdf(k::_TruncatedHazardKernel, τ::Real) = exp(logcdf(k, τ))
+Distributions.logccdf(k::_TruncatedHazardKernel, τ::Real) = _log1mexp(logcdf(k, τ))
+function Distributions.quantile(k::_TruncatedHazardKernel, p::Real)
+    _no_mass(k) && return oftype(k.hi, Inf)
+    return quantile(k.kernel, exp(k.logF_hi + log(p)))
+end
+function Distributions.logpdf(k::_TruncatedHazardKernel, τ::Real)
+    (_no_mass(k) || τ >= k.hi) && return oftype(k.logF_hi, -Inf)
+    return logpdf(k.kernel, τ) - k.logF_hi
+end
+Distributions.pdf(k::_TruncatedHazardKernel, τ::Real) = exp(logpdf(k, τ))
+# The hazard of the conditional law, which a calendar-scaled window reads
+# directly, differs from the base kernel's: it blows up towards `hi`.
+function SurvivalDistributions.loghazard(k::_TruncatedHazardKernel, τ::Real)
+    lp = logpdf(k, τ)
+    # Past the base kernel's `upper` but below the cap both density and
+    # survival are gone; the hazard is zero there, not their ratio.
+    isfinite(lp) || return lp
+    return lp - logccdf(k, τ)
+end
+SurvivalDistributions.hazard(k::_TruncatedHazardKernel, τ::Real) = exp(loghazard(k, τ))
+SurvivalDistributions.cumhazard(k::_TruncatedHazardKernel, τ::Real) = -logccdf(k, τ)
+Base.rand(rng::AbstractRNG, k::_TruncatedHazardKernel) = quantile(k, rand(rng))
+Base.minimum(::_TruncatedHazardKernel) = 0.0
+Base.maximum(k::_TruncatedHazardKernel) = k.hi
+Distributions.partype(k::_TruncatedHazardKernel) = Distributions.partype(k.kernel)
 
 """
     Conditional(dist)
@@ -135,7 +441,7 @@ Unlike a plain `(rng, args...) -> value` function, the distribution behind a
 `Conditional` can be read back through [`resolve`](@ref EpiBranch.resolve)
 without sampling it. That lets a likelihood over timing data, such as a
 serial interval, use the case's delay distribution directly instead of only
-ever drawing from it.
+drawing from it.
 
 # Examples
 ```julia
@@ -153,7 +459,7 @@ Turn a parameter given as a number, a `Distribution` or a [`Conditional`](@ref)
 into the `Distribution` it stands for: `Dirac(x)` for a number, the
 distribution unchanged, or `c.dist(args...)` for a `Conditional` `c`. A plain
 `(rng, args...) -> value` function resolves to an adapter that samples by
-calling the function; it has no density, so it only ever supports
+calling the function; it has no density, so it only supports
 drawing a value, not reading one back.
 
 [`sample_value`](@ref) draws from the result, as every built-in

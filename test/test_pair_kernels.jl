@@ -174,6 +174,12 @@ EpiBranch.calendar_multiplier(::BreaklessSchedule, t) = 1.0
     @test EpiBranch.calendar_multiplier(Steps([1.0], [1.0, 2.0]), 1.0) == 2.0
     @test EpiBranch.next_calendar_break(Steps([1.0, 2.0], [1.0, 2.0, 3.0]), 1.0) == 2.0
     @test EpiBranch.next_calendar_break(Steps([1.0], [1.0, 2.0]), 1.0) == Inf
+    # `Steps` and `Seasonal` both have a known largest multiplier; a plain
+    # function, or a schedule that declares none, does not.
+    @test EpiBranch.calendar_bound(Steps([1.0, 2.0], [0.4, 1.0, 0.2])) == 1.0
+    @test EpiBranch.calendar_bound(Seasonal(; amplitude = 0.3, peak_day = 5.0)) == 1.3
+    @test EpiBranch.calendar_bound(t -> 1 + t) === nothing
+    @test EpiBranch.calendar_bound(seasonal) === nothing
     # A piecewise-constant schedule must say where it breaks.
     breakless = PairKernel(ctx -> Exponential(1.0); calendar = BreaklessSchedule())
     @test_throws MethodError EpiBranch.cumhazard(
@@ -319,6 +325,69 @@ seasonal_integral(s::Seasonal, t) =
     @test EpiBranch.cumhazard(interval, 2.0) ≈
         0.25 * (seasonal_integral(s, 102.0) - seasonal_integral(s, 100.0))
     @test EpiBranch.cumhazard(interval, 2.0) ≈ 0.6026949328797594
+
+    # A kernel whose integration stops at `upper` keeps a finite total under
+    # the calendar too, so the race can still tell it from a window that
+    # never closes.
+    bounded = PairKernel(context -> HazardKernel(t -> 2.0; upper = 1.0); calendar = s)
+    bounded_interval = EpiBranch.pair_kernel(bounded, 1, 2, 0.0, 100.0)
+    @test isfinite(logccdf(bounded_interval, Inf))
+    @test EpiBranch.cumhazard(bounded_interval, Inf) ≈
+        EpiBranch.cumhazard(bounded_interval, 1.0)
+    @test EpiBranch.cumhazard(bounded_interval, 50.0) ≈
+        EpiBranch.cumhazard(bounded_interval, 1.0)
+
+    # Just past a late onset the integral must start where the hazard does,
+    # or quadrature's first pass over the whole range sees only zeros.
+    late = PairKernel(
+        context -> HazardKernel(t -> 2.0; onset = 15.0, upper = 20.0); calendar = t -> 1.0
+    )
+    late_interval = EpiBranch.pair_kernel(late, 1, 2, 0.0, 100.0)
+    bare = HazardKernel(t -> 2.0; onset = 15.0, upper = 20.0)
+    for tau in (15.01, 15.05, 17.0)
+        @test EpiBranch.cumhazard(late_interval, tau) ≈ EpiBranch.cumhazard(bare, tau)
+    end
+
+    # A support's bottom that holds the parameter keeps its own boundary
+    # term in the derivative.
+    for (shift_of, tau) in ((θ -> Exponential(5.0) + θ, 8.0), (θ -> Uniform(θ, θ + 5.0), 5.0))
+        d_shift = ForwardDiff.derivative(3.0) do θ
+            shifted = PairKernel(context -> shift_of(θ); calendar = t -> 1.0)
+            EpiBranch.cumhazard(EpiBranch.pair_kernel(shifted, 1, 2, 0.0, 100.0), tau)
+        end
+        @test d_shift ≈ ForwardDiff.derivative(θ -> EpiBranch.cumhazard(shift_of(θ), tau), 3.0)
+    end
+
+    # Drawing through the calendar differentiates in a support end as the
+    # bare profile does, and runs for a shifted profile.
+    d_draw = ForwardDiff.derivative(3.0) do θ
+        top = PairKernel(context -> Uniform(0.0, θ); calendar = t -> 1.0)
+        invlogccdf(EpiBranch.pair_kernel(top, 1, 2, 0.0, 100.0), -0.5)
+    end
+    @test d_draw ≈ ForwardDiff.derivative(θ -> invlogccdf(Uniform(0.0, θ), -0.5), 3.0)
+    d_run = ForwardDiff.derivative(3.0) do θ
+        moved = PairKernel(context -> Exponential(5.0) + θ; calendar = t -> 1.0)
+        invlogccdf(EpiBranch.pair_kernel(moved, 1, 2, 0.0, 100.0), -0.5)
+    end
+    @test isfinite(d_run)
+
+    # The same holds for a named profile whose support starts above zero.
+    for profile in (Uniform(15.0, 20.0), truncated(Exponential(5.0), 10.0, Inf))
+        shifted = PairKernel(context -> profile; calendar = t -> 1.0)
+        shifted_interval = EpiBranch.pair_kernel(shifted, 1, 2, 0.0, 100.0)
+        for tau in (minimum(profile) + 0.01, minimum(profile) + 0.05)
+            @test EpiBranch.cumhazard(shifted_interval, tau) ≈
+                EpiBranch.cumhazard(profile, tau)
+        end
+    end
+
+    # A bounded named support whose top holds the parameter still
+    # differentiates through the calendar.
+    d_top = ForwardDiff.derivative(3.0) do θ
+        ck = EpiBranch._CalendarScaledKernel(Uniform(0.0, θ), s, 100.0)
+        EpiBranch.cumhazard(ck, 1.0)
+    end
+    @test isfinite(d_top) && d_top < 0
 
     # A plain callable reproduces the same hazard, read as a smooth schedule.
     seasonal(t) = 1 + 0.6 * cos(2π * (t - 30.0) / 365.2425)

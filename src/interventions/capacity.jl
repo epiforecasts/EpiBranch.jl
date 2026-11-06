@@ -12,15 +12,26 @@ CapacityConstrained(RingVaccination(efficacy = 0.8); budget_per_period = 5.0, pe
 
 # Group vaccination with 200 doses in total
 CapacityConstrained(GroupVaccination(efficacy = 0.8); budget_per_period = 200.0)
+
+# Group vaccination with a daily number of doses that changes over the campaign
+doses = Steps([10.0, 17.0], [0.0, 500.0, 0.0])
+CapacityConstrained(GroupVaccination(efficacy = 0.9); budget_per_period = doses, period = 1.0)
 ```
 
 # Arguments
-- `budget_per_period`: number of people that can be served per period.
+- `budget_per_period`: number of people that can be served per period, a fixed
+  number or a calendar schedule — a [`Steps`](@ref), a [`Seasonal`](@ref), or a
+  callable `t -> budget(t)` — giving a different number for the period
+  starting on each calendar day `t`. A finite `period` is required with a
+  schedule, since there is otherwise no single period whose start it could be
+  read at.
 - `period`: length of a period in days, measured on the date each dose is
   actually given. `Inf` (default) gives a single budget for the whole
   outbreak.
 - `carry_over`: whether unused capacity is added to later periods
-  (default `true`); with `false` each period has its own allowance.
+  (default `true`); with `false` each period has its own allowance. With a
+  schedule, a later period's own allowance is still read off the schedule
+  at its own start, not at the point a run has reached.
 - `priority`: function `(individual, state) -> number` ordering who is served
   first, lowest first, with ties kept in order. The default,
   [`default_capacity_priority`](@ref), serves traced contacts in the order
@@ -76,9 +87,9 @@ does, defines [`intervention_time`](@ref EpiBranch.intervention_time),
 `CapacityConstrained` then undoes the effect once the budget is spent, the
 way `Scheduled` already undoes one outside its own window.
 """
-struct CapacityConstrained{I <: AbstractIntervention, F} <: InterventionWrapper
+struct CapacityConstrained{I <: AbstractIntervention, F, B} <: InterventionWrapper
     intervention::I
-    budget_per_period::Float64
+    budget_per_period::B
     period::Float64
     carry_over::Bool
     priority::F
@@ -86,19 +97,29 @@ end
 
 function CapacityConstrained(
         intervention::AbstractIntervention;
-        budget_per_period::Real, period::Real = Inf, carry_over::Bool = true,
+        budget_per_period, period::Real = Inf, carry_over::Bool = true,
         priority = default_capacity_priority
     )
-    budget_per_period >= 0 || throw(
-        ArgumentError(
-            "budget_per_period must be non-negative, got $budget_per_period"
-        )
-    )
+    budget = _prepared_budget(budget_per_period)
     period > 0 || throw(ArgumentError("period must be positive, got $period"))
+    isfinite(period) || budget isa Real || throw(
+        ArgumentError("budget_per_period as a schedule needs a finite period")
+    )
     return CapacityConstrained(
-        intervention, Float64(budget_per_period), Float64(period), carry_over, priority
+        intervention, budget, Float64(period), carry_over, priority
     )
 end
+
+# A fixed budget is validated and floated as before; a calendar schedule
+# validates itself when it is built (`Steps`'s own values, say), so nothing
+# further is checked here.
+function _prepared_budget(budget::Real)
+    budget >= 0 || throw(
+        ArgumentError("budget_per_period must be non-negative, got $budget")
+    )
+    return Float64(budget)
+end
+_prepared_budget(schedule) = schedule
 
 """
     default_capacity_priority(individual, state) -> Float64
@@ -184,10 +205,10 @@ capacity_key(v::GroupVaccination) = _vaccinated_key(dose_label(v))
 capacity_time_key(v::GroupVaccination) = _vaccination_time_key(dose_label(v))
 
 # `Isolation` sets its own effect directly in `resolve_individual!` rather
-# than proposing an action; `:_isolated_by_isolation` is the flag it already
+# than proposing an action; `:_isolation_handle` is the handle it already
 # keeps to tell its own isolation from a quarantine layered under it (see its
-# `reset!`), which is exactly "this budget was spent on this person".
-capacity_key(::Isolation) = :_isolated_by_isolation
+# `reset!`), present exactly when "this budget was spent on this person".
+capacity_key(::Isolation) = :_isolation_handle
 capacity_time_key(::Isolation) = :isolation_time
 
 # `ContactTracing` proposes its follow-up as an `InterventionAction` (see
@@ -221,7 +242,10 @@ end
 # on every trace, whether there is a use to file.
 capacity_key(::TraceAction) = nothing
 capacity_time_key(::TraceAction) = nothing
-capacity_key(::Quarantine) = :_quarantined_by_tracing
+# `:_quarantine_removal_handles` is the list of handles `apply_trace!` keeps
+# for the entries it has recorded (see `_undo_quarantine_isolation!`),
+# present and non-empty exactly when a quarantine has used the budget.
+capacity_key(::Quarantine) = :_quarantine_removal_handles
 capacity_time_key(::Quarantine) = :trace_time
 
 # The start and end of the period containing `at`, in the scope `carry_over`
@@ -232,6 +256,15 @@ function _period_bounds(cc::CapacityConstrained, at)
     period_start = floor(at / cc.period) * cc.period
     return (period_start, period_start + cc.period)
 end
+
+# Whether `value`, as held under a `capacity_key`, marks its budget spent: a
+# vaccination's own key is a plain `Bool`; `Isolation`'s and `Quarantine`'s
+# are the handle, or list of handles, of the removal entry (entries) they
+# wrote, present exactly when the budget was used, however many there are.
+_capacity_used(value::Bool) = value
+_capacity_used(::Nothing) = false
+_capacity_used(value::AbstractVector) = !isempty(value)
+_capacity_used(value) = true
 
 # The time each already-given dose counts against, sorted and grouped by
 # `resource_key`: the dose's own recorded date, so a dose a delay dates later
@@ -245,7 +278,7 @@ function _dose_times_by_key(cc::CapacityConstrained, state)
     time_key = capacity_time_key(cc.intervention)
     times = Dict{Any, Vector{Float64}}()
     for ind in state.individuals
-        get(ind.state, key, false) || continue
+        _capacity_used(get(ind.state, key, nothing)) || continue
         t = get(ind.state, time_key, -Inf)
         push!(get!(Vector{Float64}, times, resource_key(cc.intervention, ind, state)), t)
     end
@@ -263,18 +296,18 @@ end
 # `_admit_actions!`'s own record of who has already drawn on each capacity
 # key's resources, kept in `state.scratch` so it survives from one call to
 # the next. Keyed on `capacity_key(cc.intervention)` rather than on `cc`
-# itself, so that two different `CapacityConstrained` wrappers sharing a dose
-# label (per the docstring above) see each other's admissions through the
+# itself: two different `CapacityConstrained` wrappers sharing a dose label
+# (per the docstring above) then see each other's admissions through the
 # same cache instead of each keeping its own, unaware copy. Seeded once by a
 # population scan like `_dose_times_by_key`'s own, then grown one person at a
-# time as each dose is admitted, so a run with many settled cases no longer
-# rescans everyone on every one of them; `scanned` is how far along
-# `state.individuals` that scan has reached, so that someone created since,
-# already carrying the flag from an attribute builder, is picked up by
-# scanning only the people appended since. `recorded` remembers which resource
-# and date each person's own use was filed under, so a dose later withdrawn
-# outside this cache's own admission path (`on_infection_settled!` undoing one
-# that missed its eligibility window, say) can be taken back out again.
+# time as each dose is admitted; a run with many settled cases no longer
+# rescans everyone on every one of them. `scanned` is how far along
+# `state.individuals` that scan has reached: someone created since, already
+# holding the flag from an attribute builder, is then picked up by scanning
+# only the people appended since. `recorded` remembers which resource and
+# date each person's own use was filed under; a dose later withdrawn outside
+# this cache's own admission path (`on_infection_settled!` undoing one that
+# missed its eligibility window, say) can then be taken back out again.
 # A dose under the key is also recorded by paths that never pass through a
 # wrapper's admission at all, an unwrapped vaccination sharing the dose
 # label or a direct `record_dose!` call, which the docstring above promises
@@ -304,7 +337,7 @@ function _capacity_cache(cc::CapacityConstrained, state)
     if cache.scanned == 0
         time_key = capacity_time_key(cc.intervention)
         for ind in state.individuals
-            get(ind.state, key, false) || continue
+            _capacity_used(get(ind.state, key, nothing)) || continue
             resource = resource_key(cc.intervention, ind, state)
             t = get(ind.state, time_key, -Inf)
             push!(get!(Vector{Float64}, cache.times, resource), t)
@@ -321,7 +354,7 @@ function _capacity_cache(cc::CapacityConstrained, state)
         # exactly those past the watermark; few arrive between admissions.
         for i in (cache.scanned + 1):n
             ind = state.individuals[i]
-            get(ind.state, key, false) && _record_capacity_use!(cache, ind, state)
+            _capacity_used(get(ind.state, key, nothing)) && _record_capacity_use!(cache, ind, state)
         end
     end
     cache.scanned = n
@@ -396,7 +429,7 @@ function _drop_withdrawn!(cache::_CapacityCache, state)
     isempty(cache.recorded) && return nothing
     key = capacity_key(cache.intervention)
     for id in collect(keys(cache.recorded))
-        get(state.individuals[id].state, key, false) && continue
+        _capacity_used(get(state.individuals[id].state, key, nothing)) && continue
         resource, t = pop!(cache.recorded, id)
         times = cache.times[resource]
         deleteat!(times, searchsortedfirst(times, t))
@@ -411,18 +444,46 @@ function _count_before(times::Vector{Float64}, extra::Vector{Float64}, before::F
     return searchsortedfirst(times, before) - 1 + count(<(before), extra)
 end
 
+# The budget in force for the period starting on calendar day `t`: a fixed
+# number unchanged by the day, or a schedule's own value there, read through
+# the same calendar interface `Steps` and `Seasonal` give a `PairKernel`.
+_period_budget(budget::Real, t) = budget
+_period_budget(schedule, t) = calendar_multiplier(schedule, t)
+
+# The total budget available across every period from the first up to, but
+# excluding, the one ending at `period_end`: a fixed number times the number
+# of periods begun, as before, or, for a schedule, each period's own number
+# summed, since a later period cannot be assumed to repeat an earlier one's.
+_cumulative_budget(cc::CapacityConstrained, period_end, cum = nothing) =
+    _cumulative_budget(cc.budget_per_period, cc.period, period_end, cum)
+_cumulative_budget(budget::Real, period, period_end, cum) = (period_end / period) * budget
+function _cumulative_budget(schedule, period, period_end, cum)
+    n = round(Int, period_end / period)
+    cum !== nothing && 0 < n <= length(cum) && return cum[n]
+    return sum((_period_budget(schedule, k * period) for k in 0:(n - 1)); init = 0.0)
+end
+
+# Running totals of the schedule for the periods up to the one ending at
+# `last_end`. One `_fits_budget` call makes many admission checks, and each
+# reads its total from this table instead of re-summing the schedule.
+function _cumulative_table(cc::CapacityConstrained, last_end)
+    (cc.budget_per_period isa Real || isinf(cc.period)) && return nothing
+    n = round(Int, last_end / cc.period)
+    return cumsum([_period_budget(cc.budget_per_period, k * cc.period) for k in 0:(n - 1)])
+end
+
 # Doses used and available for the period containing `at`, in the scope
 # `carry_over` implies. Reused by the admission decision, once per candidate
 # with its own proposed date, and by `capacity_usage`, with the simulation's
 # current clock.
-function _usage_at(cc::CapacityConstrained, times, extra, at)
+function _usage_at(cc::CapacityConstrained, times, extra, at, cum = nothing)
     period_start, period_end = _period_bounds(cc, at)
     if cc.carry_over
-        available = isinf(cc.period) ? cc.budget_per_period :
-            (period_end / cc.period) * cc.budget_per_period
+        available = isinf(cc.period) ? _period_budget(cc.budget_per_period, period_start) :
+            _cumulative_budget(cc, period_end, cum)
         used = _count_before(times, extra, period_end)
     else
-        available = cc.budget_per_period
+        available = _period_budget(cc.budget_per_period, period_start)
         used = _count_before(times, extra, period_end) -
             _count_before(times, extra, period_start)
     end
@@ -438,10 +499,12 @@ function _fits_budget(cc::CapacityConstrained, times, extra, at)
     usage.used + 1 <= usage.available || return false
     (cc.carry_over && isfinite(cc.period)) || return true
     _, own_end = _period_bounds(cc, at)
+    last_t = max(at, isempty(times) ? at : times[end], isempty(extra) ? at : maximum(extra))
+    cum = _cumulative_table(cc, _period_bounds(cc, last_t)[2])
     for later in (@view(times[searchsortedfirst(times, own_end):end]), extra)
         for t in later
             t >= own_end || continue
-            u = _usage_at(cc, times, extra, t)
+            u = _usage_at(cc, times, extra, t, cum)
             u.used + 1 <= u.available || return false
         end
     end
@@ -474,13 +537,12 @@ end
 # every instance with discovering actions whether or not the one it wraps
 # does. Unwrapping through `_hook_owner` reaches past any further
 # `InterventionWrapper` nested inside (`Scheduled`, say) to the intervention
-# that would answer `intervention_actions`.
+# that would answer `intervention_actions`; dispatching `_discovers_actions`
+# back onto it, rather than re-deriving the generic check here, reaches a
+# wrapped `ContactTracing`'s own override too. That override looks past its
+# always-present forwarding method to what its action overrides.
 function _discovers_actions(cc::CapacityConstrained)
-    return _has_own_method(
-        intervention_actions,
-        typeof(_hook_owner(intervention_actions, cc.intervention)),
-        AbstractIntervention
-    )
+    return _discovers_actions(_hook_owner(intervention_actions, cc.intervention))
 end
 # Asked for its actions on every settled case even when the intervention it
 # wraps proposes none, so that wrapping one with nothing to ration fails when
@@ -503,10 +565,12 @@ The number of doses (or other units of capacity) dated by now, and the number
 that could have been given by now, at the end of a simulation or at the point
 `state` has reached. With `carry_over = true` (the default) both count the
 whole outbreak: `available` is `budget_per_period` for every period begun so
-far, and `used` counts every dose dated no later than it. With
-`carry_over = false` both refer to the current period only: `available` is one
-`budget_per_period`, and `used` counts the doses dated within it, including
-one given in that period by another intervention sharing the same capacity.
+far, each read off its own start when `budget_per_period` is a schedule, and
+`used` counts every dose dated no later than it. With `carry_over = false`
+both refer to the current period only: `available` is `budget_per_period` at
+this period's own start, and `used` counts the doses dated within it,
+including one given in that period by another intervention sharing the same
+capacity.
 
 `key` selects which budget to report when [`resource_key`](@ref
 EpiBranch.resource_key) splits `cc`'s intervention into more than one; the
@@ -581,7 +645,7 @@ function _dose_times(cc::CapacityConstrained, state, excluded::Individual)
     times = Float64[]
     for ind in state.individuals
         ind.id == excluded.id && continue
-        get(ind.state, key, false) || continue
+        _capacity_used(get(ind.state, key, nothing)) || continue
         resource_key(cc.intervention, ind, state) == resource || continue
         push!(times, get(ind.state, time_key, -Inf))
     end
@@ -596,7 +660,7 @@ end
 # is not its own effect) has nothing to check.
 function _reset_unless_within_budget!(cc::CapacityConstrained, ind::Individual, state)
     key = capacity_key(cc.intervention)
-    get(ind.state, key, false)::Bool || return nothing
+    _capacity_used(get(ind.state, key, nothing)) || return nothing
     t = intervention_time(cc.intervention, ind)
     isfinite(t) || return nothing
     times = _dose_times(cc, state, ind)

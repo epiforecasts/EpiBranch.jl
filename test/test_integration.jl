@@ -175,6 +175,77 @@ using Dates
         @test isapprox(integral, 1.0; atol = 1.0e-3)
     end
 
+    @testset "_TruncatedSkewNormal has the full univariate law interface" begin
+        d = EpiBranch._TruncatedSkewNormal(5.0, 2.0, 1.5)
+        @test minimum(d) == 0.0
+        @test maximum(d) == Inf
+        @test cdf(d, 0.0) == 0.0
+        @test cdf(d, -1.0) == 0.0
+        @test isapprox(cdf(d, Inf), 1.0)
+        @test isapprox(logccdf(d, 0.0), 0.0)
+
+        # cdf is monotone and quantile inverts it, over a range spanning
+        # most of the mass as well as the far tail.
+        xs = (0.1, 1.0, 3.0, 5.0, 10.0, 50.0)
+        ps = cdf.(d, xs)
+        @test issorted(ps)
+        for (x, p) in zip(xs, ps)
+            0.0 < p < 1.0 && @test isapprox(quantile(d, p), x; atol = 1.0e-4)
+        end
+    end
+
+    @testset "_TruncatedSkewNormal cdf stays monotone for a narrow omega" begin
+        # omega much smaller than x - xi narrows the inner density's peak
+        # enough that quadgk's adaptive refinement can step clean over it
+        # without a breakpoint at xi.
+        d = EpiBranch._TruncatedSkewNormal(5.0, 0.05, 1.5)
+        xs = 0.0:1.0:100.0
+        @test issorted(cdf.(d, xs))
+    end
+
+    @testset "_TruncatedSkewNormal normalises correctly for a narrower omega" begin
+        # A narrower omega relative to xi than the previous test, matching a
+        # tight generation-time/incubation coupling: without a breakpoint at
+        # xi in the retained-mass integral too, this reduces the retained
+        # mass to zero, and every probability built on it is then wrong.
+        d = EpiBranch._TruncatedSkewNormal(10.0, 0.09, 1.5)
+        @test isapprox(quantile(d, 0.5), 10.0; atol = 1.0)
+        @test isfinite(logpdf(d, 10.0))
+    end
+
+    @testset "incubation_linked_generation_time under a calendar" begin
+        # A calendar scales the window's kernel, which reads the kernel's
+        # `cdf` through `cumhazard`: the gap `_TruncatedSkewNormal` was
+        # missing it for.
+        model = ModelSpec(
+            BranchingProcess(
+                Infectiousness(
+                    NegBin(3.0, 0.5);
+                    kernel = incubation_linked_generation_time(),
+                    calendar = Steps([30.0], [1.0, 0.5])
+                )
+            );
+            attributes = clinical
+        )
+        state = simulate(model, 50; max_cases = 50, rng = StableRNG(1))
+        @test length(state) == 50
+    end
+
+    @testset "incubation_linked_generation_time in the offspring form" begin
+        # The offspring form truncates the kernel at each case's own
+        # recovery, which needs `truncated`, in turn needing `cdf`.
+        timing = transmission_timing(
+            incubation_linked_generation_time();
+            offspring = NegBin(1.5, 0.5), infectious_period = Gamma(5.0, 1.0)
+        )
+        model = ModelSpec(
+            BranchingProcess(timing.window);
+            progression = timing.progression, attributes = clinical
+        )
+        state = simulate(model, 50; max_cases = 50, rng = StableRNG(1))
+        @test length(state) == 50
+    end
+
     @testset "generation_R output" begin
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(3.0), Exponential(5.0))

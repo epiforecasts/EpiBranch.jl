@@ -175,6 +175,10 @@ end
         @test NetworkProcess(ring, Exponential(2.0); obs_end = 0.0) isa NetworkProcess
         @test_throws ArgumentError NetworkProcess(ring, Exponential(2.0); obs_end = -1.0)
         @test_throws ArgumentError NetworkProcess(ring, Exponential(2.0); obs_end = NaN)
+
+        # lazy population by default; `eager` opts into building it upfront
+        @test m.eager == false
+        @test NetworkProcess(ring, Exponential(2.0); eager = true).eager == true
     end
 
     @testset "moderate contact rate spreads to some of a ring" begin
@@ -299,6 +303,59 @@ end
             rng = StableRNG(1), n_initial = 3
         )
         @test silent.cumulative_cases == 3
+    end
+
+    @testset "lazy population" begin
+        # A node the outbreak never reaches costs nothing beyond its slot in
+        # `individuals`: no attribute draw, no intervention setup.
+        n = 2000
+        calls = Ref(0)
+        build(; eager = false) = ModelSpec(
+            NetworkProcess(ring_adjacency(n, 2), Exponential(1.5); eager);
+            progression = _sir(Exponential(4.0)), attributes = (rng, ind) -> (calls[] += 1)
+        )
+        calls[] = 0
+        lazy = simulate(build(); rng = StableRNG(1), n_initial = 1)
+        @test calls[] < n_infected(lazy) * 10   # a handful of neighbours per case, not the network
+        @test calls[] > 0
+
+        calls[] = 0
+        eager = simulate(build(; eager = true); rng = StableRNG(1), n_initial = 1)
+        @test calls[] == n
+
+        # A node never reached reads as never infected, untouched by any
+        # intervention, at the neutral susceptibility and infectiousness.
+        untouched = findfirst(ind -> !is_infected(ind) && ind.id == 0, lazy.individuals)
+        @test untouched !== nothing
+        placeholder = lazy.individuals[untouched]
+        @test placeholder.susceptibility == 1 && placeholder.infectiousness == 1
+        @test isempty(placeholder.state) || collect(keys(placeholder.state)) == [:infected]
+
+        # Under common random numbers, a lazy and an eager run draw the same
+        # attributes for everyone the outbreak reaches, whichever order they
+        # were created in; `realise!` then matches the eager run for everyone
+        # else too.
+        crn_build(; eager = false) = ModelSpec(
+            NetworkProcess(ring_adjacency(n, 2), Exponential(1.5); eager);
+            progression = _sir(Exponential(4.0)),
+            attributes = transmission_traits(susceptibility = Beta(2, 5))
+        )
+        lazy_crn = simulate(crn_build(); rng = CommonRandomNumbers(7), n_initial = 1)
+        eager_crn = simulate(crn_build(; eager = true); rng = CommonRandomNumbers(7), n_initial = 1)
+        @test lazy_crn.cumulative_cases == eager_crn.cumulative_cases
+        # `isequal` rather than `==`: an uninfected node's infection_time is
+        # NaN on both sides, which `==` never counts as a match.
+        @test all(
+            isequal.(
+                getfield.(lazy_crn.individuals, :infection_time),
+                getfield.(eager_crn.individuals, :infection_time)
+            )
+        )
+
+        EpiBranch.realise!(lazy_crn)
+        @test getfield.(lazy_crn.individuals, :susceptibility) ==
+            getfield.(eager_crn.individuals, :susceptibility)
+        @test all(i -> lazy_crn.individuals[i].id == i, eachindex(lazy_crn.individuals))
     end
 
     @testset "a risk reads another case's trace before exposure" begin
@@ -869,6 +926,31 @@ end
         @test_throws DimensionMismatch RoutedNetwork(
             [w(:a, a)]; external_hazard = fill(0.01, 5)
         )
+        # lazy population by default; `eager` opts into building it upfront
+        @test m.eager == false
+        @test RoutedNetwork([w(:a, a)]; eager = true).eager == true
+    end
+
+    @testset "RoutedNetwork: lazy population" begin
+        n = 1000
+        calls = Ref(0)
+        w(name) = RouteWindow(
+            name; until = (:recovered,), kernel = Exponential(1.5), reach = ring_adjacency(n, 2)
+        )
+        build(; eager = false) = ModelSpec(
+            RoutedNetwork([w(:community)]; eager);
+            progression = _sir(Exponential(4.0)), attributes = (rng, ind) -> (calls[] += 1)
+        )
+        calls[] = 0
+        lazy = simulate(build(); rng = StableRNG(1), n_initial = 1)
+        @test 0 < calls[] < n_infected(lazy) * 10
+
+        calls[] = 0
+        simulate(build(; eager = true); rng = StableRNG(1), n_initial = 1)
+        @test calls[] == n
+
+        untouched = findfirst(ind -> !is_infected(ind) && ind.id == 0, lazy.individuals)
+        @test untouched !== nothing
     end
 
     @testset "RoutedNetwork: a route that proposes its own contacts" begin
@@ -923,6 +1005,11 @@ end
         contacts = EpiBranch.propose_along(wrapped, 1, state, 0.0, 10.0, false, false)
         @test sort(first.(contacts)) == [2, 3, 4, 5]
         @test sort(wrapped.proposed[1]) == [2, 3, 4, 5]
+        # a second call for the same infector, as a resumed redraw makes
+        # (`EpiBranch._resume_route!`), adds to what is recorded rather than
+        # replacing it
+        EpiBranch.propose_along(wrapped, 1, state, 10.0, 20.0, false, false)
+        @test sort(wrapped.proposed[1]) == [2, 2, 3, 3, 4, 4, 5, 5]
         # with no intervention tracing, nothing is recorded
         untraced = EpiNetwork._route_targets(w, false)
         EpiBranch.propose_along(untraced, 1, state, 0.0, 10.0, false, false)
@@ -956,6 +1043,40 @@ end
         state = simulate(model; n_initial = 1, rng = StableRNG(1))
         @test state.cumulative_cases == 20
         @test count(is_traced, state.individuals) == 20
+    end
+
+    @testset "RoutedNetwork: a self-proposing route with a never-closing window continues" begin
+        # Mass action (`EpiBranch._MassAction`) only samples a window with no
+        # natural close up to the race's time limit, and must redraw what it
+        # left past that on `simulate(model, state; max_time)` (`EpiBranch`'s
+        # own continuation tests). Wrapped in a route's `_TracedProposals` for
+        # tracing, as every self-proposing route is, that redraw must still
+        # reach the mass action underneath.
+        n, β = 1500, 0.3
+        routed_model() = begin
+            state = EpiBranch.new_state(
+                HomogeneousProcess(transmission_rate = β, population_size = n),
+                Transition[], NoAttributes(), StableRNG(0)
+            )
+            EpiBranch.add_individuals!(state, n, AbstractIntervention[])
+            route = EpiBranch._MassAction(state, collect(1:n); rate = (_, _) -> β / n)
+            w = RouteWindow(:community; kernel = nothing, reach = route)
+            ModelSpec(RoutedNetwork([w]; n = n))
+        end
+        final_size(seed; split) = begin
+            if split === nothing
+                simulate(
+                    routed_model(); max_time = 20.0, n_initial = 5, rng = StableRNG(seed)
+                ).cumulative_cases
+            else
+                model = routed_model()
+                state = simulate(model; max_time = split, n_initial = 5, rng = StableRNG(seed))
+                simulate(model, state; max_time = 20.0).cumulative_cases
+            end
+        end
+        direct = [final_size(s; split = nothing) for s in 1:150]
+        continued = [final_size(s; split = 4.0) for s in 1:150]
+        @test isapprox(sum(direct) / length(direct), sum(continued) / length(continued); rtol = 0.1)
     end
 
     @testset "RoutedNetwork: conditioned simulation" begin

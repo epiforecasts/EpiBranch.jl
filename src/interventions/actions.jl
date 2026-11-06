@@ -68,14 +68,14 @@ function intervention_actions(cc::CapacityConstrained, state, candidates)
 end
 
 """
-    _action_cache(individual)
+    action_cache(individual)
 
 For extension authors: the per-person store of random draws made when
 proposing actions (see [`action_draw!`](@ref EpiBranch.action_draw!)). An
 intervention can also keep its own records there, such as which proposal a
 decision was made under. It does not appear in the line list.
 """
-function _action_cache(individual)
+function action_cache(individual)
     return get!(individual.state, :_intervention_actions) do
         Dict{Any, Any}()
     end
@@ -90,7 +90,7 @@ value whenever the action is proposed again, so a person who was turned down
 different visits or doses. The stored draws do not appear in the line list.
 """
 function action_draw!(sample, individual, key)
-    return get!(sample, _action_cache(individual), key)
+    return get!(sample, action_cache(individual), key)
 end
 
 """
@@ -204,8 +204,8 @@ end
 function _admit_actions!(cc::CapacityConstrained, state, actions, admitter = cc)
     isempty(actions) && return nothing
     key = capacity_key(cc.intervention)
-    already_used = filter(a -> get(a.individual.state, key, false), actions)
-    candidates = filter(a -> !get(a.individual.state, key, false), actions)
+    already_used = filter(a -> _capacity_used(get(a.individual.state, key, nothing)), actions)
+    candidates = filter(a -> !_capacity_used(get(a.individual.state, key, nothing)), actions)
     _admit_actions!(cc.intervention, state, already_used, admitter)
     cache = _capacity_cache(cc, state)
     for a in already_used
@@ -219,10 +219,10 @@ function _admit_actions!(cc::CapacityConstrained, state, actions, admitter = cc)
         times = get!(Vector{Float64}, cache.times, group_key)
         for i in order
             action = group[i]
-            get(action.individual.state, key, false) && continue
+            _capacity_used(get(action.individual.state, key, nothing)) && continue
             _fits_budget(cc, times, Float64[], action.time) || continue
             _admit_actions!(cc.intervention, state, [_filing_use(cc, action)], admitter)
-            get(action.individual.state, key, false) || continue
+            _capacity_used(get(action.individual.state, key, nothing)) || continue
             _record_capacity_use!(cache, action.individual, state, times)
         end
     end
@@ -233,14 +233,14 @@ end
 # `InterventionAction`), and within a continuous-time race it runs only once
 # the race's own queue reaches `action.time`, after the admission above has
 # returned and found the flag still unset. The action handed down therefore
-# files the use itself as soon as its effect has set the flag, so the running
-# count learns of it without a rescan. A dose, which records in `claim!`, is
+# files the use itself as soon as its effect has set the flag, updating the
+# running count without a rescan. A dose, which records in `claim!`, is
 # filed by the admission above and this then finds nothing left to do.
 function _filing_use(cc::CapacityConstrained, action)
     key = capacity_key(cc.intervention)
     effect! = function (person, at, state)
         further = action.effect!(person, at, state)
-        get(person.state, key, false) && _note_capacity_use!(state, key, person)
+        _capacity_used(get(person.state, key, nothing)) && _note_capacity_use!(state, key, person)
         return further
     end
     return InterventionAction(action.individual, action.time, effect!, action.claim!)
@@ -341,7 +341,7 @@ function _revisable_dose_action(v::AbstractVaccination, ind, trigger, time)
         else
             record_dose!(v, person, at, state)
         end
-        _action_cache(person)[_trigger_cache_key(v)] = trigger
+        action_cache(person)[_trigger_cache_key(v)] = trigger
         return nothing
     end
     return InterventionAction(ind, time, (person, at, state) -> nothing, claim!)
@@ -354,7 +354,7 @@ function intervention_actions(rv::RingVaccination, state, candidates)
         is_traced(ind) || continue
         trace_t = haskey(ind.state, :trace_time) ? ind.state[:trace_time] :
             min(_recorded_isolation_time(ind), _state_real(ind.state, :_traced_isolation_time, Inf))
-        prior = get(_action_cache(ind), _trigger_cache_key(rv), nothing)
+        prior = get(action_cache(ind), _trigger_cache_key(rv), nothing)
         applied = get(ind.state, _vaccinated_key(label), false)
         # Gated on `applied` alone: `_withdraw_dose!` clears it on a dose
         # outside the window, but leaves `prior` in the cache. A withdrawn
@@ -413,7 +413,7 @@ function intervention_actions(gv::GroupVaccination, state, candidates)
         isfinite(trigger) || continue
         for id in _group_members(state, gv.group_key, group)
             ind = state.individuals[id]
-            prior = get(_action_cache(ind), _trigger_cache_key(gv), nothing)
+            prior = get(action_cache(ind), _trigger_cache_key(gv), nothing)
             if prior !== nothing || get(ind.state, _vaccinated_key(dose_label(gv)), false)
                 # A settled member's dose keeps its date; a member still
                 # pending in a continuous-time race (or the member currently
@@ -640,10 +640,13 @@ end
 # with every one of `members` as a candidate, before a network or household
 # race processes any of them. An intervention with no `intervention_actions`
 # method of its own contributes nothing, the same as `_apply_case_actions!`
-# does for the per-case path.
+# does for the per-case path. Every member is a candidate by definition, so
+# this realises the whole population on a lazily populated model (see
+# `EpiBranch.lazily_populate!`): offering a dose to everyone and creating
+# people only once the outbreak reaches them do not mix.
 function _apply_population_actions!(state, interventions, members)
     any(acts_on_population, interventions) || return nothing
-    candidates = [state.individuals[id] for id in members]
+    candidates = [_realised!(state, id) for id in members]
     for iv in interventions
         acts_on_population(iv) || continue
         actions = intervention_actions(iv, state, candidates)

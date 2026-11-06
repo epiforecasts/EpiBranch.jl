@@ -281,8 +281,7 @@ end
     function traced_contact(id, unrecorded)
         ind = Individual(id = id, state = Dict{Symbol, Any}(:traced => true))
         EpiBranch.initialise_individual!(rv, ind, state)
-        set_isolated!(ind, 5.0; release_time = Inf)
-        unrecorded && (ind.state[:_isolation_unrecorded] = true)
+        set_isolated!(ind, 5.0; release_time = Inf, unrecorded)
         push!(state.individuals, ind)
         return ind
     end
@@ -527,7 +526,7 @@ end
             ModelSpec(process; interventions = [iv]);
             max_generations = 1, rng = MersenneTwister(1)
         )
-        @test count(is_vaccinated, state.individuals) == 9
+        @test count(is_vaccinated, state.individuals) == 10
         @test state.cumulative_cases == 1
         contact = state.individuals[2]
         state.max_infection_time = 30.0

@@ -59,6 +59,58 @@ EpiBranch.has_single_type_law
 EpiBranch.offspring_law_unchanged
 ```
 
+## Approximate population dynamics
+
+[`MeanFieldProcess`](@ref) and [`LinearNoiseProcess`](@ref) approximate a
+closed, homogeneously-mixing SIR population (the dynamics
+[`HomogeneousProcess`](@ref) simulates exactly) as a state-space model.
+[`MixingMeanFieldProcess`](@ref) and [`MixingLinearNoiseProcess`](@ref) do the
+same for a population with several mixing groups ([`MixingProcess`](@ref)),
+built straight from the `ModelSpec` they approximate rather than given the
+group sizes and the between-group rate again. All four share
+`simulate(model, state; max_time)` with the exact simulation so an external
+Kalman or particle filter can run on any of them. [`HybridProcess`](@ref)
+combines an exact model with its approximation: exact simulation while the
+outbreak is small, the approximation once it is large, with no filtering
+code of its own.
+
+```@docs
+MeanFieldProcess
+MeanFieldState
+LinearNoiseProcess
+LinearNoiseState
+MixingMeanFieldProcess
+MixingMeanFieldState
+MixingLinearNoiseProcess
+MixingLinearNoiseState
+HybridProcess
+HybridState
+```
+
+## Simulating a branching process by generation
+
+[`simulate_by_generation`](@ref) simulates a [`BranchingProcess`](@ref) with
+discrete generations as case counts rather than individuals, much cheaper over
+a large or finite population. It shares `simulate(model, state;
+max_generations)` with the exact, individual-based simulation.
+
+The state holds the susceptibles of each type, set from the population size
+and the number immune. `PerContactDepletion` removes them one potential contact
+at a time, as the individual-based simulation does. `StartOfGenerationDepletion`
+thins the contacts of a type by its susceptible share at the start of the
+generation, in one binomial draw capped at the susceptibles left, as
+discrete-generation models usually do. With the second rule and an offspring
+law whose sum has a closed form (`Poisson`, `NegBin`, `Binomial`), a generation
+costs the same whatever the number of cases.
+
+```@docs
+simulate_by_generation
+GenerationCounts
+AbstractDepletion
+PerContactDepletion
+StartOfGenerationDepletion
+```
+
 ## Population characteristics
 
 Functions that give each case its characteristics when it is created: symptom
@@ -496,8 +548,10 @@ PairwiseSurvivalData
 InfectionLayer
 compile_contact_pairs
 ContactPairsLayout
+MassActionHazard
 PairKernel
 EpiBranch.watched_records
+EpiBranch.kernel_projection
 Steps
 Seasonal
 record_kernel
@@ -515,6 +569,7 @@ compile_household_pairs
 ConditionOn
 RecruitedIndex
 EarliestInfected
+HouseholdFinalStatuses
 ```
 
 #### Network data
@@ -524,6 +579,7 @@ network_infections
 NetworkInfections
 routed_network_infections
 RoutedNetworkInfections
+RoutedMassActionHazard
 ```
 
 ### Serial interval likelihood
@@ -543,6 +599,7 @@ serial_interval
 NegBin
 scale_distribution
 incubation_linked_generation_time
+HazardKernel
 Conditional
 EpiBranch.resolve
 ```
@@ -580,6 +637,15 @@ modelling layers passed in rather than read off the model, and
 [`sellke_race!`](@ref EpiBranch.sellke_race!) settles one continuous-time race
 and brings the state's running totals back into line afterwards.
 
+A process that has its own interventions, population characteristics,
+observation model, contact recorder or clinical progression, rather than
+having them composed on with a [`ModelSpec`](@ref), defines
+[`EpiBranch.interventions`](@ref), [`EpiBranch.attributes`](@ref),
+[`EpiBranch.observation`](@ref), [`EpiBranch.recorder`](@ref) or
+[`EpiBranch.progression`](@ref) to return them.
+[`EpiBranch.process`](@ref) reads the model a `ModelSpec` wraps, and
+[`EpiBranch.n_types`](@ref) the number of types of case a model has.
+
 ```@docs
 TransmissionModel
 EpiBranch.draw_offspring
@@ -588,6 +654,7 @@ EpiBranch.simulate_once
 generate_offspring
 contacts_of
 EpiBranch.model_generation_time
+EpiBranch.transmission_time
 EpiBranch.transmission_risks
 EpiBranch.sellke_race!
 EpiBranch.infectious_from
@@ -596,8 +663,17 @@ susceptible_fraction
 EpiBranch.initialise_state
 EpiBranch.new_state
 EpiBranch.add_individuals!
+EpiBranch.lazily_populate!
+realise!
 EpiBranch.seed!
 close_episode!
+EpiBranch.interventions
+EpiBranch.attributes
+EpiBranch.observation
+EpiBranch.recorder
+EpiBranch.progression
+EpiBranch.process
+EpiBranch.n_types
 ```
 
 ### Writing a route that proposes its own contacts
@@ -670,6 +746,11 @@ EpiBranch.apply_trace!
 
 ```@docs
 EpiBranch.vaccine_effect
+EpiBranch.dose_action
+EpiBranch.record_dose!
+EpiBranch.record_effect_draws!
+EpiBranch.store_draw!
+EpiBranch.dose_value
 EpiBranch.realised_efficacy
 EpiBranch.realise_prior_dose!
 EpiBranch.supports_waning
@@ -681,7 +762,7 @@ EpiBranch.supports_waning
 EpiBranch.InterventionAction
 EpiBranch.intervention_actions
 EpiBranch.action_draw!
-EpiBranch._action_cache
+EpiBranch.action_cache
 EpiBranch.apply_actions!
 EpiBranch.action_candidates
 EpiBranch.acts_on_population
@@ -748,6 +829,8 @@ EpiBranch.removal_gap_host_times
 EpiBranch.removal_gap_host_times_withdrawn
 EpiBranch.removal_block_probability
 EpiBranch.record_removal!
+EpiBranch.revise_removal!
+EpiBranch.withdraw_removal!
 EpiBranch.removal_stretches
 EpiBranch.HazardScaling
 EpiBranch.contact_structure

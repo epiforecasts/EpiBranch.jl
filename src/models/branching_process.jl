@@ -2,7 +2,7 @@
 
 """
     Infectiousness(offspring; from = :infection, until = (), kernel = NoGenerationTime(),
-                   name = :transmission)
+                   calendar = nothing, name = :transmission)
 
 When, and how much, a case transmits by one route. `offspring` is the
 distribution of the number of people infected by this route; transmission
@@ -43,12 +43,27 @@ different routes, such as community and funeral transmission of Ebola.
   average than its offspring distribution draws, by the share of the kernel
   that falls before infection. Unused for a contact whose time `offspring`
   already gave as an `OffspringTimes`.
+- `calendar`: a [`Steps`](@ref) or [`Seasonal`](@ref) schedule, or a callable
+  `t -> multiplier`, scaling `kernel`'s hazard by the schedule's value on the
+  calendar day, exactly as a [`PairKernel`](@ref)'s `calendar` does — a
+  lockdown or a seasonal pattern that changes how quickly this window's
+  contacts arrive. Unused where `kernel` draws no contact
+  (`NoGenerationTime()`) or where `offspring` already timed them
+  (`OffspringTimes`). `loglikelihood(IncidenceCounts, ...)`,
+  `end_of_outbreak_probability` and `Isolation`'s analytic effect all read a
+  window's `kernel` directly and throw an `ArgumentError` on a window with a
+  `calendar` rather than ignoring it; simulate a model that needs one
+  instead.
 - `name`: the name interventions see this window as, through
   [`risk_applies`](@ref EpiBranch.risk_applies)'s `route`. The default,
   `:transmission`, suits a process with a single window; give each of several
   windows its own name, for example `:community` and `:household`, so
   wrapping a measure in [`OnRoutes`](@ref) can act on one and leave the rest
   open.
+
+See also [`HazardKernel`](@ref) for a `kernel` with a rate that follows
+something computed per case, such as a within-host trajectory, rather than a
+named distribution.
 
 # Examples
 ```julia
@@ -69,18 +84,19 @@ funeral = Infectiousness(Poisson(0.5); name = :funeral,
 model = ModelSpec(BranchingProcess(community, funeral); progression)
 ```
 """
-struct Infectiousness{O, F, U, K}
+struct Infectiousness{O, F, U, K, C}
     offspring::O
     from::F
     until::U
     kernel::K
+    calendar::C
     name::Symbol
 end
 function Infectiousness(
         offspring; from = :infection, until = (),
-        kernel = NoGenerationTime(), name::Symbol = :transmission
+        kernel = NoGenerationTime(), calendar = nothing, name::Symbol = :transmission
     )
-    return Infectiousness(offspring, from, until, kernel, name)
+    return Infectiousness(offspring, from, until, kernel, calendar, name)
 end
 
 """
@@ -165,7 +181,7 @@ keeps it so once there is a `:recovered` to cut transmission short:
 ```julia
 using EpiBranch, Distributions
 
-# a generation time: nothing `BranchingProcess(offspring, gt)` does not already do
+# a generation time: the same thing `BranchingProcess(offspring, gt)` already builds
 timing = transmission_timing(LogNormal(1.6, 0.5); offspring = NegBin(2.5, 0.16))
 model = BranchingProcess(timing.window)
 
@@ -233,9 +249,10 @@ The reproduction number realised by the `contacts` form of
 falls before `infectious_period`, the two assumed independent, as
 `transmission_timing` draws them.
 
-`contact_interval` is a `Distribution`; `infectious_period` is a
-`Distribution` or a fixed number of days. The distribution case integrates
-over `infectious_period` numerically (with QuadGK.jl).
+`contact_interval` is a `Distribution`, a [`HazardKernel`](@ref) among
+them; `infectious_period` is a `Distribution` or a fixed number of days. The
+distribution case integrates over `infectious_period` numerically (with
+QuadGK.jl).
 
 # Examples
 ```julia
@@ -391,13 +408,14 @@ _progvec(p) = convert(Vector{AbstractClinicalTransition}, p)
 population_size(m::BranchingProcess) = m.population_size
 n_types(m::BranchingProcess) = m.n_types
 
-# A finite population thins transmission as cases accumulate, and a window
-# with `until` stops it before every drawn contact happens — both reshape the
+# A finite population thins transmission as cases accumulate, a window with
+# `until` stops it before every drawn contact happens, and a window's
+# `calendar` scales its kernel's hazard over time — all three reshape the
 # offspring law away from the bare distribution, so the analytical chain-size
 # and incidence likelihoods must not take the model's offspring law as read.
 function offspring_law_unchanged(m::BranchingProcess)
     population_size(m) isa NoPopulation || return false
-    return all(w -> isempty(w.until), m.infectiousness)
+    return all(w -> isempty(w.until) && w.calendar === nothing, m.infectiousness)
 end
 
 function single_type_offspring(m::BranchingProcess)
@@ -433,6 +451,10 @@ function _single_kernel(m::BranchingProcess)
     )
     return m.infectiousness[1].kernel
 end
+
+# The calendar of a single-window model (used by analytical helpers that
+# read `_single_kernel` directly and have no way to apply it).
+_single_calendar(m::BranchingProcess) = m.infectiousness[1].calendar
 
 _offspring_label(off::Distribution) = string(typeof(off))
 _offspring_label(off) = "Function"

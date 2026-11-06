@@ -463,6 +463,10 @@ attributes(s::ModelSpec) = s.attributes
 observation(s::ModelSpec) = s.observation
 recorder(s::ModelSpec) = s.recorder
 progression(s::ModelSpec) = s.progression
+
+"""The transmission model `spec` wraps. [`simulate`](@ref) and
+`loglikelihood` run the same on `process(spec)` alone, without the layers
+composed onto `spec`."""
 process(s::ModelSpec) = s.process
 population_size(s::ModelSpec) = population_size(s.process)
 
@@ -475,6 +479,7 @@ offspring_law_unchanged(s::ModelSpec) = offspring_law_unchanged(s.process)
 _analytic_offspring(s::ModelSpec) = _analytic_offspring(s.process)
 n_types(s::ModelSpec) = n_types(s.process)
 _single_kernel(s::ModelSpec) = _single_kernel(s.process)
+_single_calendar(s::ModelSpec) = _single_calendar(s.process)
 
 # `simulate` unwraps the spec: the process is the model, the spec's layers are
 # the forcing inputs.
@@ -508,6 +513,19 @@ end
 
 simulate(spec::ModelSpec, n::Int; kwargs...) =
     _simulate_each(identity, SimulationState, spec, n; kwargs...)
+
+# `simulate`'s continuation method unwraps the spec the same way: the
+# process's `transmission_risks` as before, the spec's own interventions and
+# recorder.
+function simulate(
+        spec::ModelSpec, state::SimulationState; max_time::Real,
+        rng::AbstractRNG = state.rng
+    )
+    return _continue_sellke!(
+        state, rng, max_time, spec.interventions, transmission_risks(spec.process),
+        spec.recorder
+    )
+end
 
 function _simulate_each(
         each, ::Type{T}, spec::ModelSpec, n::Int;

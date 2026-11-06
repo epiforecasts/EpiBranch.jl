@@ -5,10 +5,10 @@
 # graph neighbours as its contacts (rather than once per household clique).
 # Nodes are processed in increasing infection-time order; popping the
 # earliest pending infection makes it final. Every other concern is the
-# shared engine: the population is built with `new_state`/`add_individuals!`,
-# each infected node's natural history is stamped through the primitive's
-# `resolve_transitions!`, and the result is an EpiBranch `SimulationState`
-# that `linelist` renders.
+# shared engine: the population is built with `new_state` and, by default,
+# `lazily_populate!`, each infected node's natural history is stamped through
+# the primitive's `resolve_transitions!`, and the result is an EpiBranch
+# `SimulationState` that `linelist` renders.
 
 """
     simulate_once(model::NetworkProcess, sim_opts; interventions, attributes,
@@ -38,7 +38,11 @@ function simulate_once(
 
     state = new_state(model, progression, attributes, rng)
     n = length(model.adjacency)
-    add_individuals!(state, n, interventions; setup = (ind, i) -> nothing)
+    if model.eager
+        add_individuals!(state, n, interventions; setup = (ind, i) -> nothing)
+    else
+        EpiBranch.lazily_populate!(state, n, interventions)
+    end
 
     # A community hazard over an unbounded window would introduce every node,
     # swamping the graph. Require a finite observation window instead.
@@ -104,10 +108,14 @@ end
 
 # Draw an external-hazard introduction time for each member not in `skip`
 # (e.g. already-seeded chosen cases), keeping those landing within `[0, Tobs]`.
+# An external hazard considers every node a possible introduction, so it
+# realises the whole population on a lazily populated model exactly as it
+# already drew every node's attributes on one built upfront.
 function _seed_external!(best, members, state, extsrc, Tobs, rng, skip = ())
     for k in eachindex(members)
         members[k] in skip && continue
-        t = _ext_draw(rng, extsrc, members[k], state.individuals[members[k]].susceptibility)
+        susceptibility = EpiBranch._realised!(state, members[k]).susceptibility
+        t = _ext_draw(rng, extsrc, members[k], susceptibility)
         t <= Tobs && (best[k] = t)
     end
     return nothing

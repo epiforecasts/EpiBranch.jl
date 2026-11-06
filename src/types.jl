@@ -44,6 +44,13 @@ abstract type ChainSizeLaw <: DiscreteUnivariateDistribution end
 # `src/transitions/`.
 abstract type AbstractClinicalTransition end
 
+# Abstract supertype for a cut race's unfinished event queue (defined here,
+# for the same forward-reference reason as `AbstractClinicalTransition`; the
+# concrete type is `_RaceContinuation` in `sellke.jl`). `simulate`'s
+# continuation method pops up where the race it describes left off, rather
+# than redrawing contacts already decided.
+abstract type AbstractRaceContinuation end
+
 # ── Transmission models ─────────────────────────────────────────────
 
 """
@@ -180,6 +187,10 @@ function offspring_law_unchanged(xs::Union{Tuple, AbstractVector})
     return all(offspring_law_unchanged, xs)
 end
 
+"""The number of types of case `model` has, or `1` for a single-type model
+(the default). A multi-type model, such as a [`BranchingProcess`](@ref)
+built from an offspring matrix, overrides this with its own number of
+types; [`single_type_offspring`](@ref) raises an error for one."""
 n_types(::TransmissionModel) = 1
 
 # The offspring specification the analytical helpers dispatch on. By default it
@@ -315,7 +326,7 @@ before a reinfection replaces it.
 """
 InfectionEpisode(ind::Individual{T}) where {T} = InfectionEpisode{T}(
     ind.infection_time, ind.parent_id, ind.generation, ind.chain_id,
-    copy(ind.secondary_case_ids), copy(ind.state)
+    copy(ind.secondary_case_ids), _detach_removal_history!(copy(ind.state))
 )
 
 """
@@ -332,6 +343,20 @@ function close_episode!(ind::Individual, episode::InfectionEpisode)
     return ind
 end
 
+# The three things a lazily populated model (`NetworkProcess`, `RoutedNetwork`)
+# needs to create one of its own not-yet-existing nodes: the placeholder every
+# unrealised slot in `individuals` points to until then, shared by every slot
+# in one state and never mutated, so checking for it is one pointer
+# comparison; the interventions the node is created with; and anything the
+# model's own `add_individuals!`-style `setup` would have recorded about it
+# (a graph index, say). `nothing` on `SimulationState` for a model that
+# builds its whole population upfront, which is every model but these two.
+struct _LazyPopulation{T <: Real, F}
+    placeholder::Individual{T}
+    interventions::Any
+    setup::F
+end
+
 # ── Simulation state ───────────────────────────────────────────────
 
 """
@@ -343,7 +368,10 @@ Useful fields:
 
 - `individuals`: one [`Individual`](@ref) per person in the simulation: the
   cases and the contacts they exposed for a [`BranchingProcess`](@ref),
-  everyone for models with a fixed population.
+  everyone for models with a fixed population. `NetworkProcess` and
+  `RoutedNetwork` create a person here only once the outbreak reaches them
+  (see [`realise!`](@ref)); a person it never reached reads as never
+  infected and untouched by any intervention.
 - `cumulative_cases`: the total number of cases.
 - `extinct`: whether transmission had died out when the run stopped.
 - `current_generation`: the last generation simulated.
@@ -353,6 +381,12 @@ model, and `scratch` is space in which an intervention can keep its own
 working information for the run (as `Individual.state` is for each person),
 named as the Extending EpiBranch guide describes. The simulation never reads
 `scratch`. `GroupVaccination` keeps its list of each group's members there.
+`continuation` is the unfinished race [`simulate`](@ref)'s continuation
+method resumes, `nothing` once the run has reached extinction or stopped for
+some other reason; nothing outside the simulation engine reads or writes it.
+`lazy` is set by [`EpiBranch.lazily_populate!`](@ref) for a model whose
+population is created as the race reaches it, `nothing` for one built
+upfront; nothing outside the simulation engine reads or writes it either.
 """
 mutable struct SimulationState{T <: Real, R <: AbstractRNG, P, A}
     individuals::Vector{Individual{T}}
@@ -366,11 +400,13 @@ mutable struct SimulationState{T <: Real, R <: AbstractRNG, P, A}
     attributes::A
     transitions::Vector{AbstractClinicalTransition}
     scratch::Dict{Any, Any}
+    continuation::Union{Nothing, AbstractRaceContinuation}
+    lazy::Union{Nothing, _LazyPopulation}
 end
 
-# Pre-existing callers construct a `SimulationState` without `scratch`; it
-# always starts empty, so this fills it in rather than requiring every call
-# site to name it.
+# Pre-existing callers construct a `SimulationState` without `scratch`,
+# `continuation` or `lazy`; all three start absent, so this fills them in
+# rather than requiring every call site to name them.
 function SimulationState(
         individuals, active_ids, current_generation, rng, cumulative_cases,
         extinct, population_size, max_infection_time, attributes, transitions
@@ -378,7 +414,7 @@ function SimulationState(
     return SimulationState(
         individuals, active_ids, current_generation, rng, cumulative_cases,
         extinct, population_size, max_infection_time, attributes, transitions,
-        Dict{Any, Any}()
+        Dict{Any, Any}(), nothing, nothing
     )
 end
 

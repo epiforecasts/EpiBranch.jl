@@ -1,3 +1,5 @@
+using ForwardDiff
+
 # A callable struct, not a bare closure, so offspring_law_unchanged keeps its
 # default true instead of conservatively assuming it touches transmission.
 struct _RiskFromAge end
@@ -203,6 +205,13 @@ struct _RiskFromAge end
         ) ≈ logpdf(MvNormal(mr.mean, mr.cov), data.data)
     end
 
+    @testset "ForwardDiff through the generation-time distribution" begin
+        data = IncidenceCounts([1, 2, 3, 5])
+        f(μ) = loglikelihood(data, Poisson(1.2), LogNormal(μ, 0.5))
+        fd = (f(1.5 + 1.0e-6) - f(1.5 - 1.0e-6)) / 2.0e-6
+        @test ForwardDiff.derivative(f, 1.5) ≈ fd rtol = 1.0e-4
+    end
+
     @testset "LognormalApproximation needs strictly positive counts" begin
         data = IncidenceCounts([0, 2, 4, 5])
         @test_throws ArgumentError loglikelihood(
@@ -255,6 +264,14 @@ struct _RiskFromAge end
 
         windowed = BranchingProcess(Infectiousness(offspring; until = (:recovered,), kernel = gt))
         @test_throws ArgumentError loglikelihood(data, windowed)
+
+        # A calendar scaling the kernel's hazard reshapes transmission over
+        # time too, and this closed form reads the kernel directly with no
+        # way to apply it.
+        scheduled = BranchingProcess(
+            Infectiousness(offspring; kernel = gt, calendar = Steps([5.0], [1.0, 0.1]))
+        )
+        @test_throws ArgumentError loglikelihood(data, scheduled)
 
         with_traits = ModelSpec(model; attributes = transmission_traits(susceptibility = 0.5))
         @test_throws ArgumentError loglikelihood(data, with_traits)

@@ -131,10 +131,11 @@ public susceptibility_components, susceptibility_host_times, HazardScaling
 public binding_release
 public removal_gap_host_times, removal_gap_host_times_withdrawn
 public removal_block_probability
-public record_removal!
+public record_removal!, revise_removal!, withdraw_removal!
 public removal_stretches
-public InterventionAction, intervention_actions, action_draw!, apply_actions!,
-    action_candidates, acts_on_population, needs_contacts, may_revise, is_settled
+public InterventionAction, intervention_actions, action_draw!, action_cache,
+    apply_actions!, action_candidates, acts_on_population, needs_contacts,
+    may_revise, is_settled
 
 # Pairwise survival likelihood: how its two accumulation passes group rows
 # into a result. `pairwise_surv_loglik` and `pairwise_surv_loglik_by_component`

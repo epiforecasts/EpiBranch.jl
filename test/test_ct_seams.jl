@@ -32,6 +32,63 @@ function EpiBranch.apply_trace!(q::KeyedQuarantine, contact, state, trace_time, 
 end
 EpiBranch.removal_gap_host_times(::KeyedQuarantine) = (OWN_QUARANTINE_KEY,)
 
+# A `TraceAction` that quarantines a traced contact and releases it early if a
+# test taken `test_day` days after the trace comes back negative: the worked
+# example from the extending guide, exercising `ContactTracing`'s forwarding
+# of `intervention_actions` and `on_infection_settled!` to the action it
+# holds. The duration recorded at trace time is provisional; the release is
+# shortened, once, in `on_infection_settled!`, by which point the contact's
+# own infection is known.
+const TEST_RELEASE_STRETCHES = :_test_release_stretches
+struct TestAndRelease{S} <: EpiBranch.TraceAction
+    duration::Float64
+    test_day::Float64
+    sensitivity::S
+end
+
+function EpiBranch.apply_trace!(ta::TestAndRelease, contact, state, trace_time, rng)
+    contact.state[:traced] = true
+    contact.state[:quarantined] = true
+    isfinite(trace_time) || return nothing
+    handle = EpiBranch.record_removal!(
+        contact, trace_time, trace_time + ta.duration; key = TEST_RELEASE_STRETCHES
+    )
+    contact.state[:_release_handle] = handle
+    return nothing
+end
+EpiBranch.removal_gap_host_times(::TestAndRelease) = (TEST_RELEASE_STRETCHES,)
+
+function EpiBranch.intervention_actions(ta::TestAndRelease, state, candidates)
+    actions = EpiBranch.InterventionAction[]
+    for ind in candidates
+        haskey(ind.state, :_release_handle) || continue
+        get(ind.state, :_test_claimed, false) && continue
+        test_time = ind.state[:trace_time] + ta.test_day
+        claim! = function (person, at, st)
+            person.state[:_test_claimed] = true
+            person.state[:_test_time] = at
+            return nothing
+        end
+        push!(
+            actions,
+            EpiBranch.InterventionAction(ind, test_time, (p, at, st) -> nothing; claim!)
+        )
+    end
+    return actions
+end
+EpiBranch.capacity_key(::TestAndRelease) = :_test_claimed
+EpiBranch.capacity_time_key(::TestAndRelease) = :_test_time
+
+function EpiBranch.on_infection_settled!(ta::TestAndRelease, ind, state, rng)
+    get(ind.state, :_test_claimed, false) || return nothing
+    handle = get(ind.state, :_release_handle, nothing)
+    handle === nothing && return nothing
+    sens = EpiBranch.sample_value(ta.sensitivity, rng, ind)
+    negative = !is_infected(ind) || rand(rng) >= sens
+    negative && EpiBranch.revise_removal!(ind, handle; release = ind.state[:_test_time])
+    return nothing
+end
+
 # Traces every case, but from a NaN trigger time when the infector has an even id:
 # a custom trigger time that says nothing about when tracing started.
 struct NaNForEvenIds <: EpiBranch.TraceEligibility end
@@ -483,8 +540,7 @@ end
 
             # An unrecorded standing isolation stays unrecorded.
             unrecorded = Individual(id = 4)
-            set_isolated!(unrecorded, 4.0; release_time = Inf)
-            unrecorded.state[:_isolation_unrecorded] = true
+            set_isolated!(unrecorded, 4.0; release_time = Inf, unrecorded = true)
             EpiBranch.apply_trace!(
                 Quarantine(duration = Inf), unrecorded, state, unreachable, StableRNG(1)
             )
@@ -572,4 +628,77 @@ end
     @test EpiBranch.infectious_removal_time(ct_keyed, untouched) == Inf
     @test EpiBranch.competing_risk(ct_keyed, untouched, Individual(id = 11), nothing) ===
         nothing
+end
+
+@testset "A TraceAction can follow a contact up and release it once settled" begin
+    # The infector is traced from its own onset, so tracing (and the duration
+    # this records) happens the moment the infector settles, at its own
+    # infection time. The contact's generation time is far shorter than the
+    # trace delay, so the contact is already infected before any of that: the
+    # ordering the issue reports.
+    clinical = clinical_presentation(incubation_period = Dirac(1.0), prob_asymptomatic = 0.0)
+    build(sensitivity) = ModelSpec(
+        BranchingProcess(Dirac(1), Dirac(0.01));
+        interventions = [
+            ContactTracing(
+                OnSymptomOnset(), 1.0, Dirac(2.0), TestAndRelease(14.0, 3.0, sensitivity)
+            ),
+        ],
+        attributes = clinical
+    )
+
+    @testset "the duration is recorded before the contact's own infection is known" begin
+        state = simulate(
+            build(0.0); n_initial = 1, max_generations = 1, rng = StableRNG(1)
+        )
+        contact = state.individuals[2]
+        @test is_infected(contact)
+        @test contact.state[:trace_time] == 3.0
+        @test contact.infection_time < contact.state[:trace_time]
+    end
+
+    @testset "a false negative releases early" begin
+        state = simulate(
+            build(0.0); n_initial = 1, max_generations = 1, rng = StableRNG(1)
+        )
+        contact = state.individuals[2]
+        @test EpiBranch.removal_stretches(contact, TEST_RELEASE_STRETCHES) == [(3.0, 6.0)]
+    end
+
+    @testset "a true positive leaves the full duration standing" begin
+        state = simulate(
+            build(1.0); n_initial = 1, max_generations = 1, rng = StableRNG(1)
+        )
+        contact = state.individuals[2]
+        @test EpiBranch.removal_stretches(contact, TEST_RELEASE_STRETCHES) == [(3.0, 17.0)]
+    end
+end
+
+@testset "ContactTracing discovers actions only when its action does" begin
+    # `intervention_actions(ct::ContactTracing, ...)` always forwards to
+    # `ct.action`, so discovery must check what the action itself overrides
+    # rather than trust that the forwarding method merely exists; otherwise
+    # a `Quarantine` or `FlagOnly` contact tracer, which proposes nothing,
+    # would still pay the race's per-settled-case action-discovery cost.
+    plain = ContactTracing(OnSymptomOnset(), 1.0, Dirac(2.0), Quarantine(14.0))
+    flagged = ContactTracing(
+        OnSymptomOnset(), 1.0, Dirac(2.0), FlagOnly()
+    )
+    following_up = ContactTracing(
+        OnSymptomOnset(), 1.0, Dirac(2.0), TestAndRelease(14.0, 3.0, 0.0)
+    )
+    @test !EpiBranch._discovers_actions(plain)
+    @test !EpiBranch._discovers_actions(flagged)
+    @test EpiBranch._discovers_actions(following_up)
+
+    # The same distinction must survive a `CapacityConstrained` wrapping the
+    # tracer: it has its own `intervention_actions` method too, so asking it
+    # directly must not credit every wrapped `ContactTracing` regardless of
+    # whether its action proposes anything.
+    @test !EpiBranch._discovers_actions(
+        CapacityConstrained(plain; budget_per_period = 1.0)
+    )
+    @test EpiBranch._discovers_actions(
+        CapacityConstrained(following_up; budget_per_period = 1.0)
+    )
 end

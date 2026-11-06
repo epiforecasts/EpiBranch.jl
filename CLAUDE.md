@@ -76,13 +76,24 @@ dispatched-on trait.
 
 ## Conventions
 
-1. **Distributions from Distributions.jl**: use standard `Distributions.jl`
-   types for offspring distributions, delay distributions, etc. Do not wrap
-   these in bespoke distribution types. The one sanctioned exception is the
-   internal `_ChainSizeLaw`/`_ChainLengthLaw` wrappers in
-   `src/likelihood_dists.jl`, which subtype `Distribution` solely so a model
-   can sit on the right-hand side of Turing's `~`; they delegate to the
-   existing `loglikelihood` methods and are not exported.
+1. **Distributions from Distributions.jl**: a delay, an offspring distribution
+   or a contact-interval kernel is a standard `Distributions.jl` type wherever
+   one exists, passed as it is. Do not wrap one in a distribution type of our
+   own: the user would lose the family's own methods and every one added to it
+   later, `truncated`, `convolve`, `fit_mle`, `partype` and whatever the
+   wrapper does not forward. A univariate law with no standard family subtypes
+   the matching `UnivariateDistribution` and implements `rand`, `logpdf`,
+   `cdf`, `minimum` and `maximum`. A kernel, such as one defined by an
+   arbitrary hazard, is a `ContinuousUnivariateDistribution` and also
+   implements `logccdf`, `invlogccdf`, `loghazard` and `cumhazard` directly,
+   as `_CalendarScaledKernel` in `src/pair_kernels.jl` does, because the
+   engine draws in log-survival and the pairwise likelihood works in hazards.
+   An internal, unexported wrapper is allowed where the standard types cannot
+   do the job, with the reason in a comment at its definition:
+   `_TruncatedSkewNormal` in `src/distributions.jl` truncates `SkewNormal`,
+   which has no `cdf`; `_ChainSizeLaw` and `_ChainLengthLaw` in
+   `src/likelihood_dists.jl` subtype `Distribution` only so a model can sit on
+   the right-hand side of Turing's `~`.
 2. **DataFrames output**: line lists and chain statistics returned as
    DataFrames, matching epidemiological conventions (one row per case or per
    contact pair).

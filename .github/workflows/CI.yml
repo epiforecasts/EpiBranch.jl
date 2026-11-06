@@ -2,6 +2,9 @@ name: CI
 on:
   push:
     branches: [main]
+    # A release tag, pushed by TagBot with the deploy key, builds the
+    # versioned documentation.
+    tags: ['v*']
   pull_request:
 
 concurrency:
@@ -18,6 +21,12 @@ jobs:
         version:
           - '1'
           - 'lts'
+        # The root suite runs as two jobs of similar length, so that neither
+        # reaches the job timeout. `test/runtests.jl` lists which files make up
+        # each group; `Pkg.test()` without the variable runs them all.
+        group:
+          - engine
+          - inference
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: julia-actions/setup-julia@da908477b5db94c10ffce8cfea9f2b3b9d5db687 # v3.0.3
@@ -28,11 +37,15 @@ jobs:
       - uses: julia-actions/julia-runtest@6e050c8013b833b1195105ff2fce9cd802f53271 # v1.12.0
         with:
           coverage: true
+        env:
+          EPIBRANCH_TEST_GROUP: ${{ matrix.group }}
       - uses: julia-actions/julia-processcoverage@03114f09f119417c3242a9fb6e0b722676aedf38 # v1.2.2
       - uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
           files: lcov.info
-          flags: epibranch
+          # One flag per group: a group that fails to upload keeps its last
+          # report on its own rather than hiding behind the other's upload.
+          flags: epibranch-${{ matrix.group }}
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: false
 
@@ -101,7 +114,11 @@ jobs:
       pages: write
       id-token: write
     steps:
+      # The tags decide which release the docs build publishes as `stable`,
+      # so a tag build must see every tag rather than the one it is on.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-tags: true
       - uses: julia-actions/setup-julia@da908477b5db94c10ffce8cfea9f2b3b9d5db687 # v3.0.3
         with:
           version: '1'

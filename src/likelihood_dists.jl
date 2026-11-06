@@ -172,7 +172,10 @@ function _rand_chain_size(rng::AbstractRNG, setup::NamedTuple, obs, prog)
         setup.condition === nothing ||
             state.cumulative_cases in setup.condition || continue
         vals = _sim_chain_sizes(state, obs, prog)
-        isempty(vals) || return sum(vals)
+        if !isempty(vals)
+            cluster_size = sum(vals)
+            _meets_min_size(obs, cluster_size) && return cluster_size
+        end
     end
     throw(
         ErrorException(

@@ -127,6 +127,74 @@ function _run_once_or_retry(model, sim_opts, condition, max_attempts; kwargs...)
 end
 
 """
+    simulate(model::TransmissionModel, state::SimulationState; max_time::Real,
+             rng::AbstractRNG = state.rng)
+
+Continue `state`, a [`SimulationState`](@ref) returned by [`simulate`](@ref)
+or by this method itself, up to a later `max_time`. The race underneath picks
+up exactly where it stopped: every contact already decided stands, and
+nothing already drawn is redrawn, so a run continued this way to `max_time`
+agrees with one run straight through to it from the same seed (the one
+exception is mass action with an infectious window that never closes, which
+agrees in distribution rather than bit for bit). `model` supplies the
+interventions, transmission risks and contact recorder again; `state` does
+not hold them, so a particle filter can keep `model` once as the dynamics
+and copy only `state` as the particle.
+
+`state` is mutated in place and returned. No observation model is applied:
+continuation is for a caller, such as a particle filter, that scores each
+step itself against its own data, rather than drawing a synthetic one.
+`state` is returned unchanged if it had already reached extinction, or
+stopped for a reason other than `max_time` — there is nothing left for a
+later `max_time` to continue.
+
+```julia
+using EpiBranch, Distributions
+model = ModelSpec(
+    HomogeneousProcess(transmission_rate = 0.4, population_size = 10_000);
+    progression = [Transition(:recovered; rate = 0.2, terminal = true)],
+)
+state = simulate(model; max_time = 20.0)
+simulate(model, state; max_time = 27.0)
+```
+"""
+function simulate(
+        model::TransmissionModel, state::SimulationState; max_time::Real,
+        rng::AbstractRNG = state.rng
+    )
+    return _continue_sellke!(
+        state, rng, max_time, interventions(model), transmission_risks(model),
+        recorder(model)
+    )
+end
+
+# Shared by both `simulate` continuation methods (a bare process and a
+# `ModelSpec`): resume `state`'s leftover race to `max_time`, with the
+# modelling layers a continuation needs (not `attributes`, `progression` or
+# `observation`, which do not reach the race again) supplied explicitly.
+function _continue_sellke!(state::SimulationState, rng, max_time, ivs, risks, recorder_)
+    continuation = state.continuation
+    (continuation === nothing || !continuation.cut_by_max_time) && return state
+    max_time > continuation.max_time || throw(
+        ArgumentError(
+            "max_time ($max_time) must be past the state's own " *
+                "($(continuation.max_time)) to continue it"
+        )
+    )
+    extinct = _sellke_race!(
+        state, continuation.members, rng;
+        routes = continuation.rts, interventions = isempty(ivs) ? () : ivs,
+        contacts = continuation.contacts, risks,
+        introduction = continuation.introduction, watches = continuation.watches,
+        projections = continuation.projections, max_time,
+        max_generation = continuation.max_generation,
+        stopping_rules = continuation.stopping_rules, recorder = recorder_,
+        resume = continuation
+    )
+    return _reconcile_sellke_bookkeeping!(state, extinct)
+end
+
+"""
     simulate_once(model, sim_opts; interventions, attributes, progression,
                   observation, recorder, rng)
 
@@ -406,8 +474,9 @@ _has_contacts(counts::Vector{Int}) = any(>(0), counts)
 # `offspring_route.jl` pass it here in place of a kernel without
 # `_draw_contact!` branching on where the offset came from. It is kept
 # distinct from a bare `Real` because a kernel that mistakenly returns a
-# number (one must return a `Distribution`) should still raise a
-# `MethodError` instead of being silently treated as a fixed offset.
+# number (one must return something `rand` draws from, such as a
+# `Distribution`) should still raise a `MethodError`
+# instead of being silently treated as a fixed offset.
 struct _FixedOffset{T <: Real}
     offset::T
 end
@@ -418,6 +487,12 @@ end
 _window_infection_time(::NoGenerationTime, from_t::Real, state) = from_t
 _window_infection_time(offset::_FixedOffset, from_t::Real, state) = from_t + offset.offset
 function _window_infection_time(kernel::Distribution, from_t::Real, state)
+    return from_t + rand(state.rng, kernel)
+end
+# A window with a `calendar` scaling its kernel draws from the resulting
+# calendar-scaled kernel directly, exactly as a `PairKernel` with a calendar
+# does on the structure-driven routes.
+function _window_infection_time(kernel::_CalendarScaledKernel, from_t::Real, state)
     return from_t + rand(state.rng, kernel)
 end
 
@@ -606,6 +681,89 @@ function add_individuals!(
         push!(added, ind)
     end
     return added
+end
+
+"""
+    lazily_populate!(state, n, interventions; setup = (ind, i) -> nothing) -> state
+
+Set `state` up for `n` people none of which exist yet, in place of
+[`add_individuals!`](@ref). Used by a transmission model whose population is
+large relative to the outbreaks it simulates, such as `NetworkProcess` or
+`RoutedNetwork`, so that a run costs in proportion to the people the
+outbreak reaches rather than to the size of the population. Every slot in
+`state.individuals` starts out pointing to one placeholder, shared by every
+slot and never mutated: it reads as never infected (`is_infected` false),
+untouched by any intervention, with susceptibility and infectiousness at
+their neutral value of 1. The engine replaces it with a real person, drawing
+their population characteristics from the per-person streams [`stream`](@ref)
+gives every other draw, the first time it proposes that node an infection or
+an intervention reaches it; `setup` and `interventions` are applied then,
+exactly as `add_individuals!` applies them at creation. [`realise!`](@ref)
+creates everyone still unrealised once a run has finished.
+"""
+function lazily_populate!(
+        state::SimulationState, n::Integer, interventions;
+        setup = (ind, i) -> nothing
+    )
+    T = _timetype(state)
+    s = IndividualState{T}()
+    s[:infected] = false
+    placeholder = Individual{T}(
+        0, 0, 0, 0, T(NaN), one(T), one(T), Int[], s, InfectionEpisode{T}[]
+    )
+    state.lazy = _LazyPopulation(placeholder, interventions, setup)
+    resize!(state.individuals, n)
+    fill!(state.individuals, placeholder)
+    return state
+end
+
+# The individual at `id`, replacing it first if `state` is a lazily
+# populated model's and `id` has not been touched before. A model built
+# upfront (`state.lazy === nothing`) never stores the placeholder, so this
+# is one pointer comparison for every model but the lazily populated ones.
+@inline function _realised!(state::SimulationState, id::Int)
+    ind = @inbounds state.individuals[id]
+    lazy = state.lazy
+    (lazy === nothing || ind !== lazy.placeholder) && return ind
+    return _realise!(state, lazy, id)
+end
+
+function _realise!(state::SimulationState, lazy::_LazyPopulation, id::Int)
+    ind = _create_individual(state, 0, id, id, NaN)
+    lazy.setup(ind, id)
+    for intervention in lazy.interventions
+        initialise_individual!(intervention, ind, state)
+    end
+    state.individuals[id] = ind
+    return ind
+end
+
+"""
+    realise!(state::SimulationState) -> state
+
+Create every person a lazily populated model (`NetworkProcess`,
+`RoutedNetwork`) did not need during the run, drawing each one's population
+characteristics from the same per-person streams the run itself drew from
+(see [`CommonRandomNumbers`](@ref)): under common random numbers, a person's
+attributes are then the same whether the outbreak reached them or `realise!`
+created them afterwards. A no-op for a model whose population is built
+upfront, which is every model but these two.
+
+Call this when you need the characteristics of people the outbreak never
+reached, such as comparing susceptibility across the whole population rather
+than just the cases. Without it, `linelist(state; infected_only = false)`
+and anything else that reads every person in `state.individuals` sees an
+unrealised person as never infected, with no population characteristics
+drawn and susceptibility and infectiousness both at their neutral value of
+1.
+"""
+function realise!(state::SimulationState)
+    lazy = state.lazy
+    lazy === nothing && return state
+    for id in eachindex(state.individuals)
+        _realised!(state, id)
+    end
+    return state
 end
 
 """The `i`-th person's type, out of `n_types`: uniform at random by default,
@@ -852,6 +1010,13 @@ entries there rather than by changing a vector or dictionary it finds there.
 function resolve_transitions!(state::SimulationState, individual)
     transitions = state.transitions
     isempty(transitions) && return nothing
+    # When a reinfection occurs, `close_episode!` archives the state of the
+    # previous episode wholesale, outcome included, before this runs again
+    # for the new episode. Left in place, that outcome would outlive the
+    # episode it came from and backdate isolation, tracing and outcome-based
+    # likelihoods for the new one.
+    delete!(individual.state, :outcome)
+    delete!(individual.state, :outcome_time)
     for transition in transitions
         initialise_individual!(transition, individual, state)
     end
@@ -882,6 +1047,12 @@ end
 function _resolve_before_abort!(transitions, individual, state, aborted_t)
     kept = copy(individual.state)
     for transition in transitions
+        # `kept` still shares the `:_removal_entries` vector of
+        # `individual.state`, left over from the last `copy` or restore
+        # below. `_push_removal_entry!` grows that vector in place; without
+        # this call, a push here would reach back into `kept`, and the
+        # entry would survive an undo meant to remove it.
+        _detach_removal_history!(individual.state)
         resolve_individual!(transition, individual, state)
         if _writes_time_from(individual.state, kept, aborted_t)
             # The uniform a group of siblings shares belongs to the group

@@ -40,9 +40,10 @@ mutable struct _Tree{T <: Real} <: AbstractVector{Int}
     free::Int                # head of the recycled draw records
     untils::Vector{Tuple}      # each window's `until` states
     tagged::Vector{Bool}       # whether that window has any
+    excluded::Vector{Bool}     # place born past its infector's window, kept for `_finish!`
 end
 
-_Tree{T}() where {T} = _Tree{T}(Int[], Int[], _Drawn{T}[], Int[], 0, Tuple[], Bool[])
+_Tree{T}() where {T} = _Tree{T}(Int[], Int[], _Drawn{T}[], Int[], 0, Tuple[], Bool[], Bool[])
 
 # A tree with the index cases at the first places, reusing one this task has
 # grown before, for the reason `_RaceBuffers` gives.
@@ -53,6 +54,7 @@ function _take_tree(::Type{T}, n_initial::Int, untils) where {T}
     copyto!(resize!(tree.ids, n_initial), 1:n_initial)
     copyto!(resize!(tree.places, n_initial), 1:n_initial)
     fill!(resize!(tree.drawn, n_initial), _Drawn(0, 0, 0, zero(T)))
+    fill!(resize!(tree.excluded, n_initial), false)
     append!(empty!(tree.untils), untils)
     append!(empty!(tree.tagged), map(u -> !isempty(u), untils))
     return tree
@@ -64,9 +66,10 @@ _member_positions(t::_Tree) = t.places
 _proposal_fallback(::_Tree) = false
 # A contact is listed on its infector when drawn, so the recorder need not log it.
 _logs_blocked(::_Tree, source, ind) = false
-# The index cases are infected from the start, and each contact is offered the
-# population's actions when it is created.
-_population_members(::_Tree) = ()
+# At race start the tree holds exactly the index cases, so this offers them
+# the population's actions; each contact is offered them again when it is
+# created.
+_population_members(t::_Tree) = copy(t.ids)
 
 # A new place for a contact `infector` drew on window `route`, at `time`.
 function _place!(tree::_Tree, race, infector, time, type_idx, route)
@@ -81,6 +84,7 @@ function _place!(tree::_Tree, race, infector, time, type_idx, route)
         tree.drawn[slot] = drawn
     end
     push!(tree.slots, slot)
+    push!(tree.excluded, false)
     push!(race.processed, false)
     race.may_block && push!(race.head, 0)
     return length(tree.ids)
@@ -116,11 +120,21 @@ function _propose_member!(tree::_Tree, race, k, opening_id, t)
 end
 
 # The person at place `k`, created now if there is none yet. The interventions
-# set up their state on them, as on anyone created.
+# set up their state on them, as on anyone created. A place already born is
+# revisited once its queued event is popped; if a cut the race was kept to
+# continue marked it undecided in between, its drawn time goes back first, so
+# a risk that blocks the proposal restores the real time rather than that
+# mark.
 _member!(tree::_Tree, race, k) = _birth!(tree, race, k)
 function _birth!(tree::_Tree, race, k)
     (; state) = race
-    tree.ids[k] == 0 || return state.individuals[tree.ids[k]]
+    if tree.ids[k] != 0
+        contact = state.individuals[tree.ids[k]]
+        slot = tree.slots[k]
+        slot != 0 && isnan(contact.infection_time) &&
+            (contact.infection_time = tree.drawn[abs(slot)].time)
+        return contact
+    end
     drawn = tree.drawn[abs(tree.slots[k])]
     parent = state.individuals[drawn.infector]
     contact = drawn.type == 0 ? make_contact!(state, parent, drawn.time) :
@@ -291,6 +305,7 @@ function _draw_contacts!(o::_Offspring, race, ind, max_generation, born::Bool)
     (; state) = race
     counts = draw_offspring(state.rng, o.window.offspring, ind, state)
     kernel = _window_kernel(counts, o.window.kernel, ind)
+    kernel = _calendar_scaled_kernel(kernel, o.window.calendar, from_t)
     _draw_counts!(o, race, ind, counts, from_t, kernel, born)
     return first_place:length(o.tree)
 end
@@ -301,6 +316,17 @@ end
 _window_kernel(counts, window_kernel, ind) =
     _has_contacts(counts) ? get_generation_time(window_kernel, ind) : NoGenerationTime()
 _window_kernel(::OffspringTimes, window_kernel, ind) = NoGenerationTime()
+
+# A window's own `calendar`, scaling its kernel's hazard by the schedule's
+# value from `from_t` onwards, exactly as a `PairKernel`'s calendar does.
+# Nothing to scale with no calendar, with no kernel to draw from
+# (`NoGenerationTime()`), or with contact times `OffspringTimes` already gave
+# (discarded by `_draw_counts!` for those, so left alone here too).
+_calendar_scaled_kernel(kernel, calendar, from_t) =
+    calendar === nothing ? kernel : _offspring_calendar_scaled(kernel, calendar, from_t)
+_offspring_calendar_scaled(kernel::NoGenerationTime, calendar, from_t) = kernel
+_offspring_calendar_scaled(kernel::Distribution, calendar, from_t) =
+    _CalendarScaledKernel(kernel, calendar, from_t)
 
 # Single-type: one count. Multi-type: a count per type.
 function _draw_counts!(o::_Offspring, race, ind, n::Int, from_t, kernel, born)
@@ -354,7 +380,9 @@ end
 
 # Propose the contacts the case drew on this window, those that fall before it
 # closes. One that falls later is a contact who was never infected, and is
-# created as one now.
+# created as one now; its draw stays on the tree rather than being released
+# straight away, so `_finish!` can still read the time it was really exposed
+# at back from it once the race's true end is known.
 function _propose_along!(
         o::_Offspring, race, infector_id, opening_id, open_t, close_t, traits, live, ri
     )
@@ -364,7 +392,7 @@ function _propose_along!(
             _propose!(race, k, opening_id, t)
         else
             _birth!(o.tree, race, k)
-            _release_draw!(o.tree, k)
+            o.tree.excluded[k] = true
         end
     end
     o.pending = 1:0
@@ -380,16 +408,39 @@ end
 # with what was done to it, but with no infection time, as a network leaves a
 # member the run never reached; the others were never created. Routes share
 # the places, so the first route to finish does this for all of them.
-function _finish!(o::_Offspring, race, stop_t)
+#
+# This marking is redone at every cut, including one the race is kept to
+# continue; a returned state always reads as though it were finished for
+# good. A still-undecided place keeps its draw and is marked regardless of
+# `stop_t`; popping its queued event again restores its real time before the
+# next cut's mark can be made (see `_birth!`). An excluded place is already
+# decided, and is marked only once its own drawn time falls past `stop_t`;
+# that time is read back from the draw first if an earlier, smaller cut left
+# a `NaN` on it, so the comparison lands against the time it was really
+# drawn for rather than that `NaN`. Both kinds of draw are released once the
+# race's true end is known: an undecided one only if the race reached
+# extinction, since a continuation still has it to decide; an excluded one
+# is already decided and is released regardless.
+function _finish!(o::_Offspring, race, stop_t, extinct, cut_by_max_time)
+    kept = !extinct && cut_by_max_time
     (; state) = race
     for k in eachindex(o.tree.slots)
-        undecided = o.tree.slots[k] != 0
-        undecided && _release_draw!(o.tree, k)
+        slot = o.tree.slots[k]
+        excluded = o.tree.excluded[k]
+        undecided = slot != 0 && !excluded
+        undecided && extinct && _release_draw!(o.tree, k)
         id = o.tree.ids[k]
         id == 0 && continue
         contact = state.individuals[id]
         # An index case the run stopped before reaching stays an index case.
         contact.parent_id == 0 && continue
+        # A shared tree has already had this place's draw released by an
+        # earlier window's turn at `_finish!`; nothing more to restore then.
+        if excluded && slot != 0
+            isnan(contact.infection_time) &&
+                (contact.infection_time = o.tree.drawn[abs(slot)].time)
+            kept || _release_draw!(o.tree, k)
+        end
         (undecided || contact.infection_time > stop_t) &&
             (contact.infection_time = oftype(contact.infection_time, NaN))
     end
@@ -464,7 +515,11 @@ function _simulate_offspring(
         interventions, contacts = (id, state) -> state.individuals[id].secondary_case_ids,
         risks = transmission_risks(model), recorder
     )
-    _return_pooled!(tree)
+    # A race cut off rather than reaching extinction keeps `tree` as its
+    # continuation's `members` (see `_RaceContinuation`); returning it to the
+    # pool here would hand the very same, still-referenced tree to an
+    # unrelated race.
+    state.continuation === nothing && _return_pooled!(tree)
     apply_observation!(observation, state, rng)
     return state
 end

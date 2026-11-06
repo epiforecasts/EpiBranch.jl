@@ -53,11 +53,11 @@ underscore are internal.
 | `:_leaky_removal_stretches` | `Vector{Tuple{Float64,Float64}}` | `[]` | `Isolation` | `resolve_individual!`; internal. The stretches of a leaky isolation, apart from `:_removal_stretches`'s complete ones |
 | `:_quarantine_stretches` | `Vector{Tuple{Float64,Float64}}` | `[]` | `ContactTracing`/`SourceTracing`'s `Quarantine` | `apply_trace!`; internal. The quarantine's own stretches, apart from the shared history |
 | `:_lapsing_removal_keys` | `Tuple{Vararg{Symbol}}` | `()` | `record_removal!` | Internal. The keys under which a releasing stretch has been recorded, checked against `removal_gap_host_times` when the infection layer is built |
-| `:_isolated_by_isolation` | `Bool` | `false` | `Isolation` | `resolve_individual!`; internal |
+| `:_removal_handle_counter` | `Int` | `0` | `record_removal!` | Internal. Counts up so every entry gets its own handle |
+| `:_removal_entries` | `Vector{Tuple{Int,Symbol,Float64,Float64,Bool,Bool}}` | — | `record_removal!`, `set_isolated!` | Internal. Every stretch ever recorded, as `(handle, key, start, release, isolation_span, unrecorded)`. Each key's merged `removal_stretches` cache is rebuilt from it on a `revise_removal!`/`withdraw_removal!` call; `isolation_span` entries (`set_isolated!`'s) are also folded to recompute `:isolation_time`, `:isolation_release_time` and `:_isolation_unrecorded` |
 | `:_isolation_unrecorded` | `Bool` | `false` | `Isolation`, `ContactTracing`/`SourceTracing` | `resolve_individual!` / `apply_trace!`; internal. The isolation removes the case from transmission without counting as a detection |
-| `:_isolation_time_before_isolation` | `Float64` | — | `Isolation` | `resolve_individual!`; internal. The time of an isolation already in place before this one |
-| `:_isolation_release_time_before_isolation` | `Float64` | — | `Isolation` | `resolve_individual!`; internal. The release time of an isolation already in place before this one |
-| `:_isolation_unrecorded_before_isolation` | `Bool` | — | `Isolation` | `resolve_individual!`; internal |
+| `:_isolation_handle` | `Int` | — | `Isolation` | `resolve_individual!`; internal. The handle of `Isolation`'s own entry, so `reset!` can withdraw exactly it |
+| `:_quarantine_removal_handles` | `Vector{Int}` | — | `ContactTracing`/`SourceTracing`'s `Quarantine` | `apply_trace!`; internal. The handles of every entry a quarantine has recorded, so a full reset withdraws each one |
 | `:test_positive` | `Bool` | `false` | `Isolation` | `initialise_individual!` |
 | `:traced` | `Bool` | `false` | `ContactTracing`, `SourceTracing` | `trace_contacts!` |
 | `:quarantined` | `Bool` | `false` | `ContactTracing`, `SourceTracing` | `trace_contacts!` |
@@ -65,6 +65,7 @@ underscore are internal.
 | `:trace_time` | `Float64` | — | `ContactTracing`, `SourceTracing` | `trace_contacts!` |
 | `:_ring_remaining` | `Int` | `0` | `ContactTracing` (`depth > 1`) | `trace_contacts!`; internal |
 | `:_ring_propagated` | `Bool` | `false` | `ContactTracing` (`depth > 1`) | `trace_contacts!`; internal |
+| `:_ring_hop` | `Bool` | `false` | `ContactTracing` (`depth > 1`) | Set and cleared around each `trace_contacts!` call in the ring walk; internal. Marks an already-settled case the walk passes through, so it is traced from as a ring member only, not reseeded |
 | `:traced_by` | `Int` | — | `ContactTracing` | `trace_contacts!` |
 | `:source_traced_by` | `Int` | — | `SourceTracing` | `trace_contacts!`; the reverse of `:traced_by` (names a *later*-infected node) |
 | `:trace_level` | `Int` | — | `compute_trace_level!` | After the simulation |
@@ -92,6 +93,7 @@ underscore are internal.
 | `:infectious_time` | `Float64` | `Inf` | `Transition(:infectious, …)` | `resolve_individual!` |
 | `:recovered_time` | `Float64` | `Inf` | `Transition(:recovered, …)` | `resolve_individual!` |
 | `:susceptible_again_time` | `Float64` | `Inf` | `Transition(:susceptible_again, …)` | `resolve_individual!` |
+| `:_exclusive_draw#N` | `Float64` | — | `exclusive_probabilities` | `resolve_individual!`; internal. The uniform draw a group of mutually exclusive outcomes shares, under a key unique to that call of `exclusive_probabilities` |
 
 !!! warning "Reporting transition and per-case observation clash"
     `:reported` and `:reporting_time` are written both by the `Reporting`
@@ -225,10 +227,10 @@ tag for your package so they clash neither with built-in keys nor with those of
 other packages.
 
 A key an intervention keeps purely for its own records (where a value came
-from, such as `Isolation`'s `:_isolated_by_isolation`, or a stored earlier
-value, such as its `:_isolation_time_before_isolation`) starts with an
-underscore, as [`EpiBranch._action_cache`](@ref)'s `:_intervention_actions`
-does. The underscored names in the table are reserved along with the others, so
+from, such as `Isolation`'s `:_isolation_handle`, which names the entry its own
+isolation was recorded under) starts with an underscore, as
+[`EpiBranch.action_cache`](@ref)'s `:_intervention_actions` does. The
+underscored names in the table are reserved along with the others, so
 a key of your own puts your package's tag after the underscore:
 `:_mypkg_budget`, not `:_budget`. [`linelist`](@ref) drops every key starting
 with an underscore. Any other key becomes a line-list column once a model part
@@ -553,6 +555,20 @@ proposal may have ended by the next. Recorded stretches are only ever added
 to, so their releases are binding. A block that comes and goes with the state,
 such as a ward that reopens, is not, and the simulation stops with an error
 instead of ending a pair whose contacts could still transmit.
+
+A release can still be revised once something that was not known when it was
+recorded settles: [`EpiBranch.revise_removal!`](@ref EpiBranch.revise_removal!)
+changes the release of the entry the handle
+[`record_removal!`](@ref EpiBranch.record_removal!) returned names, shortening
+or lengthening the stretch, and
+[`EpiBranch.withdraw_removal!`](@ref EpiBranch.withdraw_removal!) undoes it
+outright. `binding_release`'s promise still holds so long as the revision
+happens before anything reads the old release, such as in
+[`on_infection_settled!`](@ref EpiBranch.on_infection_settled!), called the
+moment a case's own infection is fixed and before it has made any
+transmissions of its own. [Releasing a quarantine early](@ref) works through
+this for a quarantine a negative test can end sooner than its recorded
+duration.
 
 !!! warning "Name the key, or the likelihood stops with an error"
     A removal that declares `infection_likelihood_compatible` must name its key
@@ -1018,7 +1034,7 @@ before.
 | An offspring specification, generation time or transmission model that reads nothing a case's settlement writes | `EpiBranch.reads_settled_state(::YourType) = false` | Tracing rings of depth 2 or more |
 | A transmission model | A type `<: TransmissionModel` with `generate_offspring` (offspring-driven) or `initialise_state` and `contacts_of` (structure-driven), or `EpiBranch.simulate_once` running `EpiBranch.sellke_race!` (its own continuous-time loop); optionally `single_type_offspring` and accessors | Simulation and closed-form results |
 | A transmission route | `RouteWindow(name; from, until, kernel, reach)` on a model that reads routes | Continuous-time models, each case |
-| A route that finds its own contacts rather than listing them | `EpiBranch.proposes_own_contacts(route) = true` on its `reach`, with `EpiBranch.propose_along` and `EpiBranch.route_pair_kernel`; `EpiBranch.pending_beyond` if it samples only up to the run's time limit | Continuous-time models with routes, each case |
+| A route that finds its own contacts rather than listing them | `EpiBranch.proposes_own_contacts(route) = true` on its `reach`, with `EpiBranch.propose_along` and `EpiBranch.route_pair_kernel`; `EpiBranch.pending_beyond` if it samples only up to the run's time limit, and `EpiBranch._resumable_route` with `EpiBranch._resume_route!` if that cap must still be redrawn on a later `simulate(model, state; max_time)`, proposing redrawn contacts through its `proposer` argument rather than itself, letting a tracing wrapper around it still see them | Continuous-time models with routes, each case |
 | Structured mixing in a closed population | `MixingProcess(; population_size, mixing_by, rate)`: the characteristics that define the groups, and the contact rate between one person in each of two groups | Simulation |
 | A clinical transition | A type `<: AbstractClinicalTransition` with `initialise_individual!` and `resolve_individual!`; `is_terminal`, `terminal_event` and `terminal_target` if terminal; `transition_loglik` to evaluate it | When a case is settled |
 | A calendar schedule for a contact interval | A type with `calendar_multiplier`, and `next_calendar_break` or `EpiBranch.calendar_shape(::YourSchedule) = EpiBranch.SmoothCalendar()` | Simulation and likelihood |
@@ -1030,3 +1046,5 @@ before.
 | A chain-size distribution to fit chain sizes with | A type `<: ChainSizeLaw` with `logpdf` | Likelihood |
 | Per-cluster information | Either computed into existing `ChainSizes` fields, or a new data type with a `loglikelihood` method that passes each group to `loglikelihood(ChainSizes(sizes; seeds), offspring)` | Likelihood |
 | A per-person or per-pair draw that should stay aligned under `CommonRandomNumbers` | `EpiBranch.stream(rng, id, purpose)` in place of `rng` | Wherever the draw happens |
+| An offspring family usable with `simulate_by_generation`'s `multiplier` | `EpiBranch._scale_mean(::YourDistribution, m::Real)`, returning the law with its mean scaled by `m` | Each generation, once, before every case of it draws |
+| An offspring family whose generation total `simulate_by_generation` draws in one step | `EpiBranch._sum_offspring(rng, ::YourDistribution, n::Int)`, returning the sum of `n` independent draws | Each generation, in place of `n` draws |

@@ -297,8 +297,20 @@ function _time_at_log_survival(kernel, lp)
     isfinite(lp) || return oftype(float(lp), Inf)
     t = invlogccdf(kernel, lp)
     isfinite(t) && isapprox(logccdf(kernel, t), lp; rtol = 1.0e-6, atol = 1.0e-12) && return t
+    # A kernel whose survival never falls to `lp` (a hazard with a finite
+    # total) has answered `Inf` correctly; a named distribution's survival
+    # reaches zero at infinity and still goes to the bisection.
+    isinf(t) && (_infinite_draw_is_final(kernel) || logccdf(kernel, t) > lp) && return t
     return _bisect_log_survival(kernel, lp)
 end
+
+# Whether an infinite answer from `invlogccdf` is the kernel's own verdict
+# that the draw never happens, so the bisection need not retrace it. A
+# calendar-scaled kernel inverts by growing a bracket and returns `Inf` only
+# once that bracket has run out with the total still short, which its
+# cumulative hazard over an unbounded horizon cannot confirm.
+_infinite_draw_is_final(kernel) = false
+_infinite_draw_is_final(::_CalendarScaledKernel) = true
 
 # Bisect `logccdf`, which decreases in `t`, for the earliest time at or past the
 # log-survival `lp`. The bracket starts at the time for a survival the direct
@@ -763,7 +775,11 @@ function _walk_ring!(
             timed |= c isa Tuple
             k = get(pos, cid, 0)
             (k == 0 || cid in visited) && continue
-            push!(pending, state.individuals[cid])
+            # A contact tracing reaches is "reached by an intervention" (see
+            # `EpiBranch.lazily_populate!`), whether or not transmission ever
+            # proposed them one: realise it now, before `trace_contacts!`
+            # below can write to it.
+            push!(pending, _realised!(state, cid))
             push!(not_before, t0)
         end
         isempty(pending) && continue
@@ -977,12 +993,12 @@ the negatives would break the shortest-path race with no error.
 """
 function _sellke_race!(
         state::SimulationState, members::AbstractVector{Int},
-        rng::AbstractRNG; seed!, targets = nothing,
+        rng::AbstractRNG; seed! = nothing, targets = nothing,
         from::Union{Symbol, Nothing} = nothing, until::Union{Tuple, Nothing} = nothing,
         routes = nothing, interventions = (), contacts = nothing, risks = (),
         introduction = nothing, watches = nothing, projections = nothing,
         max_time = Inf, max_generation = typemax(Int), stopping_rules = (),
-        recorder::ContactRecorder = NoContactRecorder()
+        recorder::ContactRecorder = NoContactRecorder(), resume = nothing
     )
     # A model either passes `routes`, a collection of `(RouteWindow, targets)`
     # pairs, or the single-route shorthand `from`/`until`/`targets`. The
@@ -1007,14 +1023,20 @@ function _sellke_race!(
         )
         rts = routes
     end
+    resume === nothing && seed! === nothing && throw(
+        ArgumentError("_sellke_race! needs `seed!` unless it is resuming a cut race")
+    )
     m = length(members)
     # Candidate times share the state's timing type (a dual under automatic
     # differentiation), so a gradient with respect to a transmission parameter
     # flows through the contact draws into the infection times.
     T = _timetype(state)
-    buffers = _take_buffers(T)
-    best = fill!(resize!(buffers.best, m), T(Inf))
-    processed = fill!(resize!(buffers.processed, m), false)
+    # Resuming a cut race reuses the buffers it left its queue in, rather than
+    # a fresh pool entry, so popping continues from exactly where it stopped.
+    buffers = resume === nothing ? _take_buffers(T) : resume.buffers
+    best = resume === nothing ? fill!(resize!(buffers.best, m), T(Inf)) : buffers.best
+    processed = resume === nothing ? fill!(resize!(buffers.processed, m), false) :
+        buffers.processed
     pos = _member_positions(members)
     # A route an intervention does not apply to, by `risk_applies`, is neither
     # cut by that intervention's removal nor blocked by the per-contact risks
@@ -1039,9 +1061,11 @@ function _sellke_race!(
 
     # An intervention declaring `acts_on_population` needs no case settled to
     # propose its actions, so it is offered every member before the race
-    # starts rather than case by case as the race goes.
-    _apply_population_actions!(state, interventions, _population_members(members))
-    seed!(best, members, rng)
+    # starts rather than case by case as the race goes; a resumed race already
+    # did this on its first call.
+    resume === nothing &&
+        _apply_population_actions!(state, interventions, _population_members(members))
+    resume === nothing && seed!(best, members, rng)
     # The host state each route's kernel reads, as the keys it declares through
     # `watched_records`. A route that declares nothing draws from hazards fixed
     # for the run, so its contacts are never redrawn; the race watches the union
@@ -1077,15 +1101,15 @@ function _sellke_race!(
     # Whether any per-individual trait is set. Both are constants of the two
     # people, so a race where none is set can leave the target's record alone
     # when it draws — a saving worth having on a dense graph, where that record
-    # is a pointer chase per proposal. A trait an intervention writes as a case
-    # is resolved turns it on from there.
-    traits = any(
-        id -> (
-            ind = state.individuals[id];
-            ind.susceptibility != 1 || ind.infectiousness != 1
-        ),
-        members
-    )
+    # is a pointer chase per proposal, and on a lazily populated model, where
+    # reading it would otherwise realise a node merely proposed a contact (see
+    # `EpiBranch.lazily_populate!`). Susceptibility and infectiousness are set
+    # only by `state.attributes`, never by an intervention (one changes
+    # transmission through the risks it declares instead), so whether either
+    # can depart from 1 is a static fact about the model, not the population:
+    # `offspring_law_unchanged` already answers `false` for exactly the
+    # attributes that can set them away from their neutral value.
+    traits = !offspring_law_unchanged(state.attributes)
     # A settled member only ever becomes a target again by going through the
     # same blocked-contact redraw every other risk uses (see `reinfects`
     # below), which needs every proposal kept rather than just each member's
@@ -1111,6 +1135,21 @@ function _sellke_race!(
     # fall back (`_Offspring`), it proposes each member once, so a blocked
     # contact has nothing to fall back on and needs no lists.
     checks = may_block || any(((_, rt),) -> _route_may_block(rt), rts)
+    # `head`/`represents`/`proposals` below are sized, on the call that cut
+    # the race off, to the `may_block` value that call's `interventions`/
+    # `risks` gave. A resumed race reuses them unconditionally: a
+    # continuation call whose own `interventions`/`risks` recompute
+    # `may_block` differently would index buffers sized for the old value
+    # instead of resizing them. Refuse that up front rather than let it run
+    # into a `BoundsError` partway through the race.
+    resume !== nothing && resume.may_block != may_block && throw(
+        ArgumentError(
+            "a continuation call's `interventions`/`risks` must leave " *
+                "`may_block` ($may_block) as it was on the call that cut the " *
+                "race off ($(resume.may_block)); continue a race with the " *
+                "same model it was started with"
+        )
+    )
     # Whether each of the two `_open_routes!` passes below has a route to
     # open. A model with only one kind of route (every benchmarked model so
     # far) then skips the pass that would open none of them, rather than
@@ -1126,11 +1165,13 @@ function _sellke_race!(
     # Those a person a route creates as it goes is offered on creation.
     creating = filter(iv -> !acts_on_population(iv) && !needs_contacts(iv), acting)
     contactless_actions = any(iv -> !needs_contacts(iv), acting)
-    openings = empty!(buffers.openings) # one per case and route it transmits along
-    proposals = empty!(buffers.proposals) # proposals retained for fallback
-    head = fill!(resize!(buffers.head, may_block ? m : 0), 0) # first proposal to each member
-    represents = fill!(resize!(buffers.represents, m), 0) # what each member's heap entry names
-    queue = empty!(buffers.queue)
+    # A resumed race keeps every one of these exactly as its last pop left
+    # them, rather than starting them fresh: that is its leftover queue.
+    # Pulled out into its own function rather than left as an inline branch:
+    # inlined, it measurably slowed every case the race settles, resumed or
+    # not.
+    openings, proposals, head, represents, queue =
+        _race_queue_buffers(resume, buffers, may_block, m)
     # An admitted action's effect is deferred onto this same queue, as an
     # event naming no member (`0`, which no case position ever is) and
     # indexing `pending_actions` instead of a proposal. `_apply_case_actions!`
@@ -1143,7 +1184,8 @@ function _sellke_race!(
     # share this queue and runs there and then instead. A `claim!`-only
     # effect, such as a dose's, never needed deferring in the first place,
     # so this restriction never touches it.
-    pending_actions = empty!(buffers.pending_actions)
+    pending_actions = resume === nothing ? empty!(buffers.pending_actions) :
+        buffers.pending_actions
     action_sink = (action, admitter) -> begin
         if action.time isa T
             push!(pending_actions, (action, admitter))
@@ -1155,7 +1197,7 @@ function _sellke_race!(
     end
 
     # The seeds' own opening: no infector, so nothing about it is ever read.
-    push!(openings, _RouteOpening(0, 0, zero(T), T(Inf)))
+    resume === nothing && push!(openings, _RouteOpening(0, 0, zero(T), T(Inf)))
     # Proposals a redraw has unlinked, which stay in `proposals` and the heap
     # until they are compacted away.
     orphans = 0
@@ -1168,8 +1210,9 @@ function _sellke_race!(
     passed = 0
     # Whether `max_generation` has suppressed a case's own transmission, so
     # the run finishing with no candidates left is reported as cut off rather
-    # than as having reached extinction on its own.
-    capped_generation = false
+    # than as having reached extinction on its own. A resumed race inherits
+    # this from the run it continues.
+    capped_generation = resume === nothing ? false : resume.capped_generation
     # What a route needs to propose from an opening (see `_propose_along!`).
     # Every field is bound once and only mutated in place.
     race = (;
@@ -1181,11 +1224,25 @@ function _sellke_race!(
     # route that creates contacts as it goes creates a ring member's when the
     # ring reaches it.
     case_contacts = _case_contacts(contacts, rts, race, max_generation)
-    for k in 1:m
-        best[k] < Inf || continue
-        seeded = best[k]
-        best[k] = T(Inf)
-        _propose!(race, k, 1, seeded)
+    if resume === nothing
+        for k in 1:m
+            best[k] < Inf || continue
+            seeded = best[k]
+            best[k] = T(Inf)
+            _propose!(race, k, 1, seeded)
+        end
+    else
+        # A route that samples its own contacts rather than listing them
+        # (`_MassAction`) only drew them up to the race's own time limit where
+        # its window never closes, and remembered which group pairs it cut
+        # short (see `propose_along`'s `capped`). Resuming redraws exactly
+        # those, from the limit the previous call stopped at: the exponential
+        # kernel behind mass action is memoryless, so that redraw over the
+        # extended window is the same draw as sampling the whole window at
+        # once would have been.
+        for (ri, (_, route_targets)) in enumerate(rts)
+            _resume_route!(route_targets, race, ri, resume.max_time, traits)
+        end
     end
 
     while !isempty(queue)
@@ -1193,13 +1250,22 @@ function _sellke_race!(
         bt, j, p = event.time, event.member, event.ref
         # Pops come in increasing time, so every later infection also falls
         # after `max_time`: those individuals stay uninfected, and the race
-        # was cut off rather than reaching extinction on its own.
-        bt > max_time && return _finish_race!(rts, race, false, max_time)
+        # was cut off rather than reaching extinction on its own. The pop
+        # above took this event out of the queue to read its time; put it
+        # back before leaving, so a continuation (`simulate`'s continuation
+        # method) pops the very same event first rather than losing it.
+        if bt > max_time
+            _enqueue!(queue, event)
+            return _finish_race!(
+                rts, race, false, max_time, capped_generation, true,
+                contacts, introduction, watches, projections, max_generation, stopping_rules
+            )
+        end
         # A deferred action's own event: no member settles from it, so it
         # skips the pop bookkeeping below, which is about resolving a case.
         # Running it may admit further actions of its own (an effect's
         # return); those belong on this same queue too, so the sink is
-        # reinstalled for the span of running it.
+        # reinstalled for the span of executing it.
         if j == 0
             action, admitter = pending_actions[p]
             _with_action_sink(state, action_sink) do
@@ -1391,23 +1457,39 @@ function _sellke_race!(
         # interventions, such as onset-triggered isolation, read it.
         _set_onset_from_incubation!(ind)
         # Cases are popped in increasing infection time: this case's infection
-        # time is the clock, and it is the next case in sequence. The post-loop
-        # reconcile (`_reconcile_sellke_bookkeeping!`) sets the final values.
-        _settle_case!(state, ind, interventions, state.cumulative_cases + 1)
+        # time is the clock, and it is the next case in sequence, unless it is
+        # a reinfection of someone already counted — `cumulative_cases` counts
+        # people, not episodes, as the post-loop reconcile
+        # (`_reconcile_sellke_bookkeeping!`) does, so a reinfection leaves the
+        # count unchanged.
+        _settle_case!(
+            state, ind, interventions,
+            reinfection ? state.cumulative_cases : state.cumulative_cases + 1
+        )
         # `_settle_case!` has just brought `state.cumulative_cases`,
         # `max_infection_time` and `current_generation` up to this case, which
         # is what a rule not already captured by `max_time`/`max_generation`
         # reads; ending here rather than after this case transmits matches
         # `MaxCases` stopping at the first `n` infections in time.
-        _any_stop(stopping_rules, state) && return _finish_race!(rts, race, false, bt)
+        _any_stop(stopping_rules, state) &&
+            return _finish_race!(
+            rts, race, false, bt, capped_generation, false,
+            contacts, introduction, watches, projections, max_generation, stopping_rules
+        )
         # A route that creates its contacts as it goes creates this case's now,
         # so that tracing and the interventions' actions can reach them.
         # Unrolled over `rts` rather than looped over (see `_mint_all!`), for
         # the reason given there.
         _mint_all!(rts, race, ind, max_generation)
-        # `_settle_case!` has already resolved this case's own traits, read
-        # here ahead of the self-proposing routes opened next; they need the
-        # traits just as much as the routes opened below do.
+        # `state.attributes` is not the only way a person's susceptibility or
+        # infectiousness can leave its neutral value of 1: an intervention's
+        # own `resolve_individual!`/`on_infection_settled!` can set either
+        # field directly too (`transmission_traits`'s own docstring
+        # recommends exactly this for rules it doesn't cover). `ind` has
+        # just resolved its own, so folding it in here, rather than scanning
+        # every member for it upfront, catches the change before this case's
+        # own contacts are proposed below, at the cost of one comparison per
+        # settled case rather than one per member of the population.
         traits |= ind.susceptibility != 1 || ind.infectiousness != 1
         # A route that proposes its own contacts (`proposes_own_contacts`) has
         # nothing for tracing to read until it opens. It therefore opens here,
@@ -1497,20 +1579,78 @@ function _sellke_race!(
         rts, race,
         !capped_generation &&
             !any(((_, route_targets),) -> _pending_beyond(route_targets, race), rts),
-        race.max_time
+        race.max_time, capped_generation, !capped_generation,
+        contacts, introduction, watches, projections, max_generation, stopping_rules
     )
 end
 
 # Let each route tidy up what the race left undecided when it ended at
-# `stop_t`, then report whether the race reached extinction.
-function _finish_race!(rts, race, extinct, stop_t = Inf)
+# `stop_t`, then report whether the race reached extinction. Only a race cut
+# off by `max_time` (or, short of that, mass action still owed a redraw past
+# it) leaves a queue safe to pop further. That race alone keeps it on
+# `state`, as a [`_RaceContinuation`](@ref), for [`simulate`](@ref)'s
+# continuation method to resume. Extinction, a stopping rule, or
+# `max_generation` has already let through everything up to its own cap, and
+# popping on would let through more. Each of those clears the continuation
+# and returns the buffers to the pool as before.
+#
+# `contacts`/`introduction`/`watches`/`projections`/`max_generation`/
+# `stopping_rules` are only needed for the `_RaceContinuation` built below, so
+# they are threaded through as plain arguments rather than carried on `race`
+# itself: `race` is passed to every route and intervention hook in the race's
+# hot loop, and keeping these fields on it there measurably slowed every one
+# of those calls.
+function _finish_race!(
+        rts, race, extinct, stop_t, capped_generation, cut_by_max_time,
+        contacts, introduction, watches, projections, max_generation, stopping_rules
+    )
     for (_, route_targets) in rts
-        _finish!(route_targets, race, stop_t)
+        _finish!(route_targets, race, stop_t, extinct, cut_by_max_time)
     end
-    _return_buffers!(race.buffers)
+    if extinct || !cut_by_max_time
+        race.state.continuation = nothing
+        _return_buffers!(race.buffers)
+    else
+        # A route reporting a pending window but no working `_resume_route!`
+        # would otherwise lose its leftover contacts without warning the
+        # moment `simulate(model, state; max_time)` resumes this race.
+        for (_, route_targets) in rts
+            _pending_beyond(route_targets, race) && !_resumable_route(route_targets) &&
+                throw(
+                ArgumentError(
+                    "route `$(nameof(typeof(route_targets)))` reports pending_beyond " *
+                        "but has no matching `_resume_route!`, so the contacts its " *
+                        "capped window still owes cannot be redrawn on resume; " *
+                        "`simulate(model, state; max_time)` cannot continue this race"
+                )
+            )
+        end
+        # `stop_t` is `max_time` as the caller gave it, a plain `Float64`
+        # even under automatic differentiation; converted to the state's own
+        # timing type to match `race.buffers`, so the two share one type
+        # parameter in `_RaceContinuation`.
+        race.state.continuation = _RaceContinuation(
+            rts, race.members, contacts, introduction, watches,
+            projections, max_generation, stopping_rules,
+            capped_generation, convert(_timetype(race.state), stop_t), race.buffers,
+            race.may_block, cut_by_max_time
+        )
+    end
     return extinct
 end
-_finish!(route_targets, race, stop_t) = nothing
+_finish!(route_targets, race, stop_t, extinct, cut_by_max_time) = nothing
+
+# A fresh race starts these empty (sized to `m`, or to nothing where
+# `may_block` lets the race skip them); a resumed one keeps them exactly as
+# its last pop left them, its leftover queue.
+function _race_queue_buffers(resume, buffers, may_block, m)
+    resume === nothing && return (
+        empty!(buffers.openings), empty!(buffers.proposals),
+        fill!(resize!(buffers.head, may_block ? m : 0), 0),
+        fill!(resize!(buffers.represents, m), 0), empty!(buffers.queue),
+    )
+    return buffers.openings, buffers.proposals, buffers.head, buffers.represents, buffers.queue
+end
 
 # Whether any of the stopping rules ends the run now.
 function _any_stop(rules, state)
@@ -1544,6 +1684,40 @@ end
 
 _take_buffers(::Type{T}) where {T} = _take_pooled!(_RaceBuffers{T})
 _return_buffers!(b::_RaceBuffers) = _return_pooled!(b)
+
+"""
+    _RaceContinuation
+
+A race cut off by `max_time`, a stopping rule or `max_generation`, kept on
+[`SimulationState`](@ref)'s `continuation` field so [`simulate`](@ref)'s
+continuation method can pop up where it stopped: the routes it was running,
+with whatever bookkeeping a route keeps on itself (such as `_MassAction`'s
+cut group pairs), the members it raced over, its `contacts`/`introduction`/
+`watches`/`projections`, the case and generation caps besides `max_time`
+itself, and the buffers its queue and every other pending proposal live in.
+`may_block` is kept too, since it sized those buffers: a continuation call
+whose `interventions`/`risks` would recompute it differently is refused
+rather than indexing buffers sized for the old value. `cut_by_max_time` is
+`false` when a stopping rule or `max_generation` ended the race rather than
+`max_time`: everything up to that cap has already been let through.
+[`simulate`](@ref)'s continuation method leaves such a race alone rather
+than popping its leftover queue further.
+"""
+struct _RaceContinuation{T <: Real, RT, M, C, I, W, J, SR} <: AbstractRaceContinuation
+    rts::RT
+    members::M
+    contacts::C
+    introduction::I
+    watches::W
+    projections::J
+    max_generation::Int
+    stopping_rules::SR
+    capped_generation::Bool
+    max_time::T
+    buffers::_RaceBuffers{T}
+    may_block::Bool
+    cut_by_max_time::Bool
+end
 
 # One of this task's spare objects of type `B`, or a new one. Each race takes
 # its own, so two races never share one.
@@ -1667,7 +1841,14 @@ end
 # draws. A route that creates contacts as it goes (`_Offspring`) answers each
 # of these differently.
 _mint!(route_targets, race, ind, max_generation) = nothing
-_member!(members, race, k) = race.state.individuals[members[k]]
+# A member over existing people (every model but a branching process's
+# `_Tree`, which overrides this to give birth instead) is realised here if a
+# lazily populated model had not needed it before now (see
+# `EpiBranch.lazily_populate!`): every popped event, blocked or settled, asks
+# for its member through this, so creating it here, rather than only once it
+# is finally infected, is the latest point that still comes before anything
+# mutates it.
+_member!(members, race, k) = _realised!(race.state, members[k])
 _case_contacts(contacts, rts, race, max_generation) = contacts
 _route_open(route_targets, ind, w::RouteWindow) = window_open(ind, w)
 _route_may_block(route_targets) = false
@@ -1758,6 +1939,27 @@ of them could still wane and `reinfects` holds.
 """
 pending_beyond(route, state, reinfects::Bool) = false
 
+# Resuming a cut race (`simulate`'s continuation method): redraw, from
+# `old_max_time`, whatever `route_targets` sampled only up to the previous
+# call's `max_time` because a window with no natural close left it capped
+# (`propose_along`'s `capped`; see `pending_beyond`). The default is a no-op,
+# right for a route that lists its targets instead and so never caps a window
+# in the first place; `_MassAction` is the only built-in route that needs
+# this, in `mass_action.jl`. Redrawn contacts are submitted through
+# `proposer` (`propose_along(proposer, ...)`). A wrapper around
+# `route_targets` that needs to see them, such as a tracing wrapper recording
+# what the race considers, passes itself as `proposer` here instead of
+# defaulting to `route_targets` and letting the redraw bypass it.
+_resume_route!(route_targets, race, ri, old_max_time, traits, proposer = route_targets) = nothing
+
+# Whether `route_targets` has a `_resume_route!` method of its own, so a race
+# it leaves with a pending window (`pending_beyond`) can actually be redrawn
+# on resume rather than silently dropped by the no-op default above.
+# `_MassAction` is the only built-in route that overrides this, in
+# `mass_action.jl`; a third-party route declaring `proposes_own_contacts` and
+# a non-default `pending_beyond` needs to override it too.
+_resumable_route(route_targets) = false
+
 # Whether a route left contacts past the time limit that it never proposed, so
 # that a race which ran out of candidates was cut off rather than extinct. A
 # route that proposes every contact it draws leaves none. Dispatches to the
@@ -1807,16 +2009,22 @@ function _propose_along!(
         # reinfection: `HostImmunity`, on the pop, blocks it until the target's
         # immunity has waned.
         (k == 0 || (processed[k] && !reinfects)) && continue
+        # Neither branch below needs the target's record unless something
+        # reads it: `live` reads its watched keys, `traits` its
+        # susceptibility. Leaving both out on a plain race leaves a merely
+        # proposed target unrealised on a lazily populated model (see
+        # `EpiBranch.lazily_populate!`), so a run costs in proportion to the
+        # contacts the outbreak actually proposes rather than to every
+        # susceptible node. `_realised!` is a single pointer comparison once a
+        # target has been realised, so asking it again below costs nothing
+        # extra when both need it.
         if live
             # This opening's draws come from the target's record as it
             # stands now, which is what later comparisons start from.
+            target = _realised!(state, target_id)
             _watch_target!(watch, opening_id, k)
-            _refresh_host!(
-                snapshot, watched_keys, state.individuals[target_id], k
-            )
-            proj === nothing || (
-                full_snapshot[ri][k] = _remember(proj(state.individuals[target_id]))
-            )
+            _refresh_host!(snapshot, watched_keys, target, k)
+            proj === nothing || (full_snapshot[ri][k] = _remember(proj(target)))
         end
         # Both per-individual traits are rate multipliers on this
         # pair's contact interval, folded into the draw rather than
@@ -1826,8 +2034,7 @@ function _propose_along!(
         dt = traits ?
             _traits_scaled_draw(
                 pair_rng, kernel,
-                infector.infectiousness *
-                state.individuals[target_id].susceptibility
+                infector.infectiousness * _realised!(state, target_id).susceptibility
             ) :
             rand(pair_rng, kernel)
         cand = open_t + dt
@@ -1935,10 +2142,14 @@ function _race_watch(state, members, rts, watches, projections)
     ]
     # What each watched key held on each member when contacts were last drawn
     # from it. A key can change type as well as value (a date that was absent
-    # until a dose), so the store takes anything.
+    # until a dose), so the store takes anything. A live kernel needs every
+    # member's starting record, so a lazily populated model (see
+    # `EpiBranch.lazily_populate!`) realises its whole population here rather
+    # than only the people the outbreak reaches: watching a record and
+    # creating people as the outbreak needs them do not mix.
     snapshot = live ?
         Any[
-            _remember(_watched_value(state.individuals[id], key))
+            _remember(_watched_value(_realised!(state, id), key))
             for key in watched_keys, id in members
         ] : Matrix{Any}(undef, 0, 0)
     # The full record each route's projection read last from a host with a

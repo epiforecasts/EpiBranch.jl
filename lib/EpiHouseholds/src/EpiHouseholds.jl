@@ -16,7 +16,7 @@ using Random
 import EpiBranch: new_state, add_individuals!, apply_observation!,
     simulate_once, SimOpts, infectious_from,
     _honours_termination_controls, _validate_process_windows,
-    _warn_uncovered_terminal_states
+    _warn_uncovered_terminal_states, offspring_law_unchanged
 # The infection layer is built and read out of a simulation by EpiBranch's
 # helpers, which close each case's window where the simulator's race does.
 import EpiBranch: _infection_layer_columns, _infection_layer_fields,
@@ -31,8 +31,8 @@ import EpiBranch: removal_gap_host_times, removal_block_probability, removal_str
 # EpiBranch, which handles a household population through `contact_structure`.
 # The simulator and the likelihood share EpiBranch's community-hazard helpers
 # and agree on when that term applies and what it is.
-import EpiBranch: pairwise_surv_loglik, _ext_active, _ext_draw, _check_external,
-    _normalise_external, _ext_survival_of
+import EpiBranch: pairwise_surv_loglik, _ext_active, _ext_explains_index, _ext_draw,
+    _check_external, _normalise_external, _ext_survival_of
 
 export HouseholdProcess, household_sizes, household_members, external_hazard, observation_end
 export HouseholdInfections, household_infections

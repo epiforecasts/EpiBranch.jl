@@ -12,7 +12,8 @@
 # another running.
 
 """
-    RoutedNetwork(windows; from = nothing, external_hazard = 0.0, obs_end = Inf, n = nothing)
+    RoutedNetwork(windows; from = nothing, external_hazard = 0.0, obs_end = Inf, n = nothing,
+                  eager = false)
 
 Transmission over a contact network with several routes, such as household and
 community, each with its own contacts, timing and response to control
@@ -108,6 +109,14 @@ its own probability, so the two multiply.
 A case infected on one of these routes records the route's `name` in its
 `:infection_route`, and a community introduction records `:external`. Both
 appear in [`linelist`](@ref), so cases can be broken down by setting.
+
+As for [`NetworkProcess`](@ref), each node is created only once a route
+proposes it a contact or an intervention reaches it, so a run costs in
+proportion to the people the outbreak reaches rather than to the size of the
+population; pass `eager = true` to create and draw every node upfront
+instead. A route whose `reach` proposes its own contacts reads a target's
+susceptibility directly, rather than through the race, so it should realise
+the target first with `EpiBranch._realised!(state, target_id)` where it does.
 """
 struct RoutedNetwork{W <: AbstractVector, E} <: TransmissionModel
     windows::W                       # RouteWindows; each `reach` is an adjacency list
@@ -115,11 +124,13 @@ struct RoutedNetwork{W <: AbstractVector, E} <: TransmissionModel
     external_hazard::E               # community force of infection (0 = none)
     obs_end::Float64                 # end of the community-importation window
     n::Int                           # node count, shared by every route
+    eager::Bool                      # build and draw every node upfront, rather than lazily
 end
 
 function RoutedNetwork(
         windows::AbstractVector{<:RouteWindow};
-        from = nothing, external_hazard = 0.0, obs_end = Inf, n = nothing
+        from = nothing, external_hazard = 0.0, obs_end = Inf, n = nothing,
+        eager::Bool = false
     )
     isempty(windows) && throw(ArgumentError("RoutedNetwork needs at least one route"))
     for w in windows
@@ -185,7 +196,7 @@ function RoutedNetwork(
     end
     return RoutedNetwork(
         windows, from, _normalise_external(external_hazard),
-        obs_end_value, n
+        obs_end_value, n, eager
     )
 end
 
@@ -317,7 +328,11 @@ function simulate_once(
     Tobs = model.obs_end
 
     state = new_state(model, progression, attributes, rng)
-    add_individuals!(state, model.n, interventions; setup = (ind, i) -> nothing)
+    if model.eager
+        add_individuals!(state, model.n, interventions; setup = (ind, i) -> nothing)
+    else
+        EpiBranch.lazily_populate!(state, model.n, interventions)
+    end
 
     _ext_active(model.external_hazard) && !isfinite(Tobs) &&
         throw(
@@ -395,6 +410,13 @@ EpiBranch.route_pair_kernel(t::_TracedProposals, infector_id, target_id, state) 
     EpiBranch.route_pair_kernel(t.reach, infector_id, target_id, state)
 EpiBranch.pending_beyond(t::_TracedProposals, state, reinfects::Bool) =
     EpiBranch.pending_beyond(t.reach, state, reinfects)
+EpiBranch._resumable_route(t::_TracedProposals) = EpiBranch._resumable_route(t.reach)
+# The redraw must propose through `t`, not `t.reach`. `t.reach`'s own
+# `_resume_route!` calls `propose_along` on whatever object it is given, so
+# passing `t` here routes the redraw to `t`'s `propose_along` method. That
+# method records it in `t.proposed`, for tracing to read back.
+EpiBranch._resume_route!(t::_TracedProposals, race, ri, old_max_time, traits) =
+    EpiBranch._resume_route!(t.reach, race, ri, old_max_time, traits, t)
 
 function EpiBranch.propose_along(
         t::_TracedProposals, infector_id, state, open_t, close_t, capped, traits
@@ -402,7 +424,13 @@ function EpiBranch.propose_along(
     contacts = EpiBranch.propose_along(t.reach, infector_id, state, open_t, close_t, capped, traits)
     if t.tracing
         contacts = collect(contacts)
-        t.proposed[infector_id] = [id for (id, _) in contacts if id != infector_id]
+        # A resumed redraw (`EpiBranch._resume_route!`) opens this infector
+        # again, from where the previous call left off, so a second call here
+        # adds to what the first already recorded rather than replacing it.
+        append!(
+            get!(t.proposed, infector_id, Int[]),
+            (id for (id, _) in contacts if id != infector_id)
+        )
     end
     return contacts
 end

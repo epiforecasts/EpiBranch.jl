@@ -207,4 +207,26 @@ end
             @test loglikelihood(data, model) ≈ sum(mixed)
         end
     end
+
+    @testset "a mass-action hazard works through the model's own loglikelihood" begin
+        # households {1, 2} and {3}: 1 and 3 are simultaneous community index
+        # cases, conditioned on; 1 is infectious over (0, 3] and 2 is never
+        # infected, exposed to both the household kernel and the wider
+        # community's mass action. compile_household_pairs must build a layout
+        # with explain_index = false for this source, since it has nothing
+        # infectious before the first case to explain one, or loglikelihood
+        # throws on every call.
+        β, N = 0.6, 3
+        data = HouseholdInfections(
+            [1, 1, 2], [0.0, NaN, 0.0], [0.0, NaN, 0.0],
+            [3.0, Inf, 3.0], [true, false, true]; obs_end = 5.0
+        )
+        model = HouseholdProcess(
+            [2, 1], Exponential(2.0);
+            external_hazard = MassActionHazard(; transmission_rate = β, population_size = N),
+            obs_end = 5.0
+        )
+        @test loglikelihood(data, model) ≈
+            pairwise_surv_loglik(model.kernel, data; external_hazard = model.external_hazard)
+    end
 end

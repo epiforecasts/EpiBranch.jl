@@ -868,8 +868,8 @@ end
 # post-exposure and onward efficacies all fall back to their unvaccinated
 # defaults. `CapacityConstrained` keeps a running count of `_vaccinated_key`
 # uses rather than rescanning for it on every call, so clearing it here only
-# becomes the refund once that count notices: its own cache's
-# `_drop_withdrawn!` sees the flag gone the next time it is consulted, and
+# becomes the refund once that count is updated: its own cache's
+# `_drop_withdrawn!` finds the flag gone the next time it is consulted, and
 # the dose it had counted becomes available to another candidate again.
 function _withdraw_dose!(rv::RingVaccination, ind)
     label = dose_label(rv)
@@ -1040,12 +1040,11 @@ function _delay_bounds(d::Distribution)
 end
 _delay_bounds(_) = nothing
 
-# `minimum` and `maximum` are an optional part of the `Distribution` interface: a
-# distribution defining only `rand` and `logpdf` (the package's own
-# `_TruncatedSkewNormal` among them) falls through to `Base.minimum`, which tries
-# to iterate it and throws a `MethodError`. Such a bound comes back as `nothing`
-# and the caller makes the cautious assumption. Any other error is the
-# distribution failing for its own reasons and is rethrown.
+# `minimum` and `maximum` are an optional part of the `Distribution` interface:
+# a distribution defining neither falls through to `Base.minimum`, which
+# tries to iterate it and throws a `MethodError`. Such a bound comes back as
+# `nothing` and the caller makes the cautious assumption. Any other error is
+# the distribution failing for its own reasons and is rethrown.
 function _support_bound(f, d)
     bound = try
         f(d)
@@ -1199,14 +1198,18 @@ end
 # the tail added since the last query is scanned, rather than every individual
 # on every call. Correct because membership is set once, at creation, and never
 # changes afterwards (see `groups`/`group_attribute`), so an id already indexed
-# never needs revisiting.
+# never needs revisiting. On a lazily populated model (see
+# `EpiBranch.lazily_populate!`), `state.individuals` is already at its full
+# length from the start, so the first call realises everyone not yet created:
+# knowing who belongs to a group needs the whole population, the same as
+# `acts_on_population` does.
 function _group_members(state::SimulationState, key::Symbol, group)
     seen, index = get!(state.scratch, (:group_members, key)) do
         (Ref(0), Dict{Any, Vector{Int}}())
     end::Tuple{Base.RefValue{Int}, Dict{Any, Vector{Int}}}
     n = length(state.individuals)
     for id in (seen[] + 1):n
-        g = get(state.individuals[id].state, key, nothing)
+        g = get(_realised!(state, id).state, key, nothing)
         g === nothing && continue
         push!(get!(index, g, Int[]), id)
     end
@@ -1266,10 +1269,10 @@ Vaccinate the population on a schedule, independently of contact tracing.
 - `mode`, `dose_label`: see [`AbstractVaccination`](@ref). Use two
   `MassVaccination`s with different `dose_label`s for a multi-dose rollout.
 
-Each contact's vaccination day is drawn when a branching process creates
-the contact (index cases are not vaccinated), and they count as vaccinated
-if it is finite. They are protected against an exposure only if their
-vaccination day plus `delay_to_immunity` comes before it.
+On a branching process, the index cases' vaccination days are drawn before
+the race starts and each contact's when it is created; everyone counts as
+vaccinated if their day is finite. They are protected against an exposure
+only if their vaccination day plus `delay_to_immunity` comes before it.
 
 # Closed-form offspring distribution
 

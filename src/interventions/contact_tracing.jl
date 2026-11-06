@@ -393,7 +393,12 @@ draw_trace_delay(d::ConstantDelay, infector, contact, state, rng) = float(rand(r
 
 What happens to a contact once traced: [`Quarantine`](@ref) or
 [`FlagOnly`](@ref). To write a new action, define a subtype and a method of
-[`apply_trace!`](@ref EpiBranch.apply_trace!).
+[`apply_trace!`](@ref EpiBranch.apply_trace!). An action that needs to follow
+a contact up later, such as a test some days after the trace, also defines
+[`intervention_actions`](@ref EpiBranch.intervention_actions) and, to read
+what the follow-up found once the contact's own infection is known,
+[`on_infection_settled!`](@ref EpiBranch.on_infection_settled!);
+[`ContactTracing`](@ref) forwards both to the action it holds.
 """
 abstract type TraceAction end
 
@@ -404,6 +409,39 @@ Act on `contact`, traced at `trace_time` (days); changes `contact` in place.
 """
 apply_trace!(::TraceAction, contact, state, trace_time, rng) = nothing
 
+"""
+    intervention_actions(action::TraceAction, state, candidates)
+
+Further actions a `TraceAction` proposes for its traced contacts, besides
+what [`apply_trace!`](@ref EpiBranch.apply_trace!) already did immediately,
+put through the same schedule and capacity machinery as any other
+[`InterventionAction`](@ref EpiBranch.InterventionAction): a test some days
+after the trace, say. Default: `nothing`, no further actions.
+[`ContactTracing`](@ref) forwards to this once per case, exactly as
+[`intervention_actions`](@ref EpiBranch.intervention_actions) does for a
+plain [`AbstractIntervention`](@ref).
+"""
+intervention_actions(::TraceAction, state, candidates) = nothing
+
+"""
+    on_infection_settled!(action::TraceAction, individual, state, rng)
+
+Continuous-time models only: called once a traced contact's own infection
+time is fixed, before its onset or clinical transitions are worked out from
+it, exactly as [`on_infection_settled!`](@ref EpiBranch.on_infection_settled!)
+is for a plain [`AbstractIntervention`](@ref). By then everything a trace
+recorded on the contact, such as a scheduled follow-up's day, already stands:
+a contact traced from its own infector always settles after being traced (see
+[`trace_contacts!`](@ref EpiBranch.trace_contacts!)). One reached only
+through a wider ring (`ContactTracing`'s `depth > 1`) can already be settled,
+in which case this has already run for it and does not run again. Use it for
+an action whose outcome depends on the contact's own infection, such as a
+test result that can shorten a quarantine already recorded with
+[`revise_removal!`](@ref EpiBranch.revise_removal!). Default: does nothing.
+[`ContactTracing`](@ref) forwards to this.
+"""
+on_infection_settled!(::TraceAction, individual, state, rng) = nothing
+
 # Every tracer acts through this rather than `apply_trace!` directly: an
 # action that draws on a capacity (one with a `capacity_key`) is filed in
 # the running count as soon as it has set its flag, so a tracer that is not
@@ -413,7 +451,7 @@ function _apply_trace!(action::TraceAction, contact, state, trace_time, rng)
     apply_trace!(action, contact, state, trace_time, rng)
     key = capacity_key(action)
     key === nothing && return nothing
-    get(contact.state, key, false) && _note_capacity_use!(state, key, contact)
+    _capacity_used(get(contact.state, key, nothing)) && _note_capacity_use!(state, key, contact)
     return nothing
 end
 
@@ -469,38 +507,20 @@ function apply_trace!(q::Quarantine, contact, state, trace_time, rng)
         q.duration, rng, contact, "`Quarantine`'s `duration`"
     )
     record_removal!(contact, trace_time, release_time; key = QUARANTINE_STRETCHES_KEY)
-    # Record what isolation, if any, stood before this quarantine, so a
-    # `Scheduled` reset can restore exactly that rather than wiping out an
-    # isolation another intervention recorded (the mirror image of what
-    # `Isolation`'s own `reset!` does for a quarantine it is layered over). A
-    # contact already quarantined by an earlier trace keeps the baseline
-    # recorded before that first trace, instead of taking this trace's own
-    # combined outcome as the new baseline.
-    if !get(contact.state, :_quarantined_by_tracing, false)::Bool
-        contact.state[:_isolation_time_before_quarantine] = isolation_time(contact)
-        contact.state[:_isolation_release_time_before_quarantine] = isolation_release_time(contact)
-        if _isolation_unrecorded(contact)
-            contact.state[:_isolation_unrecorded_before_quarantine] = true
-        else
-            delete!(contact.state, :_isolation_unrecorded_before_quarantine)
-        end
-    end
-    if _isolation_in_force(contact)
-        standing = isolation_time(contact)
-        was_unrecorded = _isolation_unrecorded(contact)
-        final_time, final_release = _combine_removal(
-            standing, isolation_release_time(contact), trace_time, release_time
-        )
-        # An isolation that was not recorded keeps that status only while its own
-        # start is the one in force. Where the trace's start wins, or replaces a
-        # spent removal, the removal is the trace's and is recorded as such.
-        unrecorded = was_unrecorded && final_time == standing
-        set_isolated!(contact, final_time; release_time = final_release)
-        unrecorded && (contact.state[:_isolation_unrecorded] = true)
-    else
-        set_isolated!(contact, trace_time; release_time = release_time)
-    end
-    contact.state[:_quarantined_by_tracing] = true
+    # This trace's own entry, read back merged with whatever isolation already
+    # stands where the two overlap or touch, and apart from it otherwise.
+    # Quarantine is never itself a detection; where it overlaps an unrecorded
+    # isolation that started earlier, the merged view keeps that status (see
+    # `_refresh_isolation_span!`), without this call having to ask.
+    handle = _set_isolated!(contact, trace_time; release_time)
+    # Every trace this contact has ever been quarantined by, so a full reset
+    # (see `_undo_quarantine_isolation!`) withdraws each one: a contact traced
+    # more than once (ring propagation, or more than one child triggering
+    # `SourceTracing` on the same parent) extends its quarantine with a fresh
+    # entry each time rather than revising the first.
+    handles = get(contact.state, :_quarantine_removal_handles, nothing)
+    contact.state[:_quarantine_removal_handles] =
+        handles === nothing ? [handle] : push!(copy(handles), handle)
     # Filed here as well as by the built-in tracers (`_apply_trace!`), so a
     # tracer written outside the package, which calls this directly, still
     # counts the quarantine against the budget a wrapped tracer shares.
@@ -768,34 +788,24 @@ function _reset_traced!(ind::Individual)
     haskey(ind.state, :trace_time) && delete!(ind.state, :trace_time)
     haskey(ind.state, :_ring_remaining) && delete!(ind.state, :_ring_remaining)
     haskey(ind.state, :_ring_propagated) && delete!(ind.state, :_ring_propagated)
-    delete!(ind.state, QUARANTINE_STRETCHES_KEY)
+    _withdraw_all_removals!(ind, QUARANTINE_STRETCHES_KEY)
     _undo_quarantine_isolation!(ind)
     return nothing
 end
 
-# Undo only the isolation `Quarantine` itself recorded, restoring whatever
-# stood before it (another intervention's isolation, or none), rather than
-# clearing the field outright: tracing should not undo a standing isolation
-# set by a separate intervention such as `Isolation`. Mirrors `Isolation`'s
-# own `reset!`, which protects a quarantine it was layered over the same way.
+# Undo only the isolation entries `Quarantine` itself recorded, named by the
+# handles it kept when it recorded them (see `apply_trace!`). Withdrawing
+# exactly those leaves whatever isolation `ind` stood under before, or after,
+# any trace — another intervention's, such as `Isolation`'s — on its own
+# record, untouched. Mirrors `Isolation`'s own `reset!`, which protects a
+# quarantine it was layered over the same way.
 function _undo_quarantine_isolation!(ind::Individual)
-    get(ind.state, :_quarantined_by_tracing, false)::Bool || return nothing
-    previous = _state_real(ind.state, :_isolation_time_before_quarantine, Inf)
-    if isfinite(previous)
-        previous_release = _state_real(
-            ind.state, :_isolation_release_time_before_quarantine, Inf
-        )
-        clear_isolated!(ind)
-        set_isolated!(ind, previous; release_time = previous_release)
-        get(ind.state, :_isolation_unrecorded_before_quarantine, false) &&
-            (ind.state[:_isolation_unrecorded] = true)
-    else
-        clear_isolated!(ind)
+    handles = get(ind.state, :_quarantine_removal_handles, nothing)
+    handles === nothing && return nothing
+    for handle in handles
+        withdraw_removal!(ind, handle)
     end
-    delete!(ind.state, :_isolation_time_before_quarantine)
-    delete!(ind.state, :_isolation_release_time_before_quarantine)
-    delete!(ind.state, :_isolation_unrecorded_before_quarantine)
-    ind.state[:_quarantined_by_tracing] = false
+    delete!(ind.state, :_quarantine_removal_handles)
     return nothing
 end
 
@@ -956,6 +966,36 @@ function _admit_trace_actions!(ct::ContactTracing, state, actions)
     admitter = get(state.scratch, (:trace_admitter, ct), ct)
     _admit_actions!(admitter, state, actions)
     return nothing
+end
+
+# Forwarded to the action so a `TraceAction` that needs to follow a contact
+# up later, such as a test some days after the trace, can propose its own
+# further actions through the ordinary schedule and capacity funnel, apart
+# from the trace's own immediate follow-up `_admit_trace_actions!` admits.
+function intervention_actions(ct::ContactTracing, state, candidates)
+    return intervention_actions(ct.action, state, candidates)
+end
+
+# `ContactTracing` always defines its own `intervention_actions` method,
+# forwarding to `ct.action` above, so checking `ct` directly would credit
+# every instance with discovering actions regardless of whether its action
+# does: a plain `Quarantine` or `FlagOnly`, neither of which overrides
+# `intervention_actions`, would still pay the race's per-settled-case cost
+# for nothing. Checking the action's own method instead, against the
+# fallback `TraceAction` declares, avoids that for actions with nothing to
+# propose.
+function _discovers_actions(ct::ContactTracing)
+    return _has_own_method(intervention_actions, typeof(ct.action), TraceAction)
+end
+
+# Forwarded so a `TraceAction` can read what a contact's own settlement
+# fixes, such as a test result that depends on whether the contact turned out
+# to be infected. A contact traced from its own infector always settles after
+# being traced, so whatever the trace recorded on it already stands; one
+# reached only through a wider ring can already be settled, in which case
+# this has already run for it (see the docstring).
+function on_infection_settled!(ct::ContactTracing, individual, state, rng)
+    return on_infection_settled!(ct.action, individual, state, rng)
 end
 
 """A quarantined contact stops transmitting from its quarantine time. A

@@ -120,6 +120,14 @@ include("models/mixing.jl")
 # ModelSpec: compose a process with its forcing/observation layers.
 include("model_spec.jl")
 
+# Approximate population dynamics as state-space models: mean-field and
+# linear-noise approximations of a closed population, and a hybrid that
+# switches from exact simulation to one of them.
+include("models/population_dynamics.jl")
+include("models/mixing_population_dynamics.jl")
+include("models/hybrid.jl")
+include("models/generation_counts.jl")
+
 # Output
 include("output/linelist.jl")
 include("output/tracing.jl")
@@ -161,6 +169,12 @@ include("serial_interval.jl")
 # Exports — types
 export TransmissionModel, BranchingProcess, Infectiousness, OffspringTimes,
     HomogeneousProcess, MixingProcess, ModelSpec
+export MeanFieldProcess, MeanFieldState, LinearNoiseProcess, LinearNoiseState
+export MixingMeanFieldProcess, MixingMeanFieldState
+export MixingLinearNoiseProcess, MixingLinearNoiseState
+export HybridProcess, HybridState
+export GenerationCounts, simulate_by_generation
+export AbstractDepletion, PerContactDepletion, StartOfGenerationDepletion
 export transmission_timing, implied_R
 export Individual, InfectionEpisode, close_episode!, SimulationState
 export SimOpts
@@ -205,7 +219,8 @@ export is_vaccinated, immunity_time, severity_efficacy, vaccine_efficacy, is_asy
 export individual_type, set_isolated!, clear_isolated!
 
 # Exports — distributions
-export NegBin, scale_distribution, incubation_linked_generation_time, Conditional
+export NegBin, scale_distribution, incubation_linked_generation_time, HazardKernel,
+    Conditional
 # Parent type of every chain-size law, so a user-defined one gets
 # `loglikelihood(::ChainSizes, ...)` for free by subtyping it.
 export ChainSizeLaw
@@ -223,7 +238,7 @@ export clinical_presentation, demographics, transmission_traits, groups,
     group_attribute, vaccine_acceptance
 
 # Exports — simulation
-export simulate, make_contact!, susceptible_fraction
+export simulate, make_contact!, susceptible_fraction, realise!
 export CommonRandomNumbers
 export generate_offspring, contacts_of
 
@@ -253,7 +268,7 @@ export GeneratingFunctionOffspring
 export end_of_outbreak_probability
 # Pairwise survival likelihood over a contact structure
 export PairKernel, PairContext, Steps, Seasonal, record_kernel, LayerHost
-export InfectionLayer, PairwiseSurvivalData, ContactPairsLayout
+export InfectionLayer, PairwiseSurvivalData, ContactPairsLayout, MassActionHazard
 export compile_contact_pairs, pairwise_surv_loglik, pairwise_surv_loglik_by_component
 # Progression (natural-history) likelihood
 export progression_loglik

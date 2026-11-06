@@ -51,16 +51,23 @@ end
 
 # The route a `contacts_of` model transmits along. `pending` holds the settling
 # case's exposures until the race proposes them, `reached` who each case
-# exposed, the field tracing acts on, and `early` the exposures a ring asked
-# for before a person settled, as delays from their infection.
+# exposed, the field tracing acts on, `early` the exposures a ring asked for
+# before a person settled, as delays from their infection, and `minted` the
+# time the model drew for a contact it created, by id, kept until that
+# contact's infection is decided for good: `_finish!` marks such a contact
+# undecided at every cut, including one the race is kept to continue, and
+# reads `minted` to put the drawn time back before deciding whether the mark
+# still holds once the race's true end is known.
 struct _ContactsOf{M, T <: Real}
     model::M
     pending::Vector{Tuple{Int, T}}
     reached::Dict{Int, Vector{Int}}
     early::Dict{Int, Vector{Tuple{Int, T}}}
+    minted::Dict{Int, T}
 end
 _ContactsOf(model, ::Type{T}) where {T} = _ContactsOf(
-    model, Tuple{Int, T}[], Dict{Int, Vector{Int}}(), Dict{Int, Vector{Tuple{Int, T}}}()
+    model, Tuple{Int, T}[], Dict{Int, Vector{Int}}(),
+    Dict{Int, Vector{Tuple{Int, T}}}(), Dict{Int, T}()
 )
 
 # The exposures exist only as the model names them: the route names no
@@ -94,13 +101,17 @@ function _mint!(c::_ContactsOf, race, ind, max_generation)
     if early === nothing
         for (target, t) in contacts_of(c.model, ind, state)
             push!(c.pending, (target.id, t))
+            _created_by(target, ind) && (c.minted[target.id] = t)
         end
         _grow!(race.members, race)
         c.reached[ind.id] = Int[id for (id, _) in c.pending]
     else
         for (id, delay) in early
             t = ind.infection_time + delay
-            _created_by(state.individuals[id], ind) && (state.individuals[id].infection_time = t)
+            if _created_by(state.individuals[id], ind)
+                state.individuals[id].infection_time = t
+                c.minted[id] = t
+            end
             push!(c.pending, (id, t))
         end
     end
@@ -168,12 +179,23 @@ end
 # A person the model created but the run never infected stays a contact of its
 # case. An exposure after the run ended is not part of the outbreak it
 # describes, so such a person is left with no infection time, as a branching
-# process leaves its undecided contacts.
-function _finish!(c::_ContactsOf, race, stop_t)
+# process leaves its undecided contacts. This marking is redone at every cut,
+# including one the race is kept to continue; a returned state always reads
+# as though it were finished for good. A contact the model created has its
+# drawn time in `minted`, read back here first, so the mark lands against
+# the time it was really exposed at rather than a `NaN` an earlier, smaller
+# cut wrote. One the model named rather than created has no such record, and
+# keeps whatever an earlier cut already decided for it.
+function _finish!(c::_ContactsOf, race, stop_t, extinct, cut_by_max_time)
     for ind in race.state.individuals
-        !is_infected(ind) && ind.infection_time > stop_t || continue
-        ind.infection_time = oftype(ind.infection_time, NaN)
+        is_infected(ind) && continue
+        if isnan(ind.infection_time)
+            minted = get(c.minted, ind.id, nothing)
+            minted === nothing || (ind.infection_time = minted)
+        end
+        ind.infection_time > stop_t && (ind.infection_time = oftype(ind.infection_time, NaN))
     end
+    (extinct || !cut_by_max_time) && empty!(c.minted)
     isempty(race.interventions) && return nothing
     for ind in race.state.individuals
         _drop_stale_abort!(ind)
