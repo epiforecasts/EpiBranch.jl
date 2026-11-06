@@ -9,10 +9,10 @@ using StableRNGs
 include("testutils/sim_analytical_consistency.jl")
 include("testutils/progression.jl")
 
-# CI runs the suite as one job per group so that no job nears its timeout;
-# `EPIBRANCH_TEST_GROUP` selects a group and `Pkg.test()` without it runs
-# every file. A new file joins the group its subject belongs to, and the two
-# are kept close in running time.
+# CI runs one job per group to keep each job well within its timeout.
+# `EPIBRANCH_TEST_GROUP` selects a group; `Pkg.test()` without it runs
+# every file. A new file goes in the group matching its subject. Keep the
+# running times of the two groups close.
 const TEST_GROUPS = (
     engine = [
         "test_quality.jl",
