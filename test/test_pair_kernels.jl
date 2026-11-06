@@ -175,6 +175,19 @@ end
     @test EpiBranch.cumhazard(off, 5.0) == 0.0
     @test invlogccdf(off, -0.5) == Inf
 
+    # If transmission resumes beyond the support, the cumulative hazard jumps
+    # immediately after the new segment starts. Its inverse is that boundary.
+    resumed = EpiBranch._CalendarScaledKernel(
+        Uniform(0.0, 5.0), Steps([7.0], [0.0, 1.0]), 0.0
+    )
+    @test EpiBranch.cumhazard(resumed, 5.0) == 0.0
+    for target in (0.1, 1.0, 100.0)
+        t = invlogccdf(resumed, -target)
+        @test t == 7.0
+        @test EpiBranch.cumhazard(resumed, t) <= target
+        @test EpiBranch.cumhazard(resumed, nextfloat(t)) >= target
+    end
+
     # A positive segment reaching the top of the support still settles there,
     # and a dual in the top is kept.
     settle_top(u, calendar) = invlogccdf(
