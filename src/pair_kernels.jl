@@ -638,11 +638,11 @@ function _calendar_segment(k::_CalendarScaledKernel, calendar_lo)
 end
 
 function _calendar_cumhazard(::PiecewiseConstantCalendar, k::_CalendarScaledKernel, τ)
-    # A segment with a zero multiplier contributes nothing, even past the end
-    # of a bounded profile, so survival mass can remain there. A positive
-    # segment that starts at or beyond that end has an infinite total, which
-    # is returned directly: the difference of two infinite endpoint values
-    # would read `Inf - Inf`.
+    # A segment with a zero multiplier adds no hazard, even past the end of a
+    # bounded profile, and survival mass can remain there. A positive segment
+    # that starts at or beyond that end has an infinite total, returned
+    # directly because the difference of two infinite endpoint values would
+    # read `Inf - Inf`.
     _, upper, certain = _profile_bounds(k.profile)
     total = zero(float(τ))
     calendar_end = k.opening + τ
@@ -667,8 +667,8 @@ end
 # current step, then invert within the profile alone with the same machinery
 # used for a constant rate multiplier.
 function _calendar_invlogccdf(::PiecewiseConstantCalendar, k::_CalendarScaledKernel, target)
-    # Zero-multiplier segments are skipped, so a draw whose target outlasts
-    # every positive segment is `Inf` (the contact never happens), even for a
+    # Zero-multiplier segments are skipped. A draw whose target outlasts every
+    # positive segment is `Inf` (the contact never happens), even for a
     # bounded profile. A positive segment that starts at or beyond the end of
     # a bounded profile settles the draw at that end, where survival is
     # exhausted.

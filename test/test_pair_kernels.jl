@@ -159,9 +159,9 @@ end
     @test EpiBranch.cumhazard(past_support, 20.0) == Inf
     @test logccdf(past_support, 12.0) == -Inf
 
-    # Transmission stopped over the top of the support leaves survival mass:
-    # the cumulative hazard stays finite and a large enough target never
-    # happens. With transmission off throughout, nothing ever happens.
+    # Transmission stopped over the top of the support leaves survival mass.
+    # The cumulative hazard stays finite and a large enough target gives
+    # `Inf`. With transmission off throughout, every draw is `Inf`.
     halted = EpiBranch._CalendarScaledKernel(
         Uniform(0.0, 5.0), Steps([2.0], [1.0, 0.0]), 0.0
     )
