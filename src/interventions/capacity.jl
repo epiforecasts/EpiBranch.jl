@@ -463,9 +463,9 @@ function _cumulative_budget(schedule, period, period_end, cum)
     return sum((_period_budget(schedule, k * period) for k in 0:(n - 1)); init = 0.0)
 end
 
-# The running totals `_cumulative_budget` would sum afresh, for the periods up
-# to the one ending at `last_end`, so the many admission checks of one
-# `_fits_budget` call each read a total rather than re-summing the schedule.
+# Running totals of the schedule for the periods up to the one ending at
+# `last_end`. One `_fits_budget` call makes many admission checks, and each
+# reads its total from this table instead of re-summing the schedule.
 function _cumulative_table(cc::CapacityConstrained, last_end)
     (cc.budget_per_period isa Real || isinf(cc.period)) && return nothing
     n = round(Int, last_end / cc.period)
