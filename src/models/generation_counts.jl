@@ -257,9 +257,9 @@ offspring matrix (`MultiTypeOffspring`); any other model raises an
   a type in one binomial draw. With an offspring law whose sum has a closed
   form (`Poisson`, with or without `multiplier`, `NegBin` and `Binomial`), a
   generation then costs the same whatever the number of cases.
-- `generation_length`: the length of a generation in days, recorded in the
-  state, which is at day `generation * generation_length`; `nothing` (the
-  default) if none is given.
+- `generation_length`: the length of a generation in days. The state records
+  it and is at day `generation * generation_length`. The default, `nothing`,
+  leaves it unset.
 
 A multi-type model splits the offspring of each type between types by the
 columns of the next-generation matrix, and thins the contacts of each type by
