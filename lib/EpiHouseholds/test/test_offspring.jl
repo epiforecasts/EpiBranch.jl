@@ -212,6 +212,41 @@ end
         @test extinction_probability(simulated) ≈ extinction_probability(exact) atol = 0.01
     end
 
+    @testset "transmission_traits are honoured on the exact paths" begin
+        # A susceptibility multiplier scales the within-household kernel's rate
+        # for every pair alike, so the reference final size is the one an
+        # unmodified kernel at the scaled rate would give.
+        n, s = 4, 0.5
+        traits = transmission_traits(susceptibility = s)
+        reference = household_final_size(n, Exponential(1 / (β * s)), Exponential(1 / γ))
+        r_reference = λG * mean(reference) / γ
+
+        spec(window) = ModelSpec(
+            HouseholdProcess(fill(n, 10), Exponential(1 / β));
+            progression = [
+                Transition(:recovered; from = :infection, delay = window, terminal = true),
+            ],
+            attributes = traits
+        )
+
+        # An exponential kernel and window would otherwise take the exact
+        # Markov recursion, which cannot read a trait.
+        exact_shape = household_offspring(
+            spec(Exponential(1 / γ)); global_rate = λG,
+            n_samples = 20_000, rng = StableRNG(11)
+        )
+        @test reproduction_number(exact_shape) ≈ r_reference rtol = 0.03
+
+        # A Gamma(1, θ) window already takes the simulated route; only the
+        # exact-mean override needs to stop overwriting its result.
+        gamma_window = household_offspring(
+            spec(Gamma(1.0, 1 / γ)); global_rate = λG,
+            n_samples = 20_000, rng = StableRNG(11)
+        )
+        @test reproduction_number(gamma_window) ≈ r_reference rtol = 0.03
+        @test only(gamma_window.means) ≈ mean(only(gamma_window.laws)) rtol = 1.0e-6
+    end
+
     @testset "contacts reach households in proportion to their size" begin
         sizes = [fill(2, 300); fill(4, 500); fill(6, 200)]
         o = household_offspring(_markov(sizes); global_rate = λG)
