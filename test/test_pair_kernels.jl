@@ -171,8 +171,8 @@ end
     @test invlogccdf(halted_piecewise, -100.0) == 5.0
     @test invlogccdf(halted_piecewise, -100.0) == invlogccdf(halted_smooth, -100.0)
 
-    # A dual in the profile's top survives settling there, through both exits
-    # of the inversion loop.
+    # A dual in the top of the profile is kept when the inversion settles
+    # there, at both exits of the loop.
     settle_top(u, calendar) = invlogccdf(
         EpiBranch._CalendarScaledKernel(Uniform(0.0, u), calendar, 0.0), -100.0
     )
