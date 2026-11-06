@@ -170,6 +170,7 @@ export MixingMeanFieldProcess, MixingMeanFieldState
 export MixingLinearNoiseProcess, MixingLinearNoiseState
 export HybridProcess, HybridState
 export GenerationCounts, simulate_by_generation
+export AbstractDepletion, PerContactDepletion, StartOfGenerationDepletion
 export transmission_timing, implied_R
 export Individual, InfectionEpisode, close_episode!, SimulationState
 export SimOpts
