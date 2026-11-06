@@ -9,38 +9,72 @@
 # max_time)` interface throughout, exactly as it would for either half on
 # its own.
 
-# The exact model a `HybridProcess` can drive: a `HomogeneousProcess`, or a
-# `ModelSpec` built on one. Its default termination controls are already off
-# (`_honours_termination_controls` is false for it), so a run under this
-# function's `simulate(exact; max_time, ...)` call stops only for extinction
-# or `max_time`, never silently capped by the `max_cases`/`max_generations`
-# shortcuts' defaults. Those would otherwise leave a state that
-# `simulate(model, state; max_time)` cannot continue (see
-# `added-simulate-continuation.md`), stuck for good partway through
-# `_advance_exact!`'s loop below.
-_unwrap_homogeneous(m::HomogeneousProcess) = m
-_unwrap_homogeneous(s::ModelSpec) = _unwrap_homogeneous(process(s))
-function _unwrap_homogeneous(m)
-    throw(
+# The exact-model type an approx can be built from, so a HybridProcess can
+# read its exact run's current compartment counts across the switch:
+# `HomogeneousProcess` for a scalar approximation, `MixingProcess` for a
+# per-group one. A new approximation adds a method here rather than growing
+# this check with another branch.
+_exact_requirement(::Union{MeanFieldProcess, LinearNoiseProcess}) = HomogeneousProcess
+_exact_requirement(::Union{MixingMeanFieldProcess, MixingLinearNoiseProcess}) = MixingProcess
+
+_bare_process(s::ModelSpec) = process(s)
+_bare_process(m) = m
+
+# The exact model's own process, checked against what `approx` needs to be
+# built from. Its default termination controls are already off
+# (`_honours_termination_controls` is false for both `HomogeneousProcess` and
+# `MixingProcess`), so a run under this function's `simulate(exact; max_time,
+# ...)` call stops only for extinction or `max_time`, never silently capped
+# by the `max_cases`/`max_generations` shortcuts' defaults. Those would
+# otherwise leave a state that `simulate(model, state; max_time)` cannot
+# continue (see `added-simulate-continuation.md`), stuck for good partway
+# through `_advance_exact!`'s loop below.
+function _matching_exact(exact, approx)
+    required = _exact_requirement(approx)
+    bare = _bare_process(exact)
+    bare isa required || throw(
         ArgumentError(
-            "HybridProcess needs its exact model to be a HomogeneousProcess, or a " *
-                "ModelSpec built on one, so it can track how many people are " *
-                "currently infectious"
+            "HybridProcess needs its exact model to be a $(nameof(required)), or a " *
+                "ModelSpec built on one, to match its approx model " *
+                "($(nameof(typeof(approx)))), so it can track compartment counts " *
+                "across the switch"
         )
     )
+    return bare
+end
+
+# The exact model's own population structure, checked against the groups
+# `approx` was built for. A no-op for the scalar pairing, which has no
+# groups to compare.
+_validate_layout(::HomogeneousProcess, ::Union{MeanFieldProcess, LinearNoiseProcess}) = nothing
+function _validate_layout(
+        bare::MixingProcess, approx::Union{MixingMeanFieldProcess, MixingLinearNoiseProcess}
+    )
+    bare.mixing_by == approx.mixing_by || throw(
+        ArgumentError(
+            "HybridProcess's exact model mixes by $(bare.mixing_by), but its approx " *
+                "model was built for $(approx.mixing_by)"
+        )
+    )
+    return nothing
 end
 
 """
     HybridProcess(exact, approx; threshold, check_interval = 1.0)
 
-A transmission model that runs as `exact` (a [`HomogeneousProcess`](@ref), or
-a [`ModelSpec`](@ref) built on one) while the number of currently infectious
-people is below `threshold`, and switches once and for all to `approx` (a
-[`MeanFieldProcess`](@ref) or [`LinearNoiseProcess`](@ref) sharing `exact`'s
-`population_size`) once that is reached, carrying the compartment counts
-across rather than restarting. `check_interval` (days) sets how often the
-exact run is checked against `threshold`: shorter catches the crossing
-sooner, at the cost of resuming the race more often.
+A transmission model that runs as `exact` while the number of currently
+infectious people is below `threshold`, and switches once and for all to
+`approx` (sharing `exact`'s `population_size`) once that is reached, carrying
+the compartment counts across rather than restarting. `check_interval` (days)
+sets how often the exact run is checked against `threshold`: shorter catches
+the crossing sooner, at the cost of resuming the race more often.
+
+`exact` and `approx` must pair up: `exact` a [`HomogeneousProcess`](@ref), or
+a [`ModelSpec`](@ref) built on one, with `approx` a [`MeanFieldProcess`](@ref)
+or [`LinearNoiseProcess`](@ref); or `exact` a [`MixingProcess`](@ref)-based
+`ModelSpec`, with `approx` a [`MixingMeanFieldProcess`](@ref) or
+[`MixingLinearNoiseProcess`](@ref) built from that same `ModelSpec`, so the
+mixing groups the two track agree.
 
 Simulating and continuing both use [`simulate`](@ref), exactly as for the
 exact and approximate models on their own, so an external Kalman or particle
@@ -70,7 +104,7 @@ struct HybridProcess{E, A}
 end
 
 function HybridProcess(exact, approx; threshold::Integer, check_interval::Real = 1.0)
-    _unwrap_homogeneous(exact)
+    _validate_layout(_matching_exact(exact, approx), approx)
     threshold >= 1 || throw(ArgumentError("threshold must be ≥ 1"))
     check_interval > 0 || throw(ArgumentError("check_interval must be positive"))
     population_size(exact) == population_size(approx) || throw(
@@ -90,8 +124,10 @@ population_size(m::HybridProcess) = population_size(m.exact)
 The state of a [`HybridProcess`](@ref): `phase` is `:exact` or `:approx`,
 whichever dynamics are currently driving it; `exact` holds the
 [`SimulationState`](@ref) while in the exact phase (`nothing` after the
-switch); `approx` holds the [`MeanFieldState`](@ref) or
-[`LinearNoiseState`](@ref) once the switch has happened (`nothing` before).
+switch); `approx` holds whichever state type `model.approx` produces (a
+[`MeanFieldState`](@ref), [`LinearNoiseState`](@ref),
+[`MixingMeanFieldState`](@ref) or [`MixingLinearNoiseState`](@ref)) once the
+switch has happened (`nothing` before).
 
 For extension authors: `exact_t` is the time the exact phase has been driven
 to, kept separately because `exact.max_infection_time` is the time of the
@@ -138,6 +174,40 @@ _to_approx_state(::LinearNoiseProcess, es::SimulationState, t::Real) =
 
 _approx_state_type(::MeanFieldProcess) = MeanFieldState
 _approx_state_type(::LinearNoiseProcess) = LinearNoiseState
+
+# As `_compartment_counts`, but one susceptible/infectious/removed count per
+# mixing group rather than one for the whole population: unlike
+# `es.cumulative_cases`, which already tallies the whole population as it
+# runs, nothing in the exact run keeps a per-group breakdown, so this walks
+# `es.individuals` once to build it.
+function _group_compartment_counts(es::SimulationState, t::Real, approx)
+    S = Float64.(approx.group_sizes)
+    I = zeros(Float64, length(approx.groups))
+    index = Dict(g => i for (i, g) in enumerate(approx.groups))
+    for ind in es.individuals
+        is_infected(ind) || continue
+        it = ind.infection_time
+        (isfinite(it) && it <= t) || continue
+        idx = index[_group_key(ind, approx.mixing_by)]
+        S[idx] -= 1.0
+        leave_t = _state_time(ind, :outcome)
+        (isfinite(leave_t) && leave_t <= t) || (I[idx] += 1.0)
+    end
+    R = Float64.(approx.group_sizes) .- S .- I
+    return S, I, R
+end
+
+_to_approx_state(approx::MixingMeanFieldProcess, es::SimulationState, t::Real) =
+    MixingMeanFieldState(approx.groups, _group_compartment_counts(es, t, approx)..., t)
+function _to_approx_state(approx::MixingLinearNoiseProcess, es::SimulationState, t::Real)
+    G = length(approx.groups)
+    return MixingLinearNoiseState(
+        approx.groups, _group_compartment_counts(es, t, approx)..., t, zeros(2G, 2G)
+    )
+end
+
+_approx_state_type(::MixingMeanFieldProcess) = MixingMeanFieldState
+_approx_state_type(::MixingLinearNoiseProcess) = MixingLinearNoiseState
 
 """
     simulate(model::HybridProcess; n_initial = 1, max_time, rng = Random.default_rng())
