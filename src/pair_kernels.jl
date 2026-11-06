@@ -679,7 +679,7 @@ function _calendar_invlogccdf(::PiecewiseConstantCalendar, k::_CalendarScaledKer
     calendar_lo = k.opening
     while true
         t_lo = calendar_lo - k.opening
-        certain && t_lo >= upper && return oftype(target, upper)
+        certain && t_lo >= upper && return upper
         m, calendar_hi = _calendar_segment(k, calendar_lo)
         if m > 0
             base = cumhazard(k.profile, t_lo)
@@ -695,7 +695,7 @@ function _calendar_invlogccdf(::PiecewiseConstantCalendar, k::_CalendarScaledKer
         if isfinite(calendar_hi)
             calendar_lo = calendar_hi
         else
-            return certain ? oftype(target, upper) : oftype(target, Inf)
+            return certain ? upper : oftype(target, Inf)
         end
     end
     return

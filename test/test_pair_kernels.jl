@@ -170,6 +170,14 @@ end
     )
     @test invlogccdf(halted_piecewise, -100.0) == 5.0
     @test invlogccdf(halted_piecewise, -100.0) == invlogccdf(halted_smooth, -100.0)
+
+    # A dual in the profile's top survives settling there, through both exits
+    # of the inversion loop.
+    settle_top(u, calendar) = invlogccdf(
+        EpiBranch._CalendarScaledKernel(Uniform(0.0, u), calendar, 0.0), -100.0
+    )
+    @test ForwardDiff.derivative(u -> settle_top(u, Steps([2.0], [1.0, 0.0])), 5.0) == 1.0
+    @test ForwardDiff.derivative(u -> settle_top(u, Steps([2.0], [1.0, 1.0])), 5.0) == 1.0
 end
 
 include("testutils/pair_kernels.jl")
