@@ -454,23 +454,33 @@ _period_budget(schedule, t) = calendar_multiplier(schedule, t)
 # excluding, the one ending at `period_end`: a fixed number times the number
 # of periods begun, as before, or, for a schedule, each period's own number
 # summed, since a later period cannot be assumed to repeat an earlier one's.
-_cumulative_budget(cc::CapacityConstrained, period_end) =
-    _cumulative_budget(cc.budget_per_period, cc.period, period_end)
-_cumulative_budget(budget::Real, period, period_end) = (period_end / period) * budget
-function _cumulative_budget(schedule, period, period_end)
+_cumulative_budget(cc::CapacityConstrained, period_end, cum = nothing) =
+    _cumulative_budget(cc.budget_per_period, cc.period, period_end, cum)
+_cumulative_budget(budget::Real, period, period_end, cum) = (period_end / period) * budget
+function _cumulative_budget(schedule, period, period_end, cum)
     n = round(Int, period_end / period)
+    cum !== nothing && 0 < n <= length(cum) && return cum[n]
     return sum((_period_budget(schedule, k * period) for k in 0:(n - 1)); init = 0.0)
+end
+
+# The running totals `_cumulative_budget` would sum afresh, for the periods up
+# to the one ending at `last_end`, so the many admission checks of one
+# `_fits_budget` call each read a total rather than re-summing the schedule.
+function _cumulative_table(cc::CapacityConstrained, last_end)
+    (cc.budget_per_period isa Real || isinf(cc.period)) && return nothing
+    n = round(Int, last_end / cc.period)
+    return cumsum([_period_budget(cc.budget_per_period, k * cc.period) for k in 0:(n - 1)])
 end
 
 # Doses used and available for the period containing `at`, in the scope
 # `carry_over` implies. Reused by the admission decision, once per candidate
 # with its own proposed date, and by `capacity_usage`, with the simulation's
 # current clock.
-function _usage_at(cc::CapacityConstrained, times, extra, at)
+function _usage_at(cc::CapacityConstrained, times, extra, at, cum = nothing)
     period_start, period_end = _period_bounds(cc, at)
     if cc.carry_over
         available = isinf(cc.period) ? _period_budget(cc.budget_per_period, period_start) :
-            _cumulative_budget(cc, period_end)
+            _cumulative_budget(cc, period_end, cum)
         used = _count_before(times, extra, period_end)
     else
         available = _period_budget(cc.budget_per_period, period_start)
@@ -489,10 +499,12 @@ function _fits_budget(cc::CapacityConstrained, times, extra, at)
     usage.used + 1 <= usage.available || return false
     (cc.carry_over && isfinite(cc.period)) || return true
     _, own_end = _period_bounds(cc, at)
+    last_t = max(at, isempty(times) ? at : times[end], isempty(extra) ? at : maximum(extra))
+    cum = _cumulative_table(cc, _period_bounds(cc, last_t)[2])
     for later in (@view(times[searchsortedfirst(times, own_end):end]), extra)
         for t in later
             t >= own_end || continue
-            u = _usage_at(cc, times, extra, t)
+            u = _usage_at(cc, times, extra, t, cum)
             u.used + 1 <= u.available || return false
         end
     end
