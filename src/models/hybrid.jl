@@ -1,11 +1,11 @@
 # ── Hybrid exact/approximate population dynamics ───────────────────
 #
 # `HybridProcess` runs exact simulation while the outbreak is small
-# (chance-dominated, and cheap at that size), then switches, once and for
+# (chance-dominated, and inexpensive at that size), then switches, once and for
 # all, to a mean-field or linear-noise approximation once enough people are
-# infected for the approximation to be both accurate and cheap. No filtering
-# code lives here: `HybridProcess` only carries the state across the switch,
-# so an external Kalman or particle filter sees one `simulate(model, state;
+# infected for the approximation to be both accurate and inexpensive.
+# `HybridProcess` transfers the state across the switch without filtering.
+# An external Kalman or particle filter sees one `simulate(model, state;
 # max_time)` interface throughout, exactly as it would for either half on
 # its own.
 
@@ -64,8 +64,8 @@ end
 
 A transmission model that runs as `exact` while the number of currently
 infectious people is below `threshold`, and switches once and for all to
-`approx` (sharing `exact`'s `population_size`) once that is reached, carrying
-the compartment counts across rather than restarting. `check_interval` (days)
+`approx` (with the same `population_size` as `exact`) once that is reached,
+retaining the compartment counts. `check_interval` (days)
 sets how often the exact run is checked against `threshold`: shorter catches
 the crossing sooner, at the cost of resuming the race more often.
 

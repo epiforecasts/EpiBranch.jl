@@ -511,7 +511,7 @@ end
 
     @testset "a lone index case is conditioned on, not explained" begin
         # a single singleton case with nobody else to read I(t) off: without
-        # conditioning this would score -Inf, since nothing is infectious
+        # conditioning this would score -Inf, because nothing is infectious
         # before the first case
         data = _TestInfections([1], [0.0], [0.0], [3.0], [true]; obs_end = 5.0)
         mass_action = MassActionHazard(; transmission_rate = 0.6, population_size = 4)

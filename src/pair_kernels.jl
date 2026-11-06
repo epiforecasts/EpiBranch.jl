@@ -687,7 +687,7 @@ end
 function _calendar_hazard(k::_CalendarScaledKernel, s)
     # The profile first: where its hazard is already zero (a `HazardKernel`
     # beyond `upper`, or a trajectory that has cleared) the calendar is not
-    # evaluated, since a bracket grown far past the profile's reach would
+    # evaluated, because a bracket grown far past the profile's reach would
     # otherwise hand a smooth calendar a time whose phase overflows.
     lh = loghazard(k.profile, s)
     isfinite(lh) || return zero(float(s))
@@ -819,7 +819,7 @@ end
 # drawn time has. `Λ(t)` is the bisection's own running integral, which
 # brackets `target` within one bisection step, so the step moves the value by
 # no more than that step even where the rate is small; a separately computed
-# integral would carry a different quadrature error, which a small rate
+# integral would have a different quadrature error, which a small rate
 # would magnify into the drawn time.
 function _implicit_hazard_step(rate, t, t_acc, target)
     isfinite(t_acc) || return t

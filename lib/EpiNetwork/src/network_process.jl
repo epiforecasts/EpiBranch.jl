@@ -70,8 +70,8 @@ must be finite when `external_hazard` is used.
 Each node is created only once an infectious neighbour proposes it a contact
 or an intervention reaches it (contact tracing reaches every neighbour,
 infected or not), drawing its population characteristics from the same
-per-person streams every other draw uses, so a run costs in proportion to
-the people the outbreak reaches rather than to the size of the network. Pass
+per-person streams used for every other draw. Run time scales with
+the number of people the outbreak reaches. Pass
 `eager = true` to create and draw every node upfront instead, as every
 version before this did; [`EpiBranch.realise!`](@ref) creates the rest of
 the population after a lazy run, for the characteristics of people the

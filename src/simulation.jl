@@ -145,7 +145,7 @@ and copy only `state` as the particle.
 continuation is for a caller, such as a particle filter, that scores each
 step itself against its own data, rather than drawing a synthetic one.
 `state` is returned unchanged if it had already reached extinction, or
-stopped for a reason other than `max_time` — there is nothing left for a
+stopped for a reason other than `max_time`; there is nothing left for a
 later `max_time` to continue.
 
 ```julia
@@ -687,7 +687,7 @@ end
     lazily_populate!(state, n, interventions; setup = (ind, i) -> nothing) -> state
 
 Set `state` up for `n` people none of which exist yet, in place of
-[`add_individuals!`](@ref). Used by a transmission model whose population is
+[`add_individuals!`](@ref). Used by a transmission model with a population that is
 large relative to the outbreaks it simulates, such as `NetworkProcess` or
 `RoutedNetwork`, so that a run costs in proportion to the people the
 outbreak reaches rather than to the size of the population. Every slot in
@@ -746,7 +746,7 @@ Create every person a lazily populated model (`NetworkProcess`,
 characteristics from the same per-person streams the run itself drew from
 (see [`CommonRandomNumbers`](@ref)): under common random numbers, a person's
 attributes are then the same whether the outbreak reached them or `realise!`
-created them afterwards. A no-op for a model whose population is built
+created them afterwards. A no-op for a model with a population that is built
 upfront, which is every model but these two.
 
 Call this when you need the characteristics of people the outbreak never

@@ -665,8 +665,8 @@ stretch a case is isolated for, and has it back once released.
     - A route kernel that is a [`PairKernel`](@ref) is not yet represented in
       the routed likelihood; `loglikelihood(data, model)` stops with an
       error for such a model. Leaky isolation on a `RoutedNetwork` is not
-      represented either, but silently: the routed likelihood scores it as
-      if it were not isolated at all, rather than erroring.
+      represented either: the routed likelihood scores it as
+      if the case were not isolated, without reporting an error.
     - In real data infection times are not observed. They have to be estimated
       together with the parameters, from symptom onsets and the disease
       timeline (data augmentation), as described for [household

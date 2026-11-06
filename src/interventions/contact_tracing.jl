@@ -435,7 +435,7 @@ a contact traced from its own infector always settles after being traced (see
 [`trace_contacts!`](@ref EpiBranch.trace_contacts!)). One reached only
 through a wider ring (`ContactTracing`'s `depth > 1`) can already be settled,
 in which case this has already run for it and does not run again. Use it for
-an action whose outcome depends on the contact's own infection, such as a
+an action with an outcome that depends on infection of the contact, such as a
 test result that can shorten a quarantine already recorded with
 [`revise_removal!`](@ref EpiBranch.revise_removal!). Default: does nothing.
 [`ContactTracing`](@ref) forwards to this.
@@ -796,8 +796,8 @@ end
 # Undo only the isolation entries `Quarantine` itself recorded, named by the
 # handles it kept when it recorded them (see `apply_trace!`). Withdrawing
 # exactly those leaves whatever isolation `ind` stood under before, or after,
-# any trace — another intervention's, such as `Isolation`'s — on its own
-# record, untouched. Mirrors `Isolation`'s own `reset!`, which protects a
+# any trace (from another intervention, such as `Isolation`) on its own
+# record, untouched. Mirrors the `reset!` of `Isolation`, which protects a
 # quarantine it was layered over the same way.
 function _undo_quarantine_isolation!(ind::Individual)
     handles = get(ind.state, :_quarantine_removal_handles, nothing)
@@ -970,7 +970,7 @@ end
 
 # Forwarded to the action so a `TraceAction` that needs to follow a contact
 # up later, such as a test some days after the trace, can propose its own
-# further actions through the ordinary schedule and capacity funnel, apart
+# further actions subject to the usual schedule and capacity constraints, apart
 # from the trace's own immediate follow-up `_admit_trace_actions!` admits.
 function intervention_actions(ct::ContactTracing, state, candidates)
     return intervention_actions(ct.action, state, candidates)
