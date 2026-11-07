@@ -200,6 +200,23 @@ EpiBranch.chain_size_distribution(d::BrokenExactOffspring) = throw(d.error)
         @test chain_size_distribution(model) isa EpiBranch._ChainSizeLaw
     end
 
+    @testset "Multiple Reporting steps fall back to simulation" begin
+        model = ModelSpec(
+            BranchingProcess(Poisson(0.5));
+            progression = [
+                Reporting(delay = 0.0, probability = p, from = :infection)
+                    for p in (0.5, 0.7)
+            ]
+        )
+        @test chain_size_distribution(model) isa EpiBranch._ChainSizeLaw
+        data = [1, 2, 3]
+        ll = loglikelihood(ChainSizes(data), model; n_sim = 500, rng = StableRNG(1))
+        @test isfinite(ll)
+        @test logpdf(
+            chain_size_distribution(model; n_sim = 500, rng = StableRNG(1)), data
+        ) ≈ ll
+    end
+
     @testset "rand draws chain sizes from the underlying model" begin
         bp = BranchingProcess(Poisson(0.5), Exponential(5.0))
         d = chain_size_distribution(bp)

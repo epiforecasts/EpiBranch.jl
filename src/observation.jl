@@ -361,6 +361,7 @@ end
 function _exact_reported_chain_size(offspring, prog, obs)
     hasmethod(chain_size_distribution, Tuple{typeof(offspring)}) || return nothing
     offspring isa GeneratingFunctionOffspring && offspring.pmf === nothing && return nothing
+    count(t -> t isa Reporting, prog) > 1 && return nothing
     any(t -> t isa Reporting && !(t.probability isa Real), prog) && return nothing
     return _fold_reporting(prog, chain_size_distribution(offspring), obs)
 end
