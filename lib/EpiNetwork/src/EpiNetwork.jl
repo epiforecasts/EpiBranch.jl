@@ -26,6 +26,7 @@ import EpiBranch: _infection_layer_columns, _infection_layer_fields,
 # susceptibility effect over every route and the external hazard the same way
 # the single-route likelihood evaluates it over a contact structure's rows.
 import EpiBranch: _removal_gaps, _host_stretches, _gapped_cumhazard, _removed_at,
+    _host_leaky_stretches, _leak_log_at,
     _validate_infection_likelihood, susceptibility_components, _scaled_cumhazard,
     _scaled_loghazard, _mixtures_partype, _layer_host, _is_minus_inf,
     INTERVENTION_REMOVAL, followup_end, contact_structure,
