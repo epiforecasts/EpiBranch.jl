@@ -1,3 +1,3 @@
-`Scheduled` and `CapacityConstrained` use isolation's own start time when
-judging an `Isolation`, so an existing quarantine does not shift its schedule
-or charge it to the wrong capacity period.
+`Scheduled` and `CapacityConstrained` now assess an `Isolation` using the start
+time of isolation. An existing quarantine no longer shifts the isolation
+schedule or counts the isolation against the wrong capacity period.
