@@ -439,8 +439,8 @@ end
         simulate(model, shallow; max_time = 30.0)
         @test shallow.cumulative_cases > state.cumulative_cases
         @test same(shallow, deep)
-        # Both sides keep working after the split: the original continues
-        # to the same place as its deepcopy did.
+        # Continuing the original after copying also gives the same result
+        # as continuing its deepcopy.
         simulate(model, state; max_time = 30.0)
         @test same(state, deep)
     end

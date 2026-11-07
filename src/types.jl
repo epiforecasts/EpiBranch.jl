@@ -359,14 +359,13 @@ end
 
 # ── People shared between copies of a state ────────────────────────
 
-# The people of a state that has been `copy`ed, standing in for the plain
-# vector `state.individuals` starts out as. `people` holds the `Individual`
-# objects, and `owned[i]` says whether this state is the only one holding
-# `people[i]`. Julia cannot tell a read from a write on a mutable struct, so
-# the first access to a person that is not owned replaces them with a private
-# copy, and every later access finds that copy. A person who is never looked
-# at, which is most of a large population over a short continuation, stays
-# shared between the copies.
+# Replaces the plain vector in `state.individuals` when the state is copied.
+# `people` holds the `Individual` objects. `owned[i]` records whether this
+# state alone holds `people[i]`. Julia cannot distinguish reads from writes
+# on a mutable struct. The first access to a shared person therefore replaces
+# them with a private copy, used for all subsequent accesses. People who are
+# not accessed remain shared between states. In a large population, this is
+# most people over a short continuation.
 struct _SharedPeople{T <: Real} <: AbstractVector{Individual{T}}
     people::Vector{Individual{T}}
     owned::BitVector
@@ -479,8 +478,8 @@ function Base.show(io::IO, s::SimulationState)
 end
 
 # Mark every person in `people` as held by two states, except the placeholder
-# of a lazily populated model, which no state ever mutates and which
-# `_realised!` recognises by identity, so it must not be replaced by a copy.
+# of a lazily populated model. No state mutates the placeholder. It must retain
+# its identity for `_realised!` to recognise it.
 function _share!(people::Vector{Individual{T}}, placeholder) where {T}
     return _share!(_SharedPeople{T}(people, falses(length(people))), placeholder)
 end
@@ -495,22 +494,23 @@ end
     copy(state::SimulationState) -> SimulationState
 
 An independent copy of `state`, cheaper than `deepcopy` for a large
-population: the copy and the original share each person until one of them
-looks at that person, and only then does that one take a private copy of
-them. A person neither side touches is never copied, so continuing a
-simulation from a copy costs in proportion to the people the continuation
-reaches rather than to the population. The random number generator, the
-pending events of an unfinished race, the working information in `scratch`
-and the list of infectious cases are copied outright. The natural-history
-`transitions`, the `attributes` builder and the lazily populated model's
-set-up are shared, as nothing in a run changes them.
+population. The copy and the original share each person until accessed
+through either state, when that state takes a private copy of the person.
+People who are not accessed remain shared. The cost of copying people during
+continuation is proportional to the number accessed, rather than the total
+population. The random number generator, the pending events of an unfinished
+race, the working information in `scratch` and the list of infectious cases
+are copied in full. The natural-history `transitions`, the `attributes`
+builder and the set-up of the lazily populated model are shared because they
+remain unchanged during a run.
 
-Continuing a run from the copy gives what continuing it from a `deepcopy` of
-the same state would give, and a change to one never shows in the other.
-This holds for people reached through the state. An `Individual` taken from
-`state.individuals` before the copy is made is the original's and, if still
-shared, is also the copy's: changing it through that reference changes both.
-Take people from `state.individuals` again after copying.
+Continuing a run from the copy gives the same result as continuing from a
+`deepcopy` of the same state. Changes to either state leave the other
+unchanged, provided people are accessed through the state. A reference to an
+`Individual` obtained from `state.individuals` before copying still refers
+to the person in the original state. While that person remains shared,
+changes through the reference affect both states. Access people through
+`state.individuals` again after copying.
 """
 function Base.copy(state::SimulationState)
     lazy = state.lazy
