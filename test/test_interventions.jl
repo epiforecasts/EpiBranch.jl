@@ -1007,7 +1007,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
     @testset "A released quarantine does not block a later, unrelated infection" begin
         # Reproduces the bug: a contact traced and quarantined long before it is
         # actually infected, through another route, must not still be carrying
-        # that old quarantine. Tracing's competing risk must respect the
+        # that old quarantine. The competing risk from tracing must respect the
         # release time, not just the isolation time.
         iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = Inf)
         ct = ContactTracing(

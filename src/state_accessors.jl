@@ -254,8 +254,8 @@ individual_type(ind::Individual) = get(ind.state, :type, 1)::Int
 # and names it from `removal_gap_host_times`.
 const REMOVAL_STRETCHES_KEY = :_removal_stretches
 
-# Isolation reads its own removals so a quarantine cannot acquire isolation's
-# route coverage when the two interventions are composed.
+# Isolation reads its own removals to keep its route coverage separate from
+# that of quarantine when the two interventions are combined.
 const ISOLATION_STRETCHES_KEY = :_isolation_stretches
 
 # The key a removal that only blocks a fraction of the hazard (see
@@ -294,10 +294,10 @@ for leaky isolation. `:isolated` in an `until` instead refers to a
 `Transition(:isolated, …)` step in the natural history.
 
 `key` names the [`record_removal!`](@ref EpiBranch.record_removal!) key the
-stretch goes under, the shared key by default. An intervention can pass its
-own key so its risk and route coverage apply only to its own removals. A
-removal that only blocks a fraction of the hazard also needs a separate key
-so a likelihood never mistakes it for a complete removal.
+stretch is recorded under, the shared key by default. An intervention can pass
+its own key to apply its risk and route coverage only to its own removals.
+Removals that block only a fraction of the hazard also need a separate key
+to distinguish them from complete removals in the likelihood.
 
 `unrecorded` says whether this particular removal counts as a detection (see
 [`is_isolated`](@ref)): `false` (the default) records it, `true` keeps it out
@@ -726,9 +726,9 @@ end
 """
     removal_stretches(ind, key = :_removal_stretches)
 
-The periods recorded under `key` during which `ind` could not transmit, such
-as isolation or quarantine, as sorted, non-overlapping `(start, release)` pairs
-in days; a release of `Inf` means it never ended. Recorded by
+Periods recorded under `key` during which `ind` was removed from transmission,
+such as isolation or quarantine, as sorted, non-overlapping `(start, release)` pairs
+in days; a release of `Inf` means permanent removal. Recorded by
 [`record_removal!`](@ref EpiBranch.record_removal!).
 
 [`isolation_time`](@ref) and [`isolation_release_time`](@ref) give only the
@@ -759,7 +759,7 @@ function clear_isolated!(ind::Individual)
     ind.state[:isolation_time] = Inf
     ind.state[:isolation_release_time] = Inf
     # Every isolation-span entry (`_set_isolated!`'s) is filed under one of
-    # these three keys, so dropping them also clears the span.
+    # these three keys; removing all three also clears the span.
     _withdraw_all_removals!(ind, REMOVAL_STRETCHES_KEY)
     _withdraw_all_removals!(ind, ISOLATION_STRETCHES_KEY)
     # Leaky isolation's own record, apart from the shared history above; only

@@ -316,8 +316,8 @@ function _isolate!(iso::Isolation, individual, state, time)
         iso.duration, state.rng, individual, "`Isolation`'s `duration`"
     )
     release = time + duration
-    # Each kind of isolation reads its own stretches, apart from quarantine
-    # and from removals with a different block probability.
+    # Each kind of isolation reads its own stretches separately from quarantine
+    # and removals with a different block probability.
     record_key = iso.post_isolation_transmission == 0 ?
         ISOLATION_STRETCHES_KEY : LEAKY_REMOVAL_STRETCHES_KEY
     unrecorded = !records_isolation(iso.eligibility, individual, state, time)
