@@ -535,8 +535,8 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             return ind
         end
 
-        # The quarantine began before the schedule, the isolation (day 11)
-        # inside it: the isolation stands, merged with the quarantine.
+        # The quarantine began before the schedule and the isolation (day 11)
+        # falls inside it. The isolation stands, merged with the quarantine.
         plain = quarantined()
         EpiBranch.resolve_individual!(iso, plain, state)
         @test intervention_time(iso, plain) == 11.0
@@ -556,8 +556,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         )
         @test EpiBranch.removal_stretches(early) == [(5.0, 19.0)]
 
-        # Capacity charges the isolation to its own date, not the
-        # quarantine's.
+        # Capacity charges the isolation to the date it started.
         @test EpiBranch.capacity_time_key(iso) == :_isolation_start
         @test !haskey(quarantined().state, :_isolation_start)
         @test plain.state[:_isolation_start] == 11.0

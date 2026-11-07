@@ -166,9 +166,9 @@ function Isolation(;
 end
 
 required_fields(iso::Isolation) = _required_for_eligibility(iso.eligibility)
-# Read from `Isolation`'s own entry, not the folded span: with a quarantine
-# standing, `isolation_time` is the quarantine's start, which says nothing of
-# when this isolation began.
+# Read from the entry recorded for this isolation, not the folded span. While
+# a quarantine stands, `isolation_time` is the start of the quarantine, which
+# can precede the start of this isolation.
 intervention_time(::Isolation, ind::Individual) =
     _state_real(ind.state, :_isolation_start, Inf)
 
