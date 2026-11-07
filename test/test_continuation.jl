@@ -495,3 +495,31 @@ end
         @test length(copied.individuals) == n + 1
     end
 end
+
+@testset "shared people vector" begin
+    model = ModelSpec(
+        HomogeneousProcess(transmission_rate = 0.4, population_size = 500);
+        progression = [Transition(:recovered; rate = 0.2, terminal = true)]
+    )
+    state = simulate(model; max_time = 5.0, n_initial = 5, rng = StableRNG(11))
+    copied = copy(state)
+    people = copied.individuals
+    n = length(people)
+
+    @testset "setindex! takes ownership of the replacement" begin
+        replacement = Individual(; id = 1, infection_time = -2.0)
+        people[1] = replacement
+        @test people[1] === replacement
+        @test state.individuals[1] !== replacement
+    end
+
+    @testset "resize! grows and shrinks both vectors together" begin
+        resize!(people, n + 2)
+        @test length(people) == n + 2
+        @test length(people.owned) == n + 2
+        @test all(people.owned[(n + 1):(n + 2)])
+        resize!(people, n - 1)
+        @test length(people) == n - 1
+        @test length(state.individuals) == n
+    end
+end
