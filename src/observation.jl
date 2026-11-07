@@ -337,9 +337,9 @@ has no `Reporting` step: the step's probability times the share of cases that
 reach the time it reports from (all of them from infection, the symptomatic
 ones from onset, read from the model's `clinical_presentation`), as
 `_incidence_reporting` does. `simulate` never reports a case whose `from` time
-is missing, and resets a report drawn after the case's outcome, so a
+is missing, and resets a report drawn after the case's outcome. A
 progression with a terminal step, or a `from` the closed form cannot read,
-throws an `ArgumentError` rather than scoring the wrong law.
+therefore throws an `ArgumentError` instead of scoring the wrong law.
 """
 function _effective_reporting_probability(progression, attrs)
     ρ = _reporting_probability(progression)
