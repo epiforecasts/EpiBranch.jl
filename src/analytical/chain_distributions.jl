@@ -190,6 +190,8 @@ epichains. Like [`GammaBorel`](@ref EpiBranch.GammaBorel), it takes `k` first.
 This differs from `GammaBorel`, where each case has its own reproduction
 number (negative binomial offspring). [`chain_size_distribution`](@ref)
 returns it for `ClusterMixed(Poisson, Gamma(...))`.
+With several seeds, each index case starts an independent chain with its own
+rate. The distribution of their total size is the convolution of the single-seed laws.
 """
 struct PoissonGammaChainSize{T <: Real} <: ChainSizeLaw
     k::T
@@ -206,29 +208,27 @@ end
 Distributions.params(d::PoissonGammaChainSize) = (d.k, d.R)
 
 """
-Log-PDF of the PoissonGammaChainSize distribution (AD-compatible).
-With `s > 1`, integrates the multi-seed Borel-Tanner PMF over the
-Gamma mixing rate: the Borel-Tanner kernel gives a Gamma density in λ,
-which integrates in closed form.
+Single-seed log-PDF of the PoissonGammaChainSize distribution (AD-compatible).
+The integral of the Borel PMF over the Gamma mixing rate has a closed form.
 
-The single-seed case (`s = 1`) is a port of `.gborel_size_ll` in
+This is a port of `.gborel_size_ll` in
 epichains (Azam, Funk & Finger,
 https://github.com/epiverse-trace/epichains, MIT).
 """
-function _poisson_gamma_logpdf(k, R, x::Integer, s::Integer = 1)
-    (s < 1 || x < s) && return oftype(float(k), -Inf)
+function _poisson_gamma_logpdf(k, R, x::Integer)
+    x < 1 && return oftype(float(k), -Inf)
     return (
-        log(s) - log(x)
-            + (x - s) * log(x)
-            - logabsgamma(x - s + 1)[1]
+        -log(x)
+            + (x - 1) * log(x)
+            - logabsgamma(x)[1]
             +
-            logabsgamma(k + x - s)[1]
+            logabsgamma(k + x - 1)[1]
             -
             logabsgamma(k)[1]
             -
             k * log(R / k)
             -
-            (k + x - s) * log(x + k / R)
+            (k + x - 1) * log(x + k / R)
     )
 end
 
@@ -276,7 +276,30 @@ function _chain_size_logpdf(d::GammaBorel, x::Integer, s::Integer)
     return _gammaborel_logpdf(d.k, d.R, x, s)
 end
 function _chain_size_logpdf(d::PoissonGammaChainSize, x::Integer, s::Integer)
-    return _poisson_gamma_logpdf(d.k, d.R, x, s)
+    return _independent_chain_size_logpdf(d, x, s)
+end
+
+"""
+Internal: log-PMF of the sum of `s` independent single-seed chain sizes.
+Convolve in log space to retain very small probabilities and parameter types
+for automatic differentiation. Only excess sizes up to `x - s` contribute.
+The calculation takes `O(s * (x - s + 1)^2)` time and uses `O(x - s + 1)` space.
+Finite-chain mass remains unnormalised when infinite chains are possible.
+"""
+function _independent_chain_size_logpdf(d, x::Integer, s::Integer)
+    s == 1 && return logpdf(d, x)
+    first = logpdf(d, 1)
+    (s < 1 || x < s) && return oftype(first, -Inf)
+    x == s && return s * first
+    pmf = [logpdf(d, j) for j in 1:(x - s + 1)]
+    coeffs = pmf
+    for _ in 2:s
+        coeffs = [
+            foldl(_logsumexp2, (coeffs[i + 1] + pmf[j - i + 1] for i in 0:j))
+                for j in 0:(x - s)
+        ]
+    end
+    return coeffs[end]
 end
 
 """
@@ -604,11 +627,9 @@ Only chains started by a single index case are supported (`seeds == 1` in
 
     This needs the chain size distribution of `offspring` from several
     starting cases, which [`HittingTimeChainSize`](@ref EpiBranch.HittingTimeChainSize)
-    gives for any discrete `offspring`. The one exception is
-    [`ClusterMixed`](@ref) with a mixing distribution other than `Poisson`
-    with `Gamma`: its [`ChainSizeMixture`](@ref) has no multi-seed formula,
-    and `pdf` and `logpdf` give an error once `n` is large enough to need
-    one.
+    gives for any discrete `offspring`. For [`ClusterMixed`](@ref), each
+    secondary case starts an independent chain with its own mixed parameter.
+    The distribution of their total size is the convolution of the single-seed laws.
 
 # Examples
 
