@@ -1,3 +1,5 @@
+using ForwardDiff
+
 @testset "Analytical" begin
     @testset "Extinction probability" begin
         @testset "Subcritical always extinct" begin
@@ -773,6 +775,49 @@
         end
 
         @testset "Multi-seed and right-censored chain sizes" begin
+            @testset "Independent mixed rates per seed" begin
+                cm = ClusterMixed(Poisson, Gamma(2.0, 0.3))
+                for offspring in (cm, ClusterMixed(Poisson, Uniform(0.1, 0.7)))
+                    law = chain_size_distribution(offspring)
+                    for x in 2:8
+                        expected = sum(pdf(law, j) * pdf(law, x - j) for j in 1:(x - 1))
+                        @test exp(loglikelihood(ChainSizes([x]; seeds = [2]), offspring)) ≈ expected
+                    end
+                    for x in 3:8
+                        expected = sum(
+                            pdf(law, i) * pdf(law, j) * pdf(law, x - i - j)
+                                for i in 1:(x - 2) for j in 1:(x - i - 1)
+                        )
+                        @test exp(EpiBranch._chain_size_logpdf(law, x, 3)) ≈ expected
+                    end
+                    @test EpiBranch._chain_size_logpdf(law, 1, 2) == -Inf
+                    @test EpiBranch._chain_size_logpdf(law, 2, 0) == -Inf
+                    @test EpiBranch._chain_size_logpdf(law, 4, 1) == logpdf(law, 4)
+                    @test exp(EpiBranch._chain_size_right_tail_logprob(law, 4, 2)) ≈
+                        1 - pdf(law, 1)^2 - 2 * pdf(law, 1) * pdf(law, 2)
+                    index_law = IndexChainSize(DiscreteNonParametric([2], [1.0]), offspring)
+                    @test pdf(index_law, 4) ≈ 2 * pdf(law, 1) * pdf(law, 2)
+                end
+                @test exp(loglikelihood(ChainSizes([2]; seeds = [2]), cm)) ≈ (1.3)^(-4)
+
+                law = PoissonGammaChainSize(2.0, 0.6)
+                @test EpiBranch._chain_size_logpdf(law, 2001, 2000) ≈
+                    log(2000) + 1999 * logpdf(law, 1) + logpdf(law, 2)
+                f = θ -> EpiBranch._chain_size_logpdf(PoissonGammaChainSize(θ[1], θ[2]), 5, 3)
+                reference = θ -> begin
+                    d = PoissonGammaChainSize(θ[1], θ[2])
+                    log(3 * pdf(d, 1)^2 * pdf(d, 3) + 3 * pdf(d, 1) * pdf(d, 2)^2)
+                end
+                @test ForwardDiff.gradient(f, [2.0, 0.6]) ≈
+                    ForwardDiff.gradient(reference, [2.0, 0.6])
+
+                model = BranchingProcess(cm)
+                dist = chain_size_distribution(model; seeds = [2], n_initial = 2, max_cases = 30)
+                rng = StableRNG(669)
+                draws = rand(rng, dist, 4000)
+                @test mean(draws .== 2) ≈ exp(logpdf(dist, [2])) atol = 0.025
+            end
+
             # Default-metadata path matches the direct distribution PMF.
             d = GammaBorel(0.5, 0.8)
             data = ChainSizes([1, 1, 2, 3, 1])

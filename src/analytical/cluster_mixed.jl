@@ -26,6 +26,10 @@ number of secondary cases from `build(θ)`. Use it in a
 an exact chain size distribution, which is used automatically; other
 combinations are evaluated numerically by integrating over `mixing`.
 
+Each index case starts an independent chain and draws its own `θ`, including
+when several index cases contribute to one cluster's total size (`seeds > 1`
+in [`ChainSizes`](@ref)). Descendants share their index case's `θ`.
+
 # Examples
 
 ```julia
@@ -83,6 +87,10 @@ function Distributions.logpdf(d::ChainSizeMixture, n::Integer)
 end
 
 Distributions.pdf(d::ChainSizeMixture, n::Integer) = exp(logpdf(d, n))
+
+function _chain_size_logpdf(d::ChainSizeMixture, x::Integer, s::Integer)
+    return _independent_chain_size_logpdf(d, x, s)
+end
 
 Distributions.cdf(d::ChainSizeMixture, n::Integer) = _chain_size_cdf(d, n)
 function Distributions.logccdf(d::ChainSizeMixture, n::Integer)
