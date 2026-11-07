@@ -345,8 +345,9 @@ no removal at all (`start` not finite, or `release` not after it). Pass the
 handle to [`revise_removal!`](@ref EpiBranch.revise_removal!) or
 [`withdraw_removal!`](@ref EpiBranch.withdraw_removal!) to change or undo
 exactly this entry later, leaving every other entry recorded under `key`
-untouched, whatever it overlaps. [`Isolation`](@ref) records under `:_isolation_stretches`; the default key is
-used by quarantine and by callers that give no key.
+untouched, whatever it overlaps. [`Isolation`](@ref) records under
+`:_isolation_stretches`. Quarantine and callers that give no key use the
+default key.
 
 An intervention of your own that removes people in its own way passes its own
 `key`, and names it in

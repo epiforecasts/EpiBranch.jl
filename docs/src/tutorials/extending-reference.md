@@ -644,8 +644,8 @@ recorded stretch by the same fraction when it works out a case's
 community-infectious person-time, so a leaky removal only partly cuts that
 time. Two components recording a leaky removal under the same key must agree
 on this fraction; give each its own key otherwise, as `Isolation` does
-(`:_leaky_removal_stretches`, apart from the perfect `:_isolation_stretches` and the shared
-`:_removal_stretches`).
+(`:_leaky_removal_stretches`, apart from the perfect `:_isolation_stretches`
+and the shared `:_removal_stretches`).
 
 ## Custom clinical transitions: further details
 
