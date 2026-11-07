@@ -521,7 +521,7 @@ function Base.copy(state::SimulationState)
     people = _SharedPeople(copy(shared.people), copy(shared.owned))
     return SimulationState(
         people, copy(state.active_ids), state.current_generation,
-        copy(state.rng), state.cumulative_cases, state.extinct,
+        deepcopy(state.rng), state.cumulative_cases, state.extinct,
         state.population_size, state.max_infection_time, state.attributes,
         copy(state.transitions), deepcopy(state.scratch),
         deepcopy(state.continuation), lazy

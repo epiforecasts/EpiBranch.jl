@@ -484,6 +484,26 @@ end
         @test same(state, deep)
     end
 
+    @testset "common random numbers retain independent substreams" begin
+        state = simulate(model; max_time = 5.0, n_initial = 5, rng = CommonRandomNumbers(11))
+        rand(EpiBranch.stream(state.rng, 1, :contact))
+        deep = deepcopy(state)
+        copied = copy(state)
+        @test copied.rng.rng !== state.rng.rng
+        @test copied.rng.substreams !== state.rng.substreams
+        @test EpiBranch.stream(copied.rng, 1, :contact) !==
+            EpiBranch.stream(state.rng, 1, :contact)
+        for s in (copied, state, deep)
+            simulate(model, s; max_time = 30.0)
+        end
+        @test same(copied, deep)
+        @test same(state, deep)
+        @test rand(copied.rng) == rand(state.rng) == rand(deep.rng)
+        @test rand(EpiBranch.stream(copied.rng, 1, :contact)) ==
+            rand(EpiBranch.stream(state.rng, 1, :contact)) ==
+            rand(EpiBranch.stream(deep.rng, 1, :contact))
+    end
+
     @testset "a copy shares people until one side looks at them" begin
         state = start()
         copied = copy(state)
