@@ -125,8 +125,8 @@ EpiBranch.chain_size_distribution(d::BrokenExactOffspring) = throw(d.error)
         # Regression: a GeneratingFunctionOffspring has a chain_size_distribution
         # method, so has_single_type_law's hasmethod check passes, but calling
         # it on a bare-pgf instance (no stored pmf) throws ArgumentError.
-        # The analytical fast path checks for the missing pmf before
-        # constructing the law and uses the simulation-based wrapper.
+        # The analytical fast path checks for the missing pmf and uses the
+        # simulation-based wrapper without constructing the law.
         R, k = 2.5, 0.16
         off = GeneratingFunctionOffspring(s -> EpiBranch._pgf(NegBin(R, k), s), R)
         bp = BranchingProcess(off, Exponential(5.0))

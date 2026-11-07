@@ -116,8 +116,8 @@ distribution works without a method of its own. `P(0 detected)` depends on
 `base` and `detection_prob` alone, so it is worked out once when the
 distribution is built. Its field takes whatever element type `base`'s
 parameters give `logpdf`, rather than `Float64`. The detection probability
-also retains its numeric type, so `ForwardDiff` can differentiate with respect
-to offspring parameters and reporting probabilities.
+also retains its numeric type. This allows `ForwardDiff` to differentiate
+with respect to offspring parameters and reporting probabilities.
 """
 struct ThinnedChainSize{D <: DiscreteUnivariateDistribution, P <: Real, T <: Real} <:
     ChainSizeLaw
@@ -356,8 +356,8 @@ function _fold_reporting(progression, base, obs)
     return ThinnedChainSize(base, ρ)
 end
 
-# Absence of an exact law is distinct from an error inside one. Callable
-# reporting probabilities depend on individuals and require simulation.
+# Use simulation when no exact law is available; propagate errors within exact laws.
+# Callable reporting probabilities depend on individuals and require simulation.
 function _exact_reported_chain_size(offspring, prog, obs)
     hasmethod(chain_size_distribution, Tuple{typeof(offspring)}) || return nothing
     offspring isa GeneratingFunctionOffspring && offspring.pmf === nothing && return nothing

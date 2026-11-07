@@ -118,7 +118,7 @@ This `hasmethod` check is on the offspring's type, not the particular
 instance: a [`GeneratingFunctionOffspring`](@ref) has the method whether or
 not it has a pmf, so calling `chain_size_distribution` on the result can
 still throw for one built from a bare generating function. The analytical
-fast paths check for that instance explicitly before constructing the law.
+fast paths check for a missing pmf before constructing the law.
 """
 function has_single_type_law(model::TransmissionModel)
     try
