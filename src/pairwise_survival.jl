@@ -231,7 +231,7 @@ for an intervention that never releases anyone.
 
 Both built-in removals record through [`record_removal!`](@ref
 EpiBranch.record_removal!): [`Isolation`](@ref) uses the reserved
-`:_removal_stretches` key for perfect isolation with a duration that can end,
+`:_isolation_stretches` key for perfect isolation with a duration that can end,
 and [`ContactTracing`](@ref) uses the quarantine's own key for any
 [`Quarantine`](@ref), whatever its duration. A period with no release ends the
 exposure where it starts. An intervention of your own names the key it records
