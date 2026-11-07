@@ -1,0 +1,66 @@
+# Copy of test/testutils/structured_likelihood.jl in the core package, kept here so this
+# package's tests run from a registry copy. Keep the two in step.
+
+struct LikelihoodWindowRemoval <: EpiBranch.AbstractIntervention end
+function EpiBranch.infectious_removal_time(::LikelihoodWindowRemoval, ind::EpiBranch.Individual)
+    return ind.infection_time + 1.0
+end
+EpiBranch.infection_likelihood_compatible(::LikelihoodWindowRemoval) = true
+
+struct LikelihoodHazardChange <: EpiBranch.AbstractIntervention end
+function EpiBranch.competing_risk(::LikelihoodHazardChange, parent, contact, state)
+    return Risk(block_probability = 0.5)
+end
+
+function test_structured_composition(make_process, extract)
+    return @testset "Structured likelihood composition" begin
+        progression = [Transition(:recovered; from = :infection, delay = 3.0, terminal = true)]
+        process = make_process(Exponential(2.0))
+        removal = LikelihoodWindowRemoval()
+        spec = ModelSpec(process; progression, interventions = [removal])
+        state = simulate(spec; rng = StableRNG(44))
+        data = extract(state, spec)
+        infected = findall(!isnan, data.infection_time)
+        @test all(i -> data.removal_time[i] == data.infection_time[i] + 1, infected)
+        @test isfinite(loglikelihood(data, spec))
+        @test loglikelihood(data, spec) == pairwise_surv_loglik(Exponential(2.0), data)
+        clinical = clinical_presentation(incubation_period = Exponential(0.2))
+        iso = Isolation(onset_to_isolation_delay = Exponential(0.2), duration = Inf)
+        supported = ModelSpec(process; progression, attributes = clinical, interventions = [iso])
+        sample = extract(simulate(supported; rng = StableRNG(45)), supported)
+        @test isfinite(loglikelihood(sample, supported))
+        leaky = Isolation(
+            onset_to_isolation_delay = Exponential(0.2), post_isolation_transmission = 0.5,
+            duration = Inf
+        )
+        leaky_spec = ModelSpec(process; progression, attributes = clinical, interventions = [leaky])
+        leaky_sample = extract(simulate(leaky_spec; rng = StableRNG(45)), leaky_spec)
+        @test isfinite(loglikelihood(leaky_sample, leaky_spec))
+        for bad in (
+                LikelihoodHazardChange(),
+                RingVaccination(efficacy = 0.6, onward_efficacy = 0.3),
+                Scheduled(LikelihoodHazardChange(); start_time = 0.0),
+            )
+            @test_throws ArgumentError loglikelihood(
+                data,
+                ModelSpec(process; progression, interventions = [bad])
+            )
+        end
+        @test_throws ArgumentError loglikelihood(
+            data,
+            ModelSpec(process; progression, attributes = transmission_traits(susceptibility = 0.5))
+        )
+        # A supplied effective kernel uses the existing differentiable evaluation path.
+        effective(i, j) = Exponential(4.0)
+        @test pairwise_surv_loglik(effective, data) ==
+            pairwise_surv_loglik(Exponential(4.0), data)
+        f(scale) = loglikelihood(
+            data,
+            ModelSpec(
+                make_process(Exponential(scale));
+                progression, interventions = [removal]
+            )
+        )
+        @test isfinite(ForwardDiff.derivative(f, 2.0))
+    end
+end
