@@ -595,7 +595,7 @@ function _infection_to(from::Symbol, attrs)
     _resolved_key(from) === :onset_time && return _infection_to_onset(attrs)
     throw(
         ArgumentError(
-            "loglikelihood(IncidenceCounts, model) supports a Reporting step from " *
+            "The closed form supports a Reporting step from " *
                 "infection or onset, not from `:$from`"
         )
     )
@@ -603,7 +603,7 @@ end
 function _infection_to(from, attrs)
     throw(
         ArgumentError(
-            "loglikelihood(IncidenceCounts, model) supports a Reporting step from " *
+            "The closed form supports a Reporting step from " *
                 "infection or onset, not from a function"
         )
     )
