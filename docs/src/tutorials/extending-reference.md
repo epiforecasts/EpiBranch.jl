@@ -177,7 +177,8 @@ Isolation is recorded under `:isolation_time`, with `:isolation_release_time`
 for when it ends. `set_isolated!` requires that release as its `release_time`
 keyword; a release of `Inf` means the isolation never ends. These two describe the removal in force, which
 is what a detection reads. The full history, which a likelihood needs, is the
-list of stretches under `:_removal_stretches`, because one pair of times cannot
+lists of stretches under `:_isolation_stretches` (perfect isolation) and
+`:_removal_stretches` (the shared default key), because one pair of times cannot
 record that a person was quarantined, released and later isolated again. A
 window that isolation should end lists [`EpiBranch.INTERVENTION_REMOVAL`](@ref)
 in its `until` (see [Transmission routes](new-structures.md#Transmission-routes)), which respects leaky
@@ -643,7 +644,8 @@ recorded stretch by the same fraction when it works out a case's
 community-infectious person-time, so a leaky removal only partly cuts that
 time. Two components recording a leaky removal under the same key must agree
 on this fraction; give each its own key otherwise, as `Isolation` does
-(`:_leaky_removal_stretches`, apart from the shared `:_removal_stretches`).
+(`:_leaky_removal_stretches`, apart from the perfect `:_isolation_stretches` and the shared
+`:_removal_stretches`).
 
 ## Custom clinical transitions: further details
 
