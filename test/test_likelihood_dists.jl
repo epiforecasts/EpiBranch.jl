@@ -213,6 +213,11 @@
         )
         @test !(d_out isa EpiBranch.ThinnedChainSize)
         @test !(d_out isa EpiBranch.GammaBorel)
+        # A step that rewrites the onset time overrides the asymptomatic share.
+        @test_throws ArgumentError EpiBranch._effective_reporting_probability(
+            [Transition(:onset; delay = 1.0), Reporting(delay = 0.0)],
+            clinical(0.5)
+        )
     end
 
     @testset "rand draws chain sizes from the underlying model" begin
