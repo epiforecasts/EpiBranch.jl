@@ -101,6 +101,34 @@
         d = chain_length_distribution(bp)
         data = [0, 1, 2, 0, 3, 1]
         @test logpdf(d, data) ≈ loglikelihood(ChainLengths(data), Poisson(0.5))
+
+        @testset "Reporting requires full detection" begin
+            message = "per-case detection does not give a well-defined chain length"
+            for probability in (0.0, 0.3, 1.0)
+                model = ModelSpec(
+                    bp; progression = [Reporting(; delay = 1.0, probability, from = :infection)]
+                )
+                if probability < 1
+                    @test_throws message loglikelihood(ChainLengths(data), model)
+                    @test_throws message chain_length_distribution(model)
+                    @test_throws message EpiBranch._ChainLengthLaw(model, (;))
+                    fallback = ModelSpec(
+                        BranchingProcess(Binomial(2, 0.2));
+                        progression = model.progression
+                    )
+                    @test_throws message loglikelihood(
+                        ChainLengths(data), fallback; n_sim = 5, rng = StableRNG(42)
+                    )
+                else
+                    @test loglikelihood(ChainLengths(data), model) ≈ logpdf(d, data)
+                    reported = chain_length_distribution(model)
+                    @test logpdf(reported, data) ≈ logpdf(d, data)
+                    states = simulate(model, 5; rng = StableRNG(42))
+                    @test rand(StableRNG(42), reported, 5) ==
+                        [maximum(chain_statistics(s).length) for s in states]
+                end
+            end
+        end
     end
 
     @testset "chain_size_distribution — per-case observation" begin
