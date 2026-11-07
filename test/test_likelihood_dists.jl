@@ -194,10 +194,12 @@
             )
         )
         @test d_one isa EpiBranch.ThinnedChainSize
-        @test loglikelihood(ChainSizes([1, 2, 3]), ModelSpec(
-            proc; progression = [Reporting(delay = 0.0, probability = 1.0)],
-            attributes = clinical(0.0)
-        )) ≈ sum(logpdf(base, n) for n in [1, 2, 3])
+        @test loglikelihood(
+            ChainSizes([1, 2, 3]), ModelSpec(
+                proc; progression = [Reporting(delay = 0.0, probability = 1.0)],
+                attributes = clinical(0.0)
+            )
+        ) ≈ sum(logpdf(base, n) for n in [1, 2, 3])
         # An outcome step censors reports, which the closed form does not model.
         d_out = chain_size_distribution(
             ModelSpec(
