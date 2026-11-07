@@ -166,7 +166,11 @@ function Isolation(;
 end
 
 required_fields(iso::Isolation) = _required_for_eligibility(iso.eligibility)
-intervention_time(::Isolation, ind::Individual) = isolation_time(ind)
+# Read from `Isolation`'s own entry, not the folded span: with a quarantine
+# standing, `isolation_time` is the quarantine's start, which says nothing of
+# when this isolation began.
+intervention_time(::Isolation, ind::Individual) =
+    _state_real(ind.state, :_isolation_start, Inf)
 
 # Perfect isolation removes a case from onward transmission at its isolation
 # time, so a continuous-time model closes the infectious window there. Leaky
@@ -236,12 +240,14 @@ function reset!(::Isolation, ind::Individual)
     handle === nothing && return nothing
     withdraw_removal!(ind, handle)
     delete!(ind.state, :_isolation_handle)
+    delete!(ind.state, :_isolation_start)
     return nothing
 end
 
 function initialise_individual!(iso::Isolation, individual, state)
     clear_isolated!(individual)
     delete!(individual.state, :_isolation_handle)
+    delete!(individual.state, :_isolation_start)
     if is_eligible_for_isolation(iso.eligibility, individual, state)
         rng = stream(state.rng, individual.id, (:isolation, :test))
         sens = sample_value(iso.test_sensitivity, rng, individual)
@@ -326,5 +332,6 @@ function _isolate!(iso::Isolation, individual, state, time)
         individual, time; release_time = release, key = record_key, unrecorded
     )
     individual.state[:_isolation_handle] = handle
+    individual.state[:_isolation_start] = time
     return nothing
 end

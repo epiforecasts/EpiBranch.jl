@@ -209,7 +209,7 @@ capacity_time_key(v::GroupVaccination) = _vaccination_time_key(dose_label(v))
 # keeps to tell its own isolation from a quarantine layered under it (see its
 # `reset!`), present exactly when "this budget was spent on this person".
 capacity_key(::Isolation) = :_isolation_handle
-capacity_time_key(::Isolation) = :isolation_time
+capacity_time_key(::Isolation) = :_isolation_start
 
 # `ContactTracing` proposes its follow-up as an `InterventionAction` (see
 # `_trace_action`) whose own resource key depends on what the action does:
