@@ -1,3 +1,3 @@
-`Isolation` reads only its own removal stretches. When combined with tracing
-restricted by `OnRoutes`, it preserves transmission on routes outside
-the quarantine, even when quarantine is permanent.
+`Isolation` reads only its own removal stretches. When tracing is restricted
+by `OnRoutes`, transmission continues on routes outside the quarantine,
+even when quarantine is permanent.
