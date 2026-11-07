@@ -521,6 +521,47 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         @test isolation_time(negative) == 50.0
     end
 
+    @testset "Scheduled and CapacityConstrained judge Isolation's own start" begin
+        state = EpiBranch.new_state(
+            BranchingProcess(Poisson(1.0), Exponential(5.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
+        )
+        iso = Isolation(onset_to_isolation_delay = Dirac(3.0), duration = Inf)
+        function quarantined()
+            ind = Individual(id = 1)
+            ind.state[:onset_time] = 8.0
+            ind.state[:test_positive] = true
+            set_isolated!(ind, 5.0; release_time = 19.0)
+            return ind
+        end
+
+        # The quarantine began before the schedule and the isolation (day 11)
+        # falls inside it. The isolation stands, merged with the quarantine.
+        plain = quarantined()
+        EpiBranch.resolve_individual!(iso, plain, state)
+        @test intervention_time(iso, plain) == 11.0
+        @test EpiBranch.removal_stretches(plain) == [(5.0, Inf)]
+
+        ind = quarantined()
+        EpiBranch.resolve_individual!(
+            Scheduled(iso; start_time = 10.0), ind, state
+        )
+        @test EpiBranch.removal_stretches(ind) == [(5.0, Inf)]
+        @test isolation_release_time(ind) == Inf
+
+        # An isolation before the window is undone, leaving the quarantine.
+        early = quarantined()
+        EpiBranch.resolve_individual!(
+            Scheduled(iso; start_time = 12.0), early, state
+        )
+        @test EpiBranch.removal_stretches(early) == [(5.0, 19.0)]
+
+        # Capacity charges the isolation to the date it started.
+        @test EpiBranch.capacity_time_key(iso) == :_isolation_start
+        @test !haskey(quarantined().state, :_isolation_start)
+        @test plain.state[:_isolation_start] == 11.0
+    end
+
     @testset "An eligibility can record a detection after the outcome" begin
         # The eligibility decides: a policy that wants post-mortem detection,
         # as an Ebola death found at burial does, overrides
