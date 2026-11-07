@@ -129,7 +129,7 @@ function EpiBranch.resolve_individual!(::RecordKernelPolicy, ind, state)
     return nothing
 end
 
-# A two-rate calendar policy — rate `before` up to `date`, `after` afterwards —
+# A two-rate calendar policy, with rate `before` up to `date` and `after` afterwards,
 # as a PairKernel result: a flat unit-hazard profile scaled by a single-step
 # calendar schedule. `date = Inf` means the policy never triggered, so the
 # schedule never switches and the rate stays `before` throughout.
@@ -158,10 +158,10 @@ function EpiBranch.competing_risk(::WaitForKernelDay, parent, contact, state)
     return Risk(block_probability = state.max_infection_time < 1.0 ? 1.0 : 0.0)
 end
 
-# Moves every host's record on every case, so the race redraws pending contacts
-# at each step. A kernel whose records never move takes the ordinary path, which
-# is the point of the equivalence test below, so a test about redrawing has to
-# make something move.
+# Moves the record of every host on every case, which makes the race redraw pending
+# contacts at each step. A kernel with records that never move takes the ordinary
+# path, as the equivalence test below checks, so a redrawing test needs a record
+# that moves.
 struct TickEveryCase <: AbstractIntervention end
 function EpiBranch.resolve_individual!(::TickEveryCase, ind, state)
     for person in state.individuals
@@ -211,7 +211,7 @@ end
 
 function test_stateful_simulation(make_process, extract)
     @testset "An unchanging live kernel races as an ordinary one" begin
-        # Redrawing exists for hazards that move. A kernel whose records never
+        # Redrawing exists for hazards that move. A kernel with records that never
         # move must leave the race exactly where an ordinary kernel leaves it,
         # random stream included: a refresh that runs anyway is both wasted
         # and free to change the answer without any test noticing.
@@ -343,7 +343,7 @@ function test_stateful_simulation(make_process, extract)
     @testset "A live kernel timed from onset serves simulation and likelihood" begin
         # Infectiousness starts at the infector's symptom onset. The same
         # projection reads the onset from an individual in simulation and from
-        # the infection layer's host times in the likelihood.
+        # the host times of the infection layer in the likelihood.
         project(ind) = (onset = get(ind.state, :onset_time, NaN),)
         callback(c, a, b) = (a.onset - c.infector_infection_time) + Exponential(1.0)
         live = PairKernel(callback; state = project, watches = (:onset_time,))
