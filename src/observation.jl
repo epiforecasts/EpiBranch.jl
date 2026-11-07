@@ -338,8 +338,9 @@ reach the time it reports from (all of them from infection, the symptomatic
 ones from onset, read from the model's `clinical_presentation`), as
 `_incidence_reporting` does. `simulate` never reports a case whose `from` time
 is missing, and resets a report drawn after the case's outcome. A
-progression with a terminal step, a step that overwrites the `from` time, or
-a `from` the closed form cannot read, therefore throws an `ArgumentError` instead of scoring the wrong law.
+progression with a terminal step, a step that overwrites the `from` time, or a
+`from` the closed form cannot read therefore throws an `ArgumentError` instead
+of scoring the wrong law.
 """
 function _effective_reporting_probability(progression, attrs)
     ρ = _reporting_probability(progression)
@@ -353,8 +354,9 @@ function _effective_reporting_probability(progression, attrs)
     )
     r = only(filter(t -> t isa Reporting, progression))
     reached, _ = _infection_to(r.from, attrs)
-    # A step that writes the anchor itself overrides the onset the share is
-    # read from, so the share would not describe who is reported.
+    # Another step writes the time that `Reporting` reports from and overrides
+    # the onset the share is read from. The share then misdescribes who is
+    # reported.
     r.from isa Symbol && r.from !== :infection && any(
         t -> t isa Transition && t.time_key === _resolved_key(r.from), progression
     ) && throw(
