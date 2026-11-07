@@ -34,6 +34,16 @@ end
 InterventionAction(individual, time, effect!; claim! = nothing) =
     InterventionAction(individual, time, effect!, claim!)
 
+# Look up deferred action targets in the population being continued to ensure
+# that actions affect individuals in that population when continuing a copy.
+struct _DeferredAction{T, F}
+    individual_id::Int
+    time::T
+    effect!::F
+end
+_DeferredAction(action::InterventionAction) =
+    _DeferredAction(action.individual.id, action.time, action.effect!)
+
 """
     intervention_actions(intervention, state, candidates)
 
@@ -156,6 +166,11 @@ function _fire_action!(admitter, state, action)
     further = action.effect!(action.individual, action.time, state)
     _is_further_actions(further) && _admit_actions!(admitter, state, further, admitter)
     return nothing
+end
+
+function _fire_action!(admitter, state, action::_DeferredAction)
+    person = state.individuals[action.individual_id]
+    return _fire_action!(admitter, state, InterventionAction(person, action.time, action.effect!))
 end
 
 # Only a vector of `InterventionAction`s, [`intervention_actions`](@ref)'s own
