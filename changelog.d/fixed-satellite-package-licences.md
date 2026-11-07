@@ -1,0 +1,1 @@
+`lib/EpiNetwork` and `lib/EpiHouseholds` each carry their own `LICENSE`, a copy of the root MIT text. A subdirectory package is registered from the tree of its own directory, so without one the registry's licence check found no licence and blocked the registration.
