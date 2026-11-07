@@ -191,6 +191,11 @@ struct _ChainLengthLaw{M, K} <:
     Distributions.Distribution{Multivariate, Discrete}
     model::M
     kwargs::K
+
+    function _ChainLengthLaw(model::M, kwargs::K) where {M, K}
+        _chain_length_assert_full_reporting(progression(model))
+        return new{M, K}(model, kwargs)
+    end
 end
 
 function Distributions.logpdf(
@@ -340,6 +345,8 @@ Keywords `n_sim`, `n_initial`, `max_cases`, `max_generations`, `max_time`,
 `stopping_rules` and `rng` control the simulation used when no exact formula
 exists. Interventions come from the model; add them with a
 [`ModelSpec`](@ref). See [`ChainLengths`](@ref) for the length convention.
+Models with a `Reporting` probability below 1 are not supported, since
+undetected cases leave the observed chain length undefined.
 """
 function chain_length_distribution(model::TransmissionModel; kwargs...)
     nt_kwargs = NamedTuple(kwargs)
