@@ -34,8 +34,8 @@ end
 InterventionAction(individual, time, effect!; claim! = nothing) =
     InterventionAction(individual, time, effect!, claim!)
 
-# Resolve deferred targets through the executing population so that copied
-# continuations honour ownership when accessing a person.
+# Look up deferred action targets in the population being continued to ensure
+# that actions affect individuals in that population when continuing a copy.
 struct _DeferredAction{T, F}
     individual_id::Int
     time::T
