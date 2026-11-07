@@ -254,6 +254,10 @@ individual_type(ind::Individual) = get(ind.state, :type, 1)::Int
 # and names it from `removal_gap_host_times`.
 const REMOVAL_STRETCHES_KEY = :_removal_stretches
 
+# Isolation reads its own removals so a quarantine cannot acquire isolation's
+# route coverage when the two interventions are composed.
+const ISOLATION_STRETCHES_KEY = :_isolation_stretches
+
 # The key a removal that only blocks a fraction of the hazard (see
 # `removal_block_probability`) records its stretches under, apart from
 # `REMOVAL_STRETCHES_KEY`'s complete ones, so a likelihood never mistakes one
@@ -290,9 +294,10 @@ for leaky isolation. `:isolated` in an `until` instead refers to a
 `Transition(:isolated, …)` step in the natural history.
 
 `key` names the [`record_removal!`](@ref EpiBranch.record_removal!) key the
-stretch goes under, the shared key by default. A removal that only blocks a
-fraction of the hazard passes its own key instead, apart from the shared one,
-so a likelihood never mistakes one for the other.
+stretch goes under, the shared key by default. An intervention can pass its
+own key so its risk and route coverage apply only to its own removals. A
+removal that only blocks a fraction of the hazard also needs a separate key
+so a likelihood never mistakes it for a complete removal.
 
 `unrecorded` says whether this particular removal counts as a detection (see
 [`is_isolated`](@ref)): `false` (the default) records it, `true` keeps it out
@@ -721,9 +726,9 @@ end
 """
     removal_stretches(ind, key = :_removal_stretches)
 
-Every period during which `ind` could not transmit, such as isolation or
-quarantine, as sorted, non-overlapping `(start, release)` pairs in days; a
-release of `Inf` means it never ended. Recorded by
+The periods recorded under `key` during which `ind` could not transmit, such
+as isolation or quarantine, as sorted, non-overlapping `(start, release)` pairs
+in days; a release of `Inf` means it never ended. Recorded by
 [`record_removal!`](@ref EpiBranch.record_removal!).
 
 [`isolation_time`](@ref) and [`isolation_release_time`](@ref) give only the
@@ -754,8 +759,9 @@ function clear_isolated!(ind::Individual)
     ind.state[:isolation_time] = Inf
     ind.state[:isolation_release_time] = Inf
     # Every isolation-span entry (`_set_isolated!`'s) is filed under one of
-    # these two keys, so dropping both also clears the span.
+    # these three keys, so dropping them also clears the span.
     _withdraw_all_removals!(ind, REMOVAL_STRETCHES_KEY)
+    _withdraw_all_removals!(ind, ISOLATION_STRETCHES_KEY)
     # Leaky isolation's own record, apart from the shared history above; only
     # `Isolation` ever writes it, so clearing it unconditionally is safe.
     _withdraw_all_removals!(ind, LEAKY_REMOVAL_STRETCHES_KEY)

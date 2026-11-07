@@ -237,7 +237,7 @@ EpiBranch.records_contacts(::AlwaysRecord, parent, contact, state, t) = true
         ind = Individual(id = 1)
         ind.infection_time = 0.0
         ind.state[:recovered_time] = 10.0
-        set_isolated!(ind, 3.0; release_time = Inf)
+        set_isolated!(ind, 3.0; release_time = Inf, key = EpiBranch.ISOLATION_STRETCHES_KEY)
 
         household = RouteWindow(:household; until = (:recovered,), kernel = nothing)
         community = RouteWindow(

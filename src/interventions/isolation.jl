@@ -183,7 +183,7 @@ intervention_time(::Isolation, ind::Individual) = isolation_time(ind)
 # release to leave it for.
 function infectious_removal_time(iso::Isolation, ind::Individual)
     iso.post_isolation_transmission == 0 || return Inf
-    return permanent_removal_time(ind)
+    return permanent_removal_time(ind, ISOLATION_STRETCHES_KEY)
 end
 
 """An isolated infector does not infect a contact while isolated, from its
@@ -192,7 +192,7 @@ isolation time until its [`isolation_release_time`](@ref) (never released when
 `1 - post_isolation_transmission`."""
 function competing_risk(iso::Isolation, parent, contact, state)
     key = iso.post_isolation_transmission == 0 ?
-        REMOVAL_STRETCHES_KEY : LEAKY_REMOVAL_STRETCHES_KEY
+        ISOLATION_STRETCHES_KEY : LEAKY_REMOVAL_STRETCHES_KEY
     return _removal_risks(parent, 1.0 - iso.post_isolation_transmission, key)
 end
 
@@ -218,7 +218,7 @@ function removal_gap_host_times(iso::Isolation)
     # of `Inf` closes the window instead and has no stretch of its own to add.
     iso.post_isolation_transmission == 0 || return (LEAKY_REMOVAL_STRETCHES_KEY,)
     iso.duration === Inf && return ()
-    return (REMOVAL_STRETCHES_KEY,)
+    return (ISOLATION_STRETCHES_KEY,)
 end
 
 # Leaky isolation's residual block stands in for the removal perfect isolation
@@ -316,11 +316,10 @@ function _isolate!(iso::Isolation, individual, state, time)
         iso.duration, state.rng, individual, "`Isolation`'s `duration`"
     )
     release = time + duration
-    # Leaky isolation records under its own key, apart from the shared one,
-    # keeping a likelihood from mistaking this stretch for a complete
-    # removal's.
+    # Each kind of isolation reads its own stretches, apart from quarantine
+    # and from removals with a different block probability.
     record_key = iso.post_isolation_transmission == 0 ?
-        REMOVAL_STRETCHES_KEY : LEAKY_REMOVAL_STRETCHES_KEY
+        ISOLATION_STRETCHES_KEY : LEAKY_REMOVAL_STRETCHES_KEY
     unrecorded = !records_isolation(iso.eligibility, individual, state, time)
     handle = _set_isolated!(
         individual, time; release_time = release, key = record_key, unrecorded
