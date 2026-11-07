@@ -191,7 +191,7 @@ This differs from `GammaBorel`, where each case has its own reproduction
 number (negative binomial offspring). [`chain_size_distribution`](@ref)
 returns it for `ClusterMixed(Poisson, Gamma(...))`.
 With several seeds, each index case starts an independent chain with its own
-rate; their total size follows the convolution of the single-seed laws.
+rate. The distribution of their total size is the convolution of the single-seed laws.
 """
 struct PoissonGammaChainSize{T <: Real} <: ChainSizeLaw
     k::T
@@ -208,8 +208,8 @@ end
 Distributions.params(d::PoissonGammaChainSize) = (d.k, d.R)
 
 """
-Single-seed log-PDF of the PoissonGammaChainSize distribution (AD-compatible),
-integrating the Borel PMF over the Gamma mixing rate in closed form.
+Single-seed log-PDF of the PoissonGammaChainSize distribution (AD-compatible).
+The integral of the Borel PMF over the Gamma mixing rate has a closed form.
 
 This is a port of `.gborel_size_ll` in
 epichains (Azam, Funk & Finger,
@@ -282,9 +282,9 @@ end
 """
 Internal: log-PMF of the sum of `s` independent single-seed chain sizes.
 Convolve in log space to retain very small probabilities and parameter types
-for automatic differentiation. Only excess sizes up to `x - s` contribute,
-so the calculation costs `O(s * (x - s + 1)^2)` and uses `O(x - s + 1)` space.
-Finite-chain mass is left unnormalised when infinite chains are possible.
+for automatic differentiation. Only excess sizes up to `x - s` contribute.
+The calculation takes `O(s * (x - s + 1)^2)` time and uses `O(x - s + 1)` space.
+Finite-chain mass remains unnormalised when infinite chains are possible.
 """
 function _independent_chain_size_logpdf(d, x::Integer, s::Integer)
     s == 1 && return logpdf(d, x)
@@ -628,8 +628,8 @@ Only chains started by a single index case are supported (`seeds == 1` in
     This needs the chain size distribution of `offspring` from several
     starting cases, which [`HittingTimeChainSize`](@ref EpiBranch.HittingTimeChainSize)
     gives for any discrete `offspring`. For [`ClusterMixed`](@ref), each
-    secondary case starts an independent chain with its own mixed parameter;
-    their total size is computed by convolution of the single-seed laws.
+    secondary case starts an independent chain with its own mixed parameter.
+    The distribution of their total size is the convolution of the single-seed laws.
 
 # Examples
 

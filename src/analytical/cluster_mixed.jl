@@ -27,8 +27,8 @@ an exact chain size distribution, which is used automatically; other
 combinations are evaluated numerically by integrating over `mixing`.
 
 Each index case starts an independent chain and draws its own `θ`, including
-when several index cases contribute to one cluster's total size (`seeds > 1`
-in [`ChainSizes`](@ref)). Descendants share their index case's `θ`.
+when several index cases contribute to the total size of one cluster (`seeds > 1`
+in [`ChainSizes`](@ref)). Descendants share the `θ` drawn by their index case.
 
 # Examples
 
