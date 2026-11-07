@@ -345,8 +345,8 @@ Keywords `n_sim`, `n_initial`, `max_cases`, `max_generations`, `max_time`,
 `stopping_rules` and `rng` control the simulation used when no exact formula
 exists. Interventions come from the model; add them with a
 [`ModelSpec`](@ref). See [`ChainLengths`](@ref) for the length convention.
-Models with a `Reporting` probability below 1 are not supported, since
-undetected cases leave the observed chain length undefined.
+Models with a `Reporting` probability below 1 are not supported because
+the observed chain length is undefined when cases go undetected.
 """
 function chain_length_distribution(model::TransmissionModel; kwargs...)
     nt_kwargs = NamedTuple(kwargs)

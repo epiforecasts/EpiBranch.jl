@@ -461,7 +461,7 @@ distribution is Poisson or negative binomial, and R is below 1; otherwise
 estimated from `n_sim` simulated outbreaks (keywords as for chain sizes).
 `n_initial` is the number of independent seeds the chains started from, and
 applies on both paths. Not available with an observation model or a
-`Reporting` probability below 1, since a chain with undetected cases has no
+`Reporting` probability below 1 because a chain with undetected cases has no
 well-defined observed length.
 """
 function loglikelihood(data::ChainLengths, model::TransmissionModel; kwargs...)
