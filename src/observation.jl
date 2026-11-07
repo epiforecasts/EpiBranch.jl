@@ -332,17 +332,43 @@ function _reporting_probability(progression)
 end
 
 """
-Thin `base` by a `Reporting` step's detection probability, read straight from
-`progression`, so the closed-form chain-size law and `chain_size_distribution`
-read the same source `simulate` and [`progression_loglik`](@ref) do. Returns
-`base` unchanged when `progression` has no `Reporting` step, or one with
-probability `1`. Throws the same `ArgumentError` `simulate` does (via
-`apply_observation!`) when `obs` is a [`PerCaseObservation`](@ref) or a
-[`ChainDetection`](@ref) and `progression` also has a `Reporting` step,
-rather than silently thinning by both.
+Per-case probability that a case is reported, or `nothing` when `progression`
+has no `Reporting` step: the step's probability times the share of cases that
+reach the time it reports from (all of them from infection, the symptomatic
+ones from onset, read from the model's `clinical_presentation`), as
+`_incidence_reporting` does. `simulate` never reports a case whose `from` time
+is missing, and resets a report drawn after the case's outcome, so a
+progression with a terminal step, or a `from` the closed form cannot read,
+throws an `ArgumentError` rather than scoring the wrong law.
 """
-function _fold_reporting(progression, base, obs)
+function _effective_reporting_probability(progression, attrs)
     ρ = _reporting_probability(progression)
+    ρ === nothing && return nothing
+    any(is_terminal, progression) && throw(
+        ArgumentError(
+            "a `Reporting` step is censored by the case's outcome (`Recovery`, " *
+                "`Death` or another terminal step), which the closed form does " *
+                "not model; simulate instead."
+        )
+    )
+    r = only(filter(t -> t isa Reporting, progression))
+    reached, _ = _infection_to(r.from, attrs)
+    return ρ * reached
+end
+
+"""
+Thin `base` by the per-case report probability of the `Reporting` step in
+`progression` (see `_effective_reporting_probability`), so the closed-form
+chain-size law and `chain_size_distribution` read the same source `simulate`
+and [`progression_loglik`](@ref) do. Returns `base` unchanged when
+`progression` has no `Reporting` step, or one that reports every case. Throws
+the same `ArgumentError` `simulate` does (via `apply_observation!`) when `obs`
+is a [`PerCaseObservation`](@ref) or a [`ChainDetection`](@ref) and
+`progression` also has a `Reporting` step, rather than silently thinning by
+both.
+"""
+function _fold_reporting(progression, base, obs, attrs)
+    ρ = _effective_reporting_probability(progression, attrs)
     ρ === nothing && return base
     obs isa Union{PerCaseObservation, ChainDetection} && throw(
         ArgumentError(

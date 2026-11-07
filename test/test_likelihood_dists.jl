@@ -137,7 +137,7 @@
             ModelSpec(bp; observation = MinimumSize(2)),
             ModelSpec(bp; observation = PerCaseObservation(; detection_prob = 0.5)),
             ModelSpec(bp; observation = ChainDetection(0.4)),
-            ModelSpec(bp; progression = [Reporting(delay = Dirac(0.0), probability = 0.5)]),
+            ModelSpec(bp; progression = [Reporting(delay = Dirac(0.0), probability = 0.5, from = :infection)]),
         )
         for spec in specs
             closed_form = sum(logpdf(chain_size_distribution(spec), n) for n in data)
@@ -160,6 +160,57 @@
             ]
         )
         @test chain_size_distribution(model) isa Distribution
+    end
+
+    @testset "chain_size_distribution — Reporting thins by the share of cases that reach `from`" begin
+        proc = BranchingProcess(NegBin(0.8, 0.5), LogNormal(1.6, 0.5))
+        clinical(pa) = clinical_presentation(
+            incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = pa
+        )
+        base = chain_size_distribution(proc)
+        # From onset, asymptomatic cases are never reported.
+        d = chain_size_distribution(
+            ModelSpec(
+                proc; progression = [Reporting(delay = 0.0, probability = 0.8)],
+                attributes = clinical(0.5)
+            )
+        )
+        @test d isa EpiBranch.ThinnedChainSize
+        @test d.detection_prob ≈ 0.4
+        # From infection, every case can be reported.
+        d_inf = chain_size_distribution(
+            ModelSpec(
+                proc;
+                progression = [Reporting(delay = 0.0, probability = 0.8, from = :infection)],
+                attributes = clinical(0.5)
+            )
+        )
+        @test d_inf.detection_prob ≈ 0.8
+        # Probability 1 from onset with asymptomatic cases is still thinned.
+        d_one = chain_size_distribution(
+            ModelSpec(
+                proc; progression = [Reporting(delay = 0.0, probability = 1.0)],
+                attributes = clinical(0.5)
+            )
+        )
+        @test d_one isa EpiBranch.ThinnedChainSize
+        @test loglikelihood(ChainSizes([1, 2, 3]), ModelSpec(
+            proc; progression = [Reporting(delay = 0.0, probability = 1.0)],
+            attributes = clinical(0.0)
+        )) ≈ sum(logpdf(base, n) for n in [1, 2, 3])
+        # An outcome step censors reports, which the closed form does not model.
+        d_out = chain_size_distribution(
+            ModelSpec(
+                proc;
+                progression = [
+                    Reporting(delay = 0.0, probability = 1.0),
+                    Death(delay = LogNormal(2.0, 0.4), probability = 0.5),
+                ],
+                attributes = clinical(0.0)
+            )
+        )
+        @test !(d_out isa EpiBranch.ThinnedChainSize)
+        @test !(d_out isa EpiBranch.GammaBorel)
     end
 
     @testset "rand draws chain sizes from the underlying model" begin
