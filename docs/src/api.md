@@ -66,8 +66,8 @@ closed, homogeneously-mixing SIR population (the dynamics
 [`HomogeneousProcess`](@ref) simulates exactly) as a state-space model.
 [`MixingMeanFieldProcess`](@ref) and [`MixingLinearNoiseProcess`](@ref) do the
 same for a population with several mixing groups ([`MixingProcess`](@ref)),
-built straight from the `ModelSpec` they approximate rather than given the
-group sizes and the between-group rate again. All four share
+built from the `ModelSpec` they approximate, including its
+group sizes and between-group rate. All four share
 `simulate(model, state; max_time)` with the exact simulation so an external
 Kalman or particle filter can run on any of them. [`HybridProcess`](@ref)
 combines an exact model with its approximation: exact simulation while the
@@ -90,7 +90,7 @@ HybridState
 ## Simulating a branching process by generation
 
 [`simulate_by_generation`](@ref) simulates a [`BranchingProcess`](@ref) with
-discrete generations as case counts rather than individuals, much cheaper over
+discrete generations using case counts, reducing computation for
 a large or finite population. It shares `simulate(model, state;
 max_generations)` with the exact, individual-based simulation.
 
@@ -100,7 +100,7 @@ at a time, as the individual-based simulation does. `StartOfGenerationDepletion`
 thins the contacts of a type by its susceptible share at the start of the
 generation, in one binomial draw capped at the susceptibles left, as
 discrete-generation models usually do. With the second rule and an offspring
-law whose sum has a closed form (`Poisson`, `NegBin`, `Binomial`), a generation
+law with a closed-form sum (`Poisson`, `NegBin`, `Binomial`), a generation
 costs the same whatever the number of cases.
 
 ```@docs
@@ -580,6 +580,17 @@ NetworkInfections
 routed_network_infections
 RoutedNetworkInfections
 RoutedMassActionHazard
+```
+
+### Serial interval likelihood
+
+The distribution of the serial interval between a linked pair, for fitting
+timing data such as serial intervals from contact-traced pairs. Available
+once CensoredDistributions.jl and ConvolvedDistributions.jl are loaded,
+through a package extension.
+
+```@docs
+serial_interval
 ```
 
 ## Distribution helpers

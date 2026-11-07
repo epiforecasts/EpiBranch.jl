@@ -1458,7 +1458,7 @@ function _sellke_race!(
         _set_onset_from_incubation!(ind)
         # Cases are popped in increasing infection time: this case's infection
         # time is the clock, and it is the next case in sequence, unless it is
-        # a reinfection of someone already counted — `cumulative_cases` counts
+        # a reinfection of someone already counted: `cumulative_cases` counts
         # people, not episodes, as the post-loop reconcile
         # (`_reconcile_sellke_bookkeeping!`) does, so a reinfection leaves the
         # count unchanged.
@@ -1596,7 +1596,7 @@ end
 #
 # `contacts`/`introduction`/`watches`/`projections`/`max_generation`/
 # `stopping_rules` are only needed for the `_RaceContinuation` built below, so
-# they are threaded through as plain arguments rather than carried on `race`
+# they are threaded through as plain arguments rather than stored on `race`
 # itself: `race` is passed to every route and intervention hook in the race's
 # hot loop, and keeping these fields on it there measurably slowed every one
 # of those calls.
@@ -1690,12 +1690,12 @@ _return_buffers!(b::_RaceBuffers) = _return_pooled!(b)
 
 A race cut off by `max_time`, a stopping rule or `max_generation`, kept on
 [`SimulationState`](@ref)'s `continuation` field so [`simulate`](@ref)'s
-continuation method can pop up where it stopped: the routes it was running,
+continuation method can resume where it stopped: the routes it was running,
 with whatever bookkeeping a route keeps on itself (such as `_MassAction`'s
 cut group pairs), the members it raced over, its `contacts`/`introduction`/
 `watches`/`projections`, the case and generation caps besides `max_time`
 itself, and the buffers its queue and every other pending proposal live in.
-`may_block` is kept too, since it sized those buffers: a continuation call
+`may_block` is kept too, because it sized those buffers: a continuation call
 whose `interventions`/`risks` would recompute it differently is refused
 rather than indexing buffers sized for the old value. `cut_by_max_time` is
 `false` when a stopping rule or `max_generation` ended the race rather than

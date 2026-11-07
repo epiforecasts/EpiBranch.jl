@@ -21,8 +21,8 @@ _group_key(ind, mixing_by::Tuple) = Tuple(get(ind.state, k, missing) for k in mi
 # The groups `spec`'s `attributes` assign and how many people land in each,
 # realised by actually building the population (`new_state` plus
 # `add_individuals!`, with nobody infected and no interventions), so a group
-# assignment that depends on anything `attributes` can see — an individual's
-# id, say — is read exactly as the exact model would read it. A stochastic
+# assignment that depends on values available to `attributes` (such as an
+# individual id) is evaluated as it would be in the exact model. A stochastic
 # assignment would make the group sizes themselves random on every draw,
 # which a fixed-size compartment cannot represent, so `attributes` is
 # expected to assign groups deterministically.
@@ -97,8 +97,8 @@ scaling it are all read from `spec`, so the same mixing structure drives the
 exact and the approximate dynamics rather than being given twice: the group
 sizes are read by building the population `spec` describes (with nobody
 infected) and counting who `attributes` puts in each group. The groups must
-come out the same on every draw (by `ind.id`, say), since a fixed-size
-compartment cannot represent a group whose size is itself random.
+come out the same on every draw (by `ind.id`, say), because a fixed-size
+compartment cannot represent a group with a random size.
 
 `removal_rate` (γ) is the exponential removal rate the exact model's
 progression gives its terminal step, exactly as [`MeanFieldProcess`](@ref)'s
@@ -106,9 +106,9 @@ own `removal_rate` is. The compartments are integrated as continuous
 numbers, not people, by fourth-order Runge–Kutta with a fixed step of
 `step` days.
 
-Vaccination is not yet read from `spec`'s interventions as a population-level
-input, so `spec` must have none: building the approximation from a model
-with any would silently leave their effect out rather than fold it in.
+Vaccination is not yet read from the interventions in `spec` as a
+population-level input. `spec` must have no interventions to avoid
+approximating a model that omits their effects.
 
 Pass the result to [`simulate`](@ref) for a [`MixingMeanFieldState`](@ref),
 and that state back to [`simulate`](@ref), with a later `max_time`, to continue
@@ -258,7 +258,7 @@ function _rk4_mixing_step(S, I, t::Real, dt::Real, drift)
 end
 
 # Fixed-step RK4 from `t0` to `max_time`, in steps no longer than
-# `model.step` (the last one shortened to land exactly on `max_time`),
+# `model.step` (the last one shortened to end exactly at `max_time`),
 # mirroring `_integrate_sir` for the scalar case.
 function _integrate_mixing_sir(model::MixingMeanFieldProcess, S, I, t0, max_time)
     γ = model.removal_rate
@@ -289,8 +289,8 @@ infection and removal reactions in every group and is damped by the
 linearised dynamics around the mean.
 
 Accepts the same keywords as [`MixingMeanFieldProcess`](@ref), built from the
-same `ModelSpec`, and the mean path integrates identically; only the
-covariance is new.
+same `ModelSpec`. The mean path integrates identically, with the
+addition of the covariance.
 
 # Example
 
@@ -347,7 +347,7 @@ end
 The Gaussian state of a [`MixingLinearNoiseProcess`](@ref): mean compartment
 counts `S`, `I` and `R` (one per mixing group), time `t`, and `covariance`,
 the `2|groups| × 2|groups|` covariance of `(S_1, ..., S_g, I_1, ..., I_g)`
-(`R` has no separate uncertainty, since each group's is
+(`R` has no separate uncertainty, because each group's is
 `group_sizes[g] - S[g] - I[g]`).
 """
 struct MixingLinearNoiseState{G}

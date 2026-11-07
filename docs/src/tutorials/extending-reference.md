@@ -53,11 +53,11 @@ underscore are internal.
 | `:_leaky_removal_stretches` | `Vector{Tuple{Float64,Float64}}` | `[]` | `Isolation` | `resolve_individual!`; internal. The stretches of a leaky isolation, apart from `:_removal_stretches`'s complete ones |
 | `:_quarantine_stretches` | `Vector{Tuple{Float64,Float64}}` | `[]` | `ContactTracing`/`SourceTracing`'s `Quarantine` | `apply_trace!`; internal. The quarantine's own stretches, apart from the shared history |
 | `:_lapsing_removal_keys` | `Tuple{Vararg{Symbol}}` | `()` | `record_removal!` | Internal. The keys under which a releasing stretch has been recorded, checked against `removal_gap_host_times` when the infection layer is built |
-| `:_removal_handle_counter` | `Int` | `0` | `record_removal!` | Internal. Counts up so every entry gets its own handle |
-| `:_removal_entries` | `Vector{Tuple{Int,Symbol,Float64,Float64,Bool,Bool}}` | — | `record_removal!`, `set_isolated!` | Internal. Every stretch ever recorded, as `(handle, key, start, release, isolation_span, unrecorded)`. Each key's merged `removal_stretches` cache is rebuilt from it on a `revise_removal!`/`withdraw_removal!` call; `isolation_span` entries (`set_isolated!`'s) are also folded to recompute `:isolation_time`, `:isolation_release_time` and `:_isolation_unrecorded` |
+| `:_removal_handle_counter` | `Int` | `0` | `record_removal!` | Internal. Assigns a unique handle to each entry |
+| `:_removal_entries` | `Vector{Tuple{Int,Symbol,Float64,Float64,Bool,Bool}}` | — | `record_removal!`, `set_isolated!` | Internal. Every stretch ever recorded, as `(handle, key, start, release, isolation_span, unrecorded)`. The merged `removal_stretches` cache for each key is rebuilt from these entries on a `revise_removal!`/`withdraw_removal!` call; `isolation_span` entries (from `set_isolated!`) are also folded to recompute `:isolation_time`, `:isolation_release_time` and `:_isolation_unrecorded` |
 | `:_isolation_unrecorded` | `Bool` | `false` | `Isolation`, `ContactTracing`/`SourceTracing` | `resolve_individual!` / `apply_trace!`; internal. The isolation removes the case from transmission without counting as a detection |
-| `:_isolation_handle` | `Int` | — | `Isolation` | `resolve_individual!`; internal. The handle of `Isolation`'s own entry, so `reset!` can withdraw exactly it |
-| `:_quarantine_removal_handles` | `Vector{Int}` | — | `ContactTracing`/`SourceTracing`'s `Quarantine` | `apply_trace!`; internal. The handles of every entry a quarantine has recorded, so a full reset withdraws each one |
+| `:_isolation_handle` | `Int` | — | `Isolation` | `resolve_individual!`; internal. The handle of the entry recorded by `Isolation`, which `reset!` uses to withdraw it |
+| `:_quarantine_removal_handles` | `Vector{Int}` | — | `ContactTracing`/`SourceTracing`'s `Quarantine` | `apply_trace!`; internal. The handles of all entries recorded by a quarantine; a full reset withdraws each one |
 | `:test_positive` | `Bool` | `false` | `Isolation` | `initialise_individual!` |
 | `:traced` | `Bool` | `false` | `ContactTracing`, `SourceTracing` | `trace_contacts!` |
 | `:quarantined` | `Bool` | `false` | `ContactTracing`, `SourceTracing` | `trace_contacts!` |
@@ -558,11 +558,11 @@ instead of ending a pair whose contacts could still transmit.
 
 A release can still be revised once something that was not known when it was
 recorded settles: [`EpiBranch.revise_removal!`](@ref EpiBranch.revise_removal!)
-changes the release of the entry the handle
-[`record_removal!`](@ref EpiBranch.record_removal!) returned names, shortening
+changes the release of the entry identified by the handle returned by
+[`record_removal!`](@ref EpiBranch.record_removal!), shortening
 or lengthening the stretch, and
 [`EpiBranch.withdraw_removal!`](@ref EpiBranch.withdraw_removal!) undoes it
-outright. `binding_release`'s promise still holds so long as the revision
+outright. The `binding_release` contract still holds if the revision
 happens before anything reads the old release, such as in
 [`on_infection_settled!`](@ref EpiBranch.on_infection_settled!), called the
 moment a case's own infection is fixed and before it has made any
@@ -1047,4 +1047,4 @@ before.
 | Per-cluster information | Either computed into existing `ChainSizes` fields, or a new data type with a `loglikelihood` method that passes each group to `loglikelihood(ChainSizes(sizes; seeds), offspring)` | Likelihood |
 | A per-person or per-pair draw that should stay aligned under `CommonRandomNumbers` | `EpiBranch.stream(rng, id, purpose)` in place of `rng` | Wherever the draw happens |
 | An offspring family usable with `simulate_by_generation`'s `multiplier` | `EpiBranch._scale_mean(::YourDistribution, m::Real)`, returning the law with its mean scaled by `m` | Each generation, once, before every case of it draws |
-| An offspring family whose generation total `simulate_by_generation` draws in one step | `EpiBranch._sum_offspring(rng, ::YourDistribution, n::Int)`, returning the sum of `n` independent draws | Each generation, in place of `n` draws |
+| An offspring family with a generation total drawn in one step by `simulate_by_generation` | `EpiBranch._sum_offspring(rng, ::YourDistribution, n::Int)`, returning the sum of `n` independent draws | Each generation, in place of `n` draws |

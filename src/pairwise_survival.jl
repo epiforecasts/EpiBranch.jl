@@ -1021,7 +1021,7 @@ appear only as infectors. With `external = true` every infection is explained,
 and each person gets an extra row for infection from outside. `explain_index`
 (default `external`) decides this for index cases alone. A source read off
 the outbreak's own infectious windows, such as `MassActionHazard`, sets it to
-`false` even with `external = true`, since it has nothing infectious before
+`false` even with `external = true`, because it has nothing infectious before
 the first case to explain one. The single-argument form reads the contact
 structure from `data` with [`contact_structure`](@ref
 EpiBranch.contact_structure) and takes as infected everyone with a non-`NaN`
@@ -1350,7 +1350,7 @@ A person is counted in `I(t)` over `(infectious_time, removal_time]`, the same
 convention a pairwise row's own exposure uses, so a secondary infected at the
 exact moment their infector is removed is scored the same way by both. This
 already leaves everybody out of their own `I(t)` at their own infection time,
-with no separate bookkeeping needed, since a person is infected no later than
+with no separate bookkeeping needed, because a person is infected no later than
 they become infectious.
 
 With nobody infectious before the first case, mass action alone cannot explain
@@ -1517,7 +1517,7 @@ function _ext_prepare(m::MassActionHazard, data::InfectionLayer)
 end
 
 # Every person shares the one population-wide schedule: nobody is ever in
-# their own `I(t)`, since a person is infected no later than they become
+# their own `I(t)`, because a person is infected no later than they become
 # infectious and `(open, close]` counting excludes their own window at and
 # before its own opening.
 _ext_survival_of(s::_MassActionSchedule, j) = s

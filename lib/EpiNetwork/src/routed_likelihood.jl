@@ -117,7 +117,7 @@ function EpiBranch.contact_structure(data::RoutedNetworkInfections)
 end
 
 # A bare `MassActionHazard` has one infectious window per person to read I(t)
-# off, but `RoutedNetworkInfections` carries one per route; a union across
+# off, but `RoutedNetworkInfections` has one per route; a union across
 # routes would be wrong exactly where routes matter (isolation closing the
 # community route while the household one stays open would still count that
 # person). Caught here, before `_mass_action_schedule` is reached with a
@@ -145,7 +145,7 @@ infectious on a route an intervention closed for them.
 Pass it as [`pairwise_surv_loglik`](@ref)'s `external_hazard` the way a bare
 [`MassActionHazard`](@ref) is passed for a single-route `InfectionLayer`; a
 bare `MassActionHazard` given directly for `RoutedNetworkInfections` is
-rejected with a message pointing here, since it has no one route's windows to
+rejected with a message pointing here, because it has no one route's windows to
 read.
 """
 struct RoutedMassActionHazard{T <: Real}
@@ -414,8 +414,8 @@ single-route likelihood reads it, taken out of its own exposure.
 
 `external_hazard` is community infection shared across every route, as for
 [`NetworkProcess`](@ref)'s likelihood. A bare [`MassActionHazard`](@ref) is
-rejected here, since it has no single infectious window to read when `data`
-carries one per route; pass a [`RoutedMassActionHazard`](@ref) naming the
+rejected here, because it has no single infectious window to read when `data`
+has one per route; pass a [`RoutedMassActionHazard`](@ref) naming the
 route whose windows it should read instead.
 
 `susceptibility` is an effect on people's own risk of infection, such as a

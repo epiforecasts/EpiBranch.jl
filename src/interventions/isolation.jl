@@ -229,7 +229,7 @@ function reset!(::Isolation, ind::Individual)
     # Only undo an isolation this Isolation set, named by the handle it kept
     # when it recorded one. Withdrawing exactly that entry leaves any
     # quarantine Isolation was layered over, or layered under, standing on
-    # its own record untouched — resetting unconditionally would
+    # its own record untouched. Resetting unconditionally would
     # un-quarantine a validly-traced contact when a Scheduled(Isolation) sees
     # its pre-start isolation time.
     handle = get(ind.state, :_isolation_handle, nothing)
@@ -308,7 +308,7 @@ end
 # its own entry, whether or not a removal already stands: a quarantine
 # already in force keeps its own entry untouched, so `isolation_time` reads
 # as the union of the two where they overlap or touch, and as this one alone
-# where they do not — the later of the two, since a disjoint one earlier than
+# where they do not: the later of the two, because a disjoint one earlier than
 # `time` is already spent. The handle this entry gets is kept so a `reset!`
 # can later withdraw exactly it, leaving any other entry be.
 function _isolate!(iso::Isolation, individual, state, time)

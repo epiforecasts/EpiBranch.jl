@@ -15,7 +15,16 @@ Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 SpecialFunctions = "276daf66-3868-5448-9aa4-cd146d93841b"
 SurvivalDistributions = "7121986e-ae89-4673-ae4e-1cb822919a18"
 
+[weakdeps]
+CensoredDistributions = "b2eeebe4-5992-4301-9193-7ebc9f62c855"
+ConvolvedDistributions = "f5b942c9-bc5b-4664-8486-7f531bb06742"
+
+[extensions]
+EpiBranchCensoredDistributionsExt = ["CensoredDistributions", "ConvolvedDistributions"]
+
 [compat]
+CensoredDistributions = "0.2"
+ConvolvedDistributions = "0.4"
 DataFrames = "1"
 Dates = "1"
 Distributions = "0.25"

@@ -269,7 +269,7 @@ end
     end
 
     @testset "routed_network_infections rejects a route that proposes its own contacts" begin
-        # a route whose `reach` proposes its own contacts has nothing for
+        # a route for which `reach` proposes its own contacts has nothing for
         # `routed_network_infections` to read as a fixed adjacency list;
         # caught here with a clear message rather than left to fail inside
         # `_route_kernel` once the likelihood tries to call a `nothing` kernel.

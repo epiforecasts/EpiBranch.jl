@@ -117,7 +117,7 @@ using Random
         close_episode!(ind, InfectionEpisode(ind))
         ind.infection_time = 30.0
 
-        # The only terminal step never fires, so `resolve_transitions!` finds
+        # The only terminal step never occurs, so `resolve_transitions!` finds
         # no terminal candidate of its own for this episode.
         progression = AbstractClinicalTransition[
             Transition(:recovered, from = :infection, delay = 1.0, probability = 0.0, terminal = true),
