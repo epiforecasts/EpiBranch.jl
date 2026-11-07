@@ -402,7 +402,7 @@ function _chain_size_model_loglik(
         try
             d = observe(
                 _fold_reporting(
-                    prog, chain_size_distribution(single_type_offspring(process)), obs
+                    prog, chain_size_distribution(single_type_offspring(process)), obs, attrs
                 ),
                 obs
             )

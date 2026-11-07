@@ -288,7 +288,7 @@ function chain_size_distribution(
         # a user error, and should propagate rather than be swallowed here.
         folded = try
             base = chain_size_distribution(single_type_offspring(model))
-            _fold_reporting(progression(model), base, observation(model))
+            _fold_reporting(progression(model), base, observation(model), attributes(model))
         catch e
             (e isa MethodError || e isa ArgumentError) || rethrow()
             nothing
@@ -310,7 +310,7 @@ function chain_size_distribution(
             all(offspring_law_unchanged, progression(spec))
         folded = try
             base = chain_size_distribution(single_type_offspring(spec.process))
-            _fold_reporting(progression(spec), base, observation(spec))
+            _fold_reporting(progression(spec), base, observation(spec), attributes(spec))
         catch e
             (e isa MethodError || e isa ArgumentError) || rethrow()
             nothing
