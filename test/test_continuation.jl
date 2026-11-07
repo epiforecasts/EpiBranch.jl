@@ -2,6 +2,21 @@ using Distributions
 using Statistics
 using StableRNGs
 
+struct ContinuationAction <: EpiBranch.AbstractIntervention end
+EpiBranch.needs_contacts(::ContinuationAction) = false
+function EpiBranch.intervention_actions(::ContinuationAction, state, candidates)
+    return [
+        EpiBranch.InterventionAction(
+            ind, 10.0, (person, at, st) -> (person.state[:continued_action] = at)
+        ) for ind in candidates
+    ]
+end
+function EpiBranch.action_candidates(
+        ::ContinuationAction, state, current, traced, is_pending, members, contacts
+    )
+    return current.infection_time == 0.0 ? [state.individuals[1]] : Individual[]
+end
+
 # A tiny observation model that only counts how often it ran, to check that
 # a continued run never applies it (see "no observation on continuation"
 # below).
@@ -430,6 +445,30 @@ end
     same(a, b) = a.cumulative_cases == b.cumulative_cases &&
         length(a.individuals) == length(b.individuals) &&
         all(isequal(x, y) for (x, y) in zip(times(a), times(b)))
+
+    @testset "pending actions affect only the continued population" begin
+        action_model = ModelSpec(
+            HomogeneousProcess(transmission_rate = 0.4, population_size = 500);
+            progression = [Transition(:recovered; rate = 0.2, terminal = true)],
+            interventions = [ContinuationAction()]
+        )
+        for original_first in (false, true)
+            state = simulate(action_model; max_time = 5.0, n_initial = 5, rng = StableRNG(11))
+            @test !isempty(state.continuation.buffers.pending_actions)
+            deep = deepcopy(state)
+            copied = copy(state)
+            first, second = original_first ? (state, copied) : (copied, state)
+            simulate(action_model, first; max_time = 12.0)
+            @test get(first.individuals[1].state, :continued_action, nothing) == 10.0
+            @test !haskey(second.individuals[1].state, :continued_action)
+            simulate(action_model, second; max_time = 12.0)
+            simulate(action_model, deep; max_time = 12.0)
+            @test get(second.individuals[1].state, :continued_action, nothing) == 10.0
+            @test get(deep.individuals[1].state, :continued_action, nothing) == 10.0
+            @test same(state, deep)
+            @test same(copied, deep)
+        end
+    end
 
     @testset "continuing a copy agrees with continuing a deepcopy" begin
         state = start()
