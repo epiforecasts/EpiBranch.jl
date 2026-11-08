@@ -121,7 +121,7 @@ censor_after_outcome!(::AbstractClinicalTransition, individual) = nothing
 # after a terminal recovery. A terminal state that lost the race to an earlier
 # outcome did not become the outcome, and events timed from it are censored.
 # `from` may be spelled with or without the `_time` suffix. A callable `from`
-# is not matched to a state, so its event stays censored.
+# matches no state, and its event stays censored.
 function _timed_from_outcome(individual, from::Symbol)
     outcome = get(individual.state, :outcome, nothing)
     outcome isa Symbol || return false
