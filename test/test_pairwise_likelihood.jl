@@ -536,6 +536,12 @@ end
         @test total isa SumHazard
         @test (α + mass) isa SumHazard
         @test (total + 0.2) isa SumHazard && length((total + 0.2).sources) == 3
+        # sums of mass action and of sums combine into one flat sum
+        @test length((mass + mass).sources) == 2
+        @test length((mass + total).sources) == 3
+        @test length((total + mass).sources) == 3
+        @test length((total + total).sources) == 4
+        @test length((0.2 + total).sources) == 3
         @test EpiBranch._ext_active(total)
         @test EpiBranch._ext_explains_index(total)
         # a zero importation rate explains nothing, leaving mass action alone
