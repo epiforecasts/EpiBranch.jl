@@ -237,7 +237,7 @@ condition that reads the contact must be timed with the four-argument form.
 """
 function trigger_time(::TraceEligibility, infector, state)
     # A quarantine recorded while the person was still a susceptible contact
-    # can precede their own infection; their case is traced from no earlier
+    # can precede their infection. The trace of their case starts no earlier
     # than that infection.
     t = _recorded_isolation_time(infector)
     return is_infected(infector) ? max(t, infector.infection_time) : t

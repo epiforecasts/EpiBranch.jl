@@ -504,7 +504,7 @@ end
     for rule in (OnIsolation(), TraceEveryone())
         @test EpiBranch.trigger_time(rule, ind, state) == 3.0
     end
-    # An isolation after the infection is untouched.
+    # An isolation after the infection keeps its recorded time.
     later = Individual(id = 2, infection_time = 3.0)
     later.state[:infected] = true
     set_isolated!(later, 5.0; release_time = Inf)
