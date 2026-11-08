@@ -610,7 +610,7 @@ function SurvivalDistributions.loghazard(k::_CalendarScaledKernel, τ::Real)
 end
 
 # `loghazard` of a truncated kernel is `logpdf - logccdf`, which is `-Inf - -Inf`
-# beyond the upper bound. The hazard there is zero, so its log is `-Inf`.
+# beyond the upper bound. The hazard there is zero and its log is `-Inf`.
 function _loghazard(k, τ::Real)
     lh = loghazard(k, τ)
     return isnan(lh) ? oftype(lh, -Inf) : lh
