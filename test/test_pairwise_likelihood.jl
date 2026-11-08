@@ -573,6 +573,29 @@ end
         @test_throws ArgumentError pairwise_surv_loglik(
             Exponential(1.0), community; external_hazard = mass + (-1.0)
         )
+        @test_throws ArgumentError EpiBranch._check_external(SumHazard(), 2)
+    end
+
+    @testset "a summed survival adds hazards and cumulative hazards" begin
+        s = EpiBranch._SumSurvival((Exponential(2.0), Exponential(4.0)))
+        SD = EpiBranch.SurvivalDistributions
+        @test SD.cumhazard(s, 2.0) ≈ 2 / 2 + 2 / 4
+        @test SD.hazard(s, 1.0) ≈ 1 / 2 + 1 / 4
+        @test SD.loghazard(s, 1.0) ≈ log(0.75)
+        @test maximum(s) == Inf
+        @test Distributions.partype(s) == Float64
+        zero_haz = EpiBranch._SumSurvival((Exponential(Inf), Exponential(Inf)))
+        @test SD.loghazard(zero_haz, 1.0) == -Inf
+
+        community = _TestInfections(
+            [1, 2], [0.0, 3.0], [0.0, NaN], [3.0, Inf], [true, false]; obs_end = 5.0
+        )
+        mass = MassActionHazard(; transmission_rate = 5.0, population_size = 5)
+        prepared = EpiBranch._ext_prepare(mass + 0.1 + 0.2, community)
+        @test EpiBranch._ext_survival_of(prepared, 2) isa EpiBranch._SumSurvival
+        single = EpiBranch._ext_prepare(SumHazard(0.0, 0.1), community)
+        @test !(EpiBranch._ext_survival_of(single, 2) isa EpiBranch._SumSurvival)
+        @test isnothing(EpiBranch._ext_survival_of(EpiBranch._ext_prepare(SumHazard(0.0), community), 2))
     end
 
     @testset "mass action counts I(t) over (open, close], matching a pairwise row" begin
