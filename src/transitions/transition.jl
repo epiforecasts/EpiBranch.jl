@@ -110,7 +110,7 @@ function resolve_individual!(t::Transition, individual, state)
     # Delay callbacks can read the newly reached state.
     individual.state[t.state] = true
     delay_rng = stream(state.rng, individual.id, (t.state, :delay))
-    individual.state[t.time_key] = anchor + _resolve_delay(t.delay, delay_rng, individual)
+    individual.state[t.time_key] = anchor + sample_value(t.delay, delay_rng, individual)
     return nothing
 end
 

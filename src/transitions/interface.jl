@@ -126,10 +126,11 @@ end
 
 # ── Heterogeneity helpers ───────────────────────────────────────────
 #
-# Transition fields (`probability`, `delay`) accept three shapes,
-# resolved per individual at `resolve_individual!` time:
+# Transition fields (`probability`, `delay`) are read through `sample_value`,
+# per individual at `resolve_individual!` time, and accept:
 #
 # - a `Real` / `Distribution`: constant across the population.
+# - a `Conditional(ind -> dist)`: a distribution chosen per individual.
 # - a `Function (rng, ind) -> value`: arbitrary per-individual rule.
 #   Use this for age-dependent CFRs, vulnerability-conditioned delays,
 #   risk-group-specific reporting, etc. The function is called with the
@@ -140,16 +141,10 @@ end
 # delays return a sample directly. The pattern matches `transmission_traits`
 # and `clinical_presentation` so heterogeneity is configured the same way
 # across the package.
-_resolve_probability(p::Real, rng, ind) = float(p)
-_resolve_probability(f, rng, ind) = float(f(rng, ind))
-
-_resolve_delay(d::Distribution, rng, ind) = float(rand(rng, d))
-_resolve_delay(x::Real, rng, ind) = float(x)         # a fixed, deterministic delay
-_resolve_delay(f, rng, ind) = float(f(rng, ind))
 
 # ── Evaluating ──────────────────────────────────────────────────────
 #
-# The reverse of `_resolve_delay`/`_resolve_probability`: given a resolved
+# The reverse of reading a delay or probability with `sample_value`: given a resolved
 # outcome, the log-density of having drawn it. A `Function` delay has no
 # density family to evaluate, so it is rejected rather than silently ignored.
 _delay_loglik(d::Distribution, dt) = logpdf(d, dt)
@@ -196,7 +191,7 @@ end
 # evaluated with an arbitrary, non-reproducible value.
 function _probability_value(probability, ind)
     return try
-        _resolve_probability(probability, _NoRandRNG(), ind)
+        sample_value(probability, _NoRandRNG(), ind)
     catch e
         e isa MethodError && parentmodule(e.f) === Random || rethrow()
         throw(
@@ -441,7 +436,7 @@ function transition_time(
     gate_rng = stream(rng, individual.id, (purpose, :selected))
     _transition_selected(gate_rng, individual, start_time, probability) || return nothing
     delay_rng = stream(rng, individual.id, (purpose, :delay))
-    return start_time + _resolve_delay(delay, delay_rng, individual)
+    return start_time + sample_value(delay, delay_rng, individual)
 end
 
 # Set on an individual's own state by `_reinfection_probe` (sellke.jl) to
@@ -456,7 +451,7 @@ const _REINFECTION_PROBE_KEY = :_reinfection_probing
 function _transition_selected(rng, individual, start_time, probability)
     _anchor_ok(start_time) || return false
     probability === nothing && return true
-    p = _resolve_probability(probability, rng, individual)
+    p = sample_value(probability, rng, individual)
     get(individual.state, _REINFECTION_PROBE_KEY, false) && return p > 0
     return rand(rng) < p
 end
