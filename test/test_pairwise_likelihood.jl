@@ -536,7 +536,7 @@ end
         @test total isa SumHazard
         @test (α + mass) isa SumHazard
         @test (total + 0.2) isa SumHazard && length((total + 0.2).sources) == 3
-        # sums of mass action and of sums combine into one flat sum
+        # adding mass action terms or sums gives one flat sum
         @test length((mass + mass).sources) == 2
         @test length((mass + total).sources) == 3
         @test length((total + mass).sources) == 3
