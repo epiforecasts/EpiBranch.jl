@@ -574,13 +574,13 @@ end
 # (end-of-outbreak and containment probabilities, the superspreading
 # proportions) must not do so once a finite population, a window's `until` or
 # a susceptibility below 1 has reshaped it, as the chain-size likelihoods
-# already refuse to. Returns the single-type offspring law, so a model without
+# already refuse to. Returns the single-type offspring law; a model without
 # one raises its own error first.
 function _unreshaped_single_type_offspring(model, name)
     off = single_type_offspring(model)
-    # `offspring_law_unchanged` answers `false` for a process type it knows
-    # nothing about; such a process, which supplies its own offspring law, is
-    # taken as it declares itself, as before.
+    # `offspring_law_unchanged` answers `false` for a process type it does not
+    # know. Such a process supplies its own offspring law and is used as
+    # declared, as before.
     proc = model isa ModelSpec ? model.process : model
     (!(proc isa BranchingProcess) || offspring_law_unchanged(proc)) &&
         offspring_law_unchanged(attributes(model)) &&
