@@ -117,10 +117,9 @@ censor_after_outcome!(::AbstractClinicalTransition, individual) = nothing
 # Reset a non-terminal transition's own flag/time pair when the recorded time
 # falls after the case's outcome. An event that never occurred has `time ==
 # Inf`, which is never after a finite outcome, so this is a no-op for it.
-# An event timed from the state that became the outcome follows from it, as
-# waning does after a terminal recovery, and is kept. A terminal state that
-# lost the race to an earlier outcome is not the outcome, so its events are
-# still censored.
+# An event timed from the state that became the outcome is kept, as waning is
+# after a terminal recovery. A terminal state that lost the race to an earlier
+# outcome did not become the outcome, and events timed from it are censored.
 _timed_from_outcome(individual, from::Symbol) = get(individual.state, :outcome, nothing) === from
 _timed_from_outcome(individual, from) = false
 
