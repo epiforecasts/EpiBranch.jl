@@ -1262,3 +1262,15 @@ end
         Exponential(theta), inside; susceptibility = _IdentitySusceptibility()
     ) ≈ expected
 end
+
+@testset "An exposure past a truncated kernel's bound has zero hazard" begin
+    k = truncated(Gamma(2, 2), 0, 14)
+    data = PairwiseSurvivalData([1, 1], [0.0, 0.0], [5.0, 30.0], [true, true])
+    ll = pairwise_surv_loglik(k, data)
+    @test isfinite(ll) || ll == -Inf
+    @test !isnan(ll)
+    # The row past the bound drops out of the sum over infectors, but its
+    # exposure still counts in the cumulative hazard.
+    @test EpiBranch._loghazard(k, 30.0) == -Inf
+    @test EpiBranch._loghazard(k, 5.0) ≈ log(pdf(k, 5.0) / ccdf(k, 5.0))
+end

@@ -86,7 +86,7 @@ function pairwise_surv_loglik(kernel, data::PairwiseSurvivalData)
 
     ll = 0.0
     for (_, g) in groups
-        ll += logsumexp([loghazard(_rowkernel(kernel, r), data.stop[r]) for r in g])
+        ll += logsumexp([_loghazard(_rowkernel(kernel, r), data.stop[r]) for r in g])
     end
     for r in eachindex(data.stop)
         kr = _rowkernel(kernel, r)
@@ -1913,7 +1913,7 @@ function _component_loglik(
             oi = data.infectious_time[i]
             isfinite(oi) || continue
             if oi < tj && tj <= data.removal_time[i] && !_removed_at(gaps, i, tj)
-                lh = loghazard(_pair_kernel(kernel, layout, r, data), tj - oi) +
+                lh = _loghazard(_pair_kernel(kernel, layout, r, data), tj - oi) +
                     _leak_log_at(gaps, i, tj)
                 _push!(acc, _scaled_loghazard(modifier, lh, tj))
             end
@@ -2209,7 +2209,7 @@ function _pairwise_events(reduction, kernel, extsrc, data, layout, tfollow, tota
                 oi = data.infectious_time[i]
                 isfinite(oi) || continue
                 if oi < tj && tj <= data.removal_time[i] && !_removed_at(gaps, i, tj)
-                    lh = loghazard(_pair_kernel(kernel, layout, row, data), tj - oi) +
+                    lh = _loghazard(_pair_kernel(kernel, layout, row, data), tj - oi) +
                         _leak_log_at(gaps, i, tj)
                     _push!(acc, lh)
                 end

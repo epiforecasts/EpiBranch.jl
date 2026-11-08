@@ -603,7 +603,7 @@ function SurvivalDistributions.cumhazard(k::_CalendarScaledKernel, τ::Real)
 end
 
 function SurvivalDistributions.loghazard(k::_CalendarScaledKernel, τ::Real)
-    return loghazard(k.profile, τ) + log(calendar_multiplier(k.calendar, k.opening + τ))
+    return _loghazard(k.profile, τ) + log(calendar_multiplier(k.calendar, k.opening + τ))
 end
 
 SurvivalDistributions.hazard(k::_CalendarScaledKernel, τ::Real) = _calendar_hazard(k, τ)
@@ -868,3 +868,11 @@ function _invert_hazard(rate, start, upper, boundary_is_certain::Bool, target::R
     end
     return
 end
+
+# `loghazard` of a `Truncated` is `logpdf - logccdf`, which is `-Inf - -Inf`
+# beyond the upper bound. The hazard is zero there, so its log is `-Inf`.
+function _loghazard(k::Distribution, τ::Real)
+    τ > maximum(k) && return oftype(float(τ), -Inf)
+    return loghazard(k, τ)
+end
+_loghazard(k, τ::Real) = loghazard(k, τ)
