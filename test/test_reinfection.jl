@@ -52,6 +52,20 @@ using StableRNGs
         @test EpiBranch.transition_loglik(step, ind) ≈ logpdf(Exponential(1.0), 1.0)
     end
 
+    @testset "The _time spelling of from is treated like the bare state name" begin
+        step = Transition(:susceptible_again; from = :recovered_time, delay = Exponential(1.0))
+        ind = Individual(; id = 1, infection_time = 0.0)
+        ind.state[:outcome] = :recovered
+        ind.state[:outcome_time] = 5.0
+        ind.state[:recovered_time] = 5.0
+        ind.state[:susceptible_again] = true
+        ind.state[:susceptible_again_time] = 6.0
+        EpiBranch.censor_after_outcome!(step, ind)
+        @test ind.state[:susceptible_again]
+        @test ind.state[:susceptible_again_time] == 6.0
+        @test EpiBranch.transition_loglik(step, ind) ≈ logpdf(Exponential(1.0), 1.0)
+    end
+
     @testset "A second episode no longer overwrites the first in silence" begin
         ind = Individual(; id = 1, infection_time = 5.0)
         ind.state[:recovered] = true

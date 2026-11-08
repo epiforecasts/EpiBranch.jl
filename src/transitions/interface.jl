@@ -120,7 +120,13 @@ censor_after_outcome!(::AbstractClinicalTransition, individual) = nothing
 # An event timed from the state that became the outcome is kept, as waning is
 # after a terminal recovery. A terminal state that lost the race to an earlier
 # outcome did not become the outcome, and events timed from it are censored.
-_timed_from_outcome(individual, from::Symbol) = get(individual.state, :outcome, nothing) === from
+# `from` may be spelled with or without the `_time` suffix. A callable `from`
+# is not matched to a state, so its event stays censored.
+function _timed_from_outcome(individual, from::Symbol)
+    outcome = get(individual.state, :outcome, nothing)
+    outcome isa Symbol || return false
+    return _resolved_key(from) === _resolved_key(outcome)
+end
 _timed_from_outcome(individual, from) = false
 
 function _censor_event!(individual, flag_key::Symbol, time_key::Symbol, from)
