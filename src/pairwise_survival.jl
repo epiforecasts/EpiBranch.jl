@@ -1628,7 +1628,7 @@ function SurvivalDistributions.loghazard(s::_SumSurvival, t::Real)
     h > 0 || return oftype(float(h), -Inf)
     return log(h)
 end
-Base.maximum(::_SumSurvival) = Inf
+Base.maximum(s::_SumSurvival) = minimum(maximum, s.parts)
 function Distributions.partype(s::_SumSurvival)
     return promote_type(map(Distributions.partype, s.parts)...)
 end
