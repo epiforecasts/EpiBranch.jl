@@ -144,8 +144,8 @@ end
 
 # ── Evaluating ──────────────────────────────────────────────────────
 #
-# The reverse of reading a delay or probability with `sample_value`: given a resolved
-# outcome, the log-density of having drawn it. A `Function` delay has no
+# The reverse of reading a delay or probability with `sample_value`: given a
+# resolved outcome, the log-density of having drawn it. A `Function` delay has no
 # density family to evaluate, so it is rejected rather than silently ignored.
 _delay_loglik(d::Distribution, dt) = logpdf(d, dt)
 _delay_loglik(x::Real, dt) = isapprox(dt, x) ? 0.0 : -Inf
