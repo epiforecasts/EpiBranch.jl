@@ -97,7 +97,10 @@ This assumes every case is reported. Under-reporting (a [`Reporting`](@ref)
 step with a probability below 1, or any deprecated
 [`PerCaseObservation`](@ref)) needs the recursion of Thompson, Morgan & Jansen
 (2019), which is not implemented, and gives an error; use a model that reports
-every case for the full-reporting value.
+every case for the full-reporting value. A model whose offspring law is
+reshaped (a finite `population_size`, an infectiousness window with `until`,
+or `transmission_traits` away from their neutral values) has no closed form
+and also gives an error that points to simulation.
 
 For a `ModelSpec`, or a process that stores its own interventions, each
 intervention's [`EpiBranch.analytic_offspring_effect`](@ref) is applied to
@@ -108,6 +111,7 @@ function end_of_outbreak_probability(model::Union{BranchingProcess, ModelSpec}, 
     # Refuse under per-case under-reporting rather than silently using
     # the bare offspring: makes the missing `ρ < 1` case discoverable.
     _eoo_assert_full_reporting(observation(model), progression(model))
+    off = _unreshaped_single_type_offspring(model, "end_of_outbreak_probability(model, τ)")
     gt = _single_kernel(model)
     _single_calendar(model) === nothing || throw(
         ArgumentError(
@@ -116,7 +120,7 @@ function end_of_outbreak_probability(model::Union{BranchingProcess, ModelSpec}, 
                 "needs one instead."
         )
     )
-    off = _offspring_through_interventions(model, single_type_offspring(model))
+    off = _offspring_through_interventions(model, off)
     return end_of_outbreak_probability(off, gt, τ)
 end
 
