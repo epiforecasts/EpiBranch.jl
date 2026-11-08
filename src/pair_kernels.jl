@@ -613,7 +613,9 @@ end
 # beyond the upper bound. The hazard there is zero and its log is `-Inf`.
 function _loghazard(k, τ::Real)
     lh = loghazard(k, τ)
-    return isnan(lh) ? oftype(lh, -Inf) : lh
+    # Other NaNs (a NaN time or NaN kernel parameters) are left to propagate.
+    isnan(lh) && !isnan(τ) && logpdf(k, τ) == -Inf && return oftype(lh, -Inf)
+    return lh
 end
 
 SurvivalDistributions.hazard(k::_CalendarScaledKernel, τ::Real) = _calendar_hazard(k, τ)
