@@ -783,6 +783,7 @@ function _reset_traced!(ind::Individual)
     ind.state[:traced] = false
     ind.state[:quarantined] = false
     haskey(ind.state, :traced_by) && delete!(ind.state, :traced_by)
+    haskey(ind.state, :tracers) && delete!(ind.state, :tracers)
     haskey(ind.state, :source_traced_by) && delete!(ind.state, :source_traced_by)
     haskey(ind.state, :trace_level) && delete!(ind.state, :trace_level)
     haskey(ind.state, :trace_time) && delete!(ind.state, :trace_time)
@@ -824,6 +825,21 @@ end
 function _record_trace_time!(ind::Individual, trace_time)
     isnan(trace_time) && return nothing
     ind.state[:trace_time] = min(_state_real(ind.state, :trace_time, Inf), trace_time)
+    return nothing
+end
+
+# Record `tracer` among everyone whose trace reached `ind`, in `:tracers`,
+# which `compute_trace_level!` searches for the nearest index case. `:traced_by`
+# is the one of them that reached `ind` first, by the earliest `trace_time`
+# and the first recorded on a tie, so reading a single tracer is deterministic.
+# Called before `_record_trace_time!`, which overwrites the time it compares to.
+function _record_tracer!(ind::Individual, tracer::Int, trace_time)
+    tracers = get!(() -> Int[], ind.state, :tracers)::Vector{Int}
+    tracer in tracers || push!(tracers, tracer)
+    if !haskey(ind.state, :traced_by) ||
+            trace_time < _state_real(ind.state, :trace_time, Inf)
+        ind.state[:traced_by] = tracer
+    end
     return nothing
 end
 
@@ -888,6 +904,7 @@ function _trace_attempt!(
     # `duration` function, can see it. Interventions that act on a traced
     # contact time themselves from this, which is the same whatever the
     # trace action and the contact's own clinical course.
+    _record_tracer!(ind, infector.id, trace_time)
     _record_trace_time!(ind, trace_time)
     ind.state[:traced] = true
     if isfinite(trace_time)
@@ -900,11 +917,6 @@ function _trace_attempt!(
         # docstring says.
         _apply_trace!(ct.action, ind, state, trace_time, rng)
     end
-
-    # Record the source this contact was traced from: the latest case whose
-    # trace reached it, which on a tree is its parent. `compute_trace_level!`
-    # walks it back to the index case post-run.
-    ind.state[:traced_by] = infector.id
 
     # Record how far the ring can still grow from this contact, so a
     # contact-of-contact one hop further out can time its own trace from

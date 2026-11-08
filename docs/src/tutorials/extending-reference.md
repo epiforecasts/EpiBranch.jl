@@ -67,6 +67,7 @@ underscore are internal.
 | `:_ring_propagated` | `Bool` | `false` | `ContactTracing` (`depth > 1`) | `trace_contacts!`; internal |
 | `:_ring_hop` | `Bool` | `false` | `ContactTracing` (`depth > 1`) | Set and cleared around each `trace_contacts!` call in the ring walk; internal. Marks an already-settled case the walk passes through, so it is traced from as a ring member only, not reseeded |
 | `:traced_by` | `Int` | — | `ContactTracing` | `trace_contacts!` |
+| `:tracers` | `Vector{Int}` | — | `ContactTracing` | `trace_contacts!`, `compute_trace_level!`; every case whose trace reached the person |
 | `:source_traced_by` | `Int` | — | `SourceTracing` | `trace_contacts!`; the reverse of `:traced_by` (names a *later*-infected node) |
 | `:trace_level` | `Int` | — | `compute_trace_level!` | After the simulation |
 | `:vaccinated[_<label>]` | `Bool` | `false` | `AbstractVaccination` | Creation / when a dose is admitted |
@@ -202,21 +203,23 @@ Both kinds of model write the tracing keys through `trace_contacts!`, once per
 case, so the keys and their meanings are the same either way; see [Which hooks
 run on which model](@ref).
 
-`:traced_by` is the person a contact was traced from: the latest case whose
-trace reached it. On a tree each contact has one infector, so that is the
-person who infected it.
-`compute_trace_level!` follows it back to the index case after the simulation
-to set `:trace_level` (the distance from the index case, which has level `0`).
-On a tree the level is exact. On a `NetworkProcess` with cycles it is the
-depth along the path by which the person was last traced, and **not**
-necessarily the shortest distance to the nearest index case; do not read it as
-one.
+`:tracers` lists every case whose trace reached a contact, in the order they
+did. `:traced_by` is the one of them that reached it first, by the earliest
+trace time (the first recorded on a tie), so code that wants a single tracer
+reads that. On a tree each contact has one infector, so both name the person
+who infected it.
+`compute_trace_level!` runs a breadth-first search over `:tracers` from every
+case that started tracing without being traced itself, after the simulation,
+to set `:trace_level`: the smallest number of tracing steps from any of them,
+which have level `0`. The level is exact on a tree and on a network with
+cycles alike.
 
 `:source_traced_by`, which [`SourceTracing`](@ref) sets, is the reverse: the
 case whose own tracing found this person as its infector. It always names a
 *later*-infected node, where `:traced_by` always names an earlier one. The two
 are kept apart rather than sharing a key: merging them would break
-`compute_trace_level!`'s assumption that `:traced_by` never cycles.
+`compute_trace_level!`'s assumption that `:tracers` only names earlier
+tracers.
 `SourceTracing` never writes `:traced_by`.
 
 ### Naming your own keys
