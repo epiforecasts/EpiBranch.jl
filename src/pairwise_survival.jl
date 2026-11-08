@@ -1531,16 +1531,16 @@ _ext_partype(s::_MassActionSchedule, n) = Distributions.partype(s)
 
 The external hazard that is the sum of several sources, for
 [`pairwise_surv_loglik`](@ref)'s `external_hazard`: each person faces the
-hazards of all the sources at once, and an infection is explained by whichever
-fires first. Each source is anything `external_hazard` accepts on its own: a
+hazards of all the sources at once, and an infection is attributed to
+whichever source infects first. Each source is anything `external_hazard` accepts on its own: a
 rate, a distribution, a calendar schedule such as `Steps`, a per-person vector
 or function of those, or a [`MassActionHazard`](@ref). `+` builds one when
 either side is a [`MassActionHazard`](@ref) or a `SumHazard`.
 
-An index case is explained by the sum whenever at least one active source
-explains one, which a constant or calendar importation hazard does from time 0
-and mass action alone does not. Mass action plus an importation rate therefore
-scores index cases as importations, instead of conditioning on them.
+The sum explains an index case whenever at least one active source does. A
+constant or calendar importation hazard explains one from time 0, but mass
+action alone does not. Mass action plus an importation rate therefore scores
+index cases as importations instead of conditioning on them.
 
 Like [`MassActionHazard`](@ref), a sum is likelihood-only: it cannot be passed
 as a process's own `external_hazard` to simulate from.
