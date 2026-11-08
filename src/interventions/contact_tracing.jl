@@ -831,7 +831,8 @@ end
 # Record `tracer` among everyone whose trace reached `ind`, in `:tracers`,
 # which `compute_trace_level!` searches for the nearest index case. `:traced_by`
 # is the one of them that reached `ind` first, by the earliest `trace_time`
-# and the first recorded on a tie, so reading a single tracer is deterministic.
+# and the first recorded on a tie, which makes reading a single tracer
+# deterministic.
 # Called before `_record_trace_time!`, which overwrites the time it compares to.
 function _record_tracer!(ind::Individual, tracer::Int, trace_time)
     tracers = get!(() -> Int[], ind.state, :tracers)::Vector{Int}

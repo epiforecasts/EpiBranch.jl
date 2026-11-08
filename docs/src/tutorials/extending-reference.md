@@ -205,7 +205,7 @@ run on which model](@ref).
 
 `:tracers` lists every case whose trace reached a contact, in the order they
 did. `:traced_by` is the one of them that reached it first, by the earliest
-trace time (the first recorded on a tie), so code that wants a single tracer
+trace time (the first recorded on a tie). Code that wants a single tracer
 reads that. On a tree each contact has one infector, so both name the person
 who infected it.
 `compute_trace_level!` runs a breadth-first search over `:tracers` from every

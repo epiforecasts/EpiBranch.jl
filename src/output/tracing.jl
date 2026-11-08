@@ -13,8 +13,7 @@ The level is the smallest number of tracing steps from any case that started
 tracing without being traced itself. `ContactTracing` records every case whose
 tracing reached a person, so on a network with cycles the level is the
 distance to the nearest such case, found by a breadth-first search from all of
-them at once, and not the length of whichever path happened to reach the person
-last. A person traced only along a cycle that no such case leads into is
+them at once. A person traced only along a cycle that no such case leads into is
 given no level.
 """
 function compute_trace_level!(state::SimulationState)
