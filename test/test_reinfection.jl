@@ -1,6 +1,33 @@
 using Random
+using StableRNGs
 
 @testset "Reinfection after waning" begin
+    @testset "Waning timed from a terminal recovery is kept" begin
+        for terminal in (false, true)
+            progression = [
+                Transition(:recovered; delay = 1.0, terminal),
+                Transition(:susceptible_again; from = :recovered, delay = 0.5),
+            ]
+            m = ModelSpec(
+                HomogeneousProcess(transmission_rate = 5.0, population_size = 30);
+                progression
+            )
+            s = simulate(m; n_initial = 1, max_time = 20.0, rng = StableRNG(1))
+            @test count(i -> get(i.state, :susceptible_again, false), s.individuals) > 0
+        end
+    end
+
+    @testset "An event timed from before the outcome is still censored" begin
+        ind = Individual(; id = 1, infection_time = 0.0)
+        ind.state[:outcome_time] = 2.0
+        ind.state[:reported] = true
+        ind.state[:reporting_time] = 3.0
+        ind.state[:infection_time] = 0.0
+        EpiBranch.censor_after_outcome!(Reporting(delay = 3.0, from = :infection), ind)
+        @test !ind.state[:reported]
+        @test ind.state[:reporting_time] == Inf
+    end
+
     @testset "A second episode no longer overwrites the first in silence" begin
         ind = Individual(; id = 1, infection_time = 5.0)
         ind.state[:recovered] = true

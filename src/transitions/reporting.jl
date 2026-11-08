@@ -65,8 +65,8 @@ function resolve_individual!(r::Reporting, individual, state)
     return nothing
 end
 
-function censor_after_outcome!(::Reporting, individual)
-    _censor_event!(individual, :reported, :reporting_time)
+function censor_after_outcome!(r::Reporting, individual)
+    _censor_event!(individual, :reported, :reporting_time, r.from)
     return nothing
 end
 

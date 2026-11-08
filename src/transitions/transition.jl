@@ -125,7 +125,7 @@ end
 
 function censor_after_outcome!(t::Transition, individual)
     t.terminal && return nothing
-    _censor_event!(individual, t.state, t.time_key)
+    _censor_event!(individual, t.state, t.time_key, t.from)
     return nothing
 end
 

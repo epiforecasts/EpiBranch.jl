@@ -61,8 +61,8 @@ function resolve_individual!(h::Hospitalisation, individual, state)
     return nothing
 end
 
-function censor_after_outcome!(::Hospitalisation, individual)
-    _censor_event!(individual, :admitted, :admission_time)
+function censor_after_outcome!(h::Hospitalisation, individual)
+    _censor_event!(individual, :admitted, :admission_time, h.from)
     return nothing
 end
 
