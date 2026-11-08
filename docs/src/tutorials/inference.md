@@ -423,7 +423,7 @@ The fits above use a finished outbreak. To follow one as it unfolds, treat the
 outbreak as a state-space model: the latent state is the simulated outbreak,
 the dynamics advance it by one reporting interval, and each day's report is
 the data. [`outbreak_state_space`](@ref) builds that model for
-[SSMProblems.jl](https://github.com/TuringLang/SSMProblems.jl), so the particle
+[SSMProblems.jl](https://github.com/TuringLang/SSMProblems.jl). The particle
 filters in [GeneralisedFilters.jl](https://github.com/TuringLang/GeneralisedFilters.jl)
 run on it unchanged. Each step continues a copy of the previous state with
 `simulate(model, state; max_time)`.
@@ -431,13 +431,13 @@ run on it unchanged. Each step continues a copy of the previous state with
 !!! note
     Neither package is installed with EpiBranch; add them with
     `using Pkg; Pkg.add(["SSMProblems", "GeneralisedFilters"])`. Loading
-    SSMProblems is what makes `outbreak_state_space` available.
+    SSMProblems makes `outbreak_state_space` available.
 
 The outbreak below runs in a population of 500 with infections at rate 0.4 per
 infectious person per day and recovery at rate 0.2. Each day a case is
 reported with probability about one half, so the daily report is Poisson with
-mean half the day's new infections, plus 0.1 so that a day with no new
-infections can still produce a report. `observe(t, state)` gives the
+mean half the day's new infections, plus 0.1 to allow a report on a day with
+no new infections. `observe(t, state)` gives the
 distribution of the report on day `t`, reading the new infections off the state
 with the [`TransitionCount`](@ref) signal.
 

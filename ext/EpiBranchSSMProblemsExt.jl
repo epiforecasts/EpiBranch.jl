@@ -2,8 +2,8 @@ module EpiBranchSSMProblemsExt
 
 # An outbreak as an SSMProblems.jl state-space model. The latent state is the
 # `SimulationState`, and the dynamics are `simulate(model, state; max_time)`,
-# the engine's continuation seam, so a particle filter from a package built on
-# SSMProblems can run on any model that supports it.
+# the engine's continuation seam. A particle filter from a package built on
+# SSMProblems can therefore run on any model that supports it.
 
 using EpiBranch
 using EpiBranch: TransmissionModel, ModelSpec, SimulationState
@@ -20,9 +20,9 @@ struct OutbreakPrior{M <: _Model, K <: NamedTuple} <: StatePrior
     kwargs::K
 end
 
-# Continues a copy of the previous state by one step of length `dt`. The copy
-# is needed because a filter resamples by reusing one state for several
-# particles, and continuation mutates the state it is given.
+# Continues a copy of the previous state by one step of length `dt`. A filter
+# resamples by reusing one state for several particles and continuation mutates
+# the state it is given, so the copy is required.
 struct OutbreakDynamics{M <: _Model, T <: Real} <: LatentDynamics
     model::M
     dt::T

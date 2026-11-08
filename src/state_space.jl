@@ -3,17 +3,18 @@
                          simulate_kwargs...)
 
 Treat an outbreak as a state-space model in the sense of
-[SSMProblems.jl](https://github.com/TuringLang/SSMProblems.jl), so that
-particle filters from packages built on it (such as GeneralisedFilters.jl) can
-condition `model`, a [`TransmissionModel`](@ref) or [`ModelSpec`](@ref), on observations over time. Available once SSMProblems is
-loaded; this function is defined by a package extension.
+[SSMProblems.jl](https://github.com/TuringLang/SSMProblems.jl). Particle
+filters from packages built on it (such as GeneralisedFilters.jl) can then
+condition `model`, a [`TransmissionModel`](@ref) or [`ModelSpec`](@ref), on
+observations over time. A package extension defines this function, so it is
+available once SSMProblems is loaded.
 
 The latent state is the [`SimulationState`](@ref) of the outbreak. The prior
 starts the outbreak with [`simulate`](@ref) at time zero, taking any of its
 keywords (`n_initial`, `initial_cases`, `index_types`, `max_cases` and so on)
-from `simulate_kwargs`; `rng` is not one of them, because the filter supplies
+from `simulate_kwargs`; `rng` is not one of them, as the filter supplies
 its own. The dynamics at step `t` copy the previous state and continue the
-copy to time `t * dt` with `simulate(model, state; max_time)`, so `model` is
+copy to time `t * dt` with `simulate(model, state; max_time)`. The model is
 held once and only the state is copied for each particle. A `max_cases` in
 `simulate_kwargs` therefore stops every particle at that size.
 
