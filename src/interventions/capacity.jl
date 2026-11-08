@@ -1,6 +1,78 @@
 """
+    RefusalPolicy
+
+What a capacity wrapper ([`CapacityConstrained`](@ref),
+[`HeldCapacity`](@ref)) does with an action its resource turns away. A new
+policy is a subtype with a method of
+[`refused_action`](@ref EpiBranch.refused_action), with no change to either
+wrapper.
+"""
+abstract type RefusalPolicy end
+
+"""
+    DropRefused()
+
+The default [`RefusalPolicy`](@ref): an action that does not fit is discarded.
+It uses no capacity and is not queued; the person may be offered the action
+again if reached again later.
+"""
+struct DropRefused <: RefusalPolicy end
+
+"""
+    DeferRefused(; max_periods = 100)
+
+A [`RefusalPolicy`](@ref) that moves an action that does not fit to the
+earliest later date that does, so the person is served late rather than not at
+all. The action keeps its effect and takes the new date, which is what counts
+against the resource from then on.
+
+Under [`CapacityConstrained`](@ref) that date is the start of the first later
+period with room, and `max_periods` is how many periods ahead are tried before
+the action is dropped after all (a budget of zero never has room). Under
+[`HeldCapacity`](@ref) it is the first moment a stay ends and frees a place
+(`max_periods` is not used).
+"""
+struct DeferRefused <: RefusalPolicy
+    max_periods::Int
+    function DeferRefused(max_periods::Integer)
+        max_periods > 0 || throw(
+            ArgumentError("max_periods must be positive, got $max_periods")
+        )
+        return new(max_periods)
+    end
+end
+DeferRefused(; max_periods::Integer = 100) = DeferRefused(max_periods)
+
+"""
+    refused_action(policy, wrapper, usage, action) -> Union{InterventionAction, Nothing}
+
+For extension authors: the [`InterventionAction`](@ref) to admit in place of
+`action`, which `wrapper`'s resource has just turned away, or `nothing` to
+drop it. `usage` is the resource's own record for the people drawing on the
+same budget as `action.individual`. A policy defines a method for each wrapper
+it supports; [`DropRefused`](@ref) and [`DeferRefused`](@ref) are the
+built-in ones.
+"""
+refused_action(::DropRefused, wrapper, usage, action) = nothing
+
+# A policy that cannot work with a given wrapper setting says so when the
+# wrapper is built rather than when a run first refuses someone.
+_check_refusal_policy(::RefusalPolicy, intervention) = nothing
+function _check_refusal_policy(::DeferRefused, intervention)
+    _resolves_under_capacity(intervention) && throw(
+        ArgumentError(
+            "DeferRefused needs an intervention that proposes actions; " *
+                "$(typeof(intervention)) sets its effect directly, so a refused " *
+                "one can only be dropped"
+        )
+    )
+    return nothing
+end
+
+"""
     CapacityConstrained(intervention; budget_per_period, period=Inf,
-                        carry_over=true, priority=default_capacity_priority)
+                        carry_over=true, priority=default_capacity_priority,
+                        on_refusal=DropRefused())
 
 Limit how many people an intervention can reach, such as a fixed number of
 vaccine doses per day: `budget_per_period` people every `period` days.
@@ -36,12 +108,18 @@ CapacityConstrained(GroupVaccination(efficacy = 0.9); budget_per_period = doses,
   first, lowest first, with ties kept in order. The default,
   [`default_capacity_priority`](@ref), serves traced contacts in the order
   they were traced.
+- `on_refusal`: what happens to an action the budget turns away, a
+  [`RefusalPolicy`](@ref). [`DropRefused`](@ref) (default) discards it;
+  [`DeferRefused`](@ref) books it into the first later period with room.
+  Deferral needs a finite `period` and an intervention that proposes actions.
 
 Each case's actions are offered together, in the order the engine settles
 cases, and each is checked against the budget of the period its own proposed
-date falls in, whatever day the case itself was settled on. People turned away
-use no capacity and are not queued, though they may be offered the
-intervention again if reached again later. Only whole people are served, so a
+date falls in, whatever day the case itself was settled on. Under the default
+policy, people turned away use no capacity and are not queued, though they may
+be offered the intervention again if reached again later; with
+[`DeferRefused`](@ref) they are instead given a later date, which then counts
+against that period's budget. Only whole people are served, so a
 fraction of remaining capacity serves nobody. Interventions with the same dose
 label share one budget, and doses given by another intervention under that
 label count against it; use different labels for separate budgets.
@@ -74,7 +152,8 @@ order: both check each action's own proposed date.
     capacity-limited, as a count of isolations admitted per period rather than
     beds held at once: a case isolated once the period's budget is spent is
     released again, the same way `Scheduled` releases one isolated outside
-    its window.
+    its window. For a cap on how many are isolated at once, see
+    [`HeldCapacity`](@ref).
 
 For extension authors: a new intervention can be capacity-limited by defining
 [`intervention_actions`](@ref EpiBranch.intervention_actions) and
@@ -93,20 +172,25 @@ struct CapacityConstrained{I <: AbstractIntervention, F, B} <: InterventionWrapp
     period::Float64
     carry_over::Bool
     priority::F
+    on_refusal::RefusalPolicy
 end
 
 function CapacityConstrained(
         intervention::AbstractIntervention;
         budget_per_period, period::Real = Inf, carry_over::Bool = true,
-        priority = default_capacity_priority
+        priority = default_capacity_priority, on_refusal::RefusalPolicy = DropRefused()
     )
     budget = _prepared_budget(budget_per_period)
     period > 0 || throw(ArgumentError("period must be positive, got $period"))
     isfinite(period) || budget isa Real || throw(
         ArgumentError("budget_per_period as a schedule needs a finite period")
     )
+    _check_refusal_policy(on_refusal, intervention)
+    on_refusal isa DeferRefused && !isfinite(period) && throw(
+        ArgumentError("DeferRefused needs a finite period to defer into")
+    )
     return CapacityConstrained(
-        intervention, budget, Float64(period), carry_over, priority
+        intervention, budget, Float64(period), carry_over, priority, on_refusal
     )
 end
 
@@ -247,6 +331,16 @@ capacity_time_key(::TraceAction) = nothing
 # present and non-empty exactly when a quarantine has used the budget.
 capacity_key(::Quarantine) = :_quarantine_removal_handles
 capacity_time_key(::Quarantine) = :trace_time
+
+function refused_action(p::DeferRefused, cc::CapacityConstrained, times, action)
+    period_start, _ = _period_bounds(cc, action.time)
+    for k in 1:p.max_periods
+        t = period_start + k * cc.period
+        _fits_budget(cc, times, Float64[], t) || continue
+        return InterventionAction(action.individual, t, action.effect!, action.claim!)
+    end
+    return nothing
+end
 
 # The start and end of the period containing `at`, in the scope `carry_over`
 # implies: `(0.0, Inf)`, a single period for the whole outbreak, when `period`
@@ -521,7 +615,7 @@ end
 # iterate them in. An intervention with no `resource_key` method of its own
 # puts everyone in a single group, `nothing`, unchanged from before this
 # existed.
-function _resource_groups(cc::CapacityConstrained, state, individuals)
+function _resource_groups(cc, state, individuals)
     order = Any[]
     groups = Dict{Any, Vector{Int}}()
     for (i, ind) in enumerate(individuals)

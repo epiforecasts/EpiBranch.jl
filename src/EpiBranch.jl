@@ -32,6 +32,7 @@ include("interventions/vaccination.jl")
 include("interventions/wrapper.jl")
 include("interventions/scheduled.jl")
 include("interventions/capacity.jl")
+include("interventions/held_capacity.jl")
 include("interventions/on_routes.jl")
 include("interventions/actions.jl")
 
@@ -192,6 +193,8 @@ export Scheduled, Risk
 export AbstractTrigger, is_triggered!, trigger_can_lapse, required_transitions,
     Infections, ReportedCases, opened_at, After
 export CapacityConstrained, capacity_usage, default_capacity_priority
+export RefusalPolicy, DropRefused, DeferRefused
+export HeldCapacity, held_usage, release_capacity!
 export OnRoutes
 export RouteWindow, window_open, window_close
 export is_active, intervention_time

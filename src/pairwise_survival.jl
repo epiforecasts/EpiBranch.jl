@@ -599,7 +599,7 @@ function infection_likelihood_compatible(rv::RingVaccination)
     return dose_label(rv) === :default && !_maybe_positive(rv.onward_efficacy) &&
         !_maybe_positive(rv.post_exposure_efficacy)
 end
-function infection_likelihood_compatible(w::Union{Scheduled, CapacityConstrained})
+function infection_likelihood_compatible(w::Union{Scheduled, CapacityConstrained, HeldCapacity})
     return infection_likelihood_compatible(w.intervention)
 end
 

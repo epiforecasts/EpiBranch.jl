@@ -27,6 +27,7 @@ const TEST_GROUPS = (
         "test_group_vaccination.jl",
         "test_vaccine_effect.jl",
         "test_capacity_constrained.jl",
+        "test_held_capacity.jl",
         "test_intervention_actions.jl",
         "test_competing_risks.jl",
         "test_ct_seams.jl",

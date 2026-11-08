@@ -229,6 +229,12 @@ After
 CapacityConstrained
 capacity_usage
 default_capacity_priority
+RefusalPolicy
+DropRefused
+DeferRefused
+HeldCapacity
+held_usage
+release_capacity!
 ```
 
 ## Transmission routes
@@ -763,6 +769,8 @@ EpiBranch.capacity_key
 EpiBranch.capacity_time_key
 EpiBranch.record_capacity_use!
 EpiBranch.resource_key
+EpiBranch.refused_action
+EpiBranch.held_until
 ```
 
 #### Start triggers

@@ -220,7 +220,10 @@ function _admit_actions!(cc::CapacityConstrained, state, actions, admitter = cc)
         for i in order
             action = group[i]
             _capacity_used(get(action.individual.state, key, nothing)) && continue
-            _fits_budget(cc, times, Float64[], action.time) || continue
+            if !_fits_budget(cc, times, Float64[], action.time)
+                action = refused_action(cc.on_refusal, cc, times, action)
+                action === nothing && continue
+            end
             _admit_actions!(cc.intervention, state, [_filing_use(cc, action)], admitter)
             _capacity_used(get(action.individual.state, key, nothing)) || continue
             _record_capacity_use!(cache, action.individual, state, times)
