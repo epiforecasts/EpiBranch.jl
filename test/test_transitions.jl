@@ -483,7 +483,7 @@ end
         # The probability callback consumes a draw before the acceptance draw.
         p = rand(expected)
         accepted = rand(expected) < p
-        wait = accepted ? EpiBranch._resolve_delay(delay, expected, ind) : nothing
+        wait = accepted ? EpiBranch.sample_value(delay, expected, ind) : nothing
         result = EpiBranch.transition_time(
             rng, ind, 3.0, delay;
             probability = (rng, ind) -> rand(rng)
