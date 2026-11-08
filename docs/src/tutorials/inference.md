@@ -417,6 +417,94 @@ isolation and the cap on outbreak size.
     Each likelihood evaluation runs `n_sim` simulations, and fitting takes
     much longer than with an exact formula.
 
+## Filtering an outbreak over time
+
+The fits above use a finished outbreak. To follow one as it unfolds, treat the
+outbreak as a state-space model: the latent state is the simulated outbreak,
+the dynamics advance it by one reporting interval, and each day's report is
+the data. [`outbreak_state_space`](@ref) builds that model for
+[SSMProblems.jl](https://github.com/TuringLang/SSMProblems.jl), so the particle
+filters in [GeneralisedFilters.jl](https://github.com/TuringLang/GeneralisedFilters.jl)
+run on it unchanged. Each step continues a copy of the previous state with
+`simulate(model, state; max_time)`.
+
+!!! note
+    Neither package is installed with EpiBranch; add them with
+    `using Pkg; Pkg.add(["SSMProblems", "GeneralisedFilters"])`. Loading
+    SSMProblems is what makes `outbreak_state_space` available.
+
+The outbreak below runs in a population of 500 with infections at rate 0.4 per
+infectious person per day and recovery at rate 0.2. Each day a case is
+reported with probability about one half, so the daily report is Poisson with
+mean half the day's new infections, plus 0.1 so that a day with no new
+infections can still produce a report. `observe(t, state)` gives the
+distribution of the report on day `t`, reading the new infections off the state
+with the [`TransitionCount`](@ref) signal.
+
+```@example inference
+using SSMProblems
+import GeneralisedFilters as GF
+
+make_model(rate) = ModelSpec(
+    HomogeneousProcess(transmission_rate = rate, population_size = 500);
+    progression = [Transition(:recovered; rate = 0.2, terminal = true)]
+)
+
+new_infections = TransitionCount(:infection)
+infectious = Prevalence(:infection, :recovered)
+observe(t, state) = Poisson(0.5 * new_infections(state, (t - 1.0, Float64(t))) + 0.1)
+
+# the prior starts the outbreak with 5 cases; `dt` is the step length in days
+truth = outbreak_state_space(make_model(0.4), observe; n_initial = 5)
+_, states, reports = SSMProblems.simulate(StableRNG(11), truth, 20)
+println("Daily reports: ", reports)
+```
+
+A bootstrap filter keeps 100 simulated outbreaks and, each day, weights them by
+how well they explain that day's report and resamples. The weighted mean number
+of infectious cases follows the rise in the true number, which the filter never
+sees. With only 100 particles it runs above the true number late on, and more
+particles narrow that gap.
+
+```@example inference
+filter_algo = GF.BootstrapFilter(100)
+
+function run_filter(rng, ssm, reports)
+    state = GF.initialise(rng, SSMProblems.prior(ssm), filter_algo)
+    log_evidence = 0.0
+    means = Float64[]
+    for (t, report) in enumerate(reports)
+        state, increment = GF.step(rng, ssm, filter_algo, t, state, report)
+        log_evidence += increment
+        weights = GF.get_weights(state)
+        push!(means, sum(
+            w * infectious(p.state, (t - 1.0, Float64(t)))
+                for (w, p) in zip(weights, state.particles)
+        ))
+    end
+    return log_evidence, means
+end
+
+log_evidence, filtered = run_filter(StableRNG(1), truth, reports)
+println("True infectious: ", [infectious(x, (t - 1.0, Float64(t))) for (t, x) in enumerate(states)])
+println("Filtered mean:   ", round.(filtered; digits = 0))
+```
+
+The filter also returns an estimate of the log marginal likelihood of the
+reports, which can be compared across parameter values. The estimate is noisy
+because it comes from a finite number of particles, so each rate below is
+filtered three times.
+
+```@example inference
+for rate in (0.2, 0.3, 0.4, 0.5, 0.6)
+    ssm = outbreak_state_space(make_model(rate), observe; n_initial = 5)
+    estimates = [run_filter(StableRNG(s), ssm, reports)[1] for s in 1:3]
+    println("rate = $rate: log marginal likelihood ", round.(estimates; digits = 1))
+end
+```
+
+The likelihood is highest near the true rate of 0.4.
+
 ## Gradients of simulated outcomes
 
 A gradient-based sampler needs the slope of what it samples, and a discrete

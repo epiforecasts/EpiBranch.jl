@@ -15,6 +15,12 @@ Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 SpecialFunctions = "276daf66-3868-5448-9aa4-cd146d93841b"
 SurvivalDistributions = "7121986e-ae89-4673-ae4e-1cb822919a18"
 
+[weakdeps]
+SSMProblems = "26aad666-b158-4e64-9d35-0e672562fa48"
+
+[extensions]
+EpiBranchSSMProblemsExt = "SSMProblems"
+
 [compat]
 DataFrames = "1"
 Dates = "1"
@@ -24,6 +30,7 @@ ForwardDiff = "0.10, 1.4"
 LinearAlgebra = "1"
 QuadGK = "2"
 Random = "1"
+SSMProblems = "0.7"
 SpecialFunctions = "2"
 SurvivalDistributions = "0.1"
 julia = "1.10"
