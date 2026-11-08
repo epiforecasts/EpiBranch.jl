@@ -753,9 +753,9 @@ function ContactTracing(
 end
 
 required_fields(ct::ContactTracing) = required_fields(ct.eligibility)
-# The trace's own time, not the contact's isolation time: a `FlagOnly` trace
-# never writes an isolation, and a `Quarantine` one can merge into an isolation
-# the contact already stands under, whose start is not when this trace happened.
+# This is the time of the trace itself rather than the isolation time of the
+# contact. A `FlagOnly` trace never writes an isolation, and a `Quarantine`
+# trace can merge into an existing isolation that started at another time.
 function intervention_time(::ContactTracing, ind::Individual)
     return _state_real(ind.state, _own_trace_time_key(:contact), Inf)
 end
@@ -784,18 +784,18 @@ end
 reset!(::ContactTracing, ind::Individual) = _reset_traced!(ind, :contact)
 
 # `ContactTracing` (`:contact`) and `SourceTracing` (`:source`) write the same
-# tracing state on whoever `apply_trace!` acts on, so each keeps its own trace
-# time and the removal handles its own traces recorded, as `Isolation` keeps
-# `:_isolation_handle`. `reset!` then undoes only the calling tracer's records
-# and leaves the other tracer's standing, as well as any isolation another
-# intervention recorded.
+# tracing state on whoever `apply_trace!` acts on. Each therefore keeps its own
+# trace time and the removal handles of its own traces, as `Isolation` keeps
+# `:_isolation_handle`. `reset!` undoes only the records of the calling tracer
+# and leaves those of the other tracer, and any isolation recorded by another
+# intervention, in place.
 _own_trace_time_key(owner::Symbol) = owner === :contact ? :_contact_trace_time : :_source_trace_time
 _own_handles_key(owner::Symbol) = owner === :contact ? :_contact_trace_handles : :_source_trace_handles
 _other_tracer(owner::Symbol) = owner === :contact ? :source : :contact
 
-# Every removal entry `apply_trace!` just recorded on `contact` (a quarantine's
-# own stretch and its isolation span alike) was numbered after
-# `handles_before`, so those numbers are this tracer's to withdraw.
+# Every removal entry `apply_trace!` just recorded on `contact`, whether a
+# quarantine stretch or an isolation span, was numbered after `handles_before`.
+# Those numbers belong to this tracer and it alone withdraws them.
 function _note_owned_handles!(contact::Individual, owner::Symbol, handles_before::Int)
     handles_after = get(contact.state, :_removal_handle_counter, 0)::Int
     handles_after > handles_before || return nothing
@@ -817,9 +817,9 @@ function _reset_traced!(ind::Individual, owner::Symbol)
         append!(claimed, handles)
         tracer === owner && append!(owned, handles)
     end
-    # A quarantine applied by a caller outside the tracers, as a custom tracer
-    # does through `apply_trace!`, is claimed by neither, and either tracer's
-    # reset still undoes it, as a full reset always has.
+    # A quarantine applied outside the tracers, for example by a custom tracer
+    # through `apply_trace!`, is claimed by neither. Either tracer's reset
+    # still undoes it, as a full reset always has.
     standing = get(ind.state, :_quarantine_removal_handles, nothing)
     standing === nothing || append!(owned, filter(h -> !(h in claimed), standing))
     entries = get(ind.state, :_removal_entries, nothing)
@@ -832,8 +832,8 @@ function _reset_traced!(ind::Individual, owner::Symbol)
         withdraw_removal!(ind, handle)
     end
     delete!(ind.state, _own_handles_key(owner))
-    # The budget `CapacityConstrained` counts is the quarantine handles still
-    # standing, so those withdrawn here must leave it.
+    # `CapacityConstrained` counts the quarantine handles still standing, so
+    # the handles withdrawn here must leave that count.
     if standing !== nothing
         kept = filter(h -> !(h in owned), standing)
         if isempty(kept)
@@ -848,8 +848,8 @@ function _reset_traced!(ind::Individual, owner::Symbol)
         ind.state[:trace_time] = _state_real(ind.state, _own_trace_time_key(other), Inf)
     else
         delete!(ind.state, :trace_time)
-        # Written by a `FlagOnly` trace for both tracers alike, so it can only
-        # be told apart from the other tracer's when there is no other.
+        # A `FlagOnly` trace writes this for both tracers alike. It can be
+        # told apart only when the other tracer has not traced the individual.
         delete!(ind.state, :_traced_isolation_time)
     end
     ind.state[:traced] = other_traced
