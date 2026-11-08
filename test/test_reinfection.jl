@@ -28,6 +28,30 @@ using StableRNGs
         @test ind.state[:reporting_time] == Inf
     end
 
+    @testset "Waning timed from a terminal state that lost the race is censored" begin
+        ind = Individual(; id = 1, infection_time = 0.0)
+        ind.state[:outcome] = :deceased
+        ind.state[:outcome_time] = 3.0
+        ind.state[:recovered_time] = 5.0
+        ind.state[:susceptible_again] = true
+        ind.state[:susceptible_again_time] = 6.0
+        step = Transition(:susceptible_again; from = :recovered, delay = 1.0)
+        EpiBranch.censor_after_outcome!(step, ind)
+        @test !ind.state[:susceptible_again]
+        @test ind.state[:susceptible_again_time] == Inf
+    end
+
+    @testset "Loglik treats waning timed from the outcome as occurred" begin
+        step = Transition(:susceptible_again; from = :recovered, delay = Exponential(1.0))
+        ind = Individual(; id = 1, infection_time = 0.0)
+        ind.state[:outcome] = :recovered
+        ind.state[:outcome_time] = 5.0
+        ind.state[:recovered_time] = 5.0
+        ind.state[:susceptible_again] = true
+        ind.state[:susceptible_again_time] = 6.0
+        @test EpiBranch.transition_loglik(step, ind) ≈ logpdf(Exponential(1.0), 1.0)
+    end
+
     @testset "A second episode no longer overwrites the first in silence" begin
         ind = Individual(; id = 1, infection_time = 5.0)
         ind.state[:recovered] = true

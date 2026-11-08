@@ -71,10 +71,11 @@ function transition_loglik(h::Hospitalisation, individual::Individual)
     _anchor_ok(anchor) || return 0.0
     flag = individual.state[:admitted]::Bool
     time = flag ? individual.state[:admission_time] : Inf
-    occurred = flag && time <= outcome_time(individual)
+    cap = _timed_from_outcome(individual, h.from) ? Inf : outcome_time(individual)
+    occurred = flag && time <= cap
     ll = transition_term(
         h.probability, h.delay, individual, anchor, occurred;
-        censor = min(infection_aborted_time(individual), outcome_time(individual))
+        censor = min(infection_aborted_time(individual), cap)
     )
     occurred || return ll
     return ll + _delay_loglik(h.delay, time - anchor)

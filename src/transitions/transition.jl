@@ -137,8 +137,10 @@ function transition_loglik(t::Transition, individual::Individual)
     censor = infection_aborted_time(individual)
     occurred = flag
     if !t.terminal
-        occurred = flag && time <= outcome_time(individual)
-        censor = min(censor, outcome_time(individual))
+        if !_timed_from_outcome(individual, t.from)
+            occurred = flag && time <= outcome_time(individual)
+            censor = min(censor, outcome_time(individual))
+        end
     end
     ll = transition_term(t.probability, t.delay, individual, anchor, occurred; censor = censor)
     occurred || return ll
