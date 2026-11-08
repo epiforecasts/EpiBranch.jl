@@ -52,7 +52,8 @@ results = DataFrame(
     containment_prob = Float64[]
 )
 
-n_sim = 500
+# The test suite sets EPIBRANCH_EXAMPLE_NSIM to run this script quickly.
+n_sim = parse(Int, get(ENV, "EPIBRANCH_EXAMPLE_NSIM", "500"))
 rng = Xoshiro(2020)
 
 for (delay_name, delay_dist) in [("SARS-like", sars_delay), ("Wuhan-like", wuhan_delay)]
