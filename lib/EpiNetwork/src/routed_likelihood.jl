@@ -336,7 +336,7 @@ function _routed_modifier_loglik(
     route_terms = [
         _scaled_loghazard(
             modifier,
-            loghazard(
+            EpiBranch._loghazard(
                 _route_kernel(windows[r].kernel, data.contacts[r], i, pos, j),
                 tj - data.infectious_time[r][i]
             ),
@@ -525,7 +525,7 @@ function EpiBranch.pairwise_surv_loglik(
 
         (isnan(tj) || tj > tfollow) && continue
         route_terms = [
-            loghazard(
+            EpiBranch._loghazard(
                 _route_kernel(windows[r].kernel, data.contacts[r], i, pos, j), tj - data.infectious_time[r][i]
             )
                 for r in 1:n_routes for (i, pos) in in_neighbours[r][j]
