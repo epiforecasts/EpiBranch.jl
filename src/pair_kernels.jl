@@ -869,8 +869,8 @@ function _invert_hazard(rate, start, upper, boundary_is_certain::Bool, target::R
     return
 end
 
-# `loghazard` of a `Truncated` is `logpdf - logccdf`, which is `-Inf - -Inf`
-# beyond the upper bound. The hazard is zero there, so its log is `-Inf`.
+# Beyond the upper bound, `loghazard` of a `Truncated` is `logpdf - logccdf`,
+# which gives `-Inf - -Inf`. The hazard there is zero, so the log hazard is `-Inf`.
 function _loghazard(k::Distribution, τ::Real)
     τ > maximum(k) && return oftype(float(τ), -Inf)
     return loghazard(k, τ)
