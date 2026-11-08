@@ -152,8 +152,9 @@ _delay_loglik(x::Real, dt) = isapprox(dt, x) ? 0.0 : -Inf
 function _delay_loglik(f, dt)
     throw(
         ArgumentError(
-            "a `Function` delay has no density to evaluate; `progression_loglik` " *
-                "needs a `Distribution` (or a fixed `Real`) for every delay it evaluates"
+            "a `Function` or `Conditional` delay has no density to evaluate; " *
+                "`progression_loglik` needs a `Distribution` (or a fixed `Real`) " *
+                "for every delay it evaluates"
         )
     )
 end
