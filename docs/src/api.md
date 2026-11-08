@@ -549,6 +549,7 @@ InfectionLayer
 compile_contact_pairs
 ContactPairsLayout
 MassActionHazard
+SumHazard
 PairKernel
 EpiBranch.watched_records
 EpiBranch.kernel_projection

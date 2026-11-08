@@ -1523,6 +1523,116 @@ end
 _ext_survival_of(s::_MassActionSchedule, j) = s
 _ext_partype(s::_MassActionSchedule, n) = Distributions.partype(s)
 
+# ── A sum of external sources ────────────────────────────────────────
+
+"""
+    SumHazard(sources...)
+    source1 + source2
+
+The external hazard that is the sum of several sources, for
+[`pairwise_surv_loglik`](@ref)'s `external_hazard`: each person faces the
+hazards of all the sources at once, and an infection is explained by whichever
+fires first. Each source is anything `external_hazard` accepts on its own: a
+rate, a distribution, a calendar schedule such as `Steps`, a per-person vector
+or function of those, or a [`MassActionHazard`](@ref). `+` builds one when
+either side is a [`MassActionHazard`](@ref) or a `SumHazard`.
+
+An index case is explained by the sum whenever at least one active source
+explains one, which a constant or calendar importation hazard does from time 0
+and mass action alone does not. Mass action plus an importation rate therefore
+scores index cases as importations, instead of conditioning on them.
+
+Like [`MassActionHazard`](@ref), a sum is likelihood-only: it cannot be passed
+as a process's own `external_hazard` to simulate from.
+
+# Example
+
+Mass action from a community of 800 plus a constant importation rate:
+
+```julia
+mass_action = MassActionHazard(; transmission_rate = 0.05, population_size = 800)
+pairwise_surv_loglik(Exponential(4.0), data;
+    external_hazard = mass_action + 0.002)
+```
+"""
+struct SumHazard{S <: Tuple}
+    sources::S
+end
+SumHazard(sources...) = SumHazard(sources)
+
+Base.:+(a::MassActionHazard, b::MassActionHazard) = SumHazard(a, b)
+Base.:+(a::MassActionHazard, b::SumHazard) = SumHazard(a, b.sources...)
+Base.:+(a::SumHazard, b::MassActionHazard) = SumHazard(a.sources..., b)
+Base.:+(a::SumHazard, b::SumHazard) = SumHazard(a.sources..., b.sources...)
+Base.:+(a::MassActionHazard, b) = SumHazard(a, b)
+Base.:+(a, b::MassActionHazard) = SumHazard(a, b)
+Base.:+(a::SumHazard, b) = SumHazard(a.sources..., b)
+Base.:+(a, b::SumHazard) = SumHazard(a, b.sources...)
+
+_valid_external(s::SumHazard) = !isempty(s.sources) && all(_valid_external, s.sources)
+_ext_active(s::SumHazard) = any(_ext_active, s.sources)
+# An inactive part (a zero rate) explains nothing, so only active parts count.
+function _ext_explains_index(s::SumHazard)
+    return any(p -> _ext_active(p) && _ext_explains_index(p), s.sources)
+end
+
+function _check_external(s::SumHazard, n::Integer)
+    _valid_external(s) || throw(
+        ArgumentError(
+            "a SumHazard needs at least one source, each a valid external hazard"
+        )
+    )
+    for p in s.sources
+        _check_external(p, n)
+    end
+    return nothing
+end
+
+function _ext_prepare(::SumHazard)
+    throw(
+        ArgumentError(
+            "a SumHazard is read for the likelihood only and cannot be " *
+                "simulated from; pass it as the `external_hazard` of " *
+                "`pairwise_surv_loglik`, not of a process"
+        )
+    )
+end
+
+# The sources prepared once, each against the data it may read.
+struct _PreparedSum{S <: Tuple}
+    sources::S
+end
+_ext_prepare(s::SumHazard, data) = _PreparedSum(map(p -> _ext_prepare(p, data), s.sources))
+
+# One person's summed survival distribution: the hazards of their active parts
+# add, and so do their cumulative hazards.
+struct _SumSurvival{S <: Tuple}
+    parts::S
+end
+
+function _ext_survival_of(s::_PreparedSum, j)
+    parts = Tuple(filter(!isnothing, [_ext_survival_of(p, j) for p in s.sources]))
+    isempty(parts) && return nothing
+    length(parts) == 1 && return only(parts)
+    return _SumSurvival(parts)
+end
+
+function SurvivalDistributions.cumhazard(s::_SumSurvival, τ::Real)
+    return sum(p -> cumhazard(p, τ), s.parts)
+end
+function SurvivalDistributions.hazard(s::_SumSurvival, t::Real)
+    return sum(p -> hazard(p, t), s.parts)
+end
+function SurvivalDistributions.loghazard(s::_SumSurvival, t::Real)
+    h = hazard(s, t)
+    h > 0 || return oftype(float(h), -Inf)
+    return log(h)
+end
+Base.maximum(::_SumSurvival) = Inf
+function Distributions.partype(s::_SumSurvival)
+    return promote_type(map(Distributions.partype, s.parts)...)
+end
+
 # ── Evaluation ───────────────────────────────────────────────────────
 
 # Row r's contact-interval distribution: a shared distribution, a per-edge

@@ -529,6 +529,52 @@ end
         )
     end
 
+    @testset "mass action plus an importation rate explains index cases" begin
+        mass = MassActionHazard(; transmission_rate = 5.0, population_size = 5)
+        α = 0.1
+        total = mass + α
+        @test total isa SumHazard
+        @test (α + mass) isa SumHazard
+        @test (total + 0.2) isa SumHazard && length((total + 0.2).sources) == 3
+        @test EpiBranch._ext_active(total)
+        @test EpiBranch._ext_explains_index(total)
+        # a zero importation rate explains nothing, leaving mass action alone
+        @test !EpiBranch._ext_explains_index(mass + 0.0)
+        @test_throws ArgumentError EpiBranch._ext_prepare(total)
+
+        # a lone index case is explained by the importation, not conditioned on
+        lone = _TestInfections([1], [0.0], [0.0], [3.0], [true]; obs_end = 5.0)
+        @test pairwise_surv_loglik(Exponential(1.0), lone; external_hazard = total) ≈ log(α)
+        @test pairwise_surv_loglik(Exponential(1.0), lone; external_hazard = mass) == 0.0
+        Lsum = compile_contact_pairs(lone; external = true, explain_index = true)
+        @test pairwise_surv_loglik(Exponential(1.0), lone, Lsum; external_hazard = total) ≈ log(α)
+
+        # 1 is an index case infectious over (0, 3]; 2 is infected at 3, when
+        # mass action gives 1 and the importation 0.1, over a cumulative
+        # hazard of 3·1 + 3·0.1 since 0
+        community = _TestInfections(
+            [1, 2], [0.0, 3.0], [0.0, NaN], [3.0, Inf], [true, false]; obs_end = 5.0
+        )
+        @test pairwise_surv_loglik(Exponential(1.0), community; external_hazard = total) ≈
+            log(α) + log(1 + α) - 3.3
+        @test pairwise_surv_loglik(Exponential(1.0), community; external_hazard = α + mass) ≈
+            log(α) + log(1 + α) - 3.3
+
+        f(β) = pairwise_surv_loglik(
+            Exponential(1.0), community;
+            external_hazard = MassActionHazard(; transmission_rate = β, population_size = 5) + α
+        )
+        fd = (f(5.0 + 1.0e-6) - f(5.0 - 1.0e-6)) / 2.0e-6
+        @test ForwardDiff.derivative(f, 5.0) ≈ fd rtol = 1.0e-4
+        g(a) = pairwise_surv_loglik(Exponential(1.0), community; external_hazard = mass + a)
+        gd = (g(α + 1.0e-6) - g(α - 1.0e-6)) / 2.0e-6
+        @test ForwardDiff.derivative(g, α) ≈ gd rtol = 1.0e-4
+
+        @test_throws ArgumentError pairwise_surv_loglik(
+            Exponential(1.0), community; external_hazard = mass + (-1.0)
+        )
+    end
+
     @testset "mass action counts I(t) over (open, close], matching a pairwise row" begin
         # person 1 is a conditioned-on index case, infectious over (0, 3]; 2 is
         # a secondary infected at the exact instant 1 is removed. A pairwise
