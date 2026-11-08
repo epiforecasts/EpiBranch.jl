@@ -235,7 +235,13 @@ method (the four-argument form falls back to the three-argument one).
 `trigger_time` does not itself check eligibility. A combined rule containing a
 condition that reads the contact must be timed with the four-argument form.
 """
-trigger_time(::TraceEligibility, infector, state) = _recorded_isolation_time(infector)
+function trigger_time(::TraceEligibility, infector, state)
+    # A quarantine recorded while the person was still a susceptible contact
+    # can precede their own infection; their case is traced from no earlier
+    # than that infection.
+    t = _recorded_isolation_time(infector)
+    return is_infected(infector) ? max(t, infector.infection_time) : t
+end
 trigger_time(::OnSymptomOnset, infector, state) = onset_time(infector)
 function trigger_time(e::Union{AnyOf, AllOf, NoneOf}, infector, state)
     return _combined_time(_WithoutContact(), e, infector, nothing, state)
