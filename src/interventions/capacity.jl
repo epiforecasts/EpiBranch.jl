@@ -23,7 +23,7 @@ struct DropRefused <: RefusalPolicy end
 
 A [`RefusalPolicy`](@ref) that moves an action that does not fit to the
 earliest later date that does, so the person is served late rather than not at
-all. The action keeps its effect and takes the new date, which is what counts
+all. The action keeps its effect and takes the new date, and that date counts
 against the resource from then on.
 
 Under [`CapacityConstrained`](@ref) that date is the start of the first later
@@ -47,8 +47,8 @@ DeferRefused(; max_periods::Integer = 100) = DeferRefused(max_periods)
     refused_action(policy, wrapper, usage, action) -> Union{InterventionAction, Nothing}
 
 For extension authors: the [`InterventionAction`](@ref) to admit in place of
-`action`, which `wrapper`'s resource has just turned away, or `nothing` to
-drop it. `usage` is the resource's own record for the people drawing on the
+`action`, which the resource of `wrapper` has just turned away, or `nothing` to
+drop it. `usage` is the record the resource keeps for the people drawing on the
 same budget as `action.individual`. A policy defines a method for each wrapper
 it supports; [`DropRefused`](@ref) and [`DeferRefused`](@ref) are the
 built-in ones.

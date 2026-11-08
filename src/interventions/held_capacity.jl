@@ -5,7 +5,7 @@
 Limit how many people can hold a resource at once: a place taken when an
 action is admitted and given back later, such as a bed occupied for the length
 of a quarantine. [`CapacityConstrained`](@ref) instead spends a budget per
-period and never gets any of it back.
+period and does not return any of it.
 
 # Examples
 ```julia
@@ -27,8 +27,8 @@ HeldCapacity(
 - `hold`: how long a place is kept once taken, in days: a number, a
   `Distribution` or an `(rng, individual)` callable, as a delay is anywhere
   else. The default, `Inf`, keeps it until [`release_capacity!`](@ref) gives it
-  back, which an action's `effect!` can do by returning a further action dated
-  when the stay ends. For an intervention that sets its own effect, such as
+  back, which the `effect!` of an action can do by returning a further action
+  dated when the stay ends. For an intervention that sets its own effect, such as
   [`Isolation`](@ref), a place is held for the isolation itself, and `hold`,
   when finite, ends it sooner.
 - `priority`: as for [`CapacityConstrained`](@ref).
@@ -36,9 +36,9 @@ HeldCapacity(
   [`RefusalPolicy`](@ref). [`DeferRefused`](@ref) moves it to the first moment
   a place frees up; the default [`DropRefused`](@ref) discards it.
 
-A place is held from the date of the admitted action, so each action is
-checked against every stay that overlaps its own, whatever order the engine
-admits actions in. A person already holding a place is not given a second.
+A place is held from the date of the admitted action. Each action is checked
+against every stay that overlaps its own, whatever order the engine admits
+actions in. A person already holding a place is not given a second.
 [`held_usage`](@ref) reports the places held. Like `CapacityConstrained`, the
 wrapper splits its places by [`resource_key`](@ref EpiBranch.resource_key) and
 composes with [`Scheduled`](@ref); the intervention must define
@@ -95,8 +95,8 @@ function _fits_stay(capacity, stays, s, e)
     return true
 end
 
-# The earliest moment after `action.time` that fits a stay of `duration`: the
-# release of a stay, as that is the only thing that frees a place.
+# The earliest moment after `action.time` that fits a stay of `duration`. Only
+# the release of a stay frees a place, so only release times are tried.
 function refused_action(::DeferRefused, hc::HeldCapacity, usage, action)
     stays, duration = usage.stays, usage.duration
     for t in sort!(unique([b for (_, b) in stays if action.time < b && isfinite(b)]))
@@ -152,7 +152,7 @@ Give back the place `person` holds under a [`HeldCapacity`](@ref) wrapping
 there. A person holding no place, or whose stay ends sooner, is left alone. A
 stay released at or before its own start is withdrawn altogether.
 
-Call it from an action's `effect!`, which can return a further
+Call it from the `effect!` of an action, which can return a further
 [`InterventionAction`](@ref) dated when the stay ends to do so.
 """
 function release_capacity!(state, intervention, person, at::Real)

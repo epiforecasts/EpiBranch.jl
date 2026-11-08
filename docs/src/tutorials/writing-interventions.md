@@ -852,8 +852,8 @@ An intervention that sets its effect directly in `resolve_individual!`, such
 as `Isolation`, holds a place for as long as the effect lasts, which it
 reports through `EpiBranch.held_until(iv, individual)`. With the default
 `hold = Inf` a place is kept until `release_capacity!(state, iv, person, at)`
-gives it back; an action's `effect!` can return a further action dated when
-the stay ends that calls it. `held_usage(hc, state, at)` reports how many
+gives it back; the `effect!` of an action can return a further action dated
+when the stay ends that calls it. `held_usage(hc, state, at)` reports how many
 places are held. `resource_key` splits the places by group as it does for
 `CapacityConstrained`.
 
