@@ -63,8 +63,8 @@ and [`immunity_time`](@ref) functions in its `probability`;
 # Symptoms
 
 `symptom_efficacy` is the probability that a vaccinated person who is
-infected after their immunity has developed, and who would have had
-symptoms, stays asymptomatic. It is applied when the case's symptom status is
+infected, whose onset would fall once their immunity has developed, and who
+would have had symptoms, stays asymptomatic. It is applied when the case's symptom status is
 read, so [`is_asymptomatic`](@ref) and [`onset_time`](@ref) reflect it
 whether the dose came before or after the person's attributes were drawn, and
 anything triggered by onset, such as [`Isolation`](@ref) with
@@ -149,8 +149,8 @@ directly only when writing a new vaccination intervention (see
   being fully protected.
 - `severity_efficacy`: probability that the vaccinated person's own illness
   is milder once immune (default 0).
-- `symptom_efficacy`: probability that a vaccinated person who is infected
-  once immune, and who would have developed symptoms, stays asymptomatic
+- `symptom_efficacy`: probability that a vaccinated person whose onset
+  would fall once immune, and who would have developed symptoms, stays asymptomatic
   instead (default 0).
 - `delay_to_immunity`: days from vaccination to immunity (default 0).
 - `waning`: a function of days since immunity giving the fraction of
@@ -595,8 +595,8 @@ RingVaccination(efficacy = 0.0, post_exposure_efficacy = 0.6)
   vaccinated contact is prevented once immune (default 0).
 - `severity_efficacy`: probability that the vaccinated contact's own illness is
   milder once immune (default 0). See "Severity" below.
-- `symptom_efficacy`: probability that the vaccinated contact, if infected once
-  immune, stays asymptomatic when it would otherwise have had symptoms
+- `symptom_efficacy`: probability that the vaccinated contact, if its onset
+  would fall once immune, stays asymptomatic when it would otherwise have had symptoms
   (default 0). See "Symptoms" in [`AbstractVaccination`](@ref).
 - `eligibility_window`: days after exposure beyond which a contact is no longer
   vaccinated (default `Inf`), as in filovirus protocols where vaccination
