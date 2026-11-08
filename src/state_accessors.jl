@@ -779,7 +779,7 @@ end
 
 # Day from which a dose's protection against symptoms applies: the earliest
 # immunity day among the doses whose symptom draw succeeded (`Inf` if none).
-# Kept as one entry so that reading a person's symptom status scans nothing.
+# Kept as one entry to avoid scanning the state when reading symptom status.
 _symptom_protection_time(ind::Individual{T}) where {T} =
     _state_real(ind.state, :symptom_protection_from, T(Inf))
 
