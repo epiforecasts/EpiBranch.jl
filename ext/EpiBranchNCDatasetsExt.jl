@@ -1,8 +1,8 @@
 module EpiBranchNCDatasetsExt
 
 # Reads a stratified contact array from a NetCDF file. The array's axes are
-# named in the file, so they are matched to the respondent and contact axes of
-# each stratifying variable by name rather than by position.
+# named in the file and are matched by name to the respondent and contact axes
+# of each stratifying variable.
 
 using EpiBranch: EpiBranch, NetCDFFormat, flatten_contacts
 using NCDatasets: NCDatasets, NCDataset

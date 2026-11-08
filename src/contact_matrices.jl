@@ -5,8 +5,8 @@
 # such an array into the flat types a multi-type model works with, give a
 # `MixingProcess` its pair rate from a matrix and the group sizes, and build the
 # array from a long-format table. Reading a table from a file is added by the
-# package extensions for CSV and NetCDF; the format-specific part stays there so
-# the core package does not depend on a file reader.
+# package extensions for CSV and NetCDF. The format-specific part stays in the
+# extensions to keep file-reader dependencies out of the core package.
 
 """
     StratifiedContacts
@@ -24,7 +24,7 @@ A contact array flattened into composite types, as returned by
 
 Use `matrix` and `labels` for the multi-type form of
 [`BranchingProcess`](@ref), and `groups` with [`mixing_rate`](@ref) and a
-[`MixingProcess`](@ref) whose `mixing_by` is `names`. The first stratifying
+[`MixingProcess`](@ref) with `mixing_by` set to `names`. The first stratifying
 variable varies fastest down the types, so a population-size array of shape
 `(n₁, n₂, …)` flattens to the matching vector with `vec`.
 """
@@ -143,7 +143,7 @@ contacts_from_table(df;
 Each variable's levels are its distinct values in both columns, sorted, unless
 `levels` gives them (a tuple of vectors, which also sets their order). A
 combination missing from the table is `fill`, `0.0` by default; one that
-appears twice is an error, since adding the rows up is not always what a
+appears twice is an error, because adding the rows up is not always what a
 long-format source means. `names` defaults to the respondent column names.
 """
 function contacts_from_table(
@@ -217,8 +217,8 @@ The `rate` of a [`MixingProcess`](@ref) from a contact matrix and the sizes of
 the groups. `contacts[j, i]` is the mean number of group-`i` contacts a
 group-`j` person makes per day, the layout of a survey matrix and of the
 matrix [`BranchingProcess`](@ref) takes. A person in group `j` then contacts
-one given member of group `i` at rate `contacts[j, i] / group_sizes[i]`, which
-is what `rate(j, i)` returns; summed over the `group_sizes[i]` members of group
+one given member of group `i` at rate `contacts[j, i] / group_sizes[i]`, the
+value `rate(j, i)` returns; summed over the `group_sizes[i]` members of group
 `i` it gives back `contacts[j, i]`.
 
 `group_sizes` holds the number of people in each group, all positive. A group
@@ -229,9 +229,9 @@ levels or for several variables; a [`StratifiedContacts`](@ref) supplies its
 own, and a population-size array of shape `(n₁, n₂, …)` is flattened to match
 its types.
 
-The matrix is used as given. It is not made reciprocal
-(`contacts[j, i] * n[j] == contacts[i, j] * n[i]`), so a matrix that is not
-gives a pair rate that depends on the direction.
+The matrix is used as given and is not made reciprocal
+(`contacts[j, i] * n[j] == contacts[i, j] * n[i]`). A matrix that is not
+reciprocal gives a pair rate that depends on the direction.
 
 # Example
 
