@@ -15,7 +15,17 @@ Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 SpecialFunctions = "276daf66-3868-5448-9aa4-cd146d93841b"
 SurvivalDistributions = "7121986e-ae89-4673-ae4e-1cb822919a18"
 
+[weakdeps]
+CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
+NCDatasets = "85f8d34a-cbdd-5861-8df4-14fed0d494ab"
+
+[extensions]
+EpiBranchCSVExt = "CSV"
+EpiBranchNCDatasetsExt = "NCDatasets"
+
 [compat]
+CSV = "0.10, 1"
+NCDatasets = "0.14"
 DataFrames = "1"
 Dates = "1"
 Distributions = "0.25"

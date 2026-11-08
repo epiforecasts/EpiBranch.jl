@@ -151,6 +151,9 @@ include("analytical/end_of_outbreak_probability.jl")
 include("analytical/incidence_likelihood.jl")
 include("analytical/signal_likelihood.jl")
 
+# Contact-matrix inputs: stratified arrays, mixing rates and file readers.
+include("contact_matrices.jl")
+
 # Distribution wrappers so models work directly with Turing's `~`.
 include("likelihood_dists.jl")
 
@@ -166,6 +169,8 @@ include("progression_likelihood.jl")
 export TransmissionModel, BranchingProcess, Infectiousness, OffspringTimes,
     HomogeneousProcess, MixingProcess, ModelSpec
 export MeanFieldProcess, MeanFieldState, LinearNoiseProcess, LinearNoiseState
+export StratifiedContacts, flatten_contacts, contacts_from_table, mixing_rate
+export read_contacts, ContactFileFormat, CSVFormat, NetCDFFormat
 export MixingMeanFieldProcess, MixingMeanFieldState
 export MixingLinearNoiseProcess, MixingLinearNoiseState
 export HybridProcess, HybridState

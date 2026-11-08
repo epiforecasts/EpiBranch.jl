@@ -101,6 +101,31 @@ binomial, then divides them between types in proportion to its column of `M`.
 This is a modelling assumption: overdispersion applies to a case's total, with
 a multinomial split between types given that total.
 
+## Stratified contact arrays and files
+
+A contact array stratified by more than one variable, such as age by a
+socio-economic stratum, has two axes per variable (respondent, then contact),
+one variable after another. [`flatten_contacts`](@ref) turns it into the matrix
+over composite types, with a label for each, that the form above takes.
+[`read_contacts`](@ref) builds the same from a long-format CSV file (after
+`using CSV`) or a NetCDF file (after `using NCDatasets`):
+
+```julia
+using CSV
+
+flat = read_contacts("contacts.csv";
+    strata = ["part_age" => "cont_age", "part_setting" => "cont_setting"],
+    value = "contacts")
+model = BranchingProcess(
+    flat.matrix, 0.05, 5.0, R_j -> NegBin(R_j, 0.5), LogNormal(1.6, 0.5);
+    type_labels = flat.labels,
+)
+```
+
+For a [`MixingProcess`](@ref), [`mixing_rate`](@ref) turns the same matrix and
+the group sizes into the pair rate, `contacts[j, i] / sizes[i]`, with the
+composite types as `mixing_by` groups.
+
 ## Reproduction number and extinction probability
 
 [`reproduction_number`](@ref) returns the reproduction number of the whole
