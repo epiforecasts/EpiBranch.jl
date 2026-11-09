@@ -6,8 +6,8 @@ using Distributions
 using Random
 using StableRNGs
 # Activates the serial_interval(model, infector, infectee) extension method.
-# Not loaded on Julia 1.10: there these packages pull in EpiAwareADTools 0.1,
-# whose xlogy rule clashes with Mooncake's.
+# Not loaded on Julia 1.10, where these packages pull in EpiAwareADTools 0.1.
+# Its xlogy rule clashes with the Mooncake rule.
 const RUN_SERIAL_INTERVAL = VERSION >= v"1.11"
 if RUN_SERIAL_INTERVAL
     using CensoredDistributions

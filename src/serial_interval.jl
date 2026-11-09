@@ -30,8 +30,8 @@ so today they only name which pair the serial interval is for.
 
 Available once CensoredDistributions.jl and ConvolvedDistributions.jl are
 both loaded, on Julia 1.11 or later. On Julia 1.10 the two packages pull in
-EpiAwareADTools 0.1, whose `xlogy` differentiation rule clashes with
-Mooncake's, so the method is not tested there.
+EpiAwareADTools 0.1. Its `xlogy` differentiation rule clashes with the
+Mooncake rule, and the method is not tested there.
 
 !!! note "Closed forms rarely survive the composition"
     ConvolvedDistributions.jl has a closed form for the sum or the
