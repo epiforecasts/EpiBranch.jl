@@ -650,18 +650,25 @@ function _calendar_segment(k::_CalendarScaledKernel, calendar_lo)
 end
 
 function _calendar_cumhazard(::PiecewiseConstantCalendar, k::_CalendarScaledKernel, τ)
+    # A segment with a zero multiplier adds no hazard, even past the end of a
+    # bounded profile, and survival mass can remain there. A positive segment
+    # that starts at or beyond that end has an infinite total, returned
+    # directly because the difference of two infinite endpoint values would
+    # read `Inf - Inf`.
+    _, upper, certain = _profile_bounds(k.profile)
     total = zero(float(τ))
     calendar_end = k.opening + τ
     calendar_lo = k.opening
     while calendar_lo < calendar_end
         m, calendar_hi = _calendar_segment(k, calendar_lo)
         calendar_hi = min(calendar_end, calendar_hi)
-        m == 0 || (
+        if m != 0
+            certain && calendar_lo - k.opening >= upper && return oftype(total, Inf)
             total += m * (
                 cumhazard(k.profile, calendar_hi - k.opening) -
                     cumhazard(k.profile, calendar_lo - k.opening)
             )
-        )
+        end
         calendar_lo = calendar_hi
     end
     return total
@@ -672,12 +679,19 @@ end
 # current step, then invert within the profile alone with the same machinery
 # used for a constant rate multiplier.
 function _calendar_invlogccdf(::PiecewiseConstantCalendar, k::_CalendarScaledKernel, target)
+    # Zero-multiplier segments are skipped. A draw whose target outlasts every
+    # positive segment is `Inf` (the contact never happens), even for a
+    # bounded profile. A positive segment that starts at or beyond the end of
+    # a bounded profile settles the draw at the start of the segment, where the
+    # cumulative hazard jumps to infinity immediately afterwards.
+    _, upper, certain = _profile_bounds(k.profile)
     acc = zero(target)
     calendar_lo = k.opening
     while true
-        m, calendar_hi = _calendar_segment(k, calendar_lo)
         t_lo = calendar_lo - k.opening
+        m, calendar_hi = _calendar_segment(k, calendar_lo)
         if m > 0
+            certain && t_lo >= upper && return t_lo
             base = cumhazard(k.profile, t_lo)
             seg_cum = isfinite(calendar_hi) ?
                 m * (cumhazard(k.profile, calendar_hi - k.opening) - base) :
