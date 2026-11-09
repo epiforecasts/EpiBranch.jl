@@ -38,8 +38,8 @@ struct _MaskLessRule <: EpiHouseholds.ConditionOn end
         @test loglikelihood(data, spec; layout) == expected
         @test loglikelihood(data, spec.process; layout) ==
             loglikelihood(data, spec.process)
-        # The supplied layout is used rather than rebuilt: one that does not
-        # match the model's external hazard is rejected.
+        # A supplied layout is used as given: one that does not match the
+        # external hazard of the model is rejected.
         other = compile_household_pairs(data; external = true)
         @test_throws ArgumentError loglikelihood(data, spec.process; layout = other)
         loglikelihood(data, spec; layout)
