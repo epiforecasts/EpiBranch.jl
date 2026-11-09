@@ -1217,8 +1217,8 @@ function _check_person_external(s, j)
     return s
 end
 
-# The end of the community-importation window as a `Float64`; throws unless it
-# is a non-negative number (`Inf` allowed).
+# Convert the end of the community-importation window to a `Float64`. Throws an
+# `ArgumentError` unless it is a non-negative number (`Inf` allowed).
 function _check_obs_end(obs_end)
     value = Float64(obs_end)
     (!isnan(value) && value >= 0) || throw(
