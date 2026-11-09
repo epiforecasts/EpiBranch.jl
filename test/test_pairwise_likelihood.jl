@@ -1262,3 +1262,11 @@ end
         Exponential(theta), inside; susceptibility = _IdentitySusceptibility()
     ) ≈ expected
 end
+
+@testset "A row ending past a truncated kernel's upper bound has zero hazard" begin
+    k = truncated(Gamma(2, 2), 0, 14)
+    @test EpiBranch._loghazard(k, 30.0) == -Inf
+    @test EpiBranch._loghazard(k, 5.0) ≈ logpdf(k, 5.0) - logccdf(k, 5.0)
+    data = PairwiseSurvivalData([1, 1], [0.0, 0.0], [5.0, 30.0], [true, true])
+    @test !isnan(pairwise_surv_loglik(k, data))
+end

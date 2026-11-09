@@ -85,6 +85,24 @@ end
         @test loglikelihood(data, process) == direct
     end
 
+    @testset "a route kernel past its truncation bound has zero hazard, not NaN" begin
+        hh, comm = _routed_adjacency(20, 4)
+        windows = [
+            RouteWindow(:household; until = (:recovered,), kernel = Weibull(1.5, 4.0), reach = hh),
+            RouteWindow(:community; until = (:recovered,), kernel = Exponential(10.0), reach = comm),
+        ]
+        m = ModelSpec(RoutedNetwork(windows); progression = _sir(8.0))
+        data = routed_network_infections(simulate(m; n_initial = 3, rng = StableRNG(2)), m)
+        cut = [
+            RouteWindow(
+                :household; until = (:recovered,),
+                kernel = truncated(Weibull(1.5, 4.0), 0.0, 0.5), reach = hh
+            ),
+            windows[2],
+        ]
+        @test !isnan(pairwise_surv_loglik(cut, data))
+    end
+
     @testset "a community hazard per node matches a shared one when all equal" begin
         hh, comm = _routed_adjacency(30, 4)
         windows = [

@@ -603,7 +603,19 @@ function SurvivalDistributions.cumhazard(k::_CalendarScaledKernel, τ::Real)
 end
 
 function SurvivalDistributions.loghazard(k::_CalendarScaledKernel, τ::Real)
-    return loghazard(k.profile, τ) + log(calendar_multiplier(k.calendar, k.opening + τ))
+    lh = _loghazard(k.profile, τ)
+    # Past the profile's support the hazard is zero whatever the calendar says.
+    lh == -Inf && return lh
+    return lh + log(calendar_multiplier(k.calendar, k.opening + τ))
+end
+
+# `loghazard` of a truncated kernel is `logpdf - logccdf`, which is `-Inf - -Inf`
+# beyond the upper bound. The hazard there is zero and its log is `-Inf`.
+function _loghazard(k, τ::Real)
+    lh = loghazard(k, τ)
+    # Other NaNs (a NaN time or NaN kernel parameters) are left to propagate.
+    isnan(lh) && !isnan(τ) && logpdf(k, τ) == -Inf && return oftype(lh, -Inf)
+    return lh
 end
 
 SurvivalDistributions.hazard(k::_CalendarScaledKernel, τ::Real) = _calendar_hazard(k, τ)
