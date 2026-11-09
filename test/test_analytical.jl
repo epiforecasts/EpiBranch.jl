@@ -587,8 +587,7 @@
                 proc;
                 progression = [
                     Reporting(
-                        delay = Dirac(0.0), probability = 0.5,
-                        from = ind -> ind.infection_time
+                        delay = Dirac(0.0), probability = 0.5, from = :infection
                     ),
                 ]
             )
@@ -915,15 +914,35 @@
             # must be refused the same way as `PerCaseObservation`.
             rm = ModelSpec(
                 BranchingProcess(NegBin(R, k), GT);
-                progression = [Reporting(delay = Dirac(0.0), probability = 0.5)]
+                progression = [Reporting(delay = Dirac(0.0), probability = 0.5, from = :infection)]
             )
             @test_throws ArgumentError end_of_outbreak_probability(rm, 5.0)
-            # A `Reporting` step at probability 1 is still full reporting.
+            # A `Reporting` step at probability 1 from infection is full reporting.
             full = ModelSpec(
                 BranchingProcess(NegBin(R, k), GT);
-                progression = [Reporting(delay = Dirac(0.0), probability = 1.0)]
+                progression = [Reporting(delay = Dirac(0.0), probability = 1.0, from = :infection)]
             )
             @test end_of_outbreak_probability(full, 5.0) ≈
+                end_of_outbreak_probability(R, k, GT, 5.0)
+            # From onset, asymptomatic cases are never reported. Probability 1 is
+            # then not full reporting, unless there are no asymptomatic cases.
+            onset_rep = [Reporting(delay = Dirac(0.0), probability = 1.0)]
+            asym = ModelSpec(
+                BranchingProcess(NegBin(R, k), GT);
+                progression = onset_rep,
+                attributes = clinical_presentation(
+                    incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.5
+                )
+            )
+            @test_throws ArgumentError end_of_outbreak_probability(asym, 5.0)
+            sympt = ModelSpec(
+                BranchingProcess(NegBin(R, k), GT);
+                progression = onset_rep,
+                attributes = clinical_presentation(
+                    incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0
+                )
+            )
+            @test end_of_outbreak_probability(sympt, 5.0) ≈
                 end_of_outbreak_probability(R, k, GT, 5.0)
 
             # Vector-of-τ overload returns same elements.
