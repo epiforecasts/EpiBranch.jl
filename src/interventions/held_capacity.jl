@@ -62,8 +62,8 @@ function HeldCapacity(
     return HeldCapacity(intervention, Float64(capacity), hold, priority, on_refusal)
 end
 
-# Everyone's stay, kept in `state.scratch` under the capacity key so two
-# wrappers sharing a key share places, and so a stay outlives the call that
+# Everyone's stay, kept in `state.scratch` under the capacity key. Two
+# wrappers sharing a key share places, and a stay outlives the call that
 # admitted it. Maps a person's id to `(resource, start, end)`.
 const _HeldStays = Dict{Int, Tuple{Any, Float64, Float64}}
 function _held_stays(state, key)
@@ -175,7 +175,7 @@ end
 
 The number of places held at day `at` and the number there are. `key` selects
 one budget when [`resource_key`](@ref EpiBranch.resource_key) splits
-`hc`'s intervention into more than one; the default, `nothing`, is the single
+the intervention of `hc` into more than one; the default, `nothing`, is the single
 one everyone shares.
 """
 function held_usage(hc::HeldCapacity, state::SimulationState, at::Real, key = nothing)

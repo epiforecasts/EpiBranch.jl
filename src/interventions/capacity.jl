@@ -1,8 +1,8 @@
 """
     RefusalPolicy
 
-What a capacity wrapper ([`CapacityConstrained`](@ref),
-[`HeldCapacity`](@ref)) does with an action its resource turns away. A new
+The treatment by a capacity wrapper ([`CapacityConstrained`](@ref),
+[`HeldCapacity`](@ref)) of an action its resource turns away. A new
 policy is a subtype with a method of
 [`refused_action`](@ref EpiBranch.refused_action), with no change to either
 wrapper.
@@ -119,7 +119,7 @@ date falls in, whatever day the case itself was settled on. Under the default
 policy, people turned away use no capacity and are not queued, though they may
 be offered the intervention again if reached again later; with
 [`DeferRefused`](@ref) they are instead given a later date, which then counts
-against that period's budget. Only whole people are served, so a
+against the budget of that period. Only whole people are served, so a
 fraction of remaining capacity serves nobody. Interventions with the same dose
 label share one budget, and doses given by another intervention under that
 label count against it; use different labels for separate budgets.

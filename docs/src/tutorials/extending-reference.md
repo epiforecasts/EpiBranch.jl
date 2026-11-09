@@ -223,7 +223,7 @@ cycles alike.
 case whose own tracing found this person as its infector. It always names a
 *later*-infected node, where `:traced_by` always names an earlier one. The two
 are kept apart rather than sharing a key: merging them would break
-`compute_trace_level!`'s assumption that `:tracers` only names earlier
+the assumption of `compute_trace_level!` that `:tracers` only names earlier
 tracers.
 `SourceTracing` never writes `:traced_by`.
 
