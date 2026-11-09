@@ -127,7 +127,7 @@ end
         state.max_infection_time = 1.0
         EpiBranch.apply_actions!(hc, state, [late])
         EpiBranch.apply_actions!(hc, state, [early])
-        # [3, 5) is taken first, so [2, 4) overlaps it and is refused.
+        # [3, 5) is taken first; [2, 4) overlaps it and is refused.
         @test is_vaccinated(late)
         @test !is_vaccinated(early)
     end
@@ -243,7 +243,7 @@ end
         for p in people
             EpiBranch.resolve_individual!(hc, p, state)
         end
-        # [1, 6) holds the one place, so the case at day 3 is turned away and
+        # [1, 6) holds the one place: the case at day 3 is turned away and
         # the case at day 7 finds it free again.
         @test [is_isolated(p) for p in people] == [true, false, true]
         @test held_usage(hc, state, 3.0).held == 1

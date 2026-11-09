@@ -1,8 +1,8 @@
 """
     RefusalPolicy
 
-What a capacity wrapper ([`CapacityConstrained`](@ref),
-[`HeldCapacity`](@ref)) does with an action its resource turns away. A new
+Policy for an action that the resource of a capacity wrapper
+([`CapacityConstrained`](@ref), [`HeldCapacity`](@ref)) turns away. A new
 policy is a subtype with a method of
 [`refused_action`](@ref EpiBranch.refused_action), with no change to either
 wrapper.

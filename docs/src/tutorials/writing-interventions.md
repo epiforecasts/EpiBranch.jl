@@ -827,8 +827,8 @@ one group's own usage.
 
 An action `CapacityConstrained` turns away is dropped by default. Pass
 `on_refusal = DeferRefused()` to book it into the first later period with room
-instead, so the person is served late and the later date counts against that
-period's budget. A policy is a `RefusalPolicy` subtype with a method of
+instead, so the person is served late and the later date counts against the
+budget of that period. A policy is a `RefusalPolicy` subtype with a method of
 `EpiBranch.refused_action(policy, wrapper, usage, action)` that returns the
 action to admit in place of the refused one, or `nothing` to drop it.
 
