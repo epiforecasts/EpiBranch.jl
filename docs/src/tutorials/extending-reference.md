@@ -58,16 +58,16 @@ underscore are internal.
 | `:_removal_entries` | `Vector{Tuple{Int,Symbol,Float64,Float64,Bool,Bool}}` | — | `record_removal!`, `set_isolated!` | Internal. Every stretch ever recorded, as `(handle, key, start, release, isolation_span, unrecorded)`. Each key's merged `removal_stretches` cache is rebuilt from it on a `revise_removal!`/`withdraw_removal!` call; `isolation_span` entries (`set_isolated!`'s) are also folded to recompute `:isolation_time`, `:isolation_release_time` and `:_isolation_unrecorded` |
 | `:_isolation_unrecorded` | `Bool` | `false` | `Isolation`, `ContactTracing`/`SourceTracing` | `resolve_individual!` / `apply_trace!`; internal. The isolation removes the case from transmission without counting as a detection |
 | `:_isolation_handle` | `Int` | — | `Isolation` | `resolve_individual!`; internal. The handle of `Isolation`'s own entry, so `reset!` can withdraw exactly it |
-| `:_quarantine_removal_handles` | `Vector{Int}` | — | `ContactTracing`/`SourceTracing`'s `Quarantine` | `apply_trace!`; internal. The handles of every entry a quarantine has recorded, so a reset of the shared bookkeeping can withdraw each one. A tracer's `reset!` withdraws only the entries listed under its own handles key |
+| `:_quarantine_removal_handles` | `Vector{Int}` | — | `ContactTracing`/`SourceTracing`'s `Quarantine` | `apply_trace!`; internal. The handles of every entry a quarantine has recorded, so a reset of the shared bookkeeping can withdraw each one. The `reset!` of a tracer withdraws only the entries listed under its own handles key |
 | `:test_positive` | `Bool` | `false` | `Isolation` | `initialise_individual!` |
 | `:traced` | `Bool` | `false` | `ContactTracing`, `SourceTracing` | `trace_contacts!` |
 | `:quarantined` | `Bool` | `false` | `ContactTracing`, `SourceTracing` | `trace_contacts!` |
 | `:_traced_isolation_time` | `Float64` | `Inf` | `ContactTracing` → `Isolation` | Internal hand-over; may precede onset, so `Isolation` holds it back to onset |
-| `:trace_time` | `Float64` | — | `ContactTracing`, `SourceTracing` | `trace_contacts!`. The earliest of the two tracers' own trace times |
-| `:_contact_trace_time` | `Float64` | — | `ContactTracing` | `intervention_time`; internal. The time of `ContactTracing`'s own trace of the person |
-| `:_source_trace_time` | `Float64` | — | `SourceTracing` | `intervention_time`; internal. The time of `SourceTracing`'s own trace of the person |
-| `:_contact_trace_handles` | `Vector{Int}` | — | `ContactTracing` | `reset!`; internal. The handles of the removal entries `ContactTracing`'s own traces created |
-| `:_source_trace_handles` | `Vector{Int}` | — | `SourceTracing` | `reset!`; internal. The handles of the removal entries `SourceTracing`'s own traces created |
+| `:trace_time` | `Float64` | — | `ContactTracing`, `SourceTracing` | `trace_contacts!`. The earlier of the trace times of the two tracers |
+| `:_contact_trace_time` | `Float64` | — | `ContactTracing` | `intervention_time`; internal. The time at which `ContactTracing` traced the person |
+| `:_source_trace_time` | `Float64` | — | `SourceTracing` | `intervention_time`; internal. The time at which `SourceTracing` traced the person |
+| `:_contact_trace_handles` | `Vector{Int}` | — | `ContactTracing` | `reset!`; internal. The handles of the removal entries that `ContactTracing` created when tracing |
+| `:_source_trace_handles` | `Vector{Int}` | — | `SourceTracing` | `reset!`; internal. The handles of the removal entries that `SourceTracing` created when tracing |
 | `:_ring_remaining` | `Int` | `0` | `ContactTracing` (`depth > 1`) | `trace_contacts!`; internal |
 | `:_ring_propagated` | `Bool` | `false` | `ContactTracing` (`depth > 1`) | `trace_contacts!`; internal |
 | `:_ring_hop` | `Bool` | `false` | `ContactTracing` (`depth > 1`) | Set and cleared around each `trace_contacts!` call in the ring walk; internal. Marks an already-settled case the walk passes through, so it is traced from as a ring member only, not reseeded |
