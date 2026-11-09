@@ -66,6 +66,23 @@ using StableRNGs
         @test EpiBranch.transition_loglik(step, ind) ≈ logpdf(Exponential(1.0), 1.0)
     end
 
+    @testset "Nobody holds an episodes vector until one is closed" begin
+        a = Individual(; id = 1)
+        b = Individual(; id = 2)
+        @test getfield(a, :_episodes) === nothing
+        @test isempty(a.episodes)
+        # A push straight onto the property is not shared with anyone else.
+        push!(a.episodes, InfectionEpisode(a))
+        @test isempty(a.episodes)
+        @test isempty(b.episodes)
+
+        close_episode!(a, InfectionEpisode(a))
+        @test length(a.episodes) == 1
+        @test isempty(b.episodes)
+        @test :episodes in propertynames(a)
+        @test !(:_episodes in propertynames(a))
+    end
+
     @testset "A second episode no longer overwrites the first in silence" begin
         ind = Individual(; id = 1, infection_time = 5.0)
         ind.state[:recovered] = true
