@@ -148,6 +148,53 @@ end
         1, 2, 0.0, o
     )
     @test invlogccdf(loop_risk, -1.0) ≈ (b - o) + (100 - (b - o)) / 0.5
+
+    # A later segment that starts beyond the support of a bounded profile must
+    # not subtract one infinite cumulative hazard from another: the contact is
+    # certain by then, whatever the calendar does after.
+    past_support = EpiBranch._CalendarScaledKernel(
+        Uniform(0.0, 5.0), Steps([30.0, 35.0], [1.0, 0.5, 0.25]), 20.0
+    )
+    @test EpiBranch.cumhazard(past_support, 12.0) == Inf
+    @test EpiBranch.cumhazard(past_support, 20.0) == Inf
+    @test logccdf(past_support, 12.0) == -Inf
+
+    # Transmission stopped over the top of the support leaves survival mass.
+    # The cumulative hazard stays finite and a large enough target gives
+    # `Inf`. With transmission off throughout, every draw is `Inf`.
+    halted = EpiBranch._CalendarScaledKernel(
+        Uniform(0.0, 5.0), Steps([2.0], [1.0, 0.0]), 0.0
+    )
+    @test EpiBranch.cumhazard(halted, 5.0) ≈ -logccdf(Uniform(0.0, 5.0), 2.0)
+    @test EpiBranch.cumhazard(halted, 8.0) ≈ -logccdf(Uniform(0.0, 5.0), 2.0)
+    @test invlogccdf(halted, -100.0) == Inf
+    @test invlogccdf(halted, -0.1) ≈ invlogccdf(Uniform(0.0, 5.0), -0.1)
+    off = EpiBranch._CalendarScaledKernel(
+        Uniform(0.0, 5.0), Steps(Float64[], [0.0]), 0.0
+    )
+    @test EpiBranch.cumhazard(off, 5.0) == 0.0
+    @test invlogccdf(off, -0.5) == Inf
+
+    # If transmission resumes beyond the support, the cumulative hazard jumps
+    # immediately after the new segment starts. The inverse returns that boundary.
+    resumed = EpiBranch._CalendarScaledKernel(
+        Uniform(0.0, 5.0), Steps([7.0], [0.0, 1.0]), 0.0
+    )
+    @test EpiBranch.cumhazard(resumed, 5.0) == 0.0
+    for target in (0.1, 1.0, 100.0)
+        t = invlogccdf(resumed, -target)
+        @test t == 7.0
+        @test EpiBranch.cumhazard(resumed, t) <= target
+        @test EpiBranch.cumhazard(resumed, nextfloat(t)) >= target
+    end
+
+    # A positive segment reaching the top of the support still settles there,
+    # and a dual in the top is kept.
+    settle_top(u, calendar) = invlogccdf(
+        EpiBranch._CalendarScaledKernel(Uniform(0.0, u), calendar, 0.0), -100.0
+    )
+    @test ForwardDiff.derivative(u -> settle_top(u, Steps([2.0], [1.0, 1.0])), 5.0) == 1.0
+    @test settle_top(5.0, Steps([7.0], [1.0, 0.0])) == 5.0
 end
 
 include("testutils/pair_kernels.jl")

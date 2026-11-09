@@ -212,7 +212,7 @@ EpiBranch.removal_block_probability(s::_LeakyShield) = s.block
         # cannot close forwards the inner key as named, not withdrawn.
         lapsing_schedule = Scheduled(perfect; start_time = 0.0, end_time = 10.0)
         standing_schedule = Scheduled(perfect; start_time = 0.0)
-        @test withdrawn(lapsing_schedule) == (EpiBranch.REMOVAL_STRETCHES_KEY,)
+        @test withdrawn(lapsing_schedule) == (EpiBranch.ISOLATION_STRETCHES_KEY,)
         @test withdrawn(standing_schedule) == ()
 
         # `quarantine` above names its own key through `removal_gap_host_times`

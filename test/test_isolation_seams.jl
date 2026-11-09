@@ -27,6 +27,85 @@ end
 EpiBranch.infectious_removal_time(f::FixedRemoval, ::Individual) = f.time
 
 @testset "Isolation trait seams" begin
+    @testset "Isolation reads only its own removals alongside route-limited quarantine" begin
+        iso = Isolation(onset_to_isolation_delay = 0.0, duration = 4.0)
+        contact = Individual(id = 2)
+        for release in (20.0, Inf)
+            parent = Individual(id = 1)
+            q = Quarantine(duration = release - 6.0)
+            EpiBranch.apply_trace!(q, parent, nothing, 6.0, StableRNG(1))
+            ct = ContactTracing(TraceEveryone(), 1.0, Dirac(0.0), q)
+            narrowed = OnRoutes(ct, (:community,))
+            household = RouteWindow(
+                :household; kernel = nothing, until = (EpiBranch.INTERVENTION_REMOVAL,)
+            )
+            @test EpiBranch.risk_applies(iso, household)
+            @test !EpiBranch.risk_applies(narrowed, household)
+            @test EpiBranch.competing_risk(iso, parent, contact, nothing) === nothing
+            @test EpiBranch.infectious_removal_time(iso, parent) == Inf
+            @test isolation_time(parent) == 6.0
+            @test is_isolated(parent)
+
+            EpiBranch._isolate!(iso, parent, (rng = StableRNG(1),), 18.0)
+            risks = EpiBranch.competing_risk(iso, parent, contact, nothing)
+            @test [(r.event_time, r.release_time) for r in risks] == [(18.0, 22.0)]
+            @test EpiBranch.infectious_removal_time(iso, parent) == Inf
+            @test isolation_time(parent) == 6.0
+            if isfinite(release)
+                model = ModelSpec(BranchingProcess(Poisson(0.0)); interventions = [iso, ct])
+                state = EpiBranch.new_state(
+                    model.process, EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
+                )
+                push!(state.individuals, parent)
+                times = EpiBranch._layer_host_times(state, model, ())
+                @test times[EpiBranch.REMOVAL_STRETCHES_KEY] == [[(6.0, 22.0)]]
+            end
+            EpiBranch.reset!(iso, parent)
+            @test EpiBranch.competing_risk(iso, parent, contact, nothing) === nothing
+            @test isolation_release_time(parent) == release
+            permanent = Isolation(onset_to_isolation_delay = 0.0, duration = Inf)
+            EpiBranch._isolate!(permanent, parent, (rng = StableRNG(1),), 25.0)
+            @test EpiBranch.infectious_removal_time(permanent, parent) == 25.0
+            clear_isolated!(parent)
+            @test EpiBranch.infectious_removal_time(permanent, parent) == Inf
+            @test !is_isolated(parent)
+        end
+    end
+
+    @testset "Route-limited quarantine leaves household transmission open with Isolation" begin
+        for duration in (14.0, Inf), restrict_routes in (false, true)
+            iso = Isolation(onset_to_isolation_delay = 0.0, duration = Inf, test_sensitivity = 0.0)
+            q = Quarantine(; duration)
+            ct = ContactTracing(TraceEveryone(), 1.0, Dirac(0.0), q)
+            interventions = [iso, restrict_routes ? OnRoutes(ct, (:community,)) : ct]
+            rng = StableRNG(1)
+            state = EpiBranch.new_state(
+                BranchingProcess(Dirac(1), Dirac(10.0)),
+                [Transition(:recovered; from = :infection, delay = 30.0, terminal = true)],
+                clinical_presentation(incubation_period = Dirac(1.0)), rng
+            )
+            EpiBranch.add_individuals!(state, 3, interventions)
+            EpiBranch.apply_trace!(q, state.individuals[1], state, 6.0, rng)
+            edge(to) = (inf, st) -> inf == 1 && !is_infected(st.individuals[to]) ?
+                ((to, Dirac(10.0)),) : ()
+            routes = Tuple(
+                (
+                    RouteWindow(
+                        name; kernel = Dirac(10.0),
+                        until = (:recovered, EpiBranch.INTERVENTION_REMOVAL)
+                    ), edge(to),
+                )
+                    for (name, to) in ((:community, 2), (:household, 3))
+            )
+            EpiBranch._sellke_race!(
+                state, [1, 2, 3], rng; routes, interventions,
+                seed! = (best, members, r) -> (best[1] = 0.0)
+            )
+            @test !is_infected(state.individuals[2])
+            @test is_infected(state.individuals[3]) == restrict_routes
+        end
+    end
+
     clinical = clinical_presentation(
         incubation_period = LogNormal(1.5, 0.5),
         prob_asymptomatic = 0.0
@@ -269,7 +348,7 @@ EpiBranch.infectious_removal_time(f::FixedRemoval, ::Individual) = f.time
             (EpiBranch.LEAKY_REMOVAL_STRETCHES_KEY,)
         @test EpiBranch.removal_block_probability(leaky) == 0.5
         @test EpiBranch.removal_gap_host_times(perfect) ==
-            (EpiBranch.REMOVAL_STRETCHES_KEY,)
+            (EpiBranch.ISOLATION_STRETCHES_KEY,)
         @test EpiBranch.removal_block_probability(perfect) == 1.0
         for wrap in (
                 identity,
@@ -292,7 +371,7 @@ EpiBranch.infectious_removal_time(f::FixedRemoval, ::Individual) = f.time
         # the case back: the window stays open so the schedule's own end, not
         # the isolation's start, decides when transmission resumes.
         permanent_case = Individual(id = 2)
-        set_isolated!(permanent_case, 8.0; release_time = Inf)
+        set_isolated!(permanent_case, 8.0; release_time = Inf, key = EpiBranch.ISOLATION_STRETCHES_KEY)
         lapsing_permanent = Scheduled(permanent; start_time = 0.0, end_time = 10.0)
         @test EpiBranch.infectious_removal_time(lapsing_permanent, permanent_case) == Inf
 

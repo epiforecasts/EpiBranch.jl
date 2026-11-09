@@ -514,6 +514,12 @@ struct _RiskFromAge end
         for model in refused
             @test_throws ArgumentError loglikelihood(data, model)
         end
+        @test_throws ArgumentError(
+            "The closed form supports a Reporting step from infection or onset, not from `:recovery`"
+        ) EpiBranch._infection_to(:recovery, ())
+        @test_throws ArgumentError(
+            "The closed form supports a Reporting step from infection or onset, not from a function"
+        ) EpiBranch._infection_to(ind -> ind.infection_time, ())
     end
 
     @testset "A Reporting step's moments match simulated reports" begin
