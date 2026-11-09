@@ -133,9 +133,10 @@ minus [`extinction_probability`](@ref), for an offspring distribution or a
 model. For a multi-type model there is one value per type of index case.
 
 Given a model, the observation model is ignored, and a reshaped offspring law
-(see [`extinction_probability`](@ref) for a model) raises an error. Each of its interventions changes the offspring distribution first,
-through [`EpiBranch.analytic_offspring_effect`](@ref); an intervention without
-one raises an error. For control measures with no such effect, use
+(see [`extinction_probability`](@ref) for a model) raises an error. Each of its
+interventions changes the offspring distribution first, through
+[`EpiBranch.analytic_offspring_effect`](@ref); an intervention without one
+raises an error. For control measures with no such effect, use
 [`probability_contain`](@ref), or simulate and use
 [`containment_probability`](@ref).
 """
@@ -153,9 +154,9 @@ Probability that transmission from a single introduced case dies out, from
 the model's offspring distribution. The observation model is ignored. If a
 finite `population_size`, an `Infectiousness` window with `until`, or
 `transmission_traits` away from their neutral values reshape the offspring law,
-this throws an `ArgumentError` that points to simulation. For a single-type model the result is one
-number; for a multi-type model built from an offspring matrix it has one value
-per type of index case.
+this throws an `ArgumentError` that points to simulation. For a single-type
+model the result is one number; for a multi-type model built from an offspring
+matrix it has one value per type of index case.
 
 For a `ModelSpec`, or a process that stores its own interventions, each
 intervention's [`EpiBranch.analytic_offspring_effect`](@ref) is applied to
