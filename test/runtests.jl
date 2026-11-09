@@ -6,8 +6,13 @@ using Distributions
 using Random
 using StableRNGs
 # Activates the serial_interval(model, infector, infectee) extension method.
-using CensoredDistributions
-using ConvolvedDistributions
+# Not loaded on Julia 1.10: there these packages pull in EpiAwareADTools 0.1,
+# whose xlogy rule clashes with Mooncake's.
+const RUN_SERIAL_INTERVAL = VERSION >= v"1.11"
+if RUN_SERIAL_INTERVAL
+    using CensoredDistributions
+    using ConvolvedDistributions
+end
 
 include("testutils/sim_analytical_consistency.jl")
 include("testutils/progression.jl")
@@ -88,7 +93,10 @@ TEST_GROUP == :all || haskey(TEST_GROUPS, TEST_GROUP) ||
     for group in keys(TEST_GROUPS)
         TEST_GROUP in (:all, group) || continue
         @testset "$group" begin
-            foreach(include, TEST_GROUPS[group])
+            for file in TEST_GROUPS[group]
+                file == "test_serial_interval.jl" && !RUN_SERIAL_INTERVAL && continue
+                include(file)
+            end
         end
     end
 end
