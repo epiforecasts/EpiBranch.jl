@@ -49,7 +49,8 @@ underscore are internal.
 | `:isolated` | `Bool` | `false` | `Isolation`, `ContactTracing`/`SourceTracing`'s `Quarantine` | `resolve_individual!` / `apply_trace!` |
 | `:isolation_time` | `Float64` | `Inf` | `Isolation`, `ContactTracing`/`SourceTracing`'s `Quarantine` | `resolve_individual!` / `apply_trace!` |
 | `:isolation_release_time` | `Float64` | `Inf` | `Isolation`, `ContactTracing`/`SourceTracing`'s `Quarantine` | `resolve_individual!` / `apply_trace!`; when the block ends |
-| `:_removal_stretches` | `Vector{Tuple{Float64,Float64}}` | `[]` | `set_isolated!` | Internal. Every `(start, release)` a removal took the person out for, merged and sorted; a release of `Inf` for one that never ends |
+| `:_removal_stretches` | `Vector{Tuple{Float64,Float64}}` | `[]` | `set_isolated!` | Internal. Removals recorded under the shared default key, as merged, sorted `(start, release)` pairs; a release of `Inf` means permanent removal |
+| `:_isolation_stretches` | `Vector{Tuple{Float64,Float64}}` | `[]` | `Isolation` | `resolve_individual!`; internal. Stretches of perfect isolation, read separately from quarantine to preserve the route coverage of each intervention |
 | `:_leaky_removal_stretches` | `Vector{Tuple{Float64,Float64}}` | `[]` | `Isolation` | `resolve_individual!`; internal. The stretches of a leaky isolation, apart from `:_removal_stretches`'s complete ones |
 | `:_quarantine_stretches` | `Vector{Tuple{Float64,Float64}}` | `[]` | `ContactTracing`/`SourceTracing`'s `Quarantine` | `apply_trace!`; internal. The quarantine's own stretches, apart from the shared history |
 | `:_lapsing_removal_keys` | `Tuple{Vararg{Symbol}}` | `()` | `record_removal!` | Internal. The keys under which a releasing stretch has been recorded, checked against `removal_gap_host_times` when the infection layer is built |
@@ -177,7 +178,8 @@ Isolation is recorded under `:isolation_time`, with `:isolation_release_time`
 for when it ends. `set_isolated!` requires that release as its `release_time`
 keyword; a release of `Inf` means the isolation never ends. These two describe the removal in force, which
 is what a detection reads. The full history, which a likelihood needs, is the
-list of stretches under `:_removal_stretches`, because one pair of times cannot
+lists of stretches under `:_isolation_stretches` (perfect isolation) and
+`:_removal_stretches` (the shared default key), because one pair of times cannot
 record that a person was quarantined, released and later isolated again. A
 window that isolation should end lists [`EpiBranch.INTERVENTION_REMOVAL`](@ref)
 in its `until` (see [Transmission routes](new-structures.md#Transmission-routes)), which respects leaky
@@ -645,7 +647,8 @@ recorded stretch by the same fraction when it works out a case's
 community-infectious person-time, so a leaky removal only partly cuts that
 time. Two components recording a leaky removal under the same key must agree
 on this fraction; give each its own key otherwise, as `Isolation` does
-(`:_leaky_removal_stretches`, apart from the shared `:_removal_stretches`).
+(`:_leaky_removal_stretches`, apart from the perfect `:_isolation_stretches`
+and the shared `:_removal_stretches`).
 
 ## Custom clinical transitions: further details
 
