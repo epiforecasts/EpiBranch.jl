@@ -357,6 +357,53 @@ struct _LazyPopulation{T <: Real, F}
     setup::F
 end
 
+# ── People shared between copies of a state ────────────────────────
+
+# Replaces the plain vector in `state.individuals` when the state is copied.
+# `people` holds the `Individual` objects. `owned[i]` records whether this
+# state alone holds `people[i]`. Julia cannot distinguish reads from writes
+# on a mutable struct. The first access to a shared person therefore replaces
+# them with a private copy, used for all subsequent accesses. People who are
+# not accessed remain shared between states. In a large population, this is
+# most people over a short continuation.
+struct _SharedPeople{T <: Real} <: AbstractVector{Individual{T}}
+    people::Vector{Individual{T}}
+    owned::BitVector
+end
+
+Base.size(v::_SharedPeople) = size(v.people)
+Base.IndexStyle(::Type{<:_SharedPeople}) = IndexLinear()
+
+@inline function Base.getindex(v::_SharedPeople, i::Int)
+    @boundscheck checkbounds(v.people, i)
+    @inbounds if !v.owned[i]
+        v.people[i] = deepcopy(v.people[i])
+        v.owned[i] = true
+    end
+    return @inbounds v.people[i]
+end
+
+@inline function Base.setindex!(v::_SharedPeople{T}, ind, i::Int) where {T}
+    @boundscheck checkbounds(v.people, i)
+    @inbounds v.people[i] = ind
+    @inbounds v.owned[i] = true
+    return v
+end
+
+function Base.push!(v::_SharedPeople, ind)
+    push!(v.people, ind)
+    push!(v.owned, true)
+    return v
+end
+
+function Base.resize!(v::_SharedPeople, n::Integer)
+    old = length(v.people)
+    resize!(v.people, n)
+    resize!(v.owned, n)
+    n > old && (v.owned[(old + 1):n] .= true)
+    return v
+end
+
 # ── Simulation state ───────────────────────────────────────────────
 
 """
@@ -389,7 +436,7 @@ population is created as the race reaches it, `nothing` for one built
 upfront; nothing outside the simulation engine reads or writes it either.
 """
 mutable struct SimulationState{T <: Real, R <: AbstractRNG, P, A}
-    individuals::Vector{Individual{T}}
+    individuals::Union{Vector{Individual{T}}, _SharedPeople{T}}
     active_ids::Vector{Int}
     current_generation::Int
     rng::R
@@ -427,5 +474,56 @@ function Base.show(io::IO, s::SimulationState)
     return print(
         io,
         "SimulationState(cases=$(s.cumulative_cases), individuals=$(length(s.individuals)), gen=$(s.current_generation), $(status))"
+    )
+end
+
+# Mark every person in `people` as held by two states, except the placeholder
+# of a lazily populated model. No state mutates the placeholder. It must retain
+# its identity for `_realised!` to recognise it.
+function _share!(people::Vector{Individual{T}}, placeholder) where {T}
+    return _share!(_SharedPeople{T}(people, falses(length(people))), placeholder)
+end
+function _share!(shared::_SharedPeople, placeholder)
+    for i in eachindex(shared.people)
+        shared.owned[i] = shared.people[i] === placeholder
+    end
+    return shared
+end
+
+"""
+    copy(state::SimulationState) -> SimulationState
+
+An independent copy of `state`, cheaper than `deepcopy` for a large
+population. The copy and the original share each person until accessed
+through either state, when that state takes a private copy of the person.
+People who are not accessed remain shared. The cost of copying people during
+continuation is proportional to the number accessed, rather than the total
+population. The random number generator, the pending events of an unfinished
+race, the working information in `scratch` and the list of infectious cases
+are copied in full. The natural-history `transitions`, the `attributes`
+builder and the set-up of the lazily populated model are shared because they
+remain unchanged during a run.
+
+Continuing a run from the copy gives the same result as continuing from a
+`deepcopy` of the same state. Changes to either state leave the other
+unchanged, provided people are accessed through the state. A reference to an
+`Individual` obtained from `state.individuals` before copying still refers
+to the person in the original state. While that person remains shared,
+changes through the reference affect both states. Access people through
+`state.individuals` again after copying.
+"""
+function Base.copy(state::SimulationState)
+    lazy = state.lazy
+    placeholder = lazy === nothing ? nothing : lazy.placeholder
+    original = state.individuals
+    shared = _share!(original, placeholder)
+    state.individuals = shared
+    people = _SharedPeople(copy(shared.people), copy(shared.owned))
+    return SimulationState(
+        people, copy(state.active_ids), state.current_generation,
+        deepcopy(state.rng), state.cumulative_cases, state.extinct,
+        state.population_size, state.max_infection_time, state.attributes,
+        copy(state.transitions), deepcopy(state.scratch),
+        deepcopy(state.continuation), lazy
     )
 end

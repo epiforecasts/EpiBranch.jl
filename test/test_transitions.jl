@@ -483,7 +483,7 @@ end
         # The probability callback consumes a draw before the acceptance draw.
         p = rand(expected)
         accepted = rand(expected) < p
-        wait = accepted ? EpiBranch._resolve_delay(delay, expected, ind) : nothing
+        wait = accepted ? EpiBranch.sample_value(delay, expected, ind) : nothing
         result = EpiBranch.transition_time(
             rng, ind, 3.0, delay;
             probability = (rng, ind) -> rand(rng)
@@ -591,5 +591,39 @@ end
         @test all(ind -> haskey(ind.state, :outcome), filter(is_infected, state.individuals))
         n_died = count(ind -> ind.state[:outcome] == :died, filter(is_infected, state.individuals))
         @test isapprox(n_died / length(filter(is_infected, state.individuals)), 0.36; atol = 0.05)
+    end
+end
+
+@testset "Conditional parameters in transitions and traits" begin
+    proc = BranchingProcess(NegativeBinomial(1.5, 0.5), Gamma(2.0, 2.0))
+
+    @testset "Conditional delay" begin
+        spec = ModelSpec(
+            proc;
+            progression = [Transition(:onset; delay = Conditional(ind -> Gamma(2.0, 1.0)))]
+        )
+        state = simulate(spec; max_cases = 20, rng = StableRNG(1))
+        @test all(ind -> isfinite(onset_time(ind)), filter(is_infected, state.individuals))
+    end
+
+    @testset "Conditional probability" begin
+        spec = ModelSpec(
+            proc;
+            progression = [
+                Transition(:onset; delay = 1.0),
+                Transition(:death; delay = 2.0, probability = Conditional(ind -> Dirac(1.0))),
+            ]
+        )
+        state = simulate(spec; max_cases = 20, rng = StableRNG(1))
+        @test all(ind -> ind.state[:death], filter(is_infected, state.individuals))
+    end
+
+    @testset "Conditional trait" begin
+        spec = ModelSpec(
+            proc;
+            attributes = [transmission_traits(susceptibility = Conditional(ind -> Beta(2, 2)))]
+        )
+        state = simulate(spec; max_cases = 20, rng = StableRNG(1))
+        @test length(state.individuals) > 0
     end
 end

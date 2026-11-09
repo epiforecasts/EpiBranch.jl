@@ -399,7 +399,7 @@ function _chain_size_model_loglik(
     # failing falls through to simulation.
     if isempty(ivs) && has_single_type_law(process) && offspring_law_unchanged(process) &&
             offspring_law_unchanged(attrs) && all(offspring_law_unchanged, prog)
-        folded = _exact_reported_chain_size(single_type_offspring(process), prog, obs)
+        folded = _exact_reported_chain_size(single_type_offspring(process), prog, obs, attrs)
         if folded !== nothing
             return _chain_size_loglik(observe(folded, obs), data; prob_concluded)
         end
@@ -453,8 +453,9 @@ interventions. Exact when there are no interventions, the offspring
 distribution is Poisson or negative binomial, and R is below 1; otherwise
 estimated from `n_sim` simulated outbreaks (keywords as for chain sizes).
 `n_initial` is the number of independent seeds the chains started from, and
-applies on both paths. Not available with an observation model, since a
-chain with undetected cases has no well-defined observed length.
+applies on both paths. Not available with an observation model or a
+`Reporting` probability below 1 because a chain with undetected cases has no
+well-defined observed length.
 """
 function loglikelihood(data::ChainLengths, model::TransmissionModel; kwargs...)
     return _chain_length_model_loglik(
@@ -466,6 +467,18 @@ function loglikelihood(data::ChainLengths, spec::ModelSpec; kwargs...)
     return _chain_length_model_loglik(
         data, spec.process, interventions(spec), attributes(spec),
         progression(spec), observation(spec), recorder(spec); kwargs...
+    )
+end
+
+function _chain_length_assert_full_reporting(prog)
+    ρ = _reporting_probability(prog)
+    (ρ === nothing || ρ >= 1) && return nothing
+    throw(
+        ArgumentError(
+            "Chain length with Reporting is not defined: " *
+                "per-case detection does not give a well-defined chain " *
+                "length. Use ChainSizes, or a model with full reporting."
+        )
     )
 end
 
@@ -486,6 +499,7 @@ function _chain_length_model_loglik(
                 "length. Use ChainSizes, or a model with no observation."
         )
     )
+    _chain_length_assert_full_reporting(prog)
     n_initial >= 1 || throw(ArgumentError("n_initial must be ≥ 1"))
     # Analytical iff no interventions thin transmission, as for chain size
     # above, and the process, attributes and progression each leave the

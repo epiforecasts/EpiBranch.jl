@@ -139,6 +139,34 @@ EpiBranch.chain_size_distribution(d::BrokenExactOffspring) = throw(d.error)
         d = chain_length_distribution(bp)
         data = [0, 1, 2, 0, 3, 1]
         @test logpdf(d, data) ≈ loglikelihood(ChainLengths(data), Poisson(0.5))
+
+        @testset "Reporting requires full detection" begin
+            message = "per-case detection does not give a well-defined chain length"
+            for probability in (0.0, 0.3, 1.0)
+                model = ModelSpec(
+                    bp; progression = [Reporting(; delay = 1.0, probability, from = :infection)]
+                )
+                if probability < 1
+                    @test_throws message loglikelihood(ChainLengths(data), model)
+                    @test_throws message chain_length_distribution(model)
+                    @test_throws message EpiBranch._ChainLengthLaw(model, (;))
+                    fallback = ModelSpec(
+                        BranchingProcess(Binomial(2, 0.2));
+                        progression = model.progression
+                    )
+                    @test_throws message loglikelihood(
+                        ChainLengths(data), fallback; n_sim = 5, rng = StableRNG(42)
+                    )
+                else
+                    @test loglikelihood(ChainLengths(data), model) ≈ logpdf(d, data)
+                    reported = chain_length_distribution(model)
+                    @test logpdf(reported, data) ≈ logpdf(d, data)
+                    states = simulate(model, 5; rng = StableRNG(42))
+                    @test rand(StableRNG(42), reported, 5) ==
+                        [maximum(chain_statistics(s).length) for s in states]
+                end
+            end
+        end
     end
 
     @testset "chain_size_distribution — per-case observation" begin
@@ -175,7 +203,7 @@ EpiBranch.chain_size_distribution(d::BrokenExactOffspring) = throw(d.error)
             ModelSpec(bp; observation = MinimumSize(2)),
             ModelSpec(bp; observation = PerCaseObservation(; detection_prob = 0.5)),
             ModelSpec(bp; observation = ChainDetection(0.4)),
-            ModelSpec(bp; progression = [Reporting(delay = Dirac(0.0), probability = 0.5)]),
+            ModelSpec(bp; progression = [Reporting(delay = Dirac(0.0), probability = 0.5, from = :infection)]),
         )
         for spec in specs
             closed_form = sum(logpdf(chain_size_distribution(spec), n) for n in data)
@@ -215,6 +243,64 @@ EpiBranch.chain_size_distribution(d::BrokenExactOffspring) = throw(d.error)
         @test logpdf(
             chain_size_distribution(model; n_sim = 500, rng = StableRNG(1)), data
         ) ≈ ll
+    end
+
+    @testset "chain_size_distribution — Reporting thins by the share of cases that reach `from`" begin
+        proc = BranchingProcess(NegBin(0.8, 0.5), LogNormal(1.6, 0.5))
+        clinical(pa) = clinical_presentation(
+            incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = pa
+        )
+        base = chain_size_distribution(proc)
+        # From onset, asymptomatic cases are never reported.
+        d = chain_size_distribution(
+            ModelSpec(
+                proc; progression = [Reporting(delay = 0.0, probability = 0.8)],
+                attributes = clinical(0.5)
+            )
+        )
+        @test d isa EpiBranch.ThinnedChainSize
+        @test d.detection_prob ≈ 0.4
+        # From infection, every case can be reported.
+        d_inf = chain_size_distribution(
+            ModelSpec(
+                proc;
+                progression = [Reporting(delay = 0.0, probability = 0.8, from = :infection)],
+                attributes = clinical(0.5)
+            )
+        )
+        @test d_inf.detection_prob ≈ 0.8
+        # Probability 1 from onset with asymptomatic cases is still thinned.
+        d_one = chain_size_distribution(
+            ModelSpec(
+                proc; progression = [Reporting(delay = 0.0, probability = 1.0)],
+                attributes = clinical(0.5)
+            )
+        )
+        @test d_one isa EpiBranch.ThinnedChainSize
+        @test loglikelihood(
+            ChainSizes([1, 2, 3]), ModelSpec(
+                proc; progression = [Reporting(delay = 0.0, probability = 1.0)],
+                attributes = clinical(0.0)
+            )
+        ) ≈ sum(logpdf(base, n) for n in [1, 2, 3])
+        # An outcome step censors reports, which the closed form does not model.
+        d_out = chain_size_distribution(
+            ModelSpec(
+                proc;
+                progression = [
+                    Reporting(delay = 0.0, probability = 1.0),
+                    Death(delay = LogNormal(2.0, 0.4), probability = 0.5),
+                ],
+                attributes = clinical(0.0)
+            )
+        )
+        @test !(d_out isa EpiBranch.ThinnedChainSize)
+        @test !(d_out isa EpiBranch.GammaBorel)
+        # A step that rewrites the onset time overrides the asymptomatic share.
+        @test_throws ArgumentError EpiBranch._effective_reporting_probability(
+            [Transition(:onset; delay = 1.0), Reporting(delay = 0.0)],
+            clinical(0.5)
+        )
     end
 
     @testset "rand draws chain sizes from the underlying model" begin
