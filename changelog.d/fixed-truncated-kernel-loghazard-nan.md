@@ -1,0 +1,1 @@
+Fix `pairwise_surv_loglik` returning `NaN` when an event row ends past the upper bound of a truncated kernel. The hazard there is zero and its log is now `-Inf`, which drops the row out of the `logsumexp`. The calendar-scaled kernel also gives `-Inf` past the bound.

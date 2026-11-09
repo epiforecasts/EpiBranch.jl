@@ -464,6 +464,40 @@ end
         @test compute_trace_level!(mini(cyc)) isa SimulationState
     end
 
+    @testset "the level is the distance to the nearest index case" begin
+        mini(inds) = SimulationState(
+            inds, Int[], 0, StableRNG(1), 0, false, nothing, Inf, nothing,
+            AbstractClinicalTransition[]
+        )
+        # 1 → 2 → 3 → 4, and 1 → 4 directly; 4 was last reached through 3, so
+        # following that single tracer would give 3. A second index case, 6,
+        # reaches 5 and, through it, 3.
+        inds = [Individual(id = i) for i in 1:6]
+        inds[2].state[:tracers] = [1]
+        inds[3].state[:tracers] = [2, 5]
+        inds[4].state[:tracers] = [1, 3]
+        inds[5].state[:tracers] = [6]
+        inds[2].state[:traced_by] = 1
+        inds[3].state[:traced_by] = 2
+        inds[4].state[:traced_by] = 3
+        inds[5].state[:traced_by] = 6
+        compute_trace_level!(mini(inds))
+        @test [get(ind.state, :trace_level, missing) for ind in inds] ==
+            [0, 1, 2, 1, 1, 0]
+    end
+
+    @testset "every tracer is recorded and traced_by is the earliest" begin
+        ind = Individual(id = 9)
+        EpiBranch._record_tracer!(ind, 3, 5.0)
+        ind.state[:trace_time] = 5.0
+        EpiBranch._record_tracer!(ind, 4, 2.0)
+        ind.state[:trace_time] = 2.0
+        EpiBranch._record_tracer!(ind, 3, 8.0)
+        EpiBranch._record_tracer!(ind, 7, 2.0)
+        @test ind.state[:tracers] == [3, 4, 7]
+        @test ind.state[:traced_by] == 4
+    end
+
     @testset "batch overload stamps every state" begin
         mini(inds) = SimulationState(
             inds, Int[], 0, StableRNG(1), 0, false, nothing, Inf, nothing,
@@ -487,6 +521,7 @@ end
         ind = Individual(id = 1)
         ind.state[:traced] = true
         ind.state[:traced_by] = 7
+        ind.state[:tracers] = [7]
         ind.state[:trace_level] = 2
         ind.state[:_ring_propagated] = true
         # An isolation in force but never recorded as a detection is still an
@@ -497,6 +532,7 @@ end
         EpiBranch.reset!(ct, ind)
         @test ind.state[:traced] == false
         @test !haskey(ind.state, :traced_by)
+        @test !haskey(ind.state, :tracers)
         @test !haskey(ind.state, :trace_level)
         @test !haskey(ind.state, :_ring_propagated)
         @test isolation_time(ind) == Inf
