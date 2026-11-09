@@ -1217,6 +1217,18 @@ function _check_person_external(s, j)
     return s
 end
 
+# The end of the community-importation window as a `Float64`; throws unless it
+# is a non-negative number (`Inf` allowed).
+function _check_obs_end(obs_end)
+    value = Float64(obs_end)
+    (!isnan(value) && value >= 0) || throw(
+        ArgumentError(
+            "obs_end must be a non-negative number (Inf allowed), got $obs_end"
+        )
+    )
+    return value
+end
+
 # Throws unless `source` is a valid external hazard for a population of `n`.
 # A function is checked for every person here, as a vector's elements already
 # are by `_valid_external`.

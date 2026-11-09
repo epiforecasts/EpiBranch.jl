@@ -182,12 +182,7 @@ function RoutedNetwork(
     # kernel to validate.
     windows = [_validate_route_kernel(w) for w in windows]
     _check_external(external_hazard, n)
-    obs_end_value = Float64(obs_end)
-    (!isnan(obs_end_value) && obs_end_value >= 0) || throw(
-        ArgumentError(
-            "obs_end must be a non-negative number (Inf allowed), got $obs_end"
-        )
-    )
+    obs_end_value = _check_obs_end(obs_end)
     # A model-level start applies to every route that leaves its own unset, so
     # the stored routes are the ones the simulation runs and `window_open` on
     # them agrees with it.
