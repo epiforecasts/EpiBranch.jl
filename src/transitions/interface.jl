@@ -507,26 +507,39 @@ non-terminal event recorded after the outcome describes something that could
 not have happened to this individual.
 """
 function _finalise_terminal!(individual, transitions)
-    best_time = Inf
-    best_label = :none
-    has_any = false
-    for t in transitions
-        is_terminal(t) || continue
-        ev = terminal_event(t, individual)
-        ev === nothing && continue
-        time, label = ev
-        if time < best_time
-            best_time = time
-            best_label = label
-            has_any = true
-        end
-    end
+    best_time, best_label, has_any = _earliest_terminal(
+        transitions, individual, (Inf, :none, false)
+    )
     if has_any
         individual.state[:outcome_time] = best_time
         individual.state[:outcome] = best_label
-        for t in transitions
+        _each(transitions) do t
             is_terminal(t) || censor_after_outcome!(t, individual)
+            return nothing
         end
     end
     return nothing
+end
+
+# The earliest terminal event over `transitions`, folded through `best`, the
+# `(time, label, found)` so far. A `Tuple` is walked by recursion, as in `_each`.
+@inline function _earlier_terminal(t, individual, best)
+    is_terminal(t) || return best
+    ev = terminal_event(t, individual)
+    ev === nothing && return best
+    time, label = ev
+    return time < best[1] ? (time, label, true) : best
+end
+_earliest_terminal(::Tuple{}, individual, best) = best
+@inline function _earliest_terminal(transitions::Tuple, individual, best)
+    return _earliest_terminal(
+        Base.tail(transitions), individual,
+        _earlier_terminal(first(transitions), individual, best)
+    )
+end
+function _earliest_terminal(transitions, individual, best)
+    for t in transitions
+        best = _earlier_terminal(t, individual, best)
+    end
+    return best
 end

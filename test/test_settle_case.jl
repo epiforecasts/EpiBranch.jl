@@ -135,3 +135,38 @@ end
     # isolation, half a day later, falls inside the window.
     @test reached_before_infection
 end
+
+@testset "The race walks the progression as a Tuple with the same result as the Vector" begin
+    progression = [
+        Transition(:infectious; from = :infection, delay = Exponential(2.0)),
+        Transition(:hospitalised; from = :infectious, delay = Exponential(3.0)),
+        Transition(:recovered; from = :hospitalised, delay = 4.0, terminal = true),
+        Transition(:dead; from = :infectious, delay = Exponential(9.0), terminal = true),
+        _RecordTransitionClock(),
+    ]
+    model = ModelSpec(
+        BranchingProcess(Poisson(2.0), Exponential(5.0)); progression
+    )
+    state = simulate(model; rng = StableRNG(3), max_generations = 3)
+    cases = filter(is_infected, state.individuals)
+    @test length(cases) > 1
+    transitions = Tuple(state.transitions)
+
+    for case in cases
+        # The same infection settled twice from the same stream: once through
+        # the public method over the `Vector`, once through the race's `Tuple`.
+        settled = map((nothing, transitions)) do typed
+            ind = Individual(id = case.id)
+            ind.infection_time = case.infection_time
+            Random.seed!(state.rng, 11)
+            if typed === nothing
+                EpiBranch.resolve_transitions!(state, ind)
+            else
+                EpiBranch._resolve_transitions!(state, ind, typed)
+            end
+            return ind.state
+        end
+        @test settled[1] == settled[2]
+        @test haskey(settled[1], :_transition_clock)
+    end
+end
