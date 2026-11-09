@@ -267,6 +267,7 @@ MaxCases
 MaxGenerations
 MaxTime
 SimulationState
+Base.copy(::SimulationState)
 Individual
 EpiBranch.IndividualState
 InfectionEpisode
