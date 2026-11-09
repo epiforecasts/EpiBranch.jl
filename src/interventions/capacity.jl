@@ -327,7 +327,7 @@ end
 capacity_key(::TraceAction) = nothing
 capacity_time_key(::TraceAction) = nothing
 # `:_quarantine_removal_handles` is the list of handles `apply_trace!` keeps
-# for the entries it has recorded (see `_undo_quarantine_isolation!`),
+# for the entries it has recorded (see `_reset_traced!`),
 # present and non-empty exactly when a quarantine has used the budget.
 capacity_key(::Quarantine) = :_quarantine_removal_handles
 capacity_time_key(::Quarantine) = :trace_time

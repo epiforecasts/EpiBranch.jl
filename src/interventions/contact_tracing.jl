@@ -516,7 +516,7 @@ function apply_trace!(q::Quarantine, contact, state, trace_time, rng)
     # `_refresh_isolation_span!`), without this call having to ask.
     handle = _set_isolated!(contact, trace_time; release_time)
     # Every trace this contact has ever been quarantined by, so a full reset
-    # (see `_undo_quarantine_isolation!`) withdraws each one: a contact traced
+    # (see `_reset_traced!`) withdraws each one: a contact traced
     # more than once (ring propagation, or more than one child triggering
     # `SourceTracing` on the same parent) extends its quarantine with a fresh
     # entry each time rather than revising the first.

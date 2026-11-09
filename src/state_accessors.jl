@@ -335,7 +335,7 @@ end
 # As `set_isolated!`, but returns the handle the entry was recorded under, so
 # a component that isolates or quarantines someone can revise or withdraw
 # exactly its own effect later (see `Isolation`'s `reset!` and
-# `_undo_quarantine_isolation!`), without disturbing another's record left
+# `_reset_traced!`), without disturbing another's record left
 # under the same key.
 function _set_isolated!(
         ind::Individual{T}, time::Real;
