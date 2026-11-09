@@ -110,7 +110,7 @@ function resolve_individual!(t::Transition, individual, state)
     # Delay callbacks can read the newly reached state.
     individual.state[t.state] = true
     delay_rng = stream(state.rng, individual.id, (t.state, :delay))
-    individual.state[t.time_key] = anchor + _resolve_delay(t.delay, delay_rng, individual)
+    individual.state[t.time_key] = anchor + sample_value(t.delay, delay_rng, individual)
     return nothing
 end
 
@@ -125,7 +125,7 @@ end
 
 function censor_after_outcome!(t::Transition, individual)
     t.terminal && return nothing
-    _censor_event!(individual, t.state, t.time_key)
+    _censor_event!(individual, t.state, t.time_key, t.from)
     return nothing
 end
 
@@ -137,8 +137,10 @@ function transition_loglik(t::Transition, individual::Individual)
     censor = infection_aborted_time(individual)
     occurred = flag
     if !t.terminal
-        occurred = flag && time <= outcome_time(individual)
-        censor = min(censor, outcome_time(individual))
+        if !_timed_from_outcome(individual, t.from)
+            occurred = flag && time <= outcome_time(individual)
+            censor = min(censor, outcome_time(individual))
+        end
     end
     ll = transition_term(t.probability, t.delay, individual, anchor, occurred; censor = censor)
     occurred || return ll

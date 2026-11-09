@@ -42,7 +42,7 @@ and quarantines them, also for good.
 ## How a dose protects
 
 A dose protects from `delay_to_immunity` days after it is given (0 by
-default). It has up to four effects, each a probability; two of them,
+default). It has up to five effects, each a probability; two of them,
 `onward_efficacy` and `post_exposure_efficacy`, are only on
 [`RingVaccination`](@ref):
 
@@ -50,6 +50,7 @@ default). It has up to four effects, each a probability; two of them,
 |---|---|---|
 | `efficacy` | the vaccinated person being infected | before the exposure |
 | `severity_efficacy` | a severe outcome, such as death, in a vaccinated person who is infected anyway | when the clinical step that reads it says so (before symptom onset in the example below) |
+| `symptom_efficacy` | symptoms in a vaccinated person who is infected anyway, so onset-triggered isolation and tracing see fewer cases | before symptom onset |
 | `onward_efficacy` | the vaccinated person infecting others | before each of their transmissions |
 | `post_exposure_efficacy` | an infection the person already has | before symptom onset (if before the exposure, it blocks the infection itself) |
 

@@ -415,7 +415,7 @@ end
 
         iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
         @test EpiBranch.capacity_key(iso) == :_isolation_handle
-        @test EpiBranch.capacity_time_key(iso) == :isolation_time
+        @test EpiBranch.capacity_time_key(iso) == :_isolation_start
 
         quarantining = ContactTracing(
             probability = 1.0, isolation_to_trace_delay = Exponential(1.0),

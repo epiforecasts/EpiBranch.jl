@@ -22,7 +22,9 @@
     # The stretches the likelihood reads are the ones the simulator recorded.
     @test haskey(data.host_times, :_removal_stretches)
     recorded = data.host_times._removal_stretches
-    @test recorded == EpiBranch.removal_stretches.(state.individuals)
+    @test recorded == EpiBranch.removal_stretches.(
+        state.individuals, EpiBranch.ISOLATION_STRETCHES_KEY
+    )
     @test any(!isempty, recorded)
 
     # The window runs to the natural-history close now, so an isolated case is
@@ -189,7 +191,7 @@ end
     iso = Isolation(
         onset_to_isolation_delay = Dirac(1.0), duration = Dirac(7.0)
     )
-    key = EpiBranch.REMOVAL_STRETCHES_KEY
+    key = EpiBranch.ISOLATION_STRETCHES_KEY
 
     # A schedule with no end, and a capacity budget, both leave the block
     # standing for the stretch they recorded, so both are read back.
@@ -221,8 +223,9 @@ end
     )
     state = simulate(m; rng = StableRNG(21))
     data = household_infections(state, m)
-    @test data.host_times._removal_stretches ==
-        EpiBranch.removal_stretches.(state.individuals)
+    @test data.host_times._removal_stretches == EpiBranch.removal_stretches.(
+        state.individuals, EpiBranch.ISOLATION_STRETCHES_KEY
+    )
     @test isfinite(loglikelihood(data, m))
 
     lapsing_m = ModelSpec(
