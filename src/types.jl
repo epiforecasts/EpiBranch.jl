@@ -251,8 +251,8 @@ contact they exposed; for models with a fixed population, anyone in it.
   population characteristics you add. It is read and written as a dictionary
   (see [`EpiBranch.IndividualState`](@ref)).
 - `episodes`: past infections, oldest first, for a person who has been
-  infected more than once (see [`close_episode!`](@ref)), which is the only way
-  to add one: a `push!` onto `ind.episodes` is lost. The fields above
+  infected more than once (see [`close_episode!`](@ref)). Add one with
+  `close_episode!`, because a `push!` onto `ind.episodes` is lost. The fields above
   describe the current or latest infection. None of the built-in models
   reinfects anyone, so this is empty there.
 
@@ -302,8 +302,8 @@ mutable struct Individual{T <: Real}
 end
 
 # `ind.episodes` reads the archive through `_episodes`. A person with none gets
-# a fresh empty vector, so a `push!` straight onto `ind.episodes` is lost
-# rather than shared with everyone else; `close_episode!` is the way to add one.
+# a fresh empty vector, which keeps a `push!` onto `ind.episodes` from reaching
+# anyone else but also loses it. Add an episode with `close_episode!`.
 @inline function Base.getproperty(ind::Individual{T}, name::Symbol) where {T}
     name === :episodes || return getfield(ind, name)
     episodes = getfield(ind, :_episodes)

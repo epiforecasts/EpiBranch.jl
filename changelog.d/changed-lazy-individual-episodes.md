@@ -1,4 +1,4 @@
 An `Individual` no longer allocates an `episodes` vector when it is created. The
-vector is made by the first `close_episode!`, and `ind.episodes` returns an empty
-one for a person with none, so a `push!` straight onto it is lost:
-`close_episode!` is the only supported way to archive an episode.
+first `close_episode!` makes the vector. For a person with no episodes,
+`ind.episodes` returns a fresh empty vector, and a `push!` onto it is lost.
+Use `close_episode!` to archive an episode.
