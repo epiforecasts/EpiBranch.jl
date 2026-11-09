@@ -1,4 +1,5 @@
-`end_of_outbreak_probability(model, τ)`, `probability_contain(model)` and the
+`end_of_outbreak_probability(model, τ)`, `extinction_probability(model)`,
+`probability_contain(model)` and the
 model methods of `proportion_transmission`, `proportion_cases_individual`,
 `proportion_cases_offspring` and `proportion_cluster_size` returned the value
 for the bare offspring law when a finite `population_size`, an

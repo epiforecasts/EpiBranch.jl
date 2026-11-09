@@ -578,6 +578,11 @@ end
 # one raises its own error first.
 function _unreshaped_single_type_offspring(model, name)
     off = single_type_offspring(model)
+    _require_unreshaped_offspring_law(model, name)
+    return off
+end
+
+function _require_unreshaped_offspring_law(model, name)
     # `offspring_law_unchanged` answers `false` for a process type it does not
     # know. Such a process supplies its own offspring law and is used as
     # declared, as before.
@@ -592,7 +597,7 @@ function _unreshaped_single_type_offspring(model, name)
                 "law away from the distribution it was built with. Simulate instead."
         )
     )
-    return off
+    return nothing
 end
 
 function Base.show(io::IO, s::ModelSpec)
