@@ -1,4 +1,4 @@
-include(joinpath(@__DIR__, "..", "..", "..", "test", "testutils", "pair_kernels.jl"))
+include(joinpath(@__DIR__, "testutils", "pair_kernels.jl"))
 test_contextual_simulation((k; kwargs...) -> HouseholdProcess([3], k; kwargs...), household_infections)
 test_calendar_simulation((k; kwargs...) -> HouseholdProcess([3], k; kwargs...), household_infections)
 test_stateful_simulation((k; kwargs...) -> HouseholdProcess([3], k; kwargs...), household_infections)
