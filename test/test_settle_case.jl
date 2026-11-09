@@ -170,3 +170,31 @@ end
         @test haskey(settled[1], :_transition_clock)
     end
 end
+
+@testset "The terminal fold and the per-element walk agree over a Tuple and a Vector" begin
+    visited = Symbol[]
+    record(x) = (push!(visited, x); nothing)
+    EpiBranch._each(record, (:a, :b, :c))
+    EpiBranch._each(record, [:d, :e])
+    EpiBranch._each(record, ())
+    @test visited == [:a, :b, :c, :d, :e]
+
+    progression = [
+        Transition(:recovered; from = :infection, delay = 4.0, terminal = true),
+        Transition(:dead; from = :infection, delay = 2.0, terminal = true),
+        Transition(:hospitalised; from = :infection, delay = 3.0),
+    ]
+    model = ModelSpec(
+        BranchingProcess(Poisson(2.0), Exponential(5.0)); progression
+    )
+    state = simulate(model; rng = StableRNG(5), max_generations = 2)
+    outcomes = map((state.transitions, Tuple(state.transitions))) do transitions
+        ind = Individual(id = 1)
+        ind.infection_time = 0.0
+        EpiBranch._resolve_transitions!(state, ind, transitions)
+        return (ind.state[:outcome], ind.state[:outcome_time])
+    end
+    @test outcomes[1] == outcomes[2]
+    @test outcomes[1][1] == :dead
+    @test outcomes[1][2] == 2.0
+end
