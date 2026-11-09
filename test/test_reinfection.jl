@@ -83,6 +83,25 @@ using StableRNGs
         @test !(:_episodes in propertynames(a))
     end
 
+    @testset "Assigning ind.episodes keeps the archive private" begin
+        a = Individual(; id = 1)
+        @test !EpiBranch._has_episodes(a)
+        @test EpiBranch._n_episodes(a) == 0
+
+        a.episodes = [InfectionEpisode(a), InfectionEpisode(a)]
+        @test EpiBranch._has_episodes(a)
+        @test EpiBranch._n_episodes(a) == 2
+        @test length(a.episodes) == 2
+
+        a.episodes = InfectionEpisode{Float64}[]
+        @test !EpiBranch._has_episodes(a)
+        @test getfield(a, :_episodes) === nothing
+        @test isempty(a.episodes)
+
+        a.id = 7
+        @test a.id == 7
+    end
+
     @testset "A second episode no longer overwrites the first in silence" begin
         ind = Individual(; id = 1, infection_time = 5.0)
         ind.state[:recovered] = true
