@@ -175,7 +175,7 @@ end
 
 The number of places held at day `at` and the number there are. `key` selects
 one budget when [`resource_key`](@ref EpiBranch.resource_key) splits
-`hc`'s intervention into more than one; the default, `nothing`, is the single
+the intervention of `hc` into more than one; the default, `nothing`, is the single
 one everyone shares.
 """
 function held_usage(hc::HeldCapacity, state::SimulationState, at::Real, key = nothing)
