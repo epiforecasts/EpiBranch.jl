@@ -313,6 +313,7 @@ is_vaccinated
 immunity_time
 vaccine_efficacy
 severity_efficacy
+symptom_efficacy
 is_asymptomatic
 is_test_positive
 is_infected
