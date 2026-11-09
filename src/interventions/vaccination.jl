@@ -206,7 +206,7 @@ mode and dose label through it.
 """
 function vaccine_effect end
 
-"""Efficacy of the vaccination's dose against infection, as given to
+"""Efficacy of a vaccine dose against infection, as given to
 [`VaccineEffect`](@ref): per exposure for a leaky vaccine, the probability of
 full protection for an all-or-nothing one."""
 efficacy(v::AbstractVaccination) = vaccine_effect(v).efficacy
