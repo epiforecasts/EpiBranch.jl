@@ -130,7 +130,7 @@ EpiBranch.realised_efficacy(::_TestBlockedMode, eff, rng) =
         rv = RingVaccination(efficacy = 0.9, dose_label = :boost, requires_dose = :prime)
         @test repr(rv) ==
             "RingVaccination(efficacy = 0.9, severity_efficacy = 0.0, " *
-            "delay_to_immunity = 0.0, waning = nothing, mode = LeakyMode(), dose_label = :boost, " *
+            "symptom_efficacy = 0.0, delay_to_immunity = 0.0, waning = nothing, mode = LeakyMode(), dose_label = :boost, " *
             "coverage = 1.0, dose_delay = 0.0, requires_dose = :prime, " *
             "eligibility_window = Inf, post_exposure_efficacy = 0.0, " *
             "onward_efficacy = 0.0)"
@@ -396,5 +396,73 @@ EpiBranch.realised_efficacy(::_TestBlockedMode, eff, rng) =
         all_or_nothing = containment(0.4, AllOrNothingMode(), 103)
         @test leaky > unvaccinated + 0.3
         @test isapprox(leaky, all_or_nothing; atol = 0.05)
+    end
+end
+
+@testset "Vaccine effect on symptoms" begin
+    function run_cases(vaccine; n = 20)
+        model = ModelSpec(
+            BranchingProcess(Poisson(2.0), Exponential(5.0));
+            interventions = [
+                vaccine,
+                Isolation(onset_to_isolation_delay = Dirac(1.0), duration = Inf),
+            ],
+            attributes = clinical_presentation(
+                incubation_period = LogNormal(1.5, 0.3), prob_asymptomatic = 0.0
+            )
+        )
+        states = simulate(model, n; max_cases = 60, rng = StableRNG(7))
+        return [i for s in states for i in s.individuals if is_infected(i)]
+    end
+    mass(; kw...) = MassVaccination(; efficacy = 0.0, eligibility_time = 0.0, kw...)
+
+    @testset "A dose that prevents symptoms leaves its cases asymptomatic" begin
+        cases = run_cases(mass(symptom_efficacy = 1.0))
+        @test !isempty(cases)
+        @test all(is_asymptomatic, cases)
+        @test all(i -> isnan(onset_time(i)), cases)
+        @test !any(is_isolated, cases)
+        @test all(i -> symptom_efficacy(i) == 1.0, cases)
+    end
+
+    @testset "A dose without the effect leaves symptoms alone" begin
+        cases = run_cases(mass())
+        @test !any(is_asymptomatic, cases)
+        @test all(i -> isfinite(onset_time(i)), cases)
+        @test any(is_isolated, cases)
+    end
+
+    @testset "A dose that takes effect after onset does not apply" begin
+        cases = run_cases(mass(symptom_efficacy = 1.0, delay_to_immunity = 1000.0))
+        @test !any(is_asymptomatic, cases)
+        @test all(i -> isfinite(onset_time(i)), cases)
+    end
+
+    @testset "A ring dose given after the contact's record was built applies" begin
+        ct = ContactTracing(OnSymptomOnset(), 1.0, Dirac(0.0), Quarantine(duration = 7.0))
+        model = ModelSpec(
+            BranchingProcess(Poisson(2.0), Exponential(5.0));
+            interventions = [
+                ct, RingVaccination(efficacy = 0.0, symptom_efficacy = 1.0),
+            ],
+            attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.3))
+        )
+        states = simulate(model, 20; max_cases = 60, rng = StableRNG(5))
+        cases = [i for s in states for i in s.individuals if is_infected(i)]
+        # A dose given after the incubation period has run its course comes
+        # too late to prevent symptoms.
+        in_time(i) = is_vaccinated(i) &&
+            immunity_time(i) <= i.infection_time + i.state[:incubation_period]
+        protected = filter(in_time, cases)
+        @test !isempty(protected)
+        @test all(is_asymptomatic, protected)
+        @test all(i -> isnan(onset_time(i)), protected)
+        @test !any(is_asymptomatic, filter(!in_time, cases))
+    end
+
+    @testset "A partial effect removes a share of symptomatic cases" begin
+        cases = run_cases(mass(symptom_efficacy = 0.5); n = 100)
+        share = count(is_asymptomatic, cases) / length(cases)
+        @test 0.4 < share < 0.6
     end
 end

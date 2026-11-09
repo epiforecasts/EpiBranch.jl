@@ -603,7 +603,19 @@ function SurvivalDistributions.cumhazard(k::_CalendarScaledKernel, τ::Real)
 end
 
 function SurvivalDistributions.loghazard(k::_CalendarScaledKernel, τ::Real)
-    return _loghazard(k.profile, τ) + log(calendar_multiplier(k.calendar, k.opening + τ))
+    lh = _loghazard(k.profile, τ)
+    # Past the profile's support the hazard is zero whatever the calendar says.
+    lh == -Inf && return lh
+    return lh + log(calendar_multiplier(k.calendar, k.opening + τ))
+end
+
+# `loghazard` of a truncated kernel is `logpdf - logccdf`, which is `-Inf - -Inf`
+# beyond the upper bound. The hazard there is zero and its log is `-Inf`.
+function _loghazard(k, τ::Real)
+    lh = loghazard(k, τ)
+    # Other NaNs (a NaN time or NaN kernel parameters) are left to propagate.
+    isnan(lh) && !isnan(τ) && logpdf(k, τ) == -Inf && return oftype(lh, -Inf)
+    return lh
 end
 
 SurvivalDistributions.hazard(k::_CalendarScaledKernel, τ::Real) = _calendar_hazard(k, τ)
@@ -638,18 +650,25 @@ function _calendar_segment(k::_CalendarScaledKernel, calendar_lo)
 end
 
 function _calendar_cumhazard(::PiecewiseConstantCalendar, k::_CalendarScaledKernel, τ)
+    # A segment with a zero multiplier adds no hazard, even past the end of a
+    # bounded profile, and survival mass can remain there. A positive segment
+    # that starts at or beyond that end has an infinite total, returned
+    # directly because the difference of two infinite endpoint values would
+    # read `Inf - Inf`.
+    _, upper, certain = _profile_bounds(k.profile)
     total = zero(float(τ))
     calendar_end = k.opening + τ
     calendar_lo = k.opening
     while calendar_lo < calendar_end
         m, calendar_hi = _calendar_segment(k, calendar_lo)
         calendar_hi = min(calendar_end, calendar_hi)
-        m == 0 || (
+        if m != 0
+            certain && calendar_lo - k.opening >= upper && return oftype(total, Inf)
             total += m * (
                 cumhazard(k.profile, calendar_hi - k.opening) -
                     cumhazard(k.profile, calendar_lo - k.opening)
             )
-        )
+        end
         calendar_lo = calendar_hi
     end
     return total
@@ -660,12 +679,19 @@ end
 # current step, then invert within the profile alone with the same machinery
 # used for a constant rate multiplier.
 function _calendar_invlogccdf(::PiecewiseConstantCalendar, k::_CalendarScaledKernel, target)
+    # Zero-multiplier segments are skipped. A draw whose target outlasts every
+    # positive segment is `Inf` (the contact never happens), even for a
+    # bounded profile. A positive segment that starts at or beyond the end of
+    # a bounded profile settles the draw at the start of the segment, where the
+    # cumulative hazard jumps to infinity immediately afterwards.
+    _, upper, certain = _profile_bounds(k.profile)
     acc = zero(target)
     calendar_lo = k.opening
     while true
-        m, calendar_hi = _calendar_segment(k, calendar_lo)
         t_lo = calendar_lo - k.opening
+        m, calendar_hi = _calendar_segment(k, calendar_lo)
         if m > 0
+            certain && t_lo >= upper && return t_lo
             base = cumhazard(k.profile, t_lo)
             seg_cum = isfinite(calendar_hi) ?
                 m * (cumhazard(k.profile, calendar_hi - k.opening) - base) :
@@ -868,11 +894,3 @@ function _invert_hazard(rate, start, upper, boundary_is_certain::Bool, target::R
     end
     return
 end
-
-# Beyond the upper bound, `loghazard` of a `Truncated` is `logpdf - logccdf`,
-# which gives `-Inf - -Inf`. The hazard there is zero, so the log hazard is `-Inf`.
-function _loghazard(k::Distribution, τ::Real)
-    τ > maximum(k) && return oftype(float(τ), -Inf)
-    return loghazard(k, τ)
-end
-_loghazard(k, τ::Real) = loghazard(k, τ)

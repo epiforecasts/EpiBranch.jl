@@ -60,6 +60,19 @@ clinical transition in `progression` (such as [`Death`](@ref) or
 and [`immunity_time`](@ref) functions in its `probability`;
 [`RingVaccination`](@ref) has a worked example.
 
+# Symptoms
+
+`symptom_efficacy` is the probability that a vaccinated person who is
+infected, whose onset would fall once their immunity has developed, and who
+would have had symptoms, stays asymptomatic. It is applied when the case's
+symptom status is read, so [`is_asymptomatic`](@ref) and [`onset_time`](@ref) reflect it
+whether the dose came before or after the person's attributes were drawn, and
+anything triggered by onset, such as [`Isolation`](@ref) with
+`SymptomaticOnly` or [`ContactTracing`](@ref) with `OnSymptomOnset`, sees
+fewer symptomatic cases among the vaccinated. It is drawn once per person
+when the dose is given, and does not wane. A person already drawn as
+asymptomatic stays so.
+
 # Waning
 
 `waning` is a function of the days `dt` since the person became immune,
@@ -121,8 +134,9 @@ supports_waning(::AbstractEffectMode) = true
 supports_waning(::AllOrNothingMode) = false
 
 """
-    VaccineEffect(; efficacy, severity_efficacy = 0.0, delay_to_immunity = 0.0,
-        waning = nothing, mode = LeakyMode(), dose_label = :default)
+    VaccineEffect(; efficacy, severity_efficacy = 0.0, symptom_efficacy = 0.0,
+        delay_to_immunity = 0.0, waning = nothing, mode = LeakyMode(),
+        dose_label = :default)
 
 The effects of a vaccine dose shared by every vaccination intervention,
 the same whoever receives it and whenever it is given. The built-in vaccinations
@@ -135,6 +149,9 @@ directly only when writing a new vaccination intervention (see
   being fully protected.
 - `severity_efficacy`: probability that the vaccinated person's own illness
   is milder once immune (default 0).
+- `symptom_efficacy`: probability that a vaccinated person whose onset
+  would fall once immune, and who would have developed symptoms, stays
+  asymptomatic instead (default 0).
 - `delay_to_immunity`: days from vaccination to immunity (default 0).
 - `waning`: a function of days since immunity giving the fraction of
   protection left, or `nothing` (default) for constant protection. Not yet
@@ -143,13 +160,14 @@ directly only when writing a new vaccination intervention (see
 - `dose_label`: name of the dose, so several doses can be told apart
   (default `:default`).
 
-The first three each take a number, a distribution or a function
+The first four each take a number, a distribution or a function
 `(rng, ind) -> ...`, drawn once per vaccinated person when the dose is given.
 See [`AbstractVaccination`](@ref) for how the effects combine.
 """
-struct VaccineEffect{E, SV, D, W, M <: AbstractEffectMode}
+struct VaccineEffect{E, SV, SY, D, W, M <: AbstractEffectMode}
     efficacy::E
     severity_efficacy::SV
+    symptom_efficacy::SY
     delay_to_immunity::D
     waning::W
     mode::M
@@ -157,8 +175,9 @@ struct VaccineEffect{E, SV, D, W, M <: AbstractEffectMode}
 end
 
 function VaccineEffect(;
-        efficacy, severity_efficacy = 0.0, delay_to_immunity = 0.0,
-        waning = nothing, mode = LeakyMode(), dose_label = :default
+        efficacy, severity_efficacy = 0.0, symptom_efficacy = 0.0,
+        delay_to_immunity = 0.0, waning = nothing, mode = LeakyMode(),
+        dose_label = :default
     )
     # `waning` decays a per-exposure block, which a mode without one (a
     # responder is blocked with certainty from immunity onward, not at a
@@ -173,7 +192,8 @@ function VaccineEffect(;
         )
     )
     return VaccineEffect(
-        efficacy, severity_efficacy, delay_to_immunity, waning, mode, dose_label
+        efficacy, severity_efficacy, symptom_efficacy, delay_to_immunity, waning,
+        mode, dose_label
     )
 end
 
@@ -195,6 +215,11 @@ efficacy(v::AbstractVaccination) = vaccine_effect(v).efficacy
 [`VaccineEffect`](@ref). The method for an individual returns the value drawn
 for that person."""
 severity_efficacy(v::AbstractVaccination) = vaccine_effect(v).severity_efficacy
+
+"""Efficacy of the vaccination's dose against developing symptoms, as given to
+[`VaccineEffect`](@ref). The method for an individual returns the value drawn
+for that person."""
+symptom_efficacy(v::AbstractVaccination) = vaccine_effect(v).symptom_efficacy
 
 """Days from vaccination to immunity, as given to [`VaccineEffect`](@ref): a
 number, a distribution or a function. A distribution or function is drawn once
@@ -292,6 +317,14 @@ function _immunity_time_key(label::Symbol)
 end
 function _severity_efficacy_key(label::Symbol)
     return label === :default ? :severity_efficacy : Symbol("severity_efficacy_", label)
+end
+
+function _symptom_efficacy_key(label::Symbol)
+    return label === :default ? :symptom_efficacy : Symbol("symptom_efficacy_", label)
+end
+function _symptom_protection_key(label::Symbol)
+    return label === :default ? :symptom_protection_time :
+        Symbol("symptom_protection_time_", label)
 end
 
 # Time dose `label` was given to `ind`, or `nothing` if it has not been.
@@ -483,7 +516,26 @@ function _record_vaccination!(v::AbstractVaccination, contact, vacc_t, rng)
     contact.state[_severity_efficacy_key(label)] = sample_value(
         severity_efficacy(v), rng, contact
     )
+    _record_symptom_protection!(v, contact, label, rng)
     record_effect_draws!(v, contact, label, rng)
+    return nothing
+end
+
+# Draws the dose's effect on symptoms once, when the dose is given, and keeps
+# the day from which it prevents them. Whether it applies to a case is
+# decided where the case's symptom status is read (`is_asymptomatic`), so it
+# holds whichever of the dose, the person's attributes and the infection was
+# settled first. A dose with no such effect draws nothing, which leaves the
+# random stream of existing runs unchanged.
+function _record_symptom_protection!(v::AbstractVaccination, contact, label, rng)
+    p = sample_value(symptom_efficacy(v), rng, contact)
+    contact.state[_symptom_efficacy_key(label)] = p
+    if p > 0 && rand(rng) < p
+        contact.state[_symptom_protection_key(label)] = contact.state[_immunity_time_key(label)]
+    else
+        delete!(contact.state, _symptom_protection_key(label))
+    end
+    _refresh_symptom_protection!(contact)
     return nothing
 end
 
@@ -504,7 +556,8 @@ record_effect_draws!(::AbstractVaccination, contact, label, rng) = nothing
 """
     RingVaccination(; efficacy, coverage = 1.0, delay_to_immunity = 0.0,
                     post_exposure_efficacy = 0.0, onward_efficacy = 0.0,
-                    severity_efficacy = 0.0, eligibility_window = Inf,
+                    severity_efficacy = 0.0, symptom_efficacy = 0.0,
+                    eligibility_window = Inf,
                     dose_delay = 0.0, requires_dose = nothing, waning = nothing,
                     mode = LeakyMode(), dose_label = :default)
 
@@ -542,6 +595,9 @@ RingVaccination(efficacy = 0.0, post_exposure_efficacy = 0.6)
   vaccinated contact is prevented once immune (default 0).
 - `severity_efficacy`: probability that the vaccinated contact's own illness is
   milder once immune (default 0). See "Severity" below.
+- `symptom_efficacy`: probability that the vaccinated contact, if its onset
+  would fall once immune, stays asymptomatic when it would otherwise have had
+  symptoms (default 0). See "Symptoms" in [`AbstractVaccination`](@ref).
 - `eligibility_window`: days after exposure beyond which a contact is no longer
   vaccinated (default `Inf`), as in filovirus protocols where vaccination
   more than about 21 days after exposure is pointless. A number or a function
@@ -878,6 +934,9 @@ function _withdraw_dose!(rv::RingVaccination, ind)
     delete!(ind.state, _vaccine_efficacy_key(label))
     delete!(ind.state, _immunity_time_key(label))
     delete!(ind.state, _severity_efficacy_key(label))
+    delete!(ind.state, _symptom_efficacy_key(label))
+    delete!(ind.state, _symptom_protection_key(label))
+    _refresh_symptom_protection!(ind)
     delete!(ind.state, _post_exposure_efficacy_key(label))
     delete!(ind.state, _onward_efficacy_key(label))
     return nothing
@@ -1086,7 +1145,8 @@ _unwrap_scheduled(iv) = iv
 """
     GroupVaccination(; efficacy, eligibility = OnLabConfirmation(),
                      coverage = 1.0, dose_delay = 0.0, group_key = :group,
-                     severity_efficacy = 0.0, delay_to_immunity = 0.0,
+                     severity_efficacy = 0.0, symptom_efficacy = 0.0,
+                     delay_to_immunity = 0.0,
                      waning = nothing, mode = LeakyMode(), dose_label = :default)
 
 Vaccinate everyone in a case's group (a community, health area or household)
@@ -1112,7 +1172,7 @@ GroupVaccination(efficacy = 0.7, eligibility = OnLabConfirmation(), dose_delay =
   vaccination team needs to reach the group. A number, a distribution or a
   function, drawn once per member, so members can be reached on different
   days.
-- `coverage`, `efficacy`, `severity_efficacy`, `delay_to_immunity`, `waning`,
+- `coverage`, `efficacy`, `severity_efficacy`, `symptom_efficacy`, `delay_to_immunity`, `waning`,
   `mode`, `dose_label`: as for [`RingVaccination`](@ref). Pairing `coverage`
   with [`vaccine_acceptance`](@ref) on the same `group_key` clusters refusal by
   group. `severity_efficacy` acts only through a clinical transition that
@@ -1240,7 +1300,8 @@ end
 
 """
     MassVaccination(; efficacy, eligibility_time, coverage = 1.0,
-                    severity_efficacy = 0.0, delay_to_immunity = 0.0,
+                    severity_efficacy = 0.0, symptom_efficacy = 0.0,
+                    delay_to_immunity = 0.0,
                     waning = nothing, mode = LeakyMode(), dose_label = :default)
 
 Vaccinate the population on a schedule, independently of contact tracing.
@@ -1258,7 +1319,7 @@ Vaccinate the population on a schedule, independently of contact tracing.
   actually vaccinated (consent, absence, logistics). Default 1. A number, a
   distribution or a function `(rng, ind) -> ...`, as for
   [`RingVaccination`](@ref)'s `coverage`.
-- `efficacy`, `delay_to_immunity`, `severity_efficacy`: take the same forms,
+- `efficacy`, `delay_to_immunity`, `severity_efficacy`, `symptom_efficacy`: take the same forms,
   drawn once per vaccinated person, for example an age-dependent efficacy or
   immunity taking one to three weeks. See [`AbstractVaccination`](@ref).
 - `waning`: decline of protection against infection from the day of immunity

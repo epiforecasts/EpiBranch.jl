@@ -505,11 +505,10 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         EpiBranch.resolve_individual!(iso, lapsed, state)
         @test isolation_time(lapsed) ≈ 40.0 atol = 1.0e-6
         @test isolation_release_time(lapsed) == Inf
-        stretches = EpiBranch.removal_stretches(lapsed)
-        @test length(stretches) == 2
-        @test stretches[1] == (1.0, 3.0)
-        @test stretches[2][1] ≈ 40.0 atol = 1.0e-6
-        @test stretches[2][2] == Inf
+        @test EpiBranch.removal_stretches(lapsed) == [(1.0, 3.0)]
+        stretch = only(EpiBranch.removal_stretches(lapsed, EpiBranch.ISOLATION_STRETCHES_KEY))
+        @test stretch[1] ≈ 40.0 atol = 1.0e-6
+        @test stretch[2] == Inf
 
         # A test-negative quarantined contact has no self-reporting pathway,
         # so the quarantine stands.
@@ -519,6 +518,47 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         set_isolated!(negative, 50.0; release_time = Inf)
         EpiBranch.resolve_individual!(iso, negative, state)
         @test isolation_time(negative) == 50.0
+    end
+
+    @testset "Scheduled and CapacityConstrained judge Isolation's own start" begin
+        state = EpiBranch.new_state(
+            BranchingProcess(Poisson(1.0), Exponential(5.0)),
+            EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
+        )
+        iso = Isolation(onset_to_isolation_delay = Dirac(3.0), duration = Inf)
+        function quarantined()
+            ind = Individual(id = 1)
+            ind.state[:onset_time] = 8.0
+            ind.state[:test_positive] = true
+            set_isolated!(ind, 5.0; release_time = 19.0)
+            return ind
+        end
+
+        # The quarantine began before the schedule and the isolation (day 11)
+        # falls inside it. The isolation stands, merged with the quarantine.
+        plain = quarantined()
+        EpiBranch.resolve_individual!(iso, plain, state)
+        @test intervention_time(iso, plain) == 11.0
+        @test EpiBranch.removal_stretches(plain) == [(5.0, Inf)]
+
+        ind = quarantined()
+        EpiBranch.resolve_individual!(
+            Scheduled(iso; start_time = 10.0), ind, state
+        )
+        @test EpiBranch.removal_stretches(ind) == [(5.0, Inf)]
+        @test isolation_release_time(ind) == Inf
+
+        # An isolation before the window is undone, leaving the quarantine.
+        early = quarantined()
+        EpiBranch.resolve_individual!(
+            Scheduled(iso; start_time = 12.0), early, state
+        )
+        @test EpiBranch.removal_stretches(early) == [(5.0, 19.0)]
+
+        # Capacity charges the isolation to the date it started.
+        @test EpiBranch.capacity_time_key(iso) == :_isolation_start
+        @test !haskey(quarantined().state, :_isolation_start)
+        @test plain.state[:_isolation_start] == 11.0
     end
 
     @testset "An eligibility can record a detection after the outcome" begin
@@ -1008,13 +1048,18 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
     @testset "A released quarantine does not block a later, unrelated infection" begin
         # Reproduces the bug: a contact traced and quarantined long before it is
         # actually infected, through another route, must not still be carrying
-        # that old quarantine. `Isolation`'s competing risk must respect the
+        # that old quarantine. The competing risk from tracing must respect the
         # release time, not just the isolation time.
         iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = Inf)
+        ct = ContactTracing(
+            probability = 1.0, isolation_to_trace_delay = Dirac(0.0),
+            action = Quarantine(duration = 2.0)
+        )
         contact = Individual(id = 1, infection_time = 60.0)
-        set_isolated!(contact, 10.0; release_time = 12.0)
+        EpiBranch.apply_trace!(ct.action, contact, nothing, 10.0, StableRNG(1))
 
-        risk = only(EpiBranch.competing_risk(iso, contact, Individual(id = 2), nothing))
+        @test EpiBranch.competing_risk(iso, contact, Individual(id = 2), nothing) === nothing
+        risk = only(EpiBranch.competing_risk(ct, contact, Individual(id = 2), nothing))
         @test risk.event_time == 10.0
         @test risk.release_time == 12.0
         @test risk.block_probability == 1.0
@@ -1025,10 +1070,10 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             EpiBranch.AbstractClinicalTransition[], NoAttributes(), rng
         )
         # Within the quarantine window the block still stands…
-        @test EpiBranch._risk_blocks(iso, contact, Individual(id = 2), state, 11.0)
+        @test EpiBranch._risk_blocks(ct, contact, Individual(id = 2), state, 11.0)
         # …but it has lapsed well before the infection this contact actually
         # goes on to transmit from.
-        @test !EpiBranch._risk_blocks(iso, contact, Individual(id = 2), state, 60.0)
+        @test !EpiBranch._risk_blocks(ct, contact, Individual(id = 2), state, 60.0)
 
         # `set_isolated!` returns the release it recorded, `Inf` saying the
         # removal never ends.

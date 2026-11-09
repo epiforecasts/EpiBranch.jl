@@ -85,6 +85,24 @@ end
         @test loglikelihood(data, process) == direct
     end
 
+    @testset "a route kernel past its truncation bound has zero hazard, not NaN" begin
+        hh, comm = _routed_adjacency(20, 4)
+        windows = [
+            RouteWindow(:household; until = (:recovered,), kernel = Weibull(1.5, 4.0), reach = hh),
+            RouteWindow(:community; until = (:recovered,), kernel = Exponential(10.0), reach = comm),
+        ]
+        m = ModelSpec(RoutedNetwork(windows); progression = _sir(8.0))
+        data = routed_network_infections(simulate(m; n_initial = 3, rng = StableRNG(2)), m)
+        cut = [
+            RouteWindow(
+                :household; until = (:recovered,),
+                kernel = truncated(Weibull(1.5, 4.0), 0.0, 0.5), reach = hh
+            ),
+            windows[2],
+        ]
+        @test !isnan(pairwise_surv_loglik(cut, data))
+    end
+
     @testset "a community hazard per node matches a shared one when all equal" begin
         hh, comm = _routed_adjacency(30, 4)
         windows = [
@@ -189,6 +207,56 @@ end
             data
         )
         θ = [log(true_household), log(true_community)]
+        θhat, se = _newton_mle_joint(g, θ)
+        @test all(abs.(θhat - θ) .< 3 .* se)
+    end
+
+    @testset "a leaky isolation thins the gated route's hazard in the likelihood" begin
+        true_household, true_community = 3.0, 6.0
+        hh, comm = _routed_adjacency(300, 4)
+        REM = EpiBranch.INTERVENTION_REMOVAL
+        LEAKY = EpiBranch.LEAKY_REMOVAL_STRETCHES_KEY
+        mkwindows(θ, comm_until) = [
+            RouteWindow(:household; until = (:recovered,), kernel = Exponential(exp(θ[1])), reach = hh),
+            RouteWindow(
+                :community; until = comm_until,
+                kernel = Exponential(exp(θ[2])), reach = comm
+            ),
+        ]
+        clinical = clinical_presentation(
+            incubation_period = LogNormal(1.0, 0.3), prob_asymptomatic = 0.0
+        )
+        iso = Isolation(
+            onset_to_isolation_delay = Exponential(1.5),
+            test_sensitivity = 1.0, duration = 7.0,
+            post_isolation_transmission = 0.5
+        )
+        θ = [log(true_household), log(true_community)]
+        m = ModelSpec(
+            RoutedNetwork(mkwindows(θ, (:recovered, REM))); progression = _sir(10.0),
+            interventions = [iso], attributes = clinical
+        )
+        state = simulate(m; n_initial = 5, rng = StableRNG(4))
+        data = routed_network_infections(state, m)
+        @test haskey(data.host_times, LEAKY)
+        @test any(!ismissing, data.host_times[LEAKY])
+
+        stripped = RoutedNetworkInfections(
+            data.route_names, data.contacts, data.infectious_time, data.removal_time,
+            data.infection_time, data.is_index;
+            obs_end = data.obs_end, followup_end = data.followup_end,
+            host_times = Base.structdiff(data.host_times, NamedTuple{(LEAKY,)}((nothing,)))
+        )
+        @test !haskey(stripped.host_times, LEAKY)
+        ll_leaky = pairwise_surv_loglik(mkwindows(θ, (:recovered, REM)), data)
+        @test ll_leaky != pairwise_surv_loglik(mkwindows(θ, (:recovered, REM)), stripped)
+        @test loglikelihood(data, m) == ll_leaky
+
+        # a route that does not list INTERVENTION_REMOVAL ignores the leak
+        @test pairwise_surv_loglik(mkwindows(θ, (:recovered,)), data) ==
+            pairwise_surv_loglik(mkwindows(θ, (:recovered,)), stripped)
+
+        g(φ) = pairwise_surv_loglik(mkwindows(φ, (:recovered, REM)), data)
         θhat, se = _newton_mle_joint(g, θ)
         @test all(abs.(θhat - θ) .< 3 .* se)
     end
