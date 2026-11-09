@@ -535,8 +535,8 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         end
 
         # The quarantine began before the schedule and the isolation (day 11)
-        # falls inside it. The isolation stands, as its own entry beside the
-        # quarantine's.
+        # falls inside it. The isolation stands as a separate entry next to
+        # the quarantine.
         plain = quarantined()
         EpiBranch.resolve_individual!(iso, plain, state)
         @test intervention_time(iso, plain) == 11.0
