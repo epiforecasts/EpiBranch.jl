@@ -548,8 +548,9 @@ function _settle_case!(state::SimulationState, case, interventions, count)
     return nothing
 end
 
-# The race's own call, with the transitions as the `Tuple` it took from
-# `state.transitions` once, so each step's hooks are resolved at compile time.
+# The race's own call. It passes the transitions as the `Tuple` taken once from
+# `state.transitions`, which lets the hooks of each step be resolved at compile
+# time.
 function _settle_case!(state::SimulationState, case, interventions, transitions, count)
     _at_case!(state, case, count)
     _resolve_transitions!(state, case, transitions)

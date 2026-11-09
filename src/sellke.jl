@@ -995,11 +995,11 @@ function _sellke_race!(
         state::SimulationState, members::AbstractVector{Int},
         rng::AbstractRNG; interventions = (), kwargs...
     )
-    # The interventions and the progression are taken as `Tuple`s once here,
-    # and the race runs behind this call, so the hooks it makes for every case
-    # and every proposal are resolved when the method is compiled rather than
-    # at run time. `state.transitions` and `interventions` keep their
-    # `Vector`s for everything that reads them.
+    # The interventions and the progression are taken as `Tuple`s once here
+    # and the race runs behind this call. The hooks it makes for every case
+    # and every proposal are therefore resolved when the method is compiled,
+    # not at run time. `state.transitions` and `interventions` keep their
+    # `Vector`s for everything else that reads them.
     return _sellke_race_typed!(
         state, members, rng, Tuple(interventions), Tuple(state.transitions);
         interventions, kwargs...
