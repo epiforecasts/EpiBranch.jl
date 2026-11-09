@@ -535,17 +535,22 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         end
 
         # The quarantine began before the schedule and the isolation (day 11)
-        # falls inside it. The isolation stands, merged with the quarantine.
+        # falls inside it. The isolation stands, as its own entry beside the
+        # quarantine's.
         plain = quarantined()
         EpiBranch.resolve_individual!(iso, plain, state)
         @test intervention_time(iso, plain) == 11.0
-        @test EpiBranch.removal_stretches(plain) == [(5.0, Inf)]
+        @test EpiBranch.removal_stretches(plain) == [(5.0, 19.0)]
+        @test EpiBranch.removal_stretches(plain, EpiBranch.ISOLATION_STRETCHES_KEY) ==
+            [(11.0, Inf)]
 
         ind = quarantined()
         EpiBranch.resolve_individual!(
             Scheduled(iso; start_time = 10.0), ind, state
         )
-        @test EpiBranch.removal_stretches(ind) == [(5.0, Inf)]
+        @test EpiBranch.removal_stretches(ind) == [(5.0, 19.0)]
+        @test EpiBranch.removal_stretches(ind, EpiBranch.ISOLATION_STRETCHES_KEY) ==
+            [(11.0, Inf)]
         @test isolation_release_time(ind) == Inf
 
         # An isolation before the window is undone, leaving the quarantine.
