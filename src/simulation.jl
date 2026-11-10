@@ -1458,7 +1458,7 @@ present on the individual.
 function _set_onset_from_incubation!(ind::Individual)
     haskey(ind.state, :incubation_period) || return nothing
     inc = _state_real(ind.state, :incubation_period, NaN)
-    ind.state[:onset_time] = isnan(inc) || _infection_aborted(ind) ? NaN :
+    ind.state[:onset_time] = isnan(inc) || _infection_aborted(ind) || _symptoms_prevented(ind) ? NaN :
         ind.infection_time + inc
     return nothing
 end
@@ -1662,12 +1662,7 @@ function offspring_law_unchanged(t::TransmissionTraits)
     return _trait_is_neutral(t.susceptibility) && _trait_is_neutral(t.infectiousness)
 end
 
-_trait_sampler(x::Real) =
-let v = float(x)
-    (rng, ind) -> v
-end
-_trait_sampler(d::Distribution) = (rng, ind) -> float(rand(rng, d))
-_trait_sampler(f) = (rng, ind) -> float(f(rng, ind))
+_trait_sampler(x) = (rng, ind) -> sample_value(x, rng, ind)
 
 """
     group_attribute(key::Symbol; value, group_key = :group)

@@ -229,6 +229,12 @@ After
 CapacityConstrained
 capacity_usage
 default_capacity_priority
+RefusalPolicy
+DropRefused
+DeferRefused
+HeldCapacity
+held_usage
+release_capacity!
 ```
 
 ## Transmission routes
@@ -261,6 +267,7 @@ MaxCases
 MaxGenerations
 MaxTime
 SimulationState
+Base.copy(::SimulationState)
 Individual
 EpiBranch.IndividualState
 InfectionEpisode
@@ -306,6 +313,7 @@ is_vaccinated
 immunity_time
 vaccine_efficacy
 severity_efficacy
+symptom_efficacy
 is_asymptomatic
 is_test_positive
 is_infected
@@ -549,6 +557,7 @@ InfectionLayer
 compile_contact_pairs
 ContactPairsLayout
 MassActionHazard
+SumHazard
 PairKernel
 EpiBranch.watched_records
 EpiBranch.kernel_projection
@@ -774,6 +783,8 @@ EpiBranch.capacity_key
 EpiBranch.capacity_time_key
 EpiBranch.record_capacity_use!
 EpiBranch.resource_key
+EpiBranch.refused_action
+EpiBranch.held_until
 ```
 
 #### Start triggers

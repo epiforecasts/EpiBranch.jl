@@ -325,7 +325,8 @@ function _routed_modifier_loglik(
             pk = _route_kernel(windows[r].kernel, data.contacts[r], i, pos, j)
             survival += gates[r] ?
                 _gapped_cumhazard(
-                    t -> _scaled_cumhazard(modifier, pk, oi, t), _host_stretches(gaps, i), oi, stop
+                    t -> _scaled_cumhazard(modifier, pk, oi, t), _host_stretches(gaps, i), oi, stop,
+                    _host_leaky_stretches(gaps, i)
                 ) :
                 _scaled_cumhazard(modifier, pk, oi, stop)
         end
@@ -336,10 +337,10 @@ function _routed_modifier_loglik(
     route_terms = [
         _scaled_loghazard(
             modifier,
-            loghazard(
+            EpiBranch._loghazard(
                 _route_kernel(windows[r].kernel, data.contacts[r], i, pos, j),
                 tj - data.infectious_time[r][i]
-            ),
+            ) + (gates[r] ? _leak_log_at(gaps, i, tj) : 0.0),
             tj
         )
             for r in 1:n_routes for (i, pos) in in_neighbours[r][j]
@@ -517,7 +518,10 @@ function EpiBranch.pairwise_surv_loglik(
                 stop > 0 || continue
                 pk = _route_kernel(windows[r].kernel, data.contacts[r], i, pos, j)
                 survival += gates[r] ?
-                    _gapped_cumhazard(t -> cumhazard(pk, t), _host_stretches(gaps, i), oi, stop) :
+                    _gapped_cumhazard(
+                        t -> cumhazard(pk, t), _host_stretches(gaps, i), oi, stop,
+                        _host_leaky_stretches(gaps, i)
+                    ) :
                     cumhazard(pk, stop)
             end
         end
@@ -525,9 +529,9 @@ function EpiBranch.pairwise_surv_loglik(
 
         (isnan(tj) || tj > tfollow) && continue
         route_terms = [
-            loghazard(
+            EpiBranch._loghazard(
                 _route_kernel(windows[r].kernel, data.contacts[r], i, pos, j), tj - data.infectious_time[r][i]
-            )
+            ) + (gates[r] ? _leak_log_at(gaps, i, tj) : 0.0)
                 for r in 1:n_routes for (i, pos) in in_neighbours[r][j]
                 if isfinite(data.infectious_time[r][i]) &&
                 data.infectious_time[r][i] < tj <= data.removal_time[r][i] &&

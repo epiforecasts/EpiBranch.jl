@@ -32,6 +32,7 @@ include("interventions/vaccination.jl")
 include("interventions/wrapper.jl")
 include("interventions/scheduled.jl")
 include("interventions/capacity.jl")
+include("interventions/held_capacity.jl")
 include("interventions/on_routes.jl")
 include("interventions/actions.jl")
 
@@ -196,6 +197,8 @@ export Scheduled, Risk
 export AbstractTrigger, is_triggered!, trigger_can_lapse, required_transitions,
     Infections, ReportedCases, opened_at, After
 export CapacityConstrained, capacity_usage, default_capacity_priority
+export RefusalPolicy, DropRefused, DeferRefused
+export HeldCapacity, held_usage, release_capacity!
 export OnRoutes
 export RouteWindow, window_open, window_close
 export is_active, intervention_time
@@ -214,7 +217,7 @@ export NoAgeDistribution, NoCases
 # Exports — accessors
 export onset_time, incubation_period, outcome_time, is_isolated, isolation_time,
     isolation_release_time, is_traced, is_quarantined
-export is_vaccinated, immunity_time, severity_efficacy, vaccine_efficacy, is_asymptomatic,
+export is_vaccinated, immunity_time, severity_efficacy, symptom_efficacy, vaccine_efficacy, is_asymptomatic,
     is_test_positive, is_infected, susceptible_again_time
 export individual_type, set_isolated!, clear_isolated!
 
@@ -268,7 +271,7 @@ export GeneratingFunctionOffspring
 export end_of_outbreak_probability
 # Pairwise survival likelihood over a contact structure
 export PairKernel, PairContext, Steps, Seasonal, record_kernel, LayerHost
-export InfectionLayer, PairwiseSurvivalData, ContactPairsLayout, MassActionHazard
+export InfectionLayer, PairwiseSurvivalData, ContactPairsLayout, MassActionHazard, SumHazard
 export compile_contact_pairs, pairwise_surv_loglik, pairwise_surv_loglik_by_component
 # Progression (natural-history) likelihood
 export progression_loglik

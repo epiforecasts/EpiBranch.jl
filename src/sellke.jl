@@ -1188,7 +1188,7 @@ function _sellke_race!(
         buffers.pending_actions
     action_sink = (action, admitter) -> begin
         if action.time isa T
-            push!(pending_actions, (action, admitter))
+            push!(pending_actions, (_DeferredAction(action), admitter))
             _enqueue!(queue, _Event(action.time, 0, length(pending_actions)))
         else
             _fire_action!(admitter, state, action)
@@ -1673,12 +1673,12 @@ struct _RaceBuffers{T <: Real}
     head::Vector{Int}
     openings::Vector{_RouteOpening{T}}
     proposals::Vector{_Pending{T}}
-    pending_actions::Vector{Tuple{InterventionAction, AbstractIntervention}}
+    pending_actions::Vector{Tuple{_DeferredAction, AbstractIntervention}}
 end
 function _RaceBuffers{T}() where {T}
     return _RaceBuffers{T}(
         _EventQueue{T}(), T[], falses(0), Int[], Int[], _RouteOpening{T}[], _Pending{T}[],
-        Tuple{InterventionAction, AbstractIntervention}[]
+        Tuple{_DeferredAction, AbstractIntervention}[]
     )
 end
 

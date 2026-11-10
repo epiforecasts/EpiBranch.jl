@@ -823,6 +823,40 @@ placed in their group again from their recorded state alone, with nothing of
 the original proposal kept around. `capacity_usage(cc, state, key)` reads
 one group's own usage.
 
+### What happens to a refused action
+
+An action `CapacityConstrained` turns away is dropped by default. Pass
+`on_refusal = DeferRefused()` to book it into the first later period with room
+instead, so the person is served late and the later date counts against that
+period's budget. A policy is a `RefusalPolicy` subtype with a method of
+`EpiBranch.refused_action(policy, wrapper, usage, action)` that returns the
+action to admit in place of the refused one, or `nothing` to drop it.
+
+### Resources held and given back
+
+A budget per period is spent and never returned. For a resource taken when an
+action starts and given back when it ends, such as a bed, wrap the
+intervention in [`HeldCapacity`](@ref) instead:
+
+```julia
+HeldCapacity(
+    ContactTracing(OnSymptomOnset(), 0.8, Exponential(1.0), Quarantine(duration = 14.0));
+    capacity = 20, hold = 14.0
+)
+```
+
+Each admitted action takes a place from its own date for `hold` days, and is
+refused, or with `on_refusal = DeferRefused()` moved to the first date a place
+frees up, when that would put more than `capacity` people in a place at once.
+An intervention that sets its effect directly in `resolve_individual!`, such
+as `Isolation`, holds a place for as long as the effect lasts, which it
+reports through `EpiBranch.held_until(iv, individual)`. With the default
+`hold = Inf` a place is kept until `release_capacity!(state, iv, person, at)`
+gives it back; the `effect!` of an action can return a further action dated
+when the stay ends that calls it. `held_usage(hc, state, at)` reports how many
+places are held. `resource_key` splits the places by group as it does for
+`CapacityConstrained`.
+
 ## Requiring values on each person
 
 If your intervention depends on values set by a population characteristic

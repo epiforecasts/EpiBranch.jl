@@ -145,8 +145,23 @@ function severity_efficacy(ind::Individual; dose_label::Symbol = :default)
     return get(ind.state, _severity_efficacy_key(dose_label), 0.0)::Float64
 end
 
-"""Whether the case never develops symptoms."""
-is_asymptomatic(ind::Individual) = get(ind.state, :asymptomatic, false)::Bool
+"""Vaccine efficacy against developing symptoms for this person: the
+probability that, once immune, an infection that would have caused symptoms
+leaves them asymptomatic (0 if not vaccinated, or if the dose has no such
+effect). Drawn once per vaccinated person from the `symptom_efficacy` of the
+dose's [`VaccineEffect`](@ref). The simulation applies it itself, through
+[`is_asymptomatic`](@ref) and [`onset_time`](@ref); this reads the drawn
+value."""
+function symptom_efficacy(ind::Individual; dose_label::Symbol = :default)
+    return get(ind.state, _symptom_efficacy_key(dose_label), 0.0)::Float64
+end
+
+"""Whether the case never develops symptoms, because it was drawn as
+asymptomatic or because a vaccine dose with a `symptom_efficacy` kept it from
+developing them."""
+function is_asymptomatic(ind::Individual)
+    return get(ind.state, :asymptomatic, false)::Bool || _symptoms_prevented(ind)
+end
 
 """
     infection_aborted_time(ind)
@@ -254,6 +269,10 @@ individual_type(ind::Individual) = get(ind.state, :type, 1)::Int
 # and names it from `removal_gap_host_times`.
 const REMOVAL_STRETCHES_KEY = :_removal_stretches
 
+# Isolation reads its own removals to keep its route coverage separate from
+# that of quarantine when the two interventions are combined.
+const ISOLATION_STRETCHES_KEY = :_isolation_stretches
+
 # The key a removal that only blocks a fraction of the hazard (see
 # `removal_block_probability`) records its stretches under, apart from
 # `REMOVAL_STRETCHES_KEY`'s complete ones, so a likelihood never mistakes one
@@ -290,9 +309,10 @@ for leaky isolation. `:isolated` in an `until` instead refers to a
 `Transition(:isolated, …)` step in the natural history.
 
 `key` names the [`record_removal!`](@ref EpiBranch.record_removal!) key the
-stretch goes under, the shared key by default. A removal that only blocks a
-fraction of the hazard passes its own key instead, apart from the shared one,
-so a likelihood never mistakes one for the other.
+stretch is recorded under, the shared key by default. An intervention can pass
+its own key to apply its risk and route coverage only to its own removals.
+Removals that block only a fraction of the hazard also need a separate key
+to distinguish them from complete removals in the likelihood.
 
 `unrecorded` says whether this particular removal counts as a detection (see
 [`is_isolated`](@ref)): `false` (the default) records it, `true` keeps it out
@@ -340,8 +360,9 @@ no removal at all (`start` not finite, or `release` not after it). Pass the
 handle to [`revise_removal!`](@ref EpiBranch.revise_removal!) or
 [`withdraw_removal!`](@ref EpiBranch.withdraw_removal!) to change or undo
 exactly this entry later, leaving every other entry recorded under `key`
-untouched, whatever it overlaps. [`set_isolated!`](@ref) records under the
-default key, shared by isolation and quarantine.
+untouched, whatever it overlaps. [`Isolation`](@ref) records under
+`:_isolation_stretches`. Quarantine and callers that give no key use the
+default key.
 
 An intervention of your own that removes people in its own way passes its own
 `key`, and names it in
@@ -721,9 +742,9 @@ end
 """
     removal_stretches(ind, key = :_removal_stretches)
 
-Every period during which `ind` could not transmit, such as isolation or
-quarantine, as sorted, non-overlapping `(start, release)` pairs in days; a
-release of `Inf` means it never ended. Recorded by
+Periods recorded under `key` during which `ind` was removed from transmission,
+such as isolation or quarantine, as sorted, non-overlapping `(start, release)` pairs
+in days; a release of `Inf` means permanent removal. Recorded by
 [`record_removal!`](@ref EpiBranch.record_removal!).
 
 [`isolation_time`](@ref) and [`isolation_release_time`](@ref) give only the
@@ -754,10 +775,43 @@ function clear_isolated!(ind::Individual)
     ind.state[:isolation_time] = Inf
     ind.state[:isolation_release_time] = Inf
     # Every isolation-span entry (`_set_isolated!`'s) is filed under one of
-    # these two keys, so dropping both also clears the span.
+    # these three keys; removing all three also clears the span.
     _withdraw_all_removals!(ind, REMOVAL_STRETCHES_KEY)
+    _withdraw_all_removals!(ind, ISOLATION_STRETCHES_KEY)
     # Leaky isolation's own record, apart from the shared history above; only
     # `Isolation` ever writes it, so clearing it unconditionally is safe.
     _withdraw_all_removals!(ind, LEAKY_REMOVAL_STRETCHES_KEY)
     return nothing
+end
+
+# Day from which a dose's protection against symptoms applies: the earliest
+# immunity day among the doses whose symptom draw succeeded (`Inf` if none).
+# Kept as one entry to avoid scanning the state when reading symptom status.
+_symptom_protection_time(ind::Individual{T}) where {T} =
+    _state_real(ind.state, :symptom_protection_from, T(Inf))
+
+# Rebuild the entry above from the per-dose entries, and the onset that
+# depends on it. Called when a dose is recorded or withdrawn.
+function _refresh_symptom_protection!(ind::Individual{T}) where {T}
+    earliest = T(Inf)
+    for (key, value) in ind.state
+        value isa Real || continue
+        startswith(String(key), "symptom_protection_time") || continue
+        earliest = min(earliest, T(value))
+    end
+    if isfinite(earliest)
+        ind.state[:symptom_protection_from] = earliest
+    else
+        delete!(ind.state, :symptom_protection_from)
+    end
+    _set_onset_from_incubation!(ind)
+    return nothing
+end
+
+# Whether a vaccine dose keeps this case from developing symptoms: its
+# protection has begun by the time the case would have had onset.
+function _symptoms_prevented(ind::Individual)
+    haskey(ind.state, :symptom_protection_from) || return false
+    inc = _state_real(ind.state, :incubation_period, NaN)
+    return _symptom_protection_time(ind) <= ind.infection_time + inc
 end

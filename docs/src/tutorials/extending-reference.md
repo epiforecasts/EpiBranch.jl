@@ -49,7 +49,8 @@ underscore are internal.
 | `:isolated` | `Bool` | `false` | `Isolation`, `ContactTracing`/`SourceTracing`'s `Quarantine` | `resolve_individual!` / `apply_trace!` |
 | `:isolation_time` | `Float64` | `Inf` | `Isolation`, `ContactTracing`/`SourceTracing`'s `Quarantine` | `resolve_individual!` / `apply_trace!` |
 | `:isolation_release_time` | `Float64` | `Inf` | `Isolation`, `ContactTracing`/`SourceTracing`'s `Quarantine` | `resolve_individual!` / `apply_trace!`; when the block ends |
-| `:_removal_stretches` | `Vector{Tuple{Float64,Float64}}` | `[]` | `set_isolated!` | Internal. Every `(start, release)` a removal took the person out for, merged and sorted; a release of `Inf` for one that never ends |
+| `:_removal_stretches` | `Vector{Tuple{Float64,Float64}}` | `[]` | `set_isolated!` | Internal. Removals recorded under the shared default key, as merged, sorted `(start, release)` pairs; a release of `Inf` means permanent removal |
+| `:_isolation_stretches` | `Vector{Tuple{Float64,Float64}}` | `[]` | `Isolation` | `resolve_individual!`; internal. Stretches of perfect isolation, read separately from quarantine to preserve the route coverage of each intervention |
 | `:_leaky_removal_stretches` | `Vector{Tuple{Float64,Float64}}` | `[]` | `Isolation` | `resolve_individual!`; internal. The stretches of a leaky isolation, apart from `:_removal_stretches`'s complete ones |
 | `:_quarantine_stretches` | `Vector{Tuple{Float64,Float64}}` | `[]` | `ContactTracing`/`SourceTracing`'s `Quarantine` | `apply_trace!`; internal. The quarantine's own stretches, apart from the shared history |
 | `:_lapsing_removal_keys` | `Tuple{Vararg{Symbol}}` | `()` | `record_removal!` | Internal. The keys under which a releasing stretch has been recorded, checked against `removal_gap_host_times` when the infection layer is built |
@@ -67,6 +68,7 @@ underscore are internal.
 | `:_ring_propagated` | `Bool` | `false` | `ContactTracing` (`depth > 1`) | `trace_contacts!`; internal |
 | `:_ring_hop` | `Bool` | `false` | `ContactTracing` (`depth > 1`) | Set and cleared around each `trace_contacts!` call in the ring walk; internal. Marks an already-settled case the walk passes through, so it is traced from as a ring member only, not reseeded |
 | `:traced_by` | `Int` | — | `ContactTracing` | `trace_contacts!` |
+| `:tracers` | `Vector{Int}` | — | `ContactTracing` | `trace_contacts!`, `compute_trace_level!`; every case whose trace reached the person |
 | `:source_traced_by` | `Int` | — | `SourceTracing` | `trace_contacts!`; the reverse of `:traced_by` (names a *later*-infected node) |
 | `:trace_level` | `Int` | — | `compute_trace_level!` | After the simulation |
 | `:vaccinated[_<label>]` | `Bool` | `false` | `AbstractVaccination` | Creation / when a dose is admitted |
@@ -76,6 +78,9 @@ underscore are internal.
 | `:onward_efficacy[_<label>]` | `Float64` | — | `RingVaccination` (varying `onward_efficacy`) | When a dose is admitted |
 | `:immunity_time[_<label>]` | `Float64` | — | `AbstractVaccination` | When a dose is admitted |
 | `:severity_efficacy[_<label>]` | `Float64` | — | `AbstractVaccination` | When a dose is admitted |
+| `:symptom_efficacy[_<label>]` | `Float64` | — | `AbstractVaccination` | When a dose is admitted |
+| `:symptom_protection_time[_<label>]` | `Float64` | — | `AbstractVaccination` (when the dose's symptom draw succeeds) | When a dose is admitted |
+| `:symptom_protection_from` | `Float64` | — | `AbstractVaccination`, derived from the per-dose `:symptom_protection_time` entries (the earliest) | When a dose is admitted or removed; do not write it from an intervention |
 | `:coverage_declined[_<label>]` | `Bool` | `false` | `MassVaccination`, `GroupVaccination` | When a dose is offered and declined |
 | `:infection_aborted_time` | `Float64` | — | Simulation, through `abort_infection!` (for example by `RingVaccination`'s `post_exposure_efficacy`) | Any intervention hook |
 | `:_settled` | `Bool` | `false` | Simulation (action delivery) | Once a case's own round of action discovery has run; internal, read through `is_settled` |
@@ -176,7 +181,8 @@ Isolation is recorded under `:isolation_time`, with `:isolation_release_time`
 for when it ends. `set_isolated!` requires that release as its `release_time`
 keyword; a release of `Inf` means the isolation never ends. These two describe the removal in force, which
 is what a detection reads. The full history, which a likelihood needs, is the
-list of stretches under `:_removal_stretches`, because one pair of times cannot
+lists of stretches under `:_isolation_stretches` (perfect isolation) and
+`:_removal_stretches` (the shared default key), because one pair of times cannot
 record that a person was quarantined, released and later isolated again. A
 window that isolation should end lists [`EpiBranch.INTERVENTION_REMOVAL`](@ref)
 in its `until` (see [Transmission routes](new-structures.md#Transmission-routes)), which respects leaky
@@ -202,21 +208,23 @@ Both kinds of model write the tracing keys through `trace_contacts!`, once per
 case, so the keys and their meanings are the same either way; see [Which hooks
 run on which model](@ref).
 
-`:traced_by` is the person a contact was traced from: the latest case whose
-trace reached it. On a tree each contact has one infector, so that is the
-person who infected it.
-`compute_trace_level!` follows it back to the index case after the simulation
-to set `:trace_level` (the distance from the index case, which has level `0`).
-On a tree the level is exact. On a `NetworkProcess` with cycles it is the
-depth along the path by which the person was last traced, and **not**
-necessarily the shortest distance to the nearest index case; do not read it as
-one.
+`:tracers` lists every case whose trace reached a contact, in the order they
+did. `:traced_by` is the one of them that reached it first, by the earliest
+trace time (the first recorded on a tie). Code that wants a single tracer
+reads that. On a tree each contact has one infector, so both name the person
+who infected it.
+`compute_trace_level!` runs a breadth-first search over `:tracers` from every
+case that started tracing without being traced itself, after the simulation,
+to set `:trace_level`: the smallest number of tracing steps from any of them,
+which have level `0`. The level is exact on a tree and on a network with
+cycles alike.
 
 `:source_traced_by`, which [`SourceTracing`](@ref) sets, is the reverse: the
 case whose own tracing found this person as its infector. It always names a
 *later*-infected node, where `:traced_by` always names an earlier one. The two
 are kept apart rather than sharing a key: merging them would break
-`compute_trace_level!`'s assumption that `:traced_by` never cycles.
+`compute_trace_level!`'s assumption that `:tracers` only names earlier
+tracers.
 `SourceTracing` never writes `:traced_by`.
 
 ### Naming your own keys
@@ -642,7 +650,8 @@ recorded stretch by the same fraction when it works out a case's
 community-infectious person-time, so a leaky removal only partly cuts that
 time. Two components recording a leaky removal under the same key must agree
 on this fraction; give each its own key otherwise, as `Isolation` does
-(`:_leaky_removal_stretches`, apart from the shared `:_removal_stretches`).
+(`:_leaky_removal_stretches`, apart from the perfect `:_isolation_stretches`
+and the shared `:_removal_stretches`).
 
 ## Custom clinical transitions: further details
 

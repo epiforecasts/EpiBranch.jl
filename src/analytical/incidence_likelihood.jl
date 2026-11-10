@@ -595,7 +595,7 @@ function _infection_to(from::Symbol, attrs)
     _resolved_key(from) === :onset_time && return _infection_to_onset(attrs)
     throw(
         ArgumentError(
-            "loglikelihood(IncidenceCounts, model) supports a Reporting step from " *
+            "The closed form supports a Reporting step from " *
                 "infection or onset, not from `:$from`"
         )
     )
@@ -603,7 +603,7 @@ end
 function _infection_to(from, attrs)
     throw(
         ArgumentError(
-            "loglikelihood(IncidenceCounts, model) supports a Reporting step from " *
+            "The closed form supports a Reporting step from " *
                 "infection or onset, not from a function"
         )
     )
@@ -618,7 +618,7 @@ function _infection_to_onset(attrs)
     presentations = filter(b -> b isa ClinicalPresentation, builders)
     length(presentations) == 1 || throw(
         ArgumentError(
-            "loglikelihood(IncidenceCounts, model) reads the onset a Reporting step " *
+            "The closed form reads the onset a Reporting step " *
                 "reports from from the model's clinical_presentation, and needs exactly " *
                 "one; this model has $(length(presentations))"
         )
@@ -628,7 +628,7 @@ function _infection_to_onset(attrs)
     cp = only(presentations)
     cp.prob_asymptomatic isa Real || throw(
         ArgumentError(
-            "loglikelihood(IncidenceCounts, model) needs a fixed prob_asymptomatic, not " *
+            "The closed form needs a fixed prob_asymptomatic, not " *
                 "a per-case function"
         )
     )
@@ -646,7 +646,7 @@ function _check_onset_builders(builders)
         catch err
             throw(
                 ArgumentError(
-                    "loglikelihood(IncidenceCounts, model) could not check the model's " *
+                    "The closed form could not check the model's " *
                         "attribute builders for an onset of their own: running them on " *
                         "a probe case failed with $(sprint(showerror, err))"
                 )
@@ -654,7 +654,7 @@ function _check_onset_builders(builders)
         end
         b isa ClinicalPresentation || isequal(onset(probe), before) || throw(
             ArgumentError(
-                "loglikelihood(IncidenceCounts, model): an attribute builder other than " *
+                "the closed form: an attribute builder other than " *
                     "clinical_presentation records an onset, which this closed form cannot read"
             )
         )
