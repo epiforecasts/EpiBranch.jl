@@ -294,8 +294,8 @@ individual-based simulation, where `GroupVaccination` keeps one budget per
 group. The doses are those of the periods that start in the interval; with
 `carry_over`, budget left from earlier periods, or from before a window opens,
 is given in the first interval open to it. A dose reaches a susceptible of a
-type with probability equal to the susceptibles' share of the type's
-population at the start of the interval, and protects with probability
+type with probability equal to the share of susceptibles in the population of
+the type at the start of the interval, and protects with probability
 `efficacy`, whatever the effect `mode`: a protected susceptible is removed from
 the susceptibles, as one who would be blocked at each contact. Doses that fall
 on someone already protected are not tracked, so a campaign that gives a type
@@ -515,8 +515,8 @@ function _continue_generations(
     )
 end
 
-# The days generation `gen`'s doses cover. A campaign is only built when there
-# is a `generation_length`, so `nothing` is not reached with one.
+# The days the doses of generation `gen` cover. A campaign is only built when
+# there is a `generation_length`, which rules out `nothing` here.
 _generation_interval(length::Float64, gen) = (gen * length, (gen + 1) * length)
 function _generation_interval(::Nothing, gen)
     throw(ArgumentError("a vaccination campaign needs a generation_length"))

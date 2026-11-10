@@ -1,7 +1,7 @@
 # ── Vaccination campaigns in generation counts ───────────────────────
 #
-# A count has no individuals to offer a dose to, so a campaign acts on the
-# susceptibles of each type between generations. Its doses for a generation's
+# A count has no individuals to offer a dose to. A campaign acts on the
+# susceptibles of each type between generations instead. Its doses for a generation's
 # interval come from the budget of a `CapacityConstrained` (read, for a
 # schedule, at the start of each period) and the window of a `Scheduled`
 # around it, in either order. As in the individual-based engine once
@@ -145,9 +145,9 @@ function _doses_by(cc::CapacityConstrained, t)
 end
 
 # Give a campaign's doses for `[t0, t1)` to the susceptibles. A dose reaches a
-# type's susceptibles with probability equal to their share of its
-# population, at the start of the interval, and protects with probability
-# `efficacy`. With no doses nothing is drawn.
+# susceptible of a type with probability equal to the share of susceptibles in
+# the population of the type at the start of the interval, and protects with
+# probability `efficacy`. With no doses nothing is drawn.
 function _vaccinate!(rng::AbstractRNG, c::_Campaign, t0, t1, susceptibles, sizes)
     doses = _interval_doses(c, t0, t1)
     doses == 0 && return susceptibles
