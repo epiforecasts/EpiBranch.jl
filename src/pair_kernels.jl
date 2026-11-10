@@ -610,10 +610,10 @@ function SurvivalDistributions.loghazard(k::_CalendarScaledKernel, τ::Real)
 end
 
 # SurvivalDistributions defines `cumhazard` as `-log(ccdf)` and `loghazard` as
-# `log(pdf / ccdf)`, an `exp` and a `log` that cancel, and a `ccdf` that
-# underflows to zero in the tail gives an infinite cumulative hazard. These
-# families have a closed-form `logccdf`, so the hazards come from it directly.
-# Any other kernel keeps the documented `cumhazard`/`loghazard` route.
+# `log(pdf / ccdf)`, so an `exp` and a `log` cancel. In the tail `ccdf`
+# underflows to zero and the cumulative hazard becomes infinite. These families
+# have a closed-form `logccdf`, so the hazards are computed from it directly.
+# Other kernels keep the documented `cumhazard`/`loghazard` route.
 const _LOGCCDF_FAMILIES = Union{Exponential, Weibull, Gamma, LogNormal}
 _cumhazard(k, τ::Real) = cumhazard(k, τ)
 _cumhazard(k::_LOGCCDF_FAMILIES, τ::Real) = -logccdf(k, τ)
