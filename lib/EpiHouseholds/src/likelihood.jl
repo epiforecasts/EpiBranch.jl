@@ -122,6 +122,12 @@ abstract type ConditionOn end
 
 Condition each household on its recruited index case, `data.is_index`, as
 recorded.
+
+Only that one member is taken as given. Co-primary cases infected from outside
+at about the same time are scored as household transmission unless the model
+has a community hazard. Recruitment that depends on the index case's detection,
+symptoms or secondary cases makes the households unrepresentative and biases
+the estimate unless the likelihood is conditioned on it; this rule does not.
 """
 struct RecruitedIndex <: ConditionOn end
 
@@ -132,6 +138,12 @@ Condition each household on whichever member has the earliest
 `infection_time` (on a tie, the lowest person number). This is worked out from
 `data` on every call, so the conditioned member can change as imputed
 infection times change.
+
+This covers an index case that was not the first infected, but still takes
+only one member per household as given. Co-primary cases infected from outside
+at about the same time are scored as household transmission unless the model
+has a community hazard. Recruitment that depends on detection, symptoms or
+secondary cases biases the estimate unless the likelihood is conditioned on it.
 """
 struct EarliestInfected <: ConditionOn end
 
