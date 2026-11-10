@@ -1035,9 +1035,9 @@ function compile_contact_pairs(
     n = length(membership)
     _check_host_masks(n, is_index, infected)
 
-    # Each member lists the others in their group, so the adjacency method
-    # does the work. Sorting by label (stably) groups members without a bucket
-    # per possible label, which sparse labels would inflate.
+    # Each member's contacts are the other members of the group, which the
+    # adjacency method handles. A stable sort by label groups the members and
+    # avoids a bucket for every possible label.
     order = sortperm(membership)
     contacts = Vector{Vector{Int}}(undef, n)
     g_lo = 1
