@@ -593,7 +593,7 @@ function _detach_removal_history!(state::IndividualState)
 end
 
 # Drop every stretch entry filed under `key`, as though none had ever been
-# recorded. Used by `clear_isolated!` and by `_reset_traced!` for a
+# recorded. Used by `clear_isolated!` and by `reset!` of a tracing intervention for a
 # quarantine's own key, so that a fresh removal recorded under the same key
 # later starts from nothing rather than resurrecting what a full reset undid.
 function _withdraw_all_removals!(ind::Individual, key::Symbol)
