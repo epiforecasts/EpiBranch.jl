@@ -132,8 +132,8 @@ end
 """
     _tabulated_sum(f, xs)
 
-`sum(f, xs)` evaluating `f` once per distinct element of `xs`, weighted by its
-count. Only the order of summation differs from the direct sum.
+Equivalent to `sum(f, xs)`, but evaluates `f` once per distinct element of `xs`
+and weights it by its count. The order of summation is the only difference.
 """
 function _tabulated_sum(f, xs)
     counts = Dict{eltype(xs), Int}()
@@ -162,8 +162,8 @@ function _chain_size_loglik(
             )
         )
     end
-    # Chain-size data repeat a few small sizes many times, so each distinct
-    # (size, seeds) pair is evaluated once.
+    # Chain-size data repeat a few small sizes many times. Evaluate each
+    # distinct (size, seeds) pair once.
     prob_concluded === nothing && return _tabulated_sum(
         ((x, s),) -> _chain_size_logpdf(dist, x, s), zip(data.data, data.seeds)
     )
