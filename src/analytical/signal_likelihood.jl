@@ -40,15 +40,15 @@ simulated path (see `loglikelihood(data::SignalData, state::SimulationState)`).
 on).
 
 !!! warning "A one-sample Monte Carlo estimate"
-    The result is not the exact log-likelihood. Its exponential is an unbiased
-    estimate of the likelihood from a single simulated path, so its log is
-    biased downwards (Jensen's inequality), and the variance of the estimate
-    grows quickly with the length of the series. Beyond very short series a
-    single evaluation says little about the likelihood, and the noise is not
-    smooth in the parameters, so it is unsuitable for optimisers and
-    gradient-based samplers. It suits pseudo-marginal MCMC, which keeps the
-    current estimate and compares proposals against it. For longer series use
-    a particle method, which scores the data step by step and resamples paths.
+    The result is a noisy estimate of the log-likelihood. Its exponential is an
+    unbiased estimate of the likelihood from a single simulated path. The log
+    is therefore biased downwards (Jensen's inequality), and the variance of
+    the estimate grows quickly with the length of the series. Beyond very short
+    series a single evaluation says little about the likelihood. The noise is
+    also rough in the parameters, so optimisers and gradient-based samplers
+    cannot use it. It suits pseudo-marginal MCMC, which keeps the current
+    estimate and compares proposals against it. For longer series use a
+    particle method, which scores the data step by step and resamples paths.
 """
 function loglikelihood(
         data::SignalData, model::TransmissionModel;
