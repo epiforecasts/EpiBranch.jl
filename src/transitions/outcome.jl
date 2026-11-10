@@ -69,9 +69,9 @@ function transition_loglik(r::Recovery, individual::Individual)
     if !isfinite(t)
         # No gate of its own, so a candidate is missing only where an abort
         # undid it; anything else rules the individual out.
-        # A line list holds only the outcome that happened, so a recovery
-        # that lost to another outcome is scored as not having happened by
-        # that outcome's time.
+        # A line list holds only the outcome that happened. A recovery that
+        # lost to another outcome is scored as not having happened by that
+        # outcome's time.
         censor = _competing_outcome_time(individual, :recovered)
         isinf(censor) && isinf(infection_aborted_time(individual)) && return -Inf
         return transition_term(1.0, r.delay, individual, anchor, false;
