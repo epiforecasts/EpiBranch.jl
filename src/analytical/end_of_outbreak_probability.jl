@@ -107,7 +107,7 @@ throws an error that names the simulation-based alternative.
 function end_of_outbreak_probability(model::Union{BranchingProcess, ModelSpec}, τ::Real)
     # Refuse under per-case under-reporting rather than silently using
     # the bare offspring: makes the missing `ρ < 1` case discoverable.
-    _eoo_assert_full_reporting(observation(model), progression(model))
+    _eoo_assert_full_reporting(observation(model), progression(model), attributes(model))
     gt = _single_kernel(model)
     _single_calendar(model) === nothing || throw(
         ArgumentError(
@@ -133,17 +133,18 @@ function _eoo_assert_full_reporting(::PerCaseObservation)
     )
 end
 
-function _eoo_assert_full_reporting(obs, progression)
+function _eoo_assert_full_reporting(obs, progression, attrs)
     _eoo_assert_full_reporting(obs)
-    ρ = _reporting_probability(progression)
+    ρ = _effective_reporting_probability(progression, attrs)
     (ρ === nothing || ρ >= 1.0) && return nothing
     throw(
         ArgumentError(
             "end_of_outbreak_probability under per-case under-reporting (ρ < 1) " *
                 "is not implemented. The closed form here assumes full reporting; " *
                 "the ρ < 1 case needs the Volterra recursion of Thompson, Morgan & " *
-                "Jansen (2019). Evaluate on a model with a `Reporting` step at " *
-                "probability 1, or none, to compute the ρ = 1 value."
+                "Jansen (2019). Evaluate on a model whose " *
+                "`Reporting` step reaches every case (probability 1, from infection or with " *
+                "no asymptomatic cases), or has none, to compute the ρ = 1 value."
         )
     )
 end

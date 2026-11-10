@@ -2012,6 +2012,27 @@ end
     @test !is_extinct(cut)
 end
 
+@testset "a copy of a lazily populated network state continues like a deepcopy" begin
+    n = 300
+    adjacency = [[mod1(i + d, n) for d in (-2, -1, 1, 2)] for i in 1:n]
+    spec = ModelSpec(
+        NetworkProcess(adjacency, Exponential(1.0));
+        progression = [Transition(:recovered; from = :infection, delay = 3.0, terminal = true)]
+    )
+    state = simulate(spec; n_initial = 3, max_time = 3.0, rng = StableRNG(8))
+    deep = deepcopy(state)
+    shallow = copy(state)
+    simulate(spec, deep; max_time = 30.0)
+    simulate(spec, shallow; max_time = 30.0)
+    @test shallow.cumulative_cases > state.cumulative_cases
+    @test shallow.cumulative_cases == deep.cumulative_cases
+    @test isequal(
+        [i.infection_time for i in shallow.individuals],
+        [i.infection_time for i in deep.individuals]
+    )
+    @test count(is_infected, state.individuals) < shallow.cumulative_cases
+end
+
 @testset "max_time ends the routed race at that time" begin
     n = 300
     adjacency = [[mod1(i + d, n) for d in (-2, -1, 1, 2)] for i in 1:n]
