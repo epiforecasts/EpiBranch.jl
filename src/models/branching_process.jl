@@ -87,6 +87,7 @@ model = ModelSpec(BranchingProcess(community, funeral); progression)
 struct Infectiousness{O, F, U, K, C}
     offspring::O
     from::F
+    from_key::Union{Symbol, Nothing}
     until::U
     kernel::K
     calendar::C
@@ -96,7 +97,7 @@ function Infectiousness(
         offspring; from = :infection, until = (),
         kernel = NoGenerationTime(), calendar = nothing, name::Symbol = :transmission
     )
-    return Infectiousness(offspring, from, until, kernel, calendar, name)
+    return Infectiousness(offspring, from, _from_key(from), until, kernel, calendar, name)
 end
 
 """

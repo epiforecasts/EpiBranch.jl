@@ -627,3 +627,24 @@ end
         @test length(state.individuals) > 0
     end
 end
+
+@testset "Transition resolves its `from` key once" begin
+    # Reading the anchor of a transition must not build a key symbol per case.
+    for from in (:onset, :onset_time)
+        t = Transition(:admitted; from = from, delay = 1.0)
+        @test t.from_key === :onset_time
+    end
+    @test Transition(:admitted; delay = 1.0).from_key === :infection_time
+    @test Transition(:admitted; from = ind -> 1.0, delay = 1.0).from_key === nothing
+
+    t = Transition(:admitted; from = :onset, delay = 1.0)
+    ind = Individual(id = 1, infection_time = 0.0)
+    ind.state[:onset_time] = 2.5
+    @test EpiBranch._state_time(ind, t.from, t.from_key) == 2.5
+    read_anchor(ind, t) = EpiBranch._state_time(ind, t.from, t.from_key)
+    read_anchor(ind, t)
+    @test (@allocated read_anchor(ind, t)) == 0
+
+    f = Transition(:admitted; from = i -> 4.0, delay = 1.0)
+    @test EpiBranch._state_time(ind, f.from, f.from_key) == 4.0
+end
