@@ -273,6 +273,13 @@ the usual lognormal moment equations, `logpdf` adding the log-Jacobian
 `-Σ log(data)` for the change of variables. Needs every observed count to be
 strictly positive, since a lognormal puts no mass at 0; use
 [`NormalApproximation`](@ref) for data that includes zeros.
+
+The log-scale covariance, `log1p(Σ[t, u] / (μ[t] μ[u]))`, is not always
+positive definite, for example for long subcritical series. When it is not, a
+small multiple of the identity (starting at `1e-12` times the largest log-scale
+variance and doubling until the matrix factorises) is added to its diagonal,
+so the likelihood is slightly regularised rather than throwing. If no such
+shift works, an `ArgumentError` is thrown.
 """
 struct LognormalApproximation <: IncidenceApproximation end
 
@@ -311,7 +318,32 @@ function _incidence_loglik(::LognormalApproximation, data::AbstractVector{<:Real
                 for t in 1:n, t′ in 1:n
         ]
     )
+    Σ_log = _make_positive_definite(Σ_log)
     return logpdf(MvNormal(μ_log, Σ_log), log.(data)) - sum(log, data)
+end
+
+# The log1p transform of a covariance matrix is not always positive definite,
+# for example for long subcritical series. Add the smallest power-of-two
+# multiple of 1e-12 times the largest variance to the diagonal that lets the
+# Cholesky factorisation succeed. A matrix that is already positive definite
+# is returned unchanged. A diagonal shift, unlike an eigenvalue projection,
+# works with automatic differentiation.
+function _make_positive_definite(Σ::Symmetric)
+    issuccess(cholesky(Σ; check = false)) && return Σ
+    scale = maximum(diag(Σ))
+    ε = 1.0e-12 * scale
+    n = size(Σ, 1)
+    for _ in 1:60
+        Σ_shifted = Symmetric(Σ + ε * I(n))
+        issuccess(cholesky(Σ_shifted; check = false)) && return Σ_shifted
+        ε *= 2
+    end
+    throw(
+        ArgumentError(
+            "LognormalApproximation: the log-scale covariance is not positive definite " *
+                "and could not be repaired with a diagonal term."
+        )
+    )
 end
 
 # ── Unified loglikelihood interface ────────────────────────────────────
