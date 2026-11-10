@@ -1,5 +1,6 @@
 module EpiBranch
 
+using DataAPI: DataAPI
 using DataFrames
 using Dates
 using Distributions

@@ -20,7 +20,7 @@ A contact array flattened into composite types, as returned by
   - `groups`: the composite type of each row and column, a tuple holding one
     level per stratifying variable, in the order of `names`.
   - `names`: the stratifying variables, as symbols.
-  - `labels`: one string per composite type, such as `"child / home"`.
+  - `labels`: one string per composite type, such as `"child:home"`.
 
 Use `matrix` and `labels` for the multi-type form of
 [`BranchingProcess`](@ref), and `groups` with [`mixing_rate`](@ref) and a
@@ -48,12 +48,13 @@ Flatten a contact array stratified by one or more variables into a
 [`StratifiedContacts`](@ref) whose types are the combinations of the variables'
 levels.
 
-`contacts` has two axes per variable, the respondent's level then the
-contact's, one variable after another: for age (`n₁` bands) and a stratum
-(`n₂` levels) the array is `n₁ × n₁ × n₂ × n₂` and `contacts[a, b, s, t]` is
-the mean number of contacts per day a respondent of age `a` in stratum `s`
-makes with people of age `b` in stratum `t`. One variable gives the ordinary
-square matrix.
+`contacts` has the respondent axes of all variables first, then the contact
+axes of all variables, the layout of socialmixr's multi-grouping
+`compute_matrix` and of the contactmatrix class: for age (`n₁` bands) and a
+stratum (`n₂` levels) the array is `n₁ × n₂ × n₁ × n₂` and
+`contacts[a, s, b, t]` is the mean number of contacts per day a respondent of
+age `a` in stratum `s` makes with people of age `b` in stratum `t`. One
+variable gives the ordinary square matrix.
 
 `names` are the variables' names as symbols (default `:stratum1`, `:stratum2`,
 …), and `levels` a tuple with the levels of each variable (default `1:nᵥ`).
@@ -64,11 +65,11 @@ They set the composite types' `groups` and `labels`.
 ```julia
 using EpiBranch, Distributions
 
-# Two age bands by two settings; contacts[a, b, s, t].
+# Two age bands by two settings; contacts[a, s, b, t].
 contacts = rand(2, 2, 2, 2)
 flat = flatten_contacts(contacts;
     names = (:age, :setting), levels = (["child", "adult"], ["home", "work"]))
-flat.labels  # "child / home", "adult / home", "child / work", "adult / work"
+flat.labels  # "child:home", "adult:home", "child:work", "adult:work"
 BranchingProcess(flat.matrix, 0.05, 5.0, R -> NegBin(R, 0.5), LogNormal(1.6, 0.5);
     type_labels = flat.labels)
 ```
@@ -86,13 +87,13 @@ function flatten_contacts(
         )
     )
     k = nd ÷ 2
-    sizes = ntuple(v -> size(contacts, 2v - 1), k)
+    sizes = ntuple(v -> size(contacts, v), k)
     for v in 1:k
-        size(contacts, 2v) == sizes[v] || throw(
+        size(contacts, k + v) == sizes[v] || throw(
             ArgumentError(
-                "axes $(2v - 1) and $(2v) of contacts are the respondent and " *
+                "axes $v and $(k + v) of contacts are the respondent and " *
                     "contact axes of variable $v and must have the same length, " *
-                    "got $(size(contacts, 2v - 1)) and $(size(contacts, 2v))"
+                    "got $(size(contacts, v)) and $(size(contacts, k + v))"
             )
         )
     end
@@ -117,10 +118,9 @@ function flatten_contacts(
     end
 
     N = prod(sizes)
-    perm = (ntuple(v -> 2v - 1, k)..., ntuple(v -> 2v, k)...)
-    matrix = Matrix{Float64}(reshape(permutedims(contacts, perm), N, N))
+    matrix = Matrix{Float64}(reshape(contacts, N, N))
     groups = Tuple[g for g in Iterators.product(levels...)]
-    labels = String[join(string.(g), " / ") for g in groups]
+    labels = String[join(string.(g), ":") for g in groups]
     return StratifiedContacts(matrix, vec(groups), Tuple(Symbol.(names)), vec(labels))
 end
 
@@ -140,8 +140,10 @@ contacts_from_table(df;
     value = :contacts)
 ```
 
-Each variable's levels are its distinct values in both columns, sorted, unless
-`levels` gives them (a tuple of vectors, which also sets their order). A
+Each variable's levels are its distinct values in both columns, unless `levels`
+gives them (a tuple of vectors, which also sets their order). A categorical
+column keeps its own level order. Other columns are sorted naturally, with runs
+of digits compared as numbers, so `"[5,15)"` comes before `"[15,Inf)"`. A
 combination missing from the table is `fill`, `0.0` by default; one that
 appears twice is an error, because adding the rows up is not always what a
 long-format source means. `names` defaults to the respondent column names.
@@ -162,7 +164,7 @@ function contacts_from_table(
     names = something(names, ntuple(v -> first(pairs[v]), k))
     if levels === nothing
         levels = ntuple(k) do v
-            sort!(unique(vcat(df[!, first(pairs[v])], df[!, last(pairs[v])])))
+            _table_levels(df[!, first(pairs[v])], df[!, last(pairs[v])])
         end
     end
     length(levels) == k || throw(
@@ -171,12 +173,12 @@ function contacts_from_table(
     index = [Dict(l => i for (i, l) in enumerate(levels[v])) for v in 1:k]
 
     sizes = ntuple(v -> length(levels[v]), k)
-    array = Base.fill(float(fill), ntuple(d -> sizes[(d + 1) ÷ 2], 2k)...)
+    array = Base.fill(float(fill), sizes..., sizes...)
     seen = falses(size(array))
     for (row, r) in enumerate(eachrow(df))
         idx = ntuple(2k) do d
-            v = (d + 1) ÷ 2
-            x = r[isodd(d) ? first(pairs[v]) : last(pairs[v])]
+            v = d <= k ? d : d - k
+            x = r[d <= k ? first(pairs[v]) : last(pairs[v])]
             haskey(index[v], x) || throw(
                 ArgumentError("level $(repr(x)) of variable $(names[v]) is not in `levels`")
             )
@@ -190,6 +192,28 @@ function contacts_from_table(
         array[idx...] = r[value]
     end
     return flatten_contacts(array; names, levels)
+end
+
+# Sort key for natural order: runs of digits compare as numbers, other text as
+# text.
+function _natural_key(x)
+    return [
+        m.captures[1] === nothing ? (1, m.match, 0) : (0, "", parse(BigInt, m.match))
+            for m in eachmatch(r"(\d+)|(\D+)", string(x))
+    ]
+end
+
+# The levels of one variable from its respondent and contact columns. A
+# categorical column keeps its own level order, the contact column's extra
+# levels following; anything else is sorted naturally.
+function _table_levels(respondent, contact)
+    if DataAPI.refpool(respondent) !== nothing
+        found = collect(DataAPI.levels(respondent))
+        append!(found, DataAPI.refpool(contact) !== nothing ? DataAPI.levels(contact) : skipmissing(contact))
+        return unique(found)
+    end
+    found = unique(vcat(collect(skipmissing(respondent)), collect(skipmissing(contact))))
+    return sort!(found; by = _natural_key)
 end
 
 """

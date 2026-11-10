@@ -104,8 +104,9 @@ a multinomial split between types given that total.
 ## Stratified contact arrays and files
 
 A contact array stratified by more than one variable, such as age by a
-socio-economic stratum, has two axes per variable (respondent, then contact),
-one variable after another. [`flatten_contacts`](@ref) turns it into the matrix
+socio-economic stratum, has the respondent axes of all variables first and then
+the contact axes (`[age_part, stratum_part, age_cont, stratum_cont]`), as in
+socialmixr's multi-grouping `compute_matrix`. [`flatten_contacts`](@ref) turns it into the matrix
 over composite types, with a label for each, that the form above takes.
 [`read_contacts`](@ref) builds the same from a long-format CSV file (after
 `using CSV`) or a NetCDF file (after `using NCDatasets`):

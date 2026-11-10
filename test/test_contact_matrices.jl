@@ -1,12 +1,14 @@
 using Distributions
 using StableRNGs
 using CSV
+using CategoricalArrays
 using DataFrames
 using NCDatasets
 
 @testset "Contact-matrix inputs" begin
     # Strata: age (2 levels) by setting (3 levels); every entry distinct.
-    A = reshape(Float64.(1:36), 2, 2, 3, 3)
+    # Axes: respondent age, respondent setting, contact age, contact setting.
+    A = reshape(Float64.(1:36), 2, 3, 2, 3)
 
     @testset "flatten_contacts" begin
         flat = flatten_contacts(A; names = (:age, :setting))
@@ -15,9 +17,9 @@ using NCDatasets
         @test flat.names == (:age, :setting)
         # First variable varies fastest down the types.
         @test flat.groups[1:3] == [(1, 1), (2, 1), (1, 2)]
-        @test flat.labels[2] == "2 / 1"
+        @test flat.labels[2] == "2:1"
         for (j, gj) in enumerate(flat.groups), (i, gi) in enumerate(flat.groups)
-            @test flat.matrix[j, i] == A[gj[1], gi[1], gj[2], gi[2]]
+            @test flat.matrix[j, i] == A[gj[1], gj[2], gi[1], gi[2]]
         end
 
         # One variable is the matrix itself.
@@ -30,7 +32,7 @@ using NCDatasets
             A; names = (:age, :setting),
             levels = (["child", "adult"], ["home", "work", "school"])
         )
-        @test named.labels[1] == "child / home"
+        @test named.labels[1] == "child:home"
         @test named.groups[4] == ("adult", "work")
 
         @test_throws ArgumentError flatten_contacts(rand(2, 2, 2))
@@ -73,7 +75,7 @@ using NCDatasets
         flat = flatten_contacts(A; names = (:age, :setting))
         sizes = reshape(collect(100:100:600), 2, 3)
         r = mixing_rate(flat, sizes)
-        @test r((2, 3), (1, 2)) ≈ A[2, 1, 3, 2] / sizes[1, 2]
+        @test r((2, 3), (1, 2)) ≈ A[2, 3, 1, 2] / sizes[1, 2]
     end
 
     @testset "mixing_rate gives the rate written by hand" begin
@@ -116,12 +118,30 @@ using NCDatasets
         @test flat.matrix[j, i] == 7.0
         @test flat.matrix[1, 4] == 0.0
 
-        # Levels default to the sorted distinct values.
+        # Levels default to the distinct values in natural order.
         sorted = contacts_from_table(
             df; strata = ["part_age" => "cont_age", "part_setting" => "cont_setting"],
             value = "contacts"
         )
         @test sorted.groups[1] == ("adult", "home")
+
+        bands = ["[15,Inf)", "[5,15)", "[0,5)"]
+        natural = contacts_from_table(
+            DataFrame(part = bands, cont = bands, n = [1.0, 2.0, 3.0]);
+            strata = [:part => :cont], value = :n
+        )
+        @test natural.labels == ["[0,5)", "[5,15)", "[15,Inf)"]
+
+        # A categorical column keeps its own level order.
+        ordered = CategoricalArray(bands; levels = bands, ordered = true)
+        cat = contacts_from_table(
+            DataFrame(part = ordered, cont = ordered, n = [1.0, 2.0, 3.0]);
+            strata = [:part => :cont], value = :n
+        )
+        @test cat.labels == bands
+
+        # Composite labels join the levels with a colon.
+        @test flat.labels[1] == "child:home"
 
         dup = vcat(df, df[1:1, :])
         @test_throws ArgumentError contacts_from_table(
@@ -186,7 +206,7 @@ using NCDatasets
                     ds, "contacts", Float64,
                     ("cont_setting", "part_age", "part_setting", "cont_age")
                 )
-                v[:, :, :, :] = permutedims(A, (4, 1, 3, 2))
+                v[:, :, :, :] = permutedims(A, (4, 1, 2, 3))
             end
             flat = read_contacts(
                 path; variable = "contacts",

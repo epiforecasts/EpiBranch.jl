@@ -28,14 +28,15 @@ function EpiBranch.read_contacts(
             )
         )
         raw = Array(var)
-        # The arrays `flatten_contacts` takes have a respondent then a contact
-        # axis per variable; a NetCDF variable has its dimensions in any order.
-        order = [findfirst(==(d), dims) for d in vec(permutedims(hcat(first.(pairs), last.(pairs))))]
+        # The arrays `flatten_contacts` takes have the respondent axes of all
+        # variables first, then the contact axes; a NetCDF variable has its
+        # dimensions in any order.
+        order = [findfirst(==(d), dims) for d in wanted]
         array = permutedims(raw, order)
         if levels === nothing
             levels = ntuple(k) do v
                 r, c = pairs[v]
-                _levels(ds, r, c, size(array, 2v - 1))
+                _levels(ds, r, c, size(array, v))
             end
         end
         flatten_contacts(
