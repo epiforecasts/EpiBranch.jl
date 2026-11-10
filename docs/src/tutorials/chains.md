@@ -263,8 +263,7 @@ The chain-size terms are exact, but `prob_concluded` enters as a mixture,
 `π P(X = x) + (1 − π) P(X ≥ x)`, that treats whether a cluster is over as an
 independent event. It is an approximation to the exact probability of the
 data, which also uses the time since the last case. Because `π` depends on `R`
-and `k`, compute it from the current parameter values inside the model, not once
-beforehand.
+and `k`, compute it inside the model from the current parameter values.
 
 If the model includes interventions, EpiBranch estimates the likelihood by
 simulation instead, which is slower. `seeds` and `prob_concluded` work there
