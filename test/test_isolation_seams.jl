@@ -381,9 +381,11 @@ EpiBranch.infectious_removal_time(f::FixedRemoval, ::Individual) = f.time
         # The loop runs behind a function barrier. Reading a recorded stretch
         # allocates at most the boxed result.
         EpiBranch.permanent_removal_time(permanent_case, EpiBranch.ISOLATION_STRETCHES_KEY)
-        @test (@allocated EpiBranch.permanent_removal_time(
-            permanent_case, EpiBranch.ISOLATION_STRETCHES_KEY
-        )) <= 32
+        @test (
+            @allocated EpiBranch.permanent_removal_time(
+                permanent_case, EpiBranch.ISOLATION_STRETCHES_KEY
+            )
+        ) <= 32
         @test EpiBranch.permanent_removal_time(permanent_case, EpiBranch.ISOLATION_STRETCHES_KEY) == 8.0
         @test EpiBranch.infectious_removal_time(lapsing, Individual(id = 4)) == Inf
 
