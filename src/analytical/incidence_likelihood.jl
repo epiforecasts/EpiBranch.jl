@@ -346,8 +346,8 @@ end
 #
 # The single-type process is the one-type case, with `pgfs = [pgf]` and
 # `alloc = ones(1, 1)`. `Tpar` is the offspring laws' own numeric element
-# type (`Distributions.partype`, `Float64` for a `GeneratingFunctionOffspring`,
-# whose `pgf` closure is opaque): `Ψ`'s element type promotes `eltype(u)` with
+# type (`Distributions.partype`, `Float64` for a `GeneratingFunctionOffspring`
+# because its `pgf` closure is opaque): `Ψ`'s element type promotes `eltype(u)` with
 # it, and with `ρ`'s, rather than taking `eltype(u)` alone, so a `Dual`
 # offspring or reporting parameter composes correctly even while `u` is still
 # the plain `Float64` ForwardDiff probes before perturbing it (nested
