@@ -1348,13 +1348,13 @@ number of people the data covers; it is the size of the mixing population mass
 action spreads through, which a traced household or network may be a part of.
 
 `I(t)` counts only the people in the layer. When the layer is a sample of the
-mixing population, infectious people outside it are missing from `I(t)`, so the
-community force of infection is underestimated and `transmission_rate` absorbs
-the difference. `transmission_rate` is therefore identified only when the layer
-covers every infectious person in the mixing population. Beside a household or
-network structure, a susceptible's infectious household members are counted in
-`I(t)` as well as in their own pairwise rows, as in
-[`HomogeneousProcess`](@ref) with households, so keep that in mind when
+mixing population, infectious people outside it are missing from `I(t)`. The
+community force of infection is then underestimated and `transmission_rate`
+absorbs the difference. `transmission_rate` is therefore identified only when
+the layer covers every infectious person in the mixing population. Beside a
+household or network structure, the infectious household members of a
+susceptible are counted in `I(t)` as well as in their own pairwise rows, as in
+[`HomogeneousProcess`](@ref) with households. Keep this in mind when
 interpreting `transmission_rate`.
 
 A person is counted in `I(t)` over `(infectious_time, removal_time]`, the same
