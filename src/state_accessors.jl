@@ -764,9 +764,9 @@ function permanent_removal_time(ind::Individual, key::Symbol = REMOVAL_STRETCHES
     return _permanent_removal_time(removal_stretches(ind, key))
 end
 
-# A function barrier: `removal_stretches` reads from the `Any`-valued state, so
-# the loop is compiled here for the concrete vector type rather than
-# dispatched at run time on every step.
+# A function barrier: `removal_stretches` reads from the `Any`-valued state.
+# The loop is compiled here for the concrete vector type and does not
+# dispatch at run time on each step.
 function _permanent_removal_time(stretches)
     t = Inf
     for (start, release) in stretches

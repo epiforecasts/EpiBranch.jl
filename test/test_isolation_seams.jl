@@ -378,8 +378,8 @@ EpiBranch.infectious_removal_time(f::FixedRemoval, ::Individual) = f.time
         # A host no removal reached has no permanent removal to narrow to.
         @test EpiBranch.permanent_removal_time(Individual(id = 3)) == Inf
 
-        # The loop runs behind a function barrier, so reading a recorded
-        # stretch allocates at most the boxed result, not a box per step.
+        # The loop runs behind a function barrier. Reading a recorded stretch
+        # allocates at most the boxed result.
         EpiBranch.permanent_removal_time(permanent_case, EpiBranch.ISOLATION_STRETCHES_KEY)
         @test (@allocated EpiBranch.permanent_removal_time(
             permanent_case, EpiBranch.ISOLATION_STRETCHES_KEY
