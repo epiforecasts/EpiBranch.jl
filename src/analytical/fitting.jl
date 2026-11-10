@@ -95,7 +95,7 @@ function loglikelihood(
     ) where {T}
     μ = mean(offspring)
     if prob_concluded === nothing && all(==(1), data.seeds)
-        return sum(n -> _borel_logpdf(μ, n), data.data)
+        return _tabulated_sum(n -> _borel_logpdf(μ, n), data.data)
     end
     return _chain_size_loglik(Borel(μ), data; prob_concluded)
 end
@@ -105,7 +105,9 @@ function loglikelihood(
         prob_concluded::Union{Nothing, AbstractVector{<:Real}} = nothing
     ) where {T}
     if prob_concluded === nothing && all(==(1), data.seeds)
-        return sum(n -> _gammaborel_logpdf(offspring.r, mean(offspring), n), data.data)
+        return _tabulated_sum(
+            n -> _gammaborel_logpdf(offspring.r, mean(offspring), n), data.data
+        )
     end
     return _chain_size_loglik(GammaBorel(offspring.r, mean(offspring)), data; prob_concluded)
 end
@@ -128,6 +130,20 @@ function loglikelihood(
 end
 
 """
+    _tabulated_sum(f, xs)
+
+`sum(f, xs)` evaluating `f` once per distinct element of `xs`, weighted by its
+count. Only the order of summation differs from the direct sum.
+"""
+function _tabulated_sum(f, xs)
+    counts = Dict{eltype(xs), Int}()
+    for x in xs
+        counts[x] = get(counts, x, 0) + 1
+    end
+    return sum(((x, c),) -> c * f(x), counts)
+end
+
+"""
     _chain_size_loglik(dist, data::ChainSizes; prob_concluded = nothing)
 
 Sum over clusters of the chain-size log-likelihood under `dist`: each
@@ -146,6 +162,11 @@ function _chain_size_loglik(
             )
         )
     end
+    # Chain-size data repeat a few small sizes many times, so each distinct
+    # (size, seeds) pair is evaluated once.
+    prob_concluded === nothing && return _tabulated_sum(
+        ((x, s),) -> _chain_size_logpdf(dist, x, s), zip(data.data, data.seeds)
+    )
     first_val = _chain_size_logpdf(dist, data.data[1], data.seeds[1])
     total = zero(first_val)
     for i in eachindex(data.data)
