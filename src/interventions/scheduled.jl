@@ -93,6 +93,12 @@ struct Scheduled{I <: AbstractIntervention, F, T <: Tuple} <: InterventionWrappe
     intervention::I
     condition::F
     start_time::Float64
+    # The `(start_time, end_time)` days the schedule is open between, when
+    # that is all it asks (a calendar window, with no case-count trigger or
+    # opaque predicate), and `nothing` otherwise. Read by
+    # `simulate_by_generation`, which has no per-action clock to test a
+    # condition against.
+    window::Union{Nothing, Tuple{Float64, Float64}}
     # Whether the active window can close again once open. Of the conditions
     # the keyword constructor builds, `start_time` and `start_after_cases`
     # only ever open; `end_time`, and a `start_after` trigger whose
@@ -112,12 +118,19 @@ end
 # call a hook makes.
 function Scheduled(
         intervention::AbstractIntervention, condition, start_time::Float64,
-        can_lapse::Bool, triggers::Tuple
+        window, can_lapse::Bool, triggers::Tuple
     )
     return Scheduled(
-        intervention, condition, start_time, can_lapse, triggers,
+        intervention, condition, start_time, window, can_lapse, triggers,
         _time_aware(intervention)
     )
+end
+
+function Scheduled(
+        intervention::AbstractIntervention, condition, start_time::Float64,
+        can_lapse::Bool, triggers::Tuple
+    )
+    return Scheduled(intervention, condition, start_time, nothing, can_lapse, triggers)
 end
 
 # Pre-existing callers build a `Scheduled` without the trigger record.
@@ -431,7 +444,9 @@ function Scheduled(
     can_lapse = end_time !== nothing ||
         (start_after !== nothing && trigger_can_lapse(start_after))
     triggers = start_after === nothing ? () : (start_after,)
-    return Scheduled(intervention, condition, t, can_lapse, triggers)
+    window = start_after_cases === nothing && start_after === nothing ?
+        (t, end_time === nothing ? Inf : end_time) : nothing
+    return Scheduled(intervention, condition, t, window, can_lapse, triggers)
 end
 
 # Predicate constructor: no individual-level reset. The predicate is opaque, so

@@ -128,6 +128,7 @@ include("models/population_dynamics.jl")
 include("models/mixing_population_dynamics.jl")
 include("models/hybrid.jl")
 include("models/generation_counts.jl")
+include("models/generation_campaign.jl")
 
 # Output
 include("output/linelist.jl")
