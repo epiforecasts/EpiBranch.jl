@@ -423,12 +423,12 @@ The fits above use a finished outbreak. To follow one as it unfolds, treat the
 outbreak as a state-space model: the latent state is the simulated outbreak,
 the dynamics advance it by one reporting interval, and each day's report is
 the data. [`outbreak_state_space`](@ref) builds that model for
-[SSMProblems.jl](https://github.com/TuringLang/SSMProblems.jl), so particle
+[SSMProblems.jl](https://github.com/TuringLang/SSMProblems.jl). Particle
 filters written against that interface run on it unchanged. Each step continues
 a copy of the previous state with `simulate(model, state; max_time)`.
 
 !!! note
-    SSMProblems is not installed with EpiBranch; add it with
+    EpiBranch does not install SSMProblems; add it with
     `using Pkg; Pkg.add("SSMProblems")`. Loading it makes
     `outbreak_state_space` available.
 
