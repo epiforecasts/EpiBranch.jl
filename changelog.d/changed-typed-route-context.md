@@ -1,0 +1,1 @@
+Settling a case in the Sellke race no longer allocates through run-time dispatch: the route context is concretely typed, which cuts memory on a plain branching process by about three quarters, with results unchanged for a given seed.
