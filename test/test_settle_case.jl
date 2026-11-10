@@ -136,9 +136,9 @@ end
     @test reached_before_infection
 end
 
-# Settling a case must not dispatch at run time on the route context: that
-# boxed several values per case (about 1.8 MiB for this run, against about
-# 7.9 MiB when the context was not concretely typed).
+# Settling a case must not dispatch at run time on the route context, which
+# boxed several values per case. This run allocates about 1.8 MiB, against
+# about 7.9 MiB when the context was not concretely typed.
 @testset "Settling a case allocates little" begin
     model = BranchingProcess(NegBin(2.5, 0.16), LogNormal(1.6, 0.5))
     run() = simulate(model; n_initial = 5, max_cases = 5000, rng = StableRNG(2))

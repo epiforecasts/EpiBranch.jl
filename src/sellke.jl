@@ -1811,8 +1811,8 @@ function _open_route!(w, route_targets::R, ri, ctx, capped, only_proposing) wher
         watch, live, live_route, route_projections, full_snapshot, traits,
         route_interventions,
     ) = ctx
-    # Read from the state rather than carried in `ctx`, where a type stored as
-    # a value is only a `DataType` and the `convert` below would be dynamic.
+    # Read from the state. Stored in `ctx` as a value, the type is only a
+    # `DataType` and the `convert` below would dispatch at run time.
     T = _timetype(race.state)
     open_t = _route_open(route_targets, ind, w)
     isfinite(open_t) || return capped
