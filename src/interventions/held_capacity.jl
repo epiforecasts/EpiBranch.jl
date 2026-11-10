@@ -250,6 +250,3 @@ function trace_contacts!(hc::HeldCapacity, state, infector, contacts, not_before
     end
     return nothing
 end
-
-removal_gap_host_times(w::HeldCapacity) = removal_gap_host_times(w.intervention)
-removal_block_probability(w::HeldCapacity) = removal_block_probability(w.intervention)

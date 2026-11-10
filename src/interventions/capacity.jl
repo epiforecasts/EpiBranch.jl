@@ -761,10 +761,3 @@ function _reset_unless_within_budget!(cc::CapacityConstrained, ind::Individual, 
     _fits_budget(cc, times, Float64[], t) || reset!(cc.intervention, ind)
     return nothing
 end
-
-# Capacity gates who a removal reaches, never whether one already delivered
-# still stands, so the stretches it recorded are read back unchanged.
-function removal_gap_host_times(c::CapacityConstrained)
-    return removal_gap_host_times(c.intervention)
-end
-removal_block_probability(c::CapacityConstrained) = removal_block_probability(c.intervention)
