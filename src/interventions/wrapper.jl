@@ -53,10 +53,10 @@ risk_applies(w::InterventionWrapper, route) = risk_applies(w.intervention, route
 # A wrapper that can withdraw the inner block part-way through a stretch
 # already recorded cannot have those stretches read back: one per-host record
 # says nothing about when the gating closed. Such a wrapper (a lapsing
-# `Scheduled`) declares none, which narrows the infectious window instead
-# (above). Every other wrapper gates who a removal reaches, never whether one
-# already delivered still stands, so the stretches are read back unchanged and
-# the leak of the block is the wrapped intervention's own.
+# `Scheduled`) declares none and narrows the infectious window instead (above).
+# Every other wrapper only gates who a removal reaches. A removal already
+# delivered still stands, and the stretches are read back unchanged. The
+# wrapped intervention determines the leak of the block.
 removal_gap_host_times(w::InterventionWrapper) = removal_gap_host_times(w.intervention)
 removal_block_probability(w::InterventionWrapper) = removal_block_probability(w.intervention)
 
