@@ -204,8 +204,8 @@ function _natural_key(x)
 end
 
 # The levels of one variable from its respondent and contact columns. A
-# categorical column keeps its own level order, the contact column's extra
-# levels following; anything else is sorted naturally.
+# categorical column keeps its own level order, followed by any further levels
+# of the contact column; other columns are sorted naturally.
 function _table_levels(respondent, contact)
     if DataAPI.refpool(respondent) !== nothing
         found = collect(DataAPI.levels(respondent))
