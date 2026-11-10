@@ -2,6 +2,21 @@ using Distributions
 using Statistics
 using StableRNGs
 
+struct ContinuationAction <: EpiBranch.AbstractIntervention end
+EpiBranch.needs_contacts(::ContinuationAction) = false
+function EpiBranch.intervention_actions(::ContinuationAction, state, candidates)
+    return [
+        EpiBranch.InterventionAction(
+            ind, 10.0, (person, at, st) -> (person.state[:continued_action] = at)
+        ) for ind in candidates
+    ]
+end
+function EpiBranch.action_candidates(
+        ::ContinuationAction, state, current, traced, is_pending, members, contacts
+    )
+    return current.infection_time == 0.0 ? [state.individuals[1]] : Individual[]
+end
+
 # A tiny observation model that only counts how often it ran, to check that
 # a continued run never applies it (see "no observation on continuation"
 # below).
@@ -417,5 +432,153 @@ end
         @test counter.counter[1] == 1
         simulate(model, state; max_time = 30.0)
         @test counter.counter[1] == 1
+    end
+end
+
+@testset "copy(state)" begin
+    model = ModelSpec(
+        HomogeneousProcess(transmission_rate = 0.4, population_size = 2000);
+        progression = [Transition(:recovered; rate = 0.2, terminal = true)]
+    )
+    start() = simulate(model; max_time = 5.0, n_initial = 5, rng = StableRNG(11))
+    times(s) = [ind.infection_time for ind in s.individuals]
+    same(a, b) = a.cumulative_cases == b.cumulative_cases &&
+        length(a.individuals) == length(b.individuals) &&
+        all(isequal(x, y) for (x, y) in zip(times(a), times(b)))
+
+    @testset "pending actions affect only the continued population" begin
+        action_model = ModelSpec(
+            HomogeneousProcess(transmission_rate = 0.4, population_size = 500);
+            progression = [Transition(:recovered; rate = 0.2, terminal = true)],
+            interventions = [ContinuationAction()]
+        )
+        for original_first in (false, true)
+            state = simulate(action_model; max_time = 5.0, n_initial = 5, rng = StableRNG(11))
+            @test !isempty(state.continuation.buffers.pending_actions)
+            deep = deepcopy(state)
+            copied = copy(state)
+            first, second = original_first ? (state, copied) : (copied, state)
+            simulate(action_model, first; max_time = 12.0)
+            @test get(first.individuals[1].state, :continued_action, nothing) == 10.0
+            @test !haskey(second.individuals[1].state, :continued_action)
+            simulate(action_model, second; max_time = 12.0)
+            simulate(action_model, deep; max_time = 12.0)
+            @test get(second.individuals[1].state, :continued_action, nothing) == 10.0
+            @test get(deep.individuals[1].state, :continued_action, nothing) == 10.0
+            @test same(state, deep)
+            @test same(copied, deep)
+        end
+    end
+
+    @testset "continuing a copy agrees with continuing a deepcopy" begin
+        state = start()
+        deep = deepcopy(state)
+        shallow = copy(state)
+        simulate(model, deep; max_time = 30.0)
+        simulate(model, shallow; max_time = 30.0)
+        @test shallow.cumulative_cases > state.cumulative_cases
+        @test same(shallow, deep)
+        # Continuing the original after copying also gives the same result
+        # as continuing its deepcopy.
+        simulate(model, state; max_time = 30.0)
+        @test same(state, deep)
+    end
+
+    @testset "common random numbers retain independent substreams" begin
+        state = simulate(model; max_time = 5.0, n_initial = 5, rng = CommonRandomNumbers(11))
+        rand(EpiBranch.stream(state.rng, 1, :contact))
+        deep = deepcopy(state)
+        copied = copy(state)
+        @test copied.rng.rng !== state.rng.rng
+        @test copied.rng.substreams !== state.rng.substreams
+        @test EpiBranch.stream(copied.rng, 1, :contact) !==
+            EpiBranch.stream(state.rng, 1, :contact)
+        for s in (copied, state, deep)
+            simulate(model, s; max_time = 30.0)
+        end
+        @test same(copied, deep)
+        @test same(state, deep)
+        @test rand(copied.rng) == rand(state.rng) == rand(deep.rng)
+        @test rand(EpiBranch.stream(copied.rng, 1, :contact)) ==
+            rand(EpiBranch.stream(state.rng, 1, :contact)) ==
+            rand(EpiBranch.stream(deep.rng, 1, :contact))
+    end
+
+    @testset "a copy shares people until one side looks at them" begin
+        state = start()
+        copied = copy(state)
+        n = length(state.individuals)
+        @test n == length(copied.individuals)
+        @test state.individuals.people[3] === copied.individuals.people[3]
+        @test copied.individuals[3] !== state.individuals[3]
+        @test isequal(
+            copied.individuals[3].infection_time,
+            state.individuals[3].infection_time
+        )
+        @test state.individuals.people[4] === copied.individuals.people[4]
+        @test copied.rng !== state.rng
+        @test copied.active_ids !== state.active_ids
+    end
+
+    @testset "changing one copy leaves the other unchanged" begin
+        state = start()
+        before = times(state)
+        cases = state.cumulative_cases
+        copied = copy(state)
+        simulate(model, copied; max_time = 30.0)
+        copied.individuals[1].state[:marker] = true
+        @test isequal(times(state), before)
+        @test state.cumulative_cases == cases
+        @test !haskey(state.individuals[1].state, :marker)
+        state.individuals[2].infection_time = -1.0
+        @test copied.individuals[2].infection_time != -1.0
+    end
+
+    @testset "copies of copies stay independent" begin
+        state = start()
+        a = copy(state)
+        b = copy(a)
+        a.individuals[1].state[:marker] = :a
+        b.individuals[1].state[:marker] = :b
+        @test !haskey(state.individuals[1].state, :marker)
+        @test a.individuals[1].state[:marker] == :a
+        @test b.individuals[1].state[:marker] == :b
+    end
+
+    @testset "appending to a copy does not grow the original" begin
+        state = start()
+        n = length(state.individuals)
+        copied = copy(state)
+        push!(copied.individuals, copied.individuals[1])
+        @test length(state.individuals) == n
+        @test length(copied.individuals) == n + 1
+    end
+end
+
+@testset "shared people vector" begin
+    model = ModelSpec(
+        HomogeneousProcess(transmission_rate = 0.4, population_size = 500);
+        progression = [Transition(:recovered; rate = 0.2, terminal = true)]
+    )
+    state = simulate(model; max_time = 5.0, n_initial = 5, rng = StableRNG(11))
+    copied = copy(state)
+    people = copied.individuals
+    n = length(people)
+
+    @testset "setindex! takes ownership of the replacement" begin
+        replacement = Individual(; id = 1, infection_time = -2.0)
+        people[1] = replacement
+        @test people[1] === replacement
+        @test state.individuals[1] !== replacement
+    end
+
+    @testset "resize! grows and shrinks both vectors together" begin
+        resize!(people, n + 2)
+        @test length(people) == n + 2
+        @test length(people.owned) == n + 2
+        @test all(people.owned[(n + 1):(n + 2)])
+        resize!(people, n - 1)
+        @test length(people) == n - 1
+        @test length(state.individuals) == n
     end
 end

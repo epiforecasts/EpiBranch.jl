@@ -65,8 +65,8 @@ function resolve_individual!(r::Reporting, individual, state)
     return nothing
 end
 
-function censor_after_outcome!(::Reporting, individual)
-    _censor_event!(individual, :reported, :reporting_time)
+function censor_after_outcome!(r::Reporting, individual)
+    _censor_event!(individual, :reported, :reporting_time, r.from)
     return nothing
 end
 
@@ -75,10 +75,11 @@ function transition_loglik(r::Reporting, individual::Individual)
     _anchor_ok(anchor) || return 0.0
     flag = individual.state[:reported]::Bool
     time = flag ? individual.state[:reporting_time] : Inf
-    occurred = flag && time <= outcome_time(individual)
+    cap = _timed_from_outcome(individual, r.from) ? Inf : outcome_time(individual)
+    occurred = flag && time <= cap
     ll = transition_term(
         r.probability, r.delay, individual, anchor, occurred;
-        censor = min(infection_aborted_time(individual), outcome_time(individual))
+        censor = min(infection_aborted_time(individual), cap)
     )
     occurred || return ll
     return ll + _delay_loglik(r.delay, time - anchor)

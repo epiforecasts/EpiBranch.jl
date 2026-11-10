@@ -191,6 +191,11 @@ struct _ChainLengthLaw{M, K} <:
     Distributions.Distribution{Multivariate, Discrete}
     model::M
     kwargs::K
+
+    function _ChainLengthLaw(model::M, kwargs::K) where {M, K}
+        _chain_length_assert_full_reporting(progression(model))
+        return new{M, K}(model, kwargs)
+    end
 end
 
 function Distributions.logpdf(
@@ -288,7 +293,7 @@ function chain_size_distribution(
         # a user error, and should propagate rather than be swallowed here.
         folded = try
             base = chain_size_distribution(single_type_offspring(model))
-            _fold_reporting(progression(model), base, observation(model))
+            _fold_reporting(progression(model), base, observation(model), attributes(model))
         catch e
             (e isa MethodError || e isa ArgumentError) || rethrow()
             nothing
@@ -310,7 +315,7 @@ function chain_size_distribution(
             all(offspring_law_unchanged, progression(spec))
         folded = try
             base = chain_size_distribution(single_type_offspring(spec.process))
-            _fold_reporting(progression(spec), base, observation(spec))
+            _fold_reporting(progression(spec), base, observation(spec), attributes(spec))
         catch e
             (e isa MethodError || e isa ArgumentError) || rethrow()
             nothing
@@ -340,6 +345,8 @@ Keywords `n_sim`, `n_initial`, `max_cases`, `max_generations`, `max_time`,
 `stopping_rules` and `rng` control the simulation used when no exact formula
 exists. Interventions come from the model; add them with a
 [`ModelSpec`](@ref). See [`ChainLengths`](@ref) for the length convention.
+Models with a `Reporting` probability below 1 are not supported because
+the observed chain length is undefined when cases go undetected.
 """
 function chain_length_distribution(model::TransmissionModel; kwargs...)
     nt_kwargs = NamedTuple(kwargs)

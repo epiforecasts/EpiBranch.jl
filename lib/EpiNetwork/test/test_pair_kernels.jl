@@ -1,4 +1,4 @@
-include(joinpath(@__DIR__, "..", "..", "..", "test", "testutils", "pair_kernels.jl"))
+include(joinpath(@__DIR__, "testutils", "pair_kernels.jl"))
 test_contextual_simulation(k -> NetworkProcess([[2, 3], [1, 3], [1, 2]], k), network_infections)
 test_calendar_simulation(k -> NetworkProcess([[2, 3], [1, 3], [1, 2]], k), network_infections)
 test_stateful_simulation(
