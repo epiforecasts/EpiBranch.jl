@@ -223,7 +223,7 @@ end
 
 # The same two-rate law used directly as a contact-interval profile, with no
 # calendar interpretation: `date` is a threshold in elapsed time since the
-# infector's own opening rather than a calendar date.
+# infector's own opening.
 function state_policy_law(before, after, date)
     isfinite(date) || return Exponential(inv(before))
     survival = exp(-before * date)
@@ -241,10 +241,10 @@ function EpiBranch.competing_risk(::WaitForKernelDay, parent, contact, state)
     return Risk(block_probability = state.max_infection_time < 1.0 ? 1.0 : 0.0)
 end
 
-# Moves every host's record on every case, so the race redraws pending contacts
-# at each step. A kernel whose records never move takes the ordinary path, which
-# is the point of the equivalence test below, so a test about redrawing has to
-# make something move.
+# Moves the record of every host on every case, which makes the race redraw
+# pending contacts at each step. A kernel whose records never move takes the
+# ordinary path, as the equivalence test below checks. A test of redrawing
+# therefore has to make something move.
 struct TickEveryCase <: AbstractIntervention end
 function EpiBranch.resolve_individual!(::TickEveryCase, ind, state)
     for person in state.individuals
