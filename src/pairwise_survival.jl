@@ -1270,7 +1270,7 @@ _ext_survival(source) = _calendar_external_survival(source)
 
 # Person `j`'s survival distribution under the community hazard, or `nothing`
 # when they face none. A calendar schedule is the same for everyone, like a
-# shared distribution, and a `_CalendarScaledKernel` is itself a distribution.
+# shared distribution. A `_CalendarScaledKernel` is itself a distribution.
 _ext_survival_of(::Nothing, j) = nothing
 _ext_survival_of(d::ContinuousUnivariateDistribution, j) = d
 _ext_survival_of(α::Real, j) = _ext_active(α) ? _ext_survival(α) : nothing
