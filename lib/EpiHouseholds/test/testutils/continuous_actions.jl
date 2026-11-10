@@ -1,4 +1,4 @@
-# Copy of test/testutils/continuous_actions.jl in the core package, kept here so this
+# Copy of lib/EpiNetwork/test/testutils/continuous_actions.jl, kept here so this
 # package's tests run from a registry copy. Keep the two in step.
 
 function test_continuous_vaccine_actions(make_process)
