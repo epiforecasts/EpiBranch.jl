@@ -513,27 +513,44 @@ end
 function _certain_block_release(
         state, parent, contact, transmission_time, model_risks, interventions
     )
-    release, ok = _certain_release(
-        nothing, AbortedInfection(), parent, contact, state, transmission_time
+    release, ok = _fold_release(
+        nothing, (AbortedInfection(), HostImmunity()),
+        parent, contact, state, transmission_time
     )
     ok || return nothing
-    release, ok = _certain_release(
-        release, HostImmunity(), parent, contact, state, transmission_time
+    release, ok = _fold_release(
+        release, model_risks, parent, contact, state, transmission_time
     )
     ok || return nothing
-    for source in model_risks
+    release, ok = _fold_release(
+        release, interventions, parent, contact, state, transmission_time
+    )
+    return ok ? release : nothing
+end
+
+# `_certain_release` over each source in turn, stopping at the first whose
+# releases do not bind. A tuple is walked element by element, as in
+# `_any_risk_blocks`, so each call is resolved when the method is compiled.
+_fold_release(release, ::Tuple{}, parent, contact, state, transmission_time) = release, true
+@inline function _fold_release(
+        release, sources::Tuple, parent, contact, state, transmission_time
+    )
+    release, ok = _certain_release(
+        release, first(sources), parent, contact, state, transmission_time
+    )
+    ok || return release, false
+    return _fold_release(
+        release, Base.tail(sources), parent, contact, state, transmission_time
+    )
+end
+function _fold_release(release, sources, parent, contact, state, transmission_time)
+    for source in sources
         release, ok = _certain_release(
             release, source, parent, contact, state, transmission_time
         )
-        ok || return nothing
+        ok || return release, false
     end
-    for iv in interventions
-        release, ok = _certain_release(
-            release, iv, parent, contact, state, transmission_time
-        )
-        ok || return nothing
-    end
-    return release
+    return release, true
 end
 
 # The release of every certain block `source` has in force, folded into
@@ -560,20 +577,39 @@ function _permanently_blocked(
         state, parent, contact, transmission_time,
         model_risks, interventions
     )
-    _any_standing_risk(AbortedInfection(), parent, contact, state, transmission_time) &&
-        return true
-    _any_standing_risk(HostImmunity(), parent, contact, state, transmission_time) &&
-        return true
-    for source in model_risks
-        _any_standing_risk(source, parent, contact, state, transmission_time) && return true
-    end
-    for iv in interventions
+    return _any_standing(
+            _never_skip, (AbortedInfection(), HostImmunity()),
+            parent, contact, state, transmission_time
+        ) ||
+        _any_standing(_never_skip, model_risks, parent, contact, state, transmission_time) ||
         # A `Scheduled` wrapper can still turn its block off later unless the
         # wrapped intervention's protection persists outside the active
         # window (`_may_lapse`), so such a risk is never read as standing here,
         # however certain it looks at this one proposal.
-        _may_lapse(iv) && continue
-        _any_standing_risk(iv, parent, contact, state, transmission_time) && return true
+        _any_standing(_may_lapse, interventions, parent, contact, state, transmission_time)
+end
+
+_never_skip(source) = false
+
+# Whether any source not skipped by `skip` contributes a standing risk, walked
+# like `_any_risk_blocks` to keep each call resolved at compile time.
+_any_standing(skip, ::Tuple{}, parent, contact, state, transmission_time) = false
+@inline function _any_standing(
+        skip, sources::Tuple, parent, contact, state, transmission_time
+    )
+    source = first(sources)
+    if !skip(source) &&
+            _any_standing_risk(source, parent, contact, state, transmission_time)
+        return true
+    end
+    return _any_standing(
+        skip, Base.tail(sources), parent, contact, state, transmission_time
+    )
+end
+function _any_standing(skip, sources, parent, contact, state, transmission_time)
+    for source in sources
+        skip(source) && continue
+        _any_standing_risk(source, parent, contact, state, transmission_time) && return true
     end
     return false
 end
