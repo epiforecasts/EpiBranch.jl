@@ -74,8 +74,10 @@ function transition_loglik(r::Recovery, individual::Individual)
         # outcome's time.
         censor = _competing_outcome_time(individual, :recovered)
         isinf(censor) && isinf(infection_aborted_time(individual)) && return -Inf
-        return transition_term(1.0, r.delay, individual, anchor, false;
-            censor = min(censor, infection_aborted_time(individual)))
+        return transition_term(
+            1.0, r.delay, individual, anchor, false;
+            censor = min(censor, infection_aborted_time(individual))
+        )
     end
     return _delay_loglik(r.delay, t - anchor)
 end
@@ -185,8 +187,10 @@ function transition_loglik(d::Death, individual::Individual)
     # Without a candidate time, a different outcome at `outcome_time` means
     # the death either did not occur or came later.
     censor = candidate ? Inf : _competing_outcome_time(individual, :died)
-    ll = transition_term(d.probability, d.delay, individual, anchor, candidate;
-        censor = min(censor, infection_aborted_time(individual)))
+    ll = transition_term(
+        d.probability, d.delay, individual, anchor, candidate;
+        censor = min(censor, infection_aborted_time(individual))
+    )
     candidate || return ll
     return ll + _delay_loglik(d.delay, t - anchor)
 end
