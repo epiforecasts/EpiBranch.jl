@@ -1,0 +1,1 @@
+The chain-size log-likelihoods evaluate each distinct `(size, seeds)` pair once and weight it by its count, rather than recomputing the term for every chain, when `prob_concluded` is `nothing`. Summation order changes, so results can differ in the last bits.
