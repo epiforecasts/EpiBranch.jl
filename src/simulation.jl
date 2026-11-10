@@ -1458,7 +1458,7 @@ present on the individual.
 function _set_onset_from_incubation!(ind::Individual)
     haskey(ind.state, :incubation_period) || return nothing
     inc = _state_real(ind.state, :incubation_period, NaN)
-    ind.state[:onset_time] = isnan(inc) || _infection_aborted(ind) ? NaN :
+    ind.state[:onset_time] = isnan(inc) || _infection_aborted(ind) || _symptoms_prevented(ind) ? NaN :
         ind.infection_time + inc
     return nothing
 end
