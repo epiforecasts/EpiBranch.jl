@@ -22,11 +22,12 @@ macro warn_unconverged_extinction(max_iter, cause)
 end
 
 # Smallest root of `q = ind_control + (1 - ind_control) * G(1 - keep * (1 - q))`
-# by fixed-point iteration, where `G` is the law's generating function and
-# `keep` the proportion of secondary cases kept after thinning. Thinning a
-# negative binomial or Poisson law rescales its mean, so one routine covers
-# every offspring law with a `_pgf` and `_law_mean`. Returns the iterate and
-# whether it converged; each public function warns from its own call site.
+# by fixed-point iteration, where `G` is the generating function of the law and
+# `keep` the proportion of secondary cases kept after thinning. Thinning
+# rescales the mean of a negative binomial or Poisson law, which lets one
+# routine cover every offspring law with a `_pgf` and `_law_mean`. It returns
+# the iterate and whether it converged; each public function warns from its
+# own call site.
 function _contain_fixed_point(
         law; keep::Real = 1.0, ind_control::Real = 0.0,
         tol::Real, max_iter::Int
