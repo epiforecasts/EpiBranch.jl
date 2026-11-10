@@ -536,6 +536,12 @@ check convergence (for example the R-hat values in `summarize(chain)`).
     exposure after that date are then ignored, and cases still infectious at
     that date are treated as not yet recovered.
 
+    `progression_loglik` takes the same date as `followup_end` and scores a
+    step that has not happened by then as censored. The delays of the steps
+    that did happen are not corrected for right truncation, so a delay
+    distribution fitted to a line list cut at a date is still biased towards
+    short delays.
+
 !!! warning "Index-case ascertainment"
     Households are usually found through their first detected case, the
     recruited index case. Without a community hazard, the likelihood takes

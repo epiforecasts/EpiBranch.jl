@@ -283,18 +283,21 @@ _delay_logccdf(x::Real, t) = x < t ? -Inf : 0.0
 _delay_logccdf(f, t) = _delay_loglik(f, t)
 
 """
-    transition_loglik(t::AbstractClinicalTransition, individual) -> Float64
+    transition_loglik(t::AbstractClinicalTransition, individual; followup_end = Inf) -> Float64
 
 The log-likelihood of what a step did to one case: the log-probability that
 the step happened (or did not), plus the log-density of its delay when it did.
 [`progression_loglik`](@ref) calls it once per step per case. It is `0.0` when
-the case never reached the state the step starts from.
+the case never reached the state the step starts from. A step that has not
+happened by `followup_end` is scored as censored there, by its survival
+probability, rather than by a density; the built-in steps take this keyword.
 
 Defined for the built-in steps ([`Transition`](@ref), [`Reporting`](@ref),
 [`Hospitalisation`](@ref), [`Death`](@ref), [`Recovery`](@ref)). A custom step
 used with [`progression_loglik`](@ref) needs its own method that reads back
 what its `resolve_individual!` recorded. Its `delay` must be a `Distribution`
-or a fixed number, since a function of the individual has no density.
+or a fixed number, since a function of the individual has no density. To be
+used with a finite `followup_end` it must also accept that keyword.
 """
 function transition_loglik(t::AbstractClinicalTransition, individual)
     throw(
