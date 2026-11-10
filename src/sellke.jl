@@ -578,9 +578,9 @@ function _permanently_blocked(
         model_risks, interventions
     )
     return _any_standing(
-            _never_skip, (AbortedInfection(), HostImmunity()),
-            parent, contact, state, transmission_time
-        ) ||
+        _never_skip, (AbortedInfection(), HostImmunity()),
+        parent, contact, state, transmission_time
+    ) ||
         _any_standing(_never_skip, model_risks, parent, contact, state, transmission_time) ||
         # A `Scheduled` wrapper can still turn its block off later unless the
         # wrapped intervention's protection persists outside the active
