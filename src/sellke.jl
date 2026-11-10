@@ -127,7 +127,7 @@ function _cached_own_method(f, T::Type, base::Type, n::Int)
         end
         get!(_OWN_METHOD_CACHE, (f, T, base, n)) do
             n < 0 ? _has_own_method_uncached(f, T, base) :
-            _has_own_method_uncached(f, T, base, n)
+                _has_own_method_uncached(f, T, base, n)
         end
     end
 end
