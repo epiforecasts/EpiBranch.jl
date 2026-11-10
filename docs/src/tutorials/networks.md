@@ -572,8 +572,7 @@ up to isolation.
     neighbours) and on parameters other than the contact interval.
     Onset-triggered isolation and forward tracing along the network meet this.
     A removal that depends on the unobserved transmission tree, such as
-    [`SourceTracing`](@ref), does not, and `loglikelihood(data, model)` refuses
-    it. When building an [`InfectionLayer`](@ref) from real data, check that
+    [`SourceTracing`](@ref), does not; `loglikelihood(data, model)` refuses it. When building an [`InfectionLayer`](@ref) from real data, check that
     the removal mechanism does not depend on who infected whom.
 
 There is no one-call fitting function. Here we evaluate the log-likelihood at

@@ -167,8 +167,8 @@ when removals and doses depend only on the observed history (onsets, detections,
 the infections of household members or neighbours) and on parameters other than
 the contact interval. Onset-triggered isolation and household or network
 forward tracing meet this. A removal that depends on the unobserved
-transmission tree, such as [`SourceTracing`](@ref), does not: it depends on who
-infected whom, so conditioning on it biases the contact-interval estimate.
+transmission tree, such as [`SourceTracing`](@ref), does not. It depends on who
+infected whom, and conditioning on it biases the contact-interval estimate.
 When building an `InfectionLayer` from real data, check that the removal
 mechanism does not depend on who infected whom.
 """

@@ -484,8 +484,7 @@ The estimate is close to the 4 days the outbreak was simulated with.
     household members) and on parameters other than the contact interval.
     Onset-triggered isolation and household forward tracing meet this. A
     removal that depends on the unobserved transmission tree, such as
-    [`SourceTracing`](@ref), does not, and `loglikelihood(data, model)` refuses
-    it. When building an [`InfectionLayer`](@ref) from real data, check that
+    [`SourceTracing`](@ref), does not; `loglikelihood(data, model)` refuses it. When building an [`InfectionLayer`](@ref) from real data, check that
     the removal mechanism does not depend on who infected whom.
 
 The contact-interval distribution can also depend on who infects whom, for
