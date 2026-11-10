@@ -87,29 +87,6 @@ function loglikelihood(
     return _chain_size_loglik(dist, data; prob_concluded)
 end
 
-# AD-compatible methods: use shared _borel_logpdf / _gammaborel_logpdf
-# which accept any numeric type for parameters (ForwardDiff Dual compatible)
-function loglikelihood(
-        data::ChainSizes, offspring::Poisson{T};
-        prob_concluded::Union{Nothing, AbstractVector{<:Real}} = nothing
-    ) where {T}
-    μ = mean(offspring)
-    if prob_concluded === nothing && all(==(1), data.seeds)
-        return sum(n -> _borel_logpdf(μ, n), data.data)
-    end
-    return _chain_size_loglik(Borel(μ), data; prob_concluded)
-end
-
-function loglikelihood(
-        data::ChainSizes, offspring::NegativeBinomial{T};
-        prob_concluded::Union{Nothing, AbstractVector{<:Real}} = nothing
-    ) where {T}
-    if prob_concluded === nothing && all(==(1), data.seeds)
-        return sum(n -> _gammaborel_logpdf(offspring.r, mean(offspring), n), data.data)
-    end
-    return _chain_size_loglik(GammaBorel(offspring.r, mean(offspring)), data; prob_concluded)
-end
-
 """
     loglikelihood(data::ChainSizes, d::ChainSizeLaw; prob_concluded = nothing)
 
