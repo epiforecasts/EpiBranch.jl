@@ -528,9 +528,9 @@ function _certain_block_release(
     return ok ? release : nothing
 end
 
-# `_certain_release` over each source in turn, stopping at the first whose
-# releases do not bind. A tuple is walked element by element, as in
-# `_any_risk_blocks`, so each call is resolved when the method is compiled.
+# Applies `_certain_release` to each source in turn, stopping at the first whose
+# releases do not bind. Tuples are walked element by element, as in
+# `_any_risk_blocks`, which resolves each call at compile time.
 _fold_release(release, ::Tuple{}, parent, contact, state, transmission_time) = release, true
 @inline function _fold_release(
         release, sources::Tuple, parent, contact, state, transmission_time
