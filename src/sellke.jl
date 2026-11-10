@@ -108,11 +108,11 @@ end
 # seeded results, through the same heap, as it did before per-contact risks
 # existed.
 
-# The answer can only change when a method is defined, which advances the world
-# counter, so answers are kept until it moves. The race asks on every run, and a
-# method-table search is a large share of a small outbreak. Checking the counter
-# on each call, rather than fixing the answer at load, still finds a hook
-# defined outside the package after it was loaded.
+# The answer changes only when a method is defined, which advances the world
+# counter. Answers are kept until the counter moves. The race asks on every run
+# and a method-table search is a large share of a small outbreak. Checking the
+# counter on each call finds a hook defined outside the package after it was
+# loaded.
 const _OWN_METHOD_CACHE = Dict{Tuple{Any, Type, Type, Int}, Bool}()
 const _OWN_METHOD_WORLD = Ref{UInt}(0)
 const _OWN_METHOD_LOCK = ReentrantLock()

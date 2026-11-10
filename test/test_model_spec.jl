@@ -659,8 +659,8 @@ EpiBranch.interventions(m::_ProcessWithInterventions) = m.interventions
         @test !EpiBranch._has_own_method(
             _all_variadic, BlockVariadic, AbstractIntervention, 3
         )
-        # The answer is cached, but a method defined after it was cached,
-        # as a user's hook is, still changes it.
+        # A method defined after the answer was cached, as a user's hook is,
+        # still changes it.
         @eval struct _LateHook <: AbstractIntervention end
         @eval _late_hook(::AbstractIntervention, args...) = nothing
         @test !EpiBranch._has_own_method(_late_hook, _LateHook, AbstractIntervention)
