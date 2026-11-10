@@ -368,14 +368,14 @@ EpiBranch.records_contacts(::AlwaysRecord, parent, contact, state, t) = true
             post_isolation_transmission = 0.5
         )
         for wrapped in (
-            OnRoutes(iso, (:household,)),
-            CapacityConstrained(iso; budget_per_period = 1.0),
-            Scheduled(iso; start_time = 0.0)
-        )
+                OnRoutes(iso, (:household,)),
+                CapacityConstrained(iso; budget_per_period = 1.0),
+                Scheduled(iso; start_time = 0.0),
+            )
             @test EpiBranch.removal_block_probability(wrapped) ==
-                  EpiBranch.removal_block_probability(iso) == 0.5
+                EpiBranch.removal_block_probability(iso) == 0.5
             @test EpiBranch.removal_gap_host_times(wrapped) ==
-                  EpiBranch.removal_gap_host_times(iso)
+                EpiBranch.removal_gap_host_times(iso)
             @test !isempty(EpiBranch.removal_gap_host_times(wrapped))
         end
     end
