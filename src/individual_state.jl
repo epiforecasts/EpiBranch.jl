@@ -95,8 +95,8 @@ function Base.get(f::Base.Callable, s::IndividualState, k)
 end
 
 @static if VERSION >= v"1.11"
-    # From Julia 1.11 `push!` takes a vector from 16 slots straight to 66, and a
-    # store under isolation and tracing holds 16 to 23 keys, so most would keep
+    # From Julia 1.11 `push!` takes a vector from 16 slots straight to 66. A
+    # store under isolation and tracing holds 16 to 23 keys, so most would have
     # about three times the room they use. Swapping in a `Memory` of twice the
     # capacity keeps the slots within a factor of two of the keys.
     function _double_capacity!(slots::Vector{S}) where {S}
