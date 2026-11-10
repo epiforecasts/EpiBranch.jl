@@ -485,8 +485,8 @@ end
 # itself, kept for backward compatibility) resolves to itself.
 _resolved_key(s::Symbol) = endswith(String(s), "_time") ? s : Symbol(s, :_time)
 
-# `_resolved_key` of a `from` given as a name, `nothing` for a callable. Built
-# once with the object that holds `from`, since the key depends on nothing else.
+# `_resolved_key` of a `from` given as a name, `nothing` for a callable. The key
+# depends only on `from`, so the object that holds `from` builds it once.
 _from_key(from::Symbol) = _resolved_key(from)
 _from_key(from) = nothing
 

@@ -98,9 +98,9 @@ function _state_time(ind::Individual{T}, from::Symbol) where {T}
 end
 _state_time(ind, from) = float(from(ind))
 
-# The same with the key `_resolved_key` gives for `from` already in hand, for
-# a caller that resolved it once when it was built: building the key symbol
-# for every case is the dearest part of reading the anchor.
+# The same, with the key that `_resolved_key` gives for `from` already in hand.
+# A caller that resolved it once when it was built avoids creating the key
+# symbol for every case, which is the slowest step of reading the anchor.
 function _state_time(ind::Individual{T}, from::Symbol, key::Symbol) where {T}
     from === :infection && return ind.infection_time
     return _state_real(ind.state, key, T(NaN))
