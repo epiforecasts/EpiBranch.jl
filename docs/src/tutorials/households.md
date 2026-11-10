@@ -538,7 +538,7 @@ check convergence (for example the R-hat values in `summarize(chain)`).
 
     `progression_loglik` takes the same date as `followup_end` and scores a
     step that has not happened by then as censored. The delays of the steps
-    that did happen are not corrected for right truncation, so a delay
+    that did happen are not corrected for right truncation. A delay
     distribution fitted to a line list cut at a date is still biased towards
     short delays.
 

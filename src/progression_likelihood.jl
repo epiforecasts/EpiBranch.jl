@@ -26,12 +26,12 @@ nothing. The result is the sum over cases and steps of
 `followup_end` is the end of follow-up. A step that has not happened by then
 (whether it was drawn to occur later, or not to occur at all) is scored as
 censored: the probability that it had not happened by `followup_end`, in place
-of a density. This matters when infection times are imputed, since a case
+of a density. This matters when infection times are imputed, because a case
 infected shortly before the cut-off may have no onset or report yet. Steps
-that did happen are scored with their plain density: the likelihood does not
-condition them on having happened before `followup_end`, so right truncation
-of the observed delays is not yet handled and a delay distribution fitted to a
-line list cut at a date is biased towards short delays. A custom
+that did happen are scored with their plain density, without conditioning on
+having happened before `followup_end`. Right truncation of the observed delays
+is not yet handled, and a delay distribution fitted to a line list cut at a
+date is biased towards short delays. A custom
 [`transition_loglik`](@ref EpiBranch.transition_loglik) method needs a
 `followup_end` keyword to be used with a finite `followup_end`.
 
