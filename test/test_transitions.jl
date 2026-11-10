@@ -669,8 +669,8 @@ end
     end
 
     @testset "skips when the from-state was never reached" begin
-        # Nobody becomes severe (probability 0), so death measured from
-        # :severe never happens for anyone.
+        # No case becomes severe (probability 0), so the death transition
+        # measured from :severe is skipped for every case.
         severe = Transition(
             :severe, from = :onset, delay = (rng, ind) -> 1.0,
             probability = 0.0
