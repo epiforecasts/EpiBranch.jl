@@ -236,7 +236,11 @@ outbreaks.
 With `parallel = true` the runs are spread over the CPU threads Julia was
 started with (for example `julia --threads 4`). The results are reproducible
 for a given seeded `rng`. When Julia has more than one thread, they are not
-the same outbreaks as with `parallel = false`.
+the same outbreaks as with `parallel = false`. Outbreaks are handed to threads
+one at a time, so a few large ones do not leave the other threads idle. Much of
+the remaining cost is garbage collection, which pauses every thread; starting
+Julia with extra collector threads (for example `julia --threads 6
+--gcthreads 6,1`) reduces it.
 
 # Examples
 ```julia
@@ -292,15 +296,28 @@ function _simulate_n(
     if parallel && Threads.nthreads() > 1
         seeds = [rand(rng, UInt64) for _ in 1:n]
         results = Vector{T}(undef, n)
-        Threads.@threads for i in 1:n
-            local_rng = Random.Xoshiro(seeds[i])
-            results[i] = each(
-                simulate_once(
-                    model, sim_opts; interventions, attributes,
-                    progression, observation, recorder, rng = local_rng
-                )
-            )
+        # Outbreak sizes are heavy-tailed, so an even split of `1:n` leaves
+        # threads idle behind the one that drew the large outbreaks. Each task
+        # takes the next outbreak from a shared counter instead. Each outbreak
+        # keeps the seed at its own index, so the results do not depend on which
+        # thread ran which.
+        next_index = Threads.Atomic{Int}(1)
+        tasks = map(1:min(Threads.nthreads(), n)) do _
+            Threads.@spawn begin
+                while true
+                    i = Threads.atomic_add!(next_index, 1)
+                    i > n && break
+                    local_rng = Random.Xoshiro(seeds[i])
+                    results[i] = each(
+                        simulate_once(
+                            model, sim_opts; interventions, attributes,
+                            progression, observation, recorder, rng = local_rng
+                        )
+                    )
+                end
+            end
         end
+        foreach(wait, tasks)
         return results
     else
         return [
