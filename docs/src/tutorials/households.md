@@ -476,6 +476,18 @@ The estimate is close to the 4 days the outbreak was simulated with.
     reduced rather than zero hazard, which both `pairwise_surv_loglik` and
     `loglikelihood(data, model)` score.
 
+!!! warning "Removals must not depend on who infected whom"
+    The likelihood takes each person's removal time and vaccination dates as
+    fixed data and does not score how they came about, so it is a partial
+    likelihood conditional on them. That is valid when removals and doses
+    depend only on the observed history (onsets, detections, infections of
+    household members) and on parameters other than the contact interval.
+    Onset-triggered isolation and household forward tracing meet this. A
+    removal that depends on the unobserved transmission tree, such as
+    [`SourceTracing`](@ref), does not, and `loglikelihood(data, model)` refuses
+    it. When building an [`InfectionLayer`](@ref) from real data, check that
+    the removal mechanism does not depend on who infected whom.
+
 The contact-interval distribution can also depend on who infects whom, for
 example adults transmitting faster than children, through a function
 `(infector, susceptible) -> Distribution` of the two people's numbers, as in
