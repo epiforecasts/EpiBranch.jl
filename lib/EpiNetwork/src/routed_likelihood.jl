@@ -349,7 +349,7 @@ function _routed_modifier_loglik(
             (!gates[r] || !_removed_at(gaps, i, tj))
     ]
     ext_term = (extdist !== nothing && 0 <= tj <= data.obs_end) ?
-        [_scaled_loghazard(modifier, loghazard(extdist, tj), tj)] : Float64[]
+        [_scaled_loghazard(modifier, _fast_loghazard(extdist, tj), tj)] : Float64[]
     terms = vcat(route_terms, ext_term)
     isempty(terms) && return -Inf
     return ll + logsumexp(terms)
@@ -507,7 +507,7 @@ function EpiBranch.pairwise_surv_loglik(
         extdist = _ext_survival_of(extsrc, j)
         if extdist !== nothing
             stop = min(tend, data.obs_end)
-            stop > 0 && (survival += cumhazard(extdist, stop))
+            stop > 0 && (survival += _cumhazard(extdist, stop))
         end
         for r in 1:n_routes
             for (i, pos) in in_neighbours[r][j]
@@ -519,10 +519,10 @@ function EpiBranch.pairwise_surv_loglik(
                 pk = _route_kernel(windows[r].kernel, data.contacts[r], i, pos, j)
                 survival += gates[r] ?
                     _gapped_cumhazard(
-                        t -> cumhazard(pk, t), _host_stretches(gaps, i), oi, stop,
+                        t -> _cumhazard(pk, t), _host_stretches(gaps, i), oi, stop,
                         _host_leaky_stretches(gaps, i)
                     ) :
-                    cumhazard(pk, stop)
+                    _cumhazard(pk, stop)
             end
         end
         ll -= survival
@@ -538,7 +538,7 @@ function EpiBranch.pairwise_surv_loglik(
                 (!gates[r] || !_removed_at(gaps, i, tj))
         ]
         ext_term = (extdist !== nothing && 0 <= tj <= data.obs_end) ?
-            [loghazard(extdist, tj)] : Float64[]
+            [_fast_loghazard(extdist, tj)] : Float64[]
         terms = vcat(route_terms, ext_term)
         isempty(terms) && return -Inf
         ll += logsumexp(terms)
