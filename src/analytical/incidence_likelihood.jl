@@ -278,7 +278,7 @@ The log-scale covariance, `log1p(Σ[t, u] / (μ[t] μ[u]))`, is not always
 positive definite, for example for long subcritical series. When it is not, a
 small multiple of the identity (starting at `1e-12` times the largest log-scale
 variance and doubling until the matrix factorises) is added to its diagonal,
-so the likelihood is slightly regularised rather than throwing. If no such
+which slightly regularises the likelihood. If no such
 shift works, an `ArgumentError` is thrown.
 """
 struct LognormalApproximation <: IncidenceApproximation end
@@ -326,8 +326,7 @@ end
 # for example for long subcritical series. Add the smallest power-of-two
 # multiple of 1e-12 times the largest variance to the diagonal that lets the
 # Cholesky factorisation succeed. A matrix that is already positive definite
-# is returned unchanged. A diagonal shift, unlike an eigenvalue projection,
-# works with automatic differentiation.
+# is returned unchanged. The diagonal shift works with automatic differentiation.
 function _make_positive_definite(Σ::Symmetric)
     issuccess(cholesky(Σ; check = false)) && return Σ
     scale = maximum(diag(Σ))
