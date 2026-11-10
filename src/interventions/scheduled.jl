@@ -89,7 +89,7 @@ clock, as every hook always was: `intervention_time` comes paired with a
 `reset!` that undoes whatever it names, and without one there is nothing to
 correct the effect with afterwards.
 """
-struct Scheduled{I <: AbstractIntervention, F, T <: Tuple} <: InterventionWrapper
+struct Scheduled{I <: AbstractIntervention, F, T <: Tuple, W} <: InterventionWrapper
     intervention::I
     condition::F
     start_time::Float64
@@ -106,17 +106,30 @@ struct Scheduled{I <: AbstractIntervention, F, T <: Tuple} <: InterventionWrappe
     # Whether `intervention` has its own `intervention_time`, computed once
     # here rather than by introspection on every call. See `_time_aware`.
     time_aware::Bool
+    # The calendar window the gate amounts to, as a `ClockWindow`, when it is
+    # nothing else (a `start_time` and/or an `end_time`); `nothing` for a gate
+    # that also reads the simulation (a case count, a trigger, a predicate),
+    # which has no window to read. The population-level approximations read
+    # it to switch a campaign on and off on the right days.
+    window::W
+end
+
+# The days between which a `Scheduled` built from `start_time` and
+# `end_time` alone acts.
+struct ClockWindow
+    start::Float64
+    stop::Float64
 end
 
 # Computes `time_aware` from `intervention` once, rather than asking on every
 # call a hook makes.
 function Scheduled(
         intervention::AbstractIntervention, condition, start_time::Float64,
-        can_lapse::Bool, triggers::Tuple
+        can_lapse::Bool, triggers::Tuple, window = nothing
     )
     return Scheduled(
         intervention, condition, start_time, can_lapse, triggers,
-        _time_aware(intervention)
+        _time_aware(intervention), window
     )
 end
 
@@ -431,7 +444,12 @@ function Scheduled(
     can_lapse = end_time !== nothing ||
         (start_after !== nothing && trigger_can_lapse(start_after))
     triggers = start_after === nothing ? () : (start_after,)
-    return Scheduled(intervention, condition, t, can_lapse, triggers)
+    window = if start_after_cases === nothing && start_after === nothing
+        ClockWindow(t, end_time === nothing ? Inf : end_time)
+    else
+        nothing
+    end
+    return Scheduled(intervention, condition, t, can_lapse, triggers, window)
 end
 
 # Predicate constructor: no individual-level reset. The predicate is opaque, so

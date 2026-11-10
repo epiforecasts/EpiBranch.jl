@@ -74,7 +74,11 @@ a [`ModelSpec`](@ref) built on one, with `approx` a [`MeanFieldProcess`](@ref)
 or [`LinearNoiseProcess`](@ref); or `exact` a [`MixingProcess`](@ref)-based
 `ModelSpec`, with `approx` a [`MixingMeanFieldProcess`](@ref) or
 [`MixingLinearNoiseProcess`](@ref) built from that same `ModelSpec`, so the
-mixing groups the two track agree.
+mixing groups the two track agree. A vaccination campaign in that `ModelSpec`
+is carried across too: the people already dosed and what the dose did for them,
+and, for the default [`TriggeredInPriority`](@ref) allocation, the trigger time
+the exact run found for each group, so doses still due are given on the day
+the exact model would have given them.
 
 Simulating and continuing both use [`simulate`](@ref), exactly as for the
 exact and approximate models on their own, so an external Kalman or particle
@@ -175,34 +179,48 @@ _to_approx_state(::LinearNoiseProcess, es::SimulationState, t::Real) =
 _approx_state_type(::MeanFieldProcess) = MeanFieldState
 _approx_state_type(::LinearNoiseProcess) = LinearNoiseState
 
-# As `_compartment_counts`, but one susceptible/infectious/removed count per
-# mixing group rather than one for the whole population: unlike
-# `es.cumulative_cases`, which already tallies the whole population as it
-# runs, nothing in the exact run keeps a per-group breakdown, so this walks
-# `es.individuals` once to build it.
-function _group_compartment_counts(es::SimulationState, t::Real, approx)
-    S = Float64.(approx.group_sizes)
-    I = zeros(Float64, length(approx.groups))
+# As `_compartment_counts`, but one count per mixing group and compartment
+# rather than one for the whole population: unlike `es.cumulative_cases`,
+# which already tallies the whole population as it runs, nothing in the exact
+# run keeps a per-group breakdown, so this walks `es.individuals` once to
+# build it. A person already dosed by `t` is counted in `D` whatever their
+# status and, if not infected, as a vaccinated susceptible or as immune,
+# according to the dose they were recorded as taking.
+function _group_compartments(es::SimulationState, t::Real, approx)
+    N = Float64.(approx.group_sizes)
+    G = length(approx.groups)
+    S, I, V, P, D = copy(N), zeros(G), zeros(G), zeros(G), zeros(G)
     index = Dict(g => i for (i, g) in enumerate(approx.groups))
+    campaign = approx.campaign
     for ind in es.individuals
-        is_infected(ind) || continue
-        it = ind.infection_time
-        (isfinite(it) && it <= t) || continue
         idx = index[_group_key(ind, approx.mixing_by)]
-        S[idx] -= 1.0
-        leave_t = _state_time(ind, :outcome)
-        (isfinite(leave_t) && leave_t <= t) || (I[idx] += 1.0)
+        dosed = _dose_given(campaign, ind, t)
+        dosed && (D[idx] += 1.0)
+        it = ind.infection_time
+        if is_infected(ind) && isfinite(it) && it <= t
+            S[idx] -= 1.0
+            leave_t = _state_time(ind, :outcome)
+            (isfinite(leave_t) && leave_t <= t) || (I[idx] += 1.0)
+        elseif dosed
+            S[idx] -= 1.0
+            _dose_protects(campaign, ind) ? (P[idx] += 1.0) : (V[idx] += 1.0)
+        end
     end
-    R = Float64.(approx.group_sizes) .- S .- I
-    return S, I, R
+    cases = N .- S .- V .- P
+    return S, I, V, P, D, _handover_progress(campaign, es, t, cases)
 end
 
-_to_approx_state(approx::MixingMeanFieldProcess, es::SimulationState, t::Real) =
-    MixingMeanFieldState(approx.groups, _group_compartment_counts(es, t, approx)..., t)
+function _to_approx_state(approx::MixingMeanFieldProcess, es::SimulationState, t::Real)
+    S, I, V, P, D, progress = _group_compartments(es, t, approx)
+    R = Float64.(approx.group_sizes) .- S .- I .- V .- P
+    return MixingMeanFieldState(approx.groups, S, I, R, t, V, P, D, progress)
+end
 function _to_approx_state(approx::MixingLinearNoiseProcess, es::SimulationState, t::Real)
+    S, I, V, P, D, progress = _group_compartments(es, t, approx)
+    R = Float64.(approx.group_sizes) .- S .- I .- V .- P
     G = length(approx.groups)
     return MixingLinearNoiseState(
-        approx.groups, _group_compartment_counts(es, t, approx)..., t, zeros(2G, 2G)
+        approx.groups, S, I, R, t, zeros(4G, 4G), V, P, D, progress
     )
 end
 
