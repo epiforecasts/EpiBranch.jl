@@ -59,7 +59,7 @@ Numerically stable log-sum-exp. Any iterable is accepted (generators
 are collected first to allow two-pass computation).
 """
 function logsumexp(x)
-    v = x isa AbstractVector ? x : collect(Float64, x)
+    v = x isa AbstractVector ? x : collect(x)
     isempty(v) && return -Inf
     mx = maximum(v)
     isinf(mx) && return mx
