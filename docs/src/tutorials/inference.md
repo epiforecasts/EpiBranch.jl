@@ -423,15 +423,14 @@ The fits above use a finished outbreak. To follow one as it unfolds, treat the
 outbreak as a state-space model: the latent state is the simulated outbreak,
 the dynamics advance it by one reporting interval, and each day's report is
 the data. [`outbreak_state_space`](@ref) builds that model for
-[SSMProblems.jl](https://github.com/TuringLang/SSMProblems.jl). The particle
-filters in [GeneralisedFilters.jl](https://github.com/TuringLang/GeneralisedFilters.jl)
-run on it unchanged. Each step continues a copy of the previous state with
-`simulate(model, state; max_time)`.
+[SSMProblems.jl](https://github.com/TuringLang/SSMProblems.jl), so particle
+filters written against that interface run on it unchanged. Each step continues
+a copy of the previous state with `simulate(model, state; max_time)`.
 
 !!! note
-    Neither package is installed with EpiBranch; add them with
-    `using Pkg; Pkg.add(["SSMProblems", "GeneralisedFilters"])`. Loading
-    SSMProblems makes `outbreak_state_space` available.
+    SSMProblems is not installed with EpiBranch; add it with
+    `using Pkg; Pkg.add("SSMProblems")`. Loading it makes
+    `outbreak_state_space` available.
 
 The outbreak below runs in a population of 500 with infections at rate 0.4 per
 infectious person per day and recovery at rate 0.2. Each day a case is
@@ -443,7 +442,6 @@ with the [`TransitionCount`](@ref) signal.
 
 ```@example inference
 using SSMProblems
-import GeneralisedFilters as GF
 
 make_model(rate) = ModelSpec(
     HomogeneousProcess(transmission_rate = rate, population_size = 500);
@@ -460,27 +458,27 @@ _, states, reports = SSMProblems.simulate(StableRNG(11), truth, 20)
 println("Daily reports: ", reports)
 ```
 
-A bootstrap filter keeps 100 simulated outbreaks and, each day, weights them by
-how well they explain that day's report and resamples. The weighted mean number
+The bootstrap filter below is written out in full. It keeps 100 simulated
+outbreaks and, each day, advances them with the dynamics, weights them by how
+well they explain that day's report and resamples. The weighted mean number
 of infectious cases follows the rise in the true number, which the filter never
 sees. With only 100 particles it runs above the true number late on, and more
 particles narrow that gap.
 
 ```@example inference
-filter_algo = GF.BootstrapFilter(100)
-
-function run_filter(rng, ssm, reports)
-    state = GF.initialise(rng, SSMProblems.prior(ssm), filter_algo)
+function run_filter(rng, ssm, reports; n_particles = 100)
+    particles = [SSMProblems.simulate(rng, SSMProblems.prior(ssm)) for _ in 1:n_particles]
     log_evidence = 0.0
     means = Float64[]
     for (t, report) in enumerate(reports)
-        state, increment = GF.step(rng, ssm, filter_algo, t, state, report)
-        log_evidence += increment
-        weights = GF.get_weights(state)
-        push!(means, sum(
-            w * infectious(p.state, (t - 1.0, Float64(t)))
-                for (w, p) in zip(weights, state.particles)
-        ))
+        particles = [SSMProblems.simulate(rng, SSMProblems.dyn(ssm), t, x) for x in particles]
+        logw = [SSMProblems.logdensity(SSMProblems.obs(ssm), t, x, report) for x in particles]
+        shift = maximum(logw)
+        w = exp.(logw .- shift)
+        log_evidence += shift + log(mean(w))
+        w ./= sum(w)
+        push!(means, sum(w .* [infectious(x, (t - 1.0, Float64(t))) for x in particles]))
+        particles = particles[rand(rng, Categorical(w), n_particles)]
     end
     return log_evidence, means
 end
