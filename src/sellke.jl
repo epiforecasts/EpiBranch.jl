@@ -108,9 +108,36 @@ end
 # seeded results, through the same heap, as it did before per-contact risks
 # existed.
 
+# The answer can only change when a method is defined, which advances the world
+# counter, so answers are kept until it moves. The race asks on every run, and a
+# method-table search is a large share of a small outbreak. Checking the counter
+# on each call, rather than fixing the answer at load, still finds a hook
+# defined outside the package after it was loaded.
+const _OWN_METHOD_CACHE = Dict{Tuple{Any, Type, Type, Int}, Bool}()
+const _OWN_METHOD_WORLD = Ref{UInt}(0)
+const _OWN_METHOD_LOCK = ReentrantLock()
+
+# `n = -1` stands for the form that does not look at the number of arguments.
+function _cached_own_method(f, T::Type, base::Type, n::Int)
+    world = Base.get_world_counter()
+    return lock(_OWN_METHOD_LOCK) do
+        if _OWN_METHOD_WORLD[] != world
+            empty!(_OWN_METHOD_CACHE)
+            _OWN_METHOD_WORLD[] = world
+        end
+        get!(_OWN_METHOD_CACHE, (f, T, base, n)) do
+            n < 0 ? _has_own_method_uncached(f, T, base) :
+            _has_own_method_uncached(f, T, base, n)
+        end
+    end
+end
+
+_has_own_method(f, T::Type, base::Type) = _cached_own_method(f, T, base, -1)
+_has_own_method(f, T::Type, base::Type, n::Int) = _cached_own_method(f, T, base, n)
+
 # Whether `f` has a method for `argtypes` more specific than the fallback defined
 # on `base`, i.e. whether a type has implemented a hook itself.
-function _has_own_method(f, T::Type, base::Type)
+function _has_own_method_uncached(f, T::Type, base::Type)
     # `methods` rather than `which`, which finds only a method whose parameters
     # accept `Any`: an intervention that types its hook's arguments, as the style
     # guide asks, has one `which` looks straight past.
@@ -131,7 +158,7 @@ end
 # not count. A trailing `args...` is handled separately, since it is reachable
 # at any arity its minimum allows, rather than the one `methods` lists it
 # under.
-function _has_own_method(f, T::Type, base::Type, n::Int)
+function _has_own_method_uncached(f, T::Type, base::Type, n::Int)
     return any(methods(f, Tuple{T, Vararg{Any}})) do mm
         params = Base.unwrap_unionall(mm.sig).parameters
         if Base.isvarargtype(params[end])
