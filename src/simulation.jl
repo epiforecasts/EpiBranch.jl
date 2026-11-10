@@ -237,7 +237,7 @@ With `parallel = true` the runs are spread over the CPU threads Julia was
 started with (for example `julia --threads 4`). The results are reproducible
 for a given seeded `rng`. When Julia has more than one thread, they are not
 the same outbreaks as with `parallel = false`. Outbreaks are handed to threads
-one at a time, so a few large ones do not leave the other threads idle. Much of
+one at a time. A few large ones do not leave the other threads idle. Much of
 the remaining cost is garbage collection, which pauses every thread; starting
 Julia with extra collector threads (for example `julia --threads 6
 --gcthreads 6,1`) reduces it.
@@ -296,11 +296,11 @@ function _simulate_n(
     if parallel && Threads.nthreads() > 1
         seeds = [rand(rng, UInt64) for _ in 1:n]
         results = Vector{T}(undef, n)
-        # Outbreak sizes are heavy-tailed, so an even split of `1:n` leaves
-        # threads idle behind the one that drew the large outbreaks. Each task
+        # Outbreak sizes are heavy-tailed. An even split of `1:n` leaves
+        # threads idle while one works through the large outbreaks. Each task
         # takes the next outbreak from a shared counter instead. Each outbreak
-        # keeps the seed at its own index, so the results do not depend on which
-        # thread ran which.
+        # keeps the seed at its own index, giving the same results whichever
+        # thread runs it.
         next_index = Threads.Atomic{Int}(1)
         tasks = map(1:min(Threads.nthreads(), n)) do _
             Threads.@spawn begin
