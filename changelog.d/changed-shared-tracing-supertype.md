@@ -1,1 +1,1 @@
-`ContactTracing` and `SourceTracing` now share one internal supertype that holds the methods they had in common, and `ContactTracing` has two constructors in place of four. Every call that worked before still does.
+`ContactTracing` and `SourceTracing` now share one internal supertype with the methods they had in common, and `ContactTracing` has two constructors instead of four. Every call that worked before still works.
