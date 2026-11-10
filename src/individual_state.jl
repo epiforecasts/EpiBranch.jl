@@ -94,11 +94,32 @@ function Base.get(f::Base.Callable, s::IndividualState, k)
     return i == 0 ? f() : _slot_value(s, i)
 end
 
+@static if VERSION >= v"1.11"
+    # From Julia 1.11 `push!` takes a vector from 16 slots straight to 66, and a
+    # store under isolation and tracing holds 16 to 23 keys, so most would keep
+    # about three times the room they use. Swapping in a `Memory` of twice the
+    # capacity keeps the slots within a factor of two of the keys.
+    function _double_capacity!(slots::Vector{S}) where {S}
+        n = length(slots)
+        mem = Memory{S}(undef, max(4, 2n))
+        n > 0 && unsafe_copyto!(memoryref(mem), slots.ref, n)
+        setfield!(slots, :ref, memoryref(mem))
+        return slots
+    end
+    @inline function _push_slot!(slots::Vector, slot)
+        length(slots) == length(slots.ref.mem) && _double_capacity!(slots)
+        return push!(slots, slot)
+    end
+else
+    # Earlier versions already double the capacity when a vector is full.
+    @inline _push_slot!(slots::Vector, slot) = push!(slots, slot)
+end
+
 @inline function Base.setindex!(s::IndividualState{T}, v, k::Symbol) where {T}
     i = _slot(s, k)
     slot = _make_slot(T, k, v)
     if i == 0
-        push!(s.slots, slot)
+        _push_slot!(s.slots, slot)
     else
         @inbounds s.slots[i] = slot
     end
