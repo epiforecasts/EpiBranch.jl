@@ -138,7 +138,7 @@ end
 
 @testset "Settling a case does not allocate through dynamic dispatch" begin
     # An untyped route context makes `_open_route!` a run-time call that boxes
-    # values for every case; a typed one leaves a few hundred bytes per case,
+    # values for every case. A typed one allocates a few hundred bytes per case,
     # against about 1.6 kB before.
     m = BranchingProcess(NegBin(2.5, 0.16), LogNormal(1.6, 0.5))
     run() = simulate(m; n_initial = 5, max_cases = 5000, rng = StableRNG(2))
