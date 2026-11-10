@@ -102,11 +102,7 @@ using DataFrames
         model = BranchingProcess(M, R_j -> Poisson(R_j), Exponential(5.0))
 
         rng = StableRNG(42)
-        state = simulate(
-            model;
-            max_cases = 100,
-            rng = rng
-        )
+        state = simulate(model; max_cases = 100, rng = rng)
 
         @test state.cumulative_cases > 0
 
@@ -127,11 +123,7 @@ using DataFrames
         model = BranchingProcess(M, R_j -> Poisson(R_j), Exponential(5.0))
 
         rng = StableRNG(42)
-        state = simulate(
-            model;
-            max_cases = 200,
-            rng = rng
-        )
+        state = simulate(model; max_cases = 200, rng = rng)
 
         infected = filter(is_infected, state.individuals)
         # Children should have the same type as their parent
@@ -174,11 +166,7 @@ using DataFrames
         model = BranchingProcess(M, R_j -> NegBin(R_j, 0.5), Exponential(5.0))
 
         rng = StableRNG(42)
-        state = simulate(
-            model;
-            max_cases = 50,
-            rng = rng
-        )
+        state = simulate(model; max_cases = 50, rng = rng)
 
         @test state.cumulative_cases > 0
     end
@@ -196,11 +184,7 @@ using DataFrames
         model = BranchingProcess(my_offspring, Exponential(5.0); n_types = 2)
 
         rng = StableRNG(42)
-        state = simulate(
-            model;
-            max_cases = 50,
-            rng = rng
-        )
+        state = simulate(model; max_cases = 50, rng = rng)
 
         @test state.cumulative_cases > 0
         infected = filter(is_infected, state.individuals)
@@ -240,11 +224,7 @@ using DataFrames
         )
 
         rng = StableRNG(42)
-        state = simulate(
-            model;
-            max_cases = 100,
-            rng = rng
-        )
+        state = simulate(model; max_cases = 100, rng = rng)
 
         @test state.cumulative_cases <= 50
     end
@@ -347,11 +327,7 @@ using DataFrames
         )
 
         rng = StableRNG(42)
-        state = simulate(
-            model;
-            max_cases = 100,
-            rng = rng
-        )
+        state = simulate(model; max_cases = 100, rng = rng)
 
         infected = filter(is_infected, state.individuals)
         types = [individual_type(ind) for ind in infected]

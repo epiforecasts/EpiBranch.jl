@@ -542,10 +542,7 @@ end
         f(θ) = pairwise_surv_loglik(windows(θ), data)
         x = [log(3.0), log(10.0)]
         h = 1.0e-6
-        fd = [
-            (f(x + h * e) - f(x - h * e)) / 2h
-                for e in ([1.0, 0.0], [0.0, 1.0])
-        ]
+        fd = [(f(x + h * e) - f(x - h * e)) / 2h for e in ([1.0, 0.0], [0.0, 1.0])]
         @test ForwardDiff.gradient(f, x) ≈ fd rtol = 1.0e-5
     end
 
@@ -575,10 +572,7 @@ end
         )
         x = [log(3.0), log(10.0)]
         h = 1.0e-6
-        fd = [
-            (f(x + h * e) - f(x - h * e)) / 2h
-                for e in ([1.0, 0.0], [0.0, 1.0])
-        ]
+        fd = [(f(x + h * e) - f(x - h * e)) / 2h for e in ([1.0, 0.0], [0.0, 1.0])]
         @test ForwardDiff.gradient(f, x) ≈ fd rtol = 1.0e-5
     end
 

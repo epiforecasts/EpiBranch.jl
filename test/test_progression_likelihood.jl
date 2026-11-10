@@ -243,8 +243,7 @@ struct _UntrackedTransition <: EpiBranch.AbstractClinicalTransition end
         died.state[:death_candidate_time] = 3.0
         died.state[:recovered] = false
         n_keys = length(died.state)
-        @test progression_loglik(spec, [died]) ≈
-            log(0.64) + logpdf(Exponential(2.0), 2.0)
+        @test progression_loglik(spec, [died]) ≈ log(0.64) + logpdf(Exponential(2.0), 2.0)
         # The siblings it passed over say nothing more, and a hand-built
         # individual needs no cached draw to be evaluated.
         @test length(died.state) == n_keys
@@ -436,12 +435,10 @@ struct _UntrackedTransition <: EpiBranch.AbstractClinicalTransition end
         ind.state[:infection_aborted_time] = 1.0
         # The draw selected death, whose candidate the abort then undid.
         ind.state[death_p.key] = 0.3
-        @test progression_loglik(spec, [ind]) ≈
-            log(0.64) + logccdf(Exponential(2.0), 1.0)
+        @test progression_loglik(spec, [ind]) ≈ log(0.64) + logccdf(Exponential(2.0), 1.0)
         # The draw selected recovery instead, so death says nothing.
         ind.state[death_p.key] = 0.9
-        @test progression_loglik(spec, [ind]) ≈
-            log(0.36) + logccdf(Exponential(3.0), 1.0)
+        @test progression_loglik(spec, [ind]) ≈ log(0.36) + logccdf(Exponential(3.0), 1.0)
     end
 
     @testset "a group summing to 1 up to rounding owns no shortfall" begin
@@ -466,8 +463,7 @@ struct _UntrackedTransition <: EpiBranch.AbstractClinicalTransition end
         # its delay density — a value a skipped anchor could not give.
         ind.state[:step1] = true
         ind.state[:step1_time] = 2.0
-        @test progression_loglik(spec, [ind]) ≈
-            log(0.7) + logpdf(Exponential(1.0), 2.0)
+        @test progression_loglik(spec, [ind]) ≈ log(0.7) + logpdf(Exponential(1.0), 2.0)
     end
 
     @testset "an aborted run has a finite likelihood" begin

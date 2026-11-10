@@ -2,10 +2,7 @@
     clinical = clinical_presentation(
         incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0
     )
-    bp(
-        progression;
-        attributes = NoAttributes()
-    ) = ModelSpec(
+    bp(progression; attributes = NoAttributes()) = ModelSpec(
         BranchingProcess(Poisson(1.5), Exponential(5.0));
         progression = progression, attributes = attributes
     )

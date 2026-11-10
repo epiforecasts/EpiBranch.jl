@@ -77,8 +77,7 @@ using ForwardDiff
                 BranchingProcess(NegBin(0.5, 0.5));
                 observation = PerCaseObservation(0.7, Dirac(0.0))
             )
-            @test extinction_probability(obs_model) ==
-                extinction_probability(bp)
+            @test extinction_probability(obs_model) == extinction_probability(bp)
         end
     end
 
@@ -840,11 +839,7 @@ using ForwardDiff
 
             # Poisson (Borel) and PoissonGammaChainSize also support the
             # multi-seed formula via _chain_size_logpdf.
-            @test isfinite(
-                loglikelihood(
-                    ChainSizes([3, 5]; seeds = [2, 2]), Poisson(0.6)
-                )
-            )
+            @test isfinite(loglikelihood(ChainSizes([3, 5]; seeds = [2, 2]), Poisson(0.6)))
             @test isfinite(
                 loglikelihood(
                     ChainSizes([3, 5]; seeds = [2, 2]),
@@ -876,10 +871,7 @@ using ForwardDiff
             # prob_concluded == ones reproduces the concluded-only likelihood.
             data = ChainSizes([1, 1, 2, 3])
             @test loglikelihood(data, NegBin(0.8, 0.5)) ≈
-                loglikelihood(
-                data, NegBin(0.8, 0.5);
-                prob_concluded = [1.0, 1.0, 1.0, 1.0]
-            )
+                loglikelihood(data, NegBin(0.8, 0.5); prob_concluded = [1.0, 1.0, 1.0, 1.0])
 
             # prob_concluded == zeros ⇒ all clusters ongoing (right-tail only).
             ll_ongoing = loglikelihood(
@@ -899,8 +891,7 @@ using ForwardDiff
                 prob_concluded = [0.5, 0.5, 0.5, 0.5]
             )
             ll_concluded = loglikelihood(data, NegBin(0.8, 0.5))
-            @test min(ll_concluded, ll_ongoing) <= ll_mid <=
-                max(ll_concluded, ll_ongoing)
+            @test min(ll_concluded, ll_ongoing) <= ll_mid <= max(ll_concluded, ll_ongoing)
 
             # Likelihood-time validation of `prob_concluded`.
             @test_throws ArgumentError loglikelihood(
@@ -1195,10 +1186,7 @@ using ForwardDiff
         @testset "Sim ↔ analytical consistency" begin
             # Bare NegBin offspring: simulation should match GammaBorel PMF
             bp = BranchingProcess(NegBin(0.6, 0.5), Exponential(5.0))
-            emp, ana = sim_analytical_consistent(
-                bp;
-                n_chains = 5000, rng = StableRNG(1)
-            )
+            emp, ana = sim_analytical_consistent(bp; n_chains = 5000, rng = StableRNG(1))
             for (e, a) in zip(emp, ana)
                 @test e ≈ a atol = 0.02
             end
@@ -1253,10 +1241,7 @@ using ForwardDiff
             # chain_id get independent θ draws (including the
             # n_initial > 1 case where multiple index cases exist).
             model = BranchingProcess(cm, Exponential(5.0))
-            states = simulate(
-                model, 500;
-                max_cases = 200, rng = StableRNG(3)
-            )
+            states = simulate(model, 500; max_cases = 200, rng = StableRNG(3))
             all_consistent = true
             for s in states
                 by_chain = Dict{Int, Float64}()
@@ -1629,9 +1614,7 @@ using ForwardDiff
             spec = ModelSpec(
                 BranchingProcess(Poisson(0.5), Exponential(5.0));
                 interventions = [iso],
-                attributes = clinical_presentation(
-                    incubation_period = LogNormal(1.0, 0.3)
-                )
+                attributes = clinical_presentation(incubation_period = LogNormal(1.0, 0.3))
             )
             sizes = [3, 4, 5]
             one_seed = ChainSizes(sizes)
@@ -1655,9 +1638,7 @@ using ForwardDiff
             spec = ModelSpec(
                 BranchingProcess(Poisson(0.5), Exponential(5.0));
                 interventions = [iso],
-                attributes = clinical_presentation(
-                    incubation_period = LogNormal(1.0, 0.3)
-                )
+                attributes = clinical_presentation(incubation_period = LogNormal(1.0, 0.3))
             )
             data = ChainSizes([3, 4, 5])
             ll_concluded = loglikelihood(data, spec; n_sim = 20_000, rng = StableRNG(1))
@@ -1710,9 +1691,7 @@ using ForwardDiff
             spec = ModelSpec(
                 BranchingProcess(Poisson(0.5), Exponential(5.0));
                 interventions = [iso],
-                attributes = clinical_presentation(
-                    incubation_period = LogNormal(1.0, 0.3)
-                )
+                attributes = clinical_presentation(incubation_period = LogNormal(1.0, 0.3))
             )
             data = ChainLengths([5])
             ll_one = loglikelihood(
@@ -1753,8 +1732,7 @@ using ForwardDiff
         @testset "Depends only on k, not R (scale-invariant)" begin
             # The Lorenz curve of Gamma(k, R/k) is scale-invariant in the mean,
             # so R does not affect the result — documented, not a bug.
-            @test proportion_transmission(0.5, 0.3) ==
-                proportion_transmission(100.0, 0.3)
+            @test proportion_transmission(0.5, 0.3) == proportion_transmission(100.0, 0.3)
         end
 
         @testset "Known approximate values" begin
@@ -2341,20 +2319,14 @@ using ForwardDiff
                 extinction_probability(NegBin(2.5 * (1 - c * e), 0.5))
             @test reproduction_number(nb_spec) ≈ 2.5 * (1 - c * e)
 
-            poisson_spec = ModelSpec(
-                BranchingProcess(Poisson(2.0)); interventions = [mv]
-            )
+            poisson_spec = ModelSpec(BranchingProcess(Poisson(2.0)); interventions = [mv])
             @test extinction_probability(poisson_spec) ≈
                 extinction_probability(Poisson(2.0 * (1 - c * e)))
         end
 
         @testset "A fully effective, fully delivered campaign gives R = 0" begin
-            mv = MassVaccination(
-                efficacy = 1.0, eligibility_time = -100.0, coverage = 1.0
-            )
-            poisson_spec = ModelSpec(
-                BranchingProcess(Poisson(2.0)); interventions = [mv]
-            )
+            mv = MassVaccination(efficacy = 1.0, eligibility_time = -100.0, coverage = 1.0)
+            poisson_spec = ModelSpec(BranchingProcess(Poisson(2.0)); interventions = [mv])
             @test reproduction_number(poisson_spec) == 0.0
             @test extinction_probability(poisson_spec) == 1.0
 

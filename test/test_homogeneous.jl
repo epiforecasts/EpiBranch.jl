@@ -564,10 +564,7 @@ end
         m = ModelSpec(pool40; interventions = [LeakyVaccine(1.0, 0.0)])
         @test_throws ArgumentError simulate(m; rng = StableRNG(1), n_initial = 2)
         @test simulate(
-            ModelSpec(
-                pool40;
-                attributes = transmission_traits(susceptibility = 0.0)
-            );
+            ModelSpec(pool40; attributes = transmission_traits(susceptibility = 0.0));
             rng = StableRNG(1), n_initial = 2
         ).cumulative_cases == 2
 

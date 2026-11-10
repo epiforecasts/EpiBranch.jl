@@ -188,10 +188,7 @@ struct _MaskLessRule <: EpiHouseholds.ConditionOn end
         # The race draws from the RNG stream in settling order, so this test pins
         # the order in which each household's members settle.
         st = simulate(
-            ModelSpec(
-                HouseholdProcess([3, 4], Exponential(2.0));
-                progression = _sir(4.0)
-            );
+            ModelSpec(HouseholdProcess([3, 4], Exponential(2.0)); progression = _sir(4.0));
             rng = StableRNG(7)
         )
         @test [ind.infection_time for ind in st.individuals] ≈
@@ -258,10 +255,7 @@ struct _MaskLessRule <: EpiHouseholds.ConditionOn end
             progression = _sir(2.0), attributes = attrs
         )
         meansize(attrs) = sum(
-            simulate(
-                build(attrs);
-                rng = StableRNG(s)
-            ).cumulative_cases for s in 1:10
+            simulate(build(attrs); rng = StableRNG(s)).cumulative_cases for s in 1:10
         ) / 10
 
         full = meansize(transmission_traits(susceptibility = 1.0))
@@ -421,10 +415,7 @@ struct _MaskLessRule <: EpiHouseholds.ConditionOn end
         @test !any(
             is_infected,
             simulate(
-                build(
-                    transmission_traits(susceptibility = 0.0),
-                    AbstractIntervention[]
-                );
+                build(transmission_traits(susceptibility = 0.0), AbstractIntervention[]);
                 rng = StableRNG(5)
             ).individuals
         )
@@ -579,10 +570,7 @@ struct _MaskLessRule <: EpiHouseholds.ConditionOn end
 
         layout = compile_household_pairs(data; external = true)
         @test loglikelihood(data, m) ≈
-            pairwise_surv_loglik(
-            Exponential(10.0), data, layout;
-            external_hazard = 0.1
-        )
+            pairwise_surv_loglik(Exponential(10.0), data, layout; external_hazard = 0.1)
         g(θ) = pairwise_surv_loglik(
             Exponential(exp(θ[1])), data, layout;
             external_hazard = exp(θ[2])
@@ -764,8 +752,7 @@ struct _MaskLessRule <: EpiHouseholds.ConditionOn end
 
         # a mild dependence on the pair ids exercises the routing, not the physics
         kern(i, j) = Exponential(3.0 + 0.01 * (i + j))
-        @test pairwise_surv_loglik(kern, data, layout) ≈
-            pairwise_surv_loglik(kern, data)
+        @test pairwise_surv_loglik(kern, data, layout) ≈ pairwise_surv_loglik(kern, data)
     end
 
     @testset "covariate kernel: simulate → likelihood round trip recovers both scales" begin
@@ -1021,14 +1008,8 @@ struct _MaskLessRule <: EpiHouseholds.ConditionOn end
         )
 
         # mismatched input lengths are rejected at compile time
-        @test_throws ArgumentError compile_household_pairs(
-            [1, 1], [true],
-            [true, false]
-        )
-        @test_throws ArgumentError HouseholdInfections(
-            [1, 1], [0.0], [0.0], [1.0],
-            [true]
-        )
+        @test_throws ArgumentError compile_household_pairs([1, 1], [true], [true, false])
+        @test_throws ArgumentError HouseholdInfections([1, 1], [0.0], [0.0], [1.0], [true])
     end
 
     @testset "simulated index cases at time 0 evaluated with a community hazard" begin
@@ -1076,10 +1057,7 @@ struct _MaskLessRule <: EpiHouseholds.ConditionOn end
             layout = compile_household_pairs(d; external = ext > 0)
             @test isfinite(loglikelihood(d, m))
             @test isfinite(
-                pairwise_surv_loglik(
-                    Weibull(1.5, 4.0), d, layout;
-                    external_hazard = ext
-                )
+                pairwise_surv_loglik(Weibull(1.5, 4.0), d, layout; external_hazard = ext)
             )
         end
     end
@@ -1178,10 +1156,7 @@ struct _MaskLessRule <: EpiHouseholds.ConditionOn end
             progression = _sir(7.0), interventions = ivs, attributes = clinical
         )
         meansize(ivs) = sum(
-            simulate(
-                build(ivs);
-                rng = StableRNG(s)
-            ).cumulative_cases for s in 1:15
+            simulate(build(ivs); rng = StableRNG(s)).cumulative_cases for s in 1:15
         ) / 15
 
         @test meansize([iso, ct]) < meansize([iso])

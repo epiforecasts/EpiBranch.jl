@@ -8,10 +8,7 @@
         # resolution step.
         for seed in 1:5
             m = BranchingProcess(Poisson(3.0), Exponential(5.0); population_size = 50)
-            state = simulate(
-                m; max_cases = 500,
-                rng = StableRNG(seed)
-            )
+            state = simulate(m; max_cases = 500, rng = StableRNG(seed))
             @test state.cumulative_cases <= 50
         end
     end

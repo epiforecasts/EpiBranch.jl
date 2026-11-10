@@ -204,9 +204,7 @@ struct _UndeclaredTransition <: EpiBranch.AbstractClinicalTransition end
         @test !EpiBranch.has_single_type_law(multi_type_model)
 
         # Any other exception from `single_type_offspring` propagates unchanged.
-        @test_throws ErrorException EpiBranch.has_single_type_law(
-            _BrokenOffspringModel()
-        )
+        @test_throws ErrorException EpiBranch.has_single_type_law(_BrokenOffspringModel())
     end
 
     @testset "offspring_law_unchanged" begin

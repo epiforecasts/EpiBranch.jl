@@ -347,9 +347,7 @@ EpiBranch.interventions(m::_ProcessWithInterventions) = m.interventions
         prog = [Transition(:onset; from = :infection, delay = Exponential(3.0))]
         iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
         attr = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
-        spec = ModelSpec(
-            bp; progression = prog, interventions = [iso], attributes = attr
-        )
+        spec = ModelSpec(bp; progression = prog, interventions = [iso], attributes = attr)
 
         if VERSION >= v"1.11"
             @test Base.ispublic(EpiBranch, :progression)
@@ -564,12 +562,7 @@ EpiBranch.interventions(m::_ProcessWithInterventions) = m.interventions
         # is not flagged even though it might leave some cases uncovered.
         @test_logs ModelSpec(
             bp;
-            progression = [
-                Death(
-                    delay = Exponential(1.0),
-                    probability = (rng, ind) -> 0.3
-                ),
-            ]
+            progression = [Death(delay = Exponential(1.0), probability = (rng, ind) -> 0.3)]
         )
 
         # No terminal transitions at all is not the gap this check catches.
@@ -628,9 +621,7 @@ EpiBranch.interventions(m::_ProcessWithInterventions) = m.interventions
         # The author's own helper of a hook's name is not a mis-written hook,
         # and an intervention in that module with no hooks at all still gets
         # the general message rather than a diagnosis of the helper.
-        @test_logs ModelSpec(
-            bp; interventions = [_OwnHelpers.HasHelper(Int[])]
-        )
+        @test_logs ModelSpec(bp; interventions = [_OwnHelpers.HasHelper(Int[])])
         @test_logs (
             :warn,
             r"NoHooks has a method of its own for none of the hooks.*`EpiBranch\.has_effect\(::NoHooks\) = true`"s,
@@ -763,9 +754,7 @@ EpiBranch.interventions(m::_ProcessWithInterventions) = m.interventions
         @test !EpiBranch.has_effect(_OwnHelpers.NoHooks())
         @test EpiBranch.has_effect(_ActionsHookOnly())
         # `Isolation` implements several hooks properly and stays silent too.
-        iso = Isolation(
-            onset_to_isolation_delay = Exponential(1.0), duration = Inf
-        )
+        iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
         @test_logs ModelSpec(bp; interventions = [iso])
     end
 
@@ -775,8 +764,6 @@ EpiBranch.interventions(m::_ProcessWithInterventions) = m.interventions
         bp = BranchingProcess(Poisson(1.5), Exponential(5.0))
         rep = Reporting(delay = Dirac(0.0), probability = 0.5)
         @test ModelSpec(bp; progression = [rep]) isa ModelSpec
-        @test ModelSpec(
-            bp; progression = [rep], observation = MinimumSize(2)
-        ) isa ModelSpec
+        @test ModelSpec(bp; progression = [rep], observation = MinimumSize(2)) isa ModelSpec
     end
 end

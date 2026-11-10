@@ -168,10 +168,7 @@ using Dates
         # (before the truncation constant it did not).
         xs = range(0.0, 20.0; length = 4001)
         dens = [exp(logpdf(d, x)) for x in xs]
-        integral = sum(
-            (dens[i] + dens[i + 1]) / 2 * step(xs)
-                for i in 1:(length(xs) - 1)
-        )
+        integral = sum((dens[i] + dens[i + 1]) / 2 * step(xs) for i in 1:(length(xs) - 1))
         @test isapprox(integral, 1.0; atol = 1.0e-3)
     end
 
@@ -249,10 +246,7 @@ using Dates
     @testset "generation_R output" begin
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(3.0), Exponential(5.0))
-        state = simulate(
-            model;
-            condition = 20:500, max_cases = 500, rng = rng
-        )
+        state = simulate(model; condition = 20:500, max_cases = 500, rng = rng)
 
         df = generation_R(state)
         @test df isa DataFrame
@@ -263,10 +257,7 @@ using Dates
     @testset "containment_probability with max_cases" begin
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(2.0), Exponential(5.0))
-        results = simulate(
-            model, 100;
-            max_cases = 50, rng = rng
-        )
+        results = simulate(model, 100; max_cases = 50, rng = rng)
 
         cp_naive = containment_probability(results)
         cp_aware = containment_probability(results; max_cases = 50)
@@ -298,10 +289,7 @@ using Dates
     @testset "max_time terminates simulation" begin
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(2.0), Exponential(5.0))
-        state = simulate(
-            model;
-            max_cases = 10_000, max_time = 30.0, rng = rng
-        )
+        state = simulate(model; max_cases = 10_000, max_time = 30.0, rng = rng)
 
         # Check infected individuals only — non-infected contacts may have
         # later generation times but were never active
@@ -316,10 +304,7 @@ using Dates
 
         rng = StableRNG(42)
         model = BranchingProcess(NegBin(R, k), Exponential(5.0))
-        results = simulate(
-            model, 500;
-            max_cases = 5000, max_generations = 200, rng = rng
-        )
+        results = simulate(model, 500; max_cases = 5000, max_generations = 200, rng = rng)
         q_simulated = containment_probability(results)
 
         @test abs(q_analytical - q_simulated) < 0.1

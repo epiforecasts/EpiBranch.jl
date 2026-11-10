@@ -125,8 +125,7 @@ end
 
         # a per-edge vector of identical kernels is the shared kernel
         same = [[Exponential(3.0) for _ in nbrs] for nbrs in adj]
-        @test loglikelihood(data, NetworkProcess(adj, same)) ≈
-            loglikelihood(data, shared)
+        @test loglikelihood(data, NetworkProcess(adj, same)) ≈ loglikelihood(data, shared)
 
         # heterogeneous per-edge kernels resolve along the edge each row travels,
         # as the equivalent (infector, susceptible) callable does
@@ -226,10 +225,7 @@ end
             layout = compile_contact_pairs(d; external = ext > 0)
             @test isfinite(loglikelihood(d, m))
             @test isfinite(
-                pairwise_surv_loglik(
-                    Weibull(1.5, 4.0), d, layout;
-                    external_hazard = ext
-                )
+                pairwise_surv_loglik(Weibull(1.5, 4.0), d, layout; external_hazard = ext)
             )
         end
     end
@@ -237,10 +233,7 @@ end
     @testset "community hazard" begin
         adj = _random_graph(1000, 3000, StableRNG(10))
         m = ModelSpec(
-            NetworkProcess(
-                adj, Exponential(6.0);
-                external_hazard = 0.005, obs_end = 40.0
-            );
+            NetworkProcess(adj, Exponential(6.0); external_hazard = 0.005, obs_end = 40.0);
             progression = _seir(4.0)
         )
         data = network_infections(simulate(m; rng = StableRNG(11)), m)
@@ -250,10 +243,7 @@ end
         layout = compile_contact_pairs(data; external = true)
         @test layout.external
         @test loglikelihood(data, m) ==
-            pairwise_surv_loglik(
-            Exponential(6.0), data, layout;
-            external_hazard = 0.005
-        )
+            pairwise_surv_loglik(Exponential(6.0), data, layout; external_hazard = 0.005)
         @test_throws ArgumentError pairwise_surv_loglik(Exponential(6.0), data, layout)
 
         # the rate and the kernel scale are both recovered jointly
@@ -300,10 +290,7 @@ end
         # over their neighbours' whole windows, as the simulation does
         adj = _random_graph(2000, 4000, StableRNG(16))
         m = ModelSpec(
-            NetworkProcess(
-                adj, Exponential(8.0);
-                external_hazard = 0.01, obs_end = 10.0
-            );
+            NetworkProcess(adj, Exponential(8.0); external_hazard = 0.01, obs_end = 10.0);
             progression = _seir(4.0)
         )
         data = network_infections(simulate(m; rng = StableRNG(17)), m)
@@ -325,10 +312,7 @@ end
         # open recorded as `Inf`
         adj = _random_graph(2000, 4000, StableRNG(16))
         m = ModelSpec(
-            NetworkProcess(
-                adj, Exponential(8.0);
-                external_hazard = 0.01, obs_end = 10.0
-            );
+            NetworkProcess(adj, Exponential(8.0); external_hazard = 0.01, obs_end = 10.0);
             progression = _seir(4.0)
         )
         state = simulate(m; rng = StableRNG(17))

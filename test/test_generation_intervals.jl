@@ -36,10 +36,7 @@
         @test all(>=(0), gts)
 
         # Vector-of-states method flattens.
-        states = simulate(
-            model, 5; max_cases = 200,
-            rng = StableRNG(3)
-        )
+        states = simulate(model, 5; max_cases = 200, rng = StableRNG(3))
         all_gts = realised_generation_intervals(states)
         @test length(all_gts) == sum(
             length(realised_generation_intervals(s))

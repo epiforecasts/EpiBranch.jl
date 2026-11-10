@@ -68,8 +68,7 @@ _case_hook_model(ivs) = ModelSpec(
             @test ind.state[:_offered_count] ==
                 count(c -> c.infection_time <= infector.infection_time, cases)
         end
-        @test state.max_infection_time ==
-            maximum(ind.infection_time for ind in cases)
+        @test state.max_infection_time == maximum(ind.infection_time for ind in cases)
         @test all(state.scratch[:_one_infector_per_call])
     end
 

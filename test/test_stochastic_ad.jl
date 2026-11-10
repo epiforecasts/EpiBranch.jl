@@ -103,9 +103,7 @@ end
     @testset "one risk source" begin
         p0 = 0.3
         total(p) = sum(contact_survives(rng, (p,)) for _ in 1:n_contacts)
-        grad = mean(
-            StochasticAD.derivative_estimate(total, p0) for _ in 1:n_replicates
-        )
+        grad = mean(StochasticAD.derivative_estimate(total, p0) for _ in 1:n_replicates)
         # E[# survivors] = n_contacts * (1 - p); d/dp = -n_contacts
         @test grad ≈ -n_contacts rtol = 0.02
     end
@@ -113,9 +111,7 @@ end
     @testset "two independent risk sources" begin
         p1_0, p2_0 = 0.3, 0.2
         total(p1) = sum(contact_survives(rng, (p1, p2_0)) for _ in 1:n_contacts)
-        grad = mean(
-            StochasticAD.derivative_estimate(total, p1_0) for _ in 1:n_replicates
-        )
+        grad = mean(StochasticAD.derivative_estimate(total, p1_0) for _ in 1:n_replicates)
         # E[# survivors] = n_contacts * (1 - p1) * (1 - p2); d/dp1 = -n_contacts * (1 - p2)
         @test grad ≈ -n_contacts * (1 - p2_0) rtol = 0.02
     end

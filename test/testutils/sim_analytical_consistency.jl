@@ -68,10 +68,7 @@ function sim_analytical_consistent(
         max_cases::Int = 500
     )
     gen = generative_model(model)
-    states = simulate(
-        gen, n_chains;
-        max_cases = max_cases, rng = rng
-    )
+    states = simulate(gen, n_chains; max_cases = max_cases, rng = rng)
     true_sizes = Int[]
     for s in states
         append!(true_sizes, chain_statistics(s).size)

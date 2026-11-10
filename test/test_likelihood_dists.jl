@@ -26,8 +26,7 @@
         seeds = [1, 2, 1, 1]
 
         d = chain_size_distribution(bp; seeds = seeds)
-        @test logpdf(d, data) ≈
-            loglikelihood(ChainSizes(data; seeds = seeds), Poisson(0.5))
+        @test logpdf(d, data) ≈ loglikelihood(ChainSizes(data; seeds = seeds), Poisson(0.5))
 
         pc = [1.0, 0.5, 0.0, 0.7]
         d_pc = chain_size_distribution(bp; seeds = seeds, prob_concluded = pc)
@@ -78,9 +77,7 @@
         # Explicit kwargs still force the simulation-based wrapper.
         @test chain_size_distribution(bp; n_sim = 500, rng = StableRNG(1)) isa
             Distribution
-        @test isfinite(
-            loglikelihood(ChainSizes(data), bp; n_sim = 500, rng = StableRNG(1))
-        )
+        @test isfinite(loglikelihood(ChainSizes(data), bp; n_sim = 500, rng = StableRNG(1)))
     end
 
     @testset "chain_size_distribution — bare-pgf GeneratingFunctionOffspring falls back" begin
@@ -147,9 +144,7 @@
 
     @testset "chain_size_distribution — whole-chain detection" begin
         data = [1, 2, 1, 3, 1]
-        obs = ModelSpec(
-            BranchingProcess(Poisson(0.5)); observation = ChainDetection(0.4)
-        )
+        obs = ModelSpec(BranchingProcess(Poisson(0.5)); observation = ChainDetection(0.4))
         d = chain_size_distribution(obs; n_sim = 0)
         @test logpdf(d, data) ≈ loglikelihood(ChainSizes(data), obs)
     end
@@ -313,9 +308,7 @@
             BranchingProcess(Poisson(0.5));
             progression = [Reporting(probability = 0.0, delay = 0.0, from = :infection)]
         )
-        d = chain_size_distribution(
-            spec; seeds = [1], condition = 0:0, max_attempts = 5
-        )
+        d = chain_size_distribution(spec; seeds = [1], condition = 0:0, max_attempts = 5)
         err = try
             rand(StableRNG(1), d, 1)
             nothing

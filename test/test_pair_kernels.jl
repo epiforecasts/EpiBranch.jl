@@ -169,9 +169,7 @@ end
     @test EpiBranch.cumhazard(halted, 8.0) ≈ -logccdf(Uniform(0.0, 5.0), 2.0)
     @test invlogccdf(halted, -100.0) == Inf
     @test invlogccdf(halted, -0.1) ≈ invlogccdf(Uniform(0.0, 5.0), -0.1)
-    off = EpiBranch._CalendarScaledKernel(
-        Uniform(0.0, 5.0), Steps(Float64[], [0.0]), 0.0
-    )
+    off = EpiBranch._CalendarScaledKernel(Uniform(0.0, 5.0), Steps(Float64[], [0.0]), 0.0)
     @test EpiBranch.cumhazard(off, 5.0) == 0.0
     @test invlogccdf(off, -0.5) == Inf
 
@@ -473,10 +471,7 @@ EpiBranch.contact_structure(::StateKernelInfections) = [[2], [1]]
     data = StateKernelInfections([0.0, 3.0], [1.0, 4.0], [5.0, 6.0], [true, false], 0.0)
     layout = compile_contact_pairs(data)
     callback(c, a, b) = Exponential(
-        exp(
-            a.log_scale + b.log_scale +
-                c.infector_infection_time
-        )
+        exp(a.log_scale + b.log_scale + c.infector_infection_time)
     )
     records = [(log_scale = 0.1,), (log_scale = 0.3,)]
     kernel = PairKernel(callback; state = records)
@@ -818,10 +813,7 @@ end
     early(state) = count(ind -> ind.infection_time < 1.0, state.individuals)
     redrawn = mean(
         early(
-            stateful_test_race(
-                live, seeds;
-                interventions = [TickEveryCase()], seed
-            )
+            stateful_test_race(live, seeds; interventions = [TickEveryCase()], seed)
         ) for seed in 1:1000
     )
     ordinary = mean(early(stateful_test_race(law, seeds; seed)) for seed in 1:1000)
