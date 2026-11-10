@@ -108,9 +108,9 @@ struct Scheduled{I <: AbstractIntervention, F, T <: Tuple, W} <: InterventionWra
     time_aware::Bool
     # The calendar window the gate amounts to, as a `ClockWindow`, when it is
     # nothing else (a `start_time` and/or an `end_time`); `nothing` for a gate
-    # that also reads the simulation (a case count, a trigger, a predicate),
-    # which has no window to read. The population-level approximations read
-    # it to switch a campaign on and off on the right days.
+    # that also reads the simulation (a case count, a trigger, a predicate)
+    # and so has no window. The population-level approximations read it to
+    # switch a campaign on and off on the right days.
     window::W
 end
 

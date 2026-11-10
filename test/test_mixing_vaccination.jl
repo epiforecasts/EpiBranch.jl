@@ -4,8 +4,8 @@ using StableRNGs
 
 # Two equal age bands assigned alternately, so the `n_initial` infections the
 # exact race places on the first ids split evenly between them, as the
-# approximation splits them in proportion to size. A case's onset is its
-# infection time, so a group's trigger is exactly its first infection.
+# approximation splits them in proportion to size. The onset of a case is its
+# infection time, so the trigger of a group is exactly its first infection.
 function _vacc_spec(
         ; n = 2_000, mode = LeakyMode(), budget = nothing, delay = 3.0, wrap = identity,
         efficacy = 0.9, coverage = 1.0, group_key = :age_band, eligibility = OnSymptomOnset()
@@ -57,8 +57,7 @@ _vacc_infected(model, s) = sum(model.group_sizes) - sum(s.S) - sum(s.V) - sum(s.
             @test sum(approx.D) ≈ 2_800
             @test all(==(2_800), doses)
             @test isapprox(_vacc_infected(model, approx), sum(cases) / 4; atol = 0.06 * 4_000)
-            # The campaign makes a difference: without it nearly everybody
-            # is infected.
+            # Without the campaign nearly everybody is infected.
             unvaccinated = MixingMeanFieldProcess(_vacc_spec(; budget = 0.0); removal_rate = 0.2)
             bare = simulate(unvaccinated; n_initial = 20, max_time = 80.0)
             @test _vacc_infected(model, approx) < _vacc_infected(unvaccinated, bare) - 400
@@ -101,8 +100,8 @@ _vacc_infected(model, s) = sum(model.group_sizes) - sum(s.S) - sum(s.V) - sum(s.
             @test lna_a.covariance[1:4, 1:4] ≈ lna_b.covariance[1:4, 1:4]
         end
 
-        # A vaccine that does nothing still uses up doses, but the people who
-        # get them are as susceptible as the rest.
+        # A vaccine that does nothing still uses up doses, and those who get
+        # them are as susceptible as the rest.
         for mode in (LeakyMode(), AllOrNothingMode())
             useless = MixingMeanFieldProcess(
                 _vacc_spec(; efficacy = 0.0, mode); removal_rate = 0.2
@@ -215,8 +214,8 @@ _vacc_infected(model, s) = sum(model.group_sizes) - sum(s.S) - sum(s.V) - sum(s.
         )
         u = simulate(by_susceptibles; n_initial = 10, max_time = 10.0)
         @test sum(u.D) ≈ 1_000 rtol = 1.0e-3
-        # Group 1 mixes harder inside itself, so it loses susceptibles
-        # faster and ends up with a smaller share of the doses than its size.
+        # Group 1 mixes harder inside itself and loses susceptibles faster,
+        # so its share of the doses is smaller than its share of the population.
         @test u.D[1] / sum(u.D) < n[1] / sum(n)
 
         lna = MixingLinearNoiseProcess(spec; removal_rate = 0.2, allocation = SplitByGroupSize())
@@ -300,8 +299,8 @@ _vacc_infected(model, s) = sum(model.group_sizes) - sum(s.S) - sum(s.V) - sum(s.
     end
 
     @testset "rejects what it cannot approximate" begin
-        # `group_key` must be one the compartments are kept for, and the
-        # message names both.
+        # `group_key` must be one the compartments are kept for. The message
+        # names both.
         err = try
             MixingMeanFieldProcess(_vacc_spec(; group_key = :group); removal_rate = 0.2)
             nothing
@@ -314,7 +313,7 @@ _vacc_infected(model, s) = sum(model.group_sizes) - sum(s.S) - sum(s.V) - sum(s.
             _vacc_spec(; group_key = :group); removal_rate = 0.2
         )
 
-        # Other interventions would be silently left out.
+        # Other interventions are refused.
         for other in (
                 MassVaccination(; efficacy = 0.7, eligibility_time = 30.0),
                 Isolation(onset_to_isolation_delay = 1.0, duration = 7.0),

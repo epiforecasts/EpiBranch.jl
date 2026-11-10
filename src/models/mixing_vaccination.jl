@@ -2,14 +2,13 @@
 #
 # `MixingMeanFieldProcess` and `MixingLinearNoiseProcess`
 # (mixing_population_dynamics.jl) take a `GroupVaccination` campaign from the
-# `ModelSpec` they approximate and turn it into doses into each mixing
-# group's compartments. Everything the intervention already defines is read
-# from it (`group_key`, `efficacy` and `mode`, `coverage`, `dose_delay`, the
-# window of a `Scheduled` wrapper and the budget of a `CapacityConstrained`
-# one), so nothing is written down twice. What the exact model settles
-# through individual cases, which a compartment cannot, is the one thing the
-# caller chooses: how a budget of doses is shared out across groups, a
-# `DoseAllocation`.
+# `ModelSpec` they approximate and turn it into doses into the compartments
+# of each mixing group. The intervention already defines `group_key`,
+# `efficacy` and `mode`, `coverage`, `dose_delay`, the window of a `Scheduled`
+# wrapper and the budget of a `CapacityConstrained` one, and all of these are
+# read from it. The exact model shares a budget out through individual cases,
+# which a compartment lacks, so the caller chooses a `DoseAllocation` to say
+# how a budget of doses is shared across groups.
 
 """
     DoseAllocation
@@ -94,9 +93,9 @@ struct SplitBySusceptibles <: DoseAllocation end
 
 # How one dose acts on a susceptible: the share who become fully immune, the
 # share who move to the vaccinated-susceptible compartment, and that
-# compartment's hazard relative to an unvaccinated susceptible's. A leaky
-# vaccine leaves everyone dosed susceptible at `1 - efficacy` of the hazard;
-# an all-or-nothing one makes a share `efficacy` immune and leaves the rest
+# compartment's hazard relative to that of an unvaccinated susceptible. A leaky
+# vaccine leaves everyone dosed susceptible at `1 - efficacy` of the hazard.
+# An all-or-nothing one makes a share `efficacy` immune and leaves the rest
 # exactly as exposed as before. A new mode defines a method of its own, and
 # one without a method is refused rather than approximated by another.
 function _dose_outcome(::LeakyMode, efficacy)
@@ -117,7 +116,7 @@ end
 
 # ── The campaign read from a ModelSpec ───────────────────────────────
 
-# A model with no vaccination: nothing flows between compartments.
+# A model with no vaccination, so no doses flow between compartments.
 struct NoCampaign end
 
 # A `GroupVaccination`, with the groups its doses go to and the gates the
@@ -240,9 +239,9 @@ function _read_campaign(ivs::AbstractVector, mixing_by, groups, allocation, what
     )
 end
 
-# The inputs a compartment can only take as numbers: a distribution or a
-# function would vary person by person, which an average cannot stand in for
-# without a choice the caller has not made.
+# The inputs a compartment can only take as numbers. A distribution or a
+# function varies from person to person, and an average cannot stand in for
+# it without a choice by the caller.
 function _check_dose_inputs(iv::GroupVaccination)
     for (name, x, lo, hi) in (
             ("efficacy", efficacy(iv), 0.0, 1.0), ("coverage", iv.coverage, 0.0, 1.0),
@@ -270,7 +269,7 @@ end
 
 # ── Progress of the campaign through time ────────────────────────────
 
-# Where a campaign has got to, held in each state so a continued run picks
+# The progress of a campaign, held in each state so a continued run picks
 # it up. `dose_time[v]` is when vaccination group `v`'s doses are due (`Inf`
 # until it is triggered) and `fired[v]` whether they have been offered;
 # `baseline[v]` is the expected number of cases already counted when the
@@ -296,8 +295,8 @@ end
 # ── Doses given continuously ─────────────────────────────────────────
 
 # Doses per day into each mixing group at time `t`, for the allocations that
-# give doses as a rate; none for `TriggeredInPriority`, which gives them in
-# batches (see `_fire_doses!`).
+# give doses as a rate. `TriggeredInPriority` gives them in batches instead
+# (see `_fire_doses!`).
 _dose_rate(::NoCampaign, model, t, S, D) = zeros(length(S))
 _dose_rate(c::GroupCampaign, model, t, S, D) = _dose_rate(c.allocation, c, model, t, S, D)
 _dose_rate(::TriggeredInPriority, c, model, t, S, D) = zeros(length(S))
@@ -349,10 +348,10 @@ end
 
 # ── Doses given in batches ───────────────────────────────────────────
 
-# Doses left in the budget for a batch dated `d`, counted exactly as the
-# `CapacityConstrained` wrapper counts them for one more person: what is
+# Doses left in the budget for a batch dated `d`, counted as the
+# `CapacityConstrained` wrapper counts them for one more person: those
 # available through the end of the period `d` falls in (with `carry_over`,
-# everything unspent before it too), less what has been given.
+# including everything unspent before it), less those already given.
 _budget_left(::Nothing, log, d) = Inf
 function _budget_left(cc::CapacityConstrained, log, d)
     period_start, period_end = _period_bounds(cc, d)
@@ -369,7 +368,7 @@ end
 
 # Give every group whose doses are due by `t` its batch, in the order they
 # fell due. A group takes the people it can still reach (its `coverage` of
-# the group, less those already dosed) or what the budget has left, and the
+# the group, less those already dosed) or the doses left in the budget. The
 # batch is spread over the mixing groups in it in proportion to the people
 # each can still reach. A dose reaches an unvaccinated susceptible with
 # probability `S / (people not yet dosed)`, whatever the person's infection
@@ -472,8 +471,8 @@ end
 # ── Handing an exact run's campaign across a switch ──────────────────
 
 # Whether `ind` has had a dose by `t` in an exact run, and whether it took
-# (an all-or-nothing dose recorded as full protection), which is how a
-# `HybridProcess` files the people already dosed in the exact phase.
+# (an all-or-nothing dose recorded as full protection). A `HybridProcess`
+# files the people already dosed in the exact phase by these.
 _dose_given(::NoCampaign, ind, t) = false
 function _dose_given(c::GroupCampaign, ind, t)
     dose_t = _dose_time(dose_label(c.vaccination), ind)
@@ -487,12 +486,11 @@ function _dose_protects(c::GroupCampaign, ind)
     return eff isa Real && eff >= 1.0
 end
 
-# The campaign's progress as the exact run `es` knows it at `t`: a group the
-# exact run has triggered keeps the trigger time it found (which is what
-# `eligibility` and its delays decide), so its doses are due `dose_delay` after
-# that, or already given if that is past. A group it has not triggered waits for
-# one more expected case from here, rather than being triggered at once by the
-# cases it has already seen.
+# The progress of the campaign in the exact run `es` at `t`. A group the exact
+# run has triggered keeps the trigger time it found (decided by `eligibility`
+# and its delays), and its doses are due `dose_delay` after that, or already
+# given if that is past. A group it has not triggered waits for one more
+# expected case from here, and the cases already seen do not trigger it at once.
 _handover_progress(::NoCampaign, es, t, cases) = _new_progress(NoCampaign())
 function _handover_progress(c::GroupCampaign, es, t, cases)
     progress = _new_progress(c)

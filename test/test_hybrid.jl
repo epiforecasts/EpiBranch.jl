@@ -218,8 +218,8 @@ using StableRNGs
             pure = simulate(approx; n_initial = 20, max_time = 80.0)
             cases(s) = 4_000 - sum(s.S) - sum(s.V) - sum(s.P)
 
-            # Switching before the doses fall due hands the group's trigger
-            # across: its doses are still to come, on day 3.
+            # Switching before the doses fall due passes the trigger of the
+            # group across, with its doses still to come on day 3.
             early = simulate(
                 HybridProcess(spec, approx; threshold = 30, check_interval = 0.5);
                 n_initial = 20, max_time = 80.0, rng = StableRNG(1)
@@ -231,7 +231,7 @@ using StableRNGs
             @test sum(early.approx.D) ≈ 2_800
             @test isapprox(cases(early.approx), cases(pure); atol = 0.12 * 4_000)
 
-            # Switching after them hands over the people already dosed, and
+            # Switching after them passes on the people already dosed and
             # their protection.
             late = simulate(
                 HybridProcess(spec, approx; threshold = 80, check_interval = 0.5);

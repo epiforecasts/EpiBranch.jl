@@ -4,21 +4,21 @@
 # (population_dynamics.jl): susceptible, infectious and removed compartments
 # per mixing group rather than one set for the whole population, the
 # large-population limit of a `MixingProcess` composed with a single
-# exponential removal step. Built directly from the `ModelSpec` it
-# approximates, reading the group sizes off the population its `attributes`
-# assign, the between-group rate and calendar off the `MixingProcess` itself,
-# and a `GroupVaccination` campaign off its interventions
-# (mixing_vaccination.jl), so the model is never written down twice. Shares
+# exponential removal step. It is built directly from the `ModelSpec` it
+# approximates: the group sizes come from the population its `attributes`
+# assign, the between-group rate and calendar from the `MixingProcess` itself,
+# and a `GroupVaccination` campaign from its interventions
+# (mixing_vaccination.jl), so the model is specified once. It shares
 # `simulate(model, state; max_time)` with the scalar approximations and the
-# exact models, so `HybridProcess` (hybrid.jl) can switch to either from a
+# exact models, which lets `HybridProcess` (hybrid.jl) switch to either from a
 # `MixingProcess` run.
 #
 # Each group keeps its susceptibles `S` who have had no dose, `I` infectious,
 # `V` dosed susceptibles (whose hazard is `hazard` times that of `S`: below one
-# for a leaky vaccine, one for the all-or-nothing vaccine's failures), `P`
+# for a leaky vaccine, one for the failures of an all-or-nothing vaccine), `P`
 # the immune (from before the outbreak, or from an all-or-nothing dose that
-# took), and `D`, the doses given so far, whatever their recipient's status.
-# What has been removed is what is left of the group's size, `R`.
+# took), and `D`, the doses given so far, whatever the status of the recipient.
+# The removed are the remainder of the group size, `R`.
 
 # A member's mixing group, read off its state the same missing-safe way
 # `_MassAction` reads it when the exact race is built (mass_action.jl), so a
@@ -143,9 +143,9 @@ end
 
 # ── Shared integration ───────────────────────────────────────────────
 
-# The state is carried as one vector `x = [S; I; V; P; D]`, each block with
-# one entry per group, so the same step serves the mean path of both
-# approximations; the linear noise covariance is over the first four blocks.
+# The state is held as one vector `x = [S; I; V; P; D]`, each block with
+# one entry per group. The same step serves the mean path of both
+# approximations, and the linear noise covariance is over the first four blocks.
 _unpack(x, G) = (
     view(x, 1:G), view(x, (G + 1):(2G)), view(x, (2G + 1):(3G)),
     view(x, (3G + 1):(4G)), view(x, (4G + 1):(5G)),
@@ -156,12 +156,12 @@ _outcome(c::GroupCampaign) = (immune = c.immune, vaccinated = c.vaccinated, haza
 
 # The rate of every reaction in each group: infection of the unvaccinated and
 # of the vaccinated susceptibles, removal, and a dose reaching an
-# unvaccinated susceptible and leaving them vaccinated or immune. `λ` is each
-# group's force of infection, from the contact matrix built when the model
-# was constructed, at time `t`; the dose rate is read at `tm`, a time inside
-# the step, since the budget is constant over each period the steps land on
-# the ends of. A dose reaches a person not yet dosed, so a susceptible's
-# share of them is `S` of the `size - D` who are left.
+# unvaccinated susceptible and leaving them vaccinated or immune. `λ` is the
+# force of infection of each group at time `t`, from the contact matrix built
+# when the model was constructed. The dose rate is read at `tm`, a time inside
+# the step, because the budget is constant over each period and the steps land
+# on the ends of the periods. A dose reaches a person not yet dosed, so the
+# susceptible share of the doses is `S` of the `size - D` who are left.
 function _mixing_rates(model, x, t, tm)
     G = length(model.groups)
     S, I, V, P, D = _unpack(x, G)
@@ -191,8 +191,8 @@ function _mixing_drift(model, x, t, tm)
 end
 
 # Fourth-order Runge–Kutta for `x`, with the drift evaluated at each of the
-# step's four stage times so a calendar scaling the contact matrix is read at
-# the time it actually applies to, rather than frozen at the step's start.
+# four stage times of the step, so a calendar scaling the contact matrix is
+# read at the time it applies to and not held at the start of the step.
 function _rk4_mixing_step(model, x, t::Real, h::Real)
     tm = t + h / 2
     k1 = _mixing_drift(model, x, t, tm)
@@ -203,10 +203,10 @@ function _rk4_mixing_step(model, x, t::Real, h::Real)
 end
 
 # The drift's Jacobian with respect to the four compartment blocks (the
-# doses `D` are a given function of time, not noise), by central differences:
-# the drift is smooth and low-order in the compartments, so this is as exact as
-# a hand-written one would be, and it follows whatever a dose allocation makes
-# the rates depend on.
+# doses `D` are a given function of time, not noise), by central differences.
+# The drift is smooth and low order in the compartments, so this is as exact as
+# a hand-written Jacobian and follows any dependence a dose allocation puts
+# into the rates.
 function _mixing_jacobian(model, x, t, tm)
     n = 4 * length(model.groups)
     J = zeros(n, n)
@@ -225,12 +225,12 @@ function _mixing_jacobian(model, x, t, tm)
 end
 
 # The Chemical Langevin diffusion for the `4G`-dimensional state
-# `(S, I, V, P)`: every reaction moves only its own group's compartments, by
-# its stoichiometry, so each adds its rate times the outer product of that
-# vector with itself at that group's own place in the matrix. Group `g`'s
-# infection reactions are driven by every group `h`'s infectious count, but
-# they share group `g`'s stoichiometry, so their propensities sum before
-# scaling it rather than needing one outer product per `(g, h)` pair.
+# `(S, I, V, P)`: every reaction moves only the compartments of its own group,
+# by its stoichiometry, and adds its rate times the outer product of that
+# vector with itself at the place of that group in the matrix. The infection
+# reactions of group `g` are driven by the infectious count of every group `h`
+# but share the stoichiometry of `g`, so their propensities are summed before
+# scaling it, with no outer product per `(g, h)` pair.
 const _MIXING_REACTIONS = (
     (:infect, (-1.0, 1.0, 0.0, 0.0)),
     (:infect_vaccinated, (0.0, 1.0, -1.0, 0.0)),
@@ -265,8 +265,8 @@ end
 _cases_by_group(::NoCampaign, model, x) = Float64[]
 _cases_by_group(c::GroupCampaign, model, x) = _group_cases(c, model, x)
 
-# A rate of doses must not carry a group past the people it can reach, which
-# the step that exhausts them would otherwise overshoot a little.
+# A rate of doses must not take a group past the people it can reach, which
+# the step that exhausts them would otherwise overshoot slightly.
 _cap_doses!(::NoCampaign, model, x) = nothing
 function _cap_doses!(c::GroupCampaign, model, x)
     G = length(model.groups)
@@ -278,8 +278,8 @@ end
 # Fixed-step RK4 from `t0` to `max_time`, in steps no longer than
 # `model.step` (the last one shortened to land exactly on `max_time`),
 # mirroring `_integrate_sir` for the scalar case, and shortened further to land
-# on the moments the campaign's doses change. Returns the new `x`, the
-# covariance if there was one, and moves `progress` on.
+# on the times the doses of the campaign change. Returns the new `x` and the
+# covariance if there was one, and advances `progress`.
 function _integrate_mixing(model, x, progress, Σ, t0, max_time)
     G = length(model.groups)
     campaign = model.campaign
@@ -311,7 +311,7 @@ function _integrate_mixing(model, x, progress, Σ, t0, max_time)
     return x, Σ
 end
 
-# The campaign's own progress at the start of a run: groups whose expected
+# The progress of the campaign at the start of a run. Groups whose expected
 # cases are already past the trigger (the initial infections) are triggered at
 # `t = 0`.
 function _start_progress(model, x)

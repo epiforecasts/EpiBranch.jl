@@ -180,10 +180,9 @@ _approx_state_type(::MeanFieldProcess) = MeanFieldState
 _approx_state_type(::LinearNoiseProcess) = LinearNoiseState
 
 # As `_compartment_counts`, but one count per mixing group and compartment
-# rather than one for the whole population: unlike `es.cumulative_cases`,
-# which already tallies the whole population as it runs, nothing in the exact
-# run keeps a per-group breakdown, so this walks `es.individuals` once to
-# build it. A person already dosed by `t` is counted in `D` whatever their
+# rather than one for the whole population. The exact run tallies the whole
+# population as it goes (`es.cumulative_cases`) but keeps no per-group
+# breakdown, so this walks `es.individuals` once to build one. A person already dosed by `t` is counted in `D` whatever their
 # status and, if not infected, as a vaccinated susceptible or as immune,
 # according to the dose they were recorded as taking.
 function _group_compartments(es::SimulationState, t::Real, approx)
