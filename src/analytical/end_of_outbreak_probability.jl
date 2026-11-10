@@ -47,7 +47,10 @@ recent case's `τ` overstates the probability that the cluster is over.
 
 Use it as `prob_concluded` in `loglikelihood(::ChainSizes, ...)` or
 [`chain_size_distribution`](@ref) for real-time cluster data, where some
-clusters may still be growing.
+clusters may still be growing. The resulting mixture is an approximation to
+the exact probability of the data, and `π` depends on `R` and `k`, so inside a
+fit recompute it from the current parameters; see
+[`loglikelihood`](@ref) for `ChainSizes`.
 
 # Examples
 

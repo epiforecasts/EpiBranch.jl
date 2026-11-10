@@ -95,7 +95,8 @@ model, or fit in Turing.jl with [`chain_size_distribution`](@ref).
 Every cluster is assumed to be over, so its size is its final size. For
 real-time data where some clusters may still grow, pass `prob_concluded` (the
 probability each cluster is over) to `loglikelihood`; see
-[`end_of_outbreak_probability`](@ref). For data recorded only once a cluster
+[`end_of_outbreak_probability`](@ref). This is an approximation, and the
+probability must be recomputed whenever the parameters change. For data recorded only once a cluster
 reaches a given size (for example only clusters of two or more cases), use a
 [`MinimumSize`](@ref) observation model.
 
