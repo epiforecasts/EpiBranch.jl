@@ -114,7 +114,7 @@ function chain_size_distribution(o::ClusterMixed{PoissonFamily, <:Gamma})
     return PoissonGammaChainSize(k, R)
 end
 
-# Through the generic `ChainSizeLaw` methods, which take the same keywords.
+# Goes through the generic `ChainSizeLaw` methods, which take the same keywords.
 function loglikelihood(data::ChainSizes, o::ClusterMixed; kwargs...)
     return loglikelihood(data, chain_size_distribution(o); kwargs...)
 end

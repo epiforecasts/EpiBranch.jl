@@ -306,8 +306,8 @@ function _reported_cases_due(state::SimulationState)
     return searchsortedlast(_confirmed_report_log(state).times, state.max_infection_time)
 end
 
-# The run's report log, created on first use and brought up to date. `state`
-# is left unparametrised in the callers, so the time type is read from it.
+# The run's report log, created on first use and brought up to date. The time
+# type is read from `state` because the callers leave it unparametrised.
 function _confirmed_report_log(state::SimulationState)
     T = typeof(state.max_infection_time)
     log = get!(() -> _report_log(state), state.scratch, (:report_log,))
