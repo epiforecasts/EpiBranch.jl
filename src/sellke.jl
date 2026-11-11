@@ -343,19 +343,19 @@ end
 # A blocked pair cannot be redrawn because the window it would be redrawn in
 # never closes, which leaves its remaining integrated hazard infinite.
 const _UNBOUNDED_HAZARD = """
-    repeated contacts after a blocked proposal require finite remaining \
-    integrated hazard. Close the infectious or introduction window before the \
-    kernel survival reaches zero, or encode static protection in the contact \
-    kernel or host traits. The likely cause is a case whose infectious window \
-    never closes: either the progression has no terminal transition reaching \
-    one of `until`'s states, or one is reachable but gated so that some cases \
-    reach none of them (see `exclusive_probabilities`). A window closed only \
-    by `INTERVENTION_REMOVAL` reaches this too when the case's isolation or \
-    quarantine is due to lapse, since only a removal that stands for the rest \
-    of the infectious period closes the window by itself. A component whose \
-    certain block is in force also lands here until it declares \
-    `binding_release`, which is what lets the race read the release it \
-    reports."""
+repeated contacts after a blocked proposal require finite remaining \
+integrated hazard. Close the infectious or introduction window before the \
+kernel survival reaches zero, or encode static protection in the contact \
+kernel or host traits. The likely cause is a case whose infectious window \
+never closes: either the progression has no terminal transition reaching \
+one of `until`'s states, or one is reachable but gated so that some cases \
+reach none of them (see `exclusive_probabilities`). A window closed only \
+by `INTERVENTION_REMOVAL` reaches this too when the case's isolation or \
+quarantine is due to lapse, since only a removal that stands for the rest \
+of the infectious period closes the window by itself. A component whose \
+certain block is in force also lands here until it declares \
+`binding_release`, which is what lets the race read the release it \
+reports."""
 
 # The pair's next contact after the one at `dt`, as a time from the window
 # opening: the same `m`-scaled hazard, conditioned on falling later than `dt`.
