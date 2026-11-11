@@ -141,16 +141,16 @@ function censor_after_outcome!(t::Transition, individual)
     return nothing
 end
 
-function transition_loglik(t::Transition, individual::Individual)
+function transition_loglik(t::Transition, individual::Individual; followup_end = Inf)
     anchor = _state_time(individual, t.from, t.from_key)
     _anchor_ok(anchor) || return 0.0
     flag = individual.state[t.state]::Bool
     time = flag ? individual.state[t.time_key] : Inf
-    censor = infection_aborted_time(individual)
-    occurred = flag
+    censor = min(infection_aborted_time(individual), followup_end)
+    occurred = flag && time <= followup_end
     if !t.terminal
         if !_timed_from_outcome(individual, t.from, t.from_key)
-            occurred = flag && time <= outcome_time(individual)
+            occurred = occurred && time <= outcome_time(individual)
             censor = min(censor, outcome_time(individual))
         end
     end
