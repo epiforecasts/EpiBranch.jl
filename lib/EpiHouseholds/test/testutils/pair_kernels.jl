@@ -1,5 +1,5 @@
-# Copy of test/testutils/pair_kernels.jl in the core package, kept here so the
-# tests of this package run from a registry copy. Keep the two in step.
+# Copy of test/testutils/pair_kernels.jl in the core package, kept here so the tests of this
+# package run from a registry copy. Keep the two in step.
 
 function test_contextual_simulation(make_process, extract)
     return @testset "Contextual pair kernels" begin
