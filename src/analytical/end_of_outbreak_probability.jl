@@ -49,7 +49,7 @@ Use it as `prob_concluded` in `loglikelihood(::ChainSizes, ...)` or
 [`chain_size_distribution`](@ref) for real-time cluster data, where some
 clusters may still be growing. The resulting mixture approximates the exact
 probability of the data. Because `π` depends on `R` and `k`, recompute it from
-the current parameters inside a fit; see [`loglikelihood`](@ref) for
+the current parameters inside a fit; see `loglikelihood` for
 `ChainSizes`.
 
 # Examples
