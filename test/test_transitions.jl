@@ -734,7 +734,7 @@ end
 end
 
 @testset "Transition resolves its `from` key once" begin
-    # Reading the anchor of a transition must not build a key symbol per case.
+    # Reading the `from` time of a transition must not build a key symbol per case.
     for from in (:onset, :onset_time)
         t = Transition(:admitted; from = from, delay = 1.0)
         @test t.from_key === :onset_time
