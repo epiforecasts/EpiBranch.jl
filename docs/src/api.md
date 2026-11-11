@@ -46,6 +46,15 @@ implied_R
 EpiBranch.MultiTypeOffspring
 HomogeneousProcess
 MixingProcess
+StratifiedContacts
+flatten_contacts
+contacts_from_table
+mixing_rate
+read_contacts
+ContactFileFormat
+CSVFormat
+NetCDFFormat
+EpiBranch.ContactMatrixRate
 NetworkProcess
 RoutedNetwork
 HouseholdProcess

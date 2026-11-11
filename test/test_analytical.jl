@@ -1909,6 +1909,15 @@ using ForwardDiff
         @testset "Full control → certain containment" begin
             @test probability_contain(5.0, 0.1; pop_control = 0.9) ≈ 1.0 atol = 1.0e-6
         end
+
+        @testset "Poisson uses its own generating function" begin
+            d = Poisson(2.5)
+            @test probability_contain(d) ≈ extinction_probability(d) atol = 1.0e-12
+            # Thinning a Poisson law gives Poisson with the reduced mean.
+            @test probability_contain(d; pop_control = 0.4) ≈
+                extinction_probability(Poisson(1.5)) atol = 1.0e-12
+            @test probability_contain(d; pop_control = 0.8) == 1.0
+        end
     end
 
     @testset "GeneratingFunctionOffspring" begin

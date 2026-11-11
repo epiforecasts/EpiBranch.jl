@@ -399,16 +399,9 @@ function _chain_size_model_loglik(
     # failing falls through to simulation.
     if isempty(ivs) && has_single_type_law(process) && offspring_law_unchanged(process) &&
             offspring_law_unchanged(attrs) && all(offspring_law_unchanged, prog)
-        try
-            d = observe(
-                _fold_reporting(
-                    prog, chain_size_distribution(single_type_offspring(process)), obs, attrs
-                ),
-                obs
-            )
-            return _chain_size_loglik(d, data; prob_concluded)
-        catch e
-            (e isa MethodError || e isa ArgumentError) || rethrow()
+        folded = _exact_reported_chain_size(single_type_offspring(process), prog, obs, attrs)
+        if folded !== nothing
+            return _chain_size_loglik(observe(folded, obs), data; prob_concluded)
         end
     end
     # No closed form: simulate clusters grouped by seed count, one batch of
