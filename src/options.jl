@@ -281,9 +281,9 @@ end
 
 # Draw an external-hazard introduction time for each member not in `skip`
 # (e.g. already-seeded chosen cases), keeping those landing within `[0, Tobs]`.
-# An external hazard considers every member a possible introduction, so it
-# realises the whole population on a lazily populated model exactly as it
-# already drew every member's attributes on one built upfront.
+# An external hazard can introduce any member, so on a lazily populated model
+# it realises the whole population, as it already drew the attributes of every
+# member on a model built upfront.
 function _seed_external!(best, members, state, extsrc, Tobs, rng, skip = ())
     for k in eachindex(members)
         members[k] in skip && continue
@@ -298,8 +298,8 @@ end
 # member from the external hazard when there is one. With no `initial_cases`,
 # the external hazard alone seeds the table, or `place_index!(best, members,
 # rng)` places the index cases at time 0 when there is no hazard either. The
-# placement is the one thing that differs between structures, and passing it
-# in keeps each structure's random stream as it was.
+# placement is the only part that differs between structures. Passing it in
+# keeps the random stream of each structure unchanged.
 function _seed_candidates!(
         place_index!, best, members, state, extsrc, Tobs, rng, initial_cases
     )
@@ -316,8 +316,8 @@ function _seed_candidates!(
 end
 
 # A community hazard over an unbounded window would introduce everyone, so it
-# needs a finite observation window. `seeds` completes the message: what an
-# unbounded window would seed.
+# requires a finite observation window. `seeds` completes the error message with
+# what an unbounded window would seed.
 function _check_finite_obs_end(external_hazard, obs_end, seeds::AbstractString)
     _ext_active(external_hazard) && !isfinite(obs_end) && throw(
         ArgumentError(
