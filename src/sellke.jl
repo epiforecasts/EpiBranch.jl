@@ -340,8 +340,8 @@ function _bisect_log_survival(kernel, lp)
     return
 end
 
-# Why a blocked pair cannot be redrawn: the window it would be redrawn in never
-# closes, so its remaining integrated hazard is infinite.
+# A blocked pair cannot be redrawn because the window it would be redrawn in
+# never closes, which leaves its remaining integrated hazard infinite.
 const _UNBOUNDED_HAZARD = """
     repeated contacts after a blocked proposal require finite remaining \
     integrated hazard. Close the infectious or introduction window before the \
@@ -2480,8 +2480,8 @@ function _redraw_moved!(
             dt = lower <= 0 ? _traits_scaled_draw(pair_rng, kernel, m) :
                 _draw_beyond(pair_rng, kernel, m, lower)
             # The next contact after one in the past is the same hazard
-            # conditioned on falling later, so this draws exactly given no
-            # contact before `now`, or none up to it once `now` is resolved.
+            # conditioned on falling later. The draw is therefore exact given
+            # no contact before `now`, or none up to it once `now` is resolved.
             resolved = j <= passed_since
             while opening.open_t + dt < now || (resolved && opening.open_t + dt == now)
                 dt = _draw_beyond(pair_rng, kernel, m, dt)
@@ -2501,7 +2501,7 @@ function _redraw_moved!(
 end
 
 # After the case at position `case` settled at `now` (0 for a deferred action's
-# own event), draw again the pending contacts of any record that moved, and
+# own event), redraw the pending contacts of any record that moved, and
 # compact the proposals once enough of them are orphaned. Returns the updated
 # orphan count.
 function _redraw_if_moved!(
