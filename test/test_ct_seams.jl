@@ -526,7 +526,8 @@ end
         ind.state[:_ring_propagated] = true
         # An isolation in force but never recorded as a detection is still an
         # isolation this trace brought about, so the reset lifts it.
-        EpiBranch.apply_trace!(ct.action, ind, nothing, 6.0, StableRNG(1))
+        EpiBranch._record_trace_time!(ind, 6.0, :contact)
+        EpiBranch._apply_trace!(ct.action, ind, nothing, 6.0, StableRNG(1), :contact)
         ind.state[:_isolation_unrecorded] = true
         EpiBranch.reset!(ct, ind)
         @test ind.state[:traced] == false
@@ -737,4 +738,70 @@ end
     @test EpiBranch._discovers_actions(
         CapacityConstrained(following_up; budget_per_period = 1.0)
     )
+end
+
+@testset "Scheduled tracing is judged at the trace's own time" begin
+    clinical = clinical_presentation(incubation_period = Dirac(1.0))
+    bp = BranchingProcess(Dirac(2), Dirac(2.0))
+    traced_count(state) = count(is_traced, state.individuals)
+
+    @testset "FlagOnly before start_time traces nobody" begin
+        for action in (FlagOnly(), Quarantine(duration = Inf))
+            ct = ContactTracing(OnSymptomOnset(), 1.0, Dirac(0.0), action)
+            state = simulate(
+                ModelSpec(bp; interventions = [Scheduled(ct; start_time = 1.0e6)], attributes = clinical);
+                max_generations = 3, rng = StableRNG(1)
+            )
+            @test traced_count(state) == 0
+            @test all(ind -> !haskey(ind.state, :_traced_isolation_time), state.individuals)
+        end
+    end
+
+    @testset "A trace inside the window still stands" begin
+        ct = ContactTracing(OnSymptomOnset(), 1.0, Dirac(0.0), FlagOnly())
+        state = simulate(
+            ModelSpec(bp; interventions = [Scheduled(ct; start_time = 0.0)], attributes = clinical);
+            max_generations = 3, rng = StableRNG(1)
+        )
+        @test traced_count(state) > 0
+    end
+
+    @testset "Isolation is not pulled forward by an out-of-window trace" begin
+        ct = ContactTracing(OnSymptomOnset(), 1.0, Dirac(0.0), FlagOnly())
+        iso = Isolation(onset_to_isolation_delay = Dirac(100.0), duration = Inf)
+        state = simulate(
+            ModelSpec(
+                bp; interventions = [iso, Scheduled(ct; start_time = 1.0e6)], attributes = clinical
+            );
+            max_generations = 3, rng = StableRNG(1)
+        )
+        for ind in filter(is_infected, state.individuals)
+            isfinite(isolation_time(ind)) || continue
+            @test isolation_time(ind) >= onset_time(ind) + 100.0
+        end
+    end
+
+    @testset "Resetting one tracer leaves the other's records" begin
+        ind = Individual(id = 1)
+        ind.state[:traced] = false
+        ind.state[:quarantined] = false
+        EpiBranch._apply_trace!(
+            Quarantine(duration = Inf), ind, nothing, 1.0, StableRNG(1), :contact
+        )
+        EpiBranch._record_trace_time!(ind, 1.0, :contact)
+        EpiBranch._apply_trace!(
+            Quarantine(duration = Inf), ind, nothing, 3.0, StableRNG(1), :source
+        )
+        EpiBranch._record_trace_time!(ind, 3.0, :source)
+        @test length(ind.state[:_quarantine_removal_handles]) == 2
+        EpiBranch._reset_traced!(ind, :contact)
+        @test length(ind.state[:_quarantine_removal_handles]) == 1
+        @test ind.state[:traced]
+        @test ind.state[:quarantined]
+        @test isolation_time(ind) == 3.0
+        EpiBranch._reset_traced!(ind, :source)
+        @test !haskey(ind.state, :_quarantine_removal_handles)
+        @test !ind.state[:traced]
+        @test !isfinite(isolation_time(ind))
+    end
 end

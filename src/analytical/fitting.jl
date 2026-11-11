@@ -87,29 +87,6 @@ function loglikelihood(
     return _chain_size_loglik(dist, data; prob_concluded)
 end
 
-# AD-compatible methods: use shared _borel_logpdf / _gammaborel_logpdf
-# which accept any numeric type for parameters (ForwardDiff Dual compatible)
-function loglikelihood(
-        data::ChainSizes, offspring::Poisson{T};
-        prob_concluded::Union{Nothing, AbstractVector{<:Real}} = nothing
-    ) where {T}
-    μ = mean(offspring)
-    if prob_concluded === nothing && all(==(1), data.seeds)
-        return sum(n -> _borel_logpdf(μ, n), data.data)
-    end
-    return _chain_size_loglik(Borel(μ), data; prob_concluded)
-end
-
-function loglikelihood(
-        data::ChainSizes, offspring::NegativeBinomial{T};
-        prob_concluded::Union{Nothing, AbstractVector{<:Real}} = nothing
-    ) where {T}
-    if prob_concluded === nothing && all(==(1), data.seeds)
-        return sum(n -> _gammaborel_logpdf(offspring.r, mean(offspring), n), data.data)
-    end
-    return _chain_size_loglik(GammaBorel(offspring.r, mean(offspring)), data; prob_concluded)
-end
-
 """
     loglikelihood(data::ChainSizes, d::ChainSizeLaw; prob_concluded = nothing)
 
@@ -399,16 +376,9 @@ function _chain_size_model_loglik(
     # failing falls through to simulation.
     if isempty(ivs) && has_single_type_law(process) && offspring_law_unchanged(process) &&
             offspring_law_unchanged(attrs) && all(offspring_law_unchanged, prog)
-        try
-            d = observe(
-                _fold_reporting(
-                    prog, chain_size_distribution(single_type_offspring(process)), obs, attrs
-                ),
-                obs
-            )
-            return _chain_size_loglik(d, data; prob_concluded)
-        catch e
-            (e isa MethodError || e isa ArgumentError) || rethrow()
+        folded = _exact_reported_chain_size(single_type_offspring(process), prog, obs, attrs)
+        if folded !== nothing
+            return _chain_size_loglik(observe(folded, obs), data; prob_concluded)
         end
     end
     # No closed form: simulate clusters grouped by seed count, one batch of

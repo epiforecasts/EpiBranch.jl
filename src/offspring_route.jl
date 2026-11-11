@@ -419,7 +419,7 @@ end
 # a `NaN` on it, so the comparison lands against the time it was really
 # drawn for rather than that `NaN`. Both kinds of draw are released once the
 # race's true end is known: an undecided one only if the race reached
-# extinction, since a continuation still has it to decide; an excluded one
+# extinction, because a continuation still has it to decide; an excluded one
 # is already decided and is released regardless.
 function _finish!(o::_Offspring, race, stop_t, extinct, cut_by_max_time)
     kept = !extinct && cut_by_max_time

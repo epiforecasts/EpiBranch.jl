@@ -66,12 +66,12 @@ function censor_after_outcome!(h::Hospitalisation, individual)
     return nothing
 end
 
-function transition_loglik(h::Hospitalisation, individual::Individual)
+function transition_loglik(h::Hospitalisation, individual::Individual; followup_end = Inf)
     anchor = _state_time(individual, h.from)
     _anchor_ok(anchor) || return 0.0
     flag = individual.state[:admitted]::Bool
     time = flag ? individual.state[:admission_time] : Inf
-    cap = _timed_from_outcome(individual, h.from) ? Inf : outcome_time(individual)
+    cap = min(_timed_from_outcome(individual, h.from) ? Inf : outcome_time(individual), followup_end)
     occurred = flag && time <= cap
     ll = transition_term(
         h.probability, h.delay, individual, anchor, occurred;

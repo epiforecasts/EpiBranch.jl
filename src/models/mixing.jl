@@ -30,7 +30,7 @@ continuous-time race as `HomogeneousProcess`.
 
 `calendar`, a [`Steps`](@ref) or [`Seasonal`](@ref) schedule or a callable
 `t -> multiplier`, scales every group's rate by the schedule's value on the
-calendar day, exactly as a [`PairKernel`](@ref)'s `calendar` does — a
+calendar day, as the `calendar` of a [`PairKernel`](@ref) does, for a
 lockdown or a seasonal pattern applied on top of a fixed contact matrix. With
 a calendar, contacts are drawn exactly from the schedule's integrated
 hazard. `Steps` and `Seasonal` have a known largest value, so the route keeps
@@ -45,8 +45,8 @@ infectious window opens at, derived from the progression when left `nothing`;
 
 The population is simulated until extinction or `max_time`, whichever comes
 first. The `max_cases` and `max_generations` keyword shortcuts default to off
-here, so a run keeps going to extinction or `max_time` unless an explicit
-value, or a `stopping_rules` entry, asks for a cap.
+here. A run continues to extinction or `max_time` unless an explicit
+value or a `stopping_rules` entry sets a cap.
 
 Every contact is a contact between two named people, so competing risks,
 per-individual susceptibility and infectiousness, and risks that read the
