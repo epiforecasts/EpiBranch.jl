@@ -764,10 +764,12 @@ function _walk_ring!(
         state, infector, interventions, contacts::C, pos
     ) where {C}
     visited = Set{Int}((infector.id,))
-    frontier = Individual[infector]
+    # Concrete element types keep the `trace_contacts!` calls below statically
+    # dispatched; `Individual` alone is a `UnionAll`.
+    frontier = typeof(infector)[infector]
     while !isempty(frontier)
         src = popfirst!(frontier)
-        pending = Individual[]
+        pending = typeof(infector)[]
         not_before = typeof(infector.infection_time)[]
         timed = false
         for c in contacts(src.id, state)
