@@ -131,8 +131,8 @@ distinct value (a district, a treatment centre) gets its own
 `budget_per_period`, tracked under the same `period`, `carry_over` and
 `priority` independently of every other. Pass the value to `capacity_usage`
 to read one group's own usage. A [`GroupVaccination`](@ref) with
-`group_key = :type`, the types of a `BranchingProcess`, has such a method, so
-each type has its own budget.
+`group_key = :type` (the types of a `BranchingProcess`) has such a method and
+gives each type its own budget.
 
 [`Scheduled`](@ref) and `CapacityConstrained` can be combined in either
 order: both check each action's own proposed date.
@@ -276,9 +276,9 @@ state alone, with nothing of the original proposal kept around.
 """
 resource_key(::AbstractIntervention, individual, state) = nothing
 
-# The types of a branching process each have their own `budget_per_period`, as
-# `simulate_by_generation` gives them. Groups under any other key keep sharing
-# one budget, which is how the mixing approximations share it.
+# Each type of a branching process has its own `budget_per_period`, as in
+# `simulate_by_generation`. Groups under any other key share one budget, as in
+# the mixing approximations.
 resource_key(gv::GroupVaccination, individual, state) =
     gv.group_key === :type ? get(individual.state, :type, nothing) : nothing
 
