@@ -331,14 +331,15 @@ assumes:
 - Each person's contact rate is a fixed trait that stays the same over the
   infectious period. Rates that vary over time within one person break the
   formula.
-- `prob_transmission` applies once per partner, not once per contact.
+- `prob_transmission` applies once per partner, however many contacts the
+  two have.
 - Contacts are formed at random given each person's number of contacts, with
   no clustering (friends of friends being friends). A simulation on an
   explicit network with clustering, such as `NetworkProcess`, can give a
   different answer.
 
 It is a port of `calc_network_R` in the R
-package superspreading, which carries the same caveats (Lambert et al.,
+package superspreading, which has the same caveats (Lambert et al.,
 https://github.com/epiverse-trace/superspreading, MIT).
 
 # Examples
