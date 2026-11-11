@@ -47,7 +47,7 @@ abstract type AbstractClinicalTransition end
 # Abstract supertype for a cut race's unfinished event queue (defined here,
 # for the same forward-reference reason as `AbstractClinicalTransition`; the
 # concrete type is `_RaceContinuation` in `sellke.jl`). `simulate`'s
-# continuation method pops up where the race it describes left off, rather
+# continuation method resumes where the race it describes left off, rather
 # than redrawing contacts already decided.
 abstract type AbstractRaceContinuation end
 
@@ -251,7 +251,8 @@ contact they exposed; for models with a fixed population, anyone in it.
   population characteristics you add. It is read and written as a dictionary
   (see [`EpiBranch.IndividualState`](@ref)).
 - `episodes`: past infections, oldest first, for a person who has been
-  infected more than once (see [`close_episode!`](@ref)). The fields above
+  infected more than once (see [`close_episode!`](@ref)). Add one with
+  `close_episode!`, because a `push!` onto `ind.episodes` is lost. The fields above
   describe the current or latest infection. None of the built-in models
   reinfects anyone, so this is empty there.
 
@@ -295,8 +296,38 @@ mutable struct Individual{T <: Real}
     infectiousness::T
     secondary_case_ids::Vector{Int}
     state::IndividualState{T}
-    episodes::Vector{InfectionEpisode{T}}
+    # Allocated by the first `close_episode!`: most runs never reinfect anyone,
+    # and an empty vector per person is a heap object each.
+    _episodes::Union{Nothing, Vector{InfectionEpisode{T}}}
 end
+
+# `ind.episodes` reads the archive through `_episodes`. A person with none gets
+# a fresh empty vector, which keeps a `push!` onto `ind.episodes` from reaching
+# anyone else but also loses it. Add an episode with `close_episode!`.
+@inline function Base.getproperty(ind::Individual{T}, name::Symbol) where {T}
+    name === :episodes || return getfield(ind, name)
+    episodes = getfield(ind, :_episodes)
+    return episodes === nothing ? InfectionEpisode{T}[] : episodes
+end
+
+@inline function Base.setproperty!(ind::Individual{T}, name::Symbol, value) where {T}
+    if name === :episodes
+        return setfield!(
+            ind, :_episodes,
+            isempty(value) ? nothing : convert(Vector{InfectionEpisode{T}}, value)
+        )
+    end
+    return setfield!(ind, name, value)
+end
+
+Base.propertynames(::Individual, private::Bool = false) =
+    (filter(!=(:_episodes), fieldnames(Individual))..., :episodes)
+
+# Whether `ind` has archived an episode, without building the empty vector
+# `ind.episodes` returns for someone who has none.
+_has_episodes(ind::Individual) = getfield(ind, :_episodes) !== nothing
+_n_episodes(ind::Individual) =
+    (e = getfield(ind, :_episodes); e === nothing ? 0 : length(e))
 
 function Individual(;
         id::Int, parent_id::Int = 0, generation::Int = 0,
@@ -311,8 +342,7 @@ function Individual(;
     return Individual{T}(
         id, parent_id, generation, chain_id, convert(T, infection_time),
         convert(T, susceptibility), convert(T, infectiousness), Int[],
-        IndividualState{T}(state),
-        InfectionEpisode{T}[]
+        IndividualState{T}(state), nothing
     )
 end
 
@@ -337,8 +367,13 @@ Keep a past infection of `ind` in `ind.episodes` when they are reinfected.
 infection replaces `ind`'s current fields. `ind.secondary_case_ids` is
 emptied, so the new infection counts only its own secondary cases.
 """
-function close_episode!(ind::Individual, episode::InfectionEpisode)
-    push!(ind.episodes, episode)
+function close_episode!(ind::Individual{T}, episode::InfectionEpisode) where {T}
+    episodes = getfield(ind, :_episodes)
+    if episodes === nothing
+        episodes = InfectionEpisode{T}[]
+        setfield!(ind, :_episodes, episodes)
+    end
+    push!(episodes, episode)
     empty!(ind.secondary_case_ids)
     return ind
 end
@@ -431,8 +466,8 @@ named as the Extending EpiBranch guide describes. The simulation never reads
 `continuation` is the unfinished race [`simulate`](@ref)'s continuation
 method resumes, `nothing` once the run has reached extinction or stopped for
 some other reason; nothing outside the simulation engine reads or writes it.
-`lazy` is set by [`EpiBranch.lazily_populate!`](@ref) for a model whose
-population is created as the race reaches it, `nothing` for one built
+`lazy` is set by [`EpiBranch.lazily_populate!`](@ref) for a model with
+a population created as the race reaches it, `nothing` for one built
 upfront; nothing outside the simulation engine reads or writes it either.
 """
 mutable struct SimulationState{T <: Real, R <: AbstractRNG, P, A}

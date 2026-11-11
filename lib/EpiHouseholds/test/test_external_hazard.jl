@@ -213,7 +213,7 @@ end
         # cases, conditioned on; 1 is infectious over (0, 3] and 2 is never
         # infected, exposed to both the household kernel and the wider
         # community's mass action. compile_household_pairs must build a layout
-        # with explain_index = false for this source, since it has nothing
+        # with explain_index = false for this source, because it has nothing
         # infectious before the first case to explain one, or loglikelihood
         # throws on every call.
         β, N = 0.6, 3

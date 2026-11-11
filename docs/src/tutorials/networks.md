@@ -663,6 +663,12 @@ stretch a case is isolated for, and has it back once released.
     Without it, the likelihood assumes that follow-up continued until the
     outbreak was over.
 
+    `progression_loglik` takes the same date as `followup_end` and scores a
+    step that has not happened by then as censored. The delays of the steps
+    that did happen are not corrected for right truncation. A delay
+    distribution fitted to a line list cut at a date is still biased towards
+    short delays.
+
 !!! note "Community introductions and index cases"
     With an `external_hazard`, pass the same value to `pairwise_surv_loglik`
     (`pairwise_surv_loglik(kernel, data; external_hazard = 0.02)`). The
@@ -676,8 +682,8 @@ stretch a case is isolated for, and has it back once released.
     - A route kernel that is a [`PairKernel`](@ref) is not yet represented in
       the routed likelihood; `loglikelihood(data, model)` stops with an
       error for such a model. Leaky isolation on a `RoutedNetwork` is not
-      represented either, but silently: the routed likelihood scores it as
-      if it were not isolated at all, rather than erroring.
+      represented either: the routed likelihood scores it as
+      if the case were not isolated, without reporting an error.
     - In real data infection times are not observed. They have to be estimated
       together with the parameters, from symptom onsets and the disease
       timeline (data augmentation), as described for [household

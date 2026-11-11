@@ -123,9 +123,9 @@ attribute builder that can set susceptibility or infectiousness away from 1,
 give an exact result. With a shared kernel, `n_samples` households of each
 size are simulated. A covariate kernel `(infector, susceptible) -> Distribution`
 has no closed form: the whole model is simulated as many times as it takes
-to reach `n_samples` households (at least once), so each household's
-epidemic follows the covariates of its actual members. Households whose
-kernels agree pair for pair, in member order, share a type; the rest are
+to reach `n_samples` households (at least once). The epidemic in each
+household follows the covariates of its members. Households with kernels
+that agree pair for pair, in member order, share a type; the rest are
 types of their own. When every household is its own type, as with a
 continuous individual covariate, each type's distribution comes from those
 few runs and is rough, while the overall distribution and R* average over

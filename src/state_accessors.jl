@@ -285,8 +285,8 @@ const _NO_STRETCHES = Tuple{Float64, Float64}[]
 # A `set_isolated!` entry is a `record_removal!` one with two more columns:
 # `isolation_span` (whether it feeds the isolation-span fold `isolation_time`
 # and `isolation_release_time` read) and `unrecorded` (its detection status
-# within that fold). A plain `record_removal!` entry carries `false` in both,
-# since it plays no part in the isolation span. Keeping every entry in one
+# within that fold). A plain `record_removal!` entry stores `false` in both,
+# because it plays no part in the isolation span. Keeping every entry in one
 # vector, keyed by handle, means a revise or withdraw never has to keep two
 # stores in step with each other.
 const _RemovalEntry{T} = Tuple{Int, Symbol, T, T, Bool, Bool}
@@ -328,7 +328,7 @@ end
 # As `set_isolated!`, but returns the handle the entry was recorded under, so
 # a component that isolates or quarantines someone can revise or withdraw
 # exactly its own effect later (see `Isolation`'s `reset!` and
-# `_undo_quarantine_isolation!`), without disturbing another's record left
+# `_reset_traced!`), without disturbing another's record left
 # under the same key.
 function _set_isolated!(
         ind::Individual{T}, time::Real;
@@ -480,7 +480,7 @@ end
 # recomputed from, so that `withdraw_removal!` can drop exactly one without
 # disturbing another entry a `_merge_stretches!` once folded it together
 # with. `isolation_span` and `unrecorded` matter only to an entry
-# `_set_isolated!` made; a plain `record_removal!` entry carries `false` in
+# `_set_isolated!` made; a plain `record_removal!` entry stores `false` in
 # both, so `_fold_isolation_span` leaves it out of the isolation span.
 function _push_removal_entry!(
         ind::Individual, handle::Int, key::Symbol, start::S, release::S,
@@ -576,9 +576,9 @@ function _detach_removal_history!(state::IndividualState)
 end
 
 # Drop every stretch entry filed under `key`, as though none had ever been
-# recorded. Used by `clear_isolated!` and by `_reset_traced!` for a
-# quarantine's own key, so that a fresh removal recorded under the same key
-# later starts from nothing rather than resurrecting what a full reset undid.
+# recorded. Used by `clear_isolated!`, so that a fresh removal recorded under
+# the same key later starts from nothing rather than resurrecting what a full
+# reset undid.
 function _withdraw_all_removals!(ind::Individual, key::Symbol)
     entries = get(ind.state, :_removal_entries, nothing)
     entries === nothing && return nothing
@@ -595,8 +595,8 @@ end
 # earliest-starting entry of a group deciding whether the whole group is
 # recorded (so a later isolation or quarantine landing on a standing one does
 # not turn it into a detection by asking its own eligibility about a start
-# the group's own earliest already settled). The last group — the one with
-# the greatest start — is the current isolation; an earlier, disjoint one is
+# the earliest entry of the group already settled). The last group, with
+# the greatest start, is the current isolation; an earlier, disjoint one is
 # history `removal_stretches` still holds, but no longer the removal in
 # force. An entry whose release has been revised to before its own start is
 # left out, as though withdrawn: a zero-length span still isolates for an
@@ -653,7 +653,7 @@ end
 # The isolation span as it would read with `handle`'s own entry left out,
 # without touching `ind`'s real state: what the line list reports for an
 # uninfected contact in place of a self-isolation `Isolation` based on a
-# provisional onset that never happened, since nothing ever calls `reset!`
+# provisional onset that never happened, because nothing ever calls `reset!`
 # to withdraw that entry for a contact nobody schedules or rations.
 # `nothing` if nothing would stand without it.
 function _isolation_span_excluding(ind::Individual, handle)

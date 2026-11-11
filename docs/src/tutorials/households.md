@@ -547,6 +547,12 @@ check convergence (for example the R-hat values in `summarize(chain)`).
     exposure after that date are then ignored, and cases still infectious at
     that date are treated as not yet recovered.
 
+    `progression_loglik` takes the same date as `followup_end` and scores a
+    step that has not happened by then as censored. The delays of the steps
+    that did happen are not corrected for right truncation. A delay
+    distribution fitted to a line list cut at a date is still biased towards
+    short delays.
+
 !!! warning "Index-case ascertainment"
     Households are usually found through their first detected case, the
     recruited index case. Without a community hazard, the likelihood takes
@@ -714,9 +720,9 @@ outside the household alike.
 
 ### Final statuses only, with no infection times
 
-Some household studies record only who was ever infected by the end of
-follow-up, not when, such as a serosurvey taken once the outbreak has run its
-course. [`HouseholdFinalStatuses`](@ref) scores that kind of data under the
+Some household studies, such as a serosurvey after an outbreak, record
+final infection statuses without infection times.
+[`HouseholdFinalStatuses`](@ref) scores that kind of data under the
 same community hazard and within-household kernel, from the final-size
 recursion of [Ball (1986)](https://doi.org/10.2307/1427301), with no
 infection times at all; `missing` marks anyone not followed up.
@@ -742,5 +748,5 @@ grid = 2.0:0.5:6.0
 grid[argmax([ll(s) for s in grid])]
 ```
 
-The estimate is close to the 4 days the outbreak was simulated with, recovered
-from final statuses alone.
+The estimate from final statuses alone is close to the 4 days used in the
+simulation.
