@@ -294,31 +294,10 @@ function _simulate_n(
         parallel::Bool = false
     ) where {T}
     if parallel && Threads.nthreads() > 1
-        seeds = [rand(rng, UInt64) for _ in 1:n]
-        results = Vector{T}(undef, n)
-        # Outbreak sizes are heavy-tailed. An even split of `1:n` leaves
-        # threads idle while one works through the large outbreaks. Each task
-        # takes the next outbreak from a shared counter instead. Each outbreak
-        # keeps the seed at its own index, giving the same results whichever
-        # thread runs it.
-        next_index = Threads.Atomic{Int}(1)
-        tasks = map(1:min(Threads.nthreads(), n)) do _
-            Threads.@spawn begin
-                while true
-                    i = Threads.atomic_add!(next_index, 1)
-                    i > n && break
-                    local_rng = Random.Xoshiro(seeds[i])
-                    results[i] = each(
-                        simulate_once(
-                            model, sim_opts; interventions, attributes,
-                            progression, observation, recorder, rng = local_rng
-                        )
-                    )
-                end
-            end
-        end
-        foreach(wait, tasks)
-        return results
+        return _simulate_n_threaded(
+            each, T, model, n, sim_opts; interventions, attributes, progression,
+            observation, recorder, rng
+        )
     else
         return [
             each(
@@ -330,6 +309,38 @@ function _simulate_n(
                 for _ in 1:n
         ]
     end
+end
+# Kept apart from the `nthreads() > 1` check so that it can be run, and tested,
+# on a single thread.
+function _simulate_n_threaded(
+        each, ::Type{T}, model::TransmissionModel, n::Int, sim_opts::SimOpts;
+        interventions, attributes, progression, observation, recorder, rng
+    ) where {T}
+    seeds = [rand(rng, UInt64) for _ in 1:n]
+    results = Vector{T}(undef, n)
+    # Outbreak sizes are heavy-tailed. An even split of `1:n` leaves
+    # threads idle while one works through the large outbreaks. Each task
+    # takes the next outbreak from a shared counter instead. Each outbreak
+    # keeps the seed at its own index, giving the same results whichever
+    # thread runs it.
+    next_index = Threads.Atomic{Int}(1)
+    tasks = map(1:min(Threads.nthreads(), n)) do _
+        Threads.@spawn begin
+            while true
+                i = Threads.atomic_add!(next_index, 1)
+                i > n && break
+                local_rng = Random.Xoshiro(seeds[i])
+                results[i] = each(
+                    simulate_once(
+                        model, sim_opts; interventions, attributes,
+                        progression, observation, recorder, rng = local_rng
+                    )
+                )
+            end
+        end
+    end
+    foreach(wait, tasks)
+    return results
 end
 
 # ── Shared helpers for the race's models ─────────────────────────────

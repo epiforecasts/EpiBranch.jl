@@ -4,6 +4,32 @@ using Dates
 @testset "Integration" begin
     clinical = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
 
+    @testset "threaded runs match one seeded outbreak per index" begin
+        model = BranchingProcess(Poisson(0.8), Exponential(5.0))
+        sim_opts = EpiBranch._build_sim_opts(
+            model, 1, nothing, nothing, 50, nothing, Inf, nothing
+        )
+        kw = (
+            interventions = EpiBranch.interventions(model),
+            attributes = EpiBranch.attributes(model),
+            progression = EpiBranch.progression(model),
+            observation = EpiBranch.observation(model),
+            recorder = EpiBranch.recorder(model)
+        )
+        results = EpiBranch._simulate_n_threaded(
+            identity, SimulationState, model, 20, sim_opts; kw..., rng = StableRNG(3)
+        )
+        @test length(results) == 20
+        rng = StableRNG(3)
+        seeds = [rand(rng, UInt64) for _ in 1:20]
+        for i in 1:20
+            expected = EpiBranch.simulate_once(
+                model, sim_opts; kw..., rng = Random.Xoshiro(seeds[i])
+            )
+            @test length(results[i].individuals) == length(expected.individuals)
+        end
+    end
+
     @testset "simulate(model, n) returns correct count" begin
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(0.8), Exponential(5.0))
