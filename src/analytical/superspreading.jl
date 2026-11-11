@@ -60,8 +60,10 @@ end
 
 Proportion of transmission caused by the most infectious fraction
 `prop_cases` of cases, using the model's offspring distribution, which must
-be negative binomial (or Poisson). Population characteristics in a
-`ModelSpec` are ignored.
+be negative binomial (or Poisson). A model whose offspring law is reshaped
+(a finite `population_size`, an infectiousness window with `until`, or
+`transmission_traits` away from their neutral values) gives an error that
+points to simulation. The same holds for the other model methods in this file.
 
 For a `ModelSpec`, or a process that stores its own interventions, each
 intervention's [`EpiBranch.analytic_offspring_effect`](@ref) is applied to
@@ -81,7 +83,8 @@ function proportion_transmission(d::Distribution; prop_cases::Real = 0.2)
 end
 
 function proportion_transmission(model::Union{TransmissionModel, ModelSpec}; prop_cases::Real = 0.2)
-    off = _offspring_through_interventions(model, single_type_offspring(model))
+    off = _unreshaped_single_type_offspring(model, "proportion_transmission(model)")
+    off = _offspring_through_interventions(model, off)
     return proportion_transmission(off; prop_cases)
 end
 
@@ -151,7 +154,8 @@ the offspring distribution first. If an intervention has no such method, this
 throws an error that names the simulation-based alternative.
 """
 function proportion_cases_individual(model::Union{TransmissionModel, ModelSpec}; prop_transmission::Real = 0.8)
-    off = _offspring_through_interventions(model, single_type_offspring(model))
+    off = _unreshaped_single_type_offspring(model, "proportion_cases_individual(model)")
+    off = _offspring_through_interventions(model, off)
     return proportion_cases_individual(off; prop_transmission)
 end
 
@@ -226,7 +230,8 @@ the offspring distribution first. If an intervention has no such method, this
 throws an error that names the simulation-based alternative.
 """
 function proportion_cases_offspring(model::Union{TransmissionModel, ModelSpec}; prop_transmission::Real = 0.8)
-    off = _offspring_through_interventions(model, single_type_offspring(model))
+    off = _unreshaped_single_type_offspring(model, "proportion_cases_offspring(model)")
+    off = _offspring_through_interventions(model, off)
     return proportion_cases_offspring(off; prop_transmission)
 end
 
@@ -286,7 +291,8 @@ the offspring distribution first. If an intervention has no such method, this
 throws an error that names the simulation-based alternative.
 """
 function proportion_cluster_size(model::Union{TransmissionModel, ModelSpec}; cluster_size::Int = 10)
-    off = _offspring_through_interventions(model, single_type_offspring(model))
+    off = _unreshaped_single_type_offspring(model, "proportion_cluster_size(model)")
+    off = _offspring_through_interventions(model, off)
     return _proportion_cluster_size(off, cluster_size)
 end
 
