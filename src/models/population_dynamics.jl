@@ -10,9 +10,9 @@
 
 # ── Helpers shared by the four approximation families ───────────────
 
-# The approximations are four distinct types (the dispatch of `HybridProcess`
-# depends on that), but everything below that does not differ between them is
-# written once, over the unions of the types.
+# The four approximations are distinct types because the dispatch of
+# `HybridProcess` depends on it. Everything below that they have in common is
+# written once, over unions of the types.
 function _check_continuation(state, max_time)
     max_time > state.t || throw(
         ArgumentError(
@@ -28,8 +28,8 @@ function _check_n_initial(n_initial, population_size)
     return nothing
 end
 
-# A linear noise process holds exactly the fields of the mean-field process it
-# is built from, so it is built from them by position rather than by name.
+# A linear noise process has the same fields as the mean-field process it is
+# built from, and is built from them by position.
 _with_fields_of(::Type{T}, m) where {T} = T(ntuple(i -> getfield(m, i), fieldcount(typeof(m)))...)
 
 # One fourth-order Runge–Kutta step of `x` (a number or a vector) over `h`
@@ -168,12 +168,11 @@ end
 const _SIR_INFECTION_OUTER = [1.0 -1.0; -1.0 1.0]
 const _SIR_REMOVAL_OUTER = [0.0 0.0; 0.0 1.0]
 
-# The covariance's step over `dt` days: nothing for the mean field, and for
-# the linear noise approximation explicit Euler, evaluating the Jacobian and
-# diffusion at the step's start. A first-order update for Σ, against RK4 for
-# the mean, is standard practice for the (linear, given the mean path)
-# covariance ODE at a small step, and keeps the two in lockstep without a
-# second, independent step count.
+# The step of the covariance over `dt` days: nothing for the mean field, and
+# for the linear noise approximation explicit Euler, evaluating the Jacobian
+# and diffusion at the start of the step. A first-order update for Σ alongside
+# RK4 for the mean is standard for the covariance ODE (linear given the mean
+# path) at a small step. It also keeps both on one step count.
 _sir_covariance_step(::Nothing, model, S, I, dt) = nothing
 function _sir_covariance_step(Σ::AbstractMatrix, model, S, I, dt)
     N = model.population_size

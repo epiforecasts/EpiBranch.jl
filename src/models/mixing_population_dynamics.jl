@@ -189,9 +189,9 @@ function _mixing_drift(model, x, t, tm)
     )
 end
 
-# The drift as `_rk4_step` takes it, evaluated at each of the four stage times
-# of the step, so a calendar scaling the contact matrix is read at the time it
-# applies to and not held at the start of the step.
+# The drift in the form `_rk4_step` takes, evaluated at each of the four stage
+# times of the step. A calendar scaling the contact matrix is read at the time
+# it applies to.
 _mixing_rk4_step(model, x, t, h) = _rk4_step((x, ts, tm) -> _mixing_drift(model, x, ts, tm), x, t, h)
 
 # The drift's Jacobian with respect to the four compartment blocks (the
