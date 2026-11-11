@@ -1,0 +1,1 @@
+`Transition`, `Reporting` and `Hospitalisation` share one `initialise_individual!`, `censor_after_outcome!` and `transition_loglik` method in `src/transitions/event_step.jl`, with an internal `_event_keys` trait supplying their state keys, and one `offspring_law_unchanged` method covers them and `Recovery` and `Death`. Results are unchanged.

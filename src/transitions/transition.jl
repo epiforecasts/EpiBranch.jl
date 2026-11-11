@@ -112,4 +112,3 @@ function terminal_event(t::Transition, individual::Individual{T}) where {T}
     tm = _state_real(individual.state, t.time_key, T(Inf))
     return isfinite(tm) ? (tm, t.state) : nothing
 end
-

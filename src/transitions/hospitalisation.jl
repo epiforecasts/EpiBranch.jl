@@ -50,4 +50,3 @@ function resolve_individual!(h::Hospitalisation, individual, state)
     individual.state[:admission_time] = time
     return nothing
 end
-
