@@ -340,8 +340,8 @@ function _bisect_log_survival(kernel, lp)
     return
 end
 
-# A blocked pair cannot be redrawn because the window it would be redrawn in
-# never closes, which leaves its remaining integrated hazard infinite.
+# A blocked pair cannot be redrawn when its window never closes, because the
+# remaining integrated hazard is then infinite.
 const _UNBOUNDED_HAZARD = """
 repeated contacts after a blocked proposal require finite remaining \
 integrated hazard. Close the infectious or introduction window before the \
