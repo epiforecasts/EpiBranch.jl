@@ -154,7 +154,8 @@ end
 
     for case in cases
         # The same infection settled twice from the same stream: once through
-        # the public method over the `Vector`, once through the race's `Tuple`.
+        # the public method over the `Vector`, once through the `Tuple` used
+        # by the race.
         settled = map((nothing, transitions)) do typed
             ind = Individual(id = case.id)
             ind.infection_time = case.infection_time
