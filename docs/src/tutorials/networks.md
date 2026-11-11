@@ -564,8 +564,8 @@ up to isolation.
     vaccine's efficacy against infection is allowed for by
     `loglikelihood(data, model)` with the vaccination in `model`. A fitted
     leaky `efficacy` `e` is a hazard ratio: it multiplies the hazard per
-    contact by `1 - e`, so a person whose risk of infection would be `1 - S`
-    has risk `1 - S^(1 - e)`. A published efficacy against the attack rate is
+    contact by `1 - e`. A person whose risk of infection would be `1 - S`
+    then has risk `1 - S^(1 - e)`. A published efficacy against the attack rate is
     a different quantity.
 
 There is no one-call fitting function. Here we evaluate the log-likelihood at
