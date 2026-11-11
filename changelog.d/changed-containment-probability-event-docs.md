@@ -1,0 +1,1 @@
+`containment_probability`'s docstring now states the event it estimates, extinction before the case cap, and how it differs from ringbp's `extinct_prob`, which also requires no new cases in a window of weeks. It points to `is_extinct(state; by_week = 12:16, max_cases)` and `weekly_incidence` for the ringbp event.
