@@ -157,6 +157,20 @@ To define a new kind of contact structure, a subtype also defines
 [`compile_contact_pairs`](@ref) and [`pairwise_surv_loglik`](@ref) then work
 on it with no further methods. `HouseholdInfections` and `NetworkInfections`
 are the worked examples.
+
+# When the likelihood is valid
+
+The likelihood takes each person's infectious window, removal time and
+vaccination dates as fixed data and says nothing about how they came about. It
+is therefore a partial likelihood, conditional on the removals. That is valid
+when removals and doses depend only on the observed history (onsets, detections,
+the infections of household members or neighbours) and on parameters other than
+the contact interval. Onset-triggered isolation and household or network
+forward tracing meet this. A removal that depends on the unobserved
+transmission tree, such as [`SourceTracing`](@ref), does not. It depends on who
+infected whom, and conditioning on it biases the contact-interval estimate.
+When building an `InfectionLayer` from real data, check that the removal
+mechanism does not depend on who infected whom.
 """
 abstract type InfectionLayer end
 
@@ -570,7 +584,9 @@ that includes them, passed to `pairwise_surv_loglik` directly.
 Declaring `true` is a promise by the intervention's author; nothing checks it.
 The infection likelihood takes the infection record as given and does not
 include the probability of clinical outcomes, of who received interventions,
-of people's characteristics, or of observation.
+of people's characteristics, or of observation. Conditioning on the removals
+this way is valid only when they depend on the observed history and not on who
+infected whom; see [`InfectionLayer`](@ref).
 """
 infection_likelihood_compatible(component) = false
 infection_likelihood_compatible(::NoAttributes) = true
@@ -1034,48 +1050,26 @@ function compile_contact_pairs(
     )
     n = length(membership)
     _check_host_masks(n, is_index, infected)
-    isempty(membership) && return _contact_pairs_layout(
-        Int[], Int[], Int[], Bool[], external, explain_index, is_index, 0, Int[], 0
-    )
 
-    # Bucket hosts by label into a `Vector{Vector{Int}}` indexed by label offset,
-    # which avoids hashing; offsetting by `lo` allows any integer labels.
-    lo, hi = extrema(membership)
-    n_buckets = hi - lo + 1
-    buckets = [Int[] for _ in 1:n_buckets]
-    for i in 1:n
-        push!(buckets[membership[i] - lo + 1], i)
-    end
-
-    sus = Int[]
-    infector = Int[]
-    is_ext = Bool[]
-    for h in 1:n_buckets
-        mem = buckets[h]
-        isempty(mem) && continue
-        for j in mem
-            (!explain_index && is_index[j]) && continue
-            if external
-                push!(sus, j)
-                push!(infector, 0)
-                push!(is_ext, true)
+    # Each member's contacts are the other members of the group, which the
+    # adjacency method handles. A stable sort by label groups the members and
+    # avoids a bucket for every possible label.
+    order = sortperm(membership)
+    contacts = Vector{Vector{Int}}(undef, n)
+    g_lo = 1
+    for k in 1:n
+        if k == n || membership[order[k + 1]] != membership[order[k]]
+            group = order[g_lo:k]
+            for i in group
+                contacts[i] = filter(!=(i), group)
             end
-            for i in mem
-                infected[i] || continue
-                i == j && continue
-                push!(sus, j)
-                push!(infector, i)
-                push!(is_ext, false)
-            end
+            g_lo = k + 1
         end
     end
+    layout = compile_contact_pairs(contacts, is_index, infected; external, explain_index)
     # A group has no per-edge list for a kernel to index into.
-    contact_index = zeros(Int, length(sus))
-    component, ncomponents = _structure_components(membership)
-    return _contact_pairs_layout(
-        sus, infector, contact_index, is_ext, external, explain_index,
-        is_index, n, component, ncomponents
-    )
+    fill!(layout.contact_index, 0)
+    return layout
 end
 
 function compile_contact_pairs(

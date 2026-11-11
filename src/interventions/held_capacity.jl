@@ -62,9 +62,9 @@ function HeldCapacity(
     return HeldCapacity(intervention, Float64(capacity), hold, priority, on_refusal)
 end
 
-# Everyone's stay, kept in `state.scratch` under the capacity key. Two
-# wrappers sharing a key share places, and a stay outlives the call that
-# admitted it. Maps a person's id to `(resource, start, end)`.
+# Everyone's stay, kept in `state.scratch` under the capacity key. Wrappers
+# that share a key share places, and a stay outlives the call that admitted it.
+# Maps a person's id to `(resource, start, end)`.
 const _HeldStays = Dict{Int, Tuple{Any, Float64, Float64}}
 function _held_stays(state, key)
     return get!(_HeldStays, state.scratch, (:held_capacity, key))::_HeldStays
