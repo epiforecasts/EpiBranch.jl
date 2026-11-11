@@ -1054,7 +1054,7 @@ end
     end
 
     @testset "conditioned simulation and show" begin
-        prog = [Transition(:recovered; from = :infection, delay = 1.0, terminal = true)]
+        prog = sir(1.0)
         spec = ModelSpec(
             HomogeneousProcess(; transmission_rate = 2.0, population_size = 500);
             progression = prog
@@ -1071,7 +1071,7 @@ end
     end
 
     @testset "max_time ends the pool at that time" begin
-        prog = [Transition(:recovered; from = :infection, delay = 1.0, terminal = true)]
+        prog = sir(1.0)
         spec = ModelSpec(
             HomogeneousProcess(; transmission_rate = 2.0, population_size = 500);
             progression = prog
@@ -1126,7 +1126,7 @@ end
     end
 
     @testset "termination controls on the fixed pool" begin
-        prog = [Transition(:recovered; from = :infection, delay = 1.0, terminal = true)]
+        prog = sir(1.0)
         spec = ModelSpec(
             HomogeneousProcess(; transmission_rate = 2.0, population_size = 200);
             progression = prog
@@ -1175,7 +1175,7 @@ end
         )
         @test_logs ModelSpec(covered; progression = censored)
         # No custom terminal transition beyond the defaults → no warning.
-        prog = [Transition(:recovered; from = :infection, delay = 1.0, terminal = true)]
+        prog = sir(1.0)
         @test_logs ModelSpec(process; progression = prog)
         # A window that only opens once a case reaches a terminal state (e.g.
         # a post-mortem pool with `from = :died`) is not warned about for
