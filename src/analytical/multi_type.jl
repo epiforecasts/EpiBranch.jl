@@ -147,11 +147,10 @@ not the time-varying reproduction number Rt. Given a model, each of its
 interventions changes the offspring distribution first, through
 [`EpiBranch.analytic_offspring_effect`](@ref), so the result is the basic
 reproduction number only when the model has none; an intervention without
-such an effect raises an error. A model whose offspring law is reshaped, by a
-finite population size, an infectiousness window with `until` or
-[`transmission_traits`](@ref) away from 1, raises an `ArgumentError` too: the
-offspring mean is then not the mean number of secondary cases, so simulate
-instead.
+such an effect raises an error. A finite population size, an infectiousness
+window with `until`, or [`transmission_traits`](@ref) away from 1 reshapes the
+offspring law and also raises an `ArgumentError`, because the offspring mean is
+then not the mean number of secondary cases. Simulate instead.
 
 - Single-type model: the mean of the offspring distribution.
 - [`ClusterMixed`](@ref) offspring: that mean averaged over the chains'
