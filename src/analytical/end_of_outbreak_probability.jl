@@ -31,8 +31,8 @@
 
 Probability that a single case causes no further cases, given that it was
 `τ` days ago. Assumes `NegBin(R, k)` offspring, a generation time
-distribution `generation_time` (days) and that every case is reported with
-no delay: every case infected before the evaluation date is already known.
+distribution `generation_time` (days) and that every case is reported without
+delay: every case infected before the evaluation date is already known.
 Following Thompson, Morgan & Jansen (2019, Phil Trans B), it is
 
     ((k + R · (1 − S(τ))) / (k + R))^k
@@ -50,8 +50,8 @@ below, which combines them properly. Using this method with only the most
 recent case's `τ` overstates the probability that the cluster is over.
 
 With a reporting delay, a cluster that looks quiet for `τ` days may already
-hold an infected case that has not been reported yet, and this overstates the
-probability that the cluster is over. Measure `τ` to the last date by which
+hold an infected case that has not been reported yet. The result then
+overstates the probability that the cluster is over. Measure `τ` to the last date by which
 reports are complete, or simulate.
 
 Use it as `prob_concluded` in `loglikelihood(::ChainSizes, ...)` or
@@ -103,9 +103,9 @@ End-of-outbreak probability using the offspring and generation time
 distributions of a `BranchingProcess`, `τ` days after the most recent case.
 
 This assumes every case is reported with no delay between infection and
-report, so with a reporting delay it overstates the probability that the
-outbreak is over; measure `τ` to the last date by which reports are complete,
-or simulate. Under-reporting (a [`Reporting`](@ref)
+report. With a reporting delay it overstates the probability that the outbreak
+is over; measure `τ` to the last date by which reports are complete, or
+simulate. Under-reporting (a [`Reporting`](@ref)
 step with a probability below 1, or any deprecated
 [`PerCaseObservation`](@ref)) needs the recursion of Thompson, Morgan & Jansen
 (2019), which is not implemented, and gives an error; use a model that reports
