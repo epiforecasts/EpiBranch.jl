@@ -1,5 +1,5 @@
-# Copy of test/testutils/structured_likelihood.jl in the core package, kept here so the
-# tests of this package run from a registry copy. Keep the two in step.
+# Copy of test/testutils/structured_likelihood.jl in the core package, kept here so the tests of this
+# package run from a registry copy. Keep the two in step.
 
 struct LikelihoodWindowRemoval <: EpiBranch.AbstractIntervention end
 function EpiBranch.infectious_removal_time(::LikelihoodWindowRemoval, ind::EpiBranch.Individual)
