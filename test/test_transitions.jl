@@ -641,9 +641,12 @@ end
     ind = Individual(id = 1, infection_time = 0.0)
     ind.state[:onset_time] = 2.5
     @test EpiBranch._state_time(ind, t.from, t.from_key) == 2.5
-    read_anchor(ind, t) = EpiBranch._state_time(ind, t.from, t.from_key)
-    read_anchor(ind, t)
-    @test (@allocated read_anchor(ind, t)) == 0
+    # Concrete arguments, so the result does not depend on how the compiler
+    # splits the field's `Union` type.
+    from, key = t.from::Symbol, t.from_key::Symbol
+    read_anchor(ind, from, key) = EpiBranch._state_time(ind, from, key)
+    read_anchor(ind, from, key)
+    @test (@allocated read_anchor(ind, from, key)) == 0
 
     f = Transition(:admitted; from = i -> 4.0, delay = 1.0)
     @test EpiBranch._state_time(ind, f.from, f.from_key) == 4.0
