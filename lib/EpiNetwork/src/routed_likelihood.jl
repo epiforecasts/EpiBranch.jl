@@ -298,10 +298,10 @@ function _route_in_neighbours(contacts::Vector{Vector{Int}}, infected::AbstractV
 end
 
 # A susceptible's escape and event terms under one mixture component's
-# modifier, over every route and the external hazard: the same sums the
-# no-susceptibility loop in `pairwise_surv_loglik` below works out, with
-# `_scaled_cumhazard` and `_scaled_loghazard` applying the modifier to each
-# route's and the external hazard's own hazard.
+# modifier, over every route and the external hazard, with `_scaled_cumhazard`
+# and `_scaled_loghazard` applying the modifier to each route's and the
+# external hazard's own hazard. With `modifier = nothing` this is the
+# susceptible's unmodified likelihood.
 function _routed_modifier_loglik(
         modifier, windows, extsrc, data, in_neighbours, gaps, gates, tfollow, j
     )
@@ -485,63 +485,23 @@ function EpiBranch.pairwise_surv_loglik(
     for j in 1:n
         (!explain_index && data.is_index[j]) && continue
         mixture = mixtures === nothing ? nothing : get(mixtures, j, nothing)
-        if mixture !== nothing
-            v = _routed_mixture_loglik(
+        v = if mixture === nothing
+            _routed_modifier_loglik(
+                nothing, windows, extsrc, data, in_neighbours, gaps, gates, tfollow, j
+            )
+        else
+            _routed_mixture_loglik(
                 mixture, windows, extsrc, data, in_neighbours, gaps, gates, tfollow, j, T
             )
-            # Returning `-Inf` directly, rather than adding it to `ll`, discards
-            # whatever AD partials `ll` has accumulated from this host and every
-            # earlier one. Once a host is structurally unexplainable the
-            # likelihood is the constant -Inf at every parameter value, so its
-            # gradient must be exactly zero, and those partials would otherwise
-            # survive into a nonzero one. The flat passes below return -Inf the
-            # same way.
-            _is_minus_inf(v) && return T(-Inf)
-            ll += v
-            continue
         end
-        tj = data.infection_time[j]
-        tend = (isnan(tj) || tj > tfollow) ? tfollow : tj
-
-        survival = 0.0
-        extdist = _ext_survival_of(extsrc, j)
-        if extdist !== nothing
-            stop = min(tend, data.obs_end)
-            stop > 0 && (survival += cumhazard(extdist, stop))
-        end
-        for r in 1:n_routes
-            for (i, pos) in in_neighbours[r][j]
-                oi = data.infectious_time[r][i]
-                isfinite(oi) || continue
-                oi < tend || continue
-                stop = min(data.removal_time[r][i], tend) - oi
-                stop > 0 || continue
-                pk = _route_kernel(windows[r].kernel, data.contacts[r], i, pos, j)
-                survival += gates[r] ?
-                    _gapped_cumhazard(
-                        t -> cumhazard(pk, t), _host_stretches(gaps, i), oi, stop,
-                        _host_leaky_stretches(gaps, i)
-                    ) :
-                    cumhazard(pk, stop)
-            end
-        end
-        ll -= survival
-
-        (isnan(tj) || tj > tfollow) && continue
-        route_terms = [
-            EpiBranch._loghazard(
-                _route_kernel(windows[r].kernel, data.contacts[r], i, pos, j), tj - data.infectious_time[r][i]
-            ) + (gates[r] ? _leak_log_at(gaps, i, tj) : 0.0)
-                for r in 1:n_routes for (i, pos) in in_neighbours[r][j]
-                if isfinite(data.infectious_time[r][i]) &&
-                data.infectious_time[r][i] < tj <= data.removal_time[r][i] &&
-                (!gates[r] || !_removed_at(gaps, i, tj))
-        ]
-        ext_term = (extdist !== nothing && 0 <= tj <= data.obs_end) ?
-            [loghazard(extdist, tj)] : Float64[]
-        terms = vcat(route_terms, ext_term)
-        isempty(terms) && return -Inf
-        ll += logsumexp(terms)
+        # Returning `-Inf` directly, rather than adding it to `ll`, discards
+        # whatever AD partials `ll` has accumulated from this host and every
+        # earlier one. Once a host is structurally unexplainable the
+        # likelihood is the constant -Inf at every parameter value, so its
+        # gradient must be exactly zero, and those partials would otherwise
+        # survive into a nonzero one.
+        _is_minus_inf(v) && return T(-Inf)
+        ll += v
     end
     return ll
 end

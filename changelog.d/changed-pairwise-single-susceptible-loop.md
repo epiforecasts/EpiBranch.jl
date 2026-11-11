@@ -1,0 +1,1 @@
+The pairwise survival likelihood scores each susceptible in one loop, through the same per-susceptible function whether or not an effect modifies it, in place of separate cumulative-hazard and event passes kept in step by tests. The routed-network likelihood does the same.

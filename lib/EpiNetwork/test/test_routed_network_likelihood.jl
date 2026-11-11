@@ -496,8 +496,8 @@ end
             # A vaccinated host's mixture goes through `_routed_modifier_loglik`
             # for every route and the external hazard alike. A route gated to
             # `INTERVENTION_REMOVAL` and a non-zero `external_hazard` must both
-            # reach the survival and event terms in that function, just as an
-            # unvaccinated host's plain sum does.
+            # reach the survival and event terms in that function, which an
+            # unvaccinated host's plain sum goes through with no modifier.
             REM = EpiBranch.INTERVENTION_REMOVAL
             windows3 = [
                 RouteWindow(:household; until = (:recovered,), kernel = Exponential(3.0), reach = hh),
