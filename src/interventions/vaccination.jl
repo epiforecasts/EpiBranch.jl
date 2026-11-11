@@ -294,38 +294,21 @@ function _check_effect_keywords(T, own, effect)
     return nothing
 end
 
-function _vaccinated_key(label::Symbol)
-    return label === :default ? :vaccinated : Symbol("vaccinated_", label)
-end
-function _vaccination_time_key(label::Symbol)
-    return label === :default ? :vaccination_time : Symbol("vaccination_time_", label)
-end
-function _vaccine_efficacy_key(label::Symbol)
-    return label === :default ? :vaccine_efficacy : Symbol("vaccine_efficacy_", label)
-end
-function _post_exposure_efficacy_key(label::Symbol)
-    return label === :default ? :post_exposure_efficacy : Symbol("post_exposure_efficacy_", label)
-end
-function _onward_efficacy_key(label::Symbol)
-    return label === :default ? :onward_efficacy : Symbol("onward_efficacy_", label)
-end
-function _coverage_declined_key(label::Symbol)
-    return label === :default ? :coverage_declined : Symbol("coverage_declined_", label)
-end
-function _immunity_time_key(label::Symbol)
-    return label === :default ? :immunity_time : Symbol("immunity_time_", label)
-end
-function _severity_efficacy_key(label::Symbol)
-    return label === :default ? :severity_efficacy : Symbol("severity_efficacy_", label)
-end
+# Each per-dose key is its base name, with the dose label appended unless it
+# is `:default`.
+_labelled_key(base::Symbol, label::Symbol) =
+    label === :default ? base : Symbol(base, "_", label)
 
-function _symptom_efficacy_key(label::Symbol)
-    return label === :default ? :symptom_efficacy : Symbol("symptom_efficacy_", label)
-end
-function _symptom_protection_key(label::Symbol)
-    return label === :default ? :symptom_protection_time :
-        Symbol("symptom_protection_time_", label)
-end
+_vaccinated_key(label::Symbol) = _labelled_key(:vaccinated, label)
+_vaccination_time_key(label::Symbol) = _labelled_key(:vaccination_time, label)
+_vaccine_efficacy_key(label::Symbol) = _labelled_key(:vaccine_efficacy, label)
+_post_exposure_efficacy_key(label::Symbol) = _labelled_key(:post_exposure_efficacy, label)
+_onward_efficacy_key(label::Symbol) = _labelled_key(:onward_efficacy, label)
+_coverage_declined_key(label::Symbol) = _labelled_key(:coverage_declined, label)
+_immunity_time_key(label::Symbol) = _labelled_key(:immunity_time, label)
+_severity_efficacy_key(label::Symbol) = _labelled_key(:severity_efficacy, label)
+_symptom_efficacy_key(label::Symbol) = _labelled_key(:symptom_efficacy, label)
+_symptom_protection_key(label::Symbol) = _labelled_key(:symptom_protection_time, label)
 
 # Time dose `label` was given to `ind`, or `nothing` if it has not been.
 function _dose_time(label::Symbol, ind)
@@ -794,9 +777,6 @@ function RingVaccination(;
 end
 
 vaccine_effect(rv::RingVaccination) = getfield(rv, :effect)
-Base.getproperty(rv::RingVaccination, name::Symbol) = _effect_getproperty(rv, name)
-Base.propertynames(rv::RingVaccination, ::Bool = false) = _effect_propertynames(rv)
-Base.show(io::IO, rv::RingVaccination) = _show_keywords(io, rv)
 
 function required_fields(rv::RingVaccination)
     return _maybe_positive(rv.post_exposure_efficacy) ? [:traced, :incubation_period] : [:traced]
@@ -1245,9 +1225,6 @@ function GroupVaccination(;
 end
 
 vaccine_effect(gv::GroupVaccination) = getfield(gv, :effect)
-Base.getproperty(gv::GroupVaccination, name::Symbol) = _effect_getproperty(gv, name)
-Base.propertynames(gv::GroupVaccination, ::Bool = false) = _effect_propertynames(gv)
-Base.show(io::IO, gv::GroupVaccination) = _show_keywords(io, gv)
 
 function required_fields(gv::GroupVaccination)
     return union([gv.group_key], required_fields(gv.eligibility))
@@ -1402,9 +1379,6 @@ end
 
 vaccine_effect(mv::MassVaccination) = getfield(mv, :effect)
 
-Base.getproperty(mv::MassVaccination, name::Symbol) = _effect_getproperty(mv, name)
-Base.propertynames(mv::MassVaccination, ::Bool = false) = _effect_propertynames(mv)
-Base.show(io::IO, mv::MassVaccination) = _show_keywords(io, mv)
 
 required_fields(::MassVaccination) = Symbol[]
 
@@ -1435,3 +1409,9 @@ end
 function analytic_offspring_effect(mv::MassVaccination, offspring::Union{NegativeBinomial, Poisson})
     return scale_distribution(offspring, 1 - _mass_vaccination_block(mv))
 end
+
+# One block serves the three built-in vaccinations, defined once all exist.
+const _EffectVaccination = Union{RingVaccination, GroupVaccination, MassVaccination}
+Base.getproperty(v::_EffectVaccination, name::Symbol) = _effect_getproperty(v, name)
+Base.propertynames(v::_EffectVaccination, ::Bool = false) = _effect_propertynames(v)
+Base.show(io::IO, v::_EffectVaccination) = _show_keywords(io, v)

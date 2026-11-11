@@ -1,0 +1,1 @@
+The vaccination code defines its per-dose state keys, property forwarding, draw helpers and capacity keys once instead of repeating them for each vaccination. `capacity_key` and `capacity_time_key` now work for any `AbstractVaccination`, so a user-defined vaccination counts against a `CapacityConstrained` budget under its dose label.
