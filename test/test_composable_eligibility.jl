@@ -491,3 +491,22 @@ elig(policy, infector) = is_eligible(policy, infector, _CONTACT, nothing)
         )
     end
 end
+
+@testset "trigger_time of an isolation-timed rule is not before the case's infection" begin
+    state = EpiBranch.new_state(
+        BranchingProcess(Poisson(1.0), Exponential(5.0)),
+        EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
+    )
+    ind = Individual(id = 1, infection_time = 3.0)
+    ind.state[:infected] = true
+    # Quarantined as a contact at 1.0, then infected at 3.0 during it.
+    set_isolated!(ind, 1.0; release_time = Inf)
+    for rule in (OnIsolation(), TraceEveryone())
+        @test EpiBranch.trigger_time(rule, ind, state) == 3.0
+    end
+    # An isolation after the infection keeps its recorded time.
+    later = Individual(id = 2, infection_time = 3.0)
+    later.state[:infected] = true
+    set_isolated!(later, 5.0; release_time = Inf)
+    @test EpiBranch.trigger_time(OnIsolation(), later, state) == 5.0
+end

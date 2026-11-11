@@ -107,7 +107,7 @@ function _log_report!(state::SimulationState{T}, individual, time) where {T}
     log === nothing && return nothing
     push!(
         (log::_ReportLog{T}).pending,
-        (individual.id, length(individual.episodes), convert(T, time))
+        (individual.id, _n_episodes(individual), convert(T, time))
     )
     return nothing
 end
@@ -141,7 +141,7 @@ end
 function _confirm_reports!(log::_ReportLog, individuals)
     for (id, k, time) in log.pending
         ind = individuals[id]
-        st = length(ind.episodes) == k ? ind.state : ind.episodes[k + 1].state
+        st = _n_episodes(ind) == k ? ind.state : ind.episodes[k + 1].state
         isequal(_report_time(st), time) || continue
         insert!(log.times, searchsortedlast(log.times, time) + 1, time)
     end
