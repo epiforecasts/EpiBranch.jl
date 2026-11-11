@@ -291,12 +291,13 @@ removal_gap_host_times_withdrawn(component) = ()
 # under (`removal_block_probability` of `1`, the default); a leaky one's are
 # kept apart by `_leaky_gap_keys`.
 function _removal_gap_keys(model::ModelSpec)
-    keys = Symbol[]
-    for component in model.interventions, key in removal_gap_host_times(component)
-        isone(removal_block_probability(component)) || continue
-        key in keys || push!(keys, key)
-    end
-    return keys
+    return unique(
+        Symbol[
+            key for component in model.interventions
+                for key in removal_gap_host_times(component)
+                if isone(removal_block_probability(component))
+        ]
+    )
 end
 
 # Every key a leaky removal names, paired with the fraction of hazard that
@@ -327,11 +328,12 @@ end
 
 # The keys some component in `model` withdraws on purpose.
 function _withdrawn_removal_gap_keys(model::ModelSpec)
-    keys = Symbol[]
-    for component in model.interventions, key in removal_gap_host_times_withdrawn(component)
-        key in keys || push!(keys, key)
-    end
-    return keys
+    return unique(
+        Symbol[
+            key for component in model.interventions
+                for key in removal_gap_host_times_withdrawn(component)
+        ]
+    )
 end
 
 # Every key a simulated `state` recorded a lapsing stretch under must be named
@@ -715,10 +717,6 @@ function susceptibility_components(v::AbstractVaccination, host)
     return susceptibility_components(vaccine_effect(v), host)
 end
 
-function susceptibility_components(w::InterventionWrapper, host)
-    return susceptibility_components(w.intervention, host)
-end
-
 # The likelihood evaluates one population-level efficacy. A `Distribution` or
 # function draws a value per vaccinated individual in simulation, and the
 # likelihood has no per-host draw to read it from.
@@ -787,25 +785,19 @@ susceptibility_host_times(component) = ()
 function susceptibility_host_times(v::AbstractVaccination)
     return (_immunity_time_key(dose_label(v)),)
 end
-function susceptibility_host_times(w::InterventionWrapper)
-    return susceptibility_host_times(w.intervention)
-end
 
 # The host times an infection layer read out of a `state` simulated from
 # `model` records: those the caller names, and those the model's composed
 # components read.
 function _layer_host_time_keys(model::ModelSpec, host_times)
-    keys = Symbol[Symbol(key) for key in host_times]
-    for component in model.interventions, key in susceptibility_host_times(component)
-        key in keys || push!(keys, key)
-    end
-    for key in _removal_gap_keys(model)
-        key in keys || push!(keys, key)
-    end
-    for (key, _) in _leaky_gap_keys(model)
-        key in keys || push!(keys, key)
-    end
-    return keys
+    return unique(
+        Symbol[
+            collect(Symbol, host_times);
+            [key for component in model.interventions for key in susceptibility_host_times(component)];
+            _removal_gap_keys(model);
+            first.(_leaky_gap_keys(model))
+        ]
+    )
 end
 
 # Every stretch under `keys` merged into one column, sorted and disjoint, as

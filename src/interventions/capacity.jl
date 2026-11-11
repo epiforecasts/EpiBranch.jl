@@ -274,10 +274,6 @@ state alone, with nothing of the original proposal kept around.
 """
 resource_key(::AbstractIntervention, individual, state) = nothing
 
-# Read through any wrapper, so `CapacityConstrained` composes with
-# `Scheduled` in either order.
-capacity_key(w::InterventionWrapper) = capacity_key(w.intervention)
-capacity_time_key(w::InterventionWrapper) = capacity_time_key(w.intervention)
 resource_key(w::InterventionWrapper, individual, state) =
     resource_key(w.intervention, individual, state)
 capacity_key(v::RingVaccination) = _vaccinated_key(dose_label(v))
@@ -691,16 +687,12 @@ end
 traces_contacts(cc::CapacityConstrained) = traces_contacts(cc.intervention)
 function trace_contacts!(cc::CapacityConstrained, state, infector, contacts, not_before = nothing)
     key = (:trace_admitter, _innermost(cc))
-    previous = get(state.scratch, key, nothing)
-    state.scratch[key] = cc
-    try
+    _with_scratch(state, key, cc) do
         if not_before === nothing
             trace_contacts!(cc.intervention, state, infector, contacts)
         else
             trace_contacts!(cc.intervention, state, infector, contacts, not_before)
         end
-    finally
-        previous === nothing ? delete!(state.scratch, key) : (state.scratch[key] = previous)
     end
     return nothing
 end

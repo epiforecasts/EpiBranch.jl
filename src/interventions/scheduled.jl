@@ -302,13 +302,17 @@ end
 # and archives the episode holding it, and a report the health system has made
 # stays made. Read from a log of the reports, so a call costs a binary search
 # however large the run.
-function _reported_cases_due(state::SimulationState{T}) where {T}
-    log = get(state.scratch, (:report_log,), nothing)
-    if log === nothing
-        log = state.scratch[(:report_log,)] = _report_log(state)
-    end
+function _reported_cases_due(state::SimulationState)
+    return searchsortedlast(_confirmed_report_log(state).times, state.max_infection_time)
+end
+
+# The run's report log, created on first use and brought up to date. `state`
+# is left unparametrised in the callers, so the time type is read from it.
+function _confirmed_report_log(state::SimulationState)
+    T = typeof(state.max_infection_time)
+    log = get!(() -> _report_log(state), state.scratch, (:report_log,))
     _confirm_reports!(log::_ReportLog{T}, state.individuals)
-    return searchsortedlast(log.times, state.max_infection_time)
+    return log
 end
 
 """
@@ -337,12 +341,7 @@ trigger_can_lapse(::ReportedCases) = false
 # `ReportedCases(n)` opened. `state` is left unparametrised, as `Infections`'s
 # own `opened_at` is, for the same reason given there.
 function opened_at(t::ReportedCases, state::SimulationState)
-    T = typeof(state.max_infection_time)
-    log = get(state.scratch, (:report_log,), nothing)
-    if log === nothing
-        log = state.scratch[(:report_log,)] = _report_log(state)
-    end
-    _confirm_reports!(log::_ReportLog{T}, state.individuals)
+    log = _confirmed_report_log(state)
     return length(log.times) >= t.n ? log.times[t.n] : nothing
 end
 
@@ -401,18 +400,10 @@ function Scheduled(
         start_after::Union{AbstractTrigger, Nothing} = nothing
     )
     conditions = Function[]
-    start_time !== nothing && push!(
-        conditions,
-        s -> s.max_infection_time >= start_time
-    )
-    end_time !== nothing && push!(
-        conditions,
-        s -> s.max_infection_time <= end_time
-    )
-    start_after_cases !== nothing && push!(
-        conditions,
-        s -> s.cumulative_cases >= start_after_cases
-    )
+    start_time !== nothing && push!(conditions, s -> s.max_infection_time >= start_time)
+    end_time !== nothing && push!(conditions, s -> s.max_infection_time <= end_time)
+    start_after_cases !== nothing &&
+        push!(conditions, s -> s.cumulative_cases >= start_after_cases)
 
     isempty(conditions) && start_after === nothing &&
         error("Scheduled requires at least one condition")
@@ -537,9 +528,6 @@ recorded and their dates, returning `nothing` before any effect is recorded.
 """
 persistent_competing_risks(::AbstractIntervention) = false
 persistent_competing_risks(::AbstractVaccination) = true
-function persistent_competing_risks(w::InterventionWrapper)
-    return persistent_competing_risks(w.intervention)
-end
 
 # Whether `iv`'s risk, once it has fired, could later be withdrawn by a
 # schedule's active window closing rather than standing for good. Only
@@ -553,7 +541,6 @@ _may_lapse(::AbstractIntervention) = false
 function _may_lapse(s::Scheduled)
     return persistent_competing_risks(s.intervention) ? _may_lapse(s.intervention) : true
 end
-_may_lapse(w::InterventionWrapper) = _may_lapse(w.intervention)
 
 # A schedule that cannot close again honours the inner removal's releases for
 # good, so its stretches can be read back; one with an end withdraws the block

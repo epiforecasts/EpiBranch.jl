@@ -290,13 +290,9 @@ function proportion_cluster_size(model::Union{TransmissionModel, ModelSpec}; clu
     return _proportion_cluster_size(off, cluster_size)
 end
 
+_proportion_cluster_size(d::NegativeBinomial, cluster_size) = proportion_cluster_size(d; cluster_size)
 function _proportion_cluster_size(d, cluster_size)
-    d isa NegativeBinomial || throw(
-        ArgumentError(
-            "proportion_cluster_size requires NegativeBinomial offspring"
-        )
-    )
-    return proportion_cluster_size(d; cluster_size)
+    throw(ArgumentError("proportion_cluster_size requires NegativeBinomial offspring"))
 end
 
 # ── Network-adjusted reproduction number ─────────────────────────────

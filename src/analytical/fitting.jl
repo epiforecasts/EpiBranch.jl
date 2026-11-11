@@ -232,7 +232,7 @@ function _chain_size_classes_loglik(dist, data::ChainSizeClasses)
     return total
 end
 
-# AD-compatible chain length: Poisson — PGF iteration on G(s) = exp(λ(s − 1)).
+# AD-compatible chain length: PGF iteration on the offspring's own PGF.
 """
     loglikelihood(data::ChainLengths, offspring::Poisson; n_initial = 1)
     loglikelihood(data::ChainLengths, offspring::NegativeBinomial; n_initial = 1)
@@ -246,20 +246,12 @@ length is the longest of `n_initial` single-seed chains, so its CDF is the
 single-seed CDF raised to the power `n_initial`.
 """
 function loglikelihood(
-        data::ChainLengths, offspring::Poisson{T}; n_initial::Int = 1
-    ) where {T}
-    λ = mean(offspring)
-    λ < 1 ||
-        throw(ArgumentError("chain length distribution only defined for subcritical process (λ < 1)"))
-    G(s) = exp(λ * (s - one(λ)))
-    return _chain_length_ll_pgf(data.data, G, typeof(λ); n_initial)
-end
-
-# AD-compatible chain length: NegBin — PGF iteration
-function loglikelihood(
-        data::ChainLengths, offspring::NegativeBinomial{T}; n_initial::Int = 1
-    ) where {T}
-    return _chain_length_ll_negbin(data.data, offspring; n_initial)
+        data::ChainLengths, offspring::Union{Poisson, NegativeBinomial}; n_initial::Int = 1
+    )
+    R = mean(offspring)
+    R < 1 ||
+        throw(ArgumentError("chain length distribution only defined for subcritical process (R < 1)"))
+    return _chain_length_ll_pgf(data.data, s -> _pgf(offspring, s), typeof(R); n_initial)
 end
 
 # Simulation estimate of the chain-size or chain-length log-likelihood under

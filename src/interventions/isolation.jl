@@ -195,9 +195,23 @@ isolation time until its [`isolation_release_time`](@ref) (never released when
 `duration` is `Inf`). Each such contact is prevented with probability
 `1 - post_isolation_transmission`."""
 function competing_risk(iso::Isolation, parent, contact, state)
-    key = iso.post_isolation_transmission == 0 ?
+    return _removal_risks(parent, 1.0 - iso.post_isolation_transmission, _stretch_key(iso))
+end
+
+# Each kind of isolation reads its own stretches separately from quarantine
+# and removals with a different block probability.
+function _stretch_key(iso::Isolation)
+    return iso.post_isolation_transmission == 0 ?
         ISOLATION_STRETCHES_KEY : LEAKY_REMOVAL_STRETCHES_KEY
-    return _removal_risks(parent, 1.0 - iso.post_isolation_transmission, key)
+end
+
+# When a test-positive case isolates itself: its onset plus the delay.
+function _self_isolation_time(iso::Isolation, individual, state)
+    delay = sample_value(
+        iso.onset_to_isolation_delay,
+        stream(state.rng, individual.id, (:isolation, :delay)), individual
+    )
+    return onset_time(individual) + delay
 end
 
 # The likelihood reads the stretch a lapsing isolation removed the host for.
@@ -269,11 +283,7 @@ function resolve_individual!(iso::Isolation, individual, state)
     # gets the case isolated.
     if _isolation_in_force(individual)
         is_test_positive(individual) || return nothing
-        self_t = onset_time(individual) +
-            sample_value(
-            iso.onset_to_isolation_delay,
-            stream(state.rng, individual.id, (:isolation, :delay)), individual
-        )
+        self_t = _self_isolation_time(iso, individual, state)
         isfinite(self_t) || return nothing
         _isolate!(iso, individual, state, self_t)
         return nothing
@@ -295,15 +305,8 @@ function resolve_individual!(iso::Isolation, individual, state)
     onset = onset_time(individual)
     traced_time = isnan(onset) ? Inf :
         max(_state_real(individual.state, :_traced_isolation_time, Inf), onset)
-    test_time = if is_test_positive(individual)
-        onset +
-            sample_value(
-            iso.onset_to_isolation_delay,
-            stream(state.rng, individual.id, (:isolation, :delay)), individual
-        )
-    else
-        Inf
-    end
+    test_time = is_test_positive(individual) ?
+        _self_isolation_time(iso, individual, state) : Inf
     final = min(test_time, traced_time)
     isfinite(final) || return nothing
     _isolate!(iso, individual, state, final)
@@ -322,13 +325,9 @@ function _isolate!(iso::Isolation, individual, state, time)
         iso.duration, state.rng, individual, "`Isolation`'s `duration`"
     )
     release = time + duration
-    # Each kind of isolation reads its own stretches separately from quarantine
-    # and removals with a different block probability.
-    record_key = iso.post_isolation_transmission == 0 ?
-        ISOLATION_STRETCHES_KEY : LEAKY_REMOVAL_STRETCHES_KEY
     unrecorded = !records_isolation(iso.eligibility, individual, state, time)
     handle = _set_isolated!(
-        individual, time; release_time = release, key = record_key, unrecorded
+        individual, time; release_time = release, key = _stretch_key(iso), unrecorded
     )
     individual.state[:_isolation_handle] = handle
     individual.state[:_isolation_start] = time

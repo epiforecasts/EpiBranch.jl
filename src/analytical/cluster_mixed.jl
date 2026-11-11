@@ -114,14 +114,12 @@ function chain_size_distribution(o::ClusterMixed{PoissonFamily, <:Gamma})
     return PoissonGammaChainSize(k, R)
 end
 
-function loglikelihood(data::ChainSizes, o::ClusterMixed)
-    d = chain_size_distribution(o)
-    return _chain_size_loglik(d, data)
+# Through the generic `ChainSizeLaw` methods, which take the same keywords.
+function loglikelihood(data::ChainSizes, o::ClusterMixed; kwargs...)
+    return loglikelihood(data, chain_size_distribution(o); kwargs...)
 end
-
 function loglikelihood(data::ChainSizeClasses, o::ClusterMixed)
-    d = chain_size_distribution(o)
-    return _chain_size_classes_loglik(d, data)
+    return loglikelihood(data, chain_size_distribution(o))
 end
 
 """
