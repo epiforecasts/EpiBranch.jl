@@ -1530,7 +1530,7 @@ _ext_partype(s::_MassActionSchedule, n) = Distributions.partype(s)
     source1 + source2
 
 The external hazard that is the sum of several sources, for
-[`pairwise_surv_loglik`](@ref)'s `external_hazard`: each person faces the
+the `external_hazard` argument of [`pairwise_surv_loglik`](@ref): each person faces the
 hazards of all the sources at once, and an infection is attributed to
 whichever source infects first. Each source is anything `external_hazard` accepts on its own: a
 rate, a distribution, a calendar schedule such as `Steps`, a per-person vector
@@ -1543,7 +1543,7 @@ action alone does not. Mass action plus an importation rate therefore scores
 index cases as importations instead of conditioning on them.
 
 Like [`MassActionHazard`](@ref), a sum is likelihood-only: it cannot be passed
-as a process's own `external_hazard` to simulate from.
+as the `external_hazard` of a process to simulate from.
 
 # Example
 
