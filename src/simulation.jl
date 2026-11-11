@@ -514,9 +514,10 @@ function _trace_source!(
     1 <= case.parent_id <= length(state.individuals) || return nothing
     infector = state.individuals[case.parent_id]
     contacts = (infector,)
-    for intervention in interventions
-        traces_source(intervention) || continue
-        trace_contacts!(intervention, state, case, contacts)
+    _each(interventions) do intervention
+        traces_source(intervention) &&
+            trace_contacts!(intervention, state, case, contacts)
+        return nothing
     end
     return nothing
 end
@@ -542,7 +543,17 @@ infection time is fixed and before it transmits: its clinical transitions
 """
 function _settle_case!(state::SimulationState, case, interventions, count)
     _at_case!(state, case, count)
-    resolve_transitions!(state, case)
+    _resolve_transitions!(state, case, state.transitions)
+    _resolve_interventions!(state, case, interventions)
+    return nothing
+end
+
+# The race's own call. It passes the transitions as the `Tuple` taken once from
+# `state.transitions`, which lets the hooks of each step be resolved at compile
+# time.
+function _settle_case!(state::SimulationState, case, interventions, transitions, count)
+    _at_case!(state, case, count)
+    _resolve_transitions!(state, case, transitions)
     _resolve_interventions!(state, case, interventions)
     return nothing
 end
@@ -568,12 +579,31 @@ function _resolve_interventions!(state::SimulationState, case, interventions)
     # keeps per-episode draws such as `Isolation`'s `:test_positive` specific
     # to the new episode, rather than left over from the one before it.
     if _has_episodes(case)
-        for intervention in interventions
+        _each(interventions) do intervention
             initialise_individual!(intervention, case, state)
+            return nothing
         end
     end
-    for intervention in interventions
+    _each(interventions) do intervention
         resolve_individual!(intervention, case, state)
+        return nothing
+    end
+    return nothing
+end
+
+# Call `f` on each element in order. A `Tuple` is walked by recursion, so each
+# call is resolved when the method is compiled; a loop over a heterogeneous
+# tuple, like one over a `Vector` of an abstract element type, dispatches at
+# run time and boxes its arguments. The engine takes a `Tuple` of the
+# progression and of the interventions once per run and walks it with this.
+@inline _each(f::F, ::Tuple{}) where {F} = nothing
+@inline function _each(f::F, items::Tuple) where {F}
+    f(first(items))
+    return _each(f, Base.tail(items))
+end
+function _each(f::F, items) where {F}
+    for item in items
+        f(item)
     end
     return nothing
 end
@@ -1006,8 +1036,11 @@ undone one do not happen. Undoing restores each entry a step set on
 `individual.state`, so a transition must record its results by setting
 entries there rather than by changing a vector or dictionary it finds there.
 """
-function resolve_transitions!(state::SimulationState, individual)
-    transitions = state.transitions
+resolve_transitions!(state::SimulationState, individual) =
+    _resolve_transitions!(state, individual, state.transitions)
+
+# `transitions` is `state.transitions`, or the `Tuple` the race took from it.
+function _resolve_transitions!(state::SimulationState, individual, transitions)
     isempty(transitions) && return nothing
     # When a reinfection occurs, `close_episode!` archives the state of the
     # previous episode wholesale, outcome included, before this runs again
@@ -1016,8 +1049,9 @@ function resolve_transitions!(state::SimulationState, individual)
     # likelihoods for the new one.
     delete!(individual.state, :outcome)
     delete!(individual.state, :outcome_time)
-    for transition in transitions
+    _each(transitions) do transition
         initialise_individual!(transition, individual, state)
+        return nothing
     end
     # Branch once per case: a check inside the loop measurably slows every
     # progression model, although almost no case is aborted.
@@ -1026,8 +1060,9 @@ function resolve_transitions!(state::SimulationState, individual)
             transitions, individual, state, infection_aborted_time(individual)
         )
     else
-        for transition in transitions
+        _each(transitions) do transition
             resolve_individual!(transition, individual, state)
+            return nothing
         end
     end
     _finalise_terminal!(individual, transitions)

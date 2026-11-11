@@ -2448,3 +2448,28 @@ using ForwardDiff
         end
     end
 end
+
+@testset "Closed forms refuse a reshaped offspring law" begin
+    off, gt = NegBin(0.8, 0.5), Gamma(2.0, 2.0)
+    plain = BranchingProcess(off, gt)
+    finite = BranchingProcess(off, gt; population_size = 20)
+    windowed = BranchingProcess(Infectiousness(off; until = (:recovered,), kernel = gt))
+    susceptible = ModelSpec(plain; attributes = transmission_traits(susceptibility = 0.5))
+
+    @test 0.0 < end_of_outbreak_probability(plain, 5.0) < 1.0
+    @test 0.0 < probability_contain(plain) <= 1.0
+    @test 0.0 < extinction_probability(plain) <= 1.0
+    @test 0.0 < proportion_transmission(plain) < 1.0
+
+    for reshaped in (finite, windowed, susceptible)
+        @test_throws ArgumentError end_of_outbreak_probability(reshaped, 5.0)
+        @test_throws ArgumentError probability_contain(reshaped)
+        @test_throws ArgumentError extinction_probability(reshaped)
+        @test_throws ArgumentError proportion_transmission(reshaped)
+        @test_throws ArgumentError proportion_cases_individual(reshaped)
+        @test_throws ArgumentError proportion_cases_offspring(reshaped)
+        @test_throws ArgumentError proportion_cluster_size(reshaped)
+    end
+    @test_throws ArgumentError end_of_outbreak_probability(ModelSpec(finite), 5.0)
+    @test_throws "Simulate instead" end_of_outbreak_probability(finite, 5.0)
+end

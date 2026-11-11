@@ -1031,7 +1031,23 @@ the negatives would break the shortest-path race with no error.
 """
 function _sellke_race!(
         state::SimulationState, members::AbstractVector{Int},
-        rng::AbstractRNG; seed! = nothing, targets = nothing,
+        rng::AbstractRNG; interventions = (), kwargs...
+    )
+    # The interventions and the progression are converted to `Tuple`s once
+    # here, and the race runs behind this call. The compiler then resolves
+    # the hooks called for every case and every proposal. Everything else
+    # that reads `state.transitions` and `interventions` still gets the
+    # `Vector`s.
+    return _sellke_race_typed!(
+        state, members, rng, Tuple(interventions), Tuple(state.transitions);
+        interventions, kwargs...
+    )
+end
+
+function _sellke_race_typed!(
+        state::SimulationState, members::AbstractVector{Int},
+        rng::AbstractRNG, typed_interventions::Tuple, typed_transitions::Tuple;
+        seed! = nothing, targets = nothing,
         from::Union{Symbol, Nothing} = nothing, until::Union{Tuple, Nothing} = nothing,
         routes = nothing, interventions = (), contacts = nothing, risks = (),
         introduction = nothing, watches = nothing, projections = nothing,
@@ -1256,7 +1272,8 @@ function _sellke_race!(
     race = (;
         queue, proposals, head, best, represents, processed, pos, state, rng, members,
         watch, snapshot, watched_keys, may_block, max_time, reinfects,
-        route_projections, full_snapshot, interventions, creating, buffers,
+        route_projections, full_snapshot, interventions = typed_interventions,
+        creating, buffers,
     )
     # What tracing and the interventions' actions read as a case's contacts. A
     # route that creates contacts as it goes creates a ring member's when the
@@ -1487,8 +1504,9 @@ function _sellke_race!(
         # depends on the exposure the race chose can settle it (see
         # `on_infection_settled!`), before the onset derived from it or any
         # transition reads it.
-        for iv in interventions
+        _each(typed_interventions) do iv
             on_infection_settled!(iv, ind, state, rng)
+            return nothing
         end
         # A pre-created node has no infection time, and so no onset, until now.
         # Derive the onset from the infection time before transitions and
@@ -1501,7 +1519,7 @@ function _sellke_race!(
         # (`_reconcile_sellke_bookkeeping!`) does, so a reinfection leaves the
         # count unchanged.
         _settle_case!(
-            state, ind, interventions,
+            state, ind, typed_interventions, typed_transitions,
             reinfection ? state.cumulative_cases : state.cumulative_cases + 1
         )
         # `_settle_case!` has just brought `state.cumulative_cases`,
@@ -1551,9 +1569,9 @@ function _sellke_race!(
             )
         )
         traced = _trace_from!(
-            state, ind, interventions, case_contacts, pos, tracing
+            state, ind, typed_interventions, case_contacts, pos, tracing
         )
-        _trace_source!(state, ind, interventions, tracing_source)
+        _trace_source!(state, ind, typed_interventions, tracing_source)
         # A model with nothing in `acting` never calls `_admit_actions!`
         # inside `_apply_case_actions!`. Installing the sink anyway, a
         # `Dict{Any, Any}` write and delete per settled case, would cost
