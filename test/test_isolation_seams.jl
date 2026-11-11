@@ -81,7 +81,7 @@ EpiBranch.infectious_removal_time(f::FixedRemoval, ::Individual) = f.time
             rng = StableRNG(1)
             state = EpiBranch.new_state(
                 BranchingProcess(Dirac(1), Dirac(10.0)),
-                [Transition(:recovered; from = :infection, delay = 30.0, terminal = true)],
+                sir(30.0),
                 clinical_presentation(incubation_period = Dirac(1.0)), rng
             )
             EpiBranch.add_individuals!(state, 3, interventions)
@@ -233,7 +233,7 @@ EpiBranch.infectious_removal_time(f::FixedRemoval, ::Individual) = f.time
         # support answers every contact that could still happen, so the pair
         # ends; one that lapses inside it leaves contacts it does not block, and
         # the redraws terminate on one of them. Before the fix both threw.
-        prog = [Transition(:recovered; from = :infection, delay = 30.0, terminal = true)]
+        prog = sir(30.0)
         attrs = clinical_presentation(incubation_period = Dirac(3.0))
         kernel = Uniform(0.0, 10.0)
         function race(duration)
@@ -289,7 +289,7 @@ EpiBranch.infectious_removal_time(f::FixedRemoval, ::Individual) = f.time
         )
         @test !EpiBranch.binding_release(ReopeningWard())
 
-        prog = [Transition(:recovered; from = :infection, delay = 30.0, terminal = true)]
+        prog = sir(30.0)
         attrs = clinical_presentation(incubation_period = Dirac(3.0))
         kernel = Uniform(0.0, 10.0)
         function race(interventions)
@@ -393,7 +393,7 @@ EpiBranch.infectious_removal_time(f::FixedRemoval, ::Individual) = f.time
         # release, so the contact should go through on every engine. Before the
         # fix, a continuous-time window closed for good at the isolation time,
         # missing this contact entirely.
-        prog = [Transition(:recovered; from = :infection, delay = 30.0, terminal = true)]
+        prog = sir(30.0)
         attrs = clinical_presentation(incubation_period = Dirac(3.0))
         iso = Isolation(
             onset_to_isolation_delay = Dirac(1.0), duration = Dirac(7.0)
@@ -458,7 +458,7 @@ EpiBranch.infectious_removal_time(f::FixedRemoval, ::Individual) = f.time
         # that happened to release the case before day 15. Before the fix,
         # the continuous-time window closed for good at the isolation's own
         # start, missing both the release and the later contact.
-        prog = [Transition(:recovered; from = :infection, delay = 30.0, terminal = true)]
+        prog = sir(30.0)
         attrs = clinical_presentation(incubation_period = Dirac(3.0))
         iso = Scheduled(
             Isolation(onset_to_isolation_delay = Dirac(1.0), duration = Inf);
@@ -505,7 +505,7 @@ EpiBranch.infectious_removal_time(f::FixedRemoval, ::Individual) = f.time
         # Before the fix, a wrapper that could lapse closed the window at the
         # isolation's own start whatever its own condition actually did,
         # missing this contact entirely.
-        prog = [Transition(:recovered; from = :infection, delay = 30.0, terminal = true)]
+        prog = sir(30.0)
         attrs = clinical_presentation(incubation_period = Dirac(3.0))
         iso = Isolation(
             onset_to_isolation_delay = Dirac(1.0), duration = Dirac(7.0)
