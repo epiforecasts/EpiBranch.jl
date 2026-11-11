@@ -6,9 +6,9 @@ The code blocks on this page are not run when the documentation is built, becaus
 
 ## Processes or threads
 
-`parallel = true` spreads the runs of one call over the threads of one Julia process. Garbage collection in Julia pauses every thread in the process, so a run that allocates heavily spends much of its wall time with all threads stopped, and adding threads does not remove that. Separate processes each have their own heap and collect their own garbage, so one worker's pause does not stop the others.
+`parallel = true` spreads the runs of one call over the threads of one Julia process. Garbage collection in Julia pauses every thread in the process. A run that allocates heavily therefore spends much of its wall time with all threads stopped, and more threads do not shorten that time. Separate processes each have their own heap and collect their own garbage, so one worker's pause does not stop the others.
 
-Processes beat threads when a sweep has many runs that allocate heavily: large outbreaks, many interventions, line lists or recorders. For a small number of cheap runs, threads are simpler and start faster, since a process has to load EpiBranch before it does any work. The two combine: each worker can start with several threads and pass `parallel = true`, though one process per core is the usual first choice.
+Processes beat threads when a sweep has many runs that allocate heavily: large outbreaks, many interventions, line lists or recorders. For a small number of cheap runs, threads are simpler and start faster, because a process has to load EpiBranch before it does any work. The two combine: each worker can start with several threads and pass `parallel = true`, though one process per core is the usual first choice.
 
 ## A sweep over a grid
 
@@ -44,13 +44,13 @@ results = pmap(run_point, grid, seeds)
 
 ## Seeding
 
-Give every grid point its own seed, as above, rather than sharing one generator or seeding by worker. `pmap` hands points to whichever worker is free, so which worker runs a point changes from run to run and with the number of workers. A seed tied to the point means a point gives the same result wherever it runs. The sweep then gives the same answer with 1 worker, 4 workers or `map(run_point, grid, seeds)` in a single process, and rerunning one point on its own reproduces its row.
+Give every grid point its own seed, as above, rather than sharing one generator or seeding by worker. `pmap` hands points to whichever worker is free, and the worker that runs a point changes from run to run and with the number of workers. With a seed tied to the point, it gives the same result wherever it runs. The sweep then gives the same answer with 1 worker, 4 workers or `map(run_point, grid, seeds)` in a single process, and rerunning one point on its own reproduces its row.
 
 Points should have different seeds, but they need not be unrelated to each other: `1000 .+ eachindex(grid)` is enough, because `Xoshiro(seed)` expands each seed into a well-mixed state. To change the whole sweep, change the offset.
 
 ## Collecting results
 
-`pmap` returns the values that `run_point` returns, so return the summary you want, not the `SimulationState`s. Returning only a number or a small tuple keeps the data that crosses between processes small. `containment_probability(model, n)` already does this for the containment probability. To keep more from each run, summarise on the worker, with `chain_statistics` or `weekly_incidence` for instance, and return that table.
+`pmap` returns the values that `run_point` returns. Return the summary you want rather than the `SimulationState`s: a number or a small tuple keeps the data sent between processes small. `containment_probability(model, n)` already does this for the containment probability. To keep more from each run, summarise on the worker, with `chain_statistics` or `weekly_incidence` for instance, and return that table.
 
 `scenario_sweep` loops over a grid inside one process and does not distribute it. For a large grid, write the grid and the function that runs a point yourself, as above.
 
