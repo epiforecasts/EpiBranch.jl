@@ -278,3 +278,84 @@ function _seed_initial_cases!(best, members, chosen::AbstractSet)
     end
     return nothing
 end
+
+# Draw an external-hazard introduction time for each member not in `skip`
+# (e.g. already-seeded chosen cases), keeping those landing within `[0, Tobs]`.
+# An external hazard considers every member a possible introduction, so it
+# realises the whole population on a lazily populated model exactly as it
+# already drew every member's attributes on one built upfront.
+function _seed_external!(best, members, state, extsrc, Tobs, rng, skip = ())
+    for k in eachindex(members)
+        members[k] in skip && continue
+        susceptibility = _realised!(state, members[k]).susceptibility
+        t = _ext_draw(rng, extsrc, members[k], susceptibility)
+        t <= Tobs && (best[k] = t)
+    end
+    return nothing
+end
+
+# Seed a candidate table: chosen `initial_cases` at time 0, then each remaining
+# member from the external hazard when there is one. With no `initial_cases`,
+# the external hazard alone seeds the table, or `place_index!(best, members,
+# rng)` places the index cases at time 0 when there is no hazard either. The
+# placement is the one thing that differs between structures, and passing it
+# in keeps each structure's random stream as it was.
+function _seed_candidates!(
+        place_index!, best, members, state, extsrc, Tobs, rng, initial_cases
+    )
+    if initial_cases !== nothing
+        chosen = initial_cases isa AbstractSet ? initial_cases : Set(initial_cases)
+        _seed_initial_cases!(best, members, chosen)
+        _ext_active(extsrc) && _seed_external!(best, members, state, extsrc, Tobs, rng, chosen)
+    elseif _ext_active(extsrc)
+        _seed_external!(best, members, state, extsrc, Tobs, rng)
+    else
+        place_index!(best, members, rng)
+    end
+    return nothing
+end
+
+# A community hazard over an unbounded window would introduce everyone, so it
+# needs a finite observation window. `seeds` completes the message: what an
+# unbounded window would seed.
+function _check_finite_obs_end(external_hazard, obs_end, seeds::AbstractString)
+    _ext_active(external_hazard) && !isfinite(obs_end) && throw(
+        ArgumentError(
+            "an external hazard needs a finite `obs_end` (an unbounded window seeds " *
+                "$seeds); build the process with e.g. `obs_end = 30.0`"
+        )
+    )
+    return nothing
+end
+
+# Validate a constructor's `obs_end` (non-negative, `Inf` allowed) and return it
+# as a `Float64`.
+function _check_obs_end(obs_end)
+    value = Float64(obs_end)
+    (!isnan(value) && value >= 0) || throw(
+        ArgumentError(
+            "obs_end must be a non-negative number (Inf allowed), got $obs_end"
+        )
+    )
+    return value
+end
+
+# Build `n` individuals upfront, or create them lazily as the race reaches them.
+function _populate!(state, n, interventions, eager::Bool; setup = (ind, i) -> nothing)
+    if eager
+        add_individuals!(state, n, interventions; setup)
+    else
+        lazily_populate!(state, n, interventions; setup)
+    end
+    return state
+end
+
+# The contact-interval distribution for an ordered (infector `i`, susceptible
+# `j`) pair from a kernel that depends on the pair: a callable for covariate
+# models or a `PairKernel`.
+function _state_pair_kernel(k, i, j, state, from)
+    return pair_kernel(
+        k, i, j, state.individuals[i].infection_time,
+        _window_open(state.individuals[i], from), state
+    )
+end
