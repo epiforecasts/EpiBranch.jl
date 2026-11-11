@@ -465,8 +465,8 @@ _find_removal_entry(entries, handle) = findfirst(e -> e[1] == handle, entries)
 
 # A copy of `old`, widened to the type promoted from its own element type
 # and `S` (an AD dual release following a plain `Float64` one, say), so that
-# neither `_push_removal_entry!`'s push nor `revise_removal!`'s
-# `setindex!` narrows the new entry back down to fit. `old` already at `S`,
+# neither the push in `_push_removal_entry!` nor the `setindex!` in
+# `revise_removal!` narrows the new entry back down to fit. `old` already at `S`,
 # the common case, takes the plain `copy` the generic conversion below would
 # reach the same place by, more slowly.
 _widen_removal_entries(old::Vector{_RemovalEntry{S}}, ::Type{S}) where {S} = copy(old)
