@@ -112,9 +112,8 @@ end
 # batched `simulate(model, n; ...)` already does, instead of re-running the
 # public single-outbreak `simulate`'s checks (and any `@warn` it raises) on
 # every attempt.
-# A bare process is composed with no `ModelSpec`, so it gets the checks the
-# spec constructor does at composition (and a spec, already validated there,
-# never double-warns).
+# A bare process has no `ModelSpec`, so it gets the composition checks here.
+# A spec was already checked by its constructor and does not warn twice.
 function _check_composition(model::TransmissionModel)
     _validate_process_windows(model, progression(model))
     _warn_incomplete_terminal_coverage(progression(model))
