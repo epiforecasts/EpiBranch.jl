@@ -112,38 +112,30 @@ end
 # batched `simulate(model, n; ...)` already does, instead of re-running the
 # public single-outbreak `simulate`'s checks (and any `@warn` it raises) on
 # every attempt.
-function _rand_chain_size_setup(model::TransmissionModel, sim_kwargs::NamedTuple)
+# A bare process is composed with no `ModelSpec`, so it gets the checks the
+# spec constructor does at composition (and a spec, already validated there,
+# never double-warns).
+function _check_composition(model::TransmissionModel)
     _validate_process_windows(model, progression(model))
     _warn_incomplete_terminal_coverage(progression(model))
-    sim_opts = _build_sim_opts(
-        model, get(sim_kwargs, :n_initial, nothing),
-        get(sim_kwargs, :initial_cases, nothing), nothing,
-        get(sim_kwargs, :max_cases, _DEFAULT_MAX_CASES),
-        get(sim_kwargs, :max_generations, _DEFAULT_MAX_GENERATIONS),
-        get(sim_kwargs, :max_time, nothing), get(sim_kwargs, :stopping_rules, nothing)
-    )
-    _validate_initial_cases(model, sim_opts)
-    return (
-        process = model, sim_opts = sim_opts, interventions = interventions(model),
-        attributes = attributes(model), recorder = recorder(model),
-        condition = get(sim_kwargs, :condition, nothing),
-        max_attempts = get(sim_kwargs, :max_attempts, 10_000),
-    )
+    return nothing
 end
+_check_composition(spec::ModelSpec) = _warn_contactless(process(spec), interventions(spec))
 
-function _rand_chain_size_setup(spec::ModelSpec, sim_kwargs::NamedTuple)
-    _warn_contactless(spec.process, spec.interventions)
+function _rand_chain_size_setup(m::Union{TransmissionModel, ModelSpec}, sim_kwargs::NamedTuple)
+    _check_composition(m)
+    proc = process(m)
     sim_opts = _build_sim_opts(
-        spec.process, get(sim_kwargs, :n_initial, nothing),
+        proc, get(sim_kwargs, :n_initial, nothing),
         get(sim_kwargs, :initial_cases, nothing), nothing,
         get(sim_kwargs, :max_cases, _DEFAULT_MAX_CASES),
         get(sim_kwargs, :max_generations, _DEFAULT_MAX_GENERATIONS),
         get(sim_kwargs, :max_time, nothing), get(sim_kwargs, :stopping_rules, nothing)
     )
-    _validate_initial_cases(spec.process, sim_opts)
+    _validate_initial_cases(proc, sim_opts)
     return (
-        process = spec.process, sim_opts = sim_opts, interventions = spec.interventions,
-        attributes = spec.attributes, recorder = spec.recorder,
+        process = proc, sim_opts = sim_opts, interventions = interventions(m),
+        attributes = attributes(m), recorder = recorder(m),
         condition = get(sim_kwargs, :condition, nothing),
         max_attempts = get(sim_kwargs, :max_attempts, 10_000),
     )
@@ -267,7 +259,7 @@ estimated from simulated outbreaks instead. Keyword arguments:
   when the analytical fast path does not apply.
 """
 function chain_size_distribution(
-        model::TransmissionModel;
+        m::Union{TransmissionModel, ModelSpec};
         seeds = nothing, prob_concluded = nothing, kwargs...
     )
     # The analytical fast path is only valid when nothing perturbs the
@@ -278,35 +270,17 @@ function chain_size_distribution(
     # single-type law to fall back on in the first place. The model's
     # observation is applied analytically via `observe`.
     if seeds === nothing && prob_concluded === nothing && isempty(kwargs) &&
-            isempty(interventions(model)) && has_single_type_law(model) &&
-            offspring_law_unchanged(model) && offspring_law_unchanged(attributes(model)) &&
-            all(offspring_law_unchanged, progression(model))
+            isempty(interventions(m)) && has_single_type_law(m) &&
+            offspring_law_unchanged(m) && offspring_law_unchanged(attributes(m)) &&
+            all(offspring_law_unchanged, progression(m))
         folded = _exact_reported_chain_size(
-            single_type_offspring(model), progression(model), observation(model), attributes(model)
+            single_type_offspring(m), progression(m), observation(m), attributes(m)
         )
-        folded !== nothing && return observe(folded, observation(model))
+        folded !== nothing && return observe(folded, observation(m))
     end
     nt_kwargs = NamedTuple(kwargs)
     _check_kwargs(nt_kwargs, _CHAIN_SIZE_KWARGS, :chain_size_distribution)
-    return _ChainSizeLaw(model, seeds, prob_concluded, nt_kwargs)
-end
-
-function chain_size_distribution(
-        spec::ModelSpec; seeds = nothing,
-        prob_concluded = nothing, kwargs...
-    )
-    if seeds === nothing && prob_concluded === nothing && isempty(kwargs) &&
-            isempty(interventions(spec)) && has_single_type_law(spec) &&
-            offspring_law_unchanged(spec) && offspring_law_unchanged(attributes(spec)) &&
-            all(offspring_law_unchanged, progression(spec))
-        folded = _exact_reported_chain_size(
-            single_type_offspring(spec.process), progression(spec), observation(spec), attributes(spec)
-        )
-        folded !== nothing && return observe(folded, observation(spec))
-    end
-    nt_kwargs = NamedTuple(kwargs)
-    _check_kwargs(nt_kwargs, _CHAIN_SIZE_KWARGS, :chain_size_distribution)
-    return _ChainSizeLaw(spec, seeds, prob_concluded, nt_kwargs)
+    return _ChainSizeLaw(m, seeds, prob_concluded, nt_kwargs)
 end
 
 """
@@ -330,16 +304,10 @@ exists. Interventions come from the model; add them with a
 Models with a `Reporting` probability below 1 are not supported because
 the observed chain length is undefined when cases go undetected.
 """
-function chain_length_distribution(model::TransmissionModel; kwargs...)
+function chain_length_distribution(m::Union{TransmissionModel, ModelSpec}; kwargs...)
     nt_kwargs = NamedTuple(kwargs)
     _check_kwargs(nt_kwargs, _CHAIN_LENGTH_KWARGS, :chain_length_distribution)
-    return _ChainLengthLaw(model, nt_kwargs)
-end
-
-function chain_length_distribution(spec::ModelSpec; kwargs...)
-    nt_kwargs = NamedTuple(kwargs)
-    _check_kwargs(nt_kwargs, _CHAIN_LENGTH_KWARGS, :chain_length_distribution)
-    return _ChainLengthLaw(spec, nt_kwargs)
+    return _ChainLengthLaw(m, nt_kwargs)
 end
 
 """
@@ -363,12 +331,8 @@ intervention's [`EpiBranch.analytic_offspring_effect`](@ref) is applied to
 the offspring distribution first. If an intervention has no such method, this
 throws an error that names the simulation-based alternative.
 """
-function offspring_distribution(model::TransmissionModel)
-    return _offspring_through_interventions(model, _per_case_offspring(model))
-end
-
-function offspring_distribution(spec::ModelSpec)
-    return _offspring_through_interventions(spec, _per_case_offspring(spec.process))
+function offspring_distribution(m::Union{TransmissionModel, ModelSpec})
+    return _offspring_through_interventions(m, _per_case_offspring(process(m)))
 end
 
 function _per_case_offspring(model::TransmissionModel)

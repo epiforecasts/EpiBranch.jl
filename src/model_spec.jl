@@ -464,10 +464,11 @@ observation(s::ModelSpec) = s.observation
 recorder(s::ModelSpec) = s.recorder
 progression(s::ModelSpec) = s.progression
 
-"""The transmission model `spec` wraps. [`simulate`](@ref) and
-`loglikelihood` run the same on `process(spec)` alone, without the layers
-composed onto `spec`."""
+"""The transmission model `spec` wraps, or `model` itself for a bare
+model. [`simulate`](@ref) and `loglikelihood` run the same on `process(spec)`
+alone, without the layers composed onto `spec`."""
 process(s::ModelSpec) = s.process
+process(m::TransmissionModel) = m
 population_size(s::ModelSpec) = population_size(s.process)
 
 # Structural accessors delegate to the wrapped process, so the analytical
