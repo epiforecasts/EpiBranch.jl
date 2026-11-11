@@ -1059,7 +1059,7 @@ function _sellke_race!(
     close_keys = map(
         ((w, _),) -> Symbol[_time_keys(filter(!=(INTERVENTION_REMOVAL), w.until))...], rts
     )
-    removable = map(((w, _),) -> INTERVENTION_REMOVAL in w.until, rts)
+    removable = map(((w, _),) -> (INTERVENTION_REMOVAL in w.until)::Bool, rts)
 
     # An intervention declaring `acts_on_population` needs no case settled to
     # propose its actions, so it is offered every member before the race
@@ -1509,7 +1509,7 @@ function _sellke_race!(
                 (;
                     race, ind, members, openings, j, max_generation, close_keys,
                     removable, watch, live, live_route, route_projections,
-                    full_snapshot, traits, route_interventions, T,
+                    full_snapshot, traits, route_interventions,
                 ),
                 capped_generation, true
             )
@@ -1571,7 +1571,7 @@ function _sellke_race!(
                 (;
                     race, ind, members, openings, j, max_generation, close_keys,
                     removable, watch, live, live_route, route_projections,
-                    full_snapshot, traits, route_interventions, T,
+                    full_snapshot, traits, route_interventions,
                 ),
                 capped_generation, false
             )
@@ -1806,13 +1806,16 @@ end
     return body
 end
 
-function _open_route!(w, route_targets, ri, ctx, capped, only_proposing)
+function _open_route!(w, route_targets::R, ri, ctx, capped, only_proposing) where {R}
     proposes_own_contacts(route_targets) == only_proposing || return capped
     (;
         race, ind, members, openings, j, max_generation, close_keys, removable,
         watch, live, live_route, route_projections, full_snapshot, traits,
-        route_interventions, T,
+        route_interventions,
     ) = ctx
+    # Read from the state. Stored in `ctx` as a value, the type is only a
+    # `DataType` and the `convert` below would dispatch at run time.
+    T = _timetype(race.state)
     open_t = _route_open(route_targets, ind, w)
     isfinite(open_t) || return capped
     # A case at the generation bound opened this route and would otherwise
@@ -1980,8 +1983,8 @@ end
 # the processed/reinfects bookkeeping that every other route gets through
 # `_propose!` below.
 function _propose_along!(
-        route_targets, race, infector_id, opening_id, open_t, close_t, traits, live, ri
-    )
+        route_targets::R, race, infector_id, opening_id, open_t, close_t, traits, live, ri
+    ) where {R}
     if proposes_own_contacts(route_targets)
         live && throw(
             ArgumentError(
