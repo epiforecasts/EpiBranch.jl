@@ -144,7 +144,7 @@ end
 probability that, once immune, an infection that would have caused symptoms
 leaves them asymptomatic (0 if not vaccinated, or if the dose has no such
 effect). Drawn once per vaccinated person from the `symptom_efficacy` of the
-dose's [`VaccineEffect`](@ref). The simulation applies it itself, through
+[`VaccineEffect`](@ref) of the dose. The simulation applies it itself, through
 [`is_asymptomatic`](@ref) and [`onset_time`](@ref); this reads the drawn
 value."""
 function symptom_efficacy(ind::Individual; dose_label::Symbol = :default)
@@ -733,8 +733,15 @@ end
 # the exposure, so it is read apart from the stretches that lapse. The merge
 # leaves at most one of them.
 function permanent_removal_time(ind::Individual, key::Symbol = REMOVAL_STRETCHES_KEY)
+    return _permanent_removal_time(removal_stretches(ind, key))
+end
+
+# A function barrier: `removal_stretches` reads from the `Any`-valued state.
+# The loop is compiled here for the concrete vector type and does not
+# dispatch at run time on each step.
+function _permanent_removal_time(stretches)
     t = Inf
-    for (start, release) in removal_stretches(ind, key)
+    for (start, release) in stretches
         isfinite(release) || (t = min(t, start))
     end
     return t

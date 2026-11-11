@@ -216,7 +216,7 @@ efficacy(v::AbstractVaccination) = vaccine_effect(v).efficacy
 for that person."""
 severity_efficacy(v::AbstractVaccination) = vaccine_effect(v).severity_efficacy
 
-"""Efficacy of the vaccination's dose against developing symptoms, as given to
+"""Efficacy of the dose of the vaccination against developing symptoms, as given to
 [`VaccineEffect`](@ref). The method for an individual returns the value drawn
 for that person."""
 symptom_efficacy(v::AbstractVaccination) = vaccine_effect(v).symptom_efficacy
