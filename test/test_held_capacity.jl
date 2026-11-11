@@ -8,13 +8,6 @@ function _held_contact(iv, id, trace_time)
     return ind
 end
 
-function _held_state()
-    return EpiBranch.new_state(
-        BranchingProcess(Poisson(1.0), Exponential(5.0)),
-        EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1)
-    )
-end
-
 # A stay that ends by returning a further action, as the extending guide
 # describes for a bed: the place is taken when the visit is admitted and given
 # back when that action runs.
@@ -53,7 +46,7 @@ EpiBranch.intervention_actions(::_Ward, state, candidates) = [
     function run_policy(policy)
         rv = RingVaccination(efficacy = 0.9)
         cc = CapacityConstrained(rv; budget_per_period = 2.0, period = 5.0, on_refusal = policy)
-        state = _held_state()
+        state = empty_state()
         contacts = [_held_contact(rv, i, 0.5 * i) for i in 1:5]
         append!(state.individuals, contacts)
         state.max_infection_time = 0.5
@@ -100,7 +93,7 @@ end
     @testset "Caps how many hold a place at once" begin
         rv = RingVaccination(efficacy = 0.9)
         hc = HeldCapacity(rv; capacity = 2, hold = 3.0)
-        state = _held_state()
+        state = empty_state()
         contacts = [_held_contact(rv, i, Float64(i)) for i in 1:5]
         append!(state.individuals, contacts)
         state.max_infection_time = 1.0
@@ -120,7 +113,7 @@ end
     @testset "The cap holds whatever order actions are admitted in" begin
         rv = RingVaccination(efficacy = 0.9)
         hc = HeldCapacity(rv; capacity = 1, hold = 2.0)
-        state = _held_state()
+        state = empty_state()
         late = _held_contact(rv, 1, 3.0)
         early = _held_contact(rv, 2, 2.0)
         append!(state.individuals, [late, early])
@@ -135,7 +128,7 @@ end
     @testset "DeferRefused waits for the first place to free up" begin
         rv = RingVaccination(efficacy = 0.9)
         hc = HeldCapacity(rv; capacity = 1, hold = 4.0, on_refusal = DeferRefused())
-        state = _held_state()
+        state = empty_state()
         contacts = [_held_contact(rv, i, Float64(i)) for i in 1:3]
         append!(state.individuals, contacts)
         state.max_infection_time = 1.0
@@ -148,7 +141,7 @@ end
     @testset "An action's own further action gives the place back" begin
         bed = _Bed2(2.0)
         hc = HeldCapacity(bed; capacity = 1)
-        state = _held_state()
+        state = empty_state()
         people = [Individual(id = i) for i in 1:2]
         append!(state.individuals, people)
         state.max_infection_time = 0.0
@@ -160,7 +153,7 @@ end
 
         # Held until released: the second person is turned away while it runs.
         hc2 = HeldCapacity(_Bed2(100.0); capacity = 1)
-        s2 = _held_state()
+        s2 = empty_state()
         p2 = [Individual(id = i) for i in 1:2]
         append!(s2.individuals, p2)
         s2.max_infection_time = 0.0
@@ -171,7 +164,7 @@ end
     @testset "release_capacity! shortens or withdraws a stay" begin
         rv = RingVaccination(efficacy = 0.9)
         hc = HeldCapacity(rv; capacity = 1)
-        state = _held_state()
+        state = empty_state()
         a = _held_contact(rv, 1, 1.0)
         b = _held_contact(rv, 2, 6.0)
         append!(state.individuals, [a, b])
@@ -193,7 +186,7 @@ end
 
     @testset "A resource_key gives each group its own places" begin
         hc = HeldCapacity(_Ward(); capacity = 1)
-        state = _held_state()
+        state = empty_state()
         people = [
             Individual(id = 1, state = Dict{Symbol, Any}(:ward => :a)),
             Individual(id = 2, state = Dict{Symbol, Any}(:ward => :a)),
@@ -210,7 +203,7 @@ end
     @testset "Caps how many are quarantined at once" begin
         ct = ContactTracing(TraceEveryone(), 1.0, Dirac(0.0), Quarantine(duration = 4.0))
         hc = HeldCapacity(ct; capacity = 1, hold = 4.0)
-        state = _held_state()
+        state = empty_state()
         infector = Individual(id = 1)
         set_isolated!(infector, 0.0; release_time = Inf)
         contacts = [Individual(id = i) for i in 2:4]
@@ -220,7 +213,7 @@ end
         @test [is_quarantined(c) for c in contacts] == [true, false, true]
 
         deferring = HeldCapacity(ct; capacity = 1, hold = 4.0, on_refusal = DeferRefused())
-        state = _held_state()
+        state = empty_state()
         contacts = [Individual(id = i) for i in 2:4]
         append!(state.individuals, contacts)
         EpiBranch.trace_contacts!(deferring, state, infector, contacts, [1.0, 2.0, 3.0])
@@ -231,7 +224,7 @@ end
     @testset "Caps how many are isolated at once" begin
         iso = Isolation(onset_to_isolation_delay = Dirac(0.0), duration = 5.0)
         hc = HeldCapacity(iso; capacity = 1)
-        state = _held_state()
+        state = empty_state()
         people = [
             Individual(
                 id = i, state = Dict{Symbol, Any}(
@@ -279,7 +272,7 @@ end
         rv = RingVaccination(efficacy = 0.9)
         @test_throws ArgumentError HeldCapacity(rv; capacity = -1)
         @test_throws ArgumentError HeldCapacity(rv; capacity = 1, hold = -1.0) |>
-            x -> EpiBranch.apply_actions!(x, _held_state(), [_held_contact(rv, 1, 1.0)])
+            x -> EpiBranch.apply_actions!(x, empty_state(), [_held_contact(rv, 1, 1.0)])
         iso = Isolation(onset_to_isolation_delay = Dirac(0.0), duration = Inf)
         @test_throws ArgumentError HeldCapacity(iso; capacity = 1, on_refusal = DeferRefused())
     end

@@ -44,7 +44,8 @@ infection of an infectee.
 
 **Serial interval.** The time from symptom onset in an infector to onset in an
 infectee. EpiBranch models generation times; serial intervals follow from them
-and the incubation period.
+and the incubation period. [`serial_interval`](@ref) gives the distribution
+for a linked pair, to fit against observed serial-interval data.
 
 **Incubation period.** The time from infection to symptom onset, given with
 [`clinical_presentation`](@ref). See [Getting started](tutorials/getting-started.md).

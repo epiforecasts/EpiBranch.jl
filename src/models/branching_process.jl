@@ -45,7 +45,7 @@ different routes, such as community and funeral transmission of Ebola.
   already gave as an `OffspringTimes`.
 - `calendar`: a [`Steps`](@ref) or [`Seasonal`](@ref) schedule, or a callable
   `t -> multiplier`, scaling `kernel`'s hazard by the schedule's value on the
-  calendar day, exactly as a [`PairKernel`](@ref)'s `calendar` does — a
+  calendar day, as the `calendar` of a [`PairKernel`](@ref) does, for a
   lockdown or a seasonal pattern that changes how quickly this window's
   contacts arrive. Unused where `kernel` draws no contact
   (`NoGenerationTime()`) or where `offspring` already timed them
@@ -411,7 +411,7 @@ n_types(m::BranchingProcess) = m.n_types
 
 # A finite population thins transmission as cases accumulate, a window with
 # `until` stops it before every drawn contact happens, and a window's
-# `calendar` scales its kernel's hazard over time — all three reshape the
+# `calendar` scales its kernel's hazard over time; all three reshape the
 # offspring law away from the bare distribution, so the analytical chain-size
 # and incidence likelihoods must not take the model's offspring law as read.
 function offspring_law_unchanged(m::BranchingProcess)
