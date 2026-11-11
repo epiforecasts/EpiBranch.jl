@@ -299,9 +299,9 @@ end
 
 # A susceptible's escape and event terms under one mixture component's
 # modifier, over every route and the external hazard. `_scaled_cumhazard` and
-# `_scaled_loghazard` apply the modifier to each route's and the external
-# hazard's own hazard; `nothing` is the identity, so an unmodified susceptible
-# is scored by calling this with `nothing`.
+# `_scaled_loghazard` apply the modifier to the hazard of each route and to the
+# external hazard. `nothing` is the identity modifier, so an unmodified
+# susceptible is scored by calling this with `nothing`.
 function _routed_modifier_loglik(
         modifier, windows, extsrc, data, in_neighbours, gaps, gates, tfollow, j
     )
