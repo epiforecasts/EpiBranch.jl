@@ -501,6 +501,18 @@ using ForwardDiff
             @test isfinite(ll)
         end
 
+        @testset "Poisson and NegBin match the chain-size law" begin
+            data = ChainSizes([1, 1, 2, 1, 3, 5])
+            @test loglikelihood(data, Poisson(0.6)) ≈
+                sum(n -> logpdf(EpiBranch.Borel(0.6), n), data.data)
+            @test loglikelihood(data, NegBin(0.6, 0.5)) ≈
+                sum(n -> logpdf(GammaBorel(0.5, 0.6), n), data.data)
+        end
+
+        @testset "Zero-mean Poisson is rejected, not NaN" begin
+            @test_throws ArgumentError loglikelihood(ChainSizes([1, 2]), Poisson(0.0))
+        end
+
         @testset "Extreme dispersion stays finite" begin
             # Regression: k ≳ 1e16·R swamps R in the floating-point sum
             # k + R inside NegBin's p = k / (k + R), so R rounds to exactly 0
@@ -2034,7 +2046,7 @@ using ForwardDiff
         @testset "A calendar scaling the window's kernel is refused" begin
             # Isolation's analytic effect reads the window's kernel
             # directly, with no way to apply a schedule scaling it, so this
-            # must be refused rather than silently read as the bare kernel —
+            # must be refused rather than silently read as the bare kernel:
             # here through `extinction_probability`, one of several routes
             # that apply `analytic_offspring_effect` to an offspring law.
             offspring = NegBin(2.0, 0.5)

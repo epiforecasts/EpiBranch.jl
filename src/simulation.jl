@@ -145,7 +145,7 @@ and copy only `state` as the particle.
 continuation is for a caller, such as a particle filter, that scores each
 step itself against its own data, rather than drawing a synthetic one.
 `state` is returned unchanged if it had already reached extinction, or
-stopped for a reason other than `max_time` — there is nothing left for a
+stopped for a reason other than `max_time`; there is nothing left for a
 later `max_time` to continue.
 
 ```julia
@@ -578,7 +578,7 @@ function _resolve_interventions!(state::SimulationState, case, interventions)
     # before this call) gets a fresh `initialise_individual!` first. That
     # keeps per-episode draws such as `Isolation`'s `:test_positive` specific
     # to the new episode, rather than left over from the one before it.
-    if !isempty(case.episodes)
+    if _has_episodes(case)
         _each(interventions) do intervention
             initialise_individual!(intervention, case, state)
             return nothing
@@ -717,7 +717,7 @@ end
     lazily_populate!(state, n, interventions; setup = (ind, i) -> nothing) -> state
 
 Set `state` up for `n` people none of which exist yet, in place of
-[`add_individuals!`](@ref). Used by a transmission model whose population is
+[`add_individuals!`](@ref). Used by a transmission model with a population that is
 large relative to the outbreaks it simulates, such as `NetworkProcess` or
 `RoutedNetwork`, so that a run costs in proportion to the people the
 outbreak reaches rather than to the size of the population. Every slot in
@@ -739,7 +739,7 @@ function lazily_populate!(
     s = IndividualState{T}()
     s[:infected] = false
     placeholder = Individual{T}(
-        0, 0, 0, 0, T(NaN), one(T), one(T), Int[], s, InfectionEpisode{T}[]
+        0, 0, 0, 0, T(NaN), one(T), one(T), Int[], s, nothing
     )
     state.lazy = _LazyPopulation(placeholder, interventions, setup)
     resize!(state.individuals, n)
@@ -776,7 +776,7 @@ Create every person a lazily populated model (`NetworkProcess`,
 characteristics from the same per-person streams the run itself drew from
 (see [`CommonRandomNumbers`](@ref)): under common random numbers, a person's
 attributes are then the same whether the outbreak reached them or `realise!`
-created them afterwards. A no-op for a model whose population is built
+created them afterwards. A no-op for a model with a population that is built
 upfront, which is every model but these two.
 
 Call this when you need the characteristics of people the outbreak never
@@ -957,8 +957,7 @@ function _create_individual(
     ind = Individual{T}(
         next_id, parent_id,
         state.current_generation + (parent_id == 0 ? 0 : 1),
-        chain_id, convert(T, inf_time), one(T), one(T), Int[], s,
-        InfectionEpisode{T}[]
+        chain_id, convert(T, inf_time), one(T), one(T), Int[], s, nothing
     )
 
     _set_type!(ind, type_idx)

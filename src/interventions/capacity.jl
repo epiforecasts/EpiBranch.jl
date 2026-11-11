@@ -92,11 +92,11 @@ CapacityConstrained(GroupVaccination(efficacy = 0.9); budget_per_period = doses,
 
 # Arguments
 - `budget_per_period`: number of people that can be served per period, a fixed
-  number or a calendar schedule — a [`Steps`](@ref), a [`Seasonal`](@ref), or a
-  callable `t -> budget(t)` — giving a different number for the period
+  number or a calendar schedule ([`Steps`](@ref), [`Seasonal`](@ref), or a
+  callable `t -> budget(t)`) giving a different number for the period
   starting on each calendar day `t`. A finite `period` is required with a
-  schedule, since there is otherwise no single period whose start it could be
-  read at.
+  schedule to determine the period start at which
+  to read the budget.
 - `period`: length of a period in days, measured on the date each dose is
   actually given. `Inf` (default) gives a single budget for the whole
   outbreak.
@@ -327,7 +327,7 @@ end
 capacity_key(::TraceAction) = nothing
 capacity_time_key(::TraceAction) = nothing
 # `:_quarantine_removal_handles` is the list of handles `apply_trace!` keeps
-# for the entries it has recorded (see `_undo_quarantine_isolation!`),
+# for the entries it has recorded (see `_reset_traced!`),
 # present and non-empty exactly when a quarantine has used the budget.
 capacity_key(::Quarantine) = :_quarantine_removal_handles
 capacity_time_key(::Quarantine) = :trace_time
@@ -547,7 +547,7 @@ _period_budget(schedule, t) = calendar_multiplier(schedule, t)
 # The total budget available across every period from the first up to, but
 # excluding, the one ending at `period_end`: a fixed number times the number
 # of periods begun, as before, or, for a schedule, each period's own number
-# summed, since a later period cannot be assumed to repeat an earlier one's.
+# summed, because a later period cannot be assumed to repeat an earlier one's.
 _cumulative_budget(cc::CapacityConstrained, period_end, cum = nothing) =
     _cumulative_budget(cc.budget_per_period, cc.period, period_end, cum)
 _cumulative_budget(budget::Real, period, period_end, cum) = (period_end / period) * budget

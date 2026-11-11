@@ -1,5 +1,5 @@
-# Copy of test/testutils/continuous_actions.jl in the core package, kept here so the tests of this
-# package run from a registry copy. Keep the two in step.
+# Copy of lib/EpiNetwork/test/testutils/continuous_actions.jl, kept here so this
+# package's tests run from a registry copy. Keep the two in step.
 
 function test_continuous_vaccine_actions(make_process)
     @testset "Continuous-time action delivery" begin

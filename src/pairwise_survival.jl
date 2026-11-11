@@ -1037,7 +1037,7 @@ appear only as infectors. With `external = true` every infection is explained,
 and each person gets an extra row for infection from outside. `explain_index`
 (default `external`) decides this for index cases alone. A source read off
 the outbreak's own infectious windows, such as `MassActionHazard`, sets it to
-`false` even with `external = true`, since it has nothing infectious before
+`false` even with `external = true`, because it has nothing infectious before
 the first case to explain one. The single-argument form reads the contact
 structure from `data` with [`contact_structure`](@ref
 EpiBranch.contact_structure) and takes as infected everyone with a non-`NaN`
@@ -1050,48 +1050,26 @@ function compile_contact_pairs(
     )
     n = length(membership)
     _check_host_masks(n, is_index, infected)
-    isempty(membership) && return _contact_pairs_layout(
-        Int[], Int[], Int[], Bool[], external, explain_index, is_index, 0, Int[], 0
-    )
 
-    # Bucket hosts by label into a `Vector{Vector{Int}}` indexed by label offset,
-    # which avoids hashing; offsetting by `lo` allows any integer labels.
-    lo, hi = extrema(membership)
-    n_buckets = hi - lo + 1
-    buckets = [Int[] for _ in 1:n_buckets]
-    for i in 1:n
-        push!(buckets[membership[i] - lo + 1], i)
-    end
-
-    sus = Int[]
-    infector = Int[]
-    is_ext = Bool[]
-    for h in 1:n_buckets
-        mem = buckets[h]
-        isempty(mem) && continue
-        for j in mem
-            (!explain_index && is_index[j]) && continue
-            if external
-                push!(sus, j)
-                push!(infector, 0)
-                push!(is_ext, true)
+    # Each member's contacts are the other members of the group, which the
+    # adjacency method handles. A stable sort by label groups the members and
+    # avoids a bucket for every possible label.
+    order = sortperm(membership)
+    contacts = Vector{Vector{Int}}(undef, n)
+    g_lo = 1
+    for k in 1:n
+        if k == n || membership[order[k + 1]] != membership[order[k]]
+            group = order[g_lo:k]
+            for i in group
+                contacts[i] = filter(!=(i), group)
             end
-            for i in mem
-                infected[i] || continue
-                i == j && continue
-                push!(sus, j)
-                push!(infector, i)
-                push!(is_ext, false)
-            end
+            g_lo = k + 1
         end
     end
+    layout = compile_contact_pairs(contacts, is_index, infected; external, explain_index)
     # A group has no per-edge list for a kernel to index into.
-    contact_index = zeros(Int, length(sus))
-    component, ncomponents = _structure_components(membership)
-    return _contact_pairs_layout(
-        sus, infector, contact_index, is_ext, external, explain_index,
-        is_index, n, component, ncomponents
-    )
+    fill!(layout.contact_index, 0)
+    return layout
 end
 
 function compile_contact_pairs(
@@ -1366,7 +1344,7 @@ A person is counted in `I(t)` over `(infectious_time, removal_time]`, the same
 convention a pairwise row's own exposure uses, so a secondary infected at the
 exact moment their infector is removed is scored the same way by both. This
 already leaves everybody out of their own `I(t)` at their own infection time,
-with no separate bookkeeping needed, since a person is infected no later than
+with no separate bookkeeping needed, because a person is infected no later than
 they become infectious.
 
 With nobody infectious before the first case, mass action alone cannot explain
@@ -1533,7 +1511,7 @@ function _ext_prepare(m::MassActionHazard, data::InfectionLayer)
 end
 
 # Every person shares the one population-wide schedule: nobody is ever in
-# their own `I(t)`, since a person is infected no later than they become
+# their own `I(t)`, because a person is infected no later than they become
 # infectious and `(open, close]` counting excludes their own window at and
 # before its own opening.
 _ext_survival_of(s::_MassActionSchedule, j) = s
