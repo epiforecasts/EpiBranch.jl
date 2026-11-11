@@ -20,6 +20,9 @@
 # in the per-case Markov-property reduction at the most recent
 # observed case.
 #
+# Also assumes no reporting delay: every case infected before the evaluation
+# date is already known.
+#
 # Under-reporting (`ρ < 1`) needs the full Volterra recursion for the
 # per-case η(τ) and is not implemented here.
 
@@ -28,7 +31,8 @@
 
 Probability that a single case causes no further cases, given that it was
 `τ` days ago. Assumes `NegBin(R, k)` offspring, a generation time
-distribution `generation_time` (days) and that every case is reported.
+distribution `generation_time` (days) and that every case is reported with
+no delay: every case infected before the evaluation date is already known.
 Following Thompson, Morgan & Jansen (2019, Phil Trans B), it is
 
     ((k + R · (1 − S(τ))) / (k + R))^k
@@ -44,6 +48,11 @@ earliest rather than its most recent case. For a cluster of several cases
 still capable of transmitting, pass every case's own `τ` to the vector method
 below, which combines them properly. Using this method with only the most
 recent case's `τ` overstates the probability that the cluster is over.
+
+With a reporting delay, a cluster that looks quiet for `τ` days may already
+hold an infected case that has not been reported yet, and this overstates the
+probability that the cluster is over. Measure `τ` to the last date by which
+reports are complete, or simulate.
 
 Use it as `prob_concluded` in `loglikelihood(::ChainSizes, ...)` or
 [`chain_size_distribution`](@ref) for real-time cluster data, where some
@@ -93,7 +102,10 @@ end
 End-of-outbreak probability using the offspring and generation time
 distributions of a `BranchingProcess`, `τ` days after the most recent case.
 
-This assumes every case is reported. Under-reporting (a [`Reporting`](@ref)
+This assumes every case is reported with no delay between infection and
+report, so with a reporting delay it overstates the probability that the
+outbreak is over; measure `τ` to the last date by which reports are complete,
+or simulate. Under-reporting (a [`Reporting`](@ref)
 step with a probability below 1, or any deprecated
 [`PerCaseObservation`](@ref)) needs the recursion of Thompson, Morgan & Jansen
 (2019), which is not implemented, and gives an error; use a model that reports
@@ -154,7 +166,8 @@ end
 
 End-of-outbreak probability for each of several clusters, given the days
 since each cluster's most recent case. Returns one value per cluster, ready
-to pass as `prob_concluded` to `loglikelihood(::ChainSizes, ...)`.
+to pass as `prob_concluded` to `loglikelihood(::ChainSizes, ...)`. Like the
+scalar method, it assumes full reporting with no reporting delay.
 """
 function end_of_outbreak_probability(
         R::Real, k::Real, generation_time::Distribution,
@@ -176,6 +189,11 @@ its cases transmits again: this is the product, over its cases, of
 known to have caused more secondary cases is more likely to cause further
 ones too, so it contributes less to the cluster being over than a case with
 the same `τ` and no known onward transmission.
+
+This assumes full reporting with no reporting delay: the listed cases and
+`secondary_cases` are taken as complete up to the evaluation date. With a
+delay, measure `τs` to the last date by which reports are complete, or
+simulate.
 
 Pass `zeros(Int, length(τs))` for `secondary_cases` when the transmission
 tree within the cluster is unknown; this reduces to the plain product of the
