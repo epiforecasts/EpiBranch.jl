@@ -273,6 +273,13 @@ end
         @test Le.infector == [0, 2, 0, 1, 0, 1, 2, 0, 0, 4]
         @test Le.is_ext == (Le.infector .== 0)
 
+        # sparse, unsorted and negative labels give the same rows as dense ones
+        Ls = compile_contact_pairs([-7, 10^9, -7, 10^9, 10^9], is_index, infected)
+        Ld = compile_contact_pairs([1, 2, 1, 2, 2], is_index, infected)
+        @test Ls.sus == Ld.sus
+        @test Ls.infector == Ld.infector
+        @test Ls.component == Ld.component
+
         @test_throws ArgumentError compile_contact_pairs([1, 1], [true], [true, false])
         @test length(compile_contact_pairs(Int[], Bool[], Bool[])) == 0
 

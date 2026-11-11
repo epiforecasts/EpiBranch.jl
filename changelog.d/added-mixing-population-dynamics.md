@@ -8,6 +8,3 @@ The mixing structure is specified once. `HybridProcess` now
 switches from an exact `MixingProcess` run to either of them, passing each
 group's compartment counts across the switch, in addition to the
 homogeneous pairing it already supported.
-
-Vaccination is not yet read from a model's interventions as a
-population-level input to either approximation.

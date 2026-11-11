@@ -1050,48 +1050,26 @@ function compile_contact_pairs(
     )
     n = length(membership)
     _check_host_masks(n, is_index, infected)
-    isempty(membership) && return _contact_pairs_layout(
-        Int[], Int[], Int[], Bool[], external, explain_index, is_index, 0, Int[], 0
-    )
 
-    # Bucket hosts by label into a `Vector{Vector{Int}}` indexed by label offset,
-    # which avoids hashing; offsetting by `lo` allows any integer labels.
-    lo, hi = extrema(membership)
-    n_buckets = hi - lo + 1
-    buckets = [Int[] for _ in 1:n_buckets]
-    for i in 1:n
-        push!(buckets[membership[i] - lo + 1], i)
-    end
-
-    sus = Int[]
-    infector = Int[]
-    is_ext = Bool[]
-    for h in 1:n_buckets
-        mem = buckets[h]
-        isempty(mem) && continue
-        for j in mem
-            (!explain_index && is_index[j]) && continue
-            if external
-                push!(sus, j)
-                push!(infector, 0)
-                push!(is_ext, true)
+    # Each member's contacts are the other members of the group, which the
+    # adjacency method handles. A stable sort by label groups the members and
+    # avoids a bucket for every possible label.
+    order = sortperm(membership)
+    contacts = Vector{Vector{Int}}(undef, n)
+    g_lo = 1
+    for k in 1:n
+        if k == n || membership[order[k + 1]] != membership[order[k]]
+            group = order[g_lo:k]
+            for i in group
+                contacts[i] = filter(!=(i), group)
             end
-            for i in mem
-                infected[i] || continue
-                i == j && continue
-                push!(sus, j)
-                push!(infector, i)
-                push!(is_ext, false)
-            end
+            g_lo = k + 1
         end
     end
+    layout = compile_contact_pairs(contacts, is_index, infected; external, explain_index)
     # A group has no per-edge list for a kernel to index into.
-    contact_index = zeros(Int, length(sus))
-    component, ncomponents = _structure_components(membership)
-    return _contact_pairs_layout(
-        sus, infector, contact_index, is_ext, external, explain_index,
-        is_index, n, component, ncomponents
-    )
+    fill!(layout.contact_index, 0)
+    return layout
 end
 
 function compile_contact_pairs(

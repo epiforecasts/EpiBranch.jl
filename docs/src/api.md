@@ -83,6 +83,14 @@ combines an exact model with its approximation: exact simulation while the
 outbreak is small, the approximation once it is large, with no filtering
 code of its own.
 
+The mixing-population approximations also read a model's vaccination campaign
+and initial immunity. A [`GroupVaccination`](@ref), alone or under
+[`Scheduled`](@ref) and [`CapacityConstrained`](@ref), is read from the
+interventions of the `ModelSpec` as doses into each mixing group, and a
+[`DoseAllocation`](@ref) sets how a budget is shared between groups.
+[`ImmuneShare`](@ref) and [`ImmuneCount`](@ref) set who is immune at the
+start.
+
 ```@docs
 MeanFieldProcess
 MeanFieldState
@@ -92,6 +100,12 @@ MixingMeanFieldProcess
 MixingMeanFieldState
 MixingLinearNoiseProcess
 MixingLinearNoiseState
+DoseAllocation
+TriggeredInPriority
+SplitByGroupSize
+SplitBySusceptibles
+ImmuneShare
+ImmuneCount
 HybridProcess
 HybridState
 ```

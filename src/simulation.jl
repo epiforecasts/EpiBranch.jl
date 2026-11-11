@@ -567,7 +567,7 @@ function _resolve_interventions!(state::SimulationState, case, interventions)
     # before this call) gets a fresh `initialise_individual!` first. That
     # keeps per-episode draws such as `Isolation`'s `:test_positive` specific
     # to the new episode, rather than left over from the one before it.
-    if !isempty(case.episodes)
+    if _has_episodes(case)
         for intervention in interventions
             initialise_individual!(intervention, case, state)
         end
@@ -709,7 +709,7 @@ function lazily_populate!(
     s = IndividualState{T}()
     s[:infected] = false
     placeholder = Individual{T}(
-        0, 0, 0, 0, T(NaN), one(T), one(T), Int[], s, InfectionEpisode{T}[]
+        0, 0, 0, 0, T(NaN), one(T), one(T), Int[], s, nothing
     )
     state.lazy = _LazyPopulation(placeholder, interventions, setup)
     resize!(state.individuals, n)
@@ -927,8 +927,7 @@ function _create_individual(
     ind = Individual{T}(
         next_id, parent_id,
         state.current_generation + (parent_id == 0 ? 0 : 1),
-        chain_id, convert(T, inf_time), one(T), one(T), Int[], s,
-        InfectionEpisode{T}[]
+        chain_id, convert(T, inf_time), one(T), one(T), Int[], s, nothing
     )
 
     _set_type!(ind, type_idx)
