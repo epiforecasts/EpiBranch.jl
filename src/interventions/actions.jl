@@ -372,8 +372,8 @@ _dose_delay!(v, ind, state) =
 
 _accepts!(v, ind, state) =
     action_draw!(ind, (v, :acceptance)) do
-        _covers(v.coverage, ind, stream(state.rng, ind.id, (v, :acceptance)))
-    end
+    _covers(v.coverage, ind, stream(state.rng, ind.id, (v, :acceptance)))
+end
 
 function intervention_actions(rv::RingVaccination, state, candidates)
     actions = InterventionAction[]

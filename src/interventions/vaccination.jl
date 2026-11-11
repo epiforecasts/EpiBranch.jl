@@ -1379,7 +1379,6 @@ end
 
 vaccine_effect(mv::MassVaccination) = getfield(mv, :effect)
 
-
 required_fields(::MassVaccination) = Symbol[]
 
 # The per-contact probability a dose of `mv` blocks an exposure, for the
