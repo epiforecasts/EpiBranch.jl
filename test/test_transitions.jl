@@ -641,8 +641,8 @@ end
     ind = Individual(id = 1, infection_time = 0.0)
     ind.state[:onset_time] = 2.5
     @test EpiBranch._state_time(ind, t.from, t.from_key) == 2.5
-    # Concrete arguments, so the result does not depend on how the compiler
-    # splits the field's `Union` type.
+    # Pass concretely typed arguments. The allocation count would otherwise
+    # depend on how the compiler splits the `Union` type of the field.
     from, key = t.from::Symbol, t.from_key::Symbol
     read_anchor(ind, from, key) = EpiBranch._state_time(ind, from, key)
     read_anchor(ind, from, key)
