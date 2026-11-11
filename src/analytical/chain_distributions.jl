@@ -336,8 +336,8 @@ end
 # and, through Distributions' own `ccdf`/`logcdf` defaults, gives those for
 # free; `logccdf` is reused from `_chain_size_right_tail_logprob`, already
 # written to avoid cancellation in the tail. These are defaults on the
-# parent type, so a user-written `ChainSizeLaw` with only a `logpdf` gets
-# them too; a law with a cheaper or more accurate form overrides them.
+# parent type. A user-written `ChainSizeLaw` with only a `logpdf` inherits
+# them, and a law with a cheaper or more accurate form overrides them.
 Distributions.pdf(d::ChainSizeLaw, n::Integer) = exp(logpdf(d, n))
 Distributions.minimum(::ChainSizeLaw) = 1
 Distributions.maximum(::ChainSizeLaw) = Inf
