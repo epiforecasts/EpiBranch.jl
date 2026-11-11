@@ -149,7 +149,7 @@ end
 probability that, once immune, an infection that would have caused symptoms
 leaves them asymptomatic (0 if not vaccinated, or if the dose has no such
 effect). Drawn once per vaccinated person from the `symptom_efficacy` of the
-dose's [`VaccineEffect`](@ref). The simulation applies it itself, through
+[`VaccineEffect`](@ref) of the dose. The simulation applies it itself, through
 [`is_asymptomatic`](@ref) and [`onset_time`](@ref); this reads the drawn
 value."""
 function symptom_efficacy(ind::Individual; dose_label::Symbol = :default)
