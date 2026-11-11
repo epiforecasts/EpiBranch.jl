@@ -2028,6 +2028,23 @@ function _component_loglik(
     return ll + v
 end
 
+# The log of a weighted sum of exponentials, `log(sum(w * exp(l)))` over
+# `(w, l)` pairs, shifted by the largest finite `l`. Components at `-Inf` drop
+# out, and the result is `-Inf` when none remain.
+function _weighted_logsumexp(terms, ::Type{T}) where {T}
+    m = T(-Inf)
+    for (_, l) in terms
+        _is_minus_inf(l) && continue
+        m = _is_minus_inf(m) ? T(l) : max(m, T(l))
+    end
+    _is_minus_inf(m) && return T(-Inf)
+    total = zero(T)
+    for (weight, l) in terms
+        _is_minus_inf(l) || (total += weight * exp(l - m))
+    end
+    return m + log(total)
+end
+
 # One modified susceptible's contribution: the log of its mixture.
 function _mixture_loglik(
         mixture, kernel, extsrc, data, layout, g, tfollow, ::Type{T}, gaps = nothing
@@ -2043,17 +2060,7 @@ function _mixture_loglik(
             modifier, kernel, extsrc, data, layout, rg, tj, tfollow, T, gaps
         )
     end
-    m = T(-Inf)
-    for (_, l) in terms
-        _is_minus_inf(l) && continue
-        m = _is_minus_inf(m) ? T(l) : max(m, T(l))
-    end
-    _is_minus_inf(m) && return T(-Inf)
-    total = zero(T)
-    for (weight, l) in terms
-        _is_minus_inf(l) || (total += weight * exp(l - m))
-    end
-    return m + log(total)
+    return _weighted_logsumexp(terms, T)
 end
 
 function pairwise_surv_loglik(
