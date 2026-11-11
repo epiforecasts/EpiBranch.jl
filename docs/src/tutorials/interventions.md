@@ -256,8 +256,8 @@ age, see [Who triggers contact tracing](@ref).
 
 A fraction `prob_asymptomatic` of cases never develop symptoms, and
 symptom-driven isolation misses them. Here asymptomatic cases are as
-infectious as symptomatic ones, which is what `clinical_presentation` assumes
-unless told otherwise; the end of this section shows how to lower it.
+infectious as symptomatic ones, as `clinical_presentation` assumes by default.
+The end of this section shows how to lower it.
 `test_sensitivity` is the probability that a
 symptomatic case tests positive and is isolated; the rest are missed:
 

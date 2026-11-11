@@ -1418,8 +1418,8 @@ Pass the result as `attributes` to [`ModelSpec`](@ref).
 [`Isolation`](@ref) needs these onset times, and [`linelist`](@ref) reports
 them as `date_onset`.
 
-An asymptomatic case transmits exactly as a symptomatic one does: this
-function has no argument for relative infectiousness. To make asymptomatic
+An asymptomatic case transmits exactly as a symptomatic one does, because this
+function takes no relative infectiousness. To make asymptomatic
 cases less (or more) infectious, list [`transmission_traits`](@ref) after it
 with an `infectiousness` that reads `ind.state[:asymptomatic]`.
 
@@ -1462,7 +1462,7 @@ attributes = [
 ]
 ```
 
-Asymptomatic cases half as infectious as symptomatic ones (list
+Asymptomatic cases that are half as infectious as symptomatic ones (list
 `transmission_traits` after `clinical_presentation` so `:asymptomatic` is set
 first):
 
