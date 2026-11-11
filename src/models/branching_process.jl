@@ -350,8 +350,8 @@ end
 
 # Shared by the continuous-time structure-driven models (`HomogeneousProcess`,
 # `NetworkProcess`, `HouseholdProcess`, `RouteWindow`): a case's window closes
-# at the earliest `Symbol(s, :_time)` for `s in until`. A progression's terminal transition writes its own
-# `state => true`/`state_time` pair regardless of whether `state` is in
+# at the earliest `Symbol(s, :_time)` for `s in until`. A progression's terminal
+# transition writes its own `state => true`/`state_time` pair regardless of whether `state` is in
 # `until`, so a state missing from `until` is simply never consulted: a case
 # reaching it keeps generating exposure proposals as if still infectious.
 # `terminal_target` (defined per transition type, alongside `is_terminal`)
