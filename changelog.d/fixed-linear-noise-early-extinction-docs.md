@@ -1,0 +1,1 @@
+The `LinearNoiseProcess` docstrings now say that the approximation has no mass on early extinction. Started from one or a few cases it describes only outbreaks that take off, and only roughly, so it needs enough initial cases for extinction to be negligible.

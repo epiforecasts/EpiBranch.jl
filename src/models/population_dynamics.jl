@@ -189,6 +189,14 @@ external Kalman filter needs for its prediction step; a particle filter can
 draw its own particles from the returned mean and covariance instead of
 running the exact simulation.
 
+The Gaussian has no mass on early extinction, so the approximation needs
+enough initial cases for extinction to be negligible. Started from one or a
+few cases it describes only the outbreaks that take off, and then only
+roughly: its mean and variance are off. With around 50 initial cases it
+matches the exact simulation well. Use the exact simulation (or
+[`HybridProcess`](@ref), which simulates exactly while few people are
+infectious) when early extinction matters.
+
 Accepts the same keywords as [`MeanFieldProcess`](@ref). The mean path
 integrates identically, with the addition of the covariance.
 
@@ -258,7 +266,11 @@ end
 
 Integrate the linear noise approximation of `model` from `t = 0`, with
 `n_initial` people infected, the rest susceptible, and no uncertainty yet
-(a zero covariance), up to `max_time`. Returns a [`LinearNoiseState`](@ref);
+(a zero covariance), up to `max_time`. The default of one initial case is
+only a starting value: the Gaussian approximation ignores early extinction, so
+from one or a few cases it describes only outbreaks that take off, and only
+roughly. Use enough initial cases for extinction to be negligible (around 50
+is close to the exact simulation). Returns a [`LinearNoiseState`](@ref);
 continue it further with `simulate(model, state; max_time)`.
 """
 function simulate(model::LinearNoiseProcess; n_initial::Integer = 1, max_time::Real)
