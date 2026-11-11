@@ -70,12 +70,12 @@ function censor_after_outcome!(r::Reporting, individual)
     return nothing
 end
 
-function transition_loglik(r::Reporting, individual::Individual)
+function transition_loglik(r::Reporting, individual::Individual; followup_end = Inf)
     anchor = _state_time(individual, r.from)
     _anchor_ok(anchor) || return 0.0
     flag = individual.state[:reported]::Bool
     time = flag ? individual.state[:reporting_time] : Inf
-    cap = _timed_from_outcome(individual, r.from) ? Inf : outcome_time(individual)
+    cap = min(_timed_from_outcome(individual, r.from) ? Inf : outcome_time(individual), followup_end)
     occurred = flag && time <= cap
     ll = transition_term(
         r.probability, r.delay, individual, anchor, occurred;
