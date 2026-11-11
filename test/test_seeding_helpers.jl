@@ -2,7 +2,7 @@ using Test
 using Distributions
 using StableRNGs
 using EpiBranch: _seed_candidates!, _seed_external!, _check_obs_end,
-                 _check_finite_obs_end, _populate!
+    _check_finite_obs_end, _populate!
 
 # Stand-in for a simulation state: every member is already realised with unit
 # susceptibility.
