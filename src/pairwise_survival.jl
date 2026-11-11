@@ -157,6 +157,20 @@ To define a new kind of contact structure, a subtype also defines
 [`compile_contact_pairs`](@ref) and [`pairwise_surv_loglik`](@ref) then work
 on it with no further methods. `HouseholdInfections` and `NetworkInfections`
 are the worked examples.
+
+# When the likelihood is valid
+
+The likelihood takes each person's infectious window, removal time and
+vaccination dates as fixed data and says nothing about how they came about. It
+is therefore a partial likelihood, conditional on the removals. That is valid
+when removals and doses depend only on the observed history (onsets, detections,
+the infections of household members or neighbours) and on parameters other than
+the contact interval. Onset-triggered isolation and household or network
+forward tracing meet this. A removal that depends on the unobserved
+transmission tree, such as [`SourceTracing`](@ref), does not. It depends on who
+infected whom, and conditioning on it biases the contact-interval estimate.
+When building an `InfectionLayer` from real data, check that the removal
+mechanism does not depend on who infected whom.
 """
 abstract type InfectionLayer end
 
@@ -570,7 +584,9 @@ that includes them, passed to `pairwise_surv_loglik` directly.
 Declaring `true` is a promise by the intervention's author; nothing checks it.
 The infection likelihood takes the infection record as given and does not
 include the probability of clinical outcomes, of who received interventions,
-of people's characteristics, or of observation.
+of people's characteristics, or of observation. Conditioning on the removals
+this way is valid only when they depend on the observed history and not on who
+infected whom; see [`InfectionLayer`](@ref).
 """
 infection_likelihood_compatible(component) = false
 infection_likelihood_compatible(::NoAttributes) = true
