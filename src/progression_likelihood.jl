@@ -35,6 +35,12 @@ date is biased towards short delays. A custom
 [`transition_loglik`](@ref EpiBranch.transition_loglik) method needs a
 `followup_end` keyword to be used with a finite `followup_end`.
 
+A line list holds only the outcome that happened. With competing outcomes
+such as [`Death`](@ref) and [`Recovery`](@ref), a case that has an `:outcome`
+and `:outcome_time` but no candidate time for the other outcome is scored as
+the other outcome not having happened by then: `f_D(t) S_R(t)` for a death at
+`t`, and the reverse for a recovery.
+
 It covers natural history only. Who infected whom and when is the transmission
 part, evaluated by [`pairwise_surv_loglik`](@ref); add the two for the full
 log-likelihood of an outbreak with known infection times. Neither includes an
