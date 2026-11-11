@@ -604,7 +604,7 @@ end
 
 function SurvivalDistributions.loghazard(k::_CalendarScaledKernel, τ::Real)
     lh = _loghazard(k.profile, τ)
-    # Past the profile's support the hazard is zero whatever the calendar says.
+    # Past the support of the profile the hazard is zero whatever the calendar says.
     lh == -Inf && return lh
     return lh + log(calendar_multiplier(k.calendar, k.opening + τ))
 end
