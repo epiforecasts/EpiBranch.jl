@@ -277,13 +277,14 @@ and time, as `weekly_incidence(states)` returns, or one row per outbreak, as
 a table of outbreak sizes or durations. Returns a DataFrame with the `by`
 column(s), `n_sim` (the number of outbreaks in that group) and one column per
 probability in `probs`, named `q` followed by the percentage with the
-decimal point written `_` (`q2_5` for 0.025, `q50` for 0.5). The default `probs` give the median with 50% and 95% bands.
+decimal point written `_` (`q2_5` for 0.025, `q50` for 0.5). The default `probs`
+give the median with 50% and 95% bands.
 
 `by` is a column name, a vector of names, or `Symbol[]` for a single summary
 over the whole table, such as the distribution of outbreak sizes from
 `chain_statistics(states)` with `value = :size`. The quantiles are of the rows
-as given, so a table with a row missing for a run and time summarises only the
-runs that have one: zero-fill counts first, as `weekly_incidence(states)` does.
+as given. A table with a row missing for an outbreak and time summarises only the
+outbreaks that have one, so zero-fill counts first, as `weekly_incidence(states)` does.
 
 # Examples
 
