@@ -1,0 +1,1 @@
+The calendar-scaled kernel behind an external hazard with a calendar schedule now subtypes `ContinuousUnivariateDistribution`, as the convention for kernels requires. The generic distribution methods cover it, so the two special-case helpers for it in `src/pairwise_survival.jl` and `src/simulation.jl` are gone.
