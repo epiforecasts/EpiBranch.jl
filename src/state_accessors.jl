@@ -335,7 +335,7 @@ end
 # As `set_isolated!`, but returns the handle the entry was recorded under, so
 # a component that isolates or quarantines someone can revise or withdraw
 # exactly its own effect later (see `Isolation`'s `reset!` and
-# `_undo_quarantine_isolation!`), without disturbing another's record left
+# `_reset_traced!`), without disturbing another's record left
 # under the same key.
 function _set_isolated!(
         ind::Individual{T}, time::Real;
@@ -593,9 +593,9 @@ function _detach_removal_history!(state::IndividualState)
 end
 
 # Drop every stretch entry filed under `key`, as though none had ever been
-# recorded. Used by `clear_isolated!` and by `_reset_traced!` for a
-# quarantine's own key, so that a fresh removal recorded under the same key
-# later starts from nothing rather than resurrecting what a full reset undid.
+# recorded. Used by `clear_isolated!`, so that a fresh removal recorded under
+# the same key later starts from nothing rather than resurrecting what a full
+# reset undid.
 function _withdraw_all_removals!(ind::Individual, key::Symbol)
     entries = get(ind.state, :_removal_entries, nothing)
     entries === nothing && return nothing
