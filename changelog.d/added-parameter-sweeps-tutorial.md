@@ -1,0 +1,1 @@
+A tutorial, "Parameter sweeps across processes", shows how to run a grid of scenarios with `Distributed` and `pmap`, with one seed per grid point so the results do not depend on the number of workers, when processes beat threads, and how the same code runs under SlurmClusterManager.jl.
