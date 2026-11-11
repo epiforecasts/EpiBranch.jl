@@ -570,6 +570,36 @@ function _offspring_through_interventions(model, offspring)
     return offspring
 end
 
+# The closed forms that read a model's offspring law as a plain distribution
+# (end-of-outbreak and containment probabilities, the superspreading
+# proportions) must not do so once a finite population, a window's `until` or
+# a susceptibility below 1 has reshaped it, as the chain-size likelihoods
+# already refuse to. Returns the single-type offspring law; a model without
+# one raises its own error first.
+function _unreshaped_single_type_offspring(model, name)
+    off = single_type_offspring(model)
+    _require_unreshaped_offspring_law(model, name)
+    return off
+end
+
+function _require_unreshaped_offspring_law(model, name)
+    # `offspring_law_unchanged` answers `false` for a process type it does not
+    # know. Such a process supplies its own offspring law and is used as
+    # declared, as before.
+    proc = model isa ModelSpec ? model.process : model
+    (!(proc isa BranchingProcess) || offspring_law_unchanged(proc)) &&
+        offspring_law_unchanged(attributes(model)) &&
+        all(offspring_law_unchanged, progression(model)) || throw(
+        ArgumentError(
+            "$name has no closed form for this model: a finite population_size, an " *
+                "infectiousness window with `until`, or an attribute (such as " *
+                "transmission_traits away from its neutral value) reshapes the offspring " *
+                "law away from the distribution it was built with. Simulate instead."
+        )
+    )
+    return nothing
+end
+
 function Base.show(io::IO, s::ModelSpec)
     return print(
         io, "ModelSpec(", s.process, "; ", length(s.interventions),

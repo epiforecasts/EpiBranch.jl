@@ -142,10 +142,11 @@ Probability that a single introduced case leads to a major epidemic: one
 minus [`extinction_probability`](@ref), for an offspring distribution or a
 model. For a multi-type model there is one value per type of index case.
 
-Given a model, population characteristics and the observation model are
-ignored. Each of its interventions changes the offspring distribution first,
-through [`EpiBranch.analytic_offspring_effect`](@ref); an intervention without
-one raises an error. For control measures with no such effect, use
+Given a model, the observation model is ignored, and a reshaped offspring law
+(see [`extinction_probability`](@ref) for a model) raises an error. Each of its
+interventions changes the offspring distribution first, through
+[`EpiBranch.analytic_offspring_effect`](@ref); an intervention without one
+raises an error. For control measures with no such effect, use
 [`probability_contain`](@ref), or simulate and use
 [`containment_probability`](@ref).
 """
@@ -160,10 +161,12 @@ end
     extinction_probability(spec::ModelSpec; kwargs...)
 
 Probability that transmission from a single introduced case dies out, from
-the model's offspring distribution. Population characteristics and the
-observation model are ignored. For a single-type model the result is one
-number; for a multi-type model built from an offspring matrix it has one value
-per type of index case.
+the model's offspring distribution. The observation model is ignored. If a
+finite `population_size`, an `Infectiousness` window with `until`, or
+`transmission_traits` away from their neutral values reshape the offspring law,
+this throws an `ArgumentError` that points to simulation. For a single-type
+model the result is one number; for a multi-type model built from an offspring
+matrix it has one value per type of index case.
 
 For a `ModelSpec`, or a process that stores its own interventions, each
 intervention's [`EpiBranch.analytic_offspring_effect`](@ref) is applied to
@@ -171,6 +174,7 @@ the offspring distribution first. If an intervention has no such method, this
 throws an error that names the simulation-based alternative.
 """
 function extinction_probability(model::Union{TransmissionModel, ModelSpec}; kwargs...)
+    _require_unreshaped_offspring_law(model, "extinction_probability")
     off = _offspring_through_interventions(model, _analytic_offspring(model))
     return extinction_probability(off; kwargs...)
 end
@@ -279,6 +283,9 @@ end
 
 Closed-form containment probability for a single-type model, from its
 offspring distribution, with the same keywords as `probability_contain(R, k)`.
+A model whose offspring law is reshaped (a finite `population_size`, an
+infectiousness window with `until`, or `transmission_traits` away from their
+neutral values) gives an error that points to simulation.
 
 For a `ModelSpec`, or a process that stores its own interventions, each
 intervention's [`EpiBranch.analytic_offspring_effect`](@ref) is applied to
@@ -286,6 +293,7 @@ the offspring distribution first. If an intervention has no such method, this
 throws an error that names the simulation-based alternative.
 """
 function probability_contain(model::Union{TransmissionModel, ModelSpec}; kwargs...)
-    off = _offspring_through_interventions(model, single_type_offspring(model))
+    off = _unreshaped_single_type_offspring(model, "probability_contain(model)")
+    off = _offspring_through_interventions(model, off)
     return probability_contain(off; kwargs...)
 end
