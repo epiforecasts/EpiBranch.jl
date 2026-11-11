@@ -115,22 +115,22 @@ summed the same way. Only `logpdf` on the base is needed, so any base
 distribution works without a method of its own. `P(0 detected)` depends on
 `base` and `detection_prob` alone, so it is worked out once when the
 distribution is built. Its field takes whatever element type `base`'s
-parameters give `logpdf`, rather than `Float64`, so a `Dual` can pass through
-it when something differentiates through `base`, such as fitting an offspring
-parameter with `ForwardDiff`.
+parameters give `logpdf`, rather than `Float64`. The detection probability
+also retains its numeric type. This allows `ForwardDiff` to differentiate
+with respect to offspring parameters and reporting probabilities.
 """
-struct ThinnedChainSize{D <: DiscreteUnivariateDistribution, T <: Real} <:
+struct ThinnedChainSize{D <: DiscreteUnivariateDistribution, P <: Real, T <: Real} <:
     ChainSizeLaw
     base::D
-    detection_prob::Float64
+    detection_prob::P
     log_prob_any_detected::T
 end
 
 function ThinnedChainSize(base::D, detection_prob) where {D <: DiscreteUnivariateDistribution}
-    p = Float64(detection_prob)
+    p = float(detection_prob)
     0.0 < p <= 1.0 || throw(ArgumentError("detection_prob must be in (0, 1], got $p"))
     log_prob_any_detected = _log_prob_any_detected(base, p)
-    return ThinnedChainSize{D, typeof(log_prob_any_detected)}(base, p, log_prob_any_detected)
+    return ThinnedChainSize{D, typeof(p), typeof(log_prob_any_detected)}(base, p, log_prob_any_detected)
 end
 
 Distributions.minimum(::ThinnedChainSize) = 1
@@ -176,13 +176,13 @@ _log1mexp(x::Real) = x > -log(2) ? log(-expm1(x)) : log1p(-exp(x))
 # summed over the base's support (chains always have at least one case).
 # At p = 1 every term is -Inf (zero mass), and the streaming sum can't
 # subtract two infinite terms; short-circuit to the same answer directly.
-function _log_prob_none_detected(base, detection_prob::Float64)
+function _log_prob_none_detected(base, detection_prob::Real)
     detection_prob >= 1.0 && return -Inf
     lq = log1p(-detection_prob)
     return _streaming_logsumexp(n -> logpdf(base, n) + n * lq, 1)
 end
 
-_log_prob_any_detected(base, detection_prob::Float64) =
+_log_prob_any_detected(base, detection_prob::Real) =
     _log1mexp(_log_prob_none_detected(base, detection_prob))
 
 function Distributions.logpdf(d::ThinnedChainSize, obs::Integer)
@@ -393,4 +393,22 @@ function _fold_reporting(progression, base, obs, attrs)
     )
     ρ == 1.0 && return base
     return ThinnedChainSize(base, ρ)
+end
+
+# Use simulation when no exact law is available; propagate errors within exact laws.
+# Callable reporting probabilities depend on individuals and require simulation.
+function _exact_reported_chain_size(offspring, prog, obs, attrs)
+    hasmethod(chain_size_distribution, Tuple{typeof(offspring)}) || return nothing
+    offspring isa GeneratingFunctionOffspring && offspring.pmf === nothing && return nothing
+    count(t -> t isa Reporting, prog) > 1 && return nothing
+    any(t -> t isa Reporting && !(t.probability isa Real), prog) && return nothing
+    # A progression the closed form cannot read (a terminal step, or a step
+    # that overwrites the `from` time) is simulated instead.
+    try
+        _effective_reporting_probability(prog, attrs)
+    catch e
+        e isa ArgumentError && return nothing
+        rethrow()
+    end
+    return _fold_reporting(prog, chain_size_distribution(offspring), obs, attrs)
 end

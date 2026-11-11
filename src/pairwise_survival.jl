@@ -1543,7 +1543,7 @@ action alone does not. Mass action plus an importation rate therefore scores
 index cases as importations instead of conditioning on them.
 
 Like [`MassActionHazard`](@ref), a sum is likelihood-only: it cannot be passed
-as a process's own `external_hazard` to simulate from.
+as the `external_hazard` of a process to simulate from.
 
 # Example
 
