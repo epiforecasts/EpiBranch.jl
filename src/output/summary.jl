@@ -221,6 +221,101 @@ function weekly_incidence(
     return df
 end
 
+"""
+    weekly_incidence(states::Vector{<:SimulationState}; by=:onset,
+                     reference_date::Date=Date(2020, 1, 1))
+
+Weekly case counts across several simulated outbreaks, such as the output of
+`simulate(model, n)`. Returns a DataFrame with columns `sim_id` (the position
+of the outbreak in `states`), `week` and `cases`, with `by` and
+`reference_date` as for a single outbreak.
+
+Every outbreak has a row for every week from the first to the last week in
+which any outbreak has a case, and a week with no cases in an outbreak is
+counted as 0. Quantiles over outbreaks, as [`summarise`](@ref) takes them,
+need those zeros: dropping the empty weeks would leave only the outbreaks that
+had cases in the week and bias the quantiles upwards. An outbreak that ended
+early keeps its zeros up to the last week of the longest one.
+"""
+function weekly_incidence(
+        states::Vector{<:SimulationState};
+        by::Symbol = :onset,
+        reference_date::Date = Date(2020, 1, 1)
+    )
+    tables = [weekly_incidence(s; by, reference_date) for s in states]
+    populated = filter(!isempty, tables)
+    isempty(populated) &&
+        return DataFrame(sim_id = Int[], week = Date[], cases = Int[])
+
+    first_week = minimum(t.week[1] for t in populated)
+    last_week = maximum(t.week[end] for t in populated)
+    all_weeks = collect(first_week:Week(1):last_week)
+    n_weeks = length(all_weeks)
+
+    sim_ids = Int[]
+    weeks = Date[]
+    cases = Int[]
+    for (i, t) in enumerate(tables)
+        counts = zeros(Int, n_weeks)
+        for r in eachrow(t)
+            counts[div(Dates.value(r.week - first_week), 7) + 1] = r.cases
+        end
+        append!(sim_ids, fill(i, n_weeks))
+        append!(weeks, all_weeks)
+        append!(cases, counts)
+    end
+    return DataFrame(sim_id = sim_ids, week = weeks, cases = cases)
+end
+
+"""
+    summarise(df::AbstractDataFrame; value=:cases, by=:week,
+              probs=[0.025, 0.25, 0.5, 0.75, 0.975])
+
+Quantiles of `value` across the simulated outbreaks in `df`, one row per
+distinct value of the `by` column. `df` has one row per outbreak (`sim_id`)
+and time, as `weekly_incidence(states)` returns, or one row per outbreak, as
+a table of outbreak sizes or durations. Returns a DataFrame with the `by`
+column(s), `n_sim` (the number of outbreaks in that group) and one column per
+probability in `probs`, named `q` followed by the percentage with the
+decimal point written `_` (`q2_5` for 0.025, `q50` for 0.5). The default `probs` give the median with 50% and 95% bands.
+
+`by` is a column name, a vector of names, or `Symbol[]` for a single summary
+over the whole table, such as the distribution of outbreak sizes from
+`chain_statistics(states)` with `value = :size`. The quantiles are of the rows
+as given, so a table with a row missing for a run and time summarises only the
+runs that have one: zero-fill counts first, as `weekly_incidence(states)` does.
+
+# Examples
+
+```julia
+states = simulate(model, 1000; max_time = 84.0)
+summarise(weekly_incidence(states))                    # median and 50%, 95% bands per week
+summarise(chain_statistics(states); value = :size, by = Symbol[])
+```
+"""
+function summarise(
+        df::AbstractDataFrame;
+        value::Symbol = :cases,
+        by::Union{Symbol, AbstractVector{Symbol}} = :week,
+        probs::AbstractVector{<:Real} = [0.025, 0.25, 0.5, 0.75, 0.975]
+    )
+    all(p -> 0 <= p <= 1, probs) ||
+        throw(ArgumentError("summarise: probs must lie in [0, 1]"))
+    keys_by = by isa Symbol ? [by] : collect(by)
+    names = [_quantile_name(p) for p in probs]
+    ps = collect(probs)
+    compute(v) = (; n_sim = length(v), (nm => quantile(v, p) for (nm, p) in zip(names, ps))...)
+
+    if isempty(keys_by)
+        return DataFrame([compute(df[!, value])])
+    end
+    out = combine(groupby(df, keys_by), value => compute => AsTable)
+    return sort!(out, keys_by)
+end
+
+_quantile_name(p::Real) =
+    Symbol("q", replace(replace(string(round(100 * p; digits = 6)), r"\.0$" => ""), "." => "_"))
+
 # Onset with infection-time fallback for cases without a recorded onset.
 function _weekly_time(by::Symbol, ind)
     if by === :onset
