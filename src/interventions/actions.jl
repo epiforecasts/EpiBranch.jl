@@ -366,7 +366,7 @@ function _revisable_dose_action(v::AbstractVaccination, ind, trigger, time)
 end
 
 # The delay before a dose and whether it is accepted are drawn once per person
-# and cached, so a revisited dose reuses the same draw.
+# and cached. A revisited dose reuses the same draw.
 _dose_delay!(v, ind, state) =
     action_draw!(() -> sample_value(v.dose_delay, state.rng, ind), ind, (v, :delay))
 
