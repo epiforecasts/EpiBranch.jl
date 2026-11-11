@@ -14,7 +14,7 @@ using Dates
             attributes = EpiBranch.attributes(model),
             progression = EpiBranch.progression(model),
             observation = EpiBranch.observation(model),
-            recorder = EpiBranch.recorder(model)
+            recorder = EpiBranch.recorder(model),
         )
         results = EpiBranch._simulate_n_threaded(
             identity, SimulationState, model, 20, sim_opts; kw..., rng = StableRNG(3)
