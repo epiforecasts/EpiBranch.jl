@@ -1,0 +1,1 @@
+`end_of_outbreak_probability` now cites Thompson, Morgan & Jalava (2019) rather than naming the wrong third author. Its documentation also states that `τ` is measured on the same scale as the distribution passed: from each case's infection with a generation time, or from its onset with a serial interval in its place. The vector example builds `τs` from infection times.
