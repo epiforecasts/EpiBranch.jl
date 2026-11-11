@@ -351,7 +351,7 @@ function _drop_default_shortcuts(model, sim_opts, max_cases, max_generations, st
     return SimOpts(sim_opts.n_initial, sim_opts.initial_cases, sim_opts.index_types, rules)
 end
 
-# The five layer keywords `simulate_once` and `_simulate_n` take, read from a
+# The five layer keywords of `simulate_once` and `_simulate_n`, read from a
 # process or a `ModelSpec` through the shared accessors.
 _layers(model) = (
     interventions = interventions(model), attributes = attributes(model),
@@ -359,11 +359,10 @@ _layers(model) = (
     recorder = recorder(model),
 )
 
-# Shared by every caller that simulates (a bare process or a `ModelSpec`, each
-# for one outbreak or `n`, and the likelihood paths): build the `SimOpts` the
-# termination keywords describe, with the defaults dropped per
-# `_drop_default_shortcuts`, and check the seeding options against `model` so a
-# new check is added in one place.
+# Builds the `SimOpts` from the termination keywords for every caller that
+# simulates (a bare process or a `ModelSpec`, one outbreak or `n`, and the
+# likelihood paths). It drops the defaults through `_drop_default_shortcuts`
+# and checks the seeding options against `model`. A new check goes in here once.
 function _build_sim_opts(
         model, n_initial, initial_cases, index_types, max_cases, max_generations,
         max_time, stopping_rules
