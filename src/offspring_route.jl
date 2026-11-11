@@ -144,9 +144,7 @@ function _birth!(tree::_Tree, race, k)
     tree.ids[k] = contact.id
     push!(tree.places, k)
     isempty(race.interventions) && return contact
-    for intervention in race.interventions
-        initialise_individual!(intervention, contact, state)
-    end
+    _initialise!(race.interventions, contact, state)
     _apply_population_actions!(state, race.interventions, (contact.id,))
     _apply_creation_actions!(state, race.creating, contact)
     return contact

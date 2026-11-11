@@ -40,9 +40,7 @@ function _grow!(g::_Grown, race)
         race.may_block && push!(race.head, 0)
         isempty(race.interventions) && continue
         contact = state.individuals[g.n]
-        for intervention in race.interventions
-            initialise_individual!(intervention, contact, state)
-        end
+        _initialise!(race.interventions, contact, state)
         _apply_population_actions!(state, race.interventions, (contact.id,))
         _apply_creation_actions!(state, race.creating, contact)
     end
