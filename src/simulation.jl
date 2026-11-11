@@ -310,19 +310,18 @@ function _simulate_n(
         ]
     end
 end
-# Kept apart from the `nthreads() > 1` check so that it can be run, and tested,
-# on a single thread.
+# Separate from the `nthreads() > 1` check so that it can be tested on a single
+# thread.
 function _simulate_n_threaded(
         each, ::Type{T}, model::TransmissionModel, n::Int, sim_opts::SimOpts;
         interventions, attributes, progression, observation, recorder, rng
     ) where {T}
     seeds = [rand(rng, UInt64) for _ in 1:n]
     results = Vector{T}(undef, n)
-    # Outbreak sizes are heavy-tailed. An even split of `1:n` leaves
+    # Outbreak sizes are heavy-tailed, so an even split of `1:n` would leave
     # threads idle while one works through the large outbreaks. Each task
-    # takes the next outbreak from a shared counter instead. Each outbreak
-    # keeps the seed at its own index, giving the same results whichever
-    # thread runs it.
+    # instead takes the next outbreak from a shared counter. The seed is
+    # indexed by outbreak, so results are the same whichever thread runs it.
     next_index = Threads.Atomic{Int}(1)
     tasks = map(1:min(Threads.nthreads(), n)) do _
         Threads.@spawn begin
