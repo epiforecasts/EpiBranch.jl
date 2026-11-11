@@ -133,14 +133,6 @@ function Scheduled(
     )
 end
 
-# Pre-existing callers build a `Scheduled` without the trigger record.
-function Scheduled(
-        intervention::AbstractIntervention, condition, start_time::Float64,
-        can_lapse::Bool
-    )
-    return Scheduled(intervention, condition, start_time, can_lapse, ())
-end
-
 # Whether `iv` has declared its own `intervention_time`, which by that hook's
 # contract comes paired with a `reset!` undoing whatever it names (see
 # `intervention_time`'s docstring). `Scheduled` only runs such an
@@ -455,7 +447,7 @@ end
 # Predicate constructor: no individual-level reset. The predicate is opaque, so
 # it is assumed able to lapse.
 function Scheduled(intervention::AbstractIntervention, condition)
-    return Scheduled(intervention, condition, 0.0, true)
+    return Scheduled(intervention, condition, 0.0, true, ())
 end
 
 # ── Protocol delegation ──────────────────────────────────────────────

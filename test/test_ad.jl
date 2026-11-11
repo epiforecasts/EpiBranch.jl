@@ -377,7 +377,7 @@ end
 
     onward(efficacy) = EpiBranch._onward_risk(
         RingVaccination(efficacy = 0.6, onward_efficacy = efficacy),
-        parent
+        parent, contact
     ).block_probability
     @test ForwardDiff.derivative(onward, 0.5) == 1.0
 end

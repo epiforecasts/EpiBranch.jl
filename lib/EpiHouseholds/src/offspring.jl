@@ -460,7 +460,6 @@ function _markov_offspring_pmf(
         (sum(p) > 1 - tol || k_max >= max_offspring) && return p
         k_max = min(2 * k_max, max_offspring)
     end
-    return
 end
 
 function _markov_pmf_upto(n::Int, β::Real, γ::Real, global_rate::Real, k_max::Int)

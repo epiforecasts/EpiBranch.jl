@@ -69,7 +69,6 @@ is_eligible_for_isolation(::SymptomaticOnly, ind, state) = !is_asymptomatic(ind)
 """Every case is eligible, including asymptomatic ones (mass-testing
 scenarios)."""
 struct AllCases <: IsolationEligibility end
-is_eligible_for_isolation(::AllCases, ind, state) = true
 
 # Required-field validation dispatches on the eligibility trait so a
 # custom eligibility that doesn't read `:asymptomatic` doesn't trip

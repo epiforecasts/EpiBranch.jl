@@ -688,7 +688,6 @@ end
 # `trace_contacts!` call, which admits through it instead of itself (see
 # `_admit_trace_actions!`). This composes with `Scheduled` in either order, as
 # a dose already does.
-traces_contacts(cc::CapacityConstrained) = traces_contacts(cc.intervention)
 function trace_contacts!(cc::CapacityConstrained, state, infector, contacts, not_before = nothing)
     key = (:trace_admitter, _innermost(cc))
     previous = get(state.scratch, key, nothing)

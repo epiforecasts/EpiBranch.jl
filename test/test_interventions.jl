@@ -1487,7 +1487,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                 parent.state[:vaccination_time] = 0.0
                 contact2 = Individual(id = 6)
 
-                risk = EpiBranch._onward_risk(rv2, parent)
+                risk = EpiBranch._onward_risk(rv2, parent, contact2)
 
                 contact2.infection_time = 0.0
                 prob_now = EpiBranch.sample_value(
@@ -1592,7 +1592,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
 
                     other = Individual(id = 10, infection_time = imm_t + 20.0)
                     @test EpiBranch.sample_value(
-                        EpiBranch._onward_risk(rv8, c).block_probability,
+                        EpiBranch._onward_risk(rv8, c, other).block_probability,
                         StableRNG(1), c, other, nothing
                     ) ≈ onward * retained
 
@@ -1802,14 +1802,10 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             # A never-exposed individual's infection time is NaN; no time has
             # passed since an exposure, so any window admits it.
             unexposed = Individual(id = 1, infection_time = NaN)
-            rng = StableRNG(1)
-            @test EpiBranch._within_eligibility_window(Inf, unexposed, 3.0, rng)
-            @test EpiBranch._within_eligibility_window(
-                (rng, ind) -> Inf, unexposed, 3.0, rng
-            )
-            @test EpiBranch._within_eligibility_window(21.0, unexposed, 3.0, rng)
+            @test EpiBranch._within_window(Inf, unexposed, 3.0)
+            @test EpiBranch._within_window(21.0, unexposed, 3.0)
             exposed = Individual(id = 2, infection_time = 1.0)
-            @test !EpiBranch._within_eligibility_window(1.0, exposed, 3.0, rng)
+            @test !EpiBranch._within_window(1.0, exposed, 3.0)
         end
 
         @testset "A dose given while pending is withdrawn once settling excludes it" begin

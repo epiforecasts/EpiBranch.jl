@@ -46,7 +46,6 @@ end
 function keep_active(w::InterventionWrapper, state, targets, is_new)
     return keep_active(w.intervention, state, targets, is_new)
 end
-_unwrap_scheduled(w::InterventionWrapper) = _unwrap_scheduled(w.intervention)
 
 binding_release(w::InterventionWrapper) = binding_release(w.intervention)
 risk_applies(w::InterventionWrapper, route) = risk_applies(w.intervention, route)
