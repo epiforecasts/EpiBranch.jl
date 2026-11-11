@@ -49,6 +49,7 @@ const TEST_GROUPS = (
         "test_continuation.jl",
         "test_population_dynamics.jl",
         "test_mixing_population_dynamics.jl",
+        "test_mixing_vaccination.jl",
         "test_hybrid.jl",
         "test_generation_counts.jl",
         "test_generation_counts_population.jl",
