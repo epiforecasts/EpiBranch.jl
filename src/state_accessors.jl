@@ -149,7 +149,7 @@ end
 probability that, once immune, an infection that would have caused symptoms
 leaves them asymptomatic (0 if not vaccinated, or if the dose has no such
 effect). Drawn once per vaccinated person from the `symptom_efficacy` of the
-dose's [`VaccineEffect`](@ref). The simulation applies it itself, through
+[`VaccineEffect`](@ref) of the dose. The simulation applies it itself, through
 [`is_asymptomatic`](@ref) and [`onset_time`](@ref); this reads the drawn
 value."""
 function symptom_efficacy(ind::Individual; dose_label::Symbol = :default)
@@ -335,7 +335,7 @@ end
 # As `set_isolated!`, but returns the handle the entry was recorded under, so
 # a component that isolates or quarantines someone can revise or withdraw
 # exactly its own effect later (see `Isolation`'s `reset!` and
-# `_undo_quarantine_isolation!`), without disturbing another's record left
+# `_reset_traced!`), without disturbing another's record left
 # under the same key.
 function _set_isolated!(
         ind::Individual{T}, time::Real;
@@ -593,9 +593,9 @@ function _detach_removal_history!(state::IndividualState)
 end
 
 # Drop every stretch entry filed under `key`, as though none had ever been
-# recorded. Used by `clear_isolated!` and by `_reset_traced!` for a
-# quarantine's own key, so that a fresh removal recorded under the same key
-# later starts from nothing rather than resurrecting what a full reset undid.
+# recorded. Used by `clear_isolated!`, so that a fresh removal recorded under
+# the same key later starts from nothing rather than resurrecting what a full
+# reset undid.
 function _withdraw_all_removals!(ind::Individual, key::Symbol)
     entries = get(ind.state, :_removal_entries, nothing)
     entries === nothing && return nothing
@@ -761,8 +761,15 @@ end
 # the exposure, so it is read apart from the stretches that lapse. The merge
 # leaves at most one of them.
 function permanent_removal_time(ind::Individual, key::Symbol = REMOVAL_STRETCHES_KEY)
+    return _permanent_removal_time(removal_stretches(ind, key))
+end
+
+# A function barrier: `removal_stretches` reads from the `Any`-valued state.
+# The loop is compiled here for the concrete vector type and does not
+# dispatch at run time on each step.
+function _permanent_removal_time(stretches)
     t = Inf
-    for (start, release) in removal_stretches(ind, key)
+    for (start, release) in stretches
         isfinite(release) || (t = min(t, start))
     end
     return t

@@ -119,7 +119,7 @@ date falls in, whatever day the case itself was settled on. Under the default
 policy, people turned away use no capacity and are not queued, though they may
 be offered the intervention again if reached again later; with
 [`DeferRefused`](@ref) they are instead given a later date, which then counts
-against that period's budget. Only whole people are served, so a
+against the budget of that period. Only whole people are served, so a
 fraction of remaining capacity serves nobody. Interventions with the same dose
 label share one budget, and doses given by another intervention under that
 label count against it; use different labels for separate budgets.
@@ -327,7 +327,7 @@ end
 capacity_key(::TraceAction) = nothing
 capacity_time_key(::TraceAction) = nothing
 # `:_quarantine_removal_handles` is the list of handles `apply_trace!` keeps
-# for the entries it has recorded (see `_undo_quarantine_isolation!`),
+# for the entries it has recorded (see `_reset_traced!`),
 # present and non-empty exactly when a quarantine has used the budget.
 capacity_key(::Quarantine) = :_quarantine_removal_handles
 capacity_time_key(::Quarantine) = :trace_time

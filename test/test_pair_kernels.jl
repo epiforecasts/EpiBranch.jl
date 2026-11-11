@@ -197,7 +197,62 @@ end
     @test settle_top(5.0, Steps([7.0], [1.0, 0.0])) == 5.0
 end
 
-include("testutils/pair_kernels.jl")
+# A smooth seasonal calendar schedule, `rate * (1 + amplitude * sin(2πt / period))`,
+# integrated by quadrature where `Steps` is integrated segment by segment.
+struct SeasonalSchedule{T <: Real}
+    rate::T
+    amplitude::T
+    period::Float64
+end
+function EpiBranch.calendar_multiplier(s::SeasonalSchedule, t)
+    return s.rate * (1 + s.amplitude * sin(2π * t / s.period))
+end
+EpiBranch.calendar_shape(::SeasonalSchedule) = EpiBranch.SmoothCalendar()
+# The antiderivative of the multiplier, for analytical cumulative hazards.
+function seasonal_integral(s::SeasonalSchedule, t)
+    return s.rate * (t - s.amplitude * s.period / 2π * cos(2π * t / s.period))
+end
+
+# The second case records a future intervention on a different, pending host.
+struct RecordKernelPolicy <: AbstractIntervention end
+function EpiBranch.resolve_individual!(::RecordKernelPolicy, ind, state)
+    ind.id == 2 || return nothing
+    state.individuals[3].state[:policy_time] = ind.infection_time + 0.5
+    return nothing
+end
+
+# The same two-rate law used directly as a contact-interval profile, with no
+# calendar interpretation: `date` is a threshold in elapsed time since the
+# infector's own opening.
+function state_policy_law(before, after, date)
+    isfinite(date) || return Exponential(inv(before))
+    survival = exp(-before * date)
+    return MixtureModel(
+        [
+            truncated(Exponential(inv(before)); upper = date),
+            date + Exponential(inv(after)),
+        ],
+        [1 - survival, survival]
+    )
+end
+
+struct WaitForKernelDay <: AbstractIntervention end
+function EpiBranch.competing_risk(::WaitForKernelDay, parent, contact, state)
+    return Risk(block_probability = state.max_infection_time < 1.0 ? 1.0 : 0.0)
+end
+
+# Moves the record of every host on every case, which makes the race redraw
+# pending contacts at each step. A kernel whose records never move takes the
+# ordinary path, as the equivalence test below checks. A test of redrawing
+# therefore has to make something move.
+struct TickEveryCase <: AbstractIntervention end
+function EpiBranch.resolve_individual!(::TickEveryCase, ind, state)
+    for person in state.individuals
+        person.state[:tick] = state.cumulative_cases
+    end
+    return nothing
+end
+tick_state(ind) = (tick = get(ind.state, :tick, 0)::Int,)
 
 # A multiplier that is zero until calendar day 3 and then rises linearly, so
 # quadrature meets exact zeros and a kink.
