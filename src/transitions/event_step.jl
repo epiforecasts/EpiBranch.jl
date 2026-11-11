@@ -1,6 +1,6 @@
-# Event steps that record whether an event happened and when, as a flag key and
-# a time key in the individual's state. `Reporting`, `Hospitalisation` and
-# `Transition` differ only in those keys, so one body serves all three.
+# Event steps record whether an event happened and when, as a flag key and a
+# time key in the state of the individual. `Reporting`, `Hospitalisation` and
+# `Transition` differ only in those keys and share one body.
 const _EventStep = Union{Transition, Reporting, Hospitalisation}
 
 _event_keys(::Reporting) = (:reported, :reporting_time)
@@ -31,7 +31,7 @@ function transition_loglik(x::_EventStep, individual::Individual; followup_end =
     flag_key, time_key = _event_keys(x)
     flag = individual.state[flag_key]::Bool
     time = flag ? individual.state[time_key] : Inf
-    # A terminal step defines the outcome, so the outcome does not cut it off.
+    # The outcome never cuts off a terminal step, because that step defines it.
     cap = is_terminal(x) || _timed_from_outcome(individual, x.from) ?
         Inf : outcome_time(individual)
     cap = min(cap, followup_end)
