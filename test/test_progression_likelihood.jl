@@ -500,6 +500,55 @@ struct _UntrackedTransition <: EpiBranch.AbstractClinicalTransition end
         state = simulate(spec; max_cases = 5, rng = StableRNG(5))
         @test_throws "needs a method for" progression_loglik(spec, state)
     end
+
+    @testset "followup_end scores steps not yet happened as censored" begin
+        delay = Exponential(2.0)
+        spec = ModelSpec(
+            BranchingProcess(Poisson(1.0));
+            progression = [Reporting(delay = delay, probability = 0.6, from = :infection)]
+        )
+        reported(t) = Individual(
+            id = 1, infection_time = 0.0,
+            state = Dict(:reported => true, :reporting_time => t)
+        )
+        unreported = Individual(
+            id = 2, infection_time = 0.0,
+            state = Dict(:reported => false, :reporting_time => Inf)
+        )
+        # reported before the cut-off: unchanged
+        @test progression_loglik(spec, [reported(2.0)]; followup_end = 5.0) ≈
+            progression_loglik(spec, [reported(2.0)])
+        # reported after the cut-off: censored there, by the survival probability
+        @test progression_loglik(spec, [reported(7.0)]; followup_end = 5.0) ≈
+            log1p(-0.6 * cdf(delay, 5.0))
+        # never reported: no report by the cut-off, with the gate included
+        @test progression_loglik(spec, [unreported]; followup_end = 5.0) ≈
+            log1p(-0.6 * cdf(delay, 5.0))
+        @test progression_loglik(spec, [unreported]) ≈ log(0.4)
+        # a custom step without the keyword still works without a cut-off
+        # and is reported clearly with one
+        @test_throws MethodError progression_loglik(
+            ModelSpec(BranchingProcess(Poisson(0.0)); progression = [_GatedVisit(1.0, 1.0)]),
+            [Individual(id = 1, infection_time = 0.0, state = Dict(:visited => true, :visit_time => 1.0))];
+            followup_end = 3.0
+        )
+    end
+
+    @testset "followup_end censors recovery and death candidates" begin
+        spec = ModelSpec(
+            BranchingProcess(Poisson(1.0));
+            progression = [Recovery(delay = Exponential(3.0), from = :infection)]
+        )
+        ind = Individual(
+            id = 1, infection_time = 0.0,
+            state = Dict(:recovery_candidate_time => 6.0)
+        )
+        @test progression_loglik(spec, [ind]; followup_end = 4.0) ≈
+            logccdf(Exponential(3.0), 4.0)
+        @test progression_loglik(spec, [ind]; followup_end = 10.0) ≈
+            logpdf(Exponential(3.0), 6.0)
+        @test_throws ArgumentError progression_loglik(spec, [ind]; followup_end = NaN)
+    end
 end
 
 @testset "Progression likelihood with competing outcomes" begin

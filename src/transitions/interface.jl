@@ -283,18 +283,21 @@ _delay_logccdf(x::Real, t) = x < t ? -Inf : 0.0
 _delay_logccdf(f, t) = _delay_loglik(f, t)
 
 """
-    transition_loglik(t::AbstractClinicalTransition, individual) -> Float64
+    transition_loglik(t::AbstractClinicalTransition, individual; followup_end = Inf) -> Float64
 
 The log-likelihood of what a step did to one case: the log-probability that
 the step happened (or did not), plus the log-density of its delay when it did.
 [`progression_loglik`](@ref) calls it once per step per case. It is `0.0` when
-the case never reached the state the step starts from.
+the case never reached the state the step starts from. A step that has not
+happened by `followup_end` is scored as censored there, by its survival
+probability, rather than by a density; the built-in steps take this keyword.
 
 Defined for the built-in steps ([`Transition`](@ref), [`Reporting`](@ref),
 [`Hospitalisation`](@ref), [`Death`](@ref), [`Recovery`](@ref)). A custom step
 used with [`progression_loglik`](@ref) needs its own method that reads back
 what its `resolve_individual!` recorded. Its `delay` must be a `Distribution`
-or a fixed number, since a function of the individual has no density.
+or a fixed number, since a function of the individual has no density. To be
+used with a finite `followup_end` it must also accept that keyword.
 """
 function transition_loglik(t::AbstractClinicalTransition, individual)
     throw(
@@ -507,26 +510,39 @@ non-terminal event recorded after the outcome describes something that could
 not have happened to this individual.
 """
 function _finalise_terminal!(individual, transitions)
-    best_time = Inf
-    best_label = :none
-    has_any = false
-    for t in transitions
-        is_terminal(t) || continue
-        ev = terminal_event(t, individual)
-        ev === nothing && continue
-        time, label = ev
-        if time < best_time
-            best_time = time
-            best_label = label
-            has_any = true
-        end
-    end
+    best_time, best_label, has_any = _earliest_terminal(
+        transitions, individual, (Inf, :none, false)
+    )
     if has_any
         individual.state[:outcome_time] = best_time
         individual.state[:outcome] = best_label
-        for t in transitions
+        _each(transitions) do t
             is_terminal(t) || censor_after_outcome!(t, individual)
+            return nothing
         end
     end
     return nothing
+end
+
+# The earliest terminal event over `transitions`, folded through `best`, the
+# `(time, label, found)` so far. A `Tuple` is walked by recursion, as in `_each`.
+@inline function _earlier_terminal(t, individual, best)
+    is_terminal(t) || return best
+    ev = terminal_event(t, individual)
+    ev === nothing && return best
+    time, label = ev
+    return time < best[1] ? (time, label, true) : best
+end
+_earliest_terminal(::Tuple{}, individual, best) = best
+@inline function _earliest_terminal(transitions::Tuple, individual, best)
+    return _earliest_terminal(
+        Base.tail(transitions), individual,
+        _earlier_terminal(first(transitions), individual, best)
+    )
+end
+function _earliest_terminal(transitions, individual, best)
+    for t in transitions
+        best = _earlier_terminal(t, individual, best)
+    end
+    return best
 end
