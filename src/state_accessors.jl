@@ -761,8 +761,15 @@ end
 # the exposure, so it is read apart from the stretches that lapse. The merge
 # leaves at most one of them.
 function permanent_removal_time(ind::Individual, key::Symbol = REMOVAL_STRETCHES_KEY)
+    return _permanent_removal_time(removal_stretches(ind, key))
+end
+
+# A function barrier: `removal_stretches` reads from the `Any`-valued state.
+# The loop is compiled here for the concrete vector type and does not
+# dispatch at run time on each step.
+function _permanent_removal_time(stretches)
     t = Inf
-    for (start, release) in removal_stretches(ind, key)
+    for (start, release) in stretches
         isfinite(release) || (t = min(t, start))
     end
     return t
