@@ -1,3 +1,7 @@
+using Distributions
+using StableRNGs
+using Statistics
+
 # A calendar time at which a group's eligibility triggers, so the individual-based
 # engine dates a dose without a delay.
 struct _EligibleAt <: EpiBranch.TraceEligibility
@@ -200,7 +204,7 @@ EpiBranch.trigger_time(e::_EligibleAt, infector, state) = e.time
         end
     end
 
-    @testset "GroupVaccination budgets are kept per group" begin
+    @testset "GroupVaccination budgets are kept per type" begin
         gv = group()
         a = Individual(id = 1, state = Dict{Symbol, Any}(:type => 1))
         b = Individual(id = 2, state = Dict{Symbol, Any}(:type => 2))
@@ -210,6 +214,6 @@ EpiBranch.trigger_time(e::_EligibleAt, infector, state) = e.time
         @test EpiBranch.resource_key(
             GroupVaccination(efficacy = 0.5, group_key = :community),
             Individual(id = 3, state = Dict{Symbol, Any}(:community => :north)), nothing
-        ) == :north
+        ) === nothing
     end
 end

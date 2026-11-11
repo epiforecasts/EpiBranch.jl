@@ -5,7 +5,7 @@
 # interval come from the budget of a `CapacityConstrained` (read, for a
 # schedule, at the start of each period) and the window of a `Scheduled`
 # around it, in either order. As in the individual-based engine once
-# `resource_key` splits `GroupVaccination` by group, every type has the whole
+# `resource_key` splits `GroupVaccination` by type, every type has the whole
 # budget to itself.
 
 # A vaccination campaign `simulate_by_generation` can apply: the efficacy of
