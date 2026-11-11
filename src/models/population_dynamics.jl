@@ -8,6 +8,44 @@
 # external Kalman or particle filter, or a `HybridProcess` (see hybrid.jl),
 # can treat all three as interchangeable state-space transitions.
 
+# ── Helpers shared by the four approximation families ───────────────
+
+# The approximations are four distinct types (the dispatch of `HybridProcess`
+# depends on that), but everything below that does not differ between them is
+# written once, over the unions of the types.
+function _check_continuation(state, max_time)
+    max_time > state.t || throw(
+        ArgumentError(
+            "max_time ($max_time) must be past the state's own ($(state.t)) to continue it"
+        )
+    )
+    return nothing
+end
+
+function _check_n_initial(n_initial, population_size)
+    1 <= n_initial <= population_size ||
+        throw(ArgumentError("n_initial must be between 1 and population_size"))
+    return nothing
+end
+
+# A linear noise process holds exactly the fields of the mean-field process it
+# is built from, so it is built from them by position rather than by name.
+_with_fields_of(::Type{T}, m) where {T} = T(ntuple(i -> getfield(m, i), fieldcount(typeof(m)))...)
+
+# One fourth-order Runge–Kutta step of `x` (a number or a vector) over `h`
+# from time `t`, for a drift `f(x, ts, tm)` evaluated at the stage time `ts`
+# and at `tm`, the middle of the step, for a term (such as a budget that is
+# constant over a period) that is read once per step. The drift of the scalar
+# approximations ignores both times.
+function _rk4_step(f, x, t::Real, h::Real)
+    tm = t + h / 2
+    k1 = f(x, t, tm)
+    k2 = f(x + h / 2 * k1, tm, tm)
+    k3 = f(x + h / 2 * k2, tm, tm)
+    k4 = f(x + h * k3, t + h, tm)
+    return x + h / 6 * (k1 + 2k2 + 2k3 + k4)
+end
+
 """
     MeanFieldProcess(; population_size, transmission_rate, removal_rate, step = 0.05)
 
@@ -66,15 +104,6 @@ function MeanFieldProcess(;
     )
 end
 
-population_size(m::MeanFieldProcess) = m.population_size
-
-function Base.show(io::IO, m::MeanFieldProcess)
-    return print(
-        io,
-        "MeanFieldProcess(population_size=$(m.population_size), β=$(m.transmission_rate), γ=$(m.removal_rate))"
-    )
-end
-
 """
     MeanFieldState
 
@@ -90,14 +119,6 @@ struct MeanFieldState
     t::Float64
 end
 
-function Base.show(io::IO, s::MeanFieldState)
-    return print(
-        io,
-        "MeanFieldState(S=$(round(s.S, digits = 1)), I=$(round(s.I, digits = 1)), " *
-            "R=$(round(s.R, digits = 1)), t=$(s.t))"
-    )
-end
-
 """
     simulate(model::MeanFieldProcess; n_initial = 1, max_time)
 
@@ -107,8 +128,7 @@ people infected and the rest susceptible, up to `max_time`. Returns a
 `simulate(model, state; max_time)`.
 """
 function simulate(model::MeanFieldProcess; n_initial::Integer = 1, max_time::Real)
-    1 <= n_initial <= model.population_size ||
-        throw(ArgumentError("n_initial must be between 1 and population_size"))
+    _check_n_initial(n_initial, model.population_size)
     state = MeanFieldState(
         Float64(model.population_size - n_initial), Float64(n_initial), 0.0, 0.0
     )
@@ -122,12 +142,8 @@ Continue integrating `state`'s mean-field ODE up to `max_time`, which must be
 later than `state.t`.
 """
 function simulate(model::MeanFieldProcess, state::MeanFieldState; max_time::Real)
-    max_time > state.t || throw(
-        ArgumentError(
-            "max_time ($max_time) must be past the state's own ($(state.t)) to continue it"
-        )
-    )
-    S, I = _integrate_sir(model, state.S, state.I, state.t, max_time)
+    _check_continuation(state, max_time)
+    S, I, _ = _integrate_sir(model, state.S, state.I, nothing, state.t, max_time)
     R = model.population_size - S - I
     return MeanFieldState(S, I, R, Float64(max_time))
 end
@@ -146,34 +162,51 @@ function _sir_jacobian(S, I, β, γ, N)
     ]
 end
 
-function _rk4_sir_step(S, I, dt, f)
-    k1S, k1I = f(S, I)
-    k2S, k2I = f(S + dt / 2 * k1S, I + dt / 2 * k1I)
-    k3S, k3I = f(S + dt / 2 * k2S, I + dt / 2 * k2I)
-    k4S, k4I = f(S + dt * k3S, I + dt * k3I)
-    Snew = S + dt / 6 * (k1S + 2k2S + 2k3S + k4S)
-    Inew = I + dt / 6 * (k1I + 2k2I + 2k3I + k4I)
-    return Snew, Inew
+# The outer products of the two reactions' stoichiometry vectors (infection:
+# S -> S - 1, I -> I + 1; removal: I -> I - 1), scaling the Chemical Langevin
+# diffusion each contributes by its own propensity.
+const _SIR_INFECTION_OUTER = [1.0 -1.0; -1.0 1.0]
+const _SIR_REMOVAL_OUTER = [0.0 0.0; 0.0 1.0]
+
+# The covariance's step over `dt` days: nothing for the mean field, and for
+# the linear noise approximation explicit Euler, evaluating the Jacobian and
+# diffusion at the step's start. A first-order update for Σ, against RK4 for
+# the mean, is standard practice for the (linear, given the mean path)
+# covariance ODE at a small step, and keeps the two in lockstep without a
+# second, independent step count.
+_sir_covariance_step(::Nothing, model, S, I, dt) = nothing
+function _sir_covariance_step(Σ::AbstractMatrix, model, S, I, dt)
+    N = model.population_size
+    β = model.transmission_rate
+    γ = model.removal_rate
+    J = _sir_jacobian(S, I, β, γ, N)
+    Q = β * S * I / N * _SIR_INFECTION_OUTER + γ * I * _SIR_REMOVAL_OUTER
+    Σ = Σ + dt * (J * Σ + Σ * J' + Q)
+    return (Σ + Σ') / 2   # undo floating-point asymmetry from the update above
 end
 
 # Fixed-step RK4 from `t0` to `max_time`, in steps no longer than
-# `model.step` (the last one shortened to end exactly at `max_time`).
-function _integrate_sir(model::MeanFieldProcess, S, I, t0, max_time)
+# `model.step` (the last one shortened to end exactly at `max_time`), with
+# the covariance `Σ` stepped alongside if there is one (`nothing` for the
+# mean field).
+function _integrate_sir(model, S, I, Σ, t0, max_time)
     N = model.population_size
     β = model.transmission_rate
     γ = model.removal_rate
     n_steps = max(1, ceil(Int, (max_time - t0) / model.step))
     dt = (max_time - t0) / n_steps
-    f = (s, i) -> _sir_drift(s, i, β, γ, N)
+    f = (x, _, _) -> collect(_sir_drift(x[1], x[2], β, γ, N))
+    x = [S, I]
     for _ in 1:n_steps
-        S, I = _rk4_sir_step(S, I, dt, f)
+        Σ = _sir_covariance_step(Σ, model, x[1], x[2], dt)
+        x = _rk4_step(f, x, t0, dt)
     end
     # RK4 with a small step overshoots by very little, if at all; clamping
     # keeps the compartments physical (0 to N) rather than passing on a
     # fractional excursion past a boundary to the next call.
-    S = clamp(S, 0.0, Float64(N))
-    I = clamp(I, 0.0, Float64(N) - S)
-    return S, I
+    S = clamp(x[1], 0.0, Float64(N))
+    I = clamp(x[2], 0.0, Float64(N) - S)
+    return S, I, Σ
 end
 
 """
@@ -215,18 +248,18 @@ function LinearNoiseProcess(;
         step::Real = 0.05
     )
     mean_field = MeanFieldProcess(; population_size, transmission_rate, removal_rate, step)
-    return LinearNoiseProcess(
-        mean_field.population_size, mean_field.transmission_rate,
-        mean_field.removal_rate, mean_field.step
-    )
+    return _with_fields_of(LinearNoiseProcess, mean_field)
 end
 
-population_size(m::LinearNoiseProcess) = m.population_size
+const _ScalarProcess = Union{MeanFieldProcess, LinearNoiseProcess}
 
-function Base.show(io::IO, m::LinearNoiseProcess)
+population_size(m::_ScalarProcess) = m.population_size
+
+function Base.show(io::IO, m::_ScalarProcess)
     return print(
         io,
-        "LinearNoiseProcess(population_size=$(m.population_size), β=$(m.transmission_rate), γ=$(m.removal_rate))"
+        "$(nameof(typeof(m)))(population_size=$(m.population_size), " *
+            "β=$(m.transmission_rate), γ=$(m.removal_rate))"
     )
 end
 
@@ -245,10 +278,10 @@ struct LinearNoiseState
     covariance::Matrix{Float64}
 end
 
-function Base.show(io::IO, s::LinearNoiseState)
+function Base.show(io::IO, s::Union{MeanFieldState, LinearNoiseState})
     return print(
         io,
-        "LinearNoiseState(S=$(round(s.S, digits = 1)), I=$(round(s.I, digits = 1)), " *
+        "$(nameof(typeof(s)))(S=$(round(s.S, digits = 1)), I=$(round(s.I, digits = 1)), " *
             "R=$(round(s.R, digits = 1)), t=$(s.t))"
     )
 end
@@ -262,8 +295,7 @@ Integrate the linear noise approximation of `model` from `t = 0`, with
 continue it further with `simulate(model, state; max_time)`.
 """
 function simulate(model::LinearNoiseProcess; n_initial::Integer = 1, max_time::Real)
-    1 <= n_initial <= model.population_size ||
-        throw(ArgumentError("n_initial must be between 1 and population_size"))
+    _check_n_initial(n_initial, model.population_size)
     state = LinearNoiseState(
         Float64(model.population_size - n_initial), Float64(n_initial), 0.0, 0.0,
         zeros(2, 2)
@@ -278,45 +310,8 @@ Continue `state`'s mean path and covariance up to `max_time`, which must be
 later than `state.t`.
 """
 function simulate(model::LinearNoiseProcess, state::LinearNoiseState; max_time::Real)
-    max_time > state.t || throw(
-        ArgumentError(
-            "max_time ($max_time) must be past the state's own ($(state.t)) to continue it"
-        )
-    )
-    S, I, Σ = _integrate_lna(model, state.S, state.I, state.covariance, state.t, max_time)
+    _check_continuation(state, max_time)
+    S, I, Σ = _integrate_sir(model, state.S, state.I, state.covariance, state.t, max_time)
     R = model.population_size - S - I
     return LinearNoiseState(S, I, R, Float64(max_time), Σ)
-end
-
-# The outer products of the two reactions' stoichiometry vectors (infection:
-# S -> S - 1, I -> I + 1; removal: I -> I - 1), scaling the Chemical Langevin
-# diffusion each contributes by its own propensity (`_integrate_lna`).
-const _SIR_INFECTION_OUTER = [1.0 -1.0; -1.0 1.0]
-const _SIR_REMOVAL_OUTER = [0.0 0.0; 0.0 1.0]
-
-# Mean (RK4, shared with `MeanFieldProcess`) and covariance (explicit Euler,
-# evaluating the Jacobian and diffusion at the step's start) from `t0` to
-# `max_time`, in steps no longer than `model.step`. A first-order update for
-# Σ, against RK4 for the mean, is standard practice for the (linear, given
-# the mean path) covariance ODE at a small step, and keeps the two states in
-# lockstep without a second, independent step count.
-function _integrate_lna(model::LinearNoiseProcess, S, I, Σ, t0, max_time)
-    N = model.population_size
-    β = model.transmission_rate
-    γ = model.removal_rate
-    n_steps = max(1, ceil(Int, (max_time - t0) / model.step))
-    dt = (max_time - t0) / n_steps
-    f = (s, i) -> _sir_drift(s, i, β, γ, N)
-    for _ in 1:n_steps
-        a1 = β * S * I / N
-        a2 = γ * I
-        J = _sir_jacobian(S, I, β, γ, N)
-        Q = a1 * _SIR_INFECTION_OUTER + a2 * _SIR_REMOVAL_OUTER
-        Σ = Σ + dt * (J * Σ + Σ * J' + Q)
-        Σ = (Σ + Σ') / 2   # undo floating-point asymmetry from the update above
-        S, I = _rk4_sir_step(S, I, dt, f)
-    end
-    S = clamp(S, 0.0, Float64(N))
-    I = clamp(I, 0.0, Float64(N) - S)
-    return S, I, Σ
 end
