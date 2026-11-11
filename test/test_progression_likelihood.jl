@@ -501,3 +501,39 @@ struct _UntrackedTransition <: EpiBranch.AbstractClinicalTransition end
         @test_throws "needs a method for" progression_loglik(spec, state)
     end
 end
+
+@testset "Progression likelihood with competing outcomes" begin
+    spec = ModelSpec(
+        BranchingProcess(Poisson(0.9), Exponential(5.0));
+        progression = [
+            Death(delay = LogNormal(2.0, 0.4), probability = 0.4),
+            Recovery(delay = LogNormal(2.0, 0.4)),
+        ],
+        attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
+    )
+    st = simulate(spec; max_cases = 300, rng = StableRNG(2))
+    for c in filter(is_infected, st.individuals)
+        o = get(c.state, :outcome, nothing)
+        o == :died && (c.state[:recovery_candidate_time] = Inf)
+        o == :recovered && (c.state[:death_candidate_time] = Inf)
+    end
+    @test isfinite(progression_loglik(spec, st))
+
+    # One case, scored by hand: a death at t after onset, no recovery time.
+    d = Death(delay = LogNormal(2.0, 0.4), probability = 0.4)
+    r = Recovery(delay = LogNormal(2.0, 0.4))
+    ind = Individual(id = 1, infection_time = 0.0)
+    ind.state[:onset_time] = 1.0
+    ind.state[:death_candidate_time] = 6.0
+    ind.state[:recovery_candidate_time] = Inf
+    ind.state[:outcome] = :died
+    ind.state[:outcome_time] = 6.0
+    @test EpiBranch.transition_loglik(d, ind) ≈ log(0.4) + logpdf(d.delay, 5.0)
+    @test EpiBranch.transition_loglik(r, ind) ≈ logccdf(r.delay, 5.0)
+
+    ind.state[:death_candidate_time] = Inf
+    ind.state[:recovery_candidate_time] = 6.0
+    ind.state[:outcome] = :recovered
+    @test EpiBranch.transition_loglik(r, ind) ≈ logpdf(r.delay, 5.0)
+    @test EpiBranch.transition_loglik(d, ind) ≈ log1p(-0.4 * cdf(d.delay, 5.0))
+end

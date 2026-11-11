@@ -38,7 +38,7 @@ EpiBranch.has_effect(::_SeenRoutes) = true
         ]
         @test mean(has_case) ≈ 1 - exp(-cutoff) atol = 0.02
 
-        # With no calendar at all, every attempt eventually lands a case.
+        # With no calendar at all, every attempt eventually causes an infection.
         uncut = BranchingProcess(Infectiousness(Dirac(1); kernel = Exponential(1.0)))
         always = [
             simulate(uncut; n_initial = 1, max_generations = 1, rng = StableRNG(s)).cumulative_cases
@@ -341,7 +341,7 @@ end
         ck = EpiBranch._CalendarScaledKernel(k, t -> 1.0, 0.0)
         @test EpiBranch.cumhazard(ck, 1000.0) ≈ 2.0
         @test isfinite(truncated(k, 0.0, 900.0).logF_hi)
-        # The reads stay inferred, since the pairwise likelihood calls them
+        # The reads stay inferred, because the pairwise likelihood calls them
         # once per pair.
         @test only(Base.return_types(EpiBranch.cumhazard, (typeof(k), Float64))) == Float64
         # A decaying hazard is not refined over the tail it has left: a long

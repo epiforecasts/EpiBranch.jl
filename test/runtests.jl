@@ -5,6 +5,14 @@ using EpiBranch: GammaBorel, PoissonGammaChainSize
 using Distributions
 using Random
 using StableRNGs
+# Activates the serial_interval(model, infector, infectee) extension method.
+# Not loaded on Julia 1.10, where these packages pull in EpiAwareADTools 0.1.
+# Its xlogy rule clashes with the Mooncake rule.
+const RUN_SERIAL_INTERVAL = VERSION >= v"1.11"
+if RUN_SERIAL_INTERVAL
+    using CensoredDistributions
+    using ConvolvedDistributions
+end
 
 include("testutils/sim_analytical_consistency.jl")
 include("testutils/progression.jl")
@@ -37,7 +45,6 @@ const TEST_GROUPS = (
         "test_pc_observation.jl",
         "test_stopping_rules.jl",
         "test_transitions.jl",
-        "test_transition.jl",
         "test_infectiousness.jl",
         "test_funeral.jl",
         "test_density_dependent.jl",
@@ -46,9 +53,11 @@ const TEST_GROUPS = (
         "test_abort_infection.jl",
         "test_homogeneous.jl",
         "test_mixing.jl",
+        "test_contact_matrices.jl",
         "test_continuation.jl",
         "test_population_dynamics.jl",
         "test_mixing_population_dynamics.jl",
+        "test_mixing_vaccination.jl",
         "test_hybrid.jl",
         "test_generation_counts.jl",
         "test_generation_counts_population.jl",
@@ -65,6 +74,7 @@ const TEST_GROUPS = (
         "test_likelihood_dists.jl",
         "test_pairwise_likelihood.jl",
         "test_progression_likelihood.jl",
+        "test_serial_interval.jl",
         "test_vaccine_likelihood.jl",
         "test_likelihood_compatibility.jl",
         "test_multitype.jl",
@@ -86,7 +96,10 @@ TEST_GROUP == :all || haskey(TEST_GROUPS, TEST_GROUP) ||
     for group in keys(TEST_GROUPS)
         TEST_GROUP in (:all, group) || continue
         @testset "$group" begin
-            foreach(include, TEST_GROUPS[group])
+            for file in TEST_GROUPS[group]
+                file == "test_serial_interval.jl" && !RUN_SERIAL_INTERVAL && continue
+                include(file)
+            end
         end
     end
 end

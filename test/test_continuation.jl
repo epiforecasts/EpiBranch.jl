@@ -293,7 +293,7 @@ end
         # alone, not pop its queue further.
         model = ModelSpec(
             HomogeneousProcess(transmission_rate = 2.0, population_size = 500);
-            progression = [Transition(:recovered; from = :infection, delay = 1.0, terminal = true)]
+            progression = sir(1.0)
         )
         capped_cases = simulate(
             model; n_initial = 3,
@@ -327,7 +327,7 @@ end
         end
         model = ModelSpec(
             HomogeneousProcess(transmission_rate = 2.0, population_size = 500);
-            progression = [Transition(:recovered; from = :infection, delay = 1.0, terminal = true)]
+            progression = sir(1.0)
         )
         extinct_buffers = fetch(
             Threads.@spawn begin

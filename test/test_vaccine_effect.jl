@@ -221,10 +221,7 @@ EpiBranch.realised_efficacy(::_TestBlockedMode, eff, rng) =
         for ind in contacts
             EpiBranch.initialise_individual!(cc.intervention, ind, nothing)
         end
-        cc_state = EpiBranch.new_state(
-            BranchingProcess(Poisson(0.0)),
-            EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
-        )
+        cc_state = empty_state(BranchingProcess(Poisson(0.0)); rng = StableRNG(1))
         append!(cc_state.individuals, contacts)
         EpiBranch.apply_actions!(cc, cc_state, contacts)
         @test count(is_vaccinated, contacts) == 1

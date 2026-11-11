@@ -89,7 +89,7 @@ EpiBranch.time_bound(r::TimeOrCasesRule) = r.t
         @test EpiBranch.time_bound(MaxTime(5.0)) == 5.0
         @test EpiBranch.time_bound(CustomTimeBoundRule(5.0)) == 5.0
 
-        prog = [Transition(:recovered; from = :infection, delay = 1.0, terminal = true)]
+        prog = sir(1.0)
         spec = ModelSpec(
             HomogeneousProcess(; transmission_rate = 2.0, population_size = 500);
             progression = prog
@@ -111,7 +111,7 @@ EpiBranch.time_bound(r::TimeOrCasesRule) = r.t
         @test EpiBranch.honoured_without_should_stop(CustomTimeBoundRule(5.0))
         @test !EpiBranch.honoured_without_should_stop(MaxCases(10))
 
-        prog = [Transition(:recovered; from = :infection, delay = 1.0, terminal = true)]
+        prog = sir(1.0)
         spec = ModelSpec(
             HomogeneousProcess(; transmission_rate = 2.0, population_size = 500);
             progression = prog
@@ -140,7 +140,7 @@ EpiBranch.time_bound(r::TimeOrCasesRule) = r.t
         @test EpiBranch.generation_bound(MaxCases(10)) == typemax(Int)
         @test EpiBranch.generation_bound(MaxGenerations(3)) == 3
 
-        prog = [Transition(:recovered; from = :infection, delay = 1.0, terminal = true)]
+        prog = sir(1.0)
         spec = ModelSpec(
             HomogeneousProcess(; transmission_rate = 3.0, population_size = 500);
             progression = prog

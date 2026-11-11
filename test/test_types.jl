@@ -122,6 +122,21 @@ struct _UndeclaredTransition <: EpiBranch.AbstractClinicalTransition end
         @test r[:t] === 2.5
     end
 
+    @testset "IndividualState capacity doubles as it grows" begin
+        s = EpiBranch.IndividualState{Float64}()
+        keys = [Symbol(:k, i) for i in 1:40]
+        for (i, k) in enumerate(keys)
+            s[k] = i % 2 == 0 ? float(i) : i
+            # Room stays within a factor of two of the keys held.
+            if VERSION >= v"1.11"
+                @test length(s.slots.ref.mem) <= max(4, 2 * length(s))
+            end
+        end
+        @test length(s) == 40
+        @test collect(Base.keys(s)) == keys
+        @test s[:k7] === 7 && s[:k8] === 8.0
+    end
+
     @testset "Lazy population" begin
         # A transmission model's own `simulate_once` is the only caller that
         # normally reaches `lazily_populate!`; these exercise it directly, as

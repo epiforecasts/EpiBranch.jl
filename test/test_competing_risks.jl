@@ -116,10 +116,7 @@
             )
         )
         EpiBranch.initialise_individual!(mv, contact, nothing)
-        state = EpiBranch.new_state(
-            BranchingProcess(Poisson(1.0), Exponential(5.0)),
-            EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
-        )
+        state = empty_state(; rng = StableRNG(1))
 
         risk = EpiBranch.competing_risk(mv, parent, contact, state)
         @test risk.block_probability(state.rng, parent, contact, state) ≈ 0.4

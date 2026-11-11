@@ -1,4 +1,42 @@
+using ForwardDiff
+using Distributions
+using StableRNGs
+using EpiBranch: GammaBorel
+
+struct BrokenExactOffspring{E} <: DiscreteUnivariateDistribution
+    error::E
+end
+EpiBranch.chain_size_distribution(d::BrokenExactOffspring) = throw(d.error)
+
 @testset "Likelihood distributions" begin
+    @testset "Errors inside exact laws propagate" begin
+        for err in (MethodError(logpdf, (nothing, 1)), ArgumentError("invalid exact law"))
+            bp = BranchingProcess(BrokenExactOffspring(err))
+            for model in (bp, ModelSpec(bp))
+                @test_throws typeof(err) chain_size_distribution(model)
+                @test_throws typeof(err) loglikelihood(ChainSizes([1, 2]), model; n_sim = 0)
+            end
+        end
+    end
+    @testset "Fitted reporting probability keeps the exact law" begin
+        sizes = [1, 1, 2, 3, 1, 5, 2]
+        build(p) = ModelSpec(
+            BranchingProcess(NegBin(0.8, 0.5), Gamma(2, 1));
+            progression = [Reporting(delay = 1.0, probability = p)],
+            attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
+        )
+        @test chain_size_distribution(build(ForwardDiff.Dual(0.5, 1.0))) isa ThinnedChainSize
+        exact(p) = sum(logpdf(ThinnedChainSize(GammaBorel(0.5, 0.8), p), n) for n in sizes)
+        fd = (exact(0.50001) - exact(0.49999)) / 0.00002
+        @test abs(fd) > 0.1
+        for f in (
+                p -> sum(logpdf(chain_size_distribution(build(p)), n) for n in sizes),
+                p -> loglikelihood(ChainSizes(sizes), build(p); n_sim = 0),
+            )
+            @test f(0.5) ≈ exact(0.5)
+            @test ForwardDiff.derivative(f, 0.5) ≈ fd rtol = 1.0e-5
+        end
+    end
     @testset "offspring_distribution returns the bare offspring" begin
         bp = BranchingProcess(Poisson(1.0))
         d = offspring_distribution(bp)
@@ -84,13 +122,13 @@
         # Regression: a GeneratingFunctionOffspring has a chain_size_distribution
         # method, so has_single_type_law's hasmethod check passes, but calling
         # it on a bare-pgf instance (no stored pmf) throws ArgumentError.
-        # The analytical fast path must catch that and fall through to the
-        # simulation-based wrapper, rather than let it escape the primary
-        # `~` entry point as an uncaught error.
+        # The analytical fast path checks for the missing pmf and uses the
+        # simulation-based wrapper without constructing the law.
         R, k = 2.5, 0.16
         off = GeneratingFunctionOffspring(s -> EpiBranch._pgf(NegBin(R, k), s), R)
         bp = BranchingProcess(off, Exponential(5.0))
-        @test chain_size_distribution(bp) isa Distribution
+        @test chain_size_distribution(bp) isa EpiBranch._ChainSizeLaw
+        @test chain_size_distribution(ModelSpec(bp)) isa EpiBranch._ChainSizeLaw
     end
 
     @testset "chain_length_distribution" begin
@@ -182,7 +220,24 @@
                 ),
             ]
         )
-        @test chain_size_distribution(model) isa Distribution
+        @test chain_size_distribution(model) isa EpiBranch._ChainSizeLaw
+    end
+
+    @testset "Multiple Reporting steps fall back to simulation" begin
+        model = ModelSpec(
+            BranchingProcess(Poisson(0.5));
+            progression = [
+                Reporting(delay = 0.0, probability = p, from = :infection)
+                    for p in (0.5, 0.7)
+            ]
+        )
+        @test chain_size_distribution(model) isa EpiBranch._ChainSizeLaw
+        data = [1, 2, 3]
+        ll = loglikelihood(ChainSizes(data), model; n_sim = 500, rng = StableRNG(1))
+        @test isfinite(ll)
+        @test logpdf(
+            chain_size_distribution(model; n_sim = 500, rng = StableRNG(1)), data
+        ) ≈ ll
     end
 
     @testset "chain_size_distribution — Reporting thins by the share of cases that reach `from`" begin
