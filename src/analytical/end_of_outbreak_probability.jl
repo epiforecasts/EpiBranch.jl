@@ -28,8 +28,8 @@
 
 Probability that a single case causes no further cases, given that it was
 `τ` days ago. `τ` is measured on the same scale as `generation_time`: from
-the case's infection for a generation time, or from its onset if a serial
-interval is passed in its place. Assumes `NegBin(R, k)` offspring, a generation time
+the case's infection for a generation time, or from its onset if you pass a
+serial interval instead. Assumes `NegBin(R, k)` offspring, a generation time
 distribution `generation_time` (days) and that every case is reported.
 Following Thompson, Morgan & Jalava (2019, Phil Trans B), it is
 
@@ -177,8 +177,8 @@ end
 
 Probability that a whole cluster is over, given the time since every one of its
 cases (`τs`), each measured on the same scale as `gt`: from the case's
-infection for a generation time, or from its onset if a serial interval is
-passed in its place, and the number of secondary cases each is already
+infection for a generation time, or from its onset if you pass a serial
+interval instead. It also takes the number of secondary cases each is already
 known to have caused (`secondary_cases`). A cluster is over only once none of
 its cases transmits again: this is the product, over its cases, of
 [`end_of_outbreak_probability`](@ref)`(R, k, gt, τs[i])` raised to the power
