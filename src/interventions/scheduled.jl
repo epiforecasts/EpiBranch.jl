@@ -89,16 +89,10 @@ clock, as every hook always was: `intervention_time` comes paired with a
 `reset!` that undoes whatever it names, and without one there is nothing to
 correct the effect with afterwards.
 """
-struct Scheduled{I <: AbstractIntervention, F, T <: Tuple} <: InterventionWrapper
+struct Scheduled{I <: AbstractIntervention, F, T <: Tuple, W} <: InterventionWrapper
     intervention::I
     condition::F
     start_time::Float64
-    # The `(start_time, end_time)` days the schedule is open between, when
-    # that is all it asks (a calendar window, with no case-count trigger or
-    # opaque predicate), and `nothing` otherwise. Read by
-    # `simulate_by_generation`, which has no per-action clock to test a
-    # condition against.
-    window::Union{Nothing, Tuple{Float64, Float64}}
     # Whether the active window can close again once open. Of the conditions
     # the keyword constructor builds, `start_time` and `start_after_cases`
     # only ever open; `end_time`, and a `start_after` trigger whose
@@ -112,25 +106,31 @@ struct Scheduled{I <: AbstractIntervention, F, T <: Tuple} <: InterventionWrappe
     # Whether `intervention` has its own `intervention_time`, computed once
     # here rather than by introspection on every call. See `_time_aware`.
     time_aware::Bool
+    # The calendar window the gate amounts to, as a `ClockWindow`, when it is
+    # nothing else (a `start_time` and/or an `end_time`); `nothing` for a gate
+    # that also reads the simulation (a case count, a trigger, a predicate)
+    # and so has no window. The population-level approximations read it to
+    # switch a campaign on and off on the right days.
+    window::W
+end
+
+# The days between which a `Scheduled` built from `start_time` and
+# `end_time` alone acts.
+struct ClockWindow
+    start::Float64
+    stop::Float64
 end
 
 # Computes `time_aware` from `intervention` once, rather than asking on every
 # call a hook makes.
 function Scheduled(
         intervention::AbstractIntervention, condition, start_time::Float64,
-        window, can_lapse::Bool, triggers::Tuple
+        can_lapse::Bool, triggers::Tuple, window = nothing
     )
     return Scheduled(
-        intervention, condition, start_time, window, can_lapse, triggers,
-        _time_aware(intervention)
+        intervention, condition, start_time, can_lapse, triggers,
+        _time_aware(intervention), window
     )
-end
-
-function Scheduled(
-        intervention::AbstractIntervention, condition, start_time::Float64,
-        can_lapse::Bool, triggers::Tuple
-    )
-    return Scheduled(intervention, condition, start_time, nothing, can_lapse, triggers)
 end
 
 # Pre-existing callers build a `Scheduled` without the trigger record.
@@ -444,9 +444,12 @@ function Scheduled(
     can_lapse = end_time !== nothing ||
         (start_after !== nothing && trigger_can_lapse(start_after))
     triggers = start_after === nothing ? () : (start_after,)
-    window = start_after_cases === nothing && start_after === nothing ?
-        (t, end_time === nothing ? Inf : end_time) : nothing
-    return Scheduled(intervention, condition, t, window, can_lapse, triggers)
+    window = if start_after_cases === nothing && start_after === nothing
+        ClockWindow(t, end_time === nothing ? Inf : end_time)
+    else
+        nothing
+    end
+    return Scheduled(intervention, condition, t, can_lapse, triggers, window)
 end
 
 # Predicate constructor: no individual-level reset. The predicate is opaque, so

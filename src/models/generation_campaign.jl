@@ -35,7 +35,7 @@ function _campaign(s::Scheduled, window, budget)
         )
     )
     return _campaign(
-        s.intervention, (max(window[1], s.window[1]), min(window[2], s.window[2])), budget
+        s.intervention, (max(window[1], s.window.start), min(window[2], s.window.stop)), budget
     )
 end
 function _campaign(cc::CapacityConstrained, window, budget)

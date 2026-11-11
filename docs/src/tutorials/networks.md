@@ -564,6 +564,17 @@ up to isolation.
     vaccine's efficacy against infection is allowed for by
     `loglikelihood(data, model)` with the vaccination in `model`.
 
+!!! warning "Removals must not depend on who infected whom"
+    The likelihood takes each person's removal time and vaccination dates as
+    fixed data and does not score how they came about, so it is a partial
+    likelihood conditional on them. That is valid when removals and doses
+    depend only on the observed history (onsets, detections, infections of
+    neighbours) and on parameters other than the contact interval.
+    Onset-triggered isolation and forward tracing along the network meet this.
+    A removal that depends on the unobserved transmission tree, such as
+    [`SourceTracing`](@ref), does not; `loglikelihood(data, model)` refuses it. When building an [`InfectionLayer`](@ref) from real data, check that
+    the removal mechanism does not depend on who infected whom.
+
 There is no one-call fitting function. Here we evaluate the log-likelihood at
 a grid of mean contact intervals and take the best one, the maximum likelihood
 estimate, for an outbreak simulated with a mean of 6 days on a small-world
@@ -665,8 +676,8 @@ stretch a case is isolated for, and has it back once released.
     - A route kernel that is a [`PairKernel`](@ref) is not yet represented in
       the routed likelihood; `loglikelihood(data, model)` stops with an
       error for such a model. Leaky isolation on a `RoutedNetwork` is not
-      represented either, but silently: the routed likelihood scores it as
-      if it were not isolated at all, rather than erroring.
+      represented either: the routed likelihood scores it as
+      if the case were not isolated, without reporting an error.
     - In real data infection times are not observed. They have to be estimated
       together with the parameters, from symptom onsets and the disease
       timeline (data augmentation), as described for [household

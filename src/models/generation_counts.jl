@@ -27,10 +27,10 @@
 # `multiplier`, when given, is drawn once per generation and scales the mean
 # of every case's offspring law before it draws: with `Poisson` offspring,
 # summing over the generation's cases gives a `Poisson` total scaled by the
-# same draw, so marginalising over a `Gamma` multiplier gives a negative
-# binomial total whose shape is the multiplier's own, rather than one that
-# grows with the number of cases, as summing independent per-case negative
-# binomials would.
+# same draw. Marginalising over a `Gamma` multiplier gives a negative
+# binomial total with the shape of the multiplier. Summing independent
+# per-case negative binomials would instead give a shape that grows with
+# the number of cases.
 
 """
     AbstractDepletion
@@ -259,8 +259,8 @@ offspring matrix (`MultiTypeOffspring`); any other model raises an
 - `depletion`: how contacts are thinned against the susceptibles left,
   [`PerContactDepletion`](@ref) (the default) or
   [`StartOfGenerationDepletion`](@ref). The second draws the kept contacts of
-  a type in one binomial draw. With an offspring law whose sum has a closed
-  form (`Poisson`, with or without `multiplier`, `NegBin` and `Binomial`), a
+  a type in one binomial draw. For an offspring law with a closed-form
+  sum (`Poisson`, with or without `multiplier`, `NegBin` and `Binomial`), a
   generation then costs the same whatever the number of cases.
 - `generation_length`: the length of a generation in days. The state records
   it and is at day `generation * generation_length`. The default, `nothing`,
@@ -433,10 +433,10 @@ Continue `state`, a [`GenerationCounts`](@ref) returned by
 [`simulate_by_generation`](@ref) or by this method itself, up to a later
 `max_generations`, with the `depletion` and `generation_length` the state was
 started with. `multiplier` is as in
-`simulate_by_generation`, and is read fresh on every call, so a later
-continuation can turn it on, off, or change it. `state` is returned unchanged
-if its current generation has already gone extinct (every count 0): there is
-nothing left for a later `max_generations` to continue.
+`simulate_by_generation` and is read on every call. A later continuation can
+enable, disable or change it. `state` is returned unchanged if its current
+generation has gone extinct (every count 0), with no cases left
+for a later `max_generations` to continue.
 
 ```julia
 using EpiBranch, Distributions
