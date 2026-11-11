@@ -3,6 +3,8 @@ ADTypes = "47edcb42-4c32-4615-8424-f2b9edc5f35b"
 Aqua = "4c88cf16-eb10-579e-8560-4a9242c79595"
 CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
 CategoricalArrays = "324d7699-5711-5eae-9e2f-1d82baa6b597"
+CensoredDistributions = "b2eeebe4-5992-4301-9193-7ebc9f62c855"
+ConvolvedDistributions = "f5b942c9-bc5b-4664-8486-7f531bb06742"
 DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
 Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
 DifferentiationInterface = "a0c0ee7d-e4b9-4e03-894e-1c5f64a51d63"
@@ -25,12 +27,7 @@ StochasticAD = "e4facb34-4f7e-4bec-b153-e122c37934ac"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [compat]
-# Aqua 0.8.17 changed `test_persistent_tasks` to walk the environment the
-# package is loaded from, and it cannot resolve a weak dependency it meets
-# there: from the test environment it stops at `ChangesOfVariables`, a weak
-# dependency of `LogExpFunctions`, and reports the package as having persistent
-# tasks. Unpin once that is fixed upstream.
-Aqua = "=0.8.16"
+Aqua = "0.8.18"
 # The pre-commit hook builds its own environment from a `Runic@1` floor, so
 # that spec and this bound are the two places a version enters. They stay in
 # step, or the hook and the suite disagree about whether a file is formatted.

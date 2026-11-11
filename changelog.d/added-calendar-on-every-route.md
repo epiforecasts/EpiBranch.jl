@@ -1,7 +1,8 @@
-A calendar schedule now scales transmission on every route, not only
-`PairKernel`'s. `HomogeneousProcess` and `MixingProcess` take a `Steps`,
-a `Seasonal`, or a function of time as `transmission_rate` or `calendar`,
-and `Infectiousness` takes one as `calendar` for a branching process's
+A calendar schedule now scales transmission on every route, extending
+the support previously limited to `PairKernel`. `HomogeneousProcess` and
+`MixingProcess` take a `Steps`, a `Seasonal`, or a function of time as
+`transmission_rate` or `calendar`,
+and `Infectiousness` takes one as `calendar` for branching-process
 offspring windows; each route samples its contacts against it exactly,
 as `PairKernel` already did. `loglikelihood(IncidenceCounts, ...)`,
 `end_of_outbreak_probability` and the analytic effect of `Isolation` (and

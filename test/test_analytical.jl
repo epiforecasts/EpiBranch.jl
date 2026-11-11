@@ -2046,7 +2046,7 @@ using ForwardDiff
         @testset "A calendar scaling the window's kernel is refused" begin
             # Isolation's analytic effect reads the window's kernel
             # directly, with no way to apply a schedule scaling it, so this
-            # must be refused rather than silently read as the bare kernel —
+            # must be refused rather than silently read as the bare kernel:
             # here through `extinction_probability`, one of several routes
             # that apply `analytic_offspring_effect` to an offspring law.
             offspring = NegBin(2.0, 0.5)

@@ -434,9 +434,9 @@ symptomatic cases and of every laboratory-confirmed case.
 
 ## Releasing a quarantine early
 
-A policy that releases a quarantined contact once a test comes back negative
-needs more than `Quarantine`'s plain `duration`: a day to test on, and a
-result that depends on whether the contact turns out to be infected.
+To release a quarantined contact after a negative test, a policy needs
+a test date and a result that depends on the infection status of the contact,
+in addition to the `duration` of `Quarantine`.
 `ContactTracing` quarantines a traced contact the moment *its own infector*
 settles, which on every built-in model happens before the contact's own
 infection is decided (see [Order of steps on the two kinds of
@@ -515,18 +515,18 @@ function EpiBranch.on_infection_settled!(ta::TestAndRelease, ind, state, rng)
 end
 ```
 
-`intervention_actions` proposes the test once per trace, dated at the test's
-own day, and claims it straight away so a later re-trace of the same contact
-does not propose it twice; `claim!` runs at admission, as
+`intervention_actions` proposes the test once per trace for its scheduled
+date. It claims the test immediately to prevent a later trace of the same
+contact from proposing it again; `claim!` runs at admission, as
 [`RingVaccination`](@ref) records a dose. `on_infection_settled!` reads that
 claim once the contact's own infection is fixed: `is_infected` is reliable
-there, never before. A contact who is never infected keeps whatever
-`apply_trace!` recorded, which costs nothing, since such a contact makes no
-transmissions for the release to affect.
+there, but not before. A contact who is never infected keeps the removal
+that `apply_trace!` recorded. Its release time has no effect because
+the contact makes no transmissions.
 
-Here a contact is infected on day 0.01, almost as soon as it is exposed,
-well before the trace, which only reaches it two days after the infector's
-own onset, could know that:
+Here a contact is infected on day 0.01, almost as soon as it is exposed.
+Tracing reaches it two days after symptom onset in the infector,
+well after the infection:
 
 ```@example quarantine_release
 clinical = clinical_presentation(incubation_period = Dirac(1.0), prob_asymptomatic = 0.0)
@@ -544,8 +544,8 @@ contact = state.individuals[2]
 
 The contact is traced on day 3, but its test (`sensitivity = 0.0` here always
 misses the infection) releases it on day 6 rather than holding it for the
-full 14-day `duration`. A `sensitivity` of 1 would instead leave the full
-duration standing, since the test would then correctly come back positive.
+full 14-day `duration`. With a `sensitivity` of 1, the test would correctly
+be positive and quarantine would last for the full duration.
 
 `capacity_key` and `capacity_time_key` make the test itself subject to
 [`CapacityConstrained`](@ref) exactly as `Quarantine`'s own follow-up already
@@ -1043,9 +1043,9 @@ limited_state = simulate(limited_model; max_generations = 1, rng = Xoshiro(42))
  doses = count(is_vaccinated, limited_state.individuals))
 ```
 
-This gives three cases and one dose: the population's actions are proposed
-before the race starts, so the index case is offered the dose before either
-contact and claims it, leaving both contacts unprotected.
+This gives three cases and one dose. Population-wide actions are proposed
+before the race starts. The index case is offered and claims the dose before
+either contact, leaving both contacts unprotected.
 `Scheduled(CapacityConstrained(vaccine; budget_per_period = 1.0);
 start_time = 10.0, end_time = 10.0)` gives the same result, because both orders
 check the proposed delivery date and count only doses that go ahead.

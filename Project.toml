@@ -18,14 +18,19 @@ SurvivalDistributions = "7121986e-ae89-4673-ae4e-1cb822919a18"
 
 [weakdeps]
 CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
+CensoredDistributions = "b2eeebe4-5992-4301-9193-7ebc9f62c855"
+ConvolvedDistributions = "f5b942c9-bc5b-4664-8486-7f531bb06742"
 NCDatasets = "85f8d34a-cbdd-5861-8df4-14fed0d494ab"
 
 [extensions]
 EpiBranchCSVExt = "CSV"
+EpiBranchCensoredDistributionsExt = ["CensoredDistributions", "ConvolvedDistributions"]
 EpiBranchNCDatasetsExt = "NCDatasets"
 
 [compat]
 CSV = "0.10, 1"
+CensoredDistributions = "0.2"
+ConvolvedDistributions = "0.4"
 NCDatasets = "0.14"
 DataAPI = "1"
 DataFrames = "1"

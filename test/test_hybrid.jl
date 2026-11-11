@@ -141,7 +141,7 @@ using StableRNGs
 
         # A homogeneous exact model cannot feed a structured approximation
         # (nor the reverse: see "construction validates its two models"
-        # above), since there is no per-group breakdown to read off it.
+        # above), because there is no per-group breakdown to read off it.
         homogeneous_exact = HomogeneousProcess(;
             transmission_rate = 0.4, population_size = sum(n)
         )

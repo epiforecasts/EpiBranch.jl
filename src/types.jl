@@ -47,7 +47,7 @@ abstract type AbstractClinicalTransition end
 # Abstract supertype for a cut race's unfinished event queue (defined here,
 # for the same forward-reference reason as `AbstractClinicalTransition`; the
 # concrete type is `_RaceContinuation` in `sellke.jl`). `simulate`'s
-# continuation method pops up where the race it describes left off, rather
+# continuation method resumes where the race it describes left off, rather
 # than redrawing contacts already decided.
 abstract type AbstractRaceContinuation end
 
@@ -466,8 +466,8 @@ named as the Extending EpiBranch guide describes. The simulation never reads
 `continuation` is the unfinished race [`simulate`](@ref)'s continuation
 method resumes, `nothing` once the run has reached extinction or stopped for
 some other reason; nothing outside the simulation engine reads or writes it.
-`lazy` is set by [`EpiBranch.lazily_populate!`](@ref) for a model whose
-population is created as the race reaches it, `nothing` for one built
+`lazy` is set by [`EpiBranch.lazily_populate!`](@ref) for a model with
+a population created as the race reaches it, `nothing` for one built
 upfront; nothing outside the simulation engine reads or writes it either.
 """
 mutable struct SimulationState{T <: Real, R <: AbstractRNG, P, A}
