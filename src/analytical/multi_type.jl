@@ -147,7 +147,11 @@ not the time-varying reproduction number Rt. Given a model, each of its
 interventions changes the offspring distribution first, through
 [`EpiBranch.analytic_offspring_effect`](@ref), so the result is the basic
 reproduction number only when the model has none; an intervention without
-such an effect raises an error.
+such an effect raises an error. A model whose offspring law is reshaped, by a
+finite population size, an infectiousness window with `until` or
+[`transmission_traits`](@ref) away from 1, raises an `ArgumentError` too: the
+offspring mean is then not the mean number of secondary cases, so simulate
+instead.
 
 - Single-type model: the mean of the offspring distribution.
 - [`ClusterMixed`](@ref) offspring: that mean averaged over the chains'
@@ -186,6 +190,7 @@ reproduction_number(o::MultiTypeOffspring) = _spectral_radius(_mean_matrix(o))
 # Each of the model's interventions applies its `analytic_offspring_effect` to
 # the offspring distribution first; an intervention without one throws.
 function reproduction_number(model::Union{TransmissionModel, ModelSpec})
+    _require_unreshaped_offspring_law(model, "reproduction_number")
     off = _offspring_through_interventions(model, _analytic_offspring(model))
     return reproduction_number(off)
 end
