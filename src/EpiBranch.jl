@@ -46,6 +46,7 @@ include("transitions/transition.jl")
 include("transitions/reporting.jl")
 include("transitions/hospitalisation.jl")
 include("transitions/outcome.jl")
+include("transitions/event_step.jl")
 
 # Signals: population quantities read off a simulated state, which every
 # engine that produces one can compute (transition counts per step,

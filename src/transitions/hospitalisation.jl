@@ -37,17 +37,7 @@ Base.@kwdef struct Hospitalisation{D, P, F} <: AbstractClinicalTransition
     from::F = :onset_time
 end
 
-# Only writes `:admitted`/`:admission_time`; never touches susceptibility or
-# infectiousness.
-offspring_law_unchanged(::Hospitalisation) = true
-
 required_fields(h::Hospitalisation) = _from_required(h.from)
-
-function initialise_individual!(::Hospitalisation, individual, state)
-    individual.state[:admitted] = false
-    individual.state[:admission_time] = Inf
-    return nothing
-end
 
 function resolve_individual!(h::Hospitalisation, individual, state)
     anchor = _state_time(individual, h.from)
@@ -61,22 +51,3 @@ function resolve_individual!(h::Hospitalisation, individual, state)
     return nothing
 end
 
-function censor_after_outcome!(h::Hospitalisation, individual)
-    _censor_event!(individual, :admitted, :admission_time, h.from)
-    return nothing
-end
-
-function transition_loglik(h::Hospitalisation, individual::Individual; followup_end = Inf)
-    anchor = _state_time(individual, h.from)
-    _anchor_ok(anchor) || return 0.0
-    flag = individual.state[:admitted]::Bool
-    time = flag ? individual.state[:admission_time] : Inf
-    cap = min(_timed_from_outcome(individual, h.from) ? Inf : outcome_time(individual), followup_end)
-    occurred = flag && time <= cap
-    ll = transition_term(
-        h.probability, h.delay, individual, anchor, occurred;
-        censor = min(infection_aborted_time(individual), cap)
-    )
-    occurred || return ll
-    return ll + _delay_loglik(h.delay, time - anchor)
-end

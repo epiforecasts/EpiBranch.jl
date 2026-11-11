@@ -24,10 +24,6 @@ Base.@kwdef struct Recovery{D, F} <: AbstractClinicalTransition
     from::F = :onset_time
 end
 
-# Only writes recovery outcome state; never touches susceptibility or
-# infectiousness.
-offspring_law_unchanged(::Recovery) = true
-
 required_fields(r::Recovery) = _from_required(r.from)
 is_terminal(::Recovery) = true
 terminal_target(::Recovery) = :recovered
@@ -64,7 +60,7 @@ end
 
 function transition_loglik(r::Recovery, individual::Individual; followup_end = Inf)
     anchor = _state_time(individual, r.from)
-    _anchor_ok(anchor) || return 0.0
+    isfinite(anchor) || return 0.0
     t = individual.state[:recovery_candidate_time]
     censor = min(infection_aborted_time(individual), followup_end)
     if !isfinite(t)
@@ -152,10 +148,6 @@ Base.@kwdef struct Death{D, P, F} <: AbstractClinicalTransition
     from::F = :onset_time
 end
 
-# Only writes death outcome state; never touches susceptibility or
-# infectiousness.
-offspring_law_unchanged(::Death) = true
-
 required_fields(d::Death) = _from_required(d.from)
 is_terminal(::Death) = true
 terminal_target(::Death) = :died
@@ -184,7 +176,7 @@ end
 
 function transition_loglik(d::Death, individual::Individual; followup_end = Inf)
     anchor = _state_time(individual, d.from)
-    _anchor_ok(anchor) || return 0.0
+    isfinite(anchor) || return 0.0
     t = individual.state[:death_candidate_time]
     candidate = isfinite(t) && t <= followup_end
     # Without a candidate time, a different outcome at `outcome_time` means
