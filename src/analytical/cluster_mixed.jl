@@ -73,10 +73,6 @@ struct ChainSizeMixture{F, D <: Distribution} <: ChainSizeLaw
     mixing::D
 end
 
-Distributions.minimum(::ChainSizeMixture) = 1
-Distributions.maximum(::ChainSizeMixture) = Inf
-Distributions.insupport(::ChainSizeMixture, n::Integer) = n >= 1
-
 function Distributions.logpdf(d::ChainSizeMixture, n::Integer)
     n < 1 && return -Inf
     lo = quantile(d.mixing, 1.0e-3)
@@ -86,15 +82,8 @@ function Distributions.logpdf(d::ChainSizeMixture, n::Integer)
     return prob > 0.0 ? log(prob) : -Inf
 end
 
-Distributions.pdf(d::ChainSizeMixture, n::Integer) = exp(logpdf(d, n))
-
 function _chain_size_logpdf(d::ChainSizeMixture, x::Integer, s::Integer)
     return _independent_chain_size_logpdf(d, x, s)
-end
-
-Distributions.cdf(d::ChainSizeMixture, n::Integer) = _chain_size_cdf(d, n)
-function Distributions.logccdf(d::ChainSizeMixture, n::Integer)
-    return _chain_size_right_tail_logprob(d, n + 1, 1)
 end
 
 """

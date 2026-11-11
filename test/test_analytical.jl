@@ -224,6 +224,24 @@ using ForwardDiff
         end
     end
 
+    @testset "A user-written ChainSizeLaw inherits the defaults" begin
+        # Only `logpdf` is defined: `pdf`, the support, `cdf` and `logccdf`
+        # come from `ChainSizeLaw`.
+        @eval struct GeometricSizeLaw <: EpiBranch.ChainSizeLaw end
+        @eval Distributions.logpdf(::GeometricSizeLaw, n::Integer) =
+            n >= 1 ? n * log(0.5) : -Inf
+        d = GeometricSizeLaw()
+        @test pdf(d, 3) ≈ 0.125
+        @test minimum(d) == 1
+        @test maximum(d) == Inf
+        @test insupport(d, 1)
+        @test !insupport(d, 0)
+        @test cdf(d, 3) ≈ 0.5 + 0.25 + 0.125
+        @test cdf(d, 0) == 0.0
+        @test cdf(d, 3.5) ≈ cdf(d, 3)
+        @test logccdf(d, 3) ≈ log(1 - cdf(d, 3))
+    end
+
     @testset "cdf of chain-size distributions" begin
         # Regression: none of these defined a `cdf`/`cdf(d, ::Integer)`
         # method, so Distributions.jl's discrete fallback called itself
