@@ -327,7 +327,7 @@ EpiBranch.records_contacts(::AlwaysRecord, parent, contact, state, t) = true
         # outcome the household route above gets by never opting in, but
         # chosen by the intervention instead of the window.
         REM = EpiBranch.INTERVENTION_REMOVAL
-        prog = [Transition(:recovered; from = :infection, delay = 10.0, terminal = true)]
+        prog = sir(10.0)
         onsets = clinical_presentation(
             incubation_period = Dirac(1.0), prob_asymptomatic = 0.0
         )
@@ -595,7 +595,7 @@ EpiBranch.records_contacts(::AlwaysRecord, parent, contact, state, t) = true
     @testset "the race resolves competing risks on each proposal" begin
         # Nodes 1 and 2 are both seeded at time 0 and both reach node 3: node 1
         # at time 2, node 2 at time 5. Unblocked, the earlier proposal wins.
-        prog = [Transition(:recovered; from = :infection, delay = 20.0, terminal = true)]
+        prog = sir(20.0)
         function race(interventions; attributes = EpiBranch.NoAttributes())
             rng = StableRNG(1)
             state = EpiBranch.new_state(
@@ -662,7 +662,7 @@ EpiBranch.records_contacts(::AlwaysRecord, parent, contact, state, t) = true
         # for removing node 1 takes out the community contact; the household
         # route never opted into intervention removal, so it runs on.
         REM = EpiBranch.INTERVENTION_REMOVAL
-        prog = [Transition(:recovered; from = :infection, delay = 10.0, terminal = true)]
+        prog = sir(10.0)
         function infected_after(interventions)
             rng = StableRNG(1)
             state = EpiBranch.new_state(
@@ -779,7 +779,7 @@ end
 
 @testset "A withdrawn edge cannot offer another contact after a block" begin
     rng = StableRNG(11)
-    prog = [Transition(:recovered; from = :infection, delay = 100.0, terminal = true)]
+    prog = sir(100.0)
     state = EpiBranch.new_state(
         BranchingProcess(Poisson(1.0), Exponential(1.0)),
         prog, NoAttributes(), rng
@@ -808,7 +808,7 @@ end
     # subject to change later, so the race stops proposing for the pair after
     # the first block instead of asking the model for the edge again.
     rng = StableRNG(11)
-    prog = [Transition(:recovered; from = :infection, delay = 100.0, terminal = true)]
+    prog = sir(100.0)
     state = EpiBranch.new_state(
         BranchingProcess(Poisson(1.0), Exponential(1.0)),
         prog, NoAttributes(), rng
@@ -879,7 +879,7 @@ end
     # model for the edge, exactly as it does for a block that is not certain,
     # instead of dropping the pair after the first block.
     rng = StableRNG(11)
-    prog = [Transition(:recovered; from = :infection, delay = 100.0, terminal = true)]
+    prog = sir(100.0)
     state = EpiBranch.new_state(
         BranchingProcess(Poisson(1.0), Exponential(1.0)),
         prog, NoAttributes(), rng
@@ -923,7 +923,7 @@ end
 
 @testset "ExposedContactRecorder logs a permanently blocked pair" begin
     rng = StableRNG(11)
-    prog = [Transition(:recovered; from = :infection, delay = 100.0, terminal = true)]
+    prog = sir(100.0)
     state = EpiBranch.new_state(
         BranchingProcess(Poisson(1.0), Exponential(1.0)),
         prog, NoAttributes(), rng
@@ -951,7 +951,7 @@ end
     # exposure should carry generation 2, the generation 3 would have had
     # without the block, rather than the default 0 of someone never infected.
     rng = StableRNG(11)
-    prog = [Transition(:recovered; from = :infection, delay = 100.0, terminal = true)]
+    prog = sir(100.0)
     state = EpiBranch.new_state(
         BranchingProcess(Poisson(1.0), Exponential(1.0)),
         prog, NoAttributes(), rng
@@ -986,7 +986,7 @@ end
     # it is logged exactly as a permanent one is, and kept only once, since
     # every later block is the same pair escaping the same infector.
     rng = StableRNG(11)
-    prog = [Transition(:recovered; from = :infection, delay = 5.0, terminal = true)]
+    prog = sir(5.0)
     state = EpiBranch.new_state(
         BranchingProcess(Poisson(1.0), Exponential(1.0)),
         prog, NoAttributes(), rng
@@ -1014,7 +1014,7 @@ end
     exercised = 0
     for seed in 1:100
         rng = StableRNG(seed)
-        prog = [Transition(:recovered; from = :infection, delay = 20.0, terminal = true)]
+        prog = sir(20.0)
         state = EpiBranch.new_state(
             BranchingProcess(Poisson(1.0), Exponential(1.0)),
             prog, NoAttributes(), rng
