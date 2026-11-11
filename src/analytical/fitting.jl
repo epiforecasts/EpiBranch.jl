@@ -146,20 +146,16 @@ function _chain_size_loglik(
     total = zero(first_val)
     for i in eachindex(data.data)
         lc = _chain_size_logpdf(dist, data.data[i], data.seeds[i])
-        term = if prob_concluded === nothing
+        π_i = prob_concluded[i]
+        (0 <= π_i <= 1) ||
+            throw(ArgumentError("prob_concluded[$i] = $(π_i) is not in [0, 1]"))
+        term = if π_i >= one(π_i)
             lc
+        elseif π_i <= zero(π_i)
+            _chain_size_right_tail_logprob(dist, data.data[i], data.seeds[i])
         else
-            π_i = prob_concluded[i]
-            (0 <= π_i <= 1) ||
-                throw(ArgumentError("prob_concluded[$i] = $(π_i) is not in [0, 1]"))
-            if π_i >= one(π_i)
-                lc
-            elseif π_i <= zero(π_i)
-                _chain_size_right_tail_logprob(dist, data.data[i], data.seeds[i])
-            else
-                lo = _chain_size_right_tail_logprob(dist, data.data[i], data.seeds[i])
-                _logsumexp2(log(π_i) + lc, log1p(-π_i) + lo)
-            end
+            lo = _chain_size_right_tail_logprob(dist, data.data[i], data.seeds[i])
+            _logsumexp2(log(π_i) + lc, log1p(-π_i) + lo)
         end
         total += term
     end
