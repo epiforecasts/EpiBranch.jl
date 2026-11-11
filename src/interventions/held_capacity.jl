@@ -228,7 +228,7 @@ For extension authors: the day the effect `intervention` set directly on
 `individual` in `resolve_individual!` ends, which is when a
 [`HeldCapacity`](@ref) gets the place back. The default, `Inf`, holds it until
 [`release_capacity!`](@ref) or the `hold` given to the wrapper. Defined for
-[`Isolation`](@ref), whose isolation ends at its release time.
+[`Isolation`](@ref), where the stay ends at the release time of the isolation.
 """
 held_until(::AbstractIntervention, ind) = Inf
 held_until(w::InterventionWrapper, ind) = held_until(w.intervention, ind)
