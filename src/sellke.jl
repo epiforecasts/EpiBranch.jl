@@ -111,9 +111,9 @@ end
 # Whether `f` has a method for `T` more specific than the fallback defined on
 # `base`, i.e. whether a type has implemented a hook itself. With `n`, the
 # method must also be callable with exactly `n` arguments (the hook itself
-# counted among them): a hook written for `T` with the wrong arity turns up
-# under `methods` here, same as one with the right arity, but is never the
-# method an exact-arity call resolves to, so it does not count.
+# counted among them). A hook written for `T` with the wrong arity is listed
+# by `methods` like one with the right arity, but an exact-arity call never
+# resolves to it, and it does not count.
 function _has_own_method(f, T::Type, base::Type, n::Union{Int, Nothing} = nothing)
     # `methods` rather than `which`, which finds only a method whose parameters
     # accept `Any`: an intervention that types its hook's arguments, as the style

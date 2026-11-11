@@ -144,10 +144,10 @@ end
 # no intervention parameter to speak of. `arities === nothing` asks about the
 # type alone, so every method counts as called.
 #
-# A trailing `Vararg` in a method signature is always open-ended: Julia expands
-# a counted one, so `f(x::Int, ::Vararg{Any, 2})` has three fixed parameters
-# and no vararg at all. Such a method is reachable at any arity its fixed
-# arguments allow, rather than the one `methods` lists it under.
+# A trailing `Vararg` in a method signature is always open-ended. Julia expands
+# a counted one: `f(x::Int, ::Vararg{Any, 2})` has three fixed parameters and
+# no vararg at all. Such a method is reachable at any arity its fixed arguments
+# allow, not only the one `methods` lists it under.
 function _hook_method(mm::Method, arities)
     params = Base.unwrap_unionall(mm.sig).parameters
     length(params) < 2 && return nothing
