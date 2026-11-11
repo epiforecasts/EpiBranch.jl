@@ -8,5 +8,4 @@ and `EpiBranch.kernel_projection`, the dose API
 which already had docstrings but were missing from the reference page.
 
 The internal `_action_cache` is renamed to `EpiBranch.action_cache` and
-declared `public`, since its docstring already addressed extension authors
-rather than package internals.
+declared `public` because its docstring already addressed extension authors.
