@@ -470,7 +470,11 @@ The estimate is close to the 4 days the outbreak was simulated with.
     `1 - p`. Fitting then estimates that lower rate instead of the rate the
     model was given. Fitting with `loglikelihood(data, model)`, where `model`
     includes the vaccination, allows for a vaccine's efficacy against
-    infection. Isolation or quarantine that stops all transmission is
+    infection. A fitted leaky `efficacy` `e` is a hazard ratio: it
+    multiplies the hazard per contact by `1 - e`, so a person whose risk of
+    infection would be `1 - S` has risk `1 - S^(1 - e)`. The fall in the
+    household secondary attack rate is smaller than `e`, and a published
+    efficacy against the attack rate is a different quantity. Isolation or quarantine that stops all transmission is
     recorded in the data, and the likelihood allows for it. Isolation that
     still lets some transmission through is recorded too, as a stretch of
     reduced rather than zero hazard, which both `pairwise_surv_loglik` and

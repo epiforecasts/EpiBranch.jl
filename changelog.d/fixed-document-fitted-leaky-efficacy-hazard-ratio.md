@@ -1,0 +1,1 @@
+The vaccination tutorial and the household and network likelihood notes now say that a fitted leaky `efficacy` is a hazard ratio: it multiplies the hazard per contact by `1 - efficacy`, so a risk of `1 - S` becomes `1 - S^(1 - efficacy)`, and a published efficacy against the attack rate is a different quantity.
