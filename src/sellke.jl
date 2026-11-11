@@ -108,47 +108,26 @@ end
 # seeded results, through the same heap, as it did before per-contact risks
 # existed.
 
-# Whether `f` has a method for `argtypes` more specific than the fallback defined
-# on `base`, i.e. whether a type has implemented a hook itself.
-function _has_own_method(f, T::Type, base::Type)
+# Whether `f` has a method for `T` more specific than the fallback defined on
+# `base`, i.e. whether a type has implemented a hook itself. With `n`, the
+# method must also be callable with exactly `n` arguments (the hook itself
+# counted among them): a hook written for `T` with the wrong arity turns up
+# under `methods` here, same as one with the right arity, but is never the
+# method an exact-arity call resolves to, so it does not count.
+function _has_own_method(f, T::Type, base::Type, n::Union{Int, Nothing} = nothing)
     # `methods` rather than `which`, which finds only a method whose parameters
     # accept `Any`: an intervention that types its hook's arguments, as the style
     # guide asks, has one `which` looks straight past.
     # Julia 1.10 also lists the less specific methods `T` falls back on, so only
     # a method narrower than `base` counts.
+    arities = n === nothing ? nothing : (n,)
     return any(methods(f, Tuple{T, Vararg{Any}})) do mm
-        p = Base.unwrap_unionall(mm.sig).parameters[2]
-        p isa TypeVar && (p = p.ub)
-        p isa Type || return false
-        p !== base && p <: base
-    end
-end
-
-# As above, but also requiring the method to be callable with exactly `n`
-# arguments (the hook itself counted among them): a hook written for `T` with
-# the wrong arity turns up under `methods` here, same as one with the right
-# arity, but is never the method an exact-arity call resolves to, so it does
-# not count. A trailing `args...` is handled separately, since it is reachable
-# at any arity its minimum allows, rather than the one `methods` lists it
-# under.
-function _has_own_method(f, T::Type, base::Type, n::Int)
-    return any(methods(f, Tuple{T, Vararg{Any}})) do mm
-        params = Base.unwrap_unionall(mm.sig).parameters
-        if Base.isvarargtype(params[end])
-            # A trailing `Vararg` in a method signature is always open-ended:
-            # Julia expands a counted one, so `f(x::Int, ::Vararg{Any, 2})`
-            # has three fixed parameters and no vararg at all. Such a method
-            # is reachable at any arity its fixed arguments allow.
-            n + 1 >= length(params) - 1 || return false
-        else
-            length(params) == n + 1 || return false
-        end
-        p = params[2]
-        p isa TypeVar && (p = p.ub)
-        # A hook written with every argument variadic leaves a `Vararg` here
-        # rather than a type, and says nothing about any one intervention.
-        p isa Type || return false
-        p !== base && p <: base
+        # A hook written with every argument variadic has no type here, and
+        # says nothing about any one intervention.
+        hook = _hook_method(mm, arities)
+        hook === nothing && return false
+        p, called = hook
+        return called && p !== base && p <: base
     end
 end
 
