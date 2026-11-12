@@ -71,12 +71,10 @@ scenarios)."""
 struct AllCases <: IsolationEligibility end
 is_eligible_for_isolation(::AllCases, ind, state) = true
 
-# Required-field validation dispatches on the eligibility trait so a
-# custom eligibility that doesn't read `:asymptomatic` doesn't trip
-# the validator.
-_required_for_eligibility(::SymptomaticOnly) = [:onset_time, :asymptomatic]
-_required_for_eligibility(::AllCases) = [:onset_time]
-_required_for_eligibility(::IsolationEligibility) = [:onset_time]
+# Fields an eligibility rule reads beyond the onset time every isolation needs.
+# A custom rule extends `required_fields` for its own type; the default is none.
+required_fields(::IsolationEligibility) = Symbol[]
+required_fields(::SymptomaticOnly) = [:asymptomatic]
 
 # ── Isolation intervention ──────────────────────────────────────────
 
@@ -165,7 +163,7 @@ function Isolation(;
     )
 end
 
-required_fields(iso::Isolation) = _required_for_eligibility(iso.eligibility)
+required_fields(iso::Isolation) = union([:onset_time], required_fields(iso.eligibility))
 # Read from the entry recorded for this isolation, not the folded span. While
 # a quarantine stands, `isolation_time` is the start of the quarantine, which
 # can precede the start of this isolation.

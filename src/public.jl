@@ -18,6 +18,9 @@ public initialise_individual!, resolve_individual!, on_infection_settled!,
     trace_contacts!, traces_contacts, traces_source, has_effect, supplies_contacts,
     competing_risk, persistent_competing_risks, reset!, required_fields,
     infectious_removal_time, risk_applies, standing_block, analytic_offspring_effect
+# The built-in risk sources the guides link to, and the kernel trait for a
+# kernel with mass at infinity.
+public HostImmunity, AbortedInfection, infinite_draw_is_final
 # End an infection early from any intervention hook, and read when it ended.
 public abort_infection!, infection_aborted_time
 
