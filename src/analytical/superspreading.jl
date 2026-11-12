@@ -314,7 +314,8 @@ suggests.
 - `mean_contacts`, `sd_contacts`: mean and standard deviation of the number
   of contacts one person makes per unit of time.
 - `duration`: duration of infectiousness, in the same unit of time.
-- `prob_transmission`: probability of transmission per contact.
+- `prob_transmission`: probability of transmission per partnership (see the
+  assumptions below).
 
 Returns `(R = ..., R_net = ...)`:
 
@@ -323,11 +324,24 @@ Returns `(R = ..., R_net = ...)`:
 - `R_net`: allowing for the variation in contacts,
   `prob_transmission × duration × (mean + variance / mean)`.
 
-This assumes contacts are formed at random given each person's number of
-contacts, with no clustering (friends of friends being friends). A
-simulation on an explicit network with clustering, such as `NetworkProcess`,
-can give a different answer. It is a port of `calc_network_R` in the R
-package superspreading (Lambert et al.,
+`R_net` is the degree-based formula for a static network, applied to the
+number of distinct partners a person has over their infectious period. It
+assumes:
+
+- Each contact counted is a different person. Repeated contacts with the
+  same person are not accounted for.
+- Each person's contact rate is a fixed trait that stays the same over the
+  infectious period. Rates that vary over time within one person break the
+  formula.
+- `prob_transmission` applies once per partner, however many contacts the
+  two have.
+- Contacts are formed at random given each person's number of contacts, with
+  no clustering (friends of friends being friends). A simulation on an
+  explicit network with clustering, such as `NetworkProcess`, can give a
+  different answer.
+
+It is a port of `calc_network_R` in the R
+package superspreading, which has the same caveats (Lambert et al.,
 https://github.com/epiverse-trace/superspreading, MIT).
 
 # Examples
