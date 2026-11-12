@@ -1,6 +1,6 @@
 # Coming from simulist, epichains, ringbp and superspreading
 
-EpiBranch covers what four R packages do: simulist (line lists and contacts), epichains (transmission chains), ringbp (containment under isolation and tracing) and superspreading (closed-form results). The tables below give the EpiBranch call for each function and argument. Argument names differ between versions of the R packages, so check them against the version you use. The recipes after the tables cover three arguments that have an equivalent no other page shows. If Julia syntax is new to you, start with [Julia for R users](julia-for-r-users.md).
+EpiBranch covers what four R packages do: simulist (line lists and contacts), epichains (transmission chains), ringbp (containment under isolation and tracing) and superspreading (closed-form results). The tables give the EpiBranch call for each function and argument. Argument names differ between versions of the R packages. Check them against the version you use. The recipes after the tables cover three arguments that have an equivalent no other page shows. If Julia syntax is new to you, start with [Julia for R users](julia-for-r-users.md).
 
 ## Functions
 
@@ -82,7 +82,7 @@ asymptomatic_spec = ModelSpec(
 containment_probability(asymptomatic_spec, 200; max_cases = 500, rng = StableRNG(1))
 ```
 
-An infectiousness of 0.5 halves the number of people a case infects. To match a ringbp `r0_asymptomatic`, use the ratio `r0_asymptomatic / r0_community`; only the mean is matched, and the dispersion stays that of the community offspring distribution.
+An infectiousness of 0.5 halves the number of people a case infects. To match a ringbp `r0_asymptomatic`, use the ratio `r0_asymptomatic / r0_community`; only the mean is matched, but the dispersion stays that of the community offspring distribution.
 
 ### Immune individuals (`percent_immune`)
 
@@ -132,7 +132,7 @@ contact_table = contacts(contact_state; reference_date = Date(2024, 1, 1))
 (contacts = nrow(contact_table), infected = count(contact_table.infected))
 ```
 
-The mean of the offspring distribution is now the mean number of contacts, not the reproduction number: R is that mean times `prob_infection`. Contacts who were not infected are rows of `contacts` with `infected = false`, and `linelist` lists only the infected ones unless you pass `infected_only = false`.
+The mean of the offspring distribution is now the mean number of contacts. R is that mean times `prob_infection`. Contacts who were not infected are rows of `contacts` with `infected = false`. `linelist` lists only the infected ones unless you pass `infected_only = false`.
 
 ## Writing line lists to file
 
