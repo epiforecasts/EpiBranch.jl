@@ -92,6 +92,7 @@ include("model_inputs.jl")
 
 # Transmission models
 include("models/branching_process.jl")
+include("models/renewal_offspring.jl")
 include("models/multi_type_offspring.jl")
 
 # Observation helpers (thinned chain-size distribution, dispatch on the
@@ -176,6 +177,7 @@ include("serial_interval.jl")
 
 # Exports — types
 export TransmissionModel, BranchingProcess, Infectiousness, OffspringTimes,
+    RenewalOffspring,
     HomogeneousProcess, MixingProcess, ModelSpec
 export MeanFieldProcess, MeanFieldState, LinearNoiseProcess, LinearNoiseState
 export StratifiedContacts, flatten_contacts, contacts_from_table, mixing_rate
