@@ -811,8 +811,6 @@ end
 # parent's `:vaccination_time` is set by ring vaccination when the parent
 # was traced, and the onward immunity takes effect at that time plus
 # `delay_to_immunity`, as on the susceptibility side.
-_onward_risk(rv::RingVaccination, parent) = _onward_risk(rv, parent, nothing)
-
 function _onward_risk(rv::RingVaccination, parent, contact)
     # A community introduction has no infector within the population, so
     # vaccination cannot reduce its source's onward transmission.
@@ -964,14 +962,6 @@ function competing_risk(rv::RingVaccination, parent, contact, state)
     return (exposure, onward)
 end
 
-# Scalar defaults short-circuit without drawing from the rng so that
-# coverage = 1.0 and eligibility_window = Inf reproduce the previous
-# deterministic behaviour exactly.
-_within_eligibility_window(w::Real, ind, vacc_t, rng) = _within_window(w, ind, vacc_t)
-function _within_eligibility_window(w, ind, vacc_t, rng)
-    return _within_window(sample_value(w, rng, ind), ind, vacc_t)
-end
-
 # A contact with no exposure yet (a `NaN` infection time) has not exceeded any
 # window, so a pre-exposure dose is always within it.
 function _within_window(w, ind, vacc_t)
@@ -1012,7 +1002,7 @@ function _validate_dose_schedule(interventions)
     # derivative passes through the schedule unconverted.
     given = Dict{Symbol, Any}()
     for iv in interventions
-        vacc = _unwrap_scheduled(iv)
+        vacc = _innermost(iv)
         vacc isa AbstractVaccination || continue
         label = dose_label(vacc)
         req = required_dose(vacc)
@@ -1116,9 +1106,6 @@ for a vaccination not timed from the trace. [`RingVaccination`](@ref) is the onl
 one timed from it."""
 _dose_offset(::AbstractVaccination) = nothing
 _dose_offset(rv::RingVaccination) = rv.dose_delay
-
-# The intervention inside a wrapper; `InterventionWrapper` adds a method.
-_unwrap_scheduled(iv) = iv
 
 # ── GroupVaccination ─────────────────────────────────────────────────
 

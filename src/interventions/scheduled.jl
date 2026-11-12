@@ -133,14 +133,6 @@ function Scheduled(
     )
 end
 
-# Pre-existing callers build a `Scheduled` without the trigger record.
-function Scheduled(
-        intervention::AbstractIntervention, condition, start_time::Float64,
-        can_lapse::Bool
-    )
-    return Scheduled(intervention, condition, start_time, can_lapse, ())
-end
-
 # Whether `iv` has declared its own `intervention_time`, which by that hook's
 # contract comes paired with a `reset!` undoing whatever it names (see
 # `intervention_time`'s docstring). `Scheduled` only runs such an
@@ -315,13 +307,17 @@ end
 # and archives the episode holding it, and a report the health system has made
 # stays made. Read from a log of the reports, so a call costs a binary search
 # however large the run.
-function _reported_cases_due(state::SimulationState{T}) where {T}
-    log = get(state.scratch, (:report_log,), nothing)
-    if log === nothing
-        log = state.scratch[(:report_log,)] = _report_log(state)
-    end
+function _reported_cases_due(state::SimulationState)
+    return searchsortedlast(_confirmed_report_log(state).times, state.max_infection_time)
+end
+
+# The run's report log, created on first use and brought up to date. The time
+# type is read from `state` because the callers leave it unparametrised.
+function _confirmed_report_log(state::SimulationState)
+    T = typeof(state.max_infection_time)
+    log = get!(() -> _report_log(state), state.scratch, (:report_log,))
     _confirm_reports!(log::_ReportLog{T}, state.individuals)
-    return searchsortedlast(log.times, state.max_infection_time)
+    return log
 end
 
 """
@@ -350,12 +346,7 @@ trigger_can_lapse(::ReportedCases) = false
 # `ReportedCases(n)` opened. `state` is left unparametrised, as `Infections`'s
 # own `opened_at` is, for the same reason given there.
 function opened_at(t::ReportedCases, state::SimulationState)
-    T = typeof(state.max_infection_time)
-    log = get(state.scratch, (:report_log,), nothing)
-    if log === nothing
-        log = state.scratch[(:report_log,)] = _report_log(state)
-    end
-    _confirm_reports!(log::_ReportLog{T}, state.individuals)
+    log = _confirmed_report_log(state)
     return length(log.times) >= t.n ? log.times[t.n] : nothing
 end
 
@@ -414,18 +405,10 @@ function Scheduled(
         start_after::Union{AbstractTrigger, Nothing} = nothing
     )
     conditions = Function[]
-    start_time !== nothing && push!(
-        conditions,
-        s -> s.max_infection_time >= start_time
-    )
-    end_time !== nothing && push!(
-        conditions,
-        s -> s.max_infection_time <= end_time
-    )
-    start_after_cases !== nothing && push!(
-        conditions,
-        s -> s.cumulative_cases >= start_after_cases
-    )
+    start_time !== nothing && push!(conditions, s -> s.max_infection_time >= start_time)
+    end_time !== nothing && push!(conditions, s -> s.max_infection_time <= end_time)
+    start_after_cases !== nothing &&
+        push!(conditions, s -> s.cumulative_cases >= start_after_cases)
 
     isempty(conditions) && start_after === nothing &&
         error("Scheduled requires at least one condition")
@@ -455,7 +438,7 @@ end
 # Predicate constructor: no individual-level reset. The predicate is opaque, so
 # it is assumed able to lapse.
 function Scheduled(intervention::AbstractIntervention, condition)
-    return Scheduled(intervention, condition, 0.0, true)
+    return Scheduled(intervention, condition, 0.0, true, ())
 end
 
 # ── Protocol delegation ──────────────────────────────────────────────
@@ -555,9 +538,6 @@ recorded and their dates, returning `nothing` before any effect is recorded.
 """
 persistent_competing_risks(::AbstractIntervention) = false
 persistent_competing_risks(::AbstractVaccination) = true
-function persistent_competing_risks(w::InterventionWrapper)
-    return persistent_competing_risks(w.intervention)
-end
 
 # Whether `iv`'s risk, once it has fired, could later be withdrawn by a
 # schedule's active window closing rather than standing for good. Only
@@ -571,7 +551,6 @@ _may_lapse(::AbstractIntervention) = false
 function _may_lapse(s::Scheduled)
     return persistent_competing_risks(s.intervention) ? _may_lapse(s.intervention) : true
 end
-_may_lapse(w::InterventionWrapper) = _may_lapse(w.intervention)
 
 # A schedule that cannot close again honours the inner removal's releases for
 # good, so its stretches can be read back; one with an end withdraws the block

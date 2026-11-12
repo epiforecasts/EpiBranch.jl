@@ -98,8 +98,7 @@ function PerCaseObservation(;
     return PerCaseObservation(detection_prob, delay, from)
 end
 
-# Two-argument positional form preserved for terse callers — uses the
-# default :onset_time anchor.
+# Two-argument positional form, anchored at the default `:onset_time`.
 function PerCaseObservation(detection_prob, delay)
     return PerCaseObservation(; detection_prob, delay)
 end
@@ -135,6 +134,10 @@ sizes on being at least `min_size` ([`TruncatedChainSize`](@ref)), and the
 simulation-based likelihood leaves out simulated chains below it, so both
 describe the same recorded data. [`simulate`](@ref) and
 [`chain_statistics`](@ref) still return every chain.
+
+When the reproduction number exceeds 1, some chains never end. The event "the
+chain reached at least `min_size`" includes those chains as well as finite
+ones.
 
 It acts on whole chains rather than on individual cases, so it leaves the
 simulated cases themselves unchanged. A model has one observation model, so

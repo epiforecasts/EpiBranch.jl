@@ -228,7 +228,7 @@ Listing a route's contacts costs nothing when there are few of them: a
 household, a handful of named neighbours. It costs more when there are many,
 such as a spatial kernel over a large population or contact with everyone in
 an area, where listing them first turns an *O(contacts)* process into an
-*O(candidates)* one. Mass action (`EpiBranch._MassAction`, behind
+*O(candidates)* one. Mass action (`EpiBranch.MassAction`, behind
 [`HomogeneousProcess`](@ref) and [`MixingProcess`](@ref)) is the package's own
 example: rather than list every member as a candidate contact and discard
 most of them, it samples directly the pairs that do have one, by skipping
@@ -485,7 +485,7 @@ transitions and the interventions' `resolve_individual!`), and updates the
 running totals for you. For contact tracing and ring or group vaccination to
 act, the model also declares `EpiBranch.supplies_contacts(::MyModel) = true`
 and passes `sellke_race!` a `contacts` function naming each case's contacts;
-without them those interventions have no effect, and nothing warns about it.
+without them those interventions have no effect; `simulate` warns once per run, naming each such intervention and noting that its effect on a case itself still applies.
 A loop that does not use the race instead calls
 [`resolve_transitions!`](@ref EpiBranch.resolve_transitions!)`(state, individual)`
 once per case, after its population characteristics and intervention values

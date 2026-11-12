@@ -147,7 +147,7 @@ function simulate_once(
     sellke_race!(
         state, members, rng, sim_opts;
         seed! = (best, _, r) -> (best[randperm(r, N)[1:n_initial]] .= 0),
-        targets = _MassAction(
+        targets = MassAction(
             state, members; mixing_by = model.mixing_by, rate = model.rate,
             calendar = model.calendar, from
         ),

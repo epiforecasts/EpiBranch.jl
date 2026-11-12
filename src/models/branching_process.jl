@@ -87,6 +87,7 @@ model = ModelSpec(BranchingProcess(community, funeral); progression)
 struct Infectiousness{O, F, U, K, C}
     offspring::O
     from::F
+    from_key::Union{Symbol, Nothing}
     until::U
     kernel::K
     calendar::C
@@ -96,7 +97,7 @@ function Infectiousness(
         offspring; from = :infection, until = (),
         kernel = NoGenerationTime(), calendar = nothing, name::Symbol = :transmission
     )
-    return Infectiousness(offspring, from, until, kernel, calendar, name)
+    return Infectiousness(offspring, from, _from_key(from), until, kernel, calendar, name)
 end
 
 """
@@ -348,23 +349,11 @@ function _validate_windows(windows, progression)
     return nothing
 end
 
-# Shared by the continuous-time structure-driven models (`HomogeneousProcess`,
-# `NetworkProcess`, `HouseholdProcess`, `RouteWindow`): a case's window closes
-# at the earliest `Symbol(s, :_time)` for `s in until` (`_window_close` in
-# sellke.jl). A progression's terminal transition writes its own
-# `state => true`/`state_time` pair regardless of whether `state` is in
-# `until`, so a state missing from `until` is simply never consulted: a case
-# reaching it keeps generating exposure proposals as if still infectious.
-# `terminal_target` (defined per transition type, alongside `is_terminal`)
-# gives the state label without needing an individual to resolve a time from —
-# `Transition` reads it off `.state`, `Death`/`Recovery` are hardcoded to
-# :died/:recovered. A terminal transition that does not implement it stays at
-# the default `nothing`, so it is not checkable here and stays silently
-# exempt — documented on `terminal_target`'s own docstring, since a custom
-# terminal transition must opt in to be covered. `from`, when it names a
-# terminal state itself (e.g. a funeral `RouteWindow` with `from = :died`),
-# is excluded too: a window that only opens once a case reaches that state
-# cannot sensibly be asked to also close on it.
+# The terminal states a window's `until` (and `from`) does not cover, which
+# the continuous-time structure-driven models warn about: a case reaching such
+# a state keeps generating exposure proposals as if still infectious. A
+# terminal transition that does not implement `terminal_target` stays
+# exempt, so a custom one must opt in to be covered.
 function _uncovered_terminal_states(until::Tuple, progression; from = nothing)
     covered = Set{Symbol}(until)
     from isa Symbol && push!(covered, from)

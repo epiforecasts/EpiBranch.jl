@@ -43,8 +43,8 @@ on its incubation period, with scale `omega` and the skew chosen so that
 `presymptomatic_fraction` of generation times are shorter than the incubation
 period. Negative values are excluded, which makes the realised presymptomatic
 share approximate: close when the incubation period is long compared with
-`omega`, less so for short ones. Cases without an incubation period (for
-example asymptomatic cases) are centred on 5 days.
+`omega`, rougher when it is short. Cases without an incubation period
+(for example asymptomatic cases) are centred on 5 days.
 
 # Examples
 ```julia
@@ -86,15 +86,11 @@ end
 lazily on first use so the simulation path (which only samples) never pays for
 the numerical integral."""
 struct _TruncatedSkewNormal{T <: AbstractFloat} <: ContinuousUnivariateDistribution
-    ξ::T
-    ω::T
-    α::T
     inner::SkewNormal{T}
     logZ::Base.RefValue{T}   # log P(inner ≥ 0); NaN until first computed
     function _TruncatedSkewNormal(ξ::Real, ω::Real, α::Real)
         T = float(promote_type(typeof(ξ), typeof(ω), typeof(α)))
-        inner = SkewNormal(T(ξ), T(ω), T(α))
-        return new{T}(T(ξ), T(ω), T(α), inner, Ref(T(NaN)))
+        return new{T}(SkewNormal(T(ξ), T(ω), T(α)), Ref(T(NaN)))
     end
 end
 
@@ -115,8 +111,9 @@ end
 # quadrature tracks fine regardless of how wide. Shared by `_trunc_logZ`
 # (integrating to `Inf`) and `logcdf` (integrating to `x`).
 function _peak_breakpoints(d::_TruncatedSkewNormal, upper::Real)
-    margin = 10 * float(d.ω)
-    inner = (float(d.ξ) - margin, float(d.ξ) + margin)
+    (; ξ, ω) = d.inner
+    margin = 10 * float(ω)
+    inner = (float(ξ) - margin, float(ξ) + margin)
     lo = zero(float(upper))
     return (lo, filter(p -> lo < p < upper, inner)..., upper)
 end
@@ -172,7 +169,7 @@ function Distributions.quantile(d::_TruncatedSkewNormal, p::Real)
     0.0 <= p <= 1.0 || throw(DomainError(p, "quantile needs p in [0, 1]"))
     iszero(p) && return 0.0
     isone(p) && return Inf
-    lo, hi = 0.0, max(abs(d.ξ), d.ω, one(d.ξ))
+    lo, hi = 0.0, max(abs(d.inner.ξ), d.inner.ω, one(d.inner.ξ))
     while cdf(d, hi) < p
         hi *= 2
     end

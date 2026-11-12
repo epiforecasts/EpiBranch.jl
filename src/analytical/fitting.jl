@@ -67,6 +67,17 @@ that is, its final size is either the observed size or larger.
 [`end_of_outbreak_probability`](@ref) computes `π_i` from the generation-time
 distribution and the time since the last case.
 
+This mixture is an approximation. It treats whether a cluster is over as an
+independent event with probability `π_i`, and so does not use the fact that no
+case has occurred for the time since the last one. For a single-case cluster
+the exact probability of the data is `E[S(τ)^N]`, with `S` the generation-time
+survival function and `N` the number of secondary cases, which for negative
+binomial offspring is `(k / (k + R (1 − S(τ))))^k`. The two can differ
+noticeably, most when `τ` is short. `π_i` also depends on `R` and `k`, so when
+fitting those, recompute it at every parameter value (for example with
+`end_of_outbreak_probability(R, k, generation_time, τs)`) rather than passing
+it once as fixed data. A `π_i` fixed at one parameter value biases the fit.
+
 For data recorded only once a chain reaches a given size, pass
 `observe(chain_size_distribution(offspring), MinimumSize(k))` instead of
 `offspring`.
@@ -105,6 +116,20 @@ function loglikelihood(
 end
 
 """
+    _tabulated_sum(f, xs)
+
+Equivalent to `sum(f, xs)`, but evaluates `f` once per distinct element of `xs`
+and weights it by its count. The order of summation is the only difference.
+"""
+function _tabulated_sum(f, xs)
+    counts = Dict{eltype(xs), Int}()
+    for x in xs
+        counts[x] = get(counts, x, 0) + 1
+    end
+    return sum(((x, c),) -> c * f(x), counts)
+end
+
+"""
     _chain_size_loglik(dist, data::ChainSizes; prob_concluded = nothing)
 
 Sum over clusters of the chain-size log-likelihood under `dist`: each
@@ -123,24 +148,25 @@ function _chain_size_loglik(
             )
         )
     end
+    # Chain-size data repeat a few small sizes many times. Evaluate each
+    # distinct (size, seeds) pair once.
+    prob_concluded === nothing && return _tabulated_sum(
+        ((x, s),) -> _chain_size_logpdf(dist, x, s), zip(data.data, data.seeds)
+    )
     first_val = _chain_size_logpdf(dist, data.data[1], data.seeds[1])
     total = zero(first_val)
     for i in eachindex(data.data)
         lc = _chain_size_logpdf(dist, data.data[i], data.seeds[i])
-        term = if prob_concluded === nothing
+        π_i = prob_concluded[i]
+        (0 <= π_i <= 1) ||
+            throw(ArgumentError("prob_concluded[$i] = $(π_i) is not in [0, 1]"))
+        term = if π_i >= one(π_i)
             lc
+        elseif π_i <= zero(π_i)
+            _chain_size_right_tail_logprob(dist, data.data[i], data.seeds[i])
         else
-            π_i = prob_concluded[i]
-            (0 <= π_i <= 1) ||
-                throw(ArgumentError("prob_concluded[$i] = $(π_i) is not in [0, 1]"))
-            if π_i >= one(π_i)
-                lc
-            elseif π_i <= zero(π_i)
-                _chain_size_right_tail_logprob(dist, data.data[i], data.seeds[i])
-            else
-                lo = _chain_size_right_tail_logprob(dist, data.data[i], data.seeds[i])
-                _logsumexp2(log(π_i) + lc, log1p(-π_i) + lo)
-            end
+            lo = _chain_size_right_tail_logprob(dist, data.data[i], data.seeds[i])
+            _logsumexp2(log(π_i) + lc, log1p(-π_i) + lo)
         end
         total += term
     end
@@ -209,7 +235,7 @@ function _chain_size_classes_loglik(dist, data::ChainSizeClasses)
     return total
 end
 
-# AD-compatible chain length: Poisson — PGF iteration on G(s) = exp(λ(s − 1)).
+# AD-compatible chain length: PGF iteration on the offspring's own PGF.
 """
     loglikelihood(data::ChainLengths, offspring::Poisson; n_initial = 1)
     loglikelihood(data::ChainLengths, offspring::NegativeBinomial; n_initial = 1)
@@ -223,20 +249,12 @@ length is the longest of `n_initial` single-seed chains, so its CDF is the
 single-seed CDF raised to the power `n_initial`.
 """
 function loglikelihood(
-        data::ChainLengths, offspring::Poisson{T}; n_initial::Int = 1
-    ) where {T}
-    λ = mean(offspring)
-    λ < 1 ||
-        throw(ArgumentError("chain length distribution only defined for subcritical process (λ < 1)"))
-    G(s) = exp(λ * (s - one(λ)))
-    return _chain_length_ll_pgf(data.data, G, typeof(λ); n_initial)
-end
-
-# AD-compatible chain length: NegBin — PGF iteration
-function loglikelihood(
-        data::ChainLengths, offspring::NegativeBinomial{T}; n_initial::Int = 1
-    ) where {T}
-    return _chain_length_ll_negbin(data.data, offspring; n_initial)
+        data::ChainLengths, offspring::Union{Poisson, NegativeBinomial}; n_initial::Int = 1
+    )
+    R = mean(offspring)
+    R < 1 ||
+        throw(ArgumentError("chain length distribution only defined for subcritical process (R < 1)"))
+    return _chain_length_ll_pgf(data.data, s -> _pgf(offspring, s), typeof(R); n_initial)
 end
 
 # Simulation estimate of the chain-size or chain-length log-likelihood under
