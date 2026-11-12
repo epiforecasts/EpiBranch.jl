@@ -447,7 +447,7 @@ nothing # hide
 
 ## Comparing many scenarios
 
-The loops above change one setting at a time. [`scenario_sweep`](@ref) runs every combination of the settings you list and returns a table with one row per combination and its containment probability. Each setting is a vector of the values to try, and `:offspring` is required. Each value of `:interventions` is a whole stack of interventions, so one vector per scenario. Settings that apply to every run, such as `max_cases` and `rng`, are passed once:
+The loops above change one setting at a time. [`scenario_sweep`](@ref) runs every combination of the settings you list and returns a table with one row per combination and its containment probability. Each setting is a vector of the values to try, and `:offspring` is required. Each value of `:interventions` is a whole stack of interventions, given as one vector per scenario. Settings that apply to every run, such as `max_cases` and `rng`, are passed once:
 
 ```@example interventions
 sweep = scenario_sweep(
@@ -465,11 +465,11 @@ sweep = scenario_sweep(
 sweep[:, [:offspring, :containment_probability]]
 ```
 
-The six rows are the two offspring distributions crossed with the three delays, in the order the combinations are enumerated. Containment is higher with R = 1.5 than with R = 3, and in both it falls as isolation is delayed.
+The six rows are the two offspring distributions crossed with the three delays, in the order the combinations are enumerated. Containment is higher with R = 1.5 than with R = 3, and in both cases it falls as isolation is delayed.
 
 ### Containment by a chosen week
 
-A simulation that stops at `max_cases` is not extinct, but the outbreak may also simply be small or slow at a given time. Reports of ringbp results usually count an outbreak as contained when no case has symptom onset in a window of weeks. `is_extinct(state; by_week = ...)` does that: `by_week = 12:20` is `true` when no case has onset in weeks 12 to 20, counted in 7-day blocks from day 0, and a single week takes an integer. The simulation has to run to the end of the window, here day 140, so `max_time = 140.0`:
+A simulation that stops at `max_cases` is not extinct, but an outbreak can also be small or slow at a given time. Reports of ringbp results usually count an outbreak as contained when no case has symptom onset in a window of weeks. `is_extinct(state; by_week = ...)` does that: `by_week = 12:20` is `true` when no case has onset in weeks 12 to 20, counted in 7-day blocks from day 0, and a single week takes an integer. The simulation has to run to the end of the window, here day 140, so `max_time = 140.0`:
 
 ```@example interventions
 model_r15 = ModelSpec(BranchingProcess(Poisson(1.5), Exponential(5.0));
@@ -481,7 +481,7 @@ quiet = mean(is_extinct.(states; by_week = 12:20, max_cases = 500))
 println("Extinct: $(round(extinct, digits=3)); no onsets in weeks 12-20: $(round(quiet, digits=3))")
 ```
 
-The two shares differ because the window is a different definition: an outbreak that has died out can still have a case with onset inside it, and one that is alive can have none. Pass the same `max_cases` to `is_extinct`: a run stopped at the cap before week 12 has no onsets in the window, and without `max_cases` it would be counted as contained.
+The two shares differ because they define containment differently: an outbreak that has died out can still have a case with onset inside it, and one that is alive can have none. Pass the same `max_cases` to `is_extinct`: a run stopped at the cap before week 12 has no onsets in the window, and without `max_cases` it would be counted as contained.
 
 ## Writing your own intervention
 
