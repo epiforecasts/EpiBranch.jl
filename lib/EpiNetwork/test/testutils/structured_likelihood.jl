@@ -1,4 +1,4 @@
-# Copy of test/testutils/structured_likelihood.jl in the core package, kept here so this
+# Copy of lib/EpiHouseholds/test/testutils/structured_likelihood.jl, kept here so this
 # package's tests run from a registry copy. Keep the two in step.
 
 struct LikelihoodWindowRemoval <: EpiBranch.AbstractIntervention end

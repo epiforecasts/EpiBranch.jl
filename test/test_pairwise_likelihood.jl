@@ -240,6 +240,11 @@ end
             EpiBranch._calendar_external_survival(schedule)
         @test_throws DimensionMismatch EpiBranch._check_external(v, 4)
         @test EpiBranch._check_external(v, 3) === nothing
+        for bad in (-5.0, NaN)
+            @test_throws ArgumentError EpiBranch._check_obs_end(bad)
+        end
+        @test EpiBranch._check_obs_end(Inf) == Inf
+        @test EpiBranch._check_obs_end(0) === 0.0
         # a person with no community hazard is never introduced, and the rest
         # draw as under a shared one
         @test EpiBranch._ext_draw(StableRNG(1), v, 2, 1.0) == Inf
@@ -272,6 +277,13 @@ end
         @test Le.sus == [1, 1, 2, 2, 3, 3, 3, 4, 5, 5]
         @test Le.infector == [0, 2, 0, 1, 0, 1, 2, 0, 0, 4]
         @test Le.is_ext == (Le.infector .== 0)
+
+        # sparse, unsorted and negative labels give the same rows as dense ones
+        Ls = compile_contact_pairs([-7, 10^9, -7, 10^9, 10^9], is_index, infected)
+        Ld = compile_contact_pairs([1, 2, 1, 2, 2], is_index, infected)
+        @test Ls.sus == Ld.sus
+        @test Ls.infector == Ld.infector
+        @test Ls.component == Ld.component
 
         @test_throws ArgumentError compile_contact_pairs([1, 1], [true], [true, false])
         @test length(compile_contact_pairs(Int[], Bool[], Bool[])) == 0
@@ -511,7 +523,7 @@ end
 
     @testset "a lone index case is conditioned on, not explained" begin
         # a single singleton case with nobody else to read I(t) off: without
-        # conditioning this would score -Inf, since nothing is infectious
+        # conditioning this would score -Inf, because nothing is infectious
         # before the first case
         data = _TestInfections([1], [0.0], [0.0], [3.0], [true]; obs_end = 5.0)
         mass_action = MassActionHazard(; transmission_rate = 0.6, population_size = 4)

@@ -206,7 +206,7 @@ mode and dose label through it.
 """
 function vaccine_effect end
 
-"""Efficacy of the vaccination's dose against infection, as given to
+"""Efficacy of a vaccine dose against infection, as given to
 [`VaccineEffect`](@ref): per exposure for a leaky vaccine, the probability of
 full protection for an all-or-nothing one."""
 efficacy(v::AbstractVaccination) = vaccine_effect(v).efficacy
@@ -216,7 +216,7 @@ efficacy(v::AbstractVaccination) = vaccine_effect(v).efficacy
 for that person."""
 severity_efficacy(v::AbstractVaccination) = vaccine_effect(v).severity_efficacy
 
-"""Efficacy of the vaccination's dose against developing symptoms, as given to
+"""Efficacy of the dose of the vaccination against developing symptoms, as given to
 [`VaccineEffect`](@ref). The method for an individual returns the value drawn
 for that person."""
 symptom_efficacy(v::AbstractVaccination) = vaccine_effect(v).symptom_efficacy

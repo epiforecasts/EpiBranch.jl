@@ -55,16 +55,33 @@ end
 # Recovery has no `probability` gate: once its anchor is reached, a candidate
 # time is drawn unconditionally, so a non-finite candidate there is
 # impossible under the model.
-function transition_loglik(r::Recovery, individual::Individual)
+# The time of the case's recorded outcome when it is not `target`, else `Inf`.
+function _competing_outcome_time(individual::Individual, target::Symbol)
+    o = get(individual.state, :outcome, nothing)
+    (o === nothing || o == target) && return Inf
+    return outcome_time(individual)
+end
+
+function transition_loglik(r::Recovery, individual::Individual; followup_end = Inf)
     anchor = _state_time(individual, r.from)
     _anchor_ok(anchor) || return 0.0
     t = individual.state[:recovery_candidate_time]
+    censor = min(infection_aborted_time(individual), followup_end)
     if !isfinite(t)
         # No gate of its own, so a candidate is missing only where an abort
         # undid it; anything else rules the individual out.
-        isinf(infection_aborted_time(individual)) && return -Inf
-        return transition_term(1.0, r.delay, individual, anchor, false)
+        # A line list holds only the outcome that happened. A recovery that
+        # lost to another outcome is scored as not having happened by that
+        # outcome's time.
+        competing = _competing_outcome_time(individual, :recovered)
+        isinf(competing) && isinf(infection_aborted_time(individual)) && return -Inf
+        return transition_term(
+            1.0, r.delay, individual, anchor, false;
+            censor = min(competing, censor)
+        )
     end
+    t <= followup_end ||
+        return transition_term(1.0, r.delay, individual, anchor, false; censor = censor)
     return _delay_loglik(r.delay, t - anchor)
 end
 
@@ -165,12 +182,18 @@ function terminal_event(::Death, individual::Individual{T}) where {T}
     return isfinite(t) ? (t, :died) : nothing
 end
 
-function transition_loglik(d::Death, individual::Individual)
+function transition_loglik(d::Death, individual::Individual; followup_end = Inf)
     anchor = _state_time(individual, d.from)
     _anchor_ok(anchor) || return 0.0
     t = individual.state[:death_candidate_time]
-    candidate = isfinite(t)
-    ll = transition_term(d.probability, d.delay, individual, anchor, candidate)
+    candidate = isfinite(t) && t <= followup_end
+    # Without a candidate time, a different outcome at `outcome_time` means
+    # the death either did not occur or came later.
+    competing = isfinite(t) ? Inf : _competing_outcome_time(individual, :died)
+    ll = transition_term(
+        d.probability, d.delay, individual, anchor, candidate;
+        censor = min(competing, infection_aborted_time(individual), followup_end)
+    )
     candidate || return ll
     return ll + _delay_loglik(d.delay, t - anchor)
 end

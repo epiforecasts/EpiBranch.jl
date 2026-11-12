@@ -89,7 +89,7 @@ clock, as every hook always was: `intervention_time` comes paired with a
 `reset!` that undoes whatever it names, and without one there is nothing to
 correct the effect with afterwards.
 """
-struct Scheduled{I <: AbstractIntervention, F, T <: Tuple} <: InterventionWrapper
+struct Scheduled{I <: AbstractIntervention, F, T <: Tuple, W} <: InterventionWrapper
     intervention::I
     condition::F
     start_time::Float64
@@ -106,17 +106,30 @@ struct Scheduled{I <: AbstractIntervention, F, T <: Tuple} <: InterventionWrappe
     # Whether `intervention` has its own `intervention_time`, computed once
     # here rather than by introspection on every call. See `_time_aware`.
     time_aware::Bool
+    # The calendar window the gate amounts to, as a `ClockWindow`, when it is
+    # nothing else (a `start_time` and/or an `end_time`); `nothing` for a gate
+    # that also reads the simulation (a case count, a trigger, a predicate)
+    # and so has no window. The population-level approximations read it to
+    # switch a campaign on and off on the right days.
+    window::W
+end
+
+# The days between which a `Scheduled` built from `start_time` and
+# `end_time` alone acts.
+struct ClockWindow
+    start::Float64
+    stop::Float64
 end
 
 # Computes `time_aware` from `intervention` once, rather than asking on every
 # call a hook makes.
 function Scheduled(
         intervention::AbstractIntervention, condition, start_time::Float64,
-        can_lapse::Bool, triggers::Tuple
+        can_lapse::Bool, triggers::Tuple, window = nothing
     )
     return Scheduled(
         intervention, condition, start_time, can_lapse, triggers,
-        _time_aware(intervention)
+        _time_aware(intervention), window
     )
 end
 
@@ -302,13 +315,17 @@ end
 # and archives the episode holding it, and a report the health system has made
 # stays made. Read from a log of the reports, so a call costs a binary search
 # however large the run.
-function _reported_cases_due(state::SimulationState{T}) where {T}
-    log = get(state.scratch, (:report_log,), nothing)
-    if log === nothing
-        log = state.scratch[(:report_log,)] = _report_log(state)
-    end
+function _reported_cases_due(state::SimulationState)
+    return searchsortedlast(_confirmed_report_log(state).times, state.max_infection_time)
+end
+
+# The run's report log, created on first use and brought up to date. The time
+# type is read from `state` because the callers leave it unparametrised.
+function _confirmed_report_log(state::SimulationState)
+    T = typeof(state.max_infection_time)
+    log = get!(() -> _report_log(state), state.scratch, (:report_log,))
     _confirm_reports!(log::_ReportLog{T}, state.individuals)
-    return searchsortedlast(log.times, state.max_infection_time)
+    return log
 end
 
 """
@@ -337,12 +354,7 @@ trigger_can_lapse(::ReportedCases) = false
 # `ReportedCases(n)` opened. `state` is left unparametrised, as `Infections`'s
 # own `opened_at` is, for the same reason given there.
 function opened_at(t::ReportedCases, state::SimulationState)
-    T = typeof(state.max_infection_time)
-    log = get(state.scratch, (:report_log,), nothing)
-    if log === nothing
-        log = state.scratch[(:report_log,)] = _report_log(state)
-    end
-    _confirm_reports!(log::_ReportLog{T}, state.individuals)
+    log = _confirmed_report_log(state)
     return length(log.times) >= t.n ? log.times[t.n] : nothing
 end
 
@@ -401,18 +413,10 @@ function Scheduled(
         start_after::Union{AbstractTrigger, Nothing} = nothing
     )
     conditions = Function[]
-    start_time !== nothing && push!(
-        conditions,
-        s -> s.max_infection_time >= start_time
-    )
-    end_time !== nothing && push!(
-        conditions,
-        s -> s.max_infection_time <= end_time
-    )
-    start_after_cases !== nothing && push!(
-        conditions,
-        s -> s.cumulative_cases >= start_after_cases
-    )
+    start_time !== nothing && push!(conditions, s -> s.max_infection_time >= start_time)
+    end_time !== nothing && push!(conditions, s -> s.max_infection_time <= end_time)
+    start_after_cases !== nothing &&
+        push!(conditions, s -> s.cumulative_cases >= start_after_cases)
 
     isempty(conditions) && start_after === nothing &&
         error("Scheduled requires at least one condition")
@@ -431,7 +435,12 @@ function Scheduled(
     can_lapse = end_time !== nothing ||
         (start_after !== nothing && trigger_can_lapse(start_after))
     triggers = start_after === nothing ? () : (start_after,)
-    return Scheduled(intervention, condition, t, can_lapse, triggers)
+    window = if start_after_cases === nothing && start_after === nothing
+        ClockWindow(t, end_time === nothing ? Inf : end_time)
+    else
+        nothing
+    end
+    return Scheduled(intervention, condition, t, can_lapse, triggers, window)
 end
 
 # Predicate constructor: no individual-level reset. The predicate is opaque, so
@@ -537,9 +546,6 @@ recorded and their dates, returning `nothing` before any effect is recorded.
 """
 persistent_competing_risks(::AbstractIntervention) = false
 persistent_competing_risks(::AbstractVaccination) = true
-function persistent_competing_risks(w::InterventionWrapper)
-    return persistent_competing_risks(w.intervention)
-end
 
 # Whether `iv`'s risk, once it has fired, could later be withdrawn by a
 # schedule's active window closing rather than standing for good. Only
@@ -553,7 +559,6 @@ _may_lapse(::AbstractIntervention) = false
 function _may_lapse(s::Scheduled)
     return persistent_competing_risks(s.intervention) ? _may_lapse(s.intervention) : true
 end
-_may_lapse(w::InterventionWrapper) = _may_lapse(w.intervention)
 
 # A schedule that cannot close again honours the inner removal's releases for
 # good, so its stretches can be read back; one with an end withdraws the block

@@ -1,0 +1,1 @@
+The continuous-time race now walks the built-in, model and intervention risk sources with tuple-recursive helpers, like the blocking check. One walk finds the release of a certain block and another tests whether a block is permanent. Results are unchanged.

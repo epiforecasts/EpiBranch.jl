@@ -16,8 +16,9 @@ using Dates
             observation = EpiBranch.observation(model),
             recorder = EpiBranch.recorder(model),
         )
+        run(rng) = EpiBranch.simulate_once(model, sim_opts; kw..., rng)
         results = EpiBranch._simulate_n_threaded(
-            identity, SimulationState, model, 20, sim_opts; kw..., rng = StableRNG(3)
+            run, SimulationState, 20, StableRNG(3)
         )
         @test length(results) == 20
         rng = StableRNG(3)
@@ -52,6 +53,16 @@ using Dates
         df = weekly_incidence(state)
         @test df isa DataFrame
         @test sum(df.cases) == state.cumulative_cases
+    end
+
+    @testset "weekly_incidence with no finite times is an empty typed frame" begin
+        model = BranchingProcess(Poisson(2.0), Exponential(5.0))
+        state = simulate(model; n_initial = 3, rng = StableRNG(1))
+        df = weekly_incidence(state; by = :no_such_time)
+        @test names(df) == ["week", "cases"]
+        @test nrow(df) == 0
+        @test eltype(df.week) == Date
+        @test eltype(df.cases) == Int
     end
 
     @testset "weekly_incidence by=:reporting excludes unreported (Inf) cases" begin
@@ -442,4 +453,32 @@ using Dates
         sN.cumulative_cases = 100
         @test susceptible_fraction(sN) == 0.0
     end
+end
+
+@testset "weekly_incidence and summarise over several outbreaks" begin
+    model = ModelSpec(
+        BranchingProcess(NegBin(1.0, 0.5), Exponential(5.0));
+        attributes = clinical_presentation(incubation_period = LogNormal(1.6, 0.5))
+    )
+    states = simulate(model, 40; rng = StableRNG(1), max_time = 60.0)
+    df = weekly_incidence(states)
+    @test names(df) == ["sim_id", "week", "cases"]
+    n_weeks = length(unique(df.week))
+    @test all(g -> nrow(g) == n_weeks, groupby(df, :sim_id))
+    @test sort(unique(df.sim_id)) == 1:40
+    @test any(==(0), df.cases)
+    @test sum(df.cases) == sum(sum(weekly_incidence(s).cases) for s in states)
+
+    s = summarise(df)
+    @test nrow(s) == n_weeks
+    @test all(s.n_sim .== 40)
+    @test all(s.q2_5 .<= s.q50 .<= s.q97_5)
+    # Zero-filled weeks pull the median down relative to non-empty weeks only.
+    sparse = filter(:cases => >(0), df)
+    @test sum(summarise(sparse).q50) >= sum(s.q50)
+
+    sizes = summarise(chain_statistics(states); value = :size, by = Symbol[], probs = [0.5])
+    @test nrow(sizes) == 1
+    @test names(sizes) == ["n_sim", "q50"]
+    @test_throws ArgumentError summarise(df; probs = [1.5])
 end

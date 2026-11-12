@@ -60,8 +60,10 @@ end
 
 Proportion of transmission caused by the most infectious fraction
 `prop_cases` of cases, using the model's offspring distribution, which must
-be negative binomial (or Poisson). Population characteristics in a
-`ModelSpec` are ignored.
+be negative binomial (or Poisson). A model whose offspring law is reshaped
+(a finite `population_size`, an infectiousness window with `until`, or
+`transmission_traits` away from their neutral values) gives an error that
+points to simulation. The same holds for the other model methods in this file.
 
 For a `ModelSpec`, or a process that stores its own interventions, each
 intervention's [`EpiBranch.analytic_offspring_effect`](@ref) is applied to
@@ -81,7 +83,8 @@ function proportion_transmission(d::Distribution; prop_cases::Real = 0.2)
 end
 
 function proportion_transmission(model::Union{TransmissionModel, ModelSpec}; prop_cases::Real = 0.2)
-    off = _offspring_through_interventions(model, single_type_offspring(model))
+    off = _unreshaped_single_type_offspring(model, "proportion_transmission(model)")
+    off = _offspring_through_interventions(model, off)
     return proportion_transmission(off; prop_cases)
 end
 
@@ -151,7 +154,8 @@ the offspring distribution first. If an intervention has no such method, this
 throws an error that names the simulation-based alternative.
 """
 function proportion_cases_individual(model::Union{TransmissionModel, ModelSpec}; prop_transmission::Real = 0.8)
-    off = _offspring_through_interventions(model, single_type_offspring(model))
+    off = _unreshaped_single_type_offspring(model, "proportion_cases_individual(model)")
+    off = _offspring_through_interventions(model, off)
     return proportion_cases_individual(off; prop_transmission)
 end
 
@@ -226,7 +230,8 @@ the offspring distribution first. If an intervention has no such method, this
 throws an error that names the simulation-based alternative.
 """
 function proportion_cases_offspring(model::Union{TransmissionModel, ModelSpec}; prop_transmission::Real = 0.8)
-    off = _offspring_through_interventions(model, single_type_offspring(model))
+    off = _unreshaped_single_type_offspring(model, "proportion_cases_offspring(model)")
+    off = _offspring_through_interventions(model, off)
     return proportion_cases_offspring(off; prop_transmission)
 end
 
@@ -286,17 +291,14 @@ the offspring distribution first. If an intervention has no such method, this
 throws an error that names the simulation-based alternative.
 """
 function proportion_cluster_size(model::Union{TransmissionModel, ModelSpec}; cluster_size::Int = 10)
-    off = _offspring_through_interventions(model, single_type_offspring(model))
+    off = _unreshaped_single_type_offspring(model, "proportion_cluster_size(model)")
+    off = _offspring_through_interventions(model, off)
     return _proportion_cluster_size(off, cluster_size)
 end
 
+_proportion_cluster_size(d::NegativeBinomial, cluster_size) = proportion_cluster_size(d; cluster_size)
 function _proportion_cluster_size(d, cluster_size)
-    d isa NegativeBinomial || throw(
-        ArgumentError(
-            "proportion_cluster_size requires NegativeBinomial offspring"
-        )
-    )
-    return proportion_cluster_size(d; cluster_size)
+    throw(ArgumentError("proportion_cluster_size requires NegativeBinomial offspring"))
 end
 
 # ── Network-adjusted reproduction number ─────────────────────────────
@@ -312,7 +314,8 @@ suggests.
 - `mean_contacts`, `sd_contacts`: mean and standard deviation of the number
   of contacts one person makes per unit of time.
 - `duration`: duration of infectiousness, in the same unit of time.
-- `prob_transmission`: probability of transmission per contact.
+- `prob_transmission`: probability of transmission per partnership (see the
+  assumptions below).
 
 Returns `(R = ..., R_net = ...)`:
 
@@ -321,11 +324,24 @@ Returns `(R = ..., R_net = ...)`:
 - `R_net`: allowing for the variation in contacts,
   `prob_transmission × duration × (mean + variance / mean)`.
 
-This assumes contacts are formed at random given each person's number of
-contacts, with no clustering (friends of friends being friends). A
-simulation on an explicit network with clustering, such as `NetworkProcess`,
-can give a different answer. It is a port of `calc_network_R` in the R
-package superspreading (Lambert et al.,
+`R_net` is the degree-based formula for a static network, applied to the
+number of distinct partners a person has over their infectious period. It
+assumes:
+
+- Each contact counted is a different person. Repeated contacts with the
+  same person are not accounted for.
+- Each person's contact rate is a fixed trait that stays the same over the
+  infectious period. Rates that vary over time within one person break the
+  formula.
+- `prob_transmission` applies once per partner, however many contacts the
+  two have.
+- Contacts are formed at random given each person's number of contacts, with
+  no clustering (friends of friends being friends). A simulation on an
+  explicit network with clustering, such as `NetworkProcess`, can give a
+  different answer.
+
+It is a port of `calc_network_R` in the R
+package superspreading, which has the same caveats (Lambert et al.,
 https://github.com/epiverse-trace/superspreading, MIT).
 
 # Examples
