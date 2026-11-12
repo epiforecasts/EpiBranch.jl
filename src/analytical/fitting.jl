@@ -116,6 +116,20 @@ function loglikelihood(
 end
 
 """
+    _tabulated_sum(f, xs)
+
+Equivalent to `sum(f, xs)`, but evaluates `f` once per distinct element of `xs`
+and weights it by its count. The order of summation is the only difference.
+"""
+function _tabulated_sum(f, xs)
+    counts = Dict{eltype(xs), Int}()
+    for x in xs
+        counts[x] = get(counts, x, 0) + 1
+    end
+    return sum(((x, c),) -> c * f(x), counts)
+end
+
+"""
     _chain_size_loglik(dist, data::ChainSizes; prob_concluded = nothing)
 
 Sum over clusters of the chain-size log-likelihood under `dist`: each
@@ -134,24 +148,25 @@ function _chain_size_loglik(
             )
         )
     end
+    # Chain-size data repeat a few small sizes many times. Evaluate each
+    # distinct (size, seeds) pair once.
+    prob_concluded === nothing && return _tabulated_sum(
+        ((x, s),) -> _chain_size_logpdf(dist, x, s), zip(data.data, data.seeds)
+    )
     first_val = _chain_size_logpdf(dist, data.data[1], data.seeds[1])
     total = zero(first_val)
     for i in eachindex(data.data)
         lc = _chain_size_logpdf(dist, data.data[i], data.seeds[i])
-        term = if prob_concluded === nothing
+        π_i = prob_concluded[i]
+        (0 <= π_i <= 1) ||
+            throw(ArgumentError("prob_concluded[$i] = $(π_i) is not in [0, 1]"))
+        term = if π_i >= one(π_i)
             lc
+        elseif π_i <= zero(π_i)
+            _chain_size_right_tail_logprob(dist, data.data[i], data.seeds[i])
         else
-            π_i = prob_concluded[i]
-            (0 <= π_i <= 1) ||
-                throw(ArgumentError("prob_concluded[$i] = $(π_i) is not in [0, 1]"))
-            if π_i >= one(π_i)
-                lc
-            elseif π_i <= zero(π_i)
-                _chain_size_right_tail_logprob(dist, data.data[i], data.seeds[i])
-            else
-                lo = _chain_size_right_tail_logprob(dist, data.data[i], data.seeds[i])
-                _logsumexp2(log(π_i) + lc, log1p(-π_i) + lo)
-            end
+            lo = _chain_size_right_tail_logprob(dist, data.data[i], data.seeds[i])
+            _logsumexp2(log(π_i) + lc, log1p(-π_i) + lo)
         end
         total += term
     end
