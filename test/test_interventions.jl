@@ -1019,7 +1019,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
     end
 
     @testset "A released quarantine does not block a later, unrelated infection" begin
-        # Reproduces the bug: a contact traced and quarantined long before it is
+        # A contact traced and quarantined long before it is
         # actually infected, through another route, must not still be carrying
         # that old quarantine. The competing risk from tracing must respect the
         # release time, not just the isolation time.
@@ -3050,12 +3050,11 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
     end
 
     @testset "Traced test-negative contacts isolate via tracing pathway" begin
-        # Regression test: with test_sensitivity < 1 and FlagOnly tracing,
-        # test-negative contacts must still be isolated via the tracing
-        # pathway. Previously a `is_test_positive || return` gate in
-        # Isolation::resolve_individual discarded _traced_isolation_time for
-        # test-negative contacts, so 1 − test_sensitivity of cases never
-        # isolated even when traced.
+        # With test_sensitivity < 1 and FlagOnly tracing, test-negative
+        # contacts must still be isolated via the tracing pathway:
+        # Isolation::resolve_individual must not discard
+        # _traced_isolation_time for them, or 1 − test_sensitivity of cases
+        # would never isolate even when traced.
         #
         # Filter to the cases, which are the people `resolve_individual!` ran on.
         rng = StableRNG(20260601)

@@ -3,7 +3,7 @@ using Random
 # A leaky vaccine written from outside the package: the whole population is
 # dosed at `from_time`, and every exposure from then on is blocked with
 # probability `efficacy`. The entire intervention is one competing risk, which
-# is the shape #232's seam has to carry.
+# is the shape the seam has to carry.
 struct LeakyVaccine <: EpiBranch.AbstractIntervention
     efficacy::Float64
     from_time::Float64
@@ -60,7 +60,7 @@ function EpiBranch.resolve_individual!(::RouteSelectedBlock, ind, state)
     return (ind.state[:route_block_resolved] = true)
 end
 
-# A terminal clinical transition written outside the package (#373):
+# A terminal clinical transition written outside the package:
 # declares `terminal_target` alongside `is_terminal`/`terminal_event`, so
 # the `until`-coverage check can see it the same way it sees `Death`/`Recovery`.
 struct LostToFollowUp <: EpiBranch.AbstractClinicalTransition end

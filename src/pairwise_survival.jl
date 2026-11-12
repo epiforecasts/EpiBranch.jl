@@ -2158,9 +2158,8 @@ group(r::_ByComponent, host) = r.component[host]
 # stays -Inf regardless of what else would be added. A group's number widens
 # if a row adds a wider type than it currently holds: a covariate kernel may
 # hold its fitted parameters on only some rows, and the type probe behind the
-# initial `T` can miss them. `pairwise_surv_loglik`'s single running total
-# used to be a bare local and widened the same way for free; a vector element
-# cannot, which is why `_add!` below checks and widens explicitly instead.
+# initial `T` can miss them. A vector element cannot widen as a bare local
+# does, so `_add!` below checks and widens explicitly.
 struct _GroupTotals{T}
     ll::Vector{T}
     infeasible::Vector{Bool}
