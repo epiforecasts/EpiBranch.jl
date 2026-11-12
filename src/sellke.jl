@@ -814,7 +814,7 @@ does not.
 A step is read through [`produced_states`](@ref): the progression allows
 reinfection when any step declares `:susceptible_again`, whatever its
 `probability`. A custom step that sets `susceptible_again_time` without
-declaring the state is not seen.
+declaring the state is ignored.
 """
 function _allows_reinfection(state)
     return any(t -> :susceptible_again in produced_states(t), state.transitions)
