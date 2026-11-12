@@ -304,17 +304,17 @@ campaign is not read: the doses are given whether or not a case has triggered
 them.
 
 Vaccinating between generations approximates a model whose generations are
-calendar steps, as in a TSIR, where everyone vaccinated in a step is protected
-before the next generation's contacts are made. It agrees with the
+calendar steps, as in a TSIR, with everyone vaccinated in a step protected
+before the contacts of the next generation are made. It agrees with the
 individual-based simulation only when the budget reaches everyone in the
-window. That simulation gives the doses of a `BranchingProcess` only to
-contacts as they are created, so a budget below the number of contacts covers a
-share of contacts, not `doses / population`, and the counts will not agree.
+window. The simulation gives the doses of a `BranchingProcess` only to
+contacts as they are created. A budget below the number of contacts therefore
+covers a share of contacts, not `doses / population`, and the counts differ.
 The budget is also read per type here. In the mixing approximations the groups
-share one budget, and in the individual-based simulation the budget is per
-group when the groups are types and shared otherwise. Where the doses
-belong in the intervention specification is not settled, so how a budget is
-split between groups may change.
+share one budget. In the individual-based simulation the budget is per group
+when the groups are types and shared otherwise. The place of the doses in the
+intervention specification is undecided, and the split of a budget between
+groups may change.
 
 # Examples
 
