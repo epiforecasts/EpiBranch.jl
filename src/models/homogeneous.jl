@@ -167,36 +167,54 @@ caller (a bare process, or a `ModelSpec`). The infectious window's `from` state
 is resolved here from the composed `progression`.
 """
 function simulate_once(
-        model::HomogeneousProcess, sim_opts::SimOpts;
-        interventions, attributes, progression, observation, recorder, rng
+        model::HomogeneousProcess, sim_opts::SimOpts; layers...
     )
-    n_initial = sim_opts.n_initial
-    n_initial >= 1 || throw(ArgumentError("n_initial must be ≥ 1"))
-    n_initial <= model.population_size ||
-        throw(ArgumentError("n_initial cannot exceed population_size"))
-
-    from = something(model.from, infectious_from(progression))
-    β = model.transmission_rate
-
-    state = new_state(model, progression, attributes, rng)
-    add_individuals!(
-        state, model.population_size, interventions;
-        setup = (ind, i) -> nothing
-    )
-
     # Homogeneous mixing is mass action with a single group: every pair meets at
     # β/N, scaled by the two members' infectiousness and susceptibility. A
     # schedule stands for β itself, so the route's own rate is just 1/N and the
     # schedule supplies the calendar day's value.
+    β = model.transmission_rate
     N = model.population_size
+    return _simulate_mass_action(
+        model, sim_opts, (), _homogeneous_rate(β, N), _homogeneous_calendar(β);
+        layers...
+    )
+end
+
+"""
+    _simulate_mass_action(model, sim_opts, mixing_by, rate, calendar;
+                          interventions, attributes, progression, observation,
+                          recorder, rng)
+
+The race shared by the models that simulate as mass action among
+`model.population_size` members (`HomogeneousProcess`, `MixingProcess`). The
+model supplies only how members are grouped (`mixing_by`), the pairwise `rate`
+and the `calendar`; `new_state` and `transmission_risks` still dispatch on the
+concrete model type.
+"""
+function _simulate_mass_action(
+        model, sim_opts::SimOpts, mixing_by, rate, calendar;
+        interventions, attributes, progression, observation, recorder, rng
+    )
+    n_initial = sim_opts.n_initial
+    N = model.population_size
+    n_initial >= 1 || throw(ArgumentError("n_initial must be ≥ 1"))
+    n_initial <= N ||
+        throw(ArgumentError("n_initial cannot exceed population_size"))
+
+    from = something(model.from, infectious_from(progression))
+
+    state = new_state(model, progression, attributes, rng)
+    add_individuals!(
+        state, N, interventions;
+        setup = (ind, i) -> nothing
+    )
+
     members = collect(1:N)
     sellke_race!(
         state, members, rng, sim_opts;
         seed! = (best, _, r) -> (best[randperm(r, N)[1:n_initial]] .= 0),
-        targets = _MassAction(
-            state, members; rate = _homogeneous_rate(β, N),
-            calendar = _homogeneous_calendar(β), from
-        ),
+        targets = _MassAction(state, members; mixing_by, rate, calendar, from),
         from = from, until = model.until, interventions,
         risks = transmission_risks(model), recorder
     )
