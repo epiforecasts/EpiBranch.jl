@@ -1,0 +1,1 @@
+The inference tutorial has a section on fitting R and k to a daily case series with `IncidenceCounts`, showing the choice between `NormalApproximation` and `LognormalApproximation` and what the closed-form likelihood does and does not cover.
