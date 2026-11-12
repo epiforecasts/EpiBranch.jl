@@ -63,8 +63,8 @@ public pending_beyond
 # `MassAction` reach for a closed population (what `HomogeneousProcess` and
 # `MixingProcess` build), and the hazard schedule a pairwise likelihood reads
 # for it. `resume_route!` and `resumable_route` are the hooks a route
-# declaring `proposes_own_contacts` uses to redraw a window capped at the run's
-# time limit when a later `simulate(model, state; max_time)` resumes the race.
+# declaring `proposes_own_contacts` uses to redraw a window capped at the time
+# limit of the run when a later `simulate(model, state; max_time)` resumes the race.
 public MassAction
 public mass_action_schedule
 public resume_route!

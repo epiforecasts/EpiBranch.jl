@@ -1475,9 +1475,9 @@ Distributions.partype(s::_MassActionSchedule{Tt, Tv}) where {Tt, Tv} = promote_t
     mass_action_schedule(m, infectious_time, removal_time)
 
 The mass-action hazard schedule for a population: every window opening or
-closing, over whichever hosts and windows the caller gives (the whole
-population's own infectious windows for a plain `InfectionLayer`, or one
-route's for a routed one), folded into the running count between them. An open
+closing, over whichever hosts and windows the caller gives (the infectious
+windows of the whole population for a plain `InfectionLayer`, or those of one
+route for a routed one), folded into the running count between them. An open
 window with no recorded close (still infectious at the end of the data) never
 closes the count back down.
 """

@@ -2007,12 +2007,12 @@ Resume a cut race (`simulate`'s continuation method): redraw, from
 argument of [`propose_along`](@ref EpiBranch.propose_along); see
 [`pending_beyond`](@ref EpiBranch.pending_beyond)).
 
-The default is a no-op, right for a route that lists its targets and so never
+The default is a no-op, which suits a route that lists its targets and never
 caps a window. Redrawn contacts are submitted through `proposer`
 (`propose_along(proposer, ...)`). A wrapper around `route` that needs to see
 them, such as a tracing wrapper recording what the race considers, passes
-itself as `proposer` rather than letting the redraw bypass it. A route
-overriding this must also declare it with
+itself as `proposer` so that the redraw does not bypass it. A route that
+overrides this must also declare it with
 [`resumable_route`](@ref EpiBranch.resumable_route).
 """
 resume_route!(route, race, ri, old_max_time, traits, proposer = route) = nothing
@@ -2021,10 +2021,10 @@ resume_route!(route, race, ri, old_max_time, traits, proposer = route) = nothing
     resumable_route(route) -> Bool
 
 Whether `route` has a [`resume_route!`](@ref EpiBranch.resume_route!) method of
-its own, so a race it leaves with a pending window
-([`pending_beyond`](@ref EpiBranch.pending_beyond)) can be redrawn on resume
-rather than silently dropped by the no-op default. Defaults to `false`; a route
-that declares [`proposes_own_contacts`](@ref EpiBranch.proposes_own_contacts)
+its own. If it does, a race the route leaves with a pending window
+([`pending_beyond`](@ref EpiBranch.pending_beyond)) is redrawn on resume
+instead of being silently dropped by the no-op default. Defaults to `false`; a
+route that declares [`proposes_own_contacts`](@ref EpiBranch.proposes_own_contacts)
 and a non-default `pending_beyond` overrides both. A wrapper forwards it to the
 route it wraps.
 """
