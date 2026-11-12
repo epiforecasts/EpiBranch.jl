@@ -157,7 +157,8 @@ function symptom_efficacy(ind::Individual; dose_label::Symbol = :default)
 end
 
 """Whether the case never develops symptoms, because it was drawn as
-asymptomatic or because a vaccine dose with a `symptom_efficacy` kept it from
+asymptomatic or because protection (a vaccine dose with a `symptom_efficacy`,
+or [`prevent_symptoms!`](@ref EpiBranch.prevent_symptoms!)) kept it from
 developing them."""
 function is_asymptomatic(ind::Individual)
     return get(ind.state, :asymptomatic, false)::Bool || _symptoms_prevented(ind)
@@ -791,16 +792,52 @@ function clear_isolated!(ind::Individual)
     return nothing
 end
 
-# Day from which a dose's protection against symptoms applies: the earliest
-# immunity day among the doses whose symptom draw succeeded (`Inf` if none).
-# Kept as one entry to avoid scanning the state when reading symptom status.
-_symptom_protection_time(ind::Individual{T}) where {T} =
-    _state_real(ind.state, :symptom_protection_from, T(Inf))
+# Key for protection recorded through `prevent_symptoms!`, kept apart from the
+# per-dose vaccine entries so that withdrawing a dose does not drop it.
+const _SYMPTOM_PREVENTED_KEY = :symptom_prevented_from
 
-# Rebuild the entry above from the per-dose entries, and the onset that
-# depends on it. Called when a dose is recorded or withdrawn.
+"""
+    symptoms_prevented_time(ind)
+
+Day from which protection against symptoms applies to the person, in days
+since the start of the outbreak (`Inf` if nothing protects them): the earliest
+of the protection recorded by [`prevent_symptoms!`](@ref
+EpiBranch.prevent_symptoms!) and that of any vaccine dose whose
+`symptom_efficacy` draw succeeded. Whether it keeps a given case from
+developing symptoms depends on when the case would have had onset; see
+[`is_asymptomatic`](@ref).
+"""
+function symptoms_prevented_time(ind::Individual{T}) where {T}
+    return _state_real(ind.state, :symptom_protection_from, T(Inf))
+end
+
+"""
+    prevent_symptoms!(ind, from)
+
+Record that something protects the person against symptoms from day `from`:
+a case whose symptom onset would come at or after `from` never develops
+symptoms (it counts as [`is_asymptomatic`](@ref) and has no
+[`onset_time`](@ref)), as with a vaccine dose with a `symptom_efficacy`. For
+intervention authors, such as an antiviral that prevents symptoms: call it
+from an intervention hook for any person, whether or not they are infected
+yet. If it is called more than once, the earliest `from` counts. Unlike
+[`abort_infection!`](@ref EpiBranch.abort_infection!), the infection carries
+on, so the person stays infectious.
+"""
+function prevent_symptoms!(ind::Individual{T}, from::Real) where {T}
+    ind.state[_SYMPTOM_PREVENTED_KEY] = min(
+        _state_real(ind.state, _SYMPTOM_PREVENTED_KEY, T(Inf)), T(from)
+    )
+    _refresh_symptom_protection!(ind)
+    return nothing
+end
+
+# Rebuild the combined entry read by `symptoms_prevented_time` from the
+# per-dose entries and the `prevent_symptoms!` entry, and the onset that
+# depends on it. Kept as one entry to avoid scanning the state when reading
+# symptom status. Called when protection is recorded or withdrawn.
 function _refresh_symptom_protection!(ind::Individual{T}) where {T}
-    earliest = T(Inf)
+    earliest = _state_real(ind.state, _SYMPTOM_PREVENTED_KEY, T(Inf))
     for (key, value) in ind.state
         value isa Real || continue
         startswith(String(key), "symptom_protection_time") || continue
@@ -820,5 +857,5 @@ end
 function _symptoms_prevented(ind::Individual)
     haskey(ind.state, :symptom_protection_from) || return false
     inc = _state_real(ind.state, :incubation_period, NaN)
-    return _symptom_protection_time(ind) <= ind.infection_time + inc
+    return symptoms_prevented_time(ind) <= ind.infection_time + inc
 end

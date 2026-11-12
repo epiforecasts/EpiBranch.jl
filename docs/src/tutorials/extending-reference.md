@@ -84,7 +84,8 @@ underscore are internal.
 | `:severity_efficacy[_<label>]` | `Float64` | — | `AbstractVaccination` | When a dose is admitted |
 | `:symptom_efficacy[_<label>]` | `Float64` | — | `AbstractVaccination` | When a dose is admitted |
 | `:symptom_protection_time[_<label>]` | `Float64` | — | `AbstractVaccination` (when the dose's symptom draw succeeds) | When a dose is admitted |
-| `:symptom_protection_from` | `Float64` | — | `AbstractVaccination`, derived from the per-dose `:symptom_protection_time` entries (the earliest) | When a dose is admitted or removed; do not write it from an intervention |
+| `:symptom_prevented_from` | `Float64` | — | Any intervention, through `prevent_symptoms!` | Any intervention hook |
+| `:symptom_protection_from` | `Float64` | — | Derived from the per-dose `:symptom_protection_time` entries and `:symptom_prevented_from` (the earliest) | When a dose is admitted or removed, or `prevent_symptoms!` is called; do not write it from an intervention, call `prevent_symptoms!` and read it through `symptoms_prevented_time` |
 | `:coverage_declined[_<label>]` | `Bool` | `false` | `MassVaccination`, `GroupVaccination` | When a dose is offered and declined |
 | `:infection_aborted_time` | `Float64` | — | Simulation, through `abort_infection!` (for example by `RingVaccination`'s `post_exposure_efficacy`) | Any intervention hook |
 | `:_settled` | `Bool` | `false` | Simulation (action delivery) | Once a case's own round of action discovery has run; internal, read through `is_settled` |
@@ -1027,6 +1028,7 @@ before.
 | To add | You write | Used |
 |---|---|---|
 | An intervention | A type `<: AbstractIntervention` and hook methods | Once per case, and per infector–contact pair for `competing_risk` |
+| Preventing symptoms | `EpiBranch.prevent_symptoms!(ind, from)` from an intervention hook | In that hook |
 | Ending an infection early | `EpiBranch.abort_infection!(ind, time)` from an intervention hook | In that hook |
 | A vaccination | A type `<: AbstractVaccination` holding a `VaccineEffect`, with `vaccine_effect` and `intervention_actions` | Once per case |
 | A vaccine effect mode | A type `<: AbstractEffectMode` and `realised_efficacy`; `realise_prior_dose!` only to change what a dose recorded before the run gets | When a dose is recorded, or when a person is created |

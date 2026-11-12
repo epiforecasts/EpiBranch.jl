@@ -769,6 +769,8 @@ intervention_time
 EpiBranch.reset!
 EpiBranch.abort_infection!
 EpiBranch.infection_aborted_time
+EpiBranch.prevent_symptoms!
+EpiBranch.symptoms_prevented_time
 set_isolated!
 clear_isolated!
 ```
