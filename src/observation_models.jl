@@ -98,8 +98,7 @@ function PerCaseObservation(;
     return PerCaseObservation(detection_prob, delay, from)
 end
 
-# Two-argument positional form preserved for terse callers — uses the
-# default :onset_time anchor.
+# Two-argument positional form, anchored at the default `:onset_time`.
 function PerCaseObservation(detection_prob, delay)
     return PerCaseObservation(; detection_prob, delay)
 end
