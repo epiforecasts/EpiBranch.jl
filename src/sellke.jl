@@ -308,9 +308,9 @@ end
     infinite_draw_is_final(kernel) -> Bool
 
 Whether an infinite answer from `invlogccdf(kernel, lp)` is the kernel's own
-verdict that the draw never happens (it has mass at infinity), so the race
-need not retrace it by bisection. The default is `false`, which is right for
-a named distribution: its survival reaches zero at infinity and an infinite
+verdict that the draw never happens (it has mass at infinity). The race then
+need not retrace it by bisection. The default is `false`, which suits a named
+distribution: its survival reaches zero at infinity, and an infinite
 `invlogccdf` there is only a failure to invert. A kernel written outside
 the package that inverts by itself and returns `Inf` once its total hazard
 is exhausted declares `EpiBranch.infinite_draw_is_final(::MyKernel) = true`.
