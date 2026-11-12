@@ -474,7 +474,7 @@ The estimate is close to the 4 days the outbreak was simulated with.
     recorded in the data, and the likelihood allows for it. Isolation that
     still lets some transmission through is recorded too, as a stretch of
     reduced rather than zero hazard, which both `pairwise_surv_loglik` and
-    `loglikelihood(data, model)` evaluate.
+    `loglikelihood(data, model)` evaluate it.
 
 !!! warning "Removals must not depend on who infected whom"
     The likelihood takes each person's removal time and vaccination dates as

@@ -364,7 +364,7 @@ weekly steps from day 0; every series' `data` holds one value per step
 (`length(steps) - 1`).
 
 Pass it to `loglikelihood` with a model: several series observed together
-need one simulated path whose likelihood is evaluated against all of them, because separate `~`
+need one simulated path shared by all of them, because separate `~`
 statements in Turing would simulate a fresh outbreak for each. Unlike
 [`IncidenceCounts`](@ref) and the chain-size and chain-length data, there is
 no closed form here yet, only simulation.

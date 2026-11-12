@@ -463,7 +463,7 @@ A [`Signal`](@ref) reads a population quantity off a simulated
 [`SimulationState`](@ref) over a reporting step: [`TransitionCount`](@ref)
 (new cases per step) or [`Prevalence`](@ref) (cases currently in a state).
 [`SignalData`](@ref) pairs several of these, each with a measurement density
-of your own, and evaluates all their likelihoods on the same simulated path, rather
+of your own, and evaluates their likelihoods on one shared simulated path, rather
 than letting separate `~` statements each simulate their own outbreak:
 
 ```julia
