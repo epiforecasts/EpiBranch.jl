@@ -256,7 +256,9 @@ age, see [Who triggers contact tracing](@ref).
 
 A fraction `prob_asymptomatic` of cases never develop symptoms, and
 symptom-driven isolation misses them. Here asymptomatic cases are as
-infectious as symptomatic ones. `test_sensitivity` is the probability that a
+infectious as symptomatic ones, as `clinical_presentation` assumes by default.
+The end of this section shows how to lower it.
+`test_sensitivity` is the probability that a
 symptomatic case tests positive and is isolated; the rest are missed:
 
 ```@example interventions
@@ -282,6 +284,20 @@ asks for symptoms as well as isolation. Not one contact of an asymptomatic
 case is traced in these runs, quarantined or not. Leaving out the contacts
 still undecided when a run reached the cap, the contacts of asymptomatic
 cases are the largest block of untraced contacts: 27,830 of 52,373.
+
+To make asymptomatic cases less infectious, list `transmission_traits` after `clinical_presentation`, with an infectiousness that depends on whether the case is asymptomatic:
+
+```julia
+disease_less_infectious = [
+    clinical_presentation(
+        incubation_period = LogNormal(1.5, 0.5),
+        prob_asymptomatic = 0.3,
+    ),
+    transmission_traits(infectiousness = (rng, ind) -> ind.state[:asymptomatic] ? 0.5 : 1.0),
+]
+```
+
+Use `transmission_traits` for traits known when the case is created (age, sex, whether the case is asymptomatic), because it draws its factor then. A change during the infection, such as tracing or quarantine, needs an intervention. Combining the two is tracked in #972.
 
 ## Contact tracing workload
 

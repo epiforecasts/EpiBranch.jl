@@ -108,47 +108,26 @@ end
 # seeded results, through the same heap, as it did before per-contact risks
 # existed.
 
-# Whether `f` has a method for `argtypes` more specific than the fallback defined
-# on `base`, i.e. whether a type has implemented a hook itself.
-function _has_own_method(f, T::Type, base::Type)
+# Whether `f` has a method for `T` more specific than the fallback defined on
+# `base`, i.e. whether a type has implemented a hook itself. With `n`, the
+# method must also be callable with exactly `n` arguments (the hook itself
+# counted among them). A hook written for `T` with the wrong arity is listed
+# by `methods` like one with the right arity, but an exact-arity call never
+# resolves to it, and it does not count.
+function _has_own_method(f, T::Type, base::Type, n::Union{Int, Nothing} = nothing)
     # `methods` rather than `which`, which finds only a method whose parameters
     # accept `Any`: an intervention that types its hook's arguments, as the style
     # guide asks, has one `which` looks straight past.
     # Julia 1.10 also lists the less specific methods `T` falls back on, so only
     # a method narrower than `base` counts.
+    arities = n === nothing ? nothing : (n,)
     return any(methods(f, Tuple{T, Vararg{Any}})) do mm
-        p = Base.unwrap_unionall(mm.sig).parameters[2]
-        p isa TypeVar && (p = p.ub)
-        p isa Type || return false
-        p !== base && p <: base
-    end
-end
-
-# As above, but also requiring the method to be callable with exactly `n`
-# arguments (the hook itself counted among them): a hook written for `T` with
-# the wrong arity turns up under `methods` here, same as one with the right
-# arity, but is never the method an exact-arity call resolves to, so it does
-# not count. A trailing `args...` is handled separately, since it is reachable
-# at any arity its minimum allows, rather than the one `methods` lists it
-# under.
-function _has_own_method(f, T::Type, base::Type, n::Int)
-    return any(methods(f, Tuple{T, Vararg{Any}})) do mm
-        params = Base.unwrap_unionall(mm.sig).parameters
-        if Base.isvarargtype(params[end])
-            # A trailing `Vararg` in a method signature is always open-ended:
-            # Julia expands a counted one, so `f(x::Int, ::Vararg{Any, 2})`
-            # has three fixed parameters and no vararg at all. Such a method
-            # is reachable at any arity its fixed arguments allow.
-            n + 1 >= length(params) - 1 || return false
-        else
-            length(params) == n + 1 || return false
-        end
-        p = params[2]
-        p isa TypeVar && (p = p.ub)
-        # A hook written with every argument variadic leaves a `Vararg` here
-        # rather than a type, and says nothing about any one intervention.
-        p isa Type || return false
-        p !== base && p <: base
+        # A hook written with every argument variadic has no type here, and
+        # says nothing about any one intervention.
+        hook = _hook_method(mm, arities)
+        hook === nothing && return false
+        p, called = hook
+        return called && p !== base && p <: base
     end
 end
 
@@ -165,7 +144,6 @@ function _hook_owner(f, iv::AbstractIntervention)
     return iv
 end
 
-_innermost(iv::InterventionWrapper) = _innermost(iv.intervention)
 _innermost(iv::AbstractIntervention) = iv
 
 # Whether an intervention discovers actions of its own, which the race offers
@@ -247,10 +225,10 @@ _at(p::_Pending, t) = _Pending(p.opening, p.chain, t, p.queued)
 
 # The kernel of one pair on the route numbered `route`.
 function _route_pair_kernel(rts, route, infector_id, target_id, state)
-    for (ri, (_, route_targets)) in enumerate(rts)
-        ri == route && return _pair_kernel(route_targets, infector_id, target_id, state)
-    end
-    return nothing
+    return _on_route(
+        (_, route_targets) -> _pair_kernel(route_targets, infector_id, target_id, state),
+        rts, route
+    )
 end
 
 # The kernel of one pair on one route, asked of the model again. Only a blocked
@@ -346,6 +324,23 @@ function _bisect_log_survival(kernel, lp)
     return
 end
 
+# A blocked pair cannot be redrawn when its window never closes, because the
+# remaining integrated hazard is then infinite.
+const _UNBOUNDED_HAZARD = """
+repeated contacts after a blocked proposal require finite remaining \
+integrated hazard. Close the infectious or introduction window before the \
+kernel survival reaches zero, or encode static protection in the contact \
+kernel or host traits. The likely cause is a case whose infectious window \
+never closes: either the progression has no terminal transition reaching \
+one of `until`'s states, or one is reachable but gated so that some cases \
+reach none of them (see `exclusive_probabilities`). A window closed only \
+by `INTERVENTION_REMOVAL` reaches this too when the case's isolation or \
+quarantine is due to lapse, since only a removal that stands for the rest \
+of the infectious period closes the window by itself. A component whose \
+certain block is in force also lands here until it declares \
+`binding_release`, which is what lets the race read the release it \
+reports."""
+
 # The pair's next contact after the one at `dt`, as a time from the window
 # opening: the same `m`-scaled hazard, conditioned on falling later than `dt`.
 # Its survival above `dt` is `(S(t)/S(dt))^m`, so one uniform `U` puts the next
@@ -374,30 +369,16 @@ function _next_contact(
         return isfinite(logccdf(kernel, certain_until)) ?
             _draw_next_contact(rng, kernel, m, ls, dt) : oftype(ls, Inf)
     end
-    isfinite(logccdf(kernel, end_dt)) || throw(
-        ArgumentError(
-            "repeated contacts after a blocked proposal require finite remaining " *
-                "integrated hazard. Close the infectious or introduction window before " *
-                "the kernel survival reaches zero, or encode static protection in the " *
-                "contact kernel or host traits. The likely cause is a case whose " *
-                "infectious window never closes — either the progression has no " *
-                "terminal transition reaching one of `until`'s states, or one is " *
-                "reachable but gated so that some cases reach none of them (see " *
-                "`exclusive_probabilities` for terminal transitions meant to " *
-                "partition the population exactly). A window closed only by " *
-                "`INTERVENTION_REMOVAL` reaches this too when the case's " *
-                "isolation or quarantine is due to lapse, since only a removal " *
-                "that stands for the rest of the infectious period closes the " *
-                "window by itself. A component whose certain block is in force " *
-                "also lands here until it declares `binding_release`, which is " *
-                "what lets the race read the release it reports."
-        )
-    )
+    isfinite(logccdf(kernel, end_dt)) || throw(ArgumentError(_UNBOUNDED_HAZARD))
     return _draw_next_contact(rng, kernel, m, ls, dt)
 end
 
+# One draw at the `m`-scaled survival below `exp(ls)`.
+_draw_below(rng::AbstractRNG, kernel, m::Real, ls) =
+    _time_at_log_survival(kernel, ls + log(rand(rng)) / m)
+
 function _draw_next_contact(rng::AbstractRNG, kernel, m::Real, ls, dt)
-    nxt = _time_at_log_survival(kernel, ls + log(rand(rng)) / m)
+    nxt = _draw_below(rng, kernel, m, ls)
     return nxt > dt ? nxt : Inf
 end
 
@@ -431,7 +412,6 @@ without it, a certain block raises an `ArgumentError` instead of silently
 dropping transmission that could still happen.
 """
 standing_block(source) = false
-standing_block(w::InterventionWrapper) = standing_block(w.intervention)
 # An abort is recorded on the infector and never withdrawn, so the block it
 # composes lasts as long as the infector does.
 standing_block(::AbortedInfection) = true
@@ -484,9 +464,7 @@ binding_release(::HostImmunity) = true
 # Necessary for a standing block but not sufficient, which is what
 # `standing_block` adds.
 function _standing_risk(risk::Risk, transmission_time)
-    return risk.event_time isa Real && risk.event_time <= transmission_time &&
-        risk.block_probability isa Real && risk.block_probability >= 1.0 &&
-        risk.release_time isa Real && isinf(risk.release_time)
+    return _in_force_certainly(risk, transmission_time) && isinf(risk.release_time)
 end
 
 # Whether `source` contributes a standing risk against this pair: it declares
@@ -1332,23 +1310,14 @@ function _sellke_race_typed!(
             _with_action_sink(state, action_sink) do
                 _fire_action!(admitter, state, action)
             end
-            if live && _records_changed!(
-                    snapshot, watched_keys, key_routes, state, members,
-                    0, bt, watch, openings, processed,
-                    full_snapshot, route_projections, route_names
+            live && (
+                orphans = _redraw_if_moved!(
+                    orphans, 0, bt, queue, proposals, head, best, represents,
+                    snapshot, watched_keys, key_routes, state, members, watch,
+                    openings, processed, full_snapshot, route_projections,
+                    route_names, pos, rts, pops, passed, rng, reinfects
                 )
-                orphans += _redraw_moved!(
-                    queue, proposals, head, best, represents,
-                    watch, openings, processed, pos, rts, state, bt, pops, passed, rng,
-                    reinfects
-                )
-                if orphans > max(m, length(proposals) ÷ 2)
-                    _compact_proposals!(
-                        queue, proposals, head, best, represents, processed, reinfects
-                    )
-                    orphans = 0
-                end
-            end
+            )
             continue
         end
         # Only a redraw of a live kernel reads which pops happened at this clock.
@@ -1563,16 +1532,13 @@ function _sellke_race_typed!(
         # records. A model with no such route (`self_proposing`, computed
         # once above) skips this pass outright, rather than walking every
         # route only to find none of them match it.
+        open_ctx = (;
+            race, ind, members, openings, j, max_generation, close_keys,
+            removable, watch, live, live_route, route_projections,
+            full_snapshot, traits, route_interventions,
+        )
         self_proposing && (
-            capped_generation = _open_routes!(
-                rts,
-                (;
-                    race, ind, members, openings, j, max_generation, close_keys,
-                    removable, watch, live, live_route, route_projections,
-                    full_snapshot, traits, route_interventions,
-                ),
-                capped_generation, true
-            )
+            capped_generation = _open_routes!(rts, open_ctx, capped_generation, true)
         )
         traced = _trace_from!(
             state, ind, typed_interventions, case_contacts, pos, tracing
@@ -1602,21 +1568,14 @@ function _sellke_race_typed!(
         # already drawn still come from the hazards in force, so the race takes
         # the ordinary path. Either way this case's own openings are drawn
         # inline below, from the records as they now stand.
-        if live && _records_changed!(
-                snapshot, watched_keys, key_routes, state, members,
-                j, bt, watch, openings, processed,
-                full_snapshot, route_projections, route_names
+        live && (
+            orphans = _redraw_if_moved!(
+                orphans, j, bt, queue, proposals, head, best, represents,
+                snapshot, watched_keys, key_routes, state, members, watch,
+                openings, processed, full_snapshot, route_projections,
+                route_names, pos, rts, pops, passed, rng, reinfects
             )
-            orphans += _redraw_moved!(
-                queue, proposals, head, best, represents,
-                watch, openings, processed, pos, rts, state, bt, pops, passed, rng,
-                reinfects
-            )
-            if orphans > max(m, length(proposals) ÷ 2)
-                _compact_proposals!(queue, proposals, head, best, represents, processed, reinfects)
-                orphans = 0
-            end
-        end
+        )
 
         # Each route opens and closes on its own states, so a case can still be
         # transmitting on one while another has been cut. A route whose `from`
@@ -1626,15 +1585,7 @@ function _sellke_race_typed!(
         # when every route proposes its own contacts (`listed_routes`), for the
         # reason given above the early pass.
         listed_routes && (
-            capped_generation = _open_routes!(
-                rts,
-                (;
-                    race, ind, members, openings, j, max_generation, close_keys,
-                    removable, watch, live, live_route, route_projections,
-                    full_snapshot, traits, route_interventions,
-                ),
-                capped_generation, false
-            )
+            capped_generation = _open_routes!(rts, open_ctx, capped_generation, false)
         )
     end
     return _finish_race!(
@@ -2481,7 +2432,7 @@ end
 function _draw_beyond(rng::AbstractRNG, kernel, m::Real, after)
     ls = logccdf(kernel, after)
     isfinite(ls) || return oftype(float(after), Inf)
-    return _time_at_log_survival(kernel, ls + log(rand(rng)) / m)
+    return _draw_below(rng, kernel, m, ls)
 end
 
 # A record that moved changes only the pairs it enters: those of an open opening
@@ -2560,31 +2511,28 @@ function _redraw_moved!(
         opening = openings[oi]
         source = state.individuals[opening.infector]
         passed_since = _passed_since(pops, passed, oi)
-        for (ri, (_, targets)) in enumerate(rts)
-            ri == opening.route || continue
-            for (id, kernel) in targets(opening.infector, state)
-                j = get(pos, id, 0)
-                (j == 0 || (processed[j] && !reinfects)) && continue
-                members_hit === nothing || j in members_hit || continue
-                m = source.infectiousness * state.individuals[id].susceptibility
-                m <= 0 && continue
-                pair_rng = stream(rng, (opening.infector, id), (:contact, opening.route))
-                lower = now - opening.open_t - slack
-                dt = lower <= 0 ? _traits_scaled_draw(pair_rng, kernel, m) :
-                    _draw_beyond(pair_rng, kernel, m, lower)
-                # The next contact after one in the past is the same hazard
-                # conditioned on falling later, so this draws exactly given no
-                # contact before `now`, or none up to it once `now` is resolved.
-                resolved = j <= passed_since
-                while opening.open_t + dt < now || (resolved && opening.open_t + dt == now)
-                    dt = _draw_beyond(pair_rng, kernel, m, dt)
-                end
-                candidate = opening.open_t + dt
-                candidate <= opening.close_t || continue
-                _propose!(
-                    queue, proposals, head, best, represents, j, oi, candidate, true
-                )
+        for (id, kernel) in _on_route((_, t) -> t(opening.infector, state), rts, opening.route)
+            j = get(pos, id, 0)
+            (j == 0 || (processed[j] && !reinfects)) && continue
+            members_hit === nothing || j in members_hit || continue
+            m = source.infectiousness * state.individuals[id].susceptibility
+            m <= 0 && continue
+            pair_rng = stream(rng, (opening.infector, id), (:contact, opening.route))
+            lower = now - opening.open_t - slack
+            dt = lower <= 0 ? _traits_scaled_draw(pair_rng, kernel, m) :
+                _draw_beyond(pair_rng, kernel, m, lower)
+            # The next contact after one in the past is the same hazard
+            # conditioned on falling later. The draw is therefore exact given
+            # no contact before `now`, or none up to it once `now` is resolved.
+            resolved = j <= passed_since
+            while opening.open_t + dt < now || (resolved && opening.open_t + dt == now)
+                dt = _draw_beyond(pair_rng, kernel, m, dt)
             end
+            candidate = opening.open_t + dt
+            candidate <= opening.close_t || continue
+            _propose!(
+                queue, proposals, head, best, represents, j, oi, candidate, true
+            )
         end
     end
     # Each member's earliest proposal, kept or new, takes its place in the heap.
@@ -2592,6 +2540,33 @@ function _redraw_moved!(
         _requeue!(queue, proposals, head, best, represents, j)
     end
     return unlinked
+end
+
+# After the case at position `case` settled at `now` (0 for a deferred action's
+# own event), redraw the pending contacts of any record that moved, and
+# compact the proposals once enough of them are orphaned. Returns the updated
+# orphan count.
+function _redraw_if_moved!(
+        orphans, case, now, queue, proposals, head, best, represents,
+        snapshot, watched_keys, key_routes, state, members, watch,
+        openings, processed, full_snapshot, route_projections,
+        route_names, pos, rts, pops, passed, rng, reinfects
+    )
+    _records_changed!(
+        snapshot, watched_keys, key_routes, state, members,
+        case, now, watch, openings, processed,
+        full_snapshot, route_projections, route_names
+    ) || return orphans
+    orphans += _redraw_moved!(
+        queue, proposals, head, best, represents,
+        watch, openings, processed, pos, rts, state, now, pops, passed, rng,
+        reinfects
+    )
+    if orphans > max(length(members), length(proposals) ÷ 2)
+        _compact_proposals!(queue, proposals, head, best, represents, processed, reinfects)
+        orphans = 0
+    end
+    return orphans
 end
 
 # Rebuild `proposals` and the heap from the proposals still linked to members

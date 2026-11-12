@@ -362,6 +362,7 @@ containment_probability
 is_extinct
 generation_R
 weekly_incidence
+summarise
 scenario_sweep
 ```
 
