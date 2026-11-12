@@ -1621,7 +1621,7 @@ Give each person a susceptibility and an infectiousness. Pass the result as
 - `infectiousness`: probability that each contact the person makes once
   infected leads to infection, so 0.5 halves the number they infect.
 
-The factor is drawn once, when the case is created, so it cannot depend on
+The factor is drawn once, when the case is created, and cannot depend on
 anything that happens later. To reduce transmission from the time of an event
 such as tracing or isolation, use an intervention (its
 [`transmission_risks`](@ref EpiBranch.transmission_risks) and

@@ -1,6 +1,6 @@
 # Making some cases more or less infectious
 
-Every route below sets one quantity: the rate at which a case infects others at each time since its infection. That rate is a baseline, multiplied by a factor for the person and by factors that events switch on. The package offers four places to set it, and which one applies depends on what makes the case different. Start from the question and follow it to the place.
+Every route below sets one quantity: the rate at which a case infects others at each time since its infection. That rate is a baseline, multiplied by a factor for the person and by factors that events switch on. The package has four places to set it. Which one applies depends on what makes the case different.
 
 | What makes the case different? | Where to set it |
 |---|---|
@@ -28,15 +28,15 @@ The factor cannot depend on anything that happens after the case is created. For
 
 ## Tied to disease state: `Infectiousness` windows
 
-An [`Infectiousness`](@ref) window says between which states of the natural history a case transmits by one route, with its own offspring distribution. A case that transmits only once infectious, or by a funeral route after death, is described here, not by a factor. Several windows with different names give several routes.
+An [`Infectiousness`](@ref) window says between which states of the natural history a case transmits by one route, with its own offspring distribution. A case that transmits only once infectious, or by a funeral route after death, is described here. Several windows with different names give several routes.
 
 ## Triggered by an event: interventions
 
-An intervention reduces transmission from the time an event occurs, through its `transmission_risks` and `competing_risk` methods. [`Isolation`](@ref) and quarantine work this way: the factor applies from isolation, not from infection. A case traced at day 4 and made half as infectious from then on needs an intervention, because `transmission_traits` cannot see the tracing. See [Writing an intervention](@ref) for how to write one, and [Isolation and contact tracing](@ref) for those that exist.
+An intervention reduces transmission from the time an event occurs, through its `transmission_risks` and `competing_risk` methods. [`Isolation`](@ref) and quarantine work this way: the factor applies from isolation onwards. A case traced at day 4 and made half as infectious from then on needs an intervention, because `transmission_traits` cannot see the tracing. See [Writing an intervention](@ref) for how to write one, and [Isolation and contact tracing](@ref) for those that exist.
 
 ## About timing: the generation time
 
-The generation time, or the `kernel` of an `Infectiousness` window, can be any distribution or any function `ind -> Distribution`. It sets when a case's infections happen, not how many there are. Use it for infectiousness that peaks early or late, or that differs by person in its timing.
+The generation time, or the `kernel` of an `Infectiousness` window, can be any distribution or any function `ind -> Distribution`. It sets when the infections of a case happen and leaves their number unchanged. Use it for infectiousness that peaks early or late, or that differs by person in its timing.
 
 ## Combining them
 
