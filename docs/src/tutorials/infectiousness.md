@@ -32,7 +32,7 @@ An [`Infectiousness`](@ref) window says between which states of the natural hist
 
 ## Triggered by an event: interventions
 
-An intervention reduces transmission from the time an event occurs, through its `transmission_risks` and `competing_risk` methods. [`Isolation`](@ref) and quarantine work this way: the factor applies from isolation onwards. A case traced at day 4 and made half as infectious from then on needs an intervention, because `transmission_traits` cannot see the tracing. See [Writing an intervention](writing-interventions.md) for how to write one, and [Isolation and contact tracing](interventions.md) for those that exist.
+An intervention reduces transmission from the time an event occurs, through its `transmission_risks` and `competing_risk` methods. [`Isolation`](@ref) and quarantine work this way: the factor applies from isolation onwards. A case traced at day 4 and made half as infectious from then on needs an intervention, because `transmission_traits` cannot see the tracing. [Writing an intervention](writing-interventions.md) explains how to write one, and [Isolation and contact tracing](interventions.md) covers the existing ones.
 
 ## About timing: the generation time
 
