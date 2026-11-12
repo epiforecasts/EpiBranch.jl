@@ -109,10 +109,10 @@ end
 # existed.
 
 # The answer changes only when a method is defined, which advances the world
-# counter. Answers are kept until the counter moves. The race asks on every run
-# and a method-table search is a large share of a small outbreak. Checking the
-# counter on each call finds a hook defined outside the package after it was
-# loaded.
+# counter, so answers are cached until the counter moves. The race asks on every
+# run, and searching the method table takes a large share of the time in a small
+# outbreak. The counter is checked on each call so that a hook defined outside
+# the package after it was loaded is still found.
 const _OWN_METHOD_CACHE = Dict{Tuple{Any, Type, Type, Union{Int, Nothing}}, Bool}()
 const _OWN_METHOD_WORLD = Ref{UInt}(0)
 const _OWN_METHOD_LOCK = ReentrantLock()
