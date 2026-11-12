@@ -945,7 +945,7 @@ settled member is ever offered again.
 `max_time` ends the race at that time: individuals whose infection would fall
 later are left uninfected, and the state is exactly the full run's state
 restricted to infections up to `max_time`. The exception is a mass-action route
-(`_MassAction`) whose infectious window never closes, which samples its contacts
+(`MassAction`) whose infectious window never closes, which samples its contacts
 only up to `max_time`: there the cut run is a draw of the same process rather
 than the same draw. Returns `true` when the race ran
 until no candidate infection remained (the population reached extinction) and
@@ -1231,7 +1231,7 @@ function _sellke_race_typed!(
         end
     else
         # A route that samples its own contacts rather than listing them
-        # (`_MassAction`) only drew them up to the race's own time limit where
+        # (`MassAction`) only drew them up to the race's own time limit where
         # its window never closes, and remembered which group pairs it cut
         # short (see `propose_along`'s `capped`). Resuming redraws exactly
         # those, from the limit the previous call stopped at: the exponential
@@ -1239,7 +1239,7 @@ function _sellke_race_typed!(
         # extended window is the same draw as sampling the whole window at
         # once would have been.
         for (ri, (_, route_targets)) in enumerate(rts)
-            _resume_route!(route_targets, race, ri, resume.max_time, traits)
+            resume_route!(route_targets, race, ri, resume.max_time, traits)
         end
     end
 
@@ -1570,15 +1570,15 @@ function _finish_race!(
         race.state.continuation = nothing
         _return_buffers!(race.buffers)
     else
-        # A route reporting a pending window but no working `_resume_route!`
+        # A route reporting a pending window but no working `resume_route!`
         # would otherwise lose its leftover contacts without warning the
         # moment `simulate(model, state; max_time)` resumes this race.
         for (_, route_targets) in rts
-            _pending_beyond(route_targets, race) && !_resumable_route(route_targets) &&
+            _pending_beyond(route_targets, race) && !resumable_route(route_targets) &&
                 throw(
                 ArgumentError(
                     "route `$(nameof(typeof(route_targets)))` reports pending_beyond " *
-                        "but has no matching `_resume_route!`, so the contacts its " *
+                        "but has no matching `resume_route!`, so the contacts its " *
                         "capped window still owes cannot be redrawn on resume; " *
                         "`simulate(model, state; max_time)` cannot continue this race"
                 )
@@ -1650,7 +1650,7 @@ _return_buffers!(b::_RaceBuffers) = _return_pooled!(b)
 A race cut off by `max_time`, a stopping rule or `max_generation`, kept on
 [`SimulationState`](@ref)'s `continuation` field so [`simulate`](@ref)'s
 continuation method can resume where it stopped: the routes it was running,
-with whatever bookkeeping a route keeps on itself (such as `_MassAction`'s
+with whatever bookkeeping a route keeps on itself (such as `MassAction`'s
 cut group pairs), the members it raced over, its `contacts`/`introduction`/
 `watches`/`projections`, the case and generation caps besides `max_time`
 itself, and the buffers its queue and every other pending proposal live in.
@@ -1830,7 +1830,7 @@ the race to walk as `(target_id, kernel)` pairs (an adjacency list, or
 anything callable that way). `false` by default. Declare `true` for a route
 whose contacts are cheaper to sample than to list, such as a spatial kernel
 over a large population or contact with everyone in an area: mass action
-(`_MassAction`) declares it for exactly this reason. A route declaring `true`
+(`MassAction`) declares it for exactly this reason. A route declaring `true`
 must also implement [`propose_along`](@ref EpiBranch.propose_along) and
 [`route_pair_kernel`](@ref EpiBranch.route_pair_kernel), and may implement
 [`pending_beyond`](@ref EpiBranch.pending_beyond).
@@ -1901,26 +1901,37 @@ of them could still wane and `reinfects` holds.
 """
 pending_beyond(route, state, reinfects::Bool) = false
 
-# Resuming a cut race (`simulate`'s continuation method): redraw, from
-# `old_max_time`, whatever `route_targets` sampled only up to the previous
-# call's `max_time` because a window with no natural close left it capped
-# (`propose_along`'s `capped`; see `pending_beyond`). The default is a no-op,
-# right for a route that lists its targets instead and so never caps a window
-# in the first place; `_MassAction` is the only built-in route that needs
-# this, in `mass_action.jl`. Redrawn contacts are submitted through
-# `proposer` (`propose_along(proposer, ...)`). A wrapper around
-# `route_targets` that needs to see them, such as a tracing wrapper recording
-# what the race considers, passes itself as `proposer` here instead of
-# defaulting to `route_targets` and letting the redraw bypass it.
-_resume_route!(route_targets, race, ri, old_max_time, traits, proposer = route_targets) = nothing
+"""
+    resume_route!(route, race, ri, old_max_time, traits, proposer = route)
 
-# Whether `route_targets` has a `_resume_route!` method of its own, so a race
-# it leaves with a pending window (`pending_beyond`) can actually be redrawn
-# on resume rather than silently dropped by the no-op default above.
-# `_MassAction` is the only built-in route that overrides this, in
-# `mass_action.jl`; a third-party route declaring `proposes_own_contacts` and
-# a non-default `pending_beyond` needs to override it too.
-_resumable_route(route_targets) = false
+Resume a cut race (`simulate`'s continuation method): redraw, from
+`old_max_time`, whatever `route` sampled only up to the previous call's
+`max_time` because a window with no natural close left it capped (the `capped`
+argument of [`propose_along`](@ref EpiBranch.propose_along); see
+[`pending_beyond`](@ref EpiBranch.pending_beyond)).
+
+The default is a no-op, which suits a route that lists its targets and never
+caps a window. Redrawn contacts are submitted through `proposer`
+(`propose_along(proposer, ...)`). A wrapper around `route` that needs to see
+them, such as a tracing wrapper recording what the race considers, passes
+itself as `proposer` so that the redraw does not bypass it. A route that
+overrides this must also declare it with
+[`resumable_route`](@ref EpiBranch.resumable_route).
+"""
+resume_route!(route, race, ri, old_max_time, traits, proposer = route) = nothing
+
+"""
+    resumable_route(route) -> Bool
+
+Whether `route` has a [`resume_route!`](@ref EpiBranch.resume_route!) method of
+its own. If it does, a race the route leaves with a pending window
+([`pending_beyond`](@ref EpiBranch.pending_beyond)) is redrawn on resume
+instead of being silently dropped by the no-op default. Defaults to `false`; a
+route that declares [`proposes_own_contacts`](@ref EpiBranch.proposes_own_contacts)
+and a non-default `pending_beyond` overrides both. A wrapper forwards it to the
+route it wraps.
+"""
+resumable_route(route) = false
 
 # Whether a route left contacts past the time limit that it never proposed, so
 # that a race which ran out of candidates was cut off rather than extinct. A
@@ -1934,7 +1945,7 @@ end
 # Propose the infections one case's window on one route leads to. The default
 # asks the route for every susceptible target and its pair kernel, and draws one
 # contact per pair, keeping those inside the window. A route that finds its own
-# contacts (`proposes_own_contacts`), such as mass action (`_MassAction`),
+# contacts (`proposes_own_contacts`), such as mass action (`MassAction`),
 # answers through the public `propose_along` instead: it returns the
 # `(target_id, time)` pairs themselves, and the race does the submitting and
 # the processed/reinfects bookkeeping that every other route gets through

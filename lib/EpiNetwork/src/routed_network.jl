@@ -401,13 +401,13 @@ EpiBranch.route_pair_kernel(t::_TracedProposals, infector_id, target_id, state) 
     EpiBranch.route_pair_kernel(t.reach, infector_id, target_id, state)
 EpiBranch.pending_beyond(t::_TracedProposals, state, reinfects::Bool) =
     EpiBranch.pending_beyond(t.reach, state, reinfects)
-EpiBranch._resumable_route(t::_TracedProposals) = EpiBranch._resumable_route(t.reach)
+EpiBranch.resumable_route(t::_TracedProposals) = EpiBranch.resumable_route(t.reach)
 # The redraw must propose through `t`, not `t.reach`. `t.reach`'s own
-# `_resume_route!` calls `propose_along` on whatever object it is given, so
+# `resume_route!` calls `propose_along` on whatever object it is given, so
 # passing `t` here routes the redraw to `t`'s `propose_along` method. That
 # method records it in `t.proposed`, for tracing to read back.
-EpiBranch._resume_route!(t::_TracedProposals, race, ri, old_max_time, traits) =
-    EpiBranch._resume_route!(t.reach, race, ri, old_max_time, traits, t)
+EpiBranch.resume_route!(t::_TracedProposals, race, ri, old_max_time, traits) =
+    EpiBranch.resume_route!(t.reach, race, ri, old_max_time, traits, t)
 
 function EpiBranch.propose_along(
         t::_TracedProposals, infector_id, state, open_t, close_t, capped, traits
@@ -415,7 +415,7 @@ function EpiBranch.propose_along(
     contacts = EpiBranch.propose_along(t.reach, infector_id, state, open_t, close_t, capped, traits)
     if t.tracing
         contacts = collect(contacts)
-        # A resumed redraw (`EpiBranch._resume_route!`) opens this infector
+        # A resumed redraw (`EpiBranch.resume_route!`) opens this infector
         # again, from where the previous call left off, so a second call here
         # adds to what the first already recorded rather than replacing it.
         append!(

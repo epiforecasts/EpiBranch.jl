@@ -727,6 +727,10 @@ EpiBranch.proposes_own_contacts
 EpiBranch.propose_along
 EpiBranch.route_pair_kernel
 EpiBranch.pending_beyond
+EpiBranch.resume_route!
+EpiBranch.resumable_route
+EpiBranch.MassAction
+EpiBranch.mass_action_schedule
 ```
 
 ### Stopping rules
@@ -858,6 +862,7 @@ EpiBranch.apply_observation!
 EpiBranch.calendar_multiplier
 EpiBranch.next_calendar_break
 EpiBranch.calendar_shape
+EpiBranch.calendar_bound
 EpiBranch.PiecewiseConstantCalendar
 EpiBranch.SmoothCalendar
 EpiBranch.pair_kernel
