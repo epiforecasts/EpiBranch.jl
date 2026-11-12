@@ -1419,7 +1419,7 @@ end
 # `cumhazard`, `hazard` and `loghazard` below, rather than a multiplier read
 # through a `Steps`-style calendar schedule, because the two kinds of query
 # need different conventions at a boundary (see `_mass_action_count`), and a
-# shared schedule type cannot give both. `_mass_action_schedule` builds one
+# shared schedule type cannot give both. `mass_action_schedule` builds one
 # from a population's own windows; a companion package builds one from a
 # single named route's.
 struct _MassActionSchedule{Tt <: Real, Tv <: Real}
@@ -1471,12 +1471,17 @@ end
 Base.maximum(::_MassActionSchedule) = Inf
 Distributions.partype(s::_MassActionSchedule{Tt, Tv}) where {Tt, Tv} = promote_type(Tt, Tv)
 
-# Every window opening or closing, over whichever hosts and windows the caller
-# gives (the whole population's own infectious windows for a plain
-# `InfectionLayer`, or one route's for a routed one), folded into the running
-# count between them. An open window with no recorded close (still infectious
-# at the end of the data) never closes the count back down.
-function _mass_action_schedule(
+"""
+    mass_action_schedule(m, infectious_time, removal_time)
+
+The mass-action hazard schedule for a population: every window opening or
+closing, over whichever hosts and windows the caller gives (the whole
+population's own infectious windows for a plain `InfectionLayer`, or one
+route's for a routed one), folded into the running count between them. An open
+window with no recorded close (still infectious at the end of the data) never
+closes the count back down.
+"""
+function mass_action_schedule(
         m::MassActionHazard, infectious_time::AbstractVector{<:Real},
         removal_time::AbstractVector{<:Real}
     )
@@ -1507,7 +1512,7 @@ function _mass_action_schedule(
 end
 
 function _ext_prepare(m::MassActionHazard, data::InfectionLayer)
-    return _mass_action_schedule(m, data.infectious_time, data.removal_time)
+    return mass_action_schedule(m, data.infectious_time, data.removal_time)
 end
 
 # Every person shares the one population-wide schedule: nobody is ever in

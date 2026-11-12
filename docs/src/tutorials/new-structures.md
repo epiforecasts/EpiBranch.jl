@@ -228,7 +228,7 @@ Listing a route's contacts costs nothing when there are few of them: a
 household, a handful of named neighbours. It costs more when there are many,
 such as a spatial kernel over a large population or contact with everyone in
 an area, where listing them first turns an *O(contacts)* process into an
-*O(candidates)* one. Mass action (`EpiBranch._MassAction`, behind
+*O(candidates)* one. Mass action (`EpiBranch.MassAction`, behind
 [`HomogeneousProcess`](@ref) and [`MixingProcess`](@ref)) is the package's own
 example: rather than list every member as a candidate contact and discard
 most of them, it samples directly the pairs that do have one, by skipping

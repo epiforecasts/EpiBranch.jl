@@ -721,6 +721,10 @@ EpiBranch.proposes_own_contacts
 EpiBranch.propose_along
 EpiBranch.route_pair_kernel
 EpiBranch.pending_beyond
+EpiBranch.resume_route!
+EpiBranch.resumable_route
+EpiBranch.MassAction
+EpiBranch.mass_action_schedule
 ```
 
 ### Stopping rules

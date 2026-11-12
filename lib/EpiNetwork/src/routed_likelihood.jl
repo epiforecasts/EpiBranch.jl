@@ -120,7 +120,7 @@ end
 # off, but `RoutedNetworkInfections` has one per route; a union across
 # routes would be wrong exactly where routes matter (isolation closing the
 # community route while the household one stays open would still count that
-# person). Caught here, before `_mass_action_schedule` is reached with a
+# person). Caught here, before `mass_action_schedule` is reached with a
 # vector of windows where it expects one.
 function EpiBranch._ext_prepare(::MassActionHazard, ::RoutedNetworkInfections)
     throw(
@@ -177,7 +177,7 @@ end
 
 function EpiBranch._ext_prepare(m::RoutedMassActionHazard, data::RoutedNetworkInfections)
     r = _routed_mass_action_index(data, m.route)
-    return EpiBranch._mass_action_schedule(
+    return EpiBranch.mass_action_schedule(
         m.hazard, data.infectious_time[r], data.removal_time[r]
     )
 end
