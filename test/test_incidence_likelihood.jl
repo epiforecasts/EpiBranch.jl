@@ -219,6 +219,14 @@ struct _RiskFromAge end
         )
     end
 
+    @testset "LognormalApproximation with a non-positive-definite log-scale covariance" begin
+        data = IncidenceCounts(ones(Int, 30))
+        ll = loglikelihood(
+            data, NegBin(0.3, 1.0), Gamma(10, 0.5), LognormalApproximation()
+        )
+        @test isfinite(ll)
+    end
+
     @testset "loglikelihood on a model" begin
         data = IncidenceCounts([1, 2, 4, 5, 9, 12, 18]; seeds = 2)
         offspring = NegBin(1.3, 0.5)
