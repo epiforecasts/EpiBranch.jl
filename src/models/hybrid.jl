@@ -27,8 +27,7 @@ _bare_process(m) = m
 # ...)` call stops only for extinction or `max_time`, never silently capped
 # by the `max_cases`/`max_generations` shortcuts' defaults. Those would
 # otherwise leave a state that `simulate(model, state; max_time)` cannot
-# continue (see `added-simulate-continuation.md`), stuck for good partway
-# through `_advance_exact!`'s loop below.
+# continue, stuck for good partway through `_advance_exact!`'s loop below.
 function _matching_exact(exact, approx)
     required = _exact_requirement(approx)
     bare = _bare_process(exact)

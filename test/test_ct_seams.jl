@@ -561,8 +561,8 @@ end
 
         # A standing isolation already in force is the other arm of
         # `apply_trace!` (`min` against the trace time, rather than setting it
-        # outright). `min(standing, NaN)` used to poison that value with a
-        # NaN trigger, not only with an unreached `Inf` one, so the standing
+        # outright). `min(standing, NaN)` would poison that value with a
+        # NaN trigger as well as an unreached `Inf` one, so the standing
         # isolation must survive either trace untouched.
         for unreachable in (NaN, Inf)
             standing = Individual(id = 3)

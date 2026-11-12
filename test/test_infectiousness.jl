@@ -48,9 +48,8 @@ EpiBranch.has_effect(::_SeenRoutes) = true
     end
 
     @testset "a named window reaches risk_applies by that name" begin
-        # `risk_applies` could not previously tell the two windows apart: both
-        # reached the race as a `RouteWindow` named `:transmission`. Naming
-        # them lets an intervention select one and leave the other alone.
+        # Naming the windows lets `risk_applies` tell them apart, so an
+        # intervention can select one and leave the other alone.
         household = Infectiousness(Poisson(1.0); kernel = Uniform(0, 5), name = :household)
         community = Infectiousness(Poisson(2.0); kernel = Uniform(0, 5), name = :community)
         model = BranchingProcess(household, community)

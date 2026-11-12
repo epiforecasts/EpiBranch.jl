@@ -570,6 +570,8 @@ check convergence (for example the R-hat values in `summarize(chain)`).
     `loglikelihood(data, model)` does the same without building the layout
     yourself.
 
+    Neither rule covers every way recruitment can depart from the model. Both take exactly one member per household as given. Co-primary cases, infected from outside at about the same time, are assumed to come from household transmission unless the model has a community hazard. Households may also enter the study because the index case was detected, had symptoms or had secondary cases. Such households are unrepresentative and bias the estimates unless the likelihood is conditioned on that recruitment.
+
 If the log-likelihood is `-Inf`, the data contain a case the model cannot
 explain, such as someone infected when none of their housemates was infectious
 and there is no community hazard.

@@ -3,7 +3,7 @@
 # A homogeneously-mixing closed population of fixed size N: every infectious
 # individual exerts the same force of infection on every susceptible, so the
 # outbreak depletes a finite population with no structure beyond its size. It
-# runs on the continuous-time race as mass action (`_MassAction`), every pair
+# runs on the continuous-time race as mass action (`MassAction`), every pair
 # meeting at β/N, which reproduces the exact stochastic SIR final-size law and
 # yields infection times, not just the final size. It describes the transmission
 # alone: the natural history (progression), interventions, attributes and
@@ -100,7 +100,7 @@ function HomogeneousProcess(;
     )
 end
 
-# A fixed β is validated and floated as before; a calendar schedule validates
+# A fixed β is validated and floated; a calendar schedule validates
 # itself when it is built (`Steps`'s own values, say), so nothing further is
 # checked here.
 function _prepared_transmission_rate(β::Real)
@@ -162,7 +162,7 @@ end
                   progression, observation, recorder, rng)
 
 Simulate the homogeneous population on the continuous-time race, as mass action
-among its members (`_MassAction`), with the modelling layers supplied by the
+among its members (`MassAction`), with the modelling layers supplied by the
 caller (a bare process, or a `ModelSpec`). The infectious window's `from` state
 is resolved here from the composed `progression`.
 """
@@ -193,7 +193,7 @@ function simulate_once(
     sellke_race!(
         state, members, rng, sim_opts;
         seed! = (best, _, r) -> (best[randperm(r, N)[1:n_initial]] .= 0),
-        targets = _MassAction(
+        targets = MassAction(
             state, members; rate = _homogeneous_rate(β, N),
             calendar = _homogeneous_calendar(β), from
         ),

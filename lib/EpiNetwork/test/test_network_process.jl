@@ -994,7 +994,7 @@ end
         @test sort(first.(contacts)) == [2, 3, 4, 5]
         @test sort(wrapped.proposed[1]) == [2, 3, 4, 5]
         # a second call for the same infector, as a resumed redraw makes
-        # (`EpiBranch._resume_route!`), adds to what is recorded rather than
+        # (`EpiBranch.resume_route!`), adds to what is recorded rather than
         # replacing it
         EpiBranch.propose_along(wrapped, 1, state, 10.0, 20.0, false, false)
         @test sort(wrapped.proposed[1]) == [2, 2, 3, 3, 4, 4, 5, 5]
@@ -1034,7 +1034,7 @@ end
     end
 
     @testset "RoutedNetwork: a self-proposing route with a never-closing window continues" begin
-        # Mass action (`EpiBranch._MassAction`) only samples a window with no
+        # Mass action (`EpiBranch.MassAction`) only samples a window with no
         # natural close up to the race's time limit, and must redraw what it
         # left past that on `simulate(model, state; max_time)` (`EpiBranch`'s
         # own continuation tests). Wrapped in a route's `_TracedProposals` for
@@ -1047,7 +1047,7 @@ end
                 Transition[], NoAttributes(), StableRNG(0)
             )
             EpiBranch.add_individuals!(state, n, AbstractIntervention[])
-            route = EpiBranch._MassAction(state, collect(1:n); rate = (_, _) -> β / n)
+            route = EpiBranch.MassAction(state, collect(1:n); rate = (_, _) -> β / n)
             w = RouteWindow(:community; kernel = nothing, reach = route)
             ModelSpec(RoutedNetwork([w]; n = n))
         end

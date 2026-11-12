@@ -7,7 +7,7 @@ end
 
 EpiBranch.vaccine_effect(v::_TestCampaignVaccination) = v.effect
 
-# An `AbstractEffectMode` defined outside the package (#373): deterministic
+# An `AbstractEffectMode` defined outside the package: deterministic
 # instead of either `LeakyMode`'s identity or `AllOrNothingMode`'s Bernoulli
 # draw, exercising the two public hooks a new mode needs.
 struct _TestThresholdMode <: AbstractEffectMode

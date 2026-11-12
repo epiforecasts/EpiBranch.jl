@@ -126,6 +126,10 @@ discrete-generation models usually do. With the second rule and an offspring
 law with a closed-form sum (`Poisson`, `NegBin`, `Binomial`), a generation
 costs the same whatever the number of cases.
 
+A [`ModelSpec`](@ref) built on the process, with a `generation_length`, also
+runs here, and applies its `GroupVaccination` campaigns to the susceptibles of
+each type between generations.
+
 ```@docs
 simulate_by_generation
 GenerationCounts
@@ -283,6 +287,7 @@ simulation: the cases and the contacts they exposed for a
 
 ```@docs
 simulate
+outbreak_state_space
 SimOpts
 AbstractStoppingRule
 Extinction
@@ -362,6 +367,7 @@ containment_probability
 is_extinct
 generation_R
 weekly_incidence
+summarise
 scenario_sweep
 ```
 
@@ -721,6 +727,10 @@ EpiBranch.proposes_own_contacts
 EpiBranch.propose_along
 EpiBranch.route_pair_kernel
 EpiBranch.pending_beyond
+EpiBranch.resume_route!
+EpiBranch.resumable_route
+EpiBranch.MassAction
+EpiBranch.mass_action_schedule
 ```
 
 ### Stopping rules
@@ -754,6 +764,7 @@ EpiBranch.HostImmunity
 EpiBranch.infectious_removal_time
 EpiBranch.risk_applies
 EpiBranch.standing_block
+EpiBranch.infinite_draw_is_final
 intervention_time
 EpiBranch.reset!
 EpiBranch.abort_infection!
@@ -851,6 +862,7 @@ EpiBranch.apply_observation!
 EpiBranch.calendar_multiplier
 EpiBranch.next_calendar_break
 EpiBranch.calendar_shape
+EpiBranch.calendar_bound
 EpiBranch.PiecewiseConstantCalendar
 EpiBranch.SmoothCalendar
 EpiBranch.pair_kernel

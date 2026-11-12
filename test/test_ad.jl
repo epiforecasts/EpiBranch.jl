@@ -231,8 +231,7 @@ end
 # Interventions act on the timing layer, so a run carrying an `Isolation`
 # intervention must still differentiate: the isolation time is `onset + delay`,
 # a dual under AD, and `set_isolated!`/`isolation_time` have to carry it rather
-# than pin `Float64`. Before the eltype-generic accessors this threw a
-# MethodError at `set_isolated!(::Individual, ::Dual)`.
+# than pin `Float64`.
 @testset "AD through the forward simulator (isolation timing)" begin
     clinical = clinical_presentation(
         incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0
@@ -255,9 +254,8 @@ end
 end
 
 # The `until`-window censor reads the infector's removal time (`:died_time` /
-# `:recovered_time`), which is a dual once a timing parameter is differentiated.
-# Before dropping the `::Float64` assertion in `WindowCensor.competing_risk`,
-# any censored/funeral-route model threw a TypeError under AD.
+# `:recovered_time`), which is a dual once a timing parameter is differentiated,
+# and `WindowCensor.competing_risk` must therefore not assert `::Float64`.
 @testset "AD through the forward simulator (until-window censoring)" begin
     history = [
         Transition(:infectious, from = :infection, delay = LogNormal(1.0, 0.3)),
@@ -374,7 +372,7 @@ end
 
     onward(efficacy) = EpiBranch._onward_risk(
         RingVaccination(efficacy = 0.6, onward_efficacy = efficacy),
-        parent
+        parent, contact
     ).block_probability
     @test ForwardDiff.derivative(onward, 0.5) == 1.0
 end
