@@ -303,6 +303,19 @@ more doses than it has people is only approximate. The `eligibility` of the
 campaign is not read: the doses are given whether or not a case has triggered
 them.
 
+Vaccinating between generations approximates a model whose generations are
+calendar steps, as in a TSIR, where everyone vaccinated in a step is protected
+before the next generation's contacts are made. It agrees with the
+individual-based simulation only when the budget reaches everyone in the
+window. That simulation gives the doses of a `BranchingProcess` only to
+contacts as they are created, so a budget below the number of contacts covers a
+share of contacts, not `doses / population`, and the counts will not agree.
+The budget is also read per type here. In the mixing approximations the groups
+share one budget, and in the individual-based simulation the budget is per
+group when the groups are types and shared otherwise. Where the doses
+belong in the intervention specification is not settled, so how a budget is
+split between groups may change.
+
 # Examples
 
 ```julia
