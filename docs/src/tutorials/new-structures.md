@@ -258,11 +258,11 @@ route's `reach` holds, and give it:
   than claiming an extinction it cannot vouch for. The default, `false`, suits
   a route that always proposes everything it draws.
 
-If a route's `pending_beyond` can answer `true`, `simulate(model, state;
-max_time)` cannot yet continue it: redrawing the capped window's leftover
-contacts on resume needs a private seam only mass action currently
-implements, so such a run is refused outright rather than silently dropping
-them.
+If `pending_beyond` for a route can return `true`, `simulate(model, state;
+max_time)` cannot yet continue it. Redrawing the remaining contacts beyond
+the window cap requires a private interface currently implemented only by
+mass action. Such a run stops with an error to avoid losing those contacts.
+
 
 On `RoutedNetwork` (in `EpiNetwork`), a route built this way has
 `kernel = nothing`, since the route times its own contacts; see its docstring
