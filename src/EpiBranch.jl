@@ -1,5 +1,6 @@
 module EpiBranch
 
+using DataAPI: DataAPI
 using DataFrames
 using Dates
 using Distributions
@@ -125,6 +126,7 @@ include("model_spec.jl")
 # linear-noise approximations of a closed population, and a hybrid that
 # switches from exact simulation to one of them.
 include("models/population_dynamics.jl")
+include("models/mixing_vaccination.jl")
 include("models/mixing_population_dynamics.jl")
 include("models/hybrid.jl")
 include("models/generation_counts.jl")
@@ -152,6 +154,9 @@ include("analytical/end_of_outbreak_probability.jl")
 include("analytical/incidence_likelihood.jl")
 include("analytical/signal_likelihood.jl")
 
+# Contact-matrix inputs: stratified arrays, mixing rates and file readers.
+include("contact_matrices.jl")
+
 # Distribution wrappers so models work directly with Turing's `~`.
 include("likelihood_dists.jl")
 
@@ -163,12 +168,20 @@ include("pairwise_survival.jl")
 # the pairwise survival likelihood above.
 include("progression_likelihood.jl")
 
+# The serial interval between a linked pair, for fitting timing data; the
+# method lives in a package extension (see the file for why).
+include("serial_interval.jl")
+
 # Exports — types
 export TransmissionModel, BranchingProcess, Infectiousness, OffspringTimes,
     HomogeneousProcess, MixingProcess, ModelSpec
 export MeanFieldProcess, MeanFieldState, LinearNoiseProcess, LinearNoiseState
+export StratifiedContacts, flatten_contacts, contacts_from_table, mixing_rate
+export read_contacts, ContactFileFormat, CSVFormat, NetCDFFormat
 export MixingMeanFieldProcess, MixingMeanFieldState
 export MixingLinearNoiseProcess, MixingLinearNoiseState
+export DoseAllocation, TriggeredInPriority, SplitByGroupSize, SplitBySusceptibles
+export ImmuneShare, ImmuneCount
 export HybridProcess, HybridState
 export GenerationCounts, simulate_by_generation
 export AbstractDepletion, PerContactDepletion, StartOfGenerationDepletion
@@ -271,5 +284,8 @@ export InfectionLayer, PairwiseSurvivalData, ContactPairsLayout, MassActionHazar
 export compile_contact_pairs, pairwise_surv_loglik, pairwise_surv_loglik_by_component
 # Progression (natural-history) likelihood
 export progression_loglik
+
+# Serial interval between a linked pair (see ext/EpiBranchCensoredDistributionsExt.jl)
+export serial_interval
 
 end # module

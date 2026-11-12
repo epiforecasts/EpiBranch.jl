@@ -124,13 +124,8 @@ function extinction_probability(
     )
     o.mean <= 1.0 && return 1.0
 
-    q = 0.5
-    for _ in 1:max_iter
-        q_new = _pgf(o, q)
-        abs(q_new - q) < tol && return q_new
-        q = q_new
-    end
-    @warn_unconverged_extinction(max_iter, "the reproduction number")
+    q, converged = _contain_fixed_point(o; tol, max_iter)
+    converged || @warn_unconverged_extinction(max_iter, "the reproduction number")
     return q
 end
 
@@ -158,15 +153,8 @@ function probability_contain(
     keep = 1.0 - pop_control
     keep * o.mean <= 1.0 && return 1.0
 
-    q = 0.5
-    for _ in 1:max_iter
-        g = _pgf(o, 1.0 - keep * (1.0 - q))
-        q_new = ind_control + (1.0 - ind_control) * g
-        abs(q_new - q) < tol && return q_new^n_initial
-        q = q_new
-    end
-
-    @warn_unconverged_extinction(
+    q, converged = _contain_fixed_point(o; keep, ind_control, tol, max_iter)
+    converged || @warn_unconverged_extinction(
         max_iter,
         "the effective reproduction number times one minus `ind_control`"
     )

@@ -157,6 +157,20 @@ To define a new kind of contact structure, a subtype also defines
 [`compile_contact_pairs`](@ref) and [`pairwise_surv_loglik`](@ref) then work
 on it with no further methods. `HouseholdInfections` and `NetworkInfections`
 are the worked examples.
+
+# When the likelihood is valid
+
+The likelihood takes each person's infectious window, removal time and
+vaccination dates as fixed data and says nothing about how they came about. It
+is therefore a partial likelihood, conditional on the removals. That is valid
+when removals and doses depend only on the observed history (onsets, detections,
+the infections of household members or neighbours) and on parameters other than
+the contact interval. Onset-triggered isolation and household or network
+forward tracing meet this. A removal that depends on the unobserved
+transmission tree, such as [`SourceTracing`](@ref), does not. It depends on who
+infected whom, and conditioning on it biases the contact-interval estimate.
+When building an `InfectionLayer` from real data, check that the removal
+mechanism does not depend on who infected whom.
 """
 abstract type InfectionLayer end
 
@@ -570,7 +584,9 @@ that includes them, passed to `pairwise_surv_loglik` directly.
 Declaring `true` is a promise by the intervention's author; nothing checks it.
 The infection likelihood takes the infection record as given and does not
 include the probability of clinical outcomes, of who received interventions,
-of people's characteristics, or of observation.
+of people's characteristics, or of observation. Conditioning on the removals
+this way is valid only when they depend on the observed history and not on who
+infected whom; see [`InfectionLayer`](@ref).
 """
 infection_likelihood_compatible(component) = false
 infection_likelihood_compatible(::NoAttributes) = true
@@ -1021,7 +1037,7 @@ appear only as infectors. With `external = true` every infection is explained,
 and each person gets an extra row for infection from outside. `explain_index`
 (default `external`) decides this for index cases alone. A source read off
 the outbreak's own infectious windows, such as `MassActionHazard`, sets it to
-`false` even with `external = true`, since it has nothing infectious before
+`false` even with `external = true`, because it has nothing infectious before
 the first case to explain one. The single-argument form reads the contact
 structure from `data` with [`contact_structure`](@ref
 EpiBranch.contact_structure) and takes as infected everyone with a non-`NaN`
@@ -1034,48 +1050,26 @@ function compile_contact_pairs(
     )
     n = length(membership)
     _check_host_masks(n, is_index, infected)
-    isempty(membership) && return _contact_pairs_layout(
-        Int[], Int[], Int[], Bool[], external, explain_index, is_index, 0, Int[], 0
-    )
 
-    # Bucket hosts by label into a `Vector{Vector{Int}}` indexed by label offset,
-    # which avoids hashing; offsetting by `lo` allows any integer labels.
-    lo, hi = extrema(membership)
-    n_buckets = hi - lo + 1
-    buckets = [Int[] for _ in 1:n_buckets]
-    for i in 1:n
-        push!(buckets[membership[i] - lo + 1], i)
-    end
-
-    sus = Int[]
-    infector = Int[]
-    is_ext = Bool[]
-    for h in 1:n_buckets
-        mem = buckets[h]
-        isempty(mem) && continue
-        for j in mem
-            (!explain_index && is_index[j]) && continue
-            if external
-                push!(sus, j)
-                push!(infector, 0)
-                push!(is_ext, true)
+    # Each member's contacts are the other members of the group, which the
+    # adjacency method handles. A stable sort by label groups the members and
+    # avoids a bucket for every possible label.
+    order = sortperm(membership)
+    contacts = Vector{Vector{Int}}(undef, n)
+    g_lo = 1
+    for k in 1:n
+        if k == n || membership[order[k + 1]] != membership[order[k]]
+            group = order[g_lo:k]
+            for i in group
+                contacts[i] = filter(!=(i), group)
             end
-            for i in mem
-                infected[i] || continue
-                i == j && continue
-                push!(sus, j)
-                push!(infector, i)
-                push!(is_ext, false)
-            end
+            g_lo = k + 1
         end
     end
+    layout = compile_contact_pairs(contacts, is_index, infected; external, explain_index)
     # A group has no per-edge list for a kernel to index into.
-    contact_index = zeros(Int, length(sus))
-    component, ncomponents = _structure_components(membership)
-    return _contact_pairs_layout(
-        sus, infector, contact_index, is_ext, external, explain_index,
-        is_index, n, component, ncomponents
-    )
+    fill!(layout.contact_index, 0)
+    return layout
 end
 
 function compile_contact_pairs(
@@ -1350,7 +1344,7 @@ A person is counted in `I(t)` over `(infectious_time, removal_time]`, the same
 convention a pairwise row's own exposure uses, so a secondary infected at the
 exact moment their infector is removed is scored the same way by both. This
 already leaves everybody out of their own `I(t)` at their own infection time,
-with no separate bookkeeping needed, since a person is infected no later than
+with no separate bookkeeping needed, because a person is infected no later than
 they become infectious.
 
 With nobody infectious before the first case, mass action alone cannot explain
@@ -1517,7 +1511,7 @@ function _ext_prepare(m::MassActionHazard, data::InfectionLayer)
 end
 
 # Every person shares the one population-wide schedule: nobody is ever in
-# their own `I(t)`, since a person is infected no later than they become
+# their own `I(t)`, because a person is infected no later than they become
 # infectious and `(open, close]` counting excludes their own window at and
 # before its own opening.
 _ext_survival_of(s::_MassActionSchedule, j) = s
@@ -1530,7 +1524,7 @@ _ext_partype(s::_MassActionSchedule, n) = Distributions.partype(s)
     source1 + source2
 
 The external hazard that is the sum of several sources, for
-[`pairwise_surv_loglik`](@ref)'s `external_hazard`: each person faces the
+the `external_hazard` argument of [`pairwise_surv_loglik`](@ref): each person faces the
 hazards of all the sources at once, and an infection is attributed to
 whichever source infects first. Each source is anything `external_hazard` accepts on its own: a
 rate, a distribution, a calendar schedule such as `Steps`, a per-person vector
@@ -1543,7 +1537,7 @@ action alone does not. Mass action plus an importation rate therefore scores
 index cases as importations instead of conditioning on them.
 
 Like [`MassActionHazard`](@ref), a sum is likelihood-only: it cannot be passed
-as a process's own `external_hazard` to simulate from.
+as the `external_hazard` of a process to simulate from.
 
 # Example
 
@@ -2034,6 +2028,23 @@ function _component_loglik(
     return ll + v
 end
 
+# The log of a weighted sum of exponentials, `log(sum(w * exp(l)))` over
+# `(w, l)` pairs, shifted by the largest finite `l`. Components at `-Inf` drop
+# out, and the result is `-Inf` when none remain.
+function _weighted_logsumexp(terms, ::Type{T}) where {T}
+    m = T(-Inf)
+    for (_, l) in terms
+        _is_minus_inf(l) && continue
+        m = _is_minus_inf(m) ? T(l) : max(m, T(l))
+    end
+    _is_minus_inf(m) && return T(-Inf)
+    total = zero(T)
+    for (weight, l) in terms
+        _is_minus_inf(l) || (total += weight * exp(l - m))
+    end
+    return m + log(total)
+end
+
 # One modified susceptible's contribution: the log of its mixture.
 function _mixture_loglik(
         mixture, kernel, extsrc, data, layout, g, tfollow, ::Type{T}, gaps = nothing
@@ -2049,17 +2060,7 @@ function _mixture_loglik(
             modifier, kernel, extsrc, data, layout, rg, tj, tfollow, T, gaps
         )
     end
-    m = T(-Inf)
-    for (_, l) in terms
-        _is_minus_inf(l) && continue
-        m = _is_minus_inf(m) ? T(l) : max(m, T(l))
-    end
-    _is_minus_inf(m) && return T(-Inf)
-    total = zero(T)
-    for (weight, l) in terms
-        _is_minus_inf(l) || (total += weight * exp(l - m))
-    end
-    return m + log(total)
+    return _weighted_logsumexp(terms, T)
 end
 
 function pairwise_surv_loglik(
