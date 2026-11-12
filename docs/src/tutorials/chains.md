@@ -119,12 +119,8 @@ Fit R under the reporting you believe applies: assuming complete reporting
 when some cases are missed makes clusters look smaller than they are, and
 biases the estimate of R downwards.
 
-!!! warning "Clusters with no detected case"
-    A cluster in which no case was detected never appears in the data, and the
-    likelihood should allow for that. At present it does not, so it penalises
-    every observed cluster more the lower the reporting probability, and a fit
-    of R and `probability` together will favour reporting that is too high
-    (see [issue #416](https://github.com/epiforecasts/epiBranch.jl/issues/416)).
+!!! note "Clusters with no detected case"
+    A cluster in which no case was detected never appears in the data. The likelihood allows for this by conditioning on at least one case being detected, so a joint fit of R and `probability` is not biased towards high reporting on that account.
 
 ### Offspring counts
 
