@@ -240,6 +240,11 @@ end
             EpiBranch._calendar_external_survival(schedule)
         @test_throws DimensionMismatch EpiBranch._check_external(v, 4)
         @test EpiBranch._check_external(v, 3) === nothing
+        for bad in (-5.0, NaN)
+            @test_throws ArgumentError EpiBranch._check_obs_end(bad)
+        end
+        @test EpiBranch._check_obs_end(Inf) == Inf
+        @test EpiBranch._check_obs_end(0) === 0.0
         # a person with no community hazard is never introduced, and the rest
         # draw as under a shared one
         @test EpiBranch._ext_draw(StableRNG(1), v, 2, 1.0) == Inf
