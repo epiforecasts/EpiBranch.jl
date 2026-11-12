@@ -300,17 +300,23 @@ function _time_at_log_survival(kernel, lp)
     # A kernel whose survival never falls to `lp` (a hazard with a finite
     # total) has answered `Inf` correctly; a named distribution's survival
     # reaches zero at infinity and still goes to the bisection.
-    isinf(t) && (_infinite_draw_is_final(kernel) || logccdf(kernel, t) > lp) && return t
+    isinf(t) && (infinite_draw_is_final(kernel) || logccdf(kernel, t) > lp) && return t
     return _bisect_log_survival(kernel, lp)
 end
 
-# Whether an infinite answer from `invlogccdf` is the kernel's own verdict
-# that the draw never happens, so the bisection need not retrace it. A
-# calendar-scaled kernel inverts by growing a bracket and returns `Inf` only
-# once that bracket has run out with the total still short, which its
-# cumulative hazard over an unbounded horizon cannot confirm.
-_infinite_draw_is_final(kernel) = false
-_infinite_draw_is_final(::_CalendarScaledKernel) = true
+"""
+    infinite_draw_is_final(kernel) -> Bool
+
+Whether an infinite answer from `invlogccdf(kernel, lp)` is the kernel's own
+verdict that the draw never happens (it has mass at infinity), so the race
+need not retrace it by bisection. The default is `false`, which is right for
+a named distribution: its survival reaches zero at infinity and an infinite
+`invlogccdf` there is only a failure to invert. A kernel written outside
+the package that inverts by itself and returns `Inf` once its total hazard
+is exhausted declares `EpiBranch.infinite_draw_is_final(::MyKernel) = true`.
+"""
+infinite_draw_is_final(kernel) = false
+infinite_draw_is_final(::_CalendarScaledKernel) = true
 
 # Bisect `logccdf`, which decreases in `t`, for the earliest time at or past the
 # log-survival `lp`. The bracket starts at the time for a survival the direct
