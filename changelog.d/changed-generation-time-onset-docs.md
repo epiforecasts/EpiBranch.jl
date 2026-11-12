@@ -1,1 +1,1 @@
-The interventions tutorial now says that a plain generation time is drawn independently of onset, what that means for isolation, and that `generation_time` can be any `ind -> Distribution` placed relative to each case's onset.
+The interventions tutorial now explains that a plain generation time is drawn independently of onset and what that implies for isolation. It also notes that `generation_time` can be any `ind -> Distribution`, placed relative to the onset of each case.
