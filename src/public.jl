@@ -64,6 +64,17 @@ public propose_along
 public route_pair_kernel
 public pending_beyond
 
+# Mass action, the reference route that proposes its own contacts: a
+# `MassAction` reach for a closed population (what `HomogeneousProcess` and
+# `MixingProcess` build), and the hazard schedule a pairwise likelihood reads
+# for it. `resume_route!` and `resumable_route` are the hooks a route
+# declaring `proposes_own_contacts` uses to redraw a window capped at the time
+# limit of the run when a later `simulate(model, state; max_time)` resumes the race.
+public MassAction
+public mass_action_schedule
+public resume_route!
+public resumable_route
+
 # Transmission-model interface. A new process subtypes `TransmissionModel`
 # and extends these seam methods:
 #   - candidate generation: `generate_offspring` (offspring-driven) or

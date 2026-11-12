@@ -1,9 +1,7 @@
 # ── Trait protocol for contact tracing ──────────────────────────────
 #
 # Contact tracing factors into four independent points of variation,
-# each a dispatched seam. The default built-ins reproduce the original
-# `ContactTracing(probability, isolation_to_trace_delay, action)`
-# behaviour; user-defined subtypes slot in via a single method.
+# each a dispatched seam. A user-defined subtype slots in via a single method.
 
 """
     TraceEligibility
@@ -57,7 +55,6 @@ is_eligible(::OnIsolation, infector, contact, state) = is_isolated(infector)
 """Trace the contacts of every case, whatever its status, starting from the
 case's isolation."""
 struct TraceEveryone <: TraceEligibility end
-is_eligible(::TraceEveryone, infector, contact, state) = true
 
 """Trace no contacts."""
 struct TraceNobody <: TraceEligibility end
@@ -147,21 +144,7 @@ Base.:!(a::TraceEligibility) = NoneOf(a)
 
 # ── Trigger time ────────────────────────────────────────────────────
 #
-# The same eligibility policy that decides *whether* to trace also sets
-# *when*: the trace is timed from when the infector first meets the
-# condition. `OnSymptomOnset` times from symptom onset, so tracing can
-# start before lab confirmation (or without it), while the historical
-# default and the isolation/confirmation policies time from isolation.
-# `ContactTracing` adds its delay on top. Combinators reduce over the
-# conditions that are met for the infector and contact: an `AnyOf`
-# triggers when its first met condition is met, an `AllOf` when its last
-# one is. A condition that is not met has no trigger time of its own (an
-# asymptomatic case has no onset). Including it in the reduction could
-# make the time earlier than any real event, or `NaN`. A negation that
-# holds has no event to time it either, so it sets no time inside an
-# `AllOf`.
-
-# How combined rules are timed, in full. Each wrapped condition is either
+# Combined rules in full (see the `trigger_time` docstring). Each wrapped condition is either
 # not met, met at a time, or met with no time of its own (a negation that
 # holds). A negation that does not hold is not met. A negated combinator is
 # timed as its De Morgan form, so `!(a & b)` is timed as `!a | !b`, and `!!a`
@@ -747,8 +730,6 @@ end
 required_fields(::OnSymptomOnset) = [:asymptomatic, :onset_time]
 required_fields(::OnLabConfirmation) = [:test_positive]
 required_fields(::OnIsolation) = [:isolated]
-required_fields(::TraceEveryone) = Symbol[]
-required_fields(::TraceNobody) = Symbol[]
 required_fields(::SymptomaticParent) = [:asymptomatic, :isolated]
 required_fields(::TraceEligibility) = Symbol[]  # Default for custom types
 

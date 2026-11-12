@@ -5,7 +5,7 @@ using DataFrames
 using Dates
 using Distributions
 using ForwardDiff
-using LinearAlgebra: LinearAlgebra, Diagonal, Symmetric, eigvals
+using LinearAlgebra: LinearAlgebra, Diagonal, I, Symmetric, cholesky, diag, eigvals, issuccess
 using QuadGK
 using Random
 using SpecialFunctions
@@ -100,6 +100,7 @@ include("observation.jl")
 
 # Simulation engine
 include("simulation.jl")
+include("state_space.jl")
 
 # Transmission-route windows: the unit that lets one case carry several routes,
 # each opening and closing on different states of its natural history. Defined
@@ -130,6 +131,7 @@ include("models/mixing_vaccination.jl")
 include("models/mixing_population_dynamics.jl")
 include("models/hybrid.jl")
 include("models/generation_counts.jl")
+include("models/generation_campaign.jl")
 
 # Output
 include("output/linelist.jl")
@@ -250,6 +252,7 @@ export clinical_presentation, demographics, transmission_traits, groups,
     group_attribute, vaccine_acceptance
 
 # Exports — simulation
+export outbreak_state_space
 export simulate, make_contact!, susceptible_fraction, realise!
 export CommonRandomNumbers
 export generate_offspring, contacts_of

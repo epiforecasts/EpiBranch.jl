@@ -1308,10 +1308,6 @@ end
 
 # A community introduction time drawn under the hazard person `j` faces, or
 # `Inf` when they face none.
-_ext_draw(rng::AbstractRNG, source) = rand(rng, _ext_survival(source))
-function _ext_draw(rng::AbstractRNG, source, susceptibility)
-    return _traits_scaled_draw(rng, _ext_survival(source), susceptibility)
-end
 function _ext_draw(rng::AbstractRNG, source, j::Integer, susceptibility)
     d = _ext_survival_of(source, j)
     d === nothing && return oftype(float(susceptibility), Inf)
@@ -1434,7 +1430,7 @@ end
 # `cumhazard`, `hazard` and `loghazard` below, rather than a multiplier read
 # through a `Steps`-style calendar schedule, because the two kinds of query
 # need different conventions at a boundary (see `_mass_action_count`), and a
-# shared schedule type cannot give both. `_mass_action_schedule` builds one
+# shared schedule type cannot give both. `mass_action_schedule` builds one
 # from a population's own windows; a companion package builds one from a
 # single named route's.
 struct _MassActionSchedule{Tt <: Real, Tv <: Real}
@@ -1486,12 +1482,17 @@ end
 Base.maximum(::_MassActionSchedule) = Inf
 Distributions.partype(s::_MassActionSchedule{Tt, Tv}) where {Tt, Tv} = promote_type(Tt, Tv)
 
-# Every window opening or closing, over whichever hosts and windows the caller
-# gives (the whole population's own infectious windows for a plain
-# `InfectionLayer`, or one route's for a routed one), folded into the running
-# count between them. An open window with no recorded close (still infectious
-# at the end of the data) never closes the count back down.
-function _mass_action_schedule(
+"""
+    mass_action_schedule(m, infectious_time, removal_time)
+
+The mass-action hazard schedule for a population: every window opening or
+closing, over whichever hosts and windows the caller gives (the infectious
+windows of the whole population for a plain `InfectionLayer`, or those of one
+route for a routed one), folded into the running count between them. An open
+window with no recorded close (still infectious at the end of the data) never
+closes the count back down.
+"""
+function mass_action_schedule(
         m::MassActionHazard, infectious_time::AbstractVector{<:Real},
         removal_time::AbstractVector{<:Real}
     )
@@ -1522,7 +1523,7 @@ function _mass_action_schedule(
 end
 
 function _ext_prepare(m::MassActionHazard, data::InfectionLayer)
-    return _mass_action_schedule(m, data.infectious_time, data.removal_time)
+    return mass_action_schedule(m, data.infectious_time, data.removal_time)
 end
 
 # Every person shares the one population-wide schedule: nobody is ever in
@@ -1910,10 +1911,10 @@ end
 
 # ── Susceptible-level mixtures ───────────────────────────────────────
 #
-# A susceptible a `susceptibility` effect modifies is evaluated on its own: its
-# rows are left out of the two flat passes, and its contribution is the
-# log-sum-exp over its mixture components of the log weight plus the escape
-# and event terms under that component's modifier.
+# A susceptible a `susceptibility` effect modifies is scored as the log-sum-exp
+# over its mixture components of the log weight plus the escape and event terms
+# under that component's modifier. One it leaves alone is scored by the same
+# `_component_loglik` with no modifier.
 
 # The mixture of each susceptible the effect modifies, by host id, or `nothing`
 # when it modifies none, which evaluates the layer exactly as without an effect.
@@ -1926,9 +1927,6 @@ function _host_mixtures(effect, data, layout)
     end
     return isempty(mixtures) ? nothing : mixtures
 end
-
-_is_mixed(::Nothing, j) = false
-_is_mixed(mixtures::AbstractDict, j) = haskey(mixtures, j)
 
 # The number type of the mixtures' weights and modifiers, so that an effect's
 # fitted parameters (AD values) survive the reduction.
@@ -1986,8 +1984,8 @@ end
 # Log-likelihood of susceptible `tj`'s rows (the range `rg` of
 # `layout.sus_row_order`) with every hazard it faces under `modifier`: the
 # escape over each row's at-risk window, and the log of the summed hazard at its
-# infection if that falls within follow-up. The windows are those of the flat
-# passes.
+# infection if that falls within follow-up. With `modifier = nothing` this is
+# the unmodified likelihood of the susceptible.
 function _component_loglik(
         modifier, kernel, extsrc, data, layout, rg, tj, tfollow, ::Type{T},
         gaps = nothing
@@ -2019,7 +2017,9 @@ function _component_loglik(
         end
     end
     (isnan(tj) || tj > tfollow) && return ll
-    acc = _LogSumExpAcc{T}()
+    # The escape term can carry wider (AD) numbers than the probed `T`, as a
+    # per-edge kernel's parameters are only seen on its rows.
+    acc = _LogSumExpAcc{promote_type(T, typeof(ll))}()
     @inbounds for k in rg
         r = layout.sus_row_order[k]
         if is_ext[r]
@@ -2163,9 +2163,8 @@ group(r::_ByComponent, host) = r.component[host]
 # stays -Inf regardless of what else would be added. A group's number widens
 # if a row adds a wider type than it currently holds: a covariate kernel may
 # hold its fitted parameters on only some rows, and the type probe behind the
-# initial `T` can miss them. `pairwise_surv_loglik`'s single running total
-# used to be a bare local and widened the same way for free; a vector element
-# cannot, which is why `_add!` below checks and widens explicitly instead.
+# initial `T` can miss them. A vector element cannot widen as a bare local
+# does, so `_add!` below checks and widens explicitly.
 struct _GroupTotals{T}
     ll::Vector{T}
     infeasible::Vector{Bool}
@@ -2241,132 +2240,43 @@ function _pairwise_surv_loglik(
     end
     if !all(totals.infeasible)
         gaps = _removal_gaps(data)
-        totals = _pairwise_cumhazard(
-            reduction, kernel, extsrc, data, layout, tfollow, totals, mixtures, gaps
-        )
-        totals = _pairwise_events(
-            reduction, kernel, extsrc, data, layout, tfollow, totals, mixtures, gaps
-        )
-        totals = _pairwise_mixtures(
+        totals = _pairwise_susceptibles(
             reduction, kernel, extsrc, data, layout, tfollow, totals, mixtures, gaps
         )
     end
     return _result(reduction, totals)
 end
 
-# Pass 1: cumulative-hazard contribution per row, each at risk from 0, added
-# into its susceptible's group. A susceptible is exposed to its possible
-# infectors until it is infected, and to the community hazard until the
-# earlier of that and `obs_end`, after which there are no more introductions.
-# Nothing is at risk after the end of follow-up, and a host infected after it
-# has escaped until then as far as the data show.
-function _pairwise_cumhazard(reduction, kernel, extsrc, data, layout, tfollow, totals, mixtures = nothing, gaps = nothing)
-    sus = layout.sus
-    infector = layout.infector
-    is_ext = layout.is_ext
-
-    @inbounds for row in eachindex(sus)
-        j = sus[row]
-        _is_infeasible(reduction, totals, j) && continue
-        _is_mixed(mixtures, j) && continue
-        tj = data.infection_time[j]
-        tend = (isnan(tj) || tj > tfollow) ? tfollow : convert(typeof(tfollow), tj)
-        if is_ext[row]
-            extdist = _ext_survival_of(extsrc, j)
-            extdist === nothing && continue
-            stop = min(tend, data.obs_end)
-            stop > 0 || continue
-            totals = _add!(reduction, totals, j, -cumhazard(extdist, stop))
-        else
-            i = infector[row]
-            oi = data.infectious_time[i]
-            isfinite(oi) || continue
-            oi < tend || continue
-            stop = min(data.removal_time[i], tend) - oi
-            stop > 0 || continue
-            pk = _pair_kernel(kernel, layout, row, data)
-            h = _gapped_cumhazard(
-                t -> cumhazard(pk, t), _host_stretches(gaps, i), oi, stop,
-                _host_leaky_stretches(gaps, i)
-            )
-            totals = _add!(reduction, totals, j, -h)
-        end
-    end
-    return totals
-end
-
-# Pass 2: per-susceptible log-sum-exp over event rows, added into (or dooming)
-# its susceptible's group. A single accumulator is reused across susceptibles
-# (reset per susceptible), keeping the reduction allocation-free on the AD
-# tape. Every host in the layout is explained: an infected one with no
+# One pass over the susceptibles, each scored by `_component_loglik` (or
+# `_mixture_loglik` where an effect modifies it) and added into its group. A
+# susceptible is exposed to its possible infectors until it is infected, and to
+# the community hazard until the earlier of that and `obs_end`, after which
+# there are no more introductions. Nothing is at risk after the end of
+# follow-up, and a host infected after it has escaped until then as far as the
+# data show. Every host in the layout is explained: an infected one with no
 # positive hazard at its infection time has density zero, and its group is
 # impossible: mark it rather than adding it, so that the derivative is zero
 # too. Adding it would leave the derivatives of the other hosts' finite terms
 # sitting alongside an infinite value, whereas the log-density is -Inf
 # throughout a neighbourhood of the parameters, because impossibility is a
 # discrete fact of the fixed times.
-function _pairwise_events(reduction, kernel, extsrc, data, layout, tfollow, totals, mixtures = nothing, gaps = nothing)
-    sus = layout.sus
-    infector = layout.infector
-    is_ext = layout.is_ext
-
-    T = eltype(totals.ll)
-    acc = _LogSumExpAcc{T}()
+function _pairwise_susceptibles(
+        reduction, kernel, extsrc, data, layout, tfollow, totals, mixtures = nothing, gaps = nothing
+    )
     @inbounds for g in eachindex(layout.sus_unique)
         j = layout.sus_unique[g]
         _is_infeasible(reduction, totals, j) && continue
-        _is_mixed(mixtures, j) && continue
-        tj = data.infection_time[j]
-        (isnan(tj) || tj > tfollow) && continue
-        acc.m = T(-Inf)
-        acc.s = zero(T)
-        acc.nseen = 0
-        for k in layout.sus_row_ranges[g]
-            row = layout.sus_row_order[k]
-            if is_ext[row]
-                # a host infected after `obs_end` was infected along a contact;
-                # one infected at 0 is a community case like any other
-                (tj >= 0 && tj <= data.obs_end) || continue
-                extdist = _ext_survival_of(extsrc, j)
-                extdist === nothing && continue
-                _push!(acc, loghazard(extdist, tj))
-            else
-                i = infector[row]
-                oi = data.infectious_time[i]
-                isfinite(oi) || continue
-                if oi < tj && tj <= data.removal_time[i] && !_removed_at(gaps, i, tj)
-                    lh = _loghazard(_pair_kernel(kernel, layout, row, data), tj - oi) +
-                        _leak_log_at(gaps, i, tj)
-                    _push!(acc, lh)
-                end
-            end
-        end
-        v = _value(acc)
-        totals = _is_minus_inf(v) ? _infeasible!(reduction, totals, j) : _add!(reduction, totals, j, v)
-    end
-
-    return totals
-end
-
-# Pass 3: a susceptible whose susceptibility an effect modifies is left out of
-# both flat passes and evaluated on its own here, as the log-sum-exp over its
-# mixture components of the log weight plus the escape and event terms under
-# that component's modifier. As in the event pass, a mixture of density zero
-# makes its group impossible.
-_pairwise_mixtures(
-    reduction, kernel, extsrc, data, layout, tfollow, totals, ::Nothing, gaps = nothing
-) = totals
-function _pairwise_mixtures(
-        reduction, kernel, extsrc, data, layout, tfollow, totals,
-        mixtures::AbstractDict, gaps = nothing
-    )
-    for g in eachindex(layout.sus_unique)
-        j = layout.sus_unique[g]
-        _is_infeasible(reduction, totals, j) && continue
-        mixture = get(mixtures, j, nothing)
-        mixture === nothing && continue
         T = eltype(totals.ll)
-        v = _mixture_loglik(mixture, kernel, extsrc, data, layout, g, tfollow, T, gaps)
+        tj = data.infection_time[j]
+        mixture = mixtures === nothing ? nothing : get(mixtures, j, nothing)
+        v = if mixture === nothing
+            _component_loglik(
+                nothing, kernel, extsrc, data, layout, layout.sus_row_ranges[g], tj,
+                tfollow, T, gaps
+            )
+        else
+            _mixture_loglik(mixture, kernel, extsrc, data, layout, g, tfollow, T, gaps)
+        end
         totals = _is_minus_inf(v) ? _infeasible!(reduction, totals, j) : _add!(reduction, totals, j, v)
     end
     return totals

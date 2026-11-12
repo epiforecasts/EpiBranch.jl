@@ -1,21 +1,9 @@
 # ── Trait protocol for isolation ────────────────────────────────────
 #
-# Isolation's three points of variation, each a dispatched seam:
-#
-# - `IsolationEligibility`: who can be isolated at all
-#   (default: symptomatic cases only).
-# - `test_sensitivity`: probability an eligible individual tests
-#   positive and so reaches isolation (a scalar / distribution /
-#   function, sampled per individual at init time).
-# - `onset_to_isolation_delay`: time from onset to self-reported
-#   isolation (a distribution drawn per individual).
-#
-# Post-isolation transmission stays a scalar parameter — it modifies
-# the competing risk's block probability without changing the
-# intervention's policy shape. `duration` (a scalar / distribution /
-# function, drawn whenever isolation is set) is the same kind of parameter: it
-# modifies the competing risk's release time, so the block it contributes can
-# lapse rather than last forever.
+# Eligibility, test sensitivity and the onset-to-isolation delay are
+# dispatched seams, documented on `Isolation`. Post-isolation transmission and
+# `duration` stay scalar parameters: they modify the competing risk's block
+# probability and release time without changing the policy shape.
 
 """
     IsolationEligibility
@@ -69,7 +57,6 @@ is_eligible_for_isolation(::SymptomaticOnly, ind, state) = !is_asymptomatic(ind)
 """Every case is eligible, including asymptomatic ones (mass-testing
 scenarios)."""
 struct AllCases <: IsolationEligibility end
-is_eligible_for_isolation(::AllCases, ind, state) = true
 
 # Fields an eligibility rule reads beyond the onset time every isolation needs.
 # A custom rule extends `required_fields` for its own type; the default is none.

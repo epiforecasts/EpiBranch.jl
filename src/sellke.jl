@@ -14,9 +14,6 @@ function _window_open(ind::Individual{T}, from::Symbol) where {T}
         _state_real(ind.state, Symbol(from, :_time), T(Inf))
 end
 
-# Earliest of the `until` removal states' times (Inf if none reached).
-_window_close(ind::Individual, until::Tuple) = _close_at(ind, _time_keys(until))
-
 # The state keys holding the times of `states`. Building a key concatenates two
 # names, which costs more than reading it, so a loop that closes many windows on
 # the same states builds the keys once.
@@ -31,82 +28,45 @@ function _close_at(ind::Individual{T}, keys) where {T}
     return t
 end
 
-# ── Interventions on the race ────────────────────────────────────────
-# An intervention's effect on transmission reaches the race through two
-# seams. The first is the infectious window: an intervention that removes a
-# case from onward transmission (isolation) shortens it. Each case is
-# settled as the race pops it (`_settle_case!`): its
-# natural history first, then each intervention's `resolve_individual!`, which
-# is where `Isolation` writes its isolation time. Its window is then closed at
-# the earliest removal across interventions as well as the `until` states. The
-# second is the per-contact competing risk, resolved against each candidate
-# infection time the race proposes (see the next block).
-
-# ── Per-contact competing risks on the continuous-time path ──────────
+# ── Interventions and per-contact risks on the race ──────────────────
 #
-# A competing risk blocks one infector → contact transmission with some
-# probability, conditional on the risk having arrived before that transmission's
-# time. On the race, a potential transmission *is* a drawn time: the contact
-# interval from the infector's window opening to the moment it would infect that
-# neighbour. The risks are resolved against that time when the candidate is
-# popped, rather than when it was proposed, so a dose or an isolation that
-# arrived in between is in force (see the loop in `_sellke_race!`).
+# An intervention's effect on transmission reaches the race through two seams.
+# The first is the infectious window: each case is settled as the race pops it
+# (`_settle_case!`), its natural history first and then each intervention's
+# `resolve_individual!`, and the window is closed at the earliest removal across
+# interventions as well as the `until` states. The second is the per-contact
+# competing risk (`_sellke_race!` documents which risks apply and when).
 #
-# A blocked contact does not transmit, and the pair goes on meeting: its next
-# contact is a draw from the same kernel conditioned on falling later, offered if
-# the infector's window is still open for it. The points of a sequence drawn that
-# way are the points of the kernel's own hazard `h(t)`, so blocking each of them
-# with probability `p` thins that hazard to `(1-p)·h(t)` and the first contact
-# that gets through arrives with survival `S(t)^(1-p)`. That is the per-exposure
-# reading of a leaky vaccine and the rate-multiplier reading of a relative
-# susceptibility. A degenerate kernel (`Dirac`) has one contact and no more, so a
-# block ends that pair.
-# Rejection continuations require finite remaining integrated hazard; otherwise
-# an opaque risk could reject contacts forever and the model is refused.
+# On the race a potential transmission *is* a drawn time. A risk is resolved
+# against the candidate time when it is popped, not when it was proposed, so a
+# dose or an isolation that arrived in between is in force. A blocked contact
+# does not transmit, and the pair goes on meeting, its next contact drawn from
+# the same kernel conditioned on falling later. The points of such a sequence
+# are the points of the hazard `h(t)` of the kernel. Blocking each with
+# probability `p` thins it to `(1-p)·h(t)`, and the first contact that gets
+# through arrives with survival `S(t)^(1-p)`: the per-exposure reading of a
+# leaky vaccine and the rate-multiplier reading of a relative susceptibility. A
+# degenerate kernel (`Dirac`) has one contact and a block ends the pair. The
+# continuation needs finite remaining integrated hazard, so an opaque risk that
+# could reject contacts forever is refused.
 #
-# A risk whose block is certain and does not fade — an `AllOrNothingMode`
-# responder blocked from its immunity time, an aborted infection's infector —
-# answers every later proposal on the pair the same way it just answered this
-# one, so nothing is left to gain from asking the model or the kernel again:
-# the pair is dropped from the race instead of drawing towards a foregone
-# conclusion, which is also what spares an unbounded window from the
-# rejection-continuation guard above. The pair still stands in each other's
-# contacts; tracing and ring construction read that, not the proposals the
-# race no longer makes, so they are unaffected either way.
+# A single exposure with nothing to follow it, such as a contact a branching
+# process drew or one a model names through `contacts_of`, is a transmission
+# lost: an efficacy of 0.5 halves those, and for a kernel pair it leaves
+# `1 - exp(-∫h/2)` of them.
 #
-# An output that wants every contact event — to count how many exposures a
-# vaccine averted, say — needs the draws the race would otherwise skip. A
-# `recorder` ([`ContactRecorder`](@ref)) attached to the composed model is
-# asked about every blocked proposal, permanent or not
-# ([`records_contacts`](@ref EpiBranch.records_contacts)), so it can log each
-# one; only its answer for a proposal whose block is permanent decides whether
-# a standing block ends the pair's draws. Answering yes there keeps the race
-# drawing exactly as it does for a block that is not certain, which puts the
-# pair back under the rejection-continuation guard rather than needing one of
-# its own. The default `NoContactRecorder` answers no to every pair, so a run
-# with no recorder attached drops the pair exactly as above.
+# Thinning keeps the contact process of a pair in the family the pairwise
+# likelihood is written in, with its hazard scaled. A susceptibility in force
+# throughout therefore stays representable wherever that family is closed under
+# proportional hazards (an exponential contact interval, for one). A risk
+# arriving partway through the window, such as an isolation or a dose given by
+# a trace, is not representable: the likelihood has no term for a blocked
+# contact.
 #
-# It is not what a block means for a single exposure, a contact a branching
-# process drew or one a model names through `contacts_of`, which is a
-# transmission lost with nothing to follow it: an efficacy of 0.5 halves those
-# transmissions, and for a kernel pair it leaves `1 - exp(-∫h/2)` of them.
-#
-# Thinning a hazard keeps a pair's contact process in the family the pairwise
-# likelihood is written in, with its hazard scaled, so a susceptibility that is
-# in force throughout stays representable wherever that family is closed under
-# proportional hazards — an exponential contact interval, for one. A risk that
-# arrives partway through the window, such as an isolation or a dose given by a
-# trace, is not: the likelihood has no term for a blocked contact.
-#
-# On a model with several routes, which interventions' risks a route resolves is
-# selected by `risk_applies(intervention, route)`: removal effects use the
-# route's censoring states, while protection defaults to every route. The model's own risks and the per-individual multipliers apply on
-# every route.
-#
-# The built-in sources return no risk at all when every multiplier is 1, so
-# nothing is drawn from the rng and a run without risks reproduces the same
-# seeded results, through the same heap, as it did before per-contact risks
-# existed.
+# `risk_applies(intervention, route)` selects which risks of an intervention a
+# route resolves. The built-in sources return no risk when every multiplier is
+# 1, and nothing is then drawn from the rng, so a run without risks reproduces
+# the same seeded results.
 
 # Whether `f` has a method for `T` more specific than the fallback defined on
 # `base`, i.e. whether a type has implemented a hook itself. With `n`, the
@@ -722,7 +682,7 @@ function _warn_contactless(model, interventions)
     supplies_contacts(model) && return nothing
     names = unique(
         String[
-            string(nameof(typeof(_unwrap_scheduled(iv))))
+            string(nameof(typeof(_innermost(iv))))
                 for iv in interventions
                 if traces_contacts(iv) || (_proposes_actions(iv) && needs_contacts(iv))
         ]
@@ -985,7 +945,7 @@ settled member is ever offered again.
 `max_time` ends the race at that time: individuals whose infection would fall
 later are left uninfected, and the state is exactly the full run's state
 restricted to infections up to `max_time`. The exception is a mass-action route
-(`_MassAction`) whose infectious window never closes, which samples its contacts
+(`MassAction`) whose infectious window never closes, which samples its contacts
 only up to `max_time`: there the cut run is a draw of the same process rather
 than the same draw. Returns `true` when the race ran
 until no candidate infection remained (the population reached extinction) and
@@ -1134,8 +1094,7 @@ function _sellke_race_typed!(
     # Nothing can block unless the model or an intervention says so — the two
     # per-individual traits are in the draw, not here — and then no member ever
     # falls back, so the lists are not built at all and a heap entry names its
-    # opening directly. That path pushes, pops and draws exactly what the race
-    # did before per-contact risks existed.
+    # opening directly.
     # Whether any per-individual trait is set. Both are constants of the two
     # people, so a race where none is set can leave the target's record alone
     # when it draws — a saving worth having on a dense graph, where that record
@@ -1272,7 +1231,7 @@ function _sellke_race_typed!(
         end
     else
         # A route that samples its own contacts rather than listing them
-        # (`_MassAction`) only drew them up to the race's own time limit where
+        # (`MassAction`) only drew them up to the race's own time limit where
         # its window never closes, and remembered which group pairs it cut
         # short (see `propose_along`'s `capped`). Resuming redraws exactly
         # those, from the limit the previous call stopped at: the exponential
@@ -1280,7 +1239,7 @@ function _sellke_race_typed!(
         # extended window is the same draw as sampling the whole window at
         # once would have been.
         for (ri, (_, route_targets)) in enumerate(rts)
-            _resume_route!(route_targets, race, ri, resume.max_time, traits)
+            resume_route!(route_targets, race, ri, resume.max_time, traits)
         end
     end
 
@@ -1346,17 +1305,14 @@ function _sellke_race_typed!(
         reinfection = processed[j]
         prior_infection_time = reinfection ? ind.infection_time : zero(T)
         # A seeded time is a community introduction when the model gave the race
-        # an `introduction`, and an index case otherwise. An introduction arrives
-        # from outside the population, so it is put to the risks that act on the
-        # person being introduced: their susceptibility, a vaccine's protection,
-        # a risk of the model's own. Not to the risks that stand in for removing
-        # an infector — isolation and quarantine —
-        # since the source is outside the population and no measure taken here
-        # removes it: being isolated is not protection from acquiring an
-        # infection. The person stands in for the infector those risks read, so a
-        # risk of your own that reads the infector should return nothing when the
-        # two are the same individual. An index case is where an outbreak is
-        # defined to start, and is put to no risk at all.
+        # an `introduction`, and an index case otherwise. An introduction is put
+        # to the risks that act on the person introduced (susceptibility, a
+        # vaccine's protection, the model's own) but not to isolation or
+        # quarantine, which stand in for removing an infector that is outside
+        # the population here. The person stands in for the infector those
+        # risks read. A risk of your own that reads the infector should
+        # therefore return nothing when the two are the same individual. An
+        # index case is put to no risk at all.
         source = infector_id == 0 ? ind : state.individuals[infector_id]
         if checks && (infector_id != 0 || introduction !== nothing)
             blocked, permanent, certain_release = _proposal_blocked(
@@ -1367,21 +1323,11 @@ function _sellke_race_typed!(
                     _on_route((_, rt) -> _route_builtin_blocks(rt), rts, opening.route)
             )
             if blocked
-                # The contact did not transmit. `recorder` is asked about every
-                # blocked proposal, permanent or not, so it can log the
-                # exposure even when the pair goes on meeting; only its answer
-                # for a permanent block decides whether the pair's draws
-                # continue. Unless the block is certain to recur (`permanent`),
-                # the source goes on meeting the person: the next contact is a
-                # draw from the same hazard conditioned on falling later, kept
-                # while the window is still open for it. A permanent block
-                # already answers every later proposal the same way, so the
-                # pair is dropped without asking the model or the kernel again,
-                # unless `recorder` says this pair's draws still matter, in
-                # which case it is asked afresh at every later proposal too, so
-                # a recorder that wants the stream can log each one. Tracing
-                # and ring construction read the standing contacts, not these
-                # proposals, so the pair itself is unaffected either way.
+                # The contact did not transmit. The pair goes on meeting unless
+                # the block is `permanent`; `recorder` sees every blocked
+                # proposal, and a permanent one keeps drawing only if it says
+                # the pair's draws still matter (see the `_sellke_race!`
+                # docstring).
                 keeps_drawing = _logs_blocked(members, source, ind) &&
                     records_contacts(recorder, source, ind, state, bt)
                 if !may_block
@@ -1605,7 +1551,7 @@ end
 # continuation method to resume. Extinction, a stopping rule, or
 # `max_generation` has already let through everything up to its own cap, and
 # popping on would let through more. Each of those clears the continuation
-# and returns the buffers to the pool as before.
+# and returns the buffers to the pool.
 #
 # `contacts`/`introduction`/`watches`/`projections`/`max_generation`/
 # `stopping_rules` are only needed for the `_RaceContinuation` built below, so
@@ -1624,15 +1570,15 @@ function _finish_race!(
         race.state.continuation = nothing
         _return_buffers!(race.buffers)
     else
-        # A route reporting a pending window but no working `_resume_route!`
+        # A route reporting a pending window but no working `resume_route!`
         # would otherwise lose its leftover contacts without warning the
         # moment `simulate(model, state; max_time)` resumes this race.
         for (_, route_targets) in rts
-            _pending_beyond(route_targets, race) && !_resumable_route(route_targets) &&
+            _pending_beyond(route_targets, race) && !resumable_route(route_targets) &&
                 throw(
                 ArgumentError(
                     "route `$(nameof(typeof(route_targets)))` reports pending_beyond " *
-                        "but has no matching `_resume_route!`, so the contacts its " *
+                        "but has no matching `resume_route!`, so the contacts its " *
                         "capped window still owes cannot be redrawn on resume; " *
                         "`simulate(model, state; max_time)` cannot continue this race"
                 )
@@ -1704,7 +1650,7 @@ _return_buffers!(b::_RaceBuffers) = _return_pooled!(b)
 A race cut off by `max_time`, a stopping rule or `max_generation`, kept on
 [`SimulationState`](@ref)'s `continuation` field so [`simulate`](@ref)'s
 continuation method can resume where it stopped: the routes it was running,
-with whatever bookkeeping a route keeps on itself (such as `_MassAction`'s
+with whatever bookkeeping a route keeps on itself (such as `MassAction`'s
 cut group pairs), the members it raced over, its `contacts`/`introduction`/
 `watches`/`projections`, the case and generation caps besides `max_time`
 itself, and the buffers its queue and every other pending proposal live in.
@@ -1884,7 +1830,7 @@ the race to walk as `(target_id, kernel)` pairs (an adjacency list, or
 anything callable that way). `false` by default. Declare `true` for a route
 whose contacts are cheaper to sample than to list, such as a spatial kernel
 over a large population or contact with everyone in an area: mass action
-(`_MassAction`) declares it for exactly this reason. A route declaring `true`
+(`MassAction`) declares it for exactly this reason. A route declaring `true`
 must also implement [`propose_along`](@ref EpiBranch.propose_along) and
 [`route_pair_kernel`](@ref EpiBranch.route_pair_kernel), and may implement
 [`pending_beyond`](@ref EpiBranch.pending_beyond).
@@ -1955,26 +1901,37 @@ of them could still wane and `reinfects` holds.
 """
 pending_beyond(route, state, reinfects::Bool) = false
 
-# Resuming a cut race (`simulate`'s continuation method): redraw, from
-# `old_max_time`, whatever `route_targets` sampled only up to the previous
-# call's `max_time` because a window with no natural close left it capped
-# (`propose_along`'s `capped`; see `pending_beyond`). The default is a no-op,
-# right for a route that lists its targets instead and so never caps a window
-# in the first place; `_MassAction` is the only built-in route that needs
-# this, in `mass_action.jl`. Redrawn contacts are submitted through
-# `proposer` (`propose_along(proposer, ...)`). A wrapper around
-# `route_targets` that needs to see them, such as a tracing wrapper recording
-# what the race considers, passes itself as `proposer` here instead of
-# defaulting to `route_targets` and letting the redraw bypass it.
-_resume_route!(route_targets, race, ri, old_max_time, traits, proposer = route_targets) = nothing
+"""
+    resume_route!(route, race, ri, old_max_time, traits, proposer = route)
 
-# Whether `route_targets` has a `_resume_route!` method of its own, so a race
-# it leaves with a pending window (`pending_beyond`) can actually be redrawn
-# on resume rather than silently dropped by the no-op default above.
-# `_MassAction` is the only built-in route that overrides this, in
-# `mass_action.jl`; a third-party route declaring `proposes_own_contacts` and
-# a non-default `pending_beyond` needs to override it too.
-_resumable_route(route_targets) = false
+Resume a cut race (`simulate`'s continuation method): redraw, from
+`old_max_time`, whatever `route` sampled only up to the previous call's
+`max_time` because a window with no natural close left it capped (the `capped`
+argument of [`propose_along`](@ref EpiBranch.propose_along); see
+[`pending_beyond`](@ref EpiBranch.pending_beyond)).
+
+The default is a no-op, which suits a route that lists its targets and never
+caps a window. Redrawn contacts are submitted through `proposer`
+(`propose_along(proposer, ...)`). A wrapper around `route` that needs to see
+them, such as a tracing wrapper recording what the race considers, passes
+itself as `proposer` so that the redraw does not bypass it. A route that
+overrides this must also declare it with
+[`resumable_route`](@ref EpiBranch.resumable_route).
+"""
+resume_route!(route, race, ri, old_max_time, traits, proposer = route) = nothing
+
+"""
+    resumable_route(route) -> Bool
+
+Whether `route` has a [`resume_route!`](@ref EpiBranch.resume_route!) method of
+its own. If it does, a race the route leaves with a pending window
+([`pending_beyond`](@ref EpiBranch.pending_beyond)) is redrawn on resume
+instead of being silently dropped by the no-op default. Defaults to `false`; a
+route that declares [`proposes_own_contacts`](@ref EpiBranch.proposes_own_contacts)
+and a non-default `pending_beyond` overrides both. A wrapper forwards it to the
+route it wraps.
+"""
+resumable_route(route) = false
 
 # Whether a route left contacts past the time limit that it never proposed, so
 # that a race which ran out of candidates was cut off rather than extinct. A
@@ -1988,7 +1945,7 @@ end
 # Propose the infections one case's window on one route leads to. The default
 # asks the route for every susceptible target and its pair kernel, and draws one
 # contact per pair, keeping those inside the window. A route that finds its own
-# contacts (`proposes_own_contacts`), such as mass action (`_MassAction`),
+# contacts (`proposes_own_contacts`), such as mass action (`MassAction`),
 # answers through the public `propose_along` instead: it returns the
 # `(target_id, time)` pairs themselves, and the race does the submitting and
 # the processed/reinfects bookkeeping that every other route gets through
@@ -2044,8 +2001,7 @@ function _propose_along!(
         end
         # Both per-individual traits are rate multipliers on this
         # pair's contact interval, folded into the draw rather than
-        # resolved contact by contact. A pair at the default 1 draws
-        # exactly as it did before they were honoured here.
+        # resolved contact by contact.
         pair_rng = stream(rng, (infector_id, target_id), (:contact, ri))
         dt = traits ?
             _traits_scaled_draw(

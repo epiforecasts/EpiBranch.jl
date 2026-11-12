@@ -1,36 +1,20 @@
 # ── Simulating a branching process by generation, as counts ──────────
 #
-# A `BranchingProcess` with a single window, no generation-time kernel
-# (discrete generations) and a finite `population_size` has the structure of
-# a discrete-generation (TSIR) model: every case of one generation infects
-# the next at once, with no ordering between them. `simulate_by_generation`
-# exploits that to track only each generation's case count, never creating an
-# `Individual` for a contact.
+# `simulate_by_generation` tracks only each generation's case count, never
+# creating an `Individual` for a contact. This is possible because a
+# single-window, discrete-generation, finite-population `BranchingProcess` has
+# no ordering between the cases of a generation.
 #
-# A generation draws its potential contacts, then thins them against the
-# susceptibles of each type left. Where the offspring law has a closed-form
-# sum (`Poisson`, `NegativeBinomial`, `Binomial`), the total of a type is drawn
-# in one step, so the cost does not grow with the number of cases. Any other
-# law draws the offspring of every case one at a time.
+# `PerContactDepletion` mirrors `_offspring_builtin_risk_blocks` on the
+# individual-based race when there is a single type. With several types the
+# individual-based simulation thins every contact against one shared population
+# fraction, which makes the two differ.
 #
-# Two depletion rules thin the contacts. `PerContactDepletion` decides them
-# one at a time, as `_offspring_builtin_risk_blocks` decides the fate of a
-# contact on the individual-based race when there is a single type. A contact
-# of type `i` is kept with probability `susceptibles[i] / type_sizes[i]`, and
-# each kept contact lowers `susceptibles[i]` before the next is decided. With
-# several types the individual-based simulation thins every contact against
-# one shared population fraction, so the two differ.
-# `StartOfGenerationDepletion` instead keeps a binomial share of the contacts
-# of a type, with the share set to the susceptible fraction of the type at the
-# start of the generation, capped at the susceptibles left, in one draw.
-#
-# `multiplier`, when given, is drawn once per generation and scales the mean
-# of every case's offspring law before it draws: with `Poisson` offspring,
-# summing over the generation's cases gives a `Poisson` total scaled by the
-# same draw. Marginalising over a `Gamma` multiplier gives a negative
-# binomial total with the shape of the multiplier. Summing independent
-# per-case negative binomials would instead give a shape that grows with
-# the number of cases.
+# A shared `multiplier` is drawn once per generation. With `Poisson` offspring
+# the total of a generation is `Poisson` scaled by the same draw, and
+# marginalising over a `Gamma` multiplier gives a negative binomial total with
+# the shape of the multiplier. Summing independent per-case negative binomials
+# would instead give a shape that grows with the number of cases.
 
 """
     AbstractDepletion
@@ -273,6 +257,49 @@ its own susceptible share, which scales the rows of the matrix by that share.
 Returns a [`GenerationCounts`](@ref); continue it with
 `simulate(model, state; max_generations)`.
 
+# Vaccination campaigns
+
+Give a [`ModelSpec`](@ref) built on such a `BranchingProcess` instead of the
+process to apply its vaccination campaigns to the susceptibles of each type
+between generations, at the calendar time `generation * generation_length`.
+This needs a `generation_length` and a finite population. A campaign is a
+[`GroupVaccination`](@ref) with `group_key = :type`, so that its groups are the
+types, wrapped in [`CapacityConstrained`](@ref) for its doses, and in
+[`Scheduled`](@ref) with a `start_time` and `end_time` if it has a window, in
+either order. Any other intervention, or a condition other than a window,
+raises an `ArgumentError` naming it, as do a `coverage` below one, a
+`dose_delay`, a `delay_to_immunity`, `waning` and an efficacy that is not a
+number.
+
+The doses of generation `g` cover `[g * generation_length, (g + 1) *
+generation_length)` and are applied after generation `g` is drawn and before
+`g + 1` is. Each type has the whole `budget_per_period` to itself, as in the
+individual-based simulation, where `GroupVaccination` keeps one budget per
+group. The doses are those of the periods that start in the interval; with
+`carry_over`, budget left from earlier periods, or from before a window opens,
+is given in the first interval open to it. A dose reaches a susceptible of a
+type with probability equal to the share of susceptibles in the population of
+the type at the start of the interval, and protects with probability
+`efficacy`, whatever the effect `mode`: a protected susceptible is removed from
+the susceptibles, as one who would be blocked at each contact. Doses that fall
+on someone already protected are not tracked, so a campaign that gives a type
+more doses than it has people is only approximate. The `eligibility` of the
+campaign is not read: the doses are given whether or not a case has triggered
+them.
+
+Vaccinating between generations approximates a model whose generations are
+calendar steps, as in a TSIR, with everyone vaccinated in a step protected
+before the contacts of the next generation are made. It agrees with the
+individual-based simulation only when the budget reaches everyone in the
+window. The simulation gives the doses of a `BranchingProcess` only to
+contacts as they are created. A budget below the number of contacts therefore
+covers a share of contacts, not `doses / population`, and the counts differ.
+The budget is also read per type here. In the mixing approximations the groups
+share one budget. In the individual-based simulation the budget is per group
+when the groups are types and shared otherwise. The place of the doses in the
+intervention specification is undecided, and the split of a budget between
+groups may change.
+
 # Examples
 
 ```julia
@@ -300,6 +327,17 @@ state = simulate_by_generation(
     depletion = StartOfGenerationDepletion(), generation_length = 7.0,
     multiplier = Gamma(6.5, 1 / 6.5), rng = Xoshiro(1)
 )
+
+# A vaccination campaign of 2,000 doses a day to each type for a fortnight
+model = BranchingProcess([2.0 0.5; 0.5 2.0], R -> Poisson(R), EpiBranch.NoGenerationTime();
+    population_size = 250_000)
+campaign = CapacityConstrained(GroupVaccination(efficacy = 0.9, group_key = :type);
+    budget_per_period = Steps([140.0, 154.0], [0.0, 2_000.0, 0.0]), period = 1.0)
+state = simulate_by_generation(
+    ModelSpec(model; interventions = [campaign]); n_initial = [10, 2], max_generations = 30,
+    population_by_type = [40_000, 210_000], immune = [20_000, 190_000],
+    depletion = StartOfGenerationDepletion(), generation_length = 14.0
+)
 ```
 """
 function simulate_by_generation(
@@ -313,6 +351,34 @@ function simulate_by_generation(
         depletion::AbstractDepletion = PerContactDepletion(),
         generation_length::Union{Real, Nothing} = nothing
     )
+    state = _initial_generation_state(
+        model, n_initial, rng, immune, population_by_type, depletion, generation_length
+    )
+    return simulate(model, state; max_generations, multiplier)
+end
+
+function simulate_by_generation(
+        spec::ModelSpec;
+        n_initial::Union{Integer, AbstractVector{<:Integer}} = 1,
+        max_generations::Integer = _DEFAULT_MAX_GENERATIONS,
+        rng::AbstractRNG = Random.default_rng(),
+        multiplier = nothing,
+        immune::Union{Integer, AbstractVector{<:Integer}} = 0,
+        population_by_type::Union{Nothing, AbstractVector{<:Integer}} = nothing,
+        depletion::AbstractDepletion = PerContactDepletion(),
+        generation_length::Union{Real, Nothing} = nothing
+    )
+    model = _generation_process(spec)
+    state = _initial_generation_state(
+        model, n_initial, rng, immune, population_by_type, depletion, generation_length
+    )
+    return simulate(spec, state; max_generations, multiplier)
+end
+
+function _initial_generation_state(
+        model::BranchingProcess, n_initial, rng, immune, population_by_type, depletion,
+        generation_length
+    )
     nt = n_types(model)
     counts = _per_type_counts(model, n_initial, :n_initial)
     pop = population_size(model)
@@ -323,10 +389,19 @@ function simulate_by_generation(
         model, sizes, counts, _per_type_counts(model, immune_counts, :immune)
     )
     gl = _generation_length(generation_length)
-    state = GenerationCounts(
+    return GenerationCounts(
         counts, cumulative, pop, susceptibles, sizes, 0, gl, depletion, rng
     )
-    return simulate(model, state; max_generations, multiplier)
+end
+
+function _generation_process(spec::ModelSpec)
+    process(spec) isa BranchingProcess || throw(
+        ArgumentError(
+            "simulate_by_generation needs a ModelSpec built on a BranchingProcess, not " *
+                "$(nameof(typeof(process(spec))))"
+        )
+    )
+    return process(spec)
 end
 
 _generation_length(::Nothing) = nothing
@@ -371,6 +446,34 @@ function simulate(
         model::BranchingProcess, state::GenerationCounts;
         max_generations::Integer, rng::AbstractRNG = state.rng, multiplier = nothing
     )
+    return _continue_generations(model, state, _Campaign[]; max_generations, rng, multiplier)
+end
+
+"""
+    simulate(spec::ModelSpec, state::GenerationCounts; max_generations,
+             rng::AbstractRNG = state.rng, multiplier = nothing)
+
+Continue `state` as for a `BranchingProcess`, applying the vaccination
+campaigns of `spec` between generations as [`simulate_by_generation`](@ref)
+does. Pass the same `spec` the state was started with: a continuation with the
+bare model applies no campaign.
+"""
+function simulate(
+        spec::ModelSpec, state::GenerationCounts;
+        max_generations::Integer, rng::AbstractRNG = state.rng, multiplier = nothing
+    )
+    campaigns = _generation_campaigns(
+        spec, state.generation_length, !(state.susceptibles isa NoPopulation)
+    )
+    return _continue_generations(
+        _generation_process(spec), state, campaigns; max_generations, rng, multiplier
+    )
+end
+
+function _continue_generations(
+        model::BranchingProcess, state::GenerationCounts, campaigns;
+        max_generations::Integer, rng::AbstractRNG, multiplier
+    )
     _extinct(state.counts) && return state
     max_generations > state.generation || throw(
         ArgumentError(
@@ -387,6 +490,12 @@ function simulate(
     cumulative = state.cumulative_cases
     gen = state.generation
     while gen < max_generations && !all(iszero, counts)
+        # The doses of generation `gen`'s interval reach the susceptibles
+        # before the next generation is drawn.
+        for campaign in campaigns
+            t0, t1 = _generation_interval(state.generation_length, gen)
+            _vaccinate!(rng, campaign, t0, t1, susceptibles, sizes)
+        end
         m = multiplier === nothing ? nothing : rand(rng, multiplier)
         potential = _generation_potential(rng, offspring, counts, m)
         # Without a finite population nothing is thinned.
@@ -401,6 +510,13 @@ function simulate(
         state.type_sizes, gen, state.generation_length, state.depletion,
         rng
     )
+end
+
+# The days the doses of generation `gen` cover. A campaign is only built when
+# there is a `generation_length`, which rules out `nothing` here.
+_generation_interval(length::Float64, gen) = (gen * length, (gen + 1) * length)
+function _generation_interval(::Nothing, gen)
+    throw(ArgumentError("a vaccination campaign needs a generation_length"))
 end
 
 _as_vector(x::Int) = [x]

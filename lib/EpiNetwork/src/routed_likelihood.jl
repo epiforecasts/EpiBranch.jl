@@ -120,7 +120,7 @@ end
 # off, but `RoutedNetworkInfections` has one per route; a union across
 # routes would be wrong exactly where routes matter (isolation closing the
 # community route while the household one stays open would still count that
-# person). Caught here, before `_mass_action_schedule` is reached with a
+# person). Caught here, before `mass_action_schedule` is reached with a
 # vector of windows where it expects one.
 function EpiBranch._ext_prepare(::MassActionHazard, ::RoutedNetworkInfections)
     throw(
@@ -177,7 +177,7 @@ end
 
 function EpiBranch._ext_prepare(m::RoutedMassActionHazard, data::RoutedNetworkInfections)
     r = _routed_mass_action_index(data, m.route)
-    return EpiBranch._mass_action_schedule(
+    return EpiBranch.mass_action_schedule(
         m.hazard, data.infectious_time[r], data.removal_time[r]
     )
 end
@@ -298,10 +298,10 @@ function _route_in_neighbours(contacts::Vector{Vector{Int}}, infected::AbstractV
 end
 
 # A susceptible's escape and event terms under one mixture component's
-# modifier, over every route and the external hazard. `_scaled_cumhazard` and
-# `_scaled_loghazard` apply the modifier to the hazard of each route and to the
-# external hazard. `nothing` is the identity modifier, so an unmodified
-# susceptible is scored by calling this with `nothing`.
+# modifier, over every route and the external hazard, with `_scaled_cumhazard`
+# and `_scaled_loghazard` applying the modifier to each route's and the
+# external hazard's own hazard. With `modifier = nothing` this is the
+# susceptible's unmodified likelihood.
 function _routed_modifier_loglik(
         modifier, windows, extsrc, data, in_neighbours, gaps, gates, tfollow, j
     )
@@ -475,24 +475,21 @@ function EpiBranch.pairwise_surv_loglik(
     for j in 1:n
         (!explain_index && data.is_index[j]) && continue
         mixture = mixtures === nothing ? nothing : get(mixtures, j, nothing)
-        if mixture !== nothing
-            v = _routed_mixture_loglik(
+        v = if mixture === nothing
+            _routed_modifier_loglik(
+                nothing, windows, extsrc, data, in_neighbours, gaps, gates, tfollow, j
+            )
+        else
+            _routed_mixture_loglik(
                 mixture, windows, extsrc, data, in_neighbours, gaps, gates, tfollow, j, T
             )
-            # Returning `-Inf` directly, rather than adding it to `ll`, discards
-            # whatever AD partials `ll` has accumulated from this host and every
-            # earlier one. Once a host is structurally unexplainable the
-            # likelihood is the constant -Inf at every parameter value, so its
-            # gradient must be exactly zero, and those partials would otherwise
-            # survive into a nonzero one. The flat passes below return -Inf the
-            # same way.
-            _is_minus_inf(v) && return T(-Inf)
-            ll += v
-            continue
         end
-        v = _routed_modifier_loglik(
-            nothing, windows, extsrc, data, in_neighbours, gaps, gates, tfollow, j
-        )
+        # Returning `-Inf` directly, rather than adding it to `ll`, discards
+        # whatever AD partials `ll` has accumulated from this host and every
+        # earlier one. Once a host is structurally unexplainable the
+        # likelihood is the constant -Inf at every parameter value, so its
+        # gradient must be exactly zero, and those partials would otherwise
+        # survive into a nonzero one.
         _is_minus_inf(v) && return T(-Inf)
         ll += v
     end
