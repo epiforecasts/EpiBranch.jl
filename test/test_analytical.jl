@@ -72,10 +72,9 @@ _rep(p, delay = Dirac(0.0)) = [Reporting(; delay, probability = p, from = :infec
         end
 
         @testset "Delegates through Observed" begin
-            # Regression: extinction_probability goes via
-            # single_type_offspring, which must delegate through
-            # observation wrappers. Before the fix it threw FieldError
-            # because the wrapper has no `offspring` field.
+            # `extinction_probability` goes via `single_type_offspring`, which
+            # must delegate through observation wrappers because the wrapper
+            # has no `offspring` field.
             bp = BranchingProcess(NegBin(0.5, 0.5))
             obs_model = ModelSpec(
                 BranchingProcess(NegBin(0.5, 0.5));
@@ -119,9 +118,8 @@ _rep(p, delay = Dirac(0.0)) = [Reporting(; delay, probability = p, from = :infec
         end
 
         @testset "rand throws on supercritical" begin
-            # Regression: previously silently returned 10_000 with a
-            # warning, giving a nominally valid sample for a distribution
-            # whose total mass is < 1.
+            # Sampling must throw rather than return a truncated sample for a
+            # distribution whose total mass is < 1.
             @test_throws ArgumentError rand(Borel(1.5))
             @test_throws ArgumentError rand(Borel(1.0))
         end
@@ -151,10 +149,9 @@ _rep(p, delay = Dirac(0.0)) = [Reporting(; delay, probability = p, from = :infec
         end
 
         @testset "Supercritical allowed in logpdf, rejected in rand" begin
-            # Regression: supercritical GammaBorel is needed for
-            # quadrature integrands that cross R=1, so logpdf stays
-            # defined, but rand would silently truncate at chain size
-            # 10_000.
+            # A supercritical GammaBorel is needed for quadrature integrands
+            # that cross R=1, so logpdf stays defined, but rand would
+            # truncate at chain size 10_000 and must throw.
             d_super = GammaBorel(0.5, 1.5)
             @test isfinite(logpdf(d_super, 3))
             @test_throws ArgumentError rand(d_super)
@@ -229,9 +226,9 @@ _rep(p, delay = Dirac(0.0)) = [Reporting(; delay, probability = p, from = :infec
     end
 
     @testset "cdf of chain-size distributions" begin
-        # Regression: none of these defined a `cdf`/`cdf(d, ::Integer)`
-        # method, so Distributions.jl's discrete fallback called itself
-        # until the stack overflowed.
+        # Each needs its own `cdf`/`cdf(d, ::Integer)` method:
+        # Distributions.jl's discrete fallback calls itself until the stack
+        # overflows.
         @testset "Borel" begin
             d = Borel(0.5)
             @test cdf(d, 3) ≈ sum(pdf(d, n) for n in 1:3)
@@ -260,10 +257,9 @@ _rep(p, delay = Dirac(0.0)) = [Reporting(; delay, probability = p, from = :infec
             @test cdf(d, 5) + ccdf(d, 5) ≈ 1.0
             @test logccdf(d, 5) ≈ log(ccdf(d, 5))
 
-            # Regression: cdf/logccdf/rand summed pdf(d, n) one n at a time,
-            # each restarting the hitting-time coefficient build-up from
-            # scratch, so a walk of a few hundred terms used to be
-            # impractically slow.
+            # cdf/logccdf/rand must share one hitting-time coefficient
+            # build-up across terms, not restart it for each pdf(d, n), so a
+            # walk of a few hundred terms stays practical.
             @test cdf(d, 150) ≈ sum(pdf(d, n) for n in 1:150)
             rng = StableRNG(1)
             @test rand(rng, d) isa Integer
@@ -301,10 +297,10 @@ _rep(p, delay = Dirac(0.0)) = [Reporting(; delay, probability = p, from = :infec
             @test cdf(d, 5) + ccdf(d, 5) ≈ 1.0
             @test logccdf(d, 5) ≈ log(ccdf(d, 5))
 
-            # Regression: loglikelihood(::ChainSizes, ::ThinnedChainSize) used
-            # to fall through to the generic offspring-distribution method and
-            # throw a MethodError, since a ThinnedChainSize is itself a
-            # chain-size law rather than an offspring distribution.
+            # A ThinnedChainSize is itself a chain-size law rather than an
+            # offspring distribution, so loglikelihood(::ChainSizes,
+            # ::ThinnedChainSize) must not fall through to the generic
+            # offspring-distribution method.
             data = ChainSizes([1, 1, 2, 5])
             ll = loglikelihood(data, d)
             @test ll ≈ sum(logpdf(d, n) for n in data.data)
@@ -340,9 +336,9 @@ _rep(p, delay = Dirac(0.0)) = [Reporting(; delay, probability = p, from = :infec
             @test_throws ArgumentError ChainDetection(0.0)
             @test_throws ArgumentError ChainDetection(1.5)
 
-            # Regression: two or more consecutive zeros at the start of
-            # `base`'s support fed the streaming log-sum-exp a
-            # -Inf − -Inf term, giving a NaN normalising constant.
+            # Two or more consecutive zeros at the start of `base`'s support
+            # must not feed the streaming log-sum-exp a -Inf − -Inf term,
+            # which gives a NaN normalising constant.
             d_threshold = observe(base, ChainDetection(n -> n < 3 ? 0.0 : 1.0))
             @test isfinite(d_threshold.log_prob_recorded)
             @test pdf(d_threshold, 1) == 0.0
@@ -375,11 +371,9 @@ _rep(p, delay = Dirac(0.0)) = [Reporting(; delay, probability = p, from = :infec
         end
 
         @testset "PMF matches the manual formula for a generic offspring" begin
-            # Regression: for a HittingTimeChainSize dist, the mixture sum
-            # used to rebuild the hitting-time coefficient table from
-            # scratch for every secondary-case count, instead of sharing one
-            # table across them, so a chain size of a few hundred was
-            # impractically slow.
+            # For a HittingTimeChainSize dist, the mixture sum must share one
+            # hitting-time coefficient table across secondary-case counts, so
+            # a chain size of a few hundred stays practical.
             index = Poisson(0.4)
             off = DiscreteNonParametric([0, 1, 2], [0.5, 0.3, 0.2])
             d = IndexChainSize(index, off)
@@ -517,7 +511,7 @@ _rep(p, delay = Dirac(0.0)) = [Reporting(; delay, probability = p, from = :infec
         end
 
         @testset "Extreme dispersion stays finite" begin
-            # Regression: k ≳ 1e16·R swamps R in the floating-point sum
+            # k ≳ 1e16·R swamps R in the floating-point sum
             # k + R inside NegBin's p = k / (k + R), so R rounds to exactly 0
             # and GammaBorel(k, 0) — the degenerate "no onward transmission"
             # law — is the best the stored NegativeBinomial can give. The
@@ -531,9 +525,9 @@ _rep(p, delay = Dirac(0.0)) = [Reporting(; delay, probability = p, from = :infec
             @test d_huge isa GammaBorel && d_huge.k == 1.0e16 && d_huge.R == 0.0
             @test loglikelihood(data, BranchingProcess(huge_k)) == -Inf
 
-            # Regression: k ≲ 1e-16·R previously hit a spurious Gamma-function
-            # pole from catastrophic cancellation in k * x + x - s at x == s,
-            # giving +Inf instead of a finite log-likelihood.
+            # k ≲ 1e-16·R must not hit a spurious Gamma-function pole from
+            # catastrophic cancellation in k * x + x - s at x == s, which
+            # would give +Inf instead of a finite log-likelihood.
             tiny_k = NegBin(0.5, 1.0e-17)
             @test isfinite(loglikelihood(data, tiny_k))
 
@@ -1389,7 +1383,7 @@ _rep(p, delay = Dirac(0.0)) = [Reporting(; delay, probability = p, from = :infec
                 ChainLengths([0]), NegBin(0.8, 0.5); n_initial = -1
             )
 
-            # Regression: dispatching through a model must still throw here,
+            # Dispatching through a model must still throw here,
             # rather than falling back to simulation and swallowing the error.
             @test_throws ArgumentError loglikelihood(
                 ChainLengths([0]), BranchingProcess(Poisson(0.8)); n_initial = 0
@@ -1424,7 +1418,7 @@ _rep(p, delay = Dirac(0.0)) = [Reporting(; delay, probability = p, from = :infec
         end
 
         @testset "max_cases/max_generations defaults stay off for a fixed-population model" begin
-            # Regression: a fixed-population model's extinction race leaves
+            # A fixed-population model's extinction race leaves
             # max_cases and max_generations off by default, so fitting must
             # build SimOpts through the same path as `simulate` rather than
             # straight from the keywords, which would reimpose those defaults
@@ -1482,10 +1476,10 @@ _rep(p, delay = Dirac(0.0)) = [Reporting(; delay, probability = p, from = :infec
         end
 
         @testset "Observed sim path with interventions" begin
-            # Regression: previously crashed because the generic sim
-            # fallback accessed model.offspring, which the Observed
-            # wrapper does not have. The intervention path now simulates
-            # the wrapped process, thins chain sizes per case, and compares.
+            # The generic sim fallback must not access model.offspring, which
+            # the Observed wrapper does not have. The intervention path
+            # simulates the wrapped process, thins chain sizes per case, and
+            # compares.
             iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
             ll = loglikelihood(
                 ChainSizes([1, 1, 2, 1]),
@@ -1568,9 +1562,9 @@ _rep(p, delay = Dirac(0.0)) = [Reporting(; delay, probability = p, from = :infec
         end
 
         @testset "A Reporting step thins the simulated chain sizes too" begin
-            # Regression: with interventions present (forcing the simulation
-            # path), a `Reporting` step in `progression` used to be ignored,
-            # so every infected case counted as if detection were perfect.
+            # With interventions present (forcing the simulation path), a
+            # `Reporting` step in `progression` must still thin the chain
+            # sizes, not count every infected case as perfectly detected.
             iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
             clinical = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
             mk(progression) = ModelSpec(
@@ -1602,14 +1596,13 @@ _rep(p, delay = Dirac(0.0)) = [Reporting(; delay, probability = p, from = :infec
             @test sort(sizes) == sort(collect(values(counts)))
         end
 
-        @testset "Honours seeds (regression for issue #447)" begin
-            # Previously every simulation drew `n_initial = 1` seed and
-            # compared each seed's own chain against the data, so a 3-seed
-            # cluster's observed size was scored as if it were a single-seed
-            # chain. A 3-seed cluster reaching a given total size needs far
-            # less onward transmission than a single-seed chain reaching the
-            # same size; once `seeds` is honoured the two must differ, and
-            # the multi-seed reading must be the more probable one.
+        @testset "Honours seeds" begin
+            # Each simulation must draw `seeds` index cases, not one, or a
+            # 3-seed cluster's observed size is scored as if it were a
+            # single-seed chain. A 3-seed cluster reaching a given total size needs
+            # far less onward transmission than a single-seed chain reaching
+            # the same size. The two must differ, and the multi-seed reading
+            # must be the more probable one.
             iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = 7.0)
             spec = ModelSpec(
                 BranchingProcess(Poisson(0.5), Exponential(5.0));
@@ -1635,7 +1628,7 @@ _rep(p, delay = Dirac(0.0)) = [Reporting(; delay, probability = p, from = :infec
             )
         end
 
-        @testset "prob_concluded no longer refused under interventions (regression for issue #447)" begin
+        @testset "prob_concluded is accepted under interventions" begin
             iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = 7.0)
             spec = ModelSpec(
                 BranchingProcess(Poisson(0.5), Exponential(5.0));
@@ -1684,13 +1677,12 @@ _rep(p, delay = Dirac(0.0)) = [Reporting(; delay, probability = p, from = :infec
             @test ll_default == ll_uncapped
         end
 
-        @testset "n_initial combines seeds into the longest chain (regression for issue #532)" begin
+        @testset "n_initial combines seeds into the longest chain" begin
             # Interventions force the simulation path. Each simulated outbreak
-            # must contribute one cluster length — the longest of its
-            # n_initial seeded chains — rather than each seed's own chain
-            # length as a separate observation, which would leave the sim
-            # path matching the single-seed length distribution regardless
-            # of n_initial.
+            # must contribute one cluster length, the longest of its
+            # n_initial seeded chains, not each seed's own chain length as a
+            # separate observation, which would make the sim path match the
+            # single-seed length distribution regardless of n_initial.
             iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = 7.0)
             spec = ModelSpec(
                 BranchingProcess(Poisson(0.5), Exponential(5.0));

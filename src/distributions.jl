@@ -43,8 +43,8 @@ on its incubation period, with scale `omega` and the skew chosen so that
 `presymptomatic_fraction` of generation times are shorter than the incubation
 period. Negative values are excluded, which makes the realised presymptomatic
 share approximate: close when the incubation period is long compared with
-`omega`, less so for short ones. Cases without an incubation period (for
-example asymptomatic cases) are centred on 5 days.
+`omega`, rougher when it is short. Cases without an incubation period
+(for example asymptomatic cases) are centred on 5 days.
 
 # Examples
 ```julia

@@ -79,8 +79,8 @@ function Distributions.logpdf(
     )
     cs = _chain_sizes(data, d.seeds)
     # `loglikelihood(::ChainSizes, model)` itself picks the analytical or
-    # simulation-based route and, either way, now honours `prob_concluded`
-    # (the simulation-based route from its empirical tail).
+    # simulation-based route; either honours `prob_concluded` (the
+    # simulation-based route from its empirical tail).
     loglik_kwargs = _simulate_kwargs(d.kwargs, _CHAIN_SIZE_LOGLIK_KWARGS)
     return loglikelihood(cs, d.model; prob_concluded = d.prob_concluded, loglik_kwargs...)
 end
@@ -361,10 +361,7 @@ in Turing.jl:
 end
 ```
 
-For a `ModelSpec`, or a process that stores its own interventions, each
-intervention's [`EpiBranch.analytic_offspring_effect`](@ref) is applied to
-the offspring distribution first. If an intervention has no such method, this
-throws an error that names the simulation-based alternative.
+A `ModelSpec`, or a process that stores its own interventions, has them applied through [`EpiBranch.analytic_offspring_effect`](@ref).
 """
 function offspring_distribution(model::TransmissionModel)
     return _offspring_through_interventions(model, _per_case_offspring(model))

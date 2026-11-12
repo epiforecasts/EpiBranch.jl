@@ -1,36 +1,20 @@
 # ── Simulating a branching process by generation, as counts ──────────
 #
-# A `BranchingProcess` with a single window, no generation-time kernel
-# (discrete generations) and a finite `population_size` has the structure of
-# a discrete-generation (TSIR) model: every case of one generation infects
-# the next at once, with no ordering between them. `simulate_by_generation`
-# exploits that to track only each generation's case count, never creating an
-# `Individual` for a contact.
+# `simulate_by_generation` tracks only each generation's case count, never
+# creating an `Individual` for a contact. This is possible because a
+# single-window, discrete-generation, finite-population `BranchingProcess` has
+# no ordering between the cases of a generation.
 #
-# A generation draws its potential contacts, then thins them against the
-# susceptibles of each type left. Where the offspring law has a closed-form
-# sum (`Poisson`, `NegativeBinomial`, `Binomial`), the total of a type is drawn
-# in one step, so the cost does not grow with the number of cases. Any other
-# law draws the offspring of every case one at a time.
+# `PerContactDepletion` mirrors `_offspring_builtin_risk_blocks` on the
+# individual-based race when there is a single type. With several types the
+# individual-based simulation thins every contact against one shared population
+# fraction, which makes the two differ.
 #
-# Two depletion rules thin the contacts. `PerContactDepletion` decides them
-# one at a time, as `_offspring_builtin_risk_blocks` decides the fate of a
-# contact on the individual-based race when there is a single type. A contact
-# of type `i` is kept with probability `susceptibles[i] / type_sizes[i]`, and
-# each kept contact lowers `susceptibles[i]` before the next is decided. With
-# several types the individual-based simulation thins every contact against
-# one shared population fraction, so the two differ.
-# `StartOfGenerationDepletion` instead keeps a binomial share of the contacts
-# of a type, with the share set to the susceptible fraction of the type at the
-# start of the generation, capped at the susceptibles left, in one draw.
-#
-# `multiplier`, when given, is drawn once per generation and scales the mean
-# of every case's offspring law before it draws: with `Poisson` offspring,
-# summing over the generation's cases gives a `Poisson` total scaled by the
-# same draw. Marginalising over a `Gamma` multiplier gives a negative
-# binomial total with the shape of the multiplier. Summing independent
-# per-case negative binomials would instead give a shape that grows with
-# the number of cases.
+# A shared `multiplier` is drawn once per generation. With `Poisson` offspring
+# the total of a generation is `Poisson` scaled by the same draw, and
+# marginalising over a `Gamma` multiplier gives a negative binomial total with
+# the shape of the multiplier. Summing independent per-case negative binomials
+# would instead give a shape that grows with the number of cases.
 
 """
     AbstractDepletion
