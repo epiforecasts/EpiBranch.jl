@@ -69,7 +69,7 @@ using ForwardDiff
 
         @testset "Delegates through Observed" begin
             # `extinction_probability` goes via `single_type_offspring`, which
-            # must delegate through observation wrappers, since the wrapper
+            # must delegate through observation wrappers because the wrapper
             # has no `offspring` field.
             bp = BranchingProcess(NegBin(0.5, 0.5))
             obs_model = ModelSpec(
@@ -1628,7 +1628,7 @@ using ForwardDiff
             # 3-seed cluster's observed size is scored as if it were a
             # single-seed chain. A 3-seed cluster reaching a given total size needs
             # far less onward transmission than a single-seed chain reaching
-            # the same size, so the two must differ, and the multi-seed reading
+            # the same size. The two must differ, and the multi-seed reading
             # must be the more probable one.
             iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = 7.0)
             spec = ModelSpec(

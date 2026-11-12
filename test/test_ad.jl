@@ -258,7 +258,7 @@ end
 
 # The `until`-window censor reads the infector's removal time (`:died_time` /
 # `:recovered_time`), which is a dual once a timing parameter is differentiated,
-# so `WindowCensor.competing_risk` must not assert `::Float64`.
+# and `WindowCensor.competing_risk` must therefore not assert `::Float64`.
 @testset "AD through the forward simulator (until-window censoring)" begin
     history = [
         Transition(:infectious, from = :infection, delay = LogNormal(1.0, 0.3)),

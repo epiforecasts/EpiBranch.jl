@@ -1,20 +1,20 @@
 # ── Simulating a branching process by generation, as counts ──────────
 #
 # `simulate_by_generation` tracks only each generation's case count, never
-# creating an `Individual` for a contact, which is possible because a
+# creating an `Individual` for a contact. This is possible because a
 # single-window, discrete-generation, finite-population `BranchingProcess` has
 # no ordering between the cases of a generation.
 #
 # `PerContactDepletion` mirrors `_offspring_builtin_risk_blocks` on the
 # individual-based race when there is a single type. With several types the
 # individual-based simulation thins every contact against one shared population
-# fraction, so the two differ.
+# fraction, which makes the two differ.
 #
-# A shared `multiplier` is drawn once per generation, so with `Poisson`
-# offspring the generation's total is `Poisson` scaled by the same draw, and
+# A shared `multiplier` is drawn once per generation. With `Poisson` offspring
+# the total of a generation is `Poisson` scaled by the same draw, and
 # marginalising over a `Gamma` multiplier gives a negative binomial total with
-# the multiplier's shape. Summing independent per-case negative binomials would
-# instead give a shape that grows with the number of cases.
+# the shape of the multiplier. Summing independent per-case negative binomials
+# would instead give a shape that grows with the number of cases.
 
 """
     AbstractDepletion

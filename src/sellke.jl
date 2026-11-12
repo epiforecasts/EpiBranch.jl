@@ -40,35 +40,36 @@ end
 # interventions as well as the `until` states. The second is the per-contact
 # competing risk (`_sellke_race!` documents which risks apply and when).
 #
-# On the race a potential transmission *is* a drawn time, so a risk is resolved
-# against the candidate time when it is popped, not when it was proposed: a dose
-# or an isolation that arrived in between is in force. A blocked contact does
-# not transmit, and the pair goes on meeting, its next contact drawn from the
-# same kernel conditioned on falling later. The points of such a sequence are
-# the points of the kernel's own hazard `h(t)`, so blocking each with
-# probability `p` thins it to `(1-p)·h(t)` and the first contact that gets
+# On the race a potential transmission *is* a drawn time. A risk is resolved
+# against the candidate time when it is popped, not when it was proposed, so a
+# dose or an isolation that arrived in between is in force. A blocked contact
+# does not transmit, and the pair goes on meeting, its next contact drawn from
+# the same kernel conditioned on falling later. The points of such a sequence
+# are the points of the hazard `h(t)` of the kernel. Blocking each with
+# probability `p` thins it to `(1-p)·h(t)`, and the first contact that gets
 # through arrives with survival `S(t)^(1-p)`: the per-exposure reading of a
 # leaky vaccine and the rate-multiplier reading of a relative susceptibility. A
-# degenerate kernel (`Dirac`) has one contact, so a block ends the pair. Because
-# the continuation needs finite remaining integrated hazard, an opaque risk
-# that could reject contacts forever is refused.
+# degenerate kernel (`Dirac`) has one contact and a block ends the pair. The
+# continuation needs finite remaining integrated hazard, so an opaque risk that
+# could reject contacts forever is refused.
 #
 # A single exposure with nothing to follow it, such as a contact a branching
 # process drew or one a model names through `contacts_of`, is a transmission
 # lost: an efficacy of 0.5 halves those, and for a kernel pair it leaves
 # `1 - exp(-∫h/2)` of them.
 #
-# Thinning keeps a pair's contact process in the family the pairwise likelihood
-# is written in with its hazard scaled, so a susceptibility in force throughout
-# stays representable wherever that family is closed under proportional hazards
-# (an exponential contact interval, for one). A risk arriving partway through
-# the window, such as an isolation or a dose given by a trace, is not: the
-# likelihood has no term for a blocked contact.
+# Thinning keeps the contact process of a pair in the family the pairwise
+# likelihood is written in, with its hazard scaled. A susceptibility in force
+# throughout therefore stays representable wherever that family is closed under
+# proportional hazards (an exponential contact interval, for one). A risk
+# arriving partway through the window, such as an isolation or a dose given by
+# a trace, is not representable: the likelihood has no term for a blocked
+# contact.
 #
-# Which interventions' risks a route resolves is selected by
-# `risk_applies(intervention, route)`. The built-in sources return no risk when
-# every multiplier is 1, so nothing is drawn from the rng and a run without
-# risks reproduces the same seeded results.
+# `risk_applies(intervention, route)` selects which risks of an intervention a
+# route resolves. The built-in sources return no risk when every multiplier is
+# 1, and nothing is then drawn from the rng, so a run without risks reproduces
+# the same seeded results.
 
 # Whether `f` has a method for `argtypes` more specific than the fallback defined
 # on `base`, i.e. whether a type has implemented a hook itself.
@@ -1337,9 +1338,9 @@ function _sellke_race_typed!(
         # vaccine's protection, the model's own) but not to isolation or
         # quarantine, which stand in for removing an infector that is outside
         # the population here. The person stands in for the infector those
-        # risks read, so a risk of your own that reads the infector should
-        # return nothing when the two are the same individual. An index case is
-        # put to no risk at all.
+        # risks read. A risk of your own that reads the infector should
+        # therefore return nothing when the two are the same individual. An
+        # index case is put to no risk at all.
         source = infector_id == 0 ? ind : state.individuals[infector_id]
         if checks && (infector_id != 0 || introduction !== nothing)
             blocked, permanent, certain_release = _proposal_blocked(

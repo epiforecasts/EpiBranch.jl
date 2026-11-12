@@ -1,20 +1,21 @@
 # ── The household-level offspring law ────────────────────────────────
 #
 # Between households the epidemic is a branching process whose unit is a whole
-# household, so the household-level offspring law is a compound. Community
-# contacts arrive at rate `global_rate` while any member is infectious, so given
-# the household's total community-infectious person-time A the number of
-# contacts is Poisson(global_rate · A), mixed over the law of A (the
-# within-household epidemic). Each contact is taken to reach a fresh, fully
-# susceptible household, the branching approximation the construction rests on.
+# household. The household-level offspring law is therefore a compound.
+# Community contacts arrive at rate `global_rate` while any member is
+# infectious. Given the total community-infectious person-time A of the
+# household, the number of contacts is Poisson(global_rate · A), mixed over the
+# law of A (the within-household epidemic). Each contact is taken to reach a
+# fresh, fully susceptible household, the branching approximation the
+# construction rests on.
 #
-# A community contact reaches a *person*, and with them their household, so a
-# household is reached in proportion to its size times how common it is. Type is
-# therefore household size, and the mean matrix `M[i, j]` (the expected number
+# A community contact reaches a *person*, and with them their household. A
+# household is therefore reached in proportion to its size times how common it
+# is, and type is household size. The mean matrix `M[i, j]` (the expected number
 # of size-`i` households infected by a size-`j` one) is a column depending only
-# on the parent's size times a row of size-biased weights that does not. Rank
-# one collapses the multi-type threshold to a single weighted sum, R*, and makes
-# the extinction probability a one-dimensional fixed point.
+# on the size of the parent times a row of size-biased weights that does not.
+# Rank one collapses the multi-type threshold to a single weighted sum, R*, and
+# makes the extinction probability a one-dimensional fixed point.
 
 const _OffspringLaw = DiscreteNonParametric{Int, Float64, Vector{Int}, Vector{Float64}}
 

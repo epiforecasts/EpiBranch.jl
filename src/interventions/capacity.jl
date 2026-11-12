@@ -388,20 +388,21 @@ function _dose_times(cc::CapacityConstrained, state, key = nothing)
 end
 
 # `_admit_actions!`'s record of who has already drawn on each capacity key's
-# resources, kept in `state.scratch`. Keyed on `capacity_key(cc.intervention)`
-# rather than on `cc`, so wrappers sharing a dose label see each other's
-# admissions. Seeded by one population scan, then grown as each dose is
-# admitted; `scanned` is how far along `state.individuals` the scan has
-# reached, so people created since are picked up without rescanning everyone.
-# `recorded` remembers which resource and date each person's use was filed
-# under, so a dose withdrawn outside this cache's admission path can be taken
-# back out. Doses recorded by paths with no wrapper (an unwrapped vaccination
-# sharing the label, a direct `record_dose!`) count too: `record_dose!` files
-# them through `_note_capacity_use!` whenever a cache for its label exists, as
-# the tracers do for a trace action's. `intervention` is the one the cache was
-# first built for, whose `resource_key` and `capacity_time_key` every use is
-# filed under. `capacity_usage` and `_reset_unless_within_budget!` use the
-# plain scan above, being called far less often than an action is admitted.
+# resources, kept in `state.scratch`. It is keyed on
+# `capacity_key(cc.intervention)` rather than on `cc`, which lets wrappers
+# sharing a dose label see the admissions of each other. Seeded by one
+# population scan, then grown as each dose is admitted; `scanned` is how far
+# along `state.individuals` the scan has reached, which lets people created
+# since be picked up without rescanning everyone. `recorded` remembers which
+# resource and date the use of each person was filed under, so that a dose
+# withdrawn outside the admission path of this cache can be taken back out.
+# Doses recorded by paths with no wrapper (an unwrapped vaccination sharing the
+# label, a direct `record_dose!`) count too: `record_dose!` files them through
+# `_note_capacity_use!` whenever a cache for its label exists, as the tracers do
+# for a trace action. `intervention` is the one the cache was first built for,
+# and every use is filed under its `resource_key` and `capacity_time_key`.
+# `capacity_usage` and `_reset_unless_within_budget!` use the plain scan above,
+# because they are called far less often than an action is admitted.
 mutable struct _CapacityCache
     intervention::AbstractIntervention
     times::Dict{Any, Vector{Float64}}

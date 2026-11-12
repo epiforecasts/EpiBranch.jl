@@ -240,8 +240,8 @@ end
 EpiBranch.supplies_contacts(::RoutedNetwork) = true
 
 # Contacts for tracing are the union of the neighbours on every route, each
-# paired with the earliest time it can be traced, so someone met on two routes
-# is one contact. A route over standing relationships (`contacts_from =
+# paired with the earliest time it can be traced. Someone met on two routes is
+# one contact. A route over standing relationships (`contacts_from =
 # :infection`) behaves as in `NetworkProcess`; a route whose contacts come about
 # through an event, such as a funeral, contributes nothing if the event never
 # happened or the route was cut before it, and is traced no earlier than the
@@ -249,9 +249,9 @@ EpiBranch.supplies_contacts(::RoutedNetwork) = true
 #
 # Only contacts the case can name reach tracing. One uniform draw per neighbour
 # decides naming on all its routes at once: it is nameable on each route whose
-# `traceable` exceeds the draw, so it is named with the highest route
-# probability and traced from the earliest time among the routes it was named
-# on. Routes at exactly 0 or 1 decide without a draw, so a fully traceable model
+# `traceable` exceeds the draw. It is named with the highest route probability
+# and traced from the earliest time among the routes it was named on. Routes at
+# exactly 0 or 1 decide without a draw, and a fully traceable model therefore
 # uses no random numbers here.
 #
 # `routes` are the `(window, route_targets)` pairs built for the race, not just
