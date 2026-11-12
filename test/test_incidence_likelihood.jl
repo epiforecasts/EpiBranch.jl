@@ -417,7 +417,7 @@ struct _RiskFromAge end
         @test maximum(abs.(emp .- d)) < 3.0e-3
         # A fixed second delay shifts the first.
         @test EpiBranch._discretize_report_delay(EpiBranch._DelaySum(inc, 2.0)) ≈
-            EpiBranch._bin_delay(t -> cdf(inc, t - 2.0), 1.0e-8, 10_000)
+            EpiBranch._bin_cdf(t -> cdf(inc, t - 2.0), 0, 1.0e-8, 10_000, "reporting delay")
     end
 
     @testset "loglikelihood on a model with a Reporting step" begin
