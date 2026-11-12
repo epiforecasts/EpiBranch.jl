@@ -216,8 +216,8 @@ case counted in the step it is infected. The result is exact for
 independent reporting, and `reporting_probability` can be differentiated
 like the offspring parameters.
 
-Needs ForwardDiff.jl loaded (`using ForwardDiff`), which takes the derivatives
-of the generating function.
+Requires `using ForwardDiff`, which supplies the derivatives of the generating
+function.
 
 Returns a `(mean, cov)` named tuple: `mean[t]` is the expected count at step
 `t`, and `cov` is their `n × n` covariance matrix, both ignoring susceptible

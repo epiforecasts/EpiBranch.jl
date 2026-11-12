@@ -1,9 +1,8 @@
 module EpiBranchForwardDiffExt
 
-# The incidence likelihood reads the mean and covariance of the step counts off
-# the derivatives of a cumulant generating function, which `ForwardDiff` takes.
-# Loading it activates those derivatives, keeping it optional for users who
-# only simulate.
+# The incidence likelihood gets the mean and covariance of the step counts from
+# derivatives of a cumulant generating function. `ForwardDiff` supplies them
+# here, so users who only simulate do not need it.
 
 using EpiBranch: EpiBranch
 using ForwardDiff: ForwardDiff
