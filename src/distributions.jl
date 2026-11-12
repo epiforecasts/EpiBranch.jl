@@ -43,12 +43,7 @@ on its incubation period, with scale `omega` and the skew chosen so that
 `presymptomatic_fraction` of generation times are shorter than the incubation
 period. Negative values are excluded, which makes the realised presymptomatic
 share approximate: close when the incubation period is long compared with
-`omega`, less so for short ones. With `presymptomatic_fraction = 0.3` and the
-default `omega = 2.0`, the realised share is about 0.29 for a COVID-like
-incubation period (`LogNormal(1.434, 0.661)`) but only about 0.23 for a
-short, flu-like one (`LogNormal(log(1.4), 0.35)`). Scale `omega` with the
-incubation period, for example to a fraction of its mean, because the default
-of 2 days does not adapt to the timescale. Cases without an incubation period
+`omega`, less so for short ones. Cases without an incubation period
 (for example asymptomatic cases) are centred on 5 days.
 
 # Examples

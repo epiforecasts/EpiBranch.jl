@@ -1,1 +1,1 @@
-The interventions tutorial now says that a plain generation time is drawn independently of onset, and what that means for isolation. The `incubation_linked_generation_time` docstring gives the size of the gap in the presymptomatic share for a short incubation period and advises scaling `omega` with the incubation period.
+The interventions tutorial now says that a plain generation time is drawn independently of onset, what that means for isolation, and that `generation_time` can be any `ind -> Distribution` placed relative to each case's onset.
