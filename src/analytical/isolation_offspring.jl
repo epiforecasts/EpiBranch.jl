@@ -64,8 +64,8 @@ function _isolation_duration(D)
     )
 end
 
-# The onset law (`onset_law`) of the one attribute among a model's
-# `attributes` that defines it, or `nothing` if there is none.
+# The onset law (`onset_law`) of the one attribute among the
+# `attributes` of a model that defines it, or `nothing` if there is none.
 _onset_law(attrs::Union{Tuple, AbstractVector}) = _onset_law_of(attrs)
 _onset_law(::NoAttributes) = nothing
 _onset_law(attr) = onset_law(attr)

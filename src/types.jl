@@ -193,12 +193,12 @@ end
 The probability that `transition` reports a case, or `nothing` (the default)
 when it is not a reporting step. The closed forms that thin a chain-size law
 or an incidence series by under-reporting ask this of every `progression`
-transition rather than matching [`Reporting`](@ref) by type, so a reporting
-step of your own (one whose probability varies with age, or a testing
+transition rather than matching [`Reporting`](@ref) by type. A reporting
+step of your own (one with a probability that varies with age, or a testing
 transition) reaches them by defining it. [`Reporting`](@ref) returns its
 `probability` field.
 
-A closed form needs a number, and falls back to simulation for a function.
+A closed form needs a number and falls back to simulation for a function.
 The time the report is measured from is read with
 [`EpiBranch.reporting_from`](@ref), and a step must also record `:reported`
 and `:reporting_time` as [`Reporting`](@ref) does for `simulate` to agree with
@@ -210,7 +210,7 @@ reporting_probability(::Any) = nothing
     reporting_from(transition)
 
 The time a reporting step measures its delay from, in the form
-[`Reporting`](@ref)'s `from` takes: `:infection`, a recorded time such as
+taken by the `from` field of [`Reporting`](@ref): `:infection`, a recorded time such as
 `:onset_time`, or a function of the individual. Only asked of a transition
 that answers [`EpiBranch.reporting_probability`](@ref). The default is
 `:onset_time`.
@@ -228,7 +228,7 @@ is `nothing`, for an attribute that records no onset.
 The closed forms that need the onset (the analytic effect of
 [`Isolation`](@ref), and reporting timed from onset in the incidence
 likelihood and the chain-size law) ask each of the model's attributes this
-rather than matching [`clinical_presentation`](@ref)'s type, so an onset
+rather than matching the type of [`clinical_presentation`](@ref). An onset
 builder of your own reaches them by defining it. A model must have exactly
 one attribute that answers, and its `prob_asymptomatic` must be a number for
 the closed forms to use it. `simulate` must set `:onset_time` and
