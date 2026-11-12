@@ -1423,6 +1423,37 @@ using ForwardDiff
             @test abs(ll(12) - ll(100)) < 0.5
         end
 
+        @testset "_empirical_ll with censored_at_value" begin
+            f = EpiBranch._empirical_ll
+            sim = [1, 2, 2, 3, 3]
+            cens = [false, false, false, true, true]
+            # Observation 2: counts[2]=2, uncensored=3, above=2, bins=3.
+            @test f([2], sim; min_val = 1, censored = cens, censored_at_value = true) ≈
+                log(3 / 8)
+            # An observation below the minimum value has no support.
+            @test f([0], sim; min_val = 1, censored = cens, censored_at_value = true) == -Inf
+            # prob_concluded at 1 and 0 reduce to the point mass and right tail.
+            lc = f([2], sim; min_val = 1, censored = cens, censored_at_value = true)
+            @test f(
+                [2], sim; min_val = 1, censored = cens, censored_at_value = true,
+                prob_concluded = [1.0]
+            ) ≈ lc
+            tail = f(
+                [2], sim; min_val = 1, censored = cens, censored_at_value = true,
+                prob_concluded = [0.0]
+            )
+            @test tail ≈ log(6 / 8)
+            mix = f(
+                [2], sim; min_val = 1, censored = cens, censored_at_value = true,
+                prob_concluded = [0.5]
+            )
+            @test mix ≈ log(0.5 * exp(lc) + 0.5 * exp(tail))
+            @test_throws ArgumentError f(
+                [2], sim; min_val = 1, censored = cens, censored_at_value = true,
+                prob_concluded = [1.5]
+            )
+        end
+
         @testset "Non-positive n_initial throws" begin
             @test_throws ArgumentError loglikelihood(
                 ChainLengths([0]), Poisson(0.8); n_initial = 0
