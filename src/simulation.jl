@@ -1564,7 +1564,7 @@ not cluster within them. To make it cluster, use a multi-type
 [`BranchingProcess`](@ref) with one type per group and a next-generation
 matrix with most transmission within types, and use the type itself as the
 group in `GroupVaccination(...; group_key = :type)`. [`group_attribute`](@ref)
-and [`vaccine_acceptance`](@ref) can group by `:type` too, since a person's
+and [`vaccine_acceptance`](@ref) can group by `:type` too, because a person's
 type is set before their population characteristics are drawn.
 
 # Examples
