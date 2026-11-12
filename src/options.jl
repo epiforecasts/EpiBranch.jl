@@ -221,7 +221,7 @@ function _case_cap(opts::SimOpts)
     return typemax(Int)
 end
 
-# Preserve the positional constructor used by external simulation methods.
+# Positional form taking the initial count and the stopping rules only.
 function SimOpts(n_initial, rules)
     return SimOpts(n_initial, nothing, nothing, rules)
 end

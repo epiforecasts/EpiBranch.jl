@@ -31,82 +31,44 @@ function _close_at(ind::Individual{T}, keys) where {T}
     return t
 end
 
-# ── Interventions on the race ────────────────────────────────────────
-# An intervention's effect on transmission reaches the race through two
-# seams. The first is the infectious window: an intervention that removes a
-# case from onward transmission (isolation) shortens it. Each case is
-# settled as the race pops it (`_settle_case!`): its
-# natural history first, then each intervention's `resolve_individual!`, which
-# is where `Isolation` writes its isolation time. Its window is then closed at
-# the earliest removal across interventions as well as the `until` states. The
-# second is the per-contact competing risk, resolved against each candidate
-# infection time the race proposes (see the next block).
-
-# ── Per-contact competing risks on the continuous-time path ──────────
+# ── Interventions and per-contact risks on the race ──────────────────
 #
-# A competing risk blocks one infector → contact transmission with some
-# probability, conditional on the risk having arrived before that transmission's
-# time. On the race, a potential transmission *is* a drawn time: the contact
-# interval from the infector's window opening to the moment it would infect that
-# neighbour. The risks are resolved against that time when the candidate is
-# popped, rather than when it was proposed, so a dose or an isolation that
-# arrived in between is in force (see the loop in `_sellke_race!`).
+# An intervention's effect on transmission reaches the race through two seams.
+# The first is the infectious window: each case is settled as the race pops it
+# (`_settle_case!`), its natural history first and then each intervention's
+# `resolve_individual!`, and the window is closed at the earliest removal across
+# interventions as well as the `until` states. The second is the per-contact
+# competing risk (`_sellke_race!` documents which risks apply and when).
 #
-# A blocked contact does not transmit, and the pair goes on meeting: its next
-# contact is a draw from the same kernel conditioned on falling later, offered if
-# the infector's window is still open for it. The points of a sequence drawn that
-# way are the points of the kernel's own hazard `h(t)`, so blocking each of them
-# with probability `p` thins that hazard to `(1-p)·h(t)` and the first contact
-# that gets through arrives with survival `S(t)^(1-p)`. That is the per-exposure
-# reading of a leaky vaccine and the rate-multiplier reading of a relative
-# susceptibility. A degenerate kernel (`Dirac`) has one contact and no more, so a
-# block ends that pair.
-# Rejection continuations require finite remaining integrated hazard; otherwise
-# an opaque risk could reject contacts forever and the model is refused.
+# On the race a potential transmission *is* a drawn time, so a risk is resolved
+# against the candidate time when it is popped, not when it was proposed: a dose
+# or an isolation that arrived in between is in force. A blocked contact does
+# not transmit, and the pair goes on meeting, its next contact drawn from the
+# same kernel conditioned on falling later. The points of such a sequence are
+# the points of the kernel's own hazard `h(t)`, so blocking each with
+# probability `p` thins it to `(1-p)·h(t)` and the first contact that gets
+# through arrives with survival `S(t)^(1-p)`: the per-exposure reading of a
+# leaky vaccine and the rate-multiplier reading of a relative susceptibility. A
+# degenerate kernel (`Dirac`) has one contact, so a block ends the pair. Because
+# the continuation needs finite remaining integrated hazard, an opaque risk
+# that could reject contacts forever is refused.
 #
-# A risk whose block is certain and does not fade — an `AllOrNothingMode`
-# responder blocked from its immunity time, an aborted infection's infector —
-# answers every later proposal on the pair the same way it just answered this
-# one, so nothing is left to gain from asking the model or the kernel again:
-# the pair is dropped from the race instead of drawing towards a foregone
-# conclusion, which is also what spares an unbounded window from the
-# rejection-continuation guard above. The pair still stands in each other's
-# contacts; tracing and ring construction read that, not the proposals the
-# race no longer makes, so they are unaffected either way.
+# A single exposure with nothing to follow it, such as a contact a branching
+# process drew or one a model names through `contacts_of`, is a transmission
+# lost: an efficacy of 0.5 halves those, and for a kernel pair it leaves
+# `1 - exp(-∫h/2)` of them.
 #
-# An output that wants every contact event — to count how many exposures a
-# vaccine averted, say — needs the draws the race would otherwise skip. A
-# `recorder` ([`ContactRecorder`](@ref)) attached to the composed model is
-# asked about every blocked proposal, permanent or not
-# ([`records_contacts`](@ref EpiBranch.records_contacts)), so it can log each
-# one; only its answer for a proposal whose block is permanent decides whether
-# a standing block ends the pair's draws. Answering yes there keeps the race
-# drawing exactly as it does for a block that is not certain, which puts the
-# pair back under the rejection-continuation guard rather than needing one of
-# its own. The default `NoContactRecorder` answers no to every pair, so a run
-# with no recorder attached drops the pair exactly as above.
+# Thinning keeps a pair's contact process in the family the pairwise likelihood
+# is written in with its hazard scaled, so a susceptibility in force throughout
+# stays representable wherever that family is closed under proportional hazards
+# (an exponential contact interval, for one). A risk arriving partway through
+# the window, such as an isolation or a dose given by a trace, is not: the
+# likelihood has no term for a blocked contact.
 #
-# It is not what a block means for a single exposure, a contact a branching
-# process drew or one a model names through `contacts_of`, which is a
-# transmission lost with nothing to follow it: an efficacy of 0.5 halves those
-# transmissions, and for a kernel pair it leaves `1 - exp(-∫h/2)` of them.
-#
-# Thinning a hazard keeps a pair's contact process in the family the pairwise
-# likelihood is written in, with its hazard scaled, so a susceptibility that is
-# in force throughout stays representable wherever that family is closed under
-# proportional hazards — an exponential contact interval, for one. A risk that
-# arrives partway through the window, such as an isolation or a dose given by a
-# trace, is not: the likelihood has no term for a blocked contact.
-#
-# On a model with several routes, which interventions' risks a route resolves is
-# selected by `risk_applies(intervention, route)`: removal effects use the
-# route's censoring states, while protection defaults to every route. The model's own risks and the per-individual multipliers apply on
-# every route.
-#
-# The built-in sources return no risk at all when every multiplier is 1, so
-# nothing is drawn from the rng and a run without risks reproduces the same
-# seeded results, through the same heap, as it did before per-contact risks
-# existed.
+# Which interventions' risks a route resolves is selected by
+# `risk_applies(intervention, route)`. The built-in sources return no risk when
+# every multiplier is 1, so nothing is drawn from the rng and a run without
+# risks reproduces the same seeded results.
 
 # Whether `f` has a method for `argtypes` more specific than the fallback defined
 # on `base`, i.e. whether a type has implemented a hook itself.
@@ -1150,8 +1112,7 @@ function _sellke_race_typed!(
     # Nothing can block unless the model or an intervention says so — the two
     # per-individual traits are in the draw, not here — and then no member ever
     # falls back, so the lists are not built at all and a heap entry names its
-    # opening directly. That path pushes, pops and draws exactly what the race
-    # did before per-contact risks existed.
+    # opening directly.
     # Whether any per-individual trait is set. Both are constants of the two
     # people, so a race where none is set can leave the target's record alone
     # when it draws — a saving worth having on a dense graph, where that record
@@ -1371,17 +1332,14 @@ function _sellke_race_typed!(
         reinfection = processed[j]
         prior_infection_time = reinfection ? ind.infection_time : zero(T)
         # A seeded time is a community introduction when the model gave the race
-        # an `introduction`, and an index case otherwise. An introduction arrives
-        # from outside the population, so it is put to the risks that act on the
-        # person being introduced: their susceptibility, a vaccine's protection,
-        # a risk of the model's own. Not to the risks that stand in for removing
-        # an infector — isolation and quarantine —
-        # since the source is outside the population and no measure taken here
-        # removes it: being isolated is not protection from acquiring an
-        # infection. The person stands in for the infector those risks read, so a
-        # risk of your own that reads the infector should return nothing when the
-        # two are the same individual. An index case is where an outbreak is
-        # defined to start, and is put to no risk at all.
+        # an `introduction`, and an index case otherwise. An introduction is put
+        # to the risks that act on the person introduced (susceptibility, a
+        # vaccine's protection, the model's own) but not to isolation or
+        # quarantine, which stand in for removing an infector that is outside
+        # the population here. The person stands in for the infector those
+        # risks read, so a risk of your own that reads the infector should
+        # return nothing when the two are the same individual. An index case is
+        # put to no risk at all.
         source = infector_id == 0 ? ind : state.individuals[infector_id]
         if checks && (infector_id != 0 || introduction !== nothing)
             blocked, permanent, certain_release = _proposal_blocked(
@@ -1392,21 +1350,11 @@ function _sellke_race_typed!(
                     _on_route((_, rt) -> _route_builtin_blocks(rt), rts, opening.route)
             )
             if blocked
-                # The contact did not transmit. `recorder` is asked about every
-                # blocked proposal, permanent or not, so it can log the
-                # exposure even when the pair goes on meeting; only its answer
-                # for a permanent block decides whether the pair's draws
-                # continue. Unless the block is certain to recur (`permanent`),
-                # the source goes on meeting the person: the next contact is a
-                # draw from the same hazard conditioned on falling later, kept
-                # while the window is still open for it. A permanent block
-                # already answers every later proposal the same way, so the
-                # pair is dropped without asking the model or the kernel again,
-                # unless `recorder` says this pair's draws still matter, in
-                # which case it is asked afresh at every later proposal too, so
-                # a recorder that wants the stream can log each one. Tracing
-                # and ring construction read the standing contacts, not these
-                # proposals, so the pair itself is unaffected either way.
+                # The contact did not transmit. The pair goes on meeting unless
+                # the block is `permanent`; `recorder` sees every blocked
+                # proposal, and a permanent one keeps drawing only if it says
+                # the pair's draws still matter (see the `_sellke_race!`
+                # docstring).
                 keeps_drawing = _logs_blocked(members, source, ind) &&
                     records_contacts(recorder, source, ind, state, bt)
                 if !may_block
@@ -1648,7 +1596,7 @@ end
 # continuation method to resume. Extinction, a stopping rule, or
 # `max_generation` has already let through everything up to its own cap, and
 # popping on would let through more. Each of those clears the continuation
-# and returns the buffers to the pool as before.
+# and returns the buffers to the pool.
 #
 # `contacts`/`introduction`/`watches`/`projections`/`max_generation`/
 # `stopping_rules` are only needed for the `_RaceContinuation` built below, so
@@ -2087,8 +2035,7 @@ function _propose_along!(
         end
         # Both per-individual traits are rate multipliers on this
         # pair's contact interval, folded into the draw rather than
-        # resolved contact by contact. A pair at the default 1 draws
-        # exactly as it did before they were honoured here.
+        # resolved contact by contact.
         pair_rng = stream(rng, (infector_id, target_id), (:contact, ri))
         dt = traits ?
             _traits_scaled_draw(

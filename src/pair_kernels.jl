@@ -854,25 +854,17 @@ function _implicit_hazard_step(rate, t, t_acc, target)
     return t + (target - t_acc) / r
 end
 
-# Grow a bracket `[start, hi]` from `start` by doubling `width` each step
-# until the integral of `rate` reaches `target` or `hi` meets `upper`, then
-# bisect the last interval. `boundary_is_certain` says what the cumulative
-# hazard is once `hi` reaches `upper` without reaching `target`: `true` for a
-# profile whose survival has certainly ended there, so the remaining hazard
-# is treated as infinite rather than integrated through what may be a
-# singularity at the edge (a calendar-scaled profile's own bounded support);
-# `false` for a bound the integration simply stops at, handing back a total
-# short of `target` for the caller to treat as a draw that never happens (a
-# `HazardKernel`'s `upper`).
-#
-# `start` must already be where `rate` is positive: a bracket that starts
-# where `rate` is zero cannot tell a `rate` still flat for now, about to
-# resume, from one that has converged to a finite total below `target` and
-# will never reach it, and grows all the way to `upper` (or, with `upper`
-# unbounded, until `hi` overflows to `Inf`) to find out either way. Callers
-# that let `rate` start flat, such as a `HazardKernel`'s own `onset`, rule
-# that out once, before the bracket is grown at all, rather than leaving this
-# loop to discover it slowly.
+# Grow a bracket `[start, hi]` from `start` by doubling its width until the
+# integral of `rate` reaches `target` or `hi` meets `upper`, then bisect the
+# last interval. `boundary_is_certain` says what the cumulative hazard is once
+# `hi` reaches `upper` short of `target`: `true` when survival has certainly
+# ended there (a calendar-scaled profile's bounded support), so the remaining
+# hazard is infinite rather than integrated through a possible singularity;
+# `false` for a bound the integration simply stops at, returning a total short
+# of `target` (a `HazardKernel`'s `upper`). `start` must be where `rate` is
+# positive: from a flat start the bracket cannot tell a rate about to resume
+# from one that never will, and grows all the way to `upper`. Callers that let
+# `rate` start flat rule that out once beforehand.
 function _invert_hazard(rate, start, upper, boundary_is_certain::Bool, target::Real)
     # The bracket ends are plain floats: quadrature takes no dual endpoint,
     # and the drawn time keeps its derivative through the integrand and the

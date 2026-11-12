@@ -137,24 +137,6 @@ function _censor_event!(individual, flag_key::Symbol, time_key::Symbol, from)
     return nothing
 end
 
-# ── Heterogeneity helpers ───────────────────────────────────────────
-#
-# Transition fields (`probability`, `delay`) are read through `sample_value`,
-# per individual at `resolve_individual!` time, and accept:
-#
-# - a `Real` / `Distribution`: constant across the population.
-# - a `Conditional(ind -> dist)`: a distribution chosen per individual.
-# - a `Function (rng, ind) -> value`: arbitrary per-individual rule.
-#   Use this for age-dependent CFRs, vulnerability-conditioned delays,
-#   risk-group-specific reporting, etc. The function is called with the
-#   simulation RNG and the individual; return the probability (as a
-#   `Real`) or the delay (as a `Real` time, typically days).
-#
-# Distribution-valued delays sample from the distribution. Function
-# delays return a sample directly. The pattern matches `transmission_traits`
-# and `clinical_presentation` so heterogeneity is configured the same way
-# across the package.
-
 # ── Evaluating ──────────────────────────────────────────────────────
 #
 # The reverse of reading a delay or probability with `sample_value`: given a

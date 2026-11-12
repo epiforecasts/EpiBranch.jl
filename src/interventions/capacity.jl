@@ -194,7 +194,7 @@ function CapacityConstrained(
     )
 end
 
-# A fixed budget is validated and floated as before; a calendar schedule
+# A fixed budget is validated and floated; a calendar schedule
 # validates itself when it is built (`Steps`'s own values, say), so nothing
 # further is checked here.
 function _prepared_budget(budget::Real)
@@ -382,37 +382,26 @@ end
 
 # The sorted dose times for one `resource_key` value, `nothing` for an
 # intervention with no method of it, putting every recipient on one shared
-# budget as before.
+# budget.
 function _dose_times(cc::CapacityConstrained, state, key = nothing)
     return get(_dose_times_by_key(cc, state), key, Float64[])
 end
 
-# `_admit_actions!`'s own record of who has already drawn on each capacity
-# key's resources, kept in `state.scratch` so it survives from one call to
-# the next. Keyed on `capacity_key(cc.intervention)` rather than on `cc`
-# itself: two different `CapacityConstrained` wrappers sharing a dose label
-# (per the docstring above) then see each other's admissions through the
-# same cache instead of each keeping its own, unaware copy. Seeded once by a
-# population scan like `_dose_times_by_key`'s own, then grown one person at a
-# time as each dose is admitted; a run with many settled cases no longer
-# rescans everyone on every one of them. `scanned` is how far along
-# `state.individuals` that scan has reached: someone created since, already
-# holding the flag from an attribute builder, is then picked up by scanning
-# only the people appended since. `recorded` remembers which resource and
-# date each person's own use was filed under; a dose later withdrawn outside
-# this cache's own admission path (`on_infection_settled!` undoing one that
-# missed its eligibility window, say) can then be taken back out again.
-# A dose under the key is also recorded by paths that never pass through a
-# wrapper's admission at all, an unwrapped vaccination sharing the dose
-# label or a direct `record_dose!` call, which the docstring above promises
-# count too: `record_dose!` files its own dose through `_note_capacity_use!`
-# whenever a cache for its label exists, as the tracers do for a trace
-# action's. `intervention` is the one the cache
-# was first built for, whose `resource_key` and `capacity_time_key` every
-# use is filed under, since those paths have no wrapper to ask.
-# `capacity_usage` and `_reset_unless_within_budget!` keep using the plain
-# scan above instead: each is called far less often than an action is
-# admitted, so there is no scan there worth avoiding.
+# `_admit_actions!`'s record of who has already drawn on each capacity key's
+# resources, kept in `state.scratch`. Keyed on `capacity_key(cc.intervention)`
+# rather than on `cc`, so wrappers sharing a dose label see each other's
+# admissions. Seeded by one population scan, then grown as each dose is
+# admitted; `scanned` is how far along `state.individuals` the scan has
+# reached, so people created since are picked up without rescanning everyone.
+# `recorded` remembers which resource and date each person's use was filed
+# under, so a dose withdrawn outside this cache's admission path can be taken
+# back out. Doses recorded by paths with no wrapper (an unwrapped vaccination
+# sharing the label, a direct `record_dose!`) count too: `record_dose!` files
+# them through `_note_capacity_use!` whenever a cache for its label exists, as
+# the tracers do for a trace action's. `intervention` is the one the cache was
+# first built for, whose `resource_key` and `capacity_time_key` every use is
+# filed under. `capacity_usage` and `_reset_unless_within_budget!` use the
+# plain scan above, being called far less often than an action is admitted.
 mutable struct _CapacityCache
     intervention::AbstractIntervention
     times::Dict{Any, Vector{Float64}}
@@ -546,7 +535,7 @@ _period_budget(schedule, t) = calendar_multiplier(schedule, t)
 
 # The total budget available across every period from the first up to, but
 # excluding, the one ending at `period_end`: a fixed number times the number
-# of periods begun, as before, or, for a schedule, each period's own number
+# of periods begun, or, for a schedule, each period's own number
 # summed, because a later period cannot be assumed to repeat an earlier one's.
 _cumulative_budget(cc::CapacityConstrained, period_end, cum = nothing) =
     _cumulative_budget(cc.budget_per_period, cc.period, period_end, cum)
