@@ -1422,6 +1422,10 @@ An asymptomatic case transmits exactly as a symptomatic one does, because this
 function takes no relative infectiousness. To make asymptomatic
 cases less (or more) infectious, list [`transmission_traits`](@ref) after it
 with an `infectiousness` that reads `ind.state[:asymptomatic]`.
+`transmission_traits` draws its factor when the case is created, which suits
+traits known then (age, sex, whether the case is asymptomatic). A change during
+the infection, such as being traced or quarantined, goes through an
+intervention; bringing these together is tracked in #972.
 
 # Examples
 

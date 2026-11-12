@@ -297,6 +297,8 @@ disease_less_infectious = [
 ]
 ```
 
+`transmission_traits` draws its factor when the case is created, which suits traits known then (age, sex, whether the case is asymptomatic). A change during the infection, such as being traced or quarantined, goes through an intervention; bringing these together is tracked in #972.
+
 ## Contact tracing workload
 
 The simulation keeps everyone each case could have infected, including those
