@@ -855,6 +855,7 @@ EpiBranch.apply_observation!
 EpiBranch.calendar_multiplier
 EpiBranch.next_calendar_break
 EpiBranch.calendar_shape
+EpiBranch.calendar_bound
 EpiBranch.PiecewiseConstantCalendar
 EpiBranch.SmoothCalendar
 EpiBranch.pair_kernel
