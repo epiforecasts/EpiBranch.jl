@@ -393,7 +393,7 @@ So far transmission has been timed by a generation time, the days from a case's 
 using Statistics
 
 contacts = NegBin(2.5, 0.16)
-latent = LogNormal(1.6, 0.5)           # infection to infectious: mean about 5 days
+latent = LogNormal(1.6, 0.5)           # infection to infectious: mean about 5.6 days
 infectious = Gamma(5.0, 2.0)           # infectious to recovered: mean 10 days
 contact_interval = Exponential(4.0)    # infectious to each contact: mean 4 days
 
