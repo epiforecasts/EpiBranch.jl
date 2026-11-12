@@ -143,6 +143,9 @@ public pair_kernel
 public calendar_multiplier, next_calendar_break, calendar_shape,
     PiecewiseConstantCalendar, SmoothCalendar
 public infection_likelihood_compatible
+# Traits the closed forms ask instead of matching `Reporting` and
+# `clinical_presentation` by type.
+public reporting_probability, reporting_from, onset_law
 public susceptibility_components, susceptibility_host_times, HazardScaling
 public binding_release
 public removal_gap_host_times, removal_gap_host_times_withdrawn

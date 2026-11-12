@@ -1470,6 +1470,10 @@ struct ClinicalPresentation{D, P}
     prob_asymptomatic::P
 end
 
+function onset_law(c::ClinicalPresentation)
+    return (incubation_period = c.incubation_period, prob_asymptomatic = c.prob_asymptomatic)
+end
+
 function (clinical::ClinicalPresentation)(rng, ind)
     rng = stream(rng, ind.id, :clinical_presentation)
     pa = sample_value(clinical.prob_asymptomatic, rng, ind)

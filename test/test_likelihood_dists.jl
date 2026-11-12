@@ -455,3 +455,51 @@ EpiBranch.chain_size_distribution(d::BrokenExactOffspring) = throw(d.error)
         end
     end
 end
+
+# A reporting step and an onset builder of the user's own, recognised by the
+# `reporting_probability` and `onset_law` traits rather than by type.
+struct TestingReport <: EpiBranch.AbstractClinicalTransition
+    rate::Float64
+end
+EpiBranch.offspring_law_unchanged(::TestingReport) = true
+EpiBranch.reporting_probability(t::TestingReport) = t.rate
+EpiBranch.reporting_from(::TestingReport) = :infection
+
+struct OwnOnset
+    inner::Any
+end
+(o::OwnOnset)(rng, ind) = o.inner(rng, ind)
+EpiBranch.onset_law(o::OwnOnset) = EpiBranch.onset_law(o.inner)
+EpiBranch.offspring_law_unchanged(::OwnOnset) = true
+
+@testset "closed forms recognise reporting and onset by trait" begin
+    proc = BranchingProcess(NegBin(0.8, 0.5), LogNormal(1.6, 0.5))
+    own_inc = LogNormal(1.5, 0.5)
+    inner = clinical_presentation(incubation_period = own_inc, prob_asymptomatic = 0.5)
+
+    d = chain_size_distribution(ModelSpec(proc; progression = [TestingReport(0.6)]))
+    @test d isa EpiBranch.ThinnedChainSize
+    @test d.detection_prob ≈ 0.6
+
+    # From onset, the share that reaches onset comes from `onset_law`.
+    class = ModelSpec(
+        proc; progression = [Reporting(delay = 0.0, probability = 0.8)],
+        attributes = OwnOnset(inner)
+    )
+    @test chain_size_distribution(class).detection_prob ≈ 0.4
+
+    # Isolation's analytic effect reads the incubation period the same way.
+    iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
+    builtin = ModelSpec(proc; interventions = [iso], attributes = inner)
+    own = ModelSpec(proc; interventions = [iso], attributes = OwnOnset(inner))
+    off = NegBin(0.8, 0.5)
+    eff(spec) = EpiBranch.analytic_offspring_effect(iso, off, spec)
+    @test eff(own).mean ≈ eff(builtin).mean
+    @test eff(own).pgf(0.3) ≈ eff(builtin).pgf(0.3)
+
+    # The incidence likelihood reads the onset the same way.
+    data = IncidenceCounts([1, 2, 4, 5, 9, 12, 18]; seeds = 2)
+    rep = [Reporting(delay = Gamma(2.0, 1.5), probability = 0.7)]
+    @test loglikelihood(data, ModelSpec(proc; attributes = OwnOnset(inner), progression = rep)) ≈
+        loglikelihood(data, ModelSpec(proc; attributes = inner, progression = rep))
+end

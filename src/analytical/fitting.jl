@@ -304,11 +304,11 @@ end
 # `Reporting` step in `progression`, detection is not thinned at all, so
 # every infected case counts; otherwise only `:reported` cases do.
 function _sim_chain_sizes(state, obs::MinimumSize, progression)
-    return any(t -> t isa Reporting, progression) ?
+    return any(_is_reporting, progression) ?
         _reported_chain_sizes(state) : chain_statistics(state).size
 end
 function _sim_chain_sizes(state, obs, progression)
-    if obs isa NoObservation && !any(t -> t isa Reporting, progression)
+    if obs isa NoObservation && !any(_is_reporting, progression)
         return chain_statistics(state).size
     end
     return _reported_chain_sizes(state)

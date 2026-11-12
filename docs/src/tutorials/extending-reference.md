@@ -1036,6 +1036,8 @@ before.
 | A capacity limit per group | `resource_key(iv, individual, state)` for `iv` | When actions are admitted, once per case |
 | An exact effect on the offspring distribution | `analytic_offspring_effect` for an intervention | Closed-form results on a `ModelSpec` |
 | A model, attribute or progression transition that leaves the single-type offspring law exactly as drawn | `EpiBranch.offspring_law_unchanged` | The chain-size and incidence likelihoods' analytical path |
+| A progression transition that reports cases with a fixed probability, and the time it reports from | `EpiBranch.reporting_probability`, `EpiBranch.reporting_from` | The chain-size and incidence closed forms, which thin by it |
+| An attribute that sets the onset time, with its incubation period and asymptomatic share | `EpiBranch.onset_law` | The analytic effect of `Isolation` and the closed forms for reporting timed from onset |
 | A stopping rule | A type `<: AbstractStoppingRule` and `should_stop` | Each step |
 | A contact recorder | A type `<: ContactRecorder` and `records_contacts` | Continuous-time models, each blocked proposal |
 | A terminal clinical transition | A type `<: AbstractClinicalTransition` with `is_terminal`, `terminal_event`, `terminal_target` | When a case is settled |
