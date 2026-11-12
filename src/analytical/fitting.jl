@@ -67,6 +67,17 @@ that is, its final size is either the observed size or larger.
 [`end_of_outbreak_probability`](@ref) computes `π_i` from the generation-time
 distribution and the time since the last case.
 
+This mixture is an approximation. It treats whether a cluster is over as an
+independent event with probability `π_i`, and so does not use the fact that no
+case has occurred for the time since the last one. For a single-case cluster
+the exact probability of the data is `E[S(τ)^N]`, with `S` the generation-time
+survival function and `N` the number of secondary cases, which for negative
+binomial offspring is `(k / (k + R (1 − S(τ))))^k`. The two can differ
+noticeably, most when `τ` is short. `π_i` also depends on `R` and `k`, so when
+fitting those, recompute it at every parameter value (for example with
+`end_of_outbreak_probability(R, k, generation_time, τs)`) rather than passing
+it once as fixed data. A `π_i` fixed at one parameter value biases the fit.
+
 For data recorded only once a chain reaches a given size, pass
 `observe(chain_size_distribution(offspring), MinimumSize(k))` instead of
 `offspring`.

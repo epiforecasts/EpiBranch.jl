@@ -257,15 +257,21 @@ using Turing
 end
 ```
 
-With no interventions this uses the exact formula and fitting is fast. The
-formula also covers the options `seeds` (the number of index cases in each
-cluster) and `prob_concluded` (the probability that each cluster has finished
-growing):
+With no interventions this uses the exact chain-size formula and fitting is
+fast. The formula also covers the options `seeds` (the number of index cases in
+each cluster) and `prob_concluded` (the probability that each cluster has
+finished growing):
 
 ```julia
 data ~ chain_size_distribution(BranchingProcess(Poisson(R));
     seeds = seeds, prob_concluded = prob_concluded)
 ```
+
+The chain-size terms are exact, but `prob_concluded` enters as a mixture,
+`π P(X = x) + (1 − π) P(X ≥ x)`, that treats whether a cluster is over as an
+independent event. It is an approximation to the exact probability of the
+data, which also uses the time since the last case. Because `π` depends on `R`
+and `k`, compute it inside the model from the current parameter values.
 
 If the model includes interventions, EpiBranch estimates the likelihood by
 simulation instead, which is slower. `seeds` and `prob_concluded` work there
