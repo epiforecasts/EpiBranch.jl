@@ -129,9 +129,19 @@ function _timed_from_outcome(individual, from::Symbol)
 end
 _timed_from_outcome(individual, from) = false
 
-function _censor_event!(individual, flag_key::Symbol, time_key::Symbol, from)
+# With the resolved key of `from` already in hand.
+function _timed_from_outcome(individual, ::Symbol, key::Symbol)
+    outcome = get(individual.state, :outcome, nothing)
+    outcome isa Symbol || return false
+    return key === _resolved_key(outcome)
+end
+_timed_from_outcome(individual, from, ::Nothing) = _timed_from_outcome(individual, from)
+
+function _censor_event!(
+        individual, flag_key::Symbol, time_key::Symbol, from, from_key = nothing
+    )
     individual.state[time_key] > individual.state[:outcome_time] || return nothing
-    _timed_from_outcome(individual, from) && return nothing
+    _timed_from_outcome(individual, from, from_key) && return nothing
     individual.state[flag_key] = false
     individual.state[time_key] = Inf
     return nothing
@@ -477,6 +487,11 @@ end
 # and resolves to its `:onset_time` key, while `:onset_time` (the key
 # itself, kept for backward compatibility) resolves to itself.
 _resolved_key(s::Symbol) = endswith(String(s), "_time") ? s : Symbol(s, :_time)
+
+# `_resolved_key` of a `from` given as a name, `nothing` for a callable. The key
+# depends only on `from`, so the object that holds `from` builds it once.
+_from_key(from::Symbol) = _resolved_key(from)
+_from_key(from) = nothing
 
 # A transition occurs only from a finite anchor. An anchor is missing (`NaN`)
 # when the `from` key was never written, and non-finite (`Inf`) when the

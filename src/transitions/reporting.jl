@@ -27,6 +27,12 @@ reported".
 [`end_of_outbreak_probability`](@ref) all read this step's reporting
 probability.
 
+The chain-size likelihood treats each observed cluster as all the reported
+cases of exactly one true chain. An unreported case in the middle of a chain is
+assumed not to split it into two observed clusters. Cluster data built from
+contact tracing can violate this when a link runs through an undetected case.
+Chains with no reported case are absent from the data.
+
 # Examples
 
 ```julia

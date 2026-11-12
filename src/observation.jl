@@ -33,18 +33,22 @@ apply_observation!(::NoObservation, state, rng) = state
 # simulation chain-size paths each apply where they see sizes.
 apply_observation!(::MinimumSize, state, rng) = state
 
-function apply_observation!(o::ChainDetection, state, rng)
-    cases = filter(is_infected, state.individuals)
-    # A progression transition (such as `Reporting`) that records `:reported`
-    # owns that key, and its likelihood reads what it wrote.
-    any(case -> haskey(case.state, :reported), cases) && throw(
+function _reporting_conflict(obs)
+    throw(
         ArgumentError(
-            "ChainDetection cannot be combined with a progression " *
+            "$(nameof(typeof(obs))) cannot be combined with a progression " *
                 "transition that records `:reported`, such as `Reporting`: " *
                 "both would write the case's report. Report cases with one " *
                 "of them."
         )
     )
+end
+
+function apply_observation!(o::ChainDetection, state, rng)
+    cases = filter(is_infected, state.individuals)
+    # A progression transition (such as `Reporting`) that records `:reported`
+    # owns that key, and its likelihood reads what it wrote.
+    any(case -> haskey(case.state, :reported), cases) && _reporting_conflict(o)
     chain_size = Dict{Int, Int}()
     for case in cases
         chain_size[case.chain_id] = get(chain_size, case.chain_id, 0) + 1
@@ -338,14 +342,7 @@ both.
 function _fold_reporting(progression, base, obs, attrs)
     ρ = _effective_reporting_probability(progression, attrs)
     ρ === nothing && return base
-    obs isa ChainDetection && throw(
-        ArgumentError(
-            "$(nameof(typeof(obs))) cannot be combined with a progression " *
-                "transition that records `:reported`, such as `Reporting`: " *
-                "both would write the case's report. Report cases with one " *
-                "of them."
-        )
-    )
+    obs isa ChainDetection && _reporting_conflict(obs)
     ρ == 1.0 && return base
     return ThinnedChainSize(base, ρ)
 end

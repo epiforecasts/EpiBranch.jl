@@ -552,6 +552,16 @@ end
 
 # ── ContactTracing intervention ──────────────────────────────────────
 
+# What `ContactTracing` and `SourceTracing` share: both read an `eligibility`,
+# a `trace_rate`, an `isolation_to_trace_delay` and an `action`, and write the
+# same tracing state, so the methods that depend only on those are written once.
+abstract type _Tracing <: AbstractIntervention end
+
+_trace_rate(probability::Real) = ConstantRate(probability)
+_trace_rate(rate::TraceRate) = rate
+_trace_delay(delay::Distribution) = ConstantDelay(delay)
+_trace_delay(delay::TraceDelay) = delay
+
 """
     ContactTracing(eligibility, probability, isolation_to_trace_delay, action;
                    depth = 1)
@@ -647,42 +657,30 @@ end
 """
 struct ContactTracing{
         E <: TraceEligibility, F <: TraceRate, D <: TraceDelay, A <: TraceAction,
-    } <:
-    AbstractIntervention
+    } <: _Tracing
     eligibility::E
     trace_rate::F
     isolation_to_trace_delay::D
     action::A
     depth::Int
 
-    # Validate the ring radius once, here, so every construction path
-    # (all the convenience constructors below funnel through this) rejects
-    # depth < 1 rather than silently behaving as depth 1.
+    # Every construction path ends here, so the ring radius is validated once
+    # and `depth < 1` is rejected rather than silently behaving as depth 1. A
+    # plain probability or delay distribution becomes a constant rate or delay.
     function ContactTracing(
-            eligibility::E, trace_rate::F,
-            isolation_to_trace_delay::D, action::A,
-            depth::Integer
-        ) where {
-            E <: TraceEligibility, F <: TraceRate, D <: TraceDelay, A <: TraceAction,
-        }
+            eligibility::TraceEligibility, probability::Union{Real, TraceRate},
+            isolation_to_trace_delay::Union{Distribution, TraceDelay},
+            action::TraceAction;
+            depth::Integer = 1
+        )
         depth >= 1 ||
             throw(ArgumentError("ContactTracing depth must be at least 1, got $depth"))
-        return new{E, F, D, A}(
-            eligibility, trace_rate, isolation_to_trace_delay, action, Int(depth)
+        rate = _trace_rate(probability)
+        delay = _trace_delay(isolation_to_trace_delay)
+        return new{typeof(eligibility), typeof(rate), typeof(delay), typeof(action)}(
+            eligibility, rate, delay, action, Int(depth)
         )
     end
-end
-
-# Fully-typed form (eligibility + trait objects) with a default depth, so
-# callers that build the traits directly need not pass `depth`.
-function ContactTracing(
-        eligibility::TraceEligibility, trace_rate::TraceRate,
-        isolation_to_trace_delay::TraceDelay, action::TraceAction;
-        depth::Integer = 1
-    )
-    return ContactTracing(
-        eligibility, trace_rate, isolation_to_trace_delay, action, Int(depth)
-    )
 end
 
 function ContactTracing(;
@@ -695,38 +693,16 @@ function ContactTracing(;
     action === nothing &&
         throw(ArgumentError("ContactTracing requires `action`"))
     return ContactTracing(
-        eligibility,
-        ConstantRate(probability),
-        ConstantDelay(isolation_to_trace_delay),
-        action,
-        Int(depth)
+        eligibility, probability, isolation_to_trace_delay, action; depth
     )
 end
 
-# Terse positional form: an eligibility policy with a constant trace
-# probability and a constant delay distribution. The fully-typed inner
-# constructor (taking `TraceRate`/`TraceDelay` objects) is unaffected —
-# `probability::Real` and `delay::Distribution` do not match those.
-function ContactTracing(
-        eligibility::TraceEligibility, probability::Real,
-        isolation_to_trace_delay::Distribution, action::TraceAction;
-        depth::Integer = 1
-    )
-    return ContactTracing(
-        eligibility,
-        ConstantRate(probability),
-        ConstantDelay(isolation_to_trace_delay),
-        action,
-        Int(depth)
-    )
-end
-
-required_fields(ct::ContactTracing) = required_fields(ct.eligibility)
+required_fields(t::_Tracing) = required_fields(t.eligibility)
 # This is the time of the trace itself rather than the isolation time of the
 # contact. A `FlagOnly` trace never writes an isolation, and a `Quarantine`
 # trace can merge into an existing isolation that started at another time.
-function intervention_time(::ContactTracing, ind::Individual)
-    return _state_real(ind.state, _own_trace_time_key(:contact), Inf)
+function intervention_time(t::_Tracing, ind::Individual)
+    return _state_real(ind.state, _own_trace_time_key(_tracer_owner(t)), Inf)
 end
 
 # Required-field validation dispatches on the eligibility trait. Each
@@ -740,17 +716,11 @@ required_fields(::SymptomaticParent) = [:asymptomatic, :isolated]
 required_fields(::TraceEligibility) = Symbol[]  # Default for custom types
 
 # Combinators inherit requirements from the policies they wrap.
-function required_fields(e::AnyOf)
-    return reduce(union, (required_fields(c) for c in e.conditions); init = Symbol[])
-end
-function required_fields(e::AllOf)
-    return reduce(union, (required_fields(c) for c in e.conditions); init = Symbol[])
-end
-function required_fields(e::NoneOf)
+function required_fields(e::Union{AnyOf, AllOf, NoneOf})
     return reduce(union, (required_fields(c) for c in e.conditions); init = Symbol[])
 end
 
-reset!(::ContactTracing, ind::Individual) = _reset_traced!(ind, :contact)
+reset!(t::_Tracing, ind::Individual) = _reset_traced!(ind, _tracer_owner(t))
 
 # `ContactTracing` (`:contact`) and `SourceTracing` (`:source`) write the same
 # tracing state on whoever `apply_trace!` acts on. Each therefore keeps its own
@@ -761,6 +731,7 @@ reset!(::ContactTracing, ind::Individual) = _reset_traced!(ind, :contact)
 _own_trace_time_key(owner::Symbol) = owner === :contact ? :_contact_trace_time : :_source_trace_time
 _own_handles_key(owner::Symbol) = owner === :contact ? :_contact_trace_handles : :_source_trace_handles
 _other_tracer(owner::Symbol) = owner === :contact ? :source : :contact
+_tracer_owner(::ContactTracing) = :contact
 
 # Every removal entry `apply_trace!` just recorded on `contact`, whether a
 # quarantine stretch or an isolation span, was numbered after `handles_before`.
@@ -834,7 +805,7 @@ function _reset_traced!(ind::Individual, owner::Symbol)
     return nothing
 end
 
-function initialise_individual!(::ContactTracing, individual, state)
+function initialise_individual!(::_Tracing, individual, state)
     individual.state[:traced] = false
     individual.state[:quarantined] = false
     return nothing
@@ -1045,29 +1016,24 @@ isolates it. A quarantine that is never released ends the person's
 infectious period. With a finite `duration` (see [`Quarantine`](@ref)) each of
 their contacts during quarantine is blocked and they transmit again once
 released, as with [`Isolation`](@ref)."""
-infectious_removal_time(ct::ContactTracing, ind::Individual) = _trace_removal_time(ct.action, ind)
-
-# Shared by `ContactTracing` and `SourceTracing`, which both remove whoever
-# `apply_trace!` acted on through the same `TraceAction` protocol; only which
-# person ends up quarantined differs between forward and backward tracing.
-function _trace_removal_time(action::TraceAction, ind::Individual)
+function infectious_removal_time(t::_Tracing, ind::Individual)
     get(ind.state, :quarantined, false) || return Inf
-    t = Inf
-    for key in _trace_removal_keys(action)
-        t = min(t, permanent_removal_time(ind, key))
+    t_removal = Inf
+    for key in _trace_removal_keys(t.action)
+        t_removal = min(t_removal, permanent_removal_time(ind, key))
     end
-    return t
+    return t_removal
 end
 
 # As for `Isolation`: a quarantine's recorded stretches are append-only.
-binding_release(::ContactTracing) = true
+binding_release(::_Tracing) = true
 
-removal_gap_host_times(ct::ContactTracing) = removal_gap_host_times(ct.action)
+removal_gap_host_times(t::_Tracing) = removal_gap_host_times(t.action)
 removal_gap_host_times(::TraceAction) = ()
 removal_gap_host_times(::Quarantine) = (QUARANTINE_STRETCHES_KEY,)
 removal_block_probability(ct::ContactTracing) = removal_block_probability(ct.action)
 
-removal_gap_host_times_withdrawn(ct::ContactTracing) = removal_gap_host_times_withdrawn(ct.action)
+removal_gap_host_times_withdrawn(t::_Tracing) = removal_gap_host_times_withdrawn(t.action)
 removal_gap_host_times_withdrawn(::TraceAction) = ()
 # `apply_trace!` keeps the shared history `set_isolated!` writes as well as
 # its own key, so a releasing quarantine leaves a stretch on
@@ -1095,14 +1061,9 @@ end
 # A quarantine that lapses leaves the window open above, and the stretches it
 # removed the case for are blocked per contact here instead. One with no
 # release is blocked here too, from its own start and never released.
-function competing_risk(ct::ContactTracing, parent, contact, state)
-    return _trace_competing_risk(ct.action, parent)
-end
-
-# Shared by `ContactTracing` and `SourceTracing`: see `_trace_removal_time`.
-function _trace_competing_risk(action::TraceAction, parent)
+function competing_risk(t::_Tracing, parent, contact, state)
     get(parent.state, :quarantined, false) || return nothing
-    keys = _trace_removal_keys(action)
+    keys = _trace_removal_keys(t.action)
     length(keys) == 1 && return _removal_risks(parent, 1.0, only(keys))
     risks = Risk[]
     for key in keys
@@ -1113,7 +1074,7 @@ function _trace_competing_risk(action::TraceAction, parent)
 end
 
 # A quarantine is a removal, so it reaches only the routes a removal can cut.
-function risk_applies(::ContactTracing, route)
+function risk_applies(::_Tracing, route)
     return route !== nothing && INTERVENTION_REMOVAL in route.until
 end
 
@@ -1190,12 +1151,28 @@ one instead.
 """
 struct SourceTracing{
         E <: TraceEligibility, F <: TraceRate, D <: TraceDelay, A <: TraceAction,
-    } <: AbstractIntervention
+    } <: _Tracing
     eligibility::E
     trace_rate::F
     isolation_to_trace_delay::D
     action::A
+
+    # A plain probability or delay distribution becomes a constant rate or
+    # delay, as for `ContactTracing`.
+    function SourceTracing(
+            eligibility::TraceEligibility, probability::Union{Real, TraceRate},
+            isolation_to_trace_delay::Union{Distribution, TraceDelay},
+            action::TraceAction
+        )
+        rate = _trace_rate(probability)
+        delay = _trace_delay(isolation_to_trace_delay)
+        return new{typeof(eligibility), typeof(rate), typeof(delay), typeof(action)}(
+            eligibility, rate, delay, action
+        )
+    end
 end
+
+_tracer_owner(::SourceTracing) = :source
 
 function SourceTracing(;
         probability::Float64,
@@ -1203,34 +1180,7 @@ function SourceTracing(;
         action::TraceAction,
         eligibility::TraceEligibility = SymptomaticParent()
     )
-    return SourceTracing(
-        eligibility, ConstantRate(probability), ConstantDelay(isolation_to_trace_delay), action
-    )
-end
-
-# Terse positional form, as `ContactTracing`'s equivalent constructor is: an
-# eligibility policy with a constant trace probability and a constant delay
-# distribution. The fully-typed inner constructor (taking `TraceRate`/
-# `TraceDelay` objects directly) is unaffected.
-function SourceTracing(
-        eligibility::TraceEligibility, probability::Real,
-        isolation_to_trace_delay::Distribution, action::TraceAction
-    )
-    return SourceTracing(
-        eligibility, ConstantRate(probability), ConstantDelay(isolation_to_trace_delay), action
-    )
-end
-
-required_fields(st::SourceTracing) = required_fields(st.eligibility)
-function intervention_time(::SourceTracing, ind::Individual)
-    return _state_real(ind.state, _own_trace_time_key(:source), Inf)
-end
-reset!(::SourceTracing, ind::Individual) = _reset_traced!(ind, :source)
-
-function initialise_individual!(::SourceTracing, individual, state)
-    individual.state[:traced] = false
-    individual.state[:quarantined] = false
-    return nothing
+    return SourceTracing(eligibility, probability, isolation_to_trace_delay, action)
 end
 
 # `trace_contacts!` below traces backward; the forward ring walk the race
@@ -1276,18 +1226,3 @@ function trace_contacts!(st::SourceTracing, state, case, contacts, not_before = 
     end
     return nothing
 end
-
-infectious_removal_time(st::SourceTracing, ind::Individual) = _trace_removal_time(st.action, ind)
-
-# As for `ContactTracing`: a quarantine's recorded stretches are append-only.
-binding_release(::SourceTracing) = true
-
-removal_gap_host_times(st::SourceTracing) = removal_gap_host_times(st.action)
-removal_gap_host_times_withdrawn(st::SourceTracing) = removal_gap_host_times_withdrawn(st.action)
-
-function competing_risk(st::SourceTracing, parent, contact, state)
-    return _trace_competing_risk(st.action, parent)
-end
-
-# A quarantine is a removal, so it reaches only the routes a removal can cut.
-risk_applies(::SourceTracing, route) = route !== nothing && INTERVENTION_REMOVAL in route.until

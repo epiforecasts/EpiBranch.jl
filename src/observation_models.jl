@@ -33,6 +33,10 @@ simulation-based likelihood leaves out simulated chains below it, so both
 describe the same recorded data. [`simulate`](@ref) and
 [`chain_statistics`](@ref) still return every chain.
 
+When the reproduction number exceeds 1, some chains never end. The event "the
+chain reached at least `min_size`" includes those chains as well as finite
+ones.
+
 It acts on whole chains rather than on individual cases, so it leaves the
 simulated cases themselves unchanged.
 """
