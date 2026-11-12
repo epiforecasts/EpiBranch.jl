@@ -266,6 +266,12 @@ end
         ).depth == 2
     end
 
+    @testset "a missing action is rejected" begin
+        @test_throws ArgumentError ContactTracing(
+            probability = 1.0, isolation_to_trace_delay = Exponential(0.5)
+        )
+    end
+
     @testset "depth below 1 is rejected" begin
         @test_throws ArgumentError ContactTracing(
             OnSymptomOnset(), 1.0, Exponential(0.5), Quarantine(duration = Inf); depth = 0
