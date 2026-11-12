@@ -410,7 +410,7 @@ implied_R(contacts, contact_interval, infectious)
 
 This is 2.17, against 2.5 contacts. The `offspring` form instead keeps the mean and dispersion of the number of secondary cases exactly as given, and conditions each contact time to fall inside the infectious period rather than dropping it (see [`transmission_timing`](@ref)).
 
-To check what a simulation produced, [`realised_generation_intervals`](@ref) returns the days from each infector's infection to the infection of each case it infected, for every case except the index cases. Compare their mean with the generation time put in, the latent period plus the contact interval, and the ratio of cases in successive generations with `implied_R`. Bounding the run by `max_generations` rather than `max_cases` leaves every case's contacts complete:
+To check what a simulation produced, [`realised_generation_intervals`](@ref) returns the days from each infector's infection to the infection of each case it infected, for every case except the index cases. Compare their mean with the generation time put in, which is the latent period plus the contact interval. Compare the ratio of cases in successive generations with `implied_R`. Bounding the run by `max_generations` rather than `max_cases` leaves every case's contacts complete:
 
 ```@example transitions
 state = simulate(model; n_initial = 100, max_cases = nothing,
@@ -424,7 +424,7 @@ println("Mean generation interval: ", round(mean(gi), digits = 1),
 println("Mean cases per case across generations: ", round(mean(ratios), digits = 2))
 ```
 
-The realised intervals are shorter than the 9.6 days put in, because recovery removes the contacts that would have come late in a long infectious period. The ratios scatter around `implied_R` rather than around 2.5; with a dispersion of 0.16 a few superspreading cases dominate each generation, so they vary from run to run.
+The realised intervals are shorter than the 9.6 days put in, because recovery removes the contacts that would have come late in a long infectious period. The ratios scatter around `implied_R` rather than around 2.5; with a dispersion of 0.16 a few superspreading cases dominate each generation, and the ratios vary from run to run.
 
 ## Likelihood of the clinical timeline
 
