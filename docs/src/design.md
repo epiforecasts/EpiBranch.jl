@@ -266,7 +266,9 @@ For the exact engines, `simulate` (generate outbreaks) and `loglikelihood`
 Simulating forward and fitting to data therefore use the same assumptions. The
 population-dynamics approximations (mean-field, linear-noise and hybrid models
 of a closed population) are the exception: they take their own rates, and
-refuse interventions.
+refuse interventions they cannot fold into their compartments. They read only
+a group vaccination campaign, alone or under `Scheduled` or
+`CapacityConstrained`.
 
 The infection likelihood conditions on who received an intervention, and does
 not include the probability of that receipt. It therefore refuses a model part
