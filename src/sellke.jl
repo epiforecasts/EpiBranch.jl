@@ -113,21 +113,31 @@ end
 # run, and searching the method table takes a large share of the time in a small
 # outbreak. The counter is checked on each call so that a hook defined outside
 # the package after it was loaded is still found.
-const _OWN_METHOD_CACHE = Dict{Tuple{Any, Type, Type, Union{Int, Nothing}}, Bool}()
-const _OWN_METHOD_WORLD = Ref{UInt}(0)
+# The cache is an immutable (world, dict) pair that is swapped, never mutated,
+# so the hit path reads it without a lock, which matters under threaded
+# simulation. A miss takes the lock only to publish a fresh copy of the dict.
+const _OwnMethodKey = Tuple{Any, Type, Type, Union{Int, Nothing}}
+const _OWN_METHOD_STATE = Ref{Tuple{UInt, Dict{_OwnMethodKey, Bool}}}(
+    (UInt(0), Dict{_OwnMethodKey, Bool}())
+)
 const _OWN_METHOD_LOCK = ReentrantLock()
 
 function _has_own_method(f, T::Type, base::Type, n::Union{Int, Nothing} = nothing)
     world = Base.get_world_counter()
-    return lock(_OWN_METHOD_LOCK) do
-        if _OWN_METHOD_WORLD[] != world
-            empty!(_OWN_METHOD_CACHE)
-            _OWN_METHOD_WORLD[] = world
-        end
-        get!(_OWN_METHOD_CACHE, (f, T, base, n)) do
-            _has_own_method_uncached(f, T, base, n)
-        end
+    key = (f, T, base, n)
+    state = _OWN_METHOD_STATE[]
+    if state[1] == world
+        hit = get(state[2], key, nothing)
+        hit === nothing || return hit
     end
+    answer = _has_own_method_uncached(f, T, base, n)
+    lock(_OWN_METHOD_LOCK) do
+        current = _OWN_METHOD_STATE[]
+        entries = current[1] == world ? copy(current[2]) : Dict{_OwnMethodKey, Bool}()
+        entries[key] = answer
+        _OWN_METHOD_STATE[] = (world, entries)
+    end
+    return answer
 end
 
 # Whether `f` has a method for `T` more specific than the fallback defined on
