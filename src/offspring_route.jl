@@ -183,7 +183,7 @@ end
 (::_Offspring)(infector_id, state) = ()
 _pair_kernel(::_Offspring, infector_id, target_id, state) = nothing
 
-_route_open(o::_Offspring, ind, w::RouteWindow) = _state_time(ind, o.window.from)
+_route_open(o::_Offspring, ind, w::RouteWindow) = _state_time(ind, o.window.from, o.window.from_key)
 _route_may_block(::_Offspring) = true
 _route_builtin_blocks(::_Offspring) = _offspring_builtin_risk_blocks
 
@@ -287,7 +287,7 @@ end
 function _draws_early(rts, ind)
     for (_, o) in rts
         _draws_before_settling(o.window) || return false
-        isfinite(_state_time(ind, o.window.from)) || return false
+        isfinite(_state_time(ind, o.window.from, o.window.from_key)) || return false
     end
     return true
 end
@@ -298,7 +298,7 @@ end
 function _draw_contacts!(o::_Offspring, race, ind, max_generation, born::Bool)
     first_place = length(o.tree) + 1
     ind.generation >= max_generation && return first_place:(first_place - 1)
-    from_t = _state_time(ind, o.window.from)
+    from_t = _state_time(ind, o.window.from, o.window.from_key)
     isfinite(from_t) || return first_place:(first_place - 1)
     (; state) = race
     counts = draw_offspring(state.rng, o.window.offspring, ind, state)

@@ -82,12 +82,14 @@ are used in the same place below.
 
 !!! warning "Offspring counts and interventions"
     `offspring_distribution` of a bare process describes secondary cases
-    without interventions. Given a [`ModelSpec`](@ref) with isolation or
-    quarantine it throws an error, since no built-in intervention has a
-    closed-form effect on the offspring distribution. If your offspring counts
-    come from a period with isolation or quarantine in place, the R you
-    estimate from the bare process is the R under those interventions, not the
-    R without them.
+    without interventions. Given a [`ModelSpec`](@ref), it applies the
+    interventions that have a closed-form effect on the offspring
+    distribution: `Isolation` and a [`MassVaccination`](@ref) campaign that is
+    already complete before the simulation starts. It throws an error for
+    interventions without one, such as contact tracing and its quarantine (see
+    [Analytical results](analytical.md)). If your offspring counts come from a
+    period with interventions in place, the R you estimate from the bare
+    process is the R under those interventions.
 
 ### Maximum likelihood
 

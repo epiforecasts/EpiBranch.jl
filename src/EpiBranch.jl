@@ -5,7 +5,7 @@ using DataFrames
 using Dates
 using Distributions
 using ForwardDiff
-using LinearAlgebra: LinearAlgebra, Diagonal, Symmetric, eigvals
+using LinearAlgebra: LinearAlgebra, Diagonal, I, Symmetric, cholesky, diag, eigvals, issuccess
 using QuadGK
 using Random
 using SpecialFunctions
