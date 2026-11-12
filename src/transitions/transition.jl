@@ -53,6 +53,7 @@ Transition(:died,   from = :severe, delay = Gamma(2, 3), probability = 0.6, term
 struct Transition{D, P, F} <: AbstractClinicalTransition
     state::Symbol
     time_key::Symbol
+    from_key::Union{Symbol, Nothing}
     delay::D
     probability::P
     from::F
@@ -64,7 +65,9 @@ function Transition(
         from = :infection, probability = 1.0, terminal::Bool = false
     )
     d = _transition_delay(delay, rate)
-    return Transition(state, Symbol(state, :_time), d, probability, from, terminal)
+    return Transition(
+        state, Symbol(state, :_time), _from_key(from), d, probability, from, terminal
+    )
 end
 
 # Resolve a transition's timing from exactly one of `delay` or `rate`. A rate
@@ -91,10 +94,19 @@ function _state_time(ind::Individual{T}, from::Symbol) where {T}
 end
 _state_time(ind, from) = float(from(ind))
 
+# The same, with the key that `_resolved_key` gives for `from` already in hand.
+# A caller that resolved it once when it was built avoids creating the key
+# symbol for every case, which is the slowest step of reading the anchor.
+function _state_time(ind::Individual{T}, from::Symbol, key::Symbol) where {T}
+    from === :infection && return ind.infection_time
+    return _state_real(ind.state, key, T(NaN))
+end
+_state_time(ind, from, ::Nothing) = _state_time(ind, from)
+
 required_fields(t::Transition) = _from_required(t.from)
 
 function resolve_individual!(t::Transition, individual, state)
-    anchor = _state_time(individual, t.from)
+    anchor = _state_time(individual, t.from, t.from_key)
     gate_rng = stream(state.rng, individual.id, (t.state, :selected))
     _transition_selected(gate_rng, individual, anchor, t.probability) || return nothing
     # Delay callbacks can read the newly reached state.

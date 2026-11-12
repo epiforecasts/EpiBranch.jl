@@ -289,29 +289,21 @@ function _simulate_n(
         interventions, attributes, progression, observation, recorder, rng,
         parallel::Bool = false
     ) where {T}
+    run(rng) = each(
+        simulate_once(
+            model, sim_opts; interventions, attributes, progression,
+            observation, recorder, rng
+        )
+    )
     if parallel && Threads.nthreads() > 1
         seeds = [rand(rng, UInt64) for _ in 1:n]
         results = Vector{T}(undef, n)
         Threads.@threads for i in 1:n
-            local_rng = Random.Xoshiro(seeds[i])
-            results[i] = each(
-                simulate_once(
-                    model, sim_opts; interventions, attributes,
-                    progression, observation, recorder, rng = local_rng
-                )
-            )
+            results[i] = run(Random.Xoshiro(seeds[i]))
         end
         return results
     else
-        return [
-            each(
-                simulate_once(
-                    model, sim_opts; interventions, attributes, progression,
-                    observation, recorder, rng
-                )
-            )
-                for _ in 1:n
-        ]
+        return [run(rng) for _ in 1:n]
     end
 end
 
@@ -486,13 +478,9 @@ end
 # an `OffspringTimes` already gave.
 _window_infection_time(::NoGenerationTime, from_t::Real, state) = from_t
 _window_infection_time(offset::_FixedOffset, from_t::Real, state) = from_t + offset.offset
-function _window_infection_time(kernel::Distribution, from_t::Real, state)
-    return from_t + rand(state.rng, kernel)
-end
-# A window with a `calendar` scaling its kernel draws from the resulting
-# calendar-scaled kernel directly, exactly as a `PairKernel` with a calendar
-# does on the structure-driven routes.
-function _window_infection_time(kernel::_CalendarScaledKernel, from_t::Real, state)
+# Any other kernel (a distribution, or a calendar-scaled kernel, which is not a
+# `Distribution`) is drawn from directly.
+function _window_infection_time(kernel, from_t::Real, state)
     return from_t + rand(state.rng, kernel)
 end
 
@@ -573,17 +561,22 @@ function _at_case!(state::SimulationState, case, count)
     return nothing
 end
 
+# Offer a new person, or a reinfected one, to each intervention's
+# `initialise_individual!`.
+function _initialise!(interventions, ind, state)
+    _each(interventions) do intervention
+        initialise_individual!(intervention, ind, state)
+        return nothing
+    end
+    return nothing
+end
+
 function _resolve_interventions!(state::SimulationState, case, interventions)
     # A reinfection (`case.episodes` already holds the earlier one, closed
     # before this call) gets a fresh `initialise_individual!` first. That
     # keeps per-episode draws such as `Isolation`'s `:test_positive` specific
     # to the new episode, rather than left over from the one before it.
-    if _has_episodes(case)
-        _each(interventions) do intervention
-            initialise_individual!(intervention, case, state)
-            return nothing
-        end
-    end
+    _has_episodes(case) && _initialise!(interventions, case, state)
     _each(interventions) do intervention
         resolve_individual!(intervention, case, state)
         return nothing
@@ -704,9 +697,7 @@ function add_individuals!(
             state, 0, base + i, base + i, infection_time; type_idx
         )
         setup(ind, i)
-        for intervention in interventions
-            initialise_individual!(intervention, ind, state)
-        end
+        _initialise!(interventions, ind, state)
         push!(state.individuals, ind)
         push!(added, ind)
     end
@@ -761,9 +752,7 @@ end
 function _realise!(state::SimulationState, lazy::_LazyPopulation, id::Int)
     ind = _create_individual(state, 0, id, id, NaN)
     lazy.setup(ind, id)
-    for intervention in lazy.interventions
-        initialise_individual!(intervention, ind, state)
-    end
+    _initialise!(lazy.interventions, ind, state)
     state.individuals[id] = ind
     return ind
 end
@@ -1202,11 +1191,7 @@ struct WindowCensor end
 function competing_risk(::WindowCensor, parent, contact, state)
     until = get(contact.state, :censor_until, nothing)
     until === nothing && return nothing
-    t_end = Inf
-    for s in until
-        st = get(parent.state, Symbol(s, :_time), Inf)
-        st < t_end && (t_end = st)
-    end
+    t_end = _close_at(parent, (Symbol(s, :_time) for s in until))
     isfinite(t_end) || return nothing
     return Risk(event_time = t_end, block_probability = 1.0)
 end
@@ -1418,6 +1403,15 @@ Pass the result as `attributes` to [`ModelSpec`](@ref).
 [`Isolation`](@ref) needs these onset times, and [`linelist`](@ref) reports
 them as `date_onset`.
 
+An asymptomatic case transmits exactly as a symptomatic one does, because this
+function takes no relative infectiousness. To make asymptomatic
+cases less (or more) infectious, list [`transmission_traits`](@ref) after it
+with an `infectiousness` that reads `ind.state[:asymptomatic]`.
+Use `transmission_traits` for traits known when the case is created (age, sex,
+whether the case is asymptomatic), because it draws its factor then. A change
+during the infection, such as tracing or quarantine, needs an intervention.
+Combining the two is tracked in #972.
+
 # Examples
 
 Symptomatic-only with a log-normal incubation period:
@@ -1457,7 +1451,23 @@ attributes = [
 ]
 ```
 
-See also [`demographics`](@ref).
+Asymptomatic cases that are half as infectious as symptomatic ones (list
+`transmission_traits` after `clinical_presentation` so `:asymptomatic` is set
+first):
+
+```julia
+attributes = [
+    clinical_presentation(
+        incubation_period = LogNormal(1.6, 0.5),
+        prob_asymptomatic = 0.3,
+    ),
+    transmission_traits(
+        infectiousness = (rng, ind) -> ind.state[:asymptomatic] ? 0.5 : 1.0,
+    ),
+]
+```
+
+See also [`demographics`](@ref), [`transmission_traits`](@ref).
 """
 function clinical_presentation(;
         incubation_period::Distribution,
