@@ -120,7 +120,7 @@ when some cases are missed makes clusters look smaller than they are, and
 biases the estimate of R downwards.
 
 !!! note "Clusters with no detected case"
-    A cluster in which no case was detected never appears in the data. The likelihood allows for this by conditioning on at least one case being detected, so a joint fit of R and `probability` is not biased towards high reporting on that account.
+    A cluster with no detected case does not appear in the data. The likelihood conditions on at least one case being detected, which avoids biasing a joint fit of R and `probability` towards high reporting.
 
 ### Offspring counts
 
