@@ -44,7 +44,8 @@ on its incubation period, with scale `omega` and the skew chosen so that
 period. Negative values are excluded, which makes the realised presymptomatic
 share approximate: close when the incubation period is long compared with
 `omega`, rougher when it is short. Cases without an incubation period
-(for example asymptomatic cases) are centred on 5 days.
+are not supported: the model must record an incubation period for every case,
+as [`clinical_presentation`](@ref) does, including for asymptomatic cases.
 
 # Examples
 ```julia
@@ -73,9 +74,13 @@ function incubation_linked_generation_time(;
 
     return function (individual)
         inc_period = incubation_period(individual)
-        if isnan(inc_period) || inc_period <= 0.0
-            @debug "Missing or non-positive incubation period (e.g. asymptomatic individual); using 5.0 days" maxlog = 1
-            inc_period = 5.0
+        if isnan(inc_period)
+            throw(
+                ArgumentError(
+                    "incubation_linked_generation_time needs an incubation period for " *
+                        "every case; add attributes = clinical_presentation(incubation_period = ...)"
+                )
+            )
         end
         return _TruncatedSkewNormal(inc_period, om, alpha)
     end

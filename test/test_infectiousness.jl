@@ -831,3 +831,40 @@ end
         @test wrong == 0
     end
 end
+
+@testset "Asymptomatic cases keep an onset-relative course" begin
+    inc = LogNormal(log(1.4), 0.35)
+    gt = incubation_linked_generation_time(presymptomatic_fraction = 0.3)
+    means = Float64[]
+    counts = Int[]
+    for pa in (0.0, 1.0)
+        attrs = clinical_presentation(incubation_period = inc, prob_asymptomatic = pa)
+        linked = ModelSpec(BranchingProcess(Poisson(1.5), gt); attributes = attrs)
+        g = realised_generation_intervals(
+            simulate(linked; max_cases = 3000, n_initial = 50, rng = Xoshiro(1))
+        )
+        push!(means, mean(g))
+        window = Infectiousness(Poisson(1.5); from = :onset, kernel = Gamma(2, 1))
+        from_onset = ModelSpec(BranchingProcess((window,)); attributes = attrs)
+        push!(
+            counts,
+            length(
+                realised_generation_intervals(
+                    simulate(from_onset; max_cases = 3000, n_initial = 50, rng = Xoshiro(1))
+                )
+            )
+        )
+    end
+    @test abs(means[1] - means[2]) < 0.3
+    @test counts[2] > 0.8 * counts[1]
+
+    state = simulate(
+        ModelSpec(
+            BranchingProcess(Poisson(1.5), gt);
+            attributes = clinical_presentation(incubation_period = inc, prob_asymptomatic = 1.0)
+        ); max_cases = 20, rng = Xoshiro(2)
+    )
+    @test all(isnan(onset_time(i)) for i in state.individuals)
+    @test all(isfinite(incubation_period(i)) for i in state.individuals)
+    @test all(is_asymptomatic(i) for i in state.individuals)
+end

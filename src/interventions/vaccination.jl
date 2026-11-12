@@ -897,6 +897,7 @@ end
 function _abort_infection!(rv::RingVaccination, contact, vacc_t, rng)
     incubation = _state_real(contact.state, :incubation_period, NaN)
     isnan(incubation) && return nothing
+    is_asymptomatic(contact) && return nothing
     post = _post_exposure_efficacy(rv, contact)
     post > 0.0 || return nothing
     immunity = _immunity_time(rv, contact, vacc_t)
