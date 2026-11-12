@@ -1174,3 +1174,35 @@ end
     # tuple did.
     @test mixed_types_bytes < 5 * same_type_bytes
 end
+
+# A wrapper of the kind written outside the package: it inherits the wrapped
+# block's `standing_block` and, unless it says otherwise, its `may_lapse`.
+struct SeasonalClosure{I <: EpiBranch.AbstractIntervention} <: EpiBranch.InterventionWrapper
+    intervention::I
+end
+struct SeasonalClosureLapsing{I <: EpiBranch.AbstractIntervention} <: EpiBranch.InterventionWrapper
+    intervention::I
+end
+EpiBranch.may_lapse(::SeasonalClosureLapsing) = true
+
+@testset "A wrapper declares through may_lapse that its block can lift" begin
+    rng = StableRNG(11)
+    state = EpiBranch.new_state(
+        BranchingProcess(Poisson(1.0), Exponential(1.0)),
+        sir(100.0), NoAttributes(), rng
+    )
+    EpiBranch.add_individuals!(state, 2, [FlatBlock(1.0)])
+    parent, contact = state.individuals[1], state.individuals[2]
+    function permanent(iv)
+        interventions = (iv,)
+        return EpiBranch._permanently_blocked(
+            state, parent, contact, 1.0, (), interventions
+        )
+    end
+    @test !EpiBranch.may_lapse(FlatBlock(1.0))
+    @test !EpiBranch.may_lapse(SeasonalClosure(FlatBlock(1.0)))
+    @test EpiBranch.may_lapse(SeasonalClosureLapsing(FlatBlock(1.0)))
+    @test permanent(FlatBlock(1.0))
+    @test permanent(SeasonalClosure(FlatBlock(1.0)))
+    @test !permanent(SeasonalClosureLapsing(FlatBlock(1.0)))
+end

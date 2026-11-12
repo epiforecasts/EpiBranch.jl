@@ -1,11 +1,18 @@
-# An intervention that modifies another intervention, such as `Scheduled`
-# (when it may act) or `CapacityConstrained` (how many it may reach). A
-# subtype stores the wrapped intervention in an `intervention` field and
-# inherits the plain delegation of every hook below, then overrides only the
-# hooks it gates. `trace_contacts!` has no default here, so each wrapper
-# states what it does with it. `keep_active` does default to plain forwarding
-# below, for a wrapper with nothing of its own to gate there; a wrapper that
-# does gate it overrides the default just like the others.
+"""
+    InterventionWrapper <: AbstractIntervention
+
+An intervention that modifies another intervention, such as [`Scheduled`](@ref)
+(when it may act) or [`CapacityConstrained`](@ref) (how many it may reach). A
+subtype stores the wrapped intervention in an `intervention` field and
+inherits the plain delegation of every hook below, then overrides only the
+hooks it gates. `trace_contacts!` has no default here, so each wrapper
+states what it does with it. `keep_active` does default to plain forwarding
+below, for a wrapper with nothing of its own to gate there; a wrapper that
+does gate it overrides the default just like the others.
+
+A wrapper written outside the package declares through
+[`may_lapse`](@ref EpiBranch.may_lapse) whether its block can later be lifted.
+"""
 abstract type InterventionWrapper <: AbstractIntervention end
 
 initialise_individual!(w::InterventionWrapper, ind, state) = initialise_individual!(w.intervention, ind, state)
@@ -52,7 +59,7 @@ may_revise(w::InterventionWrapper, prior, new) = may_revise(w.intervention, prio
 acts_on_population(w::InterventionWrapper) = acts_on_population(w.intervention)
 needs_contacts(w::InterventionWrapper) = needs_contacts(w.intervention)
 persistent_competing_risks(w::InterventionWrapper) = persistent_competing_risks(w.intervention)
-_may_lapse(w::InterventionWrapper) = _may_lapse(w.intervention)
+may_lapse(w::InterventionWrapper) = may_lapse(w.intervention)
 _triggers_of(w::InterventionWrapper) = _triggers_of(w.intervention)
 standing_block(w::InterventionWrapper) = standing_block(w.intervention)
 susceptibility_host_times(w::InterventionWrapper) = susceptibility_host_times(w.intervention)

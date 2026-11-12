@@ -15,6 +15,9 @@ public resolve
 
 # Intervention interface: a package subtyping `AbstractIntervention`
 # overrides these.
+# A wrapper holding another intervention subtypes `InterventionWrapper`, which
+# forwards each hook below to it.
+public InterventionWrapper
 public initialise_individual!
 public resolve_individual!
 public on_infection_settled!
@@ -30,6 +33,7 @@ public required_fields
 public infectious_removal_time
 public risk_applies
 public standing_block
+public may_lapse
 # The built-in risk sources the guides link to, and the kernel trait for a
 # kernel with mass at infinity.
 public HostImmunity

@@ -539,17 +539,27 @@ recorded and their dates, returning `nothing` before any effect is recorded.
 persistent_competing_risks(::AbstractIntervention) = false
 persistent_competing_risks(::AbstractVaccination) = true
 
-# Whether `iv`'s risk, once it has fired, could later be withdrawn by a
-# schedule's active window closing rather than standing for good. Only
-# `Scheduled` can withdraw a risk that has already fired, and only when the
-# intervention it wraps has not declared `persistent_competing_risks` — a
-# vaccination's protection has, since it derives from a recorded dose rather
-# than the schedule's own clock, so a `Scheduled` vaccination cannot lapse
-# either. Used by the continuous-time race to tell a standing block from one
-# that merely happens to be in force right now (see `_standing_risk`).
-_may_lapse(::AbstractIntervention) = false
-function _may_lapse(s::Scheduled)
-    return persistent_competing_risks(s.intervention) ? _may_lapse(s.intervention) : true
+"""
+    may_lapse(intervention) -> Bool
+
+Whether a block `intervention` has composed could later be lifted, so that a
+continuous-time race must not treat it as certain for good however sure it
+looks at one proposal. The default is `false`. A [`Scheduled`](@ref) answers
+`true` unless the intervention it wraps declares
+[`persistent_competing_risks`](@ref EpiBranch.persistent_competing_risks),
+since protection derived from a recorded dose does not depend on the
+schedule's own clock. A subtype of [`InterventionWrapper`](@ref) forwards the
+answer of the intervention it wraps.
+
+For extension authors: a wrapper that can lift a block the intervention it
+wraps would keep, such as a seasonal closure, returns `true`. Without that, it
+inherits [`standing_block`](@ref EpiBranch.standing_block) from what it wraps
+and the race may stop proposing contacts for a pair although the block will
+later lift.
+"""
+may_lapse(::AbstractIntervention) = false
+function may_lapse(s::Scheduled)
+    return persistent_competing_risks(s.intervention) ? may_lapse(s.intervention) : true
 end
 
 # A schedule that cannot close again honours the inner removal's releases for

@@ -348,6 +348,12 @@ model](@ref)).
   EpiBranch.standing_block(::MyClosedWard) = true
   ```
 
+  A wrapper of your own that can lift a block, such as a seasonal closure
+  subtyping [`EpiBranch.InterventionWrapper`](@ref), declares
+  `EpiBranch.may_lapse(::MySeasonalClosure) = true`. Otherwise it inherits
+  `standing_block` from the intervention it wraps, and the race may stop
+  proposing contacts for a pair although the block will later lift.
+
   Dropping the pair leaves the infection outcome unchanged, and tracing and
   ring construction read who is in contact with whom, not these proposals. It
   does lose the later contact *events* on that pair: an output counting them

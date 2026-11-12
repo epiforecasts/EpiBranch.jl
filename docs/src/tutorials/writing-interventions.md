@@ -94,6 +94,7 @@ many people each case infects](@ref).
 | `on_infection_settled!(iv, individual, state, rng)` | Every built-in model: once a case's infection time is fixed, before its onset or clinical transitions read it | The case, and the random number generator to use | `nothing`; sets values on the case (default: does nothing) |
 | `risk_applies(iv, route)` | Every built-in model choosing the risks for a route or infectiousness window | The route's `RouteWindow`, or `nothing` for an introduction from outside | `Bool`; default `true` |
 | `standing_block(iv)` | Fixed-population models deciding whether a certain block ends a pair's contacts for good | Nothing | `Bool`; default `false` |
+| `may_lapse(iv)` | Fixed-population models deciding whether a certain block ends a pair's contacts for good | Nothing | `Bool`; default `false`. A wrapper that can lift a block, such as a seasonal closure, returns `true`; `Scheduled` does and the rest of the wrappers forward it |
 | `analytic_offspring_effect(iv, offspring)`, `analytic_offspring_effect(iv, offspring, spec)` | When an analytical function such as [`extinction_probability`](@ref) is called on a `ModelSpec` holding the intervention | The offspring distribution without the intervention (the three-argument form also receives the `ModelSpec`, for an effect that needs more than the offspring law) | The offspring distribution a case has under the intervention. Without a method of either arity the function stops with an error |
 
 `analytic_offspring_effect` is for the rare intervention whose effect on the
