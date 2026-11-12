@@ -811,56 +811,13 @@ again (see [`HostImmunity`](@ref EpiBranch.HostImmunity)). Read from
 declares a `:susceptible_again` step, with no extra bookkeeping cost where it
 does not.
 
-A literal [`Transition`](@ref) is recognised directly from its `state`
-field, which costs nothing and is exact regardless of its `probability`. Any
-other `AbstractClinicalTransition` is probed instead: a disposable individual
-is given `state.attributes`, to keep a `Transition` reading one of them from
-failing on a missing key, then marked to make `_transition_selected` take
-every `probability` gate it meets unless the probability is exactly zero; it
-is run through every transition's `initialise_individual!` and
-`resolve_individual!` on a copy of `state.rng`, and the result is read back
-off `susceptible_again_time`. That marking keeps detection exact regardless
-of probability on the custom-transition path too, instead of leaving it to
-the single draw a real run would make.
-
-The probe never runs a model's own per-individual `setup` (`HouseholdProcess`
-sets `:household` there, for instance), so a custom transition that reads a
-key only `setup` supplies raises a `KeyError` on the probe, even though a
-real run always has it. Treating that as "reinfection cannot be ruled out",
-rather than letting it abort the whole simulation, costs only the
-bookkeeping that keeps a settled member's proposals pending: the real run
-never hits this path, because the key is always set there.
+A step is read through [`produced_states`](@ref): the progression allows
+reinfection when any step declares `:susceptible_again`, whatever its
+`probability`. A custom step that sets `susceptible_again_time` without
+declaring the state is not seen.
 """
 function _allows_reinfection(state)
-    transitions = state.transitions
-    any(t -> t isa Transition && t.state === :susceptible_again, transitions) && return true
-    any(t -> !(t isa Transition), transitions) || return false
-    probe = try
-        _reinfection_probe(state)
-    catch e
-        e isa KeyError && return true
-        rethrow()
-    end
-    return isfinite(susceptible_again_time(probe))
-end
-
-function _reinfection_probe(state)
-    probe = Individual(; id = 0, infection_time = zero(_timetype(state)))
-    probe.state[_REINFECTION_PROBE_KEY] = true
-    saved_rng = state.rng
-    state.rng = copy(saved_rng)
-    try
-        _apply_attributes!(state.attributes, state.rng, probe)
-        for t in state.transitions
-            initialise_individual!(t, probe, state)
-        end
-        for t in state.transitions
-            resolve_individual!(t, probe, state)
-        end
-    finally
-        state.rng = saved_rng
-    end
-    return probe
+    return any(t -> :susceptible_again in produced_states(t), state.transitions)
 end
 
 """

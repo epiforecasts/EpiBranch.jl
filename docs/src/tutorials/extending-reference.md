@@ -279,6 +279,8 @@ population (network, household, homogeneous, mixing, and one written against
 `contacts_of`) does this on its own the moment the `progression` reaches
 `:susceptible_again`, with no change to how it names targets or contacts.
 
+The engine finds that from [`EpiBranch.produced_states`](@ref), which gives the states a step produces: `(state,)` for a `Transition`, and `()` by default. A custom step that sets `:susceptible_again_time`, or that opens infectiousness by writing `:infectious_time`, declares it with a method, such as `EpiBranch.produced_states(::WaningImmunity) = (:susceptible_again,)`; without it the engine does not see the step.
+
 ## Continuous-time models: further details
 
 These points concern the network, household, homogeneous and mixing models, which

@@ -219,8 +219,5 @@ that first and falls back to this only when it is `nothing`, as
 `something(model.from, infectious_from(progression))`.
 """
 function infectious_from(progression)
-    return any(
-            t -> hasproperty(t, :state) && getfield(t, :state) === :infectious,
-            progression
-        ) ? :infectious : :infection
+    return any(t -> :infectious in produced_states(t), progression) ? :infectious : :infection
 end
