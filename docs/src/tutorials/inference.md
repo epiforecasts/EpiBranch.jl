@@ -89,7 +89,7 @@ are used in the same place below.
     interventions without one, such as contact tracing and its quarantine (see
     [Analytical results](analytical.md)). If your offspring counts come from a
     period with interventions in place, the R you estimate from the bare
-    process is the R under those interventions, not the R without them.
+    process is the R under those interventions.
 
 ### Maximum likelihood
 
