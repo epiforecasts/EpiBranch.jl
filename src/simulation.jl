@@ -142,7 +142,7 @@ not hold them, so a particle filter can keep `model` once as the dynamics
 and copy only `state` as the particle.
 
 `state` is mutated in place and returned. No observation model is applied:
-continuation is for a caller, such as a particle filter, that scores each
+continuation is for a caller, such as a particle filter, that evaluates the likelihood of each
 step itself against its own data, rather than drawing a synthetic one.
 `state` is returned unchanged if it had already reached extinction, or
 stopped for a reason other than `max_time`; there is nothing left for a

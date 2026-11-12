@@ -82,7 +82,7 @@ the exact model would have given them.
 
 Simulating and continuing both use [`simulate`](@ref), exactly as for the
 exact and approximate models on their own, so an external Kalman or particle
-filter can score what it returns against data without knowing which half of
+filter can evaluate the likelihood of data given what it returns without knowing which half of
 the model produced it.
 
 # Example

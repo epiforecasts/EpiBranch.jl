@@ -299,7 +299,7 @@ The log-likelihood of what a step did to one case: the log-probability that
 the step happened (or did not), plus the log-density of its delay when it did.
 [`progression_loglik`](@ref) calls it once per step per case. It is `0.0` when
 the case never reached the state the step starts from. A step that has not
-happened by `followup_end` is scored as censored there, by its survival
+happened by `followup_end` is treated as censored there, by its survival
 probability, rather than by a density; the built-in steps take this keyword.
 
 Defined for the built-in steps ([`Transition`](@ref), [`Reporting`](@ref),

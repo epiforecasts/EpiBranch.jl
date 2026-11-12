@@ -17,7 +17,7 @@ infection times at all: one entry per person, in the same order as a
 `HouseholdProcess`'s members (as `household_of` numbers them). `true` for
 someone infected by the end of follow-up, `false` for someone who was not,
 `missing` for someone whose status was not recorded. Pass it to
-`loglikelihood` with a [`HouseholdProcess`](@ref) or `ModelSpec` to score it
+`loglikelihood` with a [`HouseholdProcess`](@ref) or `ModelSpec` to evaluate its likelihood
 under the community hazard and within-household kernel (Ball 1986).
 """
 struct HouseholdFinalStatuses
@@ -198,7 +198,7 @@ escaping the community, nobody in the subset ever reaching outside it, and the
 subset being fully reachable, by those within it, from whoever the community
 reaches directly. The last piece is itself a triangular recursion over the
 subset's own subsets, so computing it for a household of `n` costs about 3ⁿ;
-scoring `data` sums the resulting probability over every subset consistent
+evaluating the likelihood of `data` sums the resulting probability over every subset consistent
 with what was observed, `2^k` of them for `k` members of unknown status.
 
 # Example

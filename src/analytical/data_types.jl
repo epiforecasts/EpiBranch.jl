@@ -329,9 +329,9 @@ end
 """
     SignalSeries(signal, density, data)
 
-One observed series, scored against a [`Signal`](@ref): for each step a
+One observed series, compared with a [`Signal`](@ref): for each step a
 [`SignalData`](@ref) covers, `density(signal(state, interval))` gives the
-distribution `data` is scored against at that step. `density` is a function
+distribution `data` is evaluated against at that step. `density` is a function
 from a signal's value to any `Distribution`, such as `v -> NegBin(v, k)`;
 EpiBranch ships no measurement density of its own, because measurement
 choices belong to the data, not the package.
@@ -357,14 +357,14 @@ end
 """
     SignalData(steps, series)
 
-Several [`SignalSeries`](@ref) observed over the same outbreak, each scored
+Several [`SignalSeries`](@ref) observed over the same outbreak, each evaluated
 against the same simulated path (see `loglikelihood`). `steps` gives the
 boundaries of the reporting steps, in calendar time, such as `0:7:70` for ten
 weekly steps from day 0; every series' `data` holds one value per step
 (`length(steps) - 1`).
 
 Pass it to `loglikelihood` with a model: several series observed together
-need one simulated path scored against all of them, because separate `~`
+need one simulated path whose likelihood is evaluated against all of them, because separate `~`
 statements in Turing would simulate a fresh outbreak for each. Unlike
 [`IncidenceCounts`](@ref) and the chain-size and chain-length data, there is
 no closed form here yet, only simulation.
