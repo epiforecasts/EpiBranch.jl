@@ -385,6 +385,47 @@ with the difference due to chance.
 because some cases could then end without an outcome. Probabilities from
 `exclusive_probabilities` do not trigger the warning.
 
+## Transmission timing from a latent and infectious period
+
+So far transmission has been timed by a generation time, the days from a case's infection to each of its secondary infections. Where you know the natural history instead, [`transmission_timing`](@ref) builds the timing from it: a `latent_period` (infection until the case becomes infectious), an `infectious_period` (until it recovers) and a `contact_interval` (the days after a case becomes infectious at which it makes a contact, drawn independently of the infectious period). It returns the `Transition`s for `:infectious` and `:recovered` as `progression`, and the [`Infectiousness`](@ref) window that opens at `:infectious` and closes at `:recovered` as `window`. The window goes to the [`BranchingProcess`](@ref) and the progression to the [`ModelSpec`](@ref):
+
+```@example transitions
+using Statistics
+
+contacts = NegBin(2.5, 0.16)
+latent = LogNormal(1.6, 0.5)           # infection to infectious: mean about 5 days
+infectious = Gamma(5.0, 2.0)           # infectious to recovered: mean 10 days
+contact_interval = Exponential(4.0)    # infectious to each contact: mean 4 days
+
+timing = transmission_timing(contact_interval; contacts = contacts,
+    latent_period = latent, infectious_period = infectious)
+model = ModelSpec(BranchingProcess(timing.window); progression = timing.progression)
+```
+
+With `contacts`, a case makes that many contacts if it stayed infectious long enough, and any whose time falls after recovery is dropped. The reproduction number is therefore below `mean(contacts)`. [`implied_R`](@ref) gives the value it takes, the mean number of contacts times the probability that a contact interval falls before the infectious period:
+
+```@example transitions
+implied_R(contacts, contact_interval, infectious)
+```
+
+This is 2.17, against 2.5 contacts. The `offspring` form instead keeps the mean and dispersion of the number of secondary cases exactly as given, and conditions each contact time to fall inside the infectious period rather than dropping it (see [`transmission_timing`](@ref)).
+
+To check what a simulation produced, [`realised_generation_intervals`](@ref) returns the days from each infector's infection to the infection of each case it infected, for every case except the index cases. Compare their mean with the generation time put in, the latent period plus the contact interval, and the ratio of cases in successive generations with `implied_R`. Bounding the run by `max_generations` rather than `max_cases` leaves every case's contacts complete:
+
+```@example transitions
+state = simulate(model; n_initial = 100, max_cases = nothing,
+    max_generations = 4, rng = StableRNG(1))
+
+gi = realised_generation_intervals(state)
+ratios = generation_R(state).offspring_ratio
+println("Mean generation interval: ", round(mean(gi), digits = 1),
+    " days from ", length(gi), " cases; mean put in: ",
+    round(mean(latent) + mean(contact_interval), digits = 1))
+println("Mean cases per case across generations: ", round(mean(ratios), digits = 2))
+```
+
+The realised intervals are shorter than the 9.6 days put in, because recovery removes the contacts that would have come late in a long infectious period. The ratios scatter around `implied_R` rather than around 2.5; with a dispersion of 0.16 a few superspreading cases dominate each generation, so they vary from run to run.
+
 ## Likelihood of the clinical timeline
 
 To fit reporting or outcome delays to observed cases, you need the likelihood
