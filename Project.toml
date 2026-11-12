@@ -21,11 +21,13 @@ CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
 CensoredDistributions = "b2eeebe4-5992-4301-9193-7ebc9f62c855"
 ConvolvedDistributions = "f5b942c9-bc5b-4664-8486-7f531bb06742"
 NCDatasets = "85f8d34a-cbdd-5861-8df4-14fed0d494ab"
+SSMProblems = "26aad666-b158-4e64-9d35-0e672562fa48"
 
 [extensions]
 EpiBranchCSVExt = "CSV"
 EpiBranchCensoredDistributionsExt = ["CensoredDistributions", "ConvolvedDistributions"]
 EpiBranchNCDatasetsExt = "NCDatasets"
+EpiBranchSSMProblemsExt = "SSMProblems"
 
 [compat]
 CSV = "0.10, 1"
@@ -41,6 +43,7 @@ ForwardDiff = "0.10, 1.4"
 LinearAlgebra = "1"
 QuadGK = "2"
 Random = "1"
+SSMProblems = "0.7"
 SpecialFunctions = "2"
 SurvivalDistributions = "0.1"
 julia = "1.10"

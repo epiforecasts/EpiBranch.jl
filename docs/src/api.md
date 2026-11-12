@@ -283,6 +283,7 @@ simulation: the cases and the contacts they exposed for a
 
 ```@docs
 simulate
+outbreak_state_space
 SimOpts
 AbstractStoppingRule
 Extinction

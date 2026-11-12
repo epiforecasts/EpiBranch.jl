@@ -100,6 +100,7 @@ include("observation.jl")
 
 # Simulation engine
 include("simulation.jl")
+include("state_space.jl")
 
 # Transmission-route windows: the unit that lets one case carry several routes,
 # each opening and closing on different states of its natural history. Defined
@@ -250,6 +251,7 @@ export clinical_presentation, demographics, transmission_traits, groups,
     group_attribute, vaccine_acceptance
 
 # Exports — simulation
+export outbreak_state_space
 export simulate, make_contact!, susceptible_fraction, realise!
 export CommonRandomNumbers
 export generate_offspring, contacts_of
