@@ -355,9 +355,9 @@ independent datasets add up, you can also fit both together by adding the two
 
 ## From a case time series
 
-A daily count of new cases is the data most outbreaks produce. [`IncidenceCounts`](@ref) holds one: the number of new cases in each successive step (day, week or whatever unit the series is recorded in), after `seeds` index cases introduced at step 0. [`loglikelihood`](@ref) then scores it against an offspring distribution and a generation-time distribution in closed form, without simulating, so any of the fitting methods above work on it.
+A daily count of new cases is the data most outbreaks produce. [`IncidenceCounts`](@ref) holds one: the number of new cases in each successive step (day, week or whatever unit the series is recorded in), after `seeds` index cases introduced at step 0. [`loglikelihood`](@ref) then scores it in closed form, without simulating, against an offspring distribution and a generation-time distribution. Any of the fitting methods above works on it.
 
-The series below is simulated from a negative binomial offspring distribution with R = 1.6 and k = 0.5, a gamma generation time with a mean of 5 days, and 20 index cases. Cases are counted by day of infection, and the generation time is given in the same unit as a step (days).
+The series below is simulated from a negative binomial offspring distribution with R = 1.6 and k = 0.5, a gamma generation time with a mean of 5 days, and 20 index cases. Cases are counted by day of infection. The generation time is in the same unit as a step (days).
 
 ```@example inference
 rng = StableRNG(11)
@@ -378,7 +378,7 @@ incidence = IncidenceCounts(cases; seeds = 20)
 println("Daily cases: ", cases)
 ```
 
-The likelihood is built from [`incidence_moments`](@ref), the mean and covariance of the daily counts under the model. It matches a distribution to them, and the choice is the third argument of `loglikelihood`:
+The likelihood is built from [`incidence_moments`](@ref), the mean and covariance of the daily counts under the model. It matches a distribution to them, and the third argument of `loglikelihood` selects which:
 
 - [`NormalApproximation`](@ref), the default, matches a multivariate normal. It accepts any counts, including zeros.
 - [`LognormalApproximation`](@ref) matches a multivariate lognormal, which cannot go negative, but needs every count to be at least 1.
@@ -407,9 +407,9 @@ for approximation in (NormalApproximation(), LognormalApproximation())
 end
 ```
 
-The two approximations need not agree, and here they do not: the normal approximation's interval for R contains the value used to simulate the data (R = 1.6), while the lognormal's, fitted to counts that are mostly small, sits well below it. Start with the normal approximation, and check a fit against simulated series (simulate the fitted model, count the cases per day as above, and compare) before trusting either.
+The two approximations can disagree, and here they do: the interval for R under the normal approximation contains the value used to simulate the data (R = 1.6), while the lognormal interval, fitted to counts that are mostly small, sits well below it. Start with the normal approximation, and check a fit against simulated series (simulate the fitted model, count the cases per day as above, and compare) before trusting either.
 
-The normal approximation's interval for k is wide and reaches its upper bound, as in the offspring-count fit: four weeks of one outbreak say little about superspreading.
+The interval for k under the normal approximation is wide and reaches its upper bound, as in the offspring-count fit, because four weeks of one outbreak say little about superspreading.
 
 !!! note "What this fit covers"
     The likelihood assumes one constant R, a fixed number of seeds at step 0, and a known generation time. It ignores depletion of susceptibles and models no interventions. It can score cases by report date with `reporting_probability` and `reporting_delay`, which assume each case is reported independently with the same probability. A generation time that is short relative to the step, such as a few days against a weekly series, is binned coarsely and biases the fit. It does not estimate a time-varying R: for that, use a tool built for it, or the particle filter in [Filtering an outbreak over time](@ref) below, which follows an outbreak through a simulated model.
