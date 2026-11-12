@@ -29,7 +29,9 @@ different routes, such as community and funeral transmission of Ebola.
   `(:recovered, :died)` for community transmission or `(:buried,)` for a
   funeral. The earliest one reached ends transmission, and infections that
   would have happened later do not. Empty by default. Isolation is set with
-  the [`Isolation`](@ref) intervention, not here.
+  the [`Isolation`](@ref) intervention, not here. A factor that scales
+  transmission for the whole infection, such as lower infectiousness of
+  asymptomatic cases, is set with [`transmission_traits`](@ref) instead.
 - `kernel`: the time in days from `from` to each infection: a distribution,
   a function of the individual returning a distribution, `(ind) -> ...`, or
   `NoGenerationTime()` to place every infection at the `from` time. With the
