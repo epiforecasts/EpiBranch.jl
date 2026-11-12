@@ -1414,6 +1414,15 @@ Pass the result as `attributes` to [`ModelSpec`](@ref).
 [`Isolation`](@ref) needs these onset times, and [`linelist`](@ref) reports
 them as `date_onset`.
 
+An asymptomatic case transmits exactly as a symptomatic one does, because this
+function takes no relative infectiousness. To make asymptomatic
+cases less (or more) infectious, list [`transmission_traits`](@ref) after it
+with an `infectiousness` that reads `ind.state[:asymptomatic]`.
+Use `transmission_traits` for traits known when the case is created (age, sex,
+whether the case is asymptomatic), because it draws its factor then. A change
+during the infection, such as tracing or quarantine, needs an intervention.
+Combining the two is tracked in #972.
+
 # Examples
 
 Symptomatic-only with a log-normal incubation period:
@@ -1453,7 +1462,23 @@ attributes = [
 ]
 ```
 
-See also [`demographics`](@ref).
+Asymptomatic cases that are half as infectious as symptomatic ones (list
+`transmission_traits` after `clinical_presentation` so `:asymptomatic` is set
+first):
+
+```julia
+attributes = [
+    clinical_presentation(
+        incubation_period = LogNormal(1.6, 0.5),
+        prob_asymptomatic = 0.3,
+    ),
+    transmission_traits(
+        infectiousness = (rng, ind) -> ind.state[:asymptomatic] ? 0.5 : 1.0,
+    ),
+]
+```
+
+See also [`demographics`](@ref), [`transmission_traits`](@ref).
 """
 function clinical_presentation(;
         incubation_period::Distribution,
