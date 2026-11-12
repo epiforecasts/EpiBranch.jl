@@ -801,9 +801,7 @@ to say why.
 
 [`CapacityConstrained`](@ref) limits how many actions an intervention can take
 per period, such as the doses available or the appointments a clinic can offer.
-Contact tracing itself cannot be limited this way. Your intervention defines `EpiBranch.capacity_key(iv)`, the name of the
-`true`/`false` value recording that a person used the resource, and
-`EpiBranch.capacity_time_key(iv)`, the name of the value recording when. This
+[`ContactTracing`](@ref) can be limited too when its `action` is a [`Quarantine`](@ref): a contact is still found and still grows a ring once the budget runs out, but is not quarantined until a place frees up. `FlagOnly` has no removal to ration. Wrap tracing in [`CapacityConstrained`](@ref) to count quarantines admitted per period, or in [`HeldCapacity`](@ref) to cap how many are held at once. Your intervention defines `EpiBranch.capacity_key(iv)`, the name of the state value that records a person used the resource by being present, not by what it holds: a `Bool` for the vaccinations, a removal handle for `Isolation` and `Quarantine`. Any present value counts as used. `EpiBranch.capacity_time_key(iv)` names the value recording when. This
 places usage in the period its date falls in, whichever intervention sharing
 the same capacity gave it. Ring, group and mass vaccination use their
 dose-label names.
