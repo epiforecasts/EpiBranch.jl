@@ -310,10 +310,10 @@ end
 function _simulate_n_threaded(run, ::Type{T}, n::Int, rng) where {T}
     seeds = [rand(rng, UInt64) for _ in 1:n]
     results = Vector{T}(undef, n)
-    # Outbreak sizes are heavy-tailed, so an even split of `1:n` would leave
+    # Outbreak sizes are heavy-tailed. An even split of `1:n` would leave
     # threads idle while one works through the large outbreaks. Each task
-    # instead takes the next outbreak from a shared counter. The seed is
-    # indexed by outbreak, so results are the same whichever thread runs it.
+    # instead takes the next outbreak from a shared counter. Seeds are indexed
+    # by outbreak, giving the same results whichever thread runs it.
     next_index = Threads.Atomic{Int}(1)
     tasks = map(1:min(Threads.nthreads(), n)) do _
         Threads.@spawn begin
