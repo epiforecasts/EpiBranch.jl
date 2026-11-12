@@ -247,8 +247,9 @@ end
 
 Without interventions, and with a single-type offspring distribution, this is
 the exact chain-size distribution (`Borel` or `GammaBorel`, adjusted for the
-observation model). It stays exact with `prob_concluded`, and with `seeds`
-unless the observation model also under-reports: there is no closed form for
+observation model). The chain-size terms stay exact with `prob_concluded` (the
+mixture over whether a cluster is over is an approximation, see below) and with
+`seeds` unless the observation model also under-reports: there is no closed form for
 several index cases under under-reporting, so that one combination is
 estimated from simulated outbreaks and its value moves from one call to the
 next. With interventions, or with a multi-type or multi-window model (no
@@ -260,9 +261,11 @@ estimated from simulated outbreaks instead. Keyword arguments:
   runs per distinct value in `seeds`.
 - `prob_concluded`: per-cluster probability the cluster is finished (its
   observed size is its final size), for real-time data with ongoing clusters —
-  see `end_of_outbreak_probability`. With interventions, the mixture is taken
-  against the simulated clusters' empirical P(X ≥ x) rather than an
-  analytical tail.
+  see `end_of_outbreak_probability`. The likelihood is the mixture
+  `π P(X = x) + (1 − π) P(X ≥ x)`, an approximation to the exact probability
+  of the data given the time since the last case. `π` depends on the model
+  parameters, so inside a fit compute it from them at each evaluation. With interventions, the mixture is taken against the
+  simulated clusters' empirical P(X ≥ x) rather than an analytical tail.
 - `n_sim`, …: forwarded to the underlying simulation-based `loglikelihood`
   when the analytical fast path does not apply.
 """
@@ -281,23 +284,9 @@ function chain_size_distribution(
             isempty(interventions(model)) && has_single_type_law(model) &&
             offspring_law_unchanged(model) && offspring_law_unchanged(attributes(model)) &&
             all(offspring_law_unchanged, progression(model))
-        # `chain_size_distribution` on the bare offspring can still fail
-        # despite `has_single_type_law`'s `hasmethod` check: a
-        # `GeneratingFunctionOffspring` built from a bare pgf has the method
-        # but refuses at the instance level, since it has no pmf. The
-        # `Reporting`-reading step (e.g. a callable per-individual
-        # probability) can fail here too. Either falls through to the
-        # simulation-based wrapper rather than crashing the primary `~`
-        # entry point; `_chain_size_model_loglik` does the same. A failure
-        # from `observe` itself (e.g. a non-scalar `PerCaseObservation`) is
-        # a user error, and should propagate rather than be swallowed here.
-        folded = try
-            base = chain_size_distribution(single_type_offspring(model))
-            _fold_reporting(progression(model), base, observation(model), attributes(model))
-        catch e
-            (e isa MethodError || e isa ArgumentError) || rethrow()
-            nothing
-        end
+        folded = _exact_reported_chain_size(
+            single_type_offspring(model), progression(model), observation(model), attributes(model)
+        )
         folded !== nothing && return observe(folded, observation(model))
     end
     nt_kwargs = NamedTuple(kwargs)
@@ -313,13 +302,9 @@ function chain_size_distribution(
             isempty(interventions(spec)) && has_single_type_law(spec) &&
             offspring_law_unchanged(spec) && offspring_law_unchanged(attributes(spec)) &&
             all(offspring_law_unchanged, progression(spec))
-        folded = try
-            base = chain_size_distribution(single_type_offspring(spec.process))
-            _fold_reporting(progression(spec), base, observation(spec), attributes(spec))
-        catch e
-            (e isa MethodError || e isa ArgumentError) || rethrow()
-            nothing
-        end
+        folded = _exact_reported_chain_size(
+            single_type_offspring(spec.process), progression(spec), observation(spec), attributes(spec)
+        )
         folded !== nothing && return observe(folded, observation(spec))
     end
     nt_kwargs = NamedTuple(kwargs)

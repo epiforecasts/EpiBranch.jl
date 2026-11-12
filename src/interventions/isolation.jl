@@ -71,12 +71,10 @@ scenarios)."""
 struct AllCases <: IsolationEligibility end
 is_eligible_for_isolation(::AllCases, ind, state) = true
 
-# Required-field validation dispatches on the eligibility trait so a
-# custom eligibility that doesn't read `:asymptomatic` doesn't trip
-# the validator.
-_required_for_eligibility(::SymptomaticOnly) = [:onset_time, :asymptomatic]
-_required_for_eligibility(::AllCases) = [:onset_time]
-_required_for_eligibility(::IsolationEligibility) = [:onset_time]
+# Fields an eligibility rule reads beyond the onset time every isolation needs.
+# A custom rule extends `required_fields` for its own type; the default is none.
+required_fields(::IsolationEligibility) = Symbol[]
+required_fields(::SymptomaticOnly) = [:asymptomatic]
 
 # ── Isolation intervention ──────────────────────────────────────────
 
@@ -165,7 +163,7 @@ function Isolation(;
     )
 end
 
-required_fields(iso::Isolation) = _required_for_eligibility(iso.eligibility)
+required_fields(iso::Isolation) = union([:onset_time], required_fields(iso.eligibility))
 # Read from the entry recorded for this isolation, not the folded span. While
 # a quarantine stands, `isolation_time` is the start of the quarantine, which
 # can precede the start of this isolation.
@@ -195,9 +193,23 @@ isolation time until its [`isolation_release_time`](@ref) (never released when
 `duration` is `Inf`). Each such contact is prevented with probability
 `1 - post_isolation_transmission`."""
 function competing_risk(iso::Isolation, parent, contact, state)
-    key = iso.post_isolation_transmission == 0 ?
+    return _removal_risks(parent, 1.0 - iso.post_isolation_transmission, _stretch_key(iso))
+end
+
+# Each kind of isolation reads its own stretches separately from quarantine
+# and removals with a different block probability.
+function _stretch_key(iso::Isolation)
+    return iso.post_isolation_transmission == 0 ?
         ISOLATION_STRETCHES_KEY : LEAKY_REMOVAL_STRETCHES_KEY
-    return _removal_risks(parent, 1.0 - iso.post_isolation_transmission, key)
+end
+
+# When a test-positive case isolates itself: its onset plus the delay.
+function _self_isolation_time(iso::Isolation, individual, state)
+    delay = sample_value(
+        iso.onset_to_isolation_delay,
+        stream(state.rng, individual.id, (:isolation, :delay)), individual
+    )
+    return onset_time(individual) + delay
 end
 
 # The likelihood reads the stretch a lapsing isolation removed the host for.
@@ -233,7 +245,7 @@ function reset!(::Isolation, ind::Individual)
     # Only undo an isolation this Isolation set, named by the handle it kept
     # when it recorded one. Withdrawing exactly that entry leaves any
     # quarantine Isolation was layered over, or layered under, standing on
-    # its own record untouched — resetting unconditionally would
+    # its own record untouched. Resetting unconditionally would
     # un-quarantine a validly-traced contact when a Scheduled(Isolation) sees
     # its pre-start isolation time.
     handle = get(ind.state, :_isolation_handle, nothing)
@@ -269,11 +281,7 @@ function resolve_individual!(iso::Isolation, individual, state)
     # gets the case isolated.
     if _isolation_in_force(individual)
         is_test_positive(individual) || return nothing
-        self_t = onset_time(individual) +
-            sample_value(
-            iso.onset_to_isolation_delay,
-            stream(state.rng, individual.id, (:isolation, :delay)), individual
-        )
+        self_t = _self_isolation_time(iso, individual, state)
         isfinite(self_t) || return nothing
         _isolate!(iso, individual, state, self_t)
         return nothing
@@ -295,15 +303,8 @@ function resolve_individual!(iso::Isolation, individual, state)
     onset = onset_time(individual)
     traced_time = isnan(onset) ? Inf :
         max(_state_real(individual.state, :_traced_isolation_time, Inf), onset)
-    test_time = if is_test_positive(individual)
-        onset +
-            sample_value(
-            iso.onset_to_isolation_delay,
-            stream(state.rng, individual.id, (:isolation, :delay)), individual
-        )
-    else
-        Inf
-    end
+    test_time = is_test_positive(individual) ?
+        _self_isolation_time(iso, individual, state) : Inf
     final = min(test_time, traced_time)
     isfinite(final) || return nothing
     _isolate!(iso, individual, state, final)
@@ -314,7 +315,7 @@ end
 # its own entry, whether or not a removal already stands: a quarantine
 # already in force keeps its own entry untouched, so `isolation_time` reads
 # as the union of the two where they overlap or touch, and as this one alone
-# where they do not — the later of the two, since a disjoint one earlier than
+# where they do not: the later of the two, because a disjoint one earlier than
 # `time` is already spent. The handle this entry gets is kept so a `reset!`
 # can later withdraw exactly it, leaving any other entry be.
 function _isolate!(iso::Isolation, individual, state, time)
@@ -322,13 +323,9 @@ function _isolate!(iso::Isolation, individual, state, time)
         iso.duration, state.rng, individual, "`Isolation`'s `duration`"
     )
     release = time + duration
-    # Each kind of isolation reads its own stretches separately from quarantine
-    # and removals with a different block probability.
-    record_key = iso.post_isolation_transmission == 0 ?
-        ISOLATION_STRETCHES_KEY : LEAKY_REMOVAL_STRETCHES_KEY
     unrecorded = !records_isolation(iso.eligibility, individual, state, time)
     handle = _set_isolated!(
-        individual, time; release_time = release, key = record_key, unrecorded
+        individual, time; release_time = release, key = _stretch_key(iso), unrecorded
     )
     individual.state[:_isolation_handle] = handle
     individual.state[:_isolation_start] = time

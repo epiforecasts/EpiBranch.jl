@@ -501,6 +501,18 @@ using ForwardDiff
             @test isfinite(ll)
         end
 
+        @testset "Poisson and NegBin match the chain-size law" begin
+            data = ChainSizes([1, 1, 2, 1, 3, 5])
+            @test loglikelihood(data, Poisson(0.6)) ≈
+                sum(n -> logpdf(EpiBranch.Borel(0.6), n), data.data)
+            @test loglikelihood(data, NegBin(0.6, 0.5)) ≈
+                sum(n -> logpdf(GammaBorel(0.5, 0.6), n), data.data)
+        end
+
+        @testset "Zero-mean Poisson is rejected, not NaN" begin
+            @test_throws ArgumentError loglikelihood(ChainSizes([1, 2]), Poisson(0.0))
+        end
+
         @testset "Extreme dispersion stays finite" begin
             # Regression: k ≳ 1e16·R swamps R in the floating-point sum
             # k + R inside NegBin's p = k / (k + R), so R rounds to exactly 0
@@ -1909,6 +1921,15 @@ using ForwardDiff
         @testset "Full control → certain containment" begin
             @test probability_contain(5.0, 0.1; pop_control = 0.9) ≈ 1.0 atol = 1.0e-6
         end
+
+        @testset "Poisson uses its own generating function" begin
+            d = Poisson(2.5)
+            @test probability_contain(d) ≈ extinction_probability(d) atol = 1.0e-12
+            # Thinning a Poisson law gives Poisson with the reduced mean.
+            @test probability_contain(d; pop_control = 0.4) ≈
+                extinction_probability(Poisson(1.5)) atol = 1.0e-12
+            @test probability_contain(d; pop_control = 0.8) == 1.0
+        end
     end
 
     @testset "GeneratingFunctionOffspring" begin
@@ -2025,7 +2046,7 @@ using ForwardDiff
         @testset "A calendar scaling the window's kernel is refused" begin
             # Isolation's analytic effect reads the window's kernel
             # directly, with no way to apply a schedule scaling it, so this
-            # must be refused rather than silently read as the bare kernel —
+            # must be refused rather than silently read as the bare kernel:
             # here through `extinction_probability`, one of several routes
             # that apply `analytic_offspring_effect` to an offspring law.
             offspring = NegBin(2.0, 0.5)
@@ -2426,4 +2447,29 @@ using ForwardDiff
             @test_throws ArgumentError ChainSizes(; membership = [1, 1, 2], singletons = -1)
         end
     end
+end
+
+@testset "Closed forms refuse a reshaped offspring law" begin
+    off, gt = NegBin(0.8, 0.5), Gamma(2.0, 2.0)
+    plain = BranchingProcess(off, gt)
+    finite = BranchingProcess(off, gt; population_size = 20)
+    windowed = BranchingProcess(Infectiousness(off; until = (:recovered,), kernel = gt))
+    susceptible = ModelSpec(plain; attributes = transmission_traits(susceptibility = 0.5))
+
+    @test 0.0 < end_of_outbreak_probability(plain, 5.0) < 1.0
+    @test 0.0 < probability_contain(plain) <= 1.0
+    @test 0.0 < extinction_probability(plain) <= 1.0
+    @test 0.0 < proportion_transmission(plain) < 1.0
+
+    for reshaped in (finite, windowed, susceptible)
+        @test_throws ArgumentError end_of_outbreak_probability(reshaped, 5.0)
+        @test_throws ArgumentError probability_contain(reshaped)
+        @test_throws ArgumentError extinction_probability(reshaped)
+        @test_throws ArgumentError proportion_transmission(reshaped)
+        @test_throws ArgumentError proportion_cases_individual(reshaped)
+        @test_throws ArgumentError proportion_cases_offspring(reshaped)
+        @test_throws ArgumentError proportion_cluster_size(reshaped)
+    end
+    @test_throws ArgumentError end_of_outbreak_probability(ModelSpec(finite), 5.0)
+    @test_throws "Simulate instead" end_of_outbreak_probability(finite, 5.0)
 end

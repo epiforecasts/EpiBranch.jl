@@ -39,13 +39,7 @@ function event_time_metadata(::Val{key}) where {key}
     endswith(name, "_time") || return nothing
     return (
         column = Symbol("date_", name[1:(end - length("_time"))]),
-        requires_infection = true,
-    )
-end
-for key in (:trace_time, :vaccination_time, :immunity_time)
-    column = Symbol("date_", String(key)[1:(end - length("_time"))])
-    @eval event_time_metadata(::Val{$(QuoteNode(key))}) = (
-        column = $(QuoteNode(column)), requires_infection = false,
+        requires_infection = !(key in (:trace_time, :vaccination_time, :immunity_time)),
     )
 end
 
@@ -186,44 +180,36 @@ function contacts(
         state::SimulationState;
         reference_date::Date = Date(2020, 1, 1)
     )
-    df = DataFrame(
-        from = Int[], to = Int[], infected = Bool[],
-        generation = Int[], infection_time = Float64[],
-        date_infection = Date[]
+    individuals = state.individuals
+    # A contact whose exposure fell after the run stopped was never exposed
+    # within it.
+    exposures = (
+        (ind.id, individuals[child_id])
+            for ind in individuals for child_id in ind.secondary_case_ids
+            if child_id <= length(individuals)
     )
-    for ind in state.individuals
-        for child_id in ind.secondary_case_ids
-            child_id > length(state.individuals) && continue
-            child = state.individuals[child_id]
-            # A contact whose exposure fell after the run stopped was never
-            # exposed within it.
-            isnan(child.infection_time) && continue
-            push!(
-                df,
-                (
-                    from = ind.id,
-                    to = child.id,
-                    infected = is_infected(child),
-                    generation = child.generation,
-                    infection_time = child.infection_time,
-                    date_infection = _to_date(reference_date, child.infection_time),
-                )
+    df = DataFrame(
+        [
+            (
+                from = from_id, to = child.id, infected = is_infected(child),
+                generation = child.generation,
+                infection_time = child.infection_time,
+                date_infection = _to_date(reference_date, child.infection_time)::Date,
             )
-        end
-    end
+                for (from_id, child) in exposures if !isnan(child.infection_time)
+        ]
+    )
     log = get(state.scratch, EXPOSED_CONTACTS_KEY, nothing)
     log === nothing && return df
-    for (from_id, to_id, t, generation) in (log::_ExposedContactLog).events
-        push!(
-            df,
-            (
-                from = from_id, to = to_id, infected = false,
-                generation = generation, infection_time = t,
-                date_infection = _to_date(reference_date, t),
-            )
+    escaped = [
+        (
+            from = from_id, to = to_id, infected = false,
+            generation = generation, infection_time = t,
+            date_infection = _to_date(reference_date, t)::Date,
         )
-    end
-    return df
+            for (from_id, to_id, t, generation) in (log::_ExposedContactLog).events
+    ]
+    return vcat(df, DataFrame(escaped))
 end
 
 # ── Internal helpers ─────────────────────────────────────────────────
@@ -245,16 +231,13 @@ function _add_state_column!(cols, cases, key::Symbol, reference_date)
     if metadata !== nothing
         col_name = metadata.column
         col_name in keys(cols) && return nothing  # don't shadow core columns
-        values = Vector{Union{Date, Missing}}(undef, length(cases))
-        any_finite = false
-        for (i, ind) in pairs(cases)
+        event_date(ind) = begin
             t = is_infected(ind) ? _reported_state(ind, key) :
                 _uninfected_event_time(ind, key, metadata)
-            d = t isa Real ? _to_date(reference_date, t) : missing
-            values[i] = d
-            d === missing || (any_finite = true)
+            t isa Real ? _to_date(reference_date, t) : missing
         end
-        any_finite || return nothing
+        values = Union{Date, Missing}[event_date(ind) for ind in cases]
+        all(ismissing, values) && return nothing
         cols[col_name] = values
     else
         key in keys(cols) && return nothing
@@ -320,12 +303,7 @@ columns first, then date columns (alphabetical), then the rest
 (alphabetical)."""
 function _column_order(ks)
     core = [:id, :parent_id, :generation, :chain_id, :infected, :date_infection]
-    keyset = Set(ks)
-    ordered = Symbol[k for k in core if k in keyset]
-    remaining = [k for k in ks if !(k in ordered)]
-    dates = sort!([k for k in remaining if startswith(String(k), "date_")])
-    others = sort!([k for k in remaining if !startswith(String(k), "date_")])
-    append!(ordered, dates)
-    append!(ordered, others)
-    return ordered
+    group(k) = k in core ? 0 : startswith(String(k), "date_") ? 1 : 2
+    position(k) = something(findfirst(==(k), core), 0)
+    return sort!(collect(ks); by = k -> (group(k), position(k), k))
 end

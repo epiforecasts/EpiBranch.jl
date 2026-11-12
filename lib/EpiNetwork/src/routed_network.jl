@@ -111,10 +111,10 @@ A case infected on one of these routes records the route's `name` in its
 appear in [`linelist`](@ref), so cases can be broken down by setting.
 
 As for [`NetworkProcess`](@ref), each node is created only once a route
-proposes it a contact or an intervention reaches it, so a run costs in
-proportion to the people the outbreak reaches rather than to the size of the
-population; pass `eager = true` to create and draw every node upfront
-instead. A route whose `reach` proposes its own contacts reads a target's
+proposes a contact with it or an intervention reaches it. Run time scales
+with the number of people reached; pass `eager = true` to create and draw
+every node upfront
+instead. A route for which `reach` proposes its own contacts reads a target's
 susceptibility directly, rather than through the race, so it should realise
 the target first with `EpiBranch._realised!(state, target_id)` where it does.
 """
@@ -182,12 +182,7 @@ function RoutedNetwork(
     # kernel to validate.
     windows = [_validate_route_kernel(w) for w in windows]
     _check_external(external_hazard, n)
-    obs_end_value = Float64(obs_end)
-    (!isnan(obs_end_value) && obs_end_value >= 0) || throw(
-        ArgumentError(
-            "obs_end must be a non-negative number (Inf allowed), got $obs_end"
-        )
-    )
+    obs_end_value = _check_obs_end(obs_end)
     # A model-level start applies to every route that leaves its own unset, so
     # the stored routes are the ones the simulation runs and `window_open` on
     # them agrees with it.

@@ -3,7 +3,7 @@
 # A closed, homogeneously-mixing SIR population (the dynamics
 # `HomogeneousProcess` simulates exactly), approximated as a state-space
 # model: `MeanFieldProcess` integrates the deterministic mean-field ODE,
-# `LinearNoiseProcess` carries a Gaussian process around that same path. Both
+# `LinearNoiseProcess` adds a Gaussian process around that same path. Both
 # share `simulate(model, state; max_time)` with the exact simulation, so an
 # external Kalman or particle filter, or a `HybridProcess` (see hybrid.jl),
 # can treat all three as interchangeable state-space transitions.
@@ -23,11 +23,11 @@ dS/dt = -βSI/N,  dI/dt = βSI/N - γI,  dR/dt = γI
 with transmission rate β (`transmission_rate`) and removal rate γ
 (`removal_rate`). The compartments are integrated as continuous numbers,
 not people, by fourth-order Runge–Kutta with a fixed step of `step` days
-(the last step of a call is shortened to land exactly on `max_time`).
+(the last step of a call is shortened to end exactly at `max_time`).
 
 Pass the result to [`simulate`](@ref) for a [`MeanFieldState`](@ref), and that
-state back to [`simulate`](@ref), with a later `max_time`, to carry the
-integration on from where it stopped: the same interface the exact
+state back to [`simulate`](@ref), with a later `max_time`, to continue the
+integration from where it stopped: the same interface the exact
 simulation uses. See [`LinearNoiseProcess`](@ref) for the same dynamics with
 Gaussian noise around the mean path, and [`HybridProcess`](@ref) for
 switching between exact simulation and either one.
@@ -79,7 +79,7 @@ end
     MeanFieldState
 
 The compartment counts of a [`MeanFieldProcess`](@ref) at a point in time:
-`S`, `I` and `R`, continuous since the mean-field approximation treats the
+`S`, `I` and `R`, continuous because the mean-field approximation treats the
 population as infinitely divisible rather than as discrete people. `t` is the
 time (days since the start of the outbreak) the state has been integrated to.
 """
@@ -157,7 +157,7 @@ function _rk4_sir_step(S, I, dt, f)
 end
 
 # Fixed-step RK4 from `t0` to `max_time`, in steps no longer than
-# `model.step` (the last one shortened to land exactly on `max_time`).
+# `model.step` (the last one shortened to end exactly at `max_time`).
 function _integrate_sir(model::MeanFieldProcess, S, I, t0, max_time)
     N = model.population_size
     β = model.transmission_rate
@@ -179,7 +179,7 @@ end
 """
     LinearNoiseProcess(; population_size, transmission_rate, removal_rate, step = 0.05)
 
-The same closed-population SIR dynamics as [`MeanFieldProcess`](@ref), carried
+The same closed-population SIR dynamics as [`MeanFieldProcess`](@ref), represented
 as a Gaussian process around the deterministic mean path (the linear noise
 approximation) rather than the bare mean: the state holds the mean
 compartment counts and their covariance, which grows from the demographic
@@ -189,8 +189,16 @@ external Kalman filter needs for its prediction step; a particle filter can
 draw its own particles from the returned mean and covariance instead of
 running the exact simulation.
 
-Accepts the same keywords as [`MeanFieldProcess`](@ref), and the mean path
-integrates identically; only the covariance is new.
+The Gaussian has no mass on early extinction, and the approximation needs
+enough initial cases for extinction to be negligible. From one or a few cases
+it describes only the outbreaks that take off, and only roughly: the mean and
+variance are off. With around 50 initial cases it matches the exact
+simulation well. When early extinction matters, use the exact simulation or
+[`HybridProcess`](@ref), which simulates exactly while few people are
+infectious.
+
+Accepts the same keywords as [`MeanFieldProcess`](@ref). The mean path
+integrates identically, with the addition of the covariance.
 
 # Example
 
@@ -235,7 +243,7 @@ end
 
 The Gaussian state of a [`LinearNoiseProcess`](@ref): mean compartment counts
 `S`, `I` and `R`, time `t`, and `covariance`, the 2×2 covariance of `(S, I)`
-(`R` carries no separate uncertainty, since it is `population_size - S - I`).
+(`R` has no separate uncertainty because it is `population_size - S - I`).
 """
 struct LinearNoiseState
     S::Float64
@@ -258,7 +266,11 @@ end
 
 Integrate the linear noise approximation of `model` from `t = 0`, with
 `n_initial` people infected, the rest susceptible, and no uncertainty yet
-(a zero covariance), up to `max_time`. Returns a [`LinearNoiseState`](@ref);
+(a zero covariance), up to `max_time`. The default of one initial case is
+only a starting value. The Gaussian approximation ignores early extinction and
+from one or a few cases describes only outbreaks that take off, and only
+roughly. Use enough initial cases for extinction to be negligible (around 50
+is close to the exact simulation). Returns a [`LinearNoiseState`](@ref);
 continue it further with `simulate(model, state; max_time)`.
 """
 function simulate(model::LinearNoiseProcess; n_initial::Integer = 1, max_time::Real)

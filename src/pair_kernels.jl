@@ -309,8 +309,7 @@ end
 function _no_records_to_watch(watches, what)
     (watches === nothing || isempty(_watch_keys(watches))) || throw(
         ArgumentError(
-            "a `PairKernel` with $what reads no `individual.state`, so it has " *
-                "no records to watch; drop `watches`"
+            "a `PairKernel` with $what reads no `individual.state`, so it has no records to watch; drop `watches`"
         )
     )
     return ()
@@ -416,13 +415,7 @@ watched_records(::PairKernel{F, <:AbstractVector}) where {F} = ()
 # A per-edge collection declares the union of what its entries declare. Every
 # such entry a network resolves today reads no host state, so this is `()` in
 # practice; it keeps the union right if one ever does.
-function watched_records(ks::AbstractVector)
-    keys = Symbol[]
-    for k in ks, key in watched_records(k)
-        key in keys || push!(keys, key)
-    end
-    return Tuple(keys)
-end
+watched_records(ks::AbstractVector) = Tuple(unique(Symbol[key for k in ks for key in watched_records(k)]))
 
 """
     kernel_projection(kernel)
@@ -604,7 +597,7 @@ end
 
 function SurvivalDistributions.loghazard(k::_CalendarScaledKernel, τ::Real)
     lh = _loghazard(k.profile, τ)
-    # Past the profile's support the hazard is zero whatever the calendar says.
+    # Past the support of the profile the hazard is zero whatever the calendar says.
     lh == -Inf && return lh
     return lh + log(calendar_multiplier(k.calendar, k.opening + τ))
 end
@@ -713,7 +706,7 @@ end
 function _calendar_hazard(k::_CalendarScaledKernel, s)
     # The profile first: where its hazard is already zero (a `HazardKernel`
     # beyond `upper`, or a trajectory that has cleared) the calendar is not
-    # evaluated, since a bracket grown far past the profile's reach would
+    # evaluated, because a bracket grown far past the profile's reach would
     # otherwise hand a smooth calendar a time whose phase overflows.
     lh = loghazard(k.profile, s)
     isfinite(lh) || return zero(float(s))
@@ -845,7 +838,7 @@ end
 # drawn time has. `Λ(t)` is the bisection's own running integral, which
 # brackets `target` within one bisection step, so the step moves the value by
 # no more than that step even where the rate is small; a separately computed
-# integral would carry a different quadrature error, which a small rate
+# integral would have a different quadrature error, which a small rate
 # would magnify into the drawn time.
 function _implicit_hazard_step(rate, t, t_acc, target)
     isfinite(t_acc) || return t

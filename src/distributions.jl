@@ -86,15 +86,11 @@ end
 lazily on first use so the simulation path (which only samples) never pays for
 the numerical integral."""
 struct _TruncatedSkewNormal{T <: AbstractFloat} <: ContinuousUnivariateDistribution
-    ξ::T
-    ω::T
-    α::T
     inner::SkewNormal{T}
     logZ::Base.RefValue{T}   # log P(inner ≥ 0); NaN until first computed
     function _TruncatedSkewNormal(ξ::Real, ω::Real, α::Real)
         T = float(promote_type(typeof(ξ), typeof(ω), typeof(α)))
-        inner = SkewNormal(T(ξ), T(ω), T(α))
-        return new{T}(T(ξ), T(ω), T(α), inner, Ref(T(NaN)))
+        return new{T}(SkewNormal(T(ξ), T(ω), T(α)), Ref(T(NaN)))
     end
 end
 
@@ -115,8 +111,9 @@ end
 # quadrature tracks fine regardless of how wide. Shared by `_trunc_logZ`
 # (integrating to `Inf`) and `logcdf` (integrating to `x`).
 function _peak_breakpoints(d::_TruncatedSkewNormal, upper::Real)
-    margin = 10 * float(d.ω)
-    inner = (float(d.ξ) - margin, float(d.ξ) + margin)
+    (; ξ, ω) = d.inner
+    margin = 10 * float(ω)
+    inner = (float(ξ) - margin, float(ξ) + margin)
     lo = zero(float(upper))
     return (lo, filter(p -> lo < p < upper, inner)..., upper)
 end
@@ -172,7 +169,7 @@ function Distributions.quantile(d::_TruncatedSkewNormal, p::Real)
     0.0 <= p <= 1.0 || throw(DomainError(p, "quantile needs p in [0, 1]"))
     iszero(p) && return 0.0
     isone(p) && return Inf
-    lo, hi = 0.0, max(abs(d.ξ), d.ω, one(d.ξ))
+    lo, hi = 0.0, max(abs(d.inner.ξ), d.inner.ω, one(d.inner.ξ))
     while cdf(d, hi) < p
         hi *= 2
     end
@@ -190,27 +187,26 @@ end
 """
     HazardKernel(hazard; upper = Inf, onset = 0.0)
 
-A contact-interval distribution built directly from an instantaneous hazard
-rather than from a named family: `hazard(t)` is the rate of transmission at
+A contact-interval distribution defined by the instantaneous hazard
+`hazard(t)`, the rate of transmission at
 time `t` since the window opened, for `t` from `onset` up to `upper`
 (unbounded by default). Use it as the `kernel` of an [`Infectiousness`](@ref)
-window, built fresh for each case from a function of the individual,
-`kernel = ind -> ...`, when transmission should follow something computed on
-the fly rather than a named distribution: most usefully a per-case
-within-host trajectory, drawn once at infection and stored on the
-individual, read through a link that turns it into a rate.
+window, built for each case from a function of the individual,
+`kernel = ind -> ...`. For example, transmission can depend on a
+within-host trajectory drawn once at infection and stored on the
+individual, through a link that converts it to a transmission rate.
 
-`onset` is the time before which the hazard is zero, defaulting to 0, since a
-hazard built from a named distribution's own hazard already starts there. A
-trajectory whose hazard switches on later should give its own onset rather
-than leave `hazard` to encode a flat run-up: the kernel treats `hazard` as
+The hazard is zero before `onset`, which defaults to 0, matching the
+start of the hazard from a named distribution. A trajectory with a later
+start should specify its onset explicitly instead of encoding a flat run-up
+in `hazard`. The kernel treats `hazard` as
 zero before `onset` regardless of what it returns there, and rejects an
-`onset` still followed by a flat stretch of zero, since nothing would then
+`onset` still followed by a flat stretch of zero, because nothing would then
 distinguish a trajectory still to switch on from one that has permanently
 cleared.
 
-`hazard` is called many times to integrate and invert the cumulative hazard
-by quadrature, so it should be cheap and non-negative throughout
+Integrating and inverting the cumulative hazard by quadrature requires many
+calls to `hazard`. It should be inexpensive to evaluate and non-negative throughout
 `(onset, upper)`. `upper` is where the integration stops: the hazard counts
 as zero beyond it, and a draw the total hazard up to there cannot reach is
 `Inf`, a contact that never happens. Give a hazard that clears an `upper`
@@ -253,9 +249,9 @@ community = Infectiousness(
 model = ModelSpec(BranchingProcess(community); attributes)
 ```
 
-Generation time, incubation period and serial interval are then whatever the
-trajectory and its links to each clinical event imply, instead of separate
-inputs drawn independently of one another.
+The trajectory and its links to each clinical event determine the generation
+time, incubation period and serial interval. These quantities are no longer
+separate, independent draws.
 """
 struct HazardKernel{F, T <: Real} <: ContinuousUnivariateDistribution
     hazard::F
@@ -356,7 +352,7 @@ end
 A [`HazardKernel`](@ref) conditioned on falling at or before `hi`: what
 `transmission_timing`'s `offspring` form needs so every draw is realised
 rather than thinned away by the case's own recovery. The lower bound is
-always 0, since a `HazardKernel`'s own support already starts there.
+always 0, because a `HazardKernel`'s own support already starts there.
 
 This is the usual meaning of `Distributions.truncated`, a rescaled
 conditional distribution; the kernel's own `upper` only bounds its

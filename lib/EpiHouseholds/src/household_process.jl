@@ -141,6 +141,7 @@ function HouseholdProcess(
     )
     all(s -> s >= 1, sizes) || throw(ArgumentError("household sizes must be ≥ 1"))
     _check_external(external_hazard, sum(sizes))
+    obs_end_value = _check_obs_end(obs_end)
 
     household_of = Int[]
     members = Vector{Int}[]
@@ -157,7 +158,7 @@ function HouseholdProcess(
 
     return HouseholdProcess(
         household_of, members, kernel, from, Tuple(until),
-        _normalise_external(external_hazard), Float64(obs_end)
+        _normalise_external(external_hazard), obs_end_value
     )
 end
 
