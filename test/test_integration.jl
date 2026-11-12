@@ -28,6 +28,16 @@ using Dates
         @test sum(df.cases) == state.cumulative_cases
     end
 
+    @testset "weekly_incidence with no finite times is an empty typed frame" begin
+        model = BranchingProcess(Poisson(2.0), Exponential(5.0))
+        state = simulate(model; n_initial = 3, rng = StableRNG(1))
+        df = weekly_incidence(state; by = :no_such_time)
+        @test names(df) == ["week", "cases"]
+        @test nrow(df) == 0
+        @test eltype(df.week) == Date
+        @test eltype(df.cases) == Int
+    end
+
     @testset "weekly_incidence by=:reporting excludes unreported (Inf) cases" begin
         # A Reporting transition with probability < 1 leaves unreported cases
         # with :reporting_time = Inf. Binning by :reporting must skip those

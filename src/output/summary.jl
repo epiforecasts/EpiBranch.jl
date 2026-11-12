@@ -67,8 +67,7 @@ function containment_probability(
     return count(contained) / n
 end
 
-_is_contained(s::SimulationState, ::NoCases) = s.extinct
-_is_contained(s::SimulationState, cap::Int) = s.cumulative_cases < cap && s.extinct
+_is_contained(s::SimulationState, cap) = s.extinct && !_check_max_cases(s, cap)
 
 """Whether a simulation has exceeded the max_cases cap (false if no cap)."""
 _check_max_cases(::SimulationState, ::NoCases) = false
@@ -195,30 +194,16 @@ function weekly_incidence(
         by::Symbol = :onset,
         reference_date::Date = Date(2020, 1, 1)
     )
-    infected = filter(is_infected, state.individuals)
-    isempty(infected) && return DataFrame(week = Date[], cases = Int[])
-
-    times = Float64[]
-    for ind in infected
-        t = _weekly_time(by, ind)
-        # Skip non-finite times: `NaN` (no such field) and `Inf` (an
-        # unreached state, e.g. an unreported case whose `:reporting_time`
-        # keeps its default). `Day(floor(Int, Inf))` would otherwise throw.
-        isfinite(t) || continue
-        push!(times, t)
-    end
-    isempty(times) && return DataFrame(week = Date[], cases = Int[])
-
-    weeks = Dict{Date, Int}()
-    for t in times
-        date = reference_date + Day(floor(Int, t))
-        week_start = date - Day(dayofweek(date) - 1)
-        weeks[week_start] = get(weeks, week_start, 0) + 1
-    end
-
-    df = DataFrame(week = collect(keys(weeks)), cases = collect(values(weeks)))
-    sort!(df, :week)
-    return df
+    # Skip non-finite times: `NaN` (no such field) and `Inf` (an unreached
+    # state, e.g. an unreported case whose `:reporting_time` keeps its
+    # default). `Day(floor(Int, Inf))` would otherwise throw.
+    times = filter(
+        isfinite,
+        [_weekly_time(by, ind) for ind in state.individuals if is_infected(ind)]
+    )
+    dates = [reference_date + Day(floor(Int, t)) for t in times]
+    df = DataFrame(week = [d - Day(dayofweek(d) - 1) for d in dates])
+    return sort!(combine(groupby(df, :week), nrow => :cases), :week)
 end
 
 # Onset with infection-time fallback for cases without a recorded onset.
@@ -228,12 +213,9 @@ function _weekly_time(by::Symbol, ind)
         return v isa Real && !isnan(v) ? float(v) : ind.infection_time
     elseif by === :infection
         return ind.infection_time
-    elseif by === :reporting
-        # No fallback: a case without a reporting time has not been observed.
-        v = get(ind.state, :reporting_time, NaN)
-        return v isa Real ? float(v) : NaN
     else
-        v = get(ind.state, by, NaN)
+        # No fallback: a case without the recorded time has not been observed.
+        v = get(ind.state, by === :reporting ? :reporting_time : by, NaN)
         return v isa Real ? float(v) : NaN
     end
 end
