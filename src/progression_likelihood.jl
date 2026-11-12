@@ -72,8 +72,9 @@ function progression_loglik(
     for ind in individuals
         is_infected(ind) || continue
         for t in spec.progression
-            # The default leaves custom `transition_loglik` methods without
-            # the keyword working as before.
+            # Only the keyword form is passed `followup_end`, so a custom
+            # `transition_loglik` without the keyword still works when there
+            # is no follow-up end.
             ll += isinf(followup_end) ? transition_loglik(t, ind) :
                 transition_loglik(t, ind; followup_end = followup_end)
         end

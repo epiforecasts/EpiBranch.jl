@@ -363,7 +363,7 @@ EpiBranch.infectious_removal_time(f::FixedRemoval, ::Individual) = f.time
         # recorded stretch has its own release, which the per-contact risk
         # re-checks the schedule against at every proposal regardless.
         # Narrowing here would turn a removal due to lapse into one that
-        # never does (see issue #410).
+        # never does.
         lapsing = Scheduled(perfect; start_time = 0.0, end_time = 10.0)
         @test EpiBranch.infectious_removal_time(lapsing, case) == Inf
 

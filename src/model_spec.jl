@@ -516,7 +516,7 @@ simulate(spec::ModelSpec, n::Int; kwargs...) =
     _simulate_each(identity, SimulationState, spec, n; kwargs...)
 
 # `simulate`'s continuation method unwraps the spec the same way: the
-# process's `transmission_risks` as before, the spec's own interventions and
+# process's `transmission_risks`, the spec's own interventions and
 # recorder.
 function simulate(
         spec::ModelSpec, state::SimulationState; max_time::Real,
@@ -586,7 +586,7 @@ end
 function _require_unreshaped_offspring_law(model, name)
     # `offspring_law_unchanged` answers `false` for a process type it does not
     # know. Such a process supplies its own offspring law and is used as
-    # declared, as before.
+    # declared.
     proc = model isa ModelSpec ? model.process : model
     (!(proc isa BranchingProcess) || offspring_law_unchanged(proc)) &&
         offspring_law_unchanged(attributes(model)) &&

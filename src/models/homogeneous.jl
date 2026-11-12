@@ -100,7 +100,7 @@ function HomogeneousProcess(;
     )
 end
 
-# A fixed β is validated and floated as before; a calendar schedule validates
+# A fixed β is validated and floated; a calendar schedule validates
 # itself when it is built (`Steps`'s own values, say), so nothing further is
 # checked here.
 function _prepared_transmission_rate(β::Real)
