@@ -766,14 +766,14 @@ end
 
 @testset "Community introductions respect susceptibility" begin
     for source in (0.5, Gamma(2.0, 3.0))
-        @test EpiBranch._ext_draw(StableRNG(7), source, 1.0) ==
-            EpiBranch._ext_draw(StableRNG(7), source)
+        @test EpiBranch._ext_draw(StableRNG(7), source, 1, 1.0) ==
+            rand(StableRNG(7), EpiBranch._ext_survival(source))
         rng = StableRNG(7)
-        @test EpiBranch._ext_draw(rng, source, 0.0) == Inf
+        @test EpiBranch._ext_draw(rng, source, 1, 0.0) == Inf
         @test rand(rng) == rand(StableRNG(7))
     end
     # Scaling a constant hazard by susceptibility scales its mean waiting time.
-    draws = [EpiBranch._ext_draw(StableRNG(seed), 0.5, 0.25) for seed in 1:4000]
+    draws = [EpiBranch._ext_draw(StableRNG(seed), 0.5, 1, 0.25) for seed in 1:4000]
     @test isapprox(sum(draws) / length(draws), 8.0; rtol = 0.04)
 end
 

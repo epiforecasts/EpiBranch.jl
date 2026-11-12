@@ -1308,10 +1308,6 @@ end
 
 # A community introduction time drawn under the hazard person `j` faces, or
 # `Inf` when they face none.
-_ext_draw(rng::AbstractRNG, source) = rand(rng, _ext_survival(source))
-function _ext_draw(rng::AbstractRNG, source, susceptibility)
-    return _traits_scaled_draw(rng, _ext_survival(source), susceptibility)
-end
 function _ext_draw(rng::AbstractRNG, source, j::Integer, susceptibility)
     d = _ext_survival_of(source, j)
     d === nothing && return oftype(float(susceptibility), Inf)

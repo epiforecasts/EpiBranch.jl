@@ -55,7 +55,6 @@ is_eligible(::OnIsolation, infector, contact, state) = is_isolated(infector)
 """Trace the contacts of every case, whatever its status, starting from the
 case's isolation."""
 struct TraceEveryone <: TraceEligibility end
-is_eligible(::TraceEveryone, infector, contact, state) = true
 
 """Trace no contacts."""
 struct TraceNobody <: TraceEligibility end
@@ -731,8 +730,6 @@ end
 required_fields(::OnSymptomOnset) = [:asymptomatic, :onset_time]
 required_fields(::OnLabConfirmation) = [:test_positive]
 required_fields(::OnIsolation) = [:isolated]
-required_fields(::TraceEveryone) = Symbol[]
-required_fields(::TraceNobody) = Symbol[]
 required_fields(::SymptomaticParent) = [:asymptomatic, :isolated]
 required_fields(::TraceEligibility) = Symbol[]  # Default for custom types
 

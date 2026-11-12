@@ -14,9 +14,6 @@ function _window_open(ind::Individual{T}, from::Symbol) where {T}
         _state_real(ind.state, Symbol(from, :_time), T(Inf))
 end
 
-# Earliest of the `until` removal states' times (Inf if none reached).
-_window_close(ind::Individual, until::Tuple) = _close_at(ind, _time_keys(until))
-
 # The state keys holding the times of `states`. Building a key concatenates two
 # names, which costs more than reading it, so a loop that closes many windows on
 # the same states builds the keys once.
@@ -685,7 +682,7 @@ function _warn_contactless(model, interventions)
     supplies_contacts(model) && return nothing
     names = unique(
         String[
-            string(nameof(typeof(_unwrap_scheduled(iv))))
+            string(nameof(typeof(_innermost(iv))))
                 for iv in interventions
                 if traces_contacts(iv) || (_proposes_actions(iv) && needs_contacts(iv))
         ]

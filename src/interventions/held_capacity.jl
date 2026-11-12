@@ -233,7 +233,6 @@ For extension authors: the day the effect `intervention` set directly on
 held_until(::AbstractIntervention, ind) = Inf
 held_until(::Isolation, ind) = isolation_release_time(ind)
 
-traces_contacts(hc::HeldCapacity) = traces_contacts(hc.intervention)
 function trace_contacts!(hc::HeldCapacity, state, infector, contacts, not_before = nothing)
     key = (:trace_admitter, _innermost(hc))
     _with_scratch(state, key, hc) do

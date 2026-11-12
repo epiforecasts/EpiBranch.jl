@@ -207,9 +207,9 @@ end
         @test !EpiBranch._ext_active(0.0)
         @test EpiBranch._ext_active(Gamma(2.0, 3.0))
         # a constant rate draws its exponential waiting time
-        @test EpiBranch._ext_draw(StableRNG(1), 0.5) ==
+        @test EpiBranch._ext_draw(StableRNG(1), 0.5, 1, 1.0) ==
             rand(StableRNG(1), Exponential(2.0))
-        @test EpiBranch._ext_draw(StableRNG(1), Gamma(2.0, 3.0)) ==
+        @test EpiBranch._ext_draw(StableRNG(1), Gamma(2.0, 3.0), 1, 1.0) ==
             rand(StableRNG(1), Gamma(2.0, 3.0))
 
         # a calendar schedule passes through unchanged, is always active, and
@@ -218,7 +218,7 @@ end
         @test EpiBranch._valid_external(schedule)
         @test EpiBranch._normalise_external(schedule) === schedule
         @test EpiBranch._ext_active(schedule)
-        @test EpiBranch._ext_draw(StableRNG(1), schedule) ==
+        @test EpiBranch._ext_draw(StableRNG(1), schedule, 1, 1.0) ==
             rand(StableRNG(1), EpiBranch._calendar_external_survival(schedule))
     end
 
@@ -249,7 +249,7 @@ end
         # draw as under a shared one
         @test EpiBranch._ext_draw(StableRNG(1), v, 2, 1.0) == Inf
         @test EpiBranch._ext_draw(StableRNG(1), v, 1, 1.0) ==
-            EpiBranch._ext_draw(StableRNG(1), 0.5, 1.0)
+            EpiBranch._ext_draw(StableRNG(1), 0.5, 1, 1.0)
         @test EpiBranch._ext_partype(v, 3) == Float64
     end
 
