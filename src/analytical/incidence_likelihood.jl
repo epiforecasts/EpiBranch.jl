@@ -37,7 +37,8 @@
 #   cov[t, t']     = ∂²K/∂u_t∂u_t' + δ_tt' · mean[t]
 #
 # the usual bridge from a probability generating function's factorial
-# moments to ordinary ones. `ForwardDiff` takes those derivatives; `K` is
+# moments to ordinary ones. `ForwardDiff` takes those derivatives (through
+# `_gradient_and_hessian`, defined by the extension that loads with it); `K` is
 # written generically in its argument's element type so a `Dual` offspring
 # or generation-time parameter still differentiates (nested automatic
 # differentiation), the same contract `_chain_length_ll_pgf` keeps for the
@@ -179,6 +180,19 @@ end
 _offspring_partype(offspring::Distribution) = Distributions.partype(offspring)
 _offspring_partype(::GeneratingFunctionOffspring) = Float64
 
+# The gradient and Hessian of `K` at `u`. The method lives in
+# `ext/EpiBranchForwardDiffExt.jl`, so `ForwardDiff` stays optional for users
+# who only simulate.
+function _gradient_and_hessian(K, u)
+    throw(
+        ArgumentError(
+            "incidence_moments and the incidence likelihood differentiate " *
+                "the generating function with ForwardDiff.jl; load it with " *
+                "`using ForwardDiff`."
+        )
+    )
+end
+
 """
     incidence_moments(offspring, generation_time::Distribution, n::Integer; seeds = 1,
         reporting_probability = 1, reporting_delay = nothing)
@@ -201,6 +215,9 @@ too once a delay moves them into an observed step. Both default to every
 case counted in the step it is infected. The result is exact for
 independent reporting, and `reporting_probability` can be differentiated
 like the offspring parameters.
+
+Needs ForwardDiff.jl loaded (`using ForwardDiff`), which takes the derivatives
+of the generating function.
 
 Returns a `(mean, cov)` named tuple: `mean[t]` is the expected count at step
 `t`, and `cov` is their `n × n` covariance matrix, both ignoring susceptible
@@ -235,9 +252,7 @@ function incidence_moments(
     K(u) = _incidence_log_pgf(
         u, w, s -> _pgf(offspring, s), n, seeds, Toff, reporting_probability, d
     )
-    u1 = ones(Float64, n)
-    μ = ForwardDiff.gradient(K, u1)
-    H = ForwardDiff.hessian(K, u1)
+    μ, H = _gradient_and_hessian(K, ones(Float64, n))
     return (mean = μ, cov = Symmetric(H + Diagonal(μ)))
 end
 
@@ -479,9 +494,7 @@ function incidence_moments(
     w = _discretize_generation_interval(generation_time; tol, max_lag)
     d = _discretize_report_delay(reporting_delay; tol, max_lag)
     K(u) = _incidence_log_pgf(u, w, offspring, n, seeds, reporting_probability, d)
-    u1 = ones(Float64, n * m)
-    μ = ForwardDiff.gradient(K, u1)
-    H = ForwardDiff.hessian(K, u1)
+    μ, H = _gradient_and_hessian(K, ones(Float64, n * m))
     return (mean = reshape(μ, n, m), cov = Symmetric(H + Diagonal(μ)))
 end
 
