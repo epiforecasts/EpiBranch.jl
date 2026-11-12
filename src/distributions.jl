@@ -40,10 +40,10 @@ of Hellewell et al. (2020), for use as the `generation_time` of a
 
 Each case's generation time is drawn from a skew-normal distribution centred
 on its incubation period, with scale `relative_spread` times the incubation
-period, truncated at zero. The skew is chosen for the truncated distribution,
-so the share of generation times shorter than the incubation period equals
-`presymptomatic_fraction` whatever the incubation period. Because the spread
-scales with the incubation period, the skew is the same for every case.
+period, truncated at zero. The skew is chosen for the truncated distribution:
+the share of generation times shorter than the incubation period equals
+`presymptomatic_fraction` whatever the incubation period. The spread scales
+with the incubation period, so the skew is the same for every case.
 Cases without an incubation period (for example asymptomatic cases) are
 centred on 5 days.
 
@@ -83,11 +83,11 @@ end
 
 # The skew `α` for which a skew-normal centred on `ξ` with scale `rel * ξ`,
 # truncated at zero, puts `fraction` of its mass below `ξ`. Truncation removes
-# mass from the lower side, so the untruncated relation
-# `P(X < ξ) = 0.5 - atan(α) / π` understates the skew needed once `rel` is
-# not small. The problem is scale-free, so it is solved once in units of
-# `ξ`. The truncated share falls from 1 to 0 as `α` runs from `-Inf` to
-# `Inf`, so bisection on `atan(α)` finds the root.
+# mass from the lower side. The untruncated relation
+# `P(X < ξ) = 0.5 - atan(α) / π` therefore understates the skew needed once
+# `rel` is not small. The problem is scale-free and is solved once in units of
+# `ξ`. Bisection on `atan(α)` finds the root because the truncated share
+# falls from 1 to 0 as `α` runs from `-Inf` to `Inf`.
 function _truncated_skewness(fraction::Float64, rel::Float64)
     centre = 1 / rel
     function share(θ)
