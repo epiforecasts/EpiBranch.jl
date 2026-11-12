@@ -698,7 +698,6 @@ end
 # `trace_contacts!` call, which admits through it instead of itself (see
 # `_admit_trace_actions!`). This composes with `Scheduled` in either order, as
 # a dose already does.
-traces_contacts(w::_CapacityWrapper) = traces_contacts(w.intervention)
 function trace_contacts!(w::_CapacityWrapper, state, infector, contacts, not_before = nothing)
     key = (:trace_admitter, _innermost(w))
     _with_scratch(state, key, w) do
