@@ -120,7 +120,7 @@ when some cases are missed makes clusters look smaller than they are, and
 biases the estimate of R downwards.
 
 !!! note "What an observed cluster is"
-    The likelihood treats each observed cluster as all the reported cases of one true chain. An unreported case in the middle of a chain is assumed not to split it into two observed clusters. Cluster data built from contact tracing can break this when a link runs through an undetected case. With `MinimumSize` and `R > 1`, the event "the chain reached at least `min_size`" also includes chains that never end.
+    The likelihood treats each observed cluster as all the reported cases of one true chain. It assumes that an unreported case in the middle of a chain does not split it into two observed clusters. Cluster data from contact tracing can violate this assumption when a link runs through an undetected case. With `MinimumSize` and `R > 1`, the event "the chain reached at least `min_size`" also includes chains that never end.
 
 !!! note "Clusters with no detected case"
     A cluster with no detected case does not appear in the data. The likelihood conditions on at least one case being detected, which avoids biasing a joint fit of R and `probability` towards high reporting.
