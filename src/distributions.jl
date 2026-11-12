@@ -26,25 +26,26 @@ function NegBin(R::Real, k::Real)
 end
 
 """
-    incubation_linked_generation_time(; presymptomatic_fraction=0.3, omega=2.0)
+    incubation_linked_generation_time(; presymptomatic_fraction=0.3, relative_spread=0.5)
 
-A generation time linked to each case's own incubation period, as in
-Hellewell et al. (2020), for use as the `generation_time` of a
+A generation time linked to each case's own incubation period, in the manner
+of Hellewell et al. (2020), for use as the `generation_time` of a
 [`BranchingProcess`](@ref). Incubation periods come from
 [`clinical_presentation`](@ref).
 
 - `presymptomatic_fraction`: the share of transmission that happens before
   the infector's symptom onset.
-- `omega`: the spread, in days, of the generation time around the
-  incubation period.
+- `relative_spread`: the spread of the generation time around the incubation
+  period, as a fraction of that incubation period.
 
 Each case's generation time is drawn from a skew-normal distribution centred
-on its incubation period, with scale `omega` and the skew chosen so that
-`presymptomatic_fraction` of generation times are shorter than the incubation
-period. Negative values are excluded, which makes the realised presymptomatic
-share approximate: close when the incubation period is long compared with
-`omega`, rougher when it is short. Cases without an incubation period
-(for example asymptomatic cases) are centred on 5 days.
+on its incubation period, with scale `relative_spread` times the incubation
+period, truncated at zero. The skew is chosen for the truncated distribution,
+so the share of generation times shorter than the incubation period equals
+`presymptomatic_fraction` whatever the incubation period. Because the spread
+scales with the incubation period, the skew is the same for every case.
+Cases without an incubation period (for example asymptomatic cases) are
+centred on 5 days.
 
 # Examples
 ```julia
@@ -56,20 +57,19 @@ model = BranchingProcess(
 """
 function incubation_linked_generation_time(;
         presymptomatic_fraction::Real = 0.3,
-        omega::Real = 2.0
+        relative_spread::Real = 0.5
     )
     0.0 < presymptomatic_fraction < 1.0 || throw(
         ArgumentError(
             "presymptomatic_fraction must be in (0, 1), got $presymptomatic_fraction"
         )
     )
-    omega > 0.0 || throw(ArgumentError("omega must be positive, got $omega"))
+    relative_spread > 0.0 || throw(
+        ArgumentError("relative_spread must be positive, got $relative_spread")
+    )
 
-    # Compute skew-normal alpha from presymptomatic fraction
-    # For SN(xi, omega, alpha): P(X < xi) = 0.5 - arctan(alpha)/π
-    # => alpha = tan(π(0.5 - presymp_frac))
-    alpha = tan(float(π) * (0.5 - float(presymptomatic_fraction)))
-    om = float(omega)
+    rel = float(relative_spread)
+    alpha = _truncated_skewness(float(presymptomatic_fraction), rel)
 
     return function (individual)
         inc_period = incubation_period(individual)
@@ -77,8 +77,31 @@ function incubation_linked_generation_time(;
             @debug "Missing or non-positive incubation period (e.g. asymptomatic individual); using 5.0 days" maxlog = 1
             inc_period = 5.0
         end
-        return _TruncatedSkewNormal(inc_period, om, alpha)
+        return _TruncatedSkewNormal(inc_period, rel * inc_period, alpha)
     end
+end
+
+# The skew `α` for which a skew-normal centred on `ξ` with scale `rel * ξ`,
+# truncated at zero, puts `fraction` of its mass below `ξ`. Truncation removes
+# mass from the lower side, so the untruncated relation
+# `P(X < ξ) = 0.5 - atan(α) / π` understates the skew needed once `rel` is
+# not small. The problem is scale-free, so it is solved once in units of
+# `ξ`. The truncated share falls from 1 to 0 as `α` runs from `-Inf` to
+# `Inf`, so bisection on `atan(α)` finds the root.
+function _truncated_skewness(fraction::Float64, rel::Float64)
+    centre = 1 / rel
+    function share(θ)
+        d = SkewNormal(centre, 1.0, tan(θ))
+        below = first(quadgk(x -> pdf(d, x), 0.0, centre))
+        total = below + first(quadgk(x -> pdf(d, x), centre, centre + 10.0, centre + 50.0))
+        return below / total
+    end
+    lo, hi = -π / 2 + 1.0e-9, π / 2 - 1.0e-9
+    for _ in 1:80
+        mid = (lo + hi) / 2
+        share(mid) > fraction ? (lo = mid) : (hi = mid)
+    end
+    return tan((lo + hi) / 2)
 end
 
 """Skew-normal truncated to [0, ∞) via rejection sampling (cdf not available).
