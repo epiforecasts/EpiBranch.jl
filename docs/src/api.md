@@ -362,6 +362,7 @@ containment_probability
 is_extinct
 generation_R
 weekly_incidence
+summarise
 scenario_sweep
 ```
 
@@ -754,6 +755,7 @@ EpiBranch.HostImmunity
 EpiBranch.infectious_removal_time
 EpiBranch.risk_applies
 EpiBranch.standing_block
+EpiBranch.infinite_draw_is_final
 intervention_time
 EpiBranch.reset!
 EpiBranch.abort_infection!

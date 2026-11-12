@@ -240,6 +240,11 @@ end
             EpiBranch._calendar_external_survival(schedule)
         @test_throws DimensionMismatch EpiBranch._check_external(v, 4)
         @test EpiBranch._check_external(v, 3) === nothing
+        for bad in (-5.0, NaN)
+            @test_throws ArgumentError EpiBranch._check_obs_end(bad)
+        end
+        @test EpiBranch._check_obs_end(Inf) == Inf
+        @test EpiBranch._check_obs_end(0) === 0.0
         # a person with no community hazard is never introduced, and the rest
         # draw as under a shared one
         @test EpiBranch._ext_draw(StableRNG(1), v, 2, 1.0) == Inf
@@ -1265,10 +1270,10 @@ EpiBranch.susceptibility_components(::_IdentitySusceptibility, host) =
 EpiBranch.infection_likelihood_compatible(::_IdentitySusceptibility) = true
 
 @testset "The mixture path takes out the same stretch" begin
-    # `_component_loglik` keeps its own exposure loop for a susceptible whose
-    # susceptibility an effect modifies, so it has to take the infector's
-    # isolated stretch out as well. Under a modifier that changes nothing the
-    # two paths must agree exactly.
+    # A susceptible whose susceptibility an effect modifies is scored with a
+    # modifier, and the plain one without, by the same `_component_loglik`, so
+    # both have to take the infector's isolated stretch out. Under a modifier
+    # that changes nothing the two paths must agree exactly.
     adj = [1, 1]
     theta = 4.0
     layer(host_times) = _GappedInfections(
@@ -1316,8 +1321,8 @@ EpiBranch.infection_likelihood_compatible(::_IdentitySusceptibility) = true
 end
 
 @testset "The mixture path scales a leaky stretch the same way as the flat one" begin
-    # `_component_loglik`'s own exposure loop has to read a leaky stretch too,
-    # scaling it rather than excluding it, same as the flat path above.
+    # The modified path has to read a leaky stretch too, scaling it rather than
+    # excluding it, same as the unmodified path above.
     adj = [1, 1]
     theta = 4.0
     layer(host_times) = _GappedInfections(

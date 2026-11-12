@@ -41,13 +41,8 @@ mean(realised_generation_intervals(state))   # compare with mean(Gamma(2.0, 3.0)
 ```
 """
 function realised_generation_intervals(state::SimulationState)
-    gts = Float64[]
-    for ind in state.individuals
-        (is_infected(ind) && ind.parent_id != 0) || continue
-        parent = state.individuals[ind.parent_id]
-        push!(gts, ind.infection_time - parent.infection_time)
-    end
-    return gts
+    gts = (realised_generation_interval(ind, state) for ind in state.individuals)
+    return Float64[g for g in gts if !isnan(g)]
 end
 
 """

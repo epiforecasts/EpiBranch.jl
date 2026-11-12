@@ -187,20 +187,13 @@ function _sample_contacts!(
         )
     )
     cal_bound = calendar === nothing ? nothing : calendar_bound(calendar)
-    if calendar !== nothing && cal_bound === nothing
+    if calendar === nothing ? !isfinite(window) : cal_bound === nothing
         for id in group
             rate = pair_rate(id)
             rate > 0 || continue
-            dt = rand(rng, _CalendarScaledKernel(Exponential(inv(rate)), calendar, open_t))
+            dt = calendar === nothing ? randexp(rng) / rate :
+                rand(rng, _CalendarScaledKernel(Exponential(inv(rate)), calendar, open_t))
             isfinite(dt) && dt <= window && push!(contacts, (id, open_t + dt))
-        end
-        return nothing
-    end
-    if calendar === nothing && !isfinite(window)
-        for id in group
-            rate = pair_rate(id)
-            rate > 0 || continue
-            push!(contacts, (id, open_t + randexp(rng) / rate))
         end
         return nothing
     end

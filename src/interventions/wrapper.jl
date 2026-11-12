@@ -8,20 +8,12 @@
 # does gate it overrides the default just like the others.
 abstract type InterventionWrapper <: AbstractIntervention end
 
-function initialise_individual!(w::InterventionWrapper, ind, state)
-    return initialise_individual!(w.intervention, ind, state)
-end
-function resolve_individual!(w::InterventionWrapper, ind, state)
-    return resolve_individual!(w.intervention, ind, state)
-end
-function competing_risk(w::InterventionWrapper, parent, contact, state)
-    return competing_risk(w.intervention, parent, contact, state)
-end
+initialise_individual!(w::InterventionWrapper, ind, state) = initialise_individual!(w.intervention, ind, state)
+resolve_individual!(w::InterventionWrapper, ind, state) = resolve_individual!(w.intervention, ind, state)
+competing_risk(w::InterventionWrapper, parent, contact, state) = competing_risk(w.intervention, parent, contact, state)
 is_active(w::InterventionWrapper, state::SimulationState) = is_active(w.intervention, state)
 required_fields(w::InterventionWrapper) = required_fields(w.intervention)
-function intervention_time(w::InterventionWrapper, ind::Individual)
-    return intervention_time(w.intervention, ind)
-end
+intervention_time(w::InterventionWrapper, ind::Individual) = intervention_time(w.intervention, ind)
 reset!(w::InterventionWrapper, ind::Individual) = reset!(w.intervention, ind)
 function infectious_removal_time(w::InterventionWrapper, ind::Individual)
     t = infectious_removal_time(w.intervention, ind)
@@ -49,6 +41,25 @@ end
 
 binding_release(w::InterventionWrapper) = binding_release(w.intervention)
 risk_applies(w::InterventionWrapper, route) = risk_applies(w.intervention, route)
+
+# Read through any wrapper, so `CapacityConstrained` composes with `Scheduled`
+# in either order.
+capacity_key(w::InterventionWrapper) = capacity_key(w.intervention)
+capacity_time_key(w::InterventionWrapper) = capacity_time_key(w.intervention)
+held_until(w::InterventionWrapper, ind) = held_until(w.intervention, ind)
+intervention_actions(w::InterventionWrapper, state, candidates) = intervention_actions(w.intervention, state, candidates)
+may_revise(w::InterventionWrapper, prior, new) = may_revise(w.intervention, prior, new)
+acts_on_population(w::InterventionWrapper) = acts_on_population(w.intervention)
+needs_contacts(w::InterventionWrapper) = needs_contacts(w.intervention)
+persistent_competing_risks(w::InterventionWrapper) = persistent_competing_risks(w.intervention)
+_may_lapse(w::InterventionWrapper) = _may_lapse(w.intervention)
+_triggers_of(w::InterventionWrapper) = _triggers_of(w.intervention)
+standing_block(w::InterventionWrapper) = standing_block(w.intervention)
+susceptibility_host_times(w::InterventionWrapper) = susceptibility_host_times(w.intervention)
+susceptibility_components(w::InterventionWrapper, host) = susceptibility_components(w.intervention, host)
+_innermost(w::InterventionWrapper) = _innermost(w.intervention)
+action_candidates(w::InterventionWrapper, state, current, traced, is_pending, members, contacts) =
+    action_candidates(w.intervention, state, current, traced, is_pending, members, contacts)
 # A wrapper that can withdraw the inner block part-way through a stretch
 # already recorded cannot have those stretches read back: one per-host record
 # says nothing about when the gating closed. The default is therefore to
