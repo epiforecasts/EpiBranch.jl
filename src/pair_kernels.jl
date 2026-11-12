@@ -309,8 +309,7 @@ end
 function _no_records_to_watch(watches, what)
     (watches === nothing || isempty(_watch_keys(watches))) || throw(
         ArgumentError(
-            "a `PairKernel` with $what reads no `individual.state`, so it has " *
-                "no records to watch; drop `watches`"
+            "a `PairKernel` with $what reads no `individual.state`, so it has no records to watch; drop `watches`"
         )
     )
     return ()
@@ -416,13 +415,7 @@ watched_records(::PairKernel{F, <:AbstractVector}) where {F} = ()
 # A per-edge collection declares the union of what its entries declare. Every
 # such entry a network resolves today reads no host state, so this is `()` in
 # practice; it keeps the union right if one ever does.
-function watched_records(ks::AbstractVector)
-    keys = Symbol[]
-    for k in ks, key in watched_records(k)
-        key in keys || push!(keys, key)
-    end
-    return Tuple(keys)
-end
+watched_records(ks::AbstractVector) = Tuple(unique(Symbol[key for k in ks for key in watched_records(k)]))
 
 """
     kernel_projection(kernel)
