@@ -126,6 +126,10 @@ discrete-generation models usually do. With the second rule and an offspring
 law with a closed-form sum (`Poisson`, `NegBin`, `Binomial`), a generation
 costs the same whatever the number of cases.
 
+A [`ModelSpec`](@ref) built on the process, with a `generation_length`, also
+runs here, and applies its `GroupVaccination` campaigns to the susceptibles of
+each type between generations.
+
 ```@docs
 simulate_by_generation
 GenerationCounts

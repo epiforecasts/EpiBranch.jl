@@ -130,7 +130,9 @@ By default everyone draws on the same budget. An intervention with a
 distinct value (a district, a treatment centre) gets its own
 `budget_per_period`, tracked under the same `period`, `carry_over` and
 `priority` independently of every other. Pass the value to `capacity_usage`
-to read one group's own usage.
+to read one group's own usage. A [`GroupVaccination`](@ref) with
+`group_key = :type` (the types of a `BranchingProcess`) has such a method and
+gives each type its own budget.
 
 [`Scheduled`](@ref) and `CapacityConstrained` can be combined in either
 order: both check each action's own proposed date.
@@ -273,6 +275,12 @@ found again for someone already served in an earlier call, from their recorded
 state alone, with nothing of the original proposal kept around.
 """
 resource_key(::AbstractIntervention, individual, state) = nothing
+
+# Each type of a branching process has its own `budget_per_period`, as in
+# `simulate_by_generation`. Groups under any other key share one budget, as in
+# the mixing approximations.
+resource_key(gv::GroupVaccination, individual, state) =
+    gv.group_key === :type ? get(individual.state, :type, nothing) : nothing
 
 resource_key(w::InterventionWrapper, individual, state) =
     resource_key(w.intervention, individual, state)

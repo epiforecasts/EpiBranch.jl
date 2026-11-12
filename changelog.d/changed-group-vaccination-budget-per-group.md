@@ -1,0 +1,1 @@
+`GroupVaccination` now has a `resource_key` method, so under `CapacityConstrained` each group has its own `budget_per_period` rather than all groups drawing on one. Read one group's usage with `capacity_usage(cc, state, group)`.
