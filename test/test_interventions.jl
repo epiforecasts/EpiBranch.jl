@@ -1146,27 +1146,6 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         )
     end
 
-    @testset "ContactTracing rejects action together with quarantine_on_trace" begin
-        @test_throws ArgumentError ContactTracing(
-            probability = 1.0, isolation_to_trace_delay = Exponential(0.5),
-            action = FlagOnly(), quarantine_on_trace = false
-        )
-    end
-
-    @testset "quarantine_on_trace is deprecated but still resolves an action" begin
-        ct = @test_deprecated ContactTracing(
-            probability = 1.0, isolation_to_trace_delay = Exponential(0.5),
-            quarantine_on_trace = true
-        )
-        @test ct.action == Quarantine(duration = Inf)
-
-        flag_only = @test_deprecated ContactTracing(
-            probability = 1.0, isolation_to_trace_delay = Exponential(0.5),
-            quarantine_on_trace = false
-        )
-        @test flag_only.action == FlagOnly()
-    end
-
     @testset "A Scheduled reset restores a standing isolation's record" begin
         iso = Isolation(onset_to_isolation_delay = Dirac(2.0), duration = Inf)
         state = empty_state(; rng = StableRNG(1))
@@ -3233,7 +3212,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             state.max_infection_time = 10.0
 
             # A `:reported` flag from anywhere else is not a report this
-            # trigger counts. `PerCaseObservation` sets one after the
+            # trigger counts. An observation model sets one after the
             # simulation, so a trigger never meets it mid-run.
             inds[4].state[:reported] = true
             inds[4].state[:reporting_time] = 1.0

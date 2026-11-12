@@ -169,12 +169,11 @@ EpiBranch.chain_size_distribution(d::BrokenExactOffspring) = throw(d.error)
         end
     end
 
-    @testset "chain_size_distribution — per-case observation" begin
+    @testset "chain_size_distribution — Reporting step" begin
         data = [1, 2, 1, 3, 1]
         obs = ModelSpec(
-            BranchingProcess(Poisson(0.5)); observation = PerCaseObservation(;
-                detection_prob = 0.7
-            )
+            BranchingProcess(Poisson(0.5));
+            progression = [Reporting(delay = Dirac(0.0), probability = 0.7, from = :infection)]
         )
         d = chain_size_distribution(obs; n_sim = 0)
         # n_sim=0 forces the wrapper path; logpdf should still match the
@@ -201,7 +200,6 @@ EpiBranch.chain_size_distribution(d::BrokenExactOffspring) = throw(d.error)
         pc = fill(1.0, length(data))
         specs = (
             ModelSpec(bp; observation = MinimumSize(2)),
-            ModelSpec(bp; observation = PerCaseObservation(; detection_prob = 0.5)),
             ModelSpec(bp; observation = ChainDetection(0.4)),
             ModelSpec(bp; progression = [Reporting(delay = Dirac(0.0), probability = 0.5, from = :infection)]),
         )
@@ -422,7 +420,7 @@ EpiBranch.chain_size_distribution(d::BrokenExactOffspring) = throw(d.error)
         bp = BranchingProcess(Poisson(0.5))
         bp_obs = ModelSpec(
             BranchingProcess(Poisson(0.5));
-            observation = PerCaseObservation(detection_prob = 0.6)
+            progression = [Reporting(delay = Dirac(0.0), probability = 0.6, from = :infection)]
         )
         bp_cm = BranchingProcess(ClusterMixed(Poisson, Gamma(2.0, 0.4)))
         bp_mt = BranchingProcess(
@@ -442,10 +440,8 @@ EpiBranch.chain_size_distribution(d::BrokenExactOffspring) = throw(d.error)
 
         @testset "chain_length_distribution" begin
             @test chain_length_distribution(bp) isa Distribution
-            # per-case detection has no well-defined chain length; the
-            # refusal surfaces when the law is evaluated, not at construction.
-            dl = chain_length_distribution(bp_obs)
-            @test_throws ArgumentError logpdf(dl, [0, 1, 2])
+            # per-case reporting has no well-defined chain length.
+            @test_throws ArgumentError chain_length_distribution(bp_obs)
         end
 
         @testset "offspring_distribution" begin

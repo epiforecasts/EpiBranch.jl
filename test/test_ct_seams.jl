@@ -120,14 +120,6 @@ end
         @test ct.action isa Quarantine
     end
 
-    @testset "quarantine_on_trace = false selects FlagOnly" begin
-        ct = @test_deprecated ContactTracing(
-            probability = 1.0, isolation_to_trace_delay = Exponential(0.1),
-            quarantine_on_trace = false
-        )
-        @test ct.action isa FlagOnly
-    end
-
     @testset "Default ContactTracing reproduces existing behaviour" begin
         # Tracing on isolated symptomatic parents, with quarantine.
         rng = StableRNG(42)

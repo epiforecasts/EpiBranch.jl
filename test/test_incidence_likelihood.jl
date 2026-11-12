@@ -238,7 +238,7 @@ struct _RiskFromAge end
         )
         @test_throws ArgumentError loglikelihood(data, with_iv)
 
-        with_obs = ModelSpec(model; observation = PerCaseObservation(detection_prob = 0.7))
+        with_obs = ModelSpec(model; observation = ChainDetection(0.7))
         @test_throws ArgumentError loglikelihood(data, with_obs)
 
         with_reporting = ModelSpec(

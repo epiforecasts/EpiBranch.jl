@@ -521,27 +521,6 @@ function BranchingProcess(window::Infectiousness, windows::Infectiousness...; kw
     return BranchingProcess((window, windows...); kwargs...)
 end
 
-# ── Offspring generation ─────────────────────────────────────────────
-
-"""
-    generate_offspring(model::BranchingProcess, parent, state)
-
-Draw how many contacts the case `parent` makes, before
-susceptibility and interventions decide which are infected: one number, or one
-number per type in a multi-type model. Only defined for a process with a single
-[`Infectiousness`](@ref) window. The simulation does not use it, since each
-window draws its own contacts when a case settles; it is kept for code that
-wants the count for one case.
-"""
-function generate_offspring(model::BranchingProcess, parent, state)
-    length(model.infectiousness) == 1 || throw(
-        ArgumentError(
-            "generate_offspring is defined for a single infectiousness window"
-        )
-    )
-    return draw_offspring(state.rng, model.infectiousness[1].offspring, parent, state)
-end
-
 # ── Offspring drawing ────────────────────────────────────────────────
 
 """Draw the number of secondary cases of one case from an offspring

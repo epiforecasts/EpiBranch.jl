@@ -89,32 +89,20 @@ underscore are internal.
 | `:infection_aborted_time` | `Float64` | — | Simulation, through `abort_infection!` (for example by `RingVaccination`'s `post_exposure_efficacy`) | Any intervention hook |
 | `:_settled` | `Bool` | `false` | Simulation (action delivery) | Once a case's own round of action discovery has run; internal, read through `is_settled` |
 | `:_intervention_actions` | `Dict` | `Dict()` | Any intervention using the action protocol | `action_draw!`; internal. Each intervention's own draws for this person, so a draw is made once and reread |
-| `:reporting_time` | `Float64` | `Inf` | `Reporting` transition *or* `PerCaseObservation` | `resolve_individual!` / after the simulation; reset to `Inf` by `censor_after_outcome!` if it falls after `:outcome_time` |
+| `:reporting_time` | `Float64` | `Inf` | `Reporting` transition | `resolve_individual!` / after the simulation; reset to `Inf` by `censor_after_outcome!` if it falls after `:outcome_time` |
 | `:admitted` | `Bool` | `false` | `Hospitalisation` transition | `resolve_individual!`; reset to `false` by `censor_after_outcome!` if `:admission_time` falls after `:outcome_time` |
 | `:admission_time` | `Float64` | `Inf` | `Hospitalisation` transition | `resolve_individual!`; reset to `Inf` by `censor_after_outcome!` if it falls after `:outcome_time` |
 | `:death_candidate_time` | `Float64` | `Inf` | `Death` transition | `resolve_individual!` |
 | `:recovery_candidate_time` | `Float64` | `Inf` | `Recovery` transition | `resolve_individual!` |
 | `:outcome` | `Symbol` | — | Any terminal transition (`Death`, `Recovery`, `Transition(...; terminal = true)`, your own) | `resolve_individual!` (terminal) |
 | `:outcome_time` | `Float64` | — | Any terminal transition (`Death`, `Recovery`, `Transition(...; terminal = true)`, your own) | `resolve_individual!` (terminal) |
-| `:reported` | `Bool` | `false` | `Reporting` transition *or* `PerCaseObservation` | `resolve_individual!` / after the simulation; reset to `false` by `censor_after_outcome!` if `:reporting_time` falls after `:outcome_time` |
+| `:reported` | `Bool` | `false` | `Reporting` transition | `resolve_individual!` / after the simulation; reset to `false` by `censor_after_outcome!` if `:reporting_time` falls after `:outcome_time` |
 | `:cluster_theta` | `Float64` | — | `ClusterMixed` | First read in a simulation |
 | `:vaccine_acceptance` | `Float64` | — | `vaccine_acceptance` | Creation (default key; can be changed) |
 | `:infectious_time` | `Float64` | `Inf` | `Transition(:infectious, …)` | `resolve_individual!` |
 | `:recovered_time` | `Float64` | `Inf` | `Transition(:recovered, …)` | `resolve_individual!` |
 | `:susceptible_again_time` | `Float64` | `Inf` | `Transition(:susceptible_again, …)` | `resolve_individual!` |
 | `:_exclusive_draw#N` | `Float64` | — | `exclusive_probabilities` | `resolve_individual!`; internal. The uniform draw a group of mutually exclusive outcomes shares, under a key unique to that call of `exclusive_probabilities` |
-
-!!! warning "Reporting transition and per-case observation clash"
-    `:reported` and `:reporting_time` are written both by the `Reporting`
-    clinical transition, from its probability during the simulation, and by
-    the deprecated `PerCaseObservation`, from its detection probability after
-    the simulation. `Reporting` is the one the chain-size likelihood,
-    `chain_size_distribution` and `end_of_outbreak_probability` read. Both
-    leave `:reporting_time` at `Inf` for a case not reported, so
-    [`weekly_incidence`](@ref) with `by = :reporting` counts reported cases
-    the same way whichever wrote them. A model can use only one of them:
-    `simulate` stops with an error when `PerCaseObservation` finds `:reported`
-    already written by a transition.
 
 ### Vaccination keys
 
