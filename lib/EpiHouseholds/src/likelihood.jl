@@ -124,7 +124,7 @@ Condition each household on its recruited index case, `data.is_index`, as
 recorded.
 
 Only that one member is taken as given. Co-primary cases infected from outside
-at about the same time are assumed to be from household transmission unless the model
+at about the same time are assumed to come from household transmission unless the model
 has a community hazard. Recruitment that depends on the index case's detection,
 symptoms or secondary cases makes the households unrepresentative. The
 estimate is then biased unless the likelihood is conditioned on that
@@ -142,7 +142,7 @@ infection times change.
 
 This covers an index case that was not the first infected, but it still takes
 only one member per household as given. Co-primary cases infected from outside
-at about the same time are assumed to be from household transmission unless the model
+at about the same time are assumed to come from household transmission unless the model
 has a community hazard. Recruitment that depends on detection, symptoms or
 secondary cases biases the estimate unless the likelihood is conditioned on it.
 """
