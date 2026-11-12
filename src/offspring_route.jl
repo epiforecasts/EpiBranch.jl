@@ -477,6 +477,15 @@ end
 # its offspring and `model_generation_time` its kernel, so it runs on the same
 # route. Whether a tracing ring may draw a person's count before they settle is
 # the model's own answer to `reads_settled_state`.
+function generate_offspring(model::TransmissionModel, parent, state)
+    throw(
+        ArgumentError(
+            "$(typeof(model)) defines neither `generate_offspring` nor `contacts_of`; " *
+                "define one to say who each case infects."
+        )
+    )
+end
+
 struct _Generated{M <: TransmissionModel}
     model::M
 end
