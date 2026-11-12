@@ -486,13 +486,9 @@ end
 # an `OffspringTimes` already gave.
 _window_infection_time(::NoGenerationTime, from_t::Real, state) = from_t
 _window_infection_time(offset::_FixedOffset, from_t::Real, state) = from_t + offset.offset
-function _window_infection_time(kernel::Distribution, from_t::Real, state)
-    return from_t + rand(state.rng, kernel)
-end
-# A window with a `calendar` scaling its kernel draws from the resulting
-# calendar-scaled kernel directly, exactly as a `PairKernel` with a calendar
-# does on the structure-driven routes.
-function _window_infection_time(kernel::_CalendarScaledKernel, from_t::Real, state)
+# Any other kernel (a distribution, or a calendar-scaled kernel, which is not a
+# `Distribution`) is drawn from directly.
+function _window_infection_time(kernel, from_t::Real, state)
     return from_t + rand(state.rng, kernel)
 end
 
