@@ -205,6 +205,89 @@ An [`Isolation`](@ref) that leaves some transmission after isolating
     extinction or `max_time` unless an explicit value or a `stopping_rules`
     entry sets a cap.
 
+## Approximations for large populations
+
+Simulating every person is exact but its cost grows with the outbreak. For a population of tens of thousands or more, or a likelihood that needs many runs, an approximation is often accurate enough. Three models share one interface with the exact simulation, `simulate(model; n_initial, max_time)`, and return the compartment counts at `max_time` rather than a line list:
+
+- [`MeanFieldProcess`](@ref) integrates the deterministic SIR equations. It has no randomness: every call returns the same path.
+- [`LinearNoiseProcess`](@ref) follows the same mean path and adds a Gaussian covariance of the susceptible and infectious counts around it.
+- [`HybridProcess`](@ref) runs the exact simulation while fewer than `threshold` people are infectious, then switches to an approximation, keeping the counts.
+
+They take the removal rate γ (`removal_rate`) rather than a recovery `Transition`. An exponential infectious period of mean 5 days is γ = 0.2. Here they are set up alongside an exact model with the same β and γ:
+
+```@example homogeneous
+N = 5000
+exact = ModelSpec(HomogeneousProcess(; transmission_rate = 0.4, population_size = N);
+    progression = [Transition(:recovered; rate = 0.2, terminal = true)])
+mean_field = MeanFieldProcess(;
+    population_size = N, transmission_rate = 0.4, removal_rate = 0.2)
+linear_noise = LinearNoiseProcess(;
+    population_size = N, transmission_rate = 0.4, removal_rate = 0.2)
+hybrid = HybridProcess(exact, mean_field; threshold = 50)
+
+mf_state = simulate(mean_field; n_initial = 5, max_time = 20.0)
+```
+
+The state holds `S`, `I` and `R` as continuous numbers, and `t`. The number ever infected is `N - S`. Compare it with 200 exact runs stopped at day 20, for 5 index cases and for 100. The linear-noise standard deviation of the infected count is read from the covariance of `(S, I)`, and the hybrid model, which is still exact if it has not reached its threshold by day 20, is run with the same seeds:
+
+```@example homogeneous
+# A hybrid run that has not reached the threshold by `max_time` is still exact
+infected(h) = h.phase == :approx ? N - h.approx.S : count(is_infected, h.exact.individuals)
+
+function compare(n_initial; max_time = 20.0)
+    exact_runs = [simulate(exact; n_initial, max_time, rng = StableRNG(s))
+                  for s in 1:200]
+    exact_cases = [count(is_infected, r.individuals) for r in exact_runs]
+    hybrid_cases = [infected(simulate(hybrid; n_initial, max_time, rng = StableRNG(s)))
+                    for s in 1:200]
+    mf = simulate(mean_field; n_initial, max_time)
+    ln = simulate(linear_noise; n_initial, max_time)
+    return (n_initial = n_initial,
+        exact_mean = round(mean(exact_cases), digits = 0),
+        exact_sd = round(std(exact_cases), digits = 0),
+        hybrid_mean = round(mean(hybrid_cases), digits = 0),
+        mean_field = round(N - mf.S, digits = 0),
+        linear_noise_sd = round(sqrt(ln.covariance[1, 1]), digits = 0))
+end
+
+[compare(5), compare(100)]
+```
+
+With 100 index cases the mean-field count and the exact mean agree closely, and the linear-noise standard deviation matches the exact one. With 5 the mean-field count is too high, by about 6% here, and the standard deviation is too wide, 295 against 252 for the exact runs. Chance decides how quickly a small outbreak takes off, and the deterministic path cannot represent that. The hybrid model runs the early, chance-dominated stage exactly and lands closer (460), but not on the exact mean, because with a threshold of 50 infectious people it hands over while chance still affects the timing. A higher threshold moves it closer to the exact simulation at more cost.
+
+The final size is much less sensitive to that early randomness, because it is set by R0 and the population:
+
+```@example homogeneous
+final_exact = [simulate(exact; n_initial = 5, rng = StableRNG(s)).cumulative_cases
+               for s in 1:100]
+final_mf = N - simulate(mean_field; n_initial = 5, max_time = 200.0).S
+
+println("Exact mean final size: ", round(mean(final_exact), digits = 0))
+println("Mean-field final size: ", round(final_mf, digits = 0))
+```
+
+As a guide, use the mean-field model for a quick deterministic trajectory or final size when the outbreak starts with many infections. Use the linear-noise model when you need the spread around that path, as in a Kalman filter. Use the hybrid model when the outbreak starts from a few cases and the population is large, so that chance in the early stage matters but running the whole outbreak exactly is too slow. Use the exact model when the population is small, or when you need a line list or interventions that act on individuals. The approximations track only the compartment counts, and none of them returns individuals.
+
+For a population with several mixing groups, [`MixingMeanFieldProcess`](@ref) and [`MixingLinearNoiseProcess`](@ref) are the equivalents of the first two for a [`MixingProcess`](@ref) `ModelSpec`, and `HybridProcess` pairs the exact mixing model with either. See [Age- or group-structured mixing in a closed population](@ref).
+
+## A branching process by generation
+
+The same idea applies to a [`BranchingProcess`](@ref) in a finite population. [`simulate_by_generation`](@ref) draws each generation's total number of cases at once from the counts in the previous one, rather than person by person, so its cost depends on the number of generations and not on the number of cases. Its interface mirrors `simulate`'s. Here is a negative binomial offspring distribution with mean 2 in a population of 200,000, simulated for 30 generations from 10 index cases. The exact simulation stops at `max_cases` (10,000 by default), so the limit is raised above the population:
+
+```@example homogeneous
+bp = BranchingProcess(NegBin(2.0, 0.5); population_size = 200_000)
+
+by_generation = [simulate_by_generation(bp; n_initial = 10, max_generations = 30,
+                     rng = StableRNG(s)).cumulative_cases for s in 1:20]
+individual = [simulate(bp; n_initial = 10, max_generations = 30, max_cases = 500_000,
+                  rng = StableRNG(s)).cumulative_cases for s in 1:20]
+
+println("By generation: ", round(mean(by_generation)), " (sd ", round(std(by_generation)), ")")
+println("Individual:    ", round(mean(individual)), " (sd ", round(std(individual)), ")")
+```
+
+The two agree on the final size and its spread. The generation-based run keeps no individuals, so there is no line list, and individual-level interventions such as isolation or contact tracing do not apply. The [`simulate_by_generation`](@ref) docstring lists what does: immunity at the start, the depletion rule within a generation and vaccination campaigns. Choose it for large, otherwise unstructured outbreaks where you need counts, and the exact simulation when you need who infected whom.
+
 ## Structured mixing
 
 `HomogeneousProcess` assumes everyone mixes with everyone else at the same
