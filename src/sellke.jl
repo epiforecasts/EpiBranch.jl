@@ -113,8 +113,8 @@ end
 # run, and searching the method table takes a large share of the time in a small
 # outbreak. The counter is checked on each call so that a hook defined outside
 # the package after it was loaded is still found.
-# The cache is an immutable (world, dict) pair that is swapped, never mutated,
-# so the hit path reads it without a lock, which matters under threaded
+# The cache is an immutable (world, dict) pair that is replaced rather than
+# mutated. A hit reads it without a lock, which matters under threaded
 # simulation. A miss takes the lock only to publish a fresh copy of the dict.
 const _OwnMethodKey = Tuple{Any, Type, Type, Union{Int, Nothing}}
 const _OWN_METHOD_STATE = Ref{Tuple{UInt, Dict{_OwnMethodKey, Bool}}}(
