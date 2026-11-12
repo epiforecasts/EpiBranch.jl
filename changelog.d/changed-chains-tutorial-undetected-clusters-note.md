@@ -1,0 +1,1 @@
+The chain statistics tutorial no longer warns that the thinned chain-size likelihood ignores clusters with no detected case, since `ThinnedChainSize` now conditions on at least one case being detected.
