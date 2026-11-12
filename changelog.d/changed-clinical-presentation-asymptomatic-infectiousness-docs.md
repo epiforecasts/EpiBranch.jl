@@ -1,0 +1,1 @@
+The `clinical_presentation` docstring and the interventions tutorial now say that an asymptomatic case is as infectious as a symptomatic one, and show how to lower it by listing `transmission_traits` with an `infectiousness` that reads `ind.state[:asymptomatic]`.

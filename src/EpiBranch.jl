@@ -4,7 +4,7 @@ using DataAPI: DataAPI
 using DataFrames
 using Dates
 using Distributions
-using LinearAlgebra: LinearAlgebra, Diagonal, Symmetric, eigvals
+using LinearAlgebra: LinearAlgebra, Diagonal, I, Symmetric, cholesky, diag, eigvals, issuccess
 using QuadGK
 using Random
 using SpecialFunctions
@@ -99,6 +99,7 @@ include("observation.jl")
 
 # Simulation engine
 include("simulation.jl")
+include("state_space.jl")
 
 # Transmission-route windows: the unit that lets one case carry several routes,
 # each opening and closing on different states of its natural history. Defined
@@ -249,6 +250,7 @@ export clinical_presentation, demographics, transmission_traits, groups,
     group_attribute, vaccine_acceptance
 
 # Exports — simulation
+export outbreak_state_space
 export simulate, make_contact!, susceptible_fraction, realise!
 export CommonRandomNumbers
 export generate_offspring, contacts_of
@@ -257,6 +259,7 @@ export generate_offspring, contacts_of
 export event_time_metadata, linelist, contacts, chain_statistics, compute_trace_level!
 export realised_generation_interval, realised_generation_intervals
 export containment_probability, is_extinct, generation_R, weekly_incidence, scenario_sweep
+export summarise
 
 # Exports — analytical
 export reproduction_number

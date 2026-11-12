@@ -30,6 +30,11 @@ public required_fields
 public infectious_removal_time
 public risk_applies
 public standing_block
+# The built-in risk sources the guides link to, and the kernel trait for a
+# kernel with mass at infinity.
+public HostImmunity
+public AbortedInfection
+public infinite_draw_is_final
 public analytic_offspring_effect
 # End an infection early from any intervention hook, and read when it ended.
 public abort_infection!

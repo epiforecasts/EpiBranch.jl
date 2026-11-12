@@ -108,12 +108,7 @@ function NetworkProcess(
     adj = _as_adjacency(adjacency)
     edge_kernel = _validate_kernel(kernel, adj)
     _check_external(external_hazard, length(adj))
-    obs_end_value = Float64(obs_end)
-    (!isnan(obs_end_value) && obs_end_value >= 0) || throw(
-        ArgumentError(
-            "obs_end must be a non-negative number (Inf allowed), got $obs_end"
-        )
-    )
+    obs_end_value = _check_obs_end(obs_end)
 
     return NetworkProcess(
         adj, edge_kernel, from, Tuple(until),

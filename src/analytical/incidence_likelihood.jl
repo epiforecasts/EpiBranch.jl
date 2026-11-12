@@ -44,39 +44,49 @@
 # differentiation), the same contract `_chain_length_ll_pgf` keeps for the
 # chain-length likelihood.
 
+# Bin a continuous distribution with cumulative distribution `F` onto the
+# integer lags `first_lag`, `first_lag + 1`, ...: the first entry is
+# `F(first_lag)`, the mass at or below that lag, then each `(l - 1, l]`. Stops
+# once the remaining tail is below `tol`, then renormalises away that
+# negligible truncation. `what` names the distribution in the truncation
+# warning.
+function _bin_cdf(F, first_lag::Integer, tol::Real, max_lag::Int, what::AbstractString)
+    lag = first_lag
+    c = F(lag)
+    p = [c]
+    while !(1 - c < tol)
+        if lag >= max_lag
+            @warn "The $what has more than $tol of its mass above a lag of " *
+                "$max_lag steps, so the discretised pmf is truncated there." maxlog = 1
+            break
+        end
+        lag += 1
+        c_prev = c
+        c = F(lag)
+        push!(p, c - c_prev)
+    end
+    s = sum(p)
+    s > 0 || throw(ArgumentError("the $what has no mass on the lags binned"))
+    return p ./ s
+end
+
 # Discretised generation-time pmf over lag 1, 2, ..., binning the continuous
 # `generation_time` distribution into day-length (or whatever `data`'s unit
-# is) steps: `w[j]` is the probability mass in `(j - 1, j]`. Stops once the
-# remaining tail is below `tol`, then renormalises away that negligible
-# truncation. Mass at or below 0 is dropped, which assumes (as every
-# generation-time distribution used elsewhere in the package does) that it is
-# continuous with no atom there: the first bin is `cdf(generation_time, 1)`
-# alone, with no `cdf(generation_time, 0)` subtracted. That cdf is 0 for any
-# such distribution, so skipping it changes nothing, but calling it would:
-# a `Dual` parameter sends the cdf of a distribution like `LogNormal` through
+# is) steps: `w[j]` is the probability mass in `(j - 1, j]`. Mass at or below
+# 0 is dropped, which assumes (as every generation-time distribution used
+# elsewhere in the package does) that it is continuous with no atom there:
+# the first bin is `cdf(generation_time, 1)` alone, with no
+# `cdf(generation_time, 0)` subtracted. That cdf is 0 for any such
+# distribution, so skipping it changes nothing, but calling it would: a
+# `Dual` parameter sends the cdf of a distribution like `LogNormal` through
 # `log(0) = -Inf`, and the 0 · Inf that falls out of differentiating that is
 # a `NaN`, not the 0 the mass being dropped actually gives.
 function _discretize_generation_interval(
         generation_time::Distribution; tol::Real = 1.0e-8, max_lag::Int = 10_000
     )
-    j = 1
-    c = cdf(generation_time, j)
-    w = [c]
-    while !(1 - c < tol)
-        if j >= max_lag
-            @warn "The generation-time distribution has more than $tol of its mass " *
-                "above a lag of $max_lag steps, so the discretised pmf is truncated " *
-                "there." maxlog = 1
-            break
-        end
-        j += 1
-        c_prev = c
-        c = cdf(generation_time, j)
-        push!(w, c - c_prev)
-    end
-    s = sum(w)
-    s > 0 || throw(ArgumentError("generation_time has no mass on positive lags"))
-    return w ./ s
+    return _bin_cdf(
+        t -> cdf(generation_time, t), 1, tol, max_lag, "generation-time distribution"
+    )
 end
 
 # Discretised infection-to-report delay pmf over lag 0, 1, 2, ...: `d[1]` is
@@ -90,7 +100,7 @@ function _discretize_report_delay(
         delay::Distribution; tol::Real = 1.0e-8, max_lag::Int = 10_000
     )
     minimum(delay) >= 0 || throw(ArgumentError("reporting_delay must be non-negative"))
-    return _bin_delay(t -> cdf(delay, t), tol, max_lag)
+    return _bin_cdf(t -> cdf(delay, t), 0, tol, max_lag, "reporting delay")
 end
 
 # The sum of two independent delays, such as an incubation period and the
@@ -106,74 +116,15 @@ function _discretize_report_delay(
     a, b = delay.first, delay.second
     minimum(a) >= 0 && (b isa Real ? b >= 0 : minimum(b) >= 0) ||
         throw(ArgumentError("reporting delays must be non-negative"))
-    b isa Real && return _bin_delay(t -> cdf(a, t - b), tol, max_lag)
+    b isa Real && return _bin_cdf(t -> cdf(a, t - b), 0, tol, max_lag, "reporting delay")
     # P(A + B ≤ t) = ∫ f_A(x) F_B(t - x) dx over x ≤ t, B being non-negative.
     lo = minimum(a)
     F(t) = t <= lo ? 0.0 : first(quadgk(x -> pdf(a, x) * cdf(b, t - x), lo, t))
-    return _bin_delay(F, tol, max_lag)
-end
-
-# Bin a delay with cumulative distribution `F` onto lags 0, 1, 2, ...: the
-# mass at or below 0, then each `(l - 1, l]`, until the remaining tail is
-# below `tol`.
-function _bin_delay(F, tol::Real, max_lag::Int)
-    d = [F(0)]
-    l = 1
-    while 1 - F(l - 1) >= tol
-        if l > max_lag
-            @warn "The reporting delay has more than $tol of its mass above a lag of " *
-                "$max_lag steps, so the discretised pmf is truncated there." maxlog = 1
-            break
-        end
-        push!(d, F(l) - F(l - 1))
-        l += 1
-    end
-    return d ./ sum(d)
-end
-
-# The cumulant generating function K(u) = log G(u) of the reported counts at
-# steps 1:n, for `seeds` index cases at step 0, an offspring law read through
-# `pgf`, a discretised generation-time pmf `w`, a reporting probability `ρ`
-# and a discretised infection-to-report delay pmf `d` (lag 0 first). Backward
-# recursion in `k` so that `Ψ[m]` for `m > k` is already known. `Toff` is the
-# offspring law's own element type (`Distributions.partype`, `Float64` for a
-# `GeneratingFunctionOffspring`): `Ψ`'s element type promotes `eltype(u)`
-# with it, and with `ρ`'s, rather than taking `eltype(u)` alone, so a `Dual`
-# offspring or reporting parameter composes correctly even while `u` is
-# still the plain `Float64` ForwardDiff probes before perturbing it (nested
-# automatic differentiation, as a `Dual` offspring under an outer AD call
-# over R or k gives).
-function _incidence_log_pgf(
-        u::AbstractVector{T}, w::AbstractVector{<:Real}, pgf, n::Integer, seeds::Real,
-        ::Type{Toff}, ρ::Real = 1, d::AbstractVector{<:Real} = [1.0]
-    ) where {T <: Real, Toff <: Real}
-    S = promote_type(T, eltype(w), eltype(d), Toff, typeof(ρ))
-    U(m) = 1 <= m <= n ? S(u[m]) : one(S)
-    function report(k)
-        r = zero(S)
-        for l in 0:(length(d) - 1)
-            r += d[l + 1] * U(k + l)
-        end
-        return 1 - ρ + ρ * r
-    end
-    Ψ = Vector{S}(undef, n)
-    for k in n:-1:1
-        a = zero(S)
-        for j in 1:length(w)
-            m = k + j
-            a += w[j] * (m > n ? one(S) : Ψ[m])
-        end
-        Ψ[k] = report(k) * pgf(a)
-    end
-    a0 = zero(S)
-    for j in 1:length(w)
-        a0 += w[j] * (j > n ? one(S) : Ψ[j])
-    end
-    return seeds * log(report(0) * pgf(a0))
+    return _bin_cdf(F, 0, tol, max_lag, "reporting delay")
 end
 
 # The offspring law's own numeric element type, promoted with `eltype(u)` in
-# `_incidence_log_pgf` above. `Distributions.partype` gives this for any
+# `_incidence_log_pgf`. `Distributions.partype` gives this for any
 # `Distribution`; a `GeneratingFunctionOffspring`'s `pgf` closure is opaque, so
 # its own parameters (if any are duals under AD) must already return that
 # type consistently and `Float64` is assumed here.
@@ -249,11 +200,12 @@ function incidence_moments(
     w = _discretize_generation_interval(generation_time; tol, max_lag)
     d = _discretize_report_delay(reporting_delay; tol, max_lag)
     Toff = _offspring_partype(offspring)
+    # The one-type case of the multi-type recursion.
     K(u) = _incidence_log_pgf(
-        u, w, s -> _pgf(offspring, s), n, seeds, Toff, reporting_probability, d
+        u, w, [s -> _pgf(offspring, s)], ones(1, 1), n, [seeds], reporting_probability,
+        d, Toff
     )
-    μ, H = _gradient_and_hessian(K, ones(Float64, n))
-    return (mean = μ, cov = Symmetric(H + Diagonal(μ)))
+    return _incidence_moments_from(K, n)
 end
 
 # ── Matching a distribution to the moments ────────────────────────────
@@ -288,6 +240,13 @@ the usual lognormal moment equations, `logpdf` adding the log-Jacobian
 `-Σ log(data)` for the change of variables. Needs every observed count to be
 strictly positive, since a lognormal puts no mass at 0; use
 [`NormalApproximation`](@ref) for data that includes zeros.
+
+The log-scale covariance, `log1p(Σ[t, u] / (μ[t] μ[u]))`, is not always
+positive definite, for example for long subcritical series. When it is not, a
+small multiple of the identity (starting at `1e-12` times the largest log-scale
+variance and doubling until the matrix factorises) is added to its diagonal,
+which slightly regularises the likelihood. If no such
+shift works, an `ArgumentError` is thrown.
 """
 struct LognormalApproximation <: IncidenceApproximation end
 
@@ -326,7 +285,31 @@ function _incidence_loglik(::LognormalApproximation, data::AbstractVector{<:Real
                 for t in 1:n, t′ in 1:n
         ]
     )
+    Σ_log = _make_positive_definite(Σ_log)
     return logpdf(MvNormal(μ_log, Σ_log), log.(data)) - sum(log, data)
+end
+
+# The log1p transform of a covariance matrix is not always positive definite,
+# for example for long subcritical series. Add the smallest power-of-two
+# multiple of 1e-12 times the largest variance to the diagonal that lets the
+# Cholesky factorisation succeed. A matrix that is already positive definite
+# is returned unchanged. The diagonal shift works with automatic differentiation.
+function _make_positive_definite(Σ::Symmetric)
+    issuccess(cholesky(Σ; check = false)) && return Σ
+    scale = maximum(diag(Σ))
+    ε = 1.0e-12 * scale
+    n = size(Σ, 1)
+    for _ in 1:60
+        Σ_shifted = Symmetric(Σ + ε * I(n))
+        issuccess(cholesky(Σ_shifted; check = false)) && return Σ_shifted
+        ε *= 2
+    end
+    throw(
+        ArgumentError(
+            "LognormalApproximation: the log-scale covariance is not positive definite " *
+                "and could not be repaired with a diagonal term."
+        )
+    )
 end
 
 # ── Unified loglikelihood interface ────────────────────────────────────
@@ -408,16 +391,23 @@ end
 # r as in the single-type recursion but reading type j's own variables, and
 # K(u) = Σ_j seeds[j] · log Ψ_{0, j}(u). The variables are ordered step
 # first, then type, as `vec` orders an n × m matrix.
+#
+# The single-type process is the one-type case, with `pgfs = [pgf]` and
+# `alloc = ones(1, 1)`. `Tpar` is the offspring laws' own numeric element
+# type (`Distributions.partype`, `Float64` for a `GeneratingFunctionOffspring`
+# because its `pgf` closure is opaque): `Ψ`'s element type promotes `eltype(u)` with
+# it, and with `ρ`'s, rather than taking `eltype(u)` alone, so a `Dual`
+# offspring or reporting parameter composes correctly even while `u` is still
+# the plain `Float64` ForwardDiff probes before perturbing it (nested
+# automatic differentiation, as a `Dual` offspring under an outer AD call over
+# R or k gives).
 function _incidence_log_pgf(
-        u::AbstractVector{T}, w::AbstractVector{<:Real}, o::MultiTypeOffspring,
-        n::Integer, seeds::AbstractVector{<:Real}, ρ::Real, d::AbstractVector{<:Real}
-    ) where {T <: Real}
-    m = _n_types(o)
-    laws = _total_count_laws(o)
-    S = promote_type(
-        T, eltype(w), eltype(d), eltype(o.alloc_probs), eltype(o.R_by_type), typeof(ρ),
-        map(Distributions.partype, laws)...
-    )
+        u::AbstractVector{T}, w::AbstractVector{<:Real}, pgfs::AbstractVector,
+        alloc::AbstractMatrix{<:Real}, n::Integer, seeds::AbstractVector{<:Real},
+        ρ::Real, d::AbstractVector{<:Real}, ::Type{Tpar}
+    ) where {T <: Real, Tpar <: Real}
+    m = length(pgfs)
+    S = promote_type(T, eltype(w), eltype(d), eltype(alloc), Tpar, typeof(ρ))
     U(k, i) = 1 <= k <= n ? S(u[k + (i - 1) * n]) : one(S)
     function report(k, i)
         r = zero(S)
@@ -438,20 +428,40 @@ function _incidence_log_pgf(
         end
         return B
     end
-    child(j) = sum(o.alloc_probs[i, j] * B[i] for i in 1:m)
+    child(j) = sum(alloc[i, j] * B[i] for i in 1:m)
     for k in n:-1:1
         next_generation!(k)
         for j in 1:m
-            Ψ[k, j] = report(k, j) * _pgf(laws[j], child(j))
+            Ψ[k, j] = report(k, j) * pgfs[j](child(j))
         end
     end
     next_generation!(0)
     K = zero(S)
     for j in 1:m
         iszero(seeds[j]) && continue
-        K += seeds[j] * log(report(0, j) * _pgf(laws[j], child(j)))
+        K += seeds[j] * log(report(0, j) * pgfs[j](child(j)))
     end
     return K
+end
+
+function _incidence_log_pgf(
+        u::AbstractVector, w::AbstractVector{<:Real}, o::MultiTypeOffspring,
+        n::Integer, seeds::AbstractVector{<:Real}, ρ::Real, d::AbstractVector{<:Real}
+    )
+    laws = _total_count_laws(o)
+    Tpar = promote_type(
+        eltype(o.R_by_type), map(Distributions.partype, laws)...
+    )
+    pgfs = [s -> _pgf(law, s) for law in laws]
+    return _incidence_log_pgf(u, w, pgfs, o.alloc_probs, n, seeds, ρ, d, Tpar)
+end
+
+# Mean and covariance from the cumulant generating function `K` of `N` step
+# variables, by the factorial-to-ordinary moment bridge described above.
+function _incidence_moments_from(K, N::Integer)
+    u1 = ones(Float64, N)
+    μ, H = _gradient_and_hessian(K, u1)
+    return (mean = μ, cov = Symmetric(H + Diagonal(μ)))
 end
 
 """
@@ -494,8 +504,8 @@ function incidence_moments(
     w = _discretize_generation_interval(generation_time; tol, max_lag)
     d = _discretize_report_delay(reporting_delay; tol, max_lag)
     K(u) = _incidence_log_pgf(u, w, offspring, n, seeds, reporting_probability, d)
-    μ, H = _gradient_and_hessian(K, ones(Float64, n * m))
-    return (mean = reshape(μ, n, m), cov = Symmetric(H + Diagonal(μ)))
+    μ, cov = _incidence_moments_from(K, n * m)
+    return (mean = reshape(μ, n, m), cov = cov)
 end
 
 """

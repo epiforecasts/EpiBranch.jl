@@ -1,0 +1,1 @@
+The extending guide now says that `capacity_key` names a value that records use by being present (a `Bool` for vaccinations, a removal handle for `Isolation`), that `ContactTracing` with a `Quarantine` action can be limited by `CapacityConstrained` or `HeldCapacity`, and that a model without contacts gets a warning naming the interventions that cannot act.
