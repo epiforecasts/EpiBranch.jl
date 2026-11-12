@@ -47,7 +47,10 @@ recent case's `τ` overstates the probability that the cluster is over.
 
 Use it as `prob_concluded` in `loglikelihood(::ChainSizes, ...)` or
 [`chain_size_distribution`](@ref) for real-time cluster data, where some
-clusters may still be growing.
+clusters may still be growing. The resulting mixture approximates the exact
+probability of the data. Because `π` depends on `R` and `k`, recompute it from
+the current parameters inside a fit; see `loglikelihood` for
+`ChainSizes`.
 
 # Examples
 
@@ -102,10 +105,7 @@ reshaped (a finite `population_size`, an infectiousness window with `until`,
 or `transmission_traits` away from their neutral values) has no closed form
 and also gives an error that points to simulation.
 
-For a `ModelSpec`, or a process that stores its own interventions, each
-intervention's [`EpiBranch.analytic_offspring_effect`](@ref) is applied to
-the offspring distribution first. If an intervention has no such method, this
-throws an error that names the simulation-based alternative.
+A `ModelSpec`, or a process that stores its own interventions, has them applied through [`EpiBranch.analytic_offspring_effect`](@ref).
 """
 function end_of_outbreak_probability(model::Union{BranchingProcess, ModelSpec}, τ::Real)
     # Refuse under per-case under-reporting rather than silently using

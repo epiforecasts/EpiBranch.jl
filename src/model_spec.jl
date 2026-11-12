@@ -139,6 +139,29 @@ function _hook_param(mm::Method)
     return Base.rewrap_unionall(p, mm.sig)
 end
 
+# The type a hook method was written for and whether the engine can call it at
+# one of `arities` (the hook itself not counted), or `nothing` for a method with
+# no intervention parameter to speak of. `arities === nothing` asks about the
+# type alone, so every method counts as called.
+#
+# A trailing `Vararg` in a method signature is always open-ended. Julia expands
+# a counted one: `f(x::Int, ::Vararg{Any, 2})` has three fixed parameters and
+# no vararg at all. Such a method is reachable at any arity its fixed arguments
+# allow, not only the one `methods` lists it under.
+function _hook_method(mm::Method, arities)
+    params = Base.unwrap_unionall(mm.sig).parameters
+    length(params) < 2 && return nothing
+    p = _hook_param(mm)
+    p === nothing && return nothing
+    arities === nothing && return (p, true)
+    called = if Base.isvarargtype(params[end])
+        any(n -> n + 1 >= length(params) - 1, arities)
+    else
+        (length(params) - 1) in arities
+    end
+    return (p, called)
+end
+
 # The type a shadowing method of the hook's name was written for, and the
 # module it was written in, where that name resolves in the author's own
 # module to a function that is not the package's: what a hook defined without
@@ -183,17 +206,9 @@ end
 # `_unreachable_own_method` is asked per method for.
 function _reaches_own_method(f, T::Type, bound::Type, arities)
     return any(methods(f, Tuple{T, Vararg{Any}})) do mm
-        params = Base.unwrap_unionall(mm.sig).parameters
-        length(params) < 2 && return false
-        called = if Base.isvarargtype(params[end])
-            any(n -> n + 1 >= length(params) - 1, arities)
-        else
-            (length(params) - 1) in arities
-        end
-        called || return false
-        p = _hook_param(mm)
-        p === nothing && return false
-        return _covers(p, bound)
+        hook = _hook_method(mm, arities)
+        hook === nothing && return false
+        return hook[2] && _covers(hook[1], bound)
     end
 end
 
@@ -209,16 +224,10 @@ end
 function _unreachable_own_method(f, T::Type, base::Type, arities)
     own = Tuple{Type, Bool}[]
     for mm in methods(f, Tuple{T, Vararg{Any}})
-        params = Base.unwrap_unionall(mm.sig).parameters
-        length(params) < 2 && continue
-        p = _hook_param(mm)
-        p === nothing && continue
+        hook = _hook_method(mm, arities)
+        hook === nothing && continue
+        p, called = hook
         (p !== base && p <: base) || continue
-        called = if Base.isvarargtype(params[end])
-            any(n -> n + 1 >= length(params) - 1, arities)
-        else
-            (length(params) - 1) in arities
-        end
         push!(own, (p, called))
     end
     for (p, called) in own
@@ -243,17 +252,10 @@ function _standin_own_method(f, T::Type, base::Type, arities)
     standin = nothing
     standin_sig = nothing
     for mm in methods(f, Tuple{T, Vararg{Any}})
-        params = Base.unwrap_unionall(mm.sig).parameters
-        length(params) < 2 && continue
-        p = _hook_param(mm)
-        p === nothing && continue
-        (p !== base && p <: base) || continue
-        called = if Base.isvarargtype(params[end])
-            any(n -> n + 1 >= length(params) - 1, arities)
-        else
-            (length(params) - 1) in arities
-        end
-        called || continue
+        hook = _hook_method(mm, arities)
+        hook === nothing && continue
+        p, called = hook
+        (p !== base && p <: base && called) || continue
         if standin === nothing || Base.morespecific(mm.sig, standin_sig)
             standin, standin_sig = p, mm.sig
         end
@@ -326,7 +328,7 @@ end
 # always has its own delegating methods whatever it wraps.
 function _warn_inert_interventions(interventions)
     for iv in interventions
-        inner = _unwrap_scheduled(iv)
+        inner = _innermost(iv)
         T = typeof(inner)
         _first_sight(T) || continue
         # A diagnosis of the hook at fault stands in for the general message,
@@ -358,7 +360,6 @@ end
 # The `start_after` triggers a composed intervention holds, looked for through
 # any wrapper around it.
 _triggers_of(::AbstractIntervention) = ()
-_triggers_of(w::InterventionWrapper) = _triggers_of(w.intervention)
 _triggers_of(s::Scheduled) = (s.triggers..., _triggers_of(s.intervention)...)
 
 # Warn when a trigger needs a transition the model's `progression` does not
@@ -515,7 +516,7 @@ simulate(spec::ModelSpec, n::Int; kwargs...) =
     _simulate_each(identity, SimulationState, spec, n; kwargs...)
 
 # `simulate`'s continuation method unwraps the spec the same way: the
-# process's `transmission_risks` as before, the spec's own interventions and
+# process's `transmission_risks`, the spec's own interventions and
 # recorder.
 function simulate(
         spec::ModelSpec, state::SimulationState; max_time::Real,
@@ -585,7 +586,7 @@ end
 function _require_unreshaped_offspring_law(model, name)
     # `offspring_law_unchanged` answers `false` for a process type it does not
     # know. Such a process supplies its own offspring law and is used as
-    # declared, as before.
+    # declared.
     proc = model isa ModelSpec ? model.process : model
     (!(proc isa BranchingProcess) || offspring_law_unchanged(proc)) &&
         offspring_law_unchanged(attributes(model)) &&

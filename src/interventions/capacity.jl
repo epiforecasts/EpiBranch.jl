@@ -130,7 +130,9 @@ By default everyone draws on the same budget. An intervention with a
 distinct value (a district, a treatment centre) gets its own
 `budget_per_period`, tracked under the same `period`, `carry_over` and
 `priority` independently of every other. Pass the value to `capacity_usage`
-to read one group's own usage.
+to read one group's own usage. A [`GroupVaccination`](@ref) with
+`group_key = :type` (the types of a `BranchingProcess`) has such a method and
+gives each type its own budget.
 
 [`Scheduled`](@ref) and `CapacityConstrained` can be combined in either
 order: both check each action's own proposed date.
@@ -194,7 +196,7 @@ function CapacityConstrained(
     )
 end
 
-# A fixed budget is validated and floated as before; a calendar schedule
+# A fixed budget is validated and floated; a calendar schedule
 # validates itself when it is built (`Steps`'s own values, say), so nothing
 # further is checked here.
 function _prepared_budget(budget::Real)
@@ -274,10 +276,12 @@ state alone, with nothing of the original proposal kept around.
 """
 resource_key(::AbstractIntervention, individual, state) = nothing
 
-# Read through any wrapper, so `CapacityConstrained` composes with
-# `Scheduled` in either order.
-capacity_key(w::InterventionWrapper) = capacity_key(w.intervention)
-capacity_time_key(w::InterventionWrapper) = capacity_time_key(w.intervention)
+# Each type of a branching process has its own `budget_per_period`, as in
+# `simulate_by_generation`. Groups under any other key share one budget, as in
+# the mixing approximations.
+resource_key(gv::GroupVaccination, individual, state) =
+    gv.group_key === :type ? get(individual.state, :type, nothing) : nothing
+
 resource_key(w::InterventionWrapper, individual, state) =
     resource_key(w.intervention, individual, state)
 capacity_key(v::RingVaccination) = _vaccinated_key(dose_label(v))
@@ -382,37 +386,27 @@ end
 
 # The sorted dose times for one `resource_key` value, `nothing` for an
 # intervention with no method of it, putting every recipient on one shared
-# budget as before.
+# budget.
 function _dose_times(cc::CapacityConstrained, state, key = nothing)
     return get(_dose_times_by_key(cc, state), key, Float64[])
 end
 
-# `_admit_actions!`'s own record of who has already drawn on each capacity
-# key's resources, kept in `state.scratch` so it survives from one call to
-# the next. Keyed on `capacity_key(cc.intervention)` rather than on `cc`
-# itself: two different `CapacityConstrained` wrappers sharing a dose label
-# (per the docstring above) then see each other's admissions through the
-# same cache instead of each keeping its own, unaware copy. Seeded once by a
-# population scan like `_dose_times_by_key`'s own, then grown one person at a
-# time as each dose is admitted; a run with many settled cases no longer
-# rescans everyone on every one of them. `scanned` is how far along
-# `state.individuals` that scan has reached: someone created since, already
-# holding the flag from an attribute builder, is then picked up by scanning
-# only the people appended since. `recorded` remembers which resource and
-# date each person's own use was filed under; a dose later withdrawn outside
-# this cache's own admission path (`on_infection_settled!` undoing one that
-# missed its eligibility window, say) can then be taken back out again.
-# A dose under the key is also recorded by paths that never pass through a
-# wrapper's admission at all, an unwrapped vaccination sharing the dose
-# label or a direct `record_dose!` call, which the docstring above promises
-# count too: `record_dose!` files its own dose through `_note_capacity_use!`
-# whenever a cache for its label exists, as the tracers do for a trace
-# action's. `intervention` is the one the cache
-# was first built for, whose `resource_key` and `capacity_time_key` every
-# use is filed under, since those paths have no wrapper to ask.
-# `capacity_usage` and `_reset_unless_within_budget!` keep using the plain
-# scan above instead: each is called far less often than an action is
-# admitted, so there is no scan there worth avoiding.
+# `_admit_actions!`'s record of who has already drawn on each capacity key's
+# resources, kept in `state.scratch`. It is keyed on
+# `capacity_key(cc.intervention)` rather than on `cc`, which lets wrappers
+# sharing a dose label see the admissions of each other. Seeded by one
+# population scan, then grown as each dose is admitted; `scanned` is how far
+# along `state.individuals` the scan has reached, which lets people created
+# since be picked up without rescanning everyone. `recorded` remembers which
+# resource and date the use of each person was filed under, so that a dose
+# withdrawn outside the admission path of this cache can be taken back out.
+# Doses recorded by paths with no wrapper (an unwrapped vaccination sharing the
+# label, a direct `record_dose!`) count too: `record_dose!` files them through
+# `_note_capacity_use!` whenever a cache for its label exists, as the tracers do
+# for a trace action. `intervention` is the one the cache was first built for,
+# and every use is filed under its `resource_key` and `capacity_time_key`.
+# `capacity_usage` and `_reset_unless_within_budget!` use the plain scan above,
+# because they are called far less often than an action is admitted.
 mutable struct _CapacityCache
     intervention::AbstractIntervention
     times::Dict{Any, Vector{Float64}}
@@ -546,7 +540,7 @@ _period_budget(schedule, t) = calendar_multiplier(schedule, t)
 
 # The total budget available across every period from the first up to, but
 # excluding, the one ending at `period_end`: a fixed number times the number
-# of periods begun, as before, or, for a schedule, each period's own number
+# of periods begun, or, for a schedule, each period's own number
 # summed, because a later period cannot be assumed to repeat an earlier one's.
 _cumulative_budget(cc::CapacityConstrained, period_end, cum = nothing) =
     _cumulative_budget(cc.budget_per_period, cc.period, period_end, cum)
@@ -688,19 +682,14 @@ end
 # `trace_contacts!` call, which admits through it instead of itself (see
 # `_admit_trace_actions!`). This composes with `Scheduled` in either order, as
 # a dose already does.
-traces_contacts(cc::CapacityConstrained) = traces_contacts(cc.intervention)
 function trace_contacts!(cc::CapacityConstrained, state, infector, contacts, not_before = nothing)
     key = (:trace_admitter, _innermost(cc))
-    previous = get(state.scratch, key, nothing)
-    state.scratch[key] = cc
-    try
+    _with_scratch(state, key, cc) do
         if not_before === nothing
             trace_contacts!(cc.intervention, state, infector, contacts)
         else
             trace_contacts!(cc.intervention, state, infector, contacts, not_before)
         end
-    finally
-        previous === nothing ? delete!(state.scratch, key) : (state.scratch[key] = previous)
     end
     return nothing
 end

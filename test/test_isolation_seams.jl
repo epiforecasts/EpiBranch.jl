@@ -5,7 +5,7 @@ end
 function EpiBranch.is_eligible_for_isolation(e::OnlyOlder, ind, state)
     return !is_asymptomatic(ind) && get(ind.state, :age, 0) >= e.age_threshold
 end
-EpiBranch._required_for_eligibility(::OnlyOlder) = [:onset_time, :asymptomatic, :age]
+EpiBranch.required_fields(::OnlyOlder) = [:asymptomatic, :age]
 
 # A ward shut until day 5, blocking with certainty while shut and reopening
 # after. Its `Risk` holds plain numbers and looks identical to a standing block,
@@ -363,7 +363,7 @@ EpiBranch.infectious_removal_time(f::FixedRemoval, ::Individual) = f.time
         # recorded stretch has its own release, which the per-contact risk
         # re-checks the schedule against at every proposal regardless.
         # Narrowing here would turn a removal due to lapse into one that
-        # never does (see issue #410).
+        # never does.
         lapsing = Scheduled(perfect; start_time = 0.0, end_time = 10.0)
         @test EpiBranch.infectious_removal_time(lapsing, case) == Inf
 

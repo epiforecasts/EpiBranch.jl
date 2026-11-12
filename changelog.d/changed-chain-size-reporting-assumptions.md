@@ -1,0 +1,1 @@
+The `Reporting` and `MinimumSize` docstrings and the chains tutorial now state what the chain-size likelihood assumes: an observed cluster is all the reported cases of exactly one chain, an unreported case in the middle of a chain does not split it, and with `R > 1` the event "the chain reached at least `min_size`" includes chains that never end.
