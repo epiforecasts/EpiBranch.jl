@@ -144,7 +144,6 @@ function _hook_owner(f, iv::AbstractIntervention)
     return iv
 end
 
-_innermost(iv::InterventionWrapper) = _innermost(iv.intervention)
 _innermost(iv::AbstractIntervention) = iv
 
 # Whether an intervention discovers actions of its own, which the race offers
@@ -410,7 +409,6 @@ without it, a certain block raises an `ArgumentError` instead of silently
 dropping transmission that could still happen.
 """
 standing_block(source) = false
-standing_block(w::InterventionWrapper) = standing_block(w.intervention)
 # An abort is recorded on the infector and never withdrawn, so the block it
 # composes lasts as long as the infector does.
 standing_block(::AbortedInfection) = true

@@ -360,7 +360,6 @@ end
 # The `start_after` triggers a composed intervention holds, looked for through
 # any wrapper around it.
 _triggers_of(::AbstractIntervention) = ()
-_triggers_of(w::InterventionWrapper) = _triggers_of(w.intervention)
 _triggers_of(s::Scheduled) = (s.triggers..., _triggers_of(s.intervention)...)
 
 # Warn when a trigger needs a transition the model's `progression` does not
