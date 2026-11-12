@@ -22,8 +22,8 @@ Transmission is the per-infective rate `transmission_rate` (β, so β/N to each
 susceptible).
 
 `transmission_rate` is a fixed β by default, but it may also be a calendar
-schedule — a [`Steps`](@ref), a [`Seasonal`](@ref), or a callable
-`t -> β(t)` — giving β as a function of calendar day, for a lockdown or a
+schedule ([`Steps`](@ref), [`Seasonal`](@ref), or a callable
+`t -> β(t)`) giving β as a function of calendar day, for a lockdown or a
 seasonal rate. With a schedule, contacts are still drawn exactly, from the
 schedule's integrated hazard. `Steps` and `Seasonal` have a known largest
 value, so the route keeps sampling at a bound, at a cost per contact. A
@@ -60,8 +60,8 @@ progression always applies.
 The population is simulated until extinction or `max_time`, whichever comes
 first; with `max_time`, individuals whose infection would fall later stay
 uninfected. The `max_cases` and `max_generations` keyword shortcuts default to
-off here, so a run keeps going to extinction or `max_time` unless an explicit
-value, or a `stopping_rules` entry, asks for a cap. This holds for the
+off here. A run continues to extinction or `max_time` unless an explicit
+value or a `stopping_rules` entry sets a cap. This holds for the
 structure-driven models generally.
 
 A run costs about one draw per contact made inside an infectious window. A

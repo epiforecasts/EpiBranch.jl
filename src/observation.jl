@@ -34,18 +34,22 @@ apply_observation!(::NoObservation, state, rng) = state
 # simulation chain-size paths each apply where they see sizes.
 apply_observation!(::MinimumSize, state, rng) = state
 
-function apply_observation!(o::ChainDetection, state, rng)
-    cases = filter(is_infected, state.individuals)
-    # A progression transition (such as `Reporting`) that records `:reported`
-    # owns that key, and its likelihood reads what it wrote.
-    any(case -> haskey(case.state, :reported), cases) && throw(
+function _reporting_conflict(obs)
+    throw(
         ArgumentError(
-            "ChainDetection cannot be combined with a progression " *
+            "$(nameof(typeof(obs))) cannot be combined with a progression " *
                 "transition that records `:reported`, such as `Reporting`: " *
                 "both would write the case's report. Report cases with one " *
                 "of them."
         )
     )
+end
+
+function apply_observation!(o::ChainDetection, state, rng)
+    cases = filter(is_infected, state.individuals)
+    # A progression transition (such as `Reporting`) that records `:reported`
+    # owns that key, and its likelihood reads what it wrote.
+    any(case -> haskey(case.state, :reported), cases) && _reporting_conflict(o)
     chain_size = Dict{Int, Int}()
     for case in cases
         chain_size[case.chain_id] = get(chain_size, case.chain_id, 0) + 1
@@ -69,14 +73,7 @@ function apply_observation!(o::PerCaseObservation, state, rng)
         is_infected(ind) || continue
         # A progression transition (such as `Reporting`) that records
         # `:reported` owns that key, and its likelihood reads what it wrote.
-        haskey(ind.state, :reported) && throw(
-            ArgumentError(
-                "PerCaseObservation cannot be combined with a progression " *
-                    "transition that records `:reported`, such as `Reporting`: " *
-                    "both would write the case's report. Report cases with one " *
-                    "of them."
-            )
-        )
+        haskey(ind.state, :reported) && _reporting_conflict(o)
         ρ = sample_value(o.detection_prob, rng, ind)
         d = sample_value(o.delay, rng, ind)
         anchor = _percase_anchor(o.from, ind)
@@ -115,22 +112,22 @@ summed the same way. Only `logpdf` on the base is needed, so any base
 distribution works without a method of its own. `P(0 detected)` depends on
 `base` and `detection_prob` alone, so it is worked out once when the
 distribution is built. Its field takes whatever element type `base`'s
-parameters give `logpdf`, rather than `Float64`, so a `Dual` can pass through
-it when something differentiates through `base`, such as fitting an offspring
-parameter with `ForwardDiff`.
+parameters give `logpdf`, rather than `Float64`. The detection probability
+also retains its numeric type. This allows `ForwardDiff` to differentiate
+with respect to offspring parameters and reporting probabilities.
 """
-struct ThinnedChainSize{D <: DiscreteUnivariateDistribution, T <: Real} <:
+struct ThinnedChainSize{D <: DiscreteUnivariateDistribution, P <: Real, T <: Real} <:
     ChainSizeLaw
     base::D
-    detection_prob::Float64
+    detection_prob::P
     log_prob_any_detected::T
 end
 
 function ThinnedChainSize(base::D, detection_prob) where {D <: DiscreteUnivariateDistribution}
-    p = Float64(detection_prob)
+    p = float(detection_prob)
     0.0 < p <= 1.0 || throw(ArgumentError("detection_prob must be in (0, 1], got $p"))
     log_prob_any_detected = _log_prob_any_detected(base, p)
-    return ThinnedChainSize{D, typeof(log_prob_any_detected)}(base, p, log_prob_any_detected)
+    return ThinnedChainSize{D, typeof(p), typeof(log_prob_any_detected)}(base, p, log_prob_any_detected)
 end
 
 Distributions.minimum(::ThinnedChainSize) = 1
@@ -176,13 +173,13 @@ _log1mexp(x::Real) = x > -log(2) ? log(-expm1(x)) : log1p(-exp(x))
 # summed over the base's support (chains always have at least one case).
 # At p = 1 every term is -Inf (zero mass), and the streaming sum can't
 # subtract two infinite terms; short-circuit to the same answer directly.
-function _log_prob_none_detected(base, detection_prob::Float64)
+function _log_prob_none_detected(base, detection_prob::Real)
     detection_prob >= 1.0 && return -Inf
     lq = log1p(-detection_prob)
     return _streaming_logsumexp(n -> logpdf(base, n) + n * lq, 1)
 end
 
-_log_prob_any_detected(base, detection_prob::Float64) =
+_log_prob_any_detected(base, detection_prob::Real) =
     _log1mexp(_log_prob_none_detected(base, detection_prob))
 
 function Distributions.logpdf(d::ThinnedChainSize, obs::Integer)
@@ -333,7 +330,7 @@ end
 
 """
 Per-case probability that a case is reported, or `nothing` when `progression`
-has no `Reporting` step: the step's probability times the share of cases that
+has no `Reporting` step: the probability of the step times the share of cases that
 reach the time it reports from (all of them from infection, the symptomatic
 ones from onset, read from the model's `clinical_presentation`), as
 `_incidence_reporting` does. `simulate` never reports a case whose `from` time
@@ -383,14 +380,25 @@ both.
 function _fold_reporting(progression, base, obs, attrs)
     ρ = _effective_reporting_probability(progression, attrs)
     ρ === nothing && return base
-    obs isa Union{PerCaseObservation, ChainDetection} && throw(
-        ArgumentError(
-            "$(nameof(typeof(obs))) cannot be combined with a progression " *
-                "transition that records `:reported`, such as `Reporting`: " *
-                "both would write the case's report. Report cases with one " *
-                "of them."
-        )
-    )
+    obs isa Union{PerCaseObservation, ChainDetection} && _reporting_conflict(obs)
     ρ == 1.0 && return base
     return ThinnedChainSize(base, ρ)
+end
+
+# Use simulation when no exact law is available; propagate errors within exact laws.
+# Callable reporting probabilities depend on individuals and require simulation.
+function _exact_reported_chain_size(offspring, prog, obs, attrs)
+    hasmethod(chain_size_distribution, Tuple{typeof(offspring)}) || return nothing
+    offspring isa GeneratingFunctionOffspring && offspring.pmf === nothing && return nothing
+    count(t -> t isa Reporting, prog) > 1 && return nothing
+    any(t -> t isa Reporting && !(t.probability isa Real), prog) && return nothing
+    # A progression the closed form cannot read (a terminal step, or a step
+    # that overwrites the `from` time) is simulated instead.
+    try
+        _effective_reporting_probability(prog, attrs)
+    catch e
+        e isa ArgumentError && return nothing
+        rethrow()
+    end
+    return _fold_reporting(prog, chain_size_distribution(offspring), obs, attrs)
 end

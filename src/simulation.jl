@@ -145,7 +145,7 @@ and copy only `state` as the particle.
 continuation is for a caller, such as a particle filter, that scores each
 step itself against its own data, rather than drawing a synthetic one.
 `state` is returned unchanged if it had already reached extinction, or
-stopped for a reason other than `max_time` — there is nothing left for a
+stopped for a reason other than `max_time`; there is nothing left for a
 later `max_time` to continue.
 
 ```julia
@@ -289,29 +289,21 @@ function _simulate_n(
         interventions, attributes, progression, observation, recorder, rng,
         parallel::Bool = false
     ) where {T}
+    run(rng) = each(
+        simulate_once(
+            model, sim_opts; interventions, attributes, progression,
+            observation, recorder, rng
+        )
+    )
     if parallel && Threads.nthreads() > 1
         seeds = [rand(rng, UInt64) for _ in 1:n]
         results = Vector{T}(undef, n)
         Threads.@threads for i in 1:n
-            local_rng = Random.Xoshiro(seeds[i])
-            results[i] = each(
-                simulate_once(
-                    model, sim_opts; interventions, attributes,
-                    progression, observation, recorder, rng = local_rng
-                )
-            )
+            results[i] = run(Random.Xoshiro(seeds[i]))
         end
         return results
     else
-        return [
-            each(
-                simulate_once(
-                    model, sim_opts; interventions, attributes, progression,
-                    observation, recorder, rng
-                )
-            )
-                for _ in 1:n
-        ]
+        return [run(rng) for _ in 1:n]
     end
 end
 
@@ -486,13 +478,9 @@ end
 # an `OffspringTimes` already gave.
 _window_infection_time(::NoGenerationTime, from_t::Real, state) = from_t
 _window_infection_time(offset::_FixedOffset, from_t::Real, state) = from_t + offset.offset
-function _window_infection_time(kernel::Distribution, from_t::Real, state)
-    return from_t + rand(state.rng, kernel)
-end
-# A window with a `calendar` scaling its kernel draws from the resulting
-# calendar-scaled kernel directly, exactly as a `PairKernel` with a calendar
-# does on the structure-driven routes.
-function _window_infection_time(kernel::_CalendarScaledKernel, from_t::Real, state)
+# Any other kernel (a distribution, or a calendar-scaled kernel, which is not a
+# `Distribution`) is drawn from directly.
+function _window_infection_time(kernel, from_t::Real, state)
     return from_t + rand(state.rng, kernel)
 end
 
@@ -514,9 +502,10 @@ function _trace_source!(
     1 <= case.parent_id <= length(state.individuals) || return nothing
     infector = state.individuals[case.parent_id]
     contacts = (infector,)
-    for intervention in interventions
-        traces_source(intervention) || continue
-        trace_contacts!(intervention, state, case, contacts)
+    _each(interventions) do intervention
+        traces_source(intervention) &&
+            trace_contacts!(intervention, state, case, contacts)
+        return nothing
     end
     return nothing
 end
@@ -542,7 +531,17 @@ infection time is fixed and before it transmits: its clinical transitions
 """
 function _settle_case!(state::SimulationState, case, interventions, count)
     _at_case!(state, case, count)
-    resolve_transitions!(state, case)
+    _resolve_transitions!(state, case, state.transitions)
+    _resolve_interventions!(state, case, interventions)
+    return nothing
+end
+
+# The race's own call. It passes the transitions as the `Tuple` taken once from
+# `state.transitions`, which lets the hooks of each step be resolved at compile
+# time.
+function _settle_case!(state::SimulationState, case, interventions, transitions, count)
+    _at_case!(state, case, count)
+    _resolve_transitions!(state, case, transitions)
     _resolve_interventions!(state, case, interventions)
     return nothing
 end
@@ -562,18 +561,42 @@ function _at_case!(state::SimulationState, case, count)
     return nothing
 end
 
+# Offer a new person, or a reinfected one, to each intervention's
+# `initialise_individual!`.
+function _initialise!(interventions, ind, state)
+    _each(interventions) do intervention
+        initialise_individual!(intervention, ind, state)
+        return nothing
+    end
+    return nothing
+end
+
 function _resolve_interventions!(state::SimulationState, case, interventions)
     # A reinfection (`case.episodes` already holds the earlier one, closed
     # before this call) gets a fresh `initialise_individual!` first. That
     # keeps per-episode draws such as `Isolation`'s `:test_positive` specific
     # to the new episode, rather than left over from the one before it.
-    if !isempty(case.episodes)
-        for intervention in interventions
-            initialise_individual!(intervention, case, state)
-        end
-    end
-    for intervention in interventions
+    _has_episodes(case) && _initialise!(interventions, case, state)
+    _each(interventions) do intervention
         resolve_individual!(intervention, case, state)
+        return nothing
+    end
+    return nothing
+end
+
+# Call `f` on each element in order. A `Tuple` is walked by recursion, so each
+# call is resolved when the method is compiled; a loop over a heterogeneous
+# tuple, like one over a `Vector` of an abstract element type, dispatches at
+# run time and boxes its arguments. The engine takes a `Tuple` of the
+# progression and of the interventions once per run and walks it with this.
+@inline _each(f::F, ::Tuple{}) where {F} = nothing
+@inline function _each(f::F, items::Tuple) where {F}
+    f(first(items))
+    return _each(f, Base.tail(items))
+end
+function _each(f::F, items) where {F}
+    for item in items
+        f(item)
     end
     return nothing
 end
@@ -674,9 +697,7 @@ function add_individuals!(
             state, 0, base + i, base + i, infection_time; type_idx
         )
         setup(ind, i)
-        for intervention in interventions
-            initialise_individual!(intervention, ind, state)
-        end
+        _initialise!(interventions, ind, state)
         push!(state.individuals, ind)
         push!(added, ind)
     end
@@ -687,7 +708,7 @@ end
     lazily_populate!(state, n, interventions; setup = (ind, i) -> nothing) -> state
 
 Set `state` up for `n` people none of which exist yet, in place of
-[`add_individuals!`](@ref). Used by a transmission model whose population is
+[`add_individuals!`](@ref). Used by a transmission model with a population that is
 large relative to the outbreaks it simulates, such as `NetworkProcess` or
 `RoutedNetwork`, so that a run costs in proportion to the people the
 outbreak reaches rather than to the size of the population. Every slot in
@@ -709,7 +730,7 @@ function lazily_populate!(
     s = IndividualState{T}()
     s[:infected] = false
     placeholder = Individual{T}(
-        0, 0, 0, 0, T(NaN), one(T), one(T), Int[], s, InfectionEpisode{T}[]
+        0, 0, 0, 0, T(NaN), one(T), one(T), Int[], s, nothing
     )
     state.lazy = _LazyPopulation(placeholder, interventions, setup)
     resize!(state.individuals, n)
@@ -731,9 +752,7 @@ end
 function _realise!(state::SimulationState, lazy::_LazyPopulation, id::Int)
     ind = _create_individual(state, 0, id, id, NaN)
     lazy.setup(ind, id)
-    for intervention in lazy.interventions
-        initialise_individual!(intervention, ind, state)
-    end
+    _initialise!(lazy.interventions, ind, state)
     state.individuals[id] = ind
     return ind
 end
@@ -746,7 +765,7 @@ Create every person a lazily populated model (`NetworkProcess`,
 characteristics from the same per-person streams the run itself drew from
 (see [`CommonRandomNumbers`](@ref)): under common random numbers, a person's
 attributes are then the same whether the outbreak reached them or `realise!`
-created them afterwards. A no-op for a model whose population is built
+created them afterwards. A no-op for a model with a population that is built
 upfront, which is every model but these two.
 
 Call this when you need the characteristics of people the outbreak never
@@ -927,8 +946,7 @@ function _create_individual(
     ind = Individual{T}(
         next_id, parent_id,
         state.current_generation + (parent_id == 0 ? 0 : 1),
-        chain_id, convert(T, inf_time), one(T), one(T), Int[], s,
-        InfectionEpisode{T}[]
+        chain_id, convert(T, inf_time), one(T), one(T), Int[], s, nothing
     )
 
     _set_type!(ind, type_idx)
@@ -1007,8 +1025,11 @@ undone one do not happen. Undoing restores each entry a step set on
 `individual.state`, so a transition must record its results by setting
 entries there rather than by changing a vector or dictionary it finds there.
 """
-function resolve_transitions!(state::SimulationState, individual)
-    transitions = state.transitions
+resolve_transitions!(state::SimulationState, individual) =
+    _resolve_transitions!(state, individual, state.transitions)
+
+# `transitions` is `state.transitions`, or the `Tuple` the race took from it.
+function _resolve_transitions!(state::SimulationState, individual, transitions)
     isempty(transitions) && return nothing
     # When a reinfection occurs, `close_episode!` archives the state of the
     # previous episode wholesale, outcome included, before this runs again
@@ -1017,8 +1038,9 @@ function resolve_transitions!(state::SimulationState, individual)
     # likelihoods for the new one.
     delete!(individual.state, :outcome)
     delete!(individual.state, :outcome_time)
-    for transition in transitions
+    _each(transitions) do transition
         initialise_individual!(transition, individual, state)
+        return nothing
     end
     # Branch once per case: a check inside the loop measurably slows every
     # progression model, although almost no case is aborted.
@@ -1027,8 +1049,9 @@ function resolve_transitions!(state::SimulationState, individual)
             transitions, individual, state, infection_aborted_time(individual)
         )
     else
-        for transition in transitions
+        _each(transitions) do transition
             resolve_individual!(transition, individual, state)
+            return nothing
         end
     end
     _finalise_terminal!(individual, transitions)
@@ -1168,11 +1191,7 @@ struct WindowCensor end
 function competing_risk(::WindowCensor, parent, contact, state)
     until = get(contact.state, :censor_until, nothing)
     until === nothing && return nothing
-    t_end = Inf
-    for s in until
-        st = get(parent.state, Symbol(s, :_time), Inf)
-        st < t_end && (t_end = st)
-    end
+    t_end = _close_at(parent, (Symbol(s, :_time) for s in until))
     isfinite(t_end) || return nothing
     return Risk(event_time = t_end, block_probability = 1.0)
 end
@@ -1384,6 +1403,15 @@ Pass the result as `attributes` to [`ModelSpec`](@ref).
 [`Isolation`](@ref) needs these onset times, and [`linelist`](@ref) reports
 them as `date_onset`.
 
+An asymptomatic case transmits exactly as a symptomatic one does, because this
+function takes no relative infectiousness. To make asymptomatic
+cases less (or more) infectious, list [`transmission_traits`](@ref) after it
+with an `infectiousness` that reads `ind.state[:asymptomatic]`.
+Use `transmission_traits` for traits known when the case is created (age, sex,
+whether the case is asymptomatic), because it draws its factor then. A change
+during the infection, such as tracing or quarantine, needs an intervention.
+Combining the two is tracked in #972.
+
 # Examples
 
 Symptomatic-only with a log-normal incubation period:
@@ -1423,7 +1451,23 @@ attributes = [
 ]
 ```
 
-See also [`demographics`](@ref).
+Asymptomatic cases that are half as infectious as symptomatic ones (list
+`transmission_traits` after `clinical_presentation` so `:asymptomatic` is set
+first):
+
+```julia
+attributes = [
+    clinical_presentation(
+        incubation_period = LogNormal(1.6, 0.5),
+        prob_asymptomatic = 0.3,
+    ),
+    transmission_traits(
+        infectiousness = (rng, ind) -> ind.state[:asymptomatic] ? 0.5 : 1.0,
+    ),
+]
+```
+
+See also [`demographics`](@ref), [`transmission_traits`](@ref).
 """
 function clinical_presentation(;
         incubation_period::Distribution,
