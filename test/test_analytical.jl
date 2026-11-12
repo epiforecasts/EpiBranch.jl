@@ -1407,6 +1407,22 @@ using ForwardDiff
             @test sum(probs) ≈ 1.0 atol = 1.0e-6
         end
 
+        @testset "Simulated chain length stops on generations, not cases" begin
+            model = ModelSpec(
+                BranchingProcess(NegativeBinomial(0.5, 0.5 / (0.5 + 0.9)), Gamma(2.0, 2.5));
+                interventions = [Isolation(onset_to_isolation_delay = 100.0, duration = Inf)],
+                attributes = clinical_presentation(incubation_period = Gamma(2.0, 2.5))
+            )
+            data = ChainLengths([6, 8, 10])
+            @test_throws ArgumentError loglikelihood(data, model; max_cases = 25)
+            ll(gens) = loglikelihood(
+                data, model; n_sim = 20_000, max_generations = gens, rng = StableRNG(1)
+            )
+            # A tighter generation limit censors more runs but stays close to
+            # the uncensored value, instead of dropping probability mass.
+            @test abs(ll(12) - ll(100)) < 0.5
+        end
+
         @testset "Non-positive n_initial throws" begin
             @test_throws ArgumentError loglikelihood(
                 ChainLengths([0]), Poisson(0.8); n_initial = 0
@@ -1728,10 +1744,10 @@ using ForwardDiff
             )
             data = ChainLengths([5])
             ll_one = loglikelihood(
-                data, spec; n_initial = 1, max_cases = 500, n_sim = 20_000, rng = StableRNG(1)
+                data, spec; n_initial = 1, n_sim = 20_000, rng = StableRNG(1)
             )
             ll_many = loglikelihood(
-                data, spec; n_initial = 5, max_cases = 500, n_sim = 20_000, rng = StableRNG(1)
+                data, spec; n_initial = 5, n_sim = 20_000, rng = StableRNG(1)
             )
             @test isfinite(ll_one)
             @test isfinite(ll_many)

@@ -262,10 +262,19 @@ function _sim_loglikelihood(
         # seed) is the cluster's observed value, instead of reporting each
         # seed's chain separately.
         push!(sim_values, maximum(vals))
-        hit_cap = !state.extinct && state.cumulative_cases >= cap
-        push!(censored, hit_cap)
+        # A length run is censored by whichever rule stopped it, as its value
+        # is the length reached; a size run only by the case cap.
+        push!(
+            censored,
+            !state.extinct && (column === :length || state.cumulative_cases >= cap)
+        )
     end
-    return _empirical_ll(observed, sim_values; min_val, censored, cap)
+    # For lengths the cap is on cases, not generations, so a capped run is
+    # only known to be at least as long as the length it had reached.
+    return _empirical_ll(
+        observed, sim_values; min_val, censored, cap,
+        censored_at_value = column === :length
+    )
 end
 
 # Chain sizes counted from each case's `:reported` flag, written by
@@ -433,6 +442,12 @@ estimated from `n_sim` simulated outbreaks (keywords as for chain sizes).
 applies on both paths. Not available with an observation model or a
 `Reporting` probability below 1 because a chain with undetected cases has no
 well-defined observed length.
+
+The simulation stops runs on `max_generations` (default 100), not on a case
+cap, because a cap on cases does not fix a chain's length: `max_cases` is
+refused. A run still going at the stop is right-censored at the length it had
+reached, so it counts towards the right tail of observed lengths above that
+length. Lower `max_generations` for a model whose cases grow without bound.
 """
 function loglikelihood(data::ChainLengths, model::TransmissionModel; kwargs...)
     return _chain_length_model_loglik(
@@ -462,12 +477,19 @@ end
 function _chain_length_model_loglik(
         data::ChainLengths, process, ivs, attrs, prog, obs, rec;
         n_initial::Int = 1,
-        max_cases::Union{Int, Nothing} = 10_000,
+        max_cases::Union{Int, Nothing} = nothing,
         max_generations::Union{Int, Nothing} = 100,
         max_time::Union{Real, Nothing} = nothing,
         stopping_rules::Union{Vector{<:AbstractStoppingRule}, Nothing} = nothing,
         n_sim::Int = 10_000,
         rng::AbstractRNG = Random.default_rng()
+    )
+    max_cases === nothing || throw(
+        ArgumentError(
+            "loglikelihood(ChainLengths, model) does not take `max_cases`: " *
+                "a cap on cases does not fix a chain's length. " *
+                "Use `max_generations` instead."
+        )
     )
     obs isa NoObservation || throw(
         ArgumentError(
@@ -508,6 +530,12 @@ When `censored` is provided, simulated values flagged as censored contribute
 to P(size >= cap) rather than P(size = cap). Observed values at or above
 `cap` are evaluated as P(size >= cap).
 
+With `censored_at_value = true` the cap is ignored and each censored value is
+instead a lower bound on that run's true value. Runs censored at or below an
+observation `x` could equal `x` or exceed it, so they are left out of the
+probability of `x`. Runs censored above `x` are known to exceed it and count
+towards its right tail.
+
 `prob_concluded`, when given (one value per observation, in `[0, 1]`), mixes
 each observation's point mass with its right tail under the same simulated
 empirical law, exactly as the analytical [`_chain_size_loglik`](@ref)
@@ -518,6 +546,7 @@ function _empirical_ll(
         min_val::Int = 0,
         censored::Vector{Bool} = Bool[],
         cap::Int = typemax(Int),
+        censored_at_value::Bool = false,
         prob_concluded::Union{Nothing, AbstractVector{<:Real}} = nothing
     )
     isempty(simulated) && return -Inf
@@ -527,12 +556,19 @@ function _empirical_ll(
     max_val = max(maximum(observed), maximum(simulated))
     counts = zeros(Int, max_val - min_val + 1)
     n_censored = 0
+    censored_counts = zeros(Int, censored_at_value ? length(counts) : 0)
     for (i, s) in enumerate(simulated)
         if !isempty(censored) && censored[i]
             n_censored += 1
+            censored_at_value && (censored_counts[s - min_val + 1] += 1)
         else
             counts[s - min_val + 1] += 1
         end
+    end
+    if censored_at_value
+        return _empirical_ll_censored_at_value(
+            observed, counts, censored_counts, min_val, prob_concluded
+        )
     end
     n_unique = length(counts) + (n_censored > 0 ? 1 : 0)
     denom = n_total + n_unique
@@ -569,6 +605,38 @@ function _empirical_ll(
             ll += lc
         else
             lo = log_right_tail(x - min_val + 1)
+            ll += π_i <= zero(π_i) ? lo : _logsumexp2(log(π_i) + lc, log1p(-π_i) + lo)
+        end
+    end
+    return ll
+end
+
+# Empirical log-likelihood where each censored run is a lower bound on its own
+# value (see `_empirical_ll`). Runs censored at or below an observation say
+# nothing about it, so they are left out of that observation's denominator.
+function _empirical_ll_censored_at_value(
+        observed, counts, censored_counts, min_val, prob_concluded
+    )
+    n_bins = length(counts)
+    n_uncensored = sum(counts)
+    ll = 0.0
+    for (i, x) in enumerate(observed)
+        idx = x - min_val + 1
+        (idx < 1 || idx > n_bins) && return -Inf
+        n_above = sum(@view censored_counts[(idx + 1):end])
+        denom = n_uncensored + n_above + n_bins
+        lc = log((counts[idx] + 1) / denom)
+        if prob_concluded === nothing
+            ll += lc
+            continue
+        end
+        π_i = prob_concluded[i]
+        (0 <= π_i <= 1) ||
+            throw(ArgumentError("prob_concluded[$i] = $(π_i) is not in [0, 1]"))
+        if π_i >= one(π_i)
+            ll += lc
+        else
+            lo = log((sum(@view counts[idx:end]) + n_above + (n_bins - idx + 1)) / denom)
             ll += π_i <= zero(π_i) ? lo : _logsumexp2(log(π_i) + lc, log1p(-π_i) + lo)
         end
     end

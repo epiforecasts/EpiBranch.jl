@@ -1,0 +1,1 @@
+The simulated chain-length likelihood no longer stops runs on a case cap, which gave short chains too little probability whenever runs hit the cap. It stops on `max_generations` and refuses `max_cases`. A run still going at the stop is right-censored at the length it had reached.
