@@ -174,7 +174,7 @@ An intervention can also act on people other than the one it is called for. It
 proposes `InterventionAction` values (a person, a time and an effect), such as
 tracing a contact or vaccinating a ring, and the engine admits them through one
 protocol on every transmission model, so that capacity limits and scheduling
-apply to them in the same way as to an intervention's own effects. The protocol
+apply to them in the same way as to the effects on the case itself. The protocol
 is described in [Writing an intervention](tutorials/writing-interventions.md)
 and [Extending EpiBranch](@ref).
 
@@ -182,7 +182,7 @@ Interventions are applied in the order they are listed. A policy that starts on
 a given date, or stops after a number of cases, is described by wrapping the
 intervention in [`Scheduled`](@ref) instead of giving every intervention its
 own start date. `Scheduled` judges each action at its own date, not at the
-case's infection time. With isolation starting on day 14, a case infected on
+infection time of the case. With isolation starting on day 14, a case infected on
 day 8 whose isolation falls on day 15 is isolated, and an isolation dated
 before day 14 is undone. The hook contract and a worked example are in [Writing
 an intervention](tutorials/writing-interventions.md).
@@ -217,17 +217,17 @@ The simplest model has one offspring distribution and one generation-time
 distribution. The general version treats a case's natural history as a
 **host timeline**, a sequence of timed states from infection (infectious,
 onset, severe, died or recovered, buried), and transmission as a set of
-**route windows** on that timeline. A route window (`RouteWindow`) holds no offspring law. It has a state at which
-infectiousness begins, the states that end it, a contact-interval distribution
-for the timing within it, whom it reaches, the state from which contacts are
-listed for tracing, and the proportion of contacts that can be traced. A
-branching process draws the number of secondary cases for each route from a
-separate type, `Infectiousness`, which pairs an offspring distribution with the
-window it is drawn for. Because the
-timeline is the disease part of the model, the state at which a window opens is
-named in the window and has to be one the model's progression produces; a
-window that opens at a state nothing produces never opens, and the model warns
-about it.
+**route windows** on that timeline. A route window (`RouteWindow`) has a state
+at which infectiousness begins, the states that end it, a contact-interval
+distribution for the timing within it, whom it reaches, the state from which
+contacts are listed for tracing, and the proportion of contacts that can be
+traced. It has no offspring distribution. A branching process draws the number
+of secondary cases for each route from a separate type, `Infectiousness`, which
+pairs an offspring distribution with the window it is drawn for. Because the
+timeline is the disease part of the model, the window names the state at which
+it opens, and the progression must produce that state. A window that opens at a
+state the progression never produces does not open, and the model warns about
+it.
 
 This brings several mechanisms under one. A funeral route runs between death
 and burial, a hospital route between admission and discharge, and isolation
