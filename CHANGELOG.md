@@ -14,7 +14,7 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
 
 ### Changed
 
-- `contacts()` names the time of exposure `exposure_time` and `date_exposure` rather than `infection_time` and `date_infection`, which read as infection dates for a contact who was not infected, and adds the contact's attributes (such as `age` and `sex`) as columns.
+- `contacts()` now names the time of exposure `exposure_time` and `date_exposure`, replacing `infection_time` and `date_infection`, which misled for a contact who was not infected. It also adds the contact's attributes (such as `age` and `sex`) as columns.
 
 ### Added
 

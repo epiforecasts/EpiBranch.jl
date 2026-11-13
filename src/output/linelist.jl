@@ -226,8 +226,8 @@ end
 
 """Add the attributes recorded on each contact as columns, `missing` where a
 contact has none. Event times and bookkeeping keys are left out: on a contact
-who escaped infection they describe an infection that never happened, or an
-intervention's own state."""
+who escaped infection they describe an infection that never happened, or the
+state of an intervention."""
 function _add_contact_attributes!(df::DataFrame, state::SimulationState)
     individuals = state.individuals
     nrow(df) == 0 && return df
