@@ -1475,7 +1475,11 @@ function (clinical::ClinicalPresentation)(rng, ind)
     pa = sample_value(clinical.prob_asymptomatic, rng, ind)
     is_asymp = rand(rng) < pa
     ind.state[:asymptomatic] = is_asymp
-    ind.state[:incubation_period] = is_asymp ? NaN : rand(rng, clinical.incubation_period)
+    # Every case draws an incubation period, so that a generation time linked
+    # to it has one to use for an asymptomatic case, which has no onset.
+    latent = rand(rng, clinical.incubation_period)
+    ind.state[:latent_incubation_period] = latent
+    ind.state[:incubation_period] = is_asymp ? NaN : latent
     return _set_onset_from_incubation!(ind)
 end
 

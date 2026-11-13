@@ -42,6 +42,7 @@ underscore are internal.
 | `:onset_time` | `Float64` | `NaN` | `clinical_presentation` | Creation |
 | `:asymptomatic` | `Bool` | `false` | `clinical_presentation` | Creation |
 | `:incubation_period` | `Float64` | — | `clinical_presentation` | Creation; `NaN` for an asymptomatic case |
+| `:latent_incubation_period` | `Float64` | — | `clinical_presentation` | Creation; drawn for every case, asymptomatic or not |
 | `:age` | `Real` | — | `demographics` | Creation |
 | `:sex` | `Symbol` | — | `demographics` | Creation |
 | `:group` | `Int` | — | `groups` | Creation |
