@@ -125,36 +125,8 @@ composed `progression`; the mixing groups are read off each individual's
 state, so the `attributes` composing the model must set `model.mixing_by`'s
 keys before the race runs.
 """
-function simulate_once(
-        model::MixingProcess, sim_opts::SimOpts;
-        interventions, attributes, progression, observation, recorder, rng
+function simulate_once(model::MixingProcess, sim_opts::SimOpts; layers...)
+    return _simulate_mass_action(
+        model, sim_opts, model.mixing_by, model.rate, model.calendar; layers...
     )
-    n_initial = sim_opts.n_initial
-    n_initial >= 1 || throw(ArgumentError("n_initial must be ≥ 1"))
-    n_initial <= model.population_size ||
-        throw(ArgumentError("n_initial cannot exceed population_size"))
-
-    from = something(model.from, infectious_from(progression))
-    N = model.population_size
-
-    state = new_state(model, progression, attributes, rng)
-    add_individuals!(
-        state, N, interventions;
-        setup = (ind, i) -> nothing
-    )
-
-    members = collect(1:N)
-    sellke_race!(
-        state, members, rng, sim_opts;
-        seed! = (best, _, r) -> (best[randperm(r, N)[1:n_initial]] .= 0),
-        targets = MassAction(
-            state, members; mixing_by = model.mixing_by, rate = model.rate,
-            calendar = model.calendar, from
-        ),
-        from = from, until = model.until, interventions,
-        risks = transmission_risks(model), recorder
-    )
-
-    apply_observation!(observation, state, rng)
-    return state
 end
