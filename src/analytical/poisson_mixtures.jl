@@ -2,7 +2,7 @@
 # Offspring laws where each case draws its own rate from a lognormal or
 # Weibull distribution and then a Poisson count at that rate: alternatives to
 # the negative binomial (a Poisson-gamma mixture) for individual variation in
-# transmission. Neither has a closed-form mass function, so quantities are
+# transmission. Neither has a closed-form mass function. Quantities are
 # integrals over the rate, taken on the probability scale of the mixing law.
 
 """
@@ -16,7 +16,7 @@ number of secondary cases is Poisson at that rate. The mean is
 
 The mass function, cumulative distribution and generating function are
 evaluated by numerical integration over the rate. Chain sizes and extinction
-use the generating function, so they work as for any discrete law
+use the generating function and work as for any discrete law
 ([`chain_size_distribution`](@ref), [`extinction_probability`](@ref)).
 
 # Examples
@@ -44,7 +44,7 @@ PoissonLognormal(μ::Real, σ::Real) = PoissonLognormal{float(promote_type(typeo
 Offspring distribution in which a case's rate is Weibull with shape `k` and
 scale `λ` (as in `Weibull(k, λ)`), and its number of secondary cases is
 Poisson at that rate. The mean is `λ Γ(1 + 1 / k)`. A shape `k` below 1 gives
-a heavier tail than the exponential, and so more superspreading.
+a heavier tail than the exponential, with more superspreading.
 
 Like [`PoissonLognormal`](@ref), it is evaluated by numerical integration over
 the rate.
@@ -87,7 +87,7 @@ Distributions.var(d::_PoissonMixture) = mean(d) + var(_rate_law(d))
 
 # Expectation of `f(Poisson(λ), x)` over the rate, integrated over the
 # probability scale of the rate law. The integrand is sharply peaked where the
-# rate is near `x`, so the interval is split there.
+# rate is near `x`; the interval is split there.
 function _poisson_mixture_expectation(f, d::_PoissonMixture, x::Real)
     rate = _rate_law(d)
     integrand = u -> f(Poisson(quantile(rate, u)), x)
