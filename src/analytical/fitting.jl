@@ -471,9 +471,9 @@ well-defined observed length.
 The simulation stops runs on `max_generations` (default 100). Because a cap on
 cases does not fix a chain's length, `max_cases` is refused. A run still going at the stop is right-censored at the length it had
 reached, so it counts towards the right tail of observed lengths above that
-length. A run also stops, and is censored in the same way, once it reaches
-100 000 cases, so a model whose cases grow without bound does not exhaust
-memory; lower `max_generations` to stop such runs sooner.
+length. A run is also censored in the same way once it reaches 100 000 cases,
+which keeps memory bounded for a model whose cases grow without limit. Lower
+`max_generations` to stop such runs sooner.
 """
 function loglikelihood(data::ChainLengths, model::TransmissionModel; kwargs...)
     return _chain_length_model_loglik(
@@ -500,9 +500,8 @@ function _chain_length_assert_full_reporting(prog)
     )
 end
 
-# Safety stop for runs whose cases grow geometrically (R above 1). A run it
-# stops is right-censored at the length reached, like any other stop, so it
-# does not change what the length means.
+# Safety stop for runs whose cases grow geometrically (R above 1). Runs it
+# stops are right-censored at the length reached, as with any other stop.
 const _LENGTH_SAFETY_MAX_CASES = 100_000
 
 function _chain_length_model_loglik(

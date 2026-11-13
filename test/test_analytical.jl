@@ -1428,7 +1428,7 @@ using ForwardDiff
         @testset "Simulated chain length of a supercritical model stays bounded" begin
             # With R above 1 and no cap on cases, runs would grow without
             # limit. The internal safety stop censors them at the length
-            # reached, so the call returns.
+            # reached, and the call returns.
             model = ModelSpec(
                 BranchingProcess(Poisson(2.0), Exponential(1.0));
                 interventions = [Isolation(onset_to_isolation_delay = 100.0, duration = Inf)],
