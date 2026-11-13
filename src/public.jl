@@ -10,35 +10,19 @@
 # same dispatch without the draw, for a likelihood that needs the
 # distribution itself rather than a sample from it; `Conditional` is
 # exported.
-public sample_value
-public resolve
+public sample_value, resolve
 
 # Intervention interface: a package subtyping `AbstractIntervention`
 # overrides these.
-public initialise_individual!
-public resolve_individual!
-public on_infection_settled!
-public trace_contacts!
-public traces_contacts
-public traces_source
-public has_effect
-public supplies_contacts
-public competing_risk
-public persistent_competing_risks
-public reset!
-public required_fields
-public infectious_removal_time
-public risk_applies
-public standing_block
+public initialise_individual!, resolve_individual!, on_infection_settled!,
+    trace_contacts!, traces_contacts, traces_source, has_effect, supplies_contacts,
+    competing_risk, persistent_competing_risks, reset!, required_fields,
+    infectious_removal_time, risk_applies, standing_block, analytic_offspring_effect
 # The built-in risk sources the guides link to, and the kernel trait for a
 # kernel with mass at infinity.
-public HostImmunity
-public AbortedInfection
-public infinite_draw_is_final
-public analytic_offspring_effect
+public HostImmunity, AbortedInfection, infinite_draw_is_final
 # End an infection early from any intervention hook, and read when it ended.
-public abort_infection!
-public infection_aborted_time
+public abort_infection!, infection_aborted_time
 
 # Isolation eligibility: whether an isolation time counts as a detection.
 public records_isolation
@@ -47,22 +31,17 @@ public records_isolation
 # their contacts traced (`is_eligible`) and from when (`trigger_time`).
 # `GroupVaccination` reads the same two methods to decide when a group
 # counts as having a case.
-public is_eligible
-public trigger_time
+public is_eligible, trigger_time
 
 # Pair kernels: the host records a kernel's hazards depend on, and the
 # projection against which the race checks that declaration.
-public watched_records
-public kernel_projection
+public watched_records, kernel_projection
 
 # Routes that find their own contacts rather than listing them (a spatial
 # kernel, or contact with everyone in an area): the race submits what
 # `propose_along` proposes itself, and asks `route_pair_kernel` and
 # `pending_beyond` only when it needs to.
-public proposes_own_contacts
-public propose_along
-public route_pair_kernel
-public pending_beyond
+public proposes_own_contacts, propose_along, route_pair_kernel, pending_beyond
 
 # Mass action, the reference route that proposes its own contacts: a
 # `MassAction` reach for a closed population (what `HomogeneousProcess` and
@@ -82,31 +61,19 @@ public resumable_route
 #   - `initialise_state` to build its starting population;
 #   - `interventions`, `attributes`, `observation` to return the model
 #     inputs it carries;
-#   - `population_size`, `n_types`, `model_generation_time` metadata.
-public initialise_state
-public interventions
-public attributes
-public observation
-public recorder
-public population_size
-public n_types
-public model_generation_time
-# The two remaining layers of a `ModelSpec`, alongside the four above: the
-# within-host progression and the transmission model it wraps.
-public progression
-public process
+#   - `population_size`, `n_types`, `model_generation_time` metadata;
 #   - `transmission_risks` to contribute per-pair competing risks (e.g. a
 #     network's per-edge probability), resolved alongside the built-ins.
-public transmission_risks
+public initialise_state, interventions, attributes, observation, recorder,
+    population_size, n_types, model_generation_time, transmission_risks
+# The two remaining layers of a `ModelSpec`, alongside the four above: the
+# within-host progression and the transmission model it wraps.
+public progression, process
 
 # Helpers an `initialise_state` / `contacts_of` builds on, so a model never
 # touches the engine's bookkeeping directly.
-public new_state
-public add_individuals!
-public seed!
-public get_generation_time
-public reads_settled_state
-public transmission_time
+public new_state, add_individuals!, seed!, get_generation_time, reads_settled_state,
+    transmission_time
 
 # The per-`(id, purpose)` generator a draw belonging to one person or one pair
 # should use, so `CommonRandomNumbers` keeps two runs on the same draws until
@@ -115,10 +82,8 @@ public stream
 
 # Resolve a case's natural history (the model's `progression`). The engine calls
 # this for every new case; a model running its own simulation loop calls it.
-public transition_time
-public resolve_transitions!
-public transition_loglik, transition_term
-public censor_after_outcome!
+public transition_time, resolve_transitions!, transition_loglik, transition_term,
+    censor_after_outcome!
 
 # Apply the model's observation to a finished state (the simulation side of the
 # observation protocol; `observe` is the exported analytical side). The engine
@@ -130,8 +95,7 @@ public NoGenerationTime
 
 # An `InfectionLayer` subtype names who could have infected whom, which lets the
 # pairwise likelihood enumerate its (susceptible, possible infector) pairs.
-public contact_structure
-public followup_end
+public contact_structure, followup_end
 # A subtype holding per-host times under a name of its own overrides this
 # rather than have the likelihood read a fixed field name off it.
 public host_times
@@ -142,13 +106,11 @@ public pair_kernel
 # `calendar_shape` method returning `SmoothCalendar()`.
 public calendar_multiplier, next_calendar_break, calendar_shape,
     PiecewiseConstantCalendar, SmoothCalendar
-public infection_likelihood_compatible
-public susceptibility_components, susceptibility_host_times, HazardScaling
-public binding_release
-public removal_gap_host_times, removal_gap_host_times_withdrawn
-public removal_block_probability
-public record_removal!, revise_removal!, withdraw_removal!
-public removal_stretches
+public infection_likelihood_compatible, susceptibility_components,
+    susceptibility_host_times, HazardScaling, binding_release,
+    removal_gap_host_times, removal_gap_host_times_withdrawn,
+    removal_block_probability, record_removal!, revise_removal!, withdraw_removal!,
+    removal_stretches
 public InterventionAction, intervention_actions, action_draw!, action_cache,
     apply_actions!, action_candidates, acts_on_population, needs_contacts,
     may_revise, is_settled
@@ -158,15 +120,11 @@ public InterventionAction, intervention_actions, action_draw!, action_cache,
 # are the two built-in groupings; a new one is a `PairwiseReduction` subtype
 # with `ngroups` and `group` methods, run with `pairwise_reduce`, no further
 # change to the package.
-public PairwiseReduction
-public ngroups
-public group
-public pairwise_reduce
+public PairwiseReduction, ngroups, group, pairwise_reduce
 
 # Vaccine effect modes: a new mode defines `realised_efficacy`, and overrides
 # `realise_prior_dose!` only to change what a dose recorded before the run gets.
-public realised_efficacy
-public realise_prior_dose!
+public realised_efficacy, realise_prior_dose!
 
 # Custom vaccinations: every `AbstractVaccination` defines `vaccine_effect`.
 # `dose_action` is the `InterventionAction` a custom `intervention_actions`
@@ -174,23 +132,17 @@ public realise_prior_dose!
 # outside the action protocol. `record_effect_draws!` is the hook for an
 # effect only some vaccinations have, drawing and storing it through
 # `store_draw!` and reading it back through `dose_value`.
-public vaccine_effect
-public dose_action
-public record_dose!
+public vaccine_effect, dose_action, record_dose!
 # `record_capacity_use!` tells a capacity wrapper of a use made outside an
 # action it admitted.
 public record_capacity_use!
-public record_effect_draws!
-public store_draw!
-public dose_value
+public record_effect_draws!, store_draw!, dose_value
 
 # Stopping rules: a rule bounds a structure-driven run's time through
 # `time_bound` and its generation depth through `generation_bound`, and says
 # through `honoured_without_should_stop` whether those two bounds apply it in
 # full, without the run having to poll `should_stop` after each settled case.
-public time_bound
-public generation_bound
-public honoured_without_should_stop
+public time_bound, generation_bound, honoured_without_should_stop
 
 # Vaccine effect modes: whether a mode's protection can be given a `waning`
 # curve, which also tells a continuous-time race whether the block it composes
@@ -209,8 +161,7 @@ public INTERVENTION_REMOVAL
 # wrapper around its construction: it resolves `max_time` from the run's
 # `SimOpts` and reconciles the aggregate bookkeeping, so a single-race model
 # never touches `_max_time` or `_reconcile_sellke_bookkeeping!` directly.
-public simulate_once
-public sellke_race!
+public simulate_once, sellke_race!
 
 # The state a case's infectious window opens at, derived from the composed
 # progression.
