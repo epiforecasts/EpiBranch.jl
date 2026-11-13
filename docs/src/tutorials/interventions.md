@@ -445,6 +445,46 @@ iso_gen3 = Scheduled(
 nothing # hide
 ```
 
+## Comparing many scenarios
+
+The loops above change one setting at a time. [`scenario_sweep`](@ref) runs every combination of the settings you list and returns a table with one row per combination and its containment probability. Each setting is a vector of the values to try, and `:offspring` is required. Each value of `:interventions` is a whole stack of interventions, given as one vector per scenario. Settings that apply to every run, such as `max_cases` and `rng`, are passed once:
+
+```@example interventions
+sweep = scenario_sweep(
+    Dict(
+        :offspring => [Poisson(1.5), Poisson(3.0)],
+        :interventions => [
+            [Isolation(onset_to_isolation_delay = Exponential(d), duration = 7.0)]
+                for d in [0.5, 2.0, 5.0]
+        ],
+        :attributes => [clinical],
+        :generation_time => [Exponential(5.0)],
+    );
+    n_sim = 200, max_cases = 500, rng = StableRNG(42),
+)
+sweep.R = mean.(sweep.offspring)
+sweep.mean_delay = [only(i).onset_to_isolation_delay.θ for i in sweep.interventions]
+sort(sweep[:, [:R, :mean_delay, :containment_probability]], [:R, :mean_delay])
+```
+
+The six rows are the two offspring distributions crossed with the three delays. The `R` and `mean_delay` columns are read back from the offspring distribution and isolation of each scenario. The table is sorted by R and then by delay. Containment is higher with R = 1.5 than with R = 3, and falls in both cases as isolation is delayed.
+
+### Containment by a chosen week
+
+A simulation that stops at `max_cases` is not extinct, but an outbreak can also be small or slow at a given time. Reports of ringbp results usually count an outbreak as contained when no case has symptom onset in a window of weeks. `is_extinct(state; by_week = ...)` does that: `by_week = 12:20` is `true` when no case has onset in weeks 12 to 20, counted in 7-day blocks from day 0, and a single week takes an integer. The simulation has to run to the end of the window, here day 140, so `max_time = 140.0`:
+
+```@example interventions
+model_r15 = ModelSpec(BranchingProcess(Poisson(1.5), Exponential(5.0));
+    interventions = [iso], attributes = clinical)
+states = simulate(model_r15, 200; max_cases = 500, max_time = 140.0, rng = StableRNG(42))
+
+extinct = mean(is_extinct.(states))
+quiet = mean(is_extinct.(states; by_week = 12:20, max_cases = 500))
+println("Extinct: $(round(extinct, digits=3)); no onsets in weeks 12-20: $(round(quiet, digits=3))")
+```
+
+The two shares differ because they define containment differently: an outbreak that has died out can still have a case with onset inside it, and one that is alive can have none. Pass the same `max_cases` to `is_extinct`: a run stopped at the cap before week 12 has no onsets in the window, and without `max_cases` it would be counted as contained.
+
 ## Writing your own intervention
 
 To write an intervention that is not built in, or to see how the built-in
