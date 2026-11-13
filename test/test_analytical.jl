@@ -864,6 +864,34 @@ using ForwardDiff
             @test_throws ArgumentError ChainSizes([3]; seeds = [1, 1])
         end
 
+        @testset "Right tail does not underflow" begin
+            logsumexp_tail(d, x, s) =
+                log(sum(exp(EpiBranch._chain_size_logpdf(d, n, s)) for n in x:5000))
+            d = chain_size_distribution(Poisson(0.3))
+            @test isfinite(logccdf(d, 99))
+            @test logccdf(d, 99) ≈ logsumexp_tail(d, 100, 1)
+            @test logccdf(d, 99) >= logpdf(d, 100)
+            @test isfinite(loglikelihood(ChainSizes([100]), Poisson(0.3); prob_concluded = [0.0]))
+            classes = ChainSizeClasses([1, 100], [99, Inf], [10, 1])
+            @test isfinite(loglikelihood(classes, Poisson(0.3)))
+            # Multiple seeds.
+            b = Borel(0.6)
+            @test EpiBranch._chain_size_right_tail_logprob(b, 150, 3) ≈
+                logsumexp_tail(b, 150, 3) rtol = 1.0e-6
+            # GammaBorel stays finite and ordered.
+            g = GammaBorel(2.0, 0.3)
+            @test isfinite(logccdf(g, 80))
+            @test logccdf(g, 80) <= logccdf(g, 40)
+            # Supercritical: the infinite-chain mass is included.
+            sup = Borel(1.5)
+            q = extinction_probability(Poisson(1.5))
+            tail = exp(EpiBranch._chain_size_right_tail_logprob(sup, 200, 1))
+            @test tail ≈ 1 - q rtol = 1.0e-6
+            # Agrees with the complement where that is accurate.
+            @test EpiBranch._chain_size_right_tail_logprob(Borel(0.8), 10, 2) ≈
+                log(1 - sum(exp(EpiBranch._chain_size_logpdf(Borel(0.8), j, 2)) for j in 2:9))
+        end
+
         @testset "Real-time mixture likelihood and end_of_outbreak_probability" begin
             # Right-tail helper: P(X ≥ s) = 1 ⇒ logright_tail = 0.
             d = GammaBorel(0.5, 0.8)

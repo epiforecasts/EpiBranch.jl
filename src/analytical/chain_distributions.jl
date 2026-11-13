@@ -298,26 +298,52 @@ function _independent_chain_size_logpdf(d, x::Integer, s::Integer)
 end
 
 """
+    _chain_size_log_infinite_mass(d, s)
+
+Internal: `log` of the probability that a chain started by `s` index cases
+never ends (`-Inf` when it always does), or `nothing` where there is no
+closed form for it. It is `log(1 - q^s)` for the extinction probability `q`.
+"""
+_chain_size_log_infinite_mass(d, s::Integer) = nothing
+function _chain_size_log_infinite_mass(d::Borel, s::Integer)
+    d.μ <= 1 && return oftype(float(d.μ), -Inf)
+    q = extinction_probability(Poisson(d.μ))
+    return _log1mexp(s * log(q))
+end
+function _chain_size_log_infinite_mass(d::GammaBorel, s::Integer)
+    d.R <= 1 && return oftype(float(d.R), -Inf)
+    q = extinction_probability(d.R, d.k)
+    return _log1mexp(s * log(q))
+end
+
+"""
     _chain_size_right_tail_logprob(d, x, s)
 
 Internal: multi-seed log-survival of a chain size distribution `d`,
-`log P(X ≥ x | s)`, computed as `log(1 − Σ_{j=s}^{x-1} P(X = j | s))`.
-For super-critical processes the missing mass `1 − Σ_{j ≥ s} P(X = j)`
-is the "chain takes off" probability and is included automatically.
+`log P(X ≥ x | s)`. While the running sum `Σ_{j=s}^{x-1} P(X = j | s)` stays
+below one half the tail is `log(1 − Σ)`. Past that, the complement would lose
+all precision once the tail falls below machine epsilon, so the tail is summed
+upwards from `x` in log space instead, adding the infinite-chain mass for a
+super-critical process. Distributions with no closed form for that mass
+(see `_chain_size_log_infinite_mass`) keep the complement throughout, and
+return `-Inf` when the partial sum reaches 1.
 
-Returns `0.0` when `x ≤ s` (trivially `P(X ≥ s) = 1`) and `-Inf` when
-the partial sum reaches or exceeds 1 (numerical underflow of the tail).
-Used by the real-time mixture likelihood in
-`loglikelihood(::ChainSizes, ...)`.
+Returns `0.0` when `x ≤ s` (trivially `P(X ≥ s) = 1`). Used by the real-time
+mixture likelihood in `loglikelihood(::ChainSizes, ...)`.
 """
 function _chain_size_right_tail_logprob(d, x::Integer, s::Integer)
     (s < 1 || x < 1) && return -Inf
     x <= s && return zero(_chain_size_logpdf(d, s, s))
     cum = zero(exp(_chain_size_logpdf(d, s, s)))
+    log_inf = _chain_size_log_infinite_mass(d, s)
     for j in s:(x - 1)
         cum += exp(_chain_size_logpdf(d, j, s))
-        cum >= one(cum) && return oftype(cum, -Inf)
+        if cum > 0.5 && log_inf !== nothing
+            log_finite = _streaming_logsumexp(n -> _chain_size_logpdf(d, n, s), x)
+            return _logsumexp2(log_finite, log_inf)
+        end
     end
+    cum >= one(cum) && return oftype(cum, -Inf)
     p = one(cum) - cum
     return p > zero(p) ? log(p) : oftype(cum, -Inf)
 end
@@ -343,8 +369,8 @@ end
 # dedicated `cdf(d, ::Integer)` method calls straight back into that same
 # fallback and overflows the stack. Defining `cdf` here breaks the cycle
 # and, through Distributions' own `ccdf`/`logcdf` defaults, gives those for
-# free; `logccdf` is reused from `_chain_size_right_tail_logprob`, already
-# written to avoid cancellation in the tail.
+# free; `logccdf` is reused from `_chain_size_right_tail_logprob`, which
+# sums the tail directly where the complement would lose precision.
 Distributions.cdf(d::Borel, n::Integer) = _chain_size_cdf(d, n)
 Distributions.logccdf(d::Borel, n::Integer) = _chain_size_right_tail_logprob(d, n + 1, 1)
 
