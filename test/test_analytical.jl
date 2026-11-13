@@ -1421,7 +1421,7 @@ using ForwardDiff
                 data, model; n_sim = 20_000, max_generations = gens, rng = StableRNG(1)
             )
             # A tighter generation limit censors more runs but stays close to
-            # the uncensored value, instead of dropping probability mass.
+            # the uncensored value, without dropping probability mass.
             @test abs(ll(12) - ll(100)) < 0.5
         end
 

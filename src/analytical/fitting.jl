@@ -280,15 +280,15 @@ function _sim_loglikelihood(
         # seed) is the cluster's observed value, instead of reporting each
         # seed's chain separately.
         push!(sim_values, maximum(vals))
-        # A length run is censored by whichever rule stopped it, as its value
-        # is the length reached; a size run only by the case cap.
+        # A length run is censored whichever rule stopped it, because its value
+        # is the length reached. A size run is censored only by the case cap.
         push!(
             censored,
             !state.extinct && (column === :length || state.cumulative_cases >= cap)
         )
     end
-    # For lengths the cap is on cases, not generations, so a capped run is
-    # only known to be at least as long as the length it had reached.
+    # For lengths the cap counts cases, so a capped run is only known to be
+    # at least as long as the length it had reached.
     return _empirical_ll(
         observed, sim_values; min_val, censored, cap,
         censored_at_value = column === :length
@@ -468,9 +468,8 @@ applies on both paths. Not available with an observation model or a
 `Reporting` probability below 1 because a chain with undetected cases has no
 well-defined observed length.
 
-The simulation stops runs on `max_generations` (default 100), not on a case
-cap, because a cap on cases does not fix a chain's length: `max_cases` is
-refused. A run still going at the stop is right-censored at the length it had
+The simulation stops runs on `max_generations` (default 100). Because a cap on
+cases does not fix a chain's length, `max_cases` is refused. A run still going at the stop is right-censored at the length it had
 reached, so it counts towards the right tail of observed lengths above that
 length. Lower `max_generations` for a model whose cases grow without bound.
 """
@@ -587,7 +586,7 @@ function _empirical_ll(
     n_total = length(simulated)
 
     if censored_at_value
-        # Lower-bound censoring needs the full simulated distribution, so the
+        # Lower-bound censoring needs the full simulated distribution. The
         # parametric tail is not used.
         max_val = max(maximum(observed), maximum(simulated))
         counts = zeros(Int, max_val - min_val + 1)
@@ -675,8 +674,8 @@ function _empirical_ll(
 end
 
 # Empirical log-likelihood where each censored run is a lower bound on its own
-# value (see `_empirical_ll`). Runs censored at or below an observation say
-# nothing about it, so they are left out of that observation's denominator.
+# value (see `_empirical_ll`). Runs censored at or below an observation could
+# equal it or exceed it, so they are left out of that observation's denominator.
 function _empirical_ll_censored_at_value(
         observed, counts, censored_counts, min_val, prob_concluded
     )
