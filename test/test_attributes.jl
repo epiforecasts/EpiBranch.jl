@@ -501,10 +501,10 @@ end
 end
 
 @testset "age_bands" begin
-    ages = age_bands([0, 5, 18, 65, 90], [0.06, 0.16, 0.60, 0.18])
+    ages = age_bands([0, 5, 18, 65, 90], [0.06, 0.16, 0.6, 0.18])
     @test ages isa MixtureModel
     @test all(c -> c isa Uniform, components(ages))
-    @test probs(ages) ≈ [0.06, 0.16, 0.60, 0.18]
+    @test probs(ages) ≈ [0.06, 0.16, 0.6, 0.18]
     @test minimum(ages) == 0
     @test maximum(ages) == 90
 
