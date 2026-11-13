@@ -215,3 +215,38 @@ public sellke_race!
 # The state a case's infectious window opens at, derived from the composed
 # progression.
 public infectious_from
+
+# Hooks the extending guides ask a package to define for its own
+# intervention, trace rate, delay or action.
+#   - `keep_active` says which targets an intervention still acts on;
+#   - `traces`, `draw_trace_delay` and `apply_trace!` are the methods behind
+#     `TraceRate`, `TraceDelay` and `TraceAction`;
+#   - `capacity_key`, `capacity_time_key`, `resource_key`, `held_until` and
+#     `refused_action` are what a capacity-limited intervention defines;
+#   - `InterventionWrapper` is the supertype of a wrapper of your own.
+public keep_active
+public traces
+public draw_trace_delay
+public apply_trace!
+public capacity_key
+public capacity_time_key
+public resource_key
+public held_until
+public refused_action
+public InterventionWrapper
+
+# Offspring and vaccination hooks named in the guides: how a model draws a
+# case's offspring and says whether that law is unchanged by the run's
+# interventions, a vaccination's effect mode and dose label, and the helper
+# that populates a state lazily.
+public draw_offspring
+public offspring_law_unchanged
+public has_single_type_law
+public lazily_populate!
+public effect_mode
+public dose_label
+
+# `simulate_by_generation` with a `multiplier`: the mean-scaling rule and the
+# one-step generation total an offspring family can define.
+public scale_mean
+public sum_offspring

@@ -180,6 +180,23 @@ end
         end
     end
 
+    @testset "extension hooks the guides name are public" begin
+        if VERSION >= v"1.11"
+            for n in (
+                    :keep_active, :traces, :draw_trace_delay, :apply_trace!,
+                    :capacity_key, :capacity_time_key, :resource_key, :held_until,
+                    :refused_action, :InterventionWrapper, :draw_offspring,
+                    :offspring_law_unchanged, :has_single_type_law, :lazily_populate!,
+                    :effect_mode, :dose_label, :HostImmunity, :AbortedInfection,
+                    :scale_mean, :sum_offspring,
+                )
+                @test Base.ispublic(EpiBranch, n)
+            end
+        else
+            @test_skip true
+        end
+    end
+
     @testset "Stacked tracing keeps the earliest trace time" begin
         # A contact reached by two tracing systems was reached when the
         # first of them got there, so the recorded trace time must not

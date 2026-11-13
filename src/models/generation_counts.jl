@@ -529,14 +529,14 @@ _like(::Vector{Int}, v::Vector{Int}) = v
 # The total offspring of `n` cases, each drawing independently from `law`.
 # Where the sum of `n` copies of `law` has a closed form it is drawn in one
 # step, at a cost that does not depend on `n`. Otherwise every case draws.
-_sum_offspring(rng::AbstractRNG, law::Poisson, n::Int) = rand(rng, Poisson(n * mean(law)))
-function _sum_offspring(rng::AbstractRNG, law::NegativeBinomial, n::Int)
+sum_offspring(rng::AbstractRNG, law::Poisson, n::Int) = rand(rng, Poisson(n * mean(law)))
+function sum_offspring(rng::AbstractRNG, law::NegativeBinomial, n::Int)
     return rand(rng, NegativeBinomial(n * law.r, law.p))
 end
-function _sum_offspring(rng::AbstractRNG, law::Binomial, n::Int)
+function sum_offspring(rng::AbstractRNG, law::Binomial, n::Int)
     return rand(rng, Binomial(n * ntrials(law), succprob(law)))
 end
-function _sum_offspring(rng::AbstractRNG, law::Distribution, n::Int)
+function sum_offspring(rng::AbstractRNG, law::Distribution, n::Int)
     return sum(rand(rng, law) for _ in 1:n)
 end
 
@@ -549,8 +549,8 @@ function _generation_potential(
     )
     n = only(current)
     n == 0 && return [0]
-    law = m === nothing ? offspring : _scale_mean(offspring, m)
-    return [_sum_offspring(rng, law, n)]
+    law = m === nothing ? offspring : scale_mean(offspring, m)
+    return [sum_offspring(rng, law, n)]
 end
 
 # Multi-type: each type's cases draw their total from its own law, scaled by
@@ -567,8 +567,8 @@ function _generation_potential(
         R = offspring.R_by_type[j]
         R <= 0 && continue
         law = _type_law(offspring.dist_fn, R, j)
-        law = m === nothing ? law : _scale_mean(law, m)
-        total = _sum_offspring(rng, law, current[j])
+        law = m === nothing ? law : scale_mean(law, m)
+        total = sum_offspring(rng, law, current[j])
         total == 0 && continue
         potential .+= rand(rng, Multinomial(total, offspring.alloc_probs[:, j]))
     end
@@ -615,18 +615,18 @@ end
 # ── The shared multiplier's mean-scaling rule ────────────────────────
 
 """
-    EpiBranch._scale_mean(d, m)
+    EpiBranch.scale_mean(d, m)
 
 `d`'s law with its mean scaled by `m`, the shared multiplier
 [`simulate_by_generation`](@ref) draws once per generation. Defined for
 `Poisson`, the family its negative-binomial identity needs; add a method of
 your own for another offspring family to use it with `multiplier`.
 """
-_scale_mean(d::Poisson, m::Real) = Poisson(mean(d) * m)
-function _scale_mean(d::Distribution, m::Real)
+scale_mean(d::Poisson, m::Real) = Poisson(mean(d) * m)
+function scale_mean(d::Distribution, m::Real)
     throw(
         ArgumentError(
-            "simulate_by_generation's multiplier has no EpiBranch._scale_mean method for " *
+            "simulate_by_generation's multiplier has no EpiBranch.scale_mean method for " *
                 "$(typeof(d)); it is defined for Poisson. Add a method of your own for " *
                 "another offspring family."
         )
