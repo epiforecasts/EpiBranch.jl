@@ -509,8 +509,8 @@ EpiBranch.offspring_law_unchanged(::OwnOnset) = true
     @test loglikelihood(data, ModelSpec(proc; attributes = OwnOnset(inner), progression = rep)) ≈
         loglikelihood(data, ModelSpec(proc; attributes = inner, progression = rep))
 
-    # A reporting step without a `delay` field has no delay for the
-    # incidence likelihood to read, and two onset laws are ambiguous.
+    # A reporting step without a `delay` field gives the incidence
+    # likelihood no delay to read. Two onset laws are ambiguous.
     @test_throws ArgumentError loglikelihood(
         data, ModelSpec(proc; progression = [TestingReport(0.6)])
     )
