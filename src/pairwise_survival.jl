@@ -350,11 +350,16 @@ function _withdrawn_removal_gap_keys(model::ModelSpec)
     )
 end
 
-# Every key a simulated `state` recorded a lapsing stretch under must be named
-# by some component (a complete removal or a leaky one) or withdrawn by one, or
-# the likelihood would silently fit on the whole exposure where the simulation
-# blocked part of it.
-function _validate_removal_gap_keys(state::SimulationState, model::ModelSpec)
+"""
+    validate_removal_gap_keys(state::SimulationState, model::ModelSpec)
+
+Check that every key a simulated `state` recorded a lapsing removal stretch under
+is named by some component of `model` (a complete removal or a leaky one) or
+withdrawn by one, and throw an `ArgumentError` otherwise: the likelihood would
+fit on the whole exposure where the simulation blocked part of it.
+[`layer_host_times`](@ref EpiBranch.layer_host_times) calls it.
+"""
+function validate_removal_gap_keys(state::SimulationState, model::ModelSpec)
     lapsing = _lapsing_removal_keys(state)
     isempty(lapsing) && return nothing
     accounted = union(
@@ -379,7 +384,7 @@ end
 # the hazard outright, `leaky`'s scale it by a surviving fraction instead.
 # `nothing` in either when the layer recorded none of that kind. Several
 # removals' keys are already merged into one column apiece (see
-# `_layer_host_times`), a host removed by either being removed.
+# `layer_host_times`), a host removed by either being removed.
 function _removal_gaps(data)
     times = host_times(data)
     complete = get(times, REMOVAL_STRETCHES_KEY, nothing)
@@ -389,7 +394,7 @@ function _removal_gaps(data)
 end
 
 # A leaky stretch, unlike a complete one, carries its own surviving fraction,
-# since `_layer_host_times` merges every leaky key sharing one into a single
+# since `layer_host_times` merges every leaky key sharing one into a single
 # column and the hot loop needs no further lookup to use it.
 const _NO_LEAKY_STRETCHES = Tuple{Float64, Float64, Float64}[]
 
@@ -543,15 +548,23 @@ function _host_time_columns(state::SimulationState, keys)
     return NamedTuple{names}(columns)
 end
 
-# The per-host columns of an infection layer, read out of a `state` simulated
-# from `model`, whose process runs one Sellke race with a `from` state and
-# `until` states (as `HouseholdProcess` and `NetworkProcess` do). Each window is
-# the one that race used, closed by the model's interventions as well, which
-# makes the `simulate → loglikelihood` round trip exact.
-function _infection_layer_columns(state::SimulationState, model::ModelSpec)
-    process = model.process
-    from = something(process.from, infectious_from(model.progression))
-    window = _shorthand_window(from, process.until)
+"""
+    infection_layer_columns(state::SimulationState, model::ModelSpec)
+
+The per-host columns of an [`InfectionLayer`](@ref) read out of a `state`
+simulated from `model`, as a named tuple of `infection_time`, `infectious_time`,
+`removal_time` and `is_index`. The process runs one Sellke race with a window
+that opens at a `from` state and closes at `until` states, which it gives through
+[`process_window`](@ref EpiBranch.process_window) (the fields `from` and `until`
+for a [`FixedPopulationProcess`](@ref EpiBranch.FixedPopulationProcess)). Each
+window is the one the race used, closed by the model's interventions as well,
+which makes the `simulate → loglikelihood` round trip exact. Hosts never infected
+have `NaN` times and an infinite removal time.
+"""
+function infection_layer_columns(state::SimulationState, model::ModelSpec)
+    process_from, until = process_window(model.process)
+    from = something(process_from, infectious_from(model.progression))
+    window = _shorthand_window(from, until)
     n = length(state.individuals)
     infection_time = fill(NaN, n)
     infectious_time = fill(NaN, n)
@@ -828,13 +841,23 @@ function _merged_gap_column(columns, keys, individuals)
     end
 end
 
-# The host-time columns an infection layer reads out of a simulated `state`,
-# with every completely-blocking removal's stretches merged into one column
-# and every leaky one's into another, apart, so the likelihood can tell them
-# apart (see `removal_block_probability`). A host removed by either of two
-# removals of the same kind is removed, so each merge is a union.
-function _layer_host_times(state::SimulationState, model::ModelSpec, host_times)
-    _validate_removal_gap_keys(state, model)
+"""
+    layer_host_times(state::SimulationState, model::ModelSpec, host_times)
+
+The named per-host time columns an infection layer reads out of a simulated
+`state`: those named in `host_times` plus the removal stretches of `model`'s
+interventions, under `EpiBranch.REMOVAL_STRETCHES_KEY` for the completely
+blocking removals (merged into one column) and `EpiBranch.LEAKY_REMOVAL_STRETCHES_KEY`
+for the leaky ones (merged into another, apart, so the likelihood can tell them
+apart; see [`removal_block_probability`](@ref EpiBranch.removal_block_probability)).
+A host removed by either of two removals of the same kind is removed, so each
+merge is a union. A layer built without these columns is scored as if nothing
+were ever removed, so a structure whose layer holds host times passes them on
+under those keys. Calls [`validate_removal_gap_keys`](@ref
+EpiBranch.validate_removal_gap_keys) first.
+"""
+function layer_host_times(state::SimulationState, model::ModelSpec, host_times)
+    validate_removal_gap_keys(state, model)
     columns = _host_time_columns(state, _layer_host_time_keys(model, host_times))
     gap_keys = _removal_gap_keys(model)
     leaky_keys = _leaky_gap_keys(model)
@@ -860,7 +883,16 @@ function _layer_host_times(state::SimulationState, model::ModelSpec, host_times)
     return result
 end
 
-function _validate_infection_likelihood(model::ModelSpec)
+"""
+    validate_infection_likelihood(model::ModelSpec)
+
+Throw an `ArgumentError` unless the attributes, progression and every
+intervention of `model` declare [`infection_likelihood_compatible`](@ref). A
+`loglikelihood` method for an [`InfectionLayer`](@ref) calls it before scoring,
+since the likelihood would otherwise take no account of an effect it cannot
+represent.
+"""
+function validate_infection_likelihood(model::ModelSpec)
     for component in (model.attributes, model.progression, model.interventions)
         infection_likelihood_compatible(component) && continue
         throw(

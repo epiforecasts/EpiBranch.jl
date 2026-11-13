@@ -219,15 +219,15 @@ population_size(::RoutedNetwork) = NoPopulation()
 # `max_generations`, but leaves those two keywords' defaults off, so an
 # existing run over the fixed network keeps going to extinction or `max_time`
 # unless a cap is explicitly asked for (`_drop_default_shortcuts`).
-_honours_termination_controls(::RoutedNetwork) = false
+honours_termination_controls(::RoutedNetwork) = false
 
 # Each route closes independently at the earliest of its own `until` states
-# (see `_warn_uncovered_terminal_states` in EpiBranch's branching_process.jl),
+# (see `warn_uncovered_terminal_states` in EpiBranch's branching_process.jl),
 # so a terminal state missing from one route's `until` leaves that route open
 # even if every other route covers it.
-function _validate_process_windows(m::RoutedNetwork, progression)
+function validate_process_windows(m::RoutedNetwork, progression)
     for w in m.windows
-        _warn_uncovered_terminal_states(w.until, progression; route = w.name, from = w.from)
+        warn_uncovered_terminal_states(w.until, progression; route = w.name, from = w.from)
     end
     return nothing
 end
@@ -426,6 +426,8 @@ function EpiBranch.propose_along(
     return contacts
 end
 
-function EpiBranch._validate_initial_cases(model::RoutedNetwork, opts::SimOpts)
-    return EpiBranch._validate_initial_case_ids(opts, model.n)
+supports_initial_cases(::RoutedNetwork) = true
+
+function EpiBranch.validate_initial_cases(model::RoutedNetwork, opts::SimOpts)
+    return EpiBranch.validate_initial_case_ids(opts, model.n)
 end

@@ -712,6 +712,15 @@ EpiBranch.recorder
 EpiBranch.progression
 EpiBranch.process
 EpiBranch.n_types
+EpiBranch.FixedPopulationProcess
+EpiBranch.process_window
+EpiBranch.honours_termination_controls
+EpiBranch.supports_initial_cases
+EpiBranch.validate_initial_cases
+EpiBranch.validate_initial_case_ids
+EpiBranch.seed_initial_cases!
+EpiBranch.validate_process_windows
+EpiBranch.warn_uncovered_terminal_states
 ```
 
 ### Writing a route that proposes its own contacts
@@ -868,6 +877,12 @@ EpiBranch.SmoothCalendar
 EpiBranch.pair_kernel
 pairwise_surv_loglik_by_component
 EpiBranch.infection_likelihood_compatible
+EpiBranch.validate_infection_likelihood
+EpiBranch.infection_layer_columns
+EpiBranch.layer_host_times
+EpiBranch.validate_removal_gap_keys
+EpiBranch.REMOVAL_STRETCHES_KEY
+EpiBranch.LEAKY_REMOVAL_STRETCHES_KEY
 EpiBranch.susceptibility_components
 EpiBranch.susceptibility_host_times
 EpiBranch.binding_release

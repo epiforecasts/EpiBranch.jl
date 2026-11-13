@@ -79,7 +79,7 @@ model = ModelSpec(
 state = simulate(model; n_initial = 5)
 ```
 """
-struct HomogeneousProcess{T <: Real, R} <: TransmissionModel
+struct HomogeneousProcess{T <: Real, R} <: FixedPopulationProcess
     population_size::Int
     transmission_rate::R            # β, fixed or a calendar schedule
     from::Union{Symbol, Nothing}   # infectious-window start; nothing → derive
@@ -134,17 +134,6 @@ _homogeneous_calendar(::Real) = nothing
 _homogeneous_calendar(schedule) = schedule
 
 population_size(m::HomogeneousProcess) = m.population_size
-
-# The race honours a `stopping_rules` entry, or a non-default `max_cases` or
-# `max_generations`, but leaves those two keywords' defaults off, so an
-# existing run over the fixed population keeps going to extinction or
-# `max_time` unless a cap is explicitly asked for (`_drop_default_shortcuts`).
-_honours_termination_controls(::HomogeneousProcess) = false
-
-# See `_warn_uncovered_terminal_states` in branching_process.jl.
-function _validate_process_windows(m::HomogeneousProcess, progression)
-    return _warn_uncovered_terminal_states(m.until, progression; from = m.from)
-end
 
 # The state's timing type follows β's type, so a dual β makes `Individual{Dual}`
 # members and gradients flow through the contact times.

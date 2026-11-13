@@ -1148,10 +1148,10 @@ end
         # *defaults* apply out of the box. The pool leaves them off (an
         # explicit value still works, as above); a branching process applies
         # them either way.
-        @test !EpiBranch._honours_termination_controls(
+        @test !EpiBranch.honours_termination_controls(
             HomogeneousProcess(; transmission_rate = 2.0, population_size = 10)
         )
-        @test EpiBranch._honours_termination_controls(
+        @test EpiBranch.honours_termination_controls(
             BranchingProcess(Poisson(1.5), Exponential(2.0))
         )
     end

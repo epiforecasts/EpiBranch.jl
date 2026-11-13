@@ -324,14 +324,22 @@ struct BranchingProcess{W <: Tuple, P, L} <: TransmissionModel
     type_labels::L
 end
 
-# Cross-tier check, run when a process is composed with a progression in a
-# [`ModelSpec`](@ref): warn when an infectiousness window opens at a `from`
-# state the progression never produces, so the window would silently never
-# open. `from` may legitimately be a state written by an attribute or
-# intervention rather than a progression transition, so this is a warning.
-# A no-op for models without infectiousness windows.
-_validate_process_windows(::TransmissionModel, progression) = nothing
-function _validate_process_windows(m::BranchingProcess, progression)
+"""
+    validate_process_windows(process::TransmissionModel, progression)
+
+Cross-tier check, run when a process is composed with a progression in a
+[`ModelSpec`](@ref): warn when an infectiousness window opens at a `from` state
+the progression never produces, so the window would silently never open. `from`
+may legitimately be a state written by an attribute or intervention rather than
+a progression transition, so this is a warning. The default does nothing, for
+models without infectiousness windows; a [`FixedPopulationProcess`](@ref
+EpiBranch.FixedPopulationProcess) checks its `until` states against the
+progression's terminal states, and a structure with several windows extends this
+and calls [`warn_uncovered_terminal_states`](@ref
+EpiBranch.warn_uncovered_terminal_states) for each.
+"""
+validate_process_windows(::TransmissionModel, progression) = nothing
+function validate_process_windows(m::BranchingProcess, progression)
     return _validate_windows(m.infectiousness, progression)
 end
 function _validate_windows(windows, progression)
@@ -367,12 +375,17 @@ function _uncovered_terminal_states(until::Tuple, progression; from = nothing)
     return unique(states)
 end
 
-# Warn once (per `ModelSpec`) when `until` does not cover every terminal state
-# the progression can reach, so the silent runaway is discoverable instead of
-# only showing up as an implausibly large outbreak. `route` labels the warning
-# when `until` belongs to one window among several (a `RouteWindow`); `from`
-# is that window's own opening state, excluded from the check (see above).
-function _warn_uncovered_terminal_states(
+"""
+    warn_uncovered_terminal_states(until::Tuple, progression; route = nothing, from = nothing)
+
+Warn when `until` does not cover every terminal state the progression can
+reach, so the silent runaway of a case that keeps generating exposure proposals
+is discoverable rather than showing up as an implausibly large outbreak.
+`route` labels the warning when `until` belongs to one window among several, and
+`from` is that window's own opening state, which counts as covered. A terminal
+transition that does not implement `terminal_target` is exempt.
+"""
+function warn_uncovered_terminal_states(
         until::Tuple, progression;
         route = nothing, from = nothing
     )

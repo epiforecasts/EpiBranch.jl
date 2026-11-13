@@ -69,7 +69,7 @@ model = ModelSpec(
 state = simulate(model; n_initial = 5)
 ```
 """
-struct MixingProcess{F, C} <: TransmissionModel
+struct MixingProcess{F, C} <: FixedPopulationProcess
     population_size::Int
     mixing_by::Tuple
     rate::F
@@ -93,17 +93,6 @@ function MixingProcess(;
 end
 
 population_size(m::MixingProcess) = m.population_size
-
-# The race honours a `stopping_rules` entry, or a non-default `max_cases` or
-# `max_generations`, but leaves those two keywords' defaults off, so an
-# existing run over the fixed population keeps going to extinction or
-# `max_time` unless a cap is explicitly asked for (`_drop_default_shortcuts`).
-_honours_termination_controls(::MixingProcess) = false
-
-# See `_warn_uncovered_terminal_states` in branching_process.jl.
-function _validate_process_windows(m::MixingProcess, progression)
-    return _warn_uncovered_terminal_states(m.until, progression; from = m.from)
-end
 
 function Base.show(io::IO, m::MixingProcess)
     groups = isempty(m.mixing_by) ? "()" : string(m.mixing_by)

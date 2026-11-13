@@ -65,9 +65,9 @@ EpiBranch.removal_block_probability(s::_LeakyShield) = s.block
         BranchingProcess(Poisson(0.0)); attributes = clinical,
         interventions = [iso], progression = [Recovery(delay = 1.0)]
     )
-    @test EpiBranch._validate_infection_likelihood(model) === nothing
+    @test EpiBranch.validate_infection_likelihood(model) === nothing
     bad = ModelSpec(BranchingProcess(Poisson(0.0)); attributes = (rng, ind) -> nothing)
-    @test_throws ArgumentError EpiBranch._validate_infection_likelihood(bad)
+    @test_throws ArgumentError EpiBranch.validate_infection_likelihood(bad)
 
     @testset "vaccination" begin
         # the susceptibility risk reaches the likelihood through
@@ -142,7 +142,7 @@ EpiBranch.removal_block_probability(s::_LeakyShield) = s.block
         # otherwise fit on the whole exposure as if the stretch never happened.
         lapsing = [Individual(id = 1)]
         EpiBranch.record_removal!(lapsing[1], 2.0, 9.0; key = shield_key)
-        @test_throws ArgumentError EpiBranch._layer_host_times(mini(lapsing), bare, ())
+        @test_throws ArgumentError EpiBranch.layer_host_times(mini(lapsing), bare, ())
 
         # Naming the key lets the stretch through, merged into the layer's own
         # removal column.
@@ -150,7 +150,7 @@ EpiBranch.removal_block_probability(s::_LeakyShield) = s.block
         named = ModelSpec(
             BranchingProcess(Poisson(0.0)); interventions = [_Shield()]
         )
-        result = EpiBranch._layer_host_times(mini(lapsing), named, ())
+        result = EpiBranch.layer_host_times(mini(lapsing), named, ())
         @test result[shield_key] == [[(2.0, 9.0)]]
         @test result[EpiBranch.REMOVAL_STRETCHES_KEY] == [[(2.0, 9.0)]]
 
@@ -161,14 +161,14 @@ EpiBranch.removal_block_probability(s::_LeakyShield) = s.block
         withdrawn = ModelSpec(
             BranchingProcess(Poisson(0.0)); interventions = [_WithdrawingShield()]
         )
-        @test EpiBranch._layer_host_times(mini(lapsing), withdrawn, ()) == (;)
+        @test EpiBranch.layer_host_times(mini(lapsing), withdrawn, ()) == (;)
 
         # A stretch that never releases needs no declaration either: the
         # infectious window closes there instead of this column holding it
         # (see `infectious_removal_time`).
         standing = [Individual(id = 1)]
         EpiBranch.record_removal!(standing[1], 2.0, Inf; key = shield_key)
-        @test EpiBranch._layer_host_times(mini(standing), bare, ()) == (;)
+        @test EpiBranch.layer_host_times(mini(standing), bare, ()) == (;)
     end
 
     @testset "removal_gap_host_times_withdrawn for built-in components" begin
@@ -247,7 +247,7 @@ EpiBranch.removal_block_probability(s::_LeakyShield) = s.block
             interventions = [_LeakyShield(shield_key, 0.6)]
         )
         @test EpiBranch._leaky_gap_keys(leaky_model) == [shield_key => 0.4]
-        result = EpiBranch._layer_host_times(mini(lapsing), leaky_model, ())
+        result = EpiBranch.layer_host_times(mini(lapsing), leaky_model, ())
         @test !haskey(result, EpiBranch.REMOVAL_STRETCHES_KEY)
         @test result[EpiBranch.LEAKY_REMOVAL_STRETCHES_KEY] == [[(2.0, 9.0, 0.4)]]
 
@@ -266,6 +266,6 @@ EpiBranch.removal_block_probability(s::_LeakyShield) = s.block
             BranchingProcess(Poisson(0.0));
             interventions = [_LeakyShield(shield_key, 0.6), _LeakyShield(other_key, 0.5)]
         )
-        @test_throws ArgumentError EpiBranch._layer_host_times(mini(lapsing), mismatched, ())
+        @test_throws ArgumentError EpiBranch.layer_host_times(mini(lapsing), mismatched, ())
     end
 end

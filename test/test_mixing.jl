@@ -153,7 +153,7 @@ using StableRNGs
         @test !is_extinct(capped)
         # No termination keyword set → no warning, and the default stays off.
         @test_logs simulate(spec; n_initial = 3, rng = StableRNG(1))
-        @test !EpiBranch._honours_termination_controls(
+        @test !EpiBranch.honours_termination_controls(
             MixingProcess(; population_size = 10, rate)
         )
     end

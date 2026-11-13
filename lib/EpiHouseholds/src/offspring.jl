@@ -489,7 +489,7 @@ function _simulated_person_time(
         recorder = spec.recorder
     )
     state = simulate(sample_spec; rng)
-    _validate_removal_gap_keys(state, sample_spec)
+    validate_removal_gap_keys(state, sample_spec)
 
     from = something(process.from, infectious_from(spec.progression))
     window = EpiBranch._shorthand_window(from, process.until)
@@ -554,7 +554,7 @@ end
 
 # How much of `ind`'s community-infectious window its recorded removals take
 # out. Keys sharing a fraction have their stretches merged into a union
-# first, the way `_layer_host_times` merges removal keys for the likelihood:
+# first, the way `layer_host_times` merges removal keys for the likelihood:
 # `ContactTracing`'s `Quarantine` always records its own key and, through
 # `set_isolated!`, the identical stretch under the default key too, so
 # summing the two keys' durations apart would count that stretch twice. Two

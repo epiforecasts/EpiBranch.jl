@@ -57,7 +57,7 @@ EpiBranch.infectious_removal_time(f::FixedRemoval, ::Individual) = f.time
                     model.process, EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
                 )
                 push!(state.individuals, parent)
-                times = EpiBranch._layer_host_times(state, model, ())
+                times = EpiBranch.layer_host_times(state, model, ())
                 @test times[EpiBranch.REMOVAL_STRETCHES_KEY] == [[(6.0, 22.0)]]
             end
             EpiBranch.reset!(iso, parent)
