@@ -1,36 +1,20 @@
 # ── Simulating a branching process by generation, as counts ──────────
 #
-# A `BranchingProcess` with a single window, no generation-time kernel
-# (discrete generations) and a finite `population_size` has the structure of
-# a discrete-generation (TSIR) model: every case of one generation infects
-# the next at once, with no ordering between them. `simulate_by_generation`
-# exploits that to track only each generation's case count, never creating an
-# `Individual` for a contact.
+# `simulate_by_generation` tracks only each generation's case count, never
+# creating an `Individual` for a contact. This is possible because a
+# single-window, discrete-generation, finite-population `BranchingProcess` has
+# no ordering between the cases of a generation.
 #
-# A generation draws its potential contacts, then thins them against the
-# susceptibles of each type left. Where the offspring law has a closed-form
-# sum (`Poisson`, `NegativeBinomial`, `Binomial`), the total of a type is drawn
-# in one step, so the cost does not grow with the number of cases. Any other
-# law draws the offspring of every case one at a time.
+# `PerContactDepletion` mirrors `_offspring_builtin_risk_blocks` on the
+# individual-based race when there is a single type. With several types the
+# individual-based simulation thins every contact against one shared population
+# fraction, which makes the two differ.
 #
-# Two depletion rules thin the contacts. `PerContactDepletion` decides them
-# one at a time, as `_offspring_builtin_risk_blocks` decides the fate of a
-# contact on the individual-based race when there is a single type. A contact
-# of type `i` is kept with probability `susceptibles[i] / type_sizes[i]`, and
-# each kept contact lowers `susceptibles[i]` before the next is decided. With
-# several types the individual-based simulation thins every contact against
-# one shared population fraction, so the two differ.
-# `StartOfGenerationDepletion` instead keeps a binomial share of the contacts
-# of a type, with the share set to the susceptible fraction of the type at the
-# start of the generation, capped at the susceptibles left, in one draw.
-#
-# `multiplier`, when given, is drawn once per generation and scales the mean
-# of every case's offspring law before it draws: with `Poisson` offspring,
-# summing over the generation's cases gives a `Poisson` total scaled by the
-# same draw, so marginalising over a `Gamma` multiplier gives a negative
-# binomial total whose shape is the multiplier's own, rather than one that
-# grows with the number of cases, as summing independent per-case negative
-# binomials would.
+# A shared `multiplier` is drawn once per generation. With `Poisson` offspring
+# the total of a generation is `Poisson` scaled by the same draw, and
+# marginalising over a `Gamma` multiplier gives a negative binomial total with
+# the shape of the multiplier. Summing independent per-case negative binomials
+# would instead give a shape that grows with the number of cases.
 
 """
     AbstractDepletion
@@ -259,8 +243,8 @@ offspring matrix (`MultiTypeOffspring`); any other model raises an
 - `depletion`: how contacts are thinned against the susceptibles left,
   [`PerContactDepletion`](@ref) (the default) or
   [`StartOfGenerationDepletion`](@ref). The second draws the kept contacts of
-  a type in one binomial draw. With an offspring law whose sum has a closed
-  form (`Poisson`, with or without `multiplier`, `NegBin` and `Binomial`), a
+  a type in one binomial draw. For an offspring law with a closed-form
+  sum (`Poisson`, with or without `multiplier`, `NegBin` and `Binomial`), a
   generation then costs the same whatever the number of cases.
 - `generation_length`: the length of a generation in days. The state records
   it and is at day `generation * generation_length`. The default, `nothing`,
@@ -272,6 +256,49 @@ its own susceptible share, which scales the rows of the matrix by that share.
 
 Returns a [`GenerationCounts`](@ref); continue it with
 `simulate(model, state; max_generations)`.
+
+# Vaccination campaigns
+
+Give a [`ModelSpec`](@ref) built on such a `BranchingProcess` instead of the
+process to apply its vaccination campaigns to the susceptibles of each type
+between generations, at the calendar time `generation * generation_length`.
+This needs a `generation_length` and a finite population. A campaign is a
+[`GroupVaccination`](@ref) with `group_key = :type`, so that its groups are the
+types, wrapped in [`CapacityConstrained`](@ref) for its doses, and in
+[`Scheduled`](@ref) with a `start_time` and `end_time` if it has a window, in
+either order. Any other intervention, or a condition other than a window,
+raises an `ArgumentError` naming it, as do a `coverage` below one, a
+`dose_delay`, a `delay_to_immunity`, `waning` and an efficacy that is not a
+number.
+
+The doses of generation `g` cover `[g * generation_length, (g + 1) *
+generation_length)` and are applied after generation `g` is drawn and before
+`g + 1` is. Each type has the whole `budget_per_period` to itself, as in the
+individual-based simulation, where `GroupVaccination` keeps one budget per
+group. The doses are those of the periods that start in the interval; with
+`carry_over`, budget left from earlier periods, or from before a window opens,
+is given in the first interval open to it. A dose reaches a susceptible of a
+type with probability equal to the share of susceptibles in the population of
+the type at the start of the interval, and protects with probability
+`efficacy`, whatever the effect `mode`: a protected susceptible is removed from
+the susceptibles, as one who would be blocked at each contact. Doses that fall
+on someone already protected are not tracked, so a campaign that gives a type
+more doses than it has people is only approximate. The `eligibility` of the
+campaign is not read: the doses are given whether or not a case has triggered
+them.
+
+Vaccinating between generations approximates a model whose generations are
+calendar steps, as in a TSIR, with everyone vaccinated in a step protected
+before the contacts of the next generation are made. It agrees with the
+individual-based simulation only when the budget reaches everyone in the
+window. The simulation gives the doses of a `BranchingProcess` only to
+contacts as they are created. A budget below the number of contacts therefore
+covers a share of contacts, not `doses / population`, and the counts differ.
+The budget is also read per type here. In the mixing approximations the groups
+share one budget. In the individual-based simulation the budget is per group
+when the groups are types and shared otherwise. The place of the doses in the
+intervention specification is undecided, and the split of a budget between
+groups may change.
 
 # Examples
 
@@ -300,6 +327,17 @@ state = simulate_by_generation(
     depletion = StartOfGenerationDepletion(), generation_length = 7.0,
     multiplier = Gamma(6.5, 1 / 6.5), rng = Xoshiro(1)
 )
+
+# A vaccination campaign of 2,000 doses a day to each type for a fortnight
+model = BranchingProcess([2.0 0.5; 0.5 2.0], R -> Poisson(R), EpiBranch.NoGenerationTime();
+    population_size = 250_000)
+campaign = CapacityConstrained(GroupVaccination(efficacy = 0.9, group_key = :type);
+    budget_per_period = Steps([140.0, 154.0], [0.0, 2_000.0, 0.0]), period = 1.0)
+state = simulate_by_generation(
+    ModelSpec(model; interventions = [campaign]); n_initial = [10, 2], max_generations = 30,
+    population_by_type = [40_000, 210_000], immune = [20_000, 190_000],
+    depletion = StartOfGenerationDepletion(), generation_length = 14.0
+)
 ```
 """
 function simulate_by_generation(
@@ -313,6 +351,34 @@ function simulate_by_generation(
         depletion::AbstractDepletion = PerContactDepletion(),
         generation_length::Union{Real, Nothing} = nothing
     )
+    state = _initial_generation_state(
+        model, n_initial, rng, immune, population_by_type, depletion, generation_length
+    )
+    return simulate(model, state; max_generations, multiplier)
+end
+
+function simulate_by_generation(
+        spec::ModelSpec;
+        n_initial::Union{Integer, AbstractVector{<:Integer}} = 1,
+        max_generations::Integer = _DEFAULT_MAX_GENERATIONS,
+        rng::AbstractRNG = Random.default_rng(),
+        multiplier = nothing,
+        immune::Union{Integer, AbstractVector{<:Integer}} = 0,
+        population_by_type::Union{Nothing, AbstractVector{<:Integer}} = nothing,
+        depletion::AbstractDepletion = PerContactDepletion(),
+        generation_length::Union{Real, Nothing} = nothing
+    )
+    model = _generation_process(spec)
+    state = _initial_generation_state(
+        model, n_initial, rng, immune, population_by_type, depletion, generation_length
+    )
+    return simulate(spec, state; max_generations, multiplier)
+end
+
+function _initial_generation_state(
+        model::BranchingProcess, n_initial, rng, immune, population_by_type, depletion,
+        generation_length
+    )
     nt = n_types(model)
     counts = _per_type_counts(model, n_initial, :n_initial)
     pop = population_size(model)
@@ -323,10 +389,19 @@ function simulate_by_generation(
         model, sizes, counts, _per_type_counts(model, immune_counts, :immune)
     )
     gl = _generation_length(generation_length)
-    state = GenerationCounts(
+    return GenerationCounts(
         counts, cumulative, pop, susceptibles, sizes, 0, gl, depletion, rng
     )
-    return simulate(model, state; max_generations, multiplier)
+end
+
+function _generation_process(spec::ModelSpec)
+    process(spec) isa BranchingProcess || throw(
+        ArgumentError(
+            "simulate_by_generation needs a ModelSpec built on a BranchingProcess, not " *
+                "$(nameof(typeof(process(spec))))"
+        )
+    )
+    return process(spec)
 end
 
 _generation_length(::Nothing) = nothing
@@ -355,10 +430,10 @@ Continue `state`, a [`GenerationCounts`](@ref) returned by
 [`simulate_by_generation`](@ref) or by this method itself, up to a later
 `max_generations`, with the `depletion` and `generation_length` the state was
 started with. `multiplier` is as in
-`simulate_by_generation`, and is read fresh on every call, so a later
-continuation can turn it on, off, or change it. `state` is returned unchanged
-if its current generation has already gone extinct (every count 0): there is
-nothing left for a later `max_generations` to continue.
+`simulate_by_generation` and is read on every call. A later continuation can
+enable, disable or change it. `state` is returned unchanged if its current
+generation has gone extinct (every count 0), with no cases left
+for a later `max_generations` to continue.
 
 ```julia
 using EpiBranch, Distributions
@@ -370,6 +445,34 @@ state = simulate(model, state; max_generations = 30)
 function simulate(
         model::BranchingProcess, state::GenerationCounts;
         max_generations::Integer, rng::AbstractRNG = state.rng, multiplier = nothing
+    )
+    return _continue_generations(model, state, _Campaign[]; max_generations, rng, multiplier)
+end
+
+"""
+    simulate(spec::ModelSpec, state::GenerationCounts; max_generations,
+             rng::AbstractRNG = state.rng, multiplier = nothing)
+
+Continue `state` as for a `BranchingProcess`, applying the vaccination
+campaigns of `spec` between generations as [`simulate_by_generation`](@ref)
+does. Pass the same `spec` the state was started with: a continuation with the
+bare model applies no campaign.
+"""
+function simulate(
+        spec::ModelSpec, state::GenerationCounts;
+        max_generations::Integer, rng::AbstractRNG = state.rng, multiplier = nothing
+    )
+    campaigns = _generation_campaigns(
+        spec, state.generation_length, !(state.susceptibles isa NoPopulation)
+    )
+    return _continue_generations(
+        _generation_process(spec), state, campaigns; max_generations, rng, multiplier
+    )
+end
+
+function _continue_generations(
+        model::BranchingProcess, state::GenerationCounts, campaigns;
+        max_generations::Integer, rng::AbstractRNG, multiplier
     )
     _extinct(state.counts) && return state
     max_generations > state.generation || throw(
@@ -387,6 +490,12 @@ function simulate(
     cumulative = state.cumulative_cases
     gen = state.generation
     while gen < max_generations && !all(iszero, counts)
+        # The doses of generation `gen`'s interval reach the susceptibles
+        # before the next generation is drawn.
+        for campaign in campaigns
+            t0, t1 = _generation_interval(state.generation_length, gen)
+            _vaccinate!(rng, campaign, t0, t1, susceptibles, sizes)
+        end
         m = multiplier === nothing ? nothing : rand(rng, multiplier)
         potential = _generation_potential(rng, offspring, counts, m)
         # Without a finite population nothing is thinned.
@@ -403,6 +512,13 @@ function simulate(
     )
 end
 
+# The days the doses of generation `gen` cover. A campaign is only built when
+# there is a `generation_length`, which rules out `nothing` here.
+_generation_interval(length::Float64, gen) = (gen * length, (gen + 1) * length)
+function _generation_interval(::Nothing, gen)
+    throw(ArgumentError("a vaccination campaign needs a generation_length"))
+end
+
 _as_vector(x::Int) = [x]
 _as_vector(x::Vector{Int}) = x
 _like(::Int, v::Vector{Int}) = only(v)
@@ -410,17 +526,23 @@ _like(::Vector{Int}, v::Vector{Int}) = v
 
 # ── The generation's potential contacts ──────────────────────────────
 
-# The total offspring of `n` cases, each drawing independently from `law`.
-# Where the sum of `n` copies of `law` has a closed form it is drawn in one
-# step, at a cost that does not depend on `n`. Otherwise every case draws.
-_sum_offspring(rng::AbstractRNG, law::Poisson, n::Int) = rand(rng, Poisson(n * mean(law)))
-function _sum_offspring(rng::AbstractRNG, law::NegativeBinomial, n::Int)
+"""
+    EpiBranch.sum_offspring(rng, law, n)
+
+The total offspring of `n` cases, each drawing independently from `law`.
+Where the sum of `n` copies of `law` has a closed form it is drawn in one
+step, at a cost independent of `n`. Otherwise each case draws separately.
+Defined for `Poisson`, `NegativeBinomial` and `Binomial`; add a method of
+your own for another offspring family with a closed-form sum.
+"""
+sum_offspring(rng::AbstractRNG, law::Poisson, n::Int) = rand(rng, Poisson(n * mean(law)))
+function sum_offspring(rng::AbstractRNG, law::NegativeBinomial, n::Int)
     return rand(rng, NegativeBinomial(n * law.r, law.p))
 end
-function _sum_offspring(rng::AbstractRNG, law::Binomial, n::Int)
+function sum_offspring(rng::AbstractRNG, law::Binomial, n::Int)
     return rand(rng, Binomial(n * ntrials(law), succprob(law)))
 end
-function _sum_offspring(rng::AbstractRNG, law::Distribution, n::Int)
+function sum_offspring(rng::AbstractRNG, law::Distribution, n::Int)
     return sum(rand(rng, law) for _ in 1:n)
 end
 
@@ -433,8 +555,8 @@ function _generation_potential(
     )
     n = only(current)
     n == 0 && return [0]
-    law = m === nothing ? offspring : _scale_mean(offspring, m)
-    return [_sum_offspring(rng, law, n)]
+    law = m === nothing ? offspring : scale_mean(offspring, m)
+    return [sum_offspring(rng, law, n)]
 end
 
 # Multi-type: each type's cases draw their total from its own law, scaled by
@@ -451,8 +573,8 @@ function _generation_potential(
         R = offspring.R_by_type[j]
         R <= 0 && continue
         law = _type_law(offspring.dist_fn, R, j)
-        law = m === nothing ? law : _scale_mean(law, m)
-        total = _sum_offspring(rng, law, current[j])
+        law = m === nothing ? law : scale_mean(law, m)
+        total = sum_offspring(rng, law, current[j])
         total == 0 && continue
         potential .+= rand(rng, Multinomial(total, offspring.alloc_probs[:, j]))
     end
@@ -499,18 +621,18 @@ end
 # ── The shared multiplier's mean-scaling rule ────────────────────────
 
 """
-    EpiBranch._scale_mean(d, m)
+    EpiBranch.scale_mean(d, m)
 
 `d`'s law with its mean scaled by `m`, the shared multiplier
 [`simulate_by_generation`](@ref) draws once per generation. Defined for
 `Poisson`, the family its negative-binomial identity needs; add a method of
 your own for another offspring family to use it with `multiplier`.
 """
-_scale_mean(d::Poisson, m::Real) = Poisson(mean(d) * m)
-function _scale_mean(d::Distribution, m::Real)
+scale_mean(d::Poisson, m::Real) = Poisson(mean(d) * m)
+function scale_mean(d::Distribution, m::Real)
     throw(
         ArgumentError(
-            "simulate_by_generation's multiplier has no EpiBranch._scale_mean method for " *
+            "simulate_by_generation's multiplier has no EpiBranch.scale_mean method for " *
                 "$(typeof(d)); it is defined for Poisson. Add a method of your own for " *
                 "another offspring family."
         )

@@ -44,7 +44,7 @@ wrapper splits its places by [`resource_key`](@ref EpiBranch.resource_key) and
 composes with [`Scheduled`](@ref); the intervention must define
 [`capacity_key`](@ref EpiBranch.capacity_key).
 """
-struct HeldCapacity{I <: AbstractIntervention, H, F, P <: RefusalPolicy} <: InterventionWrapper
+struct HeldCapacity{I <: AbstractIntervention, H, F, P <: RefusalPolicy} <: _CapacityWrapper
     intervention::I
     capacity::Float64
     hold::H
@@ -62,9 +62,9 @@ function HeldCapacity(
     return HeldCapacity(intervention, Float64(capacity), hold, priority, on_refusal)
 end
 
-# Everyone's stay, kept in `state.scratch` under the capacity key so two
-# wrappers sharing a key share places, and so a stay outlives the call that
-# admitted it. Maps a person's id to `(resource, start, end)`.
+# Everyone's stay, kept in `state.scratch` under the capacity key. Wrappers
+# that share a key share places, and a stay outlives the call that admitted it.
+# Maps a person's id to `(resource, start, end)`.
 const _HeldStays = Dict{Int, Tuple{Any, Float64, Float64}}
 function _held_stays(state, key)
     return get!(_HeldStays, state.scratch, (:held_capacity, key))::_HeldStays
@@ -175,7 +175,7 @@ end
 
 The number of places held at day `at` and the number there are. `key` selects
 one budget when [`resource_key`](@ref EpiBranch.resource_key) splits
-`hc`'s intervention into more than one; the default, `nothing`, is the single
+the intervention of `hc` into more than one; the default, `nothing`, is the single
 one everyone shares.
 """
 function held_usage(hc::HeldCapacity, state::SimulationState, at::Real, key = nothing)
@@ -185,25 +185,10 @@ end
 
 # ── Delegation of every other hook ────────────────────────────────────
 
-function intervention_actions(hc::HeldCapacity, state, candidates)
-    capacity_key(hc.intervention)
-    return intervention_actions(hc.intervention, state, candidates)
-end
-_discovers_actions(hc::HeldCapacity) =
-    _discovers_actions(_hook_owner(intervention_actions, hc.intervention))
-function _proposes_actions(hc::HeldCapacity)
-    acts_on_population(hc) && return false
-    return !_resolves_under_capacity(hc.intervention)
-end
-
 # An intervention that sets its own effect, as `Isolation` does, holds a place
 # for as long as that effect lasts; one that does not fit its place is undone,
 # as `CapacityConstrained` does.
-function resolve_individual!(hc::HeldCapacity, ind, state)
-    resolve_individual!(hc.intervention, ind, state)
-    _resolves_under_capacity(hc.intervention) && _hold_or_reset!(hc, ind, state)
-    return nothing
-end
+_ration_own_effect!(hc::HeldCapacity, ind, state) = _hold_or_reset!(hc, ind, state)
 
 function _hold_or_reset!(hc::HeldCapacity, ind::Individual, state)
     key = capacity_key(hc.intervention)
@@ -228,25 +213,7 @@ For extension authors: the day the effect `intervention` set directly on
 `individual` in `resolve_individual!` ends, which is when a
 [`HeldCapacity`](@ref) gets the place back. The default, `Inf`, holds it until
 [`release_capacity!`](@ref) or the `hold` given to the wrapper. Defined for
-[`Isolation`](@ref), whose isolation ends at its release time.
+[`Isolation`](@ref), where the stay ends at the release time of the isolation.
 """
 held_until(::AbstractIntervention, ind) = Inf
-held_until(w::InterventionWrapper, ind) = held_until(w.intervention, ind)
 held_until(::Isolation, ind) = isolation_release_time(ind)
-
-traces_contacts(hc::HeldCapacity) = traces_contacts(hc.intervention)
-function trace_contacts!(hc::HeldCapacity, state, infector, contacts, not_before = nothing)
-    key = (:trace_admitter, _innermost(hc))
-    previous = get(state.scratch, key, nothing)
-    state.scratch[key] = hc
-    try
-        if not_before === nothing
-            trace_contacts!(hc.intervention, state, infector, contacts)
-        else
-            trace_contacts!(hc.intervention, state, infector, contacts, not_before)
-        end
-    finally
-        previous === nothing ? delete!(state.scratch, key) : (state.scratch[key] = previous)
-    end
-    return nothing
-end

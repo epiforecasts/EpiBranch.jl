@@ -41,13 +41,8 @@ mean(realised_generation_intervals(state))   # compare with mean(Gamma(2.0, 3.0)
 ```
 """
 function realised_generation_intervals(state::SimulationState)
-    gts = Float64[]
-    for ind in state.individuals
-        (is_infected(ind) && ind.parent_id != 0) || continue
-        parent = state.individuals[ind.parent_id]
-        push!(gts, ind.infection_time - parent.infection_time)
-    end
-    return gts
+    gts = (realised_generation_interval(ind, state) for ind in state.individuals)
+    return Float64[g for g in gts if !isnan(g)]
 end
 
 """
@@ -59,6 +54,61 @@ into one vector.
 function realised_generation_intervals(states::Vector{<:SimulationState})
     return reduce(
         vcat, (realised_generation_intervals(s) for s in states);
+        init = Float64[]
+    )
+end
+
+"""
+    realised_serial_interval(ind::Individual, state::SimulationState)
+
+The realised serial interval of one case: the days from its infector's
+symptom onset to its own. Index cases, people who were never infected and
+pairs where either case has no onset (asymptomatic cases, or a model without
+onset times) return `NaN`.
+
+Serial intervals are what is observed. Unlike generation intervals, they
+can be negative when the infectee's incubation period is shorter than the
+infector's. Isolation and tracing shift them away from the intrinsic
+generation time.
+"""
+function realised_serial_interval(ind::Individual, state::SimulationState)
+    (is_infected(ind) && ind.parent_id != 0) || return NaN
+    return onset_time(ind) - onset_time(state.individuals[ind.parent_id])
+end
+
+"""
+    realised_serial_intervals(state::SimulationState)
+
+The realised serial intervals (days) of every infector-infectee pair in one
+simulation where both cases have an onset, as a vector. Pairs with a missing
+onset on either side are skipped. See [`realised_serial_interval`](@ref) and,
+for the infection-to-infection counterpart,
+[`realised_generation_intervals`](@ref).
+
+# Examples
+
+```julia
+state = simulate(
+    ModelSpec(BranchingProcess(Poisson(2.0), Gamma(2.0, 3.0));
+        attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.4)));
+    n_initial = 5, max_cases = nothing, max_generations = 6)
+realised_serial_intervals(state)
+```
+"""
+function realised_serial_intervals(state::SimulationState)
+    sis = (realised_serial_interval(ind, state) for ind in state.individuals)
+    return Float64[s for s in sis if !isnan(s)]
+end
+
+"""
+    realised_serial_intervals(states::Vector{<:SimulationState})
+
+The realised serial intervals (days) across several simulations, pooled into
+one vector.
+"""
+function realised_serial_intervals(states::Vector{<:SimulationState})
+    return reduce(
+        vcat, (realised_serial_intervals(s) for s in states);
         init = Float64[]
     )
 end

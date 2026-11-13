@@ -21,6 +21,27 @@ macro warn_unconverged_extinction(max_iter, cause)
     )
 end
 
+# Smallest root of `q = ind_control + (1 - ind_control) * G(1 - keep * (1 - q))`
+# by fixed-point iteration, where `G` is the generating function of the law and
+# `keep` the proportion of secondary cases kept after thinning. Thinning
+# rescales the mean of a negative binomial or Poisson law, which lets one
+# routine cover every offspring law with a `_pgf` and `_law_mean`. It returns
+# the iterate and whether it converged; each public function warns from its
+# own call site.
+function _contain_fixed_point(
+        law; keep::Real = 1.0, ind_control::Real = 0.0,
+        tol::Real, max_iter::Int
+    )
+    q = 0.5
+    for _ in 1:max_iter
+        g = _pgf(law, 1.0 - keep * (1.0 - q))
+        q_new = ind_control + (1.0 - ind_control) * g
+        abs(q_new - q) < tol && return (q_new, true)
+        q = q_new
+    end
+    return (q, false)
+end
+
 """
     extinction_probability(R::Real, k::Real; tol=1e-10, max_iter=1000)
 
@@ -51,14 +72,8 @@ function extinction_probability(R::Real, k::Real; tol::Real = 1.0e-10, max_iter:
 
     offspring = NegativeBinomial(k, k / (k + R))
 
-    q = 0.5
-    for _ in 1:max_iter
-        q_new = _pgf(offspring, q)
-        abs(q_new - q) < tol && return q_new
-        q = q_new
-    end
-
-    @warn_unconverged_extinction(max_iter, "the reproduction number")
+    q, converged = _contain_fixed_point(offspring; tol, max_iter)
+    converged || @warn_unconverged_extinction(max_iter, "the reproduction number")
     return q
 end
 
@@ -74,13 +89,8 @@ a major outbreak, for a Poisson or negative binomial offspring distribution
 function extinction_probability(d::Poisson; tol::Real = 1.0e-10, max_iter::Int = 1000)
     mean(d) <= 1.0 && return 1.0
 
-    q = 0.5
-    for _ in 1:max_iter
-        q_new = _pgf(d, q)
-        abs(q_new - q) < tol && return q_new
-        q = q_new
-    end
-    @warn_unconverged_extinction(max_iter, "the reproduction number")
+    q, converged = _contain_fixed_point(d; tol, max_iter)
+    converged || @warn_unconverged_extinction(max_iter, "the reproduction number")
     return q
 end
 
@@ -132,10 +142,11 @@ Probability that a single introduced case leads to a major epidemic: one
 minus [`extinction_probability`](@ref), for an offspring distribution or a
 model. For a multi-type model there is one value per type of index case.
 
-Given a model, population characteristics and the observation model are
-ignored. Each of its interventions changes the offspring distribution first,
-through [`EpiBranch.analytic_offspring_effect`](@ref); an intervention without
-one raises an error. For control measures with no such effect, use
+Given a model, the observation model is ignored, and a reshaped offspring law
+(see [`extinction_probability`](@ref) for a model) raises an error. Each of its
+interventions changes the offspring distribution first, through
+[`EpiBranch.analytic_offspring_effect`](@ref); an intervention without one
+raises an error. For control measures with no such effect, use
 [`probability_contain`](@ref), or simulate and use
 [`containment_probability`](@ref).
 """
@@ -150,17 +161,17 @@ end
     extinction_probability(spec::ModelSpec; kwargs...)
 
 Probability that transmission from a single introduced case dies out, from
-the model's offspring distribution. Population characteristics and the
-observation model are ignored. For a single-type model the result is one
-number; for a multi-type model built from an offspring matrix it has one value
-per type of index case.
+the model's offspring distribution. The observation model is ignored. If a
+finite `population_size`, an `Infectiousness` window with `until`, or
+`transmission_traits` away from their neutral values reshape the offspring law,
+this throws an `ArgumentError` that points to simulation. For a single-type
+model the result is one number; for a multi-type model built from an offspring
+matrix it has one value per type of index case.
 
-For a `ModelSpec`, or a process that stores its own interventions, each
-intervention's [`EpiBranch.analytic_offspring_effect`](@ref) is applied to
-the offspring distribution first. If an intervention has no such method, this
-throws an error that names the simulation-based alternative.
+A `ModelSpec`, or a process that stores its own interventions, has them applied through [`EpiBranch.analytic_offspring_effect`](@ref).
 """
 function extinction_probability(model::Union{TransmissionModel, ModelSpec}; kwargs...)
+    _require_unreshaped_offspring_law(model, "extinction_probability")
     off = _offspring_through_interventions(model, _analytic_offspring(model))
     return extinction_probability(off; kwargs...)
 end
@@ -220,18 +231,11 @@ function probability_contain(
 
     offspring = NegativeBinomial(k, k / (k + R_eff))
 
-    # Fixed-point iteration: q = ind_control + (1-ind_control) * pgf(q)
-    q = 0.5
-    for _ in 1:max_iter
-        q_new = ind_control + (1.0 - ind_control) * _pgf(offspring, q)
-        abs(q_new - q) < tol && return q_new^n_initial
-        q = q_new
-    end
-
+    q, converged = _contain_fixed_point(offspring; ind_control, tol, max_iter)
     # This iteration's rate at the fixed point is `(1 - ind_control)` times the
     # effective reproduction number, which includes `pop_control`. Convergence
     # slows when this product approaches 1.
-    @warn_unconverged_extinction(
+    converged || @warn_unconverged_extinction(
         max_iter,
         "the effective reproduction number times one minus `ind_control`"
     )
@@ -244,8 +248,7 @@ end
 
 Closed-form containment probability for a Poisson or negative binomial
 offspring distribution, with the same keywords as
-`probability_contain(R, k)`. Poisson offspring is treated as negative
-binomial with very large `k`.
+`probability_contain(R, k)`.
 """
 function probability_contain(d::NegativeBinomial; kwargs...)
     return probability_contain(mean(d), d.r; kwargs...)
@@ -253,10 +256,22 @@ end
 
 function probability_contain(
         d::Poisson; n_initial::Int = 1,
-        ind_control::Real = 0.0, pop_control::Real = 0.0, kwargs...
+        ind_control::Real = 0.0, pop_control::Real = 0.0,
+        tol::Real = 1.0e-10, max_iter::Int = 1000
     )
-    # Poisson is NegBin with k→∞; use large k
-    return probability_contain(mean(d), 1.0e6; n_initial, ind_control, pop_control, kwargs...)
+    0.0 <= ind_control <= 1.0 || throw(ArgumentError("ind_control must be in [0, 1]"))
+    0.0 <= pop_control <= 1.0 || throw(ArgumentError("pop_control must be in [0, 1]"))
+    n_initial >= 1 || throw(ArgumentError("n_initial must be ≥ 1"))
+
+    keep = 1.0 - pop_control
+    keep * mean(d) <= 1.0 && return 1.0
+
+    q, converged = _contain_fixed_point(d; keep, ind_control, tol, max_iter)
+    converged || @warn_unconverged_extinction(
+        max_iter,
+        "the effective reproduction number times one minus `ind_control`"
+    )
+    return q^n_initial
 end
 
 """
@@ -265,13 +280,14 @@ end
 
 Closed-form containment probability for a single-type model, from its
 offspring distribution, with the same keywords as `probability_contain(R, k)`.
+A model whose offspring law is reshaped (a finite `population_size`, an
+infectiousness window with `until`, or `transmission_traits` away from their
+neutral values) gives an error that points to simulation.
 
-For a `ModelSpec`, or a process that stores its own interventions, each
-intervention's [`EpiBranch.analytic_offspring_effect`](@ref) is applied to
-the offspring distribution first. If an intervention has no such method, this
-throws an error that names the simulation-based alternative.
+A `ModelSpec`, or a process that stores its own interventions, has them applied through [`EpiBranch.analytic_offspring_effect`](@ref).
 """
 function probability_contain(model::Union{TransmissionModel, ModelSpec}; kwargs...)
-    off = _offspring_through_interventions(model, single_type_offspring(model))
+    off = _unreshaped_single_type_offspring(model, "probability_contain(model)")
+    off = _offspring_through_interventions(model, off)
     return probability_contain(off; kwargs...)
 end

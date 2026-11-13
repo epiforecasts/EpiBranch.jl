@@ -1,10 +1,11 @@
 module EpiBranch
 
+using DataAPI: DataAPI
 using DataFrames
 using Dates
 using Distributions
 using ForwardDiff
-using LinearAlgebra: LinearAlgebra, Diagonal, Symmetric, eigvals
+using LinearAlgebra: LinearAlgebra, Diagonal, I, Symmetric, cholesky, diag, eigvals, issuccess
 using QuadGK
 using Random
 using SpecialFunctions
@@ -91,6 +92,7 @@ include("model_inputs.jl")
 
 # Transmission models
 include("models/branching_process.jl")
+include("models/renewal_offspring.jl")
 include("models/multi_type_offspring.jl")
 
 # Observation helpers (thinned chain-size distribution, dispatch on the
@@ -99,6 +101,7 @@ include("observation.jl")
 
 # Simulation engine
 include("simulation.jl")
+include("state_space.jl")
 
 # Transmission-route windows: the unit that lets one case carry several routes,
 # each opening and closing on different states of its natural history. Defined
@@ -125,9 +128,11 @@ include("model_spec.jl")
 # linear-noise approximations of a closed population, and a hybrid that
 # switches from exact simulation to one of them.
 include("models/population_dynamics.jl")
+include("models/mixing_vaccination.jl")
 include("models/mixing_population_dynamics.jl")
 include("models/hybrid.jl")
 include("models/generation_counts.jl")
+include("models/generation_campaign.jl")
 
 # Output
 include("output/linelist.jl")
@@ -146,11 +151,15 @@ include("analytical/likelihood.jl")
 include("analytical/superspreading.jl")
 include("analytical/fitting.jl")
 include("analytical/cluster_mixed.jl")
+include("analytical/poisson_mixtures.jl")
 include("analytical/generating_function_offspring.jl")
 include("analytical/isolation_offspring.jl")
 include("analytical/end_of_outbreak_probability.jl")
 include("analytical/incidence_likelihood.jl")
 include("analytical/signal_likelihood.jl")
+
+# Contact-matrix inputs: stratified arrays, mixing rates and file readers.
+include("contact_matrices.jl")
 
 # Distribution wrappers so models work directly with Turing's `~`.
 include("likelihood_dists.jl")
@@ -163,12 +172,21 @@ include("pairwise_survival.jl")
 # the pairwise survival likelihood above.
 include("progression_likelihood.jl")
 
+# The serial interval between a linked pair, for fitting timing data; the
+# method lives in a package extension (see the file for why).
+include("serial_interval.jl")
+
 # Exports — types
 export TransmissionModel, BranchingProcess, Infectiousness, OffspringTimes,
+    RenewalOffspring,
     HomogeneousProcess, MixingProcess, ModelSpec
 export MeanFieldProcess, MeanFieldState, LinearNoiseProcess, LinearNoiseState
+export StratifiedContacts, flatten_contacts, contacts_from_table, mixing_rate
+export read_contacts, ContactFileFormat, CSVFormat, NetCDFFormat
 export MixingMeanFieldProcess, MixingMeanFieldState
 export MixingLinearNoiseProcess, MixingLinearNoiseState
+export DoseAllocation, TriggeredInPriority, SplitByGroupSize, SplitBySusceptibles
+export ImmuneShare, ImmuneCount
 export HybridProcess, HybridState
 export GenerationCounts, simulate_by_generation
 export AbstractDepletion, PerContactDepletion, StartOfGenerationDepletion
@@ -237,18 +255,21 @@ export clinical_presentation, demographics, transmission_traits, groups,
     group_attribute, vaccine_acceptance
 
 # Exports — simulation
+export outbreak_state_space
 export simulate, make_contact!, susceptible_fraction, realise!
 export CommonRandomNumbers
 export generate_offspring, contacts_of
 
 # Exports — output
 export event_time_metadata, linelist, contacts, chain_statistics, compute_trace_level!
-export realised_generation_interval, realised_generation_intervals
+export realised_generation_interval, realised_generation_intervals,
+    realised_serial_interval, realised_serial_intervals
 export containment_probability, is_extinct, generation_R, weekly_incidence, scenario_sweep
+export summarise
 
 # Exports — analytical
 export reproduction_number
-export extinction_probability, epidemic_probability
+export extinction_probability, epidemic_probability, emergence_probability
 export proportion_transmission, proportion_cluster_size, heterogeneous_contact_R
 export proportion_cases_individual, proportion_cases_offspring
 export probability_contain
@@ -262,14 +283,18 @@ export IncidenceApproximation, NormalApproximation, LognormalApproximation
 # Turing's `~`. `chain_size_distribution` is already exported above.
 export chain_length_distribution, offspring_distribution
 export ClusterMixed, ChainSizeMixture
+export PoissonLognormal, PoissonWeibull
 export GeneratingFunctionOffspring
 # Real-time mixture: per-cluster "is finished?" weight
-export end_of_outbreak_probability
+export end_of_outbreak_probability, end_of_outbreak_inputs
 # Pairwise survival likelihood over a contact structure
 export PairKernel, PairContext, Steps, Seasonal, record_kernel, LayerHost
 export InfectionLayer, PairwiseSurvivalData, ContactPairsLayout, MassActionHazard, SumHazard
 export compile_contact_pairs, pairwise_surv_loglik, pairwise_surv_loglik_by_component
 # Progression (natural-history) likelihood
 export progression_loglik
+
+# Serial interval between a linked pair (see ext/EpiBranchCensoredDistributionsExt.jl)
+export serial_interval
 
 end # module

@@ -31,12 +31,12 @@ end
 
 # A route that proposes its own contacts (`proposes_own_contacts`) and can
 # leave some pending past a time limit (`pending_beyond`), exactly as
-# `EpiBranch._MassAction` does, but without `EpiBranch._resume_route!`: a
+# `EpiBranch.MassAction` does, but without `EpiBranch.resume_route!`: a
 # third-party route that implements the public seam without knowing it also
 # needs this private one (see "a continuation whose route cannot resume is
-# refused" below). It forwards every call to a real `_MassAction`.
+# refused" below). It forwards every call to a real `MassAction`.
 struct _UnresumableMassAction
-    inner::EpiBranch._MassAction
+    inner::EpiBranch.MassAction
 end
 (r::_UnresumableMassAction)(infector_id, state) = r.inner(infector_id, state)
 EpiBranch.proposes_own_contacts(::_UnresumableMassAction) = true
@@ -70,7 +70,7 @@ function EpiBranch.simulate_once(
         state, members, rng, sim_opts;
         seed! = (best, _, _) -> (best[1:(sim_opts.n_initial)] .= 0),
         targets = _UnresumableMassAction(
-            EpiBranch._MassAction(state, members; rate = (_, _) -> β / N)
+            EpiBranch.MassAction(state, members; rate = (_, _) -> β / N)
         ),
         from = EpiBranch.infectious_from(progression), until = (), interventions,
         risks = EpiBranch.transmission_risks(model), recorder
@@ -79,12 +79,12 @@ function EpiBranch.simulate_once(
     return state
 end
 
-# A route that forwards to a real `_MassAction` and records every infector it
+# A route that forwards to a real `MassAction` and records every infector it
 # is asked to propose along, as a tracing wrapper does (`_TracedProposals` in
-# EpiNetwork), to check that a resumed redraw (`EpiBranch._resume_route!`) is
-# submitted through the wrapper rather than the `_MassAction` underneath.
+# EpiNetwork), to check that a resumed redraw (`EpiBranch.resume_route!`) is
+# submitted through the wrapper rather than the `MassAction` underneath.
 struct _RecordingMassAction
-    inner::EpiBranch._MassAction
+    inner::EpiBranch.MassAction
     proposed::Dict{Int, Vector{Int}}
 end
 _RecordingMassAction(inner) = _RecordingMassAction(inner, Dict{Int, Vector{Int}}())
@@ -103,9 +103,9 @@ function EpiBranch.propose_along(
 end
 EpiBranch.pending_beyond(r::_RecordingMassAction, state, reinfects::Bool) =
     EpiBranch.pending_beyond(r.inner, state, reinfects)
-EpiBranch._resumable_route(r::_RecordingMassAction) = EpiBranch._resumable_route(r.inner)
-EpiBranch._resume_route!(r::_RecordingMassAction, race, ri, old_max_time, traits) =
-    EpiBranch._resume_route!(r.inner, race, ri, old_max_time, traits, r)
+EpiBranch.resumable_route(r::_RecordingMassAction) = EpiBranch.resumable_route(r.inner)
+EpiBranch.resume_route!(r::_RecordingMassAction, race, ri, old_max_time, traits) =
+    EpiBranch.resume_route!(r.inner, race, ri, old_max_time, traits, r)
 
 # A homogeneous population whose infectious window never closes (`until =
 # ()`), raced over a `_RecordingMassAction`; `route` is filled in with the
@@ -130,7 +130,7 @@ function EpiBranch.simulate_once(
     state = EpiBranch.new_state(model, progression, attributes, rng)
     EpiBranch.add_individuals!(state, N, interventions)
     members = collect(1:N)
-    route = _RecordingMassAction(EpiBranch._MassAction(state, members; rate = (_, _) -> β / N))
+    route = _RecordingMassAction(EpiBranch.MassAction(state, members; rate = (_, _) -> β / N))
     model.route[] = route
     EpiBranch.sellke_race!(
         state, members, rng, sim_opts;
@@ -217,7 +217,7 @@ end
         # A wrapper that records every infector it is asked to propose along,
         # as the tracing wrapper in `EpiNetwork` does, must still see the
         # pairs a continuation redraws once the race resumes with a later
-        # time limit: otherwise the redraw lands on the `_MassAction`
+        # time limit: otherwise the redraw lands on the `MassAction`
         # underneath, and its record goes stale from the first `simulate`
         # call on.
         model = ModelSpec(RecordingHomogeneous(300, 0.6))
@@ -293,7 +293,7 @@ end
         # alone, not pop its queue further.
         model = ModelSpec(
             HomogeneousProcess(transmission_rate = 2.0, population_size = 500);
-            progression = [Transition(:recovered; from = :infection, delay = 1.0, terminal = true)]
+            progression = sir(1.0)
         )
         capped_cases = simulate(
             model; n_initial = 3,
@@ -327,7 +327,7 @@ end
         end
         model = ModelSpec(
             HomogeneousProcess(transmission_rate = 2.0, population_size = 500);
-            progression = [Transition(:recovered; from = :infection, delay = 1.0, terminal = true)]
+            progression = sir(1.0)
         )
         extinct_buffers = fetch(
             Threads.@spawn begin
@@ -410,7 +410,7 @@ end
 
     @testset "a continuation whose route cannot resume is refused" begin
         # `_UnresumableMassAction` reports a pending window just as mass
-        # action does, but has no `_resume_route!` to redraw it: the run that
+        # action does, but has no `resume_route!` to redraw it: the run that
         # would otherwise need continuing is refused up front, rather than
         # silently dropping those contacts on a later `simulate(model, state;
         # max_time)` call.

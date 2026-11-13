@@ -60,6 +60,11 @@ EpiBranch.removal_block_probability(s::_LeakyShield) = s.block
         )
     end
     @test compatible(Scheduled(iso; start_time = 0.0))
+    # a schedule that can lapse lifts the isolation without the likelihood
+    # seeing it
+    @test !compatible(Scheduled(iso; end_time = 1000.0))
+    @test !compatible(Scheduled(iso; start_time = 0.0, end_time = 10.0))
+    @test !compatible(CapacityConstrained(Scheduled(iso; end_time = 1000.0); budget_per_period = 2))
     @test compatible(CapacityConstrained(iso; budget_per_period = 2))
     model = ModelSpec(
         BranchingProcess(Poisson(0.0)); attributes = clinical,

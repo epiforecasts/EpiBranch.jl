@@ -59,10 +59,7 @@ end
     @testset "Rations doses within a period, earliest trace time first" begin
         rv = RingVaccination(efficacy = 0.9)
         cc = CapacityConstrained(rv; budget_per_period = 2.0, period = 5.0)
-        state = EpiBranch.new_state(
-            BranchingProcess(Poisson(1.0), Exponential(5.0)),
-            EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1)
-        )
+        state = empty_state()
 
         contacts = [_traced_contact(rv, i, t) for (i, t) in enumerate([3.0, 1.0, 2.0, 4.0])]
         append!(state.individuals, contacts)
@@ -78,10 +75,7 @@ end
     @testset "A call within budget is unaffected" begin
         rv = RingVaccination(efficacy = 0.9)
         cc = CapacityConstrained(rv; budget_per_period = 10.0, period = 5.0)
-        state = EpiBranch.new_state(
-            BranchingProcess(Poisson(1.0), Exponential(5.0)),
-            EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1)
-        )
+        state = empty_state()
 
         contacts = [_traced_contact(rv, i, Float64(i)) for i in 1:3]
         append!(state.individuals, contacts)
@@ -94,10 +88,7 @@ end
     @testset "Budget replenishes with carry_over = true" begin
         rv = RingVaccination(efficacy = 0.9)
         cc = CapacityConstrained(rv; budget_per_period = 2.0, period = 5.0, carry_over = true)
-        state = EpiBranch.new_state(
-            BranchingProcess(Poisson(1.0), Exponential(5.0)),
-            EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1)
-        )
+        state = empty_state()
 
         # First period: 1 dose used out of an allowance of 2, 1 left unused.
         first = [_traced_contact(rv, 1, 1.0)]
@@ -118,10 +109,7 @@ end
     @testset "Unused budget is lost with carry_over = false" begin
         rv = RingVaccination(efficacy = 0.9)
         cc = CapacityConstrained(rv; budget_per_period = 2.0, period = 5.0, carry_over = false)
-        state = EpiBranch.new_state(
-            BranchingProcess(Poisson(1.0), Exponential(5.0)),
-            EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1)
-        )
+        state = empty_state()
 
         first = [_traced_contact(rv, 1, 1.0)]
         append!(state.individuals, first)
@@ -145,10 +133,7 @@ end
             rv; budget_per_period = 1.0,
             priority = (ind, state) -> -ind.state[:trace_time]
         )
-        state = EpiBranch.new_state(
-            BranchingProcess(Poisson(1.0), Exponential(5.0)),
-            EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1)
-        )
+        state = empty_state()
 
         contacts = [_traced_contact(rv, i, Float64(i)) for i in 1:3]
         append!(state.individuals, contacts)
@@ -165,10 +150,7 @@ end
         # refund: the next call sees one fewer dose used.
         rv = RingVaccination(efficacy = 0.9, eligibility_window = 2.0)
         cc = CapacityConstrained(rv; budget_per_period = 1.0)
-        state = EpiBranch.new_state(
-            BranchingProcess(Poisson(1.0), Exponential(5.0)),
-            EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1)
-        )
+        state = empty_state()
 
         # A finite window still admits a dose for a pending, not yet exposed
         # contact (`infection_time = NaN`), as on a network or household race.
@@ -199,10 +181,7 @@ end
     @testset "capacity_usage reports doses used against doses available" begin
         rv = RingVaccination(efficacy = 0.9)
         cc = CapacityConstrained(rv; budget_per_period = 2.0, period = 5.0)
-        state = EpiBranch.new_state(
-            BranchingProcess(Poisson(1.0), Exponential(5.0)),
-            EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1)
-        )
+        state = empty_state()
 
         contacts = [_traced_contact(rv, i, Float64(i)) for i in 1:4]
         append!(state.individuals, contacts)
@@ -217,10 +196,7 @@ end
     @testset "Other hooks delegate unchanged" begin
         rv = RingVaccination(efficacy = 0.9)
         cc = CapacityConstrained(rv; budget_per_period = 10.0)
-        state = EpiBranch.new_state(
-            BranchingProcess(Poisson(1.0), Exponential(5.0)),
-            EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1)
-        )
+        state = empty_state()
 
         contact = _traced_contact(rv, 1, 1.0)
         append!(state.individuals, [contact])
@@ -238,7 +214,7 @@ end
             EpiBranch.infectious_removal_time(rv, contact)
         @test EpiBranch.keep_active(cc, state, [contact], [true]) ==
             EpiBranch.keep_active(rv, state, [contact], [true])
-        @test EpiBranch._unwrap_scheduled(cc) === rv
+        @test EpiBranch._innermost(cc) === rv
         @test EpiBranch.resolve_individual!(cc, contact, state) ===
             EpiBranch.resolve_individual!(rv, contact, state)
         @test EpiBranch.reset!(cc, contact) === EpiBranch.reset!(rv, contact)
@@ -247,10 +223,7 @@ end
     @testset "Rations isolation through intervention_time and reset!, like Scheduled" begin
         iso = Isolation(onset_to_isolation_delay = Dirac(0.0), duration = Inf)
         cc = CapacityConstrained(iso; budget_per_period = 1.0)
-        state = EpiBranch.new_state(
-            BranchingProcess(Poisson(1.0), Exponential(5.0)),
-            EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1)
-        )
+        state = empty_state()
         earlier = Individual(
             id = 1,
             state = Dict{Symbol, Any}(
@@ -283,10 +256,7 @@ end
 
         iso = Isolation(onset_to_isolation_delay = Dirac(0.0), duration = Inf)
         cc = CapacityConstrained(_DistrictIsolation(iso); budget_per_period = 1.0)
-        state = EpiBranch.new_state(
-            BranchingProcess(Poisson(1.0), Exponential(5.0)),
-            EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1)
-        )
+        state = empty_state()
         a = Individual(
             id = 1,
             state = Dict{Symbol, Any}(
@@ -315,10 +285,7 @@ end
     @testset "Rations a quarantine, leaving the trace itself unrationed" begin
         ct = ContactTracing(TraceEveryone(), 1.0, Dirac(0.0), Quarantine(duration = Inf))
         cc = CapacityConstrained(ct; budget_per_period = 1.0)
-        state = EpiBranch.new_state(
-            BranchingProcess(Poisson(1.0), Exponential(5.0)),
-            EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1)
-        )
+        state = empty_state()
         infector = Individual(id = 1)
         set_isolated!(infector, 0.0; release_time = Inf)
         earlier = Individual(id = 2)
@@ -366,10 +333,7 @@ end
                 v -> CapacityConstrained(Scheduled(v; start_time = 1.0); budget_per_period = 1.0),
             )
             iv = wrap(gv)
-            state = EpiBranch.new_state(
-                BranchingProcess(Poisson(1.0)),
-                EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
-            )
+            state = empty_state(BranchingProcess(Poisson(1.0)); rng = StableRNG(1))
             for i in 1:3
                 ind = Individual(
                     id = i,
@@ -389,10 +353,7 @@ end
     @testset "Severity efficacy is recorded only for contacts within the budget" begin
         rv = RingVaccination(efficacy = 0.9, severity_efficacy = 0.5)
         cc = CapacityConstrained(rv; budget_per_period = 1.0)
-        state = EpiBranch.new_state(
-            BranchingProcess(Poisson(1.0), Exponential(5.0)),
-            EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1)
-        )
+        state = empty_state()
 
         earlier = _traced_contact(rv, 1, 1.0)
         later = _traced_contact(rv, 2, 2.0)
@@ -442,10 +403,7 @@ end
             rv; budget_per_period = 1.0, period = 1.0,
             carry_over = false
         )
-        state = EpiBranch.new_state(
-            BranchingProcess(Poisson(1.0), Exponential(5.0)),
-            EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1)
-        )
+        state = empty_state()
 
         # All five doses fall due on day 3, though the call that admits them
         # runs on day 6.2.
@@ -469,10 +427,7 @@ end
             rv; budget_per_period = 1.0, period = 1.0,
             carry_over = false
         )
-        state = EpiBranch.new_state(
-            BranchingProcess(Poisson(1.0), Exponential(5.0)),
-            EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1)
-        )
+        state = empty_state()
 
         # Two different cases are settled on widely separated days, but both
         # propose a dose dated to day 10: the budget for that single day must
@@ -496,10 +451,7 @@ end
             rv; budget_per_period = 2.5, period = 1.0,
             carry_over = false
         )
-        state = EpiBranch.new_state(
-            BranchingProcess(Poisson(1.0), Exponential(5.0)),
-            EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1)
-        )
+        state = empty_state()
 
         contacts = [_traced_contact(rv, i, 5.0) for i in 1:5]
         append!(state.individuals, contacts)
@@ -515,10 +467,7 @@ end
         # ever proposes a dose for must not change what gets rationed.
         rv = RingVaccination(efficacy = 0.9)
         cc = CapacityConstrained(rv; budget_per_period = 1.0, period = 1.0)
-        state = EpiBranch.new_state(
-            BranchingProcess(Poisson(1.0), Exponential(5.0)),
-            EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1)
-        )
+        state = empty_state()
         append!(state.individuals, [Individual(id = i) for i in 1:500])
 
         for day in 1:20
@@ -541,10 +490,7 @@ end
         rv_b = RingVaccination(efficacy = 0.5)
         cc_a = CapacityConstrained(rv_a; budget_per_period = 2.0)
         cc_b = CapacityConstrained(rv_b; budget_per_period = 2.0)
-        state = EpiBranch.new_state(
-            BranchingProcess(Poisson(1.0), Exponential(5.0)),
-            EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1)
-        )
+        state = empty_state()
 
         first = _traced_contact(rv_a, 1, 1.0)
         second = _traced_contact(rv_b, 2, 2.0)
@@ -566,10 +512,7 @@ end
         # the old day stays charged and the new one is not.
         rv = RingVaccination(efficacy = 0.9)
         cc = CapacityConstrained(rv; budget_per_period = 1.0, period = 1.0, carry_over = false)
-        state = EpiBranch.new_state(
-            BranchingProcess(Poisson(1.0), Exponential(5.0)),
-            EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1)
-        )
+        state = empty_state()
         revised = _traced_contact(rv, 1, 5.0)
         append!(state.individuals, [revised])
         state.max_infection_time = 5.0
@@ -595,10 +538,7 @@ end
         # once the wrapper's running count has been seeded.
         rv = RingVaccination(efficacy = 0.9)
         cc = CapacityConstrained(rv; budget_per_period = 2.0)
-        state = EpiBranch.new_state(
-            BranchingProcess(Poisson(1.0), Exponential(5.0)),
-            EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1)
-        )
+        state = empty_state()
         first = _traced_contact(rv, 1, 1.0)
         second = _traced_contact(rv, 2, 2.0)
         third = _traced_contact(rv, 3, 3.0)
@@ -622,10 +562,7 @@ end
         rv = RingVaccination(efficacy = 0.9)
         other = RingVaccination(efficacy = 0.5)
         cc = CapacityConstrained(rv; budget_per_period = 2.0)
-        state = EpiBranch.new_state(
-            BranchingProcess(Poisson(1.0), Exponential(5.0)),
-            EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1)
-        )
+        state = empty_state()
         first = _traced_contact(rv, 1, 1.0)
         second = _traced_contact(other, 2, 2.0)
         third = _traced_contact(rv, 3, 3.0)
@@ -648,10 +585,7 @@ end
         # the budget, as `capacity_usage` reports them doing.
         rv = RingVaccination(efficacy = 0.9)
         cc = CapacityConstrained(rv; budget_per_period = 2.0)
-        state = EpiBranch.new_state(
-            BranchingProcess(Poisson(1.0), Exponential(5.0)),
-            EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1)
-        )
+        state = empty_state()
         first = _traced_contact(rv, 1, 1.0)
         append!(state.individuals, [first])
         state.max_infection_time = 3.0
@@ -679,10 +613,7 @@ end
         # must be filed when the effect runs, as the next admission relies
         # on it.
         cc = CapacityConstrained(_ClinicVisit(); budget_per_period = 2.0)
-        state = EpiBranch.new_state(
-            BranchingProcess(Poisson(1.0), Exponential(5.0)),
-            EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1)
-        )
+        state = empty_state()
         visitors = [Individual(id = i) for i in 1:3]
         append!(state.individuals, visitors)
         state.max_infection_time = 1.0
@@ -710,10 +641,7 @@ end
         ct = ContactTracing(TraceEveryone(), 1.0, Dirac(0.0), Quarantine(duration = Inf))
         cc = CapacityConstrained(ct; budget_per_period = 2.0)
         st = SourceTracing(TraceEveryone(), 1.0, Dirac(0.0), Quarantine(duration = Inf))
-        state = EpiBranch.new_state(
-            BranchingProcess(Poisson(1.0), Exponential(5.0)),
-            EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1)
-        )
+        state = empty_state()
         infector = Individual(id = 1)
         set_isolated!(infector, 0.0; release_time = Inf)
         forward = Individual(id = 2)
@@ -738,10 +666,7 @@ end
         ct = ContactTracing(TraceEveryone(), 1.0, Dirac(0.0), _Bed())
         cc = CapacityConstrained(ct; budget_per_period = 2.0)
         st = SourceTracing(TraceEveryone(), 1.0, Dirac(0.0), _Bed())
-        state = EpiBranch.new_state(
-            BranchingProcess(Poisson(1.0), Exponential(5.0)),
-            EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1)
-        )
+        state = empty_state()
         infector = Individual(id = 1)
         set_isolated!(infector, 0.0; release_time = Inf)
         forward = Individual(id = 2)
@@ -764,10 +689,7 @@ end
 
     @testset "A prior use of any resource on a person created mid-run counts" begin
         cc = CapacityConstrained(_ClinicVisit(); budget_per_period = 2.0)
-        state = EpiBranch.new_state(
-            BranchingProcess(Poisson(1.0), Exponential(5.0)),
-            EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1)
-        )
+        state = empty_state()
         first = Individual(id = 1)
         append!(state.individuals, [first])
         state.max_infection_time = 1.0
@@ -791,10 +713,7 @@ end
         ct = ContactTracing(TraceEveryone(), 1.0, Dirac(0.0), Quarantine(duration = Inf))
         cc = CapacityConstrained(ct; budget_per_period = 2.0)
         own = _OwnTracer(Quarantine(duration = Inf))
-        state = EpiBranch.new_state(
-            BranchingProcess(Poisson(1.0), Exponential(5.0)),
-            EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1)
-        )
+        state = empty_state()
         infector = Individual(id = 1)
         set_isolated!(infector, 0.0; release_time = Inf)
         contacts = [Individual(id = i) for i in 2:4]
@@ -815,10 +734,7 @@ end
         ct = ContactTracing(TraceEveryone(), 1.0, Dirac(0.0), _Bed())
         cc = CapacityConstrained(ct; budget_per_period = 2.0)
         own = _OwnTracer(_Bed())
-        state = EpiBranch.new_state(
-            BranchingProcess(Poisson(1.0), Exponential(5.0)),
-            EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1)
-        )
+        state = empty_state()
         infector = Individual(id = 1)
         set_isolated!(infector, 0.0; release_time = Inf)
         contacts = [Individual(id = i) for i in 2:4]
@@ -858,10 +774,7 @@ end
         cc = CapacityConstrained(
             rv; budget_per_period = doses, period = 1.0, carry_over = false
         )
-        state = EpiBranch.new_state(
-            BranchingProcess(Poisson(1.0), Exponential(5.0)),
-            EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1)
-        )
+        state = empty_state()
 
         # Demand (5 candidates) exceeds the schedule's own allowance on both
         # days, so what is given matches the schedule exactly.
@@ -887,10 +800,7 @@ end
         rv = RingVaccination(efficacy = 0.9)
         doses = Steps([1.0, 2.0], [0.0, 1.0, 3.0])
         cc = CapacityConstrained(rv; budget_per_period = doses, period = 1.0)
-        state = EpiBranch.new_state(
-            BranchingProcess(Poisson(1.0), Exponential(5.0)),
-            EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1)
-        )
+        state = empty_state()
 
         # Day 0's allowance is 0, day 1's own allowance of 1 goes unused, and
         # day 2 adds its own 3: an available total of 4 by the end of day 2.
@@ -904,10 +814,7 @@ end
     @testset "Rejected candidates do not use up the budget" begin
         rv = RingVaccination(efficacy = 0.9)
         cc = CapacityConstrained(rv; budget_per_period = 2.0, period = 5.0)
-        state = EpiBranch.new_state(
-            BranchingProcess(Poisson(1.0), Exponential(5.0)),
-            EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1)
-        )
+        state = empty_state()
 
         # The two untraced candidates rank first (earliest trace_time) but
         # RingVaccination skips an untraced contact without using a dose, so
@@ -936,10 +843,7 @@ end
     @testset "An already-dosed re-exposed contact is processed with no budget left" begin
         rv = RingVaccination(efficacy = 0.0, post_exposure_efficacy = 1.0)
         cc = CapacityConstrained(rv; budget_per_period = 0.0)
-        state = EpiBranch.new_state(
-            BranchingProcess(Poisson(1.0), Exponential(5.0)),
-            EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1)
-        )
+        state = empty_state()
 
         contact = Individual(
             id = 1,
@@ -959,10 +863,7 @@ end
     @testset "An unlimited budget does not error" begin
         rv = RingVaccination(efficacy = 0.9)
         cc = CapacityConstrained(rv; budget_per_period = Inf)
-        state = EpiBranch.new_state(
-            BranchingProcess(Poisson(1.0), Exponential(5.0)),
-            EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1)
-        )
+        state = empty_state()
 
         contacts = [_traced_contact(rv, i, Float64(i)) for i in 1:5]
         append!(state.individuals, contacts)
@@ -979,10 +880,7 @@ end
             rv; budget_per_period = 2.0,
             priority = (ind, state) -> (calls[] += 1; ind.state[:trace_time])
         )
-        state = EpiBranch.new_state(
-            BranchingProcess(Poisson(1.0), Exponential(5.0)),
-            EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1)
-        )
+        state = empty_state()
 
         contacts = [_traced_contact(rv, i, Float64(i)) for i in 1:5]
         append!(state.individuals, contacts)
@@ -995,10 +893,7 @@ end
     @testset "capacity_usage is scoped to the period with carry_over = false" begin
         rv = RingVaccination(efficacy = 0.9)
         cc = CapacityConstrained(rv; budget_per_period = 2.0, period = 5.0, carry_over = false)
-        state = EpiBranch.new_state(
-            BranchingProcess(Poisson(1.0), Exponential(5.0)),
-            EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1)
-        )
+        state = empty_state()
 
         first = [_traced_contact(rv, 1, 1.0)]
         append!(state.individuals, first)
@@ -1026,10 +921,7 @@ end
             rv; budget_per_period = 1.0, period = 5.0,
             carry_over = false
         )
-        state = EpiBranch.new_state(
-            BranchingProcess(Poisson(1.0), Exponential(5.0)),
-            EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1)
-        )
+        state = empty_state()
 
         # Both doses are dated day 3, inside period [0, 5), though the calls
         # that admit them run on days 12 and 13, well into a later period.
@@ -1055,10 +947,7 @@ end
         rv = RingVaccination(efficacy = 0.9)
 
         cc1 = CapacityConstrained(Scheduled(rv; start_time = 10.0); budget_per_period = 5.0)
-        state1 = EpiBranch.new_state(
-            BranchingProcess(Poisson(1.0), Exponential(5.0)),
-            EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1)
-        )
+        state1 = empty_state()
         contacts1 = [_traced_contact(rv, i, Float64(i)) for i in 1:3]
         append!(state1.individuals, contacts1)
         state1.max_infection_time = 5.0
@@ -1066,10 +955,7 @@ end
         @test count(is_vaccinated, contacts1) == 0
 
         cc2 = Scheduled(CapacityConstrained(rv; budget_per_period = 5.0); start_time = 10.0)
-        state2 = EpiBranch.new_state(
-            BranchingProcess(Poisson(1.0), Exponential(5.0)),
-            EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1)
-        )
+        state2 = empty_state()
         contacts2 = [_traced_contact(rv, i, Float64(i)) for i in 1:3]
         append!(state2.individuals, contacts2)
         state2.max_infection_time = 5.0
@@ -1099,10 +985,7 @@ end
             individual.state[:district]
 
         cc = CapacityConstrained(_GroupedAppointment(); budget_per_period = 1.0)
-        state = EpiBranch.new_state(
-            BranchingProcess(Poisson(1.0)),
-            EpiBranch.AbstractClinicalTransition[], NoAttributes(), MersenneTwister(1)
-        )
+        state = empty_state(BranchingProcess(Poisson(1.0)); rng = MersenneTwister(1))
         a1 = Individual(id = 1, state = Dict{Symbol, Any}(:district => :A, :time => 1.0))
         a2 = Individual(id = 2, state = Dict{Symbol, Any}(:district => :A, :time => 2.0))
         b1 = Individual(id = 3, state = Dict{Symbol, Any}(:district => :B, :time => 1.0))

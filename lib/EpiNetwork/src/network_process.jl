@@ -70,10 +70,9 @@ must be finite when `external_hazard` is used.
 Each node is created only once an infectious neighbour proposes it a contact
 or an intervention reaches it (contact tracing reaches every neighbour,
 infected or not), drawing its population characteristics from the same
-per-person streams every other draw uses, so a run costs in proportion to
-the people the outbreak reaches rather than to the size of the network. Pass
-`eager = true` to create and draw every node upfront instead, as every
-version before this did; [`EpiBranch.realise!`](@ref) creates the rest of
+per-person streams used for every other draw. Run time scales with
+the number of people the outbreak reaches. Pass
+`eager = true` to create and draw every node upfront instead; [`EpiBranch.realise!`](@ref) creates the rest of
 the population after a lazy run, for the characteristics of people the
 outbreak never reached.
 
@@ -108,12 +107,7 @@ function NetworkProcess(
     adj = _as_adjacency(adjacency)
     edge_kernel = _validate_kernel(kernel, adj)
     _check_external(external_hazard, length(adj))
-    obs_end_value = Float64(obs_end)
-    (!isnan(obs_end_value) && obs_end_value >= 0) || throw(
-        ArgumentError(
-            "obs_end must be a non-negative number (Inf allowed), got $obs_end"
-        )
-    )
+    obs_end_value = _check_obs_end(obs_end)
 
     return NetworkProcess(
         adj, edge_kernel, from, Tuple(until),

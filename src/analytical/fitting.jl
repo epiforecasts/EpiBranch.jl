@@ -67,6 +67,17 @@ that is, its final size is either the observed size or larger.
 [`end_of_outbreak_probability`](@ref) computes `π_i` from the generation-time
 distribution and the time since the last case.
 
+This mixture is an approximation. It treats whether a cluster is over as an
+independent event with probability `π_i`, and so does not use the fact that no
+case has occurred for the time since the last one. For a single-case cluster
+the exact probability of the data is `E[S(τ)^N]`, with `S` the generation-time
+survival function and `N` the number of secondary cases, which for negative
+binomial offspring is `(k / (k + R (1 − S(τ))))^k`. The two can differ
+noticeably, most when `τ` is short. `π_i` also depends on `R` and `k`, so when
+fitting those, recompute it at every parameter value (for example with
+`end_of_outbreak_probability(R, k, generation_time, τs)`) rather than passing
+it once as fixed data. A `π_i` fixed at one parameter value biases the fit.
+
 For data recorded only once a chain reaches a given size, pass
 `observe(chain_size_distribution(offspring), MinimumSize(k))` instead of
 `offspring`.
@@ -87,29 +98,6 @@ function loglikelihood(
     return _chain_size_loglik(dist, data; prob_concluded)
 end
 
-# AD-compatible methods: use shared _borel_logpdf / _gammaborel_logpdf
-# which accept any numeric type for parameters (ForwardDiff Dual compatible)
-function loglikelihood(
-        data::ChainSizes, offspring::Poisson{T};
-        prob_concluded::Union{Nothing, AbstractVector{<:Real}} = nothing
-    ) where {T}
-    μ = mean(offspring)
-    if prob_concluded === nothing && all(==(1), data.seeds)
-        return sum(n -> _borel_logpdf(μ, n), data.data)
-    end
-    return _chain_size_loglik(Borel(μ), data; prob_concluded)
-end
-
-function loglikelihood(
-        data::ChainSizes, offspring::NegativeBinomial{T};
-        prob_concluded::Union{Nothing, AbstractVector{<:Real}} = nothing
-    ) where {T}
-    if prob_concluded === nothing && all(==(1), data.seeds)
-        return sum(n -> _gammaborel_logpdf(offspring.r, mean(offspring), n), data.data)
-    end
-    return _chain_size_loglik(GammaBorel(offspring.r, mean(offspring)), data; prob_concluded)
-end
-
 """
     loglikelihood(data::ChainSizes, d::ChainSizeLaw; prob_concluded = nothing)
 
@@ -125,6 +113,20 @@ function loglikelihood(
         prob_concluded::Union{Nothing, AbstractVector{<:Real}} = nothing
     )
     return _chain_size_loglik(d, data; prob_concluded)
+end
+
+"""
+    _tabulated_sum(f, xs)
+
+Equivalent to `sum(f, xs)`, but evaluates `f` once per distinct element of `xs`
+and weights it by its count. The order of summation is the only difference.
+"""
+function _tabulated_sum(f, xs)
+    counts = Dict{eltype(xs), Int}()
+    for x in xs
+        counts[x] = get(counts, x, 0) + 1
+    end
+    return sum(((x, c),) -> c * f(x), counts)
 end
 
 """
@@ -146,24 +148,25 @@ function _chain_size_loglik(
             )
         )
     end
+    # Chain-size data repeat a few small sizes many times. Evaluate each
+    # distinct (size, seeds) pair once.
+    prob_concluded === nothing && return _tabulated_sum(
+        ((x, s),) -> _chain_size_logpdf(dist, x, s), zip(data.data, data.seeds)
+    )
     first_val = _chain_size_logpdf(dist, data.data[1], data.seeds[1])
     total = zero(first_val)
     for i in eachindex(data.data)
         lc = _chain_size_logpdf(dist, data.data[i], data.seeds[i])
-        term = if prob_concluded === nothing
+        π_i = prob_concluded[i]
+        (0 <= π_i <= 1) ||
+            throw(ArgumentError("prob_concluded[$i] = $(π_i) is not in [0, 1]"))
+        term = if π_i >= one(π_i)
             lc
+        elseif π_i <= zero(π_i)
+            _chain_size_right_tail_logprob(dist, data.data[i], data.seeds[i])
         else
-            π_i = prob_concluded[i]
-            (0 <= π_i <= 1) ||
-                throw(ArgumentError("prob_concluded[$i] = $(π_i) is not in [0, 1]"))
-            if π_i >= one(π_i)
-                lc
-            elseif π_i <= zero(π_i)
-                _chain_size_right_tail_logprob(dist, data.data[i], data.seeds[i])
-            else
-                lo = _chain_size_right_tail_logprob(dist, data.data[i], data.seeds[i])
-                _logsumexp2(log(π_i) + lc, log1p(-π_i) + lo)
-            end
+            lo = _chain_size_right_tail_logprob(dist, data.data[i], data.seeds[i])
+            _logsumexp2(log(π_i) + lc, log1p(-π_i) + lo)
         end
         total += term
     end
@@ -232,7 +235,7 @@ function _chain_size_classes_loglik(dist, data::ChainSizeClasses)
     return total
 end
 
-# AD-compatible chain length: Poisson — PGF iteration on G(s) = exp(λ(s − 1)).
+# AD-compatible chain length: PGF iteration on the offspring's own PGF.
 """
     loglikelihood(data::ChainLengths, offspring::Poisson; n_initial = 1)
     loglikelihood(data::ChainLengths, offspring::NegativeBinomial; n_initial = 1)
@@ -246,20 +249,12 @@ length is the longest of `n_initial` single-seed chains, so its CDF is the
 single-seed CDF raised to the power `n_initial`.
 """
 function loglikelihood(
-        data::ChainLengths, offspring::Poisson{T}; n_initial::Int = 1
-    ) where {T}
-    λ = mean(offspring)
-    λ < 1 ||
-        throw(ArgumentError("chain length distribution only defined for subcritical process (λ < 1)"))
-    G(s) = exp(λ * (s - one(λ)))
-    return _chain_length_ll_pgf(data.data, G, typeof(λ); n_initial)
-end
-
-# AD-compatible chain length: NegBin — PGF iteration
-function loglikelihood(
-        data::ChainLengths, offspring::NegativeBinomial{T}; n_initial::Int = 1
-    ) where {T}
-    return _chain_length_ll_negbin(data.data, offspring; n_initial)
+        data::ChainLengths, offspring::Union{Poisson, NegativeBinomial}; n_initial::Int = 1
+    )
+    R = mean(offspring)
+    R < 1 ||
+        throw(ArgumentError("chain length distribution only defined for subcritical process (R < 1)"))
+    return _chain_length_ll_pgf(data.data, s -> _pgf(offspring, s), typeof(R); n_initial)
 end
 
 # Simulation estimate of the chain-size or chain-length log-likelihood under
@@ -353,6 +348,13 @@ cluster is compared against simulated clusters with the same number of
 seeds rather than against single-seed ones. `prob_concluded`, when given, is
 the real-time per-cluster mixture `π_i · P(X = x_i) + (1 − π_i) · P(X ≥ x_i)`
 taken against the simulated clusters' empirical distribution.
+
+Sizes in the sparse upper tail of the simulated draws are pooled and scored
+with a geometric tail fitted to them, so an observed size that no simulation
+reached still carries information about the parameters. The estimate is still
+approximate: a geometric tail is lighter than the true chain-size tail near
+criticality, and large `n_sim` is needed to estimate R tightly. Where the
+model has a closed form, prefer it.
 """
 function loglikelihood(data::ChainSizes, model::TransmissionModel; kwargs...)
     return _chain_size_model_loglik(
@@ -399,16 +401,9 @@ function _chain_size_model_loglik(
     # failing falls through to simulation.
     if isempty(ivs) && has_single_type_law(process) && offspring_law_unchanged(process) &&
             offspring_law_unchanged(attrs) && all(offspring_law_unchanged, prog)
-        try
-            d = observe(
-                _fold_reporting(
-                    prog, chain_size_distribution(single_type_offspring(process)), obs, attrs
-                ),
-                obs
-            )
-            return _chain_size_loglik(d, data; prob_concluded)
-        catch e
-            (e isa MethodError || e isa ArgumentError) || rethrow()
+        folded = _exact_reported_chain_size(single_type_offspring(process), prog, obs, attrs)
+        if folded !== nothing
+            return _chain_size_loglik(observe(folded, obs), data; prob_concluded)
         end
     end
     # No closed form: simulate clusters grouped by seed count, one batch of
@@ -532,7 +527,16 @@ end
 
 # ── Helpers ──────────────────────────────────────────────────────────
 
-"""Empirical log-likelihood with Laplace smoothing and right-censoring.
+"""Empirical log-likelihood with Laplace smoothing, a parametric tail and
+right-censoring.
+
+Simulated sizes below a tail threshold `x0` are scored by their smoothed
+frequencies. At and above `x0`, where simulated counts are too sparse to rank
+observed sizes, the pooled tail mass is spread by a geometric law fitted to the
+simulated sizes above `x0`. This keeps an observed size that no simulation
+reached scoring according to the parameter, instead of at a fixed pseudo-count.
+`x0` is the `_TAIL_MIN_COUNT`-th largest simulated size, so the tail pools at
+least that many draws.
 
 When `censored` is provided, simulated values flagged as censored contribute
 to P(size >= cap) rather than P(size = cap). Observed values at or above
@@ -553,28 +557,45 @@ function _empirical_ll(
     isempty(simulated) && return -Inf
     n_total = length(simulated)
 
-    # Count uncensored simulated values
-    max_val = max(maximum(observed), maximum(simulated))
-    counts = zeros(Int, max_val - min_val + 1)
+    uncensored = Int[]
     n_censored = 0
     for (i, s) in enumerate(simulated)
         if !isempty(censored) && censored[i]
             n_censored += 1
         else
+            push!(uncensored, s)
+        end
+    end
+
+    # Tail threshold: the sparse upper end of the simulated sizes is pooled.
+    x0 = min_val
+    if length(uncensored) >= _TAIL_MIN_COUNT
+        x0 = max(min_val, partialsort(uncensored, _TAIL_MIN_COUNT; rev = true))
+    end
+    n_head = x0 - min_val
+    counts = zeros(Int, n_head)
+    n_tail = 0
+    excess = 0
+    for s in uncensored
+        if s >= x0
+            n_tail += 1
+            excess += s - x0
+        else
             counts[s - min_val + 1] += 1
         end
     end
-    n_unique = length(counts) + (n_censored > 0 ? 1 : 0)
-    denom = n_total + n_unique
+    # Geometric tail on x0, x0 + 1, ...: smoothed mean excess μ, ratio q.
+    μ = (excess + 1) / (n_tail + 1)
+    q = μ / (1 + μ)
+    tail_mass = n_tail + 1
+    n_cens_mass = n_censored > 0 ? n_censored + 1 : 0
+    denom = n_total + n_head + 1 + (n_censored > 0 ? 1 : 0)
 
     # Right-censored draws are size ≥ cap, so they belong to the tail of
     # every bin at or below the cap.
-    log_right_tail(idx) = log(
-        (
-            sum(@view counts[idx:end]) + (length(counts) - idx + 1) +
-                (n_censored > 0 ? n_censored + 1 : 0)
-        ) / denom
-    )
+    log_right_tail(x) = x >= x0 ?
+        log((tail_mass * q^(x - x0) + n_cens_mass) / denom) :
+        log((sum(@view counts[(x - min_val + 1):end]) + (n_head - (x - min_val)) + tail_mass + n_cens_mass) / denom)
 
     ll = 0.0
     for (i, x) in enumerate(observed)
@@ -582,9 +603,10 @@ function _empirical_ll(
         if at_cap
             lc = log((n_censored + 1) / denom)
         else
-            idx = x - min_val + 1
-            (idx < 1 || idx > length(counts)) && return -Inf
-            lc = log((counts[idx] + 1) / denom)
+            x < min_val && return -Inf
+            lc = x >= x0 ?
+                log(tail_mass * (1 - q) * q^(x - x0) / denom) :
+                log((counts[x - min_val + 1] + 1) / denom)
         end
         if prob_concluded === nothing
             ll += lc
@@ -598,9 +620,12 @@ function _empirical_ll(
         elseif at_cap
             ll += lc
         else
-            lo = log_right_tail(x - min_val + 1)
+            lo = log_right_tail(x)
             ll += π_i <= zero(π_i) ? lo : _logsumexp2(log(π_i) + lc, log1p(-π_i) + lo)
         end
     end
     return ll
 end
+
+# Number of simulated sizes pooled into the parametric tail of `_empirical_ll`.
+const _TAIL_MIN_COUNT = 20

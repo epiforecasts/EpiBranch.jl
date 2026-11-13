@@ -14,6 +14,14 @@ function EpiBranch.apply_trace!(::SharedKeyQuarantine, contact, state, trace_tim
     return nothing
 end
 
+# Records its removal and leaves `:quarantined` unset. The record alone blocks
+# transmission.
+struct UnflaggedQuarantine <: EpiBranch.TraceAction end
+function EpiBranch.apply_trace!(::UnflaggedQuarantine, contact, state, trace_time, rng)
+    isfinite(trace_time) && set_isolated!(contact, trace_time; release_time = trace_time + 7.0)
+    return nothing
+end
+
 # One that keeps its own record and names it, which is what the extending guide
 # prescribes.
 const OWN_QUARANTINE_KEY = :own_quarantine_stretches
@@ -176,6 +184,23 @@ end
             @test Base.ispublic(EpiBranch, :trigger_time)
         else
             @info "Skipping Base.ispublic check on Julia $VERSION"
+            @test_skip true
+        end
+    end
+
+    @testset "extension hooks the guides name are public" begin
+        if VERSION >= v"1.11"
+            for n in (
+                    :keep_active, :traces, :draw_trace_delay, :apply_trace!,
+                    :capacity_key, :capacity_time_key, :resource_key, :held_until,
+                    :refused_action, :InterventionWrapper, :draw_offspring,
+                    :offspring_law_unchanged, :has_single_type_law, :lazily_populate!,
+                    :effect_mode, :dose_label, :HostImmunity, :AbortedInfection,
+                    :scale_mean, :sum_offspring,
+                )
+                @test Base.ispublic(EpiBranch, n)
+            end
+        else
             @test_skip true
         end
     end
@@ -526,7 +551,8 @@ end
         ind.state[:_ring_propagated] = true
         # An isolation in force but never recorded as a detection is still an
         # isolation this trace brought about, so the reset lifts it.
-        EpiBranch.apply_trace!(ct.action, ind, nothing, 6.0, StableRNG(1))
+        EpiBranch._record_trace_time!(ind, 6.0, :contact)
+        EpiBranch._apply_trace!(ct.action, ind, nothing, 6.0, StableRNG(1), :contact)
         ind.state[:_isolation_unrecorded] = true
         EpiBranch.reset!(ct, ind)
         @test ind.state[:traced] == false
@@ -560,8 +586,8 @@ end
 
         # A standing isolation already in force is the other arm of
         # `apply_trace!` (`min` against the trace time, rather than setting it
-        # outright). `min(standing, NaN)` used to poison that value with a
-        # NaN trigger, not only with an unreached `Inf` one, so the standing
+        # outright). `min(standing, NaN)` would poison that value with a
+        # NaN trigger as well as an unreached `Inf` one, so the standing
         # isolation must survive either trace untouched.
         for unreachable in (NaN, Inf)
             standing = Individual(id = 3)
@@ -664,6 +690,16 @@ end
     @test EpiBranch.infectious_removal_time(ct_keyed, untouched) == Inf
     @test EpiBranch.competing_risk(ct_keyed, untouched, Individual(id = 11), nothing) ===
         nothing
+
+    # The removal alone blocks, whether or not the action sets `:quarantined`.
+    ct_unflagged = ContactTracing(TraceEveryone(), 1.0, Dirac(0.0), UnflaggedQuarantine())
+    unflagged = Individual(id = 4)
+    EpiBranch.apply_trace!(UnflaggedQuarantine(), unflagged, nothing, 4.0, StableRNG(1))
+    @test !is_quarantined(unflagged)
+    unflagged_risk = only(
+        EpiBranch.competing_risk(ct_unflagged, unflagged, Individual(id = 12), nothing)
+    )
+    @test (unflagged_risk.event_time, unflagged_risk.release_time) == (4.0, 11.0)
 end
 
 @testset "A TraceAction can follow a contact up and release it once settled" begin
@@ -737,4 +773,70 @@ end
     @test EpiBranch._discovers_actions(
         CapacityConstrained(following_up; budget_per_period = 1.0)
     )
+end
+
+@testset "Scheduled tracing is judged at the trace's own time" begin
+    clinical = clinical_presentation(incubation_period = Dirac(1.0))
+    bp = BranchingProcess(Dirac(2), Dirac(2.0))
+    traced_count(state) = count(is_traced, state.individuals)
+
+    @testset "FlagOnly before start_time traces nobody" begin
+        for action in (FlagOnly(), Quarantine(duration = Inf))
+            ct = ContactTracing(OnSymptomOnset(), 1.0, Dirac(0.0), action)
+            state = simulate(
+                ModelSpec(bp; interventions = [Scheduled(ct; start_time = 1.0e6)], attributes = clinical);
+                max_generations = 3, rng = StableRNG(1)
+            )
+            @test traced_count(state) == 0
+            @test all(ind -> !haskey(ind.state, :_traced_isolation_time), state.individuals)
+        end
+    end
+
+    @testset "A trace inside the window still stands" begin
+        ct = ContactTracing(OnSymptomOnset(), 1.0, Dirac(0.0), FlagOnly())
+        state = simulate(
+            ModelSpec(bp; interventions = [Scheduled(ct; start_time = 0.0)], attributes = clinical);
+            max_generations = 3, rng = StableRNG(1)
+        )
+        @test traced_count(state) > 0
+    end
+
+    @testset "Isolation is not pulled forward by an out-of-window trace" begin
+        ct = ContactTracing(OnSymptomOnset(), 1.0, Dirac(0.0), FlagOnly())
+        iso = Isolation(onset_to_isolation_delay = Dirac(100.0), duration = Inf)
+        state = simulate(
+            ModelSpec(
+                bp; interventions = [iso, Scheduled(ct; start_time = 1.0e6)], attributes = clinical
+            );
+            max_generations = 3, rng = StableRNG(1)
+        )
+        for ind in filter(is_infected, state.individuals)
+            isfinite(isolation_time(ind)) || continue
+            @test isolation_time(ind) >= onset_time(ind) + 100.0
+        end
+    end
+
+    @testset "Resetting one tracer leaves the other's records" begin
+        ind = Individual(id = 1)
+        ind.state[:traced] = false
+        ind.state[:quarantined] = false
+        EpiBranch._apply_trace!(
+            Quarantine(duration = Inf), ind, nothing, 1.0, StableRNG(1), :contact
+        )
+        EpiBranch._record_trace_time!(ind, 1.0, :contact)
+        EpiBranch._apply_trace!(
+            Quarantine(duration = Inf), ind, nothing, 3.0, StableRNG(1), :source
+        )
+        EpiBranch._record_trace_time!(ind, 3.0, :source)
+        @test length(ind.state[:_quarantine_removal_handles]) == 2
+        EpiBranch._reset_traced!(ind, :contact)
+        @test length(ind.state[:_quarantine_removal_handles]) == 1
+        @test ind.state[:traced]
+        @test ind.state[:quarantined]
+        @test isolation_time(ind) == 3.0
+        EpiBranch._reset_traced!(ind, :source)
+        @test !haskey(ind.state, :_quarantine_removal_handles)
+        @test !ind.state[:traced]
+        @test !isfinite(isolation_time(ind))
+    end
 end

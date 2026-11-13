@@ -3,7 +3,7 @@
 # A homogeneously-mixing closed population of fixed size N: every infectious
 # individual exerts the same force of infection on every susceptible, so the
 # outbreak depletes a finite population with no structure beyond its size. It
-# runs on the continuous-time race as mass action (`_MassAction`), every pair
+# runs on the continuous-time race as mass action (`MassAction`), every pair
 # meeting at β/N, which reproduces the exact stochastic SIR final-size law and
 # yields infection times, not just the final size. It describes the transmission
 # alone: the natural history (progression), interventions, attributes and
@@ -22,8 +22,8 @@ Transmission is the per-infective rate `transmission_rate` (β, so β/N to each
 susceptible).
 
 `transmission_rate` is a fixed β by default, but it may also be a calendar
-schedule — a [`Steps`](@ref), a [`Seasonal`](@ref), or a callable
-`t -> β(t)` — giving β as a function of calendar day, for a lockdown or a
+schedule ([`Steps`](@ref), [`Seasonal`](@ref), or a callable
+`t -> β(t)`) giving β as a function of calendar day, for a lockdown or a
 seasonal rate. With a schedule, contacts are still drawn exactly, from the
 schedule's integrated hazard. `Steps` and `Seasonal` have a known largest
 value, so the route keeps sampling at a bound, at a cost per contact. A
@@ -60,8 +60,8 @@ progression always applies.
 The population is simulated until extinction or `max_time`, whichever comes
 first; with `max_time`, individuals whose infection would fall later stay
 uninfected. The `max_cases` and `max_generations` keyword shortcuts default to
-off here, so a run keeps going to extinction or `max_time` unless an explicit
-value, or a `stopping_rules` entry, asks for a cap. This holds for the
+off here. A run continues to extinction or `max_time` unless an explicit
+value or a `stopping_rules` entry sets a cap. This holds for the
 structure-driven models generally.
 
 A run costs about one draw per contact made inside an infectious window. A
@@ -100,7 +100,7 @@ function HomogeneousProcess(;
     )
 end
 
-# A fixed β is validated and floated as before; a calendar schedule validates
+# A fixed β is validated and floated; a calendar schedule validates
 # itself when it is built (`Steps`'s own values, say), so nothing further is
 # checked here.
 function _prepared_transmission_rate(β::Real)
@@ -162,41 +162,59 @@ end
                   progression, observation, recorder, rng)
 
 Simulate the homogeneous population on the continuous-time race, as mass action
-among its members (`_MassAction`), with the modelling layers supplied by the
+among its members (`MassAction`), with the modelling layers supplied by the
 caller (a bare process, or a `ModelSpec`). The infectious window's `from` state
 is resolved here from the composed `progression`.
 """
 function simulate_once(
-        model::HomogeneousProcess, sim_opts::SimOpts;
-        interventions, attributes, progression, observation, recorder, rng
+        model::HomogeneousProcess, sim_opts::SimOpts; layers...
     )
-    n_initial = sim_opts.n_initial
-    n_initial >= 1 || throw(ArgumentError("n_initial must be ≥ 1"))
-    n_initial <= model.population_size ||
-        throw(ArgumentError("n_initial cannot exceed population_size"))
-
-    from = something(model.from, infectious_from(progression))
-    β = model.transmission_rate
-
-    state = new_state(model, progression, attributes, rng)
-    add_individuals!(
-        state, model.population_size, interventions;
-        setup = (ind, i) -> nothing
-    )
-
     # Homogeneous mixing is mass action with a single group: every pair meets at
     # β/N, scaled by the two members' infectiousness and susceptibility. A
     # schedule stands for β itself, so the route's own rate is just 1/N and the
     # schedule supplies the calendar day's value.
+    β = model.transmission_rate
     N = model.population_size
+    return _simulate_mass_action(
+        model, sim_opts, (), _homogeneous_rate(β, N), _homogeneous_calendar(β);
+        layers...
+    )
+end
+
+"""
+    _simulate_mass_action(model, sim_opts, mixing_by, rate, calendar;
+                          interventions, attributes, progression, observation,
+                          recorder, rng)
+
+The race shared by the models that simulate as mass action among
+`model.population_size` members (`HomogeneousProcess`, `MixingProcess`). The
+model supplies only how members are grouped (`mixing_by`), the pairwise `rate`
+and the `calendar`; `new_state` and `transmission_risks` still dispatch on the
+concrete model type.
+"""
+function _simulate_mass_action(
+        model, sim_opts::SimOpts, mixing_by, rate, calendar;
+        interventions, attributes, progression, observation, recorder, rng
+    )
+    n_initial = sim_opts.n_initial
+    N = model.population_size
+    n_initial >= 1 || throw(ArgumentError("n_initial must be ≥ 1"))
+    n_initial <= N ||
+        throw(ArgumentError("n_initial cannot exceed population_size"))
+
+    from = something(model.from, infectious_from(progression))
+
+    state = new_state(model, progression, attributes, rng)
+    add_individuals!(
+        state, N, interventions;
+        setup = (ind, i) -> nothing
+    )
+
     members = collect(1:N)
     sellke_race!(
         state, members, rng, sim_opts;
         seed! = (best, _, r) -> (best[randperm(r, N)[1:n_initial]] .= 0),
-        targets = _MassAction(
-            state, members; rate = _homogeneous_rate(β, N),
-            calendar = _homogeneous_calendar(β), from
-        ),
+        targets = MassAction(state, members; mixing_by, rate, calendar, from),
         from = from, until = model.until, interventions,
         risks = transmission_risks(model), recorder
     )

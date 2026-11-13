@@ -1,0 +1,1 @@
+Source and test comments that repeated a docstring or described an earlier version of the code are shortened, and the paragraph on applying interventions through `analytic_offspring_effect` that was copied into eight docstrings is now a one-line pointer.

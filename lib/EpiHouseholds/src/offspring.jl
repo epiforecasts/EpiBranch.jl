@@ -1,30 +1,21 @@
 # ── The household-level offspring law ────────────────────────────────
 #
-# The classical households construction. Within a household the epidemic runs
-# over a small, depleting clique; between households it is a branching process
-# whose unit is a whole household. One infected household's offspring are the
-# households its members infect through community contact, so the household-level
-# offspring law is a compound: the community contact rate applied to the total
-# infectious person-time the within-household epidemic generates, which is itself
-# random.
+# Between households the epidemic is a branching process whose unit is a whole
+# household. The household-level offspring law is therefore a compound.
+# Community contacts arrive at rate `global_rate` while any member is
+# infectious. Given the total community-infectious person-time A of the
+# household, the number of contacts is Poisson(global_rate · A), mixed over the
+# law of A (the within-household epidemic). Each contact is taken to reach a
+# fresh, fully susceptible household, the branching approximation the
+# construction rests on.
 #
-# Two pieces have to be right, and both are easy to get wrong by hand.
-#
-# The compounding. Community contacts arrive at rate `global_rate` for as long as
-# any member is infectious, so given the household's total community-infectious
-# person-time A the number of contacts is Poisson(global_rate · A), and the
-# offspring law is that Poisson mixed over the law of A. Early in an epidemic
-# every contact reaches a fresh, fully susceptible household, which is the
-# branching approximation this whole construction rests on.
-#
-# The size-biasing. A community contact reaches a *person*, and with them their
-# household, so a household of a given size is reached in proportion to its size
-# times how common it is. Type is therefore household size, and the mean matrix
-# `M[i, j]` (the expected number of size-`i` households infected by a size-`j`
-# one) is a product of a column that depends only on the parent's size and a row
-# of size-biased weights that does not depend on it at all. Rank one collapses
-# the multi-type threshold to a single weighted sum, R*, and makes the
-# extinction probability a one-dimensional fixed point.
+# A community contact reaches a *person*, and with them their household. A
+# household is therefore reached in proportion to its size times how common it
+# is, and type is household size. The mean matrix `M[i, j]` (the expected number
+# of size-`i` households infected by a size-`j` one) is a column depending only
+# on the size of the parent times a row of size-biased weights that does not.
+# Rank one collapses the multi-type threshold to a single weighted sum, R*, and
+# makes the extinction probability a one-dimensional fixed point.
 
 const _OffspringLaw = DiscreteNonParametric{Int, Float64, Vector{Int}, Vector{Float64}}
 
@@ -123,9 +114,9 @@ attribute builder that can set susceptibility or infectiousness away from 1,
 give an exact result. With a shared kernel, `n_samples` households of each
 size are simulated. A covariate kernel `(infector, susceptible) -> Distribution`
 has no closed form: the whole model is simulated as many times as it takes
-to reach `n_samples` households (at least once), so each household's
-epidemic follows the covariates of its actual members. Households whose
-kernels agree pair for pair, in member order, share a type; the rest are
+to reach `n_samples` households (at least once). The epidemic in each
+household follows the covariates of its members. Households with kernels
+that agree pair for pair, in member order, share a type; the rest are
 types of their own. When every household is its own type, as with a
 continuous individual covariate, each type's distribution comes from those
 few runs and is rough, while the overall distribution and R* average over

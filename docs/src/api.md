@@ -41,11 +41,21 @@ fixed set of contacts. [`ModelSpec`](@ref) adds the rest of the scenario.
 BranchingProcess
 Infectiousness
 OffspringTimes
+RenewalOffspring
 transmission_timing
 implied_R
 EpiBranch.MultiTypeOffspring
 HomogeneousProcess
 MixingProcess
+StratifiedContacts
+flatten_contacts
+contacts_from_table
+mixing_rate
+read_contacts
+ContactFileFormat
+CSVFormat
+NetCDFFormat
+EpiBranch.ContactMatrixRate
 NetworkProcess
 RoutedNetwork
 HouseholdProcess
@@ -57,6 +67,8 @@ ModelSpec
 single_type_offspring
 EpiBranch.has_single_type_law
 EpiBranch.offspring_law_unchanged
+EpiBranch.scale_mean
+EpiBranch.sum_offspring
 ```
 
 ## Approximate population dynamics
@@ -66,13 +78,21 @@ closed, homogeneously-mixing SIR population (the dynamics
 [`HomogeneousProcess`](@ref) simulates exactly) as a state-space model.
 [`MixingMeanFieldProcess`](@ref) and [`MixingLinearNoiseProcess`](@ref) do the
 same for a population with several mixing groups ([`MixingProcess`](@ref)),
-built straight from the `ModelSpec` they approximate rather than given the
-group sizes and the between-group rate again. All four share
+built from the `ModelSpec` they approximate, including its
+group sizes and between-group rate. All four share
 `simulate(model, state; max_time)` with the exact simulation so an external
 Kalman or particle filter can run on any of them. [`HybridProcess`](@ref)
 combines an exact model with its approximation: exact simulation while the
 outbreak is small, the approximation once it is large, with no filtering
 code of its own.
+
+The mixing-population approximations also read a model's vaccination campaign
+and initial immunity. A [`GroupVaccination`](@ref), alone or under
+[`Scheduled`](@ref) and [`CapacityConstrained`](@ref), is read from the
+interventions of the `ModelSpec` as doses into each mixing group, and a
+[`DoseAllocation`](@ref) sets how a budget is shared between groups.
+[`ImmuneShare`](@ref) and [`ImmuneCount`](@ref) set who is immune at the
+start.
 
 ```@docs
 MeanFieldProcess
@@ -83,6 +103,12 @@ MixingMeanFieldProcess
 MixingMeanFieldState
 MixingLinearNoiseProcess
 MixingLinearNoiseState
+DoseAllocation
+TriggeredInPriority
+SplitByGroupSize
+SplitBySusceptibles
+ImmuneShare
+ImmuneCount
 HybridProcess
 HybridState
 ```
@@ -90,7 +116,7 @@ HybridState
 ## Simulating a branching process by generation
 
 [`simulate_by_generation`](@ref) simulates a [`BranchingProcess`](@ref) with
-discrete generations as case counts rather than individuals, much cheaper over
+discrete generations using case counts, reducing computation for
 a large or finite population. It shares `simulate(model, state;
 max_generations)` with the exact, individual-based simulation.
 
@@ -100,8 +126,12 @@ at a time, as the individual-based simulation does. `StartOfGenerationDepletion`
 thins the contacts of a type by its susceptible share at the start of the
 generation, in one binomial draw capped at the susceptibles left, as
 discrete-generation models usually do. With the second rule and an offspring
-law whose sum has a closed form (`Poisson`, `NegBin`, `Binomial`), a generation
+law with a closed-form sum (`Poisson`, `NegBin`, `Binomial`), a generation
 costs the same whatever the number of cases.
+
+A [`ModelSpec`](@ref) built on the process, with a `generation_length`, also
+runs here, and applies its `GroupVaccination` campaigns to the susceptibles of
+each type between generations.
 
 ```@docs
 simulate_by_generation
@@ -209,6 +239,8 @@ RingVaccination
 MassVaccination
 GroupVaccination
 AbstractEffectMode
+EpiBranch.effect_mode
+EpiBranch.dose_label
 LeakyMode
 AllOrNothingMode
 ```
@@ -260,6 +292,7 @@ simulation: the cases and the contacts they exposed for a
 
 ```@docs
 simulate
+outbreak_state_space
 SimOpts
 AbstractStoppingRule
 Extinction
@@ -335,10 +368,13 @@ chain_statistics
 compute_trace_level!
 realised_generation_interval
 realised_generation_intervals
+realised_serial_interval
+realised_serial_intervals
 containment_probability
 is_extinct
 generation_R
 weekly_incidence
+summarise
 scenario_sweep
 ```
 
@@ -355,8 +391,10 @@ distribution of chain sizes (as in epichains).
 reproduction_number
 extinction_probability
 epidemic_probability
+emergence_probability
 probability_contain
 end_of_outbreak_probability
+end_of_outbreak_inputs
 proportion_transmission
 proportion_cases_individual
 proportion_cases_offspring
@@ -535,6 +573,13 @@ TruncatedChainSize
 DetectedChainSize
 ```
 
+### Poisson mixtures
+
+```@docs
+PoissonLognormal
+PoissonWeibull
+```
+
 ### Reproduction number varying between chains
 
 ```@docs
@@ -589,6 +634,17 @@ NetworkInfections
 routed_network_infections
 RoutedNetworkInfections
 RoutedMassActionHazard
+```
+
+### Serial interval likelihood
+
+The distribution of the serial interval between a linked pair, for fitting
+timing data such as serial intervals from contact-traced pairs. Available
+once CensoredDistributions.jl and ConvolvedDistributions.jl are loaded,
+through a package extension.
+
+```@docs
+serial_interval
 ```
 
 ## Distribution helpers
@@ -687,6 +743,10 @@ EpiBranch.proposes_own_contacts
 EpiBranch.propose_along
 EpiBranch.route_pair_kernel
 EpiBranch.pending_beyond
+EpiBranch.resume_route!
+EpiBranch.resumable_route
+EpiBranch.MassAction
+EpiBranch.mass_action_schedule
 ```
 
 ### Stopping rules
@@ -710,6 +770,7 @@ EpiBranch.traces_source
 EpiBranch.has_effect
 EpiBranch.supplies_contacts
 EpiBranch.keep_active
+InterventionWrapper
 EpiBranch.competing_risk
 Risk
 EpiBranch.HostSusceptibility
@@ -720,6 +781,7 @@ EpiBranch.HostImmunity
 EpiBranch.infectious_removal_time
 EpiBranch.risk_applies
 EpiBranch.standing_block
+EpiBranch.infinite_draw_is_final
 intervention_time
 EpiBranch.reset!
 EpiBranch.abort_infection!
@@ -817,6 +879,7 @@ EpiBranch.apply_observation!
 EpiBranch.calendar_multiplier
 EpiBranch.next_calendar_break
 EpiBranch.calendar_shape
+EpiBranch.calendar_bound
 EpiBranch.PiecewiseConstantCalendar
 EpiBranch.SmoothCalendar
 EpiBranch.pair_kernel
@@ -853,10 +916,7 @@ helpers the package may change at any time.
 
 ```@docs
 EpiBranch.get_generation_time
-EpiBranch._settle_case!
-EpiBranch._at_case!
 EpiBranch.population_size
-EpiBranch._create_individual
 EpiBranch.logsumexp
 EpiBranch.required_fields
 EpiBranch._validate_required_fields

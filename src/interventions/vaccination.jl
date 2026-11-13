@@ -206,7 +206,7 @@ mode and dose label through it.
 """
 function vaccine_effect end
 
-"""Efficacy of the vaccination's dose against infection, as given to
+"""Efficacy of a vaccine dose against infection, as given to
 [`VaccineEffect`](@ref): per exposure for a leaky vaccine, the probability of
 full protection for an all-or-nothing one."""
 efficacy(v::AbstractVaccination) = vaccine_effect(v).efficacy
@@ -216,7 +216,7 @@ efficacy(v::AbstractVaccination) = vaccine_effect(v).efficacy
 for that person."""
 severity_efficacy(v::AbstractVaccination) = vaccine_effect(v).severity_efficacy
 
-"""Efficacy of the vaccination's dose against developing symptoms, as given to
+"""Efficacy of the dose of the vaccination against developing symptoms, as given to
 [`VaccineEffect`](@ref). The method for an individual returns the value drawn
 for that person."""
 symptom_efficacy(v::AbstractVaccination) = vaccine_effect(v).symptom_efficacy
@@ -831,8 +831,6 @@ end
 # parent's `:vaccination_time` is set by ring vaccination when the parent
 # was traced, and the onward immunity takes effect at that time plus
 # `delay_to_immunity`, as on the susceptibility side.
-_onward_risk(rv::RingVaccination, parent) = _onward_risk(rv, parent, nothing)
-
 function _onward_risk(rv::RingVaccination, parent, contact)
     # A community introduction has no infector within the population, so
     # vaccination cannot reduce its source's onward transmission.
@@ -984,14 +982,6 @@ function competing_risk(rv::RingVaccination, parent, contact, state)
     return (exposure, onward)
 end
 
-# Scalar defaults short-circuit without drawing from the rng so that
-# coverage = 1.0 and eligibility_window = Inf reproduce the previous
-# deterministic behaviour exactly.
-_within_eligibility_window(w::Real, ind, vacc_t, rng) = _within_window(w, ind, vacc_t)
-function _within_eligibility_window(w, ind, vacc_t, rng)
-    return _within_window(sample_value(w, rng, ind), ind, vacc_t)
-end
-
 # A contact with no exposure yet (a `NaN` infection time) has not exceeded any
 # window, so a pre-exposure dose is always within it.
 function _within_window(w, ind, vacc_t)
@@ -1032,7 +1022,7 @@ function _validate_dose_schedule(interventions)
     # derivative passes through the schedule unconverted.
     given = Dict{Symbol, Any}()
     for iv in interventions
-        vacc = _unwrap_scheduled(iv)
+        vacc = _innermost(iv)
         vacc isa AbstractVaccination || continue
         label = dose_label(vacc)
         req = required_dose(vacc)
@@ -1136,9 +1126,6 @@ for a vaccination not timed from the trace. [`RingVaccination`](@ref) is the onl
 one timed from it."""
 _dose_offset(::AbstractVaccination) = nothing
 _dose_offset(rv::RingVaccination) = rv.dose_delay
-
-# The intervention inside a wrapper; `InterventionWrapper` adds a method.
-_unwrap_scheduled(iv) = iv
 
 # ── GroupVaccination ─────────────────────────────────────────────────
 
@@ -1405,8 +1392,6 @@ vaccine_effect(mv::MassVaccination) = getfield(mv, :effect)
 Base.getproperty(mv::MassVaccination, name::Symbol) = _effect_getproperty(mv, name)
 Base.propertynames(mv::MassVaccination, ::Bool = false) = _effect_propertynames(mv)
 Base.show(io::IO, mv::MassVaccination) = _show_keywords(io, mv)
-
-required_fields(::MassVaccination) = Symbol[]
 
 # The per-contact probability a dose of `mv` blocks an exposure, for the
 # closed form below: `coverage * efficacy`, since a secondary case is

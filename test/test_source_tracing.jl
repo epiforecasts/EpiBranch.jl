@@ -99,7 +99,8 @@
         ind = Individual(id = 1)
         ind.state[:traced] = true
         ind.state[:source_traced_by] = 7
-        EpiBranch.apply_trace!(st.action, ind, nothing, 6.0, StableRNG(1))
+        EpiBranch._record_trace_time!(ind, 6.0, :source)
+        EpiBranch._apply_trace!(st.action, ind, nothing, 6.0, StableRNG(1), :source)
         EpiBranch.reset!(st, ind)
         @test ind.state[:traced] == false
         @test !haskey(ind.state, :source_traced_by)
@@ -156,10 +157,7 @@ end
     @testset "Directly on the race, with no model contact structure at all" begin
         interventions = AbstractIntervention[_RecordSource()]
         rng = StableRNG(5)
-        state = EpiBranch.new_state(
-            BranchingProcess(Poisson(1.0), Exponential(1.0)),
-            EpiBranch.AbstractClinicalTransition[], NoAttributes(), rng
-        )
+        state = empty_state(BranchingProcess(Poisson(1.0), Exponential(1.0)); rng = rng)
         EpiBranch.add_individuals!(state, 3, interventions)
         neighbours = Dict(1 => [2], 2 => [1, 3], 3 => [2])
         targets(inf, st) = (

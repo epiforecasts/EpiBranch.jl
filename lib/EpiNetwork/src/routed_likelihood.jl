@@ -117,10 +117,10 @@ function EpiBranch.contact_structure(data::RoutedNetworkInfections)
 end
 
 # A bare `MassActionHazard` has one infectious window per person to read I(t)
-# off, but `RoutedNetworkInfections` carries one per route; a union across
+# off, but `RoutedNetworkInfections` has one per route; a union across
 # routes would be wrong exactly where routes matter (isolation closing the
 # community route while the household one stays open would still count that
-# person). Caught here, before `_mass_action_schedule` is reached with a
+# person). Caught here, before `mass_action_schedule` is reached with a
 # vector of windows where it expects one.
 function EpiBranch._ext_prepare(::MassActionHazard, ::RoutedNetworkInfections)
     throw(
@@ -145,7 +145,7 @@ infectious on a route an intervention closed for them.
 Pass it as [`pairwise_surv_loglik`](@ref)'s `external_hazard` the way a bare
 [`MassActionHazard`](@ref) is passed for a single-route `InfectionLayer`; a
 bare `MassActionHazard` given directly for `RoutedNetworkInfections` is
-rejected with a message pointing here, since it has no one route's windows to
+rejected with a message pointing here, because it has no one route's windows to
 read.
 """
 struct RoutedMassActionHazard{T <: Real}
@@ -177,7 +177,7 @@ end
 
 function EpiBranch._ext_prepare(m::RoutedMassActionHazard, data::RoutedNetworkInfections)
     r = _routed_mass_action_index(data, m.route)
-    return EpiBranch._mass_action_schedule(
+    return EpiBranch.mass_action_schedule(
         m.hazard, data.infectious_time[r], data.removal_time[r]
     )
 end
@@ -298,10 +298,10 @@ function _route_in_neighbours(contacts::Vector{Vector{Int}}, infected::AbstractV
 end
 
 # A susceptible's escape and event terms under one mixture component's
-# modifier, over every route and the external hazard: the same sums the
-# no-susceptibility loop in `pairwise_surv_loglik` below works out, with
-# `_scaled_cumhazard` and `_scaled_loghazard` applying the modifier to each
-# route's and the external hazard's own hazard.
+# modifier, over every route and the external hazard, with `_scaled_cumhazard`
+# and `_scaled_loghazard` applying the modifier to each route's and the
+# external hazard's own hazard. With `modifier = nothing` this is the
+# susceptible's unmodified likelihood.
 function _routed_modifier_loglik(
         modifier, windows, extsrc, data, in_neighbours, gaps, gates, tfollow, j
     )
@@ -380,17 +380,7 @@ function _routed_mixture_loglik(
             modifier, windows, extsrc, data, in_neighbours, gaps, gates, tfollow, j
         )
     end
-    m = T(-Inf)
-    for (_, l) in terms
-        _is_minus_inf(l) && continue
-        m = _is_minus_inf(m) ? T(l) : max(m, T(l))
-    end
-    _is_minus_inf(m) && return T(-Inf)
-    total = zero(T)
-    for (weight, l) in terms
-        _is_minus_inf(l) || (total += weight * exp(l - m))
-    end
-    return m + log(total)
+    return _weighted_logsumexp(terms, T)
 end
 
 """
@@ -415,8 +405,8 @@ single-route likelihood reads it, taken out of its own exposure.
 
 `external_hazard` is community infection shared across every route, as for
 [`NetworkProcess`](@ref)'s likelihood. A bare [`MassActionHazard`](@ref) is
-rejected here, since it has no single infectious window to read when `data`
-carries one per route; pass a [`RoutedMassActionHazard`](@ref) naming the
+rejected here, because it has no single infectious window to read when `data`
+has one per route; pass a [`RoutedMassActionHazard`](@ref) naming the
 route whose windows it should read instead.
 
 `susceptibility` is an effect on people's own risk of infection, such as a
@@ -485,63 +475,23 @@ function EpiBranch.pairwise_surv_loglik(
     for j in 1:n
         (!explain_index && data.is_index[j]) && continue
         mixture = mixtures === nothing ? nothing : get(mixtures, j, nothing)
-        if mixture !== nothing
-            v = _routed_mixture_loglik(
+        v = if mixture === nothing
+            _routed_modifier_loglik(
+                nothing, windows, extsrc, data, in_neighbours, gaps, gates, tfollow, j
+            )
+        else
+            _routed_mixture_loglik(
                 mixture, windows, extsrc, data, in_neighbours, gaps, gates, tfollow, j, T
             )
-            # Returning `-Inf` directly, rather than adding it to `ll`, discards
-            # whatever AD partials `ll` has accumulated from this host and every
-            # earlier one. Once a host is structurally unexplainable the
-            # likelihood is the constant -Inf at every parameter value, so its
-            # gradient must be exactly zero, and those partials would otherwise
-            # survive into a nonzero one. The flat passes below return -Inf the
-            # same way.
-            _is_minus_inf(v) && return T(-Inf)
-            ll += v
-            continue
         end
-        tj = data.infection_time[j]
-        tend = (isnan(tj) || tj > tfollow) ? tfollow : tj
-
-        survival = 0.0
-        extdist = _ext_survival_of(extsrc, j)
-        if extdist !== nothing
-            stop = min(tend, data.obs_end)
-            stop > 0 && (survival += cumhazard(extdist, stop))
-        end
-        for r in 1:n_routes
-            for (i, pos) in in_neighbours[r][j]
-                oi = data.infectious_time[r][i]
-                isfinite(oi) || continue
-                oi < tend || continue
-                stop = min(data.removal_time[r][i], tend) - oi
-                stop > 0 || continue
-                pk = _route_kernel(windows[r].kernel, data.contacts[r], i, pos, j)
-                survival += gates[r] ?
-                    _gapped_cumhazard(
-                        t -> cumhazard(pk, t), _host_stretches(gaps, i), oi, stop,
-                        _host_leaky_stretches(gaps, i)
-                    ) :
-                    cumhazard(pk, stop)
-            end
-        end
-        ll -= survival
-
-        (isnan(tj) || tj > tfollow) && continue
-        route_terms = [
-            EpiBranch._loghazard(
-                _route_kernel(windows[r].kernel, data.contacts[r], i, pos, j), tj - data.infectious_time[r][i]
-            ) + (gates[r] ? _leak_log_at(gaps, i, tj) : 0.0)
-                for r in 1:n_routes for (i, pos) in in_neighbours[r][j]
-                if isfinite(data.infectious_time[r][i]) &&
-                data.infectious_time[r][i] < tj <= data.removal_time[r][i] &&
-                (!gates[r] || !_removed_at(gaps, i, tj))
-        ]
-        ext_term = (extdist !== nothing && 0 <= tj <= data.obs_end) ?
-            [loghazard(extdist, tj)] : Float64[]
-        terms = vcat(route_terms, ext_term)
-        isempty(terms) && return -Inf
-        ll += logsumexp(terms)
+        # Returning `-Inf` directly, rather than adding it to `ll`, discards
+        # whatever AD partials `ll` has accumulated from this host and every
+        # earlier one. Once a host is structurally unexplainable the
+        # likelihood is the constant -Inf at every parameter value, so its
+        # gradient must be exactly zero, and those partials would otherwise
+        # survive into a nonzero one.
+        _is_minus_inf(v) && return T(-Inf)
+        ll += v
     end
     return ll
 end

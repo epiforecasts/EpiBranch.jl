@@ -38,7 +38,7 @@ EpiBranch.has_effect(::_SeenRoutes) = true
         ]
         @test mean(has_case) ≈ 1 - exp(-cutoff) atol = 0.02
 
-        # With no calendar at all, every attempt eventually lands a case.
+        # With no calendar at all, every attempt eventually causes an infection.
         uncut = BranchingProcess(Infectiousness(Dirac(1); kernel = Exponential(1.0)))
         always = [
             simulate(uncut; n_initial = 1, max_generations = 1, rng = StableRNG(s)).cumulative_cases
@@ -48,9 +48,8 @@ EpiBranch.has_effect(::_SeenRoutes) = true
     end
 
     @testset "a named window reaches risk_applies by that name" begin
-        # `risk_applies` could not previously tell the two windows apart: both
-        # reached the race as a `RouteWindow` named `:transmission`. Naming
-        # them lets an intervention select one and leave the other alone.
+        # Naming the windows lets `risk_applies` tell them apart, so an
+        # intervention can select one and leave the other alone.
         household = Infectiousness(Poisson(1.0); kernel = Uniform(0, 5), name = :household)
         community = Infectiousness(Poisson(2.0); kernel = Uniform(0, 5), name = :community)
         model = BranchingProcess(household, community)
@@ -169,7 +168,8 @@ EpiBranch.has_effect(::_SeenRoutes) = true
         )
         @test !EpiBranch.offspring_law_unchanged(spec.process)
         ll = loglikelihood(ChainSizes([1]), spec; rng = StableRNG(1), n_sim = 500)
-        @test isapprox(ll, 0.0; atol = 1.0e-9)
+        # The smoothed geometric tail puts a little mass on sizes above 1.
+        @test isapprox(ll, 0.0; atol = 1.0e-2)
     end
 
     @testset "an offspring function can return OffspringTimes instead of a count" begin
@@ -350,7 +350,7 @@ end
         ck = EpiBranch._CalendarScaledKernel(k, t -> 1.0, 0.0)
         @test EpiBranch.cumhazard(ck, 1000.0) ≈ 2.0
         @test isfinite(truncated(k, 0.0, 900.0).logF_hi)
-        # The reads stay inferred, since the pairwise likelihood calls them
+        # The reads stay inferred, because the pairwise likelihood calls them
         # once per pair.
         @test only(Base.return_types(EpiBranch.cumhazard, (typeof(k), Float64))) == Float64
         # A decaying hazard is not refined over the tail it has left: a long

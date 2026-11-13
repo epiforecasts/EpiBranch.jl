@@ -224,10 +224,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             HomogeneousProcess(transmission_rate = 1.0, population_size = 10)
         )
 
-        state = EpiBranch.new_state(
-            BranchingProcess(Poisson(1.0), Exponential(5.0)),
-            EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
-        )
+        state = empty_state(; rng = StableRNG(1))
         function pair()
             infector = Individual(id = 1)
             infector.state[:infected] = true
@@ -317,10 +314,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                 infected_before = Int[], n = 4
             )
             ct = wrap(ContactTracing(TraceEveryone(), 1.0, delay, Quarantine(duration = Inf); depth))
-            state = EpiBranch.new_state(
-                BranchingProcess(Poisson(1.0), Exponential(5.0)),
-                EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
-            )
+            state = empty_state(; rng = StableRNG(1))
             EpiBranch.add_individuals!(state, n, [ct])
             clock === nothing || (state.max_infection_time = clock)
             case = state.individuals[1]
@@ -420,10 +414,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         # later trace that the schedule keeps grows the ring through it again.
         ct = ContactTracing(OnIsolation(), 1.0, Dirac(0.0), Quarantine(duration = Inf); depth = 2)
         sched = Scheduled(ct; start_time = 10.0)
-        state = EpiBranch.new_state(
-            BranchingProcess(Poisson(1.0), Exponential(5.0)),
-            EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
-        )
+        state = empty_state(; rng = StableRNG(1))
         state.max_infection_time = 20.0
         function case(id, isolated_at)
             ind = Individual(id = id)
@@ -471,10 +462,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         # separate removal where a short or already-lapsed quarantine ends
         # before onset.
         iso = Isolation(onset_to_isolation_delay = Exponential(1.0e-9), duration = Inf)
-        state = EpiBranch.new_state(
-            BranchingProcess(Poisson(1.0), Exponential(5.0)),
-            EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
-        )
+        state = empty_state(; rng = StableRNG(1))
 
         # Quarantined late, but onset was early: the self-reported time wins.
         late = Individual(id = 1)
@@ -521,10 +509,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
     end
 
     @testset "Scheduled and CapacityConstrained judge Isolation's own start" begin
-        state = EpiBranch.new_state(
-            BranchingProcess(Poisson(1.0), Exponential(5.0)),
-            EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
-        )
+        state = empty_state(; rng = StableRNG(1))
         iso = Isolation(onset_to_isolation_delay = Dirac(3.0), duration = Inf)
         function quarantined()
             ind = Individual(id = 1)
@@ -535,20 +520,22 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         end
 
         # The quarantine began before the schedule and the isolation (day 11)
-        # falls inside it. The isolation stands, recorded apart from the
+        # falls inside it. The isolation is recorded separately from the
         # quarantine.
         plain = quarantined()
         EpiBranch.resolve_individual!(iso, plain, state)
         @test intervention_time(iso, plain) == 11.0
         @test EpiBranch.removal_stretches(plain) == [(5.0, 19.0)]
-        @test EpiBranch.removal_stretches(plain, :_isolation_stretches) == [(11.0, Inf)]
+        @test EpiBranch.removal_stretches(plain, EpiBranch.ISOLATION_STRETCHES_KEY) ==
+            [(11.0, Inf)]
 
         ind = quarantined()
         EpiBranch.resolve_individual!(
             Scheduled(iso; start_time = 10.0), ind, state
         )
         @test EpiBranch.removal_stretches(ind) == [(5.0, 19.0)]
-        @test EpiBranch.removal_stretches(ind, :_isolation_stretches) == [(11.0, Inf)]
+        @test EpiBranch.removal_stretches(ind, EpiBranch.ISOLATION_STRETCHES_KEY) ==
+            [(11.0, Inf)]
         @test isolation_release_time(ind) == Inf
 
         # An isolation before the window is undone, leaving the quarantine.
@@ -573,10 +560,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         iso_late = Isolation(
             onset_to_isolation_delay = Dirac(5.0), eligibility = _DetectAfterOutcome(), duration = Inf
         )
-        state = EpiBranch.new_state(
-            BranchingProcess(Poisson(1.0), Exponential(5.0)),
-            EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(31)
-        )
+        state = empty_state(; rng = StableRNG(31))
         function after_outcome(iso)
             ind = Individual(id = 1)
             ind.state[:onset_time] = 1.0
@@ -616,10 +600,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         # transmission, but a self-report or trace reaching a case that has
         # already recovered or died is not a detection.
         iso = Isolation(onset_to_isolation_delay = Dirac(5.0), duration = Inf)
-        state = EpiBranch.new_state(
-            BranchingProcess(Poisson(1.0), Exponential(5.0)),
-            EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
-        )
+        state = empty_state(; rng = StableRNG(1))
 
         # Self-reported pathway: onset at 1.0 + delay 5.0 = 6.0, after the
         # case recovered at 2.0.
@@ -894,10 +875,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         iso = Isolation(
             onset_to_isolation_delay = Dirac(1.0), duration = Dirac(2.0)
         )
-        state = EpiBranch.new_state(
-            BranchingProcess(Poisson(1.0), Exponential(5.0)),
-            EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
-        )
+        state = empty_state(; rng = StableRNG(1))
         ind = Individual(id = 1)
         ind.state[:onset_time] = 8.0
         ind.state[:test_positive] = true
@@ -912,10 +890,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         # after the case's own outcome. An isolation layering under it must not
         # turn it into one by asking its eligibility about a start the combine
         # discarded.
-        mkstate() = EpiBranch.new_state(
-            BranchingProcess(Poisson(1.0), Exponential(5.0)),
-            EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
-        )
+        mkstate() = empty_state(; rng = StableRNG(1))
         ind = Individual(id = 1, infection_time = 0.0)
         ind.state[:onset_time] = 4.0
         ind.state[:test_positive] = true
@@ -952,10 +927,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         ind.state[:test_positive] = true
         EpiBranch.resolve_individual!(
             iso, ind,
-            EpiBranch.new_state(
-                BranchingProcess(Poisson(1.0), Exponential(5.0)),
-                EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
-            )
+            empty_state(; rng = StableRNG(1))
         )
         @test isolation_time(ind) == 4.0
         @test isolation_release_time(ind) == 4.0
@@ -980,10 +952,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                     onset_to_isolation_delay = Dirac(1.0), duration = bad
                 ),
                 isolated,
-                EpiBranch.new_state(
-                    BranchingProcess(Poisson(1.0), Exponential(5.0)),
-                    EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
-                )
+                empty_state(; rng = StableRNG(1))
             )
         end
     end
@@ -1050,7 +1019,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
     end
 
     @testset "A released quarantine does not block a later, unrelated infection" begin
-        # Reproduces the bug: a contact traced and quarantined long before it is
+        # A contact traced and quarantined long before it is
         # actually infected, through another route, must not still be carrying
         # that old quarantine. The competing risk from tracing must respect the
         # release time, not just the isolation time.
@@ -1069,10 +1038,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         @test risk.block_probability == 1.0
 
         rng = StableRNG(1)
-        state = EpiBranch.new_state(
-            BranchingProcess(Poisson(1.0), Exponential(5.0)),
-            EpiBranch.AbstractClinicalTransition[], NoAttributes(), rng
-        )
+        state = empty_state(; rng = rng)
         # Within the quarantine window the block still stands…
         @test EpiBranch._risk_blocks(ct, contact, Individual(id = 2), state, 11.0)
         # …but it has lapsed well before the infection this contact actually
@@ -1093,10 +1059,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
 
     @testset "duration gives a self-reported isolation a release time" begin
         iso = Isolation(onset_to_isolation_delay = Dirac(2.0), duration = Dirac(5.0))
-        state = EpiBranch.new_state(
-            BranchingProcess(Poisson(1.0), Exponential(5.0)),
-            EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
-        )
+        state = empty_state(; rng = StableRNG(1))
         ind = Individual(id = 1)
         ind.state[:onset_time] = 1.0
         ind.state[:test_positive] = true
@@ -1206,10 +1169,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
 
     @testset "A Scheduled reset restores a standing isolation's record" begin
         iso = Isolation(onset_to_isolation_delay = Dirac(2.0), duration = Inf)
-        state = EpiBranch.new_state(
-            BranchingProcess(Poisson(1.0), Exponential(5.0)),
-            EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
-        )
+        state = empty_state(; rng = StableRNG(1))
         # A self-report at 3.0, after the outcome at 2.0, revises a standing
         # isolation at 6.0 and is then undone.
         function revised_and_reset(standing_unrecorded)
@@ -1527,7 +1487,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                 parent.state[:vaccination_time] = 0.0
                 contact2 = Individual(id = 6)
 
-                risk = EpiBranch._onward_risk(rv2, parent)
+                risk = EpiBranch._onward_risk(rv2, parent, contact2)
 
                 contact2.infection_time = 0.0
                 prob_now = EpiBranch.sample_value(
@@ -1632,7 +1592,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
 
                     other = Individual(id = 10, infection_time = imm_t + 20.0)
                     @test EpiBranch.sample_value(
-                        EpiBranch._onward_risk(rv8, c).block_probability,
+                        EpiBranch._onward_risk(rv8, c, other).block_probability,
                         StableRNG(1), c, other, nothing
                     ) ≈ onward * retained
 
@@ -1842,14 +1802,10 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             # A never-exposed individual's infection time is NaN; no time has
             # passed since an exposure, so any window admits it.
             unexposed = Individual(id = 1, infection_time = NaN)
-            rng = StableRNG(1)
-            @test EpiBranch._within_eligibility_window(Inf, unexposed, 3.0, rng)
-            @test EpiBranch._within_eligibility_window(
-                (rng, ind) -> Inf, unexposed, 3.0, rng
-            )
-            @test EpiBranch._within_eligibility_window(21.0, unexposed, 3.0, rng)
+            @test EpiBranch._within_window(Inf, unexposed, 3.0)
+            @test EpiBranch._within_window(21.0, unexposed, 3.0)
             exposed = Individual(id = 2, infection_time = 1.0)
-            @test !EpiBranch._within_eligibility_window(1.0, exposed, 3.0, rng)
+            @test !EpiBranch._within_window(1.0, exposed, 3.0)
         end
 
         @testset "A dose given while pending is withdrawn once settling excludes it" begin
@@ -1858,10 +1814,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             # testset), then learns the contact's real infection time once
             # the race settles it.
             rv = RingVaccination(efficacy = 0.9, eligibility_window = 2.0)
-            state = EpiBranch.new_state(
-                BranchingProcess(Poisson(0.0)),
-                EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
-            )
+            state = empty_state(BranchingProcess(Poisson(0.0)); rng = StableRNG(1))
             ind = Individual(
                 id = 1, infection_time = NaN,
                 state = Dict{Symbol, Any}(:traced => true, :trace_time => 5.0)
@@ -1883,10 +1836,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
 
         @testset "A dose the settled exposure still covers stands" begin
             rv = RingVaccination(efficacy = 0.9, eligibility_window = 2.0)
-            state = EpiBranch.new_state(
-                BranchingProcess(Poisson(0.0)),
-                EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
-            )
+            state = empty_state(BranchingProcess(Poisson(0.0)); rng = StableRNG(1))
             ind = Individual(
                 id = 1, infection_time = NaN,
                 state = Dict{Symbol, Any}(:traced => true, :trace_time => 5.0)
@@ -3100,12 +3050,11 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
     end
 
     @testset "Traced test-negative contacts isolate via tracing pathway" begin
-        # Regression test: with test_sensitivity < 1 and FlagOnly tracing,
-        # test-negative contacts must still be isolated via the tracing
-        # pathway. Previously a `is_test_positive || return` gate in
-        # Isolation::resolve_individual discarded _traced_isolation_time for
-        # test-negative contacts, so 1 − test_sensitivity of cases never
-        # isolated even when traced.
+        # With test_sensitivity < 1 and FlagOnly tracing, test-negative
+        # contacts must still be isolated via the tracing pathway:
+        # Isolation::resolve_individual must not discard
+        # _traced_isolation_time for them, or 1 − test_sensitivity of cases
+        # would never isolate even when traced.
         #
         # Filter to the cases, which are the people `resolve_individual!` ran on.
         rng = StableRNG(20260601)

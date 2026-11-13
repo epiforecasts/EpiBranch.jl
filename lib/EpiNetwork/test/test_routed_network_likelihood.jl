@@ -337,7 +337,7 @@ end
     end
 
     @testset "routed_network_infections rejects a route that proposes its own contacts" begin
-        # a route whose `reach` proposes its own contacts has nothing for
+        # a route for which `reach` proposes its own contacts has nothing for
         # `routed_network_infections` to read as a fixed adjacency list;
         # caught here with a clear message rather than left to fail inside
         # `_route_kernel` once the likelihood tries to call a `nothing` kernel.
@@ -496,8 +496,8 @@ end
             # A vaccinated host's mixture goes through `_routed_modifier_loglik`
             # for every route and the external hazard alike. A route gated to
             # `INTERVENTION_REMOVAL` and a non-zero `external_hazard` must both
-            # reach the survival and event terms in that function, just as an
-            # unvaccinated host's plain sum does.
+            # reach the survival and event terms in that function, which an
+            # unvaccinated host's plain sum goes through with no modifier.
             REM = EpiBranch.INTERVENTION_REMOVAL
             windows3 = [
                 RouteWindow(:household; until = (:recovered,), kernel = Exponential(3.0), reach = hh),

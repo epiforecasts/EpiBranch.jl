@@ -327,7 +327,7 @@ EpiBranch.records_contacts(::AlwaysRecord, parent, contact, state, t) = true
         # outcome the household route above gets by never opting in, but
         # chosen by the intervention instead of the window.
         REM = EpiBranch.INTERVENTION_REMOVAL
-        prog = [Transition(:recovered; from = :infection, delay = 10.0, terminal = true)]
+        prog = sir(10.0)
         onsets = clinical_presentation(
             incubation_period = Dirac(1.0), prob_asymptomatic = 0.0
         )
@@ -613,7 +613,7 @@ EpiBranch.records_contacts(::AlwaysRecord, parent, contact, state, t) = true
     @testset "the race resolves competing risks on each proposal" begin
         # Nodes 1 and 2 are both seeded at time 0 and both reach node 3: node 1
         # at time 2, node 2 at time 5. Unblocked, the earlier proposal wins.
-        prog = [Transition(:recovered; from = :infection, delay = 20.0, terminal = true)]
+        prog = sir(20.0)
         function race(interventions; attributes = EpiBranch.NoAttributes())
             rng = StableRNG(1)
             state = EpiBranch.new_state(
@@ -680,7 +680,7 @@ EpiBranch.records_contacts(::AlwaysRecord, parent, contact, state, t) = true
         # for removing node 1 takes out the community contact; the household
         # route never opted into intervention removal, so it runs on.
         REM = EpiBranch.INTERVENTION_REMOVAL
-        prog = [Transition(:recovered; from = :infection, delay = 10.0, terminal = true)]
+        prog = sir(10.0)
         function infected_after(interventions)
             rng = StableRNG(1)
             state = EpiBranch.new_state(
@@ -784,20 +784,20 @@ end
 
 @testset "Community introductions respect susceptibility" begin
     for source in (0.5, Gamma(2.0, 3.0))
-        @test EpiBranch._ext_draw(StableRNG(7), source, 1.0) ==
-            EpiBranch._ext_draw(StableRNG(7), source)
+        @test EpiBranch._ext_draw(StableRNG(7), source, 1, 1.0) ==
+            rand(StableRNG(7), EpiBranch._ext_survival(source))
         rng = StableRNG(7)
-        @test EpiBranch._ext_draw(rng, source, 0.0) == Inf
+        @test EpiBranch._ext_draw(rng, source, 1, 0.0) == Inf
         @test rand(rng) == rand(StableRNG(7))
     end
     # Scaling a constant hazard by susceptibility scales its mean waiting time.
-    draws = [EpiBranch._ext_draw(StableRNG(seed), 0.5, 0.25) for seed in 1:4000]
+    draws = [EpiBranch._ext_draw(StableRNG(seed), 0.5, 1, 0.25) for seed in 1:4000]
     @test isapprox(sum(draws) / length(draws), 8.0; rtol = 0.04)
 end
 
 @testset "A withdrawn edge cannot offer another contact after a block" begin
     rng = StableRNG(11)
-    prog = [Transition(:recovered; from = :infection, delay = 100.0, terminal = true)]
+    prog = sir(100.0)
     state = EpiBranch.new_state(
         BranchingProcess(Poisson(1.0), Exponential(1.0)),
         prog, NoAttributes(), rng
@@ -826,7 +826,7 @@ end
     # subject to change later, so the race stops proposing for the pair after
     # the first block instead of asking the model for the edge again.
     rng = StableRNG(11)
-    prog = [Transition(:recovered; from = :infection, delay = 100.0, terminal = true)]
+    prog = sir(100.0)
     state = EpiBranch.new_state(
         BranchingProcess(Poisson(1.0), Exponential(1.0)),
         prog, NoAttributes(), rng
@@ -850,8 +850,8 @@ end
 @testset "Unbounded blocked introductions stop without asking again" begin
     # `ProtectTo(1)` is a certain, non-fading block, so the community
     # introduction is dropped after the first block rather than redrawing
-    # towards a window that never closes — what used to need the
-    # rejection-continuation guard to refuse promptly now never reaches it.
+    # towards a window that never closes, so the rejection-continuation guard is
+    # never reached.
     rng = StableRNG(1)
     state = EpiBranch.new_state(
         BranchingProcess(Poisson(0.0), Exponential(1.0)),
@@ -897,7 +897,7 @@ end
     # model for the edge, exactly as it does for a block that is not certain,
     # instead of dropping the pair after the first block.
     rng = StableRNG(11)
-    prog = [Transition(:recovered; from = :infection, delay = 100.0, terminal = true)]
+    prog = sir(100.0)
     state = EpiBranch.new_state(
         BranchingProcess(Poisson(1.0), Exponential(1.0)),
         prog, NoAttributes(), rng
@@ -941,7 +941,7 @@ end
 
 @testset "ExposedContactRecorder logs a permanently blocked pair" begin
     rng = StableRNG(11)
-    prog = [Transition(:recovered; from = :infection, delay = 100.0, terminal = true)]
+    prog = sir(100.0)
     state = EpiBranch.new_state(
         BranchingProcess(Poisson(1.0), Exponential(1.0)),
         prog, NoAttributes(), rng
@@ -969,7 +969,7 @@ end
     # exposure should carry generation 2, the generation 3 would have had
     # without the block, rather than the default 0 of someone never infected.
     rng = StableRNG(11)
-    prog = [Transition(:recovered; from = :infection, delay = 100.0, terminal = true)]
+    prog = sir(100.0)
     state = EpiBranch.new_state(
         BranchingProcess(Poisson(1.0), Exponential(1.0)),
         prog, NoAttributes(), rng
@@ -1004,7 +1004,7 @@ end
     # it is logged exactly as a permanent one is, and kept only once, since
     # every later block is the same pair escaping the same infector.
     rng = StableRNG(11)
-    prog = [Transition(:recovered; from = :infection, delay = 5.0, terminal = true)]
+    prog = sir(5.0)
     state = EpiBranch.new_state(
         BranchingProcess(Poisson(1.0), Exponential(1.0)),
         prog, NoAttributes(), rng
@@ -1032,7 +1032,7 @@ end
     exercised = 0
     for seed in 1:100
         rng = StableRNG(seed)
-        prog = [Transition(:recovered; from = :infection, delay = 20.0, terminal = true)]
+        prog = sir(20.0)
         state = EpiBranch.new_state(
             BranchingProcess(Poisson(1.0), Exponential(1.0)),
             prog, NoAttributes(), rng
@@ -1162,11 +1162,10 @@ end
 (d::FixedDayOffspring)(rng, ind) = rand(rng, Poisson(0.5))
 
 @testset "A route of another type among many does not box the per-case loop" begin
-    # Regression test for #586: `_sellke_race!` settled every case by looping
-    # over its routes, which boxed every visit once the routes were not all
-    # the same type (a different offspring law, kernel or `until`), costing
-    # memory in proportion to how many cases settled rather than to how many
-    # routes there were.
+    # `_sellke_race!` settles every case by looping over its routes, which
+    # must not box each visit when the routes are not all the same type (a
+    # different offspring law, kernel or `until`): memory should grow with the
+    # number of routes, not with how many cases settled.
     stop_soon(rng, ind) = (ind.state[:stopped_time] = ind.infection_time + 5.0; nothing)
     same_type = BranchingProcess(
         Tuple(

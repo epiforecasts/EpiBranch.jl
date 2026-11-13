@@ -82,12 +82,14 @@ are used in the same place below.
 
 !!! warning "Offspring counts and interventions"
     `offspring_distribution` of a bare process describes secondary cases
-    without interventions. Given a [`ModelSpec`](@ref) with isolation or
-    quarantine it throws an error, since no built-in intervention has a
-    closed-form effect on the offspring distribution. If your offspring counts
-    come from a period with isolation or quarantine in place, the R you
-    estimate from the bare process is the R under those interventions, not the
-    R without them.
+    without interventions. Given a [`ModelSpec`](@ref), it applies the
+    interventions that have a closed-form effect on the offspring
+    distribution: `Isolation` and a [`MassVaccination`](@ref) campaign that is
+    already complete before the simulation starts. It throws an error for
+    interventions without one, such as contact tracing and its quarantine (see
+    [Analytical results](analytical.md)). If your offspring counts come from a
+    period with interventions in place, the R you estimate from the bare
+    process is the R under those interventions.
 
 ### Maximum likelihood
 
@@ -416,6 +418,94 @@ isolation and the cap on outbreak size.
     (`StableRNG(1)` above) and refit: if the estimates move, increase `n_sim`.
     Each likelihood evaluation runs `n_sim` simulations, and fitting takes
     much longer than with an exact formula.
+
+    Changing the seed measures only the Monte Carlo noise. The simulated sizes are smoothed and their sparse upper tail is scored with a fitted geometric tail. This is approximate, and estimates can be biased at small `n_sim`. Compare with a larger `n_sim`, or with an exact formula on a case that has one, before trusting a fit.
+
+## Filtering an outbreak over time
+
+The fits above use a finished outbreak. To follow one as it unfolds, treat the
+outbreak as a state-space model: the latent state is the simulated outbreak,
+the dynamics advance it by one reporting interval, and each day's report is
+the data. [`outbreak_state_space`](@ref) builds that model for
+[SSMProblems.jl](https://github.com/TuringLang/SSMProblems.jl). Particle
+filters written against that interface run on it unchanged. Each step continues
+a copy of the previous state with `simulate(model, state; max_time)`.
+
+!!! note
+    EpiBranch does not install SSMProblems; add it with
+    `using Pkg; Pkg.add("SSMProblems")`. Loading it makes
+    `outbreak_state_space` available.
+
+The outbreak below runs in a population of 500 with infections at rate 0.4 per
+infectious person per day and recovery at rate 0.2. Each day a case is
+reported with probability about one half, so the daily report is Poisson with
+mean half the day's new infections, plus 0.1 to allow a report on a day with
+no new infections. `observe(t, state)` gives the
+distribution of the report on day `t`, reading the new infections off the state
+with the [`TransitionCount`](@ref) signal.
+
+```@example inference
+using SSMProblems
+
+make_model(rate) = ModelSpec(
+    HomogeneousProcess(transmission_rate = rate, population_size = 500);
+    progression = [Transition(:recovered; rate = 0.2, terminal = true)]
+)
+
+new_infections = TransitionCount(:infection)
+infectious = Prevalence(:infection, :recovered)
+observe(t, state) = Poisson(0.5 * new_infections(state, (t - 1.0, Float64(t))) + 0.1)
+
+# the prior starts the outbreak with 5 cases; `dt` is the step length in days
+truth = outbreak_state_space(make_model(0.4), observe; n_initial = 5)
+_, states, reports = SSMProblems.simulate(StableRNG(11), truth, 20)
+println("Daily reports: ", reports)
+```
+
+The bootstrap filter below is written out in full. It keeps 100 simulated
+outbreaks and, each day, advances them with the dynamics, weights them by how
+well they explain that day's report and resamples. The weighted mean number
+of infectious cases follows the rise in the true number, which the filter never
+sees. With only 100 particles it runs above the true number late on, and more
+particles narrow that gap.
+
+```@example inference
+function run_filter(rng, ssm, reports; n_particles = 100)
+    particles = [SSMProblems.simulate(rng, SSMProblems.prior(ssm)) for _ in 1:n_particles]
+    log_evidence = 0.0
+    means = Float64[]
+    for (t, report) in enumerate(reports)
+        particles = [SSMProblems.simulate(rng, SSMProblems.dyn(ssm), t, x) for x in particles]
+        logw = [SSMProblems.logdensity(SSMProblems.obs(ssm), t, x, report) for x in particles]
+        shift = maximum(logw)
+        w = exp.(logw .- shift)
+        log_evidence += shift + log(mean(w))
+        w ./= sum(w)
+        push!(means, sum(w .* [infectious(x, (t - 1.0, Float64(t))) for x in particles]))
+        particles = particles[rand(rng, Categorical(w), n_particles)]
+    end
+    return log_evidence, means
+end
+
+log_evidence, filtered = run_filter(StableRNG(1), truth, reports)
+println("True infectious: ", [infectious(x, (t - 1.0, Float64(t))) for (t, x) in enumerate(states)])
+println("Filtered mean:   ", round.(filtered; digits = 0))
+```
+
+The filter also returns an estimate of the log marginal likelihood of the
+reports, which can be compared across parameter values. The estimate is noisy
+because it comes from a finite number of particles, so each rate below is
+filtered three times.
+
+```@example inference
+for rate in (0.2, 0.3, 0.4, 0.5, 0.6)
+    ssm = outbreak_state_space(make_model(rate), observe; n_initial = 5)
+    estimates = [run_filter(StableRNG(s), ssm, reports)[1] for s in 1:3]
+    println("rate = $rate: log marginal likelihood ", round.(estimates; digits = 1))
+end
+```
+
+The likelihood is highest near the true rate of 0.4.
 
 ## Gradients of simulated outcomes
 
