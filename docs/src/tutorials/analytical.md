@@ -144,6 +144,29 @@ cases, so transmission is concentrated in fewer cases than their individual
 reproduction numbers imply. Report both, clearly labelled, since published
 figures use either.
 
+## Superspreading: cases from large clusters
+
+[`proportion_cluster_size`](@ref) asks a different question: what share of all secondary cases comes from infectors who each caused at least `cluster_size` cases (superspreading events)? Here `cluster_size` counts one infector's secondary cases, not the size of a transmission chain. It needs negative binomial offspring:
+
+```@example analytical
+share = proportion_cluster_size(2.5, 0.16; cluster_size = 10)
+println("Cases infecting 10 or more: $(round(share * 100, digits=1))% of all secondary cases")
+
+# The same, from a model
+println("Model: $(round(proportion_cluster_size(model; cluster_size = 10) * 100, digits=1))%")
+```
+
+## Superspreading: contact heterogeneity and R
+
+[`heterogeneous_contact_R`](@ref) is different: it does not use an offspring distribution. People with many contacts are more likely to be infected and infect more people, so variation in contact numbers raises R above the value implied by the average. It takes the mean and standard deviation of contacts per unit of time, the duration of infectiousness in the same unit and the probability of transmission per partnership, and returns R for everyone having the average number of contacts and `R_net` allowing for variation:
+
+```@example analytical
+r = heterogeneous_contact_R(10.0, 15.0, 5.0, 0.01)
+println("R with average contacts: $(round(r.R, digits=2)); allowing for variation: $(round(r.R_net, digits=2))")
+```
+
+The docstring lists the assumptions behind `R_net`, which include no repeated contacts and no clustering.
+
 ## Chain size distributions
 
 When R < 1 every chain dies out, and the distribution of its final size is
@@ -174,6 +197,36 @@ println("NegBin(R=0.8, k=0.5):  mean size $(round(mean(d_nb), digits=2)), P(size
 
 Both have the same mean size, 1/(1 − R) = 5, but with superspreading many more
 introductions stop at a single case.
+
+## End of outbreak
+
+After the last case, how likely is it that transmission has stopped? [`end_of_outbreak_probability`](@ref) gives the probability that a case causes no further cases, `τ` days after it occurred, for `NegBin(R, k)` offspring and a generation time distribution (Thompson et al. 2019, Phil Trans B). It assumes every case is reported. It rises from the chance of infecting nobody at `τ = 0` towards 1:
+
+```@example analytical
+gt = Gamma(2.0, 3.0)  # mean 6 days
+for τ in [0.0, 7.0, 14.0, 28.0]
+    p = end_of_outbreak_probability(0.8, 0.5, gt, τ)
+    println("τ = $(lpad(τ, 4)) days: P(over) = $(round(p, digits=3))")
+end
+```
+
+It also accepts an offspring distribution such as `NegBin(0.8, 0.5)` or `Poisson(0.8)`, or a [`BranchingProcess`](@ref), in place of R and k.
+
+That value is for one case. A cluster is over only when none of its cases can transmit again, so pass the time since every case's onset, and the number of secondary cases each is already known to have caused. A case already known to have infected others is more likely to infect more, so it counts for less than a case with the same `τ` and none known:
+
+```@example analytical
+offspring = NegBin(0.95, 0.18)
+gt_cluster = Gamma(2.7, 5.7)             # mean about 15 days
+onsets = [0.0, 3.0, 5.0, 6.0]
+τs = 10.0 .- onsets                      # assessed at day 10
+known = [2, 1, 0, 0]                     # secondary cases known so far
+p_known = end_of_outbreak_probability(offspring, gt_cluster, τs, known)
+p_unknown = end_of_outbreak_probability(offspring, gt_cluster, τs, zeros(Int, 4))
+println("Transmission tree known:   P(over) = $(round(p_known, digits=3))")
+println("Transmission tree unknown: P(over) = $(round(p_unknown, digits=3))")
+```
+
+Pass zeros when the transmission tree is unknown, which gives the plain product of the per-case values. Pass the result as `prob_concluded` to [`chain_size_distribution`](@ref) or the chain-size likelihood for real-time cluster data.
 
 ## Checking against simulation
 
