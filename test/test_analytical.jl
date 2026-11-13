@@ -1524,6 +1524,28 @@ using ForwardDiff
             @test isfinite(ll)
         end
 
+        @testset "Simulated chain-size likelihood is not biased by unreached sizes" begin
+            # Simulated sizes drawn from the exact law at each R: the
+            # estimate has to sit inside the exact likelihood's 95% interval
+            # even though the largest observed sizes are beyond the draws.
+            data = ChainSizes(rand(StableRNG(51), chain_size_distribution(NegBin(0.85, 0.5)), 300))
+            grid = 0.6:0.02:0.95
+            exact = [loglikelihood(data, NegBin(R, 0.5)) for R in grid]
+            lo, hi = extrema(grid[exact .>= maximum(exact) - 1.92])
+            rng = StableRNG(9)
+            sim = map(grid) do R
+                draws = rand(rng, chain_size_distribution(NegBin(R, 0.5)), 1000)
+                EpiBranch._empirical_ll(data.data, draws; min_val = 1)
+            end
+            @test lo <= grid[argmax(sim)] <= hi
+            # An observed size beyond every simulated size still scores
+            # according to the parameter.
+            small = [1, 1, 2, 1, 3, 1, 2, 1]
+            ll_low = EpiBranch._empirical_ll([40], small; min_val = 1)
+            ll_high = EpiBranch._empirical_ll([40], [small; 30; 35]; min_val = 1)
+            @test isfinite(ll_low) && ll_high > ll_low
+        end
+
         @testset "MinimumSize falls through to the simulation path" begin
             # With interventions present the likelihood is empirical, and the
             # observation has to drop the simulated clusters below its minimum
