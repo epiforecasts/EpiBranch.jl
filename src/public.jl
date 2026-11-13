@@ -241,3 +241,38 @@ public validate_infection_likelihood
 public validate_removal_gap_keys
 public REMOVAL_STRETCHES_KEY
 public LEAKY_REMOVAL_STRETCHES_KEY
+
+# Hooks the extending guides ask a package to define for its own
+# intervention, trace rate, delay or action.
+#   - `keep_active` says which targets an intervention still acts on;
+#   - `traces`, `draw_trace_delay` and `apply_trace!` are the methods behind
+#     `TraceRate`, `TraceDelay` and `TraceAction`;
+#   - `capacity_key`, `capacity_time_key`, `resource_key`, `held_until` and
+#     `refused_action` are what a capacity-limited intervention defines;
+#   - `InterventionWrapper` is the supertype of a wrapper of your own.
+public keep_active
+public traces
+public draw_trace_delay
+public apply_trace!
+public capacity_key
+public capacity_time_key
+public resource_key
+public held_until
+public refused_action
+public InterventionWrapper
+
+# Offspring and vaccination hooks named in the guides: how a model draws the
+# offspring of a case and says whether that law is unchanged by the
+# interventions in the run, the effect mode and dose label of a vaccination,
+# and the helper that populates a state lazily.
+public draw_offspring
+public offspring_law_unchanged
+public has_single_type_law
+public lazily_populate!
+public effect_mode
+public dose_label
+
+# `simulate_by_generation` with a `multiplier`: the mean-scaling rule and the
+# one-step generation total an offspring family can define.
+public scale_mean
+public sum_offspring

@@ -41,6 +41,7 @@ fixed set of contacts. [`ModelSpec`](@ref) adds the rest of the scenario.
 BranchingProcess
 Infectiousness
 OffspringTimes
+RenewalOffspring
 transmission_timing
 implied_R
 EpiBranch.MultiTypeOffspring
@@ -66,6 +67,8 @@ ModelSpec
 single_type_offspring
 EpiBranch.has_single_type_law
 EpiBranch.offspring_law_unchanged
+EpiBranch.scale_mean
+EpiBranch.sum_offspring
 ```
 
 ## Approximate population dynamics
@@ -236,6 +239,8 @@ RingVaccination
 MassVaccination
 GroupVaccination
 AbstractEffectMode
+EpiBranch.effect_mode
+EpiBranch.dose_label
 LeakyMode
 AllOrNothingMode
 ```
@@ -363,6 +368,8 @@ chain_statistics
 compute_trace_level!
 realised_generation_interval
 realised_generation_intervals
+realised_serial_interval
+realised_serial_intervals
 containment_probability
 is_extinct
 generation_R
@@ -384,8 +391,10 @@ distribution of chain sizes (as in epichains).
 reproduction_number
 extinction_probability
 epidemic_probability
+emergence_probability
 probability_contain
 end_of_outbreak_probability
+end_of_outbreak_inputs
 proportion_transmission
 proportion_cases_individual
 proportion_cases_offspring
@@ -562,6 +571,13 @@ ChainSizeLaw
 ThinnedChainSize
 TruncatedChainSize
 DetectedChainSize
+```
+
+### Poisson mixtures
+
+```@docs
+PoissonLognormal
+PoissonWeibull
 ```
 
 ### Reproduction number varying between chains
@@ -763,6 +779,7 @@ EpiBranch.traces_source
 EpiBranch.has_effect
 EpiBranch.supplies_contacts
 EpiBranch.keep_active
+InterventionWrapper
 EpiBranch.competing_risk
 Risk
 EpiBranch.HostSusceptibility
@@ -914,10 +931,7 @@ helpers the package may change at any time.
 
 ```@docs
 EpiBranch.get_generation_time
-EpiBranch._settle_case!
-EpiBranch._at_case!
 EpiBranch.population_size
-EpiBranch._create_individual
 EpiBranch.logsumexp
 EpiBranch.required_fields
 EpiBranch._validate_required_fields

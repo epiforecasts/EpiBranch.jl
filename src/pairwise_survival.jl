@@ -630,8 +630,15 @@ function infection_likelihood_compatible(rv::RingVaccination)
     return dose_label(rv) === :default && !_maybe_positive(rv.onward_efficacy) &&
         !_maybe_positive(rv.post_exposure_efficacy)
 end
-function infection_likelihood_compatible(w::Union{Scheduled, CapacityConstrained, HeldCapacity})
+function infection_likelihood_compatible(w::Union{CapacityConstrained, HeldCapacity})
     return infection_likelihood_compatible(w.intervention)
+end
+# A schedule that can close again lifts a removal (isolation, quarantine) for
+# which the infection layer records no stretch. The likelihood would then score
+# the people it isolated as if they had never been removed.
+function infection_likelihood_compatible(s::Scheduled)
+    s.can_lapse && binding_release(s.intervention) && return false
+    return infection_likelihood_compatible(s.intervention)
 end
 
 # ── Susceptibility effects ───────────────────────────────────────────
@@ -1507,7 +1514,9 @@ function SurvivalDistributions.cumhazard(s::_MassActionSchedule, τ::Real)
         end
         lo < τ || break
     end
-    lo < τ && (total += s.counts[end] * (τ - lo))
+    # When nobody is left infectious the tail adds nothing, even for an
+    # unbounded τ, where `0 * Inf` would give NaN.
+    lo < τ && s.counts[end] > 0 && (total += s.counts[end] * (τ - lo))
     return total * s.β / s.N
 end
 

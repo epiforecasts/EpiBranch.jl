@@ -159,6 +159,33 @@ using Dates
         @test state.cumulative_cases > 0
     end
 
+    @testset "incubation_linked_generation_time centres asymptomatic cases on their own incubation period" begin
+        gt_fn = incubation_linked_generation_time(presymptomatic_fraction = 0.1)
+        spec = ModelSpec(
+            BranchingProcess(Poisson(1.5), gt_fn);
+            attributes = clinical_presentation(
+                incubation_period = LogNormal(log(11.0), 0.4), prob_asymptomatic = 0.5
+            )
+        )
+        gs = Float64[]
+        ga = Float64[]
+        states = simulate(spec, 1500; max_generations = 2, max_cases = nothing, rng = StableRNG(1))
+        for s in states, ind in s.individuals
+            (is_infected(ind) && ind.parent_id != 0) || continue
+            p = s.individuals[ind.parent_id]
+            push!(is_asymptomatic(p) ? ga : gs, ind.infection_time - p.infection_time)
+        end
+        @test isapprox(mean(ga), mean(gs); rtol = 0.1)
+
+        asymp = [
+            i for s in states for i in s.individuals if is_infected(i) && is_asymptomatic(i)
+        ]
+        @test all(i -> isnan(i.state[:onset_time]), asymp)
+        @test all(i -> i.state[:latent_incubation_period] > 0, asymp)
+        bare = Individual(id = 1, infection_time = 0.0)
+        @test_throws ArgumentError gt_fn(bare)
+    end
+
     @testset "incubation_linked_generation_time realises the presymptomatic fraction" begin
         presymp = 0.3
         gt_fn = incubation_linked_generation_time(presymptomatic_fraction = presymp)
@@ -183,6 +210,22 @@ using Dates
                 for i in 1:(length(xs) - 1)
         )
         @test isapprox(integral, 1.0; atol = 1.0e-3)
+    end
+
+    @testset "incubation_linked_generation_time keeps the presymptomatic share for short incubation periods" begin
+        for presymp in (0.15, 0.3, 0.6), rel in (0.2, 0.5, 1.0), inc in (1.0, 2.0, 5.0, 8.0)
+            gt_fn = incubation_linked_generation_time(
+                presymptomatic_fraction = presymp, relative_spread = rel
+            )
+            ind = Individual(
+                id = 1, infection_time = 0.0,
+                state = Dict{Symbol, Any}(:onset_time => inc)
+            )
+            d = gt_fn(ind)
+            @test d.inner.ω ≈ rel * inc
+            @test isapprox(cdf(d, inc), presymp; atol = 1.0e-4)
+        end
+        @test_throws ArgumentError incubation_linked_generation_time(relative_spread = 0.0)
     end
 
     @testset "_TruncatedSkewNormal has the full univariate law interface" begin

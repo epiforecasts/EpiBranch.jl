@@ -286,7 +286,10 @@ infection to the infection of each of its secondary cases. Leave it out to
 study only chain sizes and lengths, without timing. `population_size` sets a
 finite population: each potential infection succeeds with probability equal
 to the share of people not yet infected, so transmission slows as cases
-accumulate (unlimited by default).
+accumulate (unlimited by default). A multi-type model (an offspring function
+or a contact matrix) cannot use `population_size` with [`simulate`](@ref),
+because that keeps no population per type. [`simulate_by_generation`](@ref)
+takes `population_by_type` instead.
 
 The transmission model describes only who infects whom and when. Add the
 natural history, interventions, population characteristics and reporting
@@ -408,6 +411,22 @@ end
 _progvec(p) = convert(Vector{AbstractClinicalTransition}, p)
 
 population_size(m::BranchingProcess) = m.population_size
+
+# The individual-based simulation counts cumulative cases against one
+# population size and holds none per type. It would deplete every type
+# against the whole population. `simulate_by_generation` takes
+# `population_by_type` and accepts a multi-type model with a population_size.
+function _check_population(m::BranchingProcess)
+    (m.n_types > 1 && !(m.population_size isa NoPopulation)) || return nothing
+    throw(
+        ArgumentError(
+            "population_size is not supported by simulate for a multi-type " *
+                "BranchingProcess: it would deplete every type against the whole " *
+                "population. Use simulate_by_generation with population_by_type, " *
+                "or drop population_size."
+        )
+    )
+end
 n_types(m::BranchingProcess) = m.n_types
 
 # A finite population thins transmission as cases accumulate, a window with
