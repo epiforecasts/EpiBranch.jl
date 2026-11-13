@@ -66,7 +66,7 @@ symptom onset to its own. Index cases, people who were never infected and
 pairs where either case has no onset (asymptomatic cases, or a model without
 onset times) return `NaN`.
 
-Serial intervals are what is observed, and unlike generation intervals they
+Serial intervals are what is observed. Unlike generation intervals, they
 can be negative when the infectee's incubation period is shorter than the
 infector's. Isolation and tracing shift them away from the intrinsic
 generation time.
