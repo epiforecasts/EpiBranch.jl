@@ -145,7 +145,8 @@ covariates need the kernel given as a function, even a constant one such as
 `(i, j) -> Exponential(3.0)`.
 
 Each household is simulated on its own timeline, so interventions cannot be
-wrapped in `Scheduled`. To see what switching a policy on does, calculate this
+wrapped in `Scheduled` or `CapacityConstrained`, directly or inside another
+wrapper such as `OnRoutes`. To see what switching a policy on does, calculate this
 twice, once without the intervention and once with it (unwrapped): the two R*
 values are the reproduction numbers before and after the switch.
 
@@ -175,9 +176,10 @@ function household_offspring(
     # epidemic at its own time, so a gate on the population's clock or case count
     # has no counterpart; in the pooled sample it would switch on at an
     # arbitrary point set by `n_samples`.
-    any(iv -> iv isa Scheduled, spec.interventions) && throw(
+    any(EpiBranch.gates_on_population_clock, spec.interventions) && throw(
         ArgumentError(
-            "a `Scheduled` intervention gates on the population's clock or case count, " *
+            "a `Scheduled`, `CapacityConstrained` or `HeldCapacity` intervention, alone or " *
+                "inside a wrapper, gates on the population's clock or case count, " *
                 "which the branching process over households does not have. For R* before " *
                 "and after the policy starts, call `household_offspring` once without the " *
                 "intervention and once with it unwrapped"

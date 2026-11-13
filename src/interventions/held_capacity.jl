@@ -217,3 +217,6 @@ For extension authors: the day the effect `intervention` set directly on
 """
 held_until(::AbstractIntervention, ind) = Inf
 held_until(::Isolation, ind) = isolation_release_time(ind)
+
+# The cap on places held at once is counted across the whole population.
+gates_on_population_clock(::HeldCapacity) = true

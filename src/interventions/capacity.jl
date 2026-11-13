@@ -182,6 +182,9 @@ struct CapacityConstrained{I <: AbstractIntervention, F, B} <: _CapacityWrapper
     on_refusal::RefusalPolicy
 end
 
+# The budget per period is counted on the clock of the population.
+gates_on_population_clock(::CapacityConstrained) = true
+
 function CapacityConstrained(
         intervention::AbstractIntervention;
         budget_per_period, period::Real = Inf, carry_over::Bool = true,
