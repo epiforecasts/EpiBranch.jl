@@ -120,14 +120,6 @@ end
         @test ct.action isa Quarantine
     end
 
-    @testset "quarantine_on_trace = false selects FlagOnly" begin
-        ct = @test_deprecated ContactTracing(
-            probability = 1.0, isolation_to_trace_delay = Exponential(0.1),
-            quarantine_on_trace = false
-        )
-        @test ct.action isa FlagOnly
-    end
-
     @testset "Default ContactTracing reproduces existing behaviour" begin
         # Tracing on isolated symptomatic parents, with quarantine.
         rng = StableRNG(42)
@@ -272,6 +264,12 @@ end
             OnSymptomOnset(), ConstantRate(1.0),
             ConstantDelay(Exponential(0.5)), Quarantine(duration = Inf); depth = 2
         ).depth == 2
+    end
+
+    @testset "a missing action is rejected" begin
+        @test_throws ArgumentError ContactTracing(
+            probability = 1.0, isolation_to_trace_delay = Exponential(0.5)
+        )
     end
 
     @testset "depth below 1 is rejected" begin

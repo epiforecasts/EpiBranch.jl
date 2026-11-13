@@ -226,10 +226,13 @@ end
         model = ModelSpec(
             BranchingProcess(Poisson(0.0), Exponential(5.0));
             attributes = attrs,
-            observation = PerCaseObservation(
-                detection_prob = (rng, ind) -> ind.state[:reporting_probability],
-                from = :infection_time
-            )
+            progression = [
+                Reporting(
+                    delay = Dirac(0.0),
+                    probability = (rng, ind) -> ind.state[:reporting_probability],
+                    from = :infection
+                ),
+            ]
         )
         serial = simulate(model, 10; n_initial = 30, rng = StableRNG(42))
         parallel = simulate(

@@ -194,8 +194,8 @@ export AbstractStoppingRule, Extinction, MaxCases, MaxGenerations, MaxTime, shou
 export AbstractIntervention, Isolation, ContactTracing, SourceTracing
 export IsolationEligibility, SymptomaticOnly, AllCases
 export is_eligible_for_isolation
-export TraceEligibility, AlwaysEligible, SymptomaticParent
-export OnSymptomOnset, OnLabConfirmation, OnIsolation, TraceEveryone, TraceNobody, NoTracing
+export TraceEligibility, SymptomaticParent
+export OnSymptomOnset, OnLabConfirmation, OnIsolation, TraceEveryone, TraceNobody
 export PreviouslyTraced
 export AnyOf, AllOf, NoneOf
 export TraceRate, ConstantRate
@@ -216,7 +216,7 @@ export is_active, intervention_time
 export AbstractClinicalTransition, Transition, Reporting, Hospitalisation, Death, Recovery
 export is_terminal, terminal_event, terminal_target, exclusive_probabilities
 export Signal, TransitionCount, Prevalence
-export ObservationModel, PerCaseObservation, NoObservation, MinimumSize, ChainDetection,
+export ObservationModel, NoObservation, MinimumSize, ChainDetection,
     observe
 export ContactRecorder, NoContactRecorder, ExposedContactRecorder
 export single_type_offspring

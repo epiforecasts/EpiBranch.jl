@@ -21,8 +21,7 @@
 
 Mark which simulated cases are reported, and when, under an observation
 model. [`simulate`](@ref) calls it once the outbreak has been simulated; it
-changes `state` in place. Under [`PerCaseObservation`](@ref) each case
-records `:reported` (`true`/`false`) and `:reporting_time`. Under
+changes `state` in place. Under
 [`ChainDetection`](@ref) every case in a chain shares the same `:reported`
 flag. [`NoObservation`](@ref) and [`MinimumSize`](@ref) leave the cases
 unchanged.
@@ -65,36 +64,6 @@ function apply_observation!(o::ChainDetection, state, rng)
     return state
 end
 
-function apply_observation!(o::PerCaseObservation, state, rng)
-    for ind in state.individuals
-        # Observation is a property of cases: skip uninfected contact nodes
-        # (kept for the contact-tracing table) so no RNG is spent on non-cases
-        # and no `:reported` flag lands on a record that isn't a case.
-        is_infected(ind) || continue
-        # A progression transition (such as `Reporting`) that records
-        # `:reported` owns that key, and its likelihood reads what it wrote.
-        haskey(ind.state, :reported) && _reporting_conflict(o)
-        ρ = sample_value(o.detection_prob, rng, ind)
-        d = sample_value(o.delay, rng, ind)
-        anchor = _percase_anchor(o.from, ind)
-        reported = rand(rng) < ρ
-        ind.state[:reported] = reported
-        # Shares :reporting_time with the Reporting transition, which leaves
-        # it at Inf for a case that was never reported.
-        ind.state[:reporting_time] = reported ? anchor + d : Inf
-    end
-    return state
-end
-
-_percase_anchor(s::Symbol, ind) =
-let v = get(ind.state, s, NaN)
-    isnan(v) ? ind.infection_time : v
-end
-_percase_anchor(f, ind) =
-let v = float(f(ind))
-    isnan(v) ? ind.infection_time : v
-end
-
 """
     ThinnedChainSize(base, detection_prob)
 
@@ -102,8 +71,9 @@ Distribution of observed chain sizes under under-reporting: each case in a
 chain whose true size follows `base` is detected independently with
 probability `detection_prob`, and the observed size is the number detected.
 A chain with nobody detected leaves no trace in the data, so the distribution
-is conditioned on at least one case being detected. Usually built for you by
-[`observe`](@ref) with a [`PerCaseObservation`](@ref).
+is conditioned on at least one case being detected. Built for you
+from a model's [`Reporting`](@ref) step when the chain-size likelihood is
+evaluated.
 
 `logpdf(d, obs)` adds `logpdf(base, n) + logpdf(Binomial(n, p), obs)` over
 `n >= obs` until the remaining tail is negligible, then subtracts
@@ -277,8 +247,6 @@ is itself a distribution, so it can be used in a likelihood in place of the
 true one.
 
 - [`NoObservation`](@ref): returned unchanged.
-- [`PerCaseObservation`](@ref) (deprecated): under-reporting, each case
-  detected with probability `detection_prob` ([`ThinnedChainSize`](@ref)).
 - [`MinimumSize`](@ref): only chains of at least `min_size` cases are
   recorded ([`TruncatedChainSize`](@ref)).
 - [`ChainDetection`](@ref): a whole chain is recorded with a probability
@@ -297,12 +265,6 @@ observe(chain_size_distribution(NegBin(0.8, 0.5)), MinimumSize(2))
 observe(base, ::NoObservation) = base
 observe(base, o::MinimumSize) = TruncatedChainSize(base, o.min_size)
 observe(base, o::ChainDetection) = DetectedChainSize(base, o.recording_probability)
-function observe(base, o::PerCaseObservation)
-    p = scalar_detection_prob(o)
-    # ρ = 1 is a no-op; skip the wrap so multi-seed likelihoods route
-    # directly to the base distribution's own multi-seed implementation.
-    return p == 1.0 ? base : ThinnedChainSize(base, p)
-end
 
 """
 Scalar detection probability from a model's `Reporting` step in
@@ -373,14 +335,14 @@ chain-size law and `chain_size_distribution` read the same source `simulate`
 and [`progression_loglik`](@ref) do. Returns `base` unchanged when
 `progression` has no `Reporting` step, or one that reports every case. Throws
 the same `ArgumentError` `simulate` does (via `apply_observation!`) when `obs`
-is a [`PerCaseObservation`](@ref) or a [`ChainDetection`](@ref) and
+is a [`ChainDetection`](@ref) and
 `progression` also has a `Reporting` step, rather than silently thinning by
 both.
 """
 function _fold_reporting(progression, base, obs, attrs)
     ρ = _effective_reporting_probability(progression, attrs)
     ρ === nothing && return base
-    obs isa Union{PerCaseObservation, ChainDetection} && _reporting_conflict(obs)
+    obs isa ChainDetection && _reporting_conflict(obs)
     ρ == 1.0 && return base
     return ThinnedChainSize(base, ρ)
 end

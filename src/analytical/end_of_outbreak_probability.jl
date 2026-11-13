@@ -97,8 +97,7 @@ End-of-outbreak probability using the offspring and generation time
 distributions of a `BranchingProcess`, `τ` days after the most recent case.
 
 This assumes every case is reported. Under-reporting (a [`Reporting`](@ref)
-step with a probability below 1, or any deprecated
-[`PerCaseObservation`](@ref)) needs the recursion of Thompson, Morgan & Jansen
+step with a probability below 1) needs the recursion of Thompson, Morgan & Jansen
 (2019), which is not implemented, and gives an error; use a model that reports
 every case for the full-reporting value. A model whose offspring law is
 reshaped (a finite `population_size`, an infectiousness window with `until`,
@@ -124,21 +123,7 @@ function end_of_outbreak_probability(model::Union{BranchingProcess, ModelSpec}, 
     return end_of_outbreak_probability(off, gt, τ)
 end
 
-_eoo_assert_full_reporting(::NoObservation) = nothing
-function _eoo_assert_full_reporting(::PerCaseObservation)
-    throw(
-        ArgumentError(
-            "end_of_outbreak_probability under per-case under-reporting (ρ < 1) " *
-                "is not implemented. The closed form here assumes full reporting; " *
-                "the ρ < 1 case needs the Volterra recursion of Thompson, Morgan & " *
-                "Jansen (2019). Evaluate on a model with no observation to compute " *
-                "the ρ = 1 value."
-        )
-    )
-end
-
 function _eoo_assert_full_reporting(obs, progression, attrs)
-    _eoo_assert_full_reporting(obs)
     ρ = _effective_reporting_probability(progression, attrs)
     (ρ === nothing || ρ >= 1.0) && return nothing
     throw(

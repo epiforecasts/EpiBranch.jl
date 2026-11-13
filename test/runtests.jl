@@ -42,7 +42,6 @@ const TEST_GROUPS = (
         "test_source_tracing.jl",
         "test_composable_eligibility.jl",
         "test_isolation_seams.jl",
-        "test_pc_observation.jl",
         "test_stopping_rules.jl",
         "test_transitions.jl",
         "test_infectiousness.jl",
