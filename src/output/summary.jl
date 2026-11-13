@@ -8,7 +8,16 @@ going when the simulation stopped (at `max_cases`, `max_time` or
 
 With `max_cases`, an outbreak that reached that many cases also counts as not
 contained, even if it then died out. Pass the cap used in `simulate`, so that
-outbreaks large enough to reach it count as uncontrolled, as in ringbp.
+outbreaks large enough to reach it count as uncontrolled.
+
+The event is extinction before the cap. ringbp's `extinct_prob` instead counts
+an outbreak as extinct if it has no new cases in a window of weeks (weeks 12 to
+16 by default) and it stays under the case cap. The two can disagree for slowly
+dying outbreaks: one that still has cases in the window but dies out later
+(after week 16, say) counts as contained here but not in ringbp. To use the
+ringbp event, take
+`is_extinct(state; by_week = 12:16, max_cases)` over the states, or look at
+[`weekly_incidence`](@ref).
 
 This is the simulation estimate. [`probability_contain`](@ref) gives the
 closed-form value for negative binomial offspring with simple control
