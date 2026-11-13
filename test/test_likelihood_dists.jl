@@ -122,7 +122,7 @@ EpiBranch.chain_size_distribution(d::BrokenExactOffspring) = throw(d.error)
     end
 
     @testset "chain_size_distribution — bare-pgf GeneratingFunctionOffspring falls back" begin
-        # Regression: a GeneratingFunctionOffspring has a chain_size_distribution
+        # A GeneratingFunctionOffspring has a chain_size_distribution
         # method, so has_single_type_law's hasmethod check passes, but calling
         # it on a bare-pgf instance (no stored pmf) throws ArgumentError.
         # The analytical fast path checks for the missing pmf and uses the
@@ -139,6 +139,12 @@ EpiBranch.chain_size_distribution(d::BrokenExactOffspring) = throw(d.error)
         d = chain_length_distribution(bp)
         data = [0, 1, 2, 0, 3, 1]
         @test logpdf(d, data) ≈ loglikelihood(ChainLengths(data), Poisson(0.5))
+
+        @testset "Scalar pdf and logpdf" begin
+            @test logpdf(d, 2) ≈ logpdf(d, [2])
+            @test pdf(d, 2) ≈ exp(logpdf(d, [2]))
+            @test sum(pdf(d, k) for k in 0:60) ≈ 1 atol = 1.0e-6
+        end
 
         @testset "Reporting requires full detection" begin
             message = "per-case detection does not give a well-defined chain length"

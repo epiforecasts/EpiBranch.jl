@@ -28,6 +28,16 @@ using Dates
         @test sum(df.cases) == state.cumulative_cases
     end
 
+    @testset "weekly_incidence with no finite times is an empty typed frame" begin
+        model = BranchingProcess(Poisson(2.0), Exponential(5.0))
+        state = simulate(model; n_initial = 3, rng = StableRNG(1))
+        df = weekly_incidence(state; by = :no_such_time)
+        @test names(df) == ["week", "cases"]
+        @test nrow(df) == 0
+        @test eltype(df.week) == Date
+        @test eltype(df.cases) == Int
+    end
+
     @testset "weekly_incidence by=:reporting excludes unreported (Inf) cases" begin
         # A Reporting transition with probability < 1 leaves unreported cases
         # with :reporting_time = Inf. Binning by :reporting must skip those
@@ -149,6 +159,33 @@ using Dates
         @test state.cumulative_cases > 0
     end
 
+    @testset "incubation_linked_generation_time centres asymptomatic cases on their own incubation period" begin
+        gt_fn = incubation_linked_generation_time(presymptomatic_fraction = 0.1)
+        spec = ModelSpec(
+            BranchingProcess(Poisson(1.5), gt_fn);
+            attributes = clinical_presentation(
+                incubation_period = LogNormal(log(11.0), 0.4), prob_asymptomatic = 0.5
+            )
+        )
+        gs = Float64[]
+        ga = Float64[]
+        states = simulate(spec, 1500; max_generations = 2, max_cases = nothing, rng = StableRNG(1))
+        for s in states, ind in s.individuals
+            (is_infected(ind) && ind.parent_id != 0) || continue
+            p = s.individuals[ind.parent_id]
+            push!(is_asymptomatic(p) ? ga : gs, ind.infection_time - p.infection_time)
+        end
+        @test isapprox(mean(ga), mean(gs); rtol = 0.1)
+
+        asymp = [
+            i for s in states for i in s.individuals if is_infected(i) && is_asymptomatic(i)
+        ]
+        @test all(i -> isnan(i.state[:onset_time]), asymp)
+        @test all(i -> i.state[:latent_incubation_period] > 0, asymp)
+        bare = Individual(id = 1, infection_time = 0.0)
+        @test_throws ArgumentError gt_fn(bare)
+    end
+
     @testset "incubation_linked_generation_time realises the presymptomatic fraction" begin
         presymp = 0.3
         gt_fn = incubation_linked_generation_time(presymptomatic_fraction = presymp)
@@ -173,6 +210,22 @@ using Dates
                 for i in 1:(length(xs) - 1)
         )
         @test isapprox(integral, 1.0; atol = 1.0e-3)
+    end
+
+    @testset "incubation_linked_generation_time keeps the presymptomatic share for short incubation periods" begin
+        for presymp in (0.15, 0.3, 0.6), rel in (0.2, 0.5, 1.0), inc in (1.0, 2.0, 5.0, 8.0)
+            gt_fn = incubation_linked_generation_time(
+                presymptomatic_fraction = presymp, relative_spread = rel
+            )
+            ind = Individual(
+                id = 1, infection_time = 0.0,
+                state = Dict{Symbol, Any}(:onset_time => inc)
+            )
+            d = gt_fn(ind)
+            @test d.inner.ω ≈ rel * inc
+            @test isapprox(cdf(d, inc), presymp; atol = 1.0e-4)
+        end
+        @test_throws ArgumentError incubation_linked_generation_time(relative_spread = 0.0)
     end
 
     @testset "_TruncatedSkewNormal has the full univariate law interface" begin
@@ -416,4 +469,32 @@ using Dates
         sN.cumulative_cases = 100
         @test susceptible_fraction(sN) == 0.0
     end
+end
+
+@testset "weekly_incidence and summarise over several outbreaks" begin
+    model = ModelSpec(
+        BranchingProcess(NegBin(1.0, 0.5), Exponential(5.0));
+        attributes = clinical_presentation(incubation_period = LogNormal(1.6, 0.5))
+    )
+    states = simulate(model, 40; rng = StableRNG(1), max_time = 60.0)
+    df = weekly_incidence(states)
+    @test names(df) == ["sim_id", "week", "cases"]
+    n_weeks = length(unique(df.week))
+    @test all(g -> nrow(g) == n_weeks, groupby(df, :sim_id))
+    @test sort(unique(df.sim_id)) == 1:40
+    @test any(==(0), df.cases)
+    @test sum(df.cases) == sum(sum(weekly_incidence(s).cases) for s in states)
+
+    s = summarise(df)
+    @test nrow(s) == n_weeks
+    @test all(s.n_sim .== 40)
+    @test all(s.q2_5 .<= s.q50 .<= s.q97_5)
+    # Zero-filled weeks pull the median down relative to non-empty weeks only.
+    sparse = filter(:cases => >(0), df)
+    @test sum(summarise(sparse).q50) >= sum(s.q50)
+
+    sizes = summarise(chain_statistics(states); value = :size, by = Symbol[], probs = [0.5])
+    @test nrow(sizes) == 1
+    @test names(sizes) == ["n_sim", "q50"]
+    @test_throws ArgumentError summarise(df; probs = [1.5])
 end

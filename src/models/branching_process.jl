@@ -87,6 +87,7 @@ model = ModelSpec(BranchingProcess(community, funeral); progression)
 struct Infectiousness{O, F, U, K, C}
     offspring::O
     from::F
+    from_key::Union{Symbol, Nothing}
     until::U
     kernel::K
     calendar::C
@@ -96,7 +97,7 @@ function Infectiousness(
         offspring; from = :infection, until = (),
         kernel = NoGenerationTime(), calendar = nothing, name::Symbol = :transmission
     )
-    return Infectiousness(offspring, from, until, kernel, calendar, name)
+    return Infectiousness(offspring, from, _from_key(from), until, kernel, calendar, name)
 end
 
 """
@@ -285,7 +286,10 @@ infection to the infection of each of its secondary cases. Leave it out to
 study only chain sizes and lengths, without timing. `population_size` sets a
 finite population: each potential infection succeeds with probability equal
 to the share of people not yet infected, so transmission slows as cases
-accumulate (unlimited by default).
+accumulate (unlimited by default). A multi-type model (an offspring function
+or a contact matrix) cannot use `population_size` with [`simulate`](@ref),
+because that keeps no population per type. [`simulate_by_generation`](@ref)
+takes `population_by_type` instead.
 
 The transmission model describes only who infects whom and when. Add the
 natural history, interventions, population characteristics and reporting
@@ -348,23 +352,11 @@ function _validate_windows(windows, progression)
     return nothing
 end
 
-# Shared by the continuous-time structure-driven models (`HomogeneousProcess`,
-# `NetworkProcess`, `HouseholdProcess`, `RouteWindow`): a case's window closes
-# at the earliest `Symbol(s, :_time)` for `s in until` (`_window_close` in
-# sellke.jl). A progression's terminal transition writes its own
-# `state => true`/`state_time` pair regardless of whether `state` is in
-# `until`, so a state missing from `until` is simply never consulted: a case
-# reaching it keeps generating exposure proposals as if still infectious.
-# `terminal_target` (defined per transition type, alongside `is_terminal`)
-# gives the state label without needing an individual to resolve a time from —
-# `Transition` reads it off `.state`, `Death`/`Recovery` are hardcoded to
-# :died/:recovered. A terminal transition that does not implement it stays at
-# the default `nothing`, so it is not checkable here and stays silently
-# exempt — documented on `terminal_target`'s own docstring, since a custom
-# terminal transition must opt in to be covered. `from`, when it names a
-# terminal state itself (e.g. a funeral `RouteWindow` with `from = :died`),
-# is excluded too: a window that only opens once a case reaches that state
-# cannot sensibly be asked to also close on it.
+# The terminal states a window's `until` (and `from`) does not cover, which
+# the continuous-time structure-driven models warn about: a case reaching such
+# a state keeps generating exposure proposals as if still infectious. A
+# terminal transition that does not implement `terminal_target` stays
+# exempt, so a custom one must opt in to be covered.
 function _uncovered_terminal_states(until::Tuple, progression; from = nothing)
     covered = Set{Symbol}(until)
     from isa Symbol && push!(covered, from)
@@ -406,6 +398,22 @@ end
 _progvec(p) = convert(Vector{AbstractClinicalTransition}, p)
 
 population_size(m::BranchingProcess) = m.population_size
+
+# The individual-based simulation counts cumulative cases against one
+# population size and holds none per type. It would deplete every type
+# against the whole population. `simulate_by_generation` takes
+# `population_by_type` and accepts a multi-type model with a population_size.
+function _check_population(m::BranchingProcess)
+    (m.n_types > 1 && !(m.population_size isa NoPopulation)) || return nothing
+    throw(
+        ArgumentError(
+            "population_size is not supported by simulate for a multi-type " *
+                "BranchingProcess: it would deplete every type against the whole " *
+                "population. Use simulate_by_generation with population_by_type, " *
+                "or drop population_size."
+        )
+    )
+end
 n_types(m::BranchingProcess) = m.n_types
 
 # A finite population thins transmission as cases accumulate, a window with

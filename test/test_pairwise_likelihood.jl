@@ -207,9 +207,9 @@ end
         @test !EpiBranch._ext_active(0.0)
         @test EpiBranch._ext_active(Gamma(2.0, 3.0))
         # a constant rate draws its exponential waiting time
-        @test EpiBranch._ext_draw(StableRNG(1), 0.5) ==
+        @test EpiBranch._ext_draw(StableRNG(1), 0.5, 1, 1.0) ==
             rand(StableRNG(1), Exponential(2.0))
-        @test EpiBranch._ext_draw(StableRNG(1), Gamma(2.0, 3.0)) ==
+        @test EpiBranch._ext_draw(StableRNG(1), Gamma(2.0, 3.0), 1, 1.0) ==
             rand(StableRNG(1), Gamma(2.0, 3.0))
 
         # a calendar schedule passes through unchanged, is always active, and
@@ -218,7 +218,7 @@ end
         @test EpiBranch._valid_external(schedule)
         @test EpiBranch._normalise_external(schedule) === schedule
         @test EpiBranch._ext_active(schedule)
-        @test EpiBranch._ext_draw(StableRNG(1), schedule) ==
+        @test EpiBranch._ext_draw(StableRNG(1), schedule, 1, 1.0) ==
             rand(StableRNG(1), EpiBranch._calendar_external_survival(schedule))
     end
 
@@ -240,11 +240,16 @@ end
             EpiBranch._calendar_external_survival(schedule)
         @test_throws DimensionMismatch EpiBranch._check_external(v, 4)
         @test EpiBranch._check_external(v, 3) === nothing
+        for bad in (-5.0, NaN)
+            @test_throws ArgumentError EpiBranch._check_obs_end(bad)
+        end
+        @test EpiBranch._check_obs_end(Inf) == Inf
+        @test EpiBranch._check_obs_end(0) === 0.0
         # a person with no community hazard is never introduced, and the rest
         # draw as under a shared one
         @test EpiBranch._ext_draw(StableRNG(1), v, 2, 1.0) == Inf
         @test EpiBranch._ext_draw(StableRNG(1), v, 1, 1.0) ==
-            EpiBranch._ext_draw(StableRNG(1), 0.5, 1.0)
+            EpiBranch._ext_draw(StableRNG(1), 0.5, 1, 1.0)
         @test EpiBranch._ext_partype(v, 3) == Float64
     end
 
@@ -534,6 +539,23 @@ end
         @test_throws ArgumentError pairwise_surv_loglik(
             Exponential(1.0), data, Lbad; external_hazard = mass_action
         )
+    end
+
+    @testset "mass action is finite when follow-up is unbounded" begin
+        # Person 2 is never infected and is watched indefinitely. Once the only
+        # case has recovered the hazard is zero and the tail adds nothing.
+        data = _TestInfections(
+            [1, 2], [0.0, NaN], [0.0, NaN], [3.0, NaN], [true, false]; obs_end = Inf
+        )
+        mass_action = MassActionHazard(; transmission_rate = 0.6, population_size = 4)
+        s = EpiBranch.mass_action_schedule(mass_action, data.infectious_time, data.removal_time)
+        @test EpiBranch.SurvivalDistributions.cumhazard(s, Inf) ≈ 0.6 * 3 / 4
+        @test isfinite(
+            pairwise_surv_loglik(Exponential(1.0), data; external_hazard = mass_action)
+        )
+        # Someone still infectious keeps the hazard positive indefinitely.
+        open_ended = EpiBranch.mass_action_schedule(mass_action, [0.0], [Inf])
+        @test EpiBranch.SurvivalDistributions.cumhazard(open_ended, Inf) == Inf
     end
 
     @testset "mass action plus an importation rate explains index cases" begin
@@ -1265,10 +1287,10 @@ EpiBranch.susceptibility_components(::_IdentitySusceptibility, host) =
 EpiBranch.infection_likelihood_compatible(::_IdentitySusceptibility) = true
 
 @testset "The mixture path takes out the same stretch" begin
-    # `_component_loglik` keeps its own exposure loop for a susceptible whose
-    # susceptibility an effect modifies, so it has to take the infector's
-    # isolated stretch out as well. Under a modifier that changes nothing the
-    # two paths must agree exactly.
+    # A susceptible whose susceptibility an effect modifies is scored with a
+    # modifier, and the plain one without, by the same `_component_loglik`, so
+    # both have to take the infector's isolated stretch out. Under a modifier
+    # that changes nothing the two paths must agree exactly.
     adj = [1, 1]
     theta = 4.0
     layer(host_times) = _GappedInfections(
@@ -1316,8 +1338,8 @@ EpiBranch.infection_likelihood_compatible(::_IdentitySusceptibility) = true
 end
 
 @testset "The mixture path scales a leaky stretch the same way as the flat one" begin
-    # `_component_loglik`'s own exposure loop has to read a leaky stretch too,
-    # scaling it rather than excluding it, same as the flat path above.
+    # The modified path has to read a leaky stretch too, scaling it rather than
+    # excluding it, same as the unmodified path above.
     adj = [1, 1]
     theta = 4.0
     layer(host_times) = _GappedInfections(

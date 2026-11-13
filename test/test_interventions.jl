@@ -1019,7 +1019,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
     end
 
     @testset "A released quarantine does not block a later, unrelated infection" begin
-        # Reproduces the bug: a contact traced and quarantined long before it is
+        # A contact traced and quarantined long before it is
         # actually infected, through another route, must not still be carrying
         # that old quarantine. The competing risk from tracing must respect the
         # release time, not just the isolation time.
@@ -1487,7 +1487,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                 parent.state[:vaccination_time] = 0.0
                 contact2 = Individual(id = 6)
 
-                risk = EpiBranch._onward_risk(rv2, parent)
+                risk = EpiBranch._onward_risk(rv2, parent, contact2)
 
                 contact2.infection_time = 0.0
                 prob_now = EpiBranch.sample_value(
@@ -1592,7 +1592,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
 
                     other = Individual(id = 10, infection_time = imm_t + 20.0)
                     @test EpiBranch.sample_value(
-                        EpiBranch._onward_risk(rv8, c).block_probability,
+                        EpiBranch._onward_risk(rv8, c, other).block_probability,
                         StableRNG(1), c, other, nothing
                     ) ≈ onward * retained
 
@@ -1802,14 +1802,10 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             # A never-exposed individual's infection time is NaN; no time has
             # passed since an exposure, so any window admits it.
             unexposed = Individual(id = 1, infection_time = NaN)
-            rng = StableRNG(1)
-            @test EpiBranch._within_eligibility_window(Inf, unexposed, 3.0, rng)
-            @test EpiBranch._within_eligibility_window(
-                (rng, ind) -> Inf, unexposed, 3.0, rng
-            )
-            @test EpiBranch._within_eligibility_window(21.0, unexposed, 3.0, rng)
+            @test EpiBranch._within_window(Inf, unexposed, 3.0)
+            @test EpiBranch._within_window(21.0, unexposed, 3.0)
             exposed = Individual(id = 2, infection_time = 1.0)
-            @test !EpiBranch._within_eligibility_window(1.0, exposed, 3.0, rng)
+            @test !EpiBranch._within_window(1.0, exposed, 3.0)
         end
 
         @testset "A dose given while pending is withdrawn once settling excludes it" begin
@@ -3054,12 +3050,11 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
     end
 
     @testset "Traced test-negative contacts isolate via tracing pathway" begin
-        # Regression test: with test_sensitivity < 1 and FlagOnly tracing,
-        # test-negative contacts must still be isolated via the tracing
-        # pathway. Previously a `is_test_positive || return` gate in
-        # Isolation::resolve_individual discarded _traced_isolation_time for
-        # test-negative contacts, so 1 − test_sensitivity of cases never
-        # isolated even when traced.
+        # With test_sensitivity < 1 and FlagOnly tracing, test-negative
+        # contacts must still be isolated via the tracing pathway:
+        # Isolation::resolve_individual must not discard
+        # _traced_isolation_time for them, or 1 − test_sensitivity of cases
+        # would never isolate even when traced.
         #
         # Filter to the cases, which are the people `resolve_individual!` ran on.
         rng = StableRNG(20260601)

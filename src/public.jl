@@ -30,6 +30,11 @@ public required_fields
 public infectious_removal_time
 public risk_applies
 public standing_block
+# The built-in risk sources the guides link to, and the kernel trait for a
+# kernel with mass at infinity.
+public HostImmunity
+public AbortedInfection
+public infinite_draw_is_final
 public analytic_offspring_effect
 # End an infection early from any intervention hook, and read when it ended.
 public abort_infection!
@@ -58,6 +63,17 @@ public proposes_own_contacts
 public propose_along
 public route_pair_kernel
 public pending_beyond
+
+# Mass action, the reference route that proposes its own contacts: a
+# `MassAction` reach for a closed population (what `HomogeneousProcess` and
+# `MixingProcess` build), and the hazard schedule a pairwise likelihood reads
+# for it. `resume_route!` and `resumable_route` are the hooks a route
+# declaring `proposes_own_contacts` uses to redraw a window capped at the time
+# limit of the run when a later `simulate(model, state; max_time)` resumes the race.
+public MassAction
+public mass_action_schedule
+public resume_route!
+public resumable_route
 
 # Transmission-model interface. A new process subtypes `TransmissionModel`
 # and extends these seam methods:
@@ -199,3 +215,38 @@ public sellke_race!
 # The state a case's infectious window opens at, derived from the composed
 # progression.
 public infectious_from
+
+# Hooks the extending guides ask a package to define for its own
+# intervention, trace rate, delay or action.
+#   - `keep_active` says which targets an intervention still acts on;
+#   - `traces`, `draw_trace_delay` and `apply_trace!` are the methods behind
+#     `TraceRate`, `TraceDelay` and `TraceAction`;
+#   - `capacity_key`, `capacity_time_key`, `resource_key`, `held_until` and
+#     `refused_action` are what a capacity-limited intervention defines;
+#   - `InterventionWrapper` is the supertype of a wrapper of your own.
+public keep_active
+public traces
+public draw_trace_delay
+public apply_trace!
+public capacity_key
+public capacity_time_key
+public resource_key
+public held_until
+public refused_action
+public InterventionWrapper
+
+# Offspring and vaccination hooks named in the guides: how a model draws the
+# offspring of a case and says whether that law is unchanged by the
+# interventions in the run, the effect mode and dose label of a vaccination,
+# and the helper that populates a state lazily.
+public draw_offspring
+public offspring_law_unchanged
+public has_single_type_law
+public lazily_populate!
+public effect_mode
+public dose_label
+
+# `simulate_by_generation` with a `multiplier`: the mean-scaling rule and the
+# one-step generation total an offspring family can define.
+public scale_mean
+public sum_offspring
