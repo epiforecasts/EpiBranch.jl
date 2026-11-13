@@ -1482,7 +1482,9 @@ function SurvivalDistributions.cumhazard(s::_MassActionSchedule, τ::Real)
         end
         lo < τ || break
     end
-    lo < τ && (total += s.counts[end] * (τ - lo))
+    # When nobody is left infectious the tail adds nothing, even for an
+    # unbounded τ, where `0 * Inf` would give NaN.
+    lo < τ && s.counts[end] > 0 && (total += s.counts[end] * (τ - lo))
     return total * s.β / s.N
 end
 
