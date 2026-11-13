@@ -43,9 +43,10 @@ on its incubation period, with scale `relative_spread` times the incubation
 period, truncated at zero. The skew is chosen for the truncated distribution:
 the share of generation times shorter than the incubation period equals
 `presymptomatic_fraction` whatever the incubation period. The spread scales
-with the incubation period, so the skew is the same for every case.
-Cases without an incubation period (for example asymptomatic cases) are
-centred on 5 days.
+with the incubation period, so the skew is the same for every case. An
+asymptomatic case has no onset but still draws an incubation period, and its
+generation time is centred on that. A case with no incubation period at all is
+an error.
 
 # Examples
 ```julia
@@ -72,11 +73,13 @@ function incubation_linked_generation_time(;
     alpha = _truncated_skewness(float(presymptomatic_fraction), rel)
 
     return function (individual)
-        inc_period = incubation_period(individual)
-        if isnan(inc_period) || inc_period <= 0.0
-            @debug "Missing or non-positive incubation period (e.g. asymptomatic individual); using 5.0 days" maxlog = 1
-            inc_period = 5.0
-        end
+        inc_period = _latent_incubation_period(individual)
+        (isnan(inc_period) || inc_period <= 0.0) && throw(
+            ArgumentError(
+                "incubation_linked_generation_time needs a positive incubation " *
+                    "period for every case; provide attributes = clinical_presentation(...)"
+            )
+        )
         return _TruncatedSkewNormal(inc_period, rel * inc_period, alpha)
     end
 end
