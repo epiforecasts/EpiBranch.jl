@@ -596,13 +596,19 @@ function _incidence_reporting(model)
         )
     )
     r = only(prog)
+    hasproperty(r, :delay) || throw(
+        ArgumentError(
+            "loglikelihood(IncidenceCounts, model) reads the delay of a " *
+                "reporting step from its `delay` field; $(typeof(r)) has none"
+        )
+    )
     r.delay isa Union{Real, Distribution} || throw(
         ArgumentError(
             "loglikelihood(IncidenceCounts, model) needs the Reporting delay to be a " *
                 "number or a distribution, not a per-case function"
         )
     )
-    reached, to_anchor = _infection_to(r.from, attributes(model))
+    reached, to_anchor = _infection_to(reporting_from(r), attributes(model))
     return (
         reporting_probability = _reporting_probability(prog) * reached,
         reporting_delay = to_anchor === nothing ? r.delay : _DelaySum(to_anchor, r.delay),
@@ -636,17 +642,18 @@ end
 function _infection_to_onset(attrs)
     builders = attrs isa NoAttributes ? () :
         attrs isa Union{Tuple, AbstractVector} ? Tuple(attrs) : (attrs,)
-    presentations = filter(b -> b isa ClinicalPresentation, builders)
-    length(presentations) == 1 || throw(
+    laws = filter(!isnothing, map(onset_law, builders))
+    length(laws) == 1 || throw(
         ArgumentError(
             "The closed form reads the onset a Reporting step " *
-                "reports from from the model's clinical_presentation, and needs exactly " *
-                "one; this model has $(length(presentations))"
+                "reports from from the model's clinical_presentation (or another " *
+                "attribute that defines `onset_law`), and needs exactly " *
+                "one; this model has $(length(laws))"
         )
     )
     # Fresh copies, so the probe leaves the model's own builders as they were.
     _check_onset_builders(_fresh_attributes(builders))
-    cp = only(presentations)
+    cp = only(laws)
     cp.prob_asymptomatic isa Real || throw(
         ArgumentError(
             "The closed form needs a fixed prob_asymptomatic, not " *
@@ -673,10 +680,9 @@ function _check_onset_builders(builders)
                 )
             )
         end
-        b isa ClinicalPresentation || isequal(onset(probe), before) || throw(
+        onset_law(b) !== nothing || isequal(onset(probe), before) || throw(
             ArgumentError(
-                "the closed form: an attribute builder other than " *
-                    "clinical_presentation records an onset, which this closed form cannot read"
+                "the closed form: an attribute builder that does not define `onset_law` records an onset, which this closed form cannot read"
             )
         )
     end
