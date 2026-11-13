@@ -25,6 +25,16 @@ struct _RiskFromAge end
         w2 = EpiBranch._discretize_generation_interval(Dirac(1.0))
         @test w2[1] ≈ 1.0
         @test all(x -> x ≈ 0, w2[2:end])
+
+        # The realised lag between the steps of an infector and an infectee
+        # has the continuous mean, not half a step more.
+        # (Dropping the small same-step mass lengthens it slightly.)
+        for gt in (LogNormal(1.6, 0.5), Gamma(4.0, 0.6))
+            w = EpiBranch._discretize_generation_interval(gt)
+            @test sum((1:length(w)) .* w) ≈ mean(gt) atol = 0.1
+        end
+        d = EpiBranch._discretize_report_delay(Gamma(4.0, 0.6))
+        @test sum((0:(length(d) - 1)) .* d) ≈ 2.4 atol = 0.03
     end
 
     @testset "incidence_moments matches the renewal equation for the mean" begin
@@ -84,7 +94,8 @@ struct _RiskFromAge end
         @test EpiBranch._discretize_report_delay(nothing) == [1.0]
         d = EpiBranch._discretize_report_delay(Gamma(2.0, 1.5))
         @test sum(d) ≈ 1.0
-        @test d[1] ≈ 0.0
+        # Infection uniform within its step puts some reports in the same step.
+        @test d[1] > 0
         # A fixed delay of two steps puts all its mass on lag 2.
         d2 = EpiBranch._discretize_report_delay(2)
         @test d2[3] ≈ 1.0
@@ -391,10 +402,10 @@ struct _RiskFromAge end
     end
 
     @testset "Counts that can only be zero are left out" begin
-        # With no type-1 seed and every report delayed, type 1 has no report
-        # in the first step: mean and variance 0 there.
+        # With no type-1 seed and every report delayed by a step, type 1 has
+        # no report in the first step: mean and variance 0 there.
         o = EpiBranch.MultiTypeOffspring([1.2 0.4; 0.3 0.9], R -> NegBin(R, 0.5))
-        gt, rd = LogNormal(1.6, 0.5), Gamma(2.0, 1.5)
+        gt, rd = LogNormal(1.6, 0.5), 1.0
         kw = (reporting_probability = 0.7, reporting_delay = rd)
         m = incidence_moments(o, gt, 4; seeds = [0, 1], kw...)
         @test m.mean[1, 1] == 0
@@ -413,11 +424,16 @@ struct _RiskFromAge end
         @test sum(d) ≈ 1.0
         rng = StableRNG(1)
         xs = rand(rng, inc, 200_000) .+ rand(rng, rd, 200_000)
-        emp = [mean(x -> (l == 0 ? x <= 0 : l - 1 < x <= l), xs) for l in 0:(length(d) - 1)]
+        # The infection falls uniformly within its step, so the report's step
+        # lag is ceil(delay - v) for v uniform on (0, 1).
+        lags = ceil.(Int, xs .- rand(rng, 200_000))
+        emp = [mean(==(l), lags) for l in 0:(length(d) - 1)]
         @test maximum(abs.(emp .- d)) < 3.0e-3
         # A fixed second delay shifts the first.
         @test EpiBranch._discretize_report_delay(EpiBranch._DelaySum(inc, 2.0)) ≈
-            EpiBranch._bin_cdf(t -> cdf(inc, t - 2.0), 0, 1.0e-8, 10_000, "reporting delay")
+            EpiBranch._bin_cdf(
+            EpiBranch._censored_cdf(t -> cdf(inc, t - 2.0)), 0, 1.0e-8, 10_000, "reporting delay"
+        )
     end
 
     @testset "loglikelihood on a model with a Reporting step" begin
@@ -532,7 +548,8 @@ struct _RiskFromAge end
 
     @testset "A Reporting step's moments match simulated reports" begin
         # A generation time of exactly one step puts every infection on a step
-        # boundary, where binning the reporting delay is exact.
+        # boundary; each is moved to a uniform time within its step, as the
+        # closed form assumes, before its report is dated.
         n = 5
         inc, rd = Gamma(2.0, 0.8), Exponential(1.0)
         model = ModelSpec(
@@ -547,10 +564,11 @@ struct _RiskFromAge end
         nsim = 4000
         sims = zeros(nsim, n)
         for i in 1:nsim
-            state = simulate(model; rng = StableRNG(i), max_time = n + 0.5)
+            rng = StableRNG(i)
+            state = simulate(model; rng, max_time = n + 0.5)
             for ind in state.individuals
                 is_infected(ind) && get(ind.state, :reported, false) || continue
-                t = ceil(Int, ind.state[:reporting_time])
+                t = ceil(Int, ind.state[:reporting_time] - rand(rng))
                 1 <= t <= n && (sims[i, t] += 1)
             end
         end

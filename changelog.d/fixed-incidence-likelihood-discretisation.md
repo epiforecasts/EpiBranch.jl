@@ -1,0 +1,1 @@
+The incidence likelihood now discretises the generation interval and the reporting delay with the primary event uniform within a step, instead of binning each onto `(j - 1, j]`. The old binning made the realised lag half a step too long and overstated R.
