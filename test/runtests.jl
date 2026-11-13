@@ -64,6 +64,7 @@ const TEST_GROUPS = (
         "test_generation_counts_population.jl",
         "test_generation_campaigns.jl",
         "test_linelist.jl",
+        "test_data_from_tables.jl",
         "test_route_windows.jl",
         "test_event_queue.jl",
     ],

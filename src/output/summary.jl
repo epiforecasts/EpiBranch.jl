@@ -216,6 +216,22 @@ function weekly_incidence(
 end
 
 """
+    weekly_incidence(df::AbstractDataFrame; date=:date_onset)
+
+Weekly case counts from a table with one row per case, such as a
+[`linelist`](@ref) or observed surveillance data. `date` names the column
+that places a case in a week. The result has the columns `week` and `cases`
+of the `SimulationState` method. Rows with a `missing` date are left out,
+unlike the `SimulationState` method, which places a case without an onset
+by its infection time.
+"""
+function weekly_incidence(df::AbstractDataFrame; date::Symbol = :date_onset)
+    dates = Date.(collect(skipmissing(df[!, date])))
+    weeks = DataFrame(week = [d - Day(dayofweek(d) - 1) for d in dates])
+    return sort!(combine(groupby(weeks, :week), nrow => :cases), :week)
+end
+
+"""
     weekly_incidence(states::Vector{<:SimulationState}; by=:onset,
                      reference_date::Date=Date(2020, 1, 1))
 
