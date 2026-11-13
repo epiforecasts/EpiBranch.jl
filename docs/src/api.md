@@ -768,6 +768,11 @@ EpiBranch.trace_contacts!
 EpiBranch.traces_contacts
 EpiBranch.traces_source
 EpiBranch.has_effect
+EpiBranch.time_aware
+EpiBranch.resolves_under_capacity
+EpiBranch.discovers_actions
+EpiBranch.proposes_actions
+EpiBranch.has_competing_risk
 EpiBranch.supplies_contacts
 EpiBranch.keep_active
 InterventionWrapper

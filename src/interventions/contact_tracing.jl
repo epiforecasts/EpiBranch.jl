@@ -1014,7 +1014,7 @@ end
 # for nothing. Checking the action's own method instead, against the
 # fallback `TraceAction` declares, avoids that for actions with nothing to
 # propose.
-function _discovers_actions(ct::ContactTracing)
+function discovers_actions(ct::ContactTracing)
     return _has_own_method(intervention_actions, typeof(ct.action), TraceAction)
 end
 

@@ -421,3 +421,101 @@ function has_effect(iv::AbstractIntervention)
         _has_own_method(f, T, AbstractIntervention, n)
     end
 end
+
+"""
+    time_aware(intervention) -> Bool
+
+Whether `intervention` has its own [`intervention_time`](@ref
+EpiBranch.intervention_time), which by that hook's contract comes paired with a
+[`reset!`](@ref EpiBranch.reset!) undoing whatever it names. [`Scheduled`](@ref)
+asks this once, when it is built. For `true` it runs the intervention
+unconditionally and corrects the result afterwards, undoing whatever falls
+outside the schedule; for `false` it gates the intervention up front, as every
+hook always was, since the defaults (`-Inf`, a no-op `reset!`) give it nothing
+to undo.
+
+The default is `true` for a type with an `intervention_time` method of its own;
+a wrapper that does not write one asks the intervention it wraps. A type that
+keeps its effect somewhere `intervention_time` and `reset!` do not reach
+defines `EpiBranch.time_aware(::MyIntervention) = false`, and one that
+implements them through a method the default does not see (a generic
+forwarding method, say) defines `true`.
+"""
+function time_aware(iv::AbstractIntervention)
+    return _has_own_method(intervention_time, typeof(iv), AbstractIntervention)
+end
+
+"""
+    resolves_under_capacity(intervention) -> Bool
+
+Whether `intervention` writes its effect directly in
+[`resolve_individual!`](@ref EpiBranch.resolve_individual!), as [`Isolation`](@ref)
+does, rather than proposing it as an [`InterventionAction`](@ref
+EpiBranch.InterventionAction), as a dose does. [`CapacityConstrained`](@ref) and
+[`HeldCapacity`](@ref) ration the first kind by undoing the effect with
+[`reset!`](@ref EpiBranch.reset!) for anyone the budget turns away, and the
+second through the action funnel.
+
+The default is `true` for a type with methods of its own for both
+[`capacity_key`](@ref EpiBranch.capacity_key) and `resolve_individual!`; a
+wrapper that does not write its own `capacity_key` asks the intervention it
+wraps. Define `EpiBranch.resolves_under_capacity(::MyIntervention)` where the
+inference gets it wrong.
+"""
+function resolves_under_capacity(iv::AbstractIntervention)
+    _has_own_method(capacity_key, typeof(iv), AbstractIntervention) || return false
+    return _has_own_method(resolve_individual!, typeof(iv), AbstractIntervention)
+end
+
+"""
+    discovers_actions(intervention) -> Bool
+
+Whether `intervention` finds actions of its own to propose, which the race
+offers it per settled case. An intervention answering `false` is never offered
+candidates and adds no per-case cost.
+
+The default is `true` for a type with an [`intervention_actions`](@ref
+EpiBranch.intervention_actions) method of its own; a wrapper that does not write
+one asks the intervention it wraps. [`ContactTracing`](@ref) asks its action
+instead, since it always forwards. Define
+`EpiBranch.discovers_actions(::MyIntervention)` where the inference gets it
+wrong, such as a type that always has the method but proposes nothing for some
+settings.
+"""
+function discovers_actions(iv::AbstractIntervention)
+    return _has_own_method(intervention_actions, typeof(iv), AbstractIntervention)
+end
+
+"""
+    proposes_actions(intervention) -> Bool
+
+Whether the simulation offers `intervention` candidates per settled case:
+[`discovers_actions`](@ref) holds, and it is not one offered the whole
+population at once instead ([`acts_on_population`](@ref
+EpiBranch.acts_on_population)). [`CapacityConstrained`](@ref) and
+[`HeldCapacity`](@ref) are asked for actions even when the intervention they
+wrap proposes none, so that wrapping one with nothing to ration fails when the
+run starts; they answer `false` for an intervention that rations through
+[`resolves_under_capacity`](@ref) instead.
+"""
+function proposes_actions(iv::AbstractIntervention)
+    acts_on_population(iv) && return false
+    return discovers_actions(iv)
+end
+
+"""
+    has_competing_risk(intervention) -> Bool
+
+Whether `intervention` can supply a [`competing_risk`](@ref
+EpiBranch.competing_risk). The continuous-time race keeps every proposal to a
+contact, rather than only the earliest, when some intervention answers `true`,
+because a blocked contact must then fall back to a later one. An intervention
+answering `false` adds no cost to a run without other risks.
+
+The default is `true` for a type with a `competing_risk` method of its own.
+Every wrapper has one, because it forwards the hook. A type whose risk comes through
+some other seam defines `EpiBranch.has_competing_risk(::MyIntervention) = true`.
+"""
+function has_competing_risk(iv::AbstractIntervention)
+    return _has_own_method(competing_risk, typeof(iv), AbstractIntervention)
+end

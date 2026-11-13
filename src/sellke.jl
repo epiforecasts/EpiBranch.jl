@@ -91,26 +91,7 @@ function _has_own_method(f, T::Type, base::Type, n::Union{Int, Nothing} = nothin
     end
 end
 
-# The intervention whose own method for `f` would actually run: an
-# `InterventionWrapper` that does not override `f` only inherits its blanket
-# forwarding to `w.intervention` (that method is declared on
-# `InterventionWrapper` itself, not the concrete wrapper). Judging ownership
-# against the wrapper's type would therefore credit it with a method it never
-# wrote; unwrapping reaches the wrapped intervention's own method instead.
-function _hook_owner(f, iv::AbstractIntervention)
-    while iv isa InterventionWrapper && !_has_own_method(f, typeof(iv), InterventionWrapper)
-        iv = iv.intervention
-    end
-    return iv
-end
-
 _innermost(iv::AbstractIntervention) = iv
-
-# Whether an intervention discovers actions of its own, which the race offers
-# per settled case.
-function _discovers_actions(iv::AbstractIntervention)
-    return _has_own_method(intervention_actions, typeof(iv), AbstractIntervention)
-end
 
 # One case's window on one route: who it is, which route, and when that window
 # opened and closes. Every proposal a case makes along a route shares one of
@@ -684,7 +665,7 @@ function _warn_contactless(model, interventions)
         String[
             string(nameof(typeof(_innermost(iv))))
                 for iv in interventions
-                if traces_contacts(iv) || (_proposes_actions(iv) && needs_contacts(iv))
+                if traces_contacts(iv) || (proposes_actions(iv) && needs_contacts(iv))
         ]
     )
     isempty(names) && return nothing
@@ -1119,12 +1100,7 @@ function _sellke_race_typed!(
     # a member that another case may still reach.
     may_block = live || reinfects || (
         (introduction !== nothing || _proposal_fallback(members)) && (
-            !isempty(risks) || any(
-                iv -> _has_own_method(
-                    competing_risk, typeof(iv),
-                    AbstractIntervention
-                ), interventions
-            )
+            !isempty(risks) || any(has_competing_risk, interventions)
         )
     ) || (_proposal_fallback(members) && any(((_, rt),) -> _route_may_block(rt), rts))
     # A route whose contacts the race checks against built-in risks of its own
@@ -1158,7 +1134,7 @@ function _sellke_race_typed!(
     # Whether `_apply_case_actions!` is worth calling on a model that
     # names no contacts: an intervention declaring `needs_contacts = false`
     # (`GroupVaccination`) still has candidates to offer it there.
-    acting = filter(_proposes_actions, interventions)
+    acting = filter(proposes_actions, interventions)
     # Those a person a route creates as it goes is offered on creation.
     creating = filter(iv -> !acts_on_population(iv) && !needs_contacts(iv), acting)
     contactless_actions = any(iv -> !needs_contacts(iv), acting)

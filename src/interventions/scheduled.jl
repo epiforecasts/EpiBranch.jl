@@ -104,7 +104,7 @@ struct Scheduled{I <: AbstractIntervention, F, T <: Tuple, W} <: InterventionWra
     # condition itself is an opaque closure. Empty for every other form.
     triggers::T
     # Whether `intervention` has its own `intervention_time`, computed once
-    # here rather than by introspection on every call. See `_time_aware`.
+    # here rather than asked on every call. See [`time_aware`](@ref).
     time_aware::Bool
     # The calendar window the gate amounts to, as a `ClockWindow`, when it is
     # nothing else (a `start_time` and/or an `end_time`); `nothing` for a gate
@@ -121,28 +121,15 @@ struct ClockWindow
     stop::Float64
 end
 
-# Computes `time_aware` from `intervention` once, rather than asking on every
-# call a hook makes.
+# Computes `time_aware` from the trait of `intervention` once, rather than
+# asking on every call a hook makes.
 function Scheduled(
         intervention::AbstractIntervention, condition, start_time::Float64,
         can_lapse::Bool, triggers::Tuple, window = nothing
     )
     return Scheduled(
         intervention, condition, start_time, can_lapse, triggers,
-        _time_aware(intervention), window
-    )
-end
-
-# Whether `iv` has declared its own `intervention_time`, which by that hook's
-# contract comes paired with a `reset!` undoing whatever it names (see
-# `intervention_time`'s docstring). `Scheduled` only runs such an
-# intervention unconditionally and corrects the result afterwards, in
-# `_reset_unless_in_schedule!`; one relying on the defaults (`-Inf`, a no-op
-# `reset!`) has given it nothing to undo, and is instead gated up front, as
-# every hook always was.
-function _time_aware(iv::AbstractIntervention)
-    return _has_own_method(
-        intervention_time, typeof(_hook_owner(intervention_time, iv)), AbstractIntervention
+        time_aware(intervention), window
     )
 end
 

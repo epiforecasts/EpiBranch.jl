@@ -341,7 +341,7 @@ function simulate_once(
     # over a run, so this is decided once.
     tracing = any(
         iv -> EpiBranch.traces_contacts(iv) ||
-            (EpiBranch._proposes_actions(iv) && EpiBranch.needs_contacts(iv)),
+            (EpiBranch.proposes_actions(iv) && EpiBranch.needs_contacts(iv)),
         interventions
     )
     routes = Tuple((w, _route_targets(w, tracing)) for w in windows)
