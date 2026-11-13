@@ -1,0 +1,1 @@
+The homogeneous models tutorial now has a section comparing `MeanFieldProcess`, `LinearNoiseProcess` and `HybridProcess` with the exact simulation, and one comparing `simulate_by_generation` with `simulate`, with guidance on when each is accurate enough.
