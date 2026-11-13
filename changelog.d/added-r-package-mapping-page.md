@@ -1,0 +1,1 @@
+A new docs page, "Coming from simulist, epichains, ringbp and superspreading", maps the functions and arguments of each of those packages to the EpiBranch call. It adds recipes for ringbp's `r0_asymptomatic`, epichains' `percent_immune` and simulist's `contact_distribution` with `prob_infection`, and notes that line lists can be written with CSV.jl.
