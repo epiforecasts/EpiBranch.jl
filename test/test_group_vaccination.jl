@@ -580,12 +580,12 @@ end
         )
         onsets = [
             onset_time(i) for i in st.individuals
-            if is_infected(i) && !isnan(onset_time(i))
+                if is_infected(i) && !isnan(onset_time(i))
         ]
         first_dose = minimum(get(i.state, :vaccination_time, Inf) for i in st.individuals)
         (isempty(onsets) || !isfinite(first_dose)) && continue
         dosed += 1
-        early += first_dose < minimum(onsets) - 1e-9
+        early += first_dose < minimum(onsets) - 1.0e-9
     end
     @test dosed > 0
     @test early == 0
