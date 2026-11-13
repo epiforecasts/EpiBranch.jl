@@ -428,3 +428,60 @@ end
     @test event_time_metadata(Val(:ordinary_value)) === nothing
     @test event_time_metadata(Val(:custom_disease_time)).requires_infection
 end
+
+@testset "Line list as known on a date and censored dates" begin
+    model = ModelSpec(
+        BranchingProcess(Poisson(2.0), Exponential(5.0));
+        progression = [Reporting(delay = LogNormal(1.0, 0.3), probability = 0.6)],
+        attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
+    )
+    state = simulate(model; max_cases = 200, rng = StableRNG(7))
+    ref = Date(2020, 1, 1)
+    full = linelist(state; reference_date = ref)
+
+    @testset "reported_only keeps reported cases" begin
+        ll = linelist(state; reference_date = ref, reported_only = true)
+        @test 0 < nrow(ll) < nrow(full)
+        @test all(!ismissing, ll.date_reporting)
+        @test nrow(ll) == count(ind -> get(ind.state, :reported, false), state.individuals)
+    end
+
+    @testset "as_of truncates by reporting date" begin
+        as_of = ref + Day(20)
+        ll = linelist(state; reference_date = ref, as_of = as_of)
+        @test 0 < nrow(ll) < nrow(linelist(state; reference_date = ref, reported_only = true))
+        @test all(<=(as_of), ll.date_reporting)
+        for name in names(ll)
+            startswith(name, "date_") || continue
+            @test all(d -> ismissing(d) || d <= as_of, ll[!, name])
+        end
+        # A date long after everything keeps all reported cases unchanged.
+        late = linelist(state; reference_date = ref, as_of = ref + Day(10_000))
+        @test late == linelist(state; reference_date = ref, reported_only = true)
+    end
+
+    @testset "needs a reporting step" begin
+        plain = simulate(
+            ModelSpec(BranchingProcess(Poisson(1.5), Exponential(5.0)));
+            max_cases = 20, rng = StableRNG(1)
+        )
+        @test_throws ArgumentError linelist(plain; as_of = ref)
+        @test_throws ArgumentError linelist(plain; reported_only = true)
+    end
+
+    @testset "censor_linelist" begin
+        weekly = censor_linelist(full)
+        @test nrow(weekly) == nrow(full)
+        @test all(d -> ismissing(d) || dayofweek(d) == 1, weekly.date_infection)
+        @test all(weekly.date_infection .<= full.date_infection)
+        @test all(weekly.date_infection .> full.date_infection .- Day(7))
+        @test isequal(ismissing.(weekly.date_onset), ismissing.(full.date_onset))
+        @test weekly.id == full.id
+        sundays = censor_linelist(full, d -> Dates.toprev(d, Sunday; same = true))
+        @test all(d -> ismissing(d) || dayofweek(d) == 7, sundays.date_infection)
+        monthly = censor_linelist(full, Month(1))
+        @test all(d -> ismissing(d) || day(d) == 1, monthly.date_infection)
+        # The input is not modified.
+        @test full.date_infection != weekly.date_infection
+    end
+end
