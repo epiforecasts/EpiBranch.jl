@@ -606,6 +606,7 @@ end
                 OnRoutes(Scheduled(iso; start_time = 10.0), (:transmission,)),
                 CapacityConstrained(Scheduled(iso; start_time = 10.0); budget_per_period = 5, period = 7.0),
                 CapacityConstrained(iso; budget_per_period = 5, period = 7.0),
+                HeldCapacity(iso; capacity = 2),
             )
             wrapped = ModelSpec(
                 HouseholdProcess(fill(4, 10), Exponential(1 / β));

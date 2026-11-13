@@ -178,8 +178,8 @@ function household_offspring(
     # arbitrary point set by `n_samples`.
     any(EpiBranch.gates_on_population_clock, spec.interventions) && throw(
         ArgumentError(
-            "a `Scheduled` or `CapacityConstrained` intervention, alone or inside a " *
-                "wrapper, gates on the population's clock or case count, " *
+            "a `Scheduled`, `CapacityConstrained` or `HeldCapacity` intervention, alone or " *
+                "inside a wrapper, gates on the population's clock or case count, " *
                 "which the branching process over households does not have. For R* before " *
                 "and after the policy starts, call `household_offspring` once without the " *
                 "intervention and once with it unwrapped"

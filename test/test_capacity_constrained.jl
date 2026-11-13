@@ -1073,4 +1073,7 @@ end
     cc = CapacityConstrained(iso; budget_per_period = 3)
     @test EpiBranch.gates_on_population_clock(cc)
     @test EpiBranch.gates_on_population_clock(OnRoutes(cc, routes))
+    hc = HeldCapacity(iso; capacity = 2)
+    @test EpiBranch.gates_on_population_clock(hc)
+    @test EpiBranch.gates_on_population_clock(OnRoutes(hc, routes))
 end
