@@ -15,9 +15,6 @@ public resolve
 
 # Intervention interface: a package subtyping `AbstractIntervention`
 # overrides these.
-# A wrapper holding another intervention subtypes `InterventionWrapper`, which
-# forwards each hook below to it.
-public InterventionWrapper
 public initialise_individual!
 public resolve_individual!
 public on_infection_settled!
