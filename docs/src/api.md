@@ -384,6 +384,7 @@ distribution of chain sizes (as in epichains).
 reproduction_number
 extinction_probability
 epidemic_probability
+emergence_probability
 probability_contain
 end_of_outbreak_probability
 proportion_transmission
