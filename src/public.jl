@@ -40,6 +40,10 @@ public analytic_offspring_effect
 public abort_infection!
 public infection_aborted_time
 
+# Prevent symptoms from any intervention hook, and read from when.
+public prevent_symptoms!
+public symptoms_prevented_time
+
 # Isolation eligibility: whether an isolation time counts as a detection.
 public records_isolation
 

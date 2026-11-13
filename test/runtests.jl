@@ -51,6 +51,7 @@ const TEST_GROUPS = (
         "test_structure_driven.jl",
         "test_reinfection.jl",
         "test_abort_infection.jl",
+        "test_prevent_symptoms.jl",
         "test_homogeneous.jl",
         "test_mixing.jl",
         "test_contact_matrices.jl",
