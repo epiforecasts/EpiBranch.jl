@@ -1,0 +1,1 @@
+`loglikelihood(::HouseholdFinalStatuses, ...)` now accounts for all of an infector's contacts sharing one infectious window when the window is a distribution. It used to average each pair's escape probability separately, which gave the wrong likelihood for any random window. A fixed window is unchanged.
