@@ -363,6 +363,8 @@ chain_statistics
 compute_trace_level!
 realised_generation_interval
 realised_generation_intervals
+realised_serial_interval
+realised_serial_intervals
 containment_probability
 is_extinct
 generation_R
