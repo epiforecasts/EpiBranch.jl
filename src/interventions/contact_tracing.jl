@@ -1137,18 +1137,17 @@ whose infector is found), `isolation_to_trace_delay` and `action` (required).
 
 # Engine differences
 
-On every model the infector is found once the case itself is settled, so
-quarantining it blocks what it has not yet transmitted, without undoing any
-infection already settled. A branching process runs on the same time-ordered
-race, so this shortens the infector's remaining transmission there too, not
-only on the continuous-time household and network processes and the
-mass-action pools, where an infector's contacts already proposed but not yet
-resolved are checked against every intervention's [`competing_risk`](@ref) as
-each is reached. An infector isolated this way is also offered to
-[`ContactTracing`](@ref) again, since its isolation began after it settled:
-under [`OnIsolation`](@ref) its other contacts are then traced forward from
-the time it is quarantined, as they would be for a case that isolated through
-testing.
+On every model the infector is found once the case itself is settled.
+Quarantining it blocks what it has not yet transmitted and leaves any infection
+already settled in place. A branching process runs on the same time-ordered
+race, so it shortens the infector's remaining transmission there as well as on
+the continuous-time household and network processes and the mass-action pools.
+On those, an infector's contacts already proposed but not yet resolved are
+checked against every intervention's [`competing_risk`](@ref) as each is
+reached. An infector isolated this way is offered to [`ContactTracing`](@ref)
+again, because its isolation began after it settled. Under [`OnIsolation`](@ref)
+its other contacts are then traced forward from the time it is quarantined, as
+for a case that isolated through testing.
 
 # Examples
 ```julia

@@ -509,8 +509,8 @@ function _trace_source!(
             trace_contacts!(intervention, state, case, contacts)
         return nothing
     end
-    # An infector this isolated was settled, and its forward tracing decided,
-    # while it still moved freely; the caller traces forward from it again.
+    # An infector isolated here was settled, and its forward tracing decided,
+    # before it was isolated. The caller traces forward from it again.
     return !was_isolated && is_isolated(infector) ? infector : nothing
 end
 

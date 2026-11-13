@@ -1490,9 +1490,9 @@ function _sellke_race_typed!(
             state, ind, typed_interventions, case_contacts, pos, tracing
         )
         found = _trace_source!(state, ind, typed_interventions, tracing_source)
-        # An infector isolated by being traced back is eligible for forward
-        # tracing under a rule such as `OnIsolation()` only from now on, and
-        # the walk made when it settled could not see that.
+        # An infector isolated by being traced back becomes eligible for forward
+        # tracing under a rule such as `OnIsolation()` only now. The walk made
+        # when it settled could not see that.
         found === nothing || _trace_from!(
             state, found, typed_interventions, case_contacts, pos, tracing
         )
