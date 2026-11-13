@@ -351,7 +351,7 @@ end
     @test found > 100
     @test traced > 0
     # A contact already infected when the dose arrives stays unvaccinated, so
-    # not every traced child is. Without the contacts reaching the action
-    # pass, under half of them were.
+    # some traced children are not vaccinated. If these contacts missed the
+    # action pass, fewer than half would be.
     @test vaccinated > 0.8 * traced
 end

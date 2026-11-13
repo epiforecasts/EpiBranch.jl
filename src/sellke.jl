@@ -1497,8 +1497,8 @@ function _sellke_race_typed!(
             retraced = _trace_from!(
                 state, found, typed_interventions, case_contacts, pos, tracing
             )
-            # The action pass picks its candidates from what tracing reached,
-            # so contacts reached from the infector have to be in that set.
+            # The action pass picks its candidates from the traced set, which
+            # must therefore include contacts reached from the infector.
             if retraced !== nothing
                 traced === nothing ? (traced = retraced) : union!(traced, retraced)
             end
