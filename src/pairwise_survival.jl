@@ -620,9 +620,9 @@ end
 function infection_likelihood_compatible(w::Union{CapacityConstrained, HeldCapacity})
     return infection_likelihood_compatible(w.intervention)
 end
-# A schedule that can close again lifts a removal (isolation, quarantine) the
-# infection layer records no stretch for, so the likelihood would score the
-# people it isolated as if they had never been removed.
+# A schedule that can close again lifts a removal (isolation, quarantine) for
+# which the infection layer records no stretch. The likelihood would then score
+# the people it isolated as if they had never been removed.
 function infection_likelihood_compatible(s::Scheduled)
     s.can_lapse && binding_release(s.intervention) && return false
     return infection_likelihood_compatible(s.intervention)
