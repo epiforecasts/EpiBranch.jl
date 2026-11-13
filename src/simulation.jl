@@ -1546,6 +1546,101 @@ function (d::Demographics)(rng, ind)
     return ind.state[:sex] = rand(rng) < d.prob_female ? :female : :male
 end
 
+"""
+    case_classification(; probabilities = (suspected = 0.2, probable = 0.3, confirmed = 0.5))
+
+Give each person a case classification (`:case_type`, one of `:suspected`,
+`:probable` or `:confirmed`), as `case_type_probs` does in simulist. Pass the
+result as `attributes` to [`ModelSpec`](@ref); the line list shows it as a
+`case_type` column.
+
+`probabilities` is a named tuple with one entry per classification. Each
+entry is a `Real`, a `Distribution` or a `(rng, ind)` callable, read as a
+weight by [`sample_value`](@ref), and the weights are normalised. A callable
+lets the classification depend on the person, for instance on `ind.state[:age]`
+from [`demographics`](@ref). The classification is drawn independently of
+onset and of whether the person is later detected.
+
+# Examples
+```julia
+attributes = [
+    clinical_presentation(incubation_period = LogNormal(1.6, 0.5)),
+    case_classification(probabilities = (suspected = 1, probable = 1, confirmed = 2)),
+    ct_value(),
+]
+```
+
+See also [`ct_value`](@ref).
+"""
+function case_classification(;
+        probabilities::NamedTuple = (suspected = 0.2, probable = 0.3, confirmed = 0.5)
+    )
+    isempty(probabilities) && throw(ArgumentError("`probabilities` must name at least one classification"))
+    return CaseClassification(probabilities)
+end
+
+"""Callable population characteristic `case_classification` returns."""
+struct CaseClassification{P <: NamedTuple}
+    probabilities::P
+end
+
+function (c::CaseClassification)(rng, ind)
+    rng = stream(rng, ind.id, :case_classification)
+    weights = [sample_value(w, rng, ind) for w in values(c.probabilities)]
+    all(w -> isfinite(w) && w >= 0, weights) && sum(weights) > 0 ||
+        throw(ArgumentError("case classification weights must be non-negative and not all zero, got $weights"))
+    # `Categorical` normalises the weights.
+    k = rand(rng, Categorical(weights ./ sum(weights)))
+    return ind.state[:case_type] = keys(c.probabilities)[k]
+end
+
+"""
+    ct_value(; distribution = Normal(25.0, 5.0), case_types = (:confirmed,))
+
+Give each person a cycle threshold (Ct) value from a PCR test (`:ct_value`),
+as `ct_value` does in simulist. Pass the result as `attributes` to
+[`ModelSpec`](@ref); the line list shows it as a `ct_value` column.
+
+- `distribution`: a `Real`, a `Distribution` or a `(rng, ind)` callable, read
+  by [`sample_value`](@ref). Draws that are not positive are
+  redrawn.
+- `case_types`: the classifications that were tested. A person whose
+  `:case_type` (from [`case_classification`](@ref)) is not in this tuple has
+  no Ct value, shown as `missing`. A person with no `:case_type` is
+  treated as tested. List `ct_value` after `case_classification`.
+
+# Examples
+```julia
+attributes = [
+    case_classification(),
+    ct_value(distribution = Normal(22.0, 4.0), case_types = (:probable, :confirmed)),
+]
+```
+"""
+function ct_value(;
+        distribution = Normal(25.0, 5.0), case_types::Tuple{Vararg{Symbol}} = (:confirmed,)
+    )
+    return CtValue(distribution, case_types)
+end
+
+"""Callable population characteristic `ct_value` returns."""
+struct CtValue{D}
+    distribution::D
+    case_types::Tuple{Vararg{Symbol}}
+end
+
+function (c::CtValue)(rng, ind)
+    case_type = get(ind.state, :case_type, nothing)
+    case_type === nothing || case_type in c.case_types || return nothing
+    rng = stream(rng, ind.id, :ct_value)
+    # A Ct value is positive; redraw rather than clamp so no mass piles up at zero.
+    for _ in 1:1000
+        ct = sample_value(c.distribution, rng, ind)
+        ct > 0 && return ind.state[:ct_value] = ct
+    end
+    throw(ArgumentError("`ct_value` distribution gave no positive draw in 1000 attempts"))
+end
+
 _sample_age(rng, ::NoAgeDistribution, age_range) = rand(rng, age_range[1]:age_range[2])
 function _sample_age(rng, dist::Distribution, age_range)
     return clamp(floor(Int, rand(rng, dist)), age_range...)

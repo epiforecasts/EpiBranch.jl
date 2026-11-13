@@ -148,6 +148,8 @@ group membership, and willingness to be vaccinated. Pass them to `ModelSpec` as
 ```@docs
 clinical_presentation
 demographics
+case_classification
+ct_value
 transmission_traits
 groups
 group_attribute

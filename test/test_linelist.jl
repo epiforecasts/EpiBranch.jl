@@ -22,6 +22,38 @@ using Dates
         @test "date_onset" in names(df)
     end
 
+    @testset "case classification, Ct values and anonymised names" begin
+        model = BranchingProcess(Poisson(1.5), Exponential(5.0))
+        state = tsim(
+            model;
+            attributes = [
+                case_classification(probabilities = (suspected = 1, probable = 1, confirmed = 2)),
+                ct_value(),
+            ],
+            max_cases = 300, rng = StableRNG(7)
+        )
+        df = linelist(state; anonymised_names = true)
+        @test Set(df.case_type) == Set(["suspected", "probable", "confirmed"])
+        @test 0.4 < count(==("confirmed"), df.case_type) / nrow(df) < 0.6
+        @test all(ismissing(c) == (t != "confirmed") for (c, t) in zip(df.ct_value, df.case_type))
+        @test all(>(0), skipmissing(df.ct_value))
+        @test length(unique(df.case_name)) == nrow(df)
+        @test all(n -> length(n) == 16, df.case_name)
+        @test linelist(state; anonymised_names = true).case_name == df.case_name
+        @test "case_name" ∉ names(linelist(state))
+
+        # Ct is recorded for everyone when no classification is present.
+        state = tsim(
+            model; attributes = ct_value(distribution = Dirac(30.0)),
+            max_cases = 20, rng = StableRNG(1)
+        )
+        @test all(==(30.0), linelist(state).ct_value)
+
+        @test_throws ArgumentError case_classification(probabilities = NamedTuple())
+        bad = case_classification(probabilities = (suspected = 0, confirmed = 0))
+        @test_throws ArgumentError bad(StableRNG(1), Individual(id = 1))
+    end
+
     @testset "linelist without clinical presentation has no onset" begin
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(1.5), Exponential(5.0))

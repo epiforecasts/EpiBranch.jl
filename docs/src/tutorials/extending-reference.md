@@ -44,6 +44,8 @@ underscore are internal.
 | `:incubation_period` | `Float64` | — | `clinical_presentation` | Creation; `NaN` for an asymptomatic case |
 | `:age` | `Real` | — | `demographics` | Creation |
 | `:sex` | `Symbol` | — | `demographics` | Creation |
+| `:case_type` | `Symbol` | — | `case_classification` | Creation |
+| `:ct_value` | `Float64` | — | `ct_value` | Creation; absent for a case type not tested |
 | `:group` | `Int` | — | `groups` | Creation |
 | `:household` | `Int` | — | `HouseholdProcess` | Creation |
 | `:isolated` | `Bool` | `false` | `Isolation`, `ContactTracing`/`SourceTracing`'s `Quarantine` | `resolve_individual!` / `apply_trace!` |
