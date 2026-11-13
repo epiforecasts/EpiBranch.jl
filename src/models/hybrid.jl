@@ -58,6 +58,60 @@ function _validate_layout(
     return nothing
 end
 
+# The exponential removal rate the exact model's progression gives, which is
+# all the scalar approximations can represent: a single terminal
+# `Transition` from infection with an exponential delay, and no latent
+# period. Anything else (a fixed or other non-exponential delay, a latent
+# step, several terminal outcomes, no removal at all) would change the
+# dynamics at the switch, so it is refused.
+function _exponential_removal_rate(exact, bare)
+    steps = progression(exact)
+    terminal = filter(is_terminal, steps)
+    ok = length(terminal) == 1 && only(terminal) isa Transition
+    if ok
+        t = only(terminal)
+        ok = t.from === :infection && _certain_probability(t.probability) &&
+            t.delay isa Exponential &&
+            (bare.from === nothing || bare.from === :infection) &&
+            !any(s -> s isa Transition && s.state === :infectious, steps)
+    end
+    ok || throw(
+        ArgumentError(
+            "HybridProcess's exact model must remove cases through a single " *
+                "`Transition(...; rate = γ, terminal = true)` from infection, with " *
+                "no latent period, to match its approx model, which assumes an " *
+                "exponential removal at a constant rate"
+        )
+    )
+    return 1 / scale(only(terminal).delay)
+end
+
+# The scalar approximations carry their own β and γ, so they are checked
+# against the exact model's, so the dynamics do not change at the switch. The
+# mixing approximations read their rates from the shared `ModelSpec`, so
+# there is nothing to compare.
+_validate_rates(exact, bare, approx) = nothing
+function _validate_rates(
+        exact, bare::HomogeneousProcess, approx::Union{MeanFieldProcess, LinearNoiseProcess}
+    )
+    β = bare.transmission_rate
+    (β isa Real && β ≈ approx.transmission_rate) || throw(
+        ArgumentError(
+            "HybridProcess's exact model has transmission_rate = $β, but its approx " *
+                "model has transmission_rate = $(approx.transmission_rate); they must " *
+                "be equal numbers (a time-varying exact rate cannot be matched)"
+        )
+    )
+    γ = _exponential_removal_rate(exact, bare)
+    γ ≈ approx.removal_rate || throw(
+        ArgumentError(
+            "HybridProcess's exact model removes cases at rate $γ, but its approx " *
+                "model has removal_rate = $(approx.removal_rate)"
+        )
+    )
+    return nothing
+end
+
 """
     HybridProcess(exact, approx; threshold, check_interval = 1.0)
 
@@ -78,6 +132,12 @@ is carried across too: the people already dosed and what the dose did for them,
 and, for the default [`TriggeredInPriority`](@ref) allocation, the trigger time
 the exact run found for each group, so doses still due are given on the day
 the exact model would have given them.
+
+For the scalar pairing, the two models must agree on the dynamics, so the
+construction throws an `ArgumentError` unless `approx.transmission_rate` equals
+the exact model's fixed `transmission_rate`, and the exact progression is a
+single exponential removal, `Transition(...; rate = γ, terminal = true)` from
+infection with no latent period, with `γ == approx.removal_rate`.
 
 Simulating and continuing both use [`simulate`](@ref), exactly as for the
 exact and approximate models on their own, so an external Kalman or particle
@@ -107,7 +167,9 @@ struct HybridProcess{E, A}
 end
 
 function HybridProcess(exact, approx; threshold::Integer, check_interval::Real = 1.0)
-    _validate_layout(_matching_exact(exact, approx), approx)
+    bare = _matching_exact(exact, approx)
+    _validate_layout(bare, approx)
+    _validate_rates(exact, bare, approx)
     threshold >= 1 || throw(ArgumentError("threshold must be ≥ 1"))
     check_interval > 0 || throw(ArgumentError("check_interval must be positive"))
     population_size(exact) == population_size(approx) || throw(
