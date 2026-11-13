@@ -182,6 +182,46 @@ println(sort(sizes_from_membership.data))
 The first line lists the number of secondary cases for each of the six cases;
 the second lists the three chain sizes.
 
+### Size classes
+
+Published cluster data are often tabulated in size classes, such as "1", "2 to 5" and "6 or more", rather than as exact sizes. [`ChainSizeClasses`](@ref) takes the lower and upper bound of each class, with `Inf` as the upper bound of an open-ended class, and the number of chains in each. The likelihood is that of the classes themselves, the sum over classes of the count times the log-probability of a size in that class.
+
+```@example chains
+classes = ChainSizeClasses([1, 2, 6], [1, 5, Inf], [60, 30, 10])
+for R in [0.5, 0.7, 0.9]
+    ll = loglikelihood(classes, NegBin(R, 0.5))
+    println("NegBin(R = $R, k = 0.5): log-likelihood = $(round(ll, digits=2))")
+end
+```
+
+### A different offspring distribution for the index case
+
+If the index case transmits differently from later cases, for example because it was imported and arrived part-way through its infectious period, use [`IndexChainSize`](@ref). It takes the offspring distribution of the index case and that of every later case, and works as a chain-size law with `loglikelihood`.
+
+```@example chains
+index_law = IndexChainSize(Poisson(0.3), NegBin(0.8, 0.5))
+println("P(size = 1): $(round(pdf(index_law, 1), digits=3)), mean size: $(round(mean(index_law), digits=2))")
+sizes = ChainSizes([1, 2, 5, 1])
+println("Index case as the rest: $(round(loglikelihood(sizes, NegBin(0.8, 0.5)), digits=2))")
+println("Index case Poisson(0.3): $(round(loglikelihood(sizes, index_law), digits=2))")
+```
+
+### Chains that may go unrecorded
+
+When clusters are found by investigation rather than case by case, a whole chain is either recorded or missed, and larger chains are more likely to be noticed. [`ChainDetection`](@ref) describes this: `ChainDetection(q)` records a chain of `n` cases with probability `1 - (1 - q)^n`, and a function of chain size can be passed instead. Used as the model's `observation`, it turns the chain-size distribution into a [`DetectedChainSize`](@ref), which is the exact distribution reweighted by the recording probability and renormalised, so unrecorded chains are allowed for.
+
+```@example chains
+detected_model = ModelSpec(BranchingProcess(NegBin(0.8, 0.5));
+    observation = ChainDetection(0.3))
+detected = chain_size_distribution(detected_model)
+exact = chain_size_distribution(NegBin(0.8, 0.5))
+println("P(size = 1), all chains recorded: $(round(pdf(exact, 1), digits=3))")
+println("P(size = 1), chains recorded with probability 1 - 0.7^n: $(round(pdf(detected, 1), digits=3))")
+println("Log-likelihood of the sizes above: $(round(loglikelihood(data, detected_model), digits=2))")
+```
+
+Single cases are the chains most likely to be missed, so among recorded chains they are rarer than the exact distribution says.
+
 ## Likelihood under interventions
 
 Interventions change chain sizes. If cases are isolated after symptom onset,
