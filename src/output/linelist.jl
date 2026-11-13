@@ -161,8 +161,9 @@ function linelist(
     return _as_known(df, as_of)
 end
 
-# The cases reported, and with `as_of` only by that date, with later dates
-# blanked. A case never reported has no `date_reporting` and is dropped.
+# Keep the reported cases, only those reported by `as_of` if it is given, and
+# blank the dates after `as_of`. A case never reported has no `date_reporting`
+# and is dropped.
 function _as_known(df::DataFrame, as_of)
     isempty(df) && return df
     hasproperty(df, :date_reporting) || return df[Int[], :]
