@@ -402,3 +402,124 @@ struct SignalData{T <: Real}
         return new{eltype(steps)}(collect(steps), collect(series))
     end
 end
+
+# ── Constructors from a line list table or a simulated outbreak ────────
+
+"""
+    OffspringCounts(df::AbstractDataFrame; id = :id, parent_id = :parent_id)
+    OffspringCounts(state::SimulationState)
+
+Offspring counts from a line list: each row is a case, and its count is the
+number of rows whose `parent_id` is its `id`. The column names default to
+those of [`linelist`](@ref); an index case has `parent_id` 0, or `missing`,
+and infects its own descendants but has no infector row. From a
+`SimulationState`, the line list of [`linelist`](@ref)`(state)` is used.
+
+Cases cut off by the end of the line list (for example by `max_cases`) have
+the descendants they would have had missing, so their counts are
+underestimates. Simulate to extinction when checking a fit on simulated data.
+
+# Examples
+
+```julia
+st = simulate(BranchingProcess(Poisson(0.8), Exponential(5.0)); rng = StableRNG(1))
+OffspringCounts(st)
+OffspringCounts(linelist(st))
+```
+"""
+function OffspringCounts(
+        df::AbstractDataFrame; id::Symbol = :id, parent_id::Symbol = :parent_id
+    )
+    ids = df[!, id]
+    counts = Dict{eltype(ids), Int}(i => 0 for i in ids)
+    for p in df[!, parent_id]
+        (ismissing(p) || !haskey(counts, p)) && continue
+        counts[p] += 1
+    end
+    return OffspringCounts(collect(values(counts)))
+end
+
+OffspringCounts(state::SimulationState) = OffspringCounts(linelist(state))
+
+"""
+    ChainSizes(df::AbstractDataFrame; chain_id = :chain_id)
+    ChainSizes(state::SimulationState)
+    ChainSizes(states::AbstractVector{<:SimulationState})
+
+Chain sizes from a line list, one per distinct value of the `chain_id`
+column (the number of rows sharing it), or from one or several simulated
+outbreaks via [`linelist`](@ref). For several outbreaks the chains of every
+outbreak are pooled, one size per chain, as `simulate(model, n)` returns.
+Each chain has one seed; pass `seeds` to the keyword constructor for
+anything else.
+
+# Examples
+
+```julia
+ChainSizes(simulate(BranchingProcess(Poisson(0.8)), 10))
+```
+"""
+function ChainSizes(df::AbstractDataFrame; chain_id::Symbol = :chain_id)
+    return ChainSizes(; membership = collect(skipmissing(df[!, chain_id])))
+end
+
+ChainSizes(state::SimulationState) = ChainSizes(linelist(state))
+
+function ChainSizes(states::AbstractVector{<:SimulationState})
+    isempty(states) && throw(ArgumentError("states must be non-empty"))
+    return ChainSizes(reduce(vcat, [ChainSizes(s).data for s in states]))
+end
+
+"""
+    IncidenceCounts(df::AbstractDataFrame; date = :date_onset, step = 7)
+    IncidenceCounts(state::SimulationState; by = :onset, step = 7)
+
+Incidence from case dates. Cases are counted in consecutive steps of `step`
+days starting at the earliest date, with empty steps counted as 0. The cases
+in the first step are the `seeds` (index cases at step 0), and `data` holds
+the counts of the later steps, as [`IncidenceCounts`](@ref) expects. The
+first step therefore needs at least one case, and the table at least two
+steps. Rows with a `missing` date are left out.
+
+From a `SimulationState`, `by` chooses the time as in
+[`weekly_incidence`](@ref), counted in days from simulation day 0.
+
+# Examples
+
+```julia
+using Dates
+df = DataFrame(date_onset = Date(2024, 3, 1) .+ Day.([0, 1, 3, 4, 4, 8, 9, 9, 10, 12]))
+IncidenceCounts(df; step = 3)
+```
+"""
+function IncidenceCounts(
+        df::AbstractDataFrame; date::Symbol = :date_onset, step::Integer = 7
+    )
+    dates = Date.(collect(skipmissing(df[!, date])))
+    isempty(dates) && throw(ArgumentError("no case has a date in column `$date`"))
+    return _incidence_from_days(Dates.value.(dates .- minimum(dates)), step)
+end
+
+function IncidenceCounts(state::SimulationState; by::Symbol = :onset, step::Integer = 7)
+    times = filter(
+        isfinite, [_weekly_time(by, ind) for ind in state.individuals if is_infected(ind)]
+    )
+    isempty(times) && throw(ArgumentError("no case has a finite `$by` time"))
+    return _incidence_from_days(floor.(Int, times .- minimum(times)), step)
+end
+
+function _incidence_from_days(days::AbstractVector{<:Integer}, step::Integer)
+    step >= 1 || throw(ArgumentError("step must be at least 1 day"))
+    bins = div.(days, step) .+ 1
+    counts = zeros(Int, maximum(bins))
+    for b in bins
+        counts[b] += 1
+    end
+    length(counts) >= 2 || throw(
+        ArgumentError(
+            "the cases span a single step of $step days; the first step holds the " *
+                "seeds, so at least two steps are needed (reduce `step`)"
+        )
+    )
+    return IncidenceCounts(counts[2:end]; seeds = counts[1])
+end

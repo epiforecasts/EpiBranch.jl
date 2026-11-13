@@ -281,7 +281,7 @@ export chain_length_distribution, offspring_distribution
 export ClusterMixed, ChainSizeMixture
 export GeneratingFunctionOffspring
 # Real-time mixture: per-cluster "is finished?" weight
-export end_of_outbreak_probability
+export end_of_outbreak_probability, end_of_outbreak_inputs
 # Pairwise survival likelihood over a contact structure
 export PairKernel, PairContext, Steps, Seasonal, record_kernel, LayerHost
 export InfectionLayer, PairwiseSurvivalData, ContactPairsLayout, MassActionHazard, SumHazard

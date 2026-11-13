@@ -1,0 +1,1 @@
+`OffspringCounts`, `ChainSizes` and `IncidenceCounts` can be built from a line list `DataFrame` or a simulated `SimulationState` (`ChainSizes` also from a vector of states), `weekly_incidence` accepts a `DataFrame` of case dates, and `end_of_outbreak_inputs` gives the days since onset and secondary-case counts that `end_of_outbreak_probability` takes.
