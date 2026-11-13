@@ -211,6 +211,12 @@ Match a `MvNormal` with the mean and covariance from [`incidence_moments`](@ref)
 Defined for any observed counts, including zeros; see
 [`LognormalApproximation`](@ref) for the alternative that respects
 non-negativity.
+
+A zero count at a step whose variance is below `1/12` (the variance of a
+rounded count), including steps that cannot have any cases, is left out of the
+likelihood. Otherwise its normal log-density, about `-log(σ)`, would grow
+without bound as the expected count approaches zero. A nonzero count at such a
+step is kept, and zero variance with a nonzero count gives `-Inf`.
 """
 struct NormalApproximation <: IncidenceApproximation end
 
@@ -237,11 +243,25 @@ struct LognormalApproximation <: IncidenceApproximation end
 # step, or any count before a delayed report can arrive, has zero mean and
 # variance, which no approximation can be matched to. It is left out, and the
 # data are impossible unless they are zero there too.
+#
+# A zero count at a step whose variance is positive but below that of a
+# rounded count (1/12) is left out as well. Its normal log-density is close to
+# `-log(σ)`, which grows without bound as the variance shrinks. Keeping it
+# would reward parameters that push early expected counts towards zero. A
+# nonzero count at such a step stays in and is penalised heavily. The lognormal
+# has no mass at 0 and still treats a zero count as an error downstream.
+_min_variance(::IncidenceApproximation) = 0.0
+_min_variance(::NormalApproximation) = 1 / 12
+
 function _incidence_loglik_observed(approximation, data, μ, Σ)
-    keep = [Σ[t, t] > 0 for t in eachindex(data)]
+    floor_var = _min_variance(approximation)
+    keep = [
+        Σ[t, t] > 0 && !(Σ[t, t] < floor_var && data[t] == 0)
+            for t in eachindex(data)
+    ]
     all(keep) && return _incidence_loglik(approximation, data, μ, Σ)
     T = float(eltype(μ))
-    any(t -> !keep[t] && data[t] != 0, eachindex(data)) && return T(-Inf)
+    any(t -> Σ[t, t] <= 0 && data[t] != 0, eachindex(data)) && return T(-Inf)
     any(keep) || return zero(T)
     return _incidence_loglik(
         approximation, data[keep], μ[keep], Symmetric(Matrix(Σ)[keep, keep])

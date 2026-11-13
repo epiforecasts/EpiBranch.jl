@@ -369,8 +369,11 @@ struct _RiskFromAge end
         total = IncidenceCounts(vec(sum(counts; dims = 2)); seeds = [0, 1])
         m = incidence_moments(o, gt, 5; seeds = [0, 1])
 
+        # Zero counts at steps with a variance below 1/12 are left out.
+        y = vec(counts)
+        keep = [!(m.cov[i, i] < 1 / 12 && y[i] == 0) for i in eachindex(y)]
         @test loglikelihood(by_type, o, gt) ≈
-            logpdf(MvNormal(vec(m.mean), m.cov), vec(counts))
+            logpdf(MvNormal(vec(m.mean)[keep], m.cov[keep, keep]), y[keep])
         # The total's moments sum the per-type blocks.
         A = [Float64(t == s % 5 + 1) for t in 1:5, s in 0:9]
         Σ_total = A * m.cov * A'
@@ -561,5 +564,14 @@ struct _RiskFromAge end
         ]
         @test maximum(abs.(emp_mean .- m.mean)) < 0.06
         @test maximum(abs.(emp_cov .- m.cov)) < 0.2
+    end
+
+    @testset "a narrow delay does not inflate the likelihood at zero steps" begin
+        data = IncidenceCounts([0, 0, 0, 0, 0, 1, 2, 2, 3, 4])
+        offspring = NegBin(1.3, 0.5)
+        gt = Gamma(3.0, 1.0)
+        ll(delay) = loglikelihood(data, offspring, gt; reporting_delay = delay)
+        @test ll(Gamma(400.0, 0.0125)) < ll(Gamma(2.0, 1.0)) + 10
+        @test ll(Gamma(100.0, 0.05)) < ll(Gamma(2.0, 1.0)) + 10
     end
 end
