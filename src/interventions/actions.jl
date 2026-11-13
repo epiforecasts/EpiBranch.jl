@@ -67,12 +67,6 @@ finite time, since nothing about the new person is settled yet.
 through their own gates.
 """
 intervention_actions(::AbstractIntervention, state, candidates) = nothing
-# Asking for the resource key first makes a wrapped intervention that has none,
-# and so cannot be rationed, fail when its actions are first sought.
-function intervention_actions(cc::CapacityConstrained, state, candidates)
-    capacity_key(cc.intervention)
-    return intervention_actions(cc.intervention, state, candidates)
-end
 
 """
     action_cache(individual)

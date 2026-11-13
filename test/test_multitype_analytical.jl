@@ -317,3 +317,25 @@ EpiBranch.single_type_offspring(m::LawOnlyModel) = m.law
         @test epidemic_probability(ModelSpec(custom)) ≈ epidemic_probability(2.0, 0.5)
     end
 end
+
+@testset "emergence_probability" begin
+    R1, R2, μ = 0.5, 2.0, 0.1
+    p = emergence_probability(R1, R2, μ)
+    # Poisson fixed point: q2 solves q = exp(R2 (q - 1)); q1 then follows.
+    q2 = 1 - epidemic_probability(Poisson(R2))
+    q1 = let q = 0.0
+        for _ in 1:10_000
+            q = exp(R1 * (1 - μ) * (q - 1) + R1 * μ * (q2 - 1))
+        end
+        q
+    end
+    @test p ≈ 1 - q1 atol = 1.0e-8
+    @test 0 < p < 1 - q2
+    @test emergence_probability(R1, R2, 0.0) == 0.0
+    @test emergence_probability(R1, R2, 1.0) ≈ 1 - exp(R1 * (q2 - 1)) atol = 1.0e-8
+    @test emergence_probability(R1, R2, 0.2) > p
+    # Superspreading in the wild type lowers emergence.
+    @test emergence_probability(R1, R2, μ; dist_fn = R -> NegBin(R, 0.2)) < p
+    @test emergence_probability(R1, R2, μ; dist_fn = [Poisson(R1), Poisson(R2)]) ≈ p
+    @test_throws ArgumentError emergence_probability(R1, R2, 1.5)
+end

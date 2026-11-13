@@ -82,7 +82,7 @@
         rng = StableRNG(1)
         n, reps = 40, 20_000
         for law in (Poisson(1.3), NegBin(1.5, 0.4), Binomial(5, 0.3), Geometric(0.4))
-            closed = [EpiBranch._sum_offspring(rng, law, n) for _ in 1:reps]
+            closed = [EpiBranch.sum_offspring(rng, law, n) for _ in 1:reps]
             each = [sum(rand(rng, law) for _ in 1:n) for _ in 1:reps]
             se = sqrt(var(closed) / reps + var(each) / reps)
             @test isapprox(mean(closed), mean(each); atol = 5se)
