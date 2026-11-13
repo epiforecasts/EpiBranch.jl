@@ -1,3 +1,5 @@
+using DataFrames
+
 struct _AttributeTagger end
 (::_AttributeTagger)(rng, ind) = (ind.state[:tag] = ind.id)
 
@@ -498,4 +500,42 @@ end
             @test ind.state[:group] == 1
         end
     end
+end
+
+@testset "age_bands" begin
+    ages = age_bands([0, 5, 18, 65, 90], [0.06, 0.16, 0.6, 0.18])
+    @test ages isa MixtureModel
+    @test all(c -> c isa Uniform, components(ages))
+    @test probs(ages) ≈ [0.06, 0.16, 0.6, 0.18]
+    @test minimum(ages) == 0
+    @test maximum(ages) == 90
+
+    # proportions are rescaled
+    @test probs(age_bands([0, 10, 20], [1, 3])) ≈ [0.25, 0.75]
+
+    df = DataFrame(lower = [0, 5, 18], upper = [5, 18, 90], proportion = [0.1, 0.2, 0.7])
+    @test age_bands(df) == age_bands([0, 5, 18, 90], [0.1, 0.2, 0.7])
+    renamed = rename(df, :lower => :from, :upper => :to, :proportion => :share)
+    @test age_bands(renamed; lower = :from, upper = :to, proportion = :share) == age_bands(df)
+
+    @test_throws ArgumentError age_bands([0, 5], [0.5, 0.5])
+    @test_throws ArgumentError age_bands([0, 5, 5], [0.5, 0.5])
+    @test_throws ArgumentError age_bands([0, 5, Inf], [0.5, 0.5])
+    @test_throws ArgumentError age_bands([0, 5, 10], [-0.5, 1.5])
+    @test_throws ArgumentError age_bands([0, 5, 10], [0, 0])
+    @test_throws ArgumentError age_bands(DataFrame(lower = [0, 6], upper = [5, 10], proportion = [1, 1]))
+    @test_throws ArgumentError age_bands(DataFrame(a = [0]))
+    @test_throws ArgumentError age_bands(
+        DataFrame(lower = Float64[], upper = Float64[], proportion = Float64[])
+    )
+
+    # works as the age distribution of demographics
+    state = simulate(
+        ModelSpec(
+            BranchingProcess(Poisson(0.0), Exponential(5.0));
+            attributes = demographics(age_distribution = age_bands([0, 10, 20], [1, 0]))
+        );
+        n_initial = 200, rng = StableRNG(1)
+    )
+    @test all(0 <= ind.state[:age] < 10 for ind in state.individuals)
 end

@@ -1531,6 +1531,73 @@ function demographics(;
     return Demographics(age_distribution, age_range, float(prob_female))
 end
 
+"""
+    age_bands(edges, proportions)
+    age_bands(df; lower = :lower, upper = :upper, proportion = :proportion)
+
+Build an age distribution from age bands and the share of the population in
+each, the form census tables come in. The result is a `MixtureModel` of
+`Uniform` distributions, one per band, weighted by `proportions`. Pass it as
+the `age_distribution` of [`demographics`](@ref).
+
+`edges` are the band boundaries in years, increasing, with one more entry than
+`proportions`: `[0, 5, 18, 65, 90]` gives the four bands 0 to 5, 5 to 18, 18
+to 65 and 65 to 90. Every band needs a finite upper edge: give an open-ended
+band such as "65+" the oldest age to use. `demographics` rounds ages down, which
+gives ages 0 to 4 for the band from 0 to 5. `proportions` need not sum to one;
+they are rescaled.
+
+The table method takes the band edges from the columns `lower` and `upper`,
+and the shares from `proportion`. Bands must be listed in order and be
+contiguous, each starting where the one before ends.
+
+# Examples
+```julia
+ages = age_bands([0, 5, 18, 65, 90], [0.06, 0.16, 0.60, 0.18])
+attributes = demographics(age_distribution = ages, age_range = (0, 89))
+
+df = DataFrame(lower = [0, 5, 18], upper = [5, 18, 90], proportion = [0.1, 0.2, 0.7])
+ages = age_bands(df)
+```
+"""
+function age_bands(edges::AbstractVector{<:Real}, proportions::AbstractVector{<:Real})
+    n = length(proportions)
+    n >= 1 || throw(ArgumentError("proportions needs at least one band"))
+    length(edges) == n + 1 || throw(
+        ArgumentError(
+            "edges has $(length(edges)) entries for $n proportions; " *
+                "expected $(n + 1), one more than the number of bands"
+        )
+    )
+    all(isfinite, edges) || throw(ArgumentError("edges must all be finite"))
+    all(diff(edges) .> 0) || throw(ArgumentError("edges must be strictly increasing"))
+    all(isfinite, proportions) && all(>=(0), proportions) || throw(
+        ArgumentError("proportions must be finite and non-negative")
+    )
+    total = sum(proportions)
+    total > 0 || throw(ArgumentError("proportions must not all be zero"))
+    bands = [Uniform(float(edges[i]), float(edges[i + 1])) for i in 1:n]
+    return MixtureModel(bands, Categorical(float.(proportions) ./ total))
+end
+
+function age_bands(
+        df::AbstractDataFrame; lower::Symbol = :lower, upper::Symbol = :upper,
+        proportion::Symbol = :proportion
+    )
+    for c in (lower, upper, proportion)
+        hasproperty(df, c) || throw(ArgumentError("the table has no column :$c"))
+    end
+    nrow(df) >= 1 || throw(ArgumentError("the table has no rows"))
+    lo = df[!, lower]
+    hi = df[!, upper]
+    (any(ismissing, lo) || any(ismissing, hi) || any(ismissing, df[!, proportion])) &&
+        throw(ArgumentError("the table has missing values"))
+    all(lo[2:end] .== hi[1:(end - 1)]) || throw(
+        ArgumentError("bands must be contiguous: each `$lower` must equal the previous `$upper`")
+    )
+    return age_bands(vcat(lo[1], hi), collect(df[!, proportion]))
+end
+
 """Callable population characteristic `demographics` returns. Has a type,
 rather than being a bare closure, so [`EpiBranch.offspring_law_unchanged`](@ref)
 can recognise it as leaving the offspring law unchanged."""
