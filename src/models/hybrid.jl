@@ -58,12 +58,12 @@ function _validate_layout(
     return nothing
 end
 
-# The exponential removal rate the exact model's progression gives, which is
-# all the scalar approximations can represent: a single terminal
-# `Transition` from infection with an exponential delay, and no latent
+# The exponential removal rate given by the progression of the exact model.
+# The scalar approximations can represent only a single terminal
+# `Transition` from infection with an exponential delay and no latent
 # period. Anything else (a fixed or other non-exponential delay, a latent
 # step, several terminal outcomes, no removal at all) would change the
-# dynamics at the switch, so it is refused.
+# dynamics at the switch and is refused.
 function _exponential_removal_rate(exact, bare)
     steps = progression(exact)
     terminal = filter(is_terminal, steps)
@@ -86,8 +86,8 @@ function _exponential_removal_rate(exact, bare)
     return 1 / scale(only(terminal).delay)
 end
 
-# The scalar approximations carry their own β and γ, so they are checked
-# against the exact model's, so the dynamics do not change at the switch. The
+# The scalar approximations have their own β and γ. These are checked against
+# those of the exact model to keep the dynamics unchanged at the switch. The
 # mixing approximations read their rates from the shared `ModelSpec`, so
 # there is nothing to compare.
 _validate_rates(exact, bare, approx) = nothing
@@ -133,9 +133,9 @@ and, for the default [`TriggeredInPriority`](@ref) allocation, the trigger time
 the exact run found for each group, so doses still due are given on the day
 the exact model would have given them.
 
-For the scalar pairing, the two models must agree on the dynamics, so the
+For the scalar pairing the two models must agree on the dynamics. The
 construction throws an `ArgumentError` unless `approx.transmission_rate` equals
-the exact model's fixed `transmission_rate`, and the exact progression is a
+the fixed `transmission_rate` of the exact model and the exact progression is a
 single exponential removal, `Transition(...; rate = γ, terminal = true)` from
 infection with no latent period, with `γ == approx.removal_rate`.
 
