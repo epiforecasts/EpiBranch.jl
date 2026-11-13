@@ -340,7 +340,7 @@ function _chain_size_right_tail_logprob(d, x::Integer, s::Integer)
     log_inf = _chain_size_log_infinite_mass(d, s)
     for j in s:(x - 1)
         cum += exp(_chain_size_logpdf(d, j, s))
-        if one(cum) - cum < 1e-4 && log_inf !== nothing
+        if one(cum) - cum < 1.0e-4 && log_inf !== nothing
             log_finite = _streaming_logsumexp(n -> _chain_size_logpdf(d, n, s), x; max_n = max(100_000, 10 * x))
             return _logsumexp2(log_finite, log_inf)
         end
