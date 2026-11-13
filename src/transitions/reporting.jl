@@ -46,17 +46,7 @@ Base.@kwdef struct Reporting{D, P, F} <: AbstractClinicalTransition
     from::F = :onset_time
 end
 
-# Only writes `:reported`/`:reporting_time`; never touches susceptibility or
-# infectiousness.
-offspring_law_unchanged(::Reporting) = true
-
 required_fields(r::Reporting) = _from_required(r.from)
-
-function initialise_individual!(::Reporting, individual, state)
-    individual.state[:reported] = false
-    individual.state[:reporting_time] = Inf
-    return nothing
-end
 
 function resolve_individual!(r::Reporting, individual, state)
     anchor = _state_time(individual, r.from)
@@ -69,26 +59,6 @@ function resolve_individual!(r::Reporting, individual, state)
     individual.state[:reporting_time] = time
     _log_report!(state, individual, time)
     return nothing
-end
-
-function censor_after_outcome!(r::Reporting, individual)
-    _censor_event!(individual, :reported, :reporting_time, r.from)
-    return nothing
-end
-
-function transition_loglik(r::Reporting, individual::Individual; followup_end = Inf)
-    anchor = _state_time(individual, r.from)
-    _anchor_ok(anchor) || return 0.0
-    flag = individual.state[:reported]::Bool
-    time = flag ? individual.state[:reporting_time] : Inf
-    cap = min(_timed_from_outcome(individual, r.from) ? Inf : outcome_time(individual), followup_end)
-    occurred = flag && time <= cap
-    ll = transition_term(
-        r.probability, r.delay, individual, anchor, occurred;
-        censor = min(infection_aborted_time(individual), cap)
-    )
-    occurred || return ll
-    return ll + _delay_loglik(r.delay, time - anchor)
 end
 
 # The reports `Reporting` has drawn in a run, so that `ReportedCases` can count

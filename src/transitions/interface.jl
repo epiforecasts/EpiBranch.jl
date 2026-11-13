@@ -458,7 +458,7 @@ end
 const _REINFECTION_PROBE_KEY = :_reinfection_probing
 
 function _transition_selected(rng, individual, start_time, probability)
-    _anchor_ok(start_time) || return false
+    isfinite(start_time) || return false
     probability === nothing && return true
     p = sample_value(probability, rng, individual)
     get(individual.state, _REINFECTION_PROBE_KEY, false) && return p > 0
@@ -474,14 +474,6 @@ _resolved_key(s::Symbol) = endswith(String(s), "_time") ? s : Symbol(s, :_time)
 # depends only on `from`, so the object that holds `from` builds it once.
 _from_key(from::Symbol) = _resolved_key(from)
 _from_key(from) = nothing
-
-# A transition occurs only from a finite anchor. An anchor is missing (`NaN`)
-# when the `from` key was never written, and non-finite (`Inf`) when the
-# upstream transition initialised the key but never occurred — both mean "the
-# `from` state was not reached", so the transition must be skipped. Guarding
-# on `isfinite` (not `isnan`) keeps the two subsystems in step; the generic
-# `Transition` uses the same check.
-_anchor_ok(anchor) = isfinite(anchor)
 
 # The key a transition's `required_fields` demands of its `from` anchor.
 # `:infection` is always available (the individual's own `infection_time`
