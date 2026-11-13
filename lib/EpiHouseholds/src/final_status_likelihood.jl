@@ -62,7 +62,7 @@ end
 # The probability that person `j` escapes the community hazard over `obs_end`,
 # with their own susceptibility as the rate multiplier (as `_ext_draw` applies
 # it to a community introduction, with no infectiousness term since there is
-# no infector): 1 when they face no hazard at all. `logccdf` is used because
+# no infector): 1 when they face no hazard at all. This uses `logccdf` because
 # every prepared hazard defines it, including calendar-scaled kernels.
 function _community_escape(external_hazard, j::Int, obs_end::Real, susceptibility::Real)
     d = _ext_survival_of(external_hazard, j)

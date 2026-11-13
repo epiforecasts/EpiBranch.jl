@@ -1,1 +1,1 @@
-The `HouseholdFinalStatuses` likelihood no longer throws a `MethodError` when the `HouseholdProcess` has a calendar external hazard such as `Steps`; the community escape probability is computed from `logccdf`, which every prepared hazard defines.
+The `HouseholdFinalStatuses` likelihood no longer throws a `MethodError` when the `HouseholdProcess` has a calendar external hazard such as `Steps`. It now computes the community escape probability from `logccdf`, which every prepared hazard defines.
