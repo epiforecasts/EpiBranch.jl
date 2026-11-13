@@ -3,7 +3,10 @@ using StableRNGs
 
 @testset "HybridProcess" begin
     @testset "construction validates its two models" begin
-        exact = HomogeneousProcess(; transmission_rate = 0.4, population_size = 500)
+        exact = ModelSpec(
+            HomogeneousProcess(; transmission_rate = 0.4, population_size = 500);
+            progression = [Transition(:recovered; rate = 0.2, terminal = true)]
+        )
         approx = MeanFieldProcess(;
             population_size = 500, transmission_rate = 0.4, removal_rate = 0.2
         )
@@ -15,6 +18,50 @@ using StableRNGs
             BranchingProcess(NegBin(2.0, 0.2), Gamma(2.5, 2.0)), approx; threshold = 10
         )
         @test HybridProcess(exact, approx; threshold = 10) isa HybridProcess
+    end
+
+    @testset "the scalar pairing must share its rates" begin
+        spec(; β = 0.4, progression = [Transition(:recovered; rate = 0.2, terminal = true)], kw...) =
+            ModelSpec(
+            HomogeneousProcess(; transmission_rate = β, population_size = 500, kw...);
+            progression
+        )
+        mf(; β = 0.4, γ = 0.2) = MeanFieldProcess(;
+            population_size = 500, transmission_rate = β, removal_rate = γ
+        )
+        lna = LinearNoiseProcess(;
+            population_size = 500, transmission_rate = 0.4, removal_rate = 0.05
+        )
+        @test HybridProcess(spec(), mf(); threshold = 10) isa HybridProcess
+        @test_throws ArgumentError HybridProcess(spec(), mf(; β = 1.2); threshold = 10)
+        @test_throws ArgumentError HybridProcess(spec(), mf(; γ = 0.05); threshold = 10)
+        @test_throws ArgumentError HybridProcess(spec(), lna; threshold = 10)
+        @test_throws ArgumentError HybridProcess(
+            spec(; β = Steps([0.0, 10.0], [0.4, 0.2])), mf(); threshold = 10
+        )
+
+        # progressions the approximation cannot represent
+        fixed = [Transition(:recovered; delay = Dirac(5.0), terminal = true)]
+        @test_throws ArgumentError HybridProcess(
+            spec(; progression = fixed), mf(); threshold = 10
+        )
+        callable = [
+            Transition(
+                :recovered; rate = 0.2, probability = (rng, ind) -> 1.0, terminal = true
+            ),
+        ]
+        @test_throws ArgumentError HybridProcess(
+            spec(; progression = callable), mf(); threshold = 10
+        )
+        seir = [
+            Transition(:infectious; delay = Exponential(2.0)),
+            Transition(:recovered; from = :infectious, rate = 0.2, terminal = true),
+        ]
+        @test_throws ArgumentError HybridProcess(spec(; progression = seir), mf(); threshold = 10)
+        @test_throws ArgumentError HybridProcess(
+            HomogeneousProcess(; transmission_rate = 0.4, population_size = 500), mf();
+            threshold = 10
+        )
     end
 
     @testset "never crosses the threshold on a small population: agrees with exact simulation" begin
@@ -116,7 +163,10 @@ using StableRNGs
     end
 
     @testset "show" begin
-        exact = HomogeneousProcess(; transmission_rate = 0.4, population_size = 50)
+        exact = ModelSpec(
+            HomogeneousProcess(; transmission_rate = 0.4, population_size = 50);
+            progression = [Transition(:recovered; rate = 0.2, terminal = true)]
+        )
         approx = MeanFieldProcess(;
             population_size = 50, transmission_rate = 0.4, removal_rate = 0.2
         )
