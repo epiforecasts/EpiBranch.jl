@@ -1,0 +1,1 @@
+`infection_likelihood_compatible` now returns `false` for a `Scheduled` with an end time (or another condition that can lapse) around an isolation or quarantine, so `loglikelihood` rejects the model instead of scoring it as if nobody had been removed.
