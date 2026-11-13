@@ -92,6 +92,7 @@ include("model_inputs.jl")
 
 # Transmission models
 include("models/branching_process.jl")
+include("models/renewal_offspring.jl")
 include("models/multi_type_offspring.jl")
 
 # Observation helpers (thinned chain-size distribution, dispatch on the
@@ -177,6 +178,7 @@ include("serial_interval.jl")
 
 # Exports — types
 export TransmissionModel, BranchingProcess, Infectiousness, OffspringTimes,
+    RenewalOffspring,
     HomogeneousProcess, MixingProcess, ModelSpec
 export MeanFieldProcess, MeanFieldState, LinearNoiseProcess, LinearNoiseState
 export StratifiedContacts, flatten_contacts, contacts_from_table, mixing_rate
@@ -260,7 +262,8 @@ export generate_offspring, contacts_of
 
 # Exports — output
 export event_time_metadata, linelist, messy_linelist, contacts, chain_statistics, compute_trace_level!
-export realised_generation_interval, realised_generation_intervals
+export realised_generation_interval, realised_generation_intervals,
+    realised_serial_interval, realised_serial_intervals
 export containment_probability, is_extinct, generation_R, weekly_incidence, scenario_sweep
 export summarise
 
@@ -282,7 +285,7 @@ export chain_length_distribution, offspring_distribution
 export ClusterMixed, ChainSizeMixture
 export GeneratingFunctionOffspring
 # Real-time mixture: per-cluster "is finished?" weight
-export end_of_outbreak_probability
+export end_of_outbreak_probability, end_of_outbreak_inputs
 # Pairwise survival likelihood over a contact structure
 export PairKernel, PairContext, Steps, Seasonal, record_kernel, LayerHost
 export InfectionLayer, PairwiseSurvivalData, ContactPairsLayout, MassActionHazard, SumHazard

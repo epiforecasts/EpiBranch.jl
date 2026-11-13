@@ -1035,7 +1035,6 @@ infectious period. With a finite `duration` (see [`Quarantine`](@ref)) each of
 their contacts during quarantine is blocked and they transmit again once
 released, as with [`Isolation`](@ref)."""
 function infectious_removal_time(t::_Tracing, ind::Individual)
-    get(ind.state, :quarantined, false) || return Inf
     t_removal = Inf
     for key in _trace_removal_keys(t.action)
         t_removal = min(t_removal, permanent_removal_time(ind, key))
@@ -1080,7 +1079,6 @@ end
 # removed the case for are blocked per contact here instead. One with no
 # release is blocked here too, from its own start and never released.
 function competing_risk(t::_Tracing, parent, contact, state)
-    get(parent.state, :quarantined, false) || return nothing
     keys = _trace_removal_keys(t.action)
     length(keys) == 1 && return _removal_risks(parent, 1.0, only(keys))
     risks = Risk[]
