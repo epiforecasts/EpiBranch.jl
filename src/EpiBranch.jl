@@ -214,7 +214,7 @@ export OnRoutes
 export RouteWindow, window_open, window_close
 export is_active, intervention_time
 export AbstractClinicalTransition, Transition, Reporting, Hospitalisation, Death, Recovery
-export is_terminal, terminal_event, terminal_target, exclusive_probabilities
+export is_terminal, terminal_event, terminal_target, produced_states, exclusive_probabilities
 export Signal, TransitionCount, Prevalence
 export ObservationModel, PerCaseObservation, NoObservation, MinimumSize, ChainDetection,
     observe

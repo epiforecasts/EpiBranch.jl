@@ -821,5 +821,5 @@ end
 
 # Whether `transition` moves a case into one of `states`.
 function _enters(transition, states::Tuple)
-    return hasproperty(transition, :state) && getfield(transition, :state) in states
+    return any(in(states), produced_states(transition))
 end

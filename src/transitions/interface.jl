@@ -53,6 +53,21 @@ default `nothing` is skipped by that warning. Non-terminal steps never need it.
 """
 terminal_target(::AbstractClinicalTransition) = nothing
 
+"""
+    produced_states(transition::AbstractClinicalTransition) -> Tuple{Vararg{Symbol}}
+
+The states this step can move a case into, known before any case is
+simulated, such as `(:infectious,)`. The engine reads it to find where an
+infectious window opens (`infectious_from`), to warn about a window whose
+`from` no step produces, and to see whether a progression can make a host
+susceptible again (`:susceptible_again`, which lets the host be infected once
+more from [`susceptible_again_time`](@ref)). A step written outside the
+package declares what it produces by defining a method; a step that leaves
+the default `()` is invisible to those checks. [`Transition`](@ref) returns
+`(its state,)`.
+"""
+produced_states(::AbstractClinicalTransition) = ()
+
 # Whether a terminal transition, taken alone, is guaranteed to occur once its
 # anchor is reached: `true` when nothing can stop it, `false` when a constant
 # gate sits below certainty (including a gate fixed at 0, which never lets a
@@ -448,20 +463,10 @@ function transition_time(
     return start_time + sample_value(delay, delay_rng, individual)
 end
 
-# Set on an individual's own state by `_reinfection_probe` (sellke.jl) to
-# mark its disposable probe individual: every `probability` gate the probe
-# meets is then taken unless its probability is exactly zero, rather than
-# left to the probe's one real draw. Carried on the individual rather than
-# `rng`, since a custom transition's gate is only ever reached through
-# `transition_time(rng, individual, ...)`, which has no `state` argument
-# through which it could otherwise learn it is being probed.
-const _REINFECTION_PROBE_KEY = :_reinfection_probing
-
 function _transition_selected(rng, individual, start_time, probability)
     _anchor_ok(start_time) || return false
     probability === nothing && return true
     p = sample_value(probability, rng, individual)
-    get(individual.state, _REINFECTION_PROBE_KEY, false) && return p > 0
     return rand(rng) < p
 end
 
