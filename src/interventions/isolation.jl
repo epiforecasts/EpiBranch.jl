@@ -54,8 +54,13 @@ end
 struct SymptomaticOnly <: IsolationEligibility end
 is_eligible_for_isolation(::SymptomaticOnly, ind, state) = !is_asymptomatic(ind)
 
-"""Every case is eligible, including asymptomatic ones (mass-testing
-scenarios)."""
+"""Every case is eligible to draw a test result, including asymptomatic ones.
+
+Isolation is timed from symptom onset, so a case with no onset is never
+isolated: `AllCases` changes who draws `:test_positive`, not who is isolated,
+and behaves like [`SymptomaticOnly`](@ref) for isolation itself. Mass testing
+of asymptomatic cases needs a custom rule and an isolation time that does not
+depend on onset."""
 struct AllCases <: IsolationEligibility end
 
 # Fields an eligibility rule reads beyond the onset time every isolation needs.
@@ -87,7 +92,8 @@ known cases are quarantined through [`ContactTracing`](@ref).
   start from it, but no transmission is prevented. There is no default
   because indefinite isolation is a modelling choice to make explicitly.
 - `eligibility`: who can be isolated, [`SymptomaticOnly`](@ref) (default) or
-  [`AllCases`](@ref) (for example with mass testing).
+  [`AllCases`](@ref), which lets asymptomatic cases draw a test result but
+  does not isolate them, because isolation is timed from symptom onset.
 - `test_sensitivity`: probability that an eligible case is detected and
   isolated (default 1). A number, a distribution or a function
   `(rng, ind) -> ...`, drawn once per case.

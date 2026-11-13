@@ -118,10 +118,11 @@ EpiBranch.infectious_removal_time(f::FixedRemoval, ::Individual) = f.time
         @test iso.post_isolation_transmission == 0.0
     end
 
-    @testset "AllCases eligibility isolates asymptomatic individuals too" begin
+    @testset "AllCases eligibility tests asymptomatic individuals but does not isolate them" begin
         # Make the population partially asymptomatic, then with AllCases
-        # eligibility (and full sensitivity) every case should get
-        # :test_positive = true.
+        # eligibility (and full sensitivity) every case gets
+        # :test_positive = true. Isolation is timed from onset, so a case
+        # without one is not isolated.
         clin_mixed = clinical_presentation(
             incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.5
         )
@@ -138,6 +139,10 @@ EpiBranch.infectious_removal_time(f::FixedRemoval, ::Individual) = f.time
         # AllCases + sensitivity = 1.0 means every individual tests
         # positive, including asymptomatic ones.
         @test all(get(ind.state, :test_positive, false) for ind in state.individuals)
+        asymptomatic = filter(is_asymptomatic, state.individuals)
+        @test !isempty(asymptomatic)
+        @test !any(is_isolated, asymptomatic)
+        @test any(is_isolated, filter(!is_asymptomatic, state.individuals))
     end
 
     @testset "test_sensitivity accepts a function" begin
