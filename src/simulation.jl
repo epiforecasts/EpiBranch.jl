@@ -1587,6 +1587,7 @@ function age_bands(
     for c in (lower, upper, proportion)
         hasproperty(df, c) || throw(ArgumentError("the table has no column :$c"))
     end
+    nrow(df) >= 1 || throw(ArgumentError("the table has no rows"))
     lo = df[!, lower]
     hi = df[!, upper]
     (any(ismissing, lo) || any(ismissing, hi) || any(ismissing, df[!, proportion])) &&

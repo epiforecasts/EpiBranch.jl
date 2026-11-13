@@ -523,6 +523,9 @@ end
     @test_throws ArgumentError age_bands([0, 5, 10], [0, 0])
     @test_throws ArgumentError age_bands(DataFrame(lower = [0, 6], upper = [5, 10], proportion = [1, 1]))
     @test_throws ArgumentError age_bands(DataFrame(a = [0]))
+    @test_throws ArgumentError age_bands(
+        DataFrame(lower = Float64[], upper = Float64[], proportion = Float64[])
+    )
 
     # works as the age distribution of demographics
     state = simulate(
