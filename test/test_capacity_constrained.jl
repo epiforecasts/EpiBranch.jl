@@ -1063,12 +1063,14 @@ end
 end
 
 @testset "gates_on_population_clock is found through wrappers" begin
-    iso = Isolation(delay = Exponential(1.0))
+    iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
+    routes = (:transmission,)
     @test !EpiBranch.gates_on_population_clock(iso)
-    @test !EpiBranch.gates_on_population_clock(OnRoutes(iso))
+    @test !EpiBranch.gates_on_population_clock(OnRoutes(iso, routes))
     @test EpiBranch.gates_on_population_clock(Scheduled(iso; start_time = 5.0))
-    @test EpiBranch.gates_on_population_clock(OnRoutes(Scheduled(iso; start_time = 5.0)))
+    @test EpiBranch.gates_on_population_clock(
+        OnRoutes(Scheduled(iso; start_time = 5.0), routes))
     cc = CapacityConstrained(iso; budget_per_period = 3)
     @test EpiBranch.gates_on_population_clock(cc)
-    @test EpiBranch.gates_on_population_clock(OnRoutes(cc))
+    @test EpiBranch.gates_on_population_clock(OnRoutes(cc, routes))
 end
