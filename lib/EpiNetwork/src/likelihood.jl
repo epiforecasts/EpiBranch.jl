@@ -87,10 +87,10 @@ function network_infections(
                 "has $n nodes"
         )
     )
-    columns = _infection_layer_columns(state, model)
+    columns = infection_layer_columns(state, model)
     return NetworkInfections(
         adjacency, columns...; obs_end, followup_end,
-        host_times = _layer_host_times(state, model, host_times)
+        host_times = layer_host_times(state, model, host_times)
     )
 end
 
@@ -124,6 +124,6 @@ function Distributions.loglikelihood(
         data::NetworkInfections,
         model::ModelSpec{<:NetworkProcess}
     )
-    EpiBranch._validate_infection_likelihood(model)
+    EpiBranch.validate_infection_likelihood(model)
     return loglikelihood(data, model.process; susceptibility = model.interventions)
 end

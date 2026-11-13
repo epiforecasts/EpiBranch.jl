@@ -237,7 +237,7 @@ function routed_network_infections(
     end
     contacts = [Vector{Int}[Int.(nb) for nb in w.reach] for w in windows]
     route_names = Symbol[w.name for w in windows]
-    host_times = _layer_host_times(state, model, ())
+    host_times = layer_host_times(state, model, ())
     return RoutedNetworkInfections(
         route_names, contacts, infectious_time, removal_time,
         infection_time, is_index; obs_end, followup_end, host_times
@@ -522,6 +522,6 @@ function Distributions.loglikelihood(
         data::RoutedNetworkInfections,
         model::ModelSpec{<:RoutedNetwork}
     )
-    _validate_infection_likelihood(model)
+    validate_infection_likelihood(model)
     return loglikelihood(data, model.process; susceptibility = model.interventions)
 end

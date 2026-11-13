@@ -273,19 +273,34 @@ is_settled(state, ind::Individual) = get(ind.state, :_settled, false)::Bool
 (1 in a single-type model)."""
 individual_type(ind::Individual) = get(ind.state, :type, 1)::Int
 
-# The key `set_isolated!` records a removal's history under. A component that
-# removes a host through a path of its own records under its own key instead,
-# and names it from `removal_gap_host_times`.
+"""
+    EpiBranch.REMOVAL_STRETCHES_KEY
+
+The key `set_isolated!` records a removal's history under, and the name of the
+column of merged removal stretches that [`layer_host_times`](@ref
+EpiBranch.layer_host_times) gives an [`InfectionLayer`](@ref)'s `host_times`. The
+pairwise likelihood reads removals from this column: a layer without it is scored
+as if nobody were ever removed. A component that removes a host through a path
+of its own records under its own key instead, and names it from
+[`removal_gap_host_times`](@ref EpiBranch.removal_gap_host_times).
+"""
 const REMOVAL_STRETCHES_KEY = :_removal_stretches
 
 # Isolation reads its own removals to keep its route coverage separate from
 # that of quarantine when the two interventions are combined.
 const ISOLATION_STRETCHES_KEY = :_isolation_stretches
 
-# The key a removal that only blocks a fraction of the hazard (see
-# `removal_block_probability`) records its stretches under, apart from
-# `REMOVAL_STRETCHES_KEY`'s complete ones, so a likelihood never mistakes one
-# for the other. `Isolation` writes here for itself when leaky.
+"""
+    EpiBranch.LEAKY_REMOVAL_STRETCHES_KEY
+
+The key a removal that only blocks a fraction of the hazard (see
+[`removal_block_probability`](@ref EpiBranch.removal_block_probability)) records
+its stretches under, apart from [`REMOVAL_STRETCHES_KEY`](@ref
+EpiBranch.REMOVAL_STRETCHES_KEY)'s complete ones, so a likelihood never mistakes
+one for the other. `Isolation` writes here for itself when leaky, and
+[`layer_host_times`](@ref EpiBranch.layer_host_times) gives the column to the
+layer under this name.
+"""
 const LEAKY_REMOVAL_STRETCHES_KEY = :_leaky_removal_stretches
 
 const _NO_STRETCHES = Tuple{Float64, Float64}[]

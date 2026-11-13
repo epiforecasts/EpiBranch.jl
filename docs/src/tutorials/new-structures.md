@@ -486,6 +486,30 @@ running totals for you. For contact tracing and ring or group vaccination to
 act, the model also declares `EpiBranch.supplies_contacts(::MyModel) = true`
 and passes `sellke_race!` a `contacts` function naming each case's contacts;
 without them those interventions have no effect; `simulate` warns once per run, naming each such intervention and noting that its effect on a case itself still applies.
+A model over a fixed population, with a window of infectiousness per host,
+subtypes [`EpiBranch.FixedPopulationProcess`](@ref), which supplies the defaults
+the built-in structures share: the `max_cases` and `max_generations` keyword
+defaults are left off ([`EpiBranch.honours_termination_controls`](@ref)), and
+[`EpiBranch.validate_process_windows`](@ref) warns when the window's `until`
+states miss a terminal state of the progression. The window is read from the
+fields `from` and `until`, or from a method of [`EpiBranch.process_window`](@ref)
+for a process that names them otherwise. Such a model takes `initial_cases` by
+defining `EpiBranch.supports_initial_cases(::MyModel) = true` and, to check the
+IDs against its population, a method of [`EpiBranch.validate_initial_cases`](@ref)
+that calls [`EpiBranch.validate_initial_case_ids`](@ref); its race seeds the
+chosen hosts with [`EpiBranch.seed_initial_cases!`](@ref). Without the trait,
+`simulate` refuses `initial_cases` for it.
+
+To score a simulated outbreak with the pairwise survival likelihood, the model
+subtypes [`InfectionLayer`](@ref) and builds it from the simulated state with
+[`EpiBranch.infection_layer_columns`](@ref) and
+[`EpiBranch.layer_host_times`](@ref), which gives the removal stretches of the
+interventions under [`EpiBranch.REMOVAL_STRETCHES_KEY`](@ref). Its
+`loglikelihood` for a `ModelSpec` calls
+[`EpiBranch.validate_infection_likelihood`](@ref) first, so an intervention that
+has not declared [`EpiBranch.infection_likelihood_compatible`](@ref) is refused
+rather than scored without its effect.
+
 A loop that does not use the race instead calls
 [`resolve_transitions!`](@ref EpiBranch.resolve_transitions!)`(state, individual)`
 once per case, after its population characteristics and intervention values

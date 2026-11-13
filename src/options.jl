@@ -210,8 +210,28 @@ function _case_cap(opts::SimOpts)
     return typemax(Int)
 end
 
-function _validate_initial_cases(model::TransmissionModel, opts::SimOpts)
-    opts.initial_cases === nothing ||
+"""
+    supports_initial_cases(model::TransmissionModel) -> Bool
+
+Whether `simulate(model; initial_cases = ids)` can seed the named hosts. The
+default is `false`, which makes [`validate_initial_cases`](@ref
+EpiBranch.validate_initial_cases) refuse the keyword. A model over a fixed
+population, whose hosts have stable IDs, returns `true` and seeds the chosen IDs
+with [`seed_initial_cases!`](@ref EpiBranch.seed_initial_cases!).
+"""
+supports_initial_cases(::TransmissionModel) = false
+
+"""
+    validate_initial_cases(model::TransmissionModel, opts::SimOpts)
+
+Called before a run starts. The default throws an `ArgumentError` when
+`opts.initial_cases` is set and `supports_initial_cases(model)` is `false`. A
+model that supports `initial_cases` extends this to check the IDs against its
+population, usually with [`validate_initial_case_ids`](@ref
+EpiBranch.validate_initial_case_ids).
+"""
+function validate_initial_cases(model::TransmissionModel, opts::SimOpts)
+    opts.initial_cases === nothing || supports_initial_cases(model) ||
         throw(ArgumentError("$(nameof(typeof(model))) does not support initial_cases"))
     return nothing
 end
@@ -237,17 +257,30 @@ function _validate_index_types(model::TransmissionModel, opts::SimOpts)
     return nothing
 end
 
-function _validate_initial_case_ids(opts::SimOpts, n)
+"""
+    validate_initial_case_ids(opts::SimOpts, n)
+
+Check that every ID in `opts.initial_cases`, if given, lies in `1:n`, for a
+fixed population of `n` hosts.
+"""
+function validate_initial_case_ids(opts::SimOpts, n)
     ids = opts.initial_cases
     ids === nothing && return nothing
     all(id -> id <= n, ids) || throw(ArgumentError("initial_cases IDs must be in 1:$n"))
     return nothing
 end
 
-# Candidate times are local to a race; chosen IDs refer to the whole population.
-_seed_initial_cases!(best, members, ids) = _seed_initial_cases!(best, members, Set(ids))
+"""
+    seed_initial_cases!(best, members, ids)
 
-function _seed_initial_cases!(best, members, chosen::AbstractSet)
+Seed the hosts `ids` as index cases in the candidate buffer `best` of a Sellke
+race: each host in `members` that is in `ids` gets candidate time `0`. `members`
+lists the host IDs the race covers, in the order of `best`, so a race over part
+of a population still takes IDs that refer to the whole of it.
+"""
+seed_initial_cases!(best, members, ids) = seed_initial_cases!(best, members, Set(ids))
+
+function seed_initial_cases!(best, members, chosen::AbstractSet)
     for (k, id) in enumerate(members)
         id in chosen && (best[k] = 0)
     end

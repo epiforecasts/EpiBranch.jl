@@ -144,7 +144,7 @@ end
             interventions = [Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)]
         )
         state = simulate(m; rng = StableRNG(1), n_initial = 3)
-        columns = EpiBranch._infection_layer_columns(state, m)
+        columns = EpiBranch.infection_layer_columns(state, m)
 
         infected = findall(is_infected, state.individuals)
         @test findall(!isnan, columns.infection_time) == infected

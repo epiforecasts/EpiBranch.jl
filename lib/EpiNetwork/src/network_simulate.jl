@@ -91,7 +91,7 @@ function _seed_network!(
     )
     if initial_cases !== nothing
         chosen = initial_cases isa AbstractSet ? initial_cases : Set(initial_cases)
-        EpiBranch._seed_initial_cases!(best, members, chosen)
+        EpiBranch.seed_initial_cases!(best, members, chosen)
         _ext_active(extsrc) && _seed_external!(best, members, state, extsrc, Tobs, rng, chosen)
         return nothing
     end
@@ -121,6 +121,8 @@ function _seed_external!(best, members, state, extsrc, Tobs, rng, skip = ())
     return nothing
 end
 
-function EpiBranch._validate_initial_cases(model::NetworkProcess, opts::SimOpts)
-    return EpiBranch._validate_initial_case_ids(opts, length(model.adjacency))
+supports_initial_cases(::NetworkProcess) = true
+
+function EpiBranch.validate_initial_cases(model::NetworkProcess, opts::SimOpts)
+    return EpiBranch.validate_initial_case_ids(opts, length(model.adjacency))
 end

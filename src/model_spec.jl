@@ -16,7 +16,7 @@
 # below certainty: with none that always occurs, a case can clear every gate
 # and reach no terminal state at all — `:outcome` stays unset and, on a
 # structure-driven model, the infectious window this case opened never closes
-# (a different symptom of the same gap that `_warn_uncovered_terminal_states`,
+# (a different symptom of the same gap that `warn_uncovered_terminal_states`,
 # in branching_process.jl, catches for states missing from `until`). Skipped
 # when any terminal's `terminal_certainty` is `missing`: unknowable without an
 # individual (or a transition type that hasn't declared it), so silence over a
@@ -429,7 +429,7 @@ function ModelSpec(
         recorder = recorder(process)
     )
     prog = _progvec(progression)
-    _validate_process_windows(process, prog)
+    validate_process_windows(process, prog)
     _warn_incomplete_terminal_coverage(prog)
     ivs = _intervention_vector(interventions)
     _validate_dose_schedule(ivs)
@@ -502,7 +502,7 @@ function simulate(
         spec.process, n_initial, initial_cases, index_types, max_cases, max_generations,
         max_time, stopping_rules
     )
-    _validate_initial_cases(spec.process, sim_opts)
+    validate_initial_cases(spec.process, sim_opts)
     _validate_index_types(spec.process, sim_opts)
     return _run_once_or_retry(
         spec.process, sim_opts, condition, max_attempts;
@@ -545,7 +545,7 @@ function _simulate_each(
         spec.process, n_initial, initial_cases, index_types, max_cases, max_generations,
         max_time, stopping_rules
     )
-    _validate_initial_cases(spec.process, sim_opts)
+    validate_initial_cases(spec.process, sim_opts)
     _validate_index_types(spec.process, sim_opts)
     return _simulate_n(
         each, T, spec.process, n, sim_opts;

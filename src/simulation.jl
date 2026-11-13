@@ -100,13 +100,13 @@ function simulate(
     # A bare process is composed with no ModelSpec, so run the checks the spec
     # constructor would otherwise do (a ModelSpec routes here via its own
     # `simulate`, already validated at composition, so it never double-warns).
-    _validate_process_windows(model, progression(model))
+    validate_process_windows(model, progression(model))
     _warn_incomplete_terminal_coverage(progression(model))
     sim_opts = _build_sim_opts(
         model, n_initial, initial_cases, index_types, max_cases, max_generations,
         max_time, stopping_rules
     )
-    _validate_initial_cases(model, sim_opts)
+    validate_initial_cases(model, sim_opts)
     _validate_index_types(model, sim_opts)
     return _run_once_or_retry(
         model, sim_opts, condition, max_attempts;
@@ -265,13 +265,13 @@ function _simulate_each(
         rng::AbstractRNG = Random.default_rng(),
         parallel::Bool = false
     ) where {T}
-    _validate_process_windows(model, progression(model))
+    validate_process_windows(model, progression(model))
     _warn_incomplete_terminal_coverage(progression(model))
     sim_opts = _build_sim_opts(
         model, n_initial, initial_cases, index_types, max_cases, max_generations,
         max_time, stopping_rules
     )
-    _validate_initial_cases(model, sim_opts)
+    validate_initial_cases(model, sim_opts)
     _validate_index_types(model, sim_opts)
     return _simulate_n(
         each, T, model, n, sim_opts; interventions = interventions(model),
@@ -312,13 +312,18 @@ end
 # bookkeeping is reconciled from it afterwards, which the public `sellke_race!`
 # wrapper does through `_reconcile_sellke_bookkeeping!` below.
 
-# Whether a model's simulation honours the `max_cases`/`max_generations`
-# keyword shortcuts' *defaults* out of the box: a branching process and a model
-# of its own do. The built-in models over a fixed population leave these two
-# shortcuts' defaults off (`_drop_default_shortcuts`), so a run over a large
-# population keeps running to extinction or `max_time` unless a cap is
-# explicitly asked for. They override this to `false`.
-_honours_termination_controls(::TransmissionModel) = true
+"""
+    honours_termination_controls(model::TransmissionModel) -> Bool
+
+Whether a model's simulation applies the `max_cases` and `max_generations`
+keyword *defaults* out of the box. The default is `true`, as for a branching
+process. A model over a fixed population returns `false`, so a run over a large
+population keeps going to extinction or `max_time` unless a cap is asked for
+explicitly: a cap set through a non-default keyword value or through
+`stopping_rules` is applied either way. A subtype of [`FixedPopulationProcess`](@ref
+EpiBranch.FixedPopulationProcess) has `false` already.
+"""
+honours_termination_controls(::TransmissionModel) = true
 
 # The time at which a structure-driven run ends: the earliest `time_bound`
 # among the stopping rules, or `Inf`.
@@ -342,11 +347,11 @@ _poll_rules(sim_opts) = filter(!honoured_without_should_stop, sim_opts.stopping_
 
 # Drop the `MaxCases`/`MaxGenerations` rules `SimOpts` built from the
 # `max_cases`/`max_generations` keywords, on a model whose race does not
-# honour their defaults (`_honours_termination_controls` false), when each was
+# honour their defaults (`honours_termination_controls` false), when each was
 # left at its default — a cap set through a non-default keyword value, or
 # through `stopping_rules` directly, is never touched here.
 function _drop_default_shortcuts(model, sim_opts, max_cases, max_generations, stopping_rules)
-    (stopping_rules !== nothing || _honours_termination_controls(model)) && return sim_opts
+    (stopping_rules !== nothing || honours_termination_controls(model)) && return sim_opts
     rules = sim_opts.stopping_rules
     max_cases == _DEFAULT_MAX_CASES &&
         (rules = filter(r -> !(r isa MaxCases && r.n == max_cases), rules))

@@ -118,6 +118,7 @@ include("sellke.jl")
 include("mass_action.jl")
 include("offspring_route.jl")
 include("contacts_route.jl")
+include("models/fixed_population.jl")
 include("models/homogeneous.jl")
 include("models/mixing.jl")
 

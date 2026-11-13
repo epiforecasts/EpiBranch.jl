@@ -98,7 +98,7 @@ function _seed_clique!(
         initial_cases = nothing
     )
     if initial_cases !== nothing
-        EpiBranch._seed_initial_cases!(best, members, initial_cases)
+        EpiBranch.seed_initial_cases!(best, members, initial_cases)
         _ext_active(extsrc) &&
             _seed_external!(best, members, state, extsrc, Tobs, rng, initial_cases)
         return nothing
@@ -132,8 +132,10 @@ function _pairkernel(k, i, j, state, from)
     )
 end
 
-function EpiBranch._validate_initial_cases(model::HouseholdProcess, opts::SimOpts)
-    return EpiBranch._validate_initial_case_ids(opts, length(model.household_of))
+supports_initial_cases(::HouseholdProcess) = true
+
+function EpiBranch.validate_initial_cases(model::HouseholdProcess, opts::SimOpts)
+    return EpiBranch.validate_initial_case_ids(opts, length(model.household_of))
 end
 
 # The race's `members` are every person in id order, so a household's ids are

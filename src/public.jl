@@ -216,6 +216,32 @@ public sellke_race!
 # progression.
 public infectious_from
 
+# A fixed-population structure written outside the package: subtype
+# `FixedPopulationProcess` for the shared defaults, say through `process_window`
+# which states open and close its window, whether it takes `initial_cases` and
+# seeds them with `seed_initial_cases!`, and whether the `max_cases` and
+# `max_generations` defaults apply.
+public FixedPopulationProcess
+public process_window
+public supports_initial_cases
+public validate_initial_cases
+public validate_initial_case_ids
+public seed_initial_cases!
+public honours_termination_controls
+public validate_process_windows
+public warn_uncovered_terminal_states
+
+# Building and checking an infection layer from a simulated outbreak: the
+# per-host columns, the removal-stretch columns the likelihood reads under
+# `REMOVAL_STRETCHES_KEY` and `LEAKY_REMOVAL_STRETCHES_KEY`, and the checks that
+# refuse a model the layer cannot represent.
+public infection_layer_columns
+public layer_host_times
+public validate_infection_likelihood
+public validate_removal_gap_keys
+public REMOVAL_STRETCHES_KEY
+public LEAKY_REMOVAL_STRETCHES_KEY
+
 # Hooks the extending guides ask a package to define for its own
 # intervention, trace rate, delay or action.
 #   - `keep_active` says which targets an intervention still acts on;
