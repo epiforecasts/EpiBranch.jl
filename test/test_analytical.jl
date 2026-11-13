@@ -1425,6 +1425,22 @@ using ForwardDiff
             @test abs(ll(12) - ll(100)) < 0.5
         end
 
+        @testset "Simulated chain length of a supercritical model stays bounded" begin
+            # With R above 1 and no cap on cases, runs would grow without
+            # limit. The internal safety stop censors them at the length
+            # reached, so the call returns.
+            model = ModelSpec(
+                BranchingProcess(Poisson(2.0), Exponential(1.0));
+                interventions = [Isolation(onset_to_isolation_delay = 100.0, duration = Inf)],
+                attributes = clinical_presentation(incubation_period = Gamma(2.0, 2.5))
+            )
+            ll = loglikelihood(
+                ChainLengths([3, 5]), model; n_sim = 5, rng = StableRNG(1)
+            )
+            @test ll isa Real
+            @test !isnan(ll)
+        end
+
         @testset "_empirical_ll with censored_at_value" begin
             f = EpiBranch._empirical_ll
             sim = [1, 2, 2, 3, 3]
