@@ -707,8 +707,8 @@ end
 
 # An intervention that sets its own effect, as `Isolation` does, is rationed
 # after the effect is written: `_ration_own_effect!` undoes it if it does not
-# fit, and a `HeldCapacity` also records the stay. One proposing no effect of
-# its own in `resolve_individual!` (a dose) goes through the action funnel.
+# fit; a `HeldCapacity` also records the stay. An intervention that writes no
+# effect in `resolve_individual!` (a dose) goes through the action funnel.
 function resolve_individual!(w::_CapacityWrapper, ind, state)
     resolve_individual!(w.intervention, ind, state)
     resolves_under_capacity(w.intervention) && _ration_own_effect!(w, ind, state)
