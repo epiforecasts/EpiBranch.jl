@@ -541,6 +541,23 @@ end
         )
     end
 
+    @testset "mass action is finite when follow-up is unbounded" begin
+        # person 2 is never infected and is watched for ever: once the only
+        # case has recovered the hazard is zero, so the tail adds nothing
+        data = _TestInfections(
+            [1, 2], [0.0, NaN], [0.0, NaN], [3.0, NaN], [true, false]; obs_end = Inf
+        )
+        mass_action = MassActionHazard(; transmission_rate = 0.6, population_size = 4)
+        s = EpiBranch.mass_action_schedule(mass_action, data.infectious_time, data.removal_time)
+        @test EpiBranch.SurvivalDistributions.cumhazard(s, Inf) ≈ 0.6 * 3 / 4
+        @test isfinite(
+            pairwise_surv_loglik(Exponential(1.0), data; external_hazard = mass_action)
+        )
+        # someone still infectious keeps the hazard positive for ever
+        open_ended = EpiBranch.mass_action_schedule(mass_action, [0.0], [Inf])
+        @test EpiBranch.SurvivalDistributions.cumhazard(open_ended, Inf) == Inf
+    end
+
     @testset "mass action plus an importation rate explains index cases" begin
         mass = MassActionHazard(; transmission_rate = 5.0, population_size = 5)
         α = 0.1

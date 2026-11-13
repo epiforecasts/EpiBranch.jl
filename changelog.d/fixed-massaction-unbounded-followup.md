@@ -1,0 +1,1 @@
+`MassActionHazard` likelihoods are no longer `NaN` when follow-up is unbounded (`obs_end = Inf`, `followup_end = Inf`): once nobody is infectious the cumulative hazard stops growing instead of evaluating `0 * Inf`.
