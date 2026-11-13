@@ -354,7 +354,8 @@ function simulate_once(
         risks = EpiBranch.transmission_risks(model), recorder = recorder,
         seed! = (best, members, r) -> _seed_network!(
             best, members, state, model.external_hazard, sim_opts.n_initial, Tobs, r;
-            initial_cases = sim_opts.initial_cases
+            initial_cases = sim_opts.initial_cases,
+            n_initial_given = sim_opts.n_initial_given
         ),
         introduction = _ext_active(model.external_hazard) ?
             (EpiBranch._ext_prepare(model.external_hazard), Tobs) : nothing,
