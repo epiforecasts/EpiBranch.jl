@@ -1,0 +1,1 @@
+The line list and clinical transitions tutorials now give the case fatality ratio with `exclusive_probabilities` instead of pairing `Death` with `Recovery`, which realises fewer deaths than `probability`, and the competing-outcomes section says how many fewer.

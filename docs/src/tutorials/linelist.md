@@ -27,8 +27,8 @@ incubation period with a median of about 4.5 days. `Exponential(θ)` has mean θ
 
 After symptom onset each case is reported (mean 3 days after onset), admitted
 to hospital with probability 0.2, and is due to die with probability 0.05.
-Every case also gets a recovery time. Death and recovery are competing
-outcomes: whichever comes first ends the case's course.
+Every case ends in death or recovery. The two outcomes are made mutually
+exclusive with [`exclusive_probabilities`](@ref), so that exactly 5% of cases die.
 
 ```@example linelist
 using EpiBranch
@@ -39,11 +39,14 @@ using StableRNGs
 
 attrs = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
 
+death_p, recovered_p = exclusive_probabilities([0.05, 0.95])
+
 progression = [
     Reporting(delay = Exponential(3.0)),
     Hospitalisation(delay = Exponential(5.0), probability = 0.2),
-    Death(delay = Exponential(14.0), probability = 0.05),
-    Recovery(delay = Exponential(14.0)),
+    Death(delay = Exponential(14.0), probability = death_p),
+    Transition(:recovered, from = :onset, delay = Exponential(14.0),
+        probability = recovered_p, terminal = true),
 ]
 
 # Secondary cases: NegBin(R = 1.5, k = 0.5); generation time: LogNormal (days)
