@@ -756,9 +756,9 @@ function _profile_bounds(k::_TruncatedHazardKernel)
     return k.kernel.onset, min(k.kernel.upper, k.hi), !_no_mass(k)
 end
 
-# A value stripped of every dual level, for the ends of a bracket.
+# A value stripped of every dual level, for the ends of a bracket (the
+# `ForwardDiff.Dual` method is in `ext/EpiBranchForwardDiffExt.jl`).
 _plain(x::Real) = x
-_plain(x::ForwardDiff.Dual) = _plain(ForwardDiff.value(x))
 
 function _calendar_invlogccdf(::SmoothCalendar, k::_CalendarScaledKernel, target)
     rate = s -> _calendar_hazard(k, s)
