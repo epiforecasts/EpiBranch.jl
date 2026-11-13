@@ -28,9 +28,8 @@ count(is_isolated, state.individuals)                 # number isolated
 onsets = [onset_time(i) for i in state.individuals if is_infected(i)]
 ```
 """
-function onset_time(ind::Individual{T}) where {T}
-    return _state_real(ind.state, :onset_time, T(NaN))
-end
+onset_time(ind::Individual{T}) where {T} =
+    _state_real(ind.state, :onset_time, T(NaN))
 
 """
     incubation_period(ind)
@@ -49,9 +48,8 @@ start of the outbreak: the earliest step of the natural history that ends the
 case (see [`Transition`](@ref)). `Inf` if there is none yet, or if the
 natural history has no such step.
 """
-function outcome_time(ind::Individual{T}) where {T}
-    return _state_real(ind.state, :outcome_time, T(Inf))
-end
+outcome_time(ind::Individual{T}) where {T} =
+    _state_real(ind.state, :outcome_time, T(Inf))
 
 """Whether the person was isolated in a way that counts as detecting them, so
 that tracing and group vaccination start from them and the line list shows
@@ -63,9 +61,8 @@ is_isolated(ind::Individual) = _isolation_in_force(ind) && !_isolation_unrecorde
 """Time from which isolation or quarantine stops the person transmitting, in
 days since the start of the outbreak (`Inf` if never), whether or not it
 counts as a detection (see [`is_isolated`](@ref))."""
-function isolation_time(ind::Individual{T}) where {T}
-    return _state_real(ind.state, :isolation_time, T(Inf))
-end
+isolation_time(ind::Individual{T}) where {T} =
+    _state_real(ind.state, :isolation_time, T(Inf))
 
 """Time at which the isolation or quarantine that began at
 [`isolation_time`](@ref) ends, in days since the start of the outbreak (`Inf`
@@ -73,9 +70,8 @@ if it never does). It is finite when [`Isolation`](@ref) or the
 [`Quarantine`](@ref) of [`ContactTracing`](@ref) has a duration, so a
 quarantine that ended before the person was later infected does not stop
 their own onward transmission. Set by [`set_isolated!`](@ref)."""
-function isolation_release_time(ind::Individual{T}) where {T}
-    return _state_real(ind.state, :isolation_release_time, T(Inf))
-end
+isolation_release_time(ind::Individual{T}) where {T} =
+    _state_real(ind.state, :isolation_release_time, T(Inf))
 
 
 # Whether an isolation or quarantine stands on the individual, recorded or not.
@@ -111,9 +107,8 @@ can compare it with the time an outcome would take effect (for example
 `onset_time(ind)` for the default [`Death`](@ref)) to decide whether the
 dose's [`severity_efficacy`](@ref) applies: immunity that develops later
 gives no protection."""
-function immunity_time(ind::Individual{T}; dose_label::Symbol = :default) where {T}
-    return _state_real(ind.state, _immunity_time_key(dose_label), T(Inf))
-end
+immunity_time(ind::Individual{T}; dose_label::Symbol = :default) where {T} =
+    _state_real(ind.state, _immunity_time_key(dose_label), T(Inf))
 
 """The full-strength efficacy against infection drawn for this person's dose
 named `dose_label`, as it was sampled when the dose was given: the probability
@@ -171,9 +166,8 @@ example by post-exposure vaccination, in days since the start of the outbreak
 (`Inf` if it was not). Set by
 [`abort_infection!`](@ref EpiBranch.abort_infection!).
 """
-function infection_aborted_time(ind::Individual{T}) where {T}
-    return _state_real(ind.state, :infection_aborted_time, T(Inf))
-end
+infection_aborted_time(ind::Individual{T}) where {T} =
+    _state_real(ind.state, :infection_aborted_time, T(Inf))
 
 """
     abort_infection!(ind, time)
@@ -246,9 +240,8 @@ models does.
 Set it with a step in the model's `progression`, timed from the state that
 starts waning, for example
 `Transition(:susceptible_again, from = :recovered, delay = Exponential(180))`."""
-function susceptible_again_time(ind::Individual{T}) where {T}
-    return _state_real(ind.state, :susceptible_again_time, T(Inf))
-end
+susceptible_again_time(ind::Individual{T}) where {T} =
+    _state_real(ind.state, :susceptible_again_time, T(Inf))
 
 """
     is_settled(state, ind) -> Bool
@@ -417,7 +410,16 @@ recorded this way, because they keep the handle under a key of their own
 (see the `:_isolation_handle` key in [`Isolation`](@ref)).
 """
 function revise_removal!(ind::Individual, handle; release::Real)
-    _revise_removal_entry!(ind, handle, release)
+    entries = get(ind.state, :_removal_entries, nothing)
+    i = _find_removal_entry(entries, handle)
+    i === nothing && return nothing
+    h, key, start, _, isolation_span, unrecorded = entries[i]
+    S = promote_type(typeof(start), typeof(release))
+    new_entries = _widen_removal_entries(entries, S)
+    new_entries[i] = (h, key, start, convert(S, release), isolation_span, unrecorded)
+    ind.state[:_removal_entries] = new_entries
+    _recompute_removal_cache!(ind, key)
+    isolation_span && _refresh_isolation_span!(ind)
     return nothing
 end
 
@@ -438,7 +440,15 @@ a removal outright calls it too. A policy that wants the same for its own
 only be withdrawn wholesale, with [`clear_isolated!`](@ref).
 """
 function withdraw_removal!(ind::Individual, handle)
-    _withdraw_removal_entry!(ind, handle)
+    entries = get(ind.state, :_removal_entries, nothing)
+    i = _find_removal_entry(entries, handle)
+    i === nothing && return nothing
+    key, isolation_span = entries[i][2], entries[i][5]
+    new_entries = copy(entries)
+    deleteat!(new_entries, i)
+    ind.state[:_removal_entries] = new_entries
+    _recompute_removal_cache!(ind, key)
+    isolation_span && _refresh_isolation_span!(ind)
     return nothing
 end
 
@@ -455,8 +465,8 @@ _find_removal_entry(entries, handle) = findfirst(e -> e[1] == handle, entries)
 
 # A copy of `old`, widened to the type promoted from its own element type
 # and `S` (an AD dual release following a plain `Float64` one, say), so that
-# neither `_push_removal_entry!`'s push nor `_revise_removal_entry!`'s
-# `setindex!` narrows the new entry back down to fit. `old` already at `S`,
+# neither the push in `_push_removal_entry!` nor the `setindex!` in
+# `revise_removal!` narrows the new entry back down to fit. `old` already at `S`,
 # the common case, takes the plain `copy` the generic conversion below would
 # reach the same place by, more slowly.
 _widen_removal_entries(old::Vector{_RemovalEntry{S}}, ::Type{S}) where {S} = copy(old)
@@ -518,33 +528,6 @@ function _push_qualifying_removal!(
     # does closes the infectious window instead (see `infectious_removal_time`),
     # which the likelihood already reads with no key of its own.
     isfinite(release) && _note_lapsing_removal_key!(ind, key)
-    return nothing
-end
-
-function _revise_removal_entry!(ind::Individual, handle, release::Real)
-    entries = get(ind.state, :_removal_entries, nothing)
-    i = _find_removal_entry(entries, handle)
-    i === nothing && return nothing
-    h, key, start, _, isolation_span, unrecorded = entries[i]
-    S = promote_type(typeof(start), typeof(release))
-    new_entries = _widen_removal_entries(entries, S)
-    new_entries[i] = (h, key, start, convert(S, release), isolation_span, unrecorded)
-    ind.state[:_removal_entries] = new_entries
-    _recompute_removal_cache!(ind, key)
-    isolation_span && _refresh_isolation_span!(ind)
-    return nothing
-end
-
-function _withdraw_removal_entry!(ind::Individual, handle)
-    entries = get(ind.state, :_removal_entries, nothing)
-    i = _find_removal_entry(entries, handle)
-    i === nothing && return nothing
-    key, isolation_span = entries[i][2], entries[i][5]
-    new_entries = copy(entries)
-    deleteat!(new_entries, i)
-    ind.state[:_removal_entries] = new_entries
-    _recompute_removal_cache!(ind, key)
-    isolation_span && _refresh_isolation_span!(ind)
     return nothing
 end
 
@@ -655,15 +638,8 @@ function _refresh_isolation_span!(ind::Individual{T}) where {T}
     # them untyped rather than asserting `ind`'s own element type here.
     entries = get(ind.state, :_removal_entries, ())
     span = _fold_isolation_span(entries)
-    if span === nothing
-        ind.state[:isolated] = false
-        ind.state[:isolation_time] = T(Inf)
-        ind.state[:isolation_release_time] = T(Inf)
-        delete!(ind.state, :_isolation_unrecorded)
-        return nothing
-    end
-    start, release, unrecorded = span
-    ind.state[:isolated] = true
+    start, release, unrecorded = something(span, (T(Inf), T(Inf), false))
+    ind.state[:isolated] = span !== nothing
     ind.state[:isolation_time] = start
     ind.state[:isolation_release_time] = release
     if unrecorded
@@ -714,11 +690,7 @@ end
 # widens to match, rather than narrowing the new stretch down to fit it.
 function _with_stretch(old::Vector{Tuple{T, T}}, stretch::Tuple{S, S}) where {T, S}
     P = promote_type(T, S)
-    new = Vector{Tuple{P, P}}(undef, length(old) + 1)
-    copyto!(new, old)
-    new[end] = stretch
-    sort!(new; by = first)
-    return _merge_stretches!(new)
+    return _merge_stretches!(sort!(push!(Vector{Tuple{P, P}}(old), stretch); by = first))
 end
 _with_stretch(old, stretch) = _merge_stretches(sort!(push!(copy(old), stretch); by = first))
 
