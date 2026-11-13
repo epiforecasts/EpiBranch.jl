@@ -564,10 +564,9 @@ to P(size >= cap) rather than P(size = cap). Observed values at or above
 `cap` are evaluated as P(size >= cap).
 
 With `censored_at_value = true` the cap is ignored and each censored value is
-instead a lower bound on that run's true value. Runs censored at or below an
-observation `x` could equal `x` or exceed it, so they are left out of the
-probability of `x`. Runs censored above `x` are known to exceed it and count
-towards its right tail.
+instead a lower bound on that run's true value. The probabilities come from a
+product-limit (Kaplan-Meier) estimator, so a censored run informs the hazard at
+every value up to its censoring point and its mass moves to the larger values.
 
 `prob_concluded`, when given (one value per observation, in `[0, 1]`), mixes
 each observation's point mass with its right tail under the same simulated
@@ -674,20 +673,26 @@ function _empirical_ll(
 end
 
 # Empirical log-likelihood where each censored run is a lower bound on its own
-# value (see `_empirical_ll`). Runs censored at or below an observation could
-# equal it or exceed it, so they are left out of that observation's denominator.
+# value (see `_empirical_ll`). A product-limit estimator gives the probability
+# of each value: a run censored at c is at risk at every value up to c, so it
+# informs the hazard there and leaves the larger values to the runs still going.
+# Each hazard is Laplace-smoothed, (events + 1) / (at risk + 2), to keep every
+# value supported.
 function _empirical_ll_censored_at_value(
         observed, counts, censored_counts, min_val, prob_concluded
     )
     n_bins = length(counts)
-    n_uncensored = sum(counts)
+    # Runs still at risk at each value: uncensored at or above it, plus
+    # censored at or above it.
+    at_risk = reverse(cumsum(reverse(counts .+ censored_counts)))
+    hazard = (counts .+ 1) ./ (at_risk .+ 2)
+    # survival[j] = P(X >= value j) = prod_{k<j} (1 - hazard[k])
+    survival = vcat(1.0, cumprod(1 .- hazard))[1:n_bins]
     ll = 0.0
     for (i, x) in enumerate(observed)
         idx = x - min_val + 1
         (idx < 1 || idx > n_bins) && return -Inf
-        n_above = sum(@view censored_counts[(idx + 1):end])
-        denom = n_uncensored + n_above + n_bins
-        lc = log((counts[idx] + 1) / denom)
+        lc = log(hazard[idx] * survival[idx])
         if prob_concluded === nothing
             ll += lc
             continue
@@ -698,7 +703,7 @@ function _empirical_ll_censored_at_value(
         if π_i >= one(π_i)
             ll += lc
         else
-            lo = log((sum(@view counts[idx:end]) + n_above + (n_bins - idx + 1)) / denom)
+            lo = log(survival[idx])
             ll += π_i <= zero(π_i) ? lo : _logsumexp2(log(π_i) + lc, log1p(-π_i) + lo)
         end
     end

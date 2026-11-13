@@ -1429,9 +1429,10 @@ using ForwardDiff
             f = EpiBranch._empirical_ll
             sim = [1, 2, 2, 3, 3]
             cens = [false, false, false, true, true]
-            # Observation 2: counts[2]=2, uncensored=3, above=2, bins=3.
+            # Hazards (events + 1) / (at risk + 2): 2/7, 3/6, 1/4 for values 1-3.
+            # P(X = 2) = 1/2 * 5/7.
             @test f([2], sim; min_val = 1, censored = cens, censored_at_value = true) ≈
-                log(3 / 8)
+                log(5 / 14)
             # An observation below the minimum value has no support.
             @test f([0], sim; min_val = 1, censored = cens, censored_at_value = true) == -Inf
             # prob_concluded at 1 and 0 reduce to the point mass and right tail.
@@ -1444,7 +1445,7 @@ using ForwardDiff
                 [2], sim; min_val = 1, censored = cens, censored_at_value = true,
                 prob_concluded = [0.0]
             )
-            @test tail ≈ log(6 / 8)
+            @test tail ≈ log(5 / 7)
             mix = f(
                 [2], sim; min_val = 1, censored = cens, censored_at_value = true,
                 prob_concluded = [0.5]
