@@ -1,0 +1,1 @@
+`PoissonLognormal` and `PoissonWeibull` are new offspring distributions, mixtures of a Poisson count with a lognormal or Weibull rate, as alternatives to the negative binomial. They have `pdf`, `cdf`, `rand` and a generating function, so chain sizes and extinction probabilities work for them as for any discrete offspring law.

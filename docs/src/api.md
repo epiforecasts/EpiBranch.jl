@@ -564,6 +564,13 @@ TruncatedChainSize
 DetectedChainSize
 ```
 
+### Poisson mixtures
+
+```@docs
+PoissonLognormal
+PoissonWeibull
+```
+
 ### Reproduction number varying between chains
 
 ```@docs
