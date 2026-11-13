@@ -565,8 +565,8 @@ to P(size >= cap) rather than P(size = cap). Observed values at or above
 
 With `censored_at_value = true` the cap is ignored and each censored value is
 instead a lower bound on that run's true value. The probabilities come from a
-product-limit (Kaplan-Meier) estimator, so a censored run informs the hazard at
-every value up to its censoring point and its mass moves to the larger values.
+product-limit (Kaplan-Meier) estimator. A censored run informs the hazard at
+every value up to its censoring point, and its mass moves to the larger values.
 
 `prob_concluded`, when given (one value per observation, in `[0, 1]`), mixes
 each observation's point mass with its right tail under the same simulated
@@ -674,7 +674,7 @@ end
 
 # Empirical log-likelihood where each censored run is a lower bound on its own
 # value (see `_empirical_ll`). A product-limit estimator gives the probability
-# of each value: a run censored at c is at risk at every value up to c, so it
+# of each value: a run censored at c is at risk at every value up to c. It
 # informs the hazard there and leaves the larger values to the runs still going.
 # Each hazard is Laplace-smoothed, (events + 1) / (at risk + 2), to keep every
 # value supported.
