@@ -1275,6 +1275,9 @@ function _group_trigger_time(gv::GroupVaccination, state, group)
     t = Inf
     for id in _group_members(state, key, group)
         m = state.individuals[id]
+        # Contacts blocked by susceptibility or an intervention hold a
+        # provisional onset but never become cases.
+        is_infected(m) || continue
         is_eligible(gv.eligibility, m, m, state) || continue
         tt = trigger_time(gv.eligibility, m, state)
         isnan(tt) && continue
