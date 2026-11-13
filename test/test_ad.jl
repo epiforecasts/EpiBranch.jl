@@ -121,6 +121,12 @@ using StableRNGs
     )
 end
 
+@testset "logsumexp differentiates through a generator" begin
+    f_gen(x) = EpiBranch.logsumexp(xi * x for xi in (1.0, 2.0))
+    f_vec(x) = EpiBranch.logsumexp([x, 2x])
+    @test ForwardDiff.derivative(f_gen, 1.0) ≈ ForwardDiff.derivative(f_vec, 1.0)
+end
+
 # Reverse-mode (Mooncake) coverage of the same analytical likelihoods. Each
 # gradient is taken with respect to the distribution parameters and must match
 # the ForwardDiff gradient — so the reverse path is exercised end to end without
