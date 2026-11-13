@@ -464,6 +464,8 @@ end
             campaign_state, 4000, [gv];
             setup = (ind, i) -> (ind.state[:group] = :A)
         )
+        campaign_state.individuals[1].infection_time = 0.0
+        campaign_state.individuals[1].state[:infected] = true
         campaign_state.individuals[1].state[:test_positive] = true
         set_isolated!(campaign_state.individuals[1], 5.0; release_time = Inf)
         EpiBranch.apply_actions!(gv, campaign_state, campaign_state.individuals)
@@ -558,4 +560,33 @@ end
         return containment_probability(states; max_cases = 200)
     end
     @test contained([gv]) > contained(AbstractIntervention[]) + 0.5
+end
+
+@testset "Group vaccination is triggered only by infected members" begin
+    # Low susceptibility blocks most exposed contacts, which still hold a
+    # provisional onset. No dose may precede the earliest infected onset.
+    attributes = [
+        groups(1), clinical_presentation(incubation_period = Gamma(2.0, 2.0)),
+        transmission_traits(susceptibility = 0.3),
+    ]
+    gv = GroupVaccination(efficacy = 0.5, eligibility = OnSymptomOnset(), dose_delay = 0.0)
+    model = BranchingProcess(Poisson(4.0), Gamma(2.0, 2.0))
+    early = 0
+    dosed = 0
+    for s in 1:40
+        st = simulate(
+            ModelSpec(model; attributes, interventions = [gv]);
+            max_cases = 50, rng = StableRNG(s)
+        )
+        onsets = [
+            onset_time(i) for i in st.individuals
+                if is_infected(i) && !isnan(onset_time(i))
+        ]
+        first_dose = minimum(get(i.state, :vaccination_time, Inf) for i in st.individuals)
+        (isempty(onsets) || !isfinite(first_dose)) && continue
+        dosed += 1
+        early += first_dose < minimum(onsets) - 1.0e-9
+    end
+    @test dosed > 0
+    @test early == 0
 end

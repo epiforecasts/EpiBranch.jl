@@ -377,6 +377,8 @@ end
             )
             people = EpiBranch.add_individuals!(state, 40, [])
             for ind in people
+                ind.infection_time = 0.0
+                ind.state[:infected] = true
                 ind.state[:test_positive] = true
                 set_isolated!(ind, 2.0; release_time = Inf)
             end
