@@ -31,7 +31,29 @@ using StableRNGs
         end
     end
 
+    @testset "Support, parameters and variance" begin
+        for d in (lnorm, weib)
+            @test minimum(d) == 0
+            @test maximum(d) == Inf
+            @test insupport(d, 3)
+            @test !insupport(d, -1)
+            @test logpdf(d, -1) == -Inf
+            @test ccdf(d, -1) == 1.0
+            @test cdf(d, -1) == 0.0
+            @test partype(d) == Float64
+        end
+        @test params(lnorm) == (-0.5, 1.0)
+        @test params(weib) == (0.7, 1.0)
+        @test var(lnorm) ≈ mean(lnorm) + var(LogNormal(-0.5, 1.0))
+        @test var(weib) ≈ mean(weib) + var(Weibull(0.7, 1.0))
+    end
+
     @testset "Generating function and extinction" begin
+        for d in (lnorm, weib)
+            @test EpiBranch._pgf_derivative(d, 1.0) ≈ mean(d) rtol = 1.0e-6
+            @test EpiBranch._pgf_derivative(d, 0.6) ≈
+                sum(x * pdf(d, x) * 0.6^(x - 1) for x in 1:200) rtol = 1.0e-6
+        end
         for d in (lnorm, weib)
             @test EpiBranch._pgf(d, 1.0) ≈ 1.0 atol = 1.0e-8
             @test EpiBranch._pgf(d, 0.0) ≈ pdf(d, 0) rtol = 1.0e-6
