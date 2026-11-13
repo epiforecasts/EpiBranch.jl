@@ -72,10 +72,7 @@ EpiBranch.has_effect(::_SeenRoutes) = true
             );
             progression = [latent]
         )
-        s = simulate(
-            m;
-            n_initial = 30, max_generations = 1, rng = StableRNG(1)
-        )
+        s = simulate(m; n_initial = 30, max_generations = 1, rng = StableRNG(1))
         kids = filter(i -> i.parent_id != 0 && is_infected(i), s.individuals)
         gi = [k.infection_time - s.individuals[k.parent_id].infection_time for k in kids]
         @test minimum(gi) > 4.0   # latent 4 + a positive contact interval
@@ -110,10 +107,7 @@ EpiBranch.has_effect(::_SeenRoutes) = true
                 Infectiousness((rng, ind) -> 5; from = :died, kernel = Exponential(1.0))
             )
         )
-        s = simulate(
-            m; n_initial = 10, max_generations = 3,
-            rng = StableRNG(2)
-        )
+        s = simulate(m; n_initial = 10, max_generations = 3, rng = StableRNG(2))
         @test s.cumulative_cases == 10
     end
 
@@ -121,10 +115,7 @@ EpiBranch.has_effect(::_SeenRoutes) = true
         w1 = Infectiousness((rng, ind) -> 2; from = :infection)  # default kernel: no timing
         w2 = Infectiousness((rng, ind) -> 3; from = :infection)
         m = BranchingProcess(w1, w2)
-        s = simulate(
-            m; n_initial = 1, max_generations = 1,
-            rng = StableRNG(3)
-        )
+        s = simulate(m; n_initial = 1, max_generations = 1, rng = StableRNG(3))
         kids = filter(i -> i.parent_id != 0, s.individuals)
         @test length(kids) == 5   # 2 + 3 from the single index
     end
@@ -758,9 +749,7 @@ end
     attributes = clinical_presentation(
         incubation_period = Exponential(1.0), prob_asymptomatic = 0.5
     )
-    ct = ContactTracing(
-        OnSymptomOnset(), 1.0, Exponential(1000.0), FlagOnly(); depth = 2
-    )
+    ct = ContactTracing(OnSymptomOnset(), 1.0, Exponential(1000.0), FlagOnly(); depth = 2)
     windows = (
         (Infectiousness(Dirac(2); kernel = Exponential(2.0)),),
         (Infectiousness((rng, ind) -> 2; kernel = Exponential(2.0)),),

@@ -23,10 +23,7 @@ end
     @testset "the structured likelihood matches an explicit vaccine effect" begin
         rv = RingVaccination(efficacy = 0.5, mode = LeakyMode())
         process = NetworkProcess(adj, Exponential(3.0))
-        m = ModelSpec(
-            process; progression, attributes = clinical,
-            interventions = [ct, rv]
-        )
+        m = ModelSpec(process; progression, attributes = clinical, interventions = [ct, rv])
         state = simulate(m; n_initial = 3, rng = StableRNG(42))
         data = network_infections(state, m)
 
@@ -51,10 +48,7 @@ end
     @testset "AllOrNothingMode round-trips through the structured likelihood too" begin
         rv = RingVaccination(efficacy = 0.4, mode = AllOrNothingMode())
         process = NetworkProcess(adj, Exponential(3.0))
-        m = ModelSpec(
-            process; progression, attributes = clinical,
-            interventions = [ct, rv]
-        )
+        m = ModelSpec(process; progression, attributes = clinical, interventions = [ct, rv])
         state = simulate(m; n_initial = 3, rng = StableRNG(43))
         data = network_infections(state, m)
         explicit = pairwise_surv_loglik(
@@ -69,10 +63,7 @@ end
     @testset "a vaccination with an onward or post-exposure effect is rejected" begin
         rv = RingVaccination(efficacy = 0.5, onward_efficacy = 0.3)
         process = NetworkProcess(adj, Exponential(3.0))
-        m = ModelSpec(
-            process; progression, attributes = clinical,
-            interventions = [ct, rv]
-        )
+        m = ModelSpec(process; progression, attributes = clinical, interventions = [ct, rv])
         state = simulate(m; n_initial = 3, rng = StableRNG(44))
         data = network_infections(state, m)
         @test_throws ArgumentError loglikelihood(data, m)

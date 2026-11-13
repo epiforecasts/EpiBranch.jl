@@ -60,10 +60,7 @@ function sim_analytical_consistent(
         rng::AbstractRNG = Random.default_rng(),
         max_cases::Int = 500
     )
-    states = simulate(
-        model, n_chains;
-        max_cases = max_cases, rng = rng
-    )
+    states = simulate(model, n_chains; max_cases = max_cases, rng = rng)
     true_sizes = Int[]
     for s in states
         append!(true_sizes, chain_statistics(s).size)

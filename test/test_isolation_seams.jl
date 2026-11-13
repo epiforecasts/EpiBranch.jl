@@ -237,9 +237,7 @@ EpiBranch.infectious_removal_time(f::FixedRemoval, ::Individual) = f.time
         attrs = clinical_presentation(incubation_period = Dirac(3.0))
         kernel = Uniform(0.0, 10.0)
         function race(duration)
-            iso = Isolation(
-                onset_to_isolation_delay = Dirac(1.0), duration = duration
-            )
+            iso = Isolation(onset_to_isolation_delay = Dirac(1.0), duration = duration)
             rng = StableRNG(3)
             state = EpiBranch.new_state(
                 BranchingProcess(Dirac(1), kernel), prog, attrs, rng
@@ -275,18 +273,12 @@ EpiBranch.infectious_removal_time(f::FixedRemoval, ::Individual) = f.time
         # and a schedule that can close declares it away again. Without the
         # declaration a certain block raises rather than silently dropping
         # contacts that could still transmit.
-        iso = Isolation(
-            onset_to_isolation_delay = Dirac(1.0), duration = Dirac(7.0)
-        )
+        iso = Isolation(onset_to_isolation_delay = Dirac(1.0), duration = Dirac(7.0))
         @test EpiBranch.binding_release(iso)
         @test EpiBranch.binding_release(Scheduled(iso; start_time = 0.0))
         @test EpiBranch.binding_release(Scheduled(iso; start_after_cases = 2))
-        @test EpiBranch.binding_release(
-            CapacityConstrained(iso; budget_per_period = 1.0e6)
-        )
-        @test !EpiBranch.binding_release(
-            Scheduled(iso; start_time = 0.0, end_time = 10.0)
-        )
+        @test EpiBranch.binding_release(CapacityConstrained(iso; budget_per_period = 1.0e6))
+        @test !EpiBranch.binding_release(Scheduled(iso; start_time = 0.0, end_time = 10.0))
         @test !EpiBranch.binding_release(ReopeningWard())
 
         prog = sir(30.0)
@@ -335,12 +327,8 @@ EpiBranch.infectious_removal_time(f::FixedRemoval, ::Individual) = f.time
             onset_to_isolation_delay = Dirac(1.0), duration = Dirac(7.0),
             post_isolation_transmission = 0.5
         )
-        perfect = Isolation(
-            onset_to_isolation_delay = Dirac(1.0), duration = Dirac(7.0)
-        )
-        permanent = Isolation(
-            onset_to_isolation_delay = Dirac(1.0), duration = Inf
-        )
+        perfect = Isolation(onset_to_isolation_delay = Dirac(1.0), duration = Dirac(7.0))
+        permanent = Isolation(onset_to_isolation_delay = Dirac(1.0), duration = Inf)
         case = Individual(id = 1)
         set_isolated!(case, 8.0; release_time = 15.0)
 
@@ -405,9 +393,7 @@ EpiBranch.infectious_removal_time(f::FixedRemoval, ::Individual) = f.time
         # missing this contact entirely.
         prog = sir(30.0)
         attrs = clinical_presentation(incubation_period = Dirac(3.0))
-        iso = Isolation(
-            onset_to_isolation_delay = Dirac(1.0), duration = Dirac(7.0)
-        )
+        iso = Isolation(onset_to_isolation_delay = Dirac(1.0), duration = Dirac(7.0))
 
         # The continuous-time race, which `HouseholdProcess` and `NetworkProcess`
         # share.
@@ -517,9 +503,7 @@ EpiBranch.infectious_removal_time(f::FixedRemoval, ::Individual) = f.time
         # missing this contact entirely.
         prog = sir(30.0)
         attrs = clinical_presentation(incubation_period = Dirac(3.0))
-        iso = Isolation(
-            onset_to_isolation_delay = Dirac(1.0), duration = Dirac(7.0)
-        )
+        iso = Isolation(onset_to_isolation_delay = Dirac(1.0), duration = Dirac(7.0))
 
         for wrapped in (
                 Scheduled(iso; start_time = 0.0, end_time = 1.0e6),

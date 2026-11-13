@@ -254,10 +254,7 @@ EpiBranch.single_type_offspring(m::LawOnlyModel) = m.law
         matrix_model = poisson_types(M)
         @test occursin("MultiTypeOffspring(2 types)", sprint(show, matrix_model))
         fn_model = BranchingProcess(
-            Infectiousness(
-                (rng, ind) -> [1, 0];
-                kernel = Exponential(1.0)
-            ); n_types = 2
+            Infectiousness((rng, ind) -> [1, 0]; kernel = Exponential(1.0)); n_types = 2
         )
         @test occursin("Function", sprint(show, fn_model))
         @test_throws ArgumentError EpiBranch._analytic_offspring(fn_model)

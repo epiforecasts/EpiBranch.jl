@@ -14,10 +14,7 @@ struct _CaseAnchor end
             ),
         )
         state = simulate(
-            ModelSpec(
-                BranchingProcess(Poisson(0.0), Exponential(1.0));
-                observation = obs
-            );
+            ModelSpec(BranchingProcess(Poisson(0.0), Exponential(1.0)); observation = obs);
             n_initial = 4, rng = StableRNG(7)
         )
         for ind in filter(is_infected, state.individuals)
@@ -150,10 +147,7 @@ end
         obs = PerCaseObservation(detection_prob = Beta(2.0, 2.0))
         m = ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0)); observation = obs)
         rng = StableRNG(31)
-        states = simulate(
-            m, 50; max_cases = 50,
-            rng = rng
-        )
+        states = simulate(m, 50; max_cases = 50, rng = rng)
         reported = [
             ind.state[:reported]
                 for s in states for ind in filter(is_infected, s.individuals)
@@ -210,9 +204,7 @@ end
         scalar = PerCaseObservation(detection_prob = 0.7)
         @test EpiBranch.scalar_detection_prob(scalar) == 0.7
 
-        fn = PerCaseObservation(
-            detection_prob = (rng, ind) -> 0.5
-        )
+        fn = PerCaseObservation(detection_prob = (rng, ind) -> 0.5)
         @test_throws ArgumentError EpiBranch.scalar_detection_prob(fn)
 
         dist = PerCaseObservation(detection_prob = Beta(2.0, 2.0))
@@ -222,9 +214,7 @@ end
     @testset "Closed-form chain_size_distribution refuses non-scalar" begin
         m = ModelSpec(
             BranchingProcess(Poisson(0.5), Exponential(5.0));
-            observation = PerCaseObservation(
-                detection_prob = (rng, ind) -> 0.5
-            )
+            observation = PerCaseObservation(detection_prob = (rng, ind) -> 0.5)
         )
         @test_throws ArgumentError chain_size_distribution(m)
     end

@@ -9,9 +9,7 @@
             )
         )
         @test_throws ArgumentError simulate_by_generation(
-            BranchingProcess(
-                Infectiousness(NegBin(2.0, 0.5)), Infectiousness(Poisson(0.5))
-            )
+            BranchingProcess(Infectiousness(NegBin(2.0, 0.5)), Infectiousness(Poisson(0.5)))
         )
         @test_throws ArgumentError simulate_by_generation(
             BranchingProcess(

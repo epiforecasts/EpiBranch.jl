@@ -71,8 +71,7 @@ EpiBranch.realised_efficacy(::_TestBlockedMode, eff, rng) =
         @test EpiBranch.severity_efficacy(vary)(nothing, nothing) == 0.4
 
         mv = MassVaccination(efficacy = Beta(2, 2), eligibility_time = 5.0)
-        @test EpiBranch.vaccine_effect(mv) ==
-            VaccineEffect(efficacy = Beta(2, 2))
+        @test EpiBranch.vaccine_effect(mv) == VaccineEffect(efficacy = Beta(2, 2))
         gv = GroupVaccination(efficacy = 0.6, delay_to_immunity = 3.0)
         @test EpiBranch.vaccine_effect(gv) ==
             VaccineEffect(efficacy = 0.6, delay_to_immunity = 3.0)
@@ -181,11 +180,7 @@ EpiBranch.realised_efficacy(::_TestBlockedMode, eff, rng) =
         # Fully effective immunity from day 0 blocks every exposure.
         model = ModelSpec(
             BranchingProcess(Poisson(3.0), Exponential(5.0));
-            interventions = [
-                _TestCampaignVaccination(
-                    VaccineEffect(efficacy = 1.0), 0.0
-                ),
-            ]
+            interventions = [_TestCampaignVaccination(VaccineEffect(efficacy = 1.0), 0.0)]
         )
         results = simulate(model, 20; max_cases = 100, rng = StableRNG(3))
         @test all(s -> s.cumulative_cases == 1, results)
@@ -439,9 +434,7 @@ end
         ct = ContactTracing(OnSymptomOnset(), 1.0, Dirac(0.0), Quarantine(duration = 7.0))
         model = ModelSpec(
             BranchingProcess(Poisson(2.0), Exponential(5.0));
-            interventions = [
-                ct, RingVaccination(efficacy = 0.0, symptom_efficacy = 1.0),
-            ],
+            interventions = [ct, RingVaccination(efficacy = 0.0, symptom_efficacy = 1.0)],
             attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.3))
         )
         states = simulate(model, 20; max_cases = 60, rng = StableRNG(5))

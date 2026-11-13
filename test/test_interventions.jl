@@ -337,9 +337,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                 (i, st) -> ((j, get(opens, j, -Inf)) for j in neighbours[i]) :
                 (i, st) -> neighbours[i]
             pos = Dict(i => i for i in 1:n)
-            reached = EpiBranch._trace_from!(
-                state, case, [ct], contacts, pos
-            )
+            reached = EpiBranch._trace_from!(state, case, [ct], contacts, pos)
             return state.individuals, reached
         end
 
@@ -530,9 +528,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             [(11.0, Inf)]
 
         ind = quarantined()
-        EpiBranch.resolve_individual!(
-            Scheduled(iso; start_time = 10.0), ind, state
-        )
+        EpiBranch.resolve_individual!(Scheduled(iso; start_time = 10.0), ind, state)
         @test EpiBranch.removal_stretches(ind) == [(5.0, 19.0)]
         @test EpiBranch.removal_stretches(ind, EpiBranch.ISOLATION_STRETCHES_KEY) ==
             [(11.0, Inf)]
@@ -540,9 +536,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
 
         # An isolation before the window is undone, leaving the quarantine.
         early = quarantined()
-        EpiBranch.resolve_individual!(
-            Scheduled(iso; start_time = 12.0), early, state
-        )
+        EpiBranch.resolve_individual!(Scheduled(iso; start_time = 12.0), early, state)
         @test EpiBranch.removal_stretches(early) == [(5.0, 19.0)]
         @test isempty(EpiBranch.removal_stretches(early, :_isolation_stretches))
 
@@ -872,9 +866,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
     @testset "An isolation layers over a standing quarantine" begin
         # The mirror of the trace path: an isolation starting earlier than a
         # standing quarantine must not discard the quarantine's release.
-        iso = Isolation(
-            onset_to_isolation_delay = Dirac(1.0), duration = Dirac(2.0)
-        )
+        iso = Isolation(onset_to_isolation_delay = Dirac(1.0), duration = Dirac(2.0))
         state = empty_state(; rng = StableRNG(1))
         ind = Individual(id = 1)
         ind.state[:onset_time] = 8.0
@@ -896,16 +888,12 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         ind.state[:test_positive] = true
         ind.state[:outcome_time] = 8.0
 
-        late = Isolation(
-            onset_to_isolation_delay = Dirac(16.0), duration = Dirac(14.0)
-        )
+        late = Isolation(onset_to_isolation_delay = Dirac(16.0), duration = Dirac(14.0))
         EpiBranch.resolve_individual!(late, ind, mkstate())
         @test isolation_time(ind) == 20.0
         @test !is_isolated(ind)                      # after the outcome: no detection
 
-        early = Isolation(
-            onset_to_isolation_delay = Dirac(1.0), duration = Dirac(2.0)
-        )
+        early = Isolation(onset_to_isolation_delay = Dirac(1.0), duration = Dirac(2.0))
         EpiBranch.resolve_individual!(early, ind, mkstate())
         # The earlier interval [5, 7) does not meet [20, 34), so the standing
         # removal is kept, and with it its unrecorded status.
@@ -919,9 +907,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         # and means no removal: a per-contact block needs
         # `event_t <= t < release_t` and blocks nothing, and the race finds
         # nothing to close a window with.
-        iso = Isolation(
-            onset_to_isolation_delay = Dirac(1.0), duration = Dirac(0.0)
-        )
+        iso = Isolation(onset_to_isolation_delay = Dirac(1.0), duration = Dirac(0.0))
         ind = Individual(id = 1, infection_time = 0.0)
         ind.state[:onset_time] = 3.0
         ind.state[:test_positive] = true
@@ -948,9 +934,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             isolated.state[:onset_time] = 1.0
             isolated.state[:test_positive] = true
             @test_throws ArgumentError EpiBranch.resolve_individual!(
-                Isolation(
-                    onset_to_isolation_delay = Dirac(1.0), duration = bad
-                ),
+                Isolation(onset_to_isolation_delay = Dirac(1.0), duration = bad),
                 isolated,
                 empty_state(; rng = StableRNG(1))
             )
@@ -1728,10 +1712,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
 
         @testset "Coverage accepts a function" begin
             # Age-conditional coverage: 50+ always vaccinated, under-50 never.
-            attrs = [
-                clinical,
-                demographics(age_distribution = Uniform(0, 90)),
-            ]
+            attrs = [clinical, demographics(age_distribution = Uniform(0, 90))]
             iso = Isolation(onset_to_isolation_delay = Exponential(0.5), duration = Inf)
             ct = ContactTracing(
                 probability = 1.0, isolation_to_trace_delay = Exponential(0.5),
@@ -1783,9 +1764,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                 ),
                 50; max_cases = 100, rng = StableRNG(3)
             )
-            n_narrow = sum(
-                count(is_vaccinated, s.individuals) for s in states_narrow
-            )
+            n_narrow = sum(count(is_vaccinated, s.individuals) for s in states_narrow)
             @test n_narrow < n_inf
 
             # Every vaccinated contact must satisfy the window.
@@ -1959,27 +1938,16 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                 # Every draw falls before the prime, so the boost could never be
                 # given.
                 @test_throws ArgumentError spec(
-                    [
-                        iso, ct, prime_delayed,
-                        boost(Uniform(0.0, 7.0)),
-                    ]
+                    [iso, ct, prime_delayed, boost(Uniform(0.0, 7.0))]
                 )
                 # Supports that cannot cross are accepted in silence.
                 @test (
-                    @test_logs spec(
-                        [
-                            iso, ct, prime_delayed, boost(Uniform(30.0, 42.0)),
-                        ]
-                    )
+                    @test_logs spec([iso, ct, prime_delayed, boost(Uniform(30.0, 42.0))])
                 ) isa
                     ModelSpec
                 # A function cannot be read statically and goes unchecked.
                 @test (
-                    @test_logs spec(
-                        [
-                            iso, ct, prime_delayed, boost((rng, ind) -> 0.0),
-                        ]
-                    )
+                    @test_logs spec([iso, ct, prime_delayed, boost((rng, ind) -> 0.0)])
                 ) isa
                     ModelSpec
                 # An unbounded support names no number worth quoting.
@@ -2510,10 +2478,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                 # `efficacy` needs immunity before the exposure, which a dose
                 # given at the trace never achieves here; `post_exposure_efficacy`
                 # needs immunity before onset, which it often achieves.
-                base = simulate(
-                    scen([iso, ct]), 400; max_cases = 200,
-                    rng = StableRNG(42)
-                )
+                base = simulate(scen([iso, ct]), 400; max_cases = 200, rng = StableRNG(42))
                 pre = simulate(
                     scen([iso, ct, RingVaccination(efficacy = 0.9)]),
                     400; max_cases = 200, rng = StableRNG(42)
@@ -2541,12 +2506,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                     )
                         for seed in 1:5
                 )
-                onward = containment(
-                    RingVaccination(
-                        efficacy = 0.0,
-                        onward_efficacy = 0.9
-                    )
-                )
+                onward = containment(RingVaccination(efficacy = 0.0, onward_efficacy = 0.9))
                 @test containment(post_only()) < onward + 0.05
             end
 
@@ -3730,15 +3690,12 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         # schedule hands the likelihood the same stretches as the case-gated
         # one it matches. With `can_lapse` these come back empty and the
         # likelihood charges each pair for the time the host was isolated.
-        iso7 = Isolation(
-            onset_to_isolation_delay = Exponential(1.0), duration = 7.0
-        )
+        iso7 = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = 7.0)
         by_cases = Scheduled(iso7; start_after_cases = 10)
         by_reports = Scheduled(iso7; start_after = ReportedCases(10))
         @test !isempty(EpiBranch.removal_gap_host_times(by_cases))
         @test EpiBranch.removal_gap_host_times(by_reports) ==
             EpiBranch.removal_gap_host_times(by_cases)
-        @test EpiBranch.binding_release(by_reports) ==
-            EpiBranch.binding_release(by_cases)
+        @test EpiBranch.binding_release(by_reports) == EpiBranch.binding_release(by_cases)
     end
 end

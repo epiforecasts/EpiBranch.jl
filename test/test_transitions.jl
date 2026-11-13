@@ -60,10 +60,7 @@ EpiBranch.observation(m::SingleSpawnModel) = m.observation
         # Backwards-compat: no transitions kwarg = old behaviour. No new
         # state keys appear on individuals.
         model = BranchingProcess(Poisson(1.5), Exponential(5.0))
-        state = tsim(
-            model; attributes = clinical,
-            max_cases = 20, rng = StableRNG(1)
-        )
+        state = tsim(model; attributes = clinical, max_cases = 20, rng = StableRNG(1))
         for ind in filter(is_infected, state.individuals)
             @test !haskey(ind.state, :reported)
             @test !haskey(ind.state, :admitted)
@@ -417,10 +414,7 @@ EpiBranch.observation(m::SingleSpawnModel) = m.observation
             delay = (rng, ind) -> 1.0,
             from = ind -> ind.infection_time
         )
-        state = tsim(
-            model; transitions = [rep],
-            max_cases = 30, rng = rng
-        )
+        state = tsim(model; transitions = [rep], max_cases = 30, rng = rng)
         for ind in filter(is_infected, state.individuals)
             @test ind.state[:reported]
             @test ind.state[:reporting_time] ≈ ind.infection_time + 1.0

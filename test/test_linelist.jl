@@ -7,10 +7,7 @@ using Dates
     @testset "linelist basic output" begin
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(1.5), Exponential(5.0))
-        state = tsim(
-            model; attributes = clinical,
-            max_cases = 50, rng = rng
-        )
+        state = tsim(model; attributes = clinical, max_cases = 50, rng = rng)
 
         df = linelist(state)
 
@@ -79,10 +76,7 @@ using Dates
             clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
             demographics(age_distribution = Normal(40, 15)),
         ]
-        state = tsim(
-            model; attributes = attrs,
-            max_cases = 50, rng = rng
-        )
+        state = tsim(model; attributes = attrs, max_cases = 50, rng = rng)
 
         df = linelist(state)
         @test "age" in names(df)
@@ -237,10 +231,7 @@ using Dates
     @testset "index cases identifiable via parent_id" begin
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(1.5), Exponential(5.0))
-        state = tsim(
-            model; attributes = clinical,
-            max_cases = 20, n_initial = 3, rng = rng
-        )
+        state = tsim(model; attributes = clinical, max_cases = 20, n_initial = 3, rng = rng)
 
         df = linelist(state)
         n_index = count(df.parent_id .== 0)
@@ -370,10 +361,7 @@ using Dates
             rng, ind
         ) -> (ind.state[:vaccination_time] = ind.infection_time + 7.0)
         attrs = [clinical, risk_group, custom_time]
-        state = tsim(
-            model; attributes = attrs,
-            max_cases = 30, rng = rng
-        )
+        state = tsim(model; attributes = attrs, max_cases = 30, rng = rng)
 
         df = linelist(state)
         @test "risk_group" in names(df)             # pass-through, symbol → string
@@ -407,9 +395,7 @@ end
     end
     df = linelist(state; infected_only = false, reference_date = reference)
     @test isequal(
-        df.date_appointment, [
-            reference + Day(2), reference + Day(3), missing, missing,
-        ]
+        df.date_appointment, [reference + Day(2), reference + Day(3), missing, missing]
     )
     for key in (:date_onset, :date_admission, :date_custom_disease)
         @test all(ismissing, df[2:4, key])

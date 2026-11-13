@@ -25,10 +25,7 @@ EpiBranch.infection_likelihood_compatible(::_HalvedFrom) = true
     @testset "the structured likelihood matches an explicit vaccine effect" begin
         rv = RingVaccination(efficacy = 0.5, mode = LeakyMode())
         process = HouseholdProcess(fill(6, 200), Exponential(0.3))
-        m = ModelSpec(
-            process; progression, attributes = clinical,
-            interventions = [ct, rv]
-        )
+        m = ModelSpec(process; progression, attributes = clinical, interventions = [ct, rv])
         state = simulate(m; rng = StableRNG(31))
         data = household_infections(state, m)
 
@@ -59,10 +56,7 @@ EpiBranch.infection_likelihood_compatible(::_HalvedFrom) = true
     @testset "AllOrNothingMode round-trips through the structured likelihood too" begin
         rv = RingVaccination(efficacy = 0.4, mode = AllOrNothingMode())
         process = HouseholdProcess(fill(6, 200), Exponential(0.3))
-        m = ModelSpec(
-            process; progression, attributes = clinical,
-            interventions = [ct, rv]
-        )
+        m = ModelSpec(process; progression, attributes = clinical, interventions = [ct, rv])
         state = simulate(m; rng = StableRNG(32))
         data = household_infections(state, m)
         explicit = pairwise_surv_loglik(
@@ -77,10 +71,7 @@ EpiBranch.infection_likelihood_compatible(::_HalvedFrom) = true
     @testset "a vaccination with an onward or post-exposure effect is rejected" begin
         rv = RingVaccination(efficacy = 0.5, onward_efficacy = 0.3)
         process = HouseholdProcess(fill(6, 20), Exponential(0.3))
-        m = ModelSpec(
-            process; progression, attributes = clinical,
-            interventions = [ct, rv]
-        )
+        m = ModelSpec(process; progression, attributes = clinical, interventions = [ct, rv])
         state = simulate(m; rng = StableRNG(33))
         data = household_infections(state, m)
         @test_throws ArgumentError loglikelihood(data, m)

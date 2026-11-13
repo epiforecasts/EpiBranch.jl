@@ -36,11 +36,7 @@ EpiBranch.time_bound(r::TimeOrCasesRule) = r.t
         # tight against the cap.
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(3.0), Exponential(5.0))
-        state = simulate(
-            model;
-            stopping_rules = [Extinction(), MaxCases(50)],
-            rng = rng
-        )
+        state = simulate(model; stopping_rules = [Extinction(), MaxCases(50)], rng = rng)
         @test state.cumulative_cases >= 50
         @test !state.extinct  # extinction would mean the cap rule wasn't what stopped us
     end
@@ -59,11 +55,7 @@ EpiBranch.time_bound(r::TimeOrCasesRule) = r.t
     @testset "MaxTime keeps only infections up to the cap" begin
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(3.0), Exponential(5.0))
-        state = simulate(
-            model;
-            stopping_rules = [Extinction(), MaxTime(20.0)],
-            rng = rng
-        )
+        state = simulate(model; stopping_rules = [Extinction(), MaxTime(20.0)], rng = rng)
         @test 15.0 < state.max_infection_time <= 20.0
         @test all(ind -> ind.infection_time <= 20.0, filter(is_infected, state.individuals))
         @test !state.extinct
@@ -216,10 +208,7 @@ EpiBranch.time_bound(r::TimeOrCasesRule) = r.t
         # A subcritical outbreak with only a (never-reached) MaxCases rule still
         # terminates on extinction rather than hanging.
         model = BranchingProcess(Poisson(0.5), Exponential(5.0))
-        state = simulate(
-            model; stopping_rules = [MaxCases(1_000_000)],
-            rng = StableRNG(1)
-        )
+        state = simulate(model; stopping_rules = [MaxCases(1_000_000)], rng = StableRNG(1))
         @test is_extinct(state)
     end
 end

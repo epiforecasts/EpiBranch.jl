@@ -100,10 +100,7 @@
         offspring = (rng, ind) -> ind.generation == 0 ? 1 : 0
         gt = ind -> ind.generation == 0 ? Dirac(1.0) : error("asked for case $(ind.id)")
         state = simulate(
-            ModelSpec(
-                BranchingProcess(offspring, gt);
-                attributes = (rng, ind) -> nothing
-            );
+            ModelSpec(BranchingProcess(offspring, gt); attributes = (rng, ind) -> nothing);
             rng = StableRNG(1)
         )
         @test state.cumulative_cases == 2
@@ -112,10 +109,7 @@
     @testset "Truncated generation time enforces minimum" begin
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(3.0), truncated(Exponential(5.0), 3.0, Inf))
-        state = simulate(
-            model;
-            condition = 20:500, max_cases = 500, rng = rng
-        )
+        state = simulate(model; condition = 20:500, max_cases = 500, rng = rng)
 
         for ind in filter(is_infected, state.individuals)
             if ind.parent_id > 0
@@ -173,10 +167,7 @@ struct CallableOffspringFamily end
         BranchingProcess(mixed, Exponential(2.0))
     )
     @test EpiBranch.single_type_offspring(
-        BranchingProcess(
-            mixed,
-            CallableContactInterval()
-        )
+        BranchingProcess(mixed, CallableContactInterval())
     ) === mixed
     windows = (
         Infectiousness(Poisson(0.2); kernel = CallableContactInterval()),

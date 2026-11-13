@@ -12,9 +12,7 @@
     # stretch, so the comparison below holds for a single run.
     process = HouseholdProcess(fill(5, 120), Exponential(2.0))
 
-    finite = Isolation(
-        onset_to_isolation_delay = Dirac(1.0), duration = Dirac(7.0)
-    )
+    finite = Isolation(onset_to_isolation_delay = Dirac(1.0), duration = Dirac(7.0))
     m = ModelSpec(process; progression, attributes = clinical, interventions = [finite])
     state = simulate(m; rng = StableRNG(17))
     data = household_infections(state, m)
@@ -188,9 +186,7 @@ end
 end
 
 @testset "A wrapper forwards its stretches only when it cannot withdraw them" begin
-    iso = Isolation(
-        onset_to_isolation_delay = Dirac(1.0), duration = Dirac(7.0)
-    )
+    iso = Isolation(onset_to_isolation_delay = Dirac(1.0), duration = Dirac(7.0))
     key = EpiBranch.ISOLATION_STRETCHES_KEY
 
     # A schedule with no end, and a capacity budget, both leave the block

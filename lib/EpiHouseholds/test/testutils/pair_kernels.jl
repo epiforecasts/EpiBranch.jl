@@ -145,10 +145,7 @@ function state_policy_law(before, after, date)
     isfinite(date) || return Exponential(inv(before))
     survival = exp(-before * date)
     return MixtureModel(
-        [
-            truncated(Exponential(inv(before)); upper = date),
-            date + Exponential(inv(after)),
-        ],
+        [truncated(Exponential(inv(before)); upper = date), date + Exponential(inv(after))],
         [1 - survival, survival]
     )
 end
@@ -237,10 +234,7 @@ function test_stateful_simulation(make_process, extract)
         project(ind) = (stamp = get(ind.state, :stamp, Inf)::Float64,)
         progression = [Transition(:recovered; delay = 3.0, terminal = true)]
         d = Exponential(1.5)
-        ordinary = ModelSpec(
-            make_process(d); progression,
-            interventions = [StampOwnCase()]
-        )
+        ordinary = ModelSpec(make_process(d); progression, interventions = [StampOwnCase()])
         stateful = ModelSpec(
             make_process(PairKernel((c, a, b) -> d; state = project, watches = (:stamp,)));
             progression, interventions = [StampOwnCase()]

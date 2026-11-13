@@ -152,9 +152,7 @@ EpiBranch.removal_block_probability(s::_LeakyShield) = s.block
         # Naming the key lets the stretch through, merged into the layer's own
         # removal column.
         EpiBranch.removal_gap_host_times(::_Shield) = (shield_key,)
-        named = ModelSpec(
-            BranchingProcess(Poisson(0.0)); interventions = [_Shield()]
-        )
+        named = ModelSpec(BranchingProcess(Poisson(0.0)); interventions = [_Shield()])
         result = EpiBranch._layer_host_times(mini(lapsing), named, ())
         @test result[shield_key] == [[(2.0, 9.0)]]
         @test result[EpiBranch.REMOVAL_STRETCHES_KEY] == [[(2.0, 9.0)]]

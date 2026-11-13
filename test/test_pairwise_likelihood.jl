@@ -319,10 +319,7 @@ end
 
         # a self-loop is never a row; an out-of-range contact is rejected
         @test length(
-            compile_contact_pairs(
-                [[1, 2], Int[]], [true, false],
-                [true, false]
-            )
+            compile_contact_pairs([[1, 2], Int[]], [true, false], [true, false])
         ) == 1
         @test_throws ArgumentError compile_contact_pairs(
             [[3], Int[]], [true, false],
@@ -358,24 +355,16 @@ end
             [Weibull(1.5, 1.0)], Weibull{Float64}[],
         ]
         rowk = r -> (Weibull(1.5, 3.0), Weibull(1.5, 7.0), Weibull(1.5, 11.0))[r]
-        @test pairwise_surv_loglik(per_edge, data, L) ≈
-            pairwise_surv_loglik(rowk, rows)
+        @test pairwise_surv_loglik(per_edge, data, L) ≈ pairwise_surv_loglik(rowk, rows)
         pairk = (i, j) -> per_edge[i][findfirst(==(j), contacts[i])]
-        @test pairwise_surv_loglik(pairk, data, L) ≈
-            pairwise_surv_loglik(per_edge, data, L)
+        @test pairwise_surv_loglik(pairk, data, L) ≈ pairwise_surv_loglik(per_edge, data, L)
 
         # a partition layout has no edge list for a per-edge kernel to index
-        hh = _TestInfections(
-            [1, 1], [0.0, 1.0], [0.0, 1.0], [3.0, 4.0],
-            [true, false]
-        )
+        hh = _TestInfections([1, 1], [0.0, 1.0], [0.0, 1.0], [3.0, 4.0], [true, false])
         @test_throws ArgumentError pairwise_surv_loglik([[k], [k]], hh)
 
         # the external mode and the layout must agree
-        @test_throws ArgumentError pairwise_surv_loglik(
-            k, data, L;
-            external_hazard = 0.1
-        )
+        @test_throws ArgumentError pairwise_surv_loglik(k, data, L; external_hazard = 0.1)
         short = _TestInfections(
             contacts[1:2], [0.0, 2.0], [0.0, 2.0], [5.0, 6.0],
             [true, false]
@@ -398,14 +387,8 @@ end
             true, false, false, false,
         ]
         @test length(inf) == n
-        hh = _TestInfections(
-            membership, inf, infectious, removal, is_index;
-            obs_end = 10.0
-        )
-        net = _TestInfections(
-            adjacency, inf, infectious, removal, is_index;
-            obs_end = 10.0
-        )
+        hh = _TestInfections(membership, inf, infectious, removal, is_index; obs_end = 10.0)
+        net = _TestInfections(adjacency, inf, infectious, removal, is_index; obs_end = 10.0)
 
         for external in (false, true)
             Lh = compile_contact_pairs(hh; external)
@@ -834,10 +817,7 @@ end
 
         # a layer without the field is followed up for ever, as `Inf` is
         @test EpiBranch.followup_end(
-            _NoFollowup(
-                adjacency, inf, infectious, removal,
-                index, 10.0
-            )
+            _NoFollowup(adjacency, inf, infectious, removal, index, 10.0)
         ) == Inf
         closed = min.(removal, 12.0)
         for α in (0.0, 0.05)
@@ -987,14 +967,8 @@ end
             true, false, false, true, false, false, false, true, false,
             true, false, false, false,
         ]
-        hh = _TestInfections(
-            membership, inf, infectious, removal, is_index;
-            obs_end = 10.0
-        )
-        net = _TestInfections(
-            adjacency, inf, infectious, removal, is_index;
-            obs_end = 10.0
-        )
+        hh = _TestInfections(membership, inf, infectious, removal, is_index; obs_end = 10.0)
+        net = _TestInfections(adjacency, inf, infectious, removal, is_index; obs_end = 10.0)
         for external in (false, true)
             Lh = compile_contact_pairs(hh; external)
             Ln = compile_contact_pairs(net; external)

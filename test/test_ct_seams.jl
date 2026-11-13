@@ -720,9 +720,7 @@ end
     )
 
     @testset "the duration is recorded before the contact's own infection is known" begin
-        state = simulate(
-            build(0.0); n_initial = 1, max_generations = 1, rng = StableRNG(1)
-        )
+        state = simulate(build(0.0); n_initial = 1, max_generations = 1, rng = StableRNG(1))
         contact = state.individuals[2]
         @test is_infected(contact)
         @test contact.state[:trace_time] == 3.0
@@ -730,17 +728,13 @@ end
     end
 
     @testset "a false negative releases early" begin
-        state = simulate(
-            build(0.0); n_initial = 1, max_generations = 1, rng = StableRNG(1)
-        )
+        state = simulate(build(0.0); n_initial = 1, max_generations = 1, rng = StableRNG(1))
         contact = state.individuals[2]
         @test EpiBranch.removal_stretches(contact, TEST_RELEASE_STRETCHES) == [(3.0, 6.0)]
     end
 
     @testset "a true positive leaves the full duration standing" begin
-        state = simulate(
-            build(1.0); n_initial = 1, max_generations = 1, rng = StableRNG(1)
-        )
+        state = simulate(build(1.0); n_initial = 1, max_generations = 1, rng = StableRNG(1))
         contact = state.individuals[2]
         @test EpiBranch.removal_stretches(contact, TEST_RELEASE_STRETCHES) == [(3.0, 17.0)]
     end
@@ -753,9 +747,7 @@ end
     # a `Quarantine` or `FlagOnly` contact tracer, which proposes nothing,
     # would still pay the race's per-settled-case action-discovery cost.
     plain = ContactTracing(OnSymptomOnset(), 1.0, Dirac(2.0), Quarantine(14.0))
-    flagged = ContactTracing(
-        OnSymptomOnset(), 1.0, Dirac(2.0), FlagOnly()
-    )
+    flagged = ContactTracing(OnSymptomOnset(), 1.0, Dirac(2.0), FlagOnly())
     following_up = ContactTracing(
         OnSymptomOnset(), 1.0, Dirac(2.0), TestAndRelease(14.0, 3.0, 0.0)
     )
@@ -767,9 +759,7 @@ end
     # tracer: it has its own `intervention_actions` method too, so asking it
     # directly must not credit every wrapped `ContactTracing` regardless of
     # whether its action proposes anything.
-    @test !EpiBranch._discovers_actions(
-        CapacityConstrained(plain; budget_per_period = 1.0)
-    )
+    @test !EpiBranch._discovers_actions(CapacityConstrained(plain; budget_per_period = 1.0))
     @test EpiBranch._discovers_actions(
         CapacityConstrained(following_up; budget_per_period = 1.0)
     )

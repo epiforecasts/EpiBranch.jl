@@ -41,10 +41,7 @@ using StableRNGs
     end
 
     scenarios = [
-        scenario(
-            (R, d) -> loglikelihood(ChainSizes(d), Poisson(R[1])),
-            [0.5], sizes_data
-        ),
+        scenario((R, d) -> loglikelihood(ChainSizes(d), Poisson(R[1])), [0.5], sizes_data),
         scenario(
             (θ, d) -> loglikelihood(ChainSizes(d), NegBin(θ[1], θ[2])),
             [0.5, 0.5], sizes_data
@@ -466,10 +463,7 @@ end
     end
     delays = (
         x -> RingVaccination(efficacy = 0.8, delay_to_immunity = x),
-        x -> MassVaccination(
-            efficacy = 0.8, eligibility_time = 2.0,
-            delay_to_immunity = x
-        ),
+        x -> MassVaccination(efficacy = 0.8, eligibility_time = 2.0, delay_to_immunity = x),
         x -> GroupVaccination(
             efficacy = 0.8, delay_to_immunity = x,
             eligibility = OnSymptomOnset()
