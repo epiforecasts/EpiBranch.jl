@@ -235,10 +235,10 @@ public held_until
 public refused_action
 public InterventionWrapper
 
-# Offspring and vaccination hooks named in the guides: how a model draws a
-# case's offspring and says whether that law is unchanged by the run's
-# interventions, a vaccination's effect mode and dose label, and the helper
-# that populates a state lazily.
+# Offspring and vaccination hooks named in the guides: how a model draws the
+# offspring of a case and says whether that law is unchanged by the
+# interventions in the run, the effect mode and dose label of a vaccination,
+# and the helper that populates a state lazily.
 public draw_offspring
 public offspring_law_unchanged
 public has_single_type_law
