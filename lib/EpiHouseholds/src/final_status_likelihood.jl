@@ -69,19 +69,71 @@ function _community_escape(external_hazard, j::Int, obs_end::Real, susceptibilit
     return Float64(ccdf(d, obs_end))^susceptibility
 end
 
-# ∏_{i ∈ A, j ∈ B} p[i, j], read off the bits of the two masks.
-function _cross_escape(p::Matrix{Float64}, A::Int, B::Int)
+# The probability that every person in the set `B` escapes infector `i` over its
+# infectious window. All of `i`'s contacts share one window. For a random
+# window the joint escape is therefore the expectation of the product over `B`,
+# which is larger (by Jensen's inequality) than the product of each pair's own
+# expectation. `kernels[j]` and `mults[j]` are the kernel and the combined
+# infectiousness-susceptibility multiplier for the pair (`i`, `j`).
+function _set_escape(kernels, mults, B::Int, window::Real)
+    acc = 1.0
+    b = B
+    while b != 0
+        j = trailing_zeros(b) + 1
+        b &= b - 1
+        acc *= Float64(ccdf(kernels[j], window))^mults[j]
+    end
+    return acc
+end
+function _set_escape(kernels, mults, B::Int, window::UnivariateDistribution)
+    B == 0 && return 1.0
+    # Integrating over the window's quantiles keeps the range bounded whatever
+    # the window distribution is.
+    return Float64(
+        first(
+            quadgk(
+                u -> _set_escape(kernels, mults, B, quantile(window, u)), 0.0, 1.0;
+                rtol = 1.0e-12, atol = 0.0
+            )
+        )
+    )
+end
+# Exponential kernels over an exponential window: the escape is the window's
+# Laplace transform at the summed rate of the contacts.
+function _set_escape(
+        kernels::AbstractVector{<:Exponential}, mults, B::Int, window::Exponential
+    )
+    B == 0 && return 1.0
+    total = 0.0
+    b = B
+    while b != 0
+        j = trailing_zeros(b) + 1
+        b &= b - 1
+        total += mults[j] * rate(kernels[j])
+    end
+    return rate(window) / (rate(window) + total)
+end
+
+# `E[i, B + 1]`: the escape of the set `B` from infector `i`, for every set not
+# containing `i`.
+function _escape_table(kernels, mults, window, n::Int)
+    E = ones(Float64, n, 1 << n)
+    for i in 1:n, B in 1:((1 << n) - 1)
+        (B >> (i - 1)) & 1 == 1 && continue
+        E[i, B + 1] = _set_escape(view(kernels, i, :), view(mults, i, :), B, window)
+    end
+    return E
+end
+
+# ∏_{i ∈ A} E[i, B]: each infector in `A` has its own window, and their escapes
+# multiply.
+function _cross_escape(E::Matrix{Float64}, A::Int, B::Int)
     acc = 1.0
     a = A
     while a != 0
         i = trailing_zeros(a) + 1
         a &= a - 1
-        b = B
-        while b != 0
-            j = trailing_zeros(b) + 1
-            b &= b - 1
-            acc *= p[i, j]
-        end
+        acc *= E[i, B + 1]
     end
     return acc
 end
@@ -94,15 +146,26 @@ function _status_mask(statuses::AbstractVector, value)
     return mask
 end
 
+# Concrete element type where every kernel shares one, so the Exponential
+# fast path can dispatch.
+function _narrow(k::Matrix{Any})
+    off = [k[i, j] for i in axes(k, 1), j in axes(k, 2) if i != j]
+    (isempty(off) || !allequal(typeof.(off))) && return k
+    for i in axes(k, 1)
+        k[i, i] = first(off)
+    end
+    return convert(Matrix{typeof(first(off))}, k)
+end
+
 # The log-likelihood of one household's final statuses: the per-pair household
-# escape probabilities `p` (`p[i, j]`, the probability infectious case `i`
-# never infects susceptible `j` over the window) and per-person community
-# escape probabilities `pi_esc` fix, for every subset of the household, the
+# escape table `E` (`E[i, B + 1]`, the probability infectious case `i` never
+# infects anyone in the set `B` over its window) and per-person community
+# escape probabilities `pi_esc` determine, for every subset of the household, the
 # probability that exactly that subset is who ends up infected (Ball 1986);
 # summing those probabilities over every subset consistent with `statuses`
 # gives the probability of what was actually observed.
 function _household_final_status_loglik(
-        p::Matrix{Float64}, pi_esc::Vector{Float64}, statuses::AbstractVector
+        E::Matrix{Float64}, pi_esc::Vector{Float64}, statuses::AbstractVector
     )
     n = length(pi_esc)
     full = (1 << n) - 1
@@ -130,7 +193,7 @@ function _household_final_status_loglik(
         while c != 0
             c = (c - 1) & mask
             s = mask ⊻ c
-            acc += piProd[s + 1] * _cross_escape(p, c, s) * H[c + 1]
+            acc += piProd[s + 1] * _cross_escape(E, c, s) * H[c + 1]
         end
         H[mask + 1] = max(0.0, 1.0 - acc)
     end
@@ -146,7 +209,7 @@ function _household_final_status_loglik(
     while true
         A = infected_mask | s
         Ac = full ⊻ A
-        total += piProd[Ac + 1] * _cross_escape(p, A, Ac) * H[A + 1]
+        total += piProd[Ac + 1] * _cross_escape(E, A, Ac) * H[A + 1]
         s == 0 && break
         s = (s - 1) & unknown_mask
     end
@@ -247,14 +310,16 @@ function Distributions.loglikelihood(
             )
                 for k in 1:m
         ]
-        p = ones(Float64, m, m)
+        kernels = Matrix{Any}(nothing, m, m)
+        mults = zeros(Float64, m, m)
         for i in 1:m, j in 1:m
             i == j && continue
-            kernel = _pair_escape_kernel(model.kernel, mem[i], mem[j])
-            mult = _trait_value(infectiousness, mem[i]) * _trait_value(susceptibility, mem[j])
-            p[i, j] = Float64(_escape(Float64, kernel, window, mult))
+            kernels[i, j] = _pair_escape_kernel(model.kernel, mem[i], mem[j])
+            mults[i, j] = _trait_value(infectiousness, mem[i]) *
+                _trait_value(susceptibility, mem[j])
         end
-        ll += _household_final_status_loglik(p, pi_esc, view(statuses, mem))
+        E = _escape_table(_narrow(kernels), mults, window, m)
+        ll += _household_final_status_loglik(E, pi_esc, view(statuses, mem))
     end
     return ll
 end
