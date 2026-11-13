@@ -70,10 +70,10 @@ function _community_escape(external_hazard, j::Int, obs_end::Real, susceptibilit
 end
 
 # The probability that every person in the set `B` escapes infector `i` over its
-# infectious window. All of `i`'s contacts share one window, so for a random
-# window the joint escape is the expectation of the product over `B`, not the
-# product of each pair's own expectation (which is smaller, by Jensen's
-# inequality). `kernels[j]` and `mults[j]` are the kernel and the combined
+# infectious window. All of `i`'s contacts share one window. For a random
+# window the joint escape is therefore the expectation of the product over `B`,
+# which is larger (by Jensen's inequality) than the product of each pair's own
+# expectation. `kernels[j]` and `mults[j]` are the kernel and the combined
 # infectiousness-susceptibility multiplier for the pair (`i`, `j`).
 function _set_escape(kernels, mults, B::Int, window::Real)
     acc = 1.0
@@ -125,7 +125,7 @@ function _escape_table(kernels, mults, window, n::Int)
     return E
 end
 
-# ∏_{i ∈ A} E[i, B]: each infector in `A` has its own window, so their escapes
+# ∏_{i ∈ A} E[i, B]: each infector in `A` has its own window, and their escapes
 # multiply.
 function _cross_escape(E::Matrix{Float64}, A::Int, B::Int)
     acc = 1.0
@@ -160,7 +160,7 @@ end
 # The log-likelihood of one household's final statuses: the per-pair household
 # escape table `E` (`E[i, B + 1]`, the probability infectious case `i` never
 # infects anyone in the set `B` over its window) and per-person community
-# escape probabilities `pi_esc` fix, for every subset of the household, the
+# escape probabilities `pi_esc` determine, for every subset of the household, the
 # probability that exactly that subset is who ends up infected (Ball 1986);
 # summing those probabilities over every subset consistent with `statuses`
 # gives the probability of what was actually observed.
