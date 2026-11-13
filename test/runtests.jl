@@ -87,6 +87,7 @@ const TEST_GROUPS = (
         "test_ad.jl",
         "test_stochastic_ad.jl",
         "test_pair_kernels.jl",
+        "test_seeding_helpers.jl",
         "test_examples.jl",
     ],
 )

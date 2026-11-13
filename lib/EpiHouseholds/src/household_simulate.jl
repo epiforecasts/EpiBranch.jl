@@ -37,15 +37,7 @@ function simulate_once(
     from = something(model.from, infectious_from(progression))
     Tobs = model.obs_end
 
-    # A community hazard over an unbounded window would introduce every member;
-    # require a finite observation window instead (as the network simulator does).
-    _ext_active(model.external_hazard) && !isfinite(Tobs) &&
-        throw(
-        ArgumentError(
-            "an external hazard needs a finite `obs_end` (an unbounded window seeds " *
-                "every household member); build the process with e.g. `obs_end = 30.0`"
-        )
-    )
+    EpiBranch._check_finite_obs_end(model.external_hazard, Tobs, "every household member")
 
     state = new_state(model, progression, attributes, rng)
     add_individuals!(
@@ -74,7 +66,7 @@ function simulate_once(
         introduction = _ext_active(model.external_hazard) ?
             (EpiBranch._ext_prepare(model.external_hazard), Tobs) : nothing,
         targets = (inf, st) -> (
-            (oid, _pairkernel(model.kernel, inf, oid, st, from))
+            (oid, EpiBranch._state_pair_kernel(model.kernel, inf, oid, st, from))
                 for oid in model.members[model.household_of[inf]] if oid != inf
         ),
         # A case's contacts are its household-mates, traced whether or not
@@ -90,46 +82,17 @@ function simulate_once(
     return state
 end
 
-# Seed one household's candidate table: chosen `initial_cases` at time 0, each
-# remaining member drawn from the external hazard and kept if it lands within
-# `[0, Tobs]`, or a single seeded index at time 0 when there is neither.
+# Seed one household's candidate table: a single index case drawn at time 0
+# unless chosen `initial_cases` or an external hazard seed it.
 function _seed_clique!(
         best, members, state, extsrc, Tobs, rng;
         initial_cases = nothing
     )
-    if initial_cases !== nothing
-        EpiBranch._seed_initial_cases!(best, members, initial_cases)
-        _ext_active(extsrc) &&
-            _seed_external!(best, members, state, extsrc, Tobs, rng, initial_cases)
-        return nothing
-    end
-    m = length(members)
-    if _ext_active(extsrc)
-        _seed_external!(best, members, state, extsrc, Tobs, rng)
-    else
-        best[rand(rng, 1:m)] = 0.0
-    end
-    return nothing
-end
-
-# Draw an external-hazard introduction time for each member not in `skip`
-# (e.g. already-seeded chosen cases), keeping those landing within `[0, Tobs]`.
-function _seed_external!(best, members, state, extsrc, Tobs, rng, skip = ())
-    for k in eachindex(members)
-        members[k] in skip && continue
-        t = _ext_draw(rng, extsrc, members[k], state.individuals[members[k]].susceptibility)
-        t <= Tobs && (best[k] = t)
-    end
-    return nothing
-end
-
-# Resolve the contact-interval distribution for an ordered (infector,
-# susceptible) pair: a shared distribution, or a callable for covariate models.
-function _pairkernel(k, i, j, state, from)
-    return EpiBranch.pair_kernel(
-        k, i, j, state.individuals[i].infection_time,
-        EpiBranch._window_open(state.individuals[i], from), state
+    EpiBranch._seed_candidates!(
+        (b, m, r) -> (b[rand(r, 1:length(m))] = 0.0),
+        best, members, state, extsrc, Tobs, rng, initial_cases
     )
+    return nothing
 end
 
 function EpiBranch._validate_initial_cases(model::HouseholdProcess, opts::SimOpts)

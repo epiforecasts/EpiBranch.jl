@@ -107,7 +107,7 @@ function NetworkProcess(
     adj = _as_adjacency(adjacency)
     edge_kernel = _validate_kernel(kernel, adj)
     _check_external(external_hazard, length(adj))
-    obs_end_value = _check_obs_end(obs_end)
+    obs_end_value = EpiBranch._check_obs_end(obs_end)
 
     return NetworkProcess(
         adj, edge_kernel, from, Tuple(until),
@@ -215,8 +215,5 @@ end
 _resolve_kernel(k::ContinuousUnivariateDistribution, adjacency, i, pos, state, from) = k
 _resolve_kernel(k::AbstractVector, adjacency, i, pos, state, from) = k[i][pos]
 function _resolve_kernel(k, adjacency, i, pos, state, from)
-    return EpiBranch.pair_kernel(
-        k, i, adjacency[i][pos], state.individuals[i].infection_time,
-        EpiBranch._window_open(state.individuals[i], from), state
-    )
+    return EpiBranch._state_pair_kernel(k, i, adjacency[i][pos], state, from)
 end

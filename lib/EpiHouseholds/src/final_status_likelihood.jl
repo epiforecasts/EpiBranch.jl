@@ -230,12 +230,7 @@ function Distributions.loglikelihood(
                 "fixed set of index cases"
         )
     )
-    isfinite(model.obs_end) || throw(
-        ArgumentError(
-            "an external hazard needs a finite `obs_end` (an unbounded window seeds " *
-                "every household member); build the process with e.g. `obs_end = 30.0`"
-        )
-    )
+    EpiBranch._check_finite_obs_end(model.external_hazard, model.obs_end, "every household member")
 
     ll = 0.0
     for mem in model.members

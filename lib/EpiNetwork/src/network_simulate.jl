@@ -38,21 +38,9 @@ function simulate_once(
 
     state = new_state(model, progression, attributes, rng)
     n = length(model.adjacency)
-    if model.eager
-        add_individuals!(state, n, interventions; setup = (ind, i) -> nothing)
-    else
-        EpiBranch.lazily_populate!(state, n, interventions)
-    end
+    EpiBranch._populate!(state, n, interventions, model.eager)
 
-    # A community hazard over an unbounded window would introduce every node,
-    # swamping the graph. Require a finite observation window instead.
-    _ext_active(model.external_hazard) && !isfinite(Tobs) &&
-        throw(
-        ArgumentError(
-            "an external hazard needs a finite `obs_end` (an unbounded window seeds " *
-                "the whole network); build the process with e.g. `obs_end = 30.0`"
-        )
-    )
+    EpiBranch._check_finite_obs_end(model.external_hazard, Tobs, "the whole network")
     EpiBranch.sellke_race!(
         state, collect(1:n), rng, sim_opts;
         from = from, until = model.until, interventions = interventions,
@@ -81,42 +69,18 @@ function simulate_once(
     return state
 end
 
-# Seed the candidate table over all nodes: chosen `initial_cases` at time 0,
-# each remaining node drawn from the external hazard and kept if it lands
-# within `[0, Tobs]`, or `n_initial` distinct random nodes at time 0 when
-# there is neither.
+# Seed the candidate table over all nodes: `n_initial` distinct random nodes at
+# time 0 unless chosen `initial_cases` or an external hazard seed it.
 function _seed_network!(
         best, members, state, extsrc, n_initial, Tobs, rng;
         initial_cases = nothing
     )
-    if initial_cases !== nothing
-        chosen = initial_cases isa AbstractSet ? initial_cases : Set(initial_cases)
-        EpiBranch._seed_initial_cases!(best, members, chosen)
-        _ext_active(extsrc) && _seed_external!(best, members, state, extsrc, Tobs, rng, chosen)
-        return nothing
-    end
-    m = length(members)
-    if _ext_active(extsrc)
-        _seed_external!(best, members, state, extsrc, Tobs, rng)
-    else
-        for id in randperm(rng, m)[1:min(n_initial, m)]
-            best[id] = 0.0
+    EpiBranch._seed_candidates!(
+        best, members, state, extsrc, Tobs, rng, initial_cases
+    ) do b, m, r
+        for id in randperm(r, length(m))[1:min(n_initial, length(m))]
+            b[id] = 0.0
         end
-    end
-    return nothing
-end
-
-# Draw an external-hazard introduction time for each member not in `skip`
-# (e.g. already-seeded chosen cases), keeping those landing within `[0, Tobs]`.
-# An external hazard considers every node a possible introduction, so it
-# realises the whole population on a lazily populated model exactly as it
-# already drew every node's attributes on one built upfront.
-function _seed_external!(best, members, state, extsrc, Tobs, rng, skip = ())
-    for k in eachindex(members)
-        members[k] in skip && continue
-        susceptibility = EpiBranch._realised!(state, members[k]).susceptibility
-        t = _ext_draw(rng, extsrc, members[k], susceptibility)
-        t <= Tobs && (best[k] = t)
     end
     return nothing
 end
