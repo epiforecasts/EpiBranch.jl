@@ -276,8 +276,8 @@ function resolve_individual!(iso::Isolation, individual, state)
 
     # Three isolation pathways, each independent:
     #   - test_isolation_time:  onset + delay, occurs iff test_positive
-    #   - traced_isolation_time: set by ContactTracing's FlagOnly action,
-    #     or any intervention through `flag_for_isolation!`
+    #   - traced_isolation_time: set by the FlagOnly action of ContactTracing
+    #     or by any intervention through `flag_for_isolation!`,
     #     for traced contacts, occurs iff contact was traced and has an onset
     # Isolation occurs at the earlier of any active pathway. A
     # test-negative-but-traced contact is still isolated via tracing.

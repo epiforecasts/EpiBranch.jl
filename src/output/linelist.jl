@@ -305,9 +305,9 @@ reported_value(::Val{:isolated}, ind) = haskey(ind.state, :isolated) ? is_isolat
 reported_value(::Val{:isolation_time}, ind) = _reported_isolation(ind, :isolation_time)
 reported_value(::Val{:isolation_release_time}, ind) = _reported_isolation(ind, :isolation_release_time)
 
-# A person never infected can have been isolated only as a recorded
-# quarantine, so what is shown is that quarantine's span with any isolation
-# `Isolation` itself wrote, from a provisional onset, left out.
+# A person who was never infected can have been isolated only through a
+# recorded quarantine. The column shows the span of that quarantine, leaving
+# out any isolation that `Isolation` wrote from a provisional onset.
 function _reported_isolation(ind, key::Symbol)
     handle = get(ind.state, :_isolation_handle, nothing)
     if is_infected(ind) || handle === nothing

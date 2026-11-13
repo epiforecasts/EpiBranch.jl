@@ -97,10 +97,10 @@ end
 
 For extension authors: record that `individual` has been traced and should be
 isolated once they show symptoms. [`Isolation`](@ref) then isolates them at
-the later of `time` and their onset, or at their own self-reported isolation
-if that comes first, and never isolates one who has no onset. This is the
-hand-over of [`FlagOnly`](@ref), open to a tracer or other intervention
-written outside the package. A person flagged more than once keeps the
+the later of `time` and their onset. If they isolate themselves earlier, that
+time is used instead. A person with no onset is never isolated this way. This
+is the hand-over that [`FlagOnly`](@ref) uses, open to a tracer or other
+intervention written outside the package. A person flagged more than once keeps the
 earliest `time`. `time` may precede the onset, or be given before the onset is
 known.
 """
@@ -114,7 +114,7 @@ end
 
 For extension authors: the earliest time recorded for `individual` by
 [`flag_for_isolation!`](@ref), or `Inf` if they were never flagged. It may
-precede their onset, which a reader who isolates on symptoms holds back to the
+precede their onset; a reader that isolates on symptoms holds it back to the
 onset.
 """
 function traced_isolation_time(ind::Individual{T}) where {T}
@@ -131,7 +131,7 @@ For extension authors: whether `individual`, as the `infector` handed to
 [`trace_contacts!`](@ref EpiBranch.trace_contacts!), is a case the walk of a
 contact-tracing ring is passing through, rather than one settling on its own
 account. The walk reaches an already-infected neighbour as a member of the
-ring and calls every intervention's `trace_contacts!` from it; a tracer that
+ring and calls the `trace_contacts!` of every intervention from it. A tracer that
 starts a fresh trace from every eligible case reads this to trace from such a
 member as a ring member only, as [`ContactTracing`](@ref) does. `false`
 outside the walk.

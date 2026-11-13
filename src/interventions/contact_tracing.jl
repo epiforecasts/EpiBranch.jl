@@ -994,12 +994,13 @@ can ration them. A tracer written outside the package calls this at the end
 of its `trace_contacts!`, in place of [`apply_actions!`](@ref
 EpiBranch.apply_actions!), which would ignore the wrapper.
 
-The actions are admitted by `tracer` itself, unconditionally, unless a
-[`CapacityConstrained`](@ref) or [`HeldCapacity`](@ref) is rationing it, which
-is recorded in `state.scratch` for the span of the wrapped tracer's call
-(so a [`Scheduled`](@ref) in between still finds it); they are then admitted
-through that wrapper, against its budget. `tracer` is the innermost
-intervention, the one the wrapper's `trace_contacts!` hands the call to.
+The actions are admitted by `tracer` itself, without a limit, unless a
+[`CapacityConstrained`](@ref) or [`HeldCapacity`](@ref) is rationing it. Such a
+wrapper records itself in `state.scratch` while the call to the wrapped tracer
+runs, so a [`Scheduled`](@ref) in between still finds it, and the actions are
+then admitted through the wrapper against its budget. `tracer` is the innermost
+intervention, the one that the `trace_contacts!` of the wrapper hands the call
+to.
 """
 function admit_trace_actions!(tracer::AbstractIntervention, state, actions)
     isempty(actions) && return nothing
