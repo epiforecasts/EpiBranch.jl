@@ -91,6 +91,7 @@ using ForwardDiff
             d = Borel(0.5)
             @test d.μ == 0.5
             @test_throws ArgumentError Borel(-0.1)
+            @test Borel(0.0).μ == 0.0
             # Supercritical allowed: PMF valid pointwise, used inside quadrature
             d_super = Borel(1.5)
             @test d_super.μ == 1.5
@@ -118,6 +119,13 @@ using ForwardDiff
             # distribution whose total mass is < 1.
             @test_throws ArgumentError rand(Borel(1.5))
             @test_throws ArgumentError rand(Borel(1.0))
+        end
+
+        @testset "Poisson with mean 0" begin
+            @test loglikelihood(ChainSizes([1, 1, 1]), Poisson(0.0)) == 0.0
+            @test loglikelihood(ChainSizes([1, 1, 1]), NegativeBinomial(0.5, 1.0)) == 0.0
+            @test loglikelihood(ChainSizes([1, 2]), Poisson(0.0)) == -Inf
+            @test loglikelihood(ChainSizes([2, 2]; seeds = [2, 2]), Poisson(0.0)) == 0.0
         end
     end
 
@@ -503,8 +511,8 @@ using ForwardDiff
                 sum(n -> logpdf(GammaBorel(0.5, 0.6), n), data.data)
         end
 
-        @testset "Zero-mean Poisson is rejected, not NaN" begin
-            @test_throws ArgumentError loglikelihood(ChainSizes([1, 2]), Poisson(0.0))
+        @testset "Zero-mean Poisson gives 0 or -Inf, not NaN" begin
+            @test loglikelihood(ChainSizes([1, 2]), Poisson(0.0)) == -Inf
         end
 
         @testset "Extreme dispersion stays finite" begin
