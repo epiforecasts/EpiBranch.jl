@@ -493,7 +493,8 @@ _tag_window!(contact, until) = (contact.state[:censor_until] = until; nothing)
 # Offer `case`'s own infector to interventions tracing backward, as the sole
 # contact in `trace_contacts!`'s usual four-argument form. An index case or a
 # community introduction has no infector to offer. The race calls it once a
-# case is settled.
+# case is settled. It returns the infector when tracing has just isolated it,
+# and `nothing` otherwise.
 function _trace_source!(
         state::SimulationState, case, interventions,
         tracing_source = any(traces_source, interventions)
@@ -502,12 +503,15 @@ function _trace_source!(
     1 <= case.parent_id <= length(state.individuals) || return nothing
     infector = state.individuals[case.parent_id]
     contacts = (infector,)
+    was_isolated = is_isolated(infector)
     _each(interventions) do intervention
         traces_source(intervention) &&
             trace_contacts!(intervention, state, case, contacts)
         return nothing
     end
-    return nothing
+    # An infector this isolated was settled, and its forward tracing decided,
+    # while it still moved freely; the caller traces forward from it again.
+    return !was_isolated && is_isolated(infector) ? infector : nothing
 end
 
 """
