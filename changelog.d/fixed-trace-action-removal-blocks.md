@@ -1,1 +1,1 @@
-`ContactTracing` now blocks transmission from the removals its action records, whether or not the action sets `:quarantined`. A custom `TraceAction` that calls `set_isolated!` no longer produces infections from parents inside their own isolation stretch.
+`ContactTracing` now blocks transmission from the removals its action records, whether or not the action sets `:quarantined`. A custom `TraceAction` that calls `set_isolated!` no longer produces infections from parents during their isolation.

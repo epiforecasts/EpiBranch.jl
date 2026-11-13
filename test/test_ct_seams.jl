@@ -14,8 +14,8 @@ function EpiBranch.apply_trace!(::SharedKeyQuarantine, contact, state, trace_tim
     return nothing
 end
 
-# One that records its removal and leaves `:quarantined` alone: what blocks
-# transmission is the record, not that flag.
+# Records its removal and leaves `:quarantined` unset. The record alone blocks
+# transmission.
 struct UnflaggedQuarantine <: EpiBranch.TraceAction end
 function EpiBranch.apply_trace!(::UnflaggedQuarantine, contact, state, trace_time, rng)
     isfinite(trace_time) && set_isolated!(contact, trace_time; release_time = trace_time + 7.0)
