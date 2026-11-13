@@ -419,7 +419,7 @@ isolation and the cap on outbreak size.
     Each likelihood evaluation runs `n_sim` simulations, and fitting takes
     much longer than with an exact formula.
 
-    Changing the seed shows Monte Carlo noise but not the error from a small `n_sim`. The simulated sizes are smoothed and their sparse upper tail is scored with a fitted geometric tail, which is approximate, so estimates can be biased at small `n_sim`. Compare with a larger `n_sim`, or with an exact formula on a case that has one, before trusting a fit.
+    Changing the seed measures only the Monte Carlo noise. The simulated sizes are smoothed and their sparse upper tail is scored with a fitted geometric tail. This is approximate, and estimates can be biased at small `n_sim`. Compare with a larger `n_sim`, or with an exact formula on a case that has one, before trusting a fit.
 
 ## Filtering an outbreak over time
 
