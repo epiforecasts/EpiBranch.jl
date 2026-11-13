@@ -844,7 +844,7 @@ function _transition_probe(first_ind, transitions, state)
     return probe
 end
 
-# A hook for a model to refuse a population it cannot deplete correctly.
+# A model that cannot deplete a population correctly overrides this to refuse one.
 _check_population(::TransmissionModel) = nothing
 
 """
