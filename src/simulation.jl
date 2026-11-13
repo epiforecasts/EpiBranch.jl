@@ -1537,15 +1537,15 @@ end
 
 Build an age distribution from age bands and the share of the population in
 each, the form census tables come in. The result is a `MixtureModel` of
-`Uniform` distributions, one per band, weighted by `proportions`, and can be
-passed as the `age_distribution` of [`demographics`](@ref).
+`Uniform` distributions, one per band, weighted by `proportions`. Pass it as
+the `age_distribution` of [`demographics`](@ref).
 
 `edges` are the band boundaries in years, increasing, with one more entry than
 `proportions`: `[0, 5, 18, 65, 90]` gives the four bands 0 to 5, 5 to 18, 18
-to 65 and 65 to 90. Every band needs a finite upper edge, so an open-ended
-band such as "65+" must be given the oldest age to use. Ages drawn in a band
-are rounded down by `demographics`, so the band from 0 to 5 covers ages 0 to
-4. `proportions` need not sum to one; they are rescaled.
+to 65 and 65 to 90. Every band needs a finite upper edge: give an open-ended
+band such as "65+" the oldest age to use. `demographics` rounds ages down, which
+gives ages 0 to 4 for the band from 0 to 5. `proportions` need not sum to one;
+they are rescaled.
 
 The table method takes the band edges from the columns `lower` and `upper`,
 and the shares from `proportion`. Bands must be listed in order and be
