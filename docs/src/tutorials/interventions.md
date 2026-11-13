@@ -462,10 +462,12 @@ sweep = scenario_sweep(
     );
     n_sim = 200, max_cases = 500, rng = StableRNG(42),
 )
-sweep[:, [:offspring, :containment_probability]]
+sweep.R = mean.(sweep.offspring)
+sweep.mean_delay = [only(i).onset_to_isolation_delay.θ for i in sweep.interventions]
+sort(sweep[:, [:R, :mean_delay, :containment_probability]], [:R, :mean_delay])
 ```
 
-The six rows are the two offspring distributions crossed with the three delays, in the order the combinations are enumerated. Containment is higher with R = 1.5 than with R = 3, and in both cases it falls as isolation is delayed.
+The six rows are the two offspring distributions crossed with the three delays. The `R` and `mean_delay` columns are read back from each scenario's offspring distribution and isolation, and the table is sorted so that the delays of each R sit together. Containment is higher with R = 1.5 than with R = 3, and in both cases it falls as isolation is delayed.
 
 ### Containment by a chosen week
 
