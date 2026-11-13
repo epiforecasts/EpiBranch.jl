@@ -1,0 +1,1 @@
+`messy_linelist` makes a simulated line list messy for testing cleaning code: values go missing or implausible, dates are written in mixed formats, categories are misspelt and rows are duplicated, each at a rate of your choosing and reproducible from an `rng`.

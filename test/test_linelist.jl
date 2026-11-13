@@ -428,3 +428,87 @@ end
     @test event_time_metadata(Val(:ordinary_value)) === nothing
     @test event_time_metadata(Val(:custom_disease_time)).requires_infection
 end
+
+@testset "messy_linelist" begin
+    clean = DataFrame(
+        id = 1:200, parent_id = [0; 1:199], generation = fill(1, 200),
+        date_onset = [Date(2024, 1, 1) + Day(i) for i in 1:200],
+        age = fill(40, 200),
+        sex = repeat([:female, :male], 100)
+    )
+
+    @testset "rates of zero leave the table unchanged" begin
+        messy = messy_linelist(
+            clean; rng = StableRNG(1), missing_rate = 0, implausible_rate = 0,
+            date_format_rate = 0, typo_rate = 0, duplicate_rate = 0
+        )
+        @test messy == clean
+    end
+
+    @testset "same rng gives the same table" begin
+        a = messy_linelist(clean; rng = StableRNG(3))
+        b = messy_linelist(clean; rng = StableRNG(3))
+        @test isequal(a, b)
+    end
+
+    @testset "missing values and protected columns" begin
+        messy = messy_linelist(
+            clean; rng = StableRNG(2), missing_rate = 0.3, implausible_rate = 0,
+            date_format_rate = 0, typo_rate = 0, duplicate_rate = 0
+        )
+        @test nrow(messy) == nrow(clean)
+        @test messy.id == clean.id
+        @test messy.parent_id == clean.parent_id
+        @test 0.15 < count(ismissing, messy.age) / 200 < 0.45
+        @test eltype(messy.date_onset) == Union{Missing, Date}
+    end
+
+    @testset "duplicated rows repeat the messy original" begin
+        messy = messy_linelist(
+            clean; rng = StableRNG(4), duplicate_rate = 0.2, missing_rate = 0.1
+        )
+        @test nrow(messy) > nrow(clean)
+        extra = messy[(nrow(clean) + 1):end, :]
+        for row in eachrow(extra)
+            original = messy[row.id, :]
+            @test isequal(NamedTuple(row), NamedTuple(original))
+        end
+    end
+
+    @testset "mixed date formats and misspelt categories" begin
+        messy = messy_linelist(
+            clean; rng = StableRNG(5), missing_rate = 0, implausible_rate = 0,
+            date_format_rate = 0.5, typo_rate = 0.5, duplicate_rate = 0
+        )
+        @test nonmissingtype(eltype(messy.date_onset)) == String
+        formats = unique(occursin("-", d) && length(d) == 10 for d in messy.date_onset)
+        @test length(formats) == 2
+        @test Set(messy.sex) != Set(["female", "male"])
+        @test count(==("female"), messy.sex) < 100
+    end
+
+    @testset "implausible values" begin
+        messy = messy_linelist(
+            clean; rng = StableRNG(6), missing_rate = 0, implausible_rate = 0.5,
+            date_format_rate = 0, typo_rate = 0, duplicate_rate = 0
+        )
+        @test any(a -> a < 0 || a > 120, messy.age)
+        @test any(d -> abs(Dates.value(d - Date(2024, 1, 1))) > 365 * 15, messy.date_onset)
+    end
+
+    @testset "a rate outside [0, 1] is rejected" begin
+        @test_throws ArgumentError messy_linelist(clean; missing_rate = 1.5)
+    end
+
+    @testset "works on a simulated line list" begin
+        state = tsim(
+            BranchingProcess(Poisson(1.5), Exponential(5.0));
+            attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
+            max_cases = 50, rng = StableRNG(42)
+        )
+        ll = linelist(state)
+        messy = messy_linelist(ll; rng = StableRNG(7))
+        @test Set(names(messy)) == Set(names(ll))
+        @test messy.id[1:nrow(ll)] == ll.id
+    end
+end

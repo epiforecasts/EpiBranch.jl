@@ -135,6 +135,7 @@ include("models/generation_campaign.jl")
 
 # Output
 include("output/linelist.jl")
+include("output/messy_linelist.jl")
 include("output/tracing.jl")
 include("output/chains.jl")
 include("output/generation_intervals.jl")
@@ -258,7 +259,7 @@ export CommonRandomNumbers
 export generate_offspring, contacts_of
 
 # Exports — output
-export event_time_metadata, linelist, contacts, chain_statistics, compute_trace_level!
+export event_time_metadata, linelist, messy_linelist, contacts, chain_statistics, compute_trace_level!
 export realised_generation_interval, realised_generation_intervals
 export containment_probability, is_extinct, generation_R, weekly_incidence, scenario_sweep
 export summarise
