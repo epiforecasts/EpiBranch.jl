@@ -211,6 +211,11 @@ function Distributions.loglikelihood(
     return logpdf(d, data)
 end
 
+# A single cluster length, scored as a one-element data vector, so the law
+# can be explored one value at a time like the chain-size law.
+Distributions.logpdf(d::_ChainLengthLaw, x::Integer) = logpdf(d, [x])
+Distributions.pdf(d::_ChainLengthLaw, x::Integer) = exp(logpdf(d, x))
+
 function Base.rand(rng::AbstractRNG, d::_ChainLengthLaw, n::Int)
     sim_kwargs = _simulate_kwargs(d.kwargs, _SIMULATE_BATCH_KWARGS)
     states = simulate(d.model, n; sim_kwargs..., rng)
