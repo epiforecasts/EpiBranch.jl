@@ -193,10 +193,10 @@ EpiBranch.realised_efficacy(::_TestBlockedMode, eff, rng) =
 
     @testset "A user-defined vaccination uses the public action protocol" begin
         v = _TestCampaignVaccination(VaccineEffect(efficacy = 0.7), 5.0)
-        EpiBranch.capacity_key(v::_TestCampaignVaccination) = EpiBranch._vaccinated_key(:default)
-        function EpiBranch.capacity_time_key(v::_TestCampaignVaccination)
-            return EpiBranch._vaccination_time_key(:default)
-        end
+
+        # Without methods of its own it counts under its dose label.
+        @test EpiBranch.capacity_key(v) == :vaccinated
+        @test EpiBranch.capacity_time_key(v) == :vaccination_time
 
         contact = Individual(id = 2, parent_id = 1, infection_time = 10.0)
         EpiBranch.initialise_individual!(v, contact, nothing)

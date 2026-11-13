@@ -284,13 +284,11 @@ resource_key(gv::GroupVaccination, individual, state) =
 
 resource_key(w::InterventionWrapper, individual, state) =
     resource_key(w.intervention, individual, state)
-capacity_key(v::RingVaccination) = _vaccinated_key(dose_label(v))
-capacity_time_key(v::RingVaccination) = _vaccination_time_key(dose_label(v))
-capacity_key(v::MassVaccination) = _vaccinated_key(dose_label(v))
-capacity_time_key(v::MassVaccination) = _vaccination_time_key(dose_label(v))
 
-capacity_key(v::GroupVaccination) = _vaccinated_key(dose_label(v))
-capacity_time_key(v::GroupVaccination) = _vaccination_time_key(dose_label(v))
+# Any vaccination counts against a budget under its dose label, as
+# `record_dose!` promises.
+capacity_key(v::AbstractVaccination) = _vaccinated_key(dose_label(v))
+capacity_time_key(v::AbstractVaccination) = _vaccination_time_key(dose_label(v))
 
 # `Isolation` sets its own effect directly in `resolve_individual!` rather
 # than proposing an action; `:_isolation_handle` is the handle it already
