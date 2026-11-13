@@ -136,7 +136,7 @@ end
             bp = BranchingProcess(Poisson(0.8))
             spec = ModelSpec(bp; attributes = transmission_traits(susceptibility = 0.0))
             ll = loglikelihood(ChainSizes([1]), spec; rng = StableRNG(1), n_sim = 500)
-            # The smoothed geometric tail leaks a little mass beyond size 1.
+            # The smoothed geometric tail puts a little probability beyond size 1.
             @test isapprox(ll, 0.0; atol = 1.0e-2)
         end
     end
@@ -165,7 +165,7 @@ end
         bp = BranchingProcess(Poisson(0.8))
         spec = ModelSpec(bp; attributes = (rng, ind) -> (ind.susceptibility = 0.0))
         ll = loglikelihood(ChainSizes([1]), spec; rng = StableRNG(1), n_sim = 500)
-        # The smoothed geometric tail leaks a little mass beyond size 1.
+        # The smoothed geometric tail puts a little probability beyond size 1.
         @test isapprox(ll, 0.0; atol = 1.0e-2)
     end
 
