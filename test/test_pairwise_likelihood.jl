@@ -542,8 +542,8 @@ end
     end
 
     @testset "mass action is finite when follow-up is unbounded" begin
-        # person 2 is never infected and is watched for ever: once the only
-        # case has recovered the hazard is zero, so the tail adds nothing
+        # Person 2 is never infected and is watched indefinitely. Once the only
+        # case has recovered the hazard is zero and the tail adds nothing.
         data = _TestInfections(
             [1, 2], [0.0, NaN], [0.0, NaN], [3.0, NaN], [true, false]; obs_end = Inf
         )
@@ -553,7 +553,7 @@ end
         @test isfinite(
             pairwise_surv_loglik(Exponential(1.0), data; external_hazard = mass_action)
         )
-        # someone still infectious keeps the hazard positive for ever
+        # Someone still infectious keeps the hazard positive indefinitely.
         open_ended = EpiBranch.mass_action_schedule(mass_action, [0.0], [Inf])
         @test EpiBranch.SurvivalDistributions.cumhazard(open_ended, Inf) == Inf
     end
