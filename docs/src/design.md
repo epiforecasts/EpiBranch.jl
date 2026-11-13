@@ -123,7 +123,7 @@ A model is the whole description of how the data arise. It has five parts:
   infectiousness), which can affect transmission, the course of disease, and
   whom interventions reach;
 - **interventions**: what is done about it (isolation, tracing, vaccination);
-- **observation**: how cases are seen (under-reporting, reporting delays).
+- **observation**: how cases are seen. Per-case reporting (the probability that a case is reported and the delay to its report) is a `Reporting` step of the disease progression, so each case records whether and when it was reported. Observation models cover the chain-level recording, such as `MinimumSize` and `ChainDetection`, which turn the true outbreak into the chains that are observed.
 
 These match how epidemiologists describe an outbreak: a pathogen spreads,
 infection causes disease, in a population of people, under a response, watched
@@ -136,8 +136,9 @@ The parts depend on each other. Population characteristics affect
 transmission, disease and who interventions reach; the infectious period is
 defined by the disease states. These links are worked out when a model is
 simulated or evaluated, and each part is specified only once. A network or
-household model, for example, takes the start of infectiousness from the
-disease part of the model.
+household model, for example, opens the infectious period at a state the
+disease part records, and a branching process checks at the start of a
+simulation that the progression produces the state a window opens at.
 
 ### Who each person is
 
@@ -150,25 +151,41 @@ reserved keys](@ref).
 
 ### How interventions act
 
-An intervention acts in one of three ways:
+An intervention acts in one of these ways:
 
 - it lowers a person's **susceptibility**, the probability of infection given
   exposure (vaccination, prior immunity);
 - it lowers a case's **infectiousness**, its onward transmission (treatment);
 - it **removes** a case from transmission from a given time (isolation,
-  quarantine), cutting short the infectious period.
+  quarantine), cutting short the infectious period;
+- it **ends an infection** before symptom onset (`abort_infection!`, as in
+  post-exposure vaccination), after which the case transmits nothing, has no
+  onset and makes no further clinical transitions;
+- it **prevents symptoms** in a vaccinated person whose infection goes ahead
+  (`symptom_efficacy`);
+- it **changes severity** through the clinical transitions, for example a
+  vaccine that lowers the chance of severe disease.
 
-A contact is infected only if it passes all three: the infector's
-infectiousness, its own susceptibility, and the timing against any removal.
-This is step 3 above.
+A contact is infected only if it passes the infector's infectiousness, its own
+susceptibility, and the timing against any removal or ended infection. This is
+step 3 above.
+
+An intervention can also act on people other than the one it is called for. It
+proposes `InterventionAction` values (a person, a time and an effect), such as
+tracing a contact or vaccinating a ring, and the engine admits them through one
+protocol on every transmission model, so that capacity limits and scheduling
+apply to them in the same way as to the effects on the case itself. The protocol
+is described in [Writing an intervention](tutorials/writing-interventions.md)
+and [Extending EpiBranch](@ref).
 
 Interventions are applied in the order they are listed. A policy that starts on
 a given date, or stops after a number of cases, is described by wrapping the
 intervention in [`Scheduled`](@ref) instead of giving every intervention its
-own start date. With isolation starting on day 14, the policy acts on cases
-infected from day 14 onwards, and an isolation that would have started before
-day 14 is undone. The hook contract and a worked example are in [Writing an
-intervention](tutorials/writing-interventions.md).
+own start date. `Scheduled` judges each action at its own date, not at the
+infection time of the case. With isolation starting on day 14, a case infected on
+day 8 whose isolation falls on day 15 is isolated, and an isolation dated
+before day 14 is undone. The hook contract and a worked example are in [Writing
+an intervention](tutorials/writing-interventions.md).
 
 ### Multi-type branching processes
 
@@ -200,11 +217,17 @@ The simplest model has one offspring distribution and one generation-time
 distribution. The general version treats a case's natural history as a
 **host timeline**, a sequence of timed states from infection (infectious,
 onset, severe, died or recovered, buried), and transmission as a set of
-**route windows** on that timeline. A route window has its own offspring
-distribution, a state at which infectiousness begins, the states that end it,
-and a contact-interval distribution for the timing within it. Because the
-timeline is the disease part of the model, the state at which a window opens is
-taken from the model's disease part, not fixed in the transmission model.
+**route windows** on that timeline. A route window (`RouteWindow`) has a state
+at which infectiousness begins, the states that end it, a contact-interval
+distribution for the timing within it, whom it reaches, the state from which
+contacts are listed for tracing, and the proportion of contacts that can be
+traced. It has no offspring distribution. A branching process draws the number
+of secondary cases for each route from a separate type, `Infectiousness`, which
+pairs an offspring distribution with the window it is drawn for. Because the
+timeline is the disease part of the model, the window names the state at which
+it opens, and the progression must produce that state. A window that opens at a
+state the progression never produces does not open, and the model warns about
+it.
 
 This brings several mechanisms under one. A funeral route runs between death
 and burial, a hospital route between admission and discharge, and isolation
@@ -238,9 +261,19 @@ period as its end.
 
 ## One model for simulating and fitting
 
-`simulate` (generate outbreaks) and `loglikelihood` (score data against a
-model) read the same model, with all five parts. Simulating forward and
-fitting to data therefore always use the same assumptions. If isolation reduced
+For the exact engines, `simulate` (generate outbreaks) and `loglikelihood`
+(score data against a model) read the same model, with all five parts.
+Simulating forward and fitting to data therefore use the same assumptions. The
+population-dynamics approximations (mean-field, linear-noise and hybrid models
+of a closed population) are the exception: they take their own rates, and
+refuse interventions they cannot fold into their compartments. They accept only
+a group vaccination campaign, either alone or wrapped in `Scheduled` or
+`CapacityConstrained`.
+
+The infection likelihood conditions on who received an intervention, and does
+not include the probability of that receipt. It therefore refuses a model part
+that has not declared itself compatible, as set out in [Likelihood
+compatibility](@ref) in the extension reference. If isolation reduced
 transmission in the outbreak that produced the data, the likelihood of the
 observed chain sizes is only correct because the same model applies isolation
 too. To compare scenarios, build one model per scenario, each the same
