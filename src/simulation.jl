@@ -844,6 +844,9 @@ function _transition_probe(first_ind, transitions, state)
     return probe
 end
 
+# A model that cannot deplete a population correctly overrides this to refuse one.
+_check_population(::TransmissionModel) = nothing
+
 """
     initialise_state(model, sim_opts, interventions, transitions, attributes, rng) -> SimulationState
 
@@ -859,6 +862,7 @@ function initialise_state(
         model::TransmissionModel, sim_opts::SimOpts,
         interventions, transitions, attributes, rng::AbstractRNG
     )
+    _check_population(model)
     state = new_state(model, transitions, attributes, rng)
     # Every individual created here is an index case, so attributes that read
     # the infection time at creation must see the time of 0 they are seeded at.
