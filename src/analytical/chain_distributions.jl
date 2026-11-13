@@ -321,10 +321,10 @@ end
 
 Internal: multi-seed log-survival of a chain size distribution `d`,
 `log P(X ≥ x | s)`. While the running sum `Σ_{j=s}^{x-1} P(X = j | s)` stays
-below one half the tail is `log(1 − Σ)`. Past that, the complement would lose
-all precision once the tail falls below machine epsilon, so the tail is summed
-upwards from `x` in log space instead, adding the infinite-chain mass for a
-super-critical process. Distributions with no closed form for that mass
+below one half the tail is `log(1 − Σ)`. Past that, the complement loses
+all precision once the tail falls below machine epsilon. The tail is then summed
+upwards from `x` in log space, with the infinite-chain mass added for a
+supercritical process. Distributions with no closed form for that mass
 (see `_chain_size_log_infinite_mass`) keep the complement throughout, and
 return `-Inf` when the partial sum reaches 1.
 
@@ -369,8 +369,8 @@ end
 # dedicated `cdf(d, ::Integer)` method calls straight back into that same
 # fallback and overflows the stack. Defining `cdf` here breaks the cycle
 # and, through Distributions' own `ccdf`/`logcdf` defaults, gives those for
-# free; `logccdf` is reused from `_chain_size_right_tail_logprob`, which
-# sums the tail directly where the complement would lose precision.
+# too; `logccdf` reuses `_chain_size_right_tail_logprob`, which sums the
+# tail directly where the complement would lose precision.
 Distributions.cdf(d::Borel, n::Integer) = _chain_size_cdf(d, n)
 Distributions.logccdf(d::Borel, n::Integer) = _chain_size_right_tail_logprob(d, n + 1, 1)
 
