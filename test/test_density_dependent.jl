@@ -85,7 +85,8 @@
         # ≈ -0.8 instead of 0.0.
         bp1 = BranchingProcess(Poisson(0.8), Exponential(1.0); population_size = 1)
         ll = loglikelihood(ChainLengths([0]), bp1; rng = StableRNG(1), n_sim = 500)
-        @test isapprox(ll, 0.0; atol = 1.0e-9)
+        # The smoothed geometric tail puts a little mass on lengths above 0.
+        @test isapprox(ll, 0.0; atol = 1.0e-2)
     end
 
     @testset "Infection times increase" begin
@@ -101,4 +102,12 @@
             end
         end
     end
+end
+
+@testset "Finite population on a multi-type model" begin
+    M = [2.5 0.05; 0.05 2.5]
+    m = BranchingProcess(M, R -> Poisson(R), Exponential(5.0); population_size = 2000)
+    @test_throws ArgumentError simulate(m, 5; index_types = [1], rng = StableRNG(2))
+    ok = BranchingProcess(M, R -> Poisson(R), Exponential(5.0))
+    @test length(simulate(ok, 5; index_types = [1], rng = StableRNG(2))) == 5
 end

@@ -44,7 +44,7 @@ wrapper splits its places by [`resource_key`](@ref EpiBranch.resource_key) and
 composes with [`Scheduled`](@ref); the intervention must define
 [`capacity_key`](@ref EpiBranch.capacity_key).
 """
-struct HeldCapacity{I <: AbstractIntervention, H, F, P <: RefusalPolicy} <: InterventionWrapper
+struct HeldCapacity{I <: AbstractIntervention, H, F, P <: RefusalPolicy} <: _CapacityWrapper
     intervention::I
     capacity::Float64
     hold::H
@@ -185,25 +185,10 @@ end
 
 # ── Delegation of every other hook ────────────────────────────────────
 
-function intervention_actions(hc::HeldCapacity, state, candidates)
-    capacity_key(hc.intervention)
-    return intervention_actions(hc.intervention, state, candidates)
-end
-_discovers_actions(hc::HeldCapacity) =
-    _discovers_actions(_hook_owner(intervention_actions, hc.intervention))
-function _proposes_actions(hc::HeldCapacity)
-    acts_on_population(hc) && return false
-    return !_resolves_under_capacity(hc.intervention)
-end
-
 # An intervention that sets its own effect, as `Isolation` does, holds a place
 # for as long as that effect lasts; one that does not fit its place is undone,
 # as `CapacityConstrained` does.
-function resolve_individual!(hc::HeldCapacity, ind, state)
-    resolve_individual!(hc.intervention, ind, state)
-    _resolves_under_capacity(hc.intervention) && _hold_or_reset!(hc, ind, state)
-    return nothing
-end
+_ration_own_effect!(hc::HeldCapacity, ind, state) = _hold_or_reset!(hc, ind, state)
 
 function _hold_or_reset!(hc::HeldCapacity, ind::Individual, state)
     key = capacity_key(hc.intervention)
@@ -232,18 +217,3 @@ For extension authors: the day the effect `intervention` set directly on
 """
 held_until(::AbstractIntervention, ind) = Inf
 held_until(::Isolation, ind) = isolation_release_time(ind)
-
-function trace_contacts!(hc::HeldCapacity, state, infector, contacts, not_before = nothing)
-    key = (:trace_admitter, _innermost(hc))
-    _with_scratch(state, key, hc) do
-        if not_before === nothing
-            trace_contacts!(hc.intervention, state, infector, contacts)
-        else
-            trace_contacts!(hc.intervention, state, infector, contacts, not_before)
-        end
-    end
-    return nothing
-end
-
-removal_gap_host_times(w::HeldCapacity) = removal_gap_host_times(w.intervention)
-removal_block_probability(w::HeldCapacity) = removal_block_probability(w.intervention)

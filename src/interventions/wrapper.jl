@@ -4,11 +4,10 @@
 An intervention that modifies another intervention, such as [`Scheduled`](@ref)
 (when it may act) or [`CapacityConstrained`](@ref) (how many it may reach). A
 subtype stores the wrapped intervention in an `intervention` field and
-inherits the plain delegation of every hook below, then overrides only the
-hooks it gates. `trace_contacts!` has no default here, so each wrapper
-states what it does with it. `keep_active` does default to plain forwarding
-below, for a wrapper with nothing of its own to gate there; a wrapper that
-does gate it overrides the default just like the others.
+inherits plain delegation of every hook and overrides only the hooks it
+restricts. `trace_contacts!` has no default, so each wrapper defines it.
+`keep_active` forwards to the wrapped intervention unless the wrapper
+restricts it.
 
 A wrapper written outside the package declares through
 [`may_lapse`](@ref EpiBranch.may_lapse) whether its block can later be lifted.
