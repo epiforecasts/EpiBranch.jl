@@ -158,7 +158,7 @@ println("Model: $(round(proportion_cluster_size(model; cluster_size = 10) * 100,
 
 ## Superspreading: contact heterogeneity and R
 
-[`heterogeneous_contact_R`](@ref) is different: it does not use an offspring distribution. People with many contacts are more likely to be infected and infect more people, so variation in contact numbers raises R above the value implied by the average. It takes the mean and standard deviation of contacts per unit of time, the duration of infectiousness in the same unit and the probability of transmission per partnership, and returns R for everyone having the average number of contacts and `R_net` allowing for variation:
+[`heterogeneous_contact_R`](@ref) does not use an offspring distribution. People with many contacts are more likely to be infected and infect more people, so variation in contact numbers raises R above the value implied by the average. It takes the mean and standard deviation of contacts per unit of time, the duration of infectiousness in the same unit and the probability of transmission per partnership, and returns R for everyone having the average number of contacts and `R_net` allowing for variation:
 
 ```@example analytical
 r = heterogeneous_contact_R(10.0, 15.0, 5.0, 0.01)
@@ -212,7 +212,7 @@ end
 
 It also accepts an offspring distribution such as `NegBin(0.8, 0.5)` or `Poisson(0.8)`, or a [`BranchingProcess`](@ref), in place of R and k.
 
-That value is for one case. A cluster is over only when none of its cases can transmit again, so pass the time since every case's onset, and the number of secondary cases each is already known to have caused. A case already known to have infected others is more likely to infect more, so it counts for less than a case with the same `τ` and none known:
+That value is for one case. A cluster is over only when none of its cases can transmit again, so pass the time since every case's onset, and the number of secondary cases each is already known to have caused. Since a case already known to have infected others is more likely to infect more, it counts for less than a case with the same `τ` and none known:
 
 ```@example analytical
 offspring = NegBin(0.95, 0.18)
@@ -226,7 +226,7 @@ println("Transmission tree known:   P(over) = $(round(p_known, digits=3))")
 println("Transmission tree unknown: P(over) = $(round(p_unknown, digits=3))")
 ```
 
-Pass zeros when the transmission tree is unknown, which gives the plain product of the per-case values. Pass the result as `prob_concluded` to [`chain_size_distribution`](@ref) or the chain-size likelihood for real-time cluster data.
+Zeros, for an unknown transmission tree, give the plain product of the per-case values. Pass the result as `prob_concluded` to [`chain_size_distribution`](@ref) or the chain-size likelihood for real-time cluster data.
 
 ## Checking against simulation
 
