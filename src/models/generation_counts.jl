@@ -526,9 +526,15 @@ _like(::Vector{Int}, v::Vector{Int}) = v
 
 # ── The generation's potential contacts ──────────────────────────────
 
-# The total offspring of `n` cases, each drawing independently from `law`.
-# Where the sum of `n` copies of `law` has a closed form it is drawn in one
-# step, at a cost that does not depend on `n`. Otherwise every case draws.
+"""
+    EpiBranch.sum_offspring(rng, law, n)
+
+The total offspring of `n` cases, each drawing independently from `law`.
+Where the sum of `n` copies of `law` has a closed form it is drawn in one
+step, at a cost that does not depend on `n`. Otherwise every case draws.
+Defined for `Poisson`, `NegativeBinomial` and `Binomial`; add a method of
+your own for another offspring family with a closed-form sum.
+"""
 sum_offspring(rng::AbstractRNG, law::Poisson, n::Int) = rand(rng, Poisson(n * mean(law)))
 function sum_offspring(rng::AbstractRNG, law::NegativeBinomial, n::Int)
     return rand(rng, NegativeBinomial(n * law.r, law.p))

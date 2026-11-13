@@ -1,11 +1,14 @@
-# An intervention that modifies another intervention, such as `Scheduled`
-# (when it may act) or `CapacityConstrained` (how many it may reach). A
-# subtype stores the wrapped intervention in an `intervention` field and
-# inherits the plain delegation of every hook below, then overrides only the
-# hooks it gates. `trace_contacts!` has no default here, so each wrapper
-# states what it does with it. `keep_active` does default to plain forwarding
-# below, for a wrapper with nothing of its own to gate there; a wrapper that
-# does gate it overrides the default just like the others.
+"""
+    InterventionWrapper <: AbstractIntervention
+
+An intervention that modifies another intervention, such as `Scheduled`
+(when it may act) or `CapacityConstrained` (how many it may reach). A
+subtype stores the wrapped intervention in an `intervention` field and
+inherits plain delegation of every hook, then overrides only the hooks it
+gates. `trace_contacts!` has no default, so each wrapper states what it does
+with it. `keep_active` defaults to plain forwarding, for a wrapper with
+nothing of its own to gate there.
+"""
 abstract type InterventionWrapper <: AbstractIntervention end
 
 initialise_individual!(w::InterventionWrapper, ind, state) = initialise_individual!(w.intervention, ind, state)
