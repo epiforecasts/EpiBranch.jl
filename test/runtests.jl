@@ -39,6 +39,7 @@ const TEST_GROUPS = (
         "test_intervention_actions.jl",
         "test_competing_risks.jl",
         "test_ct_seams.jl",
+        "test_behaviour_traits.jl",
         "test_source_tracing.jl",
         "test_composable_eligibility.jl",
         "test_isolation_seams.jl",

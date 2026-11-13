@@ -22,6 +22,8 @@ public trace_contacts!
 public traces_contacts
 public traces_source
 public has_effect
+public time_aware, resolves_under_capacity, discovers_actions, proposes_actions
+public has_competing_risk
 public supplies_contacts
 public competing_risk
 public persistent_competing_risks

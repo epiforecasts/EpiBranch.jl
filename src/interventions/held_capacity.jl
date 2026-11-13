@@ -189,11 +189,10 @@ function intervention_actions(hc::HeldCapacity, state, candidates)
     capacity_key(hc.intervention)
     return intervention_actions(hc.intervention, state, candidates)
 end
-_discovers_actions(hc::HeldCapacity) =
-    _discovers_actions(_hook_owner(intervention_actions, hc.intervention))
-function _proposes_actions(hc::HeldCapacity)
+discovers_actions(hc::HeldCapacity) = discovers_actions(hc.intervention)
+function proposes_actions(hc::HeldCapacity)
     acts_on_population(hc) && return false
-    return !_resolves_under_capacity(hc.intervention)
+    return !resolves_under_capacity(hc.intervention)
 end
 
 # An intervention that sets its own effect, as `Isolation` does, holds a place
@@ -201,7 +200,7 @@ end
 # as `CapacityConstrained` does.
 function resolve_individual!(hc::HeldCapacity, ind, state)
     resolve_individual!(hc.intervention, ind, state)
-    _resolves_under_capacity(hc.intervention) && _hold_or_reset!(hc, ind, state)
+    resolves_under_capacity(hc.intervention) && _hold_or_reset!(hc, ind, state)
     return nothing
 end
 

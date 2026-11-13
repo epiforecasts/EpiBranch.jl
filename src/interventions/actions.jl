@@ -609,7 +609,7 @@ function _apply_case_actions!(
     # cases — `action_candidates` is what keeps each intervention within
     # that boundary while choosing its own, much smaller, set of people to
     # visit. The caller passes only the interventions that propose actions
-    # (`_proposes_actions`).
+    # (`proposes_actions`).
     for iv in interventions
         # `needs_contacts` rather than `contacts !== nothing` alone, so an
         # intervention that needs no contacts (`GroupVaccination`) still
@@ -634,14 +634,6 @@ function _apply_case_actions!(
     # a trigger `current` itself just supplied) still sees it as pending.
     current.state[:_settled] = true
     return nothing
-end
-
-# Whether an intervention proposes actions per settled case: it has an
-# `intervention_actions` method of its own, found past any wrapper that only
-# forwards it, and is not one offered the whole population at once instead.
-function _proposes_actions(iv::AbstractIntervention)
-    acts_on_population(iv) && return false
-    return _discovers_actions(_hook_owner(intervention_actions, iv))
 end
 
 # Offer every intervention declaring `acts_on_population` its actions once,

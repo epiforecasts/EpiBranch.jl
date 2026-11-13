@@ -352,7 +352,7 @@ end
             );
             budget_per_period = 1.0
         )
-        @test !EpiBranch._discovers_actions(cc_scheduled)
+        @test !EpiBranch.discovers_actions(cc_scheduled)
         # The package's own isolation, scheduled or not, warns about nothing.
         prog_pool = HomogeneousProcess(; transmission_rate = 1.5, population_size = 200)
         onsets = clinical_presentation(

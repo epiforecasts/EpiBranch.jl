@@ -59,7 +59,7 @@ refused_action(::DropRefused, wrapper, usage, action) = nothing
 # wrapper is built rather than when a run first refuses someone.
 _check_refusal_policy(::RefusalPolicy, intervention) = nothing
 function _check_refusal_policy(::DeferRefused, intervention)
-    _resolves_under_capacity(intervention) && throw(
+    resolves_under_capacity(intervention) && throw(
         ArgumentError(
             "DeferRefused needs an intervention that proposes actions; " *
                 "$(typeof(intervention)) sets its effect directly, so a refused " *
@@ -621,28 +621,23 @@ function _resource_groups(cc, state, individuals)
 end
 
 # `CapacityConstrained` always has its own `intervention_actions` method, to
-# add the `capacity_key` check above, so asking `iv` directly would credit
+# add the `capacity_key` check above, so asking the default would credit
 # every instance with discovering actions whether or not the one it wraps
-# does. Unwrapping through `_hook_owner` reaches past any further
-# `InterventionWrapper` nested inside (`Scheduled`, say) to the intervention
-# that would answer `intervention_actions`; dispatching `_discovers_actions`
-# back onto it, rather than re-deriving the generic check here, reaches a
-# wrapped `ContactTracing`'s own override too. That override looks past its
-# always-present forwarding method to what its action overrides.
-function _discovers_actions(cc::CapacityConstrained)
-    return _discovers_actions(_hook_owner(intervention_actions, cc.intervention))
-end
+# does. Asking the wrapped intervention reaches a wrapped `ContactTracing`'s
+# own override too, which looks past its always-present forwarding method to
+# what its action overrides.
+discovers_actions(cc::CapacityConstrained) = discovers_actions(cc.intervention)
 # Asked for its actions on every settled case even when the intervention it
 # wraps proposes none, so that wrapping one with nothing to ration fails when
 # the run starts rather than going unrationed (see `intervention_actions`),
 # unless it instead rations through `resolve_individual!` and `reset!`, as
-# `Isolation` does (`_resolves_under_capacity`). That seam needs no candidates
+# `Isolation` does (`resolves_under_capacity`). That seam needs no candidates
 # or contacts, and routing it through the action funnel too would only cost a
 # contactless model (`HomogeneousProcess`, `MixingProcess`) a spurious warning
 # that it has nothing for `Isolation` to act on.
-function _proposes_actions(cc::CapacityConstrained)
+function proposes_actions(cc::CapacityConstrained)
     acts_on_population(cc) && return false
-    return !_resolves_under_capacity(cc.intervention)
+    return !resolves_under_capacity(cc.intervention)
 end
 
 """
@@ -694,26 +689,9 @@ function trace_contacts!(cc::CapacityConstrained, state, infector, contacts, not
     return nothing
 end
 
-# Whether the intervention that owns the `capacity_key` of `iv` (unwrapped
-# past anything that only forwards it) writes its own effect directly in
-# `resolve_individual!`, as `Isolation` does. `CapacityConstrained` then gates
-# that effect through `intervention_time` and `reset!`, the way `Scheduled`
-# already does for its own window, rather than through the action funnel an
-# intervention proposing no effect of its own in `resolve_individual!` (a
-# dose) uses instead. Found through the owner of `capacity_key` rather than
-# the owner of `resolve_individual!`: `Scheduled` always defines the latter
-# itself, to gate whatever it wraps through its own window, which would
-# otherwise stop the search there and credit it to a dose a
-# `Scheduled(RingVaccination(...))` still proposes through the funnel.
-function _resolves_under_capacity(iv::AbstractIntervention)
-    owner = _hook_owner(capacity_key, iv)
-    _has_own_method(capacity_key, typeof(owner), AbstractIntervention) || return false
-    return _has_own_method(resolve_individual!, typeof(owner), AbstractIntervention)
-end
-
 function resolve_individual!(cc::CapacityConstrained, ind, state)
     resolve_individual!(cc.intervention, ind, state)
-    _resolves_under_capacity(cc.intervention) && _reset_unless_within_budget!(cc, ind, state)
+    resolves_under_capacity(cc.intervention) && _reset_unless_within_budget!(cc, ind, state)
     return nothing
 end
 

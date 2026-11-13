@@ -31,6 +31,22 @@ function infectious_removal_time(w::InterventionWrapper, ind::Individual)
     return t
 end
 traces_contacts(w::InterventionWrapper) = traces_contacts(w.intervention)
+# A wrapper answers these from its own methods when it has them, and otherwise
+# from the intervention it wraps, which is the one whose methods would run.
+function time_aware(w::InterventionWrapper)
+    _has_own_method(intervention_time, typeof(w), InterventionWrapper) && return true
+    return time_aware(w.intervention)
+end
+function resolves_under_capacity(w::InterventionWrapper)
+    if _has_own_method(capacity_key, typeof(w), InterventionWrapper)
+        return _has_own_method(resolve_individual!, typeof(w), InterventionWrapper)
+    end
+    return resolves_under_capacity(w.intervention)
+end
+function discovers_actions(w::InterventionWrapper)
+    _has_own_method(intervention_actions, typeof(w), InterventionWrapper) && return true
+    return discovers_actions(w.intervention)
+end
 traces_source(w::InterventionWrapper) = traces_source(w.intervention)
 function on_infection_settled!(w::InterventionWrapper, ind, state, rng)
     return on_infection_settled!(w.intervention, ind, state, rng)
