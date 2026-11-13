@@ -246,10 +246,10 @@ struct LognormalApproximation <: IncidenceApproximation end
 #
 # A zero count at a step whose variance is positive but below that of a
 # rounded count (1/12) is left out as well. Its normal log-density is close to
-# `-log(σ)`, which grows without bound as the variance shrinks, so keeping it
+# `-log(σ)`, which grows without bound as the variance shrinks. Keeping it
 # would reward parameters that push early expected counts towards zero. A
-# nonzero count at such a step stays in and is penalised heavily. A lognormal
-# has no mass at 0, so for it a zero count is still an error downstream.
+# nonzero count at such a step stays in and is penalised heavily. The lognormal
+# has no mass at 0 and still treats a zero count as an error downstream.
 _min_variance(::IncidenceApproximation) = 0.0
 _min_variance(::NormalApproximation) = 1 / 12
 
