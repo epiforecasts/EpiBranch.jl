@@ -27,8 +27,8 @@ incubation period with a median of about 4.5 days. `Exponential(θ)` has mean θ
 
 After symptom onset each case is reported (mean 3 days after onset), admitted
 to hospital with probability 0.2, and is due to die with probability 0.05.
-Every case ends in death or recovery. The two outcomes are made mutually
-exclusive with [`exclusive_probabilities`](@ref), so that exactly 5% of cases die.
+Every case ends in death or recovery. [`exclusive_probabilities`](@ref)
+makes the two outcomes mutually exclusive, and exactly 5% of cases die.
 
 ```@example linelist
 using EpiBranch

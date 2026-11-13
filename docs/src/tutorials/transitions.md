@@ -26,9 +26,9 @@ default:
 
 Death and recovery are final outcomes: each case ends with one of them (see
 [Competing outcomes](@ref) below). Each event has its own delay distribution
-and probability. Here recovery is written as a `Transition` so that exactly 5%
-of cases die; a plain `Recovery` next to `Death` would give a lower proportion
-(see [An exact case fatality ratio](@ref)):
+and probability. Here recovery is written as a `Transition`, which makes the
+proportion dying exactly 5%. A plain `Recovery` next to `Death` would give a
+lower proportion (see [An exact case fatality ratio](@ref)):
 
 ```@example transitions
 using EpiBranch
@@ -319,14 +319,14 @@ Death and recovery compete: each case ends with whichever final outcome
 happens first, the situation survival analysis calls competing risks. The
 outcome is recorded as `:outcome`, and its time as `:outcome_time`.
 
-This affects what the `probability` of `Death` means next to a `Recovery`. It
-is the probability that a case would die if it did not recover first. When
+Next to a `Recovery`, the `probability` of `Death` is the probability that a
+case would die if it did not recover first. When
 recovery tends to come sooner than death, as in the example below, some of the
 cases that would have died recover first, and the proportion of cases dying is
 below the `probability` given. Here death comes a mean of about 13 days after
-onset and recovery about 8, so only about one in five cases drawn to die does
-so, a case fatality ratio near 1% rather than 5%. With equal delays it is half
-of `probability`.
+onset and recovery about 8. Only about one in five cases drawn to die does
+so, giving a case fatality ratio near 1% rather than 5%. With equal delays it
+is half of `probability`.
 
 Further final outcomes join the competition through the general `Transition`
 with `terminal = true`. Here 10% of cases are lost to follow-up, a mean of
