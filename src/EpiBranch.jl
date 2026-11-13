@@ -248,7 +248,7 @@ export IndexChainSize
 export ThinnedChainSize, TruncatedChainSize, DetectedChainSize
 
 # Exports — attributes functions
-export clinical_presentation, demographics, transmission_traits, groups,
+export clinical_presentation, demographics, age_bands, transmission_traits, groups,
     group_attribute, vaccine_acceptance
 
 # Exports — simulation
