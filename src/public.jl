@@ -150,7 +150,8 @@ public removal_block_probability
 public record_removal!, revise_removal!, withdraw_removal!
 public removal_stretches
 public InterventionAction, intervention_actions, action_draw!, action_cache,
-    apply_actions!, action_candidates, acts_on_population, needs_contacts,
+    apply_actions!, action_candidates, acts_on_population, gates_on_population_clock,
+    needs_contacts,
     may_revise, is_settled
 
 # Pairwise survival likelihood: how its two accumulation passes group rows

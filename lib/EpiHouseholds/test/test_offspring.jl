@@ -597,6 +597,23 @@ end
             ]
         )
         @test_throws ArgumentError household_offspring(scheduled; global_rate = λG)
+        # The refusal sees through wrappers and covers a capacity budget.
+        iso = Isolation(
+            onset_to_isolation_delay = Exponential(1.0),
+            eligibility = AllCases(), duration = Inf
+        )
+        for iv in (
+                OnRoutes(Scheduled(iso; start_time = 10.0), (:transmission,)),
+                CapacityConstrained(Scheduled(iso; start_time = 10.0); budget_per_period = 5, period = 7.0),
+                CapacityConstrained(iso; budget_per_period = 5, period = 7.0),
+            )
+            wrapped = ModelSpec(
+                HouseholdProcess(fill(4, 10), Exponential(1 / β));
+                progression = scheduled.progression, interventions = [iv]
+            )
+            @test_throws ArgumentError household_offspring(wrapped; global_rate = λG)
+        end
+        @test EpiBranch.gates_on_population_clock(OnRoutes(iso, (:transmission,))) == false
         o = household_offspring(_markov(4); global_rate = λG)
         @test_throws ArgumentError household_offspring_law(o, 5)
         @test household_offspring_law(o, 4) === o.laws[1]

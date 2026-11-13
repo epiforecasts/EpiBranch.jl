@@ -1,0 +1,1 @@
+`household_offspring` now refuses a `Scheduled` or `CapacityConstrained` intervention inside a wrapper such as `OnRoutes`, and a bare `CapacityConstrained`, as it already refused a bare `Scheduled`. The new `EpiBranch.gates_on_population_clock(iv)` trait, forwarded by every wrapper, lets a user-defined wrapper declare the same.

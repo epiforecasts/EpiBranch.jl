@@ -809,6 +809,7 @@ EpiBranch.action_cache
 EpiBranch.apply_actions!
 EpiBranch.action_candidates
 EpiBranch.acts_on_population
+EpiBranch.gates_on_population_clock
 EpiBranch.needs_contacts
 EpiBranch.may_revise
 EpiBranch.is_settled

@@ -82,3 +82,18 @@ function removal_gap_host_times_withdrawn(w::InterventionWrapper)
     inner_named = removal_gap_host_times(w.intervention)
     return Tuple(union(inner_withdrawn, inner_named))
 end
+
+"""
+    gates_on_population_clock(intervention) -> Bool
+
+For extension authors: whether this intervention's effect depends on the
+population's clock or case count, as [`Scheduled`](@ref) does through its
+start condition and [`CapacityConstrained`](@ref) through its budget per
+period. A model that has no such clock, such as the branching process over
+households, refuses an intervention that declares it. The default is `false`;
+a wrapper written outside the package forwards the wrapped intervention's
+answer, as every [`InterventionWrapper`](@ref) here does, so the gate is seen
+through any nesting.
+"""
+gates_on_population_clock(::AbstractIntervention) = false
+gates_on_population_clock(w::InterventionWrapper) = gates_on_population_clock(w.intervention)
