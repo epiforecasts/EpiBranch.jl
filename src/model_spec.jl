@@ -502,13 +502,8 @@ function simulate(
         spec.process, n_initial, initial_cases, index_types, max_cases, max_generations,
         max_time, stopping_rules
     )
-    _validate_initial_cases(spec.process, sim_opts)
-    _validate_index_types(spec.process, sim_opts)
     return _run_once_or_retry(
-        spec.process, sim_opts, condition, max_attempts;
-        interventions = spec.interventions, attributes = spec.attributes,
-        progression = spec.progression, observation = spec.observation,
-        recorder = spec.recorder, rng
+        spec.process, sim_opts, condition, max_attempts; _layers(spec)..., rng
     )
 end
 
@@ -545,14 +540,7 @@ function _simulate_each(
         spec.process, n_initial, initial_cases, index_types, max_cases, max_generations,
         max_time, stopping_rules
     )
-    _validate_initial_cases(spec.process, sim_opts)
-    _validate_index_types(spec.process, sim_opts)
-    return _simulate_n(
-        each, T, spec.process, n, sim_opts;
-        interventions = spec.interventions, attributes = spec.attributes,
-        progression = spec.progression, observation = spec.observation,
-        recorder = spec.recorder, rng, parallel
-    )
+    return _simulate_n(each, T, spec.process, n, sim_opts; _layers(spec)..., rng, parallel)
 end
 
 # ── Interventions in the analytical functions ────────────────────────

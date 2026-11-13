@@ -122,7 +122,6 @@ function _rand_chain_size_setup(model::TransmissionModel, sim_kwargs::NamedTuple
         get(sim_kwargs, :max_generations, _DEFAULT_MAX_GENERATIONS),
         get(sim_kwargs, :max_time, nothing), get(sim_kwargs, :stopping_rules, nothing)
     )
-    _validate_initial_cases(model, sim_opts)
     return (
         process = model, sim_opts = sim_opts, interventions = interventions(model),
         attributes = attributes(model), recorder = recorder(model),
@@ -140,7 +139,6 @@ function _rand_chain_size_setup(spec::ModelSpec, sim_kwargs::NamedTuple)
         get(sim_kwargs, :max_generations, _DEFAULT_MAX_GENERATIONS),
         get(sim_kwargs, :max_time, nothing), get(sim_kwargs, :stopping_rules, nothing)
     )
-    _validate_initial_cases(spec.process, sim_opts)
     return (
         process = spec.process, sim_opts = sim_opts, interventions = spec.interventions,
         attributes = spec.attributes, recorder = spec.recorder,

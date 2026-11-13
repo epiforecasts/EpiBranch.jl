@@ -106,13 +106,8 @@ function simulate(
         model, n_initial, initial_cases, index_types, max_cases, max_generations,
         max_time, stopping_rules
     )
-    _validate_initial_cases(model, sim_opts)
-    _validate_index_types(model, sim_opts)
     return _run_once_or_retry(
-        model, sim_opts, condition, max_attempts;
-        interventions = interventions(model), attributes = attributes(model),
-        progression = progression(model), observation = observation(model),
-        recorder = recorder(model), rng
+        model, sim_opts, condition, max_attempts; _layers(model)..., rng
     )
 end
 
@@ -271,14 +266,7 @@ function _simulate_each(
         model, n_initial, initial_cases, index_types, max_cases, max_generations,
         max_time, stopping_rules
     )
-    _validate_initial_cases(model, sim_opts)
-    _validate_index_types(model, sim_opts)
-    return _simulate_n(
-        each, T, model, n, sim_opts; interventions = interventions(model),
-        attributes = attributes(model), progression = progression(model),
-        observation = observation(model), recorder = recorder(model), rng,
-        parallel
-    )
+    return _simulate_n(each, T, model, n, sim_opts; _layers(model)..., rng, parallel)
 end
 
 _simulate_n(model::TransmissionModel, n::Int, sim_opts::SimOpts; kwargs...) =
@@ -355,9 +343,18 @@ function _drop_default_shortcuts(model, sim_opts, max_cases, max_generations, st
     return SimOpts(sim_opts.n_initial, sim_opts.initial_cases, sim_opts.index_types, rules)
 end
 
-# Shared by all four `simulate` entry points (a bare process or a `ModelSpec`,
-# each for one outbreak or `n`): build the `SimOpts` the termination keywords
-# describe, with the defaults dropped per `_drop_default_shortcuts`.
+# The five layer keywords of `simulate_once` and `_simulate_n`, read from a
+# process or a `ModelSpec` through the shared accessors.
+_layers(model) = (
+    interventions = interventions(model), attributes = attributes(model),
+    progression = progression(model), observation = observation(model),
+    recorder = recorder(model),
+)
+
+# Builds the `SimOpts` from the termination keywords for every caller that
+# simulates (a bare process or a `ModelSpec`, one outbreak or `n`, and the
+# likelihood paths). It drops the defaults through `_drop_default_shortcuts`
+# and checks the seeding options against `model`. A new check goes in here once.
 function _build_sim_opts(
         model, n_initial, initial_cases, index_types, max_cases, max_generations,
         max_time, stopping_rules
@@ -366,7 +363,10 @@ function _build_sim_opts(
         n_initial, initial_cases, index_types, max_cases, max_generations, max_time,
         stopping_rules
     )
-    return _drop_default_shortcuts(model, sim_opts, max_cases, max_generations, stopping_rules)
+    _validate_initial_cases(model, sim_opts)
+    _validate_index_types(model, sim_opts)
+    sim_opts = _drop_default_shortcuts(model, sim_opts, max_cases, max_generations, stopping_rules)
+    return sim_opts
 end
 
 """
