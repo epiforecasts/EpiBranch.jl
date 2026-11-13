@@ -185,6 +185,22 @@ using Dates
         @test isapprox(integral, 1.0; atol = 1.0e-3)
     end
 
+    @testset "incubation_linked_generation_time keeps the presymptomatic share for short incubation periods" begin
+        for presymp in (0.15, 0.3, 0.6), rel in (0.2, 0.5, 1.0), inc in (1.0, 2.0, 5.0, 8.0)
+            gt_fn = incubation_linked_generation_time(
+                presymptomatic_fraction = presymp, relative_spread = rel
+            )
+            ind = Individual(
+                id = 1, infection_time = 0.0,
+                state = Dict{Symbol, Any}(:onset_time => inc)
+            )
+            d = gt_fn(ind)
+            @test d.inner.ω ≈ rel * inc
+            @test isapprox(cdf(d, inc), presymp; atol = 1.0e-4)
+        end
+        @test_throws ArgumentError incubation_linked_generation_time(relative_spread = 0.0)
+    end
+
     @testset "_TruncatedSkewNormal has the full univariate law interface" begin
         d = EpiBranch._TruncatedSkewNormal(5.0, 2.0, 1.5)
         @test minimum(d) == 0.0

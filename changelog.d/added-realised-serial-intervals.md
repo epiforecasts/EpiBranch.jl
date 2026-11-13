@@ -1,0 +1,1 @@
+`realised_serial_intervals(state)` returns the onset-to-onset intervals of every infector-infectee pair in a simulation or a vector of simulations. It skips pairs where either case has no onset and is the counterpart of `realised_generation_intervals`. `realised_serial_interval(ind, state)` gives the interval for one case.
