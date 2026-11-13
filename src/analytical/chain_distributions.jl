@@ -18,7 +18,7 @@ struct Borel{T <: Real} <: ChainSizeLaw
     μ::T
 
     function Borel(μ::Real)
-        0.0 < μ || throw(ArgumentError("μ must be positive, got $μ"))
+        0.0 <= μ || throw(ArgumentError("μ must be non-negative, got $μ"))
         return new{typeof(μ)}(μ)
     end
 end
@@ -37,7 +37,9 @@ Finger, https://github.com/epiverse-trace/epichains, MIT).
 """
 function _borel_logpdf(μ, x::Integer, s::Integer = 1)
     (s < 1 || x < s) && return oftype(float(μ), -Inf)
-    return log(s) - log(x) + (x - s) * log(x * μ) - x * μ - logabsgamma(x - s + 1)[1]
+    # Skip the power term when x == s: at μ = 0 it would be 0 * -Inf = NaN.
+    power = x == s ? zero(float(μ)) : (x - s) * log(x * μ)
+    return log(s) - log(x) + power - x * μ - logabsgamma(x - s + 1)[1]
 end
 
 Distributions.logpdf(d::Borel, n::Integer) = _borel_logpdf(d.μ, n)
