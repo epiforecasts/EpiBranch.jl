@@ -659,6 +659,15 @@ EpiBranch.interventions(m::_ProcessWithInterventions) = m.interventions
         @test !EpiBranch._has_own_method(
             _all_variadic, BlockVariadic, AbstractIntervention, 3
         )
+        # A method defined after the answer was cached, as a user's hook is,
+        # still changes it.
+        @eval struct _LateHook <: AbstractIntervention end
+        @eval _late_hook(::AbstractIntervention, args...) = nothing
+        @test !EpiBranch._has_own_method(_late_hook, _LateHook, AbstractIntervention)
+        @test !EpiBranch._has_own_method(_late_hook, _LateHook, AbstractIntervention, 2)
+        @eval _late_hook(::_LateHook, x) = x
+        @test EpiBranch._has_own_method(_late_hook, _LateHook, AbstractIntervention)
+        @test EpiBranch._has_own_method(_late_hook, _LateHook, AbstractIntervention, 2)
         # A child of an abstract intervention whose override drops an
         # argument: the parent's correct method answers the call, so the
         # child's block never applies, and the warning names the child.

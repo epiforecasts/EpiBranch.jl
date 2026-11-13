@@ -68,13 +68,45 @@ end
 # 1, and nothing is then drawn from the rng, so a run without risks reproduces
 # the same seeded results.
 
+# The answer changes only when a method is defined, which advances the world
+# counter, so answers are cached until the counter moves. The race asks on every
+# run, and searching the method table takes a large share of the time in a small
+# outbreak. The counter is checked on each call so that a hook defined outside
+# the package after it was loaded is still found.
+# The cache is an immutable (world, dict) pair that is replaced rather than
+# mutated. A hit reads it without a lock, which matters under threaded
+# simulation. A miss takes the lock only to publish a fresh copy of the dict.
+const _OwnMethodKey = Tuple{Any, Type, Type, Union{Int, Nothing}}
+const _OWN_METHOD_STATE = Ref{Tuple{UInt, Dict{_OwnMethodKey, Bool}}}(
+    (UInt(0), Dict{_OwnMethodKey, Bool}())
+)
+const _OWN_METHOD_LOCK = ReentrantLock()
+
+function _has_own_method(f, T::Type, base::Type, n::Union{Int, Nothing} = nothing)
+    world = Base.get_world_counter()
+    key = (f, T, base, n)
+    state = _OWN_METHOD_STATE[]
+    if state[1] == world
+        hit = get(state[2], key, nothing)
+        hit === nothing || return hit
+    end
+    answer = _has_own_method_uncached(f, T, base, n)
+    lock(_OWN_METHOD_LOCK) do
+        current = _OWN_METHOD_STATE[]
+        entries = current[1] == world ? copy(current[2]) : Dict{_OwnMethodKey, Bool}()
+        entries[key] = answer
+        _OWN_METHOD_STATE[] = (world, entries)
+    end
+    return answer
+end
+
 # Whether `f` has a method for `T` more specific than the fallback defined on
 # `base`, i.e. whether a type has implemented a hook itself. With `n`, the
 # method must also be callable with exactly `n` arguments (the hook itself
 # counted among them). A hook written for `T` with the wrong arity is listed
 # by `methods` like one with the right arity, but an exact-arity call never
 # resolves to it, and it does not count.
-function _has_own_method(f, T::Type, base::Type, n::Union{Int, Nothing} = nothing)
+function _has_own_method_uncached(f, T::Type, base::Type, n::Union{Int, Nothing} = nothing)
     # `methods` rather than `which`, which finds only a method whose parameters
     # accept `Any`: an intervention that types its hook's arguments, as the style
     # guide asks, has one `which` looks straight past.
