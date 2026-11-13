@@ -57,10 +57,9 @@ is_eligible_for_isolation(::SymptomaticOnly, ind, state) = !is_asymptomatic(ind)
 """Every case is eligible to draw a test result, including asymptomatic ones.
 
 Isolation is timed from symptom onset, so a case with no onset is never
-isolated: `AllCases` changes who draws `:test_positive`, not who is isolated,
-and behaves like [`SymptomaticOnly`](@ref) for isolation itself. Mass testing
-of asymptomatic cases needs a custom rule and an isolation time that does not
-depend on onset."""
+isolated. `AllCases` widens who draws `:test_positive`, and isolation itself
+follows [`SymptomaticOnly`](@ref). Mass testing of asymptomatic cases needs a
+custom rule and an isolation time that does not depend on onset."""
 struct AllCases <: IsolationEligibility end
 
 # Fields an eligibility rule reads beyond the onset time every isolation needs.
