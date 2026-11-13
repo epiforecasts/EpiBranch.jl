@@ -360,6 +360,7 @@ EpiBranch.interventions(m::_ProcessWithInterventions) = m.interventions
         end
         @test EpiBranch.progression(spec) == prog
         @test EpiBranch.process(spec) === bp
+        @test EpiBranch.process(bp) === bp
 
         # Every keyword left out keeps that layer of `spec`.
         extra = demographics(age_distribution = Normal(50, 20))

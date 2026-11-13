@@ -1,0 +1,1 @@
+`process` now accepts a bare `TransmissionModel` and returns it. A model and a `ModelSpec` therefore answer the same accessors: `chain_size_distribution`, `chain_length_distribution`, `offspring_distribution` and `loglikelihood` for chain sizes, chain lengths and signal data share one method between the two.

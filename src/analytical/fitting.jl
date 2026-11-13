@@ -349,16 +349,10 @@ seeds rather than against single-seed ones. `prob_concluded`, when given, is
 the real-time per-cluster mixture `π_i · P(X = x_i) + (1 − π_i) · P(X ≥ x_i)`
 taken against the simulated clusters' empirical distribution.
 """
-function loglikelihood(data::ChainSizes, model::TransmissionModel; kwargs...)
+function loglikelihood(data::ChainSizes, m::Union{TransmissionModel, ModelSpec}; kwargs...)
     return _chain_size_model_loglik(
-        data, model, interventions(model), attributes(model),
-        progression(model), observation(model), recorder(model); kwargs...
-    )
-end
-function loglikelihood(data::ChainSizes, spec::ModelSpec; kwargs...)
-    return _chain_size_model_loglik(
-        data, spec.process, interventions(spec), attributes(spec),
-        progression(spec), observation(spec), recorder(spec); kwargs...
+        data, process(m), interventions(m), attributes(m),
+        progression(m), observation(m), recorder(m); kwargs...
     )
 end
 
@@ -452,16 +446,10 @@ applies on both paths. Not available with an observation model or a
 `Reporting` probability below 1 because a chain with undetected cases has no
 well-defined observed length.
 """
-function loglikelihood(data::ChainLengths, model::TransmissionModel; kwargs...)
+function loglikelihood(data::ChainLengths, m::Union{TransmissionModel, ModelSpec}; kwargs...)
     return _chain_length_model_loglik(
-        data, model, interventions(model), attributes(model),
-        progression(model), observation(model), recorder(model); kwargs...
-    )
-end
-function loglikelihood(data::ChainLengths, spec::ModelSpec; kwargs...)
-    return _chain_length_model_loglik(
-        data, spec.process, interventions(spec), attributes(spec),
-        progression(spec), observation(spec), recorder(spec); kwargs...
+        data, process(m), interventions(m), attributes(m),
+        progression(m), observation(m), recorder(m); kwargs...
     )
 end
 

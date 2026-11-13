@@ -51,15 +51,8 @@ on).
     particle method, which scores the data step by step and resamples paths.
 """
 function loglikelihood(
-        data::SignalData, model::TransmissionModel;
+        data::SignalData, m::Union{TransmissionModel, ModelSpec};
         rng::AbstractRNG = Random.default_rng(), kwargs...
     )
-    return loglikelihood(data, simulate(model; rng, kwargs...))
-end
-
-function loglikelihood(
-        data::SignalData, spec::ModelSpec;
-        rng::AbstractRNG = Random.default_rng(), kwargs...
-    )
-    return loglikelihood(data, simulate(spec; rng, kwargs...))
+    return loglikelihood(data, simulate(m; rng, kwargs...))
 end
