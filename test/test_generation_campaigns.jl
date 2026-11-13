@@ -171,14 +171,12 @@ EpiBranch.trigger_time(e::_EligibleAt, infector, state) = e.time
         )
     end
 
-    @testset "agrees with individual-based simulation in a large population" begin
+    @testset "agrees with individual-based simulation without depletion" begin
         # Individual-based generations a fixed 14 days apart. Doses are given
         # at a day in the campaign window to everyone, so the campaign is the
         # same one each engine applies: half of each type's contacts from day
         # 42 on are protected. Both start from the same index cases.
-        individual = BranchingProcess(
-            matrix, R -> Poisson(R), Dirac(14.0); population_size = 200_000
-        )
+        individual = BranchingProcess(matrix, R -> Poisson(R), Dirac(14.0))
         campaign = Scheduled(
             CapacityConstrained(
                 group(; eligibility = _EligibleAt(30.0)); budget_per_period = 1.0e9,
