@@ -74,6 +74,7 @@ const TEST_GROUPS = (
         "test_chains.jl",
         "test_generation_intervals.jl",
         "test_analytical.jl",
+        "test_n_initial_extinction.jl",
         "test_poisson_mixtures.jl",
         "test_incidence_likelihood.jl",
         "test_likelihood_dists.jl",

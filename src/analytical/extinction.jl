@@ -43,10 +43,10 @@ function _contain_fixed_point(
 end
 
 """
-    extinction_probability(R::Real, k::Real; tol=1e-10, max_iter=1000)
+    extinction_probability(R::Real, k::Real; n_initial=1, tol=1e-10, max_iter=1000)
 
-Probability that transmission from a single introduced case dies out without
-a major outbreak, when each case infects a negative binomial number of others
+Probability that transmission from `n_initial` independent introduced cases
+dies out without a major outbreak (one by default), when each case infects a negative binomial number of others
 with mean `R` and dispersion `k` (`NegBin(R, k)`; smaller `k` means more
 superspreading). It is 1 when `R ≤ 1`. Interventions are not included; for
 those, see [`probability_contain`](@ref) or simulate and use
@@ -54,7 +54,8 @@ those, see [`probability_contain`](@ref) or simulate and use
 
 The result is the smallest solution of `q = G(q)`, where `G` is the
 probability generating function of the offspring distribution, found by
-iteration to tolerance `tol`. Convergence is slow when `R` is close to 1: a
+iteration to tolerance `tol`. For `n_initial` introductions it is raised to
+that power, as in [`probability_contain`](@ref). Convergence is slow when `R` is close to 1: a
 warning is given if `max_iter` iterations are reached.
 
 # Examples
@@ -64,7 +65,11 @@ extinction_probability(2.5, 0.16)   # strong superspreading: about 0.79
 extinction_probability(2.5, 100.0)  # little superspreading: about 0.11
 ```
 """
-function extinction_probability(R::Real, k::Real; tol::Real = 1.0e-10, max_iter::Int = 1000)
+function extinction_probability(
+        R::Real, k::Real; n_initial::Int = 1, tol::Real = 1.0e-10,
+        max_iter::Int = 1000
+    )
+    _check_n_initial(n_initial)
     R > 0 || throw(ArgumentError("R must be positive, got $R"))
     k > 0 || throw(ArgumentError("k must be positive, got $k"))
 
@@ -74,36 +79,42 @@ function extinction_probability(R::Real, k::Real; tol::Real = 1.0e-10, max_iter:
 
     q, converged = _contain_fixed_point(offspring; tol, max_iter)
     converged || @warn_unconverged_extinction(max_iter, "the reproduction number")
-    return q
+    return q^n_initial
 end
 
 """
-    extinction_probability(d::Poisson; tol=1e-10, max_iter=1000)
-    extinction_probability(d::NegativeBinomial; tol=1e-10, max_iter=1000)
+    extinction_probability(d::Poisson; n_initial=1, tol=1e-10, max_iter=1000)
+    extinction_probability(d::NegativeBinomial; n_initial=1, tol=1e-10, max_iter=1000)
 
-Probability that transmission from a single introduced case dies out without
-a major outbreak, for a Poisson or negative binomial offspring distribution
+Probability that transmission from `n_initial` introduced cases dies out, for a Poisson or negative binomial offspring distribution
 `d`, such as `NegBin(2.5, 0.16)`. Computed as for
 `extinction_probability(R, k)`.
 """
-function extinction_probability(d::Poisson; tol::Real = 1.0e-10, max_iter::Int = 1000)
+function extinction_probability(
+        d::Poisson; n_initial::Int = 1, tol::Real = 1.0e-10,
+        max_iter::Int = 1000
+    )
+    _check_n_initial(n_initial)
     mean(d) <= 1.0 && return 1.0
 
     q, converged = _contain_fixed_point(d; tol, max_iter)
     converged || @warn_unconverged_extinction(max_iter, "the reproduction number")
-    return q
+    return q^n_initial
 end
 
-function extinction_probability(d::NegativeBinomial; tol::Real = 1.0e-10, max_iter::Int = 1000)
+function extinction_probability(
+        d::NegativeBinomial; n_initial::Int = 1, tol::Real = 1.0e-10,
+        max_iter::Int = 1000
+    )
     k = d.r
     R = mean(d)
-    return extinction_probability(R, k; tol, max_iter)
+    return extinction_probability(R, k; n_initial, tol, max_iter)
 end
 
 """
-    extinction_probability(d::DiscreteUnivariateDistribution; tol=1e-10, max_iter=1000)
+    extinction_probability(d::DiscreteUnivariateDistribution; n_initial=1, tol=1e-10, max_iter=1000)
 
-Probability that transmission from a single introduced case dies out, for a
+Probability that transmission from `n_initial` introduced cases dies out, for a
 discrete offspring law with no dedicated method, such as
 `DiscreteNonParametric`. Found by Newton's method on the law's own
 probability generating function (`EpiBranch._extinction_at_fixed_law`), the
@@ -111,9 +122,10 @@ same iteration [`extinction_probability(o::ClusterMixed)`](@ref) averages
 over the mixing distribution.
 """
 function extinction_probability(
-        d::DiscreteUnivariateDistribution; tol::Real = 1.0e-10,
-        max_iter::Int = 1000
+        d::DiscreteUnivariateDistribution; n_initial::Int = 1,
+        tol::Real = 1.0e-10, max_iter::Int = 1000
     )
+    _check_n_initial(n_initial)
     d isa ChainSizeLaw && throw(
         ArgumentError(
             "extinction_probability expects an offspring law, the number of " *
@@ -121,26 +133,28 @@ function extinction_probability(
                 "cases in a whole chain; $(typeof(d)) is already one."
         )
     )
-    return _extinction_at_fixed_law(d; tol, max_iter)
+    return _extinction_at_fixed_law(d; tol, max_iter)^n_initial
 end
 
 """
-    epidemic_probability(R::Real, k::Real; kwargs...)
+    epidemic_probability(R::Real, k::Real; n_initial=1, kwargs...)
 
-Probability that a single introduced case leads to a major epidemic, with
-`NegBin(R, k)` offspring: one minus [`extinction_probability`](@ref).
+Probability that at least one of `n_initial` introduced cases leads to a major
+epidemic, with `NegBin(R, k)` offspring: one minus
+[`extinction_probability`](@ref) for the same `n_initial`.
 """
 function epidemic_probability(R::Real, k::Real; kwargs...)
     return 1.0 - extinction_probability(R, k; kwargs...)
 end
 
 """
-    epidemic_probability(offspring; kwargs...)
-    epidemic_probability(model; kwargs...)
+    epidemic_probability(offspring; n_initial=1, kwargs...)
+    epidemic_probability(model; n_initial=1, kwargs...)
 
-Probability that a single introduced case leads to a major epidemic: one
-minus [`extinction_probability`](@ref), for an offspring distribution or a
-model. For a multi-type model there is one value per type of index case.
+Probability that at least one of `n_initial` introduced cases leads to a major
+epidemic: one minus [`extinction_probability`](@ref), for an offspring distribution or a
+model. For a multi-type model there is one value per type of index case, and
+`n_initial` must be 1.
 
 Given a model, the observation model is ignored, and a reshaped offspring law
 (see [`extinction_probability`](@ref) for a model) raises an error. Each of its
@@ -154,14 +168,21 @@ function epidemic_probability(offspring; kwargs...)
     return 1.0 .- extinction_probability(offspring; kwargs...)
 end
 
+function _check_n_initial(n_initial)
+    n_initial >= 1 || throw(ArgumentError("n_initial must be ≥ 1"))
+    return nothing
+end
+
 # ── BranchingProcess dispatch ────────────────────────────────────────
 
 """
     extinction_probability(model::TransmissionModel; kwargs...)
     extinction_probability(spec::ModelSpec; kwargs...)
 
-Probability that transmission from a single introduced case dies out, from
-the model's offspring distribution. The observation model is ignored. If a
+Probability that transmission from a single introduced case dies out (or from
+`n_initial` of them, for a single-type model; a multi-type model accepts only
+`n_initial = 1`), from the model's offspring distribution. The observation
+model is ignored. If a
 finite `population_size`, an `Infectiousness` window with `until`, or
 `transmission_traits` away from their neutral values reshape the offspring law,
 this throws an `ArgumentError` that points to simulation. For a single-type
