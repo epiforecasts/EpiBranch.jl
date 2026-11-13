@@ -34,6 +34,12 @@ function simulate_once(
         model::HouseholdProcess, sim_opts::SimOpts;
         interventions, attributes, progression, observation, recorder, rng
     )
+    sim_opts.n_initial_given && throw(
+        ArgumentError(
+            "HouseholdProcess seeds one index case in every household and does not " *
+                "support n_initial; use initial_cases to choose the index cases"
+        )
+    )
     from = something(model.from, infectious_from(progression))
     Tobs = model.obs_end
 

@@ -96,10 +96,12 @@ function _seed_network!(
         return nothing
     end
     m = length(members)
+    n_initial <= m ||
+        throw(ArgumentError("n_initial cannot exceed the number of nodes ($m)"))
     if _ext_active(extsrc)
         _seed_external!(best, members, state, extsrc, Tobs, rng)
     else
-        for id in randperm(rng, m)[1:min(n_initial, m)]
+        for id in randperm(rng, m)[1:n_initial]
             best[id] = 0.0
         end
     end

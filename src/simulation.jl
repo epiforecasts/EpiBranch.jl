@@ -352,7 +352,8 @@ function _drop_default_shortcuts(model, sim_opts, max_cases, max_generations, st
         (rules = filter(r -> !(r isa MaxCases && r.n == max_cases), rules))
     max_generations == _DEFAULT_MAX_GENERATIONS &&
         (rules = filter(r -> !(r isa MaxGenerations && r.n == max_generations), rules))
-    return SimOpts(sim_opts.n_initial, sim_opts.initial_cases, sim_opts.index_types, rules)
+    return SimOpts(
+        sim_opts.n_initial, sim_opts.n_initial_given, sim_opts.initial_cases, sim_opts.index_types, rules)
 end
 
 # Shared by all four `simulate` entry points (a bare process or a `ModelSpec`,
