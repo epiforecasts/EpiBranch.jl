@@ -83,9 +83,9 @@ end
 # Discretised generation-time pmf over lag 1, 2, ...: `w[j]` is the
 # probability that an infectee's step is `j` steps after its infector's, with
 # the infector infected uniformly within its step (see `_censored_cdf`). A
-# lag of 0 (both infected in the same step) cannot be represented by the
-# recursion, so that mass is dropped and the rest renormalised, which is
-# negligible when the generation time is long compared with a step. The
+# lag of 0 (both infected in the same step) has no place in the recursion.
+# That mass is dropped and the rest renormalised, which changes little when
+# the generation time is long compared with a step. The
 # distribution is taken to be continuous with no atom at or below 0; the
 # integral over each step avoids evaluating the cdf at 0 itself, which a `Dual`
 # parameter would send through `log(0) = -Inf` for a distribution like
@@ -330,9 +330,9 @@ covariance are matched to; see [`NormalApproximation`](@ref) and
     under-reporting only as each case reported independently with the same
     probability. The `generation_time` distribution and `reporting_delay`
     are discretised onto `data`'s own time step with each infection uniform
-    within its step. Generation times shorter than a step lose their
-    same-step mass, since the recursion has no lag of 0: the estimate is
-    biased when the step is long compared with the generation time. The
+    within its step. The recursion has no lag of 0, so generation times
+    shorter than a step lose their same-step mass and the estimate is biased
+    when the step is long compared with the generation time. The
     likelihood itself is approximate, a moment-matched normal or lognormal
     standing in for the true (unknown in closed form) distribution of the
     counts; prediction intervals built from it can be too narrow,

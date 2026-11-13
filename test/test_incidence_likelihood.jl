@@ -27,7 +27,7 @@ struct _RiskFromAge end
         @test all(x -> x ≈ 0, w2[2:end])
 
         # The realised lag between the steps of an infector and an infectee
-        # has the continuous mean, not half a step more.
+        # has the mean of the continuous distribution.
         # (Dropping the small same-step mass lengthens it slightly.)
         for gt in (LogNormal(1.6, 0.5), Gamma(4.0, 0.6))
             w = EpiBranch._discretize_generation_interval(gt)
