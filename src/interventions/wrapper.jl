@@ -92,7 +92,7 @@ start condition and [`CapacityConstrained`](@ref) through its budget per
 period. A model with no such clock, such as the branching process over
 households, refuses an intervention that declares it. The default is `false`.
 A wrapper written outside the package should forward the answer for the wrapped
-intervention, as every `InterventionWrapper` here does, so that it is
+intervention, as every `InterventionWrapper` here does. The answer is then
 found through any nesting.
 """
 gates_on_population_clock(::AbstractIntervention) = false
