@@ -61,7 +61,8 @@ function simulate_once(
         projections = (EpiBranch.kernel_projection(model.edge_kernel),), recorder = recorder,
         seed! = (best, members, r) -> _seed_network!(
             best, members, state, model.external_hazard, n_initial, Tobs, r;
-            initial_cases = sim_opts.initial_cases
+            initial_cases = sim_opts.initial_cases,
+            n_initial_given = sim_opts.n_initial_given
         ),
         introduction = _ext_active(model.external_hazard) ?
             (EpiBranch._ext_prepare(model.external_hazard), Tobs) : nothing,
@@ -87,7 +88,7 @@ end
 # there is neither.
 function _seed_network!(
         best, members, state, extsrc, n_initial, Tobs, rng;
-        initial_cases = nothing
+        initial_cases = nothing, n_initial_given = false
     )
     if initial_cases !== nothing
         chosen = initial_cases isa AbstractSet ? initial_cases : Set(initial_cases)
@@ -99,6 +100,8 @@ function _seed_network!(
     if _ext_active(extsrc)
         _seed_external!(best, members, state, extsrc, Tobs, rng)
     else
+        n_initial_given && n_initial > m &&
+            throw(ArgumentError("n_initial cannot exceed the number of nodes ($m)"))
         for id in randperm(rng, m)[1:min(n_initial, m)]
             best[id] = 0.0
         end

@@ -34,3 +34,13 @@ end
     # infected too, which the disallowed combination could never produce.
     @test any(i -> is_infected(i) && !(i.id in (2, 5)), state.individuals)
 end
+
+@testset "n_initial is refused for a household process" begin
+    model = ModelSpec(
+        HouseholdProcess(fill(3, 10), Exponential(2.0));
+        progression = [Transition(:recovered; delay = 5.0, terminal = true)]
+    )
+    @test_throws ArgumentError simulate(model; n_initial = 3, rng = StableRNG(1))
+    @test_throws ArgumentError simulate(model; n_initial = 1, rng = StableRNG(1))
+    @test simulate(model; rng = StableRNG(1)).cumulative_cases >= 10
+end
