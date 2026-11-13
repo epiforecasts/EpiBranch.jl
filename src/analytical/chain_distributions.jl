@@ -320,9 +320,11 @@ end
     _chain_size_right_tail_logprob(d, x, s)
 
 Internal: multi-seed log-survival of a chain size distribution `d`,
-`log P(X ≥ x | s)`. While the running sum `Σ_{j=s}^{x-1} P(X = j | s)` stays
-below one half the tail is `log(1 − Σ)`. Past that, the complement loses
-all precision once the tail falls below machine epsilon. The tail is then summed
+`log P(X ≥ x | s)`. While the tail `1 − Σ_{j=s}^{x-1} P(X = j | s)` stays
+above `1e-4` it is the complement itself, which is accurate there and, unlike
+a truncated upward sum, also for near-critical laws with a heavy tail. Below
+that the complement loses relative precision, and eventually all of it once
+the tail falls below machine epsilon. The tail is then summed
 upwards from `x` in log space, with the infinite-chain mass added for a
 supercritical process. Distributions with no closed form for that mass
 (see `_chain_size_log_infinite_mass`) keep the complement throughout, and
@@ -338,7 +340,7 @@ function _chain_size_right_tail_logprob(d, x::Integer, s::Integer)
     log_inf = _chain_size_log_infinite_mass(d, s)
     for j in s:(x - 1)
         cum += exp(_chain_size_logpdf(d, j, s))
-        if cum > 0.5 && log_inf !== nothing
+        if one(cum) - cum < 1e-4 && log_inf !== nothing
             log_finite = _streaming_logsumexp(n -> _chain_size_logpdf(d, n, s), x)
             return _logsumexp2(log_finite, log_inf)
         end
