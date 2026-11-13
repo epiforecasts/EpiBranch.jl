@@ -435,9 +435,8 @@ declared `watches` moving.
 """
 kernel_projection(kernel) = nothing
 kernel_projection(k::PairKernel) = k.state
-# Neither a vector of records nor no `state` at all has anything live to
-# re-project; `watched_records` refuses `watches` on both for the same reason.
-kernel_projection(::PairKernel{F, Nothing}) where {F} = nothing
+# A vector of records has nothing live to re-project; `watched_records`
+# refuses `watches` on one for the same reason.
 kernel_projection(::PairKernel{F, <:AbstractVector}) where {F} = nothing
 # A per-edge collection has one projection to check only when every entry
 # shares it, the common case of a route built from the same live `PairKernel`

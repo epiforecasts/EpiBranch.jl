@@ -207,9 +207,9 @@ end
         @test !EpiBranch._ext_active(0.0)
         @test EpiBranch._ext_active(Gamma(2.0, 3.0))
         # a constant rate draws its exponential waiting time
-        @test EpiBranch._ext_draw(StableRNG(1), 0.5) ==
+        @test EpiBranch._ext_draw(StableRNG(1), 0.5, 1, 1.0) ==
             rand(StableRNG(1), Exponential(2.0))
-        @test EpiBranch._ext_draw(StableRNG(1), Gamma(2.0, 3.0)) ==
+        @test EpiBranch._ext_draw(StableRNG(1), Gamma(2.0, 3.0), 1, 1.0) ==
             rand(StableRNG(1), Gamma(2.0, 3.0))
 
         # a calendar schedule passes through unchanged, is always active, and
@@ -218,7 +218,7 @@ end
         @test EpiBranch._valid_external(schedule)
         @test EpiBranch._normalise_external(schedule) === schedule
         @test EpiBranch._ext_active(schedule)
-        @test EpiBranch._ext_draw(StableRNG(1), schedule) ==
+        @test EpiBranch._ext_draw(StableRNG(1), schedule, 1, 1.0) ==
             rand(StableRNG(1), EpiBranch._calendar_external_survival(schedule))
     end
 
@@ -249,7 +249,7 @@ end
         # draw as under a shared one
         @test EpiBranch._ext_draw(StableRNG(1), v, 2, 1.0) == Inf
         @test EpiBranch._ext_draw(StableRNG(1), v, 1, 1.0) ==
-            EpiBranch._ext_draw(StableRNG(1), 0.5, 1.0)
+            EpiBranch._ext_draw(StableRNG(1), 0.5, 1, 1.0)
         @test EpiBranch._ext_partype(v, 3) == Float64
     end
 
@@ -539,6 +539,23 @@ end
         @test_throws ArgumentError pairwise_surv_loglik(
             Exponential(1.0), data, Lbad; external_hazard = mass_action
         )
+    end
+
+    @testset "mass action is finite when follow-up is unbounded" begin
+        # Person 2 is never infected and is watched indefinitely. Once the only
+        # case has recovered the hazard is zero and the tail adds nothing.
+        data = _TestInfections(
+            [1, 2], [0.0, NaN], [0.0, NaN], [3.0, NaN], [true, false]; obs_end = Inf
+        )
+        mass_action = MassActionHazard(; transmission_rate = 0.6, population_size = 4)
+        s = EpiBranch.mass_action_schedule(mass_action, data.infectious_time, data.removal_time)
+        @test EpiBranch.SurvivalDistributions.cumhazard(s, Inf) ≈ 0.6 * 3 / 4
+        @test isfinite(
+            pairwise_surv_loglik(Exponential(1.0), data; external_hazard = mass_action)
+        )
+        # Someone still infectious keeps the hazard positive indefinitely.
+        open_ended = EpiBranch.mass_action_schedule(mass_action, [0.0], [Inf])
+        @test EpiBranch.SurvivalDistributions.cumhazard(open_ended, Inf) == Inf
     end
 
     @testset "mass action plus an importation rate explains index cases" begin

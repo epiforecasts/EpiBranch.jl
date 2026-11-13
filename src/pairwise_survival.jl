@@ -617,8 +617,15 @@ function infection_likelihood_compatible(rv::RingVaccination)
     return dose_label(rv) === :default && !_maybe_positive(rv.onward_efficacy) &&
         !_maybe_positive(rv.post_exposure_efficacy)
 end
-function infection_likelihood_compatible(w::Union{Scheduled, CapacityConstrained, HeldCapacity})
+function infection_likelihood_compatible(w::Union{CapacityConstrained, HeldCapacity})
     return infection_likelihood_compatible(w.intervention)
+end
+# A schedule that can close again lifts a removal (isolation, quarantine) for
+# which the infection layer records no stretch. The likelihood would then score
+# the people it isolated as if they had never been removed.
+function infection_likelihood_compatible(s::Scheduled)
+    s.can_lapse && binding_release(s.intervention) && return false
+    return infection_likelihood_compatible(s.intervention)
 end
 
 # ── Susceptibility effects ───────────────────────────────────────────
@@ -1308,10 +1315,6 @@ end
 
 # A community introduction time drawn under the hazard person `j` faces, or
 # `Inf` when they face none.
-_ext_draw(rng::AbstractRNG, source) = rand(rng, _ext_survival(source))
-function _ext_draw(rng::AbstractRNG, source, susceptibility)
-    return _traits_scaled_draw(rng, _ext_survival(source), susceptibility)
-end
 function _ext_draw(rng::AbstractRNG, source, j::Integer, susceptibility)
     d = _ext_survival_of(source, j)
     d === nothing && return oftype(float(susceptibility), Inf)
@@ -1434,7 +1437,7 @@ end
 # `cumhazard`, `hazard` and `loghazard` below, rather than a multiplier read
 # through a `Steps`-style calendar schedule, because the two kinds of query
 # need different conventions at a boundary (see `_mass_action_count`), and a
-# shared schedule type cannot give both. `_mass_action_schedule` builds one
+# shared schedule type cannot give both. `mass_action_schedule` builds one
 # from a population's own windows; a companion package builds one from a
 # single named route's.
 struct _MassActionSchedule{Tt <: Real, Tv <: Real}
@@ -1479,19 +1482,26 @@ function SurvivalDistributions.cumhazard(s::_MassActionSchedule, τ::Real)
         end
         lo < τ || break
     end
-    lo < τ && (total += s.counts[end] * (τ - lo))
+    # When nobody is left infectious the tail adds nothing, even for an
+    # unbounded τ, where `0 * Inf` would give NaN.
+    lo < τ && s.counts[end] > 0 && (total += s.counts[end] * (τ - lo))
     return total * s.β / s.N
 end
 
 Base.maximum(::_MassActionSchedule) = Inf
 Distributions.partype(s::_MassActionSchedule{Tt, Tv}) where {Tt, Tv} = promote_type(Tt, Tv)
 
-# Every window opening or closing, over whichever hosts and windows the caller
-# gives (the whole population's own infectious windows for a plain
-# `InfectionLayer`, or one route's for a routed one), folded into the running
-# count between them. An open window with no recorded close (still infectious
-# at the end of the data) never closes the count back down.
-function _mass_action_schedule(
+"""
+    mass_action_schedule(m, infectious_time, removal_time)
+
+The mass-action hazard schedule for a population: every window opening or
+closing, over whichever hosts and windows the caller gives (the infectious
+windows of the whole population for a plain `InfectionLayer`, or those of one
+route for a routed one), folded into the running count between them. An open
+window with no recorded close (still infectious at the end of the data) never
+closes the count back down.
+"""
+function mass_action_schedule(
         m::MassActionHazard, infectious_time::AbstractVector{<:Real},
         removal_time::AbstractVector{<:Real}
     )
@@ -1522,7 +1532,7 @@ function _mass_action_schedule(
 end
 
 function _ext_prepare(m::MassActionHazard, data::InfectionLayer)
-    return _mass_action_schedule(m, data.infectious_time, data.removal_time)
+    return mass_action_schedule(m, data.infectious_time, data.removal_time)
 end
 
 # Every person shares the one population-wide schedule: nobody is ever in

@@ -1,11 +1,14 @@
-# An intervention that modifies another intervention, such as `Scheduled`
-# (when it may act) or `CapacityConstrained` (how many it may reach). A
-# subtype stores the wrapped intervention in an `intervention` field and
-# inherits the plain delegation of every hook below, then overrides only the
-# hooks it gates. `trace_contacts!` has no default here, so each wrapper
-# states what it does with it. `keep_active` does default to plain forwarding
-# below, for a wrapper with nothing of its own to gate there; a wrapper that
-# does gate it overrides the default just like the others.
+"""
+    InterventionWrapper <: AbstractIntervention
+
+An intervention that modifies another intervention, such as `Scheduled`
+(when it may act) or `CapacityConstrained` (how many it may reach). A
+subtype stores the wrapped intervention in an `intervention` field and
+inherits plain delegation of every hook and overrides only the hooks it
+restricts. `trace_contacts!` has no default, so each wrapper defines it.
+`keep_active` forwards to the wrapped intervention unless the wrapper
+restricts it.
+"""
 abstract type InterventionWrapper <: AbstractIntervention end
 
 initialise_individual!(w::InterventionWrapper, ind, state) = initialise_individual!(w.intervention, ind, state)
@@ -32,9 +35,12 @@ function infectious_removal_time(w::InterventionWrapper, ind::Individual)
 end
 traces_contacts(w::InterventionWrapper) = traces_contacts(w.intervention)
 traces_source(w::InterventionWrapper) = traces_source(w.intervention)
-on_infection_settled!(w::InterventionWrapper, ind, state, rng) = on_infection_settled!(w.intervention, ind, state, rng)
-keep_active(w::InterventionWrapper, state, targets, is_new) = keep_active(w.intervention, state, targets, is_new)
-_unwrap_scheduled(w::InterventionWrapper) = _unwrap_scheduled(w.intervention)
+function on_infection_settled!(w::InterventionWrapper, ind, state, rng)
+    return on_infection_settled!(w.intervention, ind, state, rng)
+end
+function keep_active(w::InterventionWrapper, state, targets, is_new)
+    return keep_active(w.intervention, state, targets, is_new)
+end
 
 binding_release(w::InterventionWrapper) = binding_release(w.intervention)
 risk_applies(w::InterventionWrapper, route) = risk_applies(w.intervention, route)

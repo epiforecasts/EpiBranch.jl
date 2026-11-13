@@ -226,7 +226,7 @@ end
 
 @testset "Positional simulation options" begin
     rules = [MaxCases(10)]
-    opts = SimOpts(1, rules)
+    opts = SimOpts(1, nothing, nothing, rules)
     @test opts.n_initial == 1
     @test opts.initial_cases === nothing
     @test opts.stopping_rules == rules

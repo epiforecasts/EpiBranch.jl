@@ -328,7 +328,7 @@ end
 # always has its own delegating methods whatever it wraps.
 function _warn_inert_interventions(interventions)
     for iv in interventions
-        inner = _unwrap_scheduled(iv)
+        inner = _innermost(iv)
         T = typeof(inner)
         _first_sight(T) || continue
         # A diagnosis of the hook at fault stands in for the general message,

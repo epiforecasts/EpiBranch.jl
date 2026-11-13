@@ -57,7 +57,6 @@ is_eligible_for_isolation(::SymptomaticOnly, ind, state) = !is_asymptomatic(ind)
 """Every case is eligible, including asymptomatic ones (mass-testing
 scenarios)."""
 struct AllCases <: IsolationEligibility end
-is_eligible_for_isolation(::AllCases, ind, state) = true
 
 # Fields an eligibility rule reads beyond the onset time every isolation needs.
 # A custom rule extends `required_fields` for its own type; the default is none.

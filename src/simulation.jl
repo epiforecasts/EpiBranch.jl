@@ -510,16 +510,6 @@ function _trace_source!(
     return nothing
 end
 
-"""Step 3 of a generation: decide which exposed people are infected, and
-record the new cases. An exposure need not lead to infection. The infector's
-infectiousness, the contact's susceptibility, anything the model adds and any
-interventions can each prevent it, and infection follows only if none of them
-does. A person exposed by several cases is infected if any of the exposures
-transmits, at the time of the earliest one that does. When someone who was
-infected before is reinfected (possible only once their immunity has waned,
-see [`HostImmunity`](@ref EpiBranch.HostImmunity)), the earlier infection is
-kept as a past episode; see [`close_episode!`](@ref)."""
-
 """
     _settle_case!(state, case, interventions, count)
 
@@ -630,7 +620,6 @@ end
 # dual (or other Real) parameter type — e.g. under ForwardDiff — in which case
 # the whole simulation carries that type so gradients flow through the timing.
 _time_type(::TransmissionModel) = Float64
-_kernel_time_type(::NoGenerationTime) = Float64
 _kernel_time_type(k::Distribution) = float(Distributions.partype(k))
 _kernel_time_type(::Any) = Float64
 function _time_type(m::BranchingProcess)
@@ -855,6 +844,9 @@ function _transition_probe(first_ind, transitions, state)
     return probe
 end
 
+# A model that cannot deplete a population correctly overrides this to refuse one.
+_check_population(::TransmissionModel) = nothing
+
 """
     initialise_state(model, sim_opts, interventions, transitions, attributes, rng) -> SimulationState
 
@@ -870,6 +862,7 @@ function initialise_state(
         model::TransmissionModel, sim_opts::SimOpts,
         interventions, transitions, attributes, rng::AbstractRNG
     )
+    _check_population(model)
     state = new_state(model, transitions, attributes, rng)
     # Every individual created here is an index case, so attributes that read
     # the infection time at creation must see the time of 0 they are seeded at.

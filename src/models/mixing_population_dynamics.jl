@@ -21,7 +21,7 @@
 # The removed are the remainder of the group size, `R`.
 
 # A member's mixing group, read off its state the same missing-safe way
-# `_MassAction` reads it when the exact race is built (mass_action.jl), so a
+# `MassAction` reads it when the exact race is built (mass_action.jl), so a
 # person the attributes left without one of `mixing_by`'s keys falls into a
 # `missing` group here too, rather than erroring in one path and not the
 # other.
