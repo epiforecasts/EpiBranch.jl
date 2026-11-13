@@ -478,9 +478,7 @@ end
 # an `OffspringTimes` already gave.
 _window_infection_time(::NoGenerationTime, from_t::Real, state) = from_t
 _window_infection_time(offset::_FixedOffset, from_t::Real, state) = from_t + offset.offset
-# Any other kernel (a distribution, or a calendar-scaled kernel, which is not a
-# `Distribution`) is drawn from directly.
-function _window_infection_time(kernel, from_t::Real, state)
+function _window_infection_time(kernel::Distribution, from_t::Real, state)
     return from_t + rand(state.rng, kernel)
 end
 
