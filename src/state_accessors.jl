@@ -92,6 +92,52 @@ function _recorded_isolation_time(ind::Individual{T}) where {T}
     return _isolation_unrecorded(ind) ? T(Inf) : isolation_time(ind)
 end
 
+"""
+    flag_for_isolation!(individual, time)
+
+For extension authors: record that `individual` has been traced and should be
+isolated once they show symptoms. [`Isolation`](@ref) then isolates them at
+the later of `time` and their onset. If they isolate themselves earlier, that
+time is used instead. A person with no onset is never isolated this way. This
+is the hand-over that [`FlagOnly`](@ref) uses, open to a tracer or other
+intervention written outside the package. A person flagged more than once keeps the
+earliest `time`. `time` may precede the onset, or be given before the onset is
+known.
+"""
+function flag_for_isolation!(ind::Individual, time::Real)
+    ind.state[:_traced_isolation_time] = min(traced_isolation_time(ind), time)
+    return nothing
+end
+
+"""
+    traced_isolation_time(individual) -> Float64
+
+For extension authors: the earliest time recorded for `individual` by
+[`flag_for_isolation!`](@ref), or `Inf` if they were never flagged. It may
+precede their onset; a reader that isolates on symptoms holds it back to the
+onset.
+"""
+function traced_isolation_time(ind::Individual{T}) where {T}
+    return _state_real(ind.state, :_traced_isolation_time, T(Inf))
+end
+
+# Withdraws a flag recorded by `flag_for_isolation!`.
+_clear_isolation_flag!(ind::Individual) = (delete!(ind.state, :_traced_isolation_time); nothing)
+
+"""
+    is_ring_hop(individual) -> Bool
+
+For extension authors: whether `individual`, as the `infector` handed to
+[`trace_contacts!`](@ref EpiBranch.trace_contacts!), is a case the walk of a
+contact-tracing ring is passing through, rather than one settling on its own
+account. The walk reaches an already-infected neighbour as a member of the
+ring and calls the `trace_contacts!` of every intervention from it. A tracer that
+starts a fresh trace from every eligible case reads this to trace from such a
+member as a ring member only, as [`ContactTracing`](@ref) does. `false`
+outside the walk.
+"""
+is_ring_hop(ind::Individual) = get(ind.state, :_ring_hop, false)::Bool
+
 """Whether the person was found by contact tracing."""
 is_traced(ind::Individual) = get(ind.state, :traced, false)::Bool
 

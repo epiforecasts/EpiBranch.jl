@@ -374,7 +374,7 @@ function intervention_actions(rv::RingVaccination, state, candidates)
     for ind in candidates
         is_traced(ind) || continue
         trace_t = haskey(ind.state, :trace_time) ? ind.state[:trace_time] :
-            min(_recorded_isolation_time(ind), _state_real(ind.state, :_traced_isolation_time, Inf))
+            min(_recorded_isolation_time(ind), traced_isolation_time(ind))
         prior = get(action_cache(ind), _trigger_cache_key(rv), nothing)
         applied = get(ind.state, _vaccinated_key(label), false)
         # Gated on `applied` alone: `_withdraw_dose!` clears it on a dose

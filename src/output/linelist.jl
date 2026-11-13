@@ -19,7 +19,7 @@ EpiBranch.event_time_metadata(::Val{:appointment_time}) =
     (column = :date_appointment, requires_infection = false)
 ```
 
-Tracing, vaccination and immunity dates, including those of named doses, are
+Tracing, vaccination, immunity, isolation and quarantine dates, including those of named doses, are
 shown whether or not the person was infected. This setting changes only the
 line list, not the simulation.
 """
@@ -39,7 +39,12 @@ function event_time_metadata(::Val{key}) where {key}
     endswith(name, "_time") || return nothing
     return (
         column = Symbol("date_", name[1:(end - length("_time"))]),
-        requires_infection = !(key in (:trace_time, :vaccination_time, :immunity_time)),
+        requires_infection = !(
+            key in (
+                :trace_time, :vaccination_time, :immunity_time,
+                :isolation_time, :isolation_release_time,
+            )
+        ),
     )
 end
 
@@ -232,7 +237,7 @@ function _add_state_column!(cols, cases, key::Symbol, reference_date)
         col_name = metadata.column
         col_name in keys(cols) && return nothing  # don't shadow core columns
         event_date(ind) = begin
-            t = is_infected(ind) ? _reported_state(ind, key) :
+            t = is_infected(ind) ? reported_value(Val(key), ind) :
                 _uninfected_event_time(ind, key, metadata)
             t isa Real ? _to_date(reference_date, t) : missing
         end
@@ -241,7 +246,7 @@ function _add_state_column!(cols, cases, key::Symbol, reference_date)
         cols[col_name] = values
     else
         key in keys(cols) && return nothing
-        raw = [_reported_state(ind, key) for ind in cases]
+        raw = [reported_value(Val(key), ind) for ind in cases]
         all(ismissing, raw) && return nothing
         cols[key] = _normalise_column(raw)
     end
@@ -266,27 +271,55 @@ being quarantined. An isolation written by `Isolation` came from the
 provisional onset; where one replaced a recorded quarantine, that quarantine's
 time, and its release time, are reported in its place."""
 function _uninfected_event_time(ind, key::Symbol, metadata)
-    if key === :isolation_time || key === :isolation_release_time
-        handle = get(ind.state, :_isolation_handle, nothing)
-        handle === nothing && return _reported_state(ind, key)
-        span = _isolation_span_excluding(ind, handle)
-        span === nothing && return missing
-        start, release, unrecorded = span
-        unrecorded && return missing
-        return key === :isolation_time ? start : release
-    end
-    return metadata.requires_infection ? missing : _reported_state(ind, key)
+    return metadata.requires_infection ? missing : reported_value(Val(key), ind)
 end
 
-# The value a state key reports in the line list. The isolation columns report
-# detections, so an isolation that removes the case from transmission without
-# being recorded (see `records_isolation`) reads as no isolation.
-function _reported_state(ind, key::Symbol)
+"""
+    reported_value(::Val{key}, individual)
+
+What [`linelist`](@ref) shows for the state `key` of `individual`, or `missing`
+for none. The default is the value stored under `key`. Define a method when an
+intervention keeps a key whose stored value is not what should be reported,
+such as one that must be read together with other state, as the isolation
+columns are:
+
+```julia
+EpiBranch.reported_value(::Val{:test_results}, ind) =
+    length(get(ind.state, :test_results, ()))
+```
+
+It is read for an infected person, and, for a key whose
+[`event_time_metadata`](@ref) says its date applies to people who were never
+infected, for them too. Dates are made from the number it returns.
+"""
+function reported_value(::Val{key}, ind) where {key}
     haskey(ind.state, key) || return missing
-    key === :isolated && return is_isolated(ind)
-    (key === :isolation_time || key === :isolation_release_time) &&
-        _isolation_unrecorded(ind) && return missing
     return ind.state[key]
+end
+
+# The isolation columns report detections, so an isolation that removes the
+# case from transmission without being recorded (see `records_isolation`)
+# reads as no isolation.
+reported_value(::Val{:isolated}, ind) = haskey(ind.state, :isolated) ? is_isolated(ind) : missing
+
+reported_value(::Val{:isolation_time}, ind) = _reported_isolation(ind, :isolation_time)
+reported_value(::Val{:isolation_release_time}, ind) = _reported_isolation(ind, :isolation_release_time)
+
+# A person who was never infected can have been isolated only through a
+# recorded quarantine. The column shows the span of that quarantine, leaving
+# out any isolation that `Isolation` wrote from a provisional onset.
+function _reported_isolation(ind, key::Symbol)
+    handle = get(ind.state, :_isolation_handle, nothing)
+    if is_infected(ind) || handle === nothing
+        haskey(ind.state, key) || return missing
+        _isolation_unrecorded(ind) && return missing
+        return ind.state[key]
+    end
+    span = _isolation_span_excluding(ind, handle)
+    span === nothing && return missing
+    start, release, unrecorded = span
+    unrecorded && return missing
+    return key === :isolation_time ? start : release
 end
 
 """Convert `Symbol` entries to `String` so DataFrames serialises cleanly;

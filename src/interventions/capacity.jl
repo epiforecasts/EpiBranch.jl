@@ -680,7 +680,7 @@ end
 # proposes (see `_trace_action`) is rationed. `state.scratch` passes this
 # wrapper down to the span of the wrapped intervention's own
 # `trace_contacts!` call, which admits through it instead of itself (see
-# `_admit_trace_actions!`). This composes with `Scheduled` in either order, as
+# `admit_trace_actions!`). This composes with `Scheduled` in either order, as
 # a dose already does.
 function trace_contacts!(cc::CapacityConstrained, state, infector, contacts, not_before = nothing)
     key = (:trace_admitter, _innermost(cc))
