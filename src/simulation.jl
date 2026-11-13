@@ -855,10 +855,14 @@ households) defines its own method, usually by building the population with
 [`new_state`](@ref) and [`add_individuals!`](@ref) and infecting the index
 cases with [`seed!`](@ref).
 """
+# A hook for a model to refuse a population it cannot deplete correctly.
+_check_population(::TransmissionModel) = nothing
+
 function initialise_state(
         model::TransmissionModel, sim_opts::SimOpts,
         interventions, transitions, attributes, rng::AbstractRNG
     )
+    _check_population(model)
     state = new_state(model, transitions, attributes, rng)
     # Every individual created here is an index case, so attributes that read
     # the infection time at creation must see the time of 0 they are seeded at.

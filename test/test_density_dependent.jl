@@ -102,3 +102,11 @@
         end
     end
 end
+
+@testset "Finite population on a multi-type model" begin
+    M = [2.5 0.05; 0.05 2.5]
+    m = BranchingProcess(M, R -> Poisson(R), Exponential(5.0); population_size = 2000)
+    @test_throws ArgumentError simulate(m, 5; index_types = [1], rng = StableRNG(2))
+    ok = BranchingProcess(M, R -> Poisson(R), Exponential(5.0))
+    @test length(simulate(ok, 5; index_types = [1], rng = StableRNG(2))) == 5
+end
