@@ -153,7 +153,8 @@ end
 
 Probability that at least one of `n_initial` introduced cases leads to a major
 epidemic: one minus [`extinction_probability`](@ref), for an offspring distribution or a
-model. For a multi-type model there is one value per type of index case.
+model. For a multi-type model there is one value per type of index case, and
+`n_initial` must be 1.
 
 Given a model, the observation model is ignored, and a reshaped offspring law
 (see [`extinction_probability`](@ref) for a model) raises an error. Each of its
@@ -179,8 +180,8 @@ end
     extinction_probability(spec::ModelSpec; kwargs...)
 
 Probability that transmission from a single introduced case dies out (or from
-`n_initial` of them, for a single-type model), from
-the model's offspring distribution. The observation model is ignored. If a
+`n_initial` of them, for a single-type model; a multi-type model accepts only
+`n_initial = 1`), from the model's offspring distribution. The observation model is ignored. If a
 finite `population_size`, an `Infectiousness` window with `until`, or
 `transmission_traits` away from their neutral values reshape the offspring law,
 this throws an `ArgumentError` that points to simulation. For a single-type

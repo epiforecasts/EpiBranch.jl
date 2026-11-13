@@ -241,10 +241,11 @@ reproduction_number(o::ClusterMixed{PoissonFamily}) = mean(o.mixing)
 """
     extinction_probability(o::ClusterMixed; n_initial=1, tol=1e-10, max_iter=1000)
 
-Probability that chains started by `n_initial` index cases (each with its own
-`θ`) die out; for one index case, the probability that its chain dies out when the
-reproduction number varies between chains: the extinction probability of
-`build(θ)`, averaged over `θ` drawn from `mixing`. Chains whose `θ` gives a
+Probability that chains started by `n_initial` index cases die out. For one
+index case it is the extinction probability of `build(θ)`, averaged over `θ`
+drawn from `mixing`. Each index case draws its own `θ`, so the chains are
+independent and the result is that average raised to the power `n_initial`,
+not the average of the power. Chains whose `θ` gives a
 mean of at most 1 die out with certainty (assuming the number of secondary
 cases is not fixed).
 
