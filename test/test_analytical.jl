@@ -887,7 +887,7 @@ using ForwardDiff
             q = extinction_probability(Poisson(1.5))
             tail = exp(EpiBranch._chain_size_right_tail_logprob(sup, 200, 1))
             @test tail ≈ 1 - q rtol = 1.0e-6
-            # Near-critical laws keep the complement, so the heavy tail is not truncated.
+            # Near-critical laws use the complement, which avoids truncating the heavy tail.
             for b in (Borel(0.99), Borel(1.0)), x in (50, 100, 200)
                 @test EpiBranch._chain_size_right_tail_logprob(b, x, 1) ≈
                     log(1 - sum(exp(EpiBranch._chain_size_logpdf(b, j, 1)) for j in 1:(x - 1))) rtol = 1.0e-8
