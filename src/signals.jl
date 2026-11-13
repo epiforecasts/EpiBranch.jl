@@ -2,9 +2,9 @@
 # A signal reads a population quantity off a simulated state over the
 # reporting interval a step covers, the same quantity every engine that
 # produces a `SimulationState` can compute. `SignalData` (in
-# `analytical/data_types.jl`) pairs one with a density to score it against
+# `analytical/data_types.jl`) pairs one with a density to evaluate its likelihood against
 # observed data; `loglikelihood(::SignalData, ...)` (in
-# `analytical/signal_likelihood.jl`) scores several together against the
+# `analytical/signal_likelihood.jl`) evaluates several together against the
 # same simulated path instead of letting separate `~` statements each
 # simulate their own outbreak.
 

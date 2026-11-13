@@ -137,7 +137,7 @@ Whether `x` leaves a model's single-type offspring law exactly as the
 offspring distribution draws it, with nothing reshaping how many of the
 drawn contacts end up as cases. `loglikelihood(::ChainSizes, model)`,
 [`chain_size_distribution`](@ref) and the closed-form incidence likelihood
-take their analytical path, scoring the bare offspring distribution, only
+take their analytical path, using the bare offspring distribution, only
 once the process, every entry of `attributes` and every `progression`
 transition each answer `true` here; any one of them answering `false` sends
 the evaluation to simulation instead.

@@ -238,8 +238,8 @@ period as its end.
 
 ## One model for simulating and fitting
 
-`simulate` (generate outbreaks) and `loglikelihood` (score data against a
-model) read the same model, with all five parts. Simulating forward and
+`simulate` (generate outbreaks) and `loglikelihood` (evaluate the likelihood of data
+under a model) read the same model, with all five parts. Simulating forward and
 fitting to data therefore always use the same assumptions. If isolation reduced
 transmission in the outbreak that produced the data, the likelihood of the
 observed chain sizes is only correct because the same model applies isolation

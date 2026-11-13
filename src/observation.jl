@@ -337,7 +337,7 @@ ones from onset, read from the model's `clinical_presentation`), as
 is missing, and resets a report drawn after the case's outcome. A
 progression with a terminal step, a step that overwrites the `from` time, or a
 `from` the closed form cannot read therefore throws an `ArgumentError` instead
-of scoring the wrong law.
+of evaluating the wrong law.
 """
 function _effective_reporting_probability(progression, attrs)
     ρ = _reporting_probability(progression)

@@ -103,7 +103,7 @@ end
 
 The record of who was infected when in an outbreak, together with who could
 have infected whom (household members, or neighbours in a contact network).
-This is the data [`pairwise_surv_loglik`](@ref) scores to estimate the contact
+This is the data [`pairwise_surv_loglik`](@ref) uses to estimate the contact
 interval. A subtype holds, for each person `i` (numbered `1:n`):
 
 - `infection_time[i]`: the infection time in days, `NaN` if never infected;
@@ -132,7 +132,7 @@ the end and need no end of follow-up.
 In real data the infection times are usually unobserved; they are known
 exactly after a simulation and imputed (data augmentation) in inference. What
 is observed, such as onsets and test results, comes from the natural history
-and is scored separately by [`progression_loglik`](@ref); the sum of the two is
+and enters separately through [`progression_loglik`](@ref); the sum of the two is
 the full log-likelihood of the augmented data. There is no closed-form
 likelihood of the onsets alone, because the unobserved infection times cannot
 be integrated out exactly.
@@ -1353,7 +1353,7 @@ interpreting `transmission_rate`.
 
 A person is counted in `I(t)` over `(infectious_time, removal_time]`, the same
 convention a pairwise row's own exposure uses, so a secondary infected at the
-exact moment their infector is removed is scored the same way by both. This
+exact moment their infector is removed enters the likelihood the same way in both. This
 already leaves everybody out of their own `I(t)` at their own infection time,
 with no separate bookkeeping needed, because a person is infected no later than
 they become infectious.
@@ -1549,7 +1549,7 @@ either side is a [`MassActionHazard`](@ref) or a `SumHazard`.
 
 The sum explains an index case whenever at least one active source does. A
 constant or calendar importation hazard explains one from time 0, but mass
-action alone does not. Mass action plus an importation rate therefore scores
+action alone does not. Mass action plus an importation rate therefore treats
 index cases as importations instead of conditioning on them.
 
 Like [`MassActionHazard`](@ref), a sum is likelihood-only: it cannot be passed
@@ -1911,9 +1911,9 @@ end
 
 # ── Susceptible-level mixtures ───────────────────────────────────────
 #
-# A susceptible a `susceptibility` effect modifies is scored as the log-sum-exp
+# A susceptible a `susceptibility` effect modifies contributes the log-sum-exp
 # over its mixture components of the log weight plus the escape and event terms
-# under that component's modifier. One it leaves alone is scored by the same
+# under that component's modifier. One it leaves alone contributes through the same
 # `_component_loglik` with no modifier.
 
 # The mixture of each susceptible the effect modifies, by host id, or `nothing`
@@ -2091,7 +2091,7 @@ end
 
 # ── Row-grouped reductions ───────────────────────────────────────────
 #
-# `pairwise_surv_loglik` and `pairwise_surv_loglik_by_component` score the
+# `pairwise_surv_loglik` and `pairwise_surv_loglik_by_component` evaluate the
 # same two passes over `layout`'s rows and differ only in which rows add into
 # a shared number and which add into their own. A `PairwiseReduction` says
 # that, so the maths underneath is written once.
@@ -2247,7 +2247,7 @@ function _pairwise_surv_loglik(
     return _result(reduction, totals)
 end
 
-# One pass over the susceptibles, each scored by `_component_loglik` (or
+# One pass over the susceptibles, each evaluated by `_component_loglik` (or
 # `_mixture_loglik` where an effect modifies it) and added into its group. A
 # susceptible is exposed to its possible infectors until it is infected, and to
 # the community hazard until the earlier of that and `obs_end`, after which

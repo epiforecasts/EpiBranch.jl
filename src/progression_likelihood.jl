@@ -24,11 +24,11 @@ nothing. The result is the sum over cases and steps of
 [`transition_loglik`](@ref EpiBranch.transition_loglik).
 
 `followup_end` is the end of follow-up. A step that has not happened by then
-(whether it was drawn to occur later, or not to occur at all) is scored as
+(whether it was drawn to occur later, or not to occur at all) is treated as
 censored: the probability that it had not happened by `followup_end`, in place
 of a density. This matters when infection times are imputed, because a case
 infected shortly before the cut-off may have no onset or report yet. Steps
-that did happen are scored with their plain density, without conditioning on
+that did happen enter with their plain density, without conditioning on
 having happened before `followup_end`. Right truncation of the observed delays
 is not yet handled, and a delay distribution fitted to a line list cut at a
 date is biased towards short delays. A custom
@@ -37,7 +37,7 @@ date is biased towards short delays. A custom
 
 A line list holds only the outcome that happened. With competing outcomes
 such as [`Death`](@ref) and [`Recovery`](@ref), a case that has an `:outcome`
-and `:outcome_time` but no candidate time for the other outcome is scored as
+and `:outcome_time` but no candidate time for the other outcome is treated as
 the other outcome not having happened by then: `f_D(t) S_R(t)` for a death at
 `t`, and the reverse for a recovery.
 
