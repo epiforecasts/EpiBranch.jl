@@ -1,0 +1,1 @@
+`reproduction_number(model)` now throws an `ArgumentError` that points to simulation when a finite population size, an `Infectiousness` window with `until`, or `transmission_traits` away from 1 reshapes the offspring law. The other closed forms already do this. Previously it returned the offspring mean.

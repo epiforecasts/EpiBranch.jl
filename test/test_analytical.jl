@@ -2452,8 +2452,10 @@ end
     @test 0.0 < probability_contain(plain) <= 1.0
     @test 0.0 < extinction_probability(plain) <= 1.0
     @test 0.0 < proportion_transmission(plain) < 1.0
+    @test reproduction_number(plain) ≈ 0.8
 
     for reshaped in (finite, windowed, susceptible)
+        @test_throws ArgumentError reproduction_number(reshaped)
         @test_throws ArgumentError end_of_outbreak_probability(reshaped, 5.0)
         @test_throws ArgumentError probability_contain(reshaped)
         @test_throws ArgumentError extinction_probability(reshaped)
