@@ -487,6 +487,15 @@ end
         @test count(==("female"), messy.sex) < 100
     end
 
+    @testset "typos with implausible values keep text columns uniform" begin
+        messy = messy_linelist(
+            clean; rng = StableRNG(8), missing_rate = 0, implausible_rate = 0.5,
+            date_format_rate = 0, typo_rate = 0.5, duplicate_rate = 0
+        )
+        @test nonmissingtype(eltype(messy.sex)) == String
+        @test all(x -> x isa String, messy.sex)
+    end
+
     @testset "implausible values" begin
         messy = messy_linelist(
             clean; rng = StableRNG(6), missing_rate = 0, implausible_rate = 0.5,

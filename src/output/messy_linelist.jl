@@ -143,6 +143,7 @@ function _messy_column(rng, col, missing_rate, implausible_rate, date_format_rat
         # written out like the rest.
         for i in eachindex(values)
             values[i] isa Date && (values[i] = Dates.format(values[i], dateformat"yyyy-mm-dd"))
+            values[i] isa Symbol && (values[i] = String(values[i]))
         end
     end
     kinds = Set(typeof(v) for v in values if !ismissing(v))
