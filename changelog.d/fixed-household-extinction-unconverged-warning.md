@@ -1,1 +1,1 @@
-`extinction_probability(::HouseholdOffspring)` now warns when the fixed-point iteration stops at `max_iter` without converging, as the other extinction methods do. Near R* = 1 convergence is slow and the value returned could be inaccurate with no sign of it.
+`extinction_probability(::HouseholdOffspring)` now warns when the fixed-point iteration stops at `max_iter` without converging, as the other extinction methods do. Convergence is slow near R* = 1, and the returned value could previously be inaccurate without any warning.
