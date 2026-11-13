@@ -531,7 +531,7 @@ _like(::Vector{Int}, v::Vector{Int}) = v
 
 The total offspring of `n` cases, each drawing independently from `law`.
 Where the sum of `n` copies of `law` has a closed form it is drawn in one
-step, at a cost that does not depend on `n`. Otherwise every case draws.
+step, at a cost independent of `n`. Otherwise each case draws separately.
 Defined for `Poisson`, `NegativeBinomial` and `Binomial`; add a method of
 your own for another offspring family with a closed-form sum.
 """

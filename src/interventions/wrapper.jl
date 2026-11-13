@@ -4,10 +4,10 @@
 An intervention that modifies another intervention, such as `Scheduled`
 (when it may act) or `CapacityConstrained` (how many it may reach). A
 subtype stores the wrapped intervention in an `intervention` field and
-inherits plain delegation of every hook, then overrides only the hooks it
-gates. `trace_contacts!` has no default, so each wrapper states what it does
-with it. `keep_active` defaults to plain forwarding, for a wrapper with
-nothing of its own to gate there.
+inherits plain delegation of every hook and overrides only the hooks it
+restricts. `trace_contacts!` has no default, so each wrapper defines it.
+`keep_active` forwards to the wrapped intervention unless the wrapper
+restricts it.
 """
 abstract type InterventionWrapper <: AbstractIntervention end
 
