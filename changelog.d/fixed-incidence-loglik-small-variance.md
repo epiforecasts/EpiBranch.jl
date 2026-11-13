@@ -1,0 +1,1 @@
+The normal approximation in the incidence likelihood leaves out a zero count at any step whose variance is below `1/12`, not only at zero variance. A tiny positive variance there made the log-density, about `-log(σ)`, grow without bound as a reporting delay narrowed.
