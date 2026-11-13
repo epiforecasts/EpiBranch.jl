@@ -327,9 +327,10 @@ end
 # Cross-tier check, run when a process is composed with a progression in a
 # [`ModelSpec`](@ref): warn when an infectiousness window opens at a `from`
 # state the progression never produces, so the window would silently never
-# open, and when a window's `until` does not list a terminal state the
-# progression can reach, so the case would go on transmitting after it. `from` may legitimately be a state written by an attribute or
-# intervention rather than a progression transition, so this is a warning.
+# open. Also warn when a window's `until` does not list a terminal state the
+# progression can reach, because the case would go on transmitting after it.
+# `from` may legitimately be a state written by an attribute or intervention
+# rather than a progression transition, hence a warning.
 # A no-op for models without infectiousness windows.
 _validate_process_windows(::TransmissionModel, progression) = nothing
 function _validate_process_windows(m::BranchingProcess, progression)
