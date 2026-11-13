@@ -3339,7 +3339,9 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             # The keys a trigger reads are written by the progression, so a
             # model without the transition leaves the gate shut for the whole
             # run. `ModelSpec` asks the trigger and warns.
-            bp = BranchingProcess(Poisson(1.5), Exponential(5.0))
+            bp = BranchingProcess(
+                Infectiousness(Poisson(1.5); kernel = Exponential(5.0), until = (:recovered,))
+            )
             iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = Inf)
             no_report = [Recovery(delay = Exponential(5.0))]
             with_report = [
