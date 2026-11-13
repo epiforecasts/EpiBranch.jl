@@ -321,6 +321,7 @@ using Dates
         metadata = EpiBranch.event_time_metadata(Val(:isolation_time))
         function replaced(unrecorded)
             ind = Individual(id = 1)
+            ind.state[:infected] = false
             EpiBranch._set_isolated!(ind, 5.0; release_time = 20.0, unrecorded)
             handle = EpiBranch._set_isolated!(ind, 30.0; release_time = 40.0)
             ind.state[:_isolation_handle] = handle
@@ -334,6 +335,7 @@ using Dates
         release_metadata = EpiBranch.event_time_metadata(Val(:isolation_release_time))
         function replaced_release(unrecorded)
             ind = Individual(id = 1)
+            ind.state[:infected] = false
             EpiBranch._set_isolated!(ind, 5.0; release_time = 20.0, unrecorded)
             handle = EpiBranch._set_isolated!(ind, 30.0; release_time = 40.0)
             ind.state[:_isolation_handle] = handle

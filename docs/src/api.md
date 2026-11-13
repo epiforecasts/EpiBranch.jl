@@ -358,6 +358,7 @@ realised generation intervals.
 ```@docs
 linelist
 event_time_metadata
+EpiBranch.reported_value
 contacts
 chain_statistics
 compute_trace_level!
@@ -749,6 +750,8 @@ EpiBranch.initialise_individual!
 EpiBranch.resolve_individual!
 EpiBranch.on_infection_settled!
 EpiBranch.trace_contacts!
+EpiBranch.admit_trace_actions!
+EpiBranch.is_ring_hop
 EpiBranch.traces_contacts
 EpiBranch.traces_source
 EpiBranch.has_effect
@@ -771,6 +774,8 @@ EpiBranch.abort_infection!
 EpiBranch.infection_aborted_time
 set_isolated!
 clear_isolated!
+EpiBranch.flag_for_isolation!
+EpiBranch.traced_isolation_time
 ```
 
 #### Isolation and contact tracing rules
