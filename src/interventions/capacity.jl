@@ -177,7 +177,7 @@ struct CapacityConstrained{I <: AbstractIntervention, F, B} <: InterventionWrapp
     on_refusal::RefusalPolicy
 end
 
-# The budget per period is counted on the population's clock.
+# The budget per period is counted on the clock of the population.
 gates_on_population_clock(::CapacityConstrained) = true
 
 function CapacityConstrained(

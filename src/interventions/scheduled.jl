@@ -114,7 +114,7 @@ struct Scheduled{I <: AbstractIntervention, F, T <: Tuple, W} <: InterventionWra
     window::W
 end
 
-# The start condition reads the population's clock or case count.
+# The start condition reads the clock or case count of the population.
 gates_on_population_clock(::Scheduled) = true
 
 # The days between which a `Scheduled` built from `start_time` and

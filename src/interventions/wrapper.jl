@@ -86,14 +86,14 @@ end
 """
     gates_on_population_clock(intervention) -> Bool
 
-For extension authors: whether this intervention's effect depends on the
-population's clock or case count, as [`Scheduled`](@ref) does through its
+For extension authors: whether the effect of this intervention depends on the
+clock or case count of the population, as [`Scheduled`](@ref) does through its
 start condition and [`CapacityConstrained`](@ref) through its budget per
-period. A model that has no such clock, such as the branching process over
-households, refuses an intervention that declares it. The default is `false`;
-a wrapper written outside the package forwards the wrapped intervention's
-answer, as every [`InterventionWrapper`](@ref) here does, so the gate is seen
-through any nesting.
+period. A model with no such clock, such as the branching process over
+households, refuses an intervention that declares it. The default is `false`.
+A wrapper written outside the package should forward the answer for the wrapped
+intervention, as every [`InterventionWrapper`](@ref) here does, so that it is
+found through any nesting.
 """
 gates_on_population_clock(::AbstractIntervention) = false
 gates_on_population_clock(w::InterventionWrapper) = gates_on_population_clock(w.intervention)
