@@ -415,9 +415,9 @@ those of [`linelist`](@ref); an index case has `parent_id` 0, or `missing`,
 and infects its own descendants but has no infector row. From a
 `SimulationState`, the line list of [`linelist`](@ref)`(state)` is used.
 
-Cases cut off by the end of the line list (for example by `max_cases`) have
-the descendants they would have had missing, so their counts are
-underestimates. Simulate to extinction when checking a fit on simulated data.
+The counts of cases cut off by the end of the line list (for example by
+`max_cases`) are underestimates because their descendants are missing.
+Simulate to extinction when checking a fit on simulated data.
 
 # Examples
 
@@ -478,8 +478,7 @@ Incidence from case dates. Cases are counted in consecutive steps of `step`
 days starting at the earliest date, with empty steps counted as 0. The cases
 in the first step are the `seeds` (index cases at step 0), and `data` holds
 the counts of the later steps, as [`IncidenceCounts`](@ref) expects. The
-first step therefore needs at least one case, and the table at least two
-steps. Rows with a `missing` date are left out.
+first step needs at least one case and the table at least two steps. Rows with a `missing` date are left out.
 
 From a `SimulationState`, `by` chooses the time as in
 [`weekly_incidence`](@ref), counted in days from simulation day 0.
