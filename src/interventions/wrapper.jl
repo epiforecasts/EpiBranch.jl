@@ -89,8 +89,9 @@ end
 For extension authors: whether the effect of this intervention depends on the
 clock or case count of the population, as [`Scheduled`](@ref) does through its
 start condition, [`CapacityConstrained`](@ref) through its budget per
-period and [`HeldCapacity`](@ref) through its cap on places held at once. A model with no such clock, such as the branching process over
-households, refuses an intervention that declares it. The default is `false`.
+period and [`HeldCapacity`](@ref) through its cap on places held at once. A
+model with no such clock, such as the branching process over households,
+refuses an intervention that declares it. The default is `false`.
 A wrapper written outside the package should forward the answer for the wrapped
 intervention, as every `InterventionWrapper` here does. The answer is then
 found through any nesting.
