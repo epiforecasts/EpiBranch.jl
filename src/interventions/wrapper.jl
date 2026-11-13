@@ -1,13 +1,16 @@
 """
     InterventionWrapper <: AbstractIntervention
 
-An intervention that modifies another intervention, such as `Scheduled`
-(when it may act) or `CapacityConstrained` (how many it may reach). A
+An intervention that modifies another intervention, such as [`Scheduled`](@ref)
+(when it may act) or [`CapacityConstrained`](@ref) (how many it may reach). A
 subtype stores the wrapped intervention in an `intervention` field and
 inherits plain delegation of every hook and overrides only the hooks it
 restricts. `trace_contacts!` has no default, so each wrapper defines it.
 `keep_active` forwards to the wrapped intervention unless the wrapper
 restricts it.
+
+A wrapper written outside the package declares through
+[`may_lapse`](@ref EpiBranch.may_lapse) whether its block can later be lifted.
 """
 abstract type InterventionWrapper <: AbstractIntervention end
 
@@ -55,7 +58,7 @@ may_revise(w::InterventionWrapper, prior, new) = may_revise(w.intervention, prio
 acts_on_population(w::InterventionWrapper) = acts_on_population(w.intervention)
 needs_contacts(w::InterventionWrapper) = needs_contacts(w.intervention)
 persistent_competing_risks(w::InterventionWrapper) = persistent_competing_risks(w.intervention)
-_may_lapse(w::InterventionWrapper) = _may_lapse(w.intervention)
+may_lapse(w::InterventionWrapper) = may_lapse(w.intervention)
 _triggers_of(w::InterventionWrapper) = _triggers_of(w.intervention)
 standing_block(w::InterventionWrapper) = standing_block(w.intervention)
 susceptibility_host_times(w::InterventionWrapper) = susceptibility_host_times(w.intervention)

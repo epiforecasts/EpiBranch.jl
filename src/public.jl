@@ -30,6 +30,7 @@ public required_fields
 public infectious_removal_time
 public risk_applies
 public standing_block
+public may_lapse
 # The built-in risk sources the guides link to, and the kernel trait for a
 # kernel with mass at infinity.
 public HostImmunity

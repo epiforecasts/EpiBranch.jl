@@ -528,9 +528,9 @@ function _permanently_blocked(
         _any_standing(_never_skip, model_risks, parent, contact, state, transmission_time) ||
         # A `Scheduled` wrapper can still turn its block off later unless the
         # wrapped intervention's protection persists outside the active
-        # window (`_may_lapse`), so such a risk is never read as standing here,
+        # window (`may_lapse`), so such a risk is never read as standing here,
         # however certain it looks at this one proposal.
-        _any_standing(_may_lapse, interventions, parent, contact, state, transmission_time)
+        _any_standing(may_lapse, interventions, parent, contact, state, transmission_time)
 end
 
 _never_skip(source) = false
