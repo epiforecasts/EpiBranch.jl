@@ -418,6 +418,28 @@ struct _RiskFromAge end
         # A fixed second delay shifts the first.
         @test EpiBranch._discretize_report_delay(EpiBranch._DelaySum(inc, 2.0)) ≈
             EpiBranch._bin_cdf(t -> cdf(inc, t - 2.0), 0, 1.0e-8, 10_000, "reporting delay")
+        # A fixed first delay shifts the second.
+        rd = Gamma(2.0, 1.0)
+        d = EpiBranch._discretize_report_delay(EpiBranch._DelaySum(Dirac(5.0), rd))
+        @test sum(d) ≈ 1.0
+        @test all(isfinite, d)
+        @test all(iszero, d[1:5])
+        @test d ≈ EpiBranch._bin_cdf(
+            t -> cdf(rd, t - 5.0), 0, 1.0e-8, 10_000, "reporting delay"
+        )
+        # A `Dirac` second delay does the same to the first.
+        @test EpiBranch._discretize_report_delay(EpiBranch._DelaySum(inc, Dirac(2.0))) ≈
+            EpiBranch._discretize_report_delay(EpiBranch._DelaySum(inc, 2.0))
+    end
+
+    @testset "A Dirac incubation period gives a finite likelihood" begin
+        data = IncidenceCounts([0, 0, 0, 0, 0, 0, 1, 1, 2, 2, 3])
+        m = ModelSpec(
+            BranchingProcess(NegBin(1.3, 0.5), Gamma(3.0, 1.0));
+            progression = [Reporting(probability = 0.8, delay = Gamma(2.0, 1.0))],
+            attributes = clinical_presentation(incubation_period = Dirac(5.0))
+        )
+        @test isfinite(loglikelihood(data, m))
     end
 
     @testset "loglikelihood on a model with a Reporting step" begin

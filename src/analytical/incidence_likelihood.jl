@@ -116,6 +116,17 @@ function _discretize_report_delay(
     minimum(a) >= 0 && (b isa Real ? b >= 0 : minimum(b) >= 0) ||
         throw(ArgumentError("reporting delays must be non-negative"))
     b isa Real && return _bin_cdf(t -> cdf(a, t - b), 0, tol, max_lag, "reporting delay")
+    # A fixed first delay has no density for the quadrature to sample, so it
+    # shifts the second delay instead.
+    if a isa Dirac
+        shift = a.value
+        return _bin_cdf(t -> cdf(b, t - shift), 0, tol, max_lag, "reporting delay")
+    end
+    # A fixed second delay is likewise a shift of the first.
+    if b isa Dirac
+        shift = b.value
+        return _bin_cdf(t -> cdf(a, t - shift), 0, tol, max_lag, "reporting delay")
+    end
     # P(A + B ≤ t) = ∫ f_A(x) F_B(t - x) dx over x ≤ t, B being non-negative.
     lo = minimum(a)
     F(t) = t <= lo ? 0.0 : first(quadgk(x -> pdf(a, x) * cdf(b, t - x), lo, t))
