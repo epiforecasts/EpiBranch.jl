@@ -355,7 +355,7 @@ independent datasets add up, you can also fit both together by adding the two
 
 ## From a case time series
 
-A daily count of new cases is the data most outbreaks produce. [`IncidenceCounts`](@ref) holds one: the number of new cases in each successive step (day, week or whatever unit the series is recorded in), after `seeds` index cases introduced at step 0. `loglikelihood` then scores it in closed form, without simulating, against an offspring distribution and a generation-time distribution. Any of the fitting methods above works on it.
+Most outbreaks produce a daily count of new cases. [`IncidenceCounts`](@ref) holds such a series: the number of new cases in each successive step (day, week or whatever unit the series is recorded in), after `seeds` index cases introduced at step 0. `loglikelihood` scores it in closed form, without simulating, against an offspring distribution and a generation-time distribution. Any of the fitting methods above works on it.
 
 The series below is simulated from a negative binomial offspring distribution with R = 1.6 and k = 0.5, a gamma generation time with a mean of 5 days, and 20 index cases. Cases are counted by day of infection. The generation time is in the same unit as a step (days).
 
