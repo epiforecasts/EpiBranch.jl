@@ -137,6 +137,12 @@ EpiBranch.chain_size_distribution(d::BrokenExactOffspring) = throw(d.error)
         data = [0, 1, 2, 0, 3, 1]
         @test logpdf(d, data) ≈ loglikelihood(ChainLengths(data), Poisson(0.5))
 
+        @testset "Scalar pdf and logpdf" begin
+            @test logpdf(d, 2) ≈ logpdf(d, [2])
+            @test pdf(d, 2) ≈ exp(logpdf(d, [2]))
+            @test sum(pdf(d, k) for k in 0:60) ≈ 1 atol = 1.0e-6
+        end
+
         @testset "Reporting requires full detection" begin
             message = "per-case detection does not give a well-defined chain length"
             for probability in (0.0, 0.3, 1.0)

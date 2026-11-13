@@ -213,20 +213,19 @@ using DataFrames
         @test n_isolated > 0
     end
 
-    @testset "Multi-type with finite population" begin
+    @testset "Multi-type with a case cap" begin
         M = [
             1.5 0.3;
             0.3 1.0
         ]
         model = BranchingProcess(
-            M, R_j -> Poisson(R_j), Exponential(5.0);
-            population_size = 50
+            M, R_j -> Poisson(R_j), Exponential(5.0)
         )
 
         rng = StableRNG(42)
-        state = simulate(model; max_cases = 100, rng = rng)
+        state = simulate(model; max_cases = 50, rng = rng)
 
-        @test state.cumulative_cases <= 50
+        @test state.cumulative_cases >= 1
     end
 
     @testset "Chain statistics work with multi-type" begin

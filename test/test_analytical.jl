@@ -90,6 +90,7 @@ using ForwardDiff
             d = Borel(0.5)
             @test d.μ == 0.5
             @test_throws ArgumentError Borel(-0.1)
+            @test Borel(0.0).μ == 0.0
             # Supercritical allowed: PMF valid pointwise, used inside quadrature
             d_super = Borel(1.5)
             @test d_super.μ == 1.5
@@ -117,6 +118,13 @@ using ForwardDiff
             # distribution whose total mass is < 1.
             @test_throws ArgumentError rand(Borel(1.5))
             @test_throws ArgumentError rand(Borel(1.0))
+        end
+
+        @testset "Poisson with mean 0" begin
+            @test loglikelihood(ChainSizes([1, 1, 1]), Poisson(0.0)) == 0.0
+            @test loglikelihood(ChainSizes([1, 1, 1]), NegativeBinomial(0.5, 1.0)) == 0.0
+            @test loglikelihood(ChainSizes([1, 2]), Poisson(0.0)) == -Inf
+            @test loglikelihood(ChainSizes([2, 2]; seeds = [2, 2]), Poisson(0.0)) == 0.0
         end
     end
 
@@ -502,8 +510,8 @@ using ForwardDiff
                 sum(n -> logpdf(GammaBorel(0.5, 0.6), n), data.data)
         end
 
-        @testset "Zero-mean Poisson is rejected, not NaN" begin
-            @test_throws ArgumentError loglikelihood(ChainSizes([1, 2]), Poisson(0.0))
+        @testset "Zero-mean Poisson gives 0 or -Inf, not NaN" begin
+            @test loglikelihood(ChainSizes([1, 2]), Poisson(0.0)) == -Inf
         end
 
         @testset "Extreme dispersion stays finite" begin
@@ -1507,6 +1515,28 @@ using ForwardDiff
                 rng = StableRNG(42)
             )
             @test isfinite(ll)
+        end
+
+        @testset "Simulated chain-size likelihood is not biased by unreached sizes" begin
+            # Simulated sizes drawn from the exact law at each R: the
+            # estimate has to sit inside the exact likelihood's 95% interval
+            # even though the largest observed sizes are beyond the draws.
+            data = ChainSizes(rand(StableRNG(51), chain_size_distribution(NegBin(0.85, 0.5)), 300))
+            grid = 0.6:0.02:0.95
+            exact = [loglikelihood(data, NegBin(R, 0.5)) for R in grid]
+            lo, hi = extrema(grid[exact .>= maximum(exact) - 1.92])
+            rng = StableRNG(9)
+            sim = map(grid) do R
+                draws = rand(rng, chain_size_distribution(NegBin(R, 0.5)), 1000)
+                EpiBranch._empirical_ll(data.data, draws; min_val = 1)
+            end
+            @test lo <= grid[argmax(sim)] <= hi
+            # An observed size beyond every simulated size still scores
+            # according to the parameter.
+            small = [1, 1, 2, 1, 3, 1, 2, 1]
+            ll_low = EpiBranch._empirical_ll([40], small; min_val = 1)
+            ll_high = EpiBranch._empirical_ll([40], [small; 30; 35]; min_val = 1)
+            @test isfinite(ll_low) && ll_high > ll_low
         end
 
         @testset "MinimumSize falls through to the simulation path" begin

@@ -130,7 +130,8 @@ end
             bp = BranchingProcess(Poisson(0.8))
             spec = ModelSpec(bp; attributes = transmission_traits(susceptibility = 0.0))
             ll = loglikelihood(ChainSizes([1]), spec; rng = StableRNG(1), n_sim = 500)
-            @test isapprox(ll, 0.0; atol = 1.0e-9)
+            # The smoothed geometric tail puts a little probability beyond size 1.
+            @test isapprox(ll, 0.0; atol = 1.0e-2)
         end
     end
 
@@ -156,7 +157,8 @@ end
         bp = BranchingProcess(Poisson(0.8))
         spec = ModelSpec(bp; attributes = (rng, ind) -> (ind.susceptibility = 0.0))
         ll = loglikelihood(ChainSizes([1]), spec; rng = StableRNG(1), n_sim = 500)
-        @test isapprox(ll, 0.0; atol = 1.0e-9)
+        # The smoothed geometric tail puts a little probability beyond size 1.
+        @test isapprox(ll, 0.0; atol = 1.0e-2)
     end
 
     @testset "clinical_presentation prob_asymptomatic accepts distribution and function" begin

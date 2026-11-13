@@ -90,4 +90,38 @@
         @test !isempty(isolated)
         @test sum(isolated) / length(isolated) < sum(free) / length(free)
     end
+
+    @testset "Realised serial intervals" begin
+        attrs = clinical_presentation(
+            incubation_period = LogNormal(1.0, 0.3), prob_asymptomatic = 0.3
+        )
+        model = ModelSpec(
+            BranchingProcess(Poisson(2.0), Exponential(5.0)); attributes = attrs
+        )
+        state = simulate(model; max_cases = 300, rng = StableRNG(11))
+        sis = realised_serial_intervals(state)
+
+        pairs = [
+            (ind, state.individuals[ind.parent_id])
+                for ind in state.individuals if is_infected(ind) && ind.parent_id != 0
+        ]
+        both = [
+            onset_time(c) - onset_time(p) for (c, p) in pairs
+                if !isnan(onset_time(c)) && !isnan(onset_time(p))
+        ]
+        @test !isempty(sis)
+        @test sis == both
+        @test length(sis) < length(pairs)
+
+        for (c, _) in pairs
+            @test isnan(realised_serial_interval(c, state)) ==
+                (isnan(onset_time(c)) || isnan(onset_time(state.individuals[c.parent_id])))
+        end
+        idx = first(i for i in state.individuals if i.parent_id == 0)
+        @test isnan(realised_serial_interval(idx, state))
+
+        states = simulate(model, 4; max_cases = 100, rng = StableRNG(12))
+        @test realised_serial_intervals(states) ==
+            reduce(vcat, realised_serial_intervals.(states))
+    end
 end
