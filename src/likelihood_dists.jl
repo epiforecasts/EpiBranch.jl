@@ -212,7 +212,8 @@ function Distributions.loglikelihood(
 end
 
 # A single cluster length is scored as a one-element data vector. The
-# chain-size law already takes one value at a time.
+# analytical chain-size laws (`Borel`, `HittingTimeChainSize`) already take
+# one value at a time.
 Distributions.logpdf(d::_ChainLengthLaw, x::Integer) = logpdf(d, [x])
 Distributions.pdf(d::_ChainLengthLaw, x::Integer) = exp(logpdf(d, x))
 
