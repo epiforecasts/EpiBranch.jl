@@ -844,6 +844,9 @@ function _transition_probe(first_ind, transitions, state)
     return probe
 end
 
+# A hook for a model to refuse a population it cannot deplete correctly.
+_check_population(::TransmissionModel) = nothing
+
 """
     initialise_state(model, sim_opts, interventions, transitions, attributes, rng) -> SimulationState
 
@@ -855,9 +858,6 @@ households) defines its own method, usually by building the population with
 [`new_state`](@ref) and [`add_individuals!`](@ref) and infecting the index
 cases with [`seed!`](@ref).
 """
-# A hook for a model to refuse a population it cannot deplete correctly.
-_check_population(::TransmissionModel) = nothing
-
 function initialise_state(
         model::TransmissionModel, sim_opts::SimOpts,
         interventions, transitions, attributes, rng::AbstractRNG
