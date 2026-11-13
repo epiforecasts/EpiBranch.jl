@@ -892,6 +892,12 @@ using ForwardDiff
                 @test EpiBranch._chain_size_right_tail_logprob(b, x, 1) ≈
                     log(1 - sum(exp(EpiBranch._chain_size_logpdf(b, j, 1)) for j in 1:(x - 1))) rtol = 1.0e-8
             end
+            # Beyond the default summation cap the tail is not truncated.
+            near = Borel(0.99)
+            lt = EpiBranch._chain_size_right_tail_logprob(near, 250_000, 1)
+            @test isfinite(lt)
+            @test lt < log(1.0e-4)
+            @test lt > EpiBranch._chain_size_right_tail_logprob(near, 400_000, 1)
             # Agrees with the complement where that is accurate.
             @test EpiBranch._chain_size_right_tail_logprob(Borel(0.8), 10, 2) ≈
                 log(1 - sum(exp(EpiBranch._chain_size_logpdf(Borel(0.8), j, 2)) for j in 2:9))
