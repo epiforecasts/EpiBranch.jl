@@ -66,6 +66,8 @@ ModelSpec
 single_type_offspring
 EpiBranch.has_single_type_law
 EpiBranch.offspring_law_unchanged
+EpiBranch.scale_mean
+EpiBranch.sum_offspring
 ```
 
 ## Approximate population dynamics
@@ -236,6 +238,8 @@ RingVaccination
 MassVaccination
 GroupVaccination
 AbstractEffectMode
+EpiBranch.effect_mode
+EpiBranch.dose_label
 LeakyMode
 AllOrNothingMode
 ```
@@ -754,6 +758,7 @@ EpiBranch.traces_source
 EpiBranch.has_effect
 EpiBranch.supplies_contacts
 EpiBranch.keep_active
+InterventionWrapper
 EpiBranch.competing_risk
 Risk
 EpiBranch.HostSusceptibility
@@ -899,10 +904,7 @@ helpers the package may change at any time.
 
 ```@docs
 EpiBranch.get_generation_time
-EpiBranch._settle_case!
-EpiBranch._at_case!
 EpiBranch.population_size
-EpiBranch._create_individual
 EpiBranch.logsumexp
 EpiBranch.required_fields
 EpiBranch._validate_required_fields
