@@ -92,6 +92,7 @@ include("model_inputs.jl")
 
 # Transmission models
 include("models/branching_process.jl")
+include("models/renewal_offspring.jl")
 include("models/multi_type_offspring.jl")
 
 # Observation helpers (thinned chain-size distribution, dispatch on the
@@ -150,6 +151,7 @@ include("analytical/likelihood.jl")
 include("analytical/superspreading.jl")
 include("analytical/fitting.jl")
 include("analytical/cluster_mixed.jl")
+include("analytical/poisson_mixtures.jl")
 include("analytical/generating_function_offspring.jl")
 include("analytical/isolation_offspring.jl")
 include("analytical/end_of_outbreak_probability.jl")
@@ -176,6 +178,7 @@ include("serial_interval.jl")
 
 # Exports — types
 export TransmissionModel, BranchingProcess, Infectiousness, OffspringTimes,
+    RenewalOffspring,
     HomogeneousProcess, MixingProcess, ModelSpec
 export MeanFieldProcess, MeanFieldState, LinearNoiseProcess, LinearNoiseState
 export StratifiedContacts, flatten_contacts, contacts_from_table, mixing_rate
@@ -259,13 +262,14 @@ export generate_offspring, contacts_of
 
 # Exports — output
 export event_time_metadata, linelist, contacts, chain_statistics, compute_trace_level!
-export realised_generation_interval, realised_generation_intervals
+export realised_generation_interval, realised_generation_intervals,
+    realised_serial_interval, realised_serial_intervals
 export containment_probability, is_extinct, generation_R, weekly_incidence, scenario_sweep
 export summarise
 
 # Exports — analytical
 export reproduction_number
-export extinction_probability, epidemic_probability
+export extinction_probability, epidemic_probability, emergence_probability
 export proportion_transmission, proportion_cluster_size, heterogeneous_contact_R
 export proportion_cases_individual, proportion_cases_offspring
 export probability_contain
@@ -279,9 +283,10 @@ export IncidenceApproximation, NormalApproximation, LognormalApproximation
 # Turing's `~`. `chain_size_distribution` is already exported above.
 export chain_length_distribution, offspring_distribution
 export ClusterMixed, ChainSizeMixture
+export PoissonLognormal, PoissonWeibull
 export GeneratingFunctionOffspring
 # Real-time mixture: per-cluster "is finished?" weight
-export end_of_outbreak_probability
+export end_of_outbreak_probability, end_of_outbreak_inputs
 # Pairwise survival likelihood over a contact structure
 export PairKernel, PairContext, Steps, Seasonal, record_kernel, LayerHost
 export InfectionLayer, PairwiseSurvivalData, ContactPairsLayout, MassActionHazard, SumHazard
