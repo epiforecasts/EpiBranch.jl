@@ -181,7 +181,8 @@ end
 
 Probability that transmission from a single introduced case dies out (or from
 `n_initial` of them, for a single-type model; a multi-type model accepts only
-`n_initial = 1`), from the model's offspring distribution. The observation model is ignored. If a
+`n_initial = 1`), from the model's offspring distribution. The observation
+model is ignored. If a
 finite `population_size`, an `Infectiousness` window with `until`, or
 `transmission_traits` away from their neutral values reshape the offspring law,
 this throws an `ArgumentError` that points to simulation. For a single-type

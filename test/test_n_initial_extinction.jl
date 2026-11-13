@@ -14,7 +14,7 @@ using Distributions: DiscreteNonParametric, Poisson
 end
 
 @testset "n_initial with ClusterMixed" begin
-    # θ straddles R = 1, so the extinction probability varies with θ.
+    # θ straddles R = 1, giving an extinction probability that varies with θ.
     mixing = DiscreteNonParametric([0.5, 3.0], [0.5, 0.5])
     cm = ClusterMixed(Poisson, mixing)
     q = 0.5 * 1.0 + 0.5 * extinction_probability(Poisson(3.0))
