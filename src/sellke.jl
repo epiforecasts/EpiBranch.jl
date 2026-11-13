@@ -1489,7 +1489,20 @@ function _sellke_race_typed!(
         traced = _trace_from!(
             state, ind, typed_interventions, case_contacts, pos, tracing
         )
-        _trace_source!(state, ind, typed_interventions, tracing_source)
+        found = _trace_source!(state, ind, typed_interventions, tracing_source)
+        # An infector isolated by being traced back becomes eligible for forward
+        # tracing under a rule such as `OnIsolation()` only now. The walk made
+        # when it settled could not see that.
+        if found !== nothing
+            retraced = _trace_from!(
+                state, found, typed_interventions, case_contacts, pos, tracing
+            )
+            # The action pass picks its candidates from the traced set, which
+            # must therefore include contacts reached from the infector.
+            if retraced !== nothing
+                traced === nothing ? (traced = retraced) : union!(traced, retraced)
+            end
+        end
         # A model with nothing in `acting` never calls `_admit_actions!`
         # inside `_apply_case_actions!`. Installing the sink anyway, a
         # `Dict{Any, Any}` write and delete per settled case, would cost

@@ -1137,16 +1137,17 @@ whose infector is found), `isolation_to_trace_delay` and `action` (required).
 
 # Engine differences
 
-By the time a case is itself confirmed and traced back, a branching process has
-usually already generated its infector's secondary cases in one step, together
-rather than over time, so there is nothing left for `SourceTracing` to shorten
-there; it still records the link. On a continuous-time model — the household
-and network processes, and the mass-action pools, where [`ContactTracing`](@ref)
-has no pairwise structure to act along at all — an infector's contacts already
-proposed but not yet resolved are checked against every intervention's
-[`competing_risk`](@ref) as each is reached, so quarantining the infector here
-blocks its remaining onward transmission without undoing any infection already
-settled.
+On every model the infector is found once the case itself is settled.
+Quarantining it blocks what it has not yet transmitted and leaves any infection
+already settled in place. A branching process runs on the same time-ordered
+race, so it shortens the infector's remaining transmission there as well as on
+the continuous-time household and network processes and the mass-action pools.
+On those, an infector's contacts already proposed but not yet resolved are
+checked against every intervention's [`competing_risk`](@ref) as each is
+reached. An infector isolated this way is offered to [`ContactTracing`](@ref)
+again, because its isolation began after it settled. Under [`OnIsolation`](@ref)
+its other contacts are then traced forward from the time it is quarantined, as
+for a case that isolated through testing.
 
 # Examples
 ```julia
