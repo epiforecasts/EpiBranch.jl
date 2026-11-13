@@ -472,7 +472,7 @@ end
 
 Whether `intervention` finds actions of its own to propose, which the race
 offers it per settled case. An intervention answering `false` is never offered
-candidates, so it costs nothing per case.
+candidates and adds no per-case cost.
 
 The default is `true` for a type with an [`intervention_actions`](@ref
 EpiBranch.intervention_actions) method of its own; a wrapper that does not write
@@ -509,11 +509,11 @@ end
 Whether `intervention` can supply a [`competing_risk`](@ref
 EpiBranch.competing_risk). The continuous-time race keeps every proposal to a
 contact, rather than only the earliest, when some intervention answers `true`,
-since a blocked contact must then fall back to a later one. An intervention
-answering `false` costs a run without other risks nothing.
+because a blocked contact must then fall back to a later one. An intervention
+answering `false` adds no cost to a run without other risks.
 
-The default is `true` for a type with a `competing_risk` method of its own,
-and so for every wrapper, which forwards it. A type whose risk comes through
+The default is `true` for a type with a `competing_risk` method of its own.
+Every wrapper has one, because it forwards the hook. A type whose risk comes through
 some other seam defines `EpiBranch.has_competing_risk(::MyIntervention) = true`.
 """
 function has_competing_risk(iv::AbstractIntervention)
