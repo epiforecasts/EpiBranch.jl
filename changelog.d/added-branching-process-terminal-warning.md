@@ -1,0 +1,1 @@
+Composing a `BranchingProcess` with a progression now warns when an infectiousness window's `until` does not list a terminal state the progression can reach, such as `Death` or `Recovery`, as the structure-driven models already did. Without it a case keeps transmitting after its recorded outcome.

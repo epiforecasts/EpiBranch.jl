@@ -497,7 +497,12 @@ EpiBranch.interventions(m::_ProcessWithInterventions) = m.interventions
     end
 
     @testset "incomplete terminal coverage warns" begin
-        bp = BranchingProcess(Poisson(1.5), Exponential(5.0))
+        # `until` lists both outcomes so only the coverage check is in play.
+        bp = BranchingProcess(
+            Infectiousness(
+                Poisson(1.5); kernel = Exponential(5.0), until = (:died, :recovered)
+            )
+        )
         # Two terminal transitions gated independently at p and 1 - p: neither
         # is unconditional, so about p(1 - p) of cases clear both gates'
         # failure and reach no terminal state.
@@ -779,4 +784,27 @@ EpiBranch.interventions(m::_ProcessWithInterventions) = m.interventions
             bp; progression = [rep], observation = MinimumSize(2)
         ) isa ModelSpec
     end
+end
+
+@testset "BranchingProcess warns on uncovered terminal states" begin
+    bp = BranchingProcess(Poisson(0.9), Gamma(2.0, 4.0))
+    prog = [
+        Death(delay = LogNormal(1.0, 0.4), probability = 0.3),
+        Recovery(delay = LogNormal(1.0, 0.4)),
+    ]
+    @test_logs (:warn, r":died, :recovered.*does not list") match_mode = :any ModelSpec(
+        bp; progression = prog
+    )
+    covered = BranchingProcess(
+        Infectiousness(Poisson(0.9); kernel = Gamma(2.0, 4.0), until = (:died, :recovered))
+    )
+    @test_logs ModelSpec(covered; progression = prog)
+    # With several windows the warning names the route.
+    two = BranchingProcess(
+        Infectiousness(Poisson(0.5); name = :community, kernel = Gamma(2.0, 4.0)),
+        Infectiousness(Poisson(0.5); name = :funeral, from = :died, kernel = Gamma(2.0, 4.0))
+    )
+    @test_logs (:warn, r"route :community") match_mode = :any ModelSpec(
+        two; progression = prog
+    )
 end
