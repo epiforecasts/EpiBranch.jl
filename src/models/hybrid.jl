@@ -70,7 +70,7 @@ function _exponential_removal_rate(exact, bare)
     ok = length(terminal) == 1 && only(terminal) isa Transition
     if ok
         t = only(terminal)
-        ok = t.from === :infection && _certain_probability(t.probability) &&
+        ok = t.from === :infection && coalesce(_certain_probability(t.probability), false) &&
             t.delay isa Exponential &&
             (bare.from === nothing || bare.from === :infection) &&
             !any(s -> s isa Transition && s.state === :infectious, steps)

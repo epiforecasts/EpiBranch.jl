@@ -45,6 +45,14 @@ using StableRNGs
         @test_throws ArgumentError HybridProcess(
             spec(; progression = fixed), mf(); threshold = 10
         )
+        callable = [
+            Transition(
+                :recovered; rate = 0.2, probability = (rng, ind) -> 1.0, terminal = true
+            ),
+        ]
+        @test_throws ArgumentError HybridProcess(
+            spec(; progression = callable), mf(); threshold = 10
+        )
         seir = [
             Transition(:infectious; delay = Exponential(2.0)),
             Transition(:recovered; from = :infectious, rate = 0.2, terminal = true),
