@@ -1,0 +1,1 @@
+The mean-field and linear noise approximations (`MeanFieldProcess`, `LinearNoiseProcess` and their mixing counterparts) now share one Runge–Kutta step, one integrator per family, the continuation and `n_initial` checks, and their `show` and `population_size` methods. Output is unchanged.

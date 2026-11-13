@@ -129,8 +129,7 @@ end
 # across the groups in proportion to their size, among the people who are not
 # immune.
 function _initial_compartments(model, n_initial::Integer, immune)
-    1 <= n_initial <= model.population_size ||
-        throw(ArgumentError("n_initial must be between 1 and population_size"))
+    _check_n_initial(n_initial, model.population_size)
     N = Float64.(model.group_sizes)
     P0 = _immune_counts(immune, N)
     I0 = n_initial .* (N ./ model.population_size)
@@ -190,17 +189,10 @@ function _mixing_drift(model, x, t, tm)
     )
 end
 
-# Fourth-order Runge–Kutta for `x`, with the drift evaluated at each of the
-# four stage times of the step, so a calendar scaling the contact matrix is
-# read at the time it applies to and not held at the start of the step.
-function _rk4_mixing_step(model, x, t::Real, h::Real)
-    tm = t + h / 2
-    k1 = _mixing_drift(model, x, t, tm)
-    k2 = _mixing_drift(model, x + h / 2 * k1, t + h / 2, tm)
-    k3 = _mixing_drift(model, x + h / 2 * k2, t + h / 2, tm)
-    k4 = _mixing_drift(model, x + h * k3, t + h, tm)
-    return x + h / 6 * (k1 + 2k2 + 2k3 + k4)
-end
+# The drift in the form `_rk4_step` takes, evaluated at each of the four stage
+# times of the step. A calendar scaling the contact matrix is read at the time
+# it applies to.
+_mixing_rk4_step(model, x, t, h) = _rk4_step((x, ts, tm) -> _mixing_drift(model, x, ts, tm), x, t, h)
 
 # The drift's Jacobian with respect to the four compartment blocks (the
 # doses `D` are a given function of time, not noise), by central differences.
@@ -293,7 +285,7 @@ function _integrate_mixing(model, x, progress, Σ, t0, max_time)
             h = min(t_end - t, _next_dose_event(campaign, progress, t) - t)
             before = _cases_by_group(campaign, model, x)
             Σ = _covariance_step(Σ, model, x, t, h)
-            x = _rk4_mixing_step(model, x, t, h)
+            x = _mixing_rk4_step(model, x, t, h)
             _cap_doses!(campaign, model, x)
             t += h
             _trigger_groups!(
@@ -447,16 +439,6 @@ function MixingMeanFieldProcess(
     )
 end
 
-population_size(m::MixingMeanFieldProcess) = m.population_size
-
-function Base.show(io::IO, m::MixingMeanFieldProcess)
-    return print(
-        io,
-        "MixingMeanFieldProcess(population_size=$(m.population_size), " *
-            "groups=$(length(m.groups)), γ=$(m.removal_rate))"
-    )
-end
-
 """
     MixingMeanFieldState
 
@@ -487,15 +469,6 @@ function MixingMeanFieldState(groups, S, I, R, t)
     G = length(groups)
     return MixingMeanFieldState(
         groups, S, I, R, t, zeros(G), zeros(G), zeros(G), _new_progress(NoCampaign())
-    )
-end
-
-function Base.show(io::IO, s::MixingMeanFieldState)
-    return print(
-        io,
-        "MixingMeanFieldState(S=$(round(sum(s.S), digits = 1)), " *
-            "I=$(round(sum(s.I), digits = 1)), R=$(round(sum(s.R), digits = 1)), " *
-            "groups=$(length(s.groups)), t=$(s.t))"
     )
 end
 
@@ -536,11 +509,7 @@ be later than `state.t`.
 function simulate(
         model::MixingMeanFieldProcess, state::MixingMeanFieldState; max_time::Real
     )
-    max_time > state.t || throw(
-        ArgumentError(
-            "max_time ($max_time) must be past the state's own ($(state.t)) to continue it"
-        )
-    )
+    _check_continuation(state, max_time)
     x = _pack(state.S, state.I, state.V, state.P, state.D)
     return _mixing_mean_state(model, x, _copy(state.campaign), state.t, max_time)
 end
@@ -608,19 +577,17 @@ function MixingLinearNoiseProcess(
         rng::AbstractRNG = Random.default_rng()
     )
     mean_field = MixingMeanFieldProcess(spec; removal_rate, step, allocation, rng)
-    return MixingLinearNoiseProcess(
-        mean_field.population_size, mean_field.mixing_by, mean_field.groups,
-        mean_field.group_sizes, mean_field.contact_matrix, mean_field.calendar,
-        mean_field.removal_rate, mean_field.step, mean_field.campaign
-    )
+    return _with_fields_of(MixingLinearNoiseProcess, mean_field)
 end
 
-population_size(m::MixingLinearNoiseProcess) = m.population_size
+const _MixingProcess = Union{MixingMeanFieldProcess, MixingLinearNoiseProcess}
 
-function Base.show(io::IO, m::MixingLinearNoiseProcess)
+population_size(m::_MixingProcess) = m.population_size
+
+function Base.show(io::IO, m::_MixingProcess)
     return print(
         io,
-        "MixingLinearNoiseProcess(population_size=$(m.population_size), " *
+        "$(nameof(typeof(m)))(population_size=$(m.population_size), " *
             "groups=$(length(m.groups)), γ=$(m.removal_rate))"
     )
 end
@@ -663,10 +630,10 @@ function MixingLinearNoiseState(groups, S, I, R, t, covariance)
     )
 end
 
-function Base.show(io::IO, s::MixingLinearNoiseState)
+function Base.show(io::IO, s::Union{MixingMeanFieldState, MixingLinearNoiseState})
     return print(
         io,
-        "MixingLinearNoiseState(S=$(round(sum(s.S), digits = 1)), " *
+        "$(nameof(typeof(s)))(S=$(round(sum(s.S), digits = 1)), " *
             "I=$(round(sum(s.I), digits = 1)), R=$(round(sum(s.R), digits = 1)), " *
             "groups=$(length(s.groups)), t=$(s.t))"
     )
@@ -702,11 +669,7 @@ later than `state.t`.
 function simulate(
         model::MixingLinearNoiseProcess, state::MixingLinearNoiseState; max_time::Real
     )
-    max_time > state.t || throw(
-        ArgumentError(
-            "max_time ($max_time) must be past the state's own ($(state.t)) to continue it"
-        )
-    )
+    _check_continuation(state, max_time)
     x = _pack(state.S, state.I, state.V, state.P, state.D)
     return _mixing_lna_state(
         model, x, _copy(state.campaign), copy(state.covariance), state.t, max_time
