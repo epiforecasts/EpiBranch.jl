@@ -200,6 +200,30 @@ using Dates
         @test "infected" in names(df)
     end
 
+    @testset "contacts reports exposure times and the contacts' attributes" begin
+        spec = ModelSpec(
+            BranchingProcess(Poisson(3.0), Exponential(5.0));
+            attributes = [transmission_traits(susceptibility = 0.3), demographics()]
+        )
+        state = simulate(spec; max_cases = 20, rng = StableRNG(1))
+        df = contacts(state; reference_date = Date(2024, 1, 1))
+        @test !("infection_time" in names(df))
+        @test !("date_infection" in names(df))
+        @test "exposure_time" in names(df)
+        @test "date_exposure" in names(df)
+        @test any(!, df.infected)
+        for col in ("age", "sex")
+            @test col in names(df)
+            @test !any(ismissing, df[!, col])
+        end
+        for row in eachrow(df)
+            ind = state.individuals[row.to]
+            @test row.age == ind.state[:age]
+            @test row.sex == String(ind.state[:sex])
+        end
+        @test !("infected" in names(df)[7:end])
+    end
+
     @testset "contacts lists exposures an ExposedContactRecorder keeps" begin
         # A permanent, population-wide vaccine blocks every onward
         # transmission from the index case, so the fixed-population race
