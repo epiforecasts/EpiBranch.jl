@@ -1,1 +1,1 @@
-`HouseholdProcess` now raises an `ArgumentError` when `n_initial` is given, pointing to `initial_cases`, instead of ignoring it, and `NetworkProcess` and `RoutedNetwork` raise for an `n_initial` larger than the population instead of silently capping it.
+`HouseholdProcess` now raises an `ArgumentError` pointing to `initial_cases` when `n_initial` is given, instead of ignoring it. `NetworkProcess` and `RoutedNetwork` now raise for an `n_initial` larger than the population instead of silently capping it.
