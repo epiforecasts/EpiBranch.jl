@@ -548,7 +548,8 @@ looks at one proposal. The default is `false`. A [`Scheduled`](@ref) answers
 `true` unless the intervention it wraps declares
 [`persistent_competing_risks`](@ref EpiBranch.persistent_competing_risks),
 since protection derived from a recorded dose does not depend on the
-the clock of the schedule. A subtype of [`InterventionWrapper`](@ref EpiBranch.InterventionWrapper) forwards the
+schedule's clock. A subtype of
+[`InterventionWrapper`](@ref EpiBranch.InterventionWrapper) forwards the
 answer of the intervention it wraps.
 
 For extension authors: a wrapper that can lift a block the intervention it
