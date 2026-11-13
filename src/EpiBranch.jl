@@ -269,7 +269,7 @@ export summarise
 
 # Exports — analytical
 export reproduction_number
-export extinction_probability, epidemic_probability
+export extinction_probability, epidemic_probability, emergence_probability
 export proportion_transmission, proportion_cluster_size, heterogeneous_contact_R
 export proportion_cases_individual, proportion_cases_offspring
 export probability_contain
