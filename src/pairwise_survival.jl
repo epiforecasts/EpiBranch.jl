@@ -90,8 +90,8 @@ function pairwise_surv_loglik(kernel, data::PairwiseSurvivalData)
     end
     for r in eachindex(data.stop)
         kr = _rowkernel(kernel, r)
-        ll -= cumhazard(kr, data.stop[r])
-        data.start[r] > 0 && (ll += cumhazard(kr, data.start[r]))
+        ll -= _cumhazard(kr, data.stop[r])
+        data.start[r] > 0 && (ll += _cumhazard(kr, data.start[r]))
     end
     return ll
 end
@@ -1947,11 +1947,11 @@ end
 # `origin` plus that), under a modifier. A constant factor splits the integral
 # exactly at `start`, since `cumhazard` is itself an integral of the hazard; a
 # factor that varies is integrated numerically against the kernel's hazard.
-_scaled_cumhazard(::Nothing, kernel, origin, stop) = cumhazard(kernel, stop)
+_scaled_cumhazard(::Nothing, kernel, origin, stop) = _cumhazard(kernel, stop)
 function _scaled_cumhazard(m::HazardScaling{<:Real, <:Real}, kernel, origin, stop)
     boundary = clamp(m.start - origin, zero(stop), stop)
-    before = cumhazard(kernel, boundary)
-    tail = cumhazard(kernel, stop) - before
+    before = _cumhazard(kernel, boundary)
+    tail = _cumhazard(kernel, stop) - before
     # An infinite tail under a zero factor contributes nothing, where the
     # product would give NaN. A finite tail stays in the product so that the
     # derivative with respect to the factor survives a factor of exactly zero.
@@ -1960,7 +1960,7 @@ function _scaled_cumhazard(m::HazardScaling{<:Real, <:Real}, kernel, origin, sto
 end
 function _scaled_cumhazard(m::HazardScaling, kernel, origin, stop)
     boundary = clamp(m.start - origin, zero(stop), stop)
-    before = cumhazard(kernel, boundary)
+    before = _cumhazard(kernel, boundary)
     # A bounded profile's survival reaches zero at the top of its support, past
     # which its hazard is undefined, so the cumulative hazard is infinite there,
     # as the kernel's own `cumhazard` has it.
@@ -2026,7 +2026,7 @@ function _component_loglik(
             (tj >= 0 && tj <= data.obs_end) || continue
             extdist = _ext_survival_of(extsrc, layout.sus[r])
             extdist === nothing && continue
-            _push!(acc, _scaled_loghazard(modifier, loghazard(extdist, tj), tj))
+            _push!(acc, _scaled_loghazard(modifier, _fast_loghazard(extdist, tj), tj))
         else
             i = infector[r]
             oi = data.infectious_time[i]

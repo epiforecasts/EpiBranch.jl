@@ -349,7 +349,7 @@ function _routed_modifier_loglik(
             (!gates[r] || !_removed_at(gaps, i, tj))
     ]
     ext_term = (extdist !== nothing && 0 <= tj <= data.obs_end) ?
-        [_scaled_loghazard(modifier, loghazard(extdist, tj), tj)] : Float64[]
+        [_scaled_loghazard(modifier, _fast_loghazard(extdist, tj), tj)] : Float64[]
     terms = vcat(route_terms, ext_term)
     isempty(terms) && return -Inf
     return ll + logsumexp(terms)
