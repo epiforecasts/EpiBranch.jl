@@ -168,7 +168,7 @@ EpiBranch.has_effect(::_SeenRoutes) = true
         )
         @test !EpiBranch.offspring_law_unchanged(spec.process)
         ll = loglikelihood(ChainSizes([1]), spec; rng = StableRNG(1), n_sim = 500)
-        # The smoothed geometric tail leaks a little mass beyond size 1.
+        # The smoothed geometric tail puts a little mass on sizes above 1.
         @test isapprox(ll, 0.0; atol = 1.0e-2)
     end
 
