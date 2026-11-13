@@ -168,7 +168,8 @@ EpiBranch.has_effect(::_SeenRoutes) = true
         )
         @test !EpiBranch.offspring_law_unchanged(spec.process)
         ll = loglikelihood(ChainSizes([1]), spec; rng = StableRNG(1), n_sim = 500)
-        @test isapprox(ll, 0.0; atol = 1.0e-9)
+        # The smoothed geometric tail leaks a little mass beyond size 1.
+        @test isapprox(ll, 0.0; atol = 1.0e-2)
     end
 
     @testset "an offspring function can return OffspringTimes instead of a count" begin
