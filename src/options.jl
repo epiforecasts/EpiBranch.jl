@@ -152,8 +152,7 @@ struct SimOpts
     stopping_rules::Vector{AbstractStoppingRule}
 end
 
-# Keeps the positional form without `n_initial_given`, which then counts as
-# not given.
+# Positional form without `n_initial_given`; `n_initial_given` is then false.
 function SimOpts(n_initial, initial_cases, index_types, stopping_rules)
     return SimOpts(n_initial, false, initial_cases, index_types, stopping_rules)
 end
