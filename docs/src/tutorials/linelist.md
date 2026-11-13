@@ -233,7 +233,7 @@ every contact was infected.
 
 ## Testing cleaning code
 
-Real line lists are messy, and code that cleans them needs test data whose true values are known. [`messy_linelist`](@ref) takes a line list and returns a copy with missing values, implausible values, dates in mixed formats, misspelt categories and duplicated rows. Each kind has its own rate, and the `rng` makes the result reproducible. The identifying columns (`id`, `parent_id`, `generation` and `chain_id`) are left alone, so the messy rows can be matched to the clean ones by `id`:
+Real line lists are messy, and code that cleans them needs test data whose true values are known. [`messy_linelist`](@ref) takes a line list and returns a copy with missing values, implausible values, dates in mixed formats, misspelt categories and duplicated rows. Each kind has its own rate, and the same `rng` gives the same result. The identifying columns (`id`, `parent_id`, `generation` and `chain_id`) are left alone, so the messy rows can be matched to the clean ones by `id`:
 
 ```@example linelist
 messy = messy_linelist(ll; rng = StableRNG(2), missing_rate = 0.1, typo_rate = 0.1)

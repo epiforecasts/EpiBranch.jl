@@ -46,8 +46,8 @@ _is_text_column(col) = any(x -> x isa Union{AbstractString, Symbol}, col)
 Make a line list messy, so that cleaning code can be tested against data whose
 true values are known. Takes the table returned by [`linelist`](@ref) (or any
 `DataFrame` laid out like it) and returns a copy with the kinds of mess found
-in real line lists. It does not touch the simulation: it works on the table
-alone, and the same `rng` gives the same result.
+in real line lists. It works on the table alone and never touches the
+simulation. The same `rng` gives the same result.
 
 Each kind of mess has its own rate, a probability between 0 and 1, and a rate
 of 0 leaves that kind out:
@@ -115,8 +115,8 @@ end
 function _messy_column(rng, col, missing_rate, implausible_rate, date_format_rate, typo_rate)
     is_date = _is_date_column(col)
     is_text = _is_text_column(col)
-    # Dates become text only if a format is changed, categories likewise if
-    # one is misspelt, so a column keeps its type when its rate is 0.
+    # A date column becomes text only when date formats are mixed, and a
+    # category column only when typos are allowed. A rate of 0 keeps the type.
     to_text = (is_date && date_format_rate > 0) || (is_text && typo_rate > 0)
     values = Vector{Any}(undef, length(col))
     for (i, x) in enumerate(col)
