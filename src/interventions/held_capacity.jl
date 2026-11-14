@@ -33,7 +33,7 @@ HeldCapacity(
   number, or a piecewise-constant calendar schedule such as [`Steps`](@ref) for
   places that open or close over the outbreak, read at each day as for the
   `budget_per_period` of [`CapacityConstrained`](@ref). A smooth schedule is
-  refused, as the days the capacity changes must be known.
+  refused because the days the capacity changes must be known.
 - `hold`: how long a place is kept once taken, in days: a number, a
   `Distribution` or an `(rng, individual)` callable, as a delay is anywhere
   else. The default, `Inf`, keeps it until [`release_capacity!`](@ref) gives it
@@ -52,7 +52,7 @@ actions in, and a varying capacity must hold throughout the new stay, from its
 start to its end. When the capacity falls below the places already held, no stay
 is ended: new admissions are refused until the places held drop below the new
 capacity. [`DeferRefused`](@ref) moves an action to the first moment a place is
-free for its whole stay, which a release or a rise in capacity can bring about. A person already holding a place is not given a second.
+free for its whole stay, which a release or a rise in capacity can bring about. A person holds at most one place.
 [`held_usage`](@ref) reports the places held. Like `CapacityConstrained`, the
 wrapper splits its places by [`resource_key`](@ref EpiBranch.resource_key) and
 composes with [`Scheduled`](@ref); the intervention must define
