@@ -428,3 +428,27 @@ end
     @test event_time_metadata(Val(:ordinary_value)) === nothing
     @test event_time_metadata(Val(:custom_disease_time)).requires_infection
 end
+
+@testset "linelist and contacts of several runs" begin
+    cp = clinical_presentation(
+        incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.5
+    )
+    m = ModelSpec(BranchingProcess(Poisson(0.5), Exponential(5.0)); attributes = cp)
+    states = simulate(m, 200; rng = StableRNG(5))
+    # Some runs lack `date_onset`, as every case in them is asymptomatic.
+    per_run = linelist.(states)
+    @test length(unique(names.(filter(!isempty, per_run)))) > 1
+
+    df = linelist(states)
+    @test names(df)[1] == "sim_id"
+    @test "date_onset" in names(df)
+    @test nrow(df) == sum(nrow, per_run)
+    @test sort(unique(df.sim_id)) == [i for i in eachindex(states) if !isempty(per_run[i])]
+
+    ct = contacts(states)
+    @test names(ct)[1] == "sim_id"
+    @test nrow(ct) == sum(nrow ∘ contacts, states)
+
+    @test nrow(linelist(typeof(states[1])[])) == 0
+    @test nrow(contacts(typeof(states[1])[])) == 0
+end
