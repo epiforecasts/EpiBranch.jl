@@ -600,7 +600,7 @@ pairwise_surv_loglik
 PairwiseSurvivalData
 InfectionLayer
 compile_contact_pairs
-seeded_hosts
+EpiBranch.seeded_hosts
 ContactPairsLayout
 MassActionHazard
 SumHazard
