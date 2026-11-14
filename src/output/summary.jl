@@ -84,7 +84,7 @@ The containment probability with its Monte Carlo uncertainty. Returns a named
 tuple `(; n_contained, n, proportion, lower, upper)`: the number of outbreaks
 that were contained, the number simulated, their ratio, and a Wilson score
 interval for the underlying probability at confidence `level`. The interval
-covers simulation error only, not uncertainty in the model's parameters. If the
+reflects simulation error only and ignores uncertainty in the parameters of the model. If the
 interval is too wide to separate scenarios, simulate more outbreaks.
 
 Containment is defined as in [`containment_probability`](@ref), which gives the
