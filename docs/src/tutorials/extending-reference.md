@@ -854,7 +854,7 @@ By default every recipient draws on one budget, in every engine. A
 `PerGroup` `budget_per_period` splits it by group in all of them, and is the
 form to prefer: it is data on the intervention, which the engines that do not
 simulate individuals can read. An extension author can give an intervention a
-group of its own for it by defining `EpiBranch.budget_group_key(iv)`, the state
+group of its own by defining `EpiBranch.budget_group_key(iv)`, the state
 key holding a person's group (the default, `nothing`, makes a `PerGroup` name
 its own `key`). For the individual-based simulation alone,
 `EpiBranch.resource_key(iv, individual, state)` splits it too: each distinct value it returns (a district, a

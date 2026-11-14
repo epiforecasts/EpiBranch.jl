@@ -8,7 +8,7 @@ The engines are:
 - **Individual-based simulation**: `simulate` on a model of individuals, such as `BranchingProcess`, `HomogeneousProcess`, `MixingProcess`, or a network or household structure. It applies every intervention.
 - **Generation counts**: [`simulate_by_generation`](@ref), which keeps counts of cases and susceptibles of each type rather than individuals.
 - **Mixing approximations**: [`MixingMeanFieldProcess`](@ref) and [`MixingLinearNoiseProcess`](@ref), which keep compartments for each mixing group.
-- **Hybrid**: [`HybridProcess`](@ref), which runs the individual-based simulation and hands over to a mixing approximation, so it reads what the approximation reads.
+- **Hybrid**: [`HybridProcess`](@ref), which runs the individual-based simulation and hands over to a mixing approximation. It reads the same specification as the approximation.
 
 ## One budget, or one per group
 
@@ -29,7 +29,7 @@ campaign = CapacityConstrained(
 
 The groups are the values of the `group_key` of a [`GroupVaccination`](@ref).
 For an intervention without one, such as [`Isolation`](@ref) or [`ContactTracing`](@ref), `PerGroup` names the state key that holds a person's group: `PerGroup("north" => 5.0, "south" => 2.0; key = :district)`.
-A group that is not in the mapping is an error, not a group with no doses, so a mistyped name cannot pass as a scenario; give a group a budget of `0` to give it none.
+A group missing from the mapping raises an error, so a mistyped name cannot pass as a scenario. Give a group a budget of `0` to give it none.
 
 The groups of `simulate_by_generation` are the types of the model, numbered from one, and its `group_key` is `:type`.
 In the mixing approximations the groups are the values of the key the model mixes by.
@@ -51,4 +51,4 @@ In the mixing approximations the groups are the values of the key the model mixe
 An engine that cannot apply a specification raises an `ArgumentError` that says what it cannot apply and ends with the same list of what it does read: a `GroupVaccination`, alone or under `Scheduled` (a `start_time` and `end_time` only) and `CapacityConstrained` (one per campaign, with a shared or `PerGroup` budget and `on_refusal = DropRefused()`).
 The engines that read a campaign without simulating people also refuse an input a count or a compartment cannot represent, such as a distribution as `efficacy`, a `delay_to_immunity` or `waning`, and name it; see the docstring of each.
 
-The test file `test/test_engine_support.jl` runs each engine against this table, so a change to what an engine reads fails the test until the table is changed to match.
+The test file `test/test_engine_support.jl` runs each engine against this table. A change to what an engine reads fails the test until the table is updated to match.

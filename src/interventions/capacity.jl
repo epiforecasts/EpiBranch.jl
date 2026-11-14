@@ -137,8 +137,8 @@ group its own instead, tracked under the same `period`, `carry_over` and
 `priority` independently of every other; pass the group to `capacity_usage` to
 read one group's own usage. An intervention with a
 [`resource_key`](@ref EpiBranch.resource_key) method splits the budget in the
-individual-based simulation alone, which the other engines cannot read, so
-prefer `PerGroup`.
+individual-based simulation alone. Prefer `PerGroup`, because the other
+engines cannot read a `resource_key` method.
 
 [`Scheduled`](@ref) and `CapacityConstrained` can be combined in either
 order: both check each action's own proposed date.
@@ -227,8 +227,8 @@ budget, and is spent under the wrapper's own `period`, `carry_over` and
 The group of a person is the value they hold under `key` in their state. The
 default, `key = nothing`, is the `group_key` of a [`GroupVaccination`](@ref),
 so only an intervention without one needs `key` named. A group that is not in
-the mapping is an error, not a group with no doses, so that a mistyped group
-name cannot pass as a scenario.
+the mapping raises an error, so a mistyped group name cannot pass as a
+scenario.
 
 Every engine reads the same specification: the individual-based simulation,
 [`simulate_by_generation`](@ref) (whose groups are the types, numbered from
