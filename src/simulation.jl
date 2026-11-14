@@ -551,8 +551,7 @@ function _at_case!(state::SimulationState, case, count)
     return nothing
 end
 
-# Offer a new person, or a reinfected one, to each intervention's
-# `initialise_individual!`.
+# Call `initialise_individual!` for a new individual on each intervention.
 function _initialise!(interventions, ind, state)
     _each(interventions) do intervention
         initialise_individual!(intervention, ind, state)
@@ -563,10 +562,13 @@ end
 
 function _resolve_interventions!(state::SimulationState, case, interventions)
     # A reinfection (`case.episodes` already holds the earlier one, closed
-    # before this call) gets a fresh `initialise_individual!` first. That
-    # keeps per-episode draws such as `Isolation`'s `:test_positive` specific
-    # to the new episode, rather than left over from the one before it.
-    _has_episodes(case) && _initialise!(interventions, case, state)
+    # before this call) gets a fresh `initialise_episode!` first. That keeps
+    # per-episode draws such as `Isolation`'s `:test_positive` specific to the
+    # new episode, while a quarantine standing on the person stays.
+    _has_episodes(case) && _each(interventions) do intervention
+        initialise_episode!(intervention, case, state)
+        return nothing
+    end
     _each(interventions) do intervention
         resolve_individual!(intervention, case, state)
         return nothing

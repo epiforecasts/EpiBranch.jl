@@ -16,6 +16,7 @@ public resolve
 # Intervention interface: a package subtyping `AbstractIntervention`
 # overrides these.
 public initialise_individual!
+public initialise_episode!
 public resolve_individual!
 public on_infection_settled!
 public trace_contacts!

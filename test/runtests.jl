@@ -51,6 +51,7 @@ const TEST_GROUPS = (
         "test_density_dependent.jl",
         "test_structure_driven.jl",
         "test_reinfection.jl",
+        "test_reinfection_quarantine.jl",
         "test_abort_infection.jl",
         "test_homogeneous.jl",
         "test_mixing.jl",
