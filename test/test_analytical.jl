@@ -516,7 +516,7 @@ using ForwardDiff
         end
 
         @testset "Large dispersion tracks the Poisson limit" begin
-            # `k` far above `R` must not lose the log-likelihood to
+            # With `k` far above `R`, the log-likelihood must survive the
             # cancellation between the gamma ratio and the power terms.
             for k in (1.0e10, 1.0e12, 1.0e14, 1.0e16, 1.0e20)
                 for x in (1, 2, 3, 7)

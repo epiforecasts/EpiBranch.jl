@@ -134,15 +134,16 @@ function _gammaborel_logpdf(k, R, x::Integer, s::Integer = 1)
     # The gamma ratio `Γ(kx + x - s) / Γ(kx)` is the finite product of
     # `kx + i` over `i = 0, …, x - s - 1`. Taking logs term by term and
     # combining each with `log(R / (k + R))` and `-log((i + 1))` avoids
-    # subtracting `logabsgamma` values of size `kx` from each other, which
-    # loses everything once `k` reaches about 1e10. At `x == s` the sum is
-    # empty, so the pole of the Gamma function at small `kx` never appears.
+    # subtracting `logabsgamma` values of size `kx` from each other. That
+    # subtraction loses all precision once `k` reaches about 1e10. At
+    # `x == s` the sum is empty, so the pole of the Gamma function at small
+    # `kx` never appears.
     T = typeof(float(k * R))
     acc = zero(T)
     for i in 0:(x - s - 1)
         if k > R
-            # `(kx + i) R / (k + R) = R x (1 + (i / x - R) / (k + R))`: the
-            # large `k` cancels analytically rather than numerically.
+            # `(kx + i) R / (k + R) = R x (1 + (i / x - R) / (k + R))`, so the
+            # large `k` cancels analytically.
             acc += log(R * x) + log1p((i / x - R) / (k + R))
         else
             acc += log(k * x + i) + log(R / (k + R))
@@ -217,9 +218,9 @@ function _poisson_gamma_logpdf(k, R, x::Integer)
     x < 1 && return oftype(float(k), -Inf)
     # `Γ(k + x - 1) / Γ(k)` is the product of `k + i` for `i = 0, …, x - 2`.
     # Dividing each factor by `k / R` gives `R (1 + i / k)`, which stays
-    # accurate for large `k`, and `-(k + x - 1) log(x + k / R)` is split into
-    # `log(k / R)` and `log1p(x R / k)` parts; the `k log(k / R)` piece cancels
-    # against `-k log(R / k)` exactly.
+    # accurate for large `k`. The term `-(k + x - 1) log(x + k / R)` is split
+    # into `log(k / R)` and `log1p(x R / k)` parts, and the `k log(k / R)`
+    # part cancels exactly against `-k log(R / k)`.
     L = log1p(x * R / k)
     acc = zero(float(L))
     for i in 0:(x - 2)

@@ -127,13 +127,13 @@ end
 # Poisson, negative binomial and Dirac, and a truncated series for any other
 # discrete distribution.
 # Mean `r (1 - p) / p` of a negative binomial from its parameters. `1 - p` is
-# the one subtraction left, and it is only as accurate as the stored `p`.
+# the one remaining subtraction, and it is only as accurate as the stored `p`.
 _negbin_mean(d::NegativeBinomial) = d.r * (1 - d.p) / d.p
 _pgf(d::Poisson, s) = exp(mean(d) * (s - 1))
 function _pgf(d::NegativeBinomial, s)
     r = d.r
-    # `(p / (1 - (1 - p) s))^r = (1 + R (1 - s) / r)^(-r)`, with `log1p` so a
-    # dispersion that swamps `R` does not round `1 + R (1 - s) / r` to 1.
+    # `(p / (1 - (1 - p) s))^r = (1 + R (1 - s) / r)^(-r)`. `log1p` stops a
+    # large dispersion from rounding `1 + R (1 - s) / r` to 1.
     return exp(-r * log1p(_negbin_mean(d) * (1 - s) / r))
 end
 _pgf(f::Function, s) = f(s)

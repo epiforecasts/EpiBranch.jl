@@ -70,8 +70,8 @@ function extinction_probability(R::Real, k::Real; tol::Real = 1.0e-10, max_iter:
 
     R <= 1.0 && return 1.0
 
-    # Built from `R` and `k` directly: storing `p = k / (k + R)` in a
-    # `NegativeBinomial` would round `R` away once `k` is far larger than `R`.
+    # Built from `R` and `k` directly, because `p = k / (k + R)` stored in a
+    # `NegativeBinomial` rounds `R` away once `k` is far larger than `R`.
     pgf(s) = exp(-k * log1p(R * (1 - s) / k))
 
     q, converged = _contain_fixed_point(pgf; tol, max_iter)
