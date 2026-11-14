@@ -146,6 +146,7 @@ _offspring_partype(::GeneratingFunctionOffspring) = Float64
 
 """
     incidence_moments(offspring, generation_time::Distribution, n::Integer; seeds = 1,
+        imports = nothing, import_rate = nothing,
         reporting_probability = 1, reporting_delay = nothing)
 
 Mean vector and covariance matrix of the incidence counts a branching process
@@ -156,6 +157,14 @@ offspring law `offspring` (a `Poisson`, `NegativeBinomial`,
 distribution giving the time from one case's infection to each of its
 secondary infections, in the same unit as a step of `n` (so a weekly series
 needs a generation time in weeks).
+
+Cases can also enter from outside after step 0. `imports` is a vector of
+`n` known numbers of importations, one per step, and `import_rate` a vector
+of `n` mean numbers, each step's number then Poisson distributed. An
+imported case arrives at its step, is counted there like any other case
+(subject to reporting), and starts a chain of local transmission. Either
+or both can be given; they are independent of each other and of the
+`seeds`.
 
 With `reporting_probability` below 1, each case is reported independently
 with that probability, and the counts are of reported cases. A
@@ -187,11 +196,14 @@ sqrt(m.cov[end, end])  # standard deviation of the last step's count
 function incidence_moments(
         offspring::Union{DiscreteUnivariateDistribution, GeneratingFunctionOffspring},
         generation_time::Distribution, n::Integer;
-        seeds::Real = 1, reporting_probability::Real = 1, reporting_delay = nothing,
+        seeds::Real = 1, imports = nothing, import_rate = nothing,
+        reporting_probability::Real = 1, reporting_delay = nothing,
         tol::Real = 1.0e-8, max_lag::Int = 10_000
     )
     n >= 1 || throw(ArgumentError("n must be ≥ 1"))
     seeds > 0 || throw(ArgumentError("seeds must be positive"))
+    imp = _import_column(imports, n, "imports")
+    rate = _import_column(import_rate, n, "import_rate")
     0 < reporting_probability <= 1 ||
         throw(ArgumentError("reporting_probability must be in (0, 1]"))
     w = _discretize_generation_interval(generation_time; tol, max_lag)
@@ -200,9 +212,19 @@ function incidence_moments(
     # The one-type case of the multi-type recursion.
     K(u) = _incidence_log_pgf(
         u, w, [s -> _pgf(offspring, s)], ones(1, 1), n, [seeds], reporting_probability,
-        d, Toff
+        d, Toff; imports = imp, import_rate = rate
     )
     return _incidence_moments_from(K, n)
+end
+
+# An import series as an `n × 1` matrix: one non-negative entry per step.
+_import_column(::Nothing, n::Integer, ::AbstractString) = zeros(n, 1)
+function _import_column(x::AbstractVector{<:Real}, n::Integer, name::AbstractString)
+    length(x) == n || throw(
+        ArgumentError("$name needs one entry per step ($n), got $(length(x))")
+    )
+    all(>=(0), x) || throw(ArgumentError("$name must be non-negative"))
+    return reshape(collect(float.(x)), n, 1)
 end
 
 # ── Matching a distribution to the moments ────────────────────────────
@@ -314,11 +336,13 @@ end
 """
     loglikelihood(data::IncidenceCounts, offspring, generation_time::Distribution,
         approximation::IncidenceApproximation = NormalApproximation();
+        imports = nothing, import_rate = nothing,
         reporting_probability = 1, reporting_delay = nothing)
 
 Closed-form, moment-matched log-likelihood of an incidence time series under
 a branching process with offspring law `offspring` and a `generation_time`
-distribution, both as in [`incidence_moments`](@ref), as are
+distribution, both as in [`incidence_moments`](@ref), as are `imports` and
+`import_rate` for a series fed by continuing importations, and
 `reporting_probability` and `reporting_delay` for a series of reported
 cases. `approximation` chooses what [`incidence_moments`](@ref)'s mean and
 covariance are matched to; see [`NormalApproximation`](@ref) and
@@ -343,6 +367,9 @@ covariance are matched to; see [`NormalApproximation`](@ref) and
 ```julia
 data = IncidenceCounts([1, 2, 4, 5, 9, 12, 18])
 loglikelihood(data, NegBin(1.3, 0.5), LogNormal(1.6, 0.5))
+# one known importation in each of the first three steps
+loglikelihood(data, NegBin(1.3, 0.5), LogNormal(1.6, 0.5);
+    imports = [1, 1, 1, 0, 0, 0, 0])
 loglikelihood(data, NegBin(1.3, 0.5), LogNormal(1.6, 0.5), LognormalApproximation())
 # 60% of cases reported, on average 3 days after infection
 loglikelihood(data, NegBin(1.3, 0.5), LogNormal(1.6, 0.5);
@@ -354,13 +381,14 @@ function loglikelihood(
         offspring::Union{DiscreteUnivariateDistribution, GeneratingFunctionOffspring},
         generation_time::Distribution,
         approximation::IncidenceApproximation = NormalApproximation();
+        imports = nothing, import_rate = nothing,
         reporting_probability::Real = 1, reporting_delay = nothing,
         tol::Real = 1.0e-8, max_lag::Int = 10_000
     )
     y, seeds = _single_type_series(data)
     μ, Σ = incidence_moments(
         offspring, generation_time, length(y);
-        seeds, reporting_probability, reporting_delay, tol, max_lag
+        seeds, imports, import_rate, reporting_probability, reporting_delay, tol, max_lag
     )
     return _incidence_loglik_observed(approximation, y, μ, Σ)
 end
@@ -401,7 +429,9 @@ end
 function _incidence_log_pgf(
         u::AbstractVector{T}, w::AbstractVector{<:Real}, pgfs::AbstractVector,
         alloc::AbstractMatrix{<:Real}, n::Integer, seeds::AbstractVector{<:Real},
-        ρ::Real, d::AbstractVector{<:Real}, ::Type{Tpar}
+        ρ::Real, d::AbstractVector{<:Real}, ::Type{Tpar};
+        imports::AbstractMatrix{<:Real} = zeros(n, length(pgfs)),
+        import_rate::AbstractMatrix{<:Real} = zeros(n, length(pgfs))
     ) where {T <: Real, Tpar <: Real}
     m = length(pgfs)
     S = promote_type(T, eltype(w), eltype(d), eltype(alloc), Tpar, typeof(ρ))
@@ -437,6 +467,15 @@ function _incidence_log_pgf(
     for j in 1:m
         iszero(seeds[j]) && continue
         K += seeds[j] * log(report(0, j) * pgfs[j](child(j)))
+    end
+    # Importations enter at their own step k as new, independent chains, each
+    # with the PGF Ψ_k it would have had as a descendant. Known counts add
+    # `count · log Ψ_k`, and a Poisson number of them with a given rate adds
+    # `rate · (Ψ_k - 1)`, the cumulant generating function of a compound
+    # Poisson sum.
+    for j in 1:m, k in 1:n
+        iszero(imports[k, j]) || (K += imports[k, j] * log(Ψ[k, j]))
+        iszero(import_rate[k, j]) || (K += import_rate[k, j] * (Ψ[k, j] - 1))
     end
     return K
 end

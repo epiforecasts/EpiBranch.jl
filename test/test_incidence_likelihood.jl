@@ -188,6 +188,48 @@ struct _RiskFromAge end
         @test maximum(abs.(emp_cov .- m.cov)) < 0.5
     end
 
+    @testset "Importations add chains from their own step" begin
+        off, gt, n = Poisson(0.8), LogNormal(1.6, 0.5), 8
+        w = EpiBranch._discretize_generation_interval(gt)
+        base = incidence_moments(off, gt, n)
+
+        # One imported case at step 3 is counted there and seeds its own
+        # chain, whose first generation lands w[j] steps later.
+        imp = zeros(n)
+        imp[3] = 1
+        withimp = incidence_moments(off, gt, n; imports = imp)
+        extra = withimp.mean .- base.mean
+        @test extra[1:2] ≈ zeros(2) atol = 1.0e-12
+        @test extra[3] ≈ 1.0
+        @test extra[4] ≈ 0.8 * w[1]
+        @test extra[5] ≈ 0.8 * w[2] + 0.8^2 * w[1]^2
+
+        # A Poisson number of imports with the same mean has the same mean
+        # counts, and more variance by the mean-square contribution of one.
+        rated = incidence_moments(off, gt, n; import_rate = imp)
+        @test rated.mean ≈ withimp.mean
+        @test rated.cov - withimp.cov ≈ extra * extra'
+
+        # Two imports are the sum of two independent single-import chains.
+        two = incidence_moments(off, gt, n; imports = 2 .* imp)
+        @test two.mean .- base.mean ≈ 2 .* extra
+        @test two.cov - base.cov ≈ 2 .* (withimp.cov - base.cov)
+
+        # With reporting, an imported case is reported like any other.
+        rep = incidence_moments(off, gt, n; imports = imp, reporting_probability = 0.5)
+        rep0 = incidence_moments(off, gt, n; reporting_probability = 0.5)
+        @test (rep.mean .- rep0.mean)[3] ≈ 0.5
+
+        # The likelihood uses them: imports at every step raise the expected
+        # counts, so large counts fit better than without.
+        data = IncidenceCounts([3, 4, 5, 6, 7, 8, 9, 10])
+        @test loglikelihood(data, off, gt; imports = fill(2, n)) >
+              loglikelihood(data, off, gt)
+
+        @test_throws ArgumentError incidence_moments(off, gt, n; imports = ones(n - 1))
+        @test_throws ArgumentError incidence_moments(off, gt, n; import_rate = -ones(n))
+    end
+
     @testset "loglikelihood with offspring and generation time" begin
         data = IncidenceCounts([1, 2, 4, 5, 9, 12, 18]; seeds = 2)
         gt = LogNormal(1.6, 0.5)
