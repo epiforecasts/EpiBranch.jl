@@ -362,6 +362,25 @@ EpiBranch.records_contacts(::AlwaysRecord, parent, contact, state, t) = true
         @test infected_after([OnRoutes(isolate, (:community,))]) == [true, false, true]
     end
 
+    @testset "wrappers forward the leak of the wrapped removal" begin
+        iso = Isolation(
+            onset_to_isolation_delay = Exponential(1.0), duration = Inf,
+            post_isolation_transmission = 0.5
+        )
+        for wrapped in (
+                CapacityConstrained(iso; budget_per_period = 1.0),
+                Scheduled(iso; start_time = 0.0),
+            )
+            @test EpiBranch.removal_block_probability(wrapped) ==
+                EpiBranch.removal_block_probability(iso) == 0.5
+            @test EpiBranch.removal_gap_host_times(wrapped) ==
+                EpiBranch.removal_gap_host_times(iso)
+            @test !isempty(EpiBranch.removal_gap_host_times(wrapped))
+        end
+        # A stretch has no route, so `OnRoutes` keeps them out of the record.
+        @test isempty(EpiBranch.removal_gap_host_times(OnRoutes(iso, (:household,))))
+    end
+
     @testset "the race traces a settled case's contacts" begin
         # Node 1 infects node 2 on a household route at 5; node 2 infects node 3
         # half a day later on a community route. Every case has onset one day

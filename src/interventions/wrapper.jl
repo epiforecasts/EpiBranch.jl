@@ -65,9 +65,13 @@ action_candidates(w::InterventionWrapper, state, current, traced, is_pending, me
     action_candidates(w.intervention, state, current, traced, is_pending, members, contacts)
 # A wrapper that can withdraw the inner block part-way through a stretch
 # already recorded cannot have those stretches read back: one per-host record
-# says nothing about when the gating closed. The default is therefore to
-# declare none, which narrows the infectious window instead (above), and a
-# wrapper whose gating cannot withdraw a block forwards the declaration.
+# says nothing about when the gating closed. Such a wrapper (a lapsing
+# `Scheduled`) declares none and narrows the infectious window instead (above).
+# Every other wrapper only gates who a removal reaches. A removal already
+# delivered still stands, and the stretches are read back unchanged. The
+# wrapped intervention determines the leak of the block.
+removal_gap_host_times(w::InterventionWrapper) = removal_gap_host_times(w.intervention)
+removal_block_probability(w::InterventionWrapper) = removal_block_probability(w.intervention)
 
 # A wrapper that declares no key of its own (the default above, or one that
 # only sometimes forwards, such as a lapsing `Scheduled`) is the one case
