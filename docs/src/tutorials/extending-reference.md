@@ -850,8 +850,14 @@ the capacity check without another charge, though the schedule still applies.
 Ring vaccination uses this for protection from an existing dose at a new
 exposure, with the current simulation time as its action time.
 
-By default every recipient draws on one budget. `EpiBranch.resource_key(iv,
-individual, state)` splits it: each distinct value it returns (a district, a
+By default every recipient draws on one budget, in every engine. A
+`PerGroup` `budget_per_period` splits it by group in all of them, and is the
+form to prefer: it is data on the intervention, which the engines that do not
+simulate individuals can read. An extension author can give an intervention a
+group of its own for it by defining `EpiBranch.budget_group_key(iv)`, the state
+key holding a person's group (the default, `nothing`, makes a `PerGroup` name
+its own `key`). For the individual-based simulation alone,
+`EpiBranch.resource_key(iv, individual, state)` splits it too: each distinct value it returns (a district, a
 treatment centre, say) gets its own usage, checked independently under the
 same `budget_per_period`, `period` and `carry_over`. It is asked of the
 individual rather than the proposed action, so a person already served in an
