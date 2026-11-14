@@ -982,7 +982,7 @@ end
 # an infection of one has zero density.
 function _contact_pairs_layout(
         sus, infector, contact_index, is_ext, external, explain_index,
-        is_index, n, component, ncomponents
+        conditioned, n, component, ncomponents
     )
     n_rows = length(sus)
     sus_row_order = sortperm(sus)
@@ -1005,7 +1005,7 @@ function _contact_pairs_layout(
     end
     has_rows = falses(n)
     has_rows[sus_unique] .= true
-    no_rows = [j for j in 1:n if !has_rows[j] && (explain_index || !is_index[j])]
+    no_rows = [j for j in 1:n if !has_rows[j] && !conditioned[j]]
     return ContactPairsLayout(
         sus, infector, contact_index, is_ext, sus_unique,
         sus_row_ranges, sus_row_order, no_rows, external, explain_index, n,
@@ -1041,11 +1041,17 @@ the first case to explain one. The single-argument form reads the contact
 structure from `data` with [`contact_structure`](@ref
 EpiBranch.contact_structure) and takes as infected everyone with a non-`NaN`
 `infection_time`.
+
+`seeded`, a mask like `is_index`, marks chosen initial cases. They are
+conditioned on whatever the hazard, so they get no external row even when it
+explains every other index case. The single-argument form reads it from
+[`seeded_hosts`](@ref EpiBranch.seeded_hosts).
 """
 function compile_contact_pairs(
         membership::AbstractVector{<:Integer},
         is_index::AbstractVector{Bool}, infected::AbstractVector{Bool};
-        external::Bool = false, explain_index::Bool = external
+        external::Bool = false, explain_index::Bool = external,
+        seeded::Union{Nothing, AbstractVector{Bool}} = nothing
     )
     n = length(membership)
     _check_host_masks(n, is_index, infected)
@@ -1065,7 +1071,9 @@ function compile_contact_pairs(
             g_lo = k + 1
         end
     end
-    layout = compile_contact_pairs(contacts, is_index, infected; external, explain_index)
+    layout = compile_contact_pairs(
+        contacts, is_index, infected; external, explain_index, seeded
+    )
     # A group has no per-edge list for a kernel to index into.
     fill!(layout.contact_index, 0)
     return layout
@@ -1074,10 +1082,19 @@ end
 function compile_contact_pairs(
         contacts::AbstractVector{<:AbstractVector{<:Integer}},
         is_index::AbstractVector{Bool}, infected::AbstractVector{Bool};
-        external::Bool = false, explain_index::Bool = external
+        external::Bool = false, explain_index::Bool = external,
+        seeded::Union{Nothing, AbstractVector{Bool}} = nothing
     )
     n = length(contacts)
     _check_host_masks(n, is_index, infected)
+    seeded === nothing || length(seeded) == n ||
+        throw(ArgumentError("seeded must cover the same hosts as the contact structure"))
+    # The hosts the likelihood takes as given rather than explaining: index
+    # cases unless the hazard explains them, and chosen initial cases always.
+    conditioned = [
+        (!explain_index && is_index[j]) || (seeded !== nothing && seeded[j])
+            for j in 1:n
+    ]
 
     # Invert the out-lists of infected hosts into in-lists (compressed rows), so
     # each susceptible's possible infectors come out together, in infector order.
@@ -1109,7 +1126,7 @@ function compile_contact_pairs(
 
     n_rows = 0
     for j in 1:n
-        (!explain_index && is_index[j]) && continue
+        conditioned[j] && continue
         n_rows += (ptr[j + 1] - ptr[j]) + external
     end
     sus = Vector{Int}(undef, n_rows)
@@ -1118,7 +1135,7 @@ function compile_contact_pairs(
     is_ext = Vector{Bool}(undef, n_rows)
     r = 0
     for j in 1:n
-        (!explain_index && is_index[j]) && continue
+        conditioned[j] && continue
         if external
             r += 1
             sus[r] = j
@@ -1137,7 +1154,7 @@ function compile_contact_pairs(
     component, ncomponents = _structure_components(contacts)
     return _contact_pairs_layout(
         sus, infector, contact_index, is_ext, external, explain_index,
-        is_index, n, component, ncomponents
+        conditioned, n, component, ncomponents
     )
 end
 
@@ -1147,8 +1164,30 @@ function compile_contact_pairs(
     infected = .!isnan.(data.infection_time)
     return compile_contact_pairs(
         contact_structure(data), data.is_index, infected;
-        external, explain_index
+        external, explain_index, seeded = seeded_hosts(data)
     )
+end
+
+"""
+    seeded_hosts(data::InfectionLayer) -> Union{Nothing, AbstractVector{Bool}}
+
+The hosts chosen as initial cases, which the likelihood takes as given even
+when a community hazard explains every other infection. `nothing`, the default,
+is a layer recording none. A layer type that records them returns a vector
+shaped like `data.is_index`.
+"""
+seeded_hosts(::InfectionLayer) = nothing
+
+# Which of a simulation's people were chosen initial cases.
+_seeded_column(state::SimulationState) =
+    Bool[get(ind.state, :seeded, false) for ind in state.individuals]
+
+# A layer's `seeded` column over `n` hosts, none seeded where it is not given.
+_seeded_mask(::Nothing, n) = fill(false, n)
+function _seeded_mask(seeded, n)
+    length(seeded) == n ||
+        throw(ArgumentError("the contact structure and seeded must cover the same hosts"))
+    return Vector{Bool}(seeded)
 end
 
 # ── The community hazard ─────────────────────────────────────────────

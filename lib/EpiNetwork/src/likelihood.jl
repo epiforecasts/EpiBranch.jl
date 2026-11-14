@@ -9,7 +9,7 @@
 
 """
     NetworkInfections(contacts, infection_time, infectious_time, removal_time, is_index;
-                      obs_end = Inf, followup_end = Inf, host_times = (;))
+                      obs_end = Inf, followup_end = Inf, host_times = (;), seeded = nothing)
 
 Network outbreak data for the pairwise likelihood: for each person, when they
 were infected, when their infectious period started and ended, and whether
@@ -17,7 +17,9 @@ they were infected from outside the network. `contacts[i]` lists the people
 `i` can infect, as for [`NetworkProcess`](@ref), and a person's possible
 infectors are those who list them. The per-person vectors, `obs_end`,
 `followup_end` and `host_times` are as described for [`InfectionLayer`](@ref).
-Read one from a simulation with [`network_infections`](@ref), or build it from
+`seeded`, a mask like `is_index`, marks chosen initial cases, which the
+likelihood conditions on even when a community hazard explains every other
+infection. Read one from a simulation with [`network_infections`](@ref), or build it from
 data, imputing unobserved infection times in inference.
 """
 struct NetworkInfections{T <: Real, H <: NamedTuple} <: InfectionLayer
@@ -29,12 +31,13 @@ struct NetworkInfections{T <: Real, H <: NamedTuple} <: InfectionLayer
     obs_end::T
     followup_end::T
     host_times::H
+    seeded::Vector{Bool}
 end
 
 function NetworkInfections(
         contacts::AbstractVector{<:AbstractVector{<:Integer}},
         infection_time, infectious_time, removal_time, is_index; obs_end = Inf,
-        followup_end = Inf, host_times = (;)
+        followup_end = Inf, host_times = (;), seeded = nothing
     )
     adj = contacts isa Vector{Vector{Int}} ? contacts :
         Vector{Int}[Int.(nbrs) for nbrs in contacts]
@@ -42,13 +45,14 @@ function NetworkInfections(
         length(adj), infection_time, infectious_time,
         removal_time, is_index; obs_end, followup_end, host_times
     )
-    return NetworkInfections(adj, fields...)
+    return NetworkInfections(adj, fields..., EpiBranch._seeded_mask(seeded, length(adj)))
 end
 
 Base.length(d::NetworkInfections) = length(d.contacts)
 
 # A node's possible infectors are the nodes that list it as a contact.
 EpiBranch.contact_structure(d::NetworkInfections) = d.contacts
+EpiBranch.seeded_hosts(d::NetworkInfections) = d.seeded
 
 """
     network_infections(state, model::ModelSpec{<:NetworkProcess};
@@ -90,7 +94,8 @@ function network_infections(
     columns = _infection_layer_columns(state, model)
     return NetworkInfections(
         adjacency, columns...; obs_end, followup_end,
-        host_times = _layer_host_times(state, model, host_times)
+        host_times = _layer_host_times(state, model, host_times),
+        seeded = EpiBranch._seeded_column(state)
     )
 end
 

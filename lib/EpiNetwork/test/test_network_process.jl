@@ -2055,3 +2055,24 @@ end
     @test is_extinct(full)
     @test !is_extinct(cut)
 end
+
+@testset "Chosen initial cases are infected whatever the risks" begin
+    adjacency = [Int[] for _ in 1:6]
+    process = NetworkProcess(
+        adjacency, Exponential(1.0); external_hazard = 0.001, obs_end = 50.0
+    )
+    vaccine = MassVaccination(eligibility_time = -30.0, efficacy = 1.0)
+    state = simulate(
+        ModelSpec(
+            process;
+            progression = [Transition(:recovered; delay = 5.0, terminal = true)],
+            interventions = [vaccine]
+        );
+        initial_cases = [1, 4], rng = StableRNG(1)
+    )
+    for id in (1, 4)
+        ind = state.individuals[id]
+        @test is_infected(ind) && ind.infection_time == 0
+        @test ind.state[:seeded]
+    end
+end

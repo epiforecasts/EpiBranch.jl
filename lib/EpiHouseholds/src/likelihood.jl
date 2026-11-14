@@ -9,14 +9,16 @@
 
 """
     HouseholdInfections(household_of, infection_time, infectious_time, removal_time, is_index;
-                        obs_end = Inf, followup_end = Inf, host_times = (;))
+                        obs_end = Inf, followup_end = Inf, host_times = (;), seeded = nothing)
 
 Household outbreak data for the pairwise likelihood: for each person, their
 household, when they were infected, when their infectious period started and
 ended, and whether they were an index case. Household members are each other's
 possible infectors. `household_of` gives each person's household; the other
 per-person vectors, `obs_end`, `followup_end` and `host_times` are as described
-for [`InfectionLayer`](@ref). Read one from a simulation with
+for [`InfectionLayer`](@ref). `seeded`, a mask like `is_index`, marks chosen
+initial cases, which the likelihood conditions on even when a community hazard
+explains every other infection. Read one from a simulation with
 [`household_infections`](@ref), or build it from data, imputing unobserved
 infection times in inference.
 """
@@ -29,23 +31,29 @@ struct HouseholdInfections{T <: Real, H <: NamedTuple} <: InfectionLayer
     obs_end::T
     followup_end::T
     host_times::H
+    seeded::Vector{Bool}
 end
 
 function HouseholdInfections(
         household_of, infection_time, infectious_time,
-        removal_time, is_index; obs_end = Inf, followup_end = Inf, host_times = (;)
+        removal_time, is_index; obs_end = Inf, followup_end = Inf, host_times = (;),
+        seeded = nothing
     )
     fields = _infection_layer_fields(
         length(household_of), infection_time,
         infectious_time, removal_time, is_index; obs_end, followup_end, host_times
     )
-    return HouseholdInfections(collect(Int, household_of), fields...)
+    return HouseholdInfections(
+        collect(Int, household_of), fields...,
+        EpiBranch._seeded_mask(seeded, length(household_of))
+    )
 end
 
 Base.length(d::HouseholdInfections) = length(d.household_of)
 
 # Household-mates are each other's possible infectors.
 EpiBranch.contact_structure(d::HouseholdInfections) = d.household_of
+EpiBranch.seeded_hosts(d::HouseholdInfections) = d.seeded
 
 """
     household_infections(state, model::ModelSpec; obs_end = model.process.obs_end,
@@ -79,7 +87,8 @@ function household_infections(
     columns = _infection_layer_columns(state, model)
     return HouseholdInfections(
         household_of, columns...; obs_end, followup_end,
-        host_times = _layer_host_times(state, model, host_times)
+        host_times = _layer_host_times(state, model, host_times),
+        seeded = EpiBranch._seeded_column(state)
     )
 end
 
@@ -265,7 +274,8 @@ function compile_household_pairs(
     )
     infected = .!isnan.(d.infection_time)
     return compile_contact_pairs(
-        d.household_of, condition_mask(condition_on, d), infected; external, explain_index
+        d.household_of, condition_mask(condition_on, d), infected;
+        external, explain_index, seeded = d.seeded
     )
 end
 
