@@ -73,7 +73,7 @@ function incubation_linked_generation_time(;
     alpha = _truncated_skewness(float(presymptomatic_fraction), rel)
 
     return function (individual)
-        inc_period = _latent_incubation_period(individual)
+        inc_period = incubation_period(individual)
         (isnan(inc_period) || inc_period <= 0.0) && throw(
             ArgumentError(
                 "incubation_linked_generation_time needs a positive incubation " *
