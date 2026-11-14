@@ -51,6 +51,23 @@ function _eligible_fraction(elig::IsolationEligibility, prob_asymptomatic)
     )
 end
 
+# Share of cases (not of the whole population) with no onset time. A vaccine
+# with a `symptom_efficacy` turns some breakthrough cases asymptomatic on top
+# of `prob_asymptomatic`, and breakthrough cases make up a larger share of
+# cases than of the population, so the share that can self-report falls.
+function _asymptomatic_among_cases(prob_asymptomatic, ivs)
+    pa = _closed_form_value(prob_asymptomatic)
+    mvs = [iv for iv in ivs if iv isa MassVaccination && !_no_symptom_efficacy(iv)]
+    isempty(mvs) && return pa
+    length(mvs) == 1 || throw(
+        ArgumentError(
+            "Isolation's analytic effect covers at most one MassVaccination with " *
+                "a non-zero `symptom_efficacy`; simulate instead."
+        )
+    )
+    return pa + (1.0 - pa) * _breakthrough_symptom_loss(only(mvs))
+end
+
 # `duration` enters the keep-probability nonlinearly (through F_g(T + D)), so
 # unlike `test_sensitivity` and `prob_asymptomatic` above, its mean would not
 # give an exact answer: it must be a fixed value.
@@ -169,7 +186,9 @@ function analytic_offspring_effect(
     delay = iso.onset_to_isolation_delay
     ε = iso.post_isolation_transmission
     D = _isolation_duration(iso.duration)
-    q = _eligible_fraction(iso.eligibility, cp.prob_asymptomatic) *
+    q = _eligible_fraction(
+        iso.eligibility, _asymptomatic_among_cases(cp.prob_asymptomatic, interventions(spec))
+    ) *
         _closed_form_value(iso.test_sensitivity)
 
     # The keep probability for a case whose incubation period is `a` and
