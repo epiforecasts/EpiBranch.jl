@@ -247,6 +247,19 @@ function initialise_individual!(iso::Isolation, individual, state)
     clear_isolated!(individual)
     delete!(individual.state, :_isolation_handle)
     delete!(individual.state, :_isolation_start)
+    _draw_test_positive!(iso, individual, state)
+    return nothing
+end
+
+# A reinfection redraws the test result and ends the earlier episode's own
+# self-isolation, but leaves any quarantine standing on the person alone.
+function initialise_episode!(iso::Isolation, individual, state)
+    reset!(iso, individual)
+    _draw_test_positive!(iso, individual, state)
+    return nothing
+end
+
+function _draw_test_positive!(iso::Isolation, individual, state)
     if is_eligible_for_isolation(iso.eligibility, individual, state)
         rng = stream(state.rng, individual.id, (:isolation, :test))
         sens = sample_value(iso.test_sensitivity, rng, individual)

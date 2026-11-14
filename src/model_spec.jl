@@ -53,6 +53,7 @@ end
 # `susceptibility_components` is defined in a file loaded after this one.
 _effect_hooks() = (
     (initialise_individual!, 3, "initialise_individual!(intervention, individual, state)"),
+    (initialise_episode!, 3, "initialise_episode!(intervention, individual, state)"),
     (resolve_individual!, 3, "resolve_individual!(intervention, individual, state)"),
     (competing_risk, 4, "competing_risk(intervention, parent, contact, state)"),
     (trace_contacts!, 4, "trace_contacts!(intervention, state, infector, contacts)"),

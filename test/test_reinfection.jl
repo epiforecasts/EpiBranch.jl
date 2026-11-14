@@ -263,13 +263,18 @@ using StableRNGs
     end
 
     # Counts, on each individual, how many times `initialise_individual!` has
-    # run: once when they are created, and again every time a reinfection
-    # settles a new episode. A host whose count stalls at 1 past its first
-    # episode would be reusing an earlier episode's intervention state (such
-    # as `Isolation`'s `:test_positive`) for every later one.
+    # run (once, when they are created) and how many times
+    # `initialise_episode!` has (every time a reinfection settles a new
+    # episode). A host whose episode count stalls past its first reinfection
+    # would be reusing an earlier episode's intervention state (such as
+    # `Isolation`'s `:test_positive`) for every later one.
     struct _CountInitialisations <: EpiBranch.AbstractIntervention end
     function EpiBranch.initialise_individual!(::_CountInitialisations, ind, state)
         ind.state[:_init_count] = get(ind.state, :_init_count, 0) + 1
+        return nothing
+    end
+    function EpiBranch.initialise_episode!(::_CountInitialisations, ind, state)
+        ind.state[:_episode_count] = get(ind.state, :_episode_count, 0) + 1
         return nothing
     end
 
@@ -286,8 +291,10 @@ using StableRNGs
         one, two = state.individuals
 
         @test length(one.episodes) >= 1
-        @test one.state[:_init_count] == length(one.episodes) + 1
-        @test two.state[:_init_count] == length(two.episodes) + 1
+        @test one.state[:_init_count] == 1
+        @test two.state[:_init_count] == 1
+        @test one.state[:_episode_count] == length(one.episodes)
+        @test two.state[:_episode_count] == length(two.episodes)
     end
 
     @testset "MaxCases counts people, not reinfection episodes" begin
