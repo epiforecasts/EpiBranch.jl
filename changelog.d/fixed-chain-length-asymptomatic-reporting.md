@@ -1,0 +1,1 @@
+The `ChainLengths` likelihood and `chain_length_distribution` now refuse a model whose onset-timed `Reporting` step leaves some cases unreported because `prob_asymptomatic > 0`. Previously the full-reporting check used only the probability set on the step. A step at probability 1 therefore passed.

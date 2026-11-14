@@ -472,8 +472,8 @@ function loglikelihood(data::ChainLengths, spec::ModelSpec; kwargs...)
     )
 end
 
-function _chain_length_assert_full_reporting(prog)
-    ρ = _reporting_probability(prog)
+function _chain_length_assert_full_reporting(prog, attrs)
+    ρ = _effective_reporting_probability(prog, attrs)
     (ρ === nothing || ρ >= 1) && return nothing
     throw(
         ArgumentError(
@@ -501,7 +501,7 @@ function _chain_length_model_loglik(
                 "length. Use ChainSizes, or a model with no observation."
         )
     )
-    _chain_length_assert_full_reporting(prog)
+    _chain_length_assert_full_reporting(prog, attrs)
     n_initial >= 1 || throw(ArgumentError("n_initial must be ≥ 1"))
     # Analytical iff no interventions thin transmission, as for chain size
     # above, and the process, attributes and progression each leave the
