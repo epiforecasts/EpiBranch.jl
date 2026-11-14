@@ -8,9 +8,10 @@
 """
     IsolationEligibility
 
-Rule for which cases can be isolated: [`SymptomaticOnly`](@ref) (the default)
-or [`AllCases`](@ref). Whether an eligible case is actually isolated also
-depends on the intervention's `test_sensitivity`.
+Rule for which cases can draw a test result: [`SymptomaticOnly`](@ref) (the
+default) or [`AllCases`](@ref). Isolation is timed from symptom onset, so under
+either rule a case with no onset is never isolated. Whether an eligible case is
+isolated also depends on the `test_sensitivity` of the intervention.
 
 To write a new rule, define a subtype and a method of
 [`is_eligible_for_isolation`](@ref EpiBranch.is_eligible_for_isolation).
@@ -54,8 +55,12 @@ end
 struct SymptomaticOnly <: IsolationEligibility end
 is_eligible_for_isolation(::SymptomaticOnly, ind, state) = !is_asymptomatic(ind)
 
-"""Every case is eligible, including asymptomatic ones (mass-testing
-scenarios)."""
+"""Every case is eligible to draw a test result, including asymptomatic ones.
+
+Isolation is timed from symptom onset, so a case with no onset is never
+isolated. `AllCases` widens who draws `:test_positive`, and isolation itself
+follows [`SymptomaticOnly`](@ref). Mass testing of asymptomatic cases needs a
+custom rule and an isolation time that does not depend on onset."""
 struct AllCases <: IsolationEligibility end
 
 # Fields an eligibility rule reads beyond the onset time every isolation needs.
@@ -87,7 +92,8 @@ known cases are quarantined through [`ContactTracing`](@ref).
   start from it, but no transmission is prevented. There is no default
   because indefinite isolation is a modelling choice to make explicitly.
 - `eligibility`: who can be isolated, [`SymptomaticOnly`](@ref) (default) or
-  [`AllCases`](@ref) (for example with mass testing).
+  [`AllCases`](@ref), which lets asymptomatic cases draw a test result but
+  does not isolate them, because isolation is timed from symptom onset.
 - `test_sensitivity`: probability that an eligible case is detected and
   isolated (default 1). A number, a distribution or a function
   `(rng, ind) -> ...`, drawn once per case.
@@ -119,7 +125,8 @@ model = BranchingProcess(NegBin(2.5, 0.16), LogNormal(1.6, 0.5))
 spec = ModelSpec(model; interventions = [iso], attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5)))
 state = simulate(spec; max_cases = 500)
 
-# Leaky isolation lasting 14 days, open to all cases
+# Leaky isolation lasting 14 days; AllCases lets every case draw a test result,
+# but only cases with an onset are isolated
 Isolation(
     onset_to_isolation_delay = 1.0, duration = 14.0,
     eligibility = AllCases(), post_isolation_transmission = 0.25,
