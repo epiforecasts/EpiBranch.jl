@@ -356,7 +356,9 @@ returned DataFrame holds one combination of the listed values and its
 varies, and any other key is rejected, including settings that do change a
 simulation, such as `:progression`. Settings that apply to every run, such as
 `max_cases`, are passed once as keywords. A setting that is a sweep axis is
-given as a vector even when there is only one value to use.
+given as a vector even when there is only one value to use. To vary anything
+else, or to summarise something other than containment, use the method that
+takes a function from a parameter row to a model.
 
 ```julia
 results = scenario_sweep(
@@ -430,4 +432,65 @@ function scenario_sweep(
     end
 
     return DataFrame(rows)
+end
+
+"""
+    scenario_sweep(build, rows; summary, n_sim=500, rng=Random.default_rng(), sim_kwargs...)
+
+Run a scenario once per row of parameters and summarise each. `build` takes a
+row and returns the model to simulate, a [`ModelSpec`](@ref) or any
+[`TransmissionModel`](@ref), so the process, the progression, the
+interventions and any parameter inside a delay distribution can vary. `rows`
+is any iterable of `NamedTuple`s or `DataFrameRow`s, such as the rows of a
+DataFrame of posterior or literature draws.
+
+Each row's `n_sim` outbreaks are simulated with `sim_kwargs` (the keywords of
+[`simulate`](@ref)`(model, n)`) and passed to `summary`, a function of the
+`Vector` of [`SimulationState`](@ref)s. It returns a `NamedTuple`, whose
+entries become columns next to the row's own, or a single value, stored in a
+`:summary` column. The default is the row's
+[`containment_probability`](@ref).
+
+`rng` is one generator shared by all rows, so the rows draw different random
+numbers. To compare rows on the same ones, pass a function returning a fresh
+generator, which is called once per row, such as
+`() -> CommonRandomNumbers(1)`; see [`CommonRandomNumbers`](@ref).
+
+```julia
+draws = DataFrame(R = [1.5, 2.0, 2.5], k = [0.3, 0.5, 0.2])
+results = scenario_sweep(
+    row -> ModelSpec(
+        BranchingProcess(NegBin(row.R, row.k), LogNormal(1.6, 0.5));
+        progression = [Recovery(delay = Exponential(2.0))],
+        attributes = clinical_presentation(incubation_period = LogNormal(1.6, 0.5))
+    ),
+    eachrow(draws);
+    summary = states -> (; max_cases_seen = maximum(s.cumulative_cases for s in states)),
+    n_sim = 200, max_cases = 500, rng = () -> CommonRandomNumbers(1)
+)
+```
+"""
+function scenario_sweep(
+        build, rows;
+        summary = nothing,
+        n_sim::Int = 500,
+        rng = Random.default_rng(),
+        sim_kwargs...
+    )
+    cap = something(get(sim_kwargs, :max_cases, nothing), NoCases())
+    summarise = something(
+        summary,
+        states -> (; containment_probability = containment_probability(states; max_cases = cap))
+    )
+    out = NamedTuple[]
+    for row in rows
+        params = NamedTuple(row)
+        model = build(row)
+        run_rng = rng isa AbstractRNG ? rng : rng()
+        states = simulate(model, n_sim; rng = run_rng, sim_kwargs...)
+        result = summarise(states)
+        result = result isa NamedTuple ? result : (; summary = result)
+        push!(out, merge(params, result))
+    end
+    return DataFrame(out)
 end
