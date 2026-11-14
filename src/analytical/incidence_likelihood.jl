@@ -160,11 +160,10 @@ needs a generation time in weeks).
 
 Cases can also enter from outside after step 0. `imports` is a vector of
 `n` known numbers of importations, one per step, and `import_rate` a vector
-of `n` mean numbers, each step's number then Poisson distributed. An
+of `n` mean numbers, with the number at each step Poisson distributed. An
 imported case arrives at its step, is counted there like any other case
-(subject to reporting), and starts a chain of local transmission. Either
-or both can be given; they are independent of each other and of the
-`seeds`.
+(subject to reporting), and starts a chain of local transmission. You can give
+either or both; they are independent of each other and of the `seeds`.
 
 With `reporting_probability` below 1, each case is reported independently
 with that probability, and the counts are of reported cases. A
@@ -470,7 +469,7 @@ function _incidence_log_pgf(
     end
     # Importations enter at their own step k as new, independent chains, each
     # with the PGF Ψ_k it would have had as a descendant. Known counts add
-    # `count · log Ψ_k`, and a Poisson number of them with a given rate adds
+    # `count · log Ψ_k`. A Poisson number of them with a given rate adds
     # `rate · (Ψ_k - 1)`, the cumulant generating function of a compound
     # Poisson sum.
     for j in 1:m, k in 1:n

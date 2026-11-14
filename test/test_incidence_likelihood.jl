@@ -221,7 +221,7 @@ struct _RiskFromAge end
         @test (rep.mean .- rep0.mean)[3] ≈ 0.5
 
         # The likelihood uses them: imports at every step raise the expected
-        # counts, so large counts fit better than without.
+        # counts, which improves the fit to large counts.
         data = IncidenceCounts([3, 4, 5, 6, 7, 8, 9, 10])
         @test loglikelihood(data, off, gt; imports = fill(2, n)) >
               loglikelihood(data, off, gt)
