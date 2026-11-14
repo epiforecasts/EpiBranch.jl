@@ -68,10 +68,10 @@ function simulate_once(
         targets = (inf, st) -> (
             (nb, _edge_kernel(model, inf, k, st, from))
                 for (k, nb) in enumerate(model.adjacency[inf])
-                if !is_infected(st.individuals[nb])
         ),
-        # Tracing reaches every neighbour, infected or not, so it reads the
-        # adjacency directly rather than the susceptible-only `targets`.
+        # Infected neighbours stay in `targets`: `HostImmunity` holds them back
+        # until `susceptible_again_time`, so reinfection is possible. Tracing
+        # reads the adjacency directly.
         contacts = (inf, st) -> model.adjacency[inf]
     )
 
