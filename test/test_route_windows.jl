@@ -377,7 +377,7 @@ EpiBranch.records_contacts(::AlwaysRecord, parent, contact, state, t) = true
                 EpiBranch.removal_gap_host_times(iso)
             @test !isempty(EpiBranch.removal_gap_host_times(wrapped))
         end
-        # A stretch carries no route, so `OnRoutes` keeps them out of the record.
+        # A stretch has no route, so `OnRoutes` keeps them out of the record.
         @test isempty(EpiBranch.removal_gap_host_times(OnRoutes(iso, (:household,))))
     end
 

@@ -41,8 +41,8 @@ struct OnRoutes{I <: AbstractIntervention, R} <: InterventionWrapper
     routes::R
 end
 
-# A recorded removal stretch carries no route, so reading it back would remove
-# the host from every pair's exposure while `OnRoutes` blocks only the routes it
+# A recorded removal stretch has no route. Reading it back would remove the host
+# from the exposure of every pair, while `OnRoutes` blocks only the routes it
 # names. Declaring no key keeps the stretches out of the likelihood.
 removal_gap_host_times(::OnRoutes) = ()
 
