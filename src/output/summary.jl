@@ -287,15 +287,15 @@ Case counts in bins of `interval` days: the epidemic curve of one simulated
 outbreak, or of several. Returns a DataFrame with columns `date` (the first day
 of each bin) and `cases`, plus `generation` when `by_generation = true` and
 `sim_id` (the position of the outbreak in `states`) for a vector of outbreaks.
-A bin with no cases has a row with 0, so tables from different runs have the
-same rows and line up.
+A bin with no cases has a row with 0. Tables from different runs therefore have
+the same rows and line up.
 
 - `interval`: the bin width in days, `1` for daily counts and `7` for weekly. With
   a multiple of 7 the bins start on a Monday, as in [`weekly_incidence`](@ref);
   otherwise they start at `reference_date`, simulation day 0.
 - `by`: which date places a case in a bin, as in [`weekly_incidence`](@ref).
 - `range`: a tuple of dates `(first, last)`. The bins are those containing these
-  two dates, and cases outside them are not counted. By default the bins run
+  two dates. Cases outside them are not counted. By default the bins run
   from the first to the last bin with a case in any of the outbreaks.
 - `cumulative`: if `true`, `cases` is the running total up to and including each
   bin, within each outbreak (and generation). A `range` that starts after the
