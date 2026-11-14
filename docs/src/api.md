@@ -176,6 +176,8 @@ CaseClassification
 AbstractAssay
 Assay
 within_host
+trajectory_load
+measure
 exclusive_probabilities
 is_terminal
 terminal_event
