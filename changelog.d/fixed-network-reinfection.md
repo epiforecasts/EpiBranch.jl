@@ -1,0 +1,1 @@
+`NetworkProcess` and `RoutedNetwork` now reinfect people once their progression reaches `:susceptible_again`, as `HouseholdProcess` does. Infected neighbours were previously never proposed as targets again.

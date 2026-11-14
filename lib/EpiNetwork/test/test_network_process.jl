@@ -2073,11 +2073,11 @@ end
     for process in (NetworkProcess(adjacency, Exponential(1.0)), routed)
         n = sum(
             length(
-                    simulate(
-                        ModelSpec(process; progression = prog);
-                        initial_cases = [1], max_time = 100.0, rng = StableRNG(s)
-                    ).individuals[1].episodes
-                ) for s in 1:20
+                simulate(
+                    ModelSpec(process; progression = prog);
+                    initial_cases = [1], max_time = 100.0, rng = StableRNG(s)
+                ).individuals[1].episodes
+            ) for s in 1:20
         )
         @test n > 0
     end
