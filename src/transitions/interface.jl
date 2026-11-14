@@ -499,7 +499,7 @@ _from_required(_) = Symbol[]
 
 After all `resolve_individual!`s have run, collect terminal candidates
 across all terminal transitions and set `:outcome` and `:outcome_time`
-to the earliest, and records the winner under its own state and
+to the earliest. It also records the winner under its own state and
 `<label>_time` keys. If no terminal transition occurs, none of them is set.
 
 Once the outcome is set, [`censor_after_outcome!`](@ref
