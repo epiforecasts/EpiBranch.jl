@@ -333,7 +333,7 @@ end
         hazard = RoutedMassActionHazard(
             :community, MassActionHazard(; transmission_rate = 5, population_size = 5)
         )
-        # a seeded host is given rather than explained, so it adds no term
+        # a seeded host is taken as given and adds no term
         @test pairwise_surv_loglik(windows, seeded; external_hazard = hazard) >
             pairwise_surv_loglik(windows, plain; external_hazard = hazard)
         @test_throws ArgumentError RoutedNetworkInfections(args...; seeded = [true])
