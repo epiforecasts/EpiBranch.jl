@@ -362,6 +362,7 @@ realised generation intervals.
 
 ```@docs
 linelist
+censor_linelist
 event_time_metadata
 contacts
 chain_statistics

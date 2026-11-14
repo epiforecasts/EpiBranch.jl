@@ -45,7 +45,7 @@ end
 
 """
     linelist(state::SimulationState; reference_date=Date(2020, 1, 1),
-             infected_only=true)
+             infected_only=true, as_of=nothing, reported_only=false)
 
 The line list of a simulated outbreak: a DataFrame with one row per case,
 with event times converted to calendar dates counted from `reference_date`
@@ -76,6 +76,19 @@ internal to an intervention and never shown. To add your own date columns see
 
 `isolated`, `date_isolation` and `date_isolation_release` show an isolation
 only when it counted as a detection (see [`is_isolated`](@ref)).
+
+# The line list as known on a date
+
+With `reported_only = true`, only the cases a [`Reporting`](@ref) or
+[`PerCaseObservation`](@ref) step marked as reported are kept. With
+`as_of = Date(...)`, the table is the one available on that date: it keeps
+the cases whose `date_reporting` is on or before `as_of` (so it implies
+`reported_only`), and every other date column, such as `date_outcome`, is
+`missing` where the date falls after `as_of`, because that event had not yet
+been seen. `isolated` and `outcome` are `missing` where `date_isolation` or
+`date_outcome` falls after `as_of`. Both options need a reporting step in the
+model and throw an `ArgumentError` without one. To coarsen the dates as well,
+pass the result to [`censor_linelist`](@ref).
 
 # Including people who were not infected
 
@@ -110,7 +123,8 @@ first(ll, 5)
 """
 function linelist(
         state::SimulationState;
-        reference_date::Date = Date(2020, 1, 1), infected_only::Bool = true
+        reference_date::Date = Date(2020, 1, 1), infected_only::Bool = true,
+        as_of::Union{Date, Nothing} = nothing, reported_only::Bool = false
     )
     cases = infected_only ? filter(is_infected, state.individuals) : state.individuals
     isempty(cases) && return DataFrame()
@@ -136,7 +150,74 @@ function linelist(
     end
 
     ordered_keys = _column_order(keys(cols))
-    return DataFrame([k => cols[k] for k in ordered_keys])
+    df = DataFrame([k => cols[k] for k in ordered_keys])
+    (as_of === nothing && !reported_only) && return df
+    any(ind -> haskey(ind.state, :reporting_time), cases) || throw(
+        ArgumentError(
+            "`as_of` and `reported_only` need a reporting time on each case; " *
+                "add a `Reporting` step (or `PerCaseObservation`) to the model."
+        )
+    )
+    return _as_known(df, as_of)
+end
+
+# Keep the reported cases, only those reported by `as_of` if it is given, and
+# blank the dates after `as_of`. A case never reported has no `date_reporting`
+# and is dropped.
+function _as_known(df::DataFrame, as_of)
+    isempty(df) && return df
+    hasproperty(df, :date_reporting) || return df[Int[], :]
+    reported = [!ismissing(d) && (as_of === nothing || d <= as_of) for d in df.date_reporting]
+    out = df[reported, :]
+    as_of === nothing && return out
+    # Blank `isolated` and `outcome` before their dates are blanked.
+    for (name, date_name) in (("isolated", "date_isolation"), ("outcome", "date_outcome"))
+        (hasproperty(out, name) && hasproperty(out, date_name)) || continue
+        late = [!ismissing(d) && d > as_of for d in out[!, date_name]]
+        out[!, name] = Union{eltype(out[!, name]), Missing}[
+            l ? missing : v for (v, l) in zip(out[!, name], late)
+        ]
+    end
+    for name in names(out)
+        startswith(name, "date_") || continue
+        col = out[!, name]
+        out[!, name] = Union{Date, Missing}[
+            ismissing(d) || d > as_of ? missing : d for d in col
+        ]
+    end
+    return out
+end
+
+"""
+    censor_linelist(df::DataFrame, interval=Week(1))
+
+Coarsen the date columns of a [`linelist`](@ref) to `interval`, so that each
+date becomes the first day of the interval it falls in. This mimics data
+released as weeks rather than days. Only columns whose name starts with
+`date_` are changed, and `missing` stays `missing`. Returns a new DataFrame.
+
+`interval` is a `Dates.Period`, such as `Week(1)` (weeks starting on a
+Monday), `Month(1)` or `Year(1)`, or a function from a `Date` to a `Date` for
+anything else, such as epidemiological weeks starting on a Sunday:
+
+```julia
+using Dates
+ll = linelist(state; as_of = Date(2020, 3, 1))
+weekly = censor_linelist(ll)
+epiweeks = censor_linelist(ll, d -> Dates.toprev(d, Sunday; same = true))
+```
+"""
+function censor_linelist(df::DataFrame, interval::Dates.Period = Week(1))
+    return censor_linelist(df, d -> floor(d, interval))
+end
+
+function censor_linelist(df::DataFrame, f)
+    out = copy(df)
+    for name in names(out)
+        startswith(name, "date_") || continue
+        out[!, name] = Union{Date, Missing}[ismissing(d) ? missing : f(d)::Date for d in out[!, name]]
+    end
+    return out
 end
 
 """
