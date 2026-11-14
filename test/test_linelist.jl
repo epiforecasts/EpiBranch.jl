@@ -22,6 +22,16 @@ using Dates
         @test "date_onset" in names(df)
     end
 
+    @testset "anonymised names" begin
+        model = BranchingProcess(Poisson(1.5), Exponential(5.0))
+        state = tsim(model; max_cases = 300, rng = StableRNG(7))
+        df = linelist(state; anonymised_names = true)
+        @test length(unique(df.case_name)) == nrow(df)
+        @test all(n -> length(n) == 16, df.case_name)
+        @test linelist(state; anonymised_names = true).case_name == df.case_name
+        @test "case_name" ∉ names(linelist(state))
+    end
+
     @testset "linelist without clinical presentation has no onset" begin
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(1.5), Exponential(5.0))

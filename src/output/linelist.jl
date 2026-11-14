@@ -45,7 +45,7 @@ end
 
 """
     linelist(state::SimulationState; reference_date=Date(2020, 1, 1),
-             infected_only=true)
+             infected_only=true, anonymised_names=false)
 
 The line list of a simulated outbreak: a DataFrame with one row per case,
 with event times converted to calendar dates counted from `reference_date`
@@ -73,6 +73,11 @@ in `_time` becomes a `date_` column (`:onset_time` becomes `date_onset`);
 other information appears as recorded. Names starting with an underscore are
 internal to an intervention and never shown. To add your own date columns see
 [`event_time_metadata`](@ref).
+
+With `anonymised_names = true` there is also a `case_name` column: a
+16-character hexadecimal code derived from `id`, standing in for the
+anonymised name that simulist's `anonymise` option gives. It is stable for a
+given `id` and can be joined back. It is not a secret.
 
 `isolated`, `date_isolation` and `date_isolation_release` show an isolation
 only when it counted as a detection (see [`is_isolated`](@ref)).
@@ -110,7 +115,8 @@ first(ll, 5)
 """
 function linelist(
         state::SimulationState;
-        reference_date::Date = Date(2020, 1, 1), infected_only::Bool = true
+        reference_date::Date = Date(2020, 1, 1), infected_only::Bool = true,
+        anonymised_names::Bool = false
     )
     cases = infected_only ? filter(is_infected, state.individuals) : state.individuals
     isempty(cases) && return DataFrame()
@@ -122,6 +128,7 @@ function linelist(
         :chain_id => [ind.chain_id for ind in cases],
         :date_infection => [_infection_date(reference_date, ind) for ind in cases]
     )
+    anonymised_names && (cols[:case_name] = [_anonymised_name(ind.id) for ind in cases])
     infected_only || (cols[:infected] = [is_infected(ind) for ind in cases])
 
     state_keys = Set{Symbol}()
@@ -214,6 +221,16 @@ end
 
 # ── Internal helpers ─────────────────────────────────────────────────
 
+# FNV-1a over the bytes of the id, written out so the code does not change
+# with the Julia version, as `hash` may.
+function _anonymised_name(id::Integer)
+    h = 0xcbf29ce484222325
+    for byte in reinterpret(UInt8, [Int64(id)])
+        h = (h ⊻ byte) * 0x00000100000001b3
+    end
+    return string(h; base = 16, pad = 16)
+end
+
 """Convert a simulation time (real number) to a `Date` offset from
 `reference_date`. Non-finite or non-numeric inputs return `missing`."""
 function _to_date(reference_date::Date, t::Real)
@@ -302,7 +319,7 @@ end
 columns first, then date columns (alphabetical), then the rest
 (alphabetical)."""
 function _column_order(ks)
-    core = [:id, :parent_id, :generation, :chain_id, :infected, :date_infection]
+    core = [:id, :case_name, :parent_id, :generation, :chain_id, :infected, :date_infection]
     group(k) = k in core ? 0 : startswith(String(k), "date_") ? 1 : 2
     position(k) = something(findfirst(==(k), core), 0)
     return sort!(collect(ks); by = k -> (group(k), position(k), k))
