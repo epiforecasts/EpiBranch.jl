@@ -551,8 +551,7 @@ function _at_case!(state::SimulationState, case, count)
     return nothing
 end
 
-# Offer a new person to each intervention's `initialise_individual!`, or a
-# reinfected one to its `initialise_episode!`.
+# Offer a new person to each intervention's `initialise_individual!`.
 function _initialise!(interventions, ind, state)
     _each(interventions) do intervention
         initialise_individual!(intervention, ind, state)
