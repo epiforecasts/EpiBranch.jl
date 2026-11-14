@@ -1,0 +1,1 @@
+`contacts()` now names the time of exposure `exposure_time` and `date_exposure`, replacing `infection_time` and `date_infection`, which misled for a contact who was not infected. It also adds the contact's attributes (such as `age` and `sex`) as columns.
