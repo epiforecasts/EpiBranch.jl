@@ -264,7 +264,7 @@ export generate_offspring, contacts_of
 export event_time_metadata, linelist, contacts, chain_statistics, compute_trace_level!
 export realised_generation_interval, realised_generation_intervals,
     realised_serial_interval, realised_serial_intervals
-export containment_probability, containment_estimate,is_extinct, generation_R, weekly_incidence, scenario_sweep
+export containment_probability, containment_estimate, is_extinct, generation_R, weekly_incidence, scenario_sweep
 export summarise
 
 # Exports — analytical

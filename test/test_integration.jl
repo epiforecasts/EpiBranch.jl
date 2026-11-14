@@ -41,8 +41,8 @@ using Dates
         @test 0.0 < none_out.upper < 0.1
         # Known value: 8/10 at 95% is (0.4902, 0.9433)
         w = EpiBranch._binomial_estimate(8, 10, 0.95)
-        @test w.lower ≈ 0.4902 atol = 1e-3
-        @test w.upper ≈ 0.9433 atol = 1e-3
+        @test w.lower ≈ 0.4902 atol = 1.0e-3
+        @test w.upper ≈ 0.9433 atol = 1.0e-3
         @test_throws ArgumentError containment_estimate(results; max_cases = 500, level = 1.5)
     end
 
