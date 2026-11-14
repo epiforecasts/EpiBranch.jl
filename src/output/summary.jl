@@ -439,8 +439,8 @@ end
 
 Run a scenario once per row of parameters and summarise each. `build` takes a
 row and returns the model to simulate, a [`ModelSpec`](@ref) or any
-[`TransmissionModel`](@ref), so the process, the progression, the
-interventions and any parameter inside a delay distribution can vary. `rows`
+[`TransmissionModel`](@ref). The process, the progression, the
+interventions and any parameter inside a delay distribution can all vary. `rows`
 is any iterable of `NamedTuple`s or `DataFrameRow`s, such as the rows of a
 DataFrame of posterior or literature draws.
 
@@ -451,9 +451,9 @@ entries become columns next to the row's own, or a single value, stored in a
 `:summary` column. The default is the row's
 [`containment_probability`](@ref).
 
-`rng` is one generator shared by all rows, so the rows draw different random
+`rng` is one generator shared by all rows, which draw different random
 numbers. To compare rows on the same ones, pass a function returning a fresh
-generator, which is called once per row, such as
+generator. It is called once per row, for example
 `() -> CommonRandomNumbers(1)`; see [`CommonRandomNumbers`](@ref).
 
 ```julia
