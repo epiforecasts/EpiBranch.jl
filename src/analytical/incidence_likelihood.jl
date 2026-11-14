@@ -603,9 +603,10 @@ function _incidence_reporting(model)
         )
     )
     reached, to_anchor = _infection_to(r.from, attributes(model))
+    anchor = to_anchor isa Real ? Dirac(float(to_anchor)) : to_anchor
     return (
         reporting_probability = _reporting_probability(prog) * reached,
-        reporting_delay = to_anchor === nothing ? r.delay : _DelaySum(to_anchor, r.delay),
+        reporting_delay = anchor === nothing ? r.delay : _DelaySum(anchor, r.delay),
     )
 end
 
