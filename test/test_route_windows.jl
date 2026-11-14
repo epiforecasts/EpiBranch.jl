@@ -368,7 +368,6 @@ EpiBranch.records_contacts(::AlwaysRecord, parent, contact, state, t) = true
             post_isolation_transmission = 0.5
         )
         for wrapped in (
-                OnRoutes(iso, (:household,)),
                 CapacityConstrained(iso; budget_per_period = 1.0),
                 Scheduled(iso; start_time = 0.0),
             )
@@ -378,6 +377,8 @@ EpiBranch.records_contacts(::AlwaysRecord, parent, contact, state, t) = true
                 EpiBranch.removal_gap_host_times(iso)
             @test !isempty(EpiBranch.removal_gap_host_times(wrapped))
         end
+        # A stretch carries no route, so `OnRoutes` keeps them out of the record.
+        @test isempty(EpiBranch.removal_gap_host_times(OnRoutes(iso, (:household,))))
     end
 
     @testset "the race traces a settled case's contacts" begin

@@ -1,3 +1,1 @@
-`OnRoutes` now reports the wrapped intervention's `removal_block_probability` and
-`removal_gap_host_times`, as `Scheduled`, `CapacityConstrained` and `HeldCapacity`
-already did. Every `InterventionWrapper` forwards both by default.
+Every `InterventionWrapper` now forwards `removal_block_probability` and `removal_gap_host_times` to the wrapped intervention by default, as `Scheduled`, `CapacityConstrained` and `HeldCapacity` already did. `OnRoutes` still declares no `removal_gap_host_times`, because a recorded stretch carries no route and would otherwise be removed from every pair's exposure in the likelihood.
