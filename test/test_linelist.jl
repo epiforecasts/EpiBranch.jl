@@ -222,6 +222,11 @@ using Dates
             @test row.sex == String(ind.state[:sex])
         end
         @test !("infected" in names(df)[7:end])
+
+        # Flags are read as the line list reads them.
+        state.individuals[df.to[1]].state[:isolated] = true
+        df = contacts(state)
+        @test df.isolated[1] == is_isolated(state.individuals[df.to[1]])
     end
 
     @testset "contacts lists exposures an ExposedContactRecorder keeps" begin

@@ -243,7 +243,7 @@ function _add_contact_attributes!(df::DataFrame, state::SimulationState)
         keys_
     )
     for key in sort!(collect(keys_))
-        raw = [get(ind.state, key, missing) for ind in contacts_]
+        raw = [_reported_state(ind, key) for ind in contacts_]
         df[!, key] = _normalise_column(raw)
     end
     return df
