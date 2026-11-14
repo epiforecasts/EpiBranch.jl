@@ -8,9 +8,10 @@
 """
     IsolationEligibility
 
-Rule for which cases can be isolated: [`SymptomaticOnly`](@ref) (the default)
-or [`AllCases`](@ref). Whether an eligible case is actually isolated also
-depends on the intervention's `test_sensitivity`.
+Rule for which cases can draw a test result: [`SymptomaticOnly`](@ref) (the
+default) or [`AllCases`](@ref). Isolation is timed from symptom onset, so a case
+with no onset is never isolated under either rule. Whether an eligible case is
+actually isolated also depends on the intervention's `test_sensitivity`.
 
 To write a new rule, define a subtype and a method of
 [`is_eligible_for_isolation`](@ref EpiBranch.is_eligible_for_isolation).
@@ -124,7 +125,8 @@ model = BranchingProcess(NegBin(2.5, 0.16), LogNormal(1.6, 0.5))
 spec = ModelSpec(model; interventions = [iso], attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5)))
 state = simulate(spec; max_cases = 500)
 
-# Leaky isolation lasting 14 days, open to all cases
+# Leaky isolation lasting 14 days; AllCases lets every case draw a test result,
+# but only cases with an onset are isolated
 Isolation(
     onset_to_isolation_delay = 1.0, duration = 14.0,
     eligibility = AllCases(), post_isolation_transmission = 0.25,
