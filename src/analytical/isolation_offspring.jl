@@ -76,7 +76,7 @@ _clinical_presentation(::Any) = nothing
 
 # The incubation period a closed form reads directly. A function of the
 # individual has no distribution to integrate over, so it is refused here with
-# a message that names the cause, rather than failing further in.
+# an error that names the cause.
 function _closed_form_incubation(cp::ClinicalPresentation, what)
     inc = cp.incubation_period
     inc isa Union{Real, Distribution} && return inc
