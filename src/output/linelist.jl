@@ -150,8 +150,8 @@ column (the position of the outbreak in `states`) and the columns of
 
 Runs of one model can differ in their columns: a run in which every case is
 asymptomatic has no `date_onset`, for instance. The table has every column
-that appears in any run, with `missing` where a run lacks it, so the
-columns depend on the set of runs and not on which run comes first. A run
+that appears in any run, with `missing` where a run lacks it. The columns
+depend only on the set of runs, whatever their order. A run
 without cases adds no rows.
 """
 function linelist(
