@@ -223,7 +223,7 @@ using Dates
         end
         @test !("infected" in names(df)[7:end])
 
-        # Flags are read as the line list reads them.
+        # Flags match those in the line list.
         state.individuals[df.to[1]].state[:isolated] = true
         df = contacts(state)
         @test df.isolated[1] == is_isolated(state.individuals[df.to[1]])
