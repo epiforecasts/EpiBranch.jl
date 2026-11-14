@@ -159,7 +159,7 @@ function refused_action(::DeferRefused, hc::HeldCapacity, usage, action)
     last_release = isempty(times) ? action.time : maximum(times)
     append!(times, _capacity_breaks(hc.capacity, action.time, nextfloat(last_release)))
     # After the last release only the capacity matters. Breaks are candidates
-    # until one fits the whole stay, as a later fall can rule an earlier rise out.
+    # until one fits the whole stay, because a later fall can rule an earlier rise out.
     t = _next_break(hc.capacity, max(last_release, action.time))
     while isfinite(t)
         push!(times, t)
