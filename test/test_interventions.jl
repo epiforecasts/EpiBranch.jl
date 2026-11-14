@@ -2447,9 +2447,9 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                 # censor_after_outcome! undoes that non-terminal event too,
                 # the same "stands only before the outcome" rule as the
                 # aborted case above. The :died Transition is itself
-                # terminal, so it is exempt from that rule, but Death's
-                # earlier candidate wins the outcome and so owns the :died
-                # flag and :died_time.
+                # terminal and exempt from that rule. The earlier Death
+                # candidate wins the outcome and owns the :died flag and
+                # :died_time.
                 @test !control[:hospitalised] && control[:hospitalised_time] == Inf
                 @test control[:died] && control[:died_time] == 6.0
                 @test control[:outcome] == :died && control[:outcome_time] == 6.0
