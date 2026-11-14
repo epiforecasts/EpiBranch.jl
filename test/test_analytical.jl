@@ -1409,6 +1409,70 @@ using ForwardDiff
             @test sum(probs) ≈ 1.0 atol = 1.0e-6
         end
 
+        @testset "Simulated chain length stops on generations, not cases" begin
+            model = ModelSpec(
+                BranchingProcess(NegativeBinomial(0.5, 0.5 / (0.5 + 0.9)), Gamma(2.0, 2.5));
+                interventions = [Isolation(onset_to_isolation_delay = 100.0, duration = Inf)],
+                attributes = clinical_presentation(incubation_period = Gamma(2.0, 2.5))
+            )
+            data = ChainLengths([6, 8, 10])
+            @test_throws ArgumentError loglikelihood(data, model; max_cases = 25)
+            ll(gens) = loglikelihood(
+                data, model; n_sim = 20_000, max_generations = gens, rng = StableRNG(1)
+            )
+            # A tighter generation limit censors more runs but stays close to
+            # the uncensored value, without dropping probability mass.
+            @test abs(ll(12) - ll(100)) < 0.5
+        end
+
+        @testset "Simulated chain length of a supercritical model stays bounded" begin
+            # With R above 1 and no cap on cases, runs would grow without
+            # limit. The internal safety stop censors them at the length
+            # reached, and the call returns.
+            model = ModelSpec(
+                BranchingProcess(Poisson(2.0), Exponential(1.0));
+                interventions = [Isolation(onset_to_isolation_delay = 100.0, duration = Inf)],
+                attributes = clinical_presentation(incubation_period = Gamma(2.0, 2.5))
+            )
+            ll = loglikelihood(
+                ChainLengths([3, 5]), model; n_sim = 5, rng = StableRNG(1)
+            )
+            @test ll isa Real
+            @test !isnan(ll)
+        end
+
+        @testset "_empirical_ll with censored_at_value" begin
+            f = EpiBranch._empirical_ll
+            sim = [1, 2, 2, 3, 3]
+            cens = [false, false, false, true, true]
+            # Hazards (events + 1) / (at risk + 2): 2/7, 3/6, 1/4 for values 1-3.
+            # P(X = 2) = 1/2 * 5/7.
+            @test f([2], sim; min_val = 1, censored = cens, censored_at_value = true) ≈
+                log(5 / 14)
+            # An observation below the minimum value has no support.
+            @test f([0], sim; min_val = 1, censored = cens, censored_at_value = true) == -Inf
+            # prob_concluded at 1 and 0 reduce to the point mass and right tail.
+            lc = f([2], sim; min_val = 1, censored = cens, censored_at_value = true)
+            @test f(
+                [2], sim; min_val = 1, censored = cens, censored_at_value = true,
+                prob_concluded = [1.0]
+            ) ≈ lc
+            tail = f(
+                [2], sim; min_val = 1, censored = cens, censored_at_value = true,
+                prob_concluded = [0.0]
+            )
+            @test tail ≈ log(5 / 7)
+            mix = f(
+                [2], sim; min_val = 1, censored = cens, censored_at_value = true,
+                prob_concluded = [0.5]
+            )
+            @test mix ≈ log(0.5 * exp(lc) + 0.5 * exp(tail))
+            @test_throws ArgumentError f(
+                [2], sim; min_val = 1, censored = cens, censored_at_value = true,
+                prob_concluded = [1.5]
+            )
+        end
+
         @testset "Non-positive n_initial throws" begin
             @test_throws ArgumentError loglikelihood(
                 ChainLengths([0]), Poisson(0.8); n_initial = 0
@@ -1750,10 +1814,10 @@ using ForwardDiff
             )
             data = ChainLengths([5])
             ll_one = loglikelihood(
-                data, spec; n_initial = 1, max_cases = 500, n_sim = 20_000, rng = StableRNG(1)
+                data, spec; n_initial = 1, n_sim = 20_000, rng = StableRNG(1)
             )
             ll_many = loglikelihood(
-                data, spec; n_initial = 5, max_cases = 500, n_sim = 20_000, rng = StableRNG(1)
+                data, spec; n_initial = 5, n_sim = 20_000, rng = StableRNG(1)
             )
             @test isfinite(ll_one)
             @test isfinite(ll_many)

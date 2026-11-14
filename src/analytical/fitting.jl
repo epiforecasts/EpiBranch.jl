@@ -280,10 +280,19 @@ function _sim_loglikelihood(
         # seed) is the cluster's observed value, instead of reporting each
         # seed's chain separately.
         push!(sim_values, maximum(vals))
-        hit_cap = !state.extinct && state.cumulative_cases >= cap
-        push!(censored, hit_cap)
+        # A length run is censored whichever rule stopped it, because its value
+        # is the length reached. A size run is censored only by the case cap.
+        push!(
+            censored,
+            !state.extinct && (column === :length || state.cumulative_cases >= cap)
+        )
     end
-    return _empirical_ll(observed, sim_values; min_val, censored, cap)
+    # For lengths the cap counts cases, so a capped run is only known to be
+    # at least as long as the length it had reached.
+    return _empirical_ll(
+        observed, sim_values; min_val, censored, cap,
+        censored_at_value = column === :length
+    )
 end
 
 # Chain sizes counted from each case's `:reported` flag, written by
@@ -458,6 +467,13 @@ estimated from `n_sim` simulated outbreaks (keywords as for chain sizes).
 applies on both paths. Not available with an observation model or a
 `Reporting` probability below 1 because a chain with undetected cases has no
 well-defined observed length.
+
+The simulation stops runs on `max_generations` (default 100). Because a cap on
+cases does not fix a chain's length, `max_cases` is refused. A run still going at the stop is right-censored at the length it had
+reached, so it counts towards the right tail of observed lengths above that
+length. A run is also censored in the same way once it reaches 100 000 cases,
+which keeps memory bounded for a model whose cases grow without limit. Lower
+`max_generations` to stop such runs sooner.
 """
 function loglikelihood(data::ChainLengths, model::TransmissionModel; kwargs...)
     return _chain_length_model_loglik(
@@ -484,15 +500,26 @@ function _chain_length_assert_full_reporting(prog)
     )
 end
 
+# Safety stop for runs whose cases grow geometrically (R above 1). Runs it
+# stops are right-censored at the length reached, as with any other stop.
+const _LENGTH_SAFETY_MAX_CASES = 100_000
+
 function _chain_length_model_loglik(
         data::ChainLengths, process, ivs, attrs, prog, obs, rec;
         n_initial::Int = 1,
-        max_cases::Union{Int, Nothing} = 10_000,
+        max_cases::Union{Int, Nothing} = nothing,
         max_generations::Union{Int, Nothing} = 100,
         max_time::Union{Real, Nothing} = nothing,
         stopping_rules::Union{Vector{<:AbstractStoppingRule}, Nothing} = nothing,
         n_sim::Int = 10_000,
         rng::AbstractRNG = Random.default_rng()
+    )
+    max_cases === nothing || throw(
+        ArgumentError(
+            "loglikelihood(ChainLengths, model) does not take `max_cases`: " *
+                "a cap on cases does not fix a chain's length. " *
+                "Use `max_generations` instead."
+        )
     )
     obs isa NoObservation || throw(
         ArgumentError(
@@ -515,8 +542,8 @@ function _chain_length_model_loglik(
         end
     end
     sim_opts = _build_sim_opts(
-        process, n_initial, nothing, nothing, max_cases, max_generations, max_time,
-        stopping_rules
+        process, n_initial, nothing, nothing, _LENGTH_SAFETY_MAX_CASES,
+        max_generations, max_time, stopping_rules
     )
     return _sim_loglikelihood(
         data.data, process, :length, 0;
@@ -542,6 +569,11 @@ When `censored` is provided, simulated values flagged as censored contribute
 to P(size >= cap) rather than P(size = cap). Observed values at or above
 `cap` are evaluated as P(size >= cap).
 
+With `censored_at_value = true` the cap is ignored and each censored value is
+instead a lower bound on that run's true value. The probabilities come from a
+product-limit (Kaplan-Meier) estimator. A censored run informs the hazard at
+every value up to its censoring point, and its mass moves to the larger values.
+
 `prob_concluded`, when given (one value per observation, in `[0, 1]`), mixes
 each observation's point mass with its right tail under the same simulated
 empirical law, exactly as the analytical [`_chain_size_loglik`](@ref)
@@ -552,10 +584,29 @@ function _empirical_ll(
         min_val::Int = 0,
         censored::Vector{Bool} = Bool[],
         cap::Int = typemax(Int),
+        censored_at_value::Bool = false,
         prob_concluded::Union{Nothing, AbstractVector{<:Real}} = nothing
     )
     isempty(simulated) && return -Inf
     n_total = length(simulated)
+
+    if censored_at_value
+        # Lower-bound censoring needs the full simulated distribution. The
+        # parametric tail is not used.
+        max_val = max(maximum(observed), maximum(simulated))
+        counts = zeros(Int, max_val - min_val + 1)
+        censored_counts = zeros(Int, length(counts))
+        for (i, s) in enumerate(simulated)
+            if !isempty(censored) && censored[i]
+                censored_counts[s - min_val + 1] += 1
+            else
+                counts[s - min_val + 1] += 1
+            end
+        end
+        return _empirical_ll_censored_at_value(
+            observed, counts, censored_counts, min_val, prob_concluded
+        )
+    end
 
     uncensored = Int[]
     n_censored = 0
@@ -621,6 +672,44 @@ function _empirical_ll(
             ll += lc
         else
             lo = log_right_tail(x)
+            ll += π_i <= zero(π_i) ? lo : _logsumexp2(log(π_i) + lc, log1p(-π_i) + lo)
+        end
+    end
+    return ll
+end
+
+# Empirical log-likelihood where each censored run is a lower bound on its own
+# value (see `_empirical_ll`). A product-limit estimator gives the probability
+# of each value: a run censored at c is at risk at every value up to c. It
+# informs the hazard there and leaves the larger values to the runs still going.
+# Each hazard is Laplace-smoothed, (events + 1) / (at risk + 2), to keep every
+# value supported.
+function _empirical_ll_censored_at_value(
+        observed, counts, censored_counts, min_val, prob_concluded
+    )
+    n_bins = length(counts)
+    # Runs still at risk at each value: uncensored at or above it, plus
+    # censored at or above it.
+    at_risk = reverse(cumsum(reverse(counts .+ censored_counts)))
+    hazard = (counts .+ 1) ./ (at_risk .+ 2)
+    # survival[j] = P(X >= value j) = prod_{k<j} (1 - hazard[k])
+    survival = vcat(1.0, cumprod(1 .- hazard))[1:n_bins]
+    ll = 0.0
+    for (i, x) in enumerate(observed)
+        idx = x - min_val + 1
+        (idx < 1 || idx > n_bins) && return -Inf
+        lc = log(hazard[idx] * survival[idx])
+        if prob_concluded === nothing
+            ll += lc
+            continue
+        end
+        π_i = prob_concluded[i]
+        (0 <= π_i <= 1) ||
+            throw(ArgumentError("prob_concluded[$i] = $(π_i) is not in [0, 1]"))
+        if π_i >= one(π_i)
+            ll += lc
+        else
+            lo = log(survival[idx])
             ll += π_i <= zero(π_i) ? lo : _logsumexp2(log(π_i) + lc, log1p(-π_i) + lo)
         end
     end
