@@ -169,7 +169,7 @@ a pair listed too, with `infected = false`.
 
 A contact that an intervention stopped from happening at all, such as one that
 would have fallen after the infector's isolation in hospital, is not an
-exposure and is left out, and tracing does not reach it. An intervention
+exposure and is left out. Tracing does not reach it. An intervention
 decides this through [`prevents_contact`](@ref EpiBranch.prevents_contact);
 isolation at home, which blocks the infection but not the meeting, keeps the
 contact.

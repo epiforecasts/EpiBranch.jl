@@ -1824,7 +1824,7 @@ _route_may_block(route_targets) = false
 _route_builtin_blocks(route_targets) = _sellke_builtin_risk_blocks
 # Take back a contact the race has just found was never made, for a route that
 # lists the contacts it creates on their infector. A route over a fixed
-# population records no contact for a blocked proposal, so it has nothing to
+# population records no contact for a blocked proposal and has nothing to
 # take back.
 _withdraw_contact!(route_targets, race, parent, contact) = nothing
 function _record_infection!(route_targets, infector, ind, w, named)

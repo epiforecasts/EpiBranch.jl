@@ -284,8 +284,8 @@ using Dates
             BranchingProcess(Poisson(2.5), Exponential(5.0); population_size = 400);
             attributes = clinical,
             interventions = [
-                # Home isolation and quarantine keep the contacts they block, so
-                # there are uninfected contacts to report.
+                # Home isolation and quarantine keep the contacts they block.
+                # That leaves uninfected contacts to report.
                 Isolation(
                     onset_to_isolation_delay = Exponential(1.0), duration = Inf,
                     prevents_contact = false

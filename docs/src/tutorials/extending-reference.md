@@ -362,7 +362,7 @@ model](@ref)).
   the blocked contact stays in the outbreak: [`contacts`](@ref) lists it and
   tracing can reach it. A ward closure or isolation in hospital stops the
   meeting itself, so there is no contact to list or trace. The default,
-  `false`, keeps the contact; declare `true` for a measure of the second kind.
+  `false`, keeps the contact; declare `true` for a measure that stops the meeting.
 
   ```julia
   EpiBranch.prevents_contact(::MyClosedWard) = true

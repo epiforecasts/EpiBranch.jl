@@ -109,7 +109,7 @@ end
 
     @testset "a later source that prevents the contact is still asked" begin
         # The open ward blocks first, but the closed one blocks the same
-        # contact, so there was none.
+        # contact. There was none.
         spec = ModelSpec(
             BranchingProcess(Poisson(3.0), Exponential(2.0));
             interventions = [Ward(false, 1.0), Ward(true, 1.0)]

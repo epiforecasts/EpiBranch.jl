@@ -997,9 +997,9 @@ end
 
 # Take a contact back out of the outbreak: it was made as a person by
 # `make_contact!`, but the meeting it stands for never happened (see
-# `prevents_contact`). It leaves its infector's contacts, so neither `contacts`
-# nor tracing reaches it, and is marked so that `linelist` does not list it as
-# a person who was exposed and escaped.
+# `prevents_contact`). It leaves its infector's contacts, which neither
+# `contacts` nor tracing then reaches. It is marked so that `linelist` does not
+# list it as a person who was exposed and escaped.
 function _unmake_contact!(parent::Individual, contact::Individual)
     idx = findlast(==(contact.id), parent.secondary_case_ids)
     idx === nothing || deleteat!(parent.secondary_case_ids, idx)
@@ -1309,7 +1309,7 @@ are the built-in ones (host susceptibility, infector infectiousness, …)
 first, then any the model contributes through [`transmission_risks`](@ref),
 then the interventions in stack order. The first to block wins the
 transmission, but a block by a source that leaves the contact standing does not
-hide a later source that prevents it, so those later sources are still asked,
+hide a later source that prevents it. Those later sources are still asked,
 and only those.
 
 Every model resolves a transmission through this one function, on each
@@ -1353,9 +1353,9 @@ function _walk_risks(level, sources, parent, contact, state, transmission_time)
     return level
 end
 
-# One source's turn. Once the transmission is blocked only a source that
-# prevents the contact is still asked, so a stack without one draws no more
-# than it did.
+# One source's turn. Once the transmission is blocked, only a source that
+# prevents the contact is still asked. A stack without one draws no more than
+# before.
 @inline function _step_risks(level, source, parent, contact, state, transmission_time)
     if level == _NOT_BLOCKED
         _risk_blocks(source, parent, contact, state, transmission_time) || return level

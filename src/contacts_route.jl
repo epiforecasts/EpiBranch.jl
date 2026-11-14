@@ -90,7 +90,7 @@ end
 
 # An exposure the race found was never a contact leaves the case's contacts,
 # for a person the case's own `contacts_of` created. Someone who already
-# existed is not this route's to take back.
+# existed this route does not take back.
 function _withdraw_contact!(c::_ContactsOf, race, parent, contact)
     _created_by(contact, parent) || return nothing
     _unmake_contact!(parent, contact)

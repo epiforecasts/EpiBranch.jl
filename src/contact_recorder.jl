@@ -71,8 +71,8 @@ dropped again if the same pair later infects: the block was not this pair's
 last outcome, so it is no longer an exposure that escaped. A blocked community
 introduction, where the person proposed as their own infector stands in for a
 source outside the population, is not a contact between two people and is not
-logged, and neither is a contact that a source that
-[`prevents_contact`](@ref EpiBranch.prevents_contact) stopped from happening.
+logged, and neither is a contact stopped from happening by a source that
+[`prevents_contact`](@ref EpiBranch.prevents_contact).
 Attach one to a [`ModelSpec`](@ref) as `recorder =
 ExposedContactRecorder()`; [`contacts`](@ref) then lists each pair still
 logged as an exposure that did not lead to infection, the same way it already

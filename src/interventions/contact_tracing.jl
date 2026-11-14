@@ -403,7 +403,7 @@ apply_trace!(::TraceAction, contact, state, trace_time, rng) = nothing
 
 Whether the removal this action records stops its person meeting the people
 they would infect, so the contacts it blocks are dropped rather than recorded.
-[`ContactTracing`](@ref) answers with its action's. Default `false`: an action
+[`ContactTracing`](@ref) answers as its action does. Default `false`: an action
 that removes nobody blocks no contact.
 """
 prevents_contact(::TraceAction) = false
