@@ -249,7 +249,7 @@ export ThinnedChainSize, TruncatedChainSize, DetectedChainSize
 
 # Exports — attributes functions
 export clinical_presentation, demographics, transmission_traits, groups,
-    group_attribute, vaccine_acceptance, case_classification, ct_value
+    group_attribute, vaccine_acceptance
 
 # Exports — simulation
 export outbreak_state_space

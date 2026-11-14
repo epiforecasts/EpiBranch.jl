@@ -14,9 +14,7 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
 
 ### Added
 
-- `case_classification` and `ct_value` attribute builders give each case a
-  `case_type` (suspected, probable or confirmed) and a Ct value, and
-  `linelist(...; anonymised_names = true)` adds a `case_name` column of
+- `linelist(...; anonymised_names = true)` adds a `case_name` column of
   anonymised identifiers, as simulist's `sim_linelist` does.
 - `pairwise_surv_loglik_by_component` splits the pairwise survival
   log-likelihood by connected component of the contact structure (households,
