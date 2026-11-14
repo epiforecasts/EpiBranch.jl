@@ -34,8 +34,9 @@ using StableRNGs
     end
 
     @testset "known offspring are all a case has made by `now`" begin
-        # An old case with no listed offspring has none by `now`, so with the
-        # whole generation-time distribution behind it, none are left.
+        # An old case with no listed offspring has made none by `now`. With
+        # nearly all of the generation-time distribution behind it, it makes
+        # no more.
         one_case = DataFrame(infection_time = [0.0])
         for seed in 1:20
             state = initialise_state(model, one_case; now = 200.0, rng = StableRNG(seed))

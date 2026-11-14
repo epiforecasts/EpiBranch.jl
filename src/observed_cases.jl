@@ -1,19 +1,19 @@
 # ── Starting an outbreak from observed cases ─────────────────────────
 # A line list is a set of cases already infected, some with a known infector.
 # The state built from it is the race of a branching process, run from those
-# cases up to `now` and cut there, so that `simulate(model, state; max_time)`
-# continues it exactly as it continues any cut run.
+# cases up to `now` and cut there. `simulate(model, state; max_time)` then
+# continues it as it continues any cut run.
 #
-# Each observed case is a member of the race at its observed infection time.
-# What the table already says about a case's offspring (the rows naming it as
-# their infector) is kept; the model draws the rest, conditioned on those
-# being all the contacts that fell by `now`.
+# Each observed case enters the race at its observed infection time. The rows
+# naming a case as their infector are kept as its offspring. The model draws
+# the rest, conditioned on those rows being all the contacts that fell by
+# `now`.
 
 const _MAX_CONDITIONING_ATTEMPTS = 100_000
 
-# The offspring of a window, in which an observed case's contacts are drawn
-# given what is known of them. A case the table did not list draws from the
-# window's own offspring as usual.
+# The offspring of a window, in which the contacts of an observed case are
+# drawn given what is known of them. A case the table did not list draws from
+# the offspring of the window as usual.
 #
 # For an observed case, the offspring count and each contact's time are drawn
 # from the window together and kept only when exactly as many contacts fall
@@ -69,8 +69,8 @@ function (w::_ObservedOffspring)(rng, ind, state)
     )
 end
 
-# The observed cases' columns, validated and converted: infection times,
-# the position of each case's infector (0 for none), and the optional onset
+# The columns of the observed cases, validated and converted: infection times,
+# the position of the infector of each case (0 for none), and the optional onset
 # and isolation times (`NaN` and `Inf` where absent).
 function _read_observed_cases(cases::AbstractDataFrame)
     names_ = Set(propertynames(cases))
@@ -126,9 +126,9 @@ function _optional_times(cases, name, absent)
     return Float64[ismissing(t) ? absent : Float64(t) for t in cases[!, name]]
 end
 
-# Generation and chain of each case from its infector's, which comes earlier
-# in time order. Cases are visited in order of infection time, so an infector
-# is always done before the cases it infected, whatever the row order.
+# Generation and chain of each case, taken from its infector, which is earlier
+# in time. Cases are visited in order of infection time, so an infector is
+# always done before the cases it infected, whatever the row order.
 function _generations(parent, inf)
     n = length(parent)
     generation = zeros(Int, n)
@@ -213,7 +213,7 @@ function _initialise_observed(
     )
     state.continuation === nothing && _return_pooled!(tree)
     _reconcile_sellke_bookkeeping!(state, extinct)
-    # The race settles every observed case as a seed; those with a known
+    # The race settles every observed case as a seed. Those with a known
     # infector are not index cases.
     for i in 1:n
         obs.parent[i] == 0 || (state.individuals[i].state[:index] = false)
@@ -227,22 +227,21 @@ end
 Build the [`SimulationState`](@ref) of an outbreak that has already started,
 from a table of the cases observed so far. Continue it with
 `simulate(model, state; max_time)`, which draws the infections still to come
-from the cases already there, for a short-term projection or for the
-probability that an outbreak is over under interventions that have no closed
-form.
+from the cases already there. This gives a short-term projection, or the
+probability that an outbreak is over under interventions with no closed form.
 
 `cases` has one row per case, with these columns:
 
 - `infection_time` (required): when the case was infected, in the units of the
-  model's delays.
+  delays of the model.
 - `id`: a label for each case, distinct across rows. Row numbers are used when
   there is none.
 - `parent_id`: the `id` of the case that infected this one, `missing` if
   unknown. A case whose infector is not known is treated as an index case. The
-  infector's offspring are then counted from these rows.
+  offspring of an infector are counted from these rows.
 - `onset_time`: when symptoms began, `missing` if they have not. It is used in
-  place of the model's draw of the incubation period, so a model that times
-  its contacts or interventions from onset reads the observed one.
+  place of the drawn incubation period, so a model that times its contacts or
+  interventions from onset uses the observed one.
 - `isolation_time`: when the case was isolated, `missing` if it has not been.
   The case infects no one from then on.
 
@@ -253,12 +252,12 @@ make after `now`.
 
 For each observed case, the model draws its offspring and their times and
 keeps the draw only if exactly as many contacts fall by `now` as the table has
-rows naming the case as their infector, which is the offspring law conditioned
-on the cases seen. Later contacts are drawn from that draw, so an old case with
-no known offspring has few left, and one that is isolated has none after its
-isolation time. Where the model's own interventions would have isolated or
-traced a case before `now`, they apply to it as to any case. They are not
-conditioned on what was observed.
+rows naming the case as their infector. This is the offspring law conditioned
+on the cases seen. Later contacts are drawn from that draw. An old case with
+no known offspring therefore has few left, and an isolated case has none after
+its isolation time. Interventions in the model that would have isolated or
+traced a case before `now` apply to it as to any case, and are not conditioned
+on the observed data.
 
 Only a [`BranchingProcess`](@ref) with a single [`Infectiousness`](@ref)
 window and a single type is supported, bare or inside a [`ModelSpec`](@ref),
