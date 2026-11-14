@@ -371,6 +371,7 @@ realised_generation_intervals
 realised_serial_interval
 realised_serial_intervals
 containment_probability
+containment_estimate
 is_extinct
 generation_R
 weekly_incidence

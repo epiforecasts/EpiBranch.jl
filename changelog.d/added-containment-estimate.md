@@ -1,0 +1,1 @@
+`containment_estimate(results; ...)` and `containment_estimate(model, n; ...)` return `(; n_contained, n, proportion, lower, upper)`, with a Wilson score interval at `level` (default 0.95). The interval reflects Monte Carlo error only and ignores parameter uncertainty. `containment_probability` keeps returning a single proportion.

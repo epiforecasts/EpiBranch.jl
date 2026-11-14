@@ -19,6 +19,33 @@ using Dates
         @test cp > 0.5
     end
 
+    @testset "containment_estimate" begin
+        model = BranchingProcess(NegBin(1.5, 0.3))
+        results = simulate(model, 200; max_cases = 500, rng = StableRNG(42))
+        est = containment_estimate(results; max_cases = 500)
+        @test est.n == 200
+        @test est.proportion == containment_probability(results; max_cases = 500)
+        @test est.n_contained == round(Int, est.proportion * 200)
+        @test est.lower < est.proportion < est.upper
+        wide = containment_estimate(results; max_cases = 500, level = 0.99)
+        @test wide.lower < est.lower && wide.upper > est.upper
+
+        est_model = containment_estimate(model, 200; max_cases = 500, rng = StableRNG(42))
+        @test est_model == est
+
+        # Wilson interval stays inside [0, 1] at the boundaries
+        all_out = EpiBranch._binomial_estimate(50, 50, 0.95)
+        @test all_out.upper ≈ 1.0 && 0.9 < all_out.lower < 1.0
+        none_out = EpiBranch._binomial_estimate(0, 50, 0.95)
+        @test isapprox(none_out.lower, 0.0; atol = 1.0e-12)
+        @test 0.0 < none_out.upper < 0.1
+        # Known value: 8/10 at 95% is (0.4902, 0.9433)
+        w = EpiBranch._binomial_estimate(8, 10, 0.95)
+        @test w.lower ≈ 0.4902 atol = 1.0e-3
+        @test w.upper ≈ 0.9433 atol = 1.0e-3
+        @test_throws ArgumentError containment_estimate(results; max_cases = 500, level = 1.5)
+    end
+
     @testset "weekly_incidence" begin
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(2.0), Exponential(5.0))
