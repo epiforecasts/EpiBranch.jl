@@ -163,9 +163,12 @@ a pair listed too, with `infected = false`.
 
 Columns: `from` (`id` of the case), `to` (`id` of the person exposed),
 `infected` (whether that exposure infected them), `generation` (generation of
-the person exposed), `infection_time` (day of exposure, which is the day of
-infection when `infected` is true) and `date_infection` (the same as a date
-counted from `reference_date`).
+the person exposed), `exposure_time` (day of exposure, which is also the day
+of infection when `infected` is true) and `date_exposure` (the same as a date
+counted from `reference_date`). A contact's attributes, such as `age` and `sex`
+from [`demographics`](@ref), follow as further columns, `missing` for a contact
+without them. Event times are not repeated here: see [`linelist`](@ref) with
+`infected_only = false` for those.
 
 # Examples
 
@@ -188,28 +191,62 @@ function contacts(
             for ind in individuals for child_id in ind.secondary_case_ids
             if child_id <= length(individuals)
     )
-    df = DataFrame(
-        [
-            (
-                from = from_id, to = child.id, infected = is_infected(child),
-                generation = child.generation,
-                infection_time = child.infection_time,
-                date_infection = _to_date(reference_date, child.infection_time)::Date,
-            )
-                for (from_id, child) in exposures if !isnan(child.infection_time)
-        ]
-    )
-    log = get(state.scratch, EXPOSED_CONTACTS_KEY, nothing)
-    log === nothing && return df
-    escaped = [
+    rows = NamedTuple[
         (
-            from = from_id, to = to_id, infected = false,
-            generation = generation, infection_time = t,
-            date_infection = _to_date(reference_date, t)::Date,
+            from = from_id, to = child.id, infected = is_infected(child),
+            generation = child.generation,
+            exposure_time = child.infection_time,
+            date_exposure = _to_date(reference_date, child.infection_time)::Date,
         )
-            for (from_id, to_id, t, generation) in (log::_ExposedContactLog).events
+            for (from_id, child) in exposures if !isnan(child.infection_time)
     ]
-    return vcat(df, DataFrame(escaped))
+    log = get(state.scratch, EXPOSED_CONTACTS_KEY, nothing)
+    if log !== nothing
+        for (from_id, to_id, t, generation) in (log::_ExposedContactLog).events
+            push!(
+                rows, (
+                    from = from_id, to = to_id, infected = false,
+                    generation = generation, exposure_time = t,
+                    date_exposure = _to_date(reference_date, t)::Date,
+                )
+            )
+        end
+    end
+    df = DataFrame(
+        from = Int[r.from for r in rows],
+        to = Int[r.to for r in rows],
+        infected = Bool[r.infected for r in rows],
+        generation = Int[r.generation for r in rows],
+        exposure_time = Float64[r.exposure_time for r in rows],
+        date_exposure = Date[r.date_exposure for r in rows]
+    )
+    _add_contact_attributes!(df, state)
+    return df
+end
+
+"""Add the attributes recorded on each contact as columns, `missing` where a
+contact has none. Event times and bookkeeping keys are left out: on a contact
+who escaped infection they describe an infection that never happened, or the
+state of an intervention."""
+function _add_contact_attributes!(df::DataFrame, state::SimulationState)
+    individuals = state.individuals
+    nrow(df) == 0 && return df
+    contacts_ = [individuals[id] for id in df.to]
+    keys_ = Set{Symbol}()
+    for ind in contacts_
+        union!(keys_, keys(ind.state))
+    end
+    filter!(
+        key -> !startswith(String(key), "_") && key !== :infected &&
+            event_time_metadata(Val(key)) === nothing &&
+            !hasproperty(df, key),
+        keys_
+    )
+    for key in sort!(collect(keys_))
+        raw = [_reported_state(ind, key) for ind in contacts_]
+        df[!, key] = _normalise_column(raw)
+    end
+    return df
 end
 
 # ── Internal helpers ─────────────────────────────────────────────────
