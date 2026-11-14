@@ -1,0 +1,1 @@
+The chain size probabilities of `ClusterMixed` with a non-closed-form offspring law now average over the whole mixing distribution. A discrete mixing law no longer gives probability 0 for every chain size, and a continuous one no longer loses its outer 0.2% of mass.

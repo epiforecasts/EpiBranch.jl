@@ -65,8 +65,8 @@ Chain size distribution when the reproduction number varies between chains
 probabilities of `build(θ)`, averaged over `θ` drawn from `mixing`.
 [`chain_size_distribution`](@ref) returns it.
 
-The average is computed by numerical integration over the central 99.8% of
-`mixing` (its 0.001 to 0.999 quantiles).
+The average sums over the support of a `DiscreteNonParametric` `mixing` and
+is otherwise computed by numerical integration over the whole of `mixing`.
 """
 struct ChainSizeMixture{F, D <: Distribution} <: ChainSizeLaw
     build::F
@@ -79,10 +79,10 @@ Distributions.insupport(::ChainSizeMixture, n::Integer) = n >= 1
 
 function Distributions.logpdf(d::ChainSizeMixture, n::Integer)
     n < 1 && return -Inf
-    lo = quantile(d.mixing, 1.0e-3)
-    hi = quantile(d.mixing, 1 - 1.0e-3)
-    integrand = θ -> pdf(chain_size_distribution(d.build(θ)), n) * pdf(d.mixing, θ)
-    prob, _ = quadgk(integrand, lo, hi)
+    # No absolute tolerance: chain size probabilities can be far below 1e-10.
+    prob = _mixture_expectation(
+        θ -> pdf(chain_size_distribution(d.build(θ)), n), d.mixing; atol = 0.0
+    )
     return prob > 0.0 ? log(prob) : -Inf
 end
 
