@@ -85,9 +85,9 @@ With `reported_only = true`, only the cases a [`Reporting`](@ref) or
 the cases whose `date_reporting` is on or before `as_of` (so it implies
 `reported_only`), and every other date column, such as `date_outcome`, is
 `missing` where the date falls after `as_of`, because that event had not yet
-been seen. Columns that are not dates (`isolated`, `outcome`) are not
-changed. Both options need a reporting step in the model and throw an
-`ArgumentError` without one. To coarsen the dates as well, pass the result to
+been seen. `isolated` and `outcome` are `missing` where `date_isolation` or
+`date_outcome` falls after `as_of`. Both options need a reporting step in the
+model and throw an `ArgumentError` without one. To coarsen the dates as well, pass the result to
 [`censor_linelist`](@ref).
 
 # Including people who were not infected
@@ -170,6 +170,14 @@ function _as_known(df::DataFrame, as_of)
     reported = [!ismissing(d) && (as_of === nothing || d <= as_of) for d in df.date_reporting]
     out = df[reported, :]
     as_of === nothing && return out
+    # Blank the paired value first, while its date is still present.
+    for (name, date_name) in (("isolated", "date_isolation"), ("outcome", "date_outcome"))
+        (hasproperty(out, name) && hasproperty(out, date_name)) || continue
+        late = [!ismissing(d) && d > as_of for d in out[!, date_name]]
+        out[!, name] = Union{eltype(out[!, name]), Missing}[
+            l ? missing : v for (v, l) in zip(out[!, name], late)
+        ]
+    end
     for name in names(out)
         startswith(name, "date_") || continue
         col = out[!, name]

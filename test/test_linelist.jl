@@ -460,6 +460,33 @@ end
         @test late == linelist(state; reference_date = ref, reported_only = true)
     end
 
+    @testset "as_of blanks outcome and isolated with their dates" begin
+        full_model = ModelSpec(
+            BranchingProcess(Poisson(2.0), Exponential(5.0));
+            progression = [
+                Reporting(delay = LogNormal(1.0, 0.3), probability = 1.0),
+                Death(delay = LogNormal(2.5, 0.4), probability = 0.5),
+            ],
+            interventions = [
+                Isolation(onset_to_isolation_delay = Exponential(10.0), duration = Inf),
+            ],
+            attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
+        )
+        st = simulate(full_model; max_cases = 200, n_initial = 20, rng = StableRNG(11))
+        as_of = ref + Day(25)
+        ll = linelist(st; reference_date = ref, as_of = as_of)
+        everything = linelist(st; reference_date = ref, as_of = ref + Day(10_000))
+        for (name, date_name) in (("outcome", "date_outcome"), ("isolated", "date_isolation"))
+            late = [
+                !ismissing(d) && d > as_of
+                    for d in leftjoin(ll[!, [:id]], everything[!, [:id, Symbol(date_name)]]; on = :id)[!, date_name]
+            ]
+            @test any(late)
+            @test all(ismissing, ll[late, name])
+            @test all(!ismissing, ll[.!late .& .!ismissing.(ll[!, date_name]), name])
+        end
+    end
+
     @testset "needs a reporting step" begin
         plain = simulate(
             ModelSpec(BranchingProcess(Poisson(1.5), Exponential(5.0)));
