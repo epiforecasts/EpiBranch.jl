@@ -49,9 +49,11 @@ end
 # The time infectiousness that follows onset is measured from. A case that stays
 # asymptomatic has no observed onset but still has the time it would have
 # happened. A shared course of infectiousness relative to onset therefore applies
-# to it.
+# to it. A case whose symptoms were prevented by vaccination, or whose infection
+# was aborted, keeps no such onset: its window from onset stays closed.
 function _potential_onset_time(ind::Individual{T}) where {T}
     haskey(ind.state, :incubation_period) || return onset_time(ind)
+    get(ind.state, :asymptomatic, false)::Bool || return onset_time(ind)
     return ind.infection_time + _state_real(ind.state, :incubation_period, T(NaN))
 end
 

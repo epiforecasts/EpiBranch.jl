@@ -869,3 +869,18 @@ end
     @test all(isfinite(incubation_period(i)) for i in state.individuals)
     @test all(is_asymptomatic(i) for i in state.individuals)
 end
+
+@testset "Only asymptomatic cases open an onset window without onset" begin
+    asymptomatic = Individual(id = 1, infection_time = 1.0)
+    asymptomatic.state[:incubation_period] = 3.0
+    asymptomatic.state[:asymptomatic] = true
+    asymptomatic.state[:onset_time] = NaN
+    @test EpiBranch._potential_onset_time(asymptomatic) == 4.0
+
+    aborted = Individual(id = 2, infection_time = 1.0)
+    aborted.state[:incubation_period] = 3.0
+    aborted.state[:asymptomatic] = false
+    aborted.state[:infection_aborted_time] = 2.0
+    aborted.state[:onset_time] = NaN
+    @test isnan(EpiBranch._potential_onset_time(aborted))
+end
