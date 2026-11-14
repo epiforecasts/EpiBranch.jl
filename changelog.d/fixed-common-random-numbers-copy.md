@@ -1,0 +1,1 @@
+`CommonRandomNumbers` can now be copied, so a fixed-population model whose progression holds a step other than `Transition` (`Recovery`, `Death`, `Reporting`, `Hospitalisation` or a custom step) runs with it instead of throwing a `MethodError`. The copy carries the main generator and every substream at their current positions.
