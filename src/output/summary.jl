@@ -278,6 +278,131 @@ function weekly_incidence(
 end
 
 """
+    incidence(state::SimulationState; interval=7, by=:onset,
+              reference_date::Date=Date(2020, 1, 1), range=nothing,
+              cumulative=false, by_generation=false)
+    incidence(states::Vector{<:SimulationState}; kwargs...)
+
+Case counts in bins of `interval` days: the epidemic curve of one simulated
+outbreak, or of several. Returns a DataFrame with columns `date` (the first day
+of each bin) and `cases`, plus `generation` when `by_generation = true` and
+`sim_id` (the position of the outbreak in `states`) for a vector of outbreaks.
+A bin with no cases has a row with 0, so tables from different runs have the
+same rows and line up.
+
+- `interval`: the bin width in days, `1` for daily counts and `7` for weekly. With
+  a multiple of 7 the bins start on a Monday, as in [`weekly_incidence`](@ref);
+  otherwise they start at `reference_date`, simulation day 0.
+- `by`: which date places a case in a bin, as in [`weekly_incidence`](@ref).
+- `range`: a tuple of dates `(first, last)`. The bins are those containing these
+  two dates, and cases outside them are not counted. By default the bins run
+  from the first to the last bin with a case in any of the outbreaks.
+- `cumulative`: if `true`, `cases` is the running total up to and including each
+  bin, within each outbreak (and generation). A `range` that starts after the
+  first case counts only from its start.
+- `by_generation`: if `true`, there is one row for every generation, from 0 to the
+  latest generation of any outbreak, in every bin. This is the count by
+  generation that `aggregate(by = "generation")` gives in epichains.
+
+Without any case and without `range`, the table is empty.
+
+# Examples
+
+```julia
+states = simulate(model, 100; max_time = 84.0)
+incidence(states; interval = 1)                       # daily counts, one table
+incidence(states[1]; cumulative = true, by_generation = true)
+```
+"""
+function incidence(
+        state::SimulationState;
+        interval::Integer = 7,
+        by::Symbol = :onset,
+        reference_date::Date = Date(2020, 1, 1),
+        range::Union{Nothing, Tuple{Date, Date}} = nothing,
+        cumulative::Bool = false,
+        by_generation::Bool = false
+    )
+    return select!(
+        _incidence([state]; interval, by, reference_date, range, cumulative, by_generation),
+        Not(:sim_id)
+    )
+end
+
+function incidence(
+        states::Vector{<:SimulationState};
+        interval::Integer = 7,
+        by::Symbol = :onset,
+        reference_date::Date = Date(2020, 1, 1),
+        range::Union{Nothing, Tuple{Date, Date}} = nothing,
+        cumulative::Bool = false,
+        by_generation::Bool = false
+    )
+    return _incidence(states; interval, by, reference_date, range, cumulative, by_generation)
+end
+
+function _incidence(states; interval, by, reference_date, range, cumulative, by_generation)
+    interval >= 1 || throw(ArgumentError("incidence: interval must be at least 1 day"))
+    range === nothing || range[1] <= range[2] ||
+        throw(ArgumentError("incidence: range must be (first, last) with first <= last"))
+
+    # Bins start on a Monday for whole weeks, so that `interval = 7` matches
+    # `weekly_incidence`.
+    origin = interval % 7 == 0 ?
+        reference_date - Day(dayofweek(reference_date) - 1) : reference_date
+    bin_of(d::Date) = fld(Dates.value(d - origin), interval)
+
+    bins = [Int[] for _ in states]
+    gens = [Int[] for _ in states]
+    for (i, s) in enumerate(states), ind in s.individuals
+        is_infected(ind) || continue
+        t = _weekly_time(by, ind)
+        isfinite(t) || continue
+        push!(bins[i], bin_of(reference_date + Day(floor(Int, t))))
+        push!(gens[i], ind.generation)
+    end
+
+    if range === nothing
+        all_bins = reduce(vcat, bins; init = Int[])
+        isempty(all_bins) && return _empty_incidence(by_generation)
+        first_bin, last_bin = extrema(all_bins)
+    else
+        first_bin, last_bin = bin_of(range[1]), bin_of(range[2])
+    end
+    n_bins = last_bin - first_bin + 1
+    all_gens = reduce(vcat, gens; init = Int[])
+    n_gens = by_generation ? (isempty(all_gens) ? 1 : maximum(all_gens) + 1) : 1
+
+    sim_ids = Int[]
+    dates = Date[]
+    generations = Int[]
+    cases = Int[]
+    for i in eachindex(states)
+        counts = zeros(Int, n_bins, n_gens)
+        for (b, g) in zip(bins[i], gens[i])
+            first_bin <= b <= last_bin || continue
+            counts[b - first_bin + 1, by_generation ? g + 1 : 1] += 1
+        end
+        cumulative && (counts = cumsum(counts; dims = 1))
+        for g in 1:n_gens, k in 1:n_bins
+            push!(sim_ids, i)
+            push!(dates, origin + Day((first_bin + k - 1) * interval))
+            push!(generations, g - 1)
+            push!(cases, counts[k, g])
+        end
+    end
+    out = DataFrame(sim_id = sim_ids, date = dates, generation = generations, cases = cases)
+    by_generation || select!(out, Not(:generation))
+    return out
+end
+
+function _empty_incidence(by_generation::Bool)
+    out = DataFrame(sim_id = Int[], date = Date[], generation = Int[], cases = Int[])
+    by_generation || select!(out, Not(:generation))
+    return out
+end
+
+"""
     summarise(df::AbstractDataFrame; value=:cases, by=:week,
               probs=[0.025, 0.25, 0.5, 0.75, 0.975])
 
