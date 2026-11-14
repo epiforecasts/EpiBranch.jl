@@ -77,7 +77,7 @@ internal to an intervention and never shown. To add your own date columns see
 With `anonymised_names = true` there is also a `case_name` column: a
 16-character hexadecimal code derived from `id`, standing in for the
 anonymised name that simulist's `anonymise` option gives. It is stable for a
-given `id`, so it can be joined back, and it is not a secret.
+given `id` and can be joined back. It is not a secret.
 
 `isolated`, `date_isolation` and `date_isolation_release` show an isolation
 only when it counted as a detection (see [`is_isolated`](@ref)).
