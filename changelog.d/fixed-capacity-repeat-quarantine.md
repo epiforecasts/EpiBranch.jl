@@ -1,0 +1,1 @@
+`CapacityConstrained` and `HeldCapacity` now limit quarantines. A further trace of a contact who is already quarantined is dropped rather than recording a second quarantine that used no budget or place, and a quarantine is charged to the start of the entry that was admitted rather than to the contact's earliest trace, which capacity may have refused.

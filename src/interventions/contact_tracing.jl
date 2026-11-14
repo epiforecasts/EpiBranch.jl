@@ -449,6 +449,7 @@ end
 # The key a quarantine records its own removals under, apart from the shared
 # history `set_isolated!` keeps, so that its block covers its own days only.
 const QUARANTINE_STRETCHES_KEY = :_quarantine_stretches
+const _QUARANTINE_START_KEY = :_quarantine_start
 
 """
     Quarantine(; duration)
@@ -512,6 +513,11 @@ function apply_trace!(q::Quarantine, contact, state, trace_time, rng)
     handles = get(contact.state, :_quarantine_removal_handles, nothing)
     contact.state[:_quarantine_removal_handles] =
         handles === nothing ? [handle] : push!(copy(handles), handle)
+    # The day the quarantine in force began, which is what a capacity is
+    # charged on: `:trace_time` is the earliest trace, including ones a
+    # capacity refused, and can predate every entry recorded.
+    contact.state[_QUARANTINE_START_KEY] =
+        min(_state_real(contact.state, _QUARANTINE_START_KEY, Inf), trace_time)
     # Filed here as well as by the built-in tracers (`_apply_trace!`), so a
     # tracer written outside the package, which calls this directly, still
     # counts the quarantine against the budget a wrapped tracer shares.
@@ -796,8 +802,12 @@ function _reset_traced!(ind::Individual, owner::Symbol)
         kept = filter(h -> !(h in owned), standing)
         if isempty(kept)
             delete!(ind.state, :_quarantine_removal_handles)
+            delete!(ind.state, _QUARANTINE_START_KEY)
         else
             ind.state[:_quarantine_removal_handles] = kept
+            ind.state[_QUARANTINE_START_KEY] = minimum(
+                e[3] for e in get(ind.state, :_removal_entries, ()) if e[1] in kept
+            )
         end
     end
     delete!(ind.state, _own_trace_time_key(owner))

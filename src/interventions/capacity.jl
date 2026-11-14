@@ -339,7 +339,17 @@ capacity_time_key(::TraceAction) = nothing
 # for the entries it has recorded (see `_reset_traced!`),
 # present and non-empty exactly when a quarantine has used the budget.
 capacity_key(::Quarantine) = :_quarantine_removal_handles
-capacity_time_key(::Quarantine) = :trace_time
+capacity_time_key(::Quarantine) = _QUARANTINE_START_KEY
+
+# Whether an action for someone who has already used the resource still goes
+# to the wrapped intervention. A dose does no harm there, since `record_dose!`
+# skips a second one. A further trace of a quarantined contact would record a
+# second entry that no budget or place was charged for, so it is dropped.
+_repeat_use_passes(::AbstractIntervention) = true
+_repeat_use_passes(ct::_Tracing) = _repeat_use_passes(ct.action)
+_repeat_use_passes(::TraceAction) = true
+_repeat_use_passes(::Quarantine) = false
+_repeat_use_passes(w::InterventionWrapper) = _repeat_use_passes(w.intervention)
 
 function refused_action(p::DeferRefused, cc::CapacityConstrained, times, action)
     period_start, _ = _period_bounds(cc, action.time)
