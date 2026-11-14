@@ -88,6 +88,18 @@ function _record_infection!(::_ContactsOf, infector, ind, w, named)
     return nothing
 end
 
+# An exposure the race found was never a contact leaves the case's contacts,
+# for a person the case's own `contacts_of` created. Someone who already
+# existed is not this route's to take back.
+function _withdraw_contact!(c::_ContactsOf, race, parent, contact)
+    _created_by(contact, parent) || return nothing
+    _unmake_contact!(parent, contact)
+    delete!(c.minted, contact.id)
+    reached = get(c.reached, parent.id, nothing)
+    reached === nothing || filter!(!=(contact.id), reached)
+    return nothing
+end
+
 # Ask the model whom the settling case exposes, or take what a ring already
 # asked for, timed from the infection now known. A case at the generation bound
 # transmits to nobody.

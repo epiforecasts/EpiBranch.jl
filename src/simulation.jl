@@ -995,6 +995,20 @@ function make_contact!(
     return contact
 end
 
+# Take a contact back out of the outbreak: it was made as a person by
+# `make_contact!`, but the meeting it stands for never happened (see
+# `prevents_contact`). It leaves its infector's contacts, so neither `contacts`
+# nor tracing reaches it, and is marked so that `linelist` does not list it as
+# a person who was exposed and escaped.
+function _unmake_contact!(parent::Individual, contact::Individual)
+    idx = findlast(==(contact.id), parent.secondary_case_ids)
+    idx === nothing || deleteat!(parent.secondary_case_ids, idx)
+    contact.state[:_withdrawn] = true
+    return nothing
+end
+
+_is_withdrawn(ind::Individual) = get(ind.state, :_withdrawn, false)::Bool
+
 """
     resolve_transitions!(state, individual)
 
@@ -1279,11 +1293,24 @@ Each source defines [`competing_risk`](@ref). Returns none by default.
 """
 transmission_risks(::TransmissionModel) = ()
 
-"""Whether any risk blocks the `parent` → `contact` transmission at
-`transmission_time`: the built-in sources (host susceptibility, infector
-infectiousness, …) first, then any the model contributes through
-[`transmission_risks`](@ref), then the interventions in stack order. The
-first to block wins.
+# What the composed risks decided about one proposed transmission: it went
+# through, it was blocked but the contact still happened, or it was blocked by
+# a source that stops the meeting itself, so there was no contact either (see
+# `prevents_contact`).
+const _NOT_BLOCKED = 0
+const _BLOCKED = 1
+const _CONTACT_PREVENTED = 2
+
+"""What the risks decide about the `parent` → `contact` transmission at
+`transmission_time`: `_NOT_BLOCKED`, `_BLOCKED` where a risk blocked it but the
+contact still happened, or `_CONTACT_PREVENTED` where a source that
+[`prevents_contact`](@ref EpiBranch.prevents_contact) blocked it. The sources
+are the built-in ones (host susceptibility, infector infectiousness, …)
+first, then any the model contributes through [`transmission_risks`](@ref),
+then the interventions in stack order. The first to block wins the
+transmission, but a block by a source that leaves the contact standing does not
+hide a later source that prevents it, so those later sources are still asked,
+and only those.
 
 Every model resolves a transmission through this one function, on each
 candidate infection time the race proposes, so an intervention writes one
@@ -1302,27 +1329,42 @@ function _composed_risks_block(
         transmission_time, model_risks, interventions,
         builtin_blocks = _builtin_risk_blocks
     )
-    builtin_blocks(parent, contact, state, transmission_time) && return true
-    _any_risk_blocks(model_risks, parent, contact, state, transmission_time) &&
-        return true
-    return _any_risk_blocks(interventions, parent, contact, state, transmission_time)
+    level = builtin_blocks(parent, contact, state, transmission_time) ?
+        _BLOCKED : _NOT_BLOCKED
+    level = _walk_risks(level, model_risks, parent, contact, state, transmission_time)
+    return _walk_risks(level, interventions, parent, contact, state, transmission_time)
 end
 
-# The sources in order, the first to block winning. A tuple is walked
-# element by element so each call is resolved when the method is compiled;
-# a call through a vector of mixed types is resolved at run time instead,
-# which boxes `transmission_time` on every call.
-_any_risk_blocks(::Tuple{}, parent, contact, state, transmission_time) = false
-@inline function _any_risk_blocks(sources::Tuple, parent, contact, state, transmission_time)
-    _risk_blocks(first(sources), parent, contact, state, transmission_time) &&
-        return true
-    return _any_risk_blocks(Base.tail(sources), parent, contact, state, transmission_time)
+# The sources in order, carrying how far the transmission has been blocked. A
+# tuple is walked element by element so each call is resolved when the method
+# is compiled; a call through a vector of mixed types is resolved at run time
+# instead, which boxes `transmission_time` on every call.
+_walk_risks(level, ::Tuple{}, parent, contact, state, transmission_time) = level
+@inline function _walk_risks(level, sources::Tuple, parent, contact, state, transmission_time)
+    level = _step_risks(level, first(sources), parent, contact, state, transmission_time)
+    level == _CONTACT_PREVENTED && return level
+    return _walk_risks(level, Base.tail(sources), parent, contact, state, transmission_time)
 end
-function _any_risk_blocks(sources, parent, contact, state, transmission_time)
+function _walk_risks(level, sources, parent, contact, state, transmission_time)
     for source in sources
-        _risk_blocks(source, parent, contact, state, transmission_time) && return true
+        level = _step_risks(level, source, parent, contact, state, transmission_time)
+        level == _CONTACT_PREVENTED && return level
     end
-    return false
+    return level
+end
+
+# One source's turn. Once the transmission is blocked only a source that
+# prevents the contact is still asked, so a stack without one draws no more
+# than it did.
+@inline function _step_risks(level, source, parent, contact, state, transmission_time)
+    if level == _NOT_BLOCKED
+        _risk_blocks(source, parent, contact, state, transmission_time) || return level
+        return prevents_contact(source) ? _CONTACT_PREVENTED : _BLOCKED
+    end
+    prevents_contact(source) &&
+        _risk_blocks(source, parent, contact, state, transmission_time) &&
+        return _CONTACT_PREVENTED
+    return level
 end
 
 """Apply attributes function to an individual. No-op for NoAttributes."""

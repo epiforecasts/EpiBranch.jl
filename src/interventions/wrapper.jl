@@ -58,6 +58,7 @@ persistent_competing_risks(w::InterventionWrapper) = persistent_competing_risks(
 _may_lapse(w::InterventionWrapper) = _may_lapse(w.intervention)
 _triggers_of(w::InterventionWrapper) = _triggers_of(w.intervention)
 standing_block(w::InterventionWrapper) = standing_block(w.intervention)
+prevents_contact(w::InterventionWrapper) = prevents_contact(w.intervention)
 susceptibility_host_times(w::InterventionWrapper) = susceptibility_host_times(w.intervention)
 susceptibility_components(w::InterventionWrapper, host) = susceptibility_components(w.intervention, host)
 _innermost(w::InterventionWrapper) = _innermost(w.intervention)

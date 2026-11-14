@@ -112,7 +112,13 @@ function linelist(
         state::SimulationState;
         reference_date::Date = Date(2020, 1, 1), infected_only::Bool = true
     )
-    cases = infected_only ? filter(is_infected, state.individuals) : state.individuals
+    # A contact the interventions stopped from ever meeting its infector was
+    # never exposed, so it is no more a person in the outbreak than a contact
+    # never drawn.
+    cases = filter(
+        ind -> is_infected(ind) || !(infected_only || _is_withdrawn(ind)),
+        state.individuals
+    )
     isempty(cases) && return DataFrame()
 
     cols = Dict{Symbol, Vector}(
@@ -160,6 +166,13 @@ default, so every row has `infected = true`: a household member or network
 neighbour who was exposed but not infected does not appear. Attach an
 [`ExposedContactRecorder`](@ref) as the `ModelSpec`'s `recorder` to have such
 a pair listed too, with `infected = false`.
+
+A contact that an intervention stopped from happening at all, such as one that
+would have fallen after the infector's isolation in hospital, is not an
+exposure and is left out, and tracing does not reach it. An intervention
+decides this through [`prevents_contact`](@ref EpiBranch.prevents_contact);
+isolation at home, which blocks the infection but not the meeting, keeps the
+contact.
 
 Columns: `from` (`id` of the case), `to` (`id` of the person exposed),
 `infected` (whether that exposure infected them), `generation` (generation of

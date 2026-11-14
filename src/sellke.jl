@@ -474,7 +474,7 @@ end
 
 # Applies `_certain_release` to each source in turn, stopping at the first whose
 # releases do not bind. Tuples are walked element by element, as in
-# `_any_risk_blocks`, which resolves each call at compile time.
+# `_walk_risks`, which resolves each call at compile time.
 _fold_release(release, ::Tuple{}, parent, contact, state, transmission_time) = release, true
 @inline function _fold_release(
         release, sources::Tuple, parent, contact, state, transmission_time
@@ -536,7 +536,7 @@ end
 _never_skip(source) = false
 
 # Whether any source not skipped by `skip` contributes a standing risk, walked
-# like `_any_risk_blocks` to keep each call resolved at compile time.
+# like `_walk_risks` to keep each call resolved at compile time.
 _any_standing(skip, ::Tuple{}, parent, contact, state, transmission_time) = false
 @inline function _any_standing(
         skip, sources::Tuple, parent, contact, state, transmission_time
@@ -559,11 +559,12 @@ function _any_standing(skip, sources, parent, contact, state, transmission_time)
 end
 
 # Whether the composed risks block `parent` infecting `contact` at the proposed
-# `transmission_time`, and whether that block is permanent (see
-# `_permanently_blocked`). A risk may read the exposure from the contact's
-# `infection_time`, but a proposed contact is still susceptible, so it holds
-# nothing yet: set it to the proposed time for the resolution, and put it back
-# if the contact is blocked, leaving it as it was.
+# `transmission_time`, whether the block stops the meeting itself rather than
+# only the infection (see `prevents_contact`), and whether the block is
+# permanent (see `_permanently_blocked`). A risk may read the exposure from the
+# contact's `infection_time`, but a proposed contact is still susceptible, so it
+# holds nothing yet: set it to the proposed time for the resolution, and put it
+# back if the contact is blocked, leaving it as it was.
 function _proposal_blocked(
         state::SimulationState, parent, contact, transmission_time,
         model_risks, interventions, builtin_blocks = _sellke_builtin_risk_blocks
@@ -574,10 +575,11 @@ function _proposal_blocked(
     # Scheduled risks use the proposed contact time even when earlier contacts
     # were blocked. Outside this evaluation the clock records accepted infections.
     state.max_infection_time = transmission_time
-    blocked = _composed_risks_block(
+    level = _composed_risks_block(
         state, parent, contact, transmission_time,
         model_risks, interventions, builtin_blocks
     )
+    blocked = level != _NOT_BLOCKED
     permanent = blocked && _permanently_blocked(
         state, parent, contact, transmission_time, model_risks, interventions
     )
@@ -587,7 +589,7 @@ function _proposal_blocked(
         ) : nothing
     state.max_infection_time = previous_clock
     blocked && (contact.infection_time = previous)
-    return blocked, permanent, release
+    return blocked, level == _CONTACT_PREVENTED, permanent, release
 end
 
 """
@@ -1315,7 +1317,7 @@ function _sellke_race_typed!(
         # index case is put to no risk at all.
         source = infector_id == 0 ? ind : state.individuals[infector_id]
         if checks && (infector_id != 0 || introduction !== nothing)
-            blocked, permanent, certain_release = _proposal_blocked(
+            blocked, prevented, permanent, certain_release = _proposal_blocked(
                 state, source, ind, bt, risks,
                 opening.route == 0 ? introduction_interventions :
                     route_interventions[opening.route],
@@ -1328,7 +1330,12 @@ function _sellke_race_typed!(
                 # proposal, and a permanent one keeps drawing only if it says
                 # the pair's draws still matter (see the `_sellke_race!`
                 # docstring).
-                keeps_drawing = _logs_blocked(members, source, ind) &&
+                # A block that stops the meeting leaves no contact to record, to
+                # keep drawing for or to list on the infector.
+                prevented && opening.route != 0 && _on_route(
+                    (_, rt) -> _withdraw_contact!(rt, race, source, ind), rts, opening.route
+                )
+                keeps_drawing = !prevented && _logs_blocked(members, source, ind) &&
                     records_contacts(recorder, source, ind, state, bt)
                 if !may_block
                     _discard_proposal!(members, best, j)
@@ -1815,6 +1822,11 @@ _case_contacts(contacts, rts, race, max_generation) = contacts
 _route_open(route_targets, ind, w::RouteWindow) = window_open(ind, w)
 _route_may_block(route_targets) = false
 _route_builtin_blocks(route_targets) = _sellke_builtin_risk_blocks
+# Take back a contact the race has just found was never made, for a route that
+# lists the contacts it creates on their infector. A route over a fixed
+# population records no contact for a blocked proposal, so it has nothing to
+# take back.
+_withdraw_contact!(route_targets, race, parent, contact) = nothing
 function _record_infection!(route_targets, infector, ind, w, named)
     push!(infector.secondary_case_ids, ind.id)
     named && (ind.state[:infection_route] = w.name)

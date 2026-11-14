@@ -399,6 +399,16 @@ Act on `contact`, traced at `trace_time` (days); changes `contact` in place.
 apply_trace!(::TraceAction, contact, state, trace_time, rng) = nothing
 
 """
+    prevents_contact(action::TraceAction) -> Bool
+
+Whether the removal this action records stops its person meeting the people
+they would infect, so the contacts it blocks are dropped rather than recorded.
+[`ContactTracing`](@ref) answers with its action's. Default `false`: an action
+that removes nobody blocks no contact.
+"""
+prevents_contact(::TraceAction) = false
+
+"""
     intervention_actions(action::TraceAction, state, candidates)
 
 Further actions a `TraceAction` proposes for its traced contacts, besides
@@ -451,7 +461,7 @@ end
 const QUARANTINE_STRETCHES_KEY = :_quarantine_stretches
 
 """
-    Quarantine(; duration)
+    Quarantine(; duration, prevents_contact = true)
 
 Quarantine a traced contact from the time they are reached (or from their own
 isolation, if that is earlier), so they cannot infect others while
@@ -477,11 +487,21 @@ triggering `SourceTracing` on the same parent) keeps its *earliest* trace in
 `:trace_time`. On a later trace, that stored time predates the one `duration`
 is being called for, so a rule that subtracts it from a fixed end day will run
 longer than intended.
+
+`prevents_contact` (default `true`) says whether a quarantined person has no
+contact with the people they would have infected, so the contacts the
+quarantine blocks are left out of [`contacts`](@ref) and tracing does not reach
+them. Set it to `false` where quarantined people keep meeting, such as
+quarantine at home with the household. See
+[`prevents_contact`](@ref EpiBranch.prevents_contact).
 """
 struct Quarantine{D} <: TraceAction
     duration::D
+    prevents_contact::Bool
 end
-Quarantine(; duration) = Quarantine(duration)
+Quarantine(duration) = Quarantine(duration, true)
+Quarantine(; duration, prevents_contact::Bool = true) = Quarantine(duration, prevents_contact)
+prevents_contact(q::Quarantine) = q.prevents_contact
 
 function apply_trace!(q::Quarantine, contact, state, trace_time, rng)
     contact.state[:traced] = true
@@ -1088,6 +1108,8 @@ function competing_risk(t::_Tracing, parent, contact, state)
     end
     return isempty(risks) ? nothing : risks
 end
+
+prevents_contact(t::_Tracing) = prevents_contact(t.action)
 
 # A quarantine is a removal, so it reaches only the routes a removal can cut.
 function risk_applies(::_Tracing, route)

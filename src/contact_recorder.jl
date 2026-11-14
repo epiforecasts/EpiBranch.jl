@@ -38,7 +38,9 @@ for good (see [`EpiBranch.standing_block`](@ref)). Asked on every proposal a
 risk blocks, not only ones certain to recur, with `t` the time of that
 proposal, so a recorder can log each blocked contact; only the answer given
 for a proposal whose block is certain decides whether the pair's draws
-continue. Default `false`.
+continue. Default `false`. A proposal blocked by a source that
+[`prevents_contact`](@ref EpiBranch.prevents_contact) is not asked: there was no
+contact to record.
 
 Returning `true` for a certain block restricts which models can run: a model
 whose infectious period never ends would simulate contacts for ever, so it
@@ -69,7 +71,9 @@ dropped again if the same pair later infects: the block was not this pair's
 last outcome, so it is no longer an exposure that escaped. A blocked community
 introduction, where the person proposed as their own infector stands in for a
 source outside the population, is not a contact between two people and is not
-logged. Attach one to a [`ModelSpec`](@ref) as `recorder =
+logged, and neither is a contact that a source that
+[`prevents_contact`](@ref EpiBranch.prevents_contact) stopped from happening.
+Attach one to a [`ModelSpec`](@ref) as `recorder =
 ExposedContactRecorder()`; [`contacts`](@ref) then lists each pair still
 logged as an exposure that did not lead to infection, the same way it already
 does for a [`BranchingProcess`](@ref).
