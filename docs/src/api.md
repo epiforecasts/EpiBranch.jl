@@ -171,6 +171,11 @@ Reporting
 Hospitalisation
 Death
 Recovery
+Testing
+CaseClassification
+AbstractAssay
+Assay
+within_host
 exclusive_probabilities
 is_terminal
 terminal_event

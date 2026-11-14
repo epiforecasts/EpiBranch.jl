@@ -23,6 +23,16 @@ default:
 - [`Hospitalisation`](@ref): a proportion of cases are admitted after a delay.
 - [`Death`](@ref): a case dies after a delay, with a given probability.
 - [`Recovery`](@ref): every symptomatic case gets a recovery time.
+- [`Testing`](@ref): a sample is taken a delay after an event, and the case's own within-host trajectory ([`within_host`](@ref)) at that time goes through an [`Assay`](@ref) to give a Ct value and a result. [`CaseClassification`](@ref) then labels cases as confirmed (positive test) or probable (symptoms without one).
+
+```julia
+curve(rng, ind) = t -> t < 5 ? 8t / 5 : 8exp(-0.4 * (t - 5))   # log10 copies per mL
+assay = Assay(ct = load -> 40.0 - 3.3 * load, detect = 2.0)     # limit of detection
+progression = [Testing(assay = assay, delay = Gamma(2.0, 1.0)), CaseClassification()]
+attributes = [clinical_presentation(incubation_period = LogNormal(1.5, 0.5)), within_host(curve)]
+```
+
+The trajectory, the assay and the sampling rule are all supplied by the caller; the package builds in no pathogen.
 
 Death and recovery are final outcomes: each case ends with one of them (see
 [Competing outcomes](@ref) below). Each event has its own delay distribution
