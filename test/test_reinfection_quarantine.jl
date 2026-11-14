@@ -25,10 +25,16 @@ using StableRNGs
 
     @test ind.state[:quarantined]
     @test EpiBranch.removal_stretches(ind, EpiBranch.QUARANTINE_STRETCHES_KEY) ==
-          [(3.0, 17.0)]
+        [(3.0, 17.0)]
     # The per-episode draw is still refreshed.
     @test ind.state[:test_positive] isa Bool
     ind.state[:test_positive] = :stale
     EpiBranch.initialise_episode!(iso, ind, state)
     @test ind.state[:test_positive] isa Bool
+    # A wrapper forwards the hook to the intervention it wraps.
+    ind.state[:test_positive] = :stale
+    EpiBranch.initialise_episode!(Scheduled(iso; start_time = 0.0), ind, state)
+    @test ind.state[:test_positive] isa Bool
+    # The default does nothing.
+    @test EpiBranch.initialise_episode!(tracing, ind, state) === nothing
 end
