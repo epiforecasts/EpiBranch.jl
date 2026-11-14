@@ -302,6 +302,25 @@ end
         @test !is_quarantined(later)
     end
 
+    @testset "A repeat trace of a quarantined contact is not charged again" begin
+        ct = ContactTracing(TraceEveryone(), 1.0, Dirac(0.0), Quarantine(duration = Inf))
+        cc = CapacityConstrained(ct; budget_per_period = 1.0, period = 7.0, carry_over = false)
+        state = empty_state()
+        infector = Individual(id = 1)
+        set_isolated!(infector, 0.0; release_time = Inf)
+        a, b = Individual(id = 2), Individual(id = 3)
+        append!(state.individuals, [a, b])
+        EpiBranch.trace_contacts!(cc, state, infector, [a], [9.0])
+        # `b` is refused in the period `a` used up; the earlier repeat trace
+        # of `a` neither adds an entry nor moves the use to the week before.
+        EpiBranch.trace_contacts!(cc, state, infector, [b, a], [10.0, 2.0])
+        @test EpiBranch.removal_stretches(a, EpiBranch.QUARANTINE_STRETCHES_KEY) == [(9.0, Inf)]
+        @test a.state[:_quarantine_start] == 9.0
+        @test !is_quarantined(b)
+        state.max_infection_time = 9.0
+        @test capacity_usage(cc, state).used == 1
+    end
+
     @testset "A quarantine over budget leaves the contact traced but not removed" begin
         model = ModelSpec(
             BranchingProcess(Poisson(2.0), Exponential(5.0));
@@ -383,7 +402,7 @@ end
             action = Quarantine(duration = Inf)
         )
         @test EpiBranch.capacity_key(quarantining) == :_quarantine_removal_handles
-        @test EpiBranch.capacity_time_key(quarantining) == :trace_time
+        @test EpiBranch.capacity_time_key(quarantining) == :_quarantine_start
         @test EpiBranch.capacity_key(Scheduled(quarantining; start_time = 1.0)) ==
             EpiBranch.capacity_key(quarantining)
 
