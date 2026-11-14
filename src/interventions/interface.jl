@@ -27,9 +27,9 @@ abstract type AbstractIntervention end
 """Record this intervention's starting information on a person when they
 enter the simulation (for example "not yet isolated"). Default: does nothing.
 
-Called once per person, not again on a reinfection: state set here, such as a
-quarantine's, belongs to the person's time in the population and stays in
-place. State that belongs to one infection is set in
+Called once per person, not again on a reinfection. State set here, such as a
+quarantine, belongs to the time the person spends in the population and stays
+in place. State that belongs to one infection is set in
 [`initialise_episode!`](@ref EpiBranch.initialise_episode!)."""
 initialise_individual!(::AbstractIntervention, individual, state) = nothing
 
