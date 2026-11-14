@@ -653,7 +653,7 @@ function _infection_to_onset(attrs)
                 "a per-case function"
         )
     )
-    return (1 - cp.prob_asymptomatic, cp.incubation_period)
+    return (1 - cp.prob_asymptomatic, _closed_form_incubation(cp, "The closed form"))
 end
 
 function _check_onset_builders(builders)

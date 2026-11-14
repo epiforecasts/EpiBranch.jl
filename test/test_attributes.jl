@@ -217,6 +217,40 @@ end
         end
     end
 
+    @testset "clinical_presentation incubation_period accepts a function" begin
+        attrs = clinical_presentation(
+            incubation_period = (rng, ind) -> rand(
+                rng, ind.state[:asymptomatic] ? Dirac(2.0) : Dirac(5.0)
+            ),
+            prob_asymptomatic = (rng, ind) -> iseven(ind.id) ? 1.0 : 0.0
+        )
+        for id in 1:6
+            ind = Individual(id = id, infection_time = 1.0)
+            attrs(StableRNG(id), ind)
+            if iseven(id)
+                @test ind.state[:asymptomatic]
+                @test ind.state[:latent_incubation_period] == 2.0
+                @test isnan(ind.state[:incubation_period])
+                @test isnan(ind.state[:onset_time])
+            else
+                @test !ind.state[:asymptomatic]
+                @test ind.state[:incubation_period] == 5.0
+                @test ind.state[:onset_time] == 6.0
+            end
+        end
+
+        @testset "closed forms that read the incubation period refuse it" begin
+            fn = clinical_presentation(
+                incubation_period = (rng, ind) -> rand(rng, LogNormal(1.5, 0.5))
+            )
+            bp = BranchingProcess(NegBin(2.0, 0.5), LogNormal(1.6, 0.5))
+            iso = Isolation(onset_to_isolation_delay = 1.0, duration = Inf)
+            @test_throws r"incubation period directly" extinction_probability(
+                ModelSpec(bp; interventions = [iso], attributes = fn)
+            )
+        end
+    end
+
     @testset "group_attribute shares reporting probabilities per run" begin
         attrs = [
             groups(2; key = :household),

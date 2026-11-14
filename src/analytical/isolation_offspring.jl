@@ -74,6 +74,21 @@ function _clinical_presentation(attrs::Union{Tuple, AbstractVector})
 end
 _clinical_presentation(::Any) = nothing
 
+# The incubation period a closed form reads directly. A function of the
+# individual has no distribution to integrate over, so it is refused here with
+# a message that names the cause, rather than failing further in.
+function _closed_form_incubation(cp::ClinicalPresentation, what)
+    inc = cp.incubation_period
+    inc isa Union{Real, Distribution} && return inc
+    throw(
+        ArgumentError(
+            "$what reads the incubation period directly and needs a number or " *
+                "a distribution, not a function of the individual (got $(typeof(inc))); " *
+                "simulate instead."
+        )
+    )
+end
+
 # Expectation of `f` over a fixed value, over a continuous distribution or a
 # discrete-nonparametric one (`_mixture_expectation`, shared with
 # `ClusterMixed`'s chain-level mixing, and correct for an arbitrary, possibly
@@ -165,7 +180,7 @@ function analytic_offspring_effect(
                 "model that needs one instead."
         )
     )
-    incubation = cp.incubation_period
+    incubation = _closed_form_incubation(cp, "Isolation's analytic effect")
     delay = iso.onset_to_isolation_delay
     ε = iso.post_isolation_transmission
     D = _isolation_duration(iso.duration)

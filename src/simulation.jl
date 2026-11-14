@@ -1386,7 +1386,14 @@ Pass the result as `attributes` to [`ModelSpec`](@ref).
 
 - `incubation_period`: distribution of the time from infection to symptom
   onset, in days. Each symptomatic case's onset time is its infection time
-  plus a draw from it.
+  plus a draw from it. Every case draws one, an asymptomatic case included,
+  and its timing is read from it where the case has no onset (see
+  [`incubation_linked_generation_time`](@ref)). Give a distribution or a
+  function of the random number generator and the individual,
+  `(rng, ind) -> value`, to let the draw depend on a trait. `:asymptomatic` is
+  set before the draw, so the function can give asymptomatic cases their own
+  timing. The closed forms that read the incubation period directly need a
+  distribution and refuse a function.
 - `prob_asymptomatic`: probability that a case never develops symptoms
   (default 0). Asymptomatic cases have no onset time (`NaN`). Give a number,
   a distribution (one probability drawn per case) or a function of the random
@@ -1460,10 +1467,22 @@ attributes = [
 ]
 ```
 
+Asymptomatic cases with their own incubation period, here a shorter one
+(`:asymptomatic` is already set when the function runs):
+
+```julia
+attributes = clinical_presentation(
+    incubation_period = (rng, ind) -> rand(
+        rng, ind.state[:asymptomatic] ? LogNormal(1.2, 0.5) : LogNormal(1.6, 0.5)
+    ),
+    prob_asymptomatic = 0.3,
+)
+```
+
 See also [`demographics`](@ref), [`transmission_traits`](@ref).
 """
 function clinical_presentation(;
-        incubation_period::Distribution,
+        incubation_period,
         prob_asymptomatic = 0.0
     )
     return ClinicalPresentation(incubation_period, prob_asymptomatic)
@@ -1481,7 +1500,7 @@ function (clinical::ClinicalPresentation)(rng, ind)
     ind.state[:asymptomatic] = is_asymp
     # Every case draws an incubation period, including asymptomatic cases,
     # which have no onset. A generation time linked to incubation needs it.
-    latent = rand(rng, clinical.incubation_period)
+    latent = sample_value(clinical.incubation_period, rng, ind)
     ind.state[:latent_incubation_period] = latent
     ind.state[:incubation_period] = is_asymp ? NaN : latent
     return _set_onset_from_incubation!(ind)
