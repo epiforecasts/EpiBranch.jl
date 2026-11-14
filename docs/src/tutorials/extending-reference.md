@@ -47,7 +47,7 @@ underscore are internal.
 | `:sex` | `Symbol` | — | `demographics` | Creation |
 | `:group` | `Int` | — | `groups` | Creation |
 | `:household` | `Int` | — | `HouseholdProcess` | Creation |
-| `:isolated` | `Bool` | `false` | `Isolation`, `ContactTracing`/`SourceTracing`'s `Quarantine` | `resolve_individual!` / `apply_trace!` |
+| `:isolated` | `Bool` | `false` | `Isolation`, `Quarantine` in `ContactTracing`/`SourceTracing` | `resolve_individual!` / `apply_trace!` |
 | `:isolation_time` | `Float64` | `Inf` | `Isolation`, `ContactTracing`/`SourceTracing`'s `Quarantine` | `resolve_individual!` / `apply_trace!` |
 | `:isolation_release_time` | `Float64` | `Inf` | `Isolation`, `ContactTracing`/`SourceTracing`'s `Quarantine` | `resolve_individual!` / `apply_trace!`; when the block ends |
 | `:_removal_stretches` | `Vector{Tuple{Float64,Float64}}` | `[]` | `set_isolated!` | Internal. Removals recorded under the shared default key, as merged, sorted `(start, release)` pairs; a release of `Inf` means permanent removal |

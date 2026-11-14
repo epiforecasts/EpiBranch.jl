@@ -342,9 +342,9 @@ capacity_key(::Quarantine) = :_quarantine_removal_handles
 capacity_time_key(::Quarantine) = _QUARANTINE_START_KEY
 
 # Whether an action for someone who has already used the resource still goes
-# to the wrapped intervention. A dose does no harm there, since `record_dose!`
+# to the wrapped intervention. A dose does no harm there, because `record_dose!`
 # skips a second one. A further trace of a quarantined contact would record a
-# second entry that no budget or place was charged for, so it is dropped.
+# second entry with no budget or place charged for it. It is dropped.
 _repeat_use_passes(::AbstractIntervention) = true
 _repeat_use_passes(ct::_Tracing) = _repeat_use_passes(ct.action)
 _repeat_use_passes(::TraceAction) = true
