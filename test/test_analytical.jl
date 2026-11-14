@@ -694,6 +694,22 @@ using ForwardDiff
             @test ll_quad ≈ ll_closed atol = 0.05
         end
 
+        @testset "Cluster-mixed chain size averages over the whole mixing law" begin
+            # Discrete mixing: exact weighted sum of Borel-type probabilities.
+            o = ClusterMixed(Poisson, DiscreteNonParametric([0.3, 0.6], [0.5, 0.5]))
+            @test pdf(chain_size_distribution(o), 1) ≈
+                0.5 * exp(-0.3) + 0.5 * exp(-0.6)
+            @test isfinite(loglikelihood(ChainSizes([1, 2, 1]), o))
+
+            # Continuous mixing: no mass dropped from the tails.
+            build = R -> NegBin(R, 0.5)
+            g = ClusterMixed(build, Gamma(2.0, 0.3))
+            expected = EpiBranch._mixture_expectation(
+                θ -> pdf(chain_size_distribution(build(θ)), 1), Gamma(2.0, 0.3)
+            )
+            @test pdf(chain_size_distribution(g), 1) ≈ expected rtol = 1.0e-8
+        end
+
         @testset "Cluster-mixed reproduction number and extinction probability" begin
             # A two-point mixing law gives the average of the single-type results.
             two_point = ClusterMixed(Poisson, DiscreteNonParametric([0.5, 2.0], [0.5, 0.5]))
