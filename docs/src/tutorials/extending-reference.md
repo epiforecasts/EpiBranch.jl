@@ -38,6 +38,7 @@ underscore are internal.
 | `:infection_route` | `Symbol` | — | Simulation (models with routes; `:external` for a case introduced by the `external_hazard` of a network or household model) | When infection is decided |
 | `:censor_until` | `Tuple` | `()` | Simulation (`BranchingProcess` with `Infectiousness` windows that name `until` states) | When a contact is created on a window with `until` states, which it names |
 | `:index` | `Bool` | `false` | Simulation (continuous-time models) | When the case's infector is fixed; `true` for a case infected from outside the population |
+| `:seeded` | `Bool` | absent | Simulation (household and network models) | When infection is decided; `true` only for a chosen `initial_case`, which is infected at day 0 whatever the risks and is not an `external_hazard` introduction |
 | `:type` | `Int` | `1` | Simulation (multi-type) | When the contact is created |
 | `:onset_time` | `Float64` | `NaN` | `clinical_presentation` | Creation |
 | `:asymptomatic` | `Bool` | `false` | `clinical_presentation` | Creation |

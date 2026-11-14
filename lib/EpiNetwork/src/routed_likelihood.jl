@@ -16,7 +16,7 @@
 """
     RoutedNetworkInfections(route_names, contacts, infectious_time, removal_time,
                             infection_time, is_index; obs_end = Inf,
-                            followup_end = Inf, host_times = (;))
+                            followup_end = Inf, host_times = (;), seeded = nothing)
 
 Routed-network outbreak data for the pairwise likelihood: an infection record
 per person, with a separate infectious window and contact list for each
@@ -26,7 +26,9 @@ and `removal_time[r]` are when route `r` opened and closed for each person,
 the same windows [`RoutedNetwork`](@ref)'s race used. The remaining arguments
 are as for [`NetworkInfections`](@ref): `infection_time`, `is_index`,
 `obs_end`, `followup_end` and `host_times` are shared across routes, since
-they describe the person rather than any one route. Read one from a
+they describe the person rather than any one route. `seeded`, a mask like
+`is_index`, marks chosen initial cases, which the likelihood conditions on even
+when a community hazard explains every other infection. Read one from a
 simulation with [`routed_network_infections`](@ref).
 """
 struct RoutedNetworkInfections{T <: Real, H <: NamedTuple} <: InfectionLayer
@@ -39,6 +41,7 @@ struct RoutedNetworkInfections{T <: Real, H <: NamedTuple} <: InfectionLayer
     obs_end::T
     followup_end::T
     host_times::H
+    seeded::Vector{Bool}
 end
 
 function RoutedNetworkInfections(
@@ -47,7 +50,7 @@ function RoutedNetworkInfections(
         infectious_time::AbstractVector{<:AbstractVector{<:Real}},
         removal_time::AbstractVector{<:AbstractVector{<:Real}},
         infection_time::AbstractVector{<:Real}, is_index::AbstractVector{Bool};
-        obs_end = Inf, followup_end = Inf, host_times = (;)
+        obs_end = Inf, followup_end = Inf, host_times = (;), seeded = nothing
     )
     n_routes = length(route_names)
     (
@@ -60,6 +63,9 @@ function RoutedNetworkInfections(
         )
     )
     n = length(infection_time)
+    seeded === nothing || length(seeded) == n || throw(
+        ArgumentError("infection_time and seeded must cover the same hosts")
+    )
     length(is_index) == n || throw(
         ArgumentError("infection_time and is_index must cover the same hosts")
     )
@@ -96,11 +102,14 @@ function RoutedNetworkInfections(
         Vector{Symbol}(route_names), adj,
         [Vector{T}(v) for v in infectious_time], [Vector{T}(v) for v in removal_time],
         Vector{T}(infection_time), Vector{Bool}(is_index),
-        T(obs_end), T(followup_end), host_times
+        T(obs_end), T(followup_end), host_times,
+        seeded === nothing ? falses(n) : Vector{Bool}(seeded)
     )
 end
 
 Base.length(d::RoutedNetworkInfections) = length(d.infection_time)
+
+EpiBranch.seeded_hosts(d::RoutedNetworkInfections) = d.seeded
 
 # There is no one contact structure to hand `compile_contact_pairs`: each
 # route has its own, and they are combined inside `pairwise_surv_loglik`
@@ -240,7 +249,8 @@ function routed_network_infections(
     host_times = _layer_host_times(state, model, ())
     return RoutedNetworkInfections(
         route_names, contacts, infectious_time, removal_time,
-        infection_time, is_index; obs_end, followup_end, host_times
+        infection_time, is_index; obs_end, followup_end, host_times,
+        seeded = EpiBranch._seeded_column(state)
     )
 end
 
@@ -473,7 +483,7 @@ function EpiBranch.pairwise_surv_loglik(
 
     ll = zero(T)
     for j in 1:n
-        (!explain_index && data.is_index[j]) && continue
+        ((!explain_index && data.is_index[j]) || data.seeded[j]) && continue
         mixture = mixtures === nothing ? nothing : get(mixtures, j, nothing)
         v = if mixture === nothing
             _routed_modifier_loglik(
