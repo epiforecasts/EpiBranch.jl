@@ -8,8 +8,8 @@ function of the random number generator and the individual,
 infection. It is called once per case, so the load can differ between cases
 and depend on anything already recorded on them, such as age.
 
-The package builds in no pathogen: how load behaves, from an acute rise and
-clearance to a chronic plateau, is the trajectory the caller supplies. Define it
+The package includes no pathogen: the caller supplies the trajectory, whether
+an acute rise and clearance or a chronic plateau. Define it
 once and let everything that depends on load read it. [`Testing`](@ref) samples
 it at the time a test is taken, and a [`HazardKernel`](@ref) can turn it into
 infectiousness through [`trajectory_load`](@ref EpiBranch.trajectory_load).
@@ -76,7 +76,7 @@ function measure end
 
 An assay that maps the load in a sample to a Ct value and to a result.
 
-- `ct`: a function `load -> Ct value`, the assay's own scale (for example a
+- `ct`: a function `load -> Ct value`, on the scale of the assay (for example a
   log-linear calibration from load to Ct). Return `NaN` for a load too low to
   give a Ct value.
 - `detect`: when the sample is positive. A number is a limit of detection: the

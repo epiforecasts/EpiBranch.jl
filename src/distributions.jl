@@ -276,9 +276,9 @@ model = ModelSpec(BranchingProcess(community); attributes)
 ```
 
 [`within_host`](@ref) stores the trajectory as a function of the days since
-infection, so `t` here is that time when the window opens at infection. The
-same trajectory is what [`Testing`](@ref) samples, so a Ct value and a test
-result follow from the load that drives infectiousness.
+infection, so `t` here is that time when the window opens at infection.
+[`Testing`](@ref) samples the same trajectory. A Ct value and a test result
+therefore follow from the load that drives infectiousness.
 
 The trajectory and its links to each clinical event determine the generation
 time, incubation period and serial interval. These quantities are no longer
