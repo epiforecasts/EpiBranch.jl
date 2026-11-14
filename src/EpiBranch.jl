@@ -123,6 +123,7 @@ include("models/mixing.jl")
 
 # ModelSpec: compose a process with its forcing/observation layers.
 include("model_spec.jl")
+include("observed_cases.jl")
 
 # Approximate population dynamics as state-space models: mean-field and
 # linear-noise approximations of a closed population, and a hybrid that

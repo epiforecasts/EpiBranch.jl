@@ -290,6 +290,11 @@ for example after a maximum number of cases or days. A run returns a
 simulation: the cases and the contacts they exposed for a
 [`BranchingProcess`](@ref), everyone for models with a fixed population.
 
+To project an outbreak that has already started, build its state from a table
+of the cases observed so far with
+[`initialise_state`](@ref EpiBranch.initialise_state) and continue it with
+`simulate(model, state; max_time)`.
+
 ```@docs
 simulate
 outbreak_state_space
