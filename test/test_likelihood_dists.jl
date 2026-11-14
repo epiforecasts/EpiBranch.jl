@@ -146,6 +146,19 @@ EpiBranch.chain_size_distribution(d::BrokenExactOffspring) = throw(d.error)
             @test sum(pdf(d, k) for k in 0:60) ≈ 1 atol = 1.0e-6
         end
 
+        @testset "Onset-timed Reporting misses asymptomatic cases" begin
+            message = "per-case detection does not give a well-defined chain length"
+            cp(p) = clinical_presentation(
+                incubation_period = Gamma(2.0, 2.0), prob_asymptomatic = p
+            )
+            onset = [Reporting(probability = 1.0, delay = 1.0)]
+            asym = ModelSpec(bp; progression = onset, attributes = cp(0.4))
+            @test_throws message loglikelihood(ChainLengths(data), asym)
+            @test_throws message chain_length_distribution(asym)
+            sympt = ModelSpec(bp; progression = onset, attributes = cp(0.0))
+            @test isfinite(loglikelihood(ChainLengths(data), sympt))
+        end
+
         @testset "Reporting requires full detection" begin
             message = "per-case detection does not give a well-defined chain length"
             for probability in (0.0, 0.3, 1.0)
