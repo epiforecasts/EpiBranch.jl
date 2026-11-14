@@ -1,0 +1,1 @@
+The `AllCases` and `Isolation` docstrings and the households tutorial no longer present `AllCases` as a way to isolate asymptomatic cases. Isolation is timed from symptom onset, so a case with no onset is never isolated under `AllCases`, although it can still draw a test result.
