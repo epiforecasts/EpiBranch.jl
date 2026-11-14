@@ -71,14 +71,14 @@ EpiBranch.trigger_time(e::_EligibleAt, infector, state) = e.time
                 end for seed in 1:400
             ]
         end
-        # With a budget of its own each type has 1,000 doses, a share 0.8 or
-        # 0.2 of which reach susceptibles, and 0.6 of those protect.
+        # With a budget for each type, each has 1,000 doses. A share of 0.8 or
+        # 0.2 of them reach susceptibles, and 0.6 of those protect.
         own = removed(PerGroup(1 => 1_000.0, 2 => 1_000.0))
         @test isapprox(mean(first, own), 1_000 * 0.8 * 0.6; rtol = 0.03)
         @test isapprox(mean(last, own), 1_000 * 0.2 * 0.6; rtol = 0.05)
 
-        # A shared budget of 1,000 is shared out by population, so equal types
-        # have 500 doses each; a type given none of its own budget gets none.
+        # A shared budget of 1,000 is split by population, so equal types have
+        # 500 doses each. A type with a budget of 0 gets no doses.
         shared = removed(1_000.0)
         @test isapprox(mean(first, shared), 500 * 0.8 * 0.6; rtol = 0.03)
         @test isapprox(mean(last, shared), 500 * 0.2 * 0.6; rtol = 0.05)

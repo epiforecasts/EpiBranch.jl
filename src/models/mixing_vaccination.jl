@@ -142,9 +142,9 @@ struct GroupCampaign{B, A <: DoseAllocation, GV <: GroupVaccination}
 end
 
 # What every engine that reads a campaign rather than simulating individuals
-# (the approximations here and `simulate_by_generation`) can apply, in the one
+# (the approximations here and `simulate_by_generation`) can apply, in the
 # wording they all refuse with. The engine-by-intervention table in the
-# documentation records the same.
+# documentation lists the same.
 const _CAMPAIGN_SUPPORT = "a GroupVaccination, alone or under Scheduled (a " *
     "start_time and end_time only) and CapacityConstrained (one per campaign, " *
     "with a shared or PerGroup budget and `on_refusal = DropRefused()`)"
@@ -241,7 +241,7 @@ function _read_campaign(ivs::AbstractVector, mixing_by, groups, allocation, what
 end
 
 # A `PerGroup` budget has to name the vaccination group of every mixing group
-# and be read from the `group_key` the model mixes by.
+# and be read from the `group_key` that the model mixes by.
 _check_budget_groups(::Nothing, iv, values) = nothing
 function _check_budget_groups(cc::CapacityConstrained, iv, values)
     pg = cc.budget_per_period
@@ -328,8 +328,9 @@ function _dose_rate(alloc::Union{SplitByGroupSize, SplitBySusceptibles}, c, mode
     N = Float64.(model.group_sizes)
     reachable = c.coverage .* N .- D .> 1.0e-9
     weight = _split_weight(alloc, N, S) .* reachable
-    # A shared budget is split over every mixing group; a `PerGroup` one over
-    # the mixing groups of each vaccination group, by that group's own budget.
+    # A shared budget is split over every mixing group. A `PerGroup` budget is
+    # split over the mixing groups of each vaccination group, using the budget
+    # of that group.
     rate = zeros(G)
     for (budget, members) in _budget_shares(c)
         total = _period_budget(budget, period_start) / cc.period
@@ -340,7 +341,7 @@ function _dose_rate(alloc::Union{SplitByGroupSize, SplitBySusceptibles}, c, mode
     return rate
 end
 
-# The budgets of a campaign and the mixing groups each is shared over.
+# The budgets of a campaign and the mixing groups that share each.
 function _budget_shares(c::GroupCampaign)
     pg = c.budget.budget_per_period
     pg isa PerGroup || return [(pg, collect(eachindex(c.group_of)))]

@@ -133,9 +133,9 @@ label count against it; use different labels for separate budgets.
 
 By default everyone draws on the same budget, whatever the groups of the
 model, in every engine. A [`PerGroup`](@ref) `budget_per_period` gives each
-group its own instead, tracked under the same `period`, `carry_over` and
-`priority` independently of every other; pass the group to `capacity_usage` to
-read one group's own usage. An intervention with a
+group its own budget instead. Each is tracked independently under the same
+`period`, `carry_over` and `priority`, and `capacity_usage` reports one
+group's usage when given the group. An intervention with a
 [`resource_key`](@ref EpiBranch.resource_key) method splits the budget in the
 individual-based simulation alone. Prefer `PerGroup`, because the other
 engines cannot read a `resource_key` method.
@@ -217,29 +217,29 @@ _prepared_budget(schedule) = schedule
 """
     PerGroup(group => budget, ...; key = nothing)
 
-A budget of its own for each group of people, to give as the
-`budget_per_period` of a [`CapacityConstrained`](@ref) in place of one number
-or schedule shared by everyone. Each `budget` is a number or a calendar
-schedule ([`Steps`](@ref), [`Seasonal`](@ref), or a callable), as for a shared
-budget, and is spent under the wrapper's own `period`, `carry_over` and
-`priority`, independently of every other group's.
+A budget for each group of people, given as the `budget_per_period` of a
+[`CapacityConstrained`](@ref) in place of one number or schedule shared by
+everyone. Each `budget` is a number or a calendar schedule
+([`Steps`](@ref), [`Seasonal`](@ref), or a callable), as for a shared budget.
+It is spent under the `period`, `carry_over` and `priority` of the wrapper,
+independently of the other groups.
 
-The group of a person is the value they hold under `key` in their state. The
-default, `key = nothing`, is the `group_key` of a [`GroupVaccination`](@ref),
-so only an intervention without one needs `key` named. A group that is not in
-the mapping raises an error, so a mistyped group name cannot pass as a
-scenario.
+A person's group is the value they hold under `key` in their state. The
+default, `key = nothing`, uses the `group_key` of a
+[`GroupVaccination`](@ref), so only an intervention without one needs `key`.
+A group that is not in the mapping raises an error, so a mistyped group name
+cannot pass as a scenario.
 
 Every engine reads the same specification: the individual-based simulation,
 [`simulate_by_generation`](@ref) (whose groups are the types, numbered from
 one), and the approximations for mixing populations
 ([`MixingMeanFieldProcess`](@ref), [`MixingLinearNoiseProcess`](@ref),
-[`HybridProcess`](@ref)). Without it a budget is shared by everyone in every
-engine.
+[`HybridProcess`](@ref)). Without a `PerGroup`, a budget is shared by everyone
+in every engine.
 
 # Examples
 ```julia
-# Separate series of doses for under-fives and the rest
+# A separate series of doses for under-fives and for everyone else
 doses = PerGroup(:under5 => 10.0, :over5 => Steps([7.0, 14.0], [0.0, 50.0, 0.0]))
 CapacityConstrained(GroupVaccination(efficacy = 0.9, group_key = :age_band);
     budget_per_period = doses, period = 1.0)
@@ -265,7 +265,7 @@ end
 
 _prepared_budget(budget::PerGroup) = budget
 
-# The numbers or schedules a budget holds, one for a shared budget.
+# The numbers or schedules a budget holds: one for a shared budget.
 _budget_values(budget) = (budget,)
 _budget_values(budget::PerGroup) = budget.budgets
 
@@ -290,11 +290,11 @@ _budget_group_key(pg::PerGroup, intervention) =
 """
     budget_group_key(intervention) -> Union{Symbol, Nothing}
 
-For extension authors: the key in `ind.state` whose value is the group a
-[`PerGroup`](@ref) budget of [`CapacityConstrained`](@ref) splits
-`intervention`'s doses by. [`GroupVaccination`](@ref) answers its `group_key`.
-The default, `nothing`, says there is none, so a `PerGroup` has to name its own
-`key`.
+For extension authors: the key in `ind.state` whose value is the group by
+which a [`PerGroup`](@ref) budget of [`CapacityConstrained`](@ref) splits the
+doses of `intervention`. [`GroupVaccination`](@ref) returns its `group_key`.
+The default, `nothing`, means the intervention has no group, so a `PerGroup`
+has to name its own `key`.
 """
 budget_group_key(::AbstractIntervention) = nothing
 budget_group_key(w::InterventionWrapper) = budget_group_key(w.intervention)
@@ -382,9 +382,9 @@ resource_key(::AbstractIntervention, individual, state) = nothing
 resource_key(w::InterventionWrapper, individual, state) =
     resource_key(w.intervention, individual, state)
 
-# Which budget a person draws on, as a function `(individual, state) -> key`:
-# their group under a `PerGroup` budget, else the intervention's own
-# `resource_key`, `nothing` (one budget for everyone) unless it defines one.
+# The budget a person draws on, as a function `(individual, state) -> key`:
+# their group under a `PerGroup` budget, otherwise the `resource_key` of the
+# intervention, which is `nothing` (one budget for everyone) unless it defines one.
 _resource_fn(cc::_CapacityWrapper) = _resource_fn(cc, _budget_of(cc))
 _resource_fn(cc, ::Any) = (ind, state) -> resource_key(cc.intervention, ind, state)
 function _resource_fn(cc, pg::PerGroup)
@@ -405,7 +405,7 @@ _budget_of(cc::CapacityConstrained) = cc.budget_per_period
 _budget_of(::_CapacityWrapper) = nothing
 
 # `cc` limited to the budget of `group`: the wrapper itself unless its budget
-# is a `PerGroup`, so everything below it reads one number or schedule.
+# is a `PerGroup`. Everything below it then reads one number or schedule.
 _group_capacity(cc::CapacityConstrained, group) = _group_capacity(cc, cc.budget_per_period, group)
 _group_capacity(cc, ::Any, group) = cc
 function _group_capacity(cc, pg::PerGroup, group)
@@ -813,10 +813,10 @@ this period's own start, and `used` counts the doses dated within it,
 including one given in that period by another intervention sharing the same
 capacity.
 
-`key` selects which budget to report when `cc` has more than one, either a
-[`PerGroup`](@ref) budget (`key` is the group) or a
-[`resource_key`](@ref EpiBranch.resource_key) method splitting its
-intervention; the default, `nothing`, is the one budget everyone shares.
+`key` selects which budget to report when `cc` has more than one, because of
+either a [`PerGroup`](@ref) budget (`key` is the group) or a
+[`resource_key`](@ref EpiBranch.resource_key) method on its intervention. The
+default, `nothing`, is the one budget everyone shares.
 """
 function capacity_usage(cc::CapacityConstrained, state::SimulationState, key = nothing)
     return _capacity_usage(cc, state, state.max_infection_time, key)

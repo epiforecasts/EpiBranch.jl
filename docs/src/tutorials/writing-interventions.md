@@ -812,9 +812,8 @@ propose actions and the rules on timing.
 
 By default everyone draws on the same budget, in every engine. A
 `PerGroup` budget (see [`PerGroup`](@ref)) splits it by group wherever the
-intervention has groups, and is read by the engines that do not simulate
-individuals as well. To split it in the individual-based simulation alone,
-define `EpiBranch.resource_key(iv, individual, state)` instead,
+intervention has groups, and the engines that do not simulate individuals read
+it too. To split it in the individual-based simulation alone, define `EpiBranch.resource_key(iv, individual, state)` instead,
 returning whichever value identifies the group `individual` belongs to, such
 as a district or a treatment centre. Each distinct value gets its own
 budget, tracked under the same `budget_per_period`, `period`, `carry_over`

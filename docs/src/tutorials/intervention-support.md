@@ -1,7 +1,7 @@
 # What each engine supports
 
-A `ModelSpec` means the same thing in every engine that reads it, or the engine refuses it in the same words.
-This page records that specification, what each engine applies of it, and how to give a budget of doses to each group.
+A `ModelSpec` has the same meaning in every engine that reads it. An engine that cannot apply it refuses it in the same words.
+This page lists which parts of the specification each engine applies, and shows how to give each group its own budget of doses.
 
 The engines are:
 
@@ -12,9 +12,9 @@ The engines are:
 
 ## One budget, or one per group
 
-A dose budget limits the people an intervention can reach.
-Given as a number or a schedule, `budget_per_period` is shared by everyone, whatever the groups of the model, in every engine.
-A [`PerGroup`](@ref) gives each group its own, as a number or a schedule:
+A dose budget limits the number of people an intervention can reach.
+Given as a number or a schedule, `budget_per_period` is shared by everyone in every engine, whatever the groups of the model.
+A [`PerGroup`](@ref) gives each group its own budget, as a number or a schedule:
 
 ```julia
 doses = PerGroup(
@@ -29,7 +29,7 @@ campaign = CapacityConstrained(
 
 The groups are the values of the `group_key` of a [`GroupVaccination`](@ref).
 For an intervention without one, such as [`Isolation`](@ref) or [`ContactTracing`](@ref), `PerGroup` names the state key that holds a person's group: `PerGroup("north" => 5.0, "south" => 2.0; key = :district)`.
-A group missing from the mapping raises an error, so a mistyped name cannot pass as a scenario. Give a group a budget of `0` to give it none.
+A group missing from the mapping raises an error, so a mistyped name cannot pass as a scenario. To give a group no doses, give it a budget of `0`.
 
 The groups of `simulate_by_generation` are the types of the model, numbered from one, and its `group_key` is `:type`.
 In the mixing approximations the groups are the values of the key the model mixes by.
@@ -48,7 +48,7 @@ In the mixing approximations the groups are the values of the key the model mixe
 | `Isolation`, `ContactTracing` and other interventions, alone or under `CapacityConstrained` (shared or `PerGroup` budget) | yes | refused | refused |
 | More than one campaign | yes | yes, one per `GroupVaccination` | refused |
 
-An engine that cannot apply a specification raises an `ArgumentError` that says what it cannot apply and ends with the same list of what it does read: a `GroupVaccination`, alone or under `Scheduled` (a `start_time` and `end_time` only) and `CapacityConstrained` (one per campaign, with a shared or `PerGroup` budget and `on_refusal = DropRefused()`).
-The engines that read a campaign without simulating people also refuse an input a count or a compartment cannot represent, such as a distribution as `efficacy`, a `delay_to_immunity` or `waning`, and name it; see the docstring of each.
+An engine that cannot apply a specification raises an `ArgumentError` that names what it cannot apply and ends with the same list of what it reads: a `GroupVaccination`, alone or under `Scheduled` (a `start_time` and `end_time` only) and `CapacityConstrained` (one per campaign, with a shared or `PerGroup` budget and `on_refusal = DropRefused()`).
+The engines that read a campaign without simulating people also refuse, and name, any input that a count or a compartment cannot represent, such as a distribution as `efficacy`, a `delay_to_immunity` or `waning`. The docstring of each engine lists them.
 
-The test file `test/test_engine_support.jl` runs each engine against this table. A change to what an engine reads fails the test until the table is updated to match.
+The test file `test/test_engine_support.jl` runs each engine against this table. If what an engine reads changes, the test fails until the table is updated.

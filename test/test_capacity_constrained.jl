@@ -304,7 +304,7 @@ end
         @test !is_isolated(b)
         @test capacity_usage(cc, state, :A) == (used = 1, available = 1.0)
         @test capacity_usage(cc, state, :B) == (used = 0, available = 0.0)
-        # With a budget per group there is no budget to report without one.
+        # With a budget per group, there is no single budget to report.
         @test_throws ArgumentError capacity_usage(cc, state)
     end
 
@@ -321,13 +321,13 @@ end
         @test CapacityConstrained(
             gv; budget_per_period = PerGroup(:a => schedule), period = 1.0
         ) isa CapacityConstrained
-        # An intervention with no group_key of its own needs the key named.
+        # An intervention without a group_key needs the key to be named.
         iso = Isolation(onset_to_isolation_delay = 1.0, duration = 7.0)
         @test_throws ArgumentError CapacityConstrained(
             iso; budget_per_period = PerGroup(:a => 1.0)
         )
 
-        # A group the budget does not name is an error, whoever reaches it.
+        # A group that the budget does not name raises an error.
         cc = CapacityConstrained(gv; budget_per_period = PerGroup(:under5 => 1.0))
         state = empty_state()
         person = Individual(id = 1, state = Dict{Symbol, Any}(:age_band => :over5))

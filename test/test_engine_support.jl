@@ -2,13 +2,13 @@ using Distributions
 using StableRNGs
 
 # What each engine reads of the intervention specification, checked against one
-# table. A case is an intervention built for an engine's own groups; an engine
+# table. A case is an intervention built for the groups of an engine, which
 # either applies it or refuses it with the shared wording of
-# `EpiBranch._CAMPAIGN_SUPPORT`. The same table is in the documentation
-# (the intervention support page of the tutorials).
+# `EpiBranch._CAMPAIGN_SUPPORT`. The documentation has the same table (the
+# intervention support page of the tutorials).
 
-# Triggers a group's doses at a fixed calendar day, so the individual-based
-# engine dates a dose without a delay.
+# Triggers the doses of a group at a fixed calendar day, so the
+# individual-based engine dates a dose without a delay.
 struct _SupportEligibleAt <: EpiBranch.TraceEligibility
     time::Float64
 end
@@ -17,7 +17,7 @@ EpiBranch.trigger_time(e::_SupportEligibleAt, infector, state) = e.time
 const _SUPPORT_MATRIX = [1.2 0.3; 0.3 1.2]
 
 # The engines, each with the key and values of the groups it splits doses by,
-# the eligibility its own clock reads, and a function that runs a spec on it.
+# the eligibility its clock reads, and a function that runs a spec on it.
 function _support_branching(spec; generations = 3, seed = 1)
     return simulate(
         spec; index_types = [fill(1, 120); fill(2, 120)], max_generations = generations,
@@ -92,10 +92,10 @@ _support_gv(e, key = e.key) = GroupVaccination(;
     efficacy = 0.9, group_key = key, eligibility = e.eligibility
 )
 
-# The specification: each case is the intervention an engine is asked to
-# apply, and `applies` the engines that apply it. Any other engine refuses it
-# (`:refused`) in the shared wording, apart from the cases in `invalid`, which
-# every engine rejects for what is wrong with the specification itself.
+# The specification: each case is an intervention an engine is asked to
+# apply, and `applies` lists the engines that apply it. Every other engine
+# refuses it in the shared wording. The cases in `invalid` are rejected by
+# every engine because the specification itself is wrong.
 const _SUPPORT_CASES = [
     (
         name = "GroupVaccination, shared budget",
@@ -174,7 +174,7 @@ const _SUPPORT_CASES = [
     ),
 ]
 
-# Rejected by every engine: a group the PerGroup budget does not name.
+# Rejected by every engine: a group that the PerGroup budget does not name.
 const _SUPPORT_INVALID = [
     (
         name = "PerGroup budget missing a group",
@@ -201,7 +201,7 @@ end
             if engine in case.applies
                 @test outcome === :applied
             else
-                # The same words from every engine that refuses.
+                # Every engine that refuses uses the same words.
                 @test outcome isa ArgumentError
                 outcome isa ArgumentError &&
                     @test occursin(EpiBranch._CAMPAIGN_SUPPORT, outcome.msg)
@@ -219,7 +219,7 @@ end
 
     @testset "a shared budget is one pool in every engine" begin
         # 100 doses between two groups of hundreds of people: one pool gives
-        # 100 doses in all, where a budget per group would give each its own.
+        # 100 doses in all, where a budget per group would give each group its own.
         shared(e) = CapacityConstrained(_support_gv(e); budget_per_period = 100.0)
         e = _SUPPORT_ENGINES.individual
         state = _support_branching(e.spec([shared(e)]))
