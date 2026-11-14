@@ -313,6 +313,12 @@ end
         )
         @test [c.state[key] for c in contacts] == [1.0, 10.0]
 
+        # A rise whose stay would span a later fall is skipped for the next rise.
+        hc, state, contacts = run_schedule(
+            Steps([10.0, 12.0, 20.0], [0.0, 1.0, 0.0, 3.0]), [1.0], 5.0; policy = DeferRefused()
+        )
+        @test [c.state[key] for c in contacts] == [20.0]
+
         @test_throws ArgumentError HeldCapacity(rv; capacity = Seasonal(amplitude = 0.5, peak_day = 0.0))
         @test_throws ArgumentError HeldCapacity(rv; capacity = t -> 2.0)
         @test_throws ArgumentError HeldCapacity(rv; capacity = "two")
