@@ -9,9 +9,9 @@
     IsolationEligibility
 
 Rule for which cases can draw a test result: [`SymptomaticOnly`](@ref) (the
-default) or [`AllCases`](@ref). Isolation is timed from symptom onset, so a case
-with no onset is never isolated under either rule. Whether an eligible case is
-actually isolated also depends on the intervention's `test_sensitivity`.
+default) or [`AllCases`](@ref). Isolation is timed from symptom onset, so under
+either rule a case with no onset is never isolated. Whether an eligible case is
+isolated also depends on the `test_sensitivity` of the intervention.
 
 To write a new rule, define a subtype and a method of
 [`is_eligible_for_isolation`](@ref EpiBranch.is_eligible_for_isolation).
