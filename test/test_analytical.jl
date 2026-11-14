@@ -515,6 +515,25 @@ using ForwardDiff
             @test loglikelihood(ChainSizes([1, 2]), Poisson(0.0)) == -Inf
         end
 
+        @testset "Large dispersion tracks the Poisson limit" begin
+            # `k` far above `R` must not lose the log-likelihood to
+            # cancellation between the gamma ratio and the power terms.
+            for k in (1.0e10, 1.0e12, 1.0e14, 1.0e16, 1.0e20)
+                for x in (1, 2, 3, 7)
+                    @test EpiBranch._gammaborel_logpdf(k, 0.5, x) ≈
+                        logpdf(EpiBranch.Borel(0.5), x) rtol = 1.0e-6
+                    @test EpiBranch._gammaborel_logpdf(k, 0.5, x, 1) <= 0
+                end
+                # Two seeds: s / x * exp(-R x) (R x)^(x - s) / (x - s)!
+                @test EpiBranch._gammaborel_logpdf(k, 0.5, 4, 2) ≈
+                    log(2 / 4) - 0.5 * 4 + 2 * log(0.5 * 4) - log(2) rtol = 1.0e-6
+                @test EpiBranch._poisson_gamma_logpdf(k, 0.5, 3) ≈
+                    logpdf(EpiBranch.Borel(0.5), 3) rtol = 1.0e-6
+            end
+            @test extinction_probability(2.0, 1.0e16) ≈ extinction_probability(Poisson(2.0)) rtol = 1.0e-6
+            @test extinction_probability(2.0, 1.0e14) ≈ extinction_probability(Poisson(2.0)) rtol = 1.0e-6
+        end
+
         @testset "Extreme dispersion stays finite" begin
             # k ≳ 1e16·R swamps R in the floating-point sum
             # k + R inside NegBin's p = k / (k + R), so R rounds to exactly 0

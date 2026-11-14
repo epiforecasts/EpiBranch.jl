@@ -131,25 +131,26 @@ https://github.com/epiverse-trace/epichains, MIT).
 """
 function _gammaborel_logpdf(k, R, x::Integer, s::Integer = 1)
     (s < 1 || x < s) && return oftype(float(k), -Inf)
-    kx = k * x
-    # Grouped as `kx + (x - s)` rather than `(kx + x) - s`: at `x == s` this is
-    # exactly `kx`, so the two logabsgamma terms below cancel to exactly 0 even
-    # when `k` is so small that `kx` alone would sit at the Gamma pole. Left to
-    # right, `(k * x + x) - s` instead adds the tiny `kx` into `x` first, losing
-    # it, and leaves a spurious 0 where `kx` belongs.
-    gamma_term = logabsgamma(kx + (x - s))[1] - logabsgamma(kx)[1]
-    # `(x - s) * log(R / (k + R))` is always multiplied by zero at `x == s`,
-    # including when `k` is so large relative to `R` that `R / (k + R)` has
-    # underflowed to 0: skip the term outright rather than let `0 * -Inf`
-    # give `NaN`.
-    tail_term = x == s ? zero(gamma_term) : (x - s) * log(R / (k + R))
-    return (
-        log(s) - log(x)
-            + gamma_term
-            - logabsgamma(x - s + 1)[1]
-            + kx * log(k / (k + R))
-            + tail_term
-    )
+    # The gamma ratio `Γ(kx + x - s) / Γ(kx)` is the finite product of
+    # `kx + i` over `i = 0, …, x - s - 1`. Taking logs term by term and
+    # combining each with `log(R / (k + R))` and `-log((i + 1))` avoids
+    # subtracting `logabsgamma` values of size `kx` from each other, which
+    # loses everything once `k` reaches about 1e10. At `x == s` the sum is
+    # empty, so the pole of the Gamma function at small `kx` never appears.
+    T = typeof(float(k * R))
+    acc = zero(T)
+    for i in 0:(x - s - 1)
+        if k > R
+            # `(kx + i) R / (k + R) = R x (1 + (i / x - R) / (k + R))`: the
+            # large `k` cancels analytically rather than numerically.
+            acc += log(R * x) + log1p((i / x - R) / (k + R))
+        else
+            acc += log(k * x + i) + log(R / (k + R))
+        end
+        acc -= log(i + 1)
+    end
+    # `-kx * log1p(R / k)` is `kx * log(k / (k + R))` without the cancellation.
+    return log(s) - log(x) + acc - k * x * log1p(R / k)
 end
 
 Distributions.logpdf(d::GammaBorel, n::Integer) = _gammaborel_logpdf(d.k, d.R, n)
@@ -214,19 +215,17 @@ https://github.com/epiverse-trace/epichains, MIT).
 """
 function _poisson_gamma_logpdf(k, R, x::Integer)
     x < 1 && return oftype(float(k), -Inf)
-    return (
-        -log(x)
-            + (x - 1) * log(x)
-            - logabsgamma(x)[1]
-            +
-            logabsgamma(k + x - 1)[1]
-            -
-            logabsgamma(k)[1]
-            -
-            k * log(R / k)
-            -
-            (k + x - 1) * log(x + k / R)
-    )
+    # `Γ(k + x - 1) / Γ(k)` is the product of `k + i` for `i = 0, …, x - 2`.
+    # Dividing each factor by `k / R` gives `R (1 + i / k)`, which stays
+    # accurate for large `k`, and `-(k + x - 1) log(x + k / R)` is split into
+    # `log(k / R)` and `log1p(x R / k)` parts; the `k log(k / R)` piece cancels
+    # against `-k log(R / k)` exactly.
+    L = log1p(x * R / k)
+    acc = zero(float(L))
+    for i in 0:(x - 2)
+        acc += log(R) + log1p(i / k)
+    end
+    return -log(x) + (x - 1) * log(x) - logabsgamma(x)[1] + acc - (k + x - 1) * L
 end
 
 function Distributions.logpdf(d::PoissonGammaChainSize, n::Integer)
@@ -395,7 +394,9 @@ pdf(d, 3)                   # probability a chain has exactly 3 cases
 sum(pdf(d, n) for n in 1:10)  # probability a chain has at most 10 cases
 ```
 """
-chain_size_distribution(d::NegativeBinomial) = GammaBorel(d.r, mean(d))
+function chain_size_distribution(d::NegativeBinomial)
+    return GammaBorel(d.r, _negbin_mean(d))
+end
 
 # `chain_size_distribution(model::TransmissionModel; ...)` lives in
 # `src/likelihood_dists.jl` so the kwargs-bearing wrapper path and the

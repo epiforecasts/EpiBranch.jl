@@ -70,9 +70,11 @@ function extinction_probability(R::Real, k::Real; tol::Real = 1.0e-10, max_iter:
 
     R <= 1.0 && return 1.0
 
-    offspring = NegativeBinomial(k, k / (k + R))
+    # Built from `R` and `k` directly: storing `p = k / (k + R)` in a
+    # `NegativeBinomial` would round `R` away once `k` is far larger than `R`.
+    pgf(s) = exp(-k * log1p(R * (1 - s) / k))
 
-    q, converged = _contain_fixed_point(offspring; tol, max_iter)
+    q, converged = _contain_fixed_point(pgf; tol, max_iter)
     converged || @warn_unconverged_extinction(max_iter, "the reproduction number")
     return q
 end
