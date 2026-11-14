@@ -1,0 +1,1 @@
+`linelist` and `contacts` accept the vector of states that `simulate(model, n)` returns and stack the runs under a leading `sim_id` column, as `chain_statistics` does. The line list has every column found in any run, with `missing` where a run lacks it, so a run without an onset date no longer stops the runs being combined.

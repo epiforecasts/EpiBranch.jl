@@ -140,6 +140,33 @@ function linelist(
 end
 
 """
+    linelist(states::AbstractVector{<:SimulationState}; reference_date=Date(2020, 1, 1),
+             infected_only=true)
+
+The line lists of several simulated outbreaks, such as the output of
+`simulate(model, n)`, stacked into one DataFrame with a leading `sim_id`
+column (the position of the outbreak in `states`) and the columns of
+[`linelist`](@ref) for one outbreak.
+
+Runs of one model can differ in their columns: a run in which every case is
+asymptomatic has no `date_onset`, for instance. The table has every column
+that appears in any run, with `missing` where a run lacks it, so the
+columns depend on the set of runs and not on which run comes first. A run
+without cases adds no rows.
+"""
+function linelist(
+        states::AbstractVector{<:SimulationState};
+        reference_date::Date = Date(2020, 1, 1), infected_only::Bool = true
+    )
+    df = _stack_runs(
+        [linelist(s; reference_date, infected_only) for s in states],
+        DataFrame(sim_id = Int[])
+    )
+    ncol(df) > 1 || return df
+    return select(df, :sim_id, _column_order(Symbol.(names(df, Not(:sim_id)))))
+end
+
+"""
     contacts(state::SimulationState; reference_date=Date(2020, 1, 1))
 
 Who exposed whom in a simulated outbreak: a DataFrame with one row per
@@ -212,7 +239,40 @@ function contacts(
     return vcat(df, DataFrame(escaped))
 end
 
+"""
+    contacts(states::AbstractVector{<:SimulationState}; reference_date=Date(2020, 1, 1))
+
+The exposures of several simulated outbreaks, such as the output of
+`simulate(model, n)`, stacked into one DataFrame with a leading `sim_id`
+column (the position of the outbreak in `states`) and the columns of
+[`contacts`](@ref) for one outbreak.
+"""
+function contacts(
+        states::AbstractVector{<:SimulationState};
+        reference_date::Date = Date(2020, 1, 1)
+    )
+    return _stack_runs(
+        [contacts(s; reference_date) for s in states],
+        DataFrame(
+            sim_id = Int[], from = Int[], to = Int[], infected = Bool[],
+            generation = Int[], infection_time = Float64[], date_infection = Date[]
+        )
+    )
+end
+
 # ── Internal helpers ─────────────────────────────────────────────────
+
+"""Stack per-run tables under a leading `sim_id`, keeping the columns of every
+run. `empty` is returned when no run has a row."""
+function _stack_runs(tables, empty::DataFrame)
+    per_sim = [
+        insertcols(t, 1, :sim_id => fill(i, nrow(t)))
+            for (i, t) in enumerate(tables) if !isempty(t)
+    ]
+    isempty(per_sim) && return empty
+    df = reduce((a, b) -> vcat(a, b; cols = :union), per_sim)
+    return select(df, :sim_id, Not(:sim_id))
+end
 
 """Convert a simulation time (real number) to a `Date` offset from
 `reference_date`. Non-finite or non-numeric inputs return `missing`."""
