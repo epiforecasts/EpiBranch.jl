@@ -147,6 +147,9 @@ function _fits_stay(capacity, stays, s, e)
     return true
 end
 
+_next_break(::Real, t) = Inf
+_next_break(schedule, t) = next_calendar_break(schedule, t)
+
 # The earliest moment after `action.time` that fits a stay of `duration`. A
 # place becomes free when a stay is released or the capacity rises, so only
 # release times and capacity breaks are tried.
@@ -155,6 +158,14 @@ function refused_action(::DeferRefused, hc::HeldCapacity, usage, action)
     times = Float64[b for (_, b) in stays if action.time < b && isfinite(b)]
     last_release = isempty(times) ? action.time : maximum(times)
     append!(times, _capacity_breaks(hc.capacity, action.time, nextfloat(last_release)))
+    # Once every stay has ended only the capacity matters, so the first break
+    # after the last release that leaves a place free is also a candidate.
+    t = _next_break(hc.capacity, max(last_release, action.time))
+    while isfinite(t)
+        push!(times, t)
+        _capacity_at(hc.capacity, t) >= 1 && break
+        t = _next_break(hc.capacity, t)
+    end
     for t in sort!(unique(times))
         _fits_stay(hc.capacity, stays, t, t + duration) || continue
         return InterventionAction(action.individual, t, action.effect!, action.claim!)
