@@ -158,8 +158,8 @@ function refused_action(::DeferRefused, hc::HeldCapacity, usage, action)
     times = Float64[b for (_, b) in stays if action.time < b && isfinite(b)]
     last_release = isempty(times) ? action.time : maximum(times)
     append!(times, _capacity_breaks(hc.capacity, action.time, nextfloat(last_release)))
-    # Once every stay has ended only the capacity matters, so the first break
-    # after the last release that leaves a place free is also a candidate.
+    # After the last release only the capacity matters. The first break after
+    # it that leaves a place free is also a candidate.
     t = _next_break(hc.capacity, max(last_release, action.time))
     while isfinite(t)
         push!(times, t)

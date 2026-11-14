@@ -302,8 +302,8 @@ end
         )
         @test [c.state[key] for c in contacts] == [1.0, 10.0, 10.0]
 
-        # A rise after every stay has ended, or with no stays at all, is
-        # still waited for.
+        # DeferRefused still waits for a rise that comes after every stay has
+        # ended, or when there are no stays at all.
         hc, state, contacts = run_schedule(
             Steps([10.0], [0.0, 3.0]), [1.0], 2.0; policy = DeferRefused()
         )
