@@ -224,7 +224,7 @@ struct _RiskFromAge end
         # counts, which improves the fit to large counts.
         data = IncidenceCounts([3, 4, 5, 6, 7, 8, 9, 10])
         @test loglikelihood(data, off, gt; imports = fill(2, n)) >
-              loglikelihood(data, off, gt)
+            loglikelihood(data, off, gt)
 
         @test_throws ArgumentError incidence_moments(off, gt, n; imports = ones(n - 1))
         @test_throws ArgumentError incidence_moments(off, gt, n; import_rate = -ones(n))
