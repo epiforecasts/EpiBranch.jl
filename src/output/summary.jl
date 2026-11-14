@@ -76,6 +76,58 @@ function containment_probability(
     return count(contained) / n
 end
 
+"""
+    containment_estimate(states::Vector{<:SimulationState}; max_cases=NoCases(), level=0.95)
+    containment_estimate(model, n::Int; max_cases, level=0.95, rng, ...)
+
+The containment probability with its Monte Carlo uncertainty. Returns a named
+tuple `(; n_contained, n, proportion, lower, upper)`: the number of outbreaks
+that were contained, the number simulated, their ratio, and a Wilson score
+interval for the underlying probability at confidence `level`. The interval
+covers simulation error only, not uncertainty in the model's parameters. If the
+interval is too wide to separate scenarios, simulate more outbreaks.
+
+Containment is defined as in [`containment_probability`](@ref), which gives the
+bare proportion. The model method takes the keywords of `simulate(model, n)`;
+`level` is not passed on to it.
+
+# Examples
+
+```julia
+model = BranchingProcess(NegBin(1.5, 0.3))
+containment_estimate(model, 200; max_cases = 500)
+```
+"""
+function containment_estimate(
+        states::Vector{<:SimulationState};
+        max_cases::Union{Int, NoCases} = NoCases(), level::Real = 0.95
+    )
+    n_contained = count(s -> _is_contained(s, max_cases), states)
+    return _binomial_estimate(n_contained, length(states), level)
+end
+
+function containment_estimate(
+        model::Union{TransmissionModel, ModelSpec}, n::Int;
+        level::Real = 0.95, kwargs...
+    )
+    cap = something(get(kwargs, :max_cases, nothing), NoCases())
+    contained = _simulate_each(s -> _is_contained(s, cap), Bool, model, n; kwargs...)
+    return _binomial_estimate(count(contained), n, level)
+end
+
+function _binomial_estimate(k::Int, n::Int, level::Real)
+    0 < level < 1 || throw(ArgumentError("`level` must be between 0 and 1, got $level."))
+    n > 0 || throw(ArgumentError("At least one simulation is needed."))
+    z = quantile(Normal(), 1 - (1 - level) / 2)
+    p = k / n
+    centre = (p + z^2 / (2n)) / (1 + z^2 / n)
+    half = z * sqrt(p * (1 - p) / n + z^2 / (4n^2)) / (1 + z^2 / n)
+    return (;
+        n_contained = k, n, proportion = p,
+        lower = max(centre - half, 0.0), upper = min(centre + half, 1.0),
+    )
+end
+
 _is_contained(s::SimulationState, cap) = s.extinct && !_check_max_cases(s, cap)
 
 """Whether a simulation has exceeded the max_cases cap (false if no cap)."""
