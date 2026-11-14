@@ -70,8 +70,8 @@ function simulate_once(
                 for (k, nb) in enumerate(model.adjacency[inf])
         ),
         # Infected neighbours stay in `targets`: `HostImmunity` holds them back
-        # until `susceptible_again_time`, so reinfection is possible. Tracing
-        # reads the adjacency directly.
+        # until `susceptible_again_time`, after which they can be reinfected.
+        # Tracing reads the adjacency directly.
         contacts = (inf, st) -> model.adjacency[inf]
     )
 

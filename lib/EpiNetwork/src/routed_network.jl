@@ -368,7 +368,7 @@ function simulate_once(
 end
 
 # One route's targets (infected neighbours included; `HostImmunity` holds them
-# back until they are susceptible again), each with that route's kernel resolved for
+# back until they are susceptible again), each with the kernel of that route resolved for
 # the pair: a shared distribution, a per-edge vector, a covariate callable or a
 # `PairKernel`, exactly as `NetworkProcess` resolves its edge kernel (see
 # `_resolve_kernel`). A `reach` that proposes its own contacts is wrapped so
