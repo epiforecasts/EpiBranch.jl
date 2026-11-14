@@ -51,10 +51,10 @@ function _eligible_fraction(elig::IsolationEligibility, prob_asymptomatic)
     )
 end
 
-# Share of cases (not of the whole population) with no onset time. A vaccine
-# with a `symptom_efficacy` turns some breakthrough cases asymptomatic on top
-# of `prob_asymptomatic`, and breakthrough cases make up a larger share of
-# cases than of the population, so the share that can self-report falls.
+# Share of cases with no onset time. A vaccine with a `symptom_efficacy` makes
+# some breakthrough cases asymptomatic on top of `prob_asymptomatic`. Breakthrough
+# cases are a larger share of cases than of the population, which lowers the share
+# that can self-report.
 function _asymptomatic_among_cases(prob_asymptomatic, ivs)
     pa = _closed_form_value(prob_asymptomatic)
     mvs = [iv for iv in ivs if iv isa MassVaccination && !_no_symptom_efficacy(iv)]
