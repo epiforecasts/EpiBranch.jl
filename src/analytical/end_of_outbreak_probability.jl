@@ -224,3 +224,55 @@ function end_of_outbreak_probability(
         mean(offspring), offspring.r, generation_time, τs, secondary_cases
     )
 end
+
+"""
+    end_of_outbreak_inputs(df::AbstractDataFrame, at::Date; date = :date_onset,
+                           id = :id, parent_id = :parent_id)
+    end_of_outbreak_inputs(state::SimulationState, at::Real; by = :onset)
+
+The days since onset of each case and the number of secondary cases each has
+caused by the date `at`, as `(; τs, secondary_cases)`, the two vectors the
+cluster method of [`end_of_outbreak_probability`](@ref) takes. Cases with a
+date after `at`, and those with a `missing` date, are not yet observed and
+are left out, together with the secondary cases they would add to their
+infector's count. Select the rows of one cluster, for example by `chain_id`,
+before calling it to get the inputs for that cluster.
+
+For a `SimulationState`, `at` is a time in days from simulation day 0 and `by`
+chooses the time as in [`weekly_incidence`](@ref).
+
+# Examples
+
+```julia
+inputs = end_of_outbreak_inputs(linelist(state), Date(2020, 3, 1))
+end_of_outbreak_probability(NegBin(0.8, 0.5), Gamma(2.0, 3.0), inputs.τs, inputs.secondary_cases)
+```
+"""
+function end_of_outbreak_inputs(
+        df::AbstractDataFrame, at::Date; date::Symbol = :date_onset,
+        id::Symbol = :id, parent_id::Symbol = :parent_id
+    )
+    observed = findall(d -> !ismissing(d) && Date(d) <= at, df[!, date])
+    ids = df[observed, id]
+    secondary_cases = Dict{eltype(ids), Int}(i => 0 for i in ids)
+    for p in df[observed, parent_id]
+        (ismissing(p) || !haskey(secondary_cases, p)) && continue
+        secondary_cases[p] += 1
+    end
+    τs = [Float64(Dates.value(at - Date(d))) for d in df[observed, date]]
+    return (; τs, secondary_cases = [secondary_cases[i] for i in ids])
+end
+
+function end_of_outbreak_inputs(state::SimulationState, at::Real; by::Symbol = :onset)
+    cases = [ind for ind in state.individuals if is_infected(ind)]
+    times = [_weekly_time(by, ind) for ind in cases]
+    observed = findall(t -> isfinite(t) && t <= at, times)
+    secondary_cases = Dict(cases[i].id => 0 for i in observed)
+    for i in observed
+        haskey(secondary_cases, cases[i].parent_id) && (secondary_cases[cases[i].parent_id] += 1)
+    end
+    return (;
+        τs = Float64[at - times[i] for i in observed],
+        secondary_cases = [secondary_cases[cases[i].id] for i in observed],
+    )
+end
