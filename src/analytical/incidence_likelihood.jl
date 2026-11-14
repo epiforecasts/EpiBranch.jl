@@ -43,16 +43,27 @@
 # differentiation), the same contract `_chain_length_ll_pgf` keeps for the
 # chain-length likelihood.
 
-# Bin a continuous distribution with cumulative distribution `F` onto the
-# integer lags `first_lag`, `first_lag + 1`, ...: the first entry is
-# `F(first_lag)`, the mass at or below that lag, then each `(l - 1, l]`. Stops
-# once the remaining tail is below `tol`, then renormalises away that
-# negligible truncation. `what` names the distribution in the truncation
-# warning.
-function _bin_cdf(F, first_lag::Integer, tol::Real, max_lag::Int, what::AbstractString)
+# Cumulative distribution of the step lag between two events when the first
+# falls uniformly within its step (double interval censoring) and the second
+# is that event plus a delay with cumulative distribution `F`: the lag is at
+# most `l` steps with probability ∫_l^{l+1} F(x) dx. Cases are infected
+# throughout a step, so binning the delay directly onto `(l - 1, l]` would
+# overstate the realised lag by half a step.
+_censored_cdf(F) = l -> first(quadgk(F, l, l + 1))
+
+# Bin the step-lag cumulative distribution `H` onto the integer lags
+# `first_lag`, `first_lag + 1`, ...: the first entry is `H(first_lag) - base`,
+# where `base` is the mass below `first_lag` that the lags cannot represent,
+# then each `H(l) - H(l - 1)`. Stops once the remaining tail is below `tol`,
+# then renormalises away that negligible truncation and the dropped `base`.
+# `what` names the distribution in the truncation warning.
+function _bin_cdf(
+        H, first_lag::Integer, tol::Real, max_lag::Int, what::AbstractString;
+        base::Real = 0.0
+    )
     lag = first_lag
-    c = F(lag)
-    p = [c]
+    c = H(lag)
+    p = [c - base]
     while !(1 - c < tol)
         if lag >= max_lag
             @warn "The $what has more than $tol of its mass above a lag of " *
@@ -61,7 +72,7 @@ function _bin_cdf(F, first_lag::Integer, tol::Real, max_lag::Int, what::Abstract
         end
         lag += 1
         c_prev = c
-        c = F(lag)
+        c = H(lag)
         push!(p, c - c_prev)
     end
     s = sum(p)
@@ -69,28 +80,29 @@ function _bin_cdf(F, first_lag::Integer, tol::Real, max_lag::Int, what::Abstract
     return p ./ s
 end
 
-# Discretised generation-time pmf over lag 1, 2, ..., binning the continuous
-# `generation_time` distribution into day-length (or whatever `data`'s unit
-# is) steps: `w[j]` is the probability mass in `(j - 1, j]`. Mass at or below
-# 0 is dropped, which assumes (as every generation-time distribution used
-# elsewhere in the package does) that it is continuous with no atom there:
-# the first bin is `cdf(generation_time, 1)` alone, with no
-# `cdf(generation_time, 0)` subtracted. That cdf is 0 for any such
-# distribution, so skipping it changes nothing, but calling it would: a
-# `Dual` parameter sends the cdf of a distribution like `LogNormal` through
-# `log(0) = -Inf`, and the 0 · Inf that falls out of differentiating that is
-# a `NaN`, not the 0 the mass being dropped actually gives.
+# Discretised generation-time pmf over lag 1, 2, ...: `w[j]` is the
+# probability that an infectee's step is `j` steps after its infector's, with
+# the infector infected uniformly within its step (see `_censored_cdf`). A
+# lag of 0 (both infected in the same step) has no place in the recursion.
+# That mass is dropped and the rest renormalised, which changes little when
+# the generation time is long compared with a step. The
+# distribution is taken to be continuous with no atom at or below 0; the
+# integral over each step avoids evaluating the cdf at 0 itself, which a `Dual`
+# parameter would send through `log(0) = -Inf` for a distribution like
+# `LogNormal`.
 function _discretize_generation_interval(
         generation_time::Distribution; tol::Real = 1.0e-8, max_lag::Int = 10_000
     )
+    H = _censored_cdf(t -> cdf(generation_time, t))
     return _bin_cdf(
-        t -> cdf(generation_time, t), 1, tol, max_lag, "generation-time distribution"
+        H, 1, tol, max_lag, "generation-time distribution"; base = H(0)
     )
 end
 
 # Discretised infection-to-report delay pmf over lag 0, 1, 2, ...: `d[1]` is
-# the mass at or below 0 (a report in the step of infection), and `d[l + 1]`
-# the mass in `(l - 1, l]`, the same binning as the generation interval's.
+# the probability of a report in the step of infection, and `d[l + 1]` that of
+# one `l` steps later, with the infection uniform within its step as for the
+# generation interval.
 # `nothing` reports every case in the step it is infected, and a number is a
 # fixed delay of that many steps.
 _discretize_report_delay(::Nothing; kwargs...) = [1.0]
@@ -99,7 +111,7 @@ function _discretize_report_delay(
         delay::Distribution; tol::Real = 1.0e-8, max_lag::Int = 10_000
     )
     minimum(delay) >= 0 || throw(ArgumentError("reporting_delay must be non-negative"))
-    return _bin_cdf(t -> cdf(delay, t), 0, tol, max_lag, "reporting delay")
+    return _bin_cdf(_censored_cdf(t -> cdf(delay, t)), 0, tol, max_lag, "reporting delay")
 end
 
 # The sum of two independent delays, such as an incubation period and the
@@ -115,22 +127,28 @@ function _discretize_report_delay(
     a, b = delay.first, delay.second
     minimum(a) >= 0 && (b isa Real ? b >= 0 : minimum(b) >= 0) ||
         throw(ArgumentError("reporting delays must be non-negative"))
-    b isa Real && return _bin_cdf(t -> cdf(a, t - b), 0, tol, max_lag, "reporting delay")
+    b isa Real && return _bin_cdf(
+        _censored_cdf(t -> cdf(a, t - b)), 0, tol, max_lag, "reporting delay"
+    )
     # A fixed first delay has no density for the quadrature to sample. It
     # shifts the second delay instead.
     if a isa Dirac
         shift = a.value
-        return _bin_cdf(t -> cdf(b, t - shift), 0, tol, max_lag, "reporting delay")
+        return _bin_cdf(
+            _censored_cdf(t -> cdf(b, t - shift)), 0, tol, max_lag, "reporting delay"
+        )
     end
     # A fixed second delay shifts the first in the same way.
     if b isa Dirac
         shift = b.value
-        return _bin_cdf(t -> cdf(a, t - shift), 0, tol, max_lag, "reporting delay")
+        return _bin_cdf(
+            _censored_cdf(t -> cdf(a, t - shift)), 0, tol, max_lag, "reporting delay"
+        )
     end
     # P(A + B ≤ t) = ∫ f_A(x) F_B(t - x) dx over x ≤ t, B being non-negative.
     lo = minimum(a)
     F(t) = t <= lo ? 0.0 : first(quadgk(x -> pdf(a, x) * cdf(b, t - x), lo, t))
-    return _bin_cdf(F, 0, tol, max_lag, "reporting delay")
+    return _bin_cdf(_censored_cdf(F), 0, tol, max_lag, "reporting delay")
 end
 
 # The offspring law's own numeric element type, promoted with `eltype(u)` in
@@ -326,10 +344,10 @@ covariance are matched to; see [`NormalApproximation`](@ref) and
     population is effectively unsaturated. It models no interventions, and
     under-reporting only as each case reported independently with the same
     probability. The `generation_time` distribution and `reporting_delay`
-    are discretised onto `data`'s own time step by binning them at each step's
-    right edge: accurate when the step is short relative to how spread out
-    `generation_time` is, and biased when it is not (a day step against a
-    generation time whose own spread is only a few days, say). The
+    are discretised onto `data`'s own time step with each infection uniform
+    within its step. The recursion has no lag of 0, so generation times
+    shorter than a step lose their same-step mass and the estimate is biased
+    when the step is long compared with the generation time. The
     likelihood itself is approximate, a moment-matched normal or lognormal
     standing in for the true (unknown in closed form) distribution of the
     counts; prediction intervals built from it can be too narrow,

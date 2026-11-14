@@ -1,0 +1,1 @@
+`emergence_probability(R_wild, R_adapted, mutation_probability)` gives the probability that a case of a pathogen with a reproduction number of at most 1 starts a major outbreak by evolving into a type with a reproduction number above 1, from a two-type branching process solved with `extinction_probability`.
