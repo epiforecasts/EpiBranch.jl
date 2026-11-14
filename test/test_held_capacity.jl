@@ -268,6 +268,62 @@ end
         end
     end
 
+    @testset "A capacity schedule is checked across the whole stay" begin
+        rv = RingVaccination(efficacy = 0.9)
+        function run_schedule(capacity, days, hold; policy = DropRefused())
+            hc = HeldCapacity(rv; capacity, hold, on_refusal = policy)
+            state = empty_state()
+            contacts = [_held_contact(rv, i, d) for (i, d) in enumerate(days)]
+            append!(state.individuals, contacts)
+            state.max_infection_time = 1.0
+            EpiBranch.apply_actions!(hc, state, contacts)
+            return hc, state, contacts
+        end
+        key = EpiBranch._vaccination_time_key(:default)
+
+        # Capacity drops to 1 at day 5. The second stay would span the drop
+        # with the first still held, so it is refused although a place is free
+        # at its start.
+        hc, state, contacts = run_schedule(Steps([5.0], [2.0, 1.0]), [1.0, 2.0, 3.0], 6.0)
+        @test [c.id for c in contacts if is_vaccinated(c)] == [1]
+        @test held_usage(hc, state, 1.5).capacity == 2
+        @test held_usage(hc, state, 5.5).capacity == 1
+
+        # Stays that end before the drop are not affected by it, and nothing
+        # is admitted on top of a place held at the lower capacity.
+        hc, state, contacts = run_schedule(Steps([5.0], [2.0, 1.0]), [1.0, 2.0, 6.0, 7.0], 2.0)
+        @test [c.id for c in contacts if is_vaccinated(c)] == [1, 2, 3]
+        @test held_usage(hc, state, 2.5).held == 2
+        @test all(t -> held_usage(hc, state, t).held <= held_usage(hc, state, t).capacity, 0.0:0.25:12.0)
+
+        # Places that open after a refusal let a deferred action in.
+        hc, state, contacts = run_schedule(
+            Steps([10.0], [1.0, 3.0]), [1.0, 2.0, 3.0], 20.0; policy = DeferRefused()
+        )
+        @test [c.state[key] for c in contacts] == [1.0, 10.0, 10.0]
+
+        # DeferRefused still waits for a rise that comes after every stay has
+        # ended, or when there are no stays at all.
+        hc, state, contacts = run_schedule(
+            Steps([10.0], [0.0, 3.0]), [1.0], 2.0; policy = DeferRefused()
+        )
+        @test [c.state[key] for c in contacts] == [10.0]
+        hc, state, contacts = run_schedule(
+            Steps([5.0, 10.0], [1.0, 0.0, 3.0]), [1.0, 6.0], 2.0; policy = DeferRefused()
+        )
+        @test [c.state[key] for c in contacts] == [1.0, 10.0]
+
+        # A rise whose stay would span a later fall is skipped for the next rise.
+        hc, state, contacts = run_schedule(
+            Steps([10.0, 12.0, 20.0], [0.0, 1.0, 0.0, 3.0]), [1.0], 5.0; policy = DeferRefused()
+        )
+        @test [c.state[key] for c in contacts] == [20.0]
+
+        @test_throws ArgumentError HeldCapacity(rv; capacity = Seasonal(amplitude = 0.5, peak_day = 0.0))
+        @test_throws ArgumentError HeldCapacity(rv; capacity = t -> 2.0)
+        @test_throws ArgumentError HeldCapacity(rv; capacity = "two")
+    end
+
     @testset "Constructor validates its arguments" begin
         rv = RingVaccination(efficacy = 0.9)
         @test_throws ArgumentError HeldCapacity(rv; capacity = -1)
