@@ -355,7 +355,8 @@ numbers, not people, by fourth-order Runge–Kutta with a fixed step of
 `spec`'s interventions are read too: a [`GroupVaccination`](@ref), alone or
 under [`Scheduled`](@ref) (with `start_time` and/or `end_time`) and
 [`CapacityConstrained`](@ref) (a fixed budget, or a schedule such as
-[`Steps`](@ref)). Any other intervention is refused, since the approximation
+[`Steps`](@ref), shared by all groups, or a [`PerGroup`](@ref) budget with one
+for each). Any other intervention is refused, since the approximation
 would silently leave it out. The campaign is read from the intervention as it
 is written, and nothing is given twice: `group_key` (which must be one of the
 `mixing_by` keys; doses go to the groups it names), `efficacy` and `mode`,

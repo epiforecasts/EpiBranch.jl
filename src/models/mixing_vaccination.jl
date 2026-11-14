@@ -141,39 +141,50 @@ struct GroupCampaign{B, A <: DoseAllocation, GV <: GroupVaccination}
     allocation::A
 end
 
+# What every engine that reads a campaign rather than simulating individuals
+# (the approximations here and `simulate_by_generation`) can apply, in the one
+# wording they all refuse with. The engine-by-intervention table in the
+# documentation records the same.
+const _CAMPAIGN_SUPPORT = "a GroupVaccination, alone or under Scheduled (a " *
+    "start_time and end_time only) and CapacityConstrained (one per campaign, " *
+    "with a shared or PerGroup budget and `on_refusal = DropRefused()`)"
+
+function _refuse_campaign(engine, what, reason = "")
+    throw(
+        ArgumentError(
+            "$engine cannot apply $what$reason: it reads only $_CAMPAIGN_SUPPORT"
+        )
+    )
+end
+
 # Peel `Scheduled` and `CapacityConstrained` wrappers off an intervention,
 # keeping what each says about when and how many doses are given.
-function _unwrap_campaign(iv, window, budget)
+function _unwrap_campaign(iv, window, budget, engine)
     if iv isa Scheduled
-        w = _clock_window(iv)
+        w = _clock_window(iv, engine)
         return _unwrap_campaign(
-            iv.intervention, (max(window[1], w.start), min(window[2], w.stop)), budget
+            iv.intervention, (max(window[1], w.start), min(window[2], w.stop)), budget,
+            engine
         )
     elseif iv isa CapacityConstrained
-        budget === nothing || throw(
-            ArgumentError("a campaign with more than one CapacityConstrained is not supported")
+        budget === nothing || _refuse_campaign(
+            engine, "a campaign with more than one CapacityConstrained"
         )
-        iv.on_refusal isa DropRefused || throw(
-            ArgumentError(
-                "a campaign with `on_refusal = $(nameof(typeof(iv.on_refusal)))` is " *
-                    "not supported: the approximations assume each member is offered " *
-                    "a dose once, as under `DropRefused()`"
-            )
+        iv.on_refusal isa DropRefused || _refuse_campaign(
+            engine, "`on_refusal = $(nameof(typeof(iv.on_refusal)))`",
+            " (each person is offered a dose once)"
         )
-        return _unwrap_campaign(iv.intervention, window, iv)
+        return _unwrap_campaign(iv.intervention, window, iv, engine)
     end
     return iv, window, budget
 end
 
-_clock_window(s::Scheduled) = _clock_window(s.window)
-_clock_window(window::ClockWindow) = window
-function _clock_window(::Nothing)
-    throw(
-        ArgumentError(
-            "a Scheduled campaign gated on cases, a trigger or a predicate has no " *
-                "calendar window for the approximation to read; give it `start_time` " *
-                "and/or `end_time` alone"
-        )
+_clock_window(s::Scheduled, engine) = _clock_window(s.window, engine)
+_clock_window(window::ClockWindow, engine) = window
+function _clock_window(::Nothing, engine)
+    return _refuse_campaign(
+        engine, "a Scheduled gated on cases, a trigger or a predicate",
+        " (there is no calendar window to read)"
     )
 end
 
@@ -194,20 +205,9 @@ _read_campaign(spec, mixing_by, groups, allocation, what) =
 _read_campaign(::Nothing, args...) = NoCampaign()
 function _read_campaign(ivs::AbstractVector, mixing_by, groups, allocation, what)
     isempty(ivs) && return NoCampaign()
-    length(ivs) == 1 || throw(
-        ArgumentError(
-            "$what reads one GroupVaccination from a model's interventions, " *
-                "but this one has $(length(ivs)) interventions"
-        )
-    )
-    iv, window, budget = _unwrap_campaign(only(ivs), (-Inf, Inf), nothing)
-    iv isa GroupVaccination || throw(
-        ArgumentError(
-            "$what reads vaccination from a GroupVaccination, alone or under " *
-                "Scheduled and CapacityConstrained, and cannot approximate a model " *
-                "with a $(nameof(typeof(iv))), which would be silently left out"
-        )
-    )
+    length(ivs) == 1 || _refuse_campaign(what, "a model with $(length(ivs)) interventions")
+    iv, window, budget = _unwrap_campaign(only(ivs), (-Inf, Inf), nothing, what)
+    iv isa GroupVaccination || _refuse_campaign(what, nameof(typeof(iv)))
     key = iv.group_key
     position = findfirst(==(key), mixing_by)
     position === nothing && throw(
@@ -231,12 +231,30 @@ function _read_campaign(ivs::AbstractVector, mixing_by, groups, allocation, what
         push!(group_of, v)
     end
     members = [findall(==(v), group_of) for v in eachindex(values)]
+    _check_budget_groups(budget, iv, values)
     return GroupCampaign(
         iv, key, values, group_of, members,
         Float64(outcome.immune), Float64(outcome.vaccinated), Float64(outcome.hazard),
         Float64(iv.coverage), Float64(iv.dose_delay), Float64(window[1]), Float64(window[2]),
         budget, allocation
     )
+end
+
+# A `PerGroup` budget has to name the vaccination group of every mixing group
+# and be read from the `group_key` the model mixes by.
+_check_budget_groups(::Nothing, iv, values) = nothing
+function _check_budget_groups(cc::CapacityConstrained, iv, values)
+    pg = cc.budget_per_period
+    pg isa PerGroup || return nothing
+    _budget_group_key(pg, iv) == iv.group_key || throw(
+        ArgumentError(
+            "the PerGroup budget's key :$(_budget_group_key(pg, iv)) is not the " *
+                "GroupVaccination's group_key :$(iv.group_key), which is what the " *
+                "approximations split doses by"
+        )
+    )
+    foreach(v -> _group_budget(pg, v), values)
+    return nothing
 end
 
 # The inputs a compartment can only take as numbers. A distribution or a
@@ -274,18 +292,19 @@ end
 # until it is triggered) and `fired[v]` whether they have been offered;
 # `baseline[v]` is the expected number of cases already counted when the
 # trigger started to be watched for; `log` holds each batch of doses as
-# `(time, doses)`, which a budget with `carry_over = false` reads back.
+# `(time, doses, group)`, which a budget with `carry_over = false`, or one
+# per group, reads back.
 struct CampaignProgress
     dose_time::Vector{Float64}
     fired::Vector{Bool}
     baseline::Vector{Float64}
-    log::Vector{Tuple{Float64, Float64}}
+    log::Vector{Tuple{Float64, Float64, Int}}
 end
 
-_new_progress(::NoCampaign) = CampaignProgress(Float64[], Bool[], Float64[], Tuple{Float64, Float64}[])
+_new_progress(::NoCampaign) = CampaignProgress(Float64[], Bool[], Float64[], Tuple{Float64, Float64, Int}[])
 function _new_progress(c::GroupCampaign)
     n = length(c.values)
-    return CampaignProgress(fill(Inf, n), fill(false, n), zeros(n), Tuple{Float64, Float64}[])
+    return CampaignProgress(fill(Inf, n), fill(false, n), zeros(n), Tuple{Float64, Float64, Int}[])
 end
 
 function _copy(p::CampaignProgress)
@@ -306,12 +325,26 @@ function _dose_rate(alloc::Union{SplitByGroupSize, SplitBySusceptibles}, c, mode
     c.window_start <= t <= c.window_stop || return zeros(G)
     cc = c.budget
     period_start = floor(t / cc.period + 1.0e-9) * cc.period
-    total = _period_budget(cc.budget_per_period, period_start) / cc.period
     N = Float64.(model.group_sizes)
     reachable = c.coverage .* N .- D .> 1.0e-9
     weight = _split_weight(alloc, N, S) .* reachable
-    sum(weight) > 0 || return zeros(G)
-    return total .* weight ./ sum(weight)
+    # A shared budget is split over every mixing group; a `PerGroup` one over
+    # the mixing groups of each vaccination group, by that group's own budget.
+    rate = zeros(G)
+    for (budget, members) in _budget_shares(c)
+        total = _period_budget(budget, period_start) / cc.period
+        w = weight[members]
+        sum(w) > 0 || continue
+        rate[members] .= total .* w ./ sum(w)
+    end
+    return rate
+end
+
+# The budgets of a campaign and the mixing groups each is shared over.
+function _budget_shares(c::GroupCampaign)
+    pg = c.budget.budget_per_period
+    pg isa PerGroup || return [(pg, collect(eachindex(c.group_of)))]
+    return [(_group_budget(pg, c.values[v]), c.members[v]) for v in eachindex(c.values)]
 end
 _split_weight(::SplitByGroupSize, N, S) = N
 _split_weight(::SplitBySusceptibles, N, S) = max.(S, 0.0)
@@ -352,7 +385,14 @@ end
 # `CapacityConstrained` wrapper counts them for one more person: those
 # available through the end of the period `d` falls in (with `carry_over`,
 # including everything unspent before it), less those already given.
-_budget_left(::Nothing, log, d) = Inf
+_budget_left(::Nothing, log, d, v, group) = Inf
+function _budget_left(cc::CapacityConstrained, log, d, v::Integer, group)
+    pg = cc.budget_per_period
+    pg isa PerGroup || return _budget_left(cc, [(t, n) for (t, n, _) in log], d)
+    return _budget_left(
+        _group_capacity(cc, group), [(t, n) for (t, n, w) in log if w == v], d
+    )
+end
 function _budget_left(cc::CapacityConstrained, log, d)
     period_start, period_end = _period_bounds(cc, d)
     if cc.carry_over
@@ -392,12 +432,12 @@ function _fire_doses!(c::GroupCampaign, model, x, Σ, progress, t)
         c.window_start <= d <= c.window_stop || continue
         S, _, _, _, D = _unpack(x, G)
         reach = [max(c.coverage * N[m] - D[m], 0.0) for m in c.members[v]]
-        given = min(sum(reach), _budget_left(c.budget, progress.log, d))
+        given = min(sum(reach), _budget_left(c.budget, progress.log, d, v, c.values[v]))
         given > 0 || continue
         for (k, m) in enumerate(c.members[v])
             _dose_group!(c, x, Σ, G, m, given * reach[k] / sum(reach), N[m])
         end
-        push!(progress.log, (d, given))
+        push!(progress.log, (d, given, v))
     end
     return nothing
 end
@@ -505,12 +545,14 @@ function _handover_progress(c::GroupCampaign, es, t, cases)
             end
         end
     end
-    given = Dict{Float64, Float64}()
+    given = Dict{Tuple{Float64, Int}, Float64}()
     for ind in es.individuals
         dose_t = _dose_time(dose_label(c.vaccination), ind)
-        dose_t !== nothing && dose_t <= t &&
-            (given[dose_t] = get(given, dose_t, 0.0) + 1.0)
+        dose_t !== nothing && dose_t <= t || continue
+        v = findfirst(isequal(get(ind.state, c.key, missing)), c.values)
+        v === nothing && continue
+        given[(dose_t, v)] = get(given, (dose_t, v), 0.0) + 1.0
     end
-    append!(progress.log, [(k, v) for (k, v) in sort!(collect(given))])
+    append!(progress.log, [(k[1], n, k[2]) for (k, n) in sort!(collect(given))])
     return progress
 end

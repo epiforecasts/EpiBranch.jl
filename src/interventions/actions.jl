@@ -230,13 +230,14 @@ function _admit_actions!(cc::CapacityConstrained, state, actions, admitter = cc)
     group_idxs, group_keys = _resource_groups(cc, state, [a.individual for a in candidates])
     for (idxs, group_key) in zip(group_idxs, group_keys)
         group = candidates[idxs]
+        budget = _group_capacity(cc, group_key)
         order = sortperm([cc.priority(a.individual, state) for a in group]; alg = MergeSort)
         times = get!(Vector{Float64}, cache.times, group_key)
         for i in order
             action = group[i]
             _capacity_used(get(action.individual.state, key, nothing)) && continue
-            if !_fits_budget(cc, times, Float64[], action.time)
-                action = refused_action(cc.on_refusal, cc, times, action)
+            if !_fits_budget(budget, times, Float64[], action.time)
+                action = refused_action(cc.on_refusal, budget, times, action)
                 action === nothing && continue
             end
             _admit_actions!(cc.intervention, state, [_filing_use(cc, action)], admitter)
