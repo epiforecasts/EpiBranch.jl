@@ -176,8 +176,8 @@ CaseClassification
 AbstractAssay
 Assay
 within_host
-trajectory_load
-measure
+EpiBranch.trajectory_load
+EpiBranch.measure
 exclusive_probabilities
 is_terminal
 terminal_event
