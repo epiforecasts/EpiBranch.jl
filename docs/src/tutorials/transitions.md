@@ -258,7 +258,7 @@ and time their outcome from admission.
 
 ## Symptom onset that follows the case's load
 
-A delay can read the case's own within-host trajectory. As one possible link between load and symptoms, a case becomes symptomatic on the first day its load reaches a threshold, plus a short random lag. [`trajectory_load`](@ref EpiBranch.trajectory_load) reads the load stored by [`within_host`](@ref). A case whose load never reaches the threshold gets no onset, because the `probability` is 0.
+A delay can read the case's own within-host trajectory. As one possible link between load and symptoms, a case becomes symptomatic on the first day its load reaches a threshold, plus a short random lag. [`trajectory_load`](@ref EpiBranch.trajectory_load) reads the load stored by [`within_host`](@ref). A case that never reaches the threshold gets no onset because its `probability` is 0.
 
 ```@example transitions
 # load (log10 copies per mL): linear rise to a peak at day 5, then exponential decline
@@ -285,7 +285,7 @@ println("Symptomatic: ", count(ind -> ind.state[:symptomatic], infected),
     " of ", length(infected))
 ```
 
-This is one choice among many. For many pathogens load and symptoms are only loosely linked, and some people with high loads have no symptoms. The example does not define asymptomatic infection, and the threshold, the lag and the shape of the curve are all assumptions to replace with ones that suit the pathogen.
+This is one choice among many. For many pathogens load and symptoms are only loosely linked, and some people with high loads have no symptoms. The example does not define asymptomatic infection. The threshold, the lag and the shape of the curve are assumptions to replace with ones that suit the pathogen.
 
 ## Combining with multi-type models and population characteristics
 

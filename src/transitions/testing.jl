@@ -135,7 +135,7 @@ A case is not tested for an infection it was never infected with: the sample
 time is measured from the infection that is current when the step resolves.
 
 Use the step as `test_sensitivity` of [`Isolation`](@ref) to isolate the cases
-whose test is positive.
+with a positive test.
 
 # Examples
 
