@@ -813,11 +813,20 @@ function seed!(state::SimulationState, ids, interventions, transitions)
     end
     if !isempty(ids)
         first_ind = state.individuals[first(ids)]
-        _validate_required_fields(first_ind, interventions)
         # Building the probe costs a copy of the case's state on every outbreak,
-        # so it is built only when a transition has a field to check.
-        if any(t -> !isempty(required_fields(t)), transitions)
-            _validate_required_fields(_transition_probe(first_ind, transitions, state), transitions)
+        # so it is built only when something has a field to check and a
+        # transition could provide it. An intervention may read what a
+        # transition writes, such as `Isolation` reading the keys of `Testing`.
+        if !isempty(transitions) &&
+                (
+                any(t -> !isempty(required_fields(t)), transitions) ||
+                any(i -> !isempty(required_fields(i)), interventions)
+            )
+            probe = _transition_probe(first_ind, transitions, state)
+            _validate_required_fields(probe, interventions)
+            _validate_required_fields(probe, transitions)
+        else
+            _validate_required_fields(first_ind, interventions)
         end
     end
     state.cumulative_cases = length(ids)

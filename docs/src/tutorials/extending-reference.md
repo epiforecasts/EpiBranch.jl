@@ -61,7 +61,6 @@ underscore are internal.
 | `:_isolation_handle` | `Int` | — | `Isolation` | `resolve_individual!`; internal. The handle of `Isolation`'s own entry, so `reset!` can withdraw exactly it |
 | `:_quarantine_removal_handles` | `Vector{Int}` | — | `ContactTracing`/`SourceTracing`'s `Quarantine` | `apply_trace!`; internal. The handles of every entry a quarantine has recorded, so a reset of the shared bookkeeping can withdraw each one. The `reset!` of a tracer withdraws only the entries listed under its own handles key |
 | `:test_positive` | `Bool` | `false` | `Isolation` | `initialise_individual!` |
-| `:test_time` | `Float64` | — | a test step or attribute builder | Read by `AfterPositiveTest` in `Isolation` as the sampling time |
 | `:traced` | `Bool` | `false` | `ContactTracing`, `SourceTracing` | `trace_contacts!` |
 | `:quarantined` | `Bool` | `false` | `ContactTracing`, `SourceTracing` | `trace_contacts!` |
 | `:_traced_isolation_time` | `Float64` | `Inf` | `ContactTracing` → `Isolation` | Internal hand-over; may precede onset, so `Isolation` holds it back to onset |
@@ -96,7 +95,7 @@ underscore are internal.
 | `:admission_time` | `Float64` | `Inf` | `Hospitalisation` transition | `resolve_individual!`; reset to `Inf` by `censor_after_outcome!` if it falls after `:outcome_time` |
 | `:trajectory` | `Function` | — | `within_host` attribute builder | Read through `trajectory_load`; a function of the days since infection returning the pathogen load |
 | `:tested` | `Bool` | `false` | `Testing` transition | `resolve_individual!`; reset to `false` by `censor_after_outcome!` if `:test_time` falls after `:outcome_time` |
-| `:test_time` | `Float64` | `Inf` | `Testing` transition | `resolve_individual!`; reset to `Inf` by `censor_after_outcome!` if it falls after `:outcome_time` |
+| `:test_time` | `Float64` | `Inf` | `Testing` transition | `resolve_individual!`, `Isolation` with `AfterPositiveTest`; reset to `Inf` by `censor_after_outcome!` if it falls after `:outcome_time` |
 | `:test_ct` | `Float64` | `NaN` | `Testing` transition | `resolve_individual!` |
 | `:test_result` | `Bool` | `false` | `Testing` transition | `resolve_individual!` |
 | `:death_candidate_time` | `Float64` | `Inf` | `Death` transition | `resolve_individual!` |

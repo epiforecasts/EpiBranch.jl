@@ -124,15 +124,17 @@ EpiBranch.infectious_removal_time(f::FixedRemoval, ::Individual) = f.time
     end
 
     @testset "AfterPositiveTest isolates a case at its sampling time plus the turnaround" begin
-        sampled = (rng, ind) -> (ind.state[:test_time] = 3.0)
         asymptomatic = clinical_presentation(
             incubation_period = Dirac(1.0), prob_asymptomatic = 1.0
         )
-        function first_case(iso)
+        curve(rng, ind) = t -> 8.0
+        assay(detect) = Assay(ct = load -> 40.0 - 3.0 * load, detect = detect)
+        function first_case(iso; detect = 2.0)
             state = simulate(
                 ModelSpec(
                     BranchingProcess(Poisson(0.0), Exponential(5.0));
-                    interventions = [iso], attributes = [asymptomatic, sampled]
+                    interventions = [iso], attributes = [asymptomatic, within_host(curve)],
+                    progression = [Testing(assay = assay(detect), delay = 3.0, from = :infection)]
                 );
                 max_cases = 1, rng = StableRNG(1)
             )
@@ -157,6 +159,9 @@ EpiBranch.infectious_removal_time(f::FixedRemoval, ::Individual) = f.time
             trigger = AfterPositiveTest(), eligibility = AllCases()
         )
         @test !is_isolated(first_case(missed))
+
+        # A negative test result does not isolate the case.
+        @test !is_isolated(first_case(test_iso; detect = 10.0))
     end
 
     @testset "A trigger of one's own sets the isolation time" begin

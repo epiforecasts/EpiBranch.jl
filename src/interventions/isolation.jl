@@ -96,20 +96,24 @@ isolation_reference_time(::AfterSymptomOnset, individual, state) = onset_time(in
     AfterPositiveTest()
 
 Isolate a case when its test result comes back positive: the sampling time
-recorded in `:test_time` for the case, plus the `onset_to_isolation_delay` of the
-isolation, which then stands for the turnaround from sample
-to result. A case with no recorded sampling time is not isolated through it.
-It does not need symptoms. Pair it with `eligibility = AllCases()` to isolate
-screened cases without symptoms. Whether the test is positive is drawn from
-`test_sensitivity`, as for any trigger.
+that [`Testing`](@ref) records in `:test_time`, plus the `onset_to_isolation_delay`
+of the isolation, which then stands for the turnaround from sample to result.
+A case never tested has `:test_time` of `Inf`, and a case whose `:test_result`
+is negative is not isolated through the test. It does not need symptoms. Pair it
+with `eligibility = AllCases()` to isolate screened cases without symptoms.
+`test_sensitivity` still applies on top of the recorded result.
 """
 struct AfterPositiveTest <: IsolationTrigger end
-isolation_reference_time(::AfterPositiveTest, individual, state) =
-    _state_real(individual.state, :test_time, NaN)
+function isolation_reference_time(::AfterPositiveTest, individual, state)
+    st = individual.state
+    get(st, :test_result, false)::Bool || return Inf
+    return _state_real(st, :test_time, Inf)
+end
 
 # Fields a trigger reads. A custom trigger extends this for its own type.
 required_fields(::IsolationTrigger) = Symbol[]
 required_fields(::AfterSymptomOnset) = [:onset_time]
+required_fields(::AfterPositiveTest) = [:test_time, :test_result]
 
 # ── Isolation intervention ──────────────────────────────────────────
 
