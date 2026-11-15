@@ -94,7 +94,7 @@ Contacts who were exposed but not infected are kept in the output, because
 contact tracing and vaccination reach them too. This is also how the number of
 contacts traced, vaccines given or tests used is counted.
 
-### Why this separation matters
+### Consequences of the separation
 
 Because the offspring distribution does not depend on time or control
 measures, it can be analysed with standard tools: the epidemic threshold from
@@ -139,7 +139,7 @@ simulated or evaluated, and each part is specified only once. A network or
 household model, for example, takes the start of infectiousness from the
 disease part of the model.
 
-### Who each person is
+### Attributes of a person
 
 Each simulated person has their place in the transmission tree, their
 infection time, their susceptibility and their infectiousness, plus a
@@ -148,7 +148,7 @@ so on) that population characteristics, interventions and clinical transitions
 read and write. The values the package uses are listed in [Individual state and
 reserved keys](@ref).
 
-### How interventions act
+### Modes of intervention
 
 An intervention acts in one of three ways:
 
@@ -280,7 +280,7 @@ When the offspring parameters vary between chains in another way, the
 chain-size distribution is integrated numerically over that variation; other
 offspring distributions without a closed form use simulation.
 
-### Which sampler to use
+### Choosing a sampler
 
 Closed-form likelihoods are deterministic functions of the parameters. They
 work with automatic differentiation, which computes their gradients, and therefore

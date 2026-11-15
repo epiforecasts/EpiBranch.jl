@@ -16,7 +16,7 @@ The recipes below assume a little Julia: writing a function, and the
 `(rng, ind) -> ...` form of an anonymous function. [Julia for R
 users](../julia-for-r-users.md) covers what you need.
 
-## Which tool do I need?
+## Choosing a tool
 
 | What you want to model | What you write | Where |
 |---|---|---|
@@ -447,7 +447,7 @@ rare intervention that has one.
     needs, so compare a small simulation with and without your intervention,
     as above, before relying on it.
 
-## Where next
+## Next steps
 
 - [Writing an intervention](writing-interventions.md): every hook an
   intervention can use, the order in which they are called, ending an infection

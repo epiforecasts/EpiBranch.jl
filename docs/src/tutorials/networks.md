@@ -160,7 +160,7 @@ modelling assumption. A few that map onto common assumptions, for `n` people:
 The contact-interval distribution, the disease timeline and population
 characteristics attach in the same way whatever the source of the graph.
 
-## Which interventions work on a network
+## Interventions on a network
 
 | Intervention | What it does on a network |
 |:-- | :-- |
@@ -453,7 +453,7 @@ The basic reproduction number, what a case would achieve if never isolated, is
 the same in all three scenarios. Isolation changes the number of people each
 case actually infects, by an amount that depends on which routes it stops.
 
-### Which contacts can be traced
+### Traceable contacts
 
 Routes also differ in which contacts a case can name to contact tracers. A
 case can name everyone in their household, but most community contacts are
