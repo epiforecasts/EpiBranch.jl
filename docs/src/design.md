@@ -148,7 +148,7 @@ so on) that population characteristics, interventions and clinical transitions
 read and write. The values the package uses are listed in [Individual state and
 reserved keys](@ref).
 
-### Intervention actions
+### Ways interventions act
 
 An intervention acts in one of three ways:
 
