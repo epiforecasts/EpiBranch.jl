@@ -1333,20 +1333,24 @@ end
 # evaluation and read through the same seam as a `Steps` schedule.
 
 """
-    MassActionHazard(; transmission_rate, population_size)
+    MassActionHazard(; transmission_rate, population = NoPopulation())
 
-A density-dependent hazard for [`pairwise_surv_loglik`](@ref)'s
+A frequency-dependent hazard for [`pairwise_surv_loglik`](@ref)'s
 `external_hazard`: the mass-action force of infection, `transmission_rate *
-I(t) / population_size`, where `I(t)` is the number of people the data's
+I(t) / N`, for `N` the size of the [`Population`](@ref), where `I(t)` is the number of people the data's
 [`InfectionLayer`](@ref) records as infectious at calendar time `t`. It is
 read exactly off the layer's own `infectious_time` and `removal_time`, known or
 augmented, with no ODE and no further approximation.
 
 Pass it alone, for an outbreak with no structure beyond its size, or beside a
 household or network contact structure, for mass action from the wider
-community on top of exposure within it; `population_size` need not match the
-number of people the data covers; it is the size of the mixing population mass
-action spreads through, which a traced household or network may be a part of.
+community on top of exposure within it. The `population` is the mixing
+population mass action spreads through, `Population(n)` or `population_size = n`
+for short, which a traced household or network may be a part of, so `n` need
+not match the number of people the data covers. Without one it is the people in
+the data, which is the whole mixing population when every household is
+included, and the sum of the household sizes is smaller than it when the
+households are a sample.
 
 `I(t)` counts only the people in the layer. When the layer is a sample of the
 mixing population, infectious people outside it are missing from `I(t)`. The
@@ -1394,22 +1398,34 @@ truth = ModelSpec(
     progression = [Transition(:recovered; from = :infection, delay = 6.0, terminal = true)]
 )
 data = household_infections(simulate(truth; rng = StableRNG(3)), truth)
-mass_action = MassActionHazard(; transmission_rate = 0.05, population_size = 800)
+mass_action = MassActionHazard(; transmission_rate = 0.05, population = Population(800))
 pairwise_surv_loglik(Exponential(4.0), data; external_hazard = mass_action)
 ```
 """
 struct MassActionHazard{T <: Real}
     transmission_rate::T
-    population_size::Int
+    population::Union{NoPopulation, SinglePopulation}
 end
 
-function MassActionHazard(; transmission_rate, population_size::Integer)
-    population_size >= 1 || throw(ArgumentError("population_size must be ≥ 1"))
+function MassActionHazard(;
+        transmission_rate, population = NoPopulation(), population_size = NoPopulation()
+    )
+    pop = _population_input(population, population_size)
+    pop isa GroupedPopulation && throw(
+        ArgumentError(
+            "MassActionHazard mixes one population, so give `Population(n)`, not sizes by group"
+        )
+    )
     (isfinite(transmission_rate) && transmission_rate >= 0) || throw(
         ArgumentError("transmission_rate must be a finite, non-negative number (β ≥ 0)")
     )
-    return MassActionHazard(float(transmission_rate), Int(population_size))
+    return MassActionHazard(float(transmission_rate), pop)
 end
+
+# The size of the population mass action spreads through: the one given, or the
+# people in the data.
+_mass_action_size(::NoPopulation, n_people::Integer) = max(Int(n_people), 1)
+_mass_action_size(p::SinglePopulation, ::Integer) = p.size
 
 _valid_external(::MassActionHazard) = true
 _ext_active(m::MassActionHazard) = m.transmission_rate > 0
@@ -1528,7 +1544,8 @@ function mass_action_schedule(
         push!(counts, count)
     end
     Tv = promote_type(typeof(m.transmission_rate), Float64)
-    return _MassActionSchedule(Tv(m.transmission_rate), m.population_size, breaks, counts)
+    N = _mass_action_size(m.population, length(infectious_time))
+    return _MassActionSchedule(Tv(m.transmission_rate), N, breaks, counts)
 end
 
 function _ext_prepare(m::MassActionHazard, data::InfectionLayer)
@@ -1569,7 +1586,7 @@ as the `external_hazard` of a process to simulate from.
 Mass action from a community of 800 plus a constant importation rate:
 
 ```julia
-mass_action = MassActionHazard(; transmission_rate = 0.05, population_size = 800)
+mass_action = MassActionHazard(; transmission_rate = 0.05, population = Population(800))
 pairwise_surv_loglik(Exponential(4.0), data;
     external_hazard = mass_action + 0.002)
 ```

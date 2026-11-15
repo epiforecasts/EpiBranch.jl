@@ -670,6 +670,15 @@ EpiBranch.GroupedPopulation
 EpiBranch.population
 ```
 
+How the groups of a population meet is a mixing value, which a
+[`BranchingProcess`](@ref) and a [`MixingProcess`](@ref) both take.
+
+```@docs
+Mixing
+FrequencyDependent
+DensityDependent
+```
+
 ## Default placeholders
 
 The values shown as defaults in signatures when a setting is left out, such as

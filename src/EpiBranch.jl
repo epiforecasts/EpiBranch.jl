@@ -18,6 +18,7 @@ include("docstrings.jl")
 include("individual_state.jl")
 include("types.jl")
 include("population.jl")
+include("mixing_values.jl")
 include("state_accessors.jl")
 include("options.jl")
 include("distributions.jl")
@@ -183,6 +184,7 @@ export TransmissionModel, BranchingProcess, Infectiousness, OffspringTimes,
     HomogeneousProcess, MixingProcess, ModelSpec
 export MeanFieldProcess, MeanFieldState, LinearNoiseProcess, LinearNoiseState
 export StratifiedContacts, flatten_contacts, contacts_from_table, mixing_rate
+export Mixing, FrequencyDependent, DensityDependent
 export read_contacts, ContactFileFormat, CSVFormat, NetCDFFormat
 export MixingMeanFieldProcess, MixingMeanFieldState
 export MixingLinearNoiseProcess, MixingLinearNoiseState

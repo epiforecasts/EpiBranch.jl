@@ -238,7 +238,10 @@ end
     mixing_rate(contacts::StratifiedContacts, group_sizes)
 
 The `rate` of a [`MixingProcess`](@ref) from a contact matrix and the sizes of
-the groups. `contacts[j, i]` is the mean number of group-`i` contacts a
+the groups. A [`MixingProcess`](@ref) now takes the matrix as a
+[`FrequencyDependent`](@ref) value and reads the sizes from its population, so
+this is for giving the sizes separately, as a `rate` that is a callable of the
+two groups. `contacts[j, i]` is the mean number of group-`i` contacts a
 group-`j` person makes per day, the layout of a survey matrix and of the
 matrix [`BranchingProcess`](@ref) takes. A person in group `j` then contacts
 one given member of group `i` at rate `contacts[j, i] / group_sizes[i]`, the
@@ -264,12 +267,10 @@ using EpiBranch, Distributions
 
 n = [1500, 1500]
 contacts = [3.0 0.5; 0.5 0.5]
-band = (rng, ind) -> (ind.state[:age_band] = rand(rng, 1:2))
 model = ModelSpec(
-    MixingProcess(; population_size = sum(n), mixing_by = (:age_band,),
+    MixingProcess(; population = Population(n), mixing_by = (:age_band,),
         rate = mixing_rate(contacts, n));
-    progression = [Transition(:recovered; from = :infection, rate = 1.0, terminal = true)],
-    attributes = band)
+    progression = [Transition(:recovered; from = :infection, rate = 1.0, terminal = true)])
 ```
 """
 function mixing_rate(
@@ -296,6 +297,101 @@ end
 
 function mixing_rate(contacts::StratifiedContacts, group_sizes::AbstractArray{<:Real})
     return mixing_rate(contacts.matrix, vec(group_sizes); groups = contacts.groups)
+end
+
+FrequencyDependent(c::StratifiedContacts) = FrequencyDependent(c.matrix; groups = c.groups, labels = c.labels)
+DensityDependent(c::StratifiedContacts) = DensityDependent(c.matrix; groups = c.groups, labels = c.labels)
+
+# The rate of a `MixingProcess` from a mixing value and the population, along
+# with the population itself, whose groups are those of the mixing value when it
+# names none. A pair rate given directly is used as it is.
+_resolve_rate(::NoMixing, ::Nothing, q, population, mixing_by) = throw(
+    ArgumentError("give `mixing`, or `rate` for any per-pair rate")
+)
+_resolve_rate(::NoMixing, rate, q, population, mixing_by) = (rate, population)
+function _resolve_rate(::Mixing, rate, q, population, mixing_by)
+    throw(ArgumentError("give `mixing` or `rate`, not both"))
+end
+function _resolve_rate(mixing::Mixing, ::Nothing, q, population, mixing_by)
+    isempty(mixing_by) && throw(
+        ArgumentError("a mixing value needs `mixing_by`, the attributes that hold each person's group")
+    )
+    n = size(mixing.matrix, 1)
+    groups = _reconciled_groups(mixing, population, n, length(mixing_by))
+    population = _with_groups(population, groups)
+    rates = _pair_rates(mixing, q, population)
+    index = Dict{Any, Int}(g => i for (i, g) in enumerate(groups))
+    return ContactMatrixRate(rates, index), population
+end
+
+# The group tuples of the mixing value and of the population must agree where
+# both name them; where neither does, group `i` is `(i,)`.
+function _reconciled_groups(mixing, population, n::Int, nkeys::Int)
+    from_mixing = _mixing_groups(mixing)
+    from_population = _population_group_tuples(population)
+    if !(from_mixing isa NoTypeLabels) && !(from_population isa NoTypeLabels)
+        from_mixing == from_population || throw(
+            ArgumentError("the groups of the mixing value and of the population differ")
+        )
+    end
+    groups = from_mixing isa NoTypeLabels ? from_population : from_mixing
+    groups isa NoTypeLabels && (groups = _group_tuples(NoTypeLabels(), n, nkeys))
+    length(groups) == n || throw(
+        ArgumentError("the population has $(length(groups)) groups for a mixing value of $n")
+    )
+    all(g -> length(g) == nkeys, groups) || throw(
+        ArgumentError("each group needs $nkeys values, one for each `mixing_by` attribute")
+    )
+    return groups
+end
+
+_population_group_tuples(::Union{NoPopulation, SinglePopulation}) = NoTypeLabels()
+function _population_group_tuples(p::GroupedPopulation)
+    return p.groups isa NoTypeLabels ? NoTypeLabels() :
+        Tuple[g isa Tuple ? g : (g,) for g in p.groups]
+end
+
+_with_groups(p::Union{NoPopulation, SinglePopulation}, groups) = p
+function _with_groups(p::GroupedPopulation, groups)
+    return p.groups isa NoTypeLabels ? GroupedPopulation(p.sizes, groups) : p
+end
+
+"""
+    BranchingProcess(mixing::Mixing, q, D, dist_fn, gt; population = NoPopulation(),
+                     type_labels = NoTypeLabels())
+
+A multi-type branching process from a [`Mixing`](@ref) value, the transmission
+probability `q` (a number, or one per infectee type for a per-type
+susceptibility) and the infectious period `D` in days. `dist_fn` and `gt` are as
+in the next-generation-matrix form of [`BranchingProcess`](@ref).
+
+The offspring means follow from the mixing value: a
+[`FrequencyDependent`](@ref) matrix of contacts per person per day gives
+`contacts[j, i] * q * D` type-`i` cases per type-`j` case without needing the
+group sizes, and a [`DensityDependent`](@ref) matrix of rates per pair gives
+`rates[j, i] * N_i * q * D`, which needs `population = Population(sizes)`. With
+a population, each type is depleted against its own size.
+
+# Examples
+```julia
+using EpiBranch, Distributions
+
+mixing = FrequencyDependent([10.0 1.0; 4.0 2.0])  # row = respondent, column = contact
+model = BranchingProcess(
+    mixing, 0.05, 5.0, R -> NegBin(R, 0.5), LogNormal(1.6, 0.5);
+    population = Population([1500, 3500]; groups = ["child", "adult"]),
+)
+```
+"""
+function BranchingProcess(
+        mixing::Mixing, q::Union{Real, AbstractVector{<:Real}}, D::Real, dist_fn, gt;
+        population = NoPopulation(), population_size = NoPopulation(),
+        type_labels::Union{Vector{String}, NoTypeLabels} = NoTypeLabels()
+    )
+    pop = _population_input(population, population_size)
+    M = _next_generation(mixing, q, D, pop)
+    labels = _merge_labels(mixing.labels, type_labels)
+    return BranchingProcess(M, dist_fn, gt; population = pop, type_labels = labels)
 end
 
 # ── Reading contact matrices from files ──────────────────────────────

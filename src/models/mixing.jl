@@ -11,6 +11,8 @@
 # from that progression when the model is simulated.
 
 """
+    MixingProcess(; population, mixing_by = (), mixing, q = 1.0, calendar = nothing,
+                 from = nothing, until = (:recovered, :died, :isolated))
     MixingProcess(; population, mixing_by = (), rate, calendar = nothing,
                  from = nothing, until = (:recovered, :died, :isolated))
 
@@ -27,6 +29,15 @@ sizes (`groups` gives each group's attribute values as a tuple, `(i,)` for the
 `Population(n)` the groups come from the composed `attributes`, which set
 `mixing_by`'s keys, and their sizes may differ from run to run.
 
+How the groups meet is a [`Mixing`](@ref) value, [`FrequencyDependent`](@ref)
+contacts per person per day or [`DensityDependent`](@ref) rates per pair, with
+`q`, the probability that a contact transmits (1 by default). The process
+derives the rate per pair from it and the group sizes of the population: under
+frequency dependence the sizes are needed (`Population(sizes)`), under density
+dependence they are not. The groups of the mixing value (its `groups`) are the
+tuples of `mixing_by` values, `(i,)` for the `i`-th group by default.
+
+Instead of `mixing`, `rate` gives any per-pair rate directly:
 `rate(infector_group, target_group)` is the rate at which one infective in
 the first group contacts one member of the second. Homogeneous mixing is
 `β/N` for every pair; a contact matrix `M[b, a]` giving the rate at which one
@@ -64,11 +75,14 @@ infector all apply as they do on any other route of the race.
 using EpiBranch, Distributions
 
 # Two age bands of 1500 people each, assigned by the process; band 1 mixes more.
-M = [3.0 0.5; 0.5 0.5]
-rate = (from, to) -> M[to[1], from[1]] / 1500
+# `contacts[j, i]` is the mean number of band-`i` contacts a band-`j` person
+# makes per day.
+contacts = [3.0 0.5; 0.5 0.5]
 
 model = ModelSpec(
-    MixingProcess(; population = Population([1500, 1500]), mixing_by = (:age_band,), rate);
+    MixingProcess(;
+        population = Population([1500, 1500]), mixing_by = (:age_band,),
+        mixing = FrequencyDependent(contacts));
     progression = [Transition(:recovered; from = :infection, rate = 1.0, terminal = true)])
 state = simulate(model; n_initial = 5)
 ```
@@ -86,12 +100,15 @@ function MixingProcess(;
         population = NoPopulation(),
         population_size = NoPopulation(),
         mixing_by::Tuple = (),
-        rate,
+        mixing = NoMixing(),
+        q = 1.0,
+        rate = nothing,
         calendar = nothing,
         from = nothing,
         until = (:recovered, :died, :isolated)
     )
     pop = _closed_population(population, population_size)
+    rate, pop = _resolve_rate(mixing, rate, q, pop, mixing_by)
     return MixingProcess(pop, mixing_by, rate, calendar, from, Tuple(until))
 end
 

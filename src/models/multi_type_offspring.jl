@@ -137,28 +137,12 @@ function BranchingProcess(
     )
 end
 
-# The next-generation matrix for `BranchingProcess(contacts, q, D, ...)`
-# below: `contacts[j, i]`, the daily contacts a type-`j` respondent makes
-# with type `i` (row = respondent, as a survey matrix is laid out), is
-# transposed so that columns are infectors, then scaled by the transmission
-# probability `q` (per infectee type when given as a vector, because
-# susceptibility belongs to the row) and the infectious period `D`.
-function _contact_offspring_matrix(contacts::AbstractMatrix{<:Real}, q, D)
-    n = size(contacts, 1)
-    size(contacts, 2) == n || throw(
-        ArgumentError("contacts must be square, got $(size(contacts))")
-    )
-    q isa AbstractVector && length(q) != n && throw(
-        ArgumentError("q has $(length(q)) entries for $n types, expected $n")
-    )
-    return Matrix{Float64}(permutedims(contacts) .* q .* D)
-end
-
 """
     BranchingProcess(contacts, q, D, dist_fn, gt; kwargs...)
 
 A multi-type branching process built directly from a contact matrix, rather
-than a next-generation matrix: the common case for a contact matrix from a
+than a next-generation matrix, as `BranchingProcess(FrequencyDependent(contacts),
+q, D, dist_fn, gt)` does (see [`Mixing`](@ref) for the density-dependent form): the common case for a contact matrix from a
 social contact survey, laid out respondent by contact (the `contact_matrix()`
 function from socialmixr in R, a summary from cntmosaic in Python, or a
 published matrix), together with a transmission probability and an
@@ -196,8 +180,10 @@ function BranchingProcess(
         population = NoPopulation(), population_size = NoPopulation(),
         type_labels::Union{Vector{String}, NoTypeLabels} = NoTypeLabels()
     )
-    M = _contact_offspring_matrix(contacts, q, D)
-    return BranchingProcess(M, dist_fn, gt; population, population_size, type_labels)
+    return BranchingProcess(
+        FrequencyDependent(contacts), q, D, dist_fn, gt;
+        population, population_size, type_labels
+    )
 end
 
 """

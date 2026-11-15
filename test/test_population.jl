@@ -214,3 +214,179 @@ end
     )
     @test_throws ArgumentError HomogeneousProcess(; transmission_rate = 1.5)
 end
+
+@testset "Mixing values" begin
+    c = [10.0 1.0; 4.0 2.0]
+    gt = Exponential(5.0)
+    q, D = 0.05, 5.0
+    offspring(m) = m.infectiousness[1].offspring.offspring_matrix
+
+    @testset "construction" begin
+        @test FrequencyDependent(c) isa Mixing
+        @test DensityDependent(c) isa Mixing
+        @test_throws ArgumentError FrequencyDependent([1.0 2.0])
+        @test_throws ArgumentError FrequencyDependent([1.0 -2.0; 0.0 1.0])
+        @test_throws ArgumentError DensityDependent(c; groups = [(1,)])
+        flat = flatten_contacts(rand(2, 2, 2, 2); names = (:age, :setting))
+        @test FrequencyDependent(flat).groups == flat.groups
+        @test DensityDependent(flat).labels == flat.labels
+    end
+
+    @testset "branching process offspring means" begin
+        freq = BranchingProcess(FrequencyDependent(c), q, D, R -> Poisson(R), gt)
+        @test offspring(freq) == permutedims(c) .* q .* D
+        # The contact-matrix form is the frequency-dependent one.
+        @test offspring(BranchingProcess(c, q, D, R -> Poisson(R), gt)) == offspring(freq)
+
+        r = [0.002 0.0004; 0.0004 0.0002]
+        sizes = [1500, 3500]
+        dens = BranchingProcess(
+            DensityDependent(r), q, D, R -> Poisson(R), gt; population = Population(sizes)
+        )
+        @test offspring(dens) ≈ permutedims(r) .* sizes .* q .* D
+        # Equal to the frequency form once the contacts are rate times size.
+        same = BranchingProcess(
+            FrequencyDependent(r .* permutedims(sizes)), q, D, R -> Poisson(R), gt
+        )
+        @test offspring(dens) ≈ offspring(same)
+
+        @test_throws "size of each group" BranchingProcess(
+            DensityDependent(r), q, D, R -> Poisson(R), gt
+        )
+        @test_throws "size of each group" BranchingProcess(
+            DensityDependent(r), q, D, R -> Poisson(R), gt; population_size = 5000
+        )
+
+        labelled = BranchingProcess(
+            FrequencyDependent(c; labels = ["child", "adult"]), q, D, R -> Poisson(R), gt
+        )
+        @test labelled.type_labels == ["child", "adult"]
+    end
+
+    @testset "a finite population is depleted by group under either form" begin
+        model = BranchingProcess(
+            FrequencyDependent([3.0 3.0; 3.0 3.0]), 0.5, 2.0, R -> Poisson(R), gt;
+            population = Population([5, 2000])
+        )
+        state = simulate(model; n_initial = 1, max_cases = 1500, rng = StableRNG(1))
+        @test state.group_cases[1] <= 5
+    end
+
+    @testset "MixingProcess pair rates" begin
+        r = [0.002 0.0004; 0.0004 0.0002]
+        freq = MixingProcess(;
+            population = Population([100, 300]), mixing_by = (:band,),
+            mixing = FrequencyDependent(c), q = 0.2
+        )
+        @test freq.rate((1,), (2,)) ≈ c[1, 2] * 0.2 / 300
+        @test freq.rate((2,), (1,)) ≈ c[2, 1] * 0.2 / 100
+
+        dens = MixingProcess(;
+            population = Population([100, 300]), mixing_by = (:band,),
+            mixing = DensityDependent(r), q = 0.2
+        )
+        @test dens.rate((1,), (2,)) ≈ r[1, 2] * 0.2
+        # Density dependence needs no sizes for the rate.
+        unsized = MixingProcess(;
+            population_size = 400, mixing_by = (:band,), mixing = DensityDependent(r), q = 0.2
+        )
+        @test unsized.rate((2,), (2,)) ≈ r[2, 2] * 0.2
+
+        @test_throws "size of each group" MixingProcess(;
+            population_size = 400, mixing_by = (:band,), mixing = FrequencyDependent(c)
+        )
+        @test_throws ArgumentError MixingProcess(;
+            population = Population([100, 300]), mixing_by = (:band,),
+            mixing = FrequencyDependent(c), rate = (a, b) -> 0.1
+        )
+        @test_throws ArgumentError MixingProcess(; population = Population([100, 300]))
+        @test_throws ArgumentError MixingProcess(;
+            population = Population([100, 300]), mixing = FrequencyDependent(c)
+        )
+        @test_throws ArgumentError MixingProcess(;
+            population = Population([100, 200, 300]), mixing_by = (:band,),
+            mixing = FrequencyDependent(c)
+        )
+    end
+
+    @testset "mixing groups and population groups agree" begin
+        named = MixingProcess(;
+            population = Population([100, 300]; groups = [("a",), ("b",)]),
+            mixing_by = (:band,), mixing = FrequencyDependent(c; groups = [("a",), ("b",)])
+        )
+        @test named.rate(("a",), ("b",)) ≈ c[1, 2] / 300
+        @test_throws ArgumentError MixingProcess(;
+            population = Population([100, 300]; groups = [("a",), ("b",)]),
+            mixing_by = (:band,), mixing = FrequencyDependent(c; groups = [("x",), ("y",)])
+        )
+        # The mixing value's groups label a population that names none.
+        from_mixing = MixingProcess(;
+            population = Population([100, 300]), mixing_by = (:band,),
+            mixing = FrequencyDependent(c; groups = [("a",), ("b",)])
+        )
+        @test EpiBranch.population(from_mixing).groups == [("a",), ("b",)]
+    end
+
+    @testset "the mixing value gives the same run as the equivalent rate" begin
+        prog = [Transition(:recovered; from = :infection, rate = 1.0, terminal = true)]
+        n = [200, 300]
+        contacts = [3.0 0.5; 0.5 0.5]
+        by_mixing = MixingProcess(;
+            population = Population(n), mixing_by = (:band,),
+            mixing = FrequencyDependent(contacts)
+        )
+        by_rate = MixingProcess(;
+            population = Population(n), mixing_by = (:band,), rate = mixing_rate(contacts, n)
+        )
+        a = simulate(ModelSpec(by_mixing; progression = prog); n_initial = 3, rng = StableRNG(4))
+        b = simulate(ModelSpec(by_rate; progression = prog); n_initial = 3, rng = StableRNG(4))
+        @test a.cumulative_cases == b.cumulative_cases
+        @test isequal(
+            [i.infection_time for i in a.individuals],
+            [i.infection_time for i in b.individuals]
+        )
+    end
+end
+
+@testset "MassActionHazard takes the population" begin
+    inf = [0.0, 1.0, 2.0, NaN, NaN]
+    rem = [3.0, 4.0, 5.0, NaN, NaN]
+    schedule(m) = EpiBranch.mass_action_schedule(m, inf, rem)
+
+    # Without one it is the people in the data.
+    @test schedule(MassActionHazard(; transmission_rate = 0.5)).N == 5
+    @test schedule(MassActionHazard(; transmission_rate = 0.5, population = Population(800))).N == 800
+    @test schedule(MassActionHazard(; transmission_rate = 0.5, population_size = 800)).N == 800
+    @test_throws ArgumentError MassActionHazard(;
+        transmission_rate = 0.5, population = Population([400, 400])
+    )
+    @test_throws ArgumentError MassActionHazard(;
+        transmission_rate = 0.5, population = Population(8), population_size = 8
+    )
+end
+
+@testset "Mean-field processes take a population" begin
+    a = MeanFieldProcess(;
+        population = Population(1000), transmission_rate = 0.4, removal_rate = 0.2
+    )
+    b = MeanFieldProcess(; population_size = 1000, transmission_rate = 0.4, removal_rate = 0.2)
+    @test EpiBranch.population_size(a) == EpiBranch.population_size(b) == 1000
+    @test EpiBranch.population_size(
+        LinearNoiseProcess(;
+            population = Population(1000), transmission_rate = 0.4, removal_rate = 0.2
+        )
+    ) == 1000
+    @test_throws ArgumentError MeanFieldProcess(;
+        population = Population([500, 500]), transmission_rate = 0.4, removal_rate = 0.2
+    )
+
+    # A population with sizes by group fixes the group sizes of the mixing
+    # approximation, which reads them from the population it describes.
+    prog = [Transition(:recovered; rate = 0.2, terminal = true)]
+    mixing = MixingProcess(;
+        population = Population([2000, 8000]), mixing_by = (:age_band,),
+        mixing = FrequencyDependent([0.3 0.1; 0.1 0.3])
+    )
+    approx = MixingMeanFieldProcess(ModelSpec(mixing; progression = prog); removal_rate = 0.2)
+    @test approx.group_sizes == [2000, 8000]
+end
