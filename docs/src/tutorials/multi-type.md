@@ -210,7 +210,7 @@ println("Cases: $(state.cumulative_cases)")
 
 ## A finite population by type
 
-Give the model the size of each type's population with `Population(sizes)`, here one size for each of the three age groups.
+Give the model the population size of each type with `Population(sizes)`: here there is one size for each of the three age groups.
 Each potential infection then succeeds with probability equal to the share of
 its own type not yet infected, so a small type is used up while a large one
 carries on. `simulate` and `simulate_by_generation` read the same population.
