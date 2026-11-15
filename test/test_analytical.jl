@@ -1,5 +1,9 @@
 using ForwardDiff
 
+# A `Reporting` progression step that reports each case with probability `p`,
+# `delay` days after infection.
+_rep(p, delay = Dirac(0.0)) = [Reporting(; delay, probability = p, from = :infection)]
+
 @testset "Analytical" begin
     @testset "Extinction probability" begin
         @testset "Subcritical always extinct" begin
@@ -74,7 +78,7 @@ using ForwardDiff
             bp = BranchingProcess(NegBin(0.5, 0.5))
             obs_model = ModelSpec(
                 BranchingProcess(NegBin(0.5, 0.5));
-                observation = PerCaseObservation(0.7, Dirac(0.0))
+                progression = _rep(0.7)
             )
             @test extinction_probability(obs_model) ==
                 extinction_probability(bp)
@@ -296,8 +300,7 @@ using ForwardDiff
 
         @testset "ThinnedChainSize" begin
             base = chain_size_distribution(NegBin(0.8, 0.5))
-            d = observe(base, PerCaseObservation(0.7, Dirac(0.0)))
-            @test d isa ThinnedChainSize
+            d = ThinnedChainSize(base, 0.7)
             @test cdf(d, 5) ≈ sum(pdf(d, n) for n in 1:5)
             @test cdf(d, 5) + ccdf(d, 5) ≈ 1.0
             @test logccdf(d, 5) ≈ log(ccdf(d, 5))
@@ -515,6 +518,25 @@ using ForwardDiff
             @test loglikelihood(ChainSizes([1, 2]), Poisson(0.0)) == -Inf
         end
 
+        @testset "Large dispersion tracks the Poisson limit" begin
+            # With `k` far above `R`, the log-likelihood must survive the
+            # cancellation between the gamma ratio and the power terms.
+            for k in (1.0e10, 1.0e12, 1.0e14, 1.0e16, 1.0e20)
+                for x in (1, 2, 3, 7)
+                    @test EpiBranch._gammaborel_logpdf(k, 0.5, x) ≈
+                        logpdf(EpiBranch.Borel(0.5), x) rtol = 1.0e-6
+                    @test EpiBranch._gammaborel_logpdf(k, 0.5, x, 1) <= 0
+                end
+                # Two seeds: s / x * exp(-R x) (R x)^(x - s) / (x - s)!
+                @test EpiBranch._gammaborel_logpdf(k, 0.5, 4, 2) ≈
+                    log(2 / 4) - 0.5 * 4 + 2 * log(0.5 * 4) - log(2) rtol = 1.0e-6
+                @test EpiBranch._poisson_gamma_logpdf(k, 0.5, 3) ≈
+                    logpdf(EpiBranch.Borel(0.5), 3) rtol = 1.0e-6
+            end
+            @test extinction_probability(2.0, 1.0e16) ≈ extinction_probability(Poisson(2.0)) rtol = 1.0e-6
+            @test extinction_probability(2.0, 1.0e14) ≈ extinction_probability(Poisson(2.0)) rtol = 1.0e-6
+        end
+
         @testset "Extreme dispersion stays finite" begin
             # k ≳ 1e16·R swamps R in the floating-point sum
             # k + R inside NegBin's p = k / (k + R), so R rounds to exactly 0
@@ -559,7 +581,7 @@ using ForwardDiff
         @testset "With partial observation" begin
             mk(p) = ModelSpec(
                 BranchingProcess(Poisson(0.5));
-                observation = PerCaseObservation(p, Dirac(0.0))
+                progression = _rep(p)
             )
 
             ll = loglikelihood(ChainSizes([1, 1, 2]), mk(0.8))
@@ -580,43 +602,17 @@ using ForwardDiff
                 ChainSizes([1, 1, 2]),
                 ModelSpec(
                     BranchingProcess(Poisson(0.5));
-                    observation = PerCaseObservation(0.7, LogNormal(1.0, 0.5))
+                    progression = _rep(0.7, LogNormal(1.0, 0.5))
                 )
             )
             ll_no_delay = loglikelihood(
                 ChainSizes([1, 1, 2]),
                 ModelSpec(
                     BranchingProcess(Poisson(0.5));
-                    observation = PerCaseObservation(0.7, Dirac(0.0))
+                    progression = _rep(0.7)
                 )
             )
             @test ll_with_delay ≈ ll_no_delay atol = 1.0e-12
-        end
-
-        @testset "Reporting step gives the same likelihood as PerCaseObservation" begin
-            # A `Reporting` step in `progression` and a `PerCaseObservation`
-            # describe the same reporting process, so a model built either
-            # way must score identically.
-            proc = BranchingProcess(NegBin(0.8, 0.5))
-            data = ChainSizes([1, 1, 1, 2, 1, 3, 1, 1, 5, 1])
-            by_transition = ModelSpec(
-                proc;
-                progression = [
-                    Reporting(
-                        delay = Dirac(0.0), probability = 0.5, from = :infection
-                    ),
-                ]
-            )
-            by_observation = ModelSpec(
-                proc; observation = PerCaseObservation(detection_prob = 0.5)
-            )
-            ll_transition = loglikelihood(data, by_transition)
-            ll_observation = loglikelihood(data, by_observation)
-            @test ll_transition ≈ ll_observation
-            # Thinning at 0.5 must differ from the unthinned, full-reporting
-            # likelihood: both routes have to apply the probability instead
-            # of silently skipping it.
-            @test ll_transition != loglikelihood(data, ModelSpec(proc))
         end
 
         @testset "ThinnedChainSize conditions on at least one detection" begin
@@ -630,7 +626,7 @@ using ForwardDiff
             # chains with at least one reported case.
             model = ModelSpec(
                 BranchingProcess(Poisson(0.5));
-                observation = PerCaseObservation(detection_prob = 0.5)
+                progression = _rep(0.5)
             )
             rng = StableRNG(1)
             sizes = Int[]
@@ -650,7 +646,7 @@ using ForwardDiff
             data = ChainSizes([1, 1, 2, 1, 3, 1, 1, 5, 1, 2])
             mk09(p) = ModelSpec(
                 BranchingProcess(Poisson(0.9));
-                observation = PerCaseObservation(detection_prob = p)
+                progression = _rep(p)
             )
             ll_full = loglikelihood(data, mk09(1.0))
             ll_07 = loglikelihood(data, mk09(0.7))
@@ -692,6 +688,22 @@ using ForwardDiff
             cm_quad = ClusterMixed(λ -> Poisson(λ), Gamma(k, R / k))
             ll_quad = loglikelihood(data_pg, cm_quad)
             @test ll_quad ≈ ll_closed atol = 0.05
+        end
+
+        @testset "Cluster-mixed chain size averages over the whole mixing law" begin
+            # Discrete mixing: exact weighted sum of Borel-type probabilities.
+            o = ClusterMixed(Poisson, DiscreteNonParametric([0.3, 0.6], [0.5, 0.5]))
+            @test pdf(chain_size_distribution(o), 1) ≈
+                0.5 * exp(-0.3) + 0.5 * exp(-0.6)
+            @test isfinite(loglikelihood(ChainSizes([1, 2, 1]), o))
+
+            # Continuous mixing: no mass dropped from the tails.
+            build = R -> NegBin(R, 0.5)
+            g = ClusterMixed(build, Gamma(2.0, 0.3))
+            expected = EpiBranch._mixture_expectation(
+                θ -> pdf(chain_size_distribution(build(θ)), 1), Gamma(2.0, 0.3)
+            )
+            @test pdf(chain_size_distribution(g), 1) ≈ expected rtol = 1.0e-8
         end
 
         @testset "Cluster-mixed reproduction number and extinction probability" begin
@@ -960,17 +972,9 @@ using ForwardDiff
             )
             @test_throws ArgumentError end_of_outbreak_probability(scheduled, 5.0)
 
-            # The Observed{..., PerCaseObservation} wrapper is refused
-            # explicitly: under-reporting (ρ < 1) needs the Volterra
-            # recursion which is not implemented.
-            om = ModelSpec(
-                BranchingProcess(NegBin(R, k), GT);
-                observation = PerCaseObservation(0.5, Dirac(0.0))
-            )
-            @test_throws ArgumentError end_of_outbreak_probability(om, 5.0)
-
-            # A `Reporting` step below certainty is under-reporting too, and
-            # must be refused the same way as `PerCaseObservation`.
+            # A `Reporting` step below certainty is under-reporting, which
+            # needs the Volterra recursion that is not implemented, so it is
+            # refused.
             rm = ModelSpec(
                 BranchingProcess(NegBin(R, k), GT);
                 progression = [Reporting(delay = Dirac(0.0), probability = 0.5, from = :infection)]
@@ -1163,7 +1167,7 @@ using ForwardDiff
             sim_state = simulate(
                 ModelSpec(
                     BranchingProcess(NegBin(R, k), gt);
-                    observation = PerCaseObservation(0.6, LogNormal(1.0, 0.4))
+                    progression = _rep(0.6, LogNormal(1.0, 0.4))
                 );
                 rng = StableRNG(42)
             )
@@ -1181,7 +1185,7 @@ using ForwardDiff
             cm = ClusterMixed(Poisson, Gamma(k, R / k))
             mk(p) = ModelSpec(
                 BranchingProcess(cm);
-                observation = PerCaseObservation(p, Dirac(0.0))
+                progression = _rep(p)
             )
 
             # ρ = 1 should equal the bare likelihood.
@@ -1200,7 +1204,7 @@ using ForwardDiff
                 data,
                 ModelSpec(
                     BranchingProcess(cm_nb);
-                    observation = PerCaseObservation(0.7, Dirac(0.0))
+                    progression = _rep(0.7)
                 )
             )
             @test isfinite(ll_nb_partial)
@@ -1231,20 +1235,25 @@ using ForwardDiff
                 @test e ≈ a atol = 0.02
             end
 
-            # BranchingProcess with a PerCaseObservation(p, ...): simulate
-            # bare, thin per case, compare against ThinnedChainSize PMF.
-            # This is how any new observation model should be tested —
-            # define observe_chain_sizes and the helper does the rest.
-            emp_po,
-                ana_po = sim_analytical_consistent(
-                ModelSpec(
-                    BranchingProcess(NegBin(0.6, 0.5), Exponential(5.0));
-                    observation = PerCaseObservation(0.6, Dirac(0.0))
-                );
-                n_chains = 5000, rng = StableRNG(7)
+            # BranchingProcess with a `Reporting` step: count the reported
+            # cases in each simulated chain, drop chains with none, and
+            # compare against the ThinnedChainSize PMF.
+            rep_spec = ModelSpec(
+                BranchingProcess(NegBin(0.6, 0.5), Exponential(5.0));
+                progression = _rep(0.6)
             )
-            for (e, a) in zip(emp_po, ana_po)
-                @test e ≈ a atol = 0.02
+            rep_sizes = Int[]
+            for st in simulate(rep_spec, 5000; max_cases = 500, rng = StableRNG(7))
+                counts = Dict{Int, Int}()
+                for ind in st.individuals
+                    (is_infected(ind) && ind.state[:reported]) || continue
+                    counts[ind.chain_id] = get(counts, ind.chain_id, 0) + 1
+                end
+                append!(rep_sizes, values(counts))
+            end
+            rep_dist = chain_size_distribution(rep_spec)
+            for n in 1:4
+                @test mean(==(n), rep_sizes) ≈ pdf(rep_dist, n) atol = 0.02
             end
 
             # BranchingProcess with a ChainDetection(q): simulate bare, keep
@@ -1429,15 +1438,15 @@ using ForwardDiff
             @test_throws ArgumentError loglikelihood(ChainLengths([1, 2]), NegBin(1.5, 0.5))
         end
 
-        @testset "Observed + PerCaseObservation rejects ChainLengths" begin
-            # Per-case detection doesn't cleanly transform chain length.
+        @testset "A Reporting step rejects ChainLengths" begin
+            # Per-case reporting doesn't cleanly transform chain length.
             # Raise a clear error rather than routing through an undefined
             # simulate path.
             @test_throws ArgumentError loglikelihood(
                 ChainLengths([0, 1]),
                 ModelSpec(
                     BranchingProcess(Poisson(0.5), Exponential(5.0));
-                    observation = PerCaseObservation(0.7, Dirac(0.0))
+                    progression = _rep(0.7)
                 )
             )
         end
@@ -1519,7 +1528,7 @@ using ForwardDiff
                 ChainSizes([1, 1, 2, 1]),
                 ModelSpec(
                     BranchingProcess(Poisson(2.0), Exponential(5.0));
-                    observation = PerCaseObservation(0.7, Dirac(0.0)),
+                    progression = _rep(0.7),
                     interventions = [iso],
                     attributes = clinical_presentation(
                         incubation_period = LogNormal(1.5, 0.5)
@@ -1641,8 +1650,7 @@ using ForwardDiff
             @test isfinite(ll_reported)
             @test ll_reported != ll_full
 
-            # Simulated chains under `Reporting` count only `:reported` cases,
-            # the same way an explicit `PerCaseObservation` does.
+            # Simulated chains under `Reporting` count only `:reported` cases.
             state = simulate(mk([rep]); max_cases = 300, rng = StableRNG(7))
             sizes = EpiBranch._sim_chain_sizes(state, EpiBranch.NoObservation(), [rep])
             counts = Dict{Int, Int}()
