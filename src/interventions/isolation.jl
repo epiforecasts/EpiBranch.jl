@@ -70,7 +70,7 @@ required_fields(::SymptomaticOnly) = [:asymptomatic]
 
 The event an [`Isolation`](@ref) is timed from: [`AfterSymptomOnset`](@ref)
 (the default) or [`AfterPositiveTest`](@ref). The case is isolated at the
-trigger's reference time plus the isolation's `onset_to_isolation_delay`.
+reference time of the trigger plus the `onset_to_isolation_delay` of the isolation.
 
 To write a new trigger, define a subtype and a method of
 [`isolation_reference_time`](@ref EpiBranch.isolation_reference_time), and
@@ -96,10 +96,10 @@ isolation_reference_time(::AfterSymptomOnset, individual, state) = onset_time(in
     AfterPositiveTest()
 
 Isolate a case when its test result comes back positive: the sampling time
-recorded in the case's `:test_time` plus the isolation's
-`onset_to_isolation_delay`, which then stands for the turnaround from sample
+recorded in `:test_time` for the case, plus the `onset_to_isolation_delay` of the
+isolation, which then stands for the turnaround from sample
 to result. A case with no recorded sampling time is not isolated through it.
-It does not need symptoms, so pair it with `eligibility = AllCases()` to isolate
+It does not need symptoms. Pair it with `eligibility = AllCases()` to isolate
 screened cases without symptoms. Whether the test is positive is drawn from
 `test_sensitivity`, as for any trigger.
 """
@@ -248,7 +248,7 @@ function _stretch_key(iso::Isolation)
         ISOLATION_STRETCHES_KEY : LEAKY_REMOVAL_STRETCHES_KEY
 end
 
-# When a test-positive case isolates itself: the trigger's time plus the delay.
+# When a test-positive case isolates itself: the trigger time plus the delay.
 function _self_isolation_time(iso::Isolation, individual, state)
     delay = sample_value(
         iso.onset_to_isolation_delay,
