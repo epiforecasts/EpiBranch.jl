@@ -820,7 +820,7 @@ function seed!(state::SimulationState, ids, interventions, transitions)
         if !isempty(transitions) &&
                 (
                 any(t -> !isempty(required_fields(t)), transitions) ||
-                any(i -> !isempty(required_fields(i)), interventions)
+                    any(i -> !isempty(required_fields(i)), interventions)
             )
             probe = _transition_probe(first_ind, transitions, state)
             _validate_required_fields(probe, interventions)
