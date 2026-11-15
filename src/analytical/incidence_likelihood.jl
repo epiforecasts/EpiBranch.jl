@@ -327,6 +327,9 @@ cases. `approximation` chooses what [`incidence_moments`](@ref)'s mean and
 covariance are matched to; see [`NormalApproximation`](@ref) and
 [`LognormalApproximation`](@ref).
 
+Requires `using ForwardDiff`, which supplies the derivatives of the generating
+function.
+
 !!! warning "Limits"
     This ignores susceptible depletion, so it holds only while the
     population is effectively unsaturated. It models no interventions, and
@@ -518,7 +521,7 @@ Log-likelihood of an incidence time series under a multi-type branching
 process, from the moments of [`incidence_moments`](@ref). `data` holds the
 counts by type, one column per type, or their total over types as a vector;
 its `seeds` give the index cases of each type. The limits are those of the
-single-type method.
+single-type method. Requires `using ForwardDiff`.
 
 # Examples
 
@@ -696,7 +699,7 @@ total). A [`Reporting`](@ref) step makes `data` a series of reported cases
 by report date: a report timed from infection uses the step's own
 probability and delay, and one timed from onset (the default) adds the
 model's [`clinical_presentation`](@ref) incubation period to the delay and
-counts only the cases that are not asymptomatic.
+counts only the cases that are not asymptomatic. Requires `using ForwardDiff`.
 
 Only defined for a model with no interventions, an unlimited
 `population_size`, a single infectiousness window with no `until`,
