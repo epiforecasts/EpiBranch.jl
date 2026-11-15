@@ -472,8 +472,27 @@ function loglikelihood(data::ChainLengths, spec::ModelSpec; kwargs...)
     )
 end
 
+# Share of cases that are reported: the `Reporting` probability times the
+# symptomatic share when it reports from onset. Chain lengths are simulated, so
+# the closed-form guards of `_effective_reporting_probability` do not apply.
+function _chain_length_reporting_share(prog, attrs)
+    ρ = _reporting_probability(prog)
+    ρ === nothing && return nothing
+    r = only(filter(t -> t isa Reporting, prog))
+    if r.from isa Symbol && _resolved_key(r.from) === :onset_time
+        builders = attrs isa NoAttributes ? () :
+            attrs isa Union{Tuple, AbstractVector} ? Tuple(attrs) : (attrs,)
+        for b in builders
+            if b isa ClinicalPresentation && b.prob_asymptomatic isa Real
+                ρ *= 1 - b.prob_asymptomatic
+            end
+        end
+    end
+    return ρ
+end
+
 function _chain_length_assert_full_reporting(prog, attrs)
-    ρ = _effective_reporting_probability(prog, attrs)
+    ρ = _chain_length_reporting_share(prog, attrs)
     (ρ === nothing || ρ >= 1) && return nothing
     throw(
         ArgumentError(

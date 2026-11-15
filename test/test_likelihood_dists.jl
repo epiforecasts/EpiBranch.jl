@@ -157,6 +157,20 @@ EpiBranch.chain_size_distribution(d::BrokenExactOffspring) = throw(d.error)
             @test_throws message chain_length_distribution(asym)
             sympt = ModelSpec(bp; progression = onset, attributes = cp(0.0))
             @test isfinite(loglikelihood(ChainLengths(data), sympt))
+
+            # A terminal step with full reporting is not a reporting fraction.
+            terminal = ModelSpec(
+                bp;
+                progression = [
+                    Reporting(probability = 1.0, delay = 1.0, from = :infection),
+                    Recovery(delay = 5.0),
+                ]
+            )
+            @test isfinite(
+                loglikelihood(
+                    ChainLengths(data), terminal; n_sim = 50, rng = StableRNG(1)
+                )
+            )
         end
 
         @testset "Reporting requires full detection" begin
