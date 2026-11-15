@@ -394,6 +394,8 @@ end
 
     @testset "an infection layer must name its contact structure" begin
         @test_throws ArgumentError EpiBranch.contact_structure(_NoStructure())
+        # a layer that records no seeded hosts reports none
+        @test EpiBranch.seeded_hosts(_NoStructure()) === nothing
     end
 
     @testset "a partition and its clique graph give the same likelihood" begin

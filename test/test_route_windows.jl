@@ -1176,7 +1176,7 @@ end
 end
 
 @testset "A seeded case is infected past a certain block, an introduced one is not" begin
-    function seeded_race(seeded)
+    function seeded_race(seeded; declarations...)
         rng = StableRNG(1)
         state = EpiBranch.new_state(
             BranchingProcess(Poisson(0.0), Exponential(1.0)),
@@ -1188,7 +1188,7 @@ end
             state, [1], rng;
             from = :infection, until = (), interventions,
             introduction = (Exponential(1.0), Inf), targets = (i, st) -> (),
-            seed! = (best, members, r) -> (best[1] = 1.0), seeded
+            seed! = (best, members, r) -> (best[1] = 1.0), seeded, declarations...
         )
         return only(state.individuals)
     end
@@ -1198,4 +1198,7 @@ end
     @test !haskey(ind.state, :infection_route)
     @test !is_infected(seeded_race(nothing))
     @test !is_infected(seeded_race(Int[]))
+    # a route that watches host records still takes the seeded opening
+    watched = seeded_race([1]; watches = ((:tag,),))
+    @test is_infected(watched) && watched.state[:seeded]
 end
