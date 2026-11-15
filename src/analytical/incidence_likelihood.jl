@@ -167,8 +167,7 @@ case counted in the step it is infected. The result is exact for
 independent reporting, and `reporting_probability` can be differentiated
 like the offspring parameters.
 
-Requires `using ForwardDiff`, which supplies the derivatives of the generating
-function.
+Requires `using ForwardDiff` for the derivatives of the generating function.
 
 Returns a `(mean, cov)` named tuple: `mean[t]` is the expected count at step
 `t`, and `cov` is their `n × n` covariance matrix, both ignoring susceptible
@@ -327,8 +326,7 @@ cases. `approximation` chooses what [`incidence_moments`](@ref)'s mean and
 covariance are matched to; see [`NormalApproximation`](@ref) and
 [`LognormalApproximation`](@ref).
 
-Requires `using ForwardDiff`, which supplies the derivatives of the generating
-function.
+Requires `using ForwardDiff` for the derivatives of the generating function.
 
 !!! warning "Limits"
     This ignores susceptible depletion, so it holds only while the
