@@ -97,7 +97,7 @@ underscore are internal.
 | `:tested` | `Bool` | `false` | `Testing` transition | `resolve_individual!`; reset to `false` by `censor_after_outcome!` if `:test_time` falls after `:outcome_time` |
 | `:test_time` | `Float64` | `Inf` | `Testing` transition | `resolve_individual!`, `Isolation` with `AfterPositiveTest`; reset to `Inf` by `censor_after_outcome!` if it falls after `:outcome_time` |
 | `:test_ct` | `Float64` | `NaN` | `Testing` transition | `resolve_individual!` |
-| `:test_result` | `Bool` | `false` | `Testing` transition | `resolve_individual!` |
+| `:test_result` | `Bool` | `false` | `Testing` transition | `resolve_individual!`, `Isolation` with `AfterPositiveTest` |
 | `:death_candidate_time` | `Float64` | `Inf` | `Death` transition | `resolve_individual!` |
 | `:recovery_candidate_time` | `Float64` | `Inf` | `Recovery` transition | `resolve_individual!` |
 | `:outcome` | `Symbol` | — | Any terminal transition (`Death`, `Recovery`, `Transition(...; terminal = true)`, your own) | `resolve_individual!` (terminal) |
