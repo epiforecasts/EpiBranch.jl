@@ -7,7 +7,7 @@ function _toy_case(;
         id = 1, infection = 0.0, onset = NaN, isolation = Inf, trace = NaN,
         test = NaN, positive = false
     )
-    state = Dict{Symbol, Any}(:onset_time => onset, :test_positive => positive)
+    state = Dict{Symbol, Any}(:onset_time => onset, :test_result => positive)
     isfinite(isolation) && (state[:isolation_time] = isolation)
     isnan(trace) || (state[:trace_time] = trace)
     isnan(test) || (state[:test_time] = test)
@@ -20,6 +20,9 @@ function _toy_sim_state(individuals)
         NoPopulation(), 100.0, NoAttributes(), EpiBranch.AbstractClinicalTransition[]
     )
 end
+
+# Load (log10 copies) rising to a peak five days after infection, then falling.
+_acute_load(rng, ind) = t -> max(0.0, 8.0 - abs(t - 5.0) * 1.6)
 
 @testset "Case definitions" begin
     @testset "history only shows events up to its time" begin
@@ -34,7 +37,7 @@ end
 
     @testset "ClinicalCaseDefinition changes over time" begin
         def = ClinicalCaseDefinition()
-        # Symptoms at 3, traced at 5, positive result (isolation) at 6.
+        # Symptoms at 3, traced at 5, positive result at 6.
         ind = _toy_case(; onset = 3.0, trace = 5.0, test = 6.0, isolation = 6.0, positive = true)
         state = _toy_sim_state([ind])
         EpiBranch._classify_cases!(state, def)
@@ -87,17 +90,16 @@ end
     @testset "in a ModelSpec" begin
         process = BranchingProcess(NegBin(2.5, 0.5), Gamma(2.0, 2.0))
         clinical = clinical_presentation(incubation_period = LogNormal(1.2, 0.4))
+        assay = Assay(ct = load -> 40.0 - 3.0 * load, detect = 2.0)
         interventions = [
-            Isolation(
-                onset_to_isolation_delay = Exponential(2.0), test_sensitivity = 0.7,
-                duration = 14.0
-            ),
             ContactTracing(
                 OnSymptomOnset(), 0.8, Exponential(1.0), Quarantine(duration = 10.0)
             ),
         ]
         spec = ModelSpec(
-            process; attributes = clinical, interventions,
+            process; attributes = [clinical, within_host(_acute_load)],
+            progression = [Testing(assay = assay, delay = Exponential(2.0))],
+            interventions,
             case_definition = ClinicalCaseDefinition()
         )
         @test EpiBranch.case_definition(spec) isa ClinicalCaseDefinition
@@ -115,7 +117,7 @@ end
         for ind in state.individuals
             is_infected(ind) || continue
             if case_classification(ind) === :confirmed
-                @test is_test_positive(ind)
+                @test ind.state[:test_result]
                 @test ind.state[:test_time] >= onset_time(ind)
             end
         end
@@ -135,6 +137,19 @@ end
 
         states = simulate(spec, 3; max_cases = 50, rng = StableRNG(2))
         @test all(s -> nrow(case_classification_changes(s)) > 0, states)
+    end
+
+    @testset "no confirmed cases without a Testing step" begin
+        spec = ModelSpec(
+            BranchingProcess(NegBin(2.5, 0.5), Gamma(2.0, 2.0));
+            attributes = clinical_presentation(incubation_period = LogNormal(1.2, 0.4)),
+            interventions = [Isolation(onset_to_isolation_delay = 2.0, duration = 14.0)],
+            case_definition = ClinicalCaseDefinition()
+        )
+        state = simulate(spec; max_cases = 100, rng = StableRNG(3))
+        labels = Set(skipmissing(case_classification_changes(state).classification))
+        @test !isempty(labels)
+        @test :confirmed ∉ labels
     end
 
     @testset "continued run is classified again" begin

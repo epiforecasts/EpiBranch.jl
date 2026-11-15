@@ -61,7 +61,6 @@ underscore are internal.
 | `:_isolation_handle` | `Int` | — | `Isolation` | `resolve_individual!`; internal. The handle of `Isolation`'s own entry, so `reset!` can withdraw exactly it |
 | `:_quarantine_removal_handles` | `Vector{Int}` | — | `ContactTracing`/`SourceTracing`'s `Quarantine` | `apply_trace!`; internal. The handles of every entry a quarantine has recorded, so a reset of the shared bookkeeping can withdraw each one. The `reset!` of a tracer withdraws only the entries listed under its own handles key |
 | `:test_positive` | `Bool` | `false` | `Isolation` | `initialise_individual!` |
-| `:test_time` | `Float64` | — | `Isolation` | `resolve_individual!`. When a positive test result is available, which is when the case isolates itself; read by `ClinicalCaseDefinition` |
 | `:case_classification` | any | — | `ModelSpec`'s `case_definition` | After the run. The classification at the end of it; absent for a case never classified |
 | `:_case_classification_changes` | `Vector{Tuple{Float64,Any}}` | — | `ModelSpec`'s `case_definition` | After the run; internal. Each change of classification with its time, read by `case_classification_changes` |
 | `:_case_definition_draw` | `Float64` | — | `ModelSpec`'s `case_definition` | After the run; internal. One uniform draw per case, for a definition with a random element |

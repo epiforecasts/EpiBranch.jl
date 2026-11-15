@@ -251,7 +251,6 @@ function initialise_individual!(iso::Isolation, individual, state)
     clear_isolated!(individual)
     delete!(individual.state, :_isolation_handle)
     delete!(individual.state, :_isolation_start)
-    delete!(individual.state, :test_time)
     if is_eligible_for_isolation(iso.eligibility, individual, state)
         rng = stream(state.rng, individual.id, (:isolation, :test))
         individual.state[:test_positive] = _draw_test_positive(iso.test_sensitivity, rng, individual)
@@ -284,7 +283,6 @@ function resolve_individual!(iso::Isolation, individual, state)
         is_test_positive(individual) || return nothing
         self_t = _self_isolation_time(iso, individual, state)
         isfinite(self_t) || return nothing
-        individual.state[:test_time] = self_t
         _isolate!(iso, individual, state, self_t)
         return nothing
     end
@@ -309,9 +307,6 @@ function resolve_individual!(iso::Isolation, individual, state)
         _self_isolation_time(iso, individual, state) : Inf
     final = min(test_time, traced_time)
     isfinite(final) || return nothing
-    # A self-isolation acts on the positive result; an isolation that came from
-    # tracing alone has no test behind it.
-    isfinite(test_time) && (individual.state[:test_time] = test_time)
     _isolate!(iso, individual, state, final)
     return nothing
 end

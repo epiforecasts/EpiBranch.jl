@@ -4,7 +4,7 @@
 # returns their classification (confirmed, probable, suspected, or whatever a
 # surveillance system uses). It is a layer of a `ModelSpec`, held beside the
 # progression and the interventions, because the events it reads come from
-# all of them: symptoms from the progression, a test and a trace from the
+# all of them: symptoms and a test from the progression, a trace from the
 # interventions.
 #
 # The classification does not feed back into the simulation. It is worked out
@@ -35,7 +35,7 @@ every time the definition is evaluated, for a rule with a random element.
 
 Read the events through [`event_time`](@ref) and [`has_happened`](@ref), which
 ignore any event after `history.time`, and anything else recorded on the
-person through `history.individual` (`is_test_positive`, `history.individual.state[:age]`).
+person through `history.individual` (`history.individual.state[:test_result]`, `history.individual.state[:age]`).
 """
 struct CaseHistory{I <: Individual, T <: Real}
     individual::I
@@ -116,10 +116,10 @@ with a case, and `suspected` once they have symptoms alone. Someone with a
 contact but no symptoms is not a case (`missing`) until they develop some.
 
 The three events are named as in [`event_time`](@ref). A person's test counts
-as positive when [`is_test_positive`](@ref) is true, and its result is
-available at the time `test` names: by default `:test`, the time
-[`Isolation`](@ref) records for a positive result (the case isolates at that
-time). Name another recorded time to read a test from somewhere else. The contact is
+as positive when the `:test_result` that [`Testing`](@ref) records is true, and
+its result is available at the time `test` names: by default `:test`, the
+sampling time `Testing` records as `:test_time`. A model with no `Testing` step
+has no confirmed cases under this definition. The contact is
 `:trace`, the time [`ContactTracing`](@ref) reached the person. Because the
 definition is evaluated as events happen, a case is `suspected` at onset,
 becomes `probable` if tracing reaches them later, and `confirmed` at a
@@ -128,12 +128,14 @@ positive result.
 # Examples
 
 ```julia
+assay = Assay(ct = load -> 40.0 - 3.3 * load, detect = 2.0)
 model = ModelSpec(
     BranchingProcess(NegBin(2.0, 0.5), Gamma(2.0, 3.0));
-    attributes = clinical_presentation(incubation_period = LogNormal(1.6, 0.5)),
-    interventions = [
-        Isolation(onset_to_isolation_delay = 2.0, test_sensitivity = 0.8, duration = 14.0),
+    attributes = [
+        clinical_presentation(incubation_period = LogNormal(1.6, 0.5)),
+        within_host(acute),
     ],
+    progression = [Testing(assay = assay, delay = Gamma(2.0, 1.0))],
     case_definition = ClinicalCaseDefinition(),
 )
 state = simulate(model; max_cases = 200)
@@ -158,7 +160,8 @@ function ClinicalCaseDefinition(;
 end
 
 function classify_case(def::ClinicalCaseDefinition, h::CaseHistory)
-    is_test_positive(h.individual) && has_happened(h, def.test) && return def.confirmed
+    get(h.individual.state, :test_result, false)::Bool && has_happened(h, def.test) &&
+        return def.confirmed
     has_happened(h, def.symptoms) || return missing
     return has_happened(h, def.contact) ? def.probable : def.suspected
 end
