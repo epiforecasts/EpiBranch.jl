@@ -20,8 +20,8 @@ import SSMProblems
     end
 
     @testset "a chain of steps agrees with one run straight through" begin
-        # Step the dynamics directly: the whole-trajectory call is named
-        # differently in SSMProblems 0.6 and 0.7.
+        # Step the dynamics directly: SSMProblems 0.6 and 0.7 give the
+        # whole-trajectory call different names.
         rng = StableRNG(5)
         x = SSMProblems.simulate(rng, SSMProblems.prior(ssm))
         xs = typeof(x)[]

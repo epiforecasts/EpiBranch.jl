@@ -30,8 +30,8 @@ end
 
 # The distribution of the data at a step comes from the caller's
 # `observe(t, state)`. A `distribution` method on our own type works on SSMProblems
-# 0.6, which has no `DistributionObservation`, and on 0.7. The keywords are the
-# ones 0.6 forwards.
+# 0.6, which has no `DistributionObservation`, and on 0.7. The keywords are those
+# that 0.6 forwards.
 struct OutbreakObservation{F} <: ObservationProcess
     observe::F
 end
