@@ -87,3 +87,9 @@ end
     @test !any(unseeded.seeded)
     @test loglikelihood(data, spec) > loglikelihood(unseeded, spec)
 end
+
+@testset "A seeded mask must cover every person" begin
+    @test_throws ArgumentError HouseholdInfections(
+        [1, 1], [0.0, 1.0], [0.0, 1.0], [2.0, 3.0], [true, false]; seeded = [true]
+    )
+end
