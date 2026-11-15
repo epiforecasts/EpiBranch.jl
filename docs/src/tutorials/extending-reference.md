@@ -98,7 +98,6 @@ underscore are internal.
 | `:test_time` | `Float64` | `Inf` | `Testing` transition | `resolve_individual!`; reset to `Inf` by `censor_after_outcome!` if it falls after `:outcome_time` |
 | `:test_ct` | `Float64` | `NaN` | `Testing` transition | `resolve_individual!` |
 | `:test_result` | `Bool` | `false` | `Testing` transition | `resolve_individual!` |
-| `:case_classification` | `Symbol` | unset | `CaseClassification` transition | `resolve_individual!` and `censor_after_outcome!`; `:confirmed` or `:probable`, unset for neither |
 | `:death_candidate_time` | `Float64` | `Inf` | `Death` transition | `resolve_individual!` |
 | `:recovery_candidate_time` | `Float64` | `Inf` | `Recovery` transition | `resolve_individual!` |
 | `:outcome` | `Symbol` | — | Any terminal transition (`Death`, `Recovery`, `Transition(...; terminal = true)`, your own) | `resolve_individual!` (terminal) |
@@ -429,7 +428,7 @@ compatible with these likelihoods. The built-in parts declare:
 | `clinical_presentation`, no population characteristics | yes |
 | Other population characteristics (`demographics`, `groups`, `transmission_traits`, `vaccine_acceptance`, and your own functions) | no, unless declared |
 | `Transition`, `Reporting`, `Hospitalisation`, `Recovery`, `Death` | yes |
-| `Testing`, `CaseClassification` | the infection likelihood yes; `progression_loglik` scores `CaseClassification` as 0 and has no term for `Testing` |
+| `Testing` | the infection likelihood yes; `progression_loglik` has no term for `Testing` |
 | `Isolation` | yes, complete or leaky |
 | `ContactTracing` with `Quarantine` or `FlagOnly` | yes |
 | `MassVaccination`, `GroupVaccination` | only with the default `dose_label` and a fixed (numeric) `efficacy` |

@@ -19,10 +19,10 @@ function testing_spec(; progression, interventions = [], seed_cases = 1, kwargs.
     )
 end
 
-@testset "Testing and case classification" begin
+@testset "Testing" begin
     @testset "Ct value and result follow the load at the sampling time" begin
         spec = testing_spec(
-            progression = [Testing(assay = test_assay, delay = 4.0), CaseClassification()]
+            progression = [Testing(assay = test_assay, delay = 4.0)]
         )
         state = simulate(spec; max_cases = 200, rng = StableRNG(1), n_initial = 20)
         symptomatic = filter(ind -> is_infected(ind) && !is_asymptomatic(ind), state.individuals)
@@ -39,7 +39,6 @@ end
         for ind in filter(ind -> is_infected(ind) && is_asymptomatic(ind), state.individuals)
             @test !ind.state[:tested]
             @test isnan(ind.state[:test_ct])
-            @test !haskey(ind.state, :case_classification)
         end
     end
 
@@ -59,54 +58,29 @@ end
         end
     end
 
-    @testset "classification" begin
-        spec = testing_spec(
-            progression = [
-                Testing(assay = test_assay, delay = 0.0, probability = 0.5),
-                CaseClassification(),
-            ]
-        )
-        state = simulate(spec; max_cases = 300, rng = StableRNG(3), n_initial = 20)
-        classes = Dict{Symbol, Int}()
-        for ind in filter(is_infected, state.individuals)
-            if ind.state[:tested] && ind.state[:test_result]
-                @test ind.state[:case_classification] === :confirmed
-            elseif !is_asymptomatic(ind)
-                @test ind.state[:case_classification] === :probable
-            else
-                @test !haskey(ind.state, :case_classification)
-            end
-            c = get(ind.state, :case_classification, :none)
-            classes[c] = get(classes, c, 0) + 1
-        end
-        @test classes[:confirmed] > 0 && classes[:probable] > 0
-    end
-
     @testset "line list" begin
         spec = testing_spec(
-            progression = [Testing(assay = test_assay, delay = 1.0), CaseClassification()]
+            progression = [Testing(assay = test_assay, delay = 1.0)]
         )
         ll = linelist(simulate(spec; max_cases = 50, rng = StableRNG(4), n_initial = 20))
-        for col in (:tested, :date_test, :test_ct, :test_result, :case_classification)
+        for col in (:tested, :date_test, :test_ct, :test_result)
             @test col in propertynames(ll)
         end
-        @test all(in(("confirmed", "probable")), skipmissing(ll.case_classification))
     end
 
-    @testset "a test censored by an earlier outcome does not confirm" begin
+    @testset "a test timed after an earlier outcome is not taken" begin
         spec = testing_spec(
             progression = [
                 Recovery(delay = 1.0),
                 Testing(assay = test_assay, delay = 2.0, from = :onset_time),
-                CaseClassification(),
             ]
         )
         state = simulate(spec; max_cases = 100, rng = StableRNG(5), n_initial = 20)
         for ind in filter(is_infected, state.individuals)
-            is_asymptomatic(ind) && continue
             # recovery 1 day after onset, test 2 days after it
             @test !ind.state[:tested]
-            @test ind.state[:case_classification] === :probable
+            @test !ind.state[:test_result]
+            @test isnan(ind.state[:test_ct])
         end
     end
 

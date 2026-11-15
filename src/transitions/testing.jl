@@ -135,8 +135,7 @@ A case is not tested for an infection it was never infected with: the sample
 time is measured from the infection that is current when the step resolves.
 
 Use the step as `test_sensitivity` of [`Isolation`](@ref) to isolate the cases
-whose test is positive. Put [`CaseClassification`](@ref) after it in the
-`progression` to classify cases from the result.
+whose test is positive.
 
 # Examples
 
@@ -146,8 +145,7 @@ spec = ModelSpec(
     BranchingProcess(NegBin(2.5, 0.16), LogNormal(1.6, 0.5));
     attributes = [clinical_presentation(incubation_period = LogNormal(1.6, 0.5)),
                   within_host(acute)],
-    progression = [Testing(assay = assay, delay = Gamma(2.0, 1.0)),
-                   CaseClassification()],
+    progression = [Testing(assay = assay, delay = Gamma(2.0, 1.0))],
 )
 ```
 """
@@ -205,48 +203,6 @@ function censor_after_outcome!(t::Testing, individual)
     end
     return nothing
 end
-
-"""
-    CaseClassification()
-
-Classify each case from what the progression recorded for it, in
-`:case_classification`:
-
-- `:confirmed`: a positive test (`:test_result` from [`Testing`](@ref));
-- `:probable`: symptoms, and no positive test;
-- no value (`missing` in the line list) for a case with neither.
-
-Put it after [`Testing`](@ref) in the `progression`: it reads what the steps
-before it recorded, and is updated again once the outcome has been settled, so
-a test censored by an earlier death or recovery does not confirm the case.
-Links to a known case are not read, because contact tracing acts on a case
-only after its progression has been drawn.
-"""
-struct CaseClassification <: AbstractClinicalTransition end
-
-offspring_law_unchanged(::CaseClassification) = true
-
-initialise_individual!(::CaseClassification, individual, state) =
-    (delete!(individual.state, :case_classification); nothing)
-
-function _classify!(individual)
-    st = individual.state
-    if get(st, :tested, false)::Bool && get(st, :test_result, false)::Bool
-        st[:case_classification] = :confirmed
-    elseif _develops_symptoms(individual) && isfinite(onset_time(individual))
-        st[:case_classification] = :probable
-    else
-        delete!(st, :case_classification)
-    end
-    return nothing
-end
-
-resolve_individual!(::CaseClassification, individual, state) = _classify!(individual)
-censor_after_outcome!(::CaseClassification, individual) = _classify!(individual)
-
-# The classification is a derived label with no timing of its own, so it adds
-# nothing to the likelihood.
-transition_loglik(::CaseClassification, individual::Individual; followup_end = Inf) = 0.0
 
 # `Testing` as an `Isolation`'s `test_sensitivity` (see `isolation.jl`): the
 # case's own test has not been taken when the case is created, so the result is

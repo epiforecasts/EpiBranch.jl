@@ -172,7 +172,6 @@ Hospitalisation
 Death
 Recovery
 Testing
-CaseClassification
 AbstractAssay
 Assay
 within_host

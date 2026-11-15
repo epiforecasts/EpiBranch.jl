@@ -23,12 +23,12 @@ default:
 - [`Hospitalisation`](@ref): a proportion of cases are admitted after a delay.
 - [`Death`](@ref): a case dies after a delay, with a given probability.
 - [`Recovery`](@ref): every symptomatic case gets a recovery time.
-- [`Testing`](@ref): a sample is taken a delay after an event, and the case's own within-host trajectory ([`within_host`](@ref)) at that time goes through an [`Assay`](@ref) to give a Ct value and a result. [`CaseClassification`](@ref) then labels cases as confirmed (positive test) or probable (symptoms without one).
+- [`Testing`](@ref): a sample is taken a delay after an event, and the case's own within-host trajectory ([`within_host`](@ref)) at that time goes through an [`Assay`](@ref) to give a Ct value and a result.
 
 ```julia
 curve(rng, ind) = t -> t < 5 ? 8t / 5 : 8exp(-0.4 * (t - 5))   # log10 copies per mL
 assay = Assay(ct = load -> 40.0 - 3.3 * load, detect = 2.0)     # limit of detection
-progression = [Testing(assay = assay, delay = Gamma(2.0, 1.0)), CaseClassification()]
+progression = [Testing(assay = assay, delay = Gamma(2.0, 1.0))]
 attributes = [clinical_presentation(incubation_period = LogNormal(1.5, 0.5)), within_host(curve)]
 ```
 
@@ -255,6 +255,37 @@ has a `date_reported` column in place of `date_reporting`, and
 `weekly_incidence(state; by = :reporting)` counts no cases. Use `Reporting`
 when you want the standard reporting dates. Each event has its own `from`: a timeline can admit cases a delay after onset
 and time their outcome from admission.
+
+## Symptom onset that follows the case's load
+
+A delay can read the case's own within-host trajectory. As one possible link between load and symptoms, a case becomes symptomatic on the first day its load reaches a threshold, plus a short random lag. [`trajectory_load`](@ref EpiBranch.trajectory_load) reads the load stored by [`within_host`](@ref). A case whose load never reaches the threshold gets no onset, because the `probability` is 0.
+
+```@example transitions
+# load (log10 copies per mL): linear rise to a peak at day 5, then exponential decline
+curve(rng, ind) = (peak = rand(rng, Uniform(2, 9));
+    t -> t < 5 ? peak * t / 5 : peak * exp(-0.4 * (t - 5)))
+
+function first_day_above(ind, threshold)
+    for t in 0.0:0.25:30.0
+        EpiBranch.trajectory_load(ind, t) >= threshold && return t
+    end
+    return nothing
+end
+
+onset = Transition(:symptomatic; from = :infection,
+    probability = (rng, ind) -> first_day_above(ind, 4.0) === nothing ? 0.0 : 1.0,
+    delay = (rng, ind) -> first_day_above(ind, 4.0) + rand(rng, Exponential(0.5)))
+
+model = ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0));
+    attributes = within_host(curve), progression = [onset])
+
+state = simulate(model; max_cases = 200, rng = StableRNG(42))
+infected = filter(is_infected, state.individuals)
+println("Symptomatic: ", count(ind -> ind.state[:symptomatic], infected),
+    " of ", length(infected))
+```
+
+This is one choice among many. For many pathogens load and symptoms are only loosely linked, and some people with high loads have no symptoms. The example does not define asymptomatic infection, and the threshold, the lag and the shape of the curve are all assumptions to replace with ones that suit the pathogen.
 
 ## Combining with multi-type models and population characteristics
 
