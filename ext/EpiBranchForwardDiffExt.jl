@@ -7,8 +7,8 @@ module EpiBranchForwardDiffExt
 using EpiBranch: EpiBranch
 using ForwardDiff: ForwardDiff
 
-# Typed on `u` so it specialises the untyped fallback in core instead of
-# overwriting it, which precompilation forbids.
+# Typed on `u` to specialise the untyped fallback in core. An untyped method
+# would overwrite the fallback, and precompilation forbids that.
 function EpiBranch._gradient_and_hessian(K, u::AbstractVector{<:Real})
     return ForwardDiff.gradient(K, u), ForwardDiff.hessian(K, u)
 end
