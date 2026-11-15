@@ -331,10 +331,10 @@ contact to list or trace, so the models drop the contact instead. Return
 `true` for the second kind. The default is `false`, the cautious answer: the
 contact is kept.
 
-Where several sources block the same contact, the contact is dropped if any
-of those that return `true` blocks it, whichever is first in the stack. The
+If several sources block the same contact, it is dropped when any source that
+returns `true` blocks it, wherever that source sits in the stack. The
 built-in [`Isolation`](@ref) and [`Quarantine`](@ref) take this as a keyword
-(`prevents_contact`, default `true`), so isolation at home, where household
+(`prevents_contact`, default `true`). Isolation at home, where household
 contacts continue, is `Isolation(...; prevents_contact = false)`.
 [`Scheduled`](@ref), [`CapacityConstrained`](@ref) and [`OnRoutes`](@ref)
 answer for the intervention they contain.

@@ -1054,9 +1054,9 @@ end
 
 # Take a contact back out of the outbreak: it was made as a person by
 # `make_contact!`, but the meeting it stands for never happened (see
-# `prevents_contact`). It leaves its infector's contacts, which neither
-# `contacts` nor tracing then reaches. It is marked so that `linelist` does not
-# list it as a person who was exposed and escaped.
+# `prevents_contact`). It is removed from the contacts of its infector, so
+# neither `contacts` nor tracing reaches it, and it is marked so that `linelist`
+# does not list it as a person who was exposed and escaped.
 function _unmake_contact!(parent::Individual, contact::Individual)
     idx = findlast(==(contact.id), parent.secondary_case_ids)
     idx === nothing || deleteat!(parent.secondary_case_ids, idx)
@@ -1350,9 +1350,9 @@ Each source defines [`competing_risk`](@ref). Returns none by default.
 """
 transmission_risks(::TransmissionModel) = ()
 
-# What the composed risks decided about one proposed transmission: it went
-# through, it was blocked but the contact still happened, or it was blocked by
-# a source that stops the meeting itself, so there was no contact either (see
+# The outcome of the composed risks for one proposed transmission: it went
+# through, it was blocked but the contact still happened, or a source that
+# stops the meeting itself blocked it and there was no contact either (see
 # `prevents_contact`).
 const _NOT_BLOCKED = 0
 const _BLOCKED = 1
@@ -1366,8 +1366,8 @@ are the built-in ones (host susceptibility, infector infectiousness, …)
 first, then any the model contributes through [`transmission_risks`](@ref),
 then the interventions in stack order. The first to block wins the
 transmission, but a block by a source that leaves the contact standing does not
-hide a later source that prevents it. Those later sources are still asked,
-and only those.
+hide a later source that prevents the contact. Only such later sources are still
+asked.
 
 Every model resolves a transmission through this one function, on each
 candidate infection time the race proposes, so an intervention writes one
@@ -1392,7 +1392,7 @@ function _composed_risks_block(
     return _walk_risks(level, interventions, parent, contact, state, transmission_time)
 end
 
-# The sources in order, carrying how far the transmission has been blocked. A
+# The sources in order, passing on how far the transmission has been blocked. A
 # tuple is walked element by element so each call is resolved when the method
 # is compiled; a call through a vector of mixed types is resolved at run time
 # instead, which boxes `transmission_time` on every call.
@@ -1411,7 +1411,7 @@ function _walk_risks(level, sources, parent, contact, state, transmission_time)
 end
 
 # One source's turn. Once the transmission is blocked, only a source that
-# prevents the contact is still asked. A stack without one draws no more than
+# prevents the contact is still asked, so a stack without one draws no more than
 # before.
 @inline function _step_risks(level, source, parent, contact, state, transmission_time)
     if level == _NOT_BLOCKED
