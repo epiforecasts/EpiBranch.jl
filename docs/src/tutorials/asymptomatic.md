@@ -2,7 +2,7 @@
 
 How symptoms, infectiousness and the within-host course of an infection are related differs between pathogens, and between studies of the same pathogen. EpiBranch builds none of these links in. This page states each one as a short model, using the seams that are already there: an attribute builder (a function `(rng, ind) -> ...`), a generation time or offspring distribution that is a function of the individual, a [`Transition`](@ref) whose delay is a function of the individual, and a [`HazardKernel`](@ref) for a within-host trajectory.
 
-The simple version stays simple. [`clinical_presentation`](@ref) with `prob_asymptomatic` makes a proportion of cases asymptomatic and links nothing else to it. An asymptomatic case then transmits exactly as a symptomatic one does. Everything below adds one explicit statement to that model. All times are in days, and the numbers illustrate the method without describing a pathogen.
+[`clinical_presentation`](@ref) with `prob_asymptomatic` makes a proportion of cases asymptomatic and links nothing else to it. An asymptomatic case then transmits exactly as a symptomatic one does. Everything below adds one explicit statement to that model. All times are in days, and the numbers illustrate the method without describing a pathogen.
 
 ```@example asymptomatic
 using EpiBranch
@@ -53,11 +53,11 @@ independent = ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0)); attrib
 compare(independent)
 ```
 
-The generation time here is independent of the incubation period, so about 60% of a symptomatic case's secondary cases are infected before its onset.
+Because the generation time here is independent of the incubation period, about 60% of the secondary cases of a symptomatic case are infected before its onset.
 
 ## Asymptomatic infection is less infectious
 
-Less shedding is a statement about biology, and it lowers each contact's chance of infecting. List [`transmission_traits`](@ref) after `clinical_presentation` so that `:asymptomatic` is set when its `infectiousness` is drawn:
+Less shedding is a statement about biology. It lowers the chance that each contact is infected. List [`transmission_traits`](@ref) after `clinical_presentation` so that `:asymptomatic` is set when its `infectiousness` is drawn:
 
 ```@example asymptomatic
 less_shedding = [
@@ -70,7 +70,7 @@ compare(biology)
 
 ## Asymptomatic cases make more contacts
 
-People without symptoms do not stay at home, which is a statement about behaviour. It acts on the number of contacts, so it belongs in the offspring distribution rather than in the infectiousness. The offspring can be a function of the random number generator and the individual. Here asymptomatic cases make 50% more contacts, and the lower infectiousness from above is kept as a separate statement, so the two multiply:
+People without symptoms do not stay at home. That is behaviour, and it changes the number of contacts, so it belongs in the offspring distribution instead of the infectiousness. The offspring can be a function of the random number generator and the individual. Here asymptomatic cases make 50% more contacts. The lower infectiousness from above stays as a separate statement, and the two multiply:
 
 ```@example asymptomatic
 more_contacts = (rng, ind) -> rand(rng, Poisson(ind.state[:asymptomatic] ? 4.5 : 3.0))
@@ -78,7 +78,7 @@ both = ModelSpec(BranchingProcess(more_contacts, Exponential(5.0)); attributes =
 compare(both)
 ```
 
-Dropping `transmission_traits` leaves behaviour alone, and dropping the offspring function leaves biology alone. Neither choice is wired to the other.
+Dropping `transmission_traits` leaves the behaviour unchanged, and dropping the offspring function leaves the biology unchanged.
 
 ## Asymptomatic infection is shorter
 
@@ -98,7 +98,7 @@ compare(shorter)
 
 ## Onset linked to infectiousness, with no trajectory
 
-[`incubation_linked_generation_time`](@ref) centres each case's generation time on its own incubation period, so that a set share of transmission comes before onset. An asymptomatic case has no onset, and by default it is centred on the incubation period it would have had. That is one choice among several. A generation time is any function of the individual, so a different one for asymptomatic cases is a one-line wrapper. Here they transmit on the plain exponential timescale instead:
+[`incubation_linked_generation_time`](@ref) centres each case's generation time on its own incubation period, so that a set share of transmission comes before onset. An asymptomatic case has no onset, and by default it is centred on the incubation period it would have had. That is one choice among several. Because a generation time is any function of the individual, a different one for asymptomatic cases is a one-line wrapper. Here they transmit on the plain exponential timescale instead:
 
 ```@example asymptomatic
 linked = incubation_linked_generation_time(presymptomatic_fraction = 0.3)
@@ -116,7 +116,7 @@ Both put about 30% of a symptomatic case's transmission before its onset, as set
 
 ## Onset and infectiousness both follow a trajectory
 
-A within-host trajectory is a function of time since infection that the user draws once per case and stores on the individual. Everything linked to it is then derived from that one draw. Here the load rises to a peak and clears. A case develops symptoms if its peak passes a threshold, at the time the load crosses it, and a case whose peak stays below is asymptomatic. The same load, scaled, is the case's rate of transmission through a [`HazardKernel`](@ref). The builder sets `:asymptomatic` and `:incubation_period` (`NaN` for an asymptomatic case), which is what isolation and the onset time are worked out from, and `:latent_incubation_period`, which [`incubation_linked_generation_time`](@ref) reads:
+A within-host trajectory is a function of time since infection that the user draws once per case and stores on the individual. Everything linked to it is then derived from that one draw. Here the load rises to a peak and clears. A case develops symptoms if its peak passes a threshold, at the time the load crosses it, and a case whose peak stays below is asymptomatic. The same load, scaled, is the case's rate of transmission through a [`HazardKernel`](@ref). The builder sets `:asymptomatic` and `:incubation_period` (`NaN` for an asymptomatic case), from which isolation and the onset time are worked out, and `:latent_incubation_period`, which [`incubation_linked_generation_time`](@ref) reads:
 
 ```@example asymptomatic
 function draw_trajectory(rng)
@@ -147,7 +147,7 @@ trajectory_model = ModelSpec(BranchingProcess(from_trajectory); attributes = bot
 compare(trajectory_model)
 ```
 
-Asymptomatic cases, with the lower peaks, are less infectious without any statement saying so (a reproduction number of about 3 against about 5), and about 40% of a symptomatic case's secondary cases are infected before its onset.
+Asymptomatic cases, with the lower peaks, are less infectious without any statement saying so (a reproduction number of about 3 against about 5). About 40% of the secondary cases of a symptomatic case are infected before its onset.
 
 ## Only infectiousness follows the trajectory
 
@@ -166,7 +166,7 @@ compare(infectiousness_follows)
 
 ## Only onset follows the trajectory
 
-The reverse keeps `both_follow`, so that symptoms come from the trajectory, and gives transmission a plain generation time that ignores it:
+Here `both_follow` still draws symptoms from the trajectory, but transmission uses a plain generation time that ignores it:
 
 ```@example asymptomatic
 onset_follows = ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0)); attributes = both_follow)
@@ -184,4 +184,4 @@ compare(onset_follows)
 | Onset linked to infectiousness, no trajectory | `incubation_linked_generation_time`, or any `ind -> Distribution` as the generation time |
 | Trajectory drives onset, infectiousness or both | an attribute builder that stores the trajectory, sets `:asymptomatic` and `:incubation_period`, and a `HazardKernel` read from it |
 
-Whether a case is noticed is a separate statement from whether it has symptoms. [`Isolation`](@ref) isolates symptomatic cases by default, and its eligibility decides who else is picked up. A case definition belongs there, not in these links.
+Whether a case is noticed is a separate statement from whether it has symptoms. [`Isolation`](@ref) isolates symptomatic cases by default, and its eligibility decides who else is picked up. A case definition belongs there.
