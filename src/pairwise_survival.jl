@@ -103,7 +103,7 @@ end
 
 The record of who was infected when in an outbreak, together with who could
 have infected whom (household members, or neighbours in a contact network).
-This is the data [`pairwise_surv_loglik`](@ref) scores to estimate the contact
+This is the data [`pairwise_surv_loglik`](@ref) uses to estimate the contact
 interval. A subtype holds, for each person `i` (numbered `1:n`):
 
 - `infection_time[i]`: the infection time in days, `NaN` if never infected;
@@ -132,7 +132,7 @@ the end and need no end of follow-up.
 In real data the infection times are usually unobserved; they are known
 exactly after a simulation and imputed (data augmentation) in inference. What
 is observed, such as onsets and test results, comes from the natural history
-and is scored separately by [`progression_loglik`](@ref); the sum of the two is
+and enters separately through [`progression_loglik`](@ref); the sum of the two is
 the full log-likelihood of the augmented data. There is no closed-form
 likelihood of the onsets alone, because the unobserved infection times cannot
 be integrated out exactly.
@@ -1372,20 +1372,24 @@ end
 # evaluation and read through the same seam as a `Steps` schedule.
 
 """
-    MassActionHazard(; transmission_rate, population_size)
+    MassActionHazard(; transmission_rate, population = NoPopulation())
 
-A density-dependent hazard for [`pairwise_surv_loglik`](@ref)'s
+A frequency-dependent hazard for [`pairwise_surv_loglik`](@ref)'s
 `external_hazard`: the mass-action force of infection, `transmission_rate *
-I(t) / population_size`, where `I(t)` is the number of people the data's
+I(t) / N`, for `N` the size of the [`Population`](@ref), where `I(t)` is the number of people the data's
 [`InfectionLayer`](@ref) records as infectious at calendar time `t`. It is
 read exactly off the layer's own `infectious_time` and `removal_time`, known or
 augmented, with no ODE and no further approximation.
 
 Pass it alone, for an outbreak with no structure beyond its size, or beside a
 household or network contact structure, for mass action from the wider
-community on top of exposure within it; `population_size` need not match the
-number of people the data covers; it is the size of the mixing population mass
-action spreads through, which a traced household or network may be a part of.
+community on top of exposure within it. The `population` is the mixing
+population mass action spreads through, `Population(n)` or `population_size = n`
+for short, which a traced household or network may be a part of, so `n` need
+not match the number of people the data covers. Without one it is the people in
+the data, which is the whole mixing population when every household is
+included, and the sum of the household sizes is smaller than it when the
+households are a sample.
 
 `I(t)` counts only the people in the layer. When the layer is a sample of the
 mixing population, infectious people outside it are missing from `I(t)`. The
@@ -1399,7 +1403,7 @@ interpreting `transmission_rate`.
 
 A person is counted in `I(t)` over `(infectious_time, removal_time]`, the same
 convention a pairwise row's own exposure uses, so a secondary infected at the
-exact moment their infector is removed is scored the same way by both. This
+exact moment their infector is removed enters the likelihood the same way in both. This
 already leaves everybody out of their own `I(t)` at their own infection time,
 with no separate bookkeeping needed, because a person is infected no later than
 they become infectious.
@@ -1433,22 +1437,34 @@ truth = ModelSpec(
     progression = [Transition(:recovered; from = :infection, delay = 6.0, terminal = true)]
 )
 data = household_infections(simulate(truth; rng = StableRNG(3)), truth)
-mass_action = MassActionHazard(; transmission_rate = 0.05, population_size = 800)
+mass_action = MassActionHazard(; transmission_rate = 0.05, population = Population(800))
 pairwise_surv_loglik(Exponential(4.0), data; external_hazard = mass_action)
 ```
 """
 struct MassActionHazard{T <: Real}
     transmission_rate::T
-    population_size::Int
+    population::Union{NoPopulation, SinglePopulation}
 end
 
-function MassActionHazard(; transmission_rate, population_size::Integer)
-    population_size >= 1 || throw(ArgumentError("population_size must be ≥ 1"))
+function MassActionHazard(;
+        transmission_rate, population = NoPopulation(), population_size = NoPopulation()
+    )
+    pop = _population_input(population, population_size)
+    pop isa GroupedPopulation && throw(
+        ArgumentError(
+            "MassActionHazard mixes one population, so give `Population(n)`, not sizes by group"
+        )
+    )
     (isfinite(transmission_rate) && transmission_rate >= 0) || throw(
         ArgumentError("transmission_rate must be a finite, non-negative number (β ≥ 0)")
     )
-    return MassActionHazard(float(transmission_rate), Int(population_size))
+    return MassActionHazard(float(transmission_rate), pop)
 end
+
+# The size of the population mass action spreads through: the one given, or the
+# people in the data.
+_mass_action_size(::NoPopulation, n_people::Integer) = max(Int(n_people), 1)
+_mass_action_size(p::SinglePopulation, ::Integer) = p.size
 
 _valid_external(::MassActionHazard) = true
 _ext_active(m::MassActionHazard) = m.transmission_rate > 0
@@ -1567,7 +1583,8 @@ function mass_action_schedule(
         push!(counts, count)
     end
     Tv = promote_type(typeof(m.transmission_rate), Float64)
-    return _MassActionSchedule(Tv(m.transmission_rate), m.population_size, breaks, counts)
+    N = _mass_action_size(m.population, length(infectious_time))
+    return _MassActionSchedule(Tv(m.transmission_rate), N, breaks, counts)
 end
 
 function _ext_prepare(m::MassActionHazard, data::InfectionLayer)
@@ -1597,7 +1614,7 @@ either side is a [`MassActionHazard`](@ref) or a `SumHazard`.
 
 The sum explains an index case whenever at least one active source does. A
 constant or calendar importation hazard explains one from time 0, but mass
-action alone does not. Mass action plus an importation rate therefore scores
+action alone does not. Mass action plus an importation rate therefore treats
 index cases as importations instead of conditioning on them.
 
 Like [`MassActionHazard`](@ref), a sum is likelihood-only: it cannot be passed
@@ -1608,7 +1625,7 @@ as the `external_hazard` of a process to simulate from.
 Mass action from a community of 800 plus a constant importation rate:
 
 ```julia
-mass_action = MassActionHazard(; transmission_rate = 0.05, population_size = 800)
+mass_action = MassActionHazard(; transmission_rate = 0.05, population = Population(800))
 pairwise_surv_loglik(Exponential(4.0), data;
     external_hazard = mass_action + 0.002)
 ```
@@ -1959,9 +1976,9 @@ end
 
 # ── Susceptible-level mixtures ───────────────────────────────────────
 #
-# A susceptible a `susceptibility` effect modifies is scored as the log-sum-exp
+# A susceptible a `susceptibility` effect modifies contributes the log-sum-exp
 # over its mixture components of the log weight plus the escape and event terms
-# under that component's modifier. One it leaves alone is scored by the same
+# under that component's modifier. One it leaves alone contributes through the same
 # `_component_loglik` with no modifier.
 
 # The mixture of each susceptible the effect modifies, by host id, or `nothing`
@@ -2139,7 +2156,7 @@ end
 
 # ── Row-grouped reductions ───────────────────────────────────────────
 #
-# `pairwise_surv_loglik` and `pairwise_surv_loglik_by_component` score the
+# `pairwise_surv_loglik` and `pairwise_surv_loglik_by_component` evaluate the
 # same two passes over `layout`'s rows and differ only in which rows add into
 # a shared number and which add into their own. A `PairwiseReduction` says
 # that, so the maths underneath is written once.
@@ -2295,7 +2312,7 @@ function _pairwise_surv_loglik(
     return _result(reduction, totals)
 end
 
-# One pass over the susceptibles, each scored by `_component_loglik` (or
+# One pass over the susceptibles, each evaluated by `_component_loglik` (or
 # `_mixture_loglik` where an effect modifies it) and added into its group. A
 # susceptible is exposed to its possible infectors until it is infected, and to
 # the community hazard until the earlier of that and `obs_end`, after which

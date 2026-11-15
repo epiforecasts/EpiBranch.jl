@@ -520,7 +520,7 @@ end
         @test_throws ArgumentError MassActionHazard(; transmission_rate = 0.1, population_size = 0)
         m = MassActionHazard(; transmission_rate = 0.6, population_size = 4)
         @test m.transmission_rate == 0.6
-        @test m.population_size == 4
+        @test m.population == Population(4)
         @test EpiBranch._valid_external(m)
         @test EpiBranch._ext_active(m)
         @test !EpiBranch._ext_active(MassActionHazard(; transmission_rate = 0.0, population_size = 4))

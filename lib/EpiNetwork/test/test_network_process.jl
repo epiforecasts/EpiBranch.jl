@@ -2107,3 +2107,38 @@ end
         reach, fill(0.0, n), fill(0.0, n), fill(1.0, n), fill(true, n); seeded = [true]
     )
 end
+
+@testset "Network reinfection once susceptible again" begin
+    prog = [
+        Transition(:recovered; delay = 3.0, terminal = true),
+        Transition(:susceptible_again; from = :recovered, delay = 0.1),
+    ]
+    adjacency = [[2, 3, 4, 5], [1], [1], [1], [1]]
+    routed = RoutedNetwork(
+        [
+            RouteWindow(
+                :only; until = (:recovered,), kernel = Exponential(1.0),
+                reach = adjacency
+            ),
+        ]
+    )
+    for process in (NetworkProcess(adjacency, Exponential(1.0)), routed)
+        n = sum(
+            length(
+                simulate(
+                    ModelSpec(process; progression = prog);
+                    initial_cases = [1], max_time = 100.0, rng = StableRNG(s)
+                ).individuals[1].episodes
+            ) for s in 1:20
+        )
+        @test n > 0
+    end
+
+    # Without a route back to susceptibility nobody is reinfected.
+    sir = [Transition(:recovered; delay = 3.0, terminal = true)]
+    state = simulate(
+        ModelSpec(NetworkProcess(adjacency, Exponential(1.0)); progression = sir);
+        initial_cases = [1], max_time = 100.0, rng = StableRNG(1)
+    )
+    @test all(isempty(ind.episodes) for ind in state.individuals)
+end

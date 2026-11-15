@@ -283,7 +283,7 @@ end
 
     @testset "a bare MassActionHazard is rejected; RoutedMassActionHazard reads one route" begin
         # two unconnected people on both routes, so only the external hazard
-        # can score anything: 1 is a conditioned-on index case infectious on
+        # can contribute anything: 1 is a conditioned-on index case infectious on
         # the community route over (0, 3]; 2 is a secondary infected at the
         # exact instant 1 is removed, which a pairwise row and mass action
         # must agree on (see the core likelihood's own boundary test)
