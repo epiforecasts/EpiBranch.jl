@@ -283,8 +283,7 @@ population (network, household, homogeneous, mixing, and one written against
 ## Continuous-time models: further details
 
 These points concern the network, household, homogeneous and mixing models, which
-simulate a fixed population in continuous time (see [Which hooks run on which
-model](@ref)).
+simulate a fixed population in continuous time (see [Hooks by model](@ref)).
 
 - **Susceptibility and infectiousness.** These are fixed properties of the two
   people rather than events at a time, so the models build them into the

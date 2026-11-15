@@ -250,7 +250,7 @@ nothing # hide
 ```
 
 To write a trigger of your own, such as one that depends on the infector's
-age, see [Who triggers contact tracing](@ref).
+age, see [Eligibility for contact tracing](@ref).
 
 ## Asymptomatic cases and test sensitivity
 
