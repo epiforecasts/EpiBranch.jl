@@ -32,7 +32,7 @@ progression = [Testing(assay = assay, delay = Gamma(2.0, 1.0))]
 attributes = [clinical_presentation(incubation_period = LogNormal(1.5, 0.5)), within_host(curve)]
 ```
 
-The trajectory, the assay and the sampling rule are all supplied by the caller; the package builds in no pathogen.
+The caller supplies the trajectory, the assay and the sampling rule. The package includes no pathogen.
 
 Death and recovery are final outcomes: each case ends with one of them (see
 [Competing outcomes](@ref) below). Each event has its own delay distribution
@@ -285,7 +285,7 @@ println("Symptomatic: ", count(ind -> ind.state[:symptomatic], infected),
     " of ", length(infected))
 ```
 
-This is one choice among many. For many pathogens load and symptoms are only loosely linked, and some people with high loads have no symptoms. The example does not define asymptomatic infection. The threshold, the lag and the shape of the curve are assumptions to replace with ones that suit the pathogen.
+This is one choice among many. For many pathogens load and symptoms are only loosely linked: some people with high loads have no symptoms. The example leaves asymptomatic infection undefined. The threshold, the lag and the shape of the curve are assumptions to replace with ones that suit the pathogen.
 
 ## Combining with multi-type models and population characteristics
 

@@ -98,9 +98,9 @@ isolation_reference_time(::AfterSymptomOnset, individual, state) = onset_time(in
 Isolate a case when its test result comes back positive: the sampling time
 that [`Testing`](@ref) records in `:test_time`, plus the `onset_to_isolation_delay`
 of the isolation, which then stands for the turnaround from sample to result.
-A case never tested has `:test_time` of `Inf`, and a case whose `:test_result`
-is negative is not isolated through the test. It does not need symptoms. Pair it
-with `eligibility = AllCases()` to isolate screened cases without symptoms.
+A case never tested has `:test_time` of `Inf`. A case with a negative
+`:test_result` is not isolated through the test. The trigger needs no symptoms:
+pair it with `eligibility = AllCases()` to isolate screened cases without them.
 `test_sensitivity` still applies on top of the recorded result.
 """
 struct AfterPositiveTest <: IsolationTrigger end
@@ -151,7 +151,7 @@ known cases are quarantined through [`ContactTracing`](@ref).
   `(rng, ind) -> ...`, drawn once per case. A [`Testing`](@ref) step in the
   model's `progression` can be given instead: a case is then detected when its
   own test, taken from its within-host trajectory, is positive. The isolation
-  time is still `onset_to_isolation_delay` after onset, and analytic effects
+  time is still `onset_to_isolation_delay` after onset. Analytic effects
   (`analytic_offspring_effect`) need a number or a distribution and refuse this form.
 - `post_isolation_transmission`: fraction of normal transmission that
   continues while isolated, between 0 and 1 (default 0, perfect isolation;
