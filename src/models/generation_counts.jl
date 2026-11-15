@@ -273,9 +273,9 @@ number.
 
 The doses of generation `g` cover `[g * generation_length, (g + 1) *
 generation_length)` and are applied after generation `g` is drawn and before
-`g + 1` is. Each type has the whole `budget_per_period` to itself, as in the
-individual-based simulation, where `GroupVaccination` keeps one budget per
-group. The doses are those of the periods that start in the interval; with
+`g + 1` is. The `budget_per_period` is shared by the types, as in every model:
+each dose goes to a type in proportion to its population, as it would to a
+person picked at random. The doses are those of the periods that start in the interval; with
 `carry_over`, budget left from earlier periods, or from before a window opens,
 is given in the first interval open to it. A dose reaches a susceptible of a
 type with probability equal to the share of susceptibles in the population of
@@ -294,11 +294,6 @@ individual-based simulation only when the budget reaches everyone in the
 window. The simulation gives the doses of a `BranchingProcess` only to
 contacts as they are created. A budget below the number of contacts therefore
 covers a share of contacts, not `doses / population`, and the counts differ.
-The budget is also read per type here. In the mixing approximations the groups
-share one budget. In the individual-based simulation the budget is per group
-when the groups are types and shared otherwise. The place of the doses in the
-intervention specification is undecided, and the split of a budget between
-groups may change.
 
 # Examples
 
@@ -328,7 +323,7 @@ state = simulate_by_generation(
     multiplier = Gamma(6.5, 1 / 6.5), rng = Xoshiro(1)
 )
 
-# A vaccination campaign of 2,000 doses a day to each type for a fortnight
+# A vaccination campaign of 2,000 doses a day for a fortnight
 model = BranchingProcess([2.0 0.5; 0.5 2.0], R -> Poisson(R), EpiBranch.NoGenerationTime();
     population_size = 250_000)
 campaign = CapacityConstrained(GroupVaccination(efficacy = 0.9, group_key = :type);

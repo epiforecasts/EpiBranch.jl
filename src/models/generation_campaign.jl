@@ -4,9 +4,7 @@
 # susceptibles of each type between generations instead. Its doses for a generation's
 # interval come from the budget of a `CapacityConstrained` (read, for a
 # schedule, at the start of each period) and the window of a `Scheduled`
-# around it, in either order. As in the individual-based engine once
-# `resource_key` splits `GroupVaccination` by type, every type has the whole
-# budget to itself.
+# around it, in either order. The types share one budget, as in every model.
 
 # A vaccination campaign `simulate_by_generation` can apply: the efficacy of
 # its dose, the days it may give doses between, and the budget limiting how
@@ -21,26 +19,21 @@ end
 # any `Scheduled` and finding the one `CapacityConstrained`. Anything else, or
 # a `Scheduled` whose condition is not a calendar window, cannot be applied to
 # a count and is named in the error.
-_campaign(iv::AbstractIntervention, window, budget) = throw(
-    ArgumentError(
-        "simulate_by_generation cannot apply $(nameof(typeof(iv))); it applies " *
-            "GroupVaccination under CapacityConstrained and Scheduled"
-    )
-)
+_campaign(iv::AbstractIntervention, window, budget) =
+    _refuse_campaign("simulate_by_generation", nameof(typeof(iv)))
 function _campaign(s::Scheduled, window, budget)
-    s.window === nothing && throw(
-        ArgumentError(
-            "simulate_by_generation can only apply a Scheduled with a start_time and " *
-                "end_time: a case count or other condition has no clock between generations"
-        )
-    )
+    w = _clock_window(s, "simulate_by_generation")
     return _campaign(
-        s.intervention, (max(window[1], s.window.start), min(window[2], s.window.stop)), budget
+        s.intervention, (max(window[1], w.start), min(window[2], w.stop)), budget
     )
 end
 function _campaign(cc::CapacityConstrained, window, budget)
-    budget === nothing || throw(
-        ArgumentError("simulate_by_generation needs a single CapacityConstrained per campaign")
+    budget === nothing || _refuse_campaign(
+        "simulate_by_generation", "a campaign with more than one CapacityConstrained"
+    )
+    cc.on_refusal isa DropRefused || _refuse_campaign(
+        "simulate_by_generation", "`on_refusal = $(nameof(typeof(cc.on_refusal)))`",
+        " (each person is offered a dose once)"
     )
     return _campaign(cc.intervention, window, cc)
 end
@@ -144,16 +137,26 @@ function _doses_by(cc::CapacityConstrained, t)
     )
 end
 
+# The doses of `[t0, t1)` given to each type. The budget is a pool of doses
+# for everyone: each dose goes to a type in proportion to its population, as it
+# would to a person picked at random.
+function _doses_by_type(rng::AbstractRNG, c::_Campaign, t0, t1, sizes)
+    doses = _interval_doses(c, t0, t1)
+    doses == 0 && return zeros(Int, length(sizes))
+    length(sizes) == 1 && return [doses]
+    return rand(rng, Multinomial(doses, Float64.(sizes) ./ sum(sizes)))
+end
+
 # Give a campaign's doses for `[t0, t1)` to the susceptibles. A dose reaches a
 # susceptible of a type with probability equal to the share of susceptibles in
 # the population of the type at the start of the interval, and protects with
 # probability `efficacy`. With no doses nothing is drawn.
 function _vaccinate!(rng::AbstractRNG, c::_Campaign, t0, t1, susceptibles, sizes)
-    doses = _interval_doses(c, t0, t1)
-    doses == 0 && return susceptibles
+    doses = _doses_by_type(rng, c, t0, t1, sizes)
     for i in eachindex(susceptibles)
+        doses[i] == 0 && continue
         (susceptibles[i] <= 0 || sizes[i] <= 0) && continue
-        reached = min(rand(rng, Binomial(doses, susceptibles[i] / sizes[i])), susceptibles[i])
+        reached = min(rand(rng, Binomial(doses[i], susceptibles[i] / sizes[i])), susceptibles[i])
         susceptibles[i] -= rand(rng, Binomial(reached, c.efficacy))
     end
     return susceptibles

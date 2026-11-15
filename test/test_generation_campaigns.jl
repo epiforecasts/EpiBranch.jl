@@ -57,11 +57,11 @@ EpiBranch.trigger_time(e::_EligibleAt, infector, state) = e.time
     end
 
     @testset "a dose reaches the susceptibles it finds, and protects with efficacy" begin
+        sizes = [10_000, 10_000]
         campaign = EpiBranch._campaign(
             CapacityConstrained(group(; efficacy = 0.6); budget_per_period = 1_000.0),
             (0.0, Inf), nothing
         )
-        sizes = [10_000, 10_000]
         removed = [
             begin
                 s = [8_000, 2_000]
@@ -69,10 +69,14 @@ EpiBranch.trigger_time(e::_EligibleAt, infector, state) = e.time
                 [8_000, 2_000] .- s
             end for seed in 1:400
         ]
-        # Each type has its own 1,000 doses, a share 0.8 or 0.2 of which reach
-        # susceptibles, and 0.6 of those protect.
-        @test isapprox(mean(first, removed), 1_000 * 0.8 * 0.6; rtol = 0.03)
-        @test isapprox(mean(last, removed), 1_000 * 0.2 * 0.6; rtol = 0.05)
+        # Equal types share the 1,000 doses and get 500 each. A fraction 0.8 or
+        # 0.2 of them reaches susceptibles, and 0.6 of those protect.
+        @test isapprox(mean(first, removed), 500 * 0.8 * 0.6; rtol = 0.03)
+        @test isapprox(mean(last, removed), 500 * 0.2 * 0.6; rtol = 0.05)
+        # Doses are given out whole: the types together get all of them.
+        s = [8_000, 2_000]
+        pool = EpiBranch._doses_by_type(StableRNG(1), campaign, 0.0, 14.0, sizes)
+        @test sum(pool) == 1_000
     end
 
     @testset "a campaign with no doses changes nothing" begin
@@ -202,16 +206,9 @@ EpiBranch.trigger_time(e::_EligibleAt, infector, state) = e.time
         end
     end
 
-    @testset "GroupVaccination budgets are kept per type" begin
+    @testset "GroupVaccination budgets are shared by the types" begin
         gv = group()
         a = Individual(id = 1, state = Dict{Symbol, Any}(:type => 1))
-        b = Individual(id = 2, state = Dict{Symbol, Any}(:type => 2))
-        @test EpiBranch.resource_key(gv, a, nothing) == 1
-        @test EpiBranch.resource_key(gv, b, nothing) == 2
-        @test EpiBranch.resource_key(Scheduled(gv; start_time = 1.0), b, nothing) == 2
-        @test EpiBranch.resource_key(
-            GroupVaccination(efficacy = 0.5, group_key = :community),
-            Individual(id = 3, state = Dict{Symbol, Any}(:community => :north)), nothing
-        ) === nothing
+        @test EpiBranch.resource_key(gv, a, nothing) === nothing
     end
 end
