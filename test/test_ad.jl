@@ -57,7 +57,7 @@ using StableRNGs
             (R, d) -> loglikelihood(OffspringCounts(d), Poisson(R[1])),
             [0.5], counts_data
         ),
-        # Per-case detection thins the chain-size law through
+        # A `Reporting` step thins the chain-size law through
         # `ThinnedChainSize`, whose cached normalising constant must hold
         # a `Dual` for this to differentiate.
         scenario(
@@ -65,7 +65,7 @@ using StableRNGs
                 ChainSizes(d),
                 ModelSpec(
                     BranchingProcess(Poisson(R[1]));
-                    observation = PerCaseObservation(detection_prob = 0.7)
+                    progression = [Reporting(delay = Dirac(0.0), probability = 0.7, from = :infection)]
                 )
             ),
             [0.5], sizes_data
