@@ -352,9 +352,9 @@ end
 
 Cross-tier check, run when a process is composed with a progression in a
 [`ModelSpec`](@ref): warn when an infectiousness window opens at a `from` state
-the progression never produces, so the window would silently never open. Also
-warn when a window's `until` does not list a terminal state the progression can
-reach, because the case would go on transmitting after it. `from`
+the progression never produces, because the window would then never open. Also
+warn when a window's `until` omits a terminal state the progression can reach,
+because the case would go on transmitting after it. `from`
 may legitimately be a state written by an attribute or intervention rather than
 a progression transition, so this is a warning. The default does nothing, for
 models without infectiousness windows; a [`FixedPopulationProcess`](@ref
