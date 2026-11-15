@@ -36,7 +36,7 @@ An intervention reduces transmission from the time an event occurs, through its 
 
 ## About timing: the generation time
 
-The generation time, or the `kernel` of an `Infectiousness` window, can be any distribution or any function `ind -> Distribution`. It sets when the infections of a case happen. With no `until`, it changes only when infections happen, not how many. With `until`, the kernel is the contact interval, so it also changes how many infections fall inside the window, and a kernel measured from a later state drops contacts that fall before infection. Isolation likewise truncates a case's infections by their timing. Use it for infectiousness that peaks early or late, or that differs by person in its timing.
+The generation time, or the `kernel` of an `Infectiousness` window, can be any distribution or any function `ind -> Distribution`. It sets when the infections of a case happen. With no `until`, it changes the timing of infections and leaves their number unchanged. With `until`, the kernel is the contact interval and also changes how many infections fall inside the window. A kernel measured from a later state drops contacts that fall before infection. Isolation likewise truncates the infections of a case by their timing. Use the kernel for infectiousness that peaks early or late, or that differs between people in its timing.
 
 ## Combining them
 
