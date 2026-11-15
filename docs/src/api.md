@@ -335,11 +335,11 @@ ExposedContactRecorder
 
 A case definition classifies each case (confirmed, probable, suspected, or
 whatever a surveillance system uses) from what has happened to them. Pass one
-as the `case_definition` of a [`ModelSpec`](@ref). It is evaluated at every
-time an event is recorded on a case, symptoms, a trace or a test result among
-them, so the classification changes over time and
+as the `case_definition` of a [`ModelSpec`](@ref). It is evaluated each
+time an event is recorded on a case, such as symptoms, a trace or a test result.
+The classification can therefore change over time, and
 [`case_classification_changes`](@ref) lists each change with its time.
-[`linelist`](@ref) shows the final one as `case_classification`. A definition
+[`linelist`](@ref) shows the final classification as `case_classification`. A definition
 of your own is a function `history -> label`, or a subtype of
 [`AbstractCaseDefinition`](@ref) with an `EpiBranch.classify_case` method.
 
