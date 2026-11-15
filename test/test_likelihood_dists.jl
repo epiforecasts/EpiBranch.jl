@@ -158,6 +158,19 @@ EpiBranch.chain_size_distribution(d::BrokenExactOffspring) = throw(d.error)
             sympt = ModelSpec(bp; progression = onset, attributes = cp(0.0))
             @test isfinite(loglikelihood(ChainLengths(data), sympt))
 
+            # The symptomatic share must be a fixed number from one presentation.
+            @test_throws "needs exactly one" loglikelihood(
+                ChainLengths(data), ModelSpec(bp; progression = onset)
+            )
+            @test_throws "needs exactly one" loglikelihood(
+                ChainLengths(data),
+                ModelSpec(bp; progression = onset, attributes = (cp(0.0), cp(0.0)))
+            )
+            @test_throws "fixed prob_asymptomatic" loglikelihood(
+                ChainLengths(data),
+                ModelSpec(bp; progression = onset, attributes = cp(ind -> 0.0))
+            )
+
             # A terminal step with full reporting is not a reporting fraction.
             terminal = ModelSpec(
                 bp;

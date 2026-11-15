@@ -482,11 +482,22 @@ function _chain_length_reporting_share(prog, attrs)
     if r.from isa Symbol && _resolved_key(r.from) === :onset_time
         builders = attrs isa NoAttributes ? () :
             attrs isa Union{Tuple, AbstractVector} ? Tuple(attrs) : (attrs,)
-        for b in builders
-            if b isa ClinicalPresentation && b.prob_asymptomatic isa Real
-                ρ *= 1 - b.prob_asymptomatic
-            end
-        end
+        presentations = filter(b -> b isa ClinicalPresentation, builders)
+        length(presentations) == 1 || throw(
+            ArgumentError(
+                "A Reporting step from onset needs exactly one " *
+                    "clinical_presentation to read the symptomatic share from; " *
+                    "this model has $(length(presentations))"
+            )
+        )
+        cp = only(presentations)
+        cp.prob_asymptomatic isa Real || throw(
+            ArgumentError(
+                "A Reporting step from onset needs a fixed " *
+                    "prob_asymptomatic, not a per-case function"
+            )
+        )
+        ρ *= 1 - cp.prob_asymptomatic
     end
     return ρ
 end
