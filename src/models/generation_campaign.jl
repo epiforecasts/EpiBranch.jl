@@ -93,7 +93,7 @@ function _generation_campaigns(spec::ModelSpec, generation_length, finite_popula
     )
     finite_population || throw(
         ArgumentError(
-            "simulate_by_generation needs a finite population_size for the " *
+            "simulate_by_generation needs a finite population for the " *
                 "interventions $names to act on"
         )
     )

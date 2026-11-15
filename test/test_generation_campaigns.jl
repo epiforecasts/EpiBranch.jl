@@ -11,16 +11,15 @@ EpiBranch.trigger_time(e::_EligibleAt, infector, state) = e.time
 
 @testset "Vaccination campaigns in generation counts" begin
     matrix = [1.2 0.3; 0.3 1.2]
-    discrete(; N = 200_000) = BranchingProcess(
-        matrix, R -> Poisson(R), EpiBranch.NoGenerationTime(); population_size = N
+    discrete(; sizes = [40_000, 160_000]) = BranchingProcess(
+        matrix, R -> Poisson(R), EpiBranch.NoGenerationTime(); population = Population(sizes)
     )
     group(; efficacy = 0.5, kwargs...) = GroupVaccination(;
         efficacy, group_key = :type, kwargs...
     )
     run_counts(spec; seed = 1, kwargs...) = simulate_by_generation(
         spec; n_initial = [10, 2], max_generations = 7,
-        population_by_type = [40_000, 160_000], depletion = StartOfGenerationDepletion(),
-        generation_length = 14.0, rng = StableRNG(seed), kwargs...
+        depletion = StartOfGenerationDepletion(), generation_length = 14.0, rng = StableRNG(seed), kwargs...
     )
 
     @testset "doses of a generation's interval" begin
@@ -118,7 +117,7 @@ EpiBranch.trigger_time(e::_EligibleAt, infector, state) = e.time
         whole = run_counts(spec)
         first_part = simulate_by_generation(
             spec; n_initial = [10, 2], max_generations = 3,
-            population_by_type = [40_000, 160_000], depletion = StartOfGenerationDepletion(),
+            depletion = StartOfGenerationDepletion(),
             generation_length = 14.0, rng = StableRNG(1)
         )
         continued = simulate(spec, first_part; max_generations = 7)
@@ -168,7 +167,7 @@ EpiBranch.trigger_time(e::_EligibleAt, infector, state) = e.time
             )
         )
         @test occursin("start_time", err(spec(Scheduled(capacity; start_after_cases = 5))))
-        @test occursin("finite population", err(spec(capacity; model = BranchingProcess(matrix, R -> Poisson(R), EpiBranch.NoGenerationTime())); population_by_type = nothing))
+        @test occursin("finite population", err(spec(capacity; model = BranchingProcess(matrix, R -> Poisson(R), EpiBranch.NoGenerationTime()))))
         @test occursin(
             "BranchingProcess",
             err(ModelSpec(HomogeneousProcess(transmission_rate = 0.1, population_size = 100); interventions = [capacity]))

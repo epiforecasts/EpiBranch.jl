@@ -54,6 +54,7 @@ const TEST_GROUPS = (
         "test_abort_infection.jl",
         "test_homogeneous.jl",
         "test_mixing.jl",
+        "test_population.jl",
         "test_contact_matrices.jl",
         "test_continuation.jl",
         "test_state_space.jl",
