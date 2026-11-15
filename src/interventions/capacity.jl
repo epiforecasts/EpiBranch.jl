@@ -131,10 +131,10 @@ label count against it; use different labels for separate budgets.
 [`capacity_usage`](@ref) reports the capacity used and available.
 
 By default all groups share one budget, in every model. An intervention with a [`resource_key`](@ref EpiBranch.resource_key)
-method splits it instead: each distinct value (a district, a treatment centre)
-gets its own `budget_per_period`, tracked under the same `period`,
-`carry_over` and `priority` independently of every other. Pass the value to
-`capacity_usage` to read one group's own usage.
+method splits it: each distinct value (a district, a treatment centre)
+gets its own `budget_per_period` with the same `period`, `carry_over` and
+`priority`, tracked separately from the others. Pass the value to
+`capacity_usage` to read the usage of one group.
 
 [`Scheduled`](@ref) and `CapacityConstrained` can be combined in either
 order: both check each action's own proposed date.

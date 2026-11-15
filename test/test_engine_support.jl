@@ -1,9 +1,9 @@
 using Distributions
 using StableRNGs
 
-# What each model reads of the intervention specification, checked against one
+# Support for the intervention specification in each model, checked against one
 # table. A case is an intervention built for the groups of a model, which
-# either applies it or refuses it with the shared wording of
+# either applies it or refuses it with the wording of
 # `EpiBranch._CAMPAIGN_SUPPORT`.
 
 # Triggers the doses of a group at a fixed calendar day, so the
@@ -91,9 +91,8 @@ _support_gv(e, key = e.key) = GroupVaccination(;
     efficacy = 0.9, group_key = key, eligibility = e.eligibility
 )
 
-# The specification: each case is an intervention a model is asked to apply,
-# and `applies` lists the models that apply it. Every other one refuses it in
-# the shared wording.
+# Each case is an intervention that a model is asked to apply. `applies` lists
+# the models that apply it; every other model refuses it in the shared wording.
 const _SUPPORT_CASES = [
     (
         name = "GroupVaccination, shared budget",
@@ -166,7 +165,7 @@ end
 
     @testset "a shared budget is one pool in every model" begin
         # 100 doses between two groups of hundreds of people: one pool gives
-        # 100 doses in all, not 100 to each group.
+        # 100 doses in all.
         shared(e) = CapacityConstrained(_support_gv(e); budget_per_period = 100.0)
         e = _SUPPORT_ENGINES.individual
         state = _support_branching(e.spec([shared(e)]))

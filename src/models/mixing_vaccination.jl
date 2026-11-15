@@ -143,7 +143,7 @@ end
 
 # What every engine that reads a campaign rather than simulating individuals
 # (the approximations here and `simulate_by_generation`) can apply, in the
-# wording they all refuse with.
+# wording of their refusals.
 const _CAMPAIGN_SUPPORT = "a GroupVaccination, alone or under Scheduled (a " *
     "start_time and end_time only) and CapacityConstrained (one per campaign, " *
     "with a shared budget and `on_refusal = DropRefused()`)"

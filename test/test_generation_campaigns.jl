@@ -69,8 +69,8 @@ EpiBranch.trigger_time(e::_EligibleAt, infector, state) = e.time
                 [8_000, 2_000] .- s
             end for seed in 1:400
         ]
-        # The 1,000 doses are shared, so equal types have 500 each. A share 0.8
-        # or 0.2 of them reach susceptibles, and 0.6 of those protect.
+        # Equal types share the 1,000 doses and get 500 each. A fraction 0.8 or
+        # 0.2 of them reaches susceptibles, and 0.6 of those protect.
         @test isapprox(mean(first, removed), 500 * 0.8 * 0.6; rtol = 0.03)
         @test isapprox(mean(last, removed), 500 * 0.2 * 0.6; rtol = 0.05)
         # Doses are given out whole: the types together get all of them.

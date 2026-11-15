@@ -4,8 +4,7 @@
 # susceptibles of each type between generations instead. Its doses for a generation's
 # interval come from the budget of a `CapacityConstrained` (read, for a
 # schedule, at the start of each period) and the window of a `Scheduled`
-# around it, in either order. As in every model, a budget is shared by all
-# the types.
+# around it, in either order. The types share one budget, as in every model.
 
 # A vaccination campaign `simulate_by_generation` can apply: the efficacy of
 # its dose, the days it may give doses between, and the budget limiting how
@@ -138,7 +137,7 @@ function _doses_by(cc::CapacityConstrained, t)
     )
 end
 
-# The doses of `[t0, t1)` that go to each type. The budget is a pool of doses
+# The doses of `[t0, t1)` given to each type. The budget is a pool of doses
 # for everyone: each dose goes to a type in proportion to its population, as it
 # would to a person picked at random.
 function _doses_by_type(rng::AbstractRNG, c::_Campaign, t0, t1, sizes)
