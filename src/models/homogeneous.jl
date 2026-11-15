@@ -11,10 +11,11 @@
 # is resolved from that progression when the model is simulated.
 
 """
-    HomogeneousProcess(; transmission_rate, population_size,
+    HomogeneousProcess(; transmission_rate, population,
                        from = nothing, until = (:recovered, :died, :isolated))
 
-A closed population of `population_size` individuals that mix homogeneously:
+A closed population of individuals that mix homogeneously, given as
+`population = Population(n)` or as `population_size = n`:
 every infectious person exerts the same force of infection on every susceptible.
 It is simulated in continuous time as mass action, every pair meeting at the
 same rate, which reproduces the exact stochastic SIR final-size law.
@@ -88,15 +89,16 @@ end
 
 function HomogeneousProcess(;
         transmission_rate,
-        population_size::Integer,
+        population = NoPopulation(),
+        population_size = NoPopulation(),
         from = nothing,
         until = (:recovered, :died, :isolated)
     )
-    population_size >= 1 || throw(ArgumentError("population_size must be ≥ 1"))
+    pop = _single_population(_closed_population(population, population_size), "HomogeneousProcess")
     rate = _prepared_transmission_rate(transmission_rate)
     T = _rate_time_type(rate)
     return HomogeneousProcess{T, typeof(rate)}(
-        Int(population_size), rate, from, Tuple(until)
+        pop.size, rate, from, Tuple(until)
     )
 end
 
@@ -187,7 +189,7 @@ end
                           recorder, rng)
 
 The race shared by the models that simulate as mass action among
-`model.population_size` members (`HomogeneousProcess`, `MixingProcess`). The
+the members of `population(model)` (`HomogeneousProcess`, `MixingProcess`). The
 model supplies only how members are grouped (`mixing_by`), the pairwise `rate`
 and the `calendar`; `new_state` and `transmission_risks` still dispatch on the
 concrete model type.
@@ -197,7 +199,8 @@ function _simulate_mass_action(
         interventions, attributes, progression, observation, recorder, rng
     )
     n_initial = sim_opts.n_initial
-    N = model.population_size
+    pop = population(model)
+    N = total_size(pop)
     n_initial >= 1 || throw(ArgumentError("n_initial must be ≥ 1"))
     n_initial <= N ||
         throw(ArgumentError("n_initial cannot exceed population_size"))
@@ -207,7 +210,7 @@ function _simulate_mass_action(
     state = new_state(model, progression, attributes, rng)
     add_individuals!(
         state, N, interventions;
-        setup = (ind, i) -> nothing
+        setup = (ind, i) -> nothing, assign = _group_assignment(pop, rng, mixing_by)
     )
 
     members = collect(1:N)

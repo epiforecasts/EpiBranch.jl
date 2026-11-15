@@ -271,7 +271,7 @@ end
 # ── BranchingProcess type and constructors ──────────────────────────
 
 """
-    BranchingProcess(offspring, generation_time; population_size = NoPopulation())
+    BranchingProcess(offspring, generation_time; population = NoPopulation())
     BranchingProcess(offspring)
     BranchingProcess(windows::Infectiousness...)
 
@@ -283,13 +283,14 @@ outbreak grows as a tree from the index cases. A negative binomial,
 
 `generation_time` is the distribution of the time in days from a case's
 infection to the infection of each of its secondary cases. Leave it out to
-study only chain sizes and lengths, without timing. `population_size` sets a
-finite population: each potential infection succeeds with probability equal
-to the share of people not yet infected, so transmission slows as cases
-accumulate (unlimited by default). A multi-type model (an offspring function
-or a contact matrix) cannot use `population_size` with [`simulate`](@ref),
-because that keeps no population per type. [`simulate_by_generation`](@ref)
-takes `population_by_type` instead.
+study only chain sizes and lengths, without timing. `population` sets a
+finite [`Population`](@ref): each potential infection succeeds with
+probability equal to the share of people of its type not yet infected.
+Transmission slows as cases accumulate (unlimited by default).
+`population_size = n` is shorthand for `population = Population(n)`. A
+multi-type model (an offspring function or a contact matrix) takes the size of
+each type's population, `Population(sizes)`, and depletes each type against
+its own size.
 
 The transmission model describes only who infects whom and when. Add the
 natural history, interventions, population characteristics and reporting
@@ -322,22 +323,49 @@ windows. The forms above make a single one that starts at infection.
 """
 struct BranchingProcess{W <: Tuple, P, L} <: TransmissionModel
     infectiousness::W
-    population_size::P
+    population::P
     n_types::Int
     type_labels::L
+end
+
+# The population a process is built with, from the `population` keyword or
+# the `population_size` shorthand for one group, checked against the number of
+# types: each type is a group with a size of its own.
+function _branching_population(population, population_size, n_types::Integer)
+    pop = _population_input(population, population_size)
+    _check_type_sizes(pop, n_types)
+    return pop
+end
+_check_type_sizes(::NoPopulation, ::Integer) = nothing
+_check_type_sizes(::SinglePopulation, ::Integer) = nothing
+function _check_type_sizes(p::GroupedPopulation, n_types::Integer)
+    length(p.sizes) == n_types || throw(
+        ArgumentError(
+            "`population` has $(length(p.sizes)) groups for a model with $n_types types"
+        )
+    )
+    return nothing
 end
 
 # Cross-tier check, run when a process is composed with a progression in a
 # [`ModelSpec`](@ref): warn when an infectiousness window opens at a `from`
 # state the progression never produces, so the window would silently never
-# open. `from` may legitimately be a state written by an attribute or
-# intervention rather than a progression transition, so this is a warning.
+# open. Also warn when a window's `until` does not list a terminal state the
+# progression can reach, because the case would go on transmitting after it.
+# `from` may legitimately be a state written by an attribute or intervention
+# rather than a progression transition, hence a warning.
 # A no-op for models without infectiousness windows.
 _validate_process_windows(::TransmissionModel, progression) = nothing
 function _validate_process_windows(m::BranchingProcess, progression)
     return _validate_windows(m.infectiousness, progression)
 end
 function _validate_windows(windows, progression)
+    for w in windows
+        _warn_uncovered_terminal_states(
+            w.until, progression;
+            route = length(windows) > 1 ? w.name : nothing, from = w.from
+        )
+    end
     produced = Set{Symbol}((:infection,))
     for t in progression
         hasproperty(t, :state) && push!(produced, t.state::Symbol)
@@ -397,23 +425,23 @@ end
 # defaults for a bare process, so `_progvec` stays here for the spec to use.
 _progvec(p) = convert(Vector{AbstractClinicalTransition}, p)
 
-population_size(m::BranchingProcess) = m.population_size
+population(m::BranchingProcess) = m.population
 
-# The individual-based simulation counts cumulative cases against one
-# population size and holds none per type. It would deplete every type
-# against the whole population. `simulate_by_generation` takes
-# `population_by_type` and accepts a multi-type model with a population_size.
+# A multi-type process given only a total has no size for each type to deplete
+# against. `simulate_by_generation` can still take the sizes as the deprecated
+# `population_by_type`; the individual-based simulation cannot.
 function _check_population(m::BranchingProcess)
-    (m.n_types > 1 && !(m.population_size isa NoPopulation)) || return nothing
+    (m.n_types > 1 && m.population isa SinglePopulation) || return nothing
     throw(
         ArgumentError(
-            "population_size is not supported by simulate for a multi-type " *
-                "BranchingProcess: it would deplete every type against the whole " *
-                "population. Use simulate_by_generation with population_by_type, " *
-                "or drop population_size."
+            "a multi-type BranchingProcess needs the size of each type's population to " *
+                "deplete each type against its own: give " *
+                "`population = Population(sizes)` with $(m.n_types) sizes, not " *
+                "`population_size`"
         )
     )
 end
+population_size(m::BranchingProcess) = total_size(m.population)
 n_types(m::BranchingProcess) = m.n_types
 
 # A finite population thins transmission as cases accumulate, a window with
@@ -422,7 +450,7 @@ n_types(m::BranchingProcess) = m.n_types
 # offspring law away from the bare distribution, so the analytical chain-size
 # and incidence likelihoods must not take the model's offspring law as read.
 function offspring_law_unchanged(m::BranchingProcess)
-    population_size(m) isa NoPopulation || return false
+    m.population isa NoPopulation || return false
     return all(w -> isempty(w.until) && w.calendar === nothing, m.infectiousness)
 end
 
@@ -468,7 +496,9 @@ _offspring_label(off::Distribution) = string(typeof(off))
 _offspring_label(off) = "Function"
 
 function Base.show(io::IO, m::BranchingProcess)
-    pop_str = m.population_size isa NoPopulation ? "unlimited" : string(m.population_size)
+    pop_str = m.population isa NoPopulation ? "unlimited" :
+        m.population isa SinglePopulation ? string(m.population.size) :
+        string(m.population.sizes)
     return if length(m.infectiousness) == 1
         w = m.infectiousness[1]
         off_str = _offspring_label(w.offspring)
@@ -489,30 +519,33 @@ end
 # Single-type with a contact interval (one default window).
 function BranchingProcess(
         offspring::Distribution, gt;
-        population_size::Union{Int, NoPopulation} = NoPopulation()
+        population = NoPopulation(), population_size = NoPopulation()
     )
     return BranchingProcess(
-        (Infectiousness(offspring; kernel = gt),), population_size, 1,
-        NoTypeLabels()
+        (Infectiousness(offspring; kernel = gt),),
+        _branching_population(population, population_size, 1), 1, NoTypeLabels()
     )
 end
 
 # Single-type without a contact interval (pure chain statistics).
 function BranchingProcess(
         offspring::Distribution;
-        population_size::Union{Int, NoPopulation} = NoPopulation()
+        population = NoPopulation(), population_size = NoPopulation()
     )
-    return BranchingProcess((Infectiousness(offspring),), population_size, 1, NoTypeLabels())
+    return BranchingProcess(
+        (Infectiousness(offspring),),
+        _branching_population(population, population_size, 1), 1, NoTypeLabels()
+    )
 end
 
 # Multi-type with an explicit offspring function.
 function BranchingProcess(
         offspring, gt;
-        n_types::Int = 1, population_size::Union{Int, NoPopulation} = NoPopulation(),
+        n_types::Int = 1, population = NoPopulation(), population_size = NoPopulation(),
         type_labels::Union{Vector{String}, NoTypeLabels} = NoTypeLabels()
     )
     return BranchingProcess(
-        (Infectiousness(offspring; kernel = gt),), population_size, n_types,
+        (Infectiousness(offspring; kernel = gt),); n_types, population, population_size,
         type_labels
     )
 end
@@ -520,34 +553,14 @@ end
 # Explicit windows: pass `Infectiousness` windows directly.
 function BranchingProcess(
         windows::Tuple{Infectiousness, Vararg{Infectiousness}};
-        n_types::Int = 1, population_size::Union{Int, NoPopulation} = NoPopulation(),
+        n_types::Int = 1, population = NoPopulation(), population_size = NoPopulation(),
         type_labels::Union{Vector{String}, NoTypeLabels} = NoTypeLabels()
     )
-    return BranchingProcess(windows, population_size, n_types, type_labels)
+    pop = _branching_population(population, population_size, n_types)
+    return BranchingProcess(windows, pop, n_types, _type_labels(pop, type_labels))
 end
 function BranchingProcess(window::Infectiousness, windows::Infectiousness...; kwargs...)
     return BranchingProcess((window, windows...); kwargs...)
-end
-
-# ── Offspring generation ─────────────────────────────────────────────
-
-"""
-    generate_offspring(model::BranchingProcess, parent, state)
-
-Draw how many contacts the case `parent` makes, before
-susceptibility and interventions decide which are infected: one number, or one
-number per type in a multi-type model. Only defined for a process with a single
-[`Infectiousness`](@ref) window. The simulation does not use it, since each
-window draws its own contacts when a case settles; it is kept for code that
-wants the count for one case.
-"""
-function generate_offspring(model::BranchingProcess, parent, state)
-    length(model.infectiousness) == 1 || throw(
-        ArgumentError(
-            "generate_offspring is defined for a single infectiousness window"
-        )
-    )
-    return draw_offspring(state.rng, model.infectiousness[1].offspring, parent, state)
 end
 
 # ── Offspring drawing ────────────────────────────────────────────────
