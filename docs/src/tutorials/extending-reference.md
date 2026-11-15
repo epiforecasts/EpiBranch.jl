@@ -61,6 +61,10 @@ underscore are internal.
 | `:_isolation_handle` | `Int` | — | `Isolation` | `resolve_individual!`; internal. The handle of `Isolation`'s own entry, so `reset!` can withdraw exactly it |
 | `:_quarantine_removal_handles` | `Vector{Int}` | — | `ContactTracing`/`SourceTracing`'s `Quarantine` | `apply_trace!`; internal. The handles of every entry a quarantine has recorded, so a reset of the shared bookkeeping can withdraw each one. The `reset!` of a tracer withdraws only the entries listed under its own handles key |
 | `:test_positive` | `Bool` | `false` | `Isolation` | `initialise_individual!` |
+| `:test_time` | `Float64` | — | `Isolation` | `resolve_individual!`. When a positive test result is available, which is when the case isolates itself; read by `ClinicalCaseDefinition` |
+| `:case_classification` | any | — | `ModelSpec`'s `case_definition` | After the run. The classification at the end of it; absent for a case never classified |
+| `:_case_classification_changes` | `Vector{Tuple{Float64,Any}}` | — | `ModelSpec`'s `case_definition` | After the run; internal. Each change of classification with its time, read by `case_classification_changes` |
+| `:_case_definition_draw` | `Float64` | — | `ModelSpec`'s `case_definition` | After the run; internal. One uniform draw per case, for a definition with a random element |
 | `:traced` | `Bool` | `false` | `ContactTracing`, `SourceTracing` | `trace_contacts!` |
 | `:quarantined` | `Bool` | `false` | `ContactTracing`, `SourceTracing` | `trace_contacts!` |
 | `:_traced_isolation_time` | `Float64` | `Inf` | `ContactTracing` → `Isolation` | Internal hand-over; may precede onset, so `Isolation` holds it back to onset |
@@ -1038,6 +1042,7 @@ before.
 | An exact effect on the offspring distribution | `analytic_offspring_effect` for an intervention | Closed-form results on a `ModelSpec` |
 | A model, attribute or progression transition that leaves the single-type offspring law exactly as drawn | `EpiBranch.offspring_law_unchanged` | The chain-size and incidence likelihoods' analytical path |
 | A stopping rule | A type `<: AbstractStoppingRule` and `should_stop` | Each step |
+| A case definition | A type `<: AbstractCaseDefinition` and `EpiBranch.classify_case`, or a function `history -> label`; `relevant_events` to name the events it reads | After the run, at each time an event was recorded on a case |
 | A contact recorder | A type `<: ContactRecorder` and `records_contacts` | Continuous-time models, each blocked proposal |
 | A terminal clinical transition | A type `<: AbstractClinicalTransition` with `is_terminal`, `terminal_event`, `terminal_target` | When a case is settled |
 | Population characteristics | A function `(rng, ind) -> nothing` | When a person is created |

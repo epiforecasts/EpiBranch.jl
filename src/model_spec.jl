@@ -348,13 +348,14 @@ function _warn_inert_interventions(interventions)
     return nothing
 end
 
-struct ModelSpec{P <: TransmissionModel, A, O, C}
+struct ModelSpec{P <: TransmissionModel, A, O, C, D}
     process::P
     progression::Vector{AbstractClinicalTransition}
     interventions::Vector{AbstractIntervention}
     attributes::A
     observation::O
     recorder::C
+    case_definition::D
 end
 
 # The `start_after` triggers a composed intervention holds, looked for through
@@ -384,7 +385,8 @@ function _warn_unmet_trigger_requirements(interventions, progression)
 end
 
 """
-    ModelSpec(process; progression, interventions, attributes, observation, recorder)
+    ModelSpec(process; progression, interventions, attributes, observation, recorder,
+              case_definition)
 
 Combine a transmission model (who infects whom, and when) with the rest of
 an outbreak scenario. Pass the result to [`simulate`](@ref), or to
@@ -403,6 +405,14 @@ not stored in the model).
   [`MinimumSize`](@ref) (only chains of at least a given size). Report
   individual cases with a [`Reporting`](@ref) step in `progression`.
 - `recorder`: rarely needed; see [`ContactRecorder`](@ref).
+- `case_definition`: how each case is classified (confirmed, probable,
+  suspected, ...) from what has happened to them, such as a
+  [`ClinicalCaseDefinition`](@ref), a [`FixedProportionConfirmed`](@ref), a
+  type of your own (see [`EpiBranch.classify_case`](@ref)) or a function
+  `history -> label`. It is re-evaluated at each event recorded on a case, so
+  the classification changes over time; read the changes with
+  [`case_classification_changes`](@ref). `nothing` (the default) classifies
+  no one.
 
 Every keyword left out keeps the value the transmission model already has,
 so `ModelSpec(process)` behaves exactly like `process`.
@@ -426,7 +436,8 @@ function ModelSpec(
         interventions = interventions(process),
         attributes = attributes(process),
         observation = observation(process),
-        recorder = recorder(process)
+        recorder = recorder(process),
+        case_definition = nothing
     )
     prog = _progvec(progression)
     _validate_process_windows(process, prog)
@@ -435,11 +446,12 @@ function ModelSpec(
     _validate_dose_schedule(ivs)
     _warn_unmet_trigger_requirements(ivs, prog)
     _warn_inert_interventions(ivs)
-    return ModelSpec(process, prog, ivs, attributes, observation, recorder)
+    return ModelSpec(process, prog, ivs, attributes, observation, recorder, case_definition)
 end
 
 """
-    ModelSpec(spec::ModelSpec; progression, interventions, attributes, observation, recorder)
+    ModelSpec(spec::ModelSpec; progression, interventions, attributes, observation, recorder,
+              case_definition)
 
 Rebuild a spec with some of its layers replaced. Every keyword left out keeps
 the value `spec` already has. An extension can use this to add a layer,
@@ -455,8 +467,12 @@ ModelSpec(
     interventions = interventions(spec),
     attributes = attributes(spec),
     observation = observation(spec),
-    recorder = recorder(spec)
-) = ModelSpec(process(spec); progression, interventions, attributes, observation, recorder)
+    recorder = recorder(spec),
+    case_definition = case_definition(spec)
+) = ModelSpec(
+    process(spec); progression, interventions, attributes, observation, recorder,
+    case_definition
+)
 
 # Convenience accessors — the spec's own modelling layers.
 interventions(s::ModelSpec) = s.interventions
@@ -464,6 +480,9 @@ attributes(s::ModelSpec) = s.attributes
 observation(s::ModelSpec) = s.observation
 recorder(s::ModelSpec) = s.recorder
 progression(s::ModelSpec) = s.progression
+case_definition(s::ModelSpec) = s.case_definition
+# A bare process carries no case definition.
+case_definition(::TransmissionModel) = nothing
 
 """The transmission model `spec` wraps. [`simulate`](@ref) and
 `loglikelihood` run the same on `process(spec)` alone, without the layers
@@ -504,12 +523,13 @@ function simulate(
     )
     _validate_initial_cases(spec.process, sim_opts)
     _validate_index_types(spec.process, sim_opts)
-    return _run_once_or_retry(
+    state = _run_once_or_retry(
         spec.process, sim_opts, condition, max_attempts;
         interventions = spec.interventions, attributes = spec.attributes,
         progression = spec.progression, observation = spec.observation,
         recorder = spec.recorder, rng
     )
+    return _classify_cases!(state, spec.case_definition)
 end
 
 simulate(spec::ModelSpec, n::Int; kwargs...) =
@@ -522,10 +542,11 @@ function simulate(
         spec::ModelSpec, state::SimulationState; max_time::Real,
         rng::AbstractRNG = state.rng
     )
-    return _continue_sellke!(
+    _continue_sellke!(
         state, rng, max_time, spec.interventions, transmission_risks(spec.process),
         spec.recorder
     )
+    return _classify_cases!(state, spec.case_definition)
 end
 
 function _simulate_each(
@@ -547,8 +568,9 @@ function _simulate_each(
     )
     _validate_initial_cases(spec.process, sim_opts)
     _validate_index_types(spec.process, sim_opts)
+    classified(s) = each(_classify_cases!(s, spec.case_definition))
     return _simulate_n(
-        each, T, spec.process, n, sim_opts;
+        classified, T, spec.process, n, sim_opts;
         interventions = spec.interventions, attributes = spec.attributes,
         progression = spec.progression, observation = spec.observation,
         recorder = spec.recorder, rng, parallel
