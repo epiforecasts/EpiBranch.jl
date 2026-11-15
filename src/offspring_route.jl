@@ -192,7 +192,7 @@ _route_builtin_blocks(::_Offspring) = _offspring_builtin_risk_blocks
 _record_infection!(::_Offspring, infector, ind, w, named) = nothing
 
 function _offspring_builtin_risk_blocks(parent, contact, state, transmission_time)
-    pop_suscept = susceptible_fraction(state)
+    pop_suscept = susceptible_fraction(state, contact)
     pop_suscept <= 0.0 && return true
     pop_suscept < 1.0 && rand(state.rng) > pop_suscept && return true
     return _builtin_risk_blocks(parent, contact, state, transmission_time)
@@ -477,6 +477,15 @@ end
 # its offspring and `model_generation_time` its kernel, so it runs on the same
 # route. Whether a tracing ring may draw a person's count before they settle is
 # the model's own answer to `reads_settled_state`.
+function generate_offspring(model::TransmissionModel, parent, state)
+    throw(
+        ArgumentError(
+            "$(typeof(model)) defines neither `generate_offspring` nor `contacts_of`; " *
+                "define one to say who each case infects."
+        )
+    )
+end
+
 struct _Generated{M <: TransmissionModel}
     model::M
 end
@@ -501,6 +510,7 @@ function _simulate_offspring(
     state = initialise_state(model, sim_opts, interventions, progression, attributes, rng)
     # The race counts the index cases as it settles them.
     state.cumulative_cases = 0
+    fill!(state.group_cases, 0)
     T = _timetype(state)
     tree = _take_tree(T, length(state.individuals), map(w -> w.until, windows))
     routes = ntuple(

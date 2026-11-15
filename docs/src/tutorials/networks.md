@@ -560,13 +560,13 @@ up to isolation.
 !!! note "Partial protection is in the data"
     Isolation that still lets some transmission through is recorded in the
     data as a stretch of reduced hazard rather than a gap, and both
-    `pairwise_surv_loglik` and `loglikelihood(data, model)` score it. A
+    `pairwise_surv_loglik` and `loglikelihood(data, model)` evaluate it. A
     vaccine's efficacy against infection is allowed for by
     `loglikelihood(data, model)` with the vaccination in `model`.
 
 !!! warning "Removals must not depend on who infected whom"
     The likelihood takes each person's removal time and vaccination dates as
-    fixed data and does not score how they came about, so it is a partial
+    fixed data and does not model how they came about, so it is a partial
     likelihood conditional on them. That is valid when removals and doses
     depend only on the observed history (onsets, detections, infections of
     neighbours) and on parameters other than the contact interval.
@@ -663,7 +663,7 @@ stretch a case is isolated for, and has it back once released.
     Without it, the likelihood assumes that follow-up continued until the
     outbreak was over.
 
-    `progression_loglik` takes the same date as `followup_end` and scores a
+    `progression_loglik` takes the same date as `followup_end` and treats a
     step that has not happened by then as censored. The delays of the steps
     that did happen are not corrected for right truncation. A delay
     distribution fitted to a line list cut at a date is still biased towards
@@ -682,7 +682,7 @@ stretch a case is isolated for, and has it back once released.
     - A route kernel that is a [`PairKernel`](@ref) is not yet represented in
       the routed likelihood; `loglikelihood(data, model)` stops with an
       error for such a model. Leaky isolation on a `RoutedNetwork` is not
-      represented either: the routed likelihood scores it as
+      represented either: the routed likelihood evaluates it as
       if the case were not isolated, without reporting an error.
     - In real data infection times are not observed. They have to be estimated
       together with the parameters, from symptom onsets and the disease

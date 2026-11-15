@@ -142,7 +142,7 @@ not hold them, so a particle filter can keep `model` once as the dynamics
 and copy only `state` as the particle.
 
 `state` is mutated in place and returned. No observation model is applied:
-continuation is for a caller, such as a particle filter, that scores each
+continuation is for a caller, such as a particle filter, that evaluates the likelihood of each
 step itself against its own data, rather than drawing a synthetic one.
 `state` is returned unchanged if it had already reached extinction, or
 stopped for a reason other than `max_time`; there is nothing left for a
@@ -401,9 +401,11 @@ function _reconcile_sellke_bookkeeping!(state::SimulationState, extinct::Bool)
     cases = 0
     max_time = 0.0
     max_generation = 0
+    fill!(state.group_cases, 0)
     for ind in state.individuals
         get(ind.state, :infected, false) || continue
         cases += 1
+        isempty(state.group_cases) || (state.group_cases[individual_type(ind)] += 1)
         max_time = max(max_time, ind.infection_time)
         max_generation = max(max_generation, ind.generation)
     end
@@ -536,6 +538,24 @@ function _settle_case!(state::SimulationState, case, interventions, transitions,
     return nothing
 end
 
+# Set the groups' counts to those of `cases`, the people counted so far.
+function _reset_group_cases!(state::SimulationState, cases)
+    isempty(state.group_cases) && return nothing
+    fill!(state.group_cases, 0)
+    for ind in cases
+        state.group_cases[individual_type(ind)] += 1
+    end
+    return nothing
+end
+
+# A case that raises the count is a new person, counted in its own group; a
+# reinfection leaves the count, and so the groups', unchanged.
+function _count_case!(state::SimulationState, case, count)
+    isempty(state.group_cases) && return nothing
+    count > state.cumulative_cases && (state.group_cases[individual_type(case)] += 1)
+    return nothing
+end
+
 """
     _at_case!(state, case, count)
 
@@ -546,13 +566,13 @@ generation.
 """
 function _at_case!(state::SimulationState, case, count)
     state.max_infection_time = case.infection_time
+    _count_case!(state, case, count)
     state.cumulative_cases = count
     state.current_generation = case.generation
     return nothing
 end
 
-# Offer a new person, or a reinfected one, to each intervention's
-# `initialise_individual!`.
+# Call `initialise_individual!` for a new individual on each intervention.
 function _initialise!(interventions, ind, state)
     _each(interventions) do intervention
         initialise_individual!(intervention, ind, state)
@@ -563,10 +583,13 @@ end
 
 function _resolve_interventions!(state::SimulationState, case, interventions)
     # A reinfection (`case.episodes` already holds the earlier one, closed
-    # before this call) gets a fresh `initialise_individual!` first. That
-    # keeps per-episode draws such as `Isolation`'s `:test_positive` specific
-    # to the new episode, rather than left over from the one before it.
-    _has_episodes(case) && _initialise!(interventions, case, state)
+    # before this call) gets a fresh `initialise_episode!` first. That keeps
+    # per-episode draws such as `Isolation`'s `:test_positive` specific to the
+    # new episode, while a quarantine standing on the person stays.
+    _has_episodes(case) && _each(interventions) do intervention
+        initialise_episode!(intervention, case, state)
+        return nothing
+    end
     _each(interventions) do intervention
         resolve_individual!(intervention, case, state)
         return nothing
@@ -646,7 +669,7 @@ function new_state(
     T = _time_type(model)
     return SimulationState(
         Individual{T}[], Int[], 0, rng, 0, false,
-        population_size(model), zero(T), _fresh_attributes(attributes),
+        population(model), zero(T), _fresh_attributes(attributes),
         convert(Vector{AbstractClinicalTransition}, transitions)
     )
 end
@@ -676,15 +699,17 @@ one from independently) to choose otherwise, as [`simulate`](@ref)'s
 function add_individuals!(
         state::SimulationState, n::Integer, interventions;
         n_types::Integer = 1, setup = (ind, i) -> nothing, infection_time::Real = NaN,
-        types = nothing
+        types = nothing, assign = _NoAssignment()
     )
     base = length(state.individuals)
     added = eltype(state.individuals)[]
     for i in 1:n
         type_idx = n_types > 1 ? _draw_type(state.rng, types, i, n_types) : NoTypeLabels()
         ind = _create_individual(
-            state, 0, base + i, base + i, infection_time; type_idx
+            state, 0, base + i, base + i, infection_time; type_idx,
+            prepare = ind -> _prepare!(assign, ind, i)
         )
+        _verify(assign, ind, i)
         setup(ind, i)
         _initialise!(interventions, ind, state)
         push!(state.individuals, ind)
@@ -821,6 +846,7 @@ function seed!(state::SimulationState, ids, interventions, transitions)
         end
     end
     state.cumulative_cases = length(ids)
+    _reset_group_cases!(state, (state.individuals[id] for id in ids))
     state.active_ids = collect(ids)
     state.extinct = isempty(ids)
     return state
@@ -887,15 +913,19 @@ end
 
 """
     susceptible_fraction(state::SimulationState, extra_infected::Int = 0) -> Float64
+    susceptible_fraction(state::SimulationState, ind::Individual, extra_infected::Int = 0) -> Float64
 
 Share of the population still susceptible at this point of the outbreak:
-`1.0` when the population is unbounded (no `population_size`), otherwise one
-minus the share already infected. `extra_infected` counts people infected in
-the current generation who are not yet in the case count.
+`1.0` when the population is unbounded (no [`Population`](@ref)), otherwise one
+minus the share already infected. With a person `ind`, the share of that
+person's own group: a population of several groups is depleted group by group,
+and a case in one leaves the others' susceptibles untouched. Without one, the
+share of the whole population. `extra_infected` counts people infected in the
+current generation who are not yet in the case count.
 
 For extension authors: a package can add its own kind of structured
-population by defining a new type for `population_size` and a method of this
-function for it.
+population by defining a new type for the model's `population` and methods of
+this function for it.
 """
 function susceptible_fraction(
         state::SimulationState{<:Any, <:Any, NoPopulation},
@@ -905,12 +935,37 @@ function susceptible_fraction(
 end
 
 function susceptible_fraction(
-        state::SimulationState{<:Any, <:Any, Int},
+        state::SimulationState{<:Any, <:Any, SinglePopulation},
         extra_infected::Int = 0
     )
-    n_susceptible = state.population_size - state.cumulative_cases - extra_infected
+    return _fraction(state.population.size, state.cumulative_cases + extra_infected)
+end
+
+function susceptible_fraction(
+        state::SimulationState{<:Any, <:Any, <:GroupedPopulation},
+        extra_infected::Int = 0
+    )
+    return _fraction(sum(state.population.sizes), state.cumulative_cases + extra_infected)
+end
+
+function susceptible_fraction(
+        state::SimulationState, ind::Individual, extra_infected::Int = 0
+    )
+    return _group_fraction(state.population, state, ind, extra_infected)
+end
+
+function _group_fraction(::Any, state, ind, extra_infected)
+    return susceptible_fraction(state, extra_infected)
+end
+function _group_fraction(population::GroupedPopulation, state, ind, extra_infected)
+    g = individual_type(ind)
+    return _fraction(population.sizes[g], state.group_cases[g] + extra_infected)
+end
+
+function _fraction(size::Int, infected::Int)
+    n_susceptible = size - infected
     n_susceptible <= 0 && return 0.0
-    return n_susceptible / state.population_size
+    return n_susceptible / size
 end
 
 """Create a new person, give them their type (if any) and draw their
@@ -927,7 +982,7 @@ default every new `IndividualState` starts with.
 function _create_individual(
         state::SimulationState, parent_id::Int,
         chain_id::Int, next_id::Int, inf_time::Real;
-        type_idx::Union{Int, NoTypeLabels} = NoTypeLabels()
+        type_idx::Union{Int, NoTypeLabels} = NoTypeLabels(), prepare = _no_prepare
     )
     T = _timetype(state)
     s = IndividualState{T}()
@@ -943,11 +998,13 @@ function _create_individual(
     )
 
     _set_type!(ind, type_idx)
+    prepare(ind)
     _apply_attributes!(state.attributes, state.rng, ind)
 
     return ind
 end
 
+_no_prepare(ind) = nothing
 _set_type!(contact, ::NoTypeLabels) = nothing
 _set_type!(contact, idx::Int) = (contact.state[:type] = idx)
 
