@@ -198,8 +198,7 @@ does record a late detection, such as a death found at burial.
 ### Tracing keys
 
 Both kinds of model write the tracing keys through `trace_contacts!`, once per
-case, so the keys and their meanings are the same either way; see [Which hooks
-run on which model](@ref).
+case, so the keys and their meanings are the same either way; see [Hooks by model](@ref "Hooks by model").
 
 `:tracers` lists every case whose trace reached a contact, in the order they
 did. `:traced_by` is the one of them that reached it first, by the earliest
