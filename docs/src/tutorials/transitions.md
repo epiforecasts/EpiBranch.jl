@@ -70,7 +70,7 @@ is a case, with the date of each event it reached and its final outcome.
 `Reporting` and `Hospitalisation` draw their own time independently of
 `Death` and `Recovery`, so a draw can fall after the case's outcome, although a
 report or an admission cannot happen to a person who has already died or
-recovered. The engine resets such an event to "did not occur"
+recovered. Simulation resets such an event to "did not occur"
 (`:reported`/`:admitted` back to `false`, their time back to `Inf`): see
 [`censor_after_outcome!`](@ref EpiBranch.censor_after_outcome!).
 

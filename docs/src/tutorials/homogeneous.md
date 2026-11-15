@@ -7,7 +7,7 @@ everyone else, and each infectious person exerts the same force of infection
 on every susceptible. As susceptibles are used up, transmission slows and the
 epidemic stops at a final size below the population size.
 
-## When to use this instead of a branching process
+## Choosing between this and a branching process
 
 A [`BranchingProcess`](@ref) assumes an unlimited supply of susceptibles: each
 case's expected number of secondary cases stays at R however large the

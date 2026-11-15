@@ -38,7 +38,7 @@ As an illustration, an index case gets three potential secondary cases, at days
 ahead, the other two are blocked by isolation, and the case has one secondary
 case.
 
-### 1. Who could be infected (depends on the model)
+### 1. Potential infections (depends on the model)
 
 For a branching process this is a draw from the offspring distribution: a
 single count, or a count per type for a multi-type model. The mean (R) and
@@ -59,7 +59,7 @@ at most once, by the earliest exposure that gets through; the hospital bay in
 [New transmission structures](tutorials/new-structures.md) is an example.
 Either way the model only says who is in contact with whom.
 
-### 2. When (the same for every model)
+### 2. Timing (the same for every model)
 
 Each potential infection is given a transmission time from the infector's
 infectiousness profile, the generation-time distribution. That distribution can
@@ -69,7 +69,7 @@ recorded about it. This is the *potential* time of transmission, from the
 hazard h(t) in survival-analysis terms (see [Connection to survival
 analysis](@ref)).
 
-### 3. Whether anything stops it (the same for every model)
+### 3. Blocking (the same for every model)
 
 Each potential infection is decided on its own, infected or not, by checking
 everything that could block it. A contact is infected only if nothing blocks
@@ -94,7 +94,7 @@ Contacts who were exposed but not infected are kept in the output, because
 contact tracing and vaccination reach them too. This is also how the number of
 contacts traced, vaccines given or tests used is counted.
 
-### Why this separation matters
+### Benefits of the separation
 
 Because the offspring distribution does not depend on time or control
 measures, it can be analysed with standard tools: the epidemic threshold from
@@ -139,7 +139,7 @@ simulated or evaluated, and each part is specified only once. A network or
 household model, for example, takes the start of infectiousness from the
 disease part of the model.
 
-### Who each person is
+### Individual attributes
 
 Each simulated person has their place in the transmission tree, their
 infection time, their susceptibility and their infectiousness, plus a
@@ -148,7 +148,7 @@ so on) that population characteristics, interventions and clinical transitions
 read and write. The values the package uses are listed in [Individual state and
 reserved keys](@ref).
 
-### How interventions act
+### Intervention actions
 
 An intervention acts in one of three ways:
 
@@ -280,7 +280,7 @@ When the offspring parameters vary between chains in another way, the
 chain-size distribution is integrated numerically over that variation; other
 offspring distributions without a closed form use simulation.
 
-### Which sampler to use
+### Choosing a sampler
 
 Closed-form likelihoods are deterministic functions of the parameters. They
 work with automatic differentiation, which computes their gradients, and therefore

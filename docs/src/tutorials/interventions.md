@@ -202,7 +202,7 @@ ContactTracing(
     run with a warning: `true` means `action = Quarantine(duration = Inf)` and
     `false` means `action = FlagOnly()`. Write the `action` instead.
 
-### What triggers contact tracing
+### Contact tracing triggers
 
 By default, a contact is traced once their infector has developed symptoms
 and been isolated, and the delay counts from the isolation. Real

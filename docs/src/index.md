@@ -25,7 +25,7 @@ With it you can:
 If you are new to Julia, [Julia for R users](julia-for-r-users.md) explains the
 syntax used in these pages, and the [Glossary](glossary.md) defines the terms.
 
-## Where it comes from
+## Origins
 
 EpiBranch brings together what five R packages do:
 
@@ -44,7 +44,7 @@ between hosts who transmit more and hosts who transmit less), and one set of
 functions that works on the same model for simulation, exact calculation and
 likelihood.
 
-## How a case transmits
+## Case transmission
 
 Each case draws a number of potential secondary cases from the offspring
 distribution: the people it would infect if nothing intervened. Each potential

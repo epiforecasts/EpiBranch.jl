@@ -39,7 +39,7 @@ nothing # hide
 traces 70% of their contacts a mean of 1 day after the infector's isolation
 and quarantines them, also for good.
 
-## How a dose protects
+## Dose protection
 
 A dose protects from `delay_to_immunity` days after it is given (0 by
 default). It has up to five effects, each a probability; two of them,

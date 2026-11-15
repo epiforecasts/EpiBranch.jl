@@ -112,7 +112,7 @@ worked examples) are in [Writing an intervention](tutorials/writing-intervention
 [New transmission structures](tutorials/new-structures.md) and the
 [Extension reference](tutorials/extending-reference.md).
 
-## Why individual state is an open dictionary
+## Individual state as an open dictionary
 
 Each individual has a small typed core that the engine reads, plus an open
 dictionary for everything else. The core holds its place in the transmission
@@ -129,7 +129,7 @@ pieces a user composes. The keys the package itself reserves, and the
 convention for naming keys added from other packages, are listed in
 [Individual state and reserved keys](@ref).
 
-## Why the engine mutates state in place
+## In-place mutation of state
 
 The engine works in place, one case at a time. Copying the whole state at
 every step would be far too expensive for an unbounded tree, so the engine

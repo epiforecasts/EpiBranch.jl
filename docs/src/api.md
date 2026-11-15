@@ -21,7 +21,7 @@ made available by `using EpiBranch` and have to be written in full. The
 network and household names, such as [`NetworkProcess`](@ref) and
 [`HouseholdProcess`](@ref), come from the satellite packages and need `using
 EpiNetwork` or `using EpiHouseholds`. A function whose name ends in `!`
-changes one of its arguments in place. For the hooks the engine dispatches on,
+changes one of its arguments in place. For the hook methods,
 that argument is the simulation state or the person being resolved, and the
 first argument is the intervention, step or action the method is written for.
 The last section, [For extension authors](@ref), lists what you need only to

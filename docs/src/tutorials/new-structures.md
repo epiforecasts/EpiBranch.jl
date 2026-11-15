@@ -405,7 +405,7 @@ continuous-time model on a fixed population), subtype `TransmissionModel` and
 reuse the rest of the package: interventions, natural history, line lists and
 fitting.
 
-### What your model must provide
+### Required model methods
 
 For **simulation** there are two routes, depending on whether your model can
 give each case's contacts one case at a time.
