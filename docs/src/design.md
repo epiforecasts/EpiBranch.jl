@@ -125,7 +125,7 @@ A model is the whole description of how the data arise. It has five parts:
 - **interventions**: what is done about it (isolation, tracing, vaccination);
 - **observation**: how cases are seen (under-reporting, reporting delays). A
   case definition, which classifies each case as confirmed, probable or
-  suspected from the events recorded on them, belongs here too, and is
+  suspected from the events recorded on them, belongs here too. It is
   re-evaluated as each event is recorded.
 
 These match how epidemiologists describe an outbreak: a pathogen spreads,

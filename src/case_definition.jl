@@ -7,12 +7,12 @@
 # all of them: symptoms from the progression, a test and a trace from the
 # interventions.
 #
-# The classification does not feed back into the simulation, so it is worked
-# out once the race has finished, from the event times each person carries. A
-# rule is evaluated at every time a relevant event was recorded, and sees only
-# the events at or before that time, which is what re-evaluating it as each
-# event happens would show it. Events recorded late in the run, tracing among
-# them, therefore reach the classification like any other.
+# The classification does not feed back into the simulation. It is worked out
+# once the race has finished, from the event times recorded on each person. A
+# rule is evaluated at every time a relevant event was recorded and sees only
+# the events at or before that time, as it would if evaluated as each event
+# happened. Events recorded late in the run, tracing among them, reach the
+# classification like any other.
 
 """
 Parent type of a case definition: a rule that gives each infected person a

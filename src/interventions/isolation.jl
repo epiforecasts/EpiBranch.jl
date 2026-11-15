@@ -296,8 +296,8 @@ function resolve_individual!(iso::Isolation, individual, state)
         _self_isolation_time(iso, individual, state) : Inf
     final = min(test_time, traced_time)
     isfinite(final) || return nothing
-    # The positive result is what a self-isolation acts on; an isolation that
-    # came from tracing alone has no test behind it.
+    # A self-isolation acts on the positive result; an isolation that came from
+    # tracing alone has no test behind it.
     isfinite(test_time) && (individual.state[:test_time] = test_time)
     _isolate!(iso, individual, state, final)
     return nothing

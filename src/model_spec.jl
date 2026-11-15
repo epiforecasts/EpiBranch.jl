@@ -481,7 +481,7 @@ observation(s::ModelSpec) = s.observation
 recorder(s::ModelSpec) = s.recorder
 progression(s::ModelSpec) = s.progression
 case_definition(s::ModelSpec) = s.case_definition
-# A bare process carries no case definition.
+# A bare process has no case definition.
 case_definition(::TransmissionModel) = nothing
 
 """The transmission model `spec` wraps. [`simulate`](@ref) and
