@@ -352,7 +352,9 @@ end
 
 Cross-tier check, run when a process is composed with a progression in a
 [`ModelSpec`](@ref): warn when an infectiousness window opens at a `from` state
-the progression never produces, so the window would silently never open. `from`
+the progression never produces, so the window would silently never open. Also
+warn when a window's `until` does not list a terminal state the progression can
+reach, because the case would go on transmitting after it. `from`
 may legitimately be a state written by an attribute or intervention rather than
 a progression transition, so this is a warning. The default does nothing, for
 models without infectiousness windows; a [`FixedPopulationProcess`](@ref
@@ -366,6 +368,12 @@ function validate_process_windows(m::BranchingProcess, progression)
     return _validate_windows(m.infectiousness, progression)
 end
 function _validate_windows(windows, progression)
+    for w in windows
+        warn_uncovered_terminal_states(
+            w.until, progression;
+            route = length(windows) > 1 ? w.name : nothing, from = w.from
+        )
+    end
     produced = Set{Symbol}((:infection,))
     for t in progression
         hasproperty(t, :state) && push!(produced, t.state::Symbol)
@@ -566,27 +574,6 @@ function BranchingProcess(
 end
 function BranchingProcess(window::Infectiousness, windows::Infectiousness...; kwargs...)
     return BranchingProcess((window, windows...); kwargs...)
-end
-
-# ── Offspring generation ─────────────────────────────────────────────
-
-"""
-    generate_offspring(model::BranchingProcess, parent, state)
-
-Draw how many contacts the case `parent` makes, before
-susceptibility and interventions decide which are infected: one number, or one
-number per type in a multi-type model. Only defined for a process with a single
-[`Infectiousness`](@ref) window. The simulation does not use it, since each
-window draws its own contacts when a case settles; it is kept for code that
-wants the count for one case.
-"""
-function generate_offspring(model::BranchingProcess, parent, state)
-    length(model.infectiousness) == 1 || throw(
-        ArgumentError(
-            "generate_offspring is defined for a single infectiousness window"
-        )
-    )
-    return draw_offspring(state.rng, model.infectiousness[1].offspring, parent, state)
 end
 
 # ── Offspring drawing ────────────────────────────────────────────────

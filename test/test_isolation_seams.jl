@@ -542,3 +542,20 @@ EpiBranch.infectious_removal_time(f::FixedRemoval, ::Individual) = f.time
         end
     end
 end
+
+@testset "Isolation's closed form accounts for vaccine symptom_efficacy" begin
+    off, gt = NegBin(2.0, 0.5), Gamma(2.0, 2.5)
+    cp = clinical_presentation(incubation_period = Gamma(2.0, 2.0), prob_asymptomatic = 0.3)
+    iso = Isolation(onset_to_isolation_delay = 1.0, duration = Inf)
+    function spec_with(se)
+        mv = MassVaccination(
+            efficacy = 0.5, eligibility_time = 0.0, coverage = 0.6, symptom_efficacy = se
+        )
+        return ModelSpec(BranchingProcess(off, gt); interventions = [mv, iso], attributes = cp)
+    end
+    R0 = reproduction_number(spec_with(0.0))
+    R9 = reproduction_number(spec_with(0.9))
+    @test R9 > R0
+    # Simulated value from the same model: about 1.12.
+    @test isapprox(R9, 1.12; atol = 0.05)
+end

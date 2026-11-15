@@ -212,9 +212,7 @@ OnIsolation
 TraceEveryone
 TraceNobody
 PreviouslyTraced
-AlwaysEligible
 SymptomaticParent
-NoTracing
 AnyOf
 AllOf
 NoneOf
@@ -374,6 +372,7 @@ containment_probability
 is_extinct
 generation_R
 weekly_incidence
+incidence
 summarise
 scenario_sweep
 ```
@@ -563,7 +562,6 @@ given size are seen. Add one to a model with `observation = ...`.
 ```@docs
 ObservationModel
 NoObservation
-PerCaseObservation
 MinimumSize
 ChainDetection
 observe
@@ -791,6 +789,7 @@ EpiBranch.honoured_without_should_stop
 
 ```@docs
 EpiBranch.initialise_individual!
+EpiBranch.initialise_episode!
 EpiBranch.resolve_individual!
 EpiBranch.on_infection_settled!
 EpiBranch.trace_contacts!

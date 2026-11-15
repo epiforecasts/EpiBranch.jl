@@ -201,8 +201,8 @@ export AbstractStoppingRule, Extinction, MaxCases, MaxGenerations, MaxTime, shou
 export AbstractIntervention, Isolation, ContactTracing, SourceTracing
 export IsolationEligibility, SymptomaticOnly, AllCases
 export is_eligible_for_isolation
-export TraceEligibility, AlwaysEligible, SymptomaticParent
-export OnSymptomOnset, OnLabConfirmation, OnIsolation, TraceEveryone, TraceNobody, NoTracing
+export TraceEligibility, SymptomaticParent
+export OnSymptomOnset, OnLabConfirmation, OnIsolation, TraceEveryone, TraceNobody
 export PreviouslyTraced
 export AnyOf, AllOf, NoneOf
 export TraceRate, ConstantRate
@@ -223,7 +223,7 @@ export is_active, intervention_time
 export AbstractClinicalTransition, Transition, Reporting, Hospitalisation, Death, Recovery
 export is_terminal, terminal_event, terminal_target, exclusive_probabilities
 export Signal, TransitionCount, Prevalence
-export ObservationModel, PerCaseObservation, NoObservation, MinimumSize, ChainDetection,
+export ObservationModel, NoObservation, MinimumSize, ChainDetection,
     observe
 export ContactRecorder, NoContactRecorder, ExposedContactRecorder
 export single_type_offspring
@@ -268,7 +268,7 @@ export generate_offspring, contacts_of
 export event_time_metadata, linelist, contacts, chain_statistics, compute_trace_level!
 export realised_generation_interval, realised_generation_intervals,
     realised_serial_interval, realised_serial_intervals
-export containment_probability, is_extinct, generation_R, weekly_incidence, scenario_sweep
+export containment_probability, is_extinct, generation_R, weekly_incidence, incidence, scenario_sweep
 export summarise
 
 # Exports — analytical
