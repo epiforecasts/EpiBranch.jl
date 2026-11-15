@@ -101,10 +101,10 @@ underscore are internal.
 | `:cluster_theta` | `Float64` | — | `ClusterMixed` | First read in a simulation |
 | `:vaccine_acceptance` | `Float64` | — | `vaccine_acceptance` | Creation (default key; can be changed) |
 | `:infectious_time` | `Float64` | `Inf` | `Transition(:infectious, …)` | `resolve_individual!` |
-| `:recovered` | `Bool` | `false` | `Recovery` | `initialise_individual!`; set to `true` when `Recovery` wins the terminal outcome. Overwrites a user `Transition(:recovered, …)` value |
+| `:recovered` | `Bool` | `false` | `Recovery` | `initialise_individual!`; `Recovery` sets it to `true` when it wins the terminal outcome. Overwrites a user `Transition(:recovered, …)` value |
 | `:recovered_time` | `Float64` | `Inf` | `Transition(:recovered, …)`, `Recovery` | `resolve_individual!` (`Transition`); `Recovery` resets it on initialisation and writes the outcome time when it wins. Overwrites a user `Transition(:recovered, …)` value |
-| `:died` | `Bool` | `false` | `Death` | `initialise_individual!`; set to `true` when `Death` wins the terminal outcome. Overwrites a user `Transition(:died, …)` value |
-| `:died_time` | `Float64` | `Inf` | `Death` | `initialise_individual!` resets it; the outcome time is written when `Death` wins. Overwrites a user `Transition(:died, …)` value |
+| `:died` | `Bool` | `false` | `Death` | `initialise_individual!`; `Death` sets it to `true` when it wins the terminal outcome. Overwrites a user `Transition(:died, …)` value |
+| `:died_time` | `Float64` | `Inf` | `Death` | `initialise_individual!` resets it, and `Death` writes the outcome time when it wins. Overwrites a user `Transition(:died, …)` value |
 | `:susceptible_again_time` | `Float64` | `Inf` | `Transition(:susceptible_again, …)` | `resolve_individual!` |
 | `:_exclusive_draw#N` | `Float64` | — | `exclusive_probabilities` | `resolve_individual!`; internal. The uniform draw a group of mutually exclusive outcomes shares, under a key unique to that call of `exclusive_probabilities` |
 
