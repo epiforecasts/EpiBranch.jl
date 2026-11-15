@@ -68,6 +68,7 @@ const TEST_GROUPS = (
         "test_engine_support.jl",
         "test_linelist.jl",
         "test_data_from_tables.jl",
+        "test_incidence.jl",
         "test_route_windows.jl",
         "test_event_queue.jl",
     ],
