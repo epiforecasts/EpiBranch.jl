@@ -58,33 +58,25 @@ EpiBranch.trigger_time(e::_EligibleAt, infector, state) = e.time
 
     @testset "a dose reaches the susceptibles it finds, and protects with efficacy" begin
         sizes = [10_000, 10_000]
-        removed(budget) = begin
-            campaign = EpiBranch._campaign(
-                CapacityConstrained(group(; efficacy = 0.6); budget_per_period = budget),
-                (0.0, Inf), nothing
-            )
-            [
-                begin
-                    s = [8_000, 2_000]
-                    EpiBranch._vaccinate!(StableRNG(seed), campaign, 0.0, 14.0, s, sizes)
-                    [8_000, 2_000] .- s
-                end for seed in 1:400
-            ]
-        end
-        # With a budget for each type, each has 1,000 doses. A share of 0.8 or
-        # 0.2 of them reach susceptibles, and 0.6 of those protect.
-        own = removed(PerGroup(1 => 1_000.0, 2 => 1_000.0))
-        @test isapprox(mean(first, own), 1_000 * 0.8 * 0.6; rtol = 0.03)
-        @test isapprox(mean(last, own), 1_000 * 0.2 * 0.6; rtol = 0.05)
-
-        # A shared budget of 1,000 is split by population, so equal types have
-        # 500 doses each. A type with a budget of 0 gets no doses.
-        shared = removed(1_000.0)
-        @test isapprox(mean(first, shared), 500 * 0.8 * 0.6; rtol = 0.03)
-        @test isapprox(mean(last, shared), 500 * 0.2 * 0.6; rtol = 0.05)
-        none = removed(PerGroup(1 => 0.0, 2 => 1_000.0))
-        @test all(r -> r[1] == 0, none)
-        @test mean(last, none) > 0
+        campaign = EpiBranch._campaign(
+            CapacityConstrained(group(; efficacy = 0.6); budget_per_period = 1_000.0),
+            (0.0, Inf), nothing
+        )
+        removed = [
+            begin
+                s = [8_000, 2_000]
+                EpiBranch._vaccinate!(StableRNG(seed), campaign, 0.0, 14.0, s, sizes)
+                [8_000, 2_000] .- s
+            end for seed in 1:400
+        ]
+        # The 1,000 doses are shared, so equal types have 500 each. A share 0.8
+        # or 0.2 of them reach susceptibles, and 0.6 of those protect.
+        @test isapprox(mean(first, removed), 500 * 0.8 * 0.6; rtol = 0.03)
+        @test isapprox(mean(last, removed), 500 * 0.2 * 0.6; rtol = 0.05)
+        # Doses are given out whole: the types together get all of them.
+        s = [8_000, 2_000]
+        pool = EpiBranch._doses_by_type(StableRNG(1), campaign, 0.0, 14.0, sizes)
+        @test sum(pool) == 1_000
     end
 
     @testset "a campaign with no doses changes nothing" begin
@@ -214,28 +206,9 @@ EpiBranch.trigger_time(e::_EligibleAt, infector, state) = e.time
         end
     end
 
-    @testset "a PerGroup budget is read per type, and must name every type" begin
-        doses = Steps([140.0, 154.0], [0.0, 2_000.0, 0.0])
-        campaign(budget) = CapacityConstrained(group(); budget_per_period = budget, period = 1.0)
-        per_type = EpiBranch._campaign(
-            campaign(PerGroup(1 => doses, 2 => 500.0)), (0.0, Inf), nothing
-        )
-        @test EpiBranch._interval_doses(per_type, 140.0, 154.0, 1) == 14 * 2_000
-        @test EpiBranch._interval_doses(per_type, 140.0, 154.0, 2) == 14 * 500
-        @test EpiBranch._interval_doses(per_type, 126.0, 140.0, 1) == 0
-
-        err = try
-            run_counts(ModelSpec(discrete(); interventions = [campaign(PerGroup(1 => 10.0))]))
-            nothing
-        catch e
-            e
-        end
-        @test err isa ArgumentError
-        @test occursin("group 2", err.msg)
-        @test_throws ArgumentError run_counts(
-            ModelSpec(
-                discrete(); interventions = [campaign(PerGroup(1 => 10.0, 2 => 1.0; key = :community))]
-            )
-        )
+    @testset "GroupVaccination budgets are shared by the types" begin
+        gv = group()
+        a = Individual(id = 1, state = Dict{Symbol, Any}(:type => 1))
+        @test EpiBranch.resource_key(gv, a, nothing) === nothing
     end
 end

@@ -282,68 +282,6 @@ end
         @test capacity_usage(cc, state, :B).used == 1
     end
 
-    @testset "A PerGroup budget splits isolation's budget per group" begin
-        iso = Isolation(onset_to_isolation_delay = Dirac(0.0), duration = Inf)
-        cc = CapacityConstrained(
-            iso; budget_per_period = PerGroup(:A => 1.0, :B => 0.0; key = :district)
-        )
-        state = empty_state()
-        person(id, district) = Individual(
-            id = id,
-            state = Dict{Symbol, Any}(
-                :district => district, :test_positive => true, :onset_time => 1.0,
-                :asymptomatic => false
-            )
-        )
-        a1, a2, b = person(1, :A), person(2, :A), person(3, :B)
-        append!(state.individuals, [a1, a2, b])
-        foreach(p -> EpiBranch.resolve_individual!(cc, p, state), (a1, a2, b))
-
-        @test is_isolated(a1)
-        @test !is_isolated(a2)
-        @test !is_isolated(b)
-        @test capacity_usage(cc, state, :A) == (used = 1, available = 1.0)
-        @test capacity_usage(cc, state, :B) == (used = 0, available = 0.0)
-        # With a budget per group, there is no single budget to report.
-        @test_throws ArgumentError capacity_usage(cc, state)
-    end
-
-    @testset "PerGroup budgets are checked when the wrapper is built and used" begin
-        gv = GroupVaccination(efficacy = 0.9, group_key = :age_band)
-        @test_throws ArgumentError PerGroup()
-        @test_throws ArgumentError PerGroup(:a => 1.0, :a => 2.0)
-        @test_throws ArgumentError PerGroup(:a => -1.0)
-        # A schedule needs a finite period, as a shared one does.
-        schedule = Steps([5.0], [1.0, 0.0])
-        @test_throws ArgumentError CapacityConstrained(
-            gv; budget_per_period = PerGroup(:a => schedule)
-        )
-        @test CapacityConstrained(
-            gv; budget_per_period = PerGroup(:a => schedule), period = 1.0
-        ) isa CapacityConstrained
-        # An intervention without a group_key needs the key to be named.
-        iso = Isolation(onset_to_isolation_delay = 1.0, duration = 7.0)
-        @test_throws ArgumentError CapacityConstrained(
-            iso; budget_per_period = PerGroup(:a => 1.0)
-        )
-
-        # A group that the budget does not name raises an error.
-        cc = CapacityConstrained(gv; budget_per_period = PerGroup(:under5 => 1.0))
-        state = empty_state()
-        person = Individual(id = 1, state = Dict{Symbol, Any}(:age_band => :over5))
-        append!(state.individuals, [person])
-        err = try
-            EpiBranch._resource_fn(cc)(person, state)
-            nothing
-        catch e
-            e
-        end
-        @test err isa ArgumentError
-        @test occursin(":over5", err.msg) && occursin(":under5", err.msg)
-        nobody = Individual(id = 2, state = Dict{Symbol, Any}())
-        @test_throws ArgumentError EpiBranch._resource_fn(cc)(nobody, state)
-    end
-
     @testset "Rations a quarantine, leaving the trace itself unrationed" begin
         ct = ContactTracing(TraceEveryone(), 1.0, Dirac(0.0), Quarantine(duration = Inf))
         cc = CapacityConstrained(ct; budget_per_period = 1.0)

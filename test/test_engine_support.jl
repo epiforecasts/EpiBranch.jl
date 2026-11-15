@@ -1,11 +1,10 @@
 using Distributions
 using StableRNGs
 
-# What each engine reads of the intervention specification, checked against one
-# table. A case is an intervention built for the groups of an engine, which
+# What each model reads of the intervention specification, checked against one
+# table. A case is an intervention built for the groups of a model, which
 # either applies it or refuses it with the shared wording of
-# `EpiBranch._CAMPAIGN_SUPPORT`. The documentation has the same table (the
-# intervention support page of the tutorials).
+# `EpiBranch._CAMPAIGN_SUPPORT`.
 
 # Triggers the doses of a group at a fixed calendar day, so the
 # individual-based engine dates a dose without a delay.
@@ -92,31 +91,13 @@ _support_gv(e, key = e.key) = GroupVaccination(;
     efficacy = 0.9, group_key = key, eligibility = e.eligibility
 )
 
-# The specification: each case is an intervention an engine is asked to
-# apply, and `applies` lists the engines that apply it. Every other engine
-# refuses it in the shared wording. The cases in `invalid` are rejected by
-# every engine because the specification itself is wrong.
+# The specification: each case is an intervention a model is asked to apply,
+# and `applies` lists the models that apply it. Every other one refuses it in
+# the shared wording.
 const _SUPPORT_CASES = [
     (
         name = "GroupVaccination, shared budget",
         build = e -> CapacityConstrained(_support_gv(e); budget_per_period = 100.0),
-        applies = (:individual, :generation_counts, :mean_field, :hybrid),
-    ),
-    (
-        name = "GroupVaccination, PerGroup budget",
-        build = e -> CapacityConstrained(
-            _support_gv(e); budget_per_period = PerGroup(e.groups[1] => 60.0, e.groups[2] => 40.0)
-        ),
-        applies = (:individual, :generation_counts, :mean_field, :hybrid),
-    ),
-    (
-        name = "GroupVaccination, PerGroup budget with a schedule",
-        build = e -> CapacityConstrained(
-            _support_gv(e);
-            budget_per_period = PerGroup(
-                e.groups[1] => Steps([1.0, 20.0], [0.0, 10.0, 0.0]), e.groups[2] => 40.0
-            ), period = 1.0
-        ),
         applies = (:individual, :generation_counts, :mean_field, :hybrid),
     ),
     (
@@ -156,32 +137,6 @@ const _SUPPORT_CASES = [
         ),
         applies = (:individual,),
     ),
-    (
-        name = "Isolation under CapacityConstrained, PerGroup budget",
-        build = e -> CapacityConstrained(
-            Isolation(onset_to_isolation_delay = 1.0, duration = 7.0);
-            budget_per_period = PerGroup(e.groups[1] => 10.0, e.groups[2] => 5.0; key = e.key)
-        ),
-        applies = (:individual,),
-    ),
-    (
-        name = "ContactTracing under CapacityConstrained, PerGroup budget",
-        build = e -> CapacityConstrained(
-            ContactTracing(TraceEveryone(), 1.0, Dirac(0.0), Quarantine(duration = Inf));
-            budget_per_period = PerGroup(e.groups[1] => 10.0, e.groups[2] => 5.0; key = e.key)
-        ),
-        applies = (:individual,),
-    ),
-]
-
-# Rejected by every engine: a group that the PerGroup budget does not name.
-const _SUPPORT_INVALID = [
-    (
-        name = "PerGroup budget missing a group",
-        build = e -> CapacityConstrained(
-            _support_gv(e); budget_per_period = PerGroup(e.groups[1] => 10.0)
-        ),
-    ),
 ]
 
 _support_list(iv) = iv isa AbstractVector ? iv : [iv]
@@ -194,7 +149,7 @@ catch err
     err
 end
 
-@testset "Each engine reads the intervention specification the same way" begin
+@testset "Each model reads the intervention specification the same way" begin
     @testset "$(case.name)" for case in _SUPPORT_CASES
         for (engine, e) in pairs(_SUPPORT_ENGINES)
             outcome = _support_outcome(() -> e.run(e.spec(_support_list(case.build(e)))))
@@ -209,17 +164,9 @@ end
         end
     end
 
-    @testset "$(case.name)" for case in _SUPPORT_INVALID
-        for (engine, e) in pairs(_SUPPORT_ENGINES)
-            outcome = _support_outcome(() -> e.run(e.spec(_support_list(case.build(e)))))
-            @test outcome isa ArgumentError
-            outcome isa ArgumentError && @test occursin("no budget for group", outcome.msg)
-        end
-    end
-
-    @testset "a shared budget is one pool in every engine" begin
+    @testset "a shared budget is one pool in every model" begin
         # 100 doses between two groups of hundreds of people: one pool gives
-        # 100 doses in all, where a budget per group would give each group its own.
+        # 100 doses in all, not 100 to each group.
         shared(e) = CapacityConstrained(_support_gv(e); budget_per_period = 100.0)
         e = _SUPPORT_ENGINES.individual
         state = _support_branching(e.spec([shared(e)]))
@@ -237,59 +184,4 @@ end
         @test sum([40_000, 160_000] .- s) <= 100
     end
 
-    @testset "a PerGroup budget gives each group its own doses in every engine" begin
-        per_group(e) = CapacityConstrained(
-            _support_gv(e); budget_per_period = PerGroup(e.groups[1] => 0.0, e.groups[2] => 70.0)
-        )
-        e = _SUPPORT_ENGINES.individual
-        state = _support_branching(e.spec([per_group(e)]))
-        vaccinated(type) = count(
-            i -> is_vaccinated(i) && i.state[:type] == type, state.individuals
-        )
-        @test vaccinated(1) == 0
-        @test vaccinated(2) == 70
-
-        e = _SUPPORT_ENGINES.mean_field
-        spec = e.spec([per_group(e)])
-        model = MixingMeanFieldProcess(spec; removal_rate = 0.2)
-        state = _support_mean_field(spec)
-        first_group = findfirst(g -> g[1] == 1, model.groups)
-        second_group = findfirst(g -> g[1] == 2, model.groups)
-        @test state.D[first_group] == 0
-        @test state.D[second_group] ≈ 70
-
-        e = _SUPPORT_ENGINES.generation_counts
-        campaign = EpiBranch._campaign(per_group(e), (0.0, Inf), nothing)
-        @test EpiBranch._interval_doses(campaign, 0.0, 14.0, 1) == 0
-        @test EpiBranch._interval_doses(campaign, 0.0, 14.0, 2) == 70
-    end
-end
-
-@testset "a PerGroup budget shared out as a rate stays within each group" begin
-    e = _SUPPORT_ENGINES.mean_field
-    budget = PerGroup(1 => Steps([10.0], [30.0, 0.0]), 2 => Steps([10.0], [70.0, 0.0]))
-    campaign = CapacityConstrained(_support_gv(e); budget_per_period = budget, period = 1.0)
-    spec = e.spec([campaign])
-    for allocation in (SplitByGroupSize(), SplitBySusceptibles())
-        model = MixingMeanFieldProcess(spec; removal_rate = 0.2, allocation)
-        state = simulate(model; n_initial = 20, max_time = 15.0)
-        by_value(v) = state.D[findfirst(g -> g[1] == v, model.groups)]
-        @test by_value(1) ≈ 300.0 rtol = 1.0e-3
-        @test by_value(2) ≈ 700.0 rtol = 1.0e-3
-    end
-end
-
-@testset "a PerGroup budget handed from an exact run keeps the doses given to each group" begin
-    e = _SUPPORT_ENGINES.mean_field
-    budget = PerGroup(1 => 0.0, 2 => 50.0)
-    campaign = CapacityConstrained(_support_gv(e); budget_per_period = budget)
-    spec = e.spec([campaign])
-    approx = MixingMeanFieldProcess(spec; removal_rate = 0.2)
-    exact = simulate(spec; n_initial = 20, max_time = 8.0, rng = StableRNG(2))
-    handed = EpiBranch._to_approx_state(approx, exact, 8.0)
-    group = findfirst(g -> g[1] == 2, approx.groups)
-    @test handed.D[group] == count(is_vaccinated, exact.individuals)
-    @test all(
-        entry -> entry[3] == findfirst(==(2), approx.campaign.values), handed.campaign.log
-    )
 end

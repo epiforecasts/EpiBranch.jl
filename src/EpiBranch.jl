@@ -210,7 +210,7 @@ export AbstractEffectMode, LeakyMode, AllOrNothingMode
 export Scheduled, Risk
 export AbstractTrigger, is_triggered!, trigger_can_lapse, required_transitions,
     Infections, ReportedCases, opened_at, After
-export CapacityConstrained, PerGroup, capacity_usage, default_capacity_priority
+export CapacityConstrained, capacity_usage, default_capacity_priority
 export RefusalPolicy, DropRefused, DeferRefused
 export HeldCapacity, held_usage, release_capacity!
 export OnRoutes

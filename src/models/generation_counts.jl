@@ -273,12 +273,9 @@ number.
 
 The doses of generation `g` cover `[g * generation_length, (g + 1) *
 generation_length)` and are applied after generation `g` is drawn and before
-`g + 1` is. The `budget_per_period` is shared by the types, as in every engine:
+`g + 1` is. The `budget_per_period` is shared by the types, as in every model:
 each dose goes to a type in proportion to its population, as it would to a
-person picked at random. A [`PerGroup`](@ref) budget with `key = :type` (the
-default for this `group_key`) gives each type its own budget instead. It names
-the types by their numbers, and a type missing from it is an error. The doses
-are those of the periods that start in the interval; with
+person picked at random. The doses are those of the periods that start in the interval; with
 `carry_over`, budget left from earlier periods, or from before a window opens,
 is given in the first interval open to it. A dose reaches a susceptible of a
 type with probability equal to the share of susceptibles in the population of
@@ -326,12 +323,11 @@ state = simulate_by_generation(
     multiplier = Gamma(6.5, 1 / 6.5), rng = Xoshiro(1)
 )
 
-# A vaccination campaign of 2,000 doses a day to each type for a fortnight
+# A vaccination campaign of 2,000 doses a day for a fortnight
 model = BranchingProcess([2.0 0.5; 0.5 2.0], R -> Poisson(R), EpiBranch.NoGenerationTime();
     population_size = 250_000)
-doses = Steps([140.0, 154.0], [0.0, 2_000.0, 0.0])
 campaign = CapacityConstrained(GroupVaccination(efficacy = 0.9, group_key = :type);
-    budget_per_period = PerGroup(1 => doses, 2 => doses), period = 1.0)
+    budget_per_period = Steps([140.0, 154.0], [0.0, 2_000.0, 0.0]), period = 1.0)
 state = simulate_by_generation(
     ModelSpec(model; interventions = [campaign]); n_initial = [10, 2], max_generations = 30,
     population_by_type = [40_000, 210_000], immune = [20_000, 190_000],

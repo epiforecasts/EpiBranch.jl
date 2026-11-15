@@ -143,11 +143,10 @@ end
 
 # What every engine that reads a campaign rather than simulating individuals
 # (the approximations here and `simulate_by_generation`) can apply, in the
-# wording they all refuse with. The engine-by-intervention table in the
-# documentation lists the same.
+# wording they all refuse with.
 const _CAMPAIGN_SUPPORT = "a GroupVaccination, alone or under Scheduled (a " *
     "start_time and end_time only) and CapacityConstrained (one per campaign, " *
-    "with a shared or PerGroup budget and `on_refusal = DropRefused()`)"
+    "with a shared budget and `on_refusal = DropRefused()`)"
 
 function _refuse_campaign(engine, what, reason = "")
     throw(
@@ -231,30 +230,12 @@ function _read_campaign(ivs::AbstractVector, mixing_by, groups, allocation, what
         push!(group_of, v)
     end
     members = [findall(==(v), group_of) for v in eachindex(values)]
-    _check_budget_groups(budget, iv, values)
     return GroupCampaign(
         iv, key, values, group_of, members,
         Float64(outcome.immune), Float64(outcome.vaccinated), Float64(outcome.hazard),
         Float64(iv.coverage), Float64(iv.dose_delay), Float64(window[1]), Float64(window[2]),
         budget, allocation
     )
-end
-
-# A `PerGroup` budget has to name the vaccination group of every mixing group
-# and be read from the `group_key` that the model mixes by.
-_check_budget_groups(::Nothing, iv, values) = nothing
-function _check_budget_groups(cc::CapacityConstrained, iv, values)
-    pg = cc.budget_per_period
-    pg isa PerGroup || return nothing
-    _budget_group_key(pg, iv) == iv.group_key || throw(
-        ArgumentError(
-            "the PerGroup budget's key :$(_budget_group_key(pg, iv)) is not the " *
-                "GroupVaccination's group_key :$(iv.group_key), which is what the " *
-                "approximations split doses by"
-        )
-    )
-    foreach(v -> _group_budget(pg, v), values)
-    return nothing
 end
 
 # The inputs a compartment can only take as numbers. A distribution or a
@@ -292,19 +273,18 @@ end
 # until it is triggered) and `fired[v]` whether they have been offered;
 # `baseline[v]` is the expected number of cases already counted when the
 # trigger started to be watched for; `log` holds each batch of doses as
-# `(time, doses, group)`, which a budget with `carry_over = false`, or one
-# per group, reads back.
+# `(time, doses)`, which a budget with `carry_over = false` reads back.
 struct CampaignProgress
     dose_time::Vector{Float64}
     fired::Vector{Bool}
     baseline::Vector{Float64}
-    log::Vector{Tuple{Float64, Float64, Int}}
+    log::Vector{Tuple{Float64, Float64}}
 end
 
-_new_progress(::NoCampaign) = CampaignProgress(Float64[], Bool[], Float64[], Tuple{Float64, Float64, Int}[])
+_new_progress(::NoCampaign) = CampaignProgress(Float64[], Bool[], Float64[], Tuple{Float64, Float64}[])
 function _new_progress(c::GroupCampaign)
     n = length(c.values)
-    return CampaignProgress(fill(Inf, n), fill(false, n), zeros(n), Tuple{Float64, Float64, Int}[])
+    return CampaignProgress(fill(Inf, n), fill(false, n), zeros(n), Tuple{Float64, Float64}[])
 end
 
 function _copy(p::CampaignProgress)
@@ -325,27 +305,12 @@ function _dose_rate(alloc::Union{SplitByGroupSize, SplitBySusceptibles}, c, mode
     c.window_start <= t <= c.window_stop || return zeros(G)
     cc = c.budget
     period_start = floor(t / cc.period + 1.0e-9) * cc.period
+    total = _period_budget(cc.budget_per_period, period_start) / cc.period
     N = Float64.(model.group_sizes)
     reachable = c.coverage .* N .- D .> 1.0e-9
     weight = _split_weight(alloc, N, S) .* reachable
-    # A shared budget is split over every mixing group. A `PerGroup` budget is
-    # split over the mixing groups of each vaccination group, using the budget
-    # of that group.
-    rate = zeros(G)
-    for (budget, members) in _budget_shares(c)
-        total = _period_budget(budget, period_start) / cc.period
-        w = weight[members]
-        sum(w) > 0 || continue
-        rate[members] .= total .* w ./ sum(w)
-    end
-    return rate
-end
-
-# The budgets of a campaign and the mixing groups that share each.
-function _budget_shares(c::GroupCampaign)
-    pg = c.budget.budget_per_period
-    pg isa PerGroup || return [(pg, collect(eachindex(c.group_of)))]
-    return [(_group_budget(pg, c.values[v]), c.members[v]) for v in eachindex(c.values)]
+    sum(weight) > 0 || return zeros(G)
+    return total .* weight ./ sum(weight)
 end
 _split_weight(::SplitByGroupSize, N, S) = N
 _split_weight(::SplitBySusceptibles, N, S) = max.(S, 0.0)
@@ -386,14 +351,7 @@ end
 # `CapacityConstrained` wrapper counts them for one more person: those
 # available through the end of the period `d` falls in (with `carry_over`,
 # including everything unspent before it), less those already given.
-_budget_left(::Nothing, log, d, v, group) = Inf
-function _budget_left(cc::CapacityConstrained, log, d, v::Integer, group)
-    pg = cc.budget_per_period
-    pg isa PerGroup || return _budget_left(cc, [(t, n) for (t, n, _) in log], d)
-    return _budget_left(
-        _group_capacity(cc, group), [(t, n) for (t, n, w) in log if w == v], d
-    )
-end
+_budget_left(::Nothing, log, d) = Inf
 function _budget_left(cc::CapacityConstrained, log, d)
     period_start, period_end = _period_bounds(cc, d)
     if cc.carry_over
@@ -433,12 +391,12 @@ function _fire_doses!(c::GroupCampaign, model, x, Σ, progress, t)
         c.window_start <= d <= c.window_stop || continue
         S, _, _, _, D = _unpack(x, G)
         reach = [max(c.coverage * N[m] - D[m], 0.0) for m in c.members[v]]
-        given = min(sum(reach), _budget_left(c.budget, progress.log, d, v, c.values[v]))
+        given = min(sum(reach), _budget_left(c.budget, progress.log, d))
         given > 0 || continue
         for (k, m) in enumerate(c.members[v])
             _dose_group!(c, x, Σ, G, m, given * reach[k] / sum(reach), N[m])
         end
-        push!(progress.log, (d, given, v))
+        push!(progress.log, (d, given))
     end
     return nothing
 end
@@ -546,14 +504,12 @@ function _handover_progress(c::GroupCampaign, es, t, cases)
             end
         end
     end
-    given = Dict{Tuple{Float64, Int}, Float64}()
+    given = Dict{Float64, Float64}()
     for ind in es.individuals
         dose_t = _dose_time(dose_label(c.vaccination), ind)
-        dose_t !== nothing && dose_t <= t || continue
-        v = findfirst(isequal(get(ind.state, c.key, missing)), c.values)
-        v === nothing && continue
-        given[(dose_t, v)] = get(given, (dose_t, v), 0.0) + 1.0
+        dose_t !== nothing && dose_t <= t &&
+            (given[dose_t] = get(given, dose_t, 0.0) + 1.0)
     end
-    append!(progress.log, [(k[1], n, k[2]) for (k, n) in sort!(collect(given))])
+    append!(progress.log, [(k, v) for (k, v) in sort!(collect(given))])
     return progress
 end

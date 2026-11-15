@@ -259,7 +259,6 @@ ReportedCases
 opened_at
 After
 CapacityConstrained
-PerGroup
 capacity_usage
 default_capacity_priority
 RefusalPolicy
@@ -835,7 +834,6 @@ EpiBranch.capacity_key
 EpiBranch.capacity_time_key
 EpiBranch.record_capacity_use!
 EpiBranch.resource_key
-EpiBranch.budget_group_key
 EpiBranch.refused_action
 EpiBranch.held_until
 ```

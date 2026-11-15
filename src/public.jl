@@ -231,7 +231,6 @@ public apply_trace!
 public capacity_key
 public capacity_time_key
 public resource_key
-public budget_group_key
 public held_until
 public refused_action
 public InterventionWrapper

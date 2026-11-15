@@ -4,8 +4,8 @@
 # susceptibles of each type between generations instead. Its doses for a generation's
 # interval come from the budget of a `CapacityConstrained` (read, for a
 # schedule, at the start of each period) and the window of a `Scheduled`
-# around it, in either order. As in every engine, a budget is shared by all
-# the types unless it is a `PerGroup`, which gives each type its own.
+# around it, in either order. As in every model, a budget is shared by all
+# the types.
 
 # A vaccination campaign `simulate_by_generation` can apply: the efficacy of
 # its dose, the days it may give doses between, and the budget limiting how
@@ -43,13 +43,6 @@ function _campaign(gv::GroupVaccination, window, budget)
         ArgumentError(
             "simulate_by_generation needs GroupVaccination wrapped in CapacityConstrained: " *
                 "without a dose budget there is no number of doses to give"
-        )
-    )
-    pg = budget.budget_per_period
-    pg isa PerGroup && _budget_group_key(pg, gv) !== :type && throw(
-        ArgumentError(
-            "simulate_by_generation reads the groups of a PerGroup budget as the " *
-                "types, so its key must be :type, not :$(_budget_group_key(pg, gv))"
         )
     )
     gv.group_key === :type || throw(
@@ -114,12 +107,12 @@ end
 # are the cumulative budget of the periods begun by then, none before the
 # window opens. Without it, each period's own budget is given in the period.
 # Only whole doses are given.
-function _interval_doses(c::_Campaign, t0::Real, t1::Real, group = nothing)
+function _interval_doses(c::_Campaign, t0::Real, t1::Real)
     s, e = c.window
     a = max(t0, s)
     b = min(t1, e)
     b > a || return 0
-    cc = _group_capacity(c.budget, group)
+    cc = c.budget
     if cc.carry_over || isinf(cc.period)
         before = a <= s ? 0.0 : _doses_by(cc, a)
         return max(0, floor(Int, _doses_by(cc, b)) - floor(Int, before))
@@ -145,13 +138,10 @@ function _doses_by(cc::CapacityConstrained, t)
     )
 end
 
-# The doses of `[t0, t1)` that go to each type. A `PerGroup` budget gives each
-# type its own. A shared budget is a pool of doses for everyone: each dose goes
-# to a type in proportion to its population, as it would to a person picked
-# at random.
+# The doses of `[t0, t1)` that go to each type. The budget is a pool of doses
+# for everyone: each dose goes to a type in proportion to its population, as it
+# would to a person picked at random.
 function _doses_by_type(rng::AbstractRNG, c::_Campaign, t0, t1, sizes)
-    budget = c.budget.budget_per_period
-    budget isa PerGroup && return [_interval_doses(c, t0, t1, i) for i in eachindex(sizes)]
     doses = _interval_doses(c, t0, t1)
     doses == 0 && return zeros(Int, length(sizes))
     length(sizes) == 1 && return [doses]
