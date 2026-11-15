@@ -297,7 +297,7 @@ disease_less_infectious = [
 ]
 ```
 
-Use `transmission_traits` for traits known when the case is created (age, sex, whether the case is asymptomatic), because it draws its factor then. A change during the infection, such as tracing or quarantine, needs an intervention. Combining the two is tracked in #972.
+Use `transmission_traits` for traits known when the case is created (age, sex, whether the case is asymptomatic), because it draws its factor then. A change during the infection, such as tracing or quarantine, needs an intervention. Combining the two is tracked in #972. Other links between symptoms and infectiousness, such as more contacts, a shorter infectious period or a within-host trajectory, are stated in [Asymptomatic cases and how symptoms link to infectiousness](asymptomatic.md).
 
 ## Contact tracing workload
 

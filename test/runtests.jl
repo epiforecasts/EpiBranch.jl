@@ -29,6 +29,7 @@ const TEST_GROUPS = (
         "test_streams.jl",
         "test_branching_process.jl",
         "test_attributes.jl",
+        "test_asymptomatic_links.jl",
         "test_interventions.jl",
         "test_settle_case.jl",
         "test_case_hooks.jl",

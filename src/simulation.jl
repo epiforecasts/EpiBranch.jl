@@ -1403,7 +1403,14 @@ with an `infectiousness` that reads `ind.state[:asymptomatic]`.
 Use `transmission_traits` for traits known when the case is created (age, sex,
 whether the case is asymptomatic), because it draws its factor then. A change
 during the infection, such as tracing or quarantine, needs an intervention.
-Combining the two is tracked in #972.
+Combining the two is tracked in #972. Other links between symptoms and
+infectiousness (more contacts, a shorter infectious period, a within-host
+trajectory that drives onset) are written by the user through an attribute
+builder, a generation time or offspring function of the individual, or a
+[`Transition`](@ref) delay; the asymptomatic-cases tutorial shows each.
+A builder that replaces this one sets `:asymptomatic` and `:incubation_period`
+(`NaN` when asymptomatic), from which the onset time is worked out, and
+`:latent_incubation_period` for [`incubation_linked_generation_time`](@ref).
 
 # Examples
 

@@ -26,6 +26,7 @@ makedocs(;
                 "Vaccination" => "tutorials/vaccination.md",
             ],
             "Clinical transitions" => "tutorials/transitions.md",
+            "Asymptomatic cases and infectiousness" => "tutorials/asymptomatic.md",
             "Transmission models" => [
                 "Multi-type models" => "tutorials/multi-type.md",
                 "Network models" => "tutorials/networks.md",
