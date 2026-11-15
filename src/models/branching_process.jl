@@ -285,8 +285,8 @@ outbreak grows as a tree from the index cases. A negative binomial,
 infection to the infection of each of its secondary cases. Leave it out to
 study only chain sizes and lengths, without timing. `population` sets a
 finite [`Population`](@ref): each potential infection succeeds with
-probability equal to the share of people of its type not yet infected, so
-transmission slows as cases accumulate (unlimited by default).
+probability equal to the share of people of its type not yet infected.
+Transmission slows as cases accumulate (unlimited by default).
 `population_size = n` is shorthand for `population = Population(n)`. A
 multi-type model (an offspring function or a contact matrix) takes the size of
 each type's population, `Population(sizes)`, and depletes each type against

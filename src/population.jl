@@ -25,7 +25,7 @@ the groups, in the order of `sizes`:
   tuple). The process then writes that attribute itself, so that the groups
   have exactly these sizes, and an attribute builder that also writes it is an
   error. Leave the sizes out of the population (`Population(n)`) for groups
-  whose sizes vary between runs, such as an attribute drawn with
+  with sizes that vary between runs, such as an attribute drawn with
   `rand(rng, 1:2)`.
 
 `Population(n)` and `Population(sizes)` return a `SinglePopulation` and a

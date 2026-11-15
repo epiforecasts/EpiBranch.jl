@@ -70,7 +70,7 @@ Mixing given as a contact rate per pair of people: `rates[j, i]` is the rate
 per day at which one group-`j` person contacts one given group-`i` person, so
 they meet more often in a larger group. See [`Mixing`](@ref) for what each
 engine derives from it. A branching process needs the group sizes for it even
-without depletion, since the number of people one case contacts is the rate
+without depletion, because the number of people one case contacts is the rate
 times the size of the group.
 
 `groups` and `labels` are as for [`FrequencyDependent`](@ref).

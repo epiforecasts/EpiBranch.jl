@@ -239,9 +239,9 @@ end
 
 The `rate` of a [`MixingProcess`](@ref) from a contact matrix and the sizes of
 the groups. A [`MixingProcess`](@ref) now takes the matrix as a
-[`FrequencyDependent`](@ref) value and reads the sizes from its population, so
-this is for giving the sizes separately, as a `rate` that is a callable of the
-two groups. `contacts[j, i]` is the mean number of group-`i` contacts a
+[`FrequencyDependent`](@ref) value and reads the sizes from its population.
+This function is for giving the sizes separately, as a `rate` that is a callable
+of the two groups. `contacts[j, i]` is the mean number of group-`i` contacts a
 group-`j` person makes per day, the layout of a survey matrix and of the
 matrix [`BranchingProcess`](@ref) takes. A person in group `j` then contacts
 one given member of group `i` at rate `contacts[j, i] / group_sizes[i]`, the
