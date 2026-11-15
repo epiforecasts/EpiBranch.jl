@@ -17,6 +17,8 @@ include("docstrings.jl")
 # Core types
 include("individual_state.jl")
 include("types.jl")
+include("population.jl")
+include("mixing_values.jl")
 include("state_accessors.jl")
 include("options.jl")
 include("distributions.jl")
@@ -183,6 +185,7 @@ export TransmissionModel, BranchingProcess, Infectiousness, OffspringTimes,
     HomogeneousProcess, MixingProcess, ModelSpec
 export MeanFieldProcess, MeanFieldState, LinearNoiseProcess, LinearNoiseState
 export StratifiedContacts, flatten_contacts, contacts_from_table, mixing_rate
+export Mixing, FrequencyDependent, DensityDependent
 export read_contacts, ContactFileFormat, CSVFormat, NetCDFFormat
 export MixingMeanFieldProcess, MixingMeanFieldState
 export MixingLinearNoiseProcess, MixingLinearNoiseState
@@ -226,7 +229,7 @@ export ContactRecorder, NoContactRecorder, ExposedContactRecorder
 export single_type_offspring
 
 # Exports — sentinel types
-export NoPopulation, NoAttributes, NoTypeLabels
+export Population, NoPopulation, NoAttributes, NoTypeLabels
 export NoAgeDistribution, NoCases
 
 # Exports — accessors

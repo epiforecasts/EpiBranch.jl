@@ -11,16 +11,33 @@
 # from that progression when the model is simulated.
 
 """
-    MixingProcess(; population_size, mixing_by = (), rate, calendar = nothing,
+    MixingProcess(; population, mixing_by = (), mixing, q = 1.0, calendar = nothing,
+                 from = nothing, until = (:recovered, :died, :isolated))
+    MixingProcess(; population, mixing_by = (), rate, calendar = nothing,
                  from = nothing, until = (:recovered, :died, :isolated))
 
-A closed population of `population_size` individuals, split into mixing
-groups by `mixing_by`, a tuple of attribute keys already set on each
-individual (`:age_band`, `:ses`, `:patch`; set by the composed `attributes`,
-not by this process). A member's group is the tuple of those attribute
-values; `mixing_by = ()` puts everyone in the single group `()`, recovering
-`HomogeneousProcess`.
+A closed population, split into mixing groups by `mixing_by`, a tuple of
+attribute keys on each individual (`:age_band`, `:ses`, `:patch`). A member's
+group is the tuple of those attribute values; `mixing_by = ()` puts everyone in
+the single group `()`, recovering `HomogeneousProcess`.
 
+The population is a [`Population`](@ref), or `population_size = n` for
+`Population(n)`. With sizes by group, `Population(sizes; groups)`, the process
+writes the `mixing_by` attributes itself, so that the groups have exactly those
+sizes (`groups` gives each group's attribute values as a tuple, `(i,)` for the
+`i`-th group by default); the composed `attributes` must not write them. With
+`Population(n)` the groups come from the composed `attributes`, which set
+`mixing_by`'s keys, and their sizes may differ from run to run.
+
+How the groups meet is a [`Mixing`](@ref) value, [`FrequencyDependent`](@ref)
+contacts per person per day or [`DensityDependent`](@ref) rates per pair, with
+`q`, the probability that a contact transmits (1 by default). The process
+derives the rate per pair from it and the group sizes of the population: under
+frequency dependence the sizes are needed (`Population(sizes)`), under density
+dependence they are not. The groups of the mixing value (its `groups`) are the
+tuples of `mixing_by` values, `(i,)` for the `i`-th group by default.
+
+Instead of `mixing`, `rate` gives any per-pair rate directly:
 `rate(infector_group, target_group)` is the rate at which one infective in
 the first group contacts one member of the second. Homogeneous mixing is
 `β/N` for every pair; a contact matrix `M[b, a]` giving the rate at which one
@@ -57,20 +74,21 @@ infector all apply as they do on any other route of the race.
 ```julia
 using EpiBranch, Distributions
 
-# Two age bands of equal size, tagged on creation; band 1 mixes more.
-band = (rng, ind) -> (ind.state[:age_band] = rand(rng, 1:2))
-M = [3.0 0.5; 0.5 0.5]
-rate = (from, to) -> M[to[1], from[1]] / 1500
+# Two age bands of 1500 people each, assigned by the process; band 1 mixes more.
+# `contacts[j, i]` is the mean number of band-`i` contacts a band-`j` person
+# makes per day.
+contacts = [3.0 0.5; 0.5 0.5]
 
 model = ModelSpec(
-    MixingProcess(; population_size = 3000, mixing_by = (:age_band,), rate);
-    progression = [Transition(:recovered; from = :infection, rate = 1.0, terminal = true)],
-    attributes = band)
+    MixingProcess(;
+        population = Population([1500, 1500]), mixing_by = (:age_band,),
+        mixing = FrequencyDependent(contacts));
+    progression = [Transition(:recovered; from = :infection, rate = 1.0, terminal = true)])
 state = simulate(model; n_initial = 5)
 ```
 """
-struct MixingProcess{F, C} <: FixedPopulationProcess
-    population_size::Int
+struct MixingProcess{P <: Union{SinglePopulation, GroupedPopulation}, F, C} <: FixedPopulationProcess
+    population::P
     mixing_by::Tuple
     rate::F
     calendar::C
@@ -79,27 +97,30 @@ struct MixingProcess{F, C} <: FixedPopulationProcess
 end
 
 function MixingProcess(;
-        population_size::Integer,
+        population = NoPopulation(),
+        population_size = NoPopulation(),
         mixing_by::Tuple = (),
-        rate,
+        mixing = NoMixing(),
+        q = 1.0,
+        rate = nothing,
         calendar = nothing,
         from = nothing,
         until = (:recovered, :died, :isolated)
     )
-    population_size >= 1 || throw(ArgumentError("population_size must be ≥ 1"))
-    return MixingProcess(
-        Int(population_size), mixing_by, rate, calendar, from, Tuple(until)
-    )
+    pop = _closed_population(population, population_size)
+    rate, pop = _resolve_rate(mixing, rate, q, pop, mixing_by)
+    return MixingProcess(pop, mixing_by, rate, calendar, from, Tuple(until))
 end
 
-population_size(m::MixingProcess) = m.population_size
+population(m::MixingProcess) = m.population
+population_size(m::MixingProcess) = total_size(m.population)
 
 function Base.show(io::IO, m::MixingProcess)
     groups = isempty(m.mixing_by) ? "()" : string(m.mixing_by)
     from = m.from === nothing ? "" : ", from=:$(m.from)"
     return print(
         io,
-        "MixingProcess(population_size=$(m.population_size), mixing_by=$groups", from, ")"
+        "MixingProcess(population_size=$(population_size(m)), mixing_by=$groups", from, ")"
     )
 end
 

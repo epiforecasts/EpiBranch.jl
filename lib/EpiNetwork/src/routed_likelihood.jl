@@ -4,7 +4,7 @@
 # competing routes open over each case rather than one: the race proposes a
 # contact along every route at once and the earliest proposal wins, so each
 # susceptible faces the *sum* of every route's hazard from every infector that
-# can reach it. The likelihood below scores that exactly: survival sums each
+# can reach it. The likelihood below evaluates that exactly: survival sums each
 # route's cumulative hazard (independent competing risks), and the event term
 # at an infected person's own infection time is a log-sum-exp over every
 # route and infector that could have produced it, exactly as `logsumexp` over
@@ -414,7 +414,7 @@ candidate [`VaccineEffect`](@ref) or a model's interventions, exactly as for
 [`NetworkProcess`](@ref)'s likelihood: through
 [`susceptibility_components`](@ref EpiBranch.susceptibility_components) the
 effect says how it scales every hazard a person faces, from every route and
-the external hazard alike, and a susceptible it modifies is scored as the
+the external hazard alike, and a susceptible it modifies contributes the
 weighted mixture of their escape and infection under each of the effect's
 components. A susceptible it leaves unmodified keeps the plain sum above.
 

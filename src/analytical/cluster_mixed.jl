@@ -123,8 +123,8 @@ function loglikelihood(data::ChainSizeClasses, o::ClusterMixed)
 end
 
 """
-    BranchingProcess(offspring::ClusterMixed, gt; population_size=NoPopulation())
-    BranchingProcess(offspring::ClusterMixed; population_size=NoPopulation())
+    BranchingProcess(offspring::ClusterMixed, gt; population=NoPopulation())
+    BranchingProcess(offspring::ClusterMixed; population=NoPopulation())
 
 A branching process in which the reproduction number varies between chains:
 each chain draws `θ` once, from the `mixing` distribution of the
@@ -137,19 +137,22 @@ Add interventions, population characteristics or an observation model with a
 """
 function BranchingProcess(
         offspring::ClusterMixed, gt;
-        population_size::Union{Int, NoPopulation} = NoPopulation()
+        population = NoPopulation(), population_size = NoPopulation()
     )
     return BranchingProcess(
-        (Infectiousness(offspring; kernel = gt),), population_size, 1,
-        NoTypeLabels()
+        (Infectiousness(offspring; kernel = gt),),
+        _branching_population(population, population_size, 1), 1, NoTypeLabels()
     )
 end
 
 function BranchingProcess(
         offspring::ClusterMixed;
-        population_size::Union{Int, NoPopulation} = NoPopulation()
+        population = NoPopulation(), population_size = NoPopulation()
     )
-    return BranchingProcess((Infectiousness(offspring),), population_size, 1, NoTypeLabels())
+    return BranchingProcess(
+        (Infectiousness(offspring),),
+        _branching_population(population, population_size, 1), 1, NoTypeLabels()
+    )
 end
 
 """

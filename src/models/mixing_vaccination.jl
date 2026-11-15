@@ -141,39 +141,49 @@ struct GroupCampaign{B, A <: DoseAllocation, GV <: GroupVaccination}
     allocation::A
 end
 
+# What every engine that reads a campaign rather than simulating individuals
+# (the approximations here and `simulate_by_generation`) can apply, in the
+# wording of their refusals.
+const _CAMPAIGN_SUPPORT = "a GroupVaccination, alone or under Scheduled (a " *
+    "start_time and end_time only) and CapacityConstrained (one per campaign, " *
+    "with a shared budget and `on_refusal = DropRefused()`)"
+
+function _refuse_campaign(engine, what, reason = "")
+    throw(
+        ArgumentError(
+            "$engine cannot apply $what$reason: it reads only $_CAMPAIGN_SUPPORT"
+        )
+    )
+end
+
 # Peel `Scheduled` and `CapacityConstrained` wrappers off an intervention,
 # keeping what each says about when and how many doses are given.
-function _unwrap_campaign(iv, window, budget)
+function _unwrap_campaign(iv, window, budget, engine)
     if iv isa Scheduled
-        w = _clock_window(iv)
+        w = _clock_window(iv, engine)
         return _unwrap_campaign(
-            iv.intervention, (max(window[1], w.start), min(window[2], w.stop)), budget
+            iv.intervention, (max(window[1], w.start), min(window[2], w.stop)), budget,
+            engine
         )
     elseif iv isa CapacityConstrained
-        budget === nothing || throw(
-            ArgumentError("a campaign with more than one CapacityConstrained is not supported")
+        budget === nothing || _refuse_campaign(
+            engine, "a campaign with more than one CapacityConstrained"
         )
-        iv.on_refusal isa DropRefused || throw(
-            ArgumentError(
-                "a campaign with `on_refusal = $(nameof(typeof(iv.on_refusal)))` is " *
-                    "not supported: the approximations assume each member is offered " *
-                    "a dose once, as under `DropRefused()`"
-            )
+        iv.on_refusal isa DropRefused || _refuse_campaign(
+            engine, "`on_refusal = $(nameof(typeof(iv.on_refusal)))`",
+            " (each person is offered a dose once)"
         )
-        return _unwrap_campaign(iv.intervention, window, iv)
+        return _unwrap_campaign(iv.intervention, window, iv, engine)
     end
     return iv, window, budget
 end
 
-_clock_window(s::Scheduled) = _clock_window(s.window)
-_clock_window(window::ClockWindow) = window
-function _clock_window(::Nothing)
-    throw(
-        ArgumentError(
-            "a Scheduled campaign gated on cases, a trigger or a predicate has no " *
-                "calendar window for the approximation to read; give it `start_time` " *
-                "and/or `end_time` alone"
-        )
+_clock_window(s::Scheduled, engine) = _clock_window(s.window, engine)
+_clock_window(window::ClockWindow, engine) = window
+function _clock_window(::Nothing, engine)
+    return _refuse_campaign(
+        engine, "a Scheduled gated on cases, a trigger or a predicate",
+        " (there is no calendar window to read)"
     )
 end
 
@@ -194,20 +204,9 @@ _read_campaign(spec, mixing_by, groups, allocation, what) =
 _read_campaign(::Nothing, args...) = NoCampaign()
 function _read_campaign(ivs::AbstractVector, mixing_by, groups, allocation, what)
     isempty(ivs) && return NoCampaign()
-    length(ivs) == 1 || throw(
-        ArgumentError(
-            "$what reads one GroupVaccination from a model's interventions, " *
-                "but this one has $(length(ivs)) interventions"
-        )
-    )
-    iv, window, budget = _unwrap_campaign(only(ivs), (-Inf, Inf), nothing)
-    iv isa GroupVaccination || throw(
-        ArgumentError(
-            "$what reads vaccination from a GroupVaccination, alone or under " *
-                "Scheduled and CapacityConstrained, and cannot approximate a model " *
-                "with a $(nameof(typeof(iv))), which would be silently left out"
-        )
-    )
+    length(ivs) == 1 || _refuse_campaign(what, "a model with $(length(ivs)) interventions")
+    iv, window, budget = _unwrap_campaign(only(ivs), (-Inf, Inf), nothing, what)
+    iv isa GroupVaccination || _refuse_campaign(what, nameof(typeof(iv)))
     key = iv.group_key
     position = findfirst(==(key), mixing_by)
     position === nothing && throw(
