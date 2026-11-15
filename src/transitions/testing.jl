@@ -204,7 +204,7 @@ function censor_after_outcome!(t::Testing, individual)
     return nothing
 end
 
-# `Testing` as an `Isolation`'s `test_sensitivity` (see `isolation.jl`): the
+# `Testing` as the `test_sensitivity` of an `Isolation` (see `isolation.jl`): the
 # case's own test has not been taken when the case is created, so the result is
 # read from it once the progression has resolved.
 _draw_test_positive(::Testing, rng, individual) = false
