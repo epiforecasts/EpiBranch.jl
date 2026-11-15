@@ -245,8 +245,7 @@ simulation day 0) and `cases`. Weeks with no cases are left out.
   `clinical_presentation`) is placed by its infection time.
 - `:infection`: infection time. This is not observed in real surveillance,
   and the curve comes out earlier by roughly one incubation period.
-- `:reporting`: reporting time, set by [`Reporting`](@ref) or by
-  [`PerCaseObservation`](@ref), whichever the model uses. Cases never reported
+- `:reporting`: reporting time, set by [`Reporting`](@ref). Cases never reported
   are left out.
 - any other recorded time, such as `:admission_time`.
 """
@@ -330,6 +329,131 @@ function weekly_incidence(
 end
 
 """
+    incidence(state::SimulationState; interval=7, by=:onset,
+              reference_date::Date=Date(2020, 1, 1), range=nothing,
+              cumulative=false, by_generation=false)
+    incidence(states::Vector{<:SimulationState}; kwargs...)
+
+Case counts in bins of `interval` days: the epidemic curve of one simulated
+outbreak, or of several. Returns a DataFrame with columns `date` (the first day
+of each bin) and `cases`, plus `generation` when `by_generation = true` and
+`sim_id` (the position of the outbreak in `states`) for a vector of outbreaks.
+A bin with no cases has a row with 0. Tables from different runs therefore have
+the same rows and line up.
+
+- `interval`: the bin width in days, `1` for daily counts and `7` for weekly. With
+  a multiple of 7 the bins start on a Monday, as in [`weekly_incidence`](@ref);
+  otherwise they start at `reference_date`, simulation day 0.
+- `by`: which date places a case in a bin, as in [`weekly_incidence`](@ref).
+- `range`: a tuple of dates `(first, last)`. The bins are those containing these
+  two dates. Cases outside them are not counted. By default the bins run
+  from the first to the last bin with a case in any of the outbreaks.
+- `cumulative`: if `true`, `cases` is the running total up to and including each
+  bin, within each outbreak (and generation). A `range` that starts after the
+  first case counts only from its start.
+- `by_generation`: if `true`, there is one row for every generation, from 0 to the
+  latest generation of any outbreak, in every bin. This is the count by
+  generation that `aggregate(by = "generation")` gives in epichains.
+
+Without any case and without `range`, the table is empty.
+
+# Examples
+
+```julia
+states = simulate(model, 100; max_time = 84.0)
+incidence(states; interval = 1)                       # daily counts, one table
+incidence(states[1]; cumulative = true, by_generation = true)
+```
+"""
+function incidence(
+        state::SimulationState;
+        interval::Integer = 7,
+        by::Symbol = :onset,
+        reference_date::Date = Date(2020, 1, 1),
+        range::Union{Nothing, Tuple{Date, Date}} = nothing,
+        cumulative::Bool = false,
+        by_generation::Bool = false
+    )
+    return select!(
+        _incidence([state]; interval, by, reference_date, range, cumulative, by_generation),
+        Not(:sim_id)
+    )
+end
+
+function incidence(
+        states::Vector{<:SimulationState};
+        interval::Integer = 7,
+        by::Symbol = :onset,
+        reference_date::Date = Date(2020, 1, 1),
+        range::Union{Nothing, Tuple{Date, Date}} = nothing,
+        cumulative::Bool = false,
+        by_generation::Bool = false
+    )
+    return _incidence(states; interval, by, reference_date, range, cumulative, by_generation)
+end
+
+function _incidence(states; interval, by, reference_date, range, cumulative, by_generation)
+    interval >= 1 || throw(ArgumentError("incidence: interval must be at least 1 day"))
+    range === nothing || range[1] <= range[2] ||
+        throw(ArgumentError("incidence: range must be (first, last) with first <= last"))
+
+    # Bins start on a Monday for whole weeks, so that `interval = 7` matches
+    # `weekly_incidence`.
+    origin = interval % 7 == 0 ?
+        reference_date - Day(dayofweek(reference_date) - 1) : reference_date
+    bin_of(d::Date) = fld(Dates.value(d - origin), interval)
+
+    bins = [Int[] for _ in states]
+    gens = [Int[] for _ in states]
+    for (i, s) in enumerate(states), ind in s.individuals
+        is_infected(ind) || continue
+        t = _weekly_time(by, ind)
+        isfinite(t) || continue
+        push!(bins[i], bin_of(reference_date + Day(floor(Int, t))))
+        push!(gens[i], ind.generation)
+    end
+
+    if range === nothing
+        all_bins = reduce(vcat, bins; init = Int[])
+        isempty(all_bins) && return _empty_incidence(by_generation)
+        first_bin, last_bin = extrema(all_bins)
+    else
+        first_bin, last_bin = bin_of(range[1]), bin_of(range[2])
+    end
+    n_bins = last_bin - first_bin + 1
+    all_gens = reduce(vcat, gens; init = Int[])
+    n_gens = by_generation ? (isempty(all_gens) ? 1 : maximum(all_gens) + 1) : 1
+
+    sim_ids = Int[]
+    dates = Date[]
+    generations = Int[]
+    cases = Int[]
+    for i in eachindex(states)
+        counts = zeros(Int, n_bins, n_gens)
+        for (b, g) in zip(bins[i], gens[i])
+            first_bin <= b <= last_bin || continue
+            counts[b - first_bin + 1, by_generation ? g + 1 : 1] += 1
+        end
+        cumulative && (counts = cumsum(counts; dims = 1))
+        for g in 1:n_gens, k in 1:n_bins
+            push!(sim_ids, i)
+            push!(dates, origin + Day((first_bin + k - 1) * interval))
+            push!(generations, g - 1)
+            push!(cases, counts[k, g])
+        end
+    end
+    out = DataFrame(sim_id = sim_ids, date = dates, generation = generations, cases = cases)
+    by_generation || select!(out, Not(:generation))
+    return out
+end
+
+function _empty_incidence(by_generation::Bool)
+    out = DataFrame(sim_id = Int[], date = Date[], generation = Int[], cases = Int[])
+    by_generation || select!(out, Not(:generation))
+    return out
+end
+
+"""
     summarise(df::AbstractDataFrame; value=:cases, by=:week,
               probs=[0.025, 0.25, 0.5, 0.75, 0.975])
 
@@ -408,7 +532,9 @@ returned DataFrame holds one combination of the listed values and its
 varies, and any other key is rejected, including settings that do change a
 simulation, such as `:progression`. Settings that apply to every run, such as
 `max_cases`, are passed once as keywords. A setting that is a sweep axis is
-given as a vector even when there is only one value to use.
+given as a vector even when there is only one value to use. To vary anything
+else, or to summarise something other than containment, use the method that
+takes a function from a parameter row to a model.
 
 ```julia
 results = scenario_sweep(
@@ -482,4 +608,65 @@ function scenario_sweep(
     end
 
     return DataFrame(rows)
+end
+
+"""
+    scenario_sweep(build, rows; summary, n_sim=500, rng=Random.default_rng(), sim_kwargs...)
+
+Run a scenario once per row of parameters and summarise each. `build` takes a
+row and returns the model to simulate, a [`ModelSpec`](@ref) or any
+[`TransmissionModel`](@ref). The process, the progression, the
+interventions and any parameter inside a delay distribution can all vary. `rows`
+is any iterable of `NamedTuple`s or `DataFrameRow`s, such as the rows of a
+DataFrame of posterior or literature draws.
+
+Each row's `n_sim` outbreaks are simulated with `sim_kwargs` (the keywords of
+[`simulate`](@ref)`(model, n)`) and passed to `summary`, a function of the
+`Vector` of [`SimulationState`](@ref)s. It returns a `NamedTuple`, whose
+entries become columns next to the row's own, or a single value, stored in a
+`:summary` column. The default is the row's
+[`containment_probability`](@ref).
+
+`rng` is one generator shared by all rows, which draw different random
+numbers. To compare rows on the same ones, pass a function returning a fresh
+generator. It is called once per row, for example
+`() -> CommonRandomNumbers(1)`; see [`CommonRandomNumbers`](@ref).
+
+```julia
+draws = DataFrame(R = [1.5, 2.0, 2.5], k = [0.3, 0.5, 0.2])
+results = scenario_sweep(
+    row -> ModelSpec(
+        BranchingProcess(NegBin(row.R, row.k), LogNormal(1.6, 0.5));
+        progression = [Recovery(delay = Exponential(2.0))],
+        attributes = clinical_presentation(incubation_period = LogNormal(1.6, 0.5))
+    ),
+    eachrow(draws);
+    summary = states -> (; max_cases_seen = maximum(s.cumulative_cases for s in states)),
+    n_sim = 200, max_cases = 500, rng = () -> CommonRandomNumbers(1)
+)
+```
+"""
+function scenario_sweep(
+        build, rows;
+        summary = nothing,
+        n_sim::Int = 500,
+        rng = Random.default_rng(),
+        sim_kwargs...
+    )
+    cap = something(get(sim_kwargs, :max_cases, nothing), NoCases())
+    summarise = something(
+        summary,
+        states -> (; containment_probability = containment_probability(states; max_cases = cap))
+    )
+    out = NamedTuple[]
+    for row in rows
+        params = NamedTuple(row)
+        model = build(row)
+        run_rng = rng isa AbstractRNG ? rng : rng()
+        states = simulate(model, n_sim; rng = run_rng, sim_kwargs...)
+        result = summarise(states)
+        result = result isa NamedTuple ? result : (; summary = result)
+        push!(out, merge(params, result))
+    end
+    return DataFrame(out)
 end
