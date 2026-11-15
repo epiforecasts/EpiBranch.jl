@@ -195,6 +195,9 @@ Isolation
 IsolationEligibility
 SymptomaticOnly
 AllCases
+IsolationTrigger
+AfterSymptomOnset
+AfterPositiveTest
 ```
 
 ### Contact tracing
@@ -794,6 +797,7 @@ clear_isolated!
 
 ```@docs
 is_eligible_for_isolation
+EpiBranch.isolation_reference_time
 EpiBranch.records_isolation
 EpiBranch.is_eligible
 EpiBranch.trigger_time

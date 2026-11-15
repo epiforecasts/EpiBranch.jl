@@ -63,19 +63,70 @@ struct AllCases <: IsolationEligibility end
 required_fields(::IsolationEligibility) = Symbol[]
 required_fields(::SymptomaticOnly) = [:asymptomatic]
 
+# ── When isolation starts ───────────────────────────────────────────
+
+"""
+    IsolationTrigger
+
+The event an [`Isolation`](@ref) is timed from: [`AfterSymptomOnset`](@ref)
+(the default) or [`AfterPositiveTest`](@ref). The case is isolated at the
+trigger's reference time plus the isolation's `onset_to_isolation_delay`.
+
+To write a new trigger, define a subtype and a method of
+[`isolation_reference_time`](@ref EpiBranch.isolation_reference_time), and
+extend `EpiBranch.required_fields` for any case field it reads.
+"""
+abstract type IsolationTrigger end
+
+"""
+    isolation_reference_time(trigger, individual, state) -> Float64
+
+The time the isolation delay is counted from for this case. `NaN` or `Inf`
+means the trigger never happens for the case, which is then not isolated
+through it.
+"""
+function isolation_reference_time end
+
+"""Isolate a case `onset_to_isolation_delay` after its symptom onset (the
+default for [`Isolation`](@ref)). A case with no onset is not isolated."""
+struct AfterSymptomOnset <: IsolationTrigger end
+isolation_reference_time(::AfterSymptomOnset, individual, state) = onset_time(individual)
+
+"""
+    AfterPositiveTest()
+
+Isolate a case when its test result comes back positive: the sampling time
+recorded in the case's `:test_time` plus the isolation's
+`onset_to_isolation_delay`, which then stands for the turnaround from sample
+to result. A case with no recorded sampling time is not isolated through it.
+It does not need symptoms, so pair it with `eligibility = AllCases()` to isolate
+screened cases without symptoms. Whether the test is positive is drawn from
+`test_sensitivity`, as for any trigger.
+"""
+struct AfterPositiveTest <: IsolationTrigger end
+isolation_reference_time(::AfterPositiveTest, individual, state) =
+    _state_real(individual.state, :test_time, NaN)
+
+# Fields a trigger reads. A custom trigger extends this for its own type.
+required_fields(::IsolationTrigger) = Symbol[]
+required_fields(::AfterSymptomOnset) = [:onset_time]
+
 # ── Isolation intervention ──────────────────────────────────────────
 
 """
     Isolation(; onset_to_isolation_delay, duration,
+              trigger = AfterSymptomOnset(),
               eligibility = SymptomaticOnly(), test_sensitivity = 1.0,
               post_isolation_transmission = 0.0)
 
-Isolate cases a delay after symptom onset, so they stop (or reduce) onward
+Isolate cases a delay after a trigger, symptom onset by default, so they stop (or reduce) onward
 transmission. Isolation applies to cases; traced contacts who are not yet
 known cases are quarantined through [`ContactTracing`](@ref).
 
 # Arguments
-- `onset_to_isolation_delay`: days from symptom onset to isolation. A number,
+- `onset_to_isolation_delay`: days from the trigger to isolation, from symptom
+  onset by default (from the sample for [`AfterPositiveTest`](@ref), where it
+  is the turnaround). A number,
   a distribution such as `Exponential(2.0)` (mean 2 days), or a function of
   the random number generator and the individual, `(rng, ind) -> ...`, drawn
   for each case. The function can read information another intervention has
@@ -86,6 +137,9 @@ known cases are quarantined through [`ContactTracing`](@ref).
   for good; with zero the case is still recorded as isolated, so tracing can
   start from it, but no transmission is prevented. There is no default
   because indefinite isolation is a modelling choice to make explicitly.
+- `trigger`: what the delay is counted from, [`AfterSymptomOnset`](@ref)
+  (default) or [`AfterPositiveTest`](@ref), which isolates a case when a
+  positive result comes back, with or without symptoms.
 - `eligibility`: who can be isolated, [`SymptomaticOnly`](@ref) (default) or
   [`AllCases`](@ref) (for example with mass testing).
 - `test_sensitivity`: probability that an eligible case is detected and
@@ -129,7 +183,8 @@ Isolation(
 For extension authors: the case records `:isolated`, `:isolation_time`,
 `:isolation_release_time` and `:test_positive` in `ind.state`.
 """
-struct Isolation{E <: IsolationEligibility, D, S, U} <: AbstractIntervention
+struct Isolation{T <: IsolationTrigger, E <: IsolationEligibility, D, S, U} <: AbstractIntervention
+    trigger::T
     eligibility::E
     onset_to_isolation_delay::D
     test_sensitivity::S
@@ -140,17 +195,20 @@ end
 function Isolation(;
         onset_to_isolation_delay,
         duration,
+        trigger::IsolationTrigger = AfterSymptomOnset(),
         eligibility::IsolationEligibility = SymptomaticOnly(),
         test_sensitivity = 1.0,
         post_isolation_transmission::Real = 0.0
     )
     return Isolation(
-        eligibility, onset_to_isolation_delay, test_sensitivity,
+        trigger, eligibility, onset_to_isolation_delay, test_sensitivity,
         Float64(post_isolation_transmission), duration
     )
 end
 
-required_fields(iso::Isolation) = union([:onset_time], required_fields(iso.eligibility))
+required_fields(iso::Isolation) = union(
+    [:onset_time], required_fields(iso.trigger), required_fields(iso.eligibility)
+)
 # Read from the entry recorded for this isolation, not the folded span. While
 # a quarantine stands, `isolation_time` is the start of the quarantine, which
 # can precede the start of this isolation.
@@ -190,13 +248,13 @@ function _stretch_key(iso::Isolation)
         ISOLATION_STRETCHES_KEY : LEAKY_REMOVAL_STRETCHES_KEY
 end
 
-# When a test-positive case isolates itself: its onset plus the delay.
+# When a test-positive case isolates itself: the trigger's time plus the delay.
 function _self_isolation_time(iso::Isolation, individual, state)
     delay = sample_value(
         iso.onset_to_isolation_delay,
         stream(state.rng, individual.id, (:isolation, :delay)), individual
     )
-    return onset_time(individual) + delay
+    return isolation_reference_time(iso.trigger, individual, state) + delay
 end
 
 # The likelihood reads the stretch a lapsing isolation removed the host for.
@@ -290,8 +348,11 @@ function resolve_individual!(iso::Isolation, individual, state)
     onset = onset_time(individual)
     traced_time = isnan(onset) ? Inf :
         max(_state_real(individual.state, :_traced_isolation_time, Inf), onset)
+    # A trigger that never happens for the case gives `NaN`, which must not
+    # swallow a traced isolation in the `min` below.
     test_time = is_test_positive(individual) ?
         _self_isolation_time(iso, individual, state) : Inf
+    isnan(test_time) && (test_time = Inf)
     final = min(test_time, traced_time)
     isfinite(final) || return nothing
     _isolate!(iso, individual, state, final)

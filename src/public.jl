@@ -41,7 +41,7 @@ public abort_infection!
 public infection_aborted_time
 
 # Isolation eligibility: whether an isolation time counts as a detection.
-public records_isolation
+public records_isolation, isolation_reference_time
 
 # Trace eligibility: a `TraceEligibility` subtype says which cases have
 # their contacts traced (`is_eligible`) and from when (`trigger_time`).

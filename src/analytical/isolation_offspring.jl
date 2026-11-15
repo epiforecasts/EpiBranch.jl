@@ -144,7 +144,7 @@ Needs `spec`'s `attributes` to include [`clinical_presentation`](@ref) and its
 process to have a generation-time distribution; `duration` must be a fixed
 number (or `Inf`), `onset_to_isolation_delay` and `test_sensitivity` each a
 number or a distribution, and `eligibility` [`SymptomaticOnly`](@ref) or
-[`AllCases`](@ref). Anything else has no closed form here, and the generic
+[`AllCases`](@ref), and `trigger` [`AfterSymptomOnset`](@ref). Anything else has no closed form here, and the generic
 default throws, pointing at simulation instead.
 """
 function analytic_offspring_effect(
@@ -163,6 +163,12 @@ function analytic_offspring_effect(
             "Isolation's analytic effect reads the window's generation time " *
                 "directly and is not aware of a calendar scaling it; simulate a " *
                 "model that needs one instead."
+        )
+    )
+    iso.trigger isa AfterSymptomOnset || throw(
+        ArgumentError(
+            "Isolation's analytic effect assumes isolation after symptom onset; " *
+                "simulate a model with another trigger instead."
         )
     )
     incubation = cp.incubation_period
