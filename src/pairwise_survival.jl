@@ -1358,9 +1358,9 @@ susceptible are counted in `I(t)` as well as in their own pairwise rows, as in
 [`HomogeneousProcess`](@ref) with households. Keep this in mind when
 interpreting `transmission_rate`.
 
-For a sample, do not use `MassActionHazard` for the community. Give the
-community force of infection directly as the `external_hazard`, as a `Steps`
-schedule over calendar time, taken for instance from surveillance incidence.
+For a sample, give the community force of infection directly as the
+`external_hazard` instead of using `MassActionHazard`. It is a `Steps` schedule
+over calendar time, for instance from surveillance incidence.
 
 A person is counted in `I(t)` over `(infectious_time, removal_time]`, the same
 convention a pairwise row's own exposure uses, so a secondary infected at the
