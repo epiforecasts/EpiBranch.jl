@@ -89,6 +89,9 @@ public attributes
 public observation
 public recorder
 public population_size
+public population
+public SinglePopulation
+public GroupedPopulation
 public n_types
 public model_generation_time
 # The two remaining layers of a `ModelSpec`, alongside the four above: the

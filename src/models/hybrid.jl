@@ -165,7 +165,7 @@ _n_infectious(es::SimulationState, t::Real) = Prevalence(:infection)(es, (0.0, t
 # changes how many people have ever been infected).
 function _compartment_counts(es::SimulationState, t::Real)
     I = Float64(_n_infectious(es, t))
-    S = Float64(es.population_size) - Float64(es.cumulative_cases)
+    S = Float64(total_size(es.population::Union{SinglePopulation, GroupedPopulation})) - Float64(es.cumulative_cases)
     R = Float64(es.cumulative_cases) - I
     return S, I, R
 end

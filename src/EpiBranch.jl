@@ -17,6 +17,7 @@ include("docstrings.jl")
 # Core types
 include("individual_state.jl")
 include("types.jl")
+include("population.jl")
 include("state_accessors.jl")
 include("options.jl")
 include("distributions.jl")
@@ -225,7 +226,7 @@ export ContactRecorder, NoContactRecorder, ExposedContactRecorder
 export single_type_offspring
 
 # Exports — sentinel types
-export NoPopulation, NoAttributes, NoTypeLabels
+export Population, NoPopulation, NoAttributes, NoTypeLabels
 export NoAgeDistribution, NoCases
 
 # Exports — accessors

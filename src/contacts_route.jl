@@ -211,6 +211,7 @@ function _simulate_contacts_of(
     state = initialise_state(model, sim_opts, interventions, progression, attributes, rng)
     # The race counts the index cases as it settles them.
     state.cumulative_cases = 0
+    fill!(state.group_cases, 0)
     T = _timetype(state)
     route = _ContactsOf(model, T)
     seeds = [is_infected(ind) for ind in state.individuals]

@@ -208,6 +208,22 @@ state = simulate(model; max_cases = 100, rng = rng)
 println("Cases: $(state.cumulative_cases)")
 ```
 
+## A finite population by type
+
+Give the model the size of each type's population with `Population(sizes)`.
+Each potential infection then succeeds with probability equal to the share of
+its own type not yet infected, so a small type is used up while a large one
+carries on. `simulate` and `simulate_by_generation` read the same population.
+The closed forms refuse a finite population, as for a single type, because
+depletion reshapes the offspring law.
+
+```@example multitype
+finite = BranchingProcess(M, R_j -> NegBin(R_j, 0.5), LogNormal(1.6, 0.5);
+    population = Population([300, 5000]; groups = ["small", "large"]))
+state = simulate(finite; n_initial = 5, max_cases = 2000, rng = StableRNG(1))
+state.group_cases
+```
+
 ## Interventions in multi-type models
 
 Interventions apply to every case, whatever its type. Here each symptomatic

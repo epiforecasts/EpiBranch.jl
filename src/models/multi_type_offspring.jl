@@ -127,13 +127,13 @@ function BranchingProcess(
         offspring_matrix::Matrix{Float64},
         dist_fn,
         gt;
-        population_size::Union{Int, NoPopulation} = NoPopulation(),
+        population = NoPopulation(), population_size = NoPopulation(),
         type_labels::Union{Vector{String}, NoTypeLabels} = NoTypeLabels()
     )
     offspring = MultiTypeOffspring(offspring_matrix, dist_fn)
     return BranchingProcess(
-        (Infectiousness(offspring; kernel = gt),), population_size,
-        _n_types(offspring), type_labels
+        (Infectiousness(offspring; kernel = gt),);
+        n_types = _n_types(offspring), population, population_size, type_labels
     )
 end
 
@@ -193,11 +193,11 @@ model = BranchingProcess(
 function BranchingProcess(
         contacts::AbstractMatrix{<:Real}, q::Union{Real, AbstractVector{<:Real}},
         D::Real, dist_fn, gt;
-        population_size::Union{Int, NoPopulation} = NoPopulation(),
+        population = NoPopulation(), population_size = NoPopulation(),
         type_labels::Union{Vector{String}, NoTypeLabels} = NoTypeLabels()
     )
     M = _contact_offspring_matrix(contacts, q, D)
-    return BranchingProcess(M, dist_fn, gt; population_size, type_labels)
+    return BranchingProcess(M, dist_fn, gt; population, population_size, type_labels)
 end
 
 """
