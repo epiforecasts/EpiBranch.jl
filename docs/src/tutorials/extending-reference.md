@@ -94,6 +94,11 @@ underscore are internal.
 | `:reporting_time` | `Float64` | `Inf` | `Reporting` transition *or* `PerCaseObservation` | `resolve_individual!` / after the simulation; reset to `Inf` by `censor_after_outcome!` if it falls after `:outcome_time` |
 | `:admitted` | `Bool` | `false` | `Hospitalisation` transition | `resolve_individual!`; reset to `false` by `censor_after_outcome!` if `:admission_time` falls after `:outcome_time` |
 | `:admission_time` | `Float64` | `Inf` | `Hospitalisation` transition | `resolve_individual!`; reset to `Inf` by `censor_after_outcome!` if it falls after `:outcome_time` |
+| `:trajectory` | `Function` | — | `within_host` attribute builder | Read through `trajectory_load`; a function of the days since infection returning the pathogen load |
+| `:tested` | `Bool` | `false` | `Testing` transition | `resolve_individual!`; reset to `false` by `censor_after_outcome!` if `:test_time` falls after `:outcome_time` |
+| `:test_time` | `Float64` | `Inf` | `Testing` transition | `resolve_individual!`; reset to `Inf` by `censor_after_outcome!` if it falls after `:outcome_time` |
+| `:test_ct` | `Float64` | `NaN` | `Testing` transition | `resolve_individual!` |
+| `:test_result` | `Bool` | `false` | `Testing` transition | `resolve_individual!` |
 | `:death_candidate_time` | `Float64` | `Inf` | `Death` transition | `resolve_individual!` |
 | `:recovery_candidate_time` | `Float64` | `Inf` | `Recovery` transition | `resolve_individual!` |
 | `:outcome` | `Symbol` | — | Any terminal transition (`Death`, `Recovery`, `Transition(...; terminal = true)`, your own) | `resolve_individual!` (terminal) |
@@ -424,6 +429,7 @@ compatible with these likelihoods. The built-in parts declare:
 | `clinical_presentation`, no population characteristics | yes |
 | Other population characteristics (`demographics`, `groups`, `transmission_traits`, `vaccine_acceptance`, and your own functions) | no, unless declared |
 | `Transition`, `Reporting`, `Hospitalisation`, `Recovery`, `Death` | yes |
+| `Testing` | the infection likelihood yes; `progression_loglik` has no term for `Testing` |
 | `Isolation` | yes, complete or leaky |
 | `ContactTracing` with `Quarantine` or `FlagOnly` | yes |
 | `MassVaccination`, `GroupVaccination` | only with the default `dose_label` and a fixed (numeric) `efficacy` |

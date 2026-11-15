@@ -171,6 +171,12 @@ Reporting
 Hospitalisation
 Death
 Recovery
+Testing
+AbstractAssay
+Assay
+within_host
+EpiBranch.trajectory_load
+EpiBranch.measure
 exclusive_probabilities
 is_terminal
 terminal_event

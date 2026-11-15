@@ -46,6 +46,7 @@ include("transitions/transition.jl")
 include("transitions/reporting.jl")
 include("transitions/hospitalisation.jl")
 include("transitions/outcome.jl")
+include("transitions/testing.jl")
 
 # Signals: population quantities read off a simulated state, which every
 # engine that produces one can compute (transition counts per step,
@@ -218,6 +219,7 @@ export OnRoutes
 export RouteWindow, window_open, window_close
 export is_active, intervention_time
 export AbstractClinicalTransition, Transition, Reporting, Hospitalisation, Death, Recovery
+export Testing, AbstractAssay, Assay, within_host
 export is_terminal, terminal_event, terminal_target, exclusive_probabilities
 export Signal, TransitionCount, Prevalence
 export ObservationModel, PerCaseObservation, NoObservation, MinimumSize, ChainDetection,
