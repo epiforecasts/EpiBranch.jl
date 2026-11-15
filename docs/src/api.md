@@ -779,6 +779,7 @@ EpiBranch.honoured_without_should_stop
 
 ```@docs
 EpiBranch.initialise_individual!
+EpiBranch.initialise_episode!
 EpiBranch.resolve_individual!
 EpiBranch.on_infection_settled!
 EpiBranch.trace_contacts!
