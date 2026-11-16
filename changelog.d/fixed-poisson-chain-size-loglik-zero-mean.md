@@ -1,0 +1,1 @@
+Fix `loglikelihood(::ChainSizes, ::Poisson)` for a mean of 0. `Borel` now accepts `μ = 0`, as `GammaBorel` accepts `R = 0`, and its log-density skips the power term when the chain size equals the seed count. The likelihood is 0 when every chain has only its seed cases and `-Inf` otherwise, as for the negative binomial.

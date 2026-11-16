@@ -41,6 +41,7 @@ fixed set of contacts. [`ModelSpec`](@ref) adds the rest of the scenario.
 BranchingProcess
 Infectiousness
 OffspringTimes
+RenewalOffspring
 transmission_timing
 implied_R
 EpiBranch.MultiTypeOffspring
@@ -66,6 +67,8 @@ ModelSpec
 single_type_offspring
 EpiBranch.has_single_type_law
 EpiBranch.offspring_law_unchanged
+EpiBranch.scale_mean
+EpiBranch.sum_offspring
 ```
 
 ## Approximate population dynamics
@@ -209,9 +212,7 @@ OnIsolation
 TraceEveryone
 TraceNobody
 PreviouslyTraced
-AlwaysEligible
 SymptomaticParent
-NoTracing
 AnyOf
 AllOf
 NoneOf
@@ -236,6 +237,8 @@ RingVaccination
 MassVaccination
 GroupVaccination
 AbstractEffectMode
+EpiBranch.effect_mode
+EpiBranch.dose_label
 LeakyMode
 AllOrNothingMode
 ```
@@ -363,10 +366,13 @@ chain_statistics
 compute_trace_level!
 realised_generation_interval
 realised_generation_intervals
+realised_serial_interval
+realised_serial_intervals
 containment_probability
 is_extinct
 generation_R
 weekly_incidence
+incidence
 summarise
 scenario_sweep
 ```
@@ -384,8 +390,10 @@ distribution of chain sizes (as in epichains).
 reproduction_number
 extinction_probability
 epidemic_probability
+emergence_probability
 probability_contain
 end_of_outbreak_probability
+end_of_outbreak_inputs
 proportion_transmission
 proportion_cases_individual
 proportion_cases_offspring
@@ -467,7 +475,7 @@ A [`Signal`](@ref) reads a population quantity off a simulated
 [`SimulationState`](@ref) over a reporting step: [`TransitionCount`](@ref)
 (new cases per step) or [`Prevalence`](@ref) (cases currently in a state).
 [`SignalData`](@ref) pairs several of these, each with a measurement density
-of your own, and scores them all against the same simulated path, rather
+of your own, and evaluates their likelihoods on one shared simulated path, rather
 than letting separate `~` statements each simulate their own outbreak:
 
 ```julia
@@ -554,7 +562,6 @@ given size are seen. Add one to a model with `observation = ...`.
 ```@docs
 ObservationModel
 NoObservation
-PerCaseObservation
 MinimumSize
 ChainDetection
 observe
@@ -562,6 +569,13 @@ ChainSizeLaw
 ThinnedChainSize
 TruncatedChainSize
 DetectedChainSize
+```
+
+### Poisson mixtures
+
+```@docs
+PoissonLognormal
+PoissonWeibull
 ```
 
 ### Reproduction number varying between chains
@@ -584,6 +598,7 @@ pairwise_surv_loglik
 PairwiseSurvivalData
 InfectionLayer
 compile_contact_pairs
+EpiBranch.seeded_hosts
 ContactPairsLayout
 MassActionHazard
 SumHazard
@@ -642,13 +657,33 @@ Conditional
 EpiBranch.resolve
 ```
 
+## Population
+
+The people a model is run over, given once and read by every engine.
+
+```@docs
+Population
+NoPopulation
+EpiBranch.SinglePopulation
+EpiBranch.GroupedPopulation
+EpiBranch.population
+```
+
+How the groups of a population meet is a mixing value, which a
+[`BranchingProcess`](@ref) and a [`MixingProcess`](@ref) both take.
+
+```@docs
+Mixing
+FrequencyDependent
+DensityDependent
+```
+
 ## Default placeholders
 
 The values shown as defaults in signatures when a setting is left out, such as
 `max_cases = NoCases()`.
 
 ```@docs
-NoPopulation
 NoAttributes
 NoTypeLabels
 NoAgeDistribution
@@ -746,6 +781,7 @@ EpiBranch.honoured_without_should_stop
 
 ```@docs
 EpiBranch.initialise_individual!
+EpiBranch.initialise_episode!
 EpiBranch.resolve_individual!
 EpiBranch.on_infection_settled!
 EpiBranch.trace_contacts!
@@ -754,6 +790,7 @@ EpiBranch.traces_source
 EpiBranch.has_effect
 EpiBranch.supplies_contacts
 EpiBranch.keep_active
+InterventionWrapper
 EpiBranch.competing_risk
 Risk
 EpiBranch.HostSusceptibility
@@ -899,10 +936,7 @@ helpers the package may change at any time.
 
 ```@docs
 EpiBranch.get_generation_time
-EpiBranch._settle_case!
-EpiBranch._at_case!
 EpiBranch.population_size
-EpiBranch._create_individual
 EpiBranch.logsumexp
 EpiBranch.required_fields
 EpiBranch._validate_required_fields

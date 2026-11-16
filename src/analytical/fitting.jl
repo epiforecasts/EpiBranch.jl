@@ -348,6 +348,13 @@ cluster is compared against simulated clusters with the same number of
 seeds rather than against single-seed ones. `prob_concluded`, when given, is
 the real-time per-cluster mixture `π_i · P(X = x_i) + (1 − π_i) · P(X ≥ x_i)`
 taken against the simulated clusters' empirical distribution.
+
+Sizes in the sparse upper tail of the simulated draws are pooled and scored
+with a geometric tail fitted to them, so an observed size that no simulation
+reached still carries information about the parameters. The estimate is still
+approximate: a geometric tail is lighter than the true chain-size tail near
+criticality, and large `n_sim` is needed to estimate R tightly. Where the
+model has a closed form, prefer it.
 """
 function loglikelihood(data::ChainSizes, model::TransmissionModel; kwargs...)
     return _chain_size_model_loglik(
@@ -465,8 +472,38 @@ function loglikelihood(data::ChainLengths, spec::ModelSpec; kwargs...)
     )
 end
 
-function _chain_length_assert_full_reporting(prog)
+# Share of cases that are reported: the `Reporting` probability times the
+# symptomatic share when it reports from onset. Chain lengths are simulated, so
+# the closed-form guards of `_effective_reporting_probability` do not apply.
+function _chain_length_reporting_share(prog, attrs)
     ρ = _reporting_probability(prog)
+    ρ === nothing && return nothing
+    r = only(filter(t -> t isa Reporting, prog))
+    if r.from isa Symbol && _resolved_key(r.from) === :onset_time
+        builders = attrs isa NoAttributes ? () :
+            attrs isa Union{Tuple, AbstractVector} ? Tuple(attrs) : (attrs,)
+        presentations = filter(b -> b isa ClinicalPresentation, builders)
+        length(presentations) == 1 || throw(
+            ArgumentError(
+                "A Reporting step from onset needs exactly one " *
+                    "clinical_presentation to read the symptomatic share from; " *
+                    "this model has $(length(presentations))"
+            )
+        )
+        cp = only(presentations)
+        cp.prob_asymptomatic isa Real || throw(
+            ArgumentError(
+                "A Reporting step from onset needs a fixed " *
+                    "prob_asymptomatic, not a per-case function"
+            )
+        )
+        ρ *= 1 - cp.prob_asymptomatic
+    end
+    return ρ
+end
+
+function _chain_length_assert_full_reporting(prog, attrs)
+    ρ = _chain_length_reporting_share(prog, attrs)
     (ρ === nothing || ρ >= 1) && return nothing
     throw(
         ArgumentError(
@@ -494,7 +531,7 @@ function _chain_length_model_loglik(
                 "length. Use ChainSizes, or a model with no observation."
         )
     )
-    _chain_length_assert_full_reporting(prog)
+    _chain_length_assert_full_reporting(prog, attrs)
     n_initial >= 1 || throw(ArgumentError("n_initial must be ≥ 1"))
     # Analytical iff no interventions thin transmission, as for chain size
     # above, and the process, attributes and progression each leave the
@@ -520,7 +557,16 @@ end
 
 # ── Helpers ──────────────────────────────────────────────────────────
 
-"""Empirical log-likelihood with Laplace smoothing and right-censoring.
+"""Empirical log-likelihood with Laplace smoothing, a parametric tail and
+right-censoring.
+
+Simulated sizes below a tail threshold `x0` are scored by their smoothed
+frequencies. At and above `x0`, where simulated counts are too sparse to rank
+observed sizes, the pooled tail mass is spread by a geometric law fitted to the
+simulated sizes above `x0`. This keeps an observed size that no simulation
+reached scoring according to the parameter, instead of at a fixed pseudo-count.
+`x0` is the `_TAIL_MIN_COUNT`-th largest simulated size, so the tail pools at
+least that many draws.
 
 When `censored` is provided, simulated values flagged as censored contribute
 to P(size >= cap) rather than P(size = cap). Observed values at or above
@@ -541,28 +587,45 @@ function _empirical_ll(
     isempty(simulated) && return -Inf
     n_total = length(simulated)
 
-    # Count uncensored simulated values
-    max_val = max(maximum(observed), maximum(simulated))
-    counts = zeros(Int, max_val - min_val + 1)
+    uncensored = Int[]
     n_censored = 0
     for (i, s) in enumerate(simulated)
         if !isempty(censored) && censored[i]
             n_censored += 1
         else
+            push!(uncensored, s)
+        end
+    end
+
+    # Tail threshold: the sparse upper end of the simulated sizes is pooled.
+    x0 = min_val
+    if length(uncensored) >= _TAIL_MIN_COUNT
+        x0 = max(min_val, partialsort(uncensored, _TAIL_MIN_COUNT; rev = true))
+    end
+    n_head = x0 - min_val
+    counts = zeros(Int, n_head)
+    n_tail = 0
+    excess = 0
+    for s in uncensored
+        if s >= x0
+            n_tail += 1
+            excess += s - x0
+        else
             counts[s - min_val + 1] += 1
         end
     end
-    n_unique = length(counts) + (n_censored > 0 ? 1 : 0)
-    denom = n_total + n_unique
+    # Geometric tail on x0, x0 + 1, ...: smoothed mean excess μ, ratio q.
+    μ = (excess + 1) / (n_tail + 1)
+    q = μ / (1 + μ)
+    tail_mass = n_tail + 1
+    n_cens_mass = n_censored > 0 ? n_censored + 1 : 0
+    denom = n_total + n_head + 1 + (n_censored > 0 ? 1 : 0)
 
     # Right-censored draws are size ≥ cap, so they belong to the tail of
     # every bin at or below the cap.
-    log_right_tail(idx) = log(
-        (
-            sum(@view counts[idx:end]) + (length(counts) - idx + 1) +
-                (n_censored > 0 ? n_censored + 1 : 0)
-        ) / denom
-    )
+    log_right_tail(x) = x >= x0 ?
+        log((tail_mass * q^(x - x0) + n_cens_mass) / denom) :
+        log((sum(@view counts[(x - min_val + 1):end]) + (n_head - (x - min_val)) + tail_mass + n_cens_mass) / denom)
 
     ll = 0.0
     for (i, x) in enumerate(observed)
@@ -570,9 +633,10 @@ function _empirical_ll(
         if at_cap
             lc = log((n_censored + 1) / denom)
         else
-            idx = x - min_val + 1
-            (idx < 1 || idx > length(counts)) && return -Inf
-            lc = log((counts[idx] + 1) / denom)
+            x < min_val && return -Inf
+            lc = x >= x0 ?
+                log(tail_mass * (1 - q) * q^(x - x0) / denom) :
+                log((counts[x - min_val + 1] + 1) / denom)
         end
         if prob_concluded === nothing
             ll += lc
@@ -586,9 +650,12 @@ function _empirical_ll(
         elseif at_cap
             ll += lc
         else
-            lo = log_right_tail(x - min_val + 1)
+            lo = log_right_tail(x)
             ll += π_i <= zero(π_i) ? lo : _logsumexp2(log(π_i) + lc, log1p(-π_i) + lo)
         end
     end
     return ll
 end
+
+# Number of simulated sizes pooled into the parametric tail of `_empirical_ll`.
+const _TAIL_MIN_COUNT = 20

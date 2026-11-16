@@ -174,23 +174,43 @@ function _per_type_counts(model::BranchingProcess, x, name::Symbol)
     return collect(Int, x)
 end
 
-# The size of the population of each type: `population_size` for a
-# single-type model and `population_by_type` (which must add up to it) for a
-# multi-type one, because a total can be split between types in many ways.
-_type_sizes(::BranchingProcess, ::NoPopulation, ::Nothing, nt) = NoPopulation()
-function _type_sizes(model::BranchingProcess, pop::Int, by_type, nt)
-    if nt == 1
-        by_type === nothing || throw(
-            ArgumentError("population_by_type is for a multi-type model; use population_size")
-        )
-        return pop
-    end
-    by_type === nothing && throw(
+# The size of the population of each type, read from the model's population: the
+# size of a single-type model, and the sizes by type of a multi-type one.
+# `population_by_type` is deprecated: it splits a model's `population_size`
+# between types, which a `Population(sizes)` now gives directly.
+_type_sizes(model::BranchingProcess, ::Nothing, nt) = _type_sizes(population(model), nt)
+_type_sizes(::NoPopulation, nt) = NoPopulation()
+function _type_sizes(p::SinglePopulation, nt)
+    nt == 1 && return p.size
+    throw(
         ArgumentError(
-            "a multi-type model with a population_size needs `population_by_type`, the " *
-                "size of each type's population, which must add up to population_size"
+            "a multi-type model with a population_size needs the size of each type's " *
+                "population: give it `population = Population(sizes)`"
         )
     )
+end
+_type_sizes(p::GroupedPopulation, nt) = nt == 1 ? only(p.sizes) : copy(p.sizes)
+function _type_sizes(model::BranchingProcess, by_type, nt)
+    Base.depwarn(
+        "`population_by_type` is deprecated; give the model its sizes by type, " *
+            "`BranchingProcess(...; population = Population(sizes))`.",
+        :simulate_by_generation; force = true
+    )
+    population(model) isa GroupedPopulation && throw(
+        ArgumentError(
+            "the model already has sizes by type in its population; drop `population_by_type`"
+        )
+    )
+    return _split_population(model, population_size(model), by_type, nt)
+end
+
+_split_population(::BranchingProcess, ::NoPopulation, by_type, nt) = throw(
+    ArgumentError("population_by_type needs a model with a finite population")
+)
+function _split_population(model::BranchingProcess, pop::Int, by_type, nt)
+    if nt == 1
+        throw(ArgumentError("population_by_type is for a multi-type model; use population_size"))
+    end
     by_type isa AbstractVector{<:Integer} && length(by_type) == nt || throw(
         ArgumentError("population_by_type needs a vector of $nt sizes, one per type")
     )
@@ -201,13 +221,6 @@ function _type_sizes(model::BranchingProcess, pop::Int, by_type, nt)
         )
     )
     return collect(Int, by_type)
-end
-function _type_sizes(::BranchingProcess, ::NoPopulation, by_type, nt)
-    throw(
-        ArgumentError(
-            "population_by_type needs a model with a finite population_size"
-        )
-    )
 end
 
 """
@@ -237,9 +250,9 @@ offspring matrix (`MultiTypeOffspring`); any other model raises an
 - `immune`: the number immune at the start, an `Int` or a vector with one
   entry per type, as for `n_initial` (none by default). The susceptibles of a
   type start at its population minus those immune and its index cases.
-- `population_by_type`: the size of the population of each type, for a
-  multi-type model with a finite `population_size`, to which they must add up.
-  The population of a single-type model is its `population_size`.
+- `population_by_type`: deprecated. The size of each type's population is read
+  from the model's [`Population`](@ref), `Population(sizes)` for a multi-type
+  model.
 - `depletion`: how contacts are thinned against the susceptibles left,
   [`PerContactDepletion`](@ref) (the default) or
   [`StartOfGenerationDepletion`](@ref). The second draws the kept contacts of
@@ -273,9 +286,9 @@ number.
 
 The doses of generation `g` cover `[g * generation_length, (g + 1) *
 generation_length)` and are applied after generation `g` is drawn and before
-`g + 1` is. Each type has the whole `budget_per_period` to itself, as in the
-individual-based simulation, where `GroupVaccination` keeps one budget per
-group. The doses are those of the periods that start in the interval; with
+`g + 1` is. The `budget_per_period` is shared by the types, as in every model:
+each dose goes to a type in proportion to its population, as it would to a
+person picked at random. The doses are those of the periods that start in the interval; with
 `carry_over`, budget left from earlier periods, or from before a window opens,
 is given in the first interval open to it. A dose reaches a susceptible of a
 type with probability equal to the share of susceptibles in the population of
@@ -294,18 +307,13 @@ individual-based simulation only when the budget reaches everyone in the
 window. The simulation gives the doses of a `BranchingProcess` only to
 contacts as they are created. A budget below the number of contacts therefore
 covers a share of contacts, not `doses / population`, and the counts differ.
-The budget is also read per type here. In the mixing approximations the groups
-share one budget. In the individual-based simulation the budget is per group
-when the groups are types and shared otherwise. The place of the doses in the
-intervention specification is undecided, and the split of a budget between
-groups may change.
 
 # Examples
 
 ```julia
 using EpiBranch, Distributions, Random
 
-model = BranchingProcess(NegBin(2.0, 0.5); population_size = 200_000)
+model = BranchingProcess(NegBin(2.0, 0.5); population = Population(200_000))
 state = simulate_by_generation(
     model; n_initial = 10, max_generations = 30, rng = Xoshiro(1)
 )
@@ -321,21 +329,21 @@ state = simulate_by_generation(
 
 # A generation drawn in a fixed number of steps, however many cases it has,
 # with 10% immune at the start, in weekly generations
-model = BranchingProcess(Poisson(2.0); population_size = 2_500_000)
+model = BranchingProcess(Poisson(2.0); population = Population(2_500_000))
 state = simulate_by_generation(
     model; n_initial = 10, max_generations = 30, immune = 250_000,
     depletion = StartOfGenerationDepletion(), generation_length = 7.0,
     multiplier = Gamma(6.5, 1 / 6.5), rng = Xoshiro(1)
 )
 
-# A vaccination campaign of 2,000 doses a day to each type for a fortnight
+# A vaccination campaign of 2,000 doses a day for a fortnight
 model = BranchingProcess([2.0 0.5; 0.5 2.0], R -> Poisson(R), EpiBranch.NoGenerationTime();
-    population_size = 250_000)
+    population = Population([40_000, 210_000]))
 campaign = CapacityConstrained(GroupVaccination(efficacy = 0.9, group_key = :type);
     budget_per_period = Steps([140.0, 154.0], [0.0, 2_000.0, 0.0]), period = 1.0)
 state = simulate_by_generation(
     ModelSpec(model; interventions = [campaign]); n_initial = [10, 2], max_generations = 30,
-    population_by_type = [40_000, 210_000], immune = [20_000, 190_000],
+    immune = [20_000, 190_000],
     depletion = StartOfGenerationDepletion(), generation_length = 14.0
 )
 ```
@@ -382,7 +390,7 @@ function _initial_generation_state(
     nt = n_types(model)
     counts = _per_type_counts(model, n_initial, :n_initial)
     pop = population_size(model)
-    sizes = _type_sizes(model, pop, population_by_type, nt)
+    sizes = _type_sizes(model, population_by_type, nt)
     cumulative = counts isa Int ? counts : sum(counts)
     immune_counts = immune isa Integer && nt > 1 ? fill(Int(immune), nt) : immune
     susceptibles = _initial_susceptibles(
@@ -437,7 +445,7 @@ for a later `max_generations` to continue.
 
 ```julia
 using EpiBranch, Distributions
-model = BranchingProcess(NegBin(2.0, 0.5); population_size = 200_000)
+model = BranchingProcess(NegBin(2.0, 0.5); population = Population(200_000))
 state = simulate_by_generation(model; n_initial = 10, max_generations = 15)
 state = simulate(model, state; max_generations = 30)
 ```
@@ -526,17 +534,23 @@ _like(::Vector{Int}, v::Vector{Int}) = v
 
 # ── The generation's potential contacts ──────────────────────────────
 
-# The total offspring of `n` cases, each drawing independently from `law`.
-# Where the sum of `n` copies of `law` has a closed form it is drawn in one
-# step, at a cost that does not depend on `n`. Otherwise every case draws.
-_sum_offspring(rng::AbstractRNG, law::Poisson, n::Int) = rand(rng, Poisson(n * mean(law)))
-function _sum_offspring(rng::AbstractRNG, law::NegativeBinomial, n::Int)
+"""
+    EpiBranch.sum_offspring(rng, law, n)
+
+The total offspring of `n` cases, each drawing independently from `law`.
+Where the sum of `n` copies of `law` has a closed form it is drawn in one
+step, at a cost independent of `n`. Otherwise each case draws separately.
+Defined for `Poisson`, `NegativeBinomial` and `Binomial`; add a method of
+your own for another offspring family with a closed-form sum.
+"""
+sum_offspring(rng::AbstractRNG, law::Poisson, n::Int) = rand(rng, Poisson(n * mean(law)))
+function sum_offspring(rng::AbstractRNG, law::NegativeBinomial, n::Int)
     return rand(rng, NegativeBinomial(n * law.r, law.p))
 end
-function _sum_offspring(rng::AbstractRNG, law::Binomial, n::Int)
+function sum_offspring(rng::AbstractRNG, law::Binomial, n::Int)
     return rand(rng, Binomial(n * ntrials(law), succprob(law)))
 end
-function _sum_offspring(rng::AbstractRNG, law::Distribution, n::Int)
+function sum_offspring(rng::AbstractRNG, law::Distribution, n::Int)
     return sum(rand(rng, law) for _ in 1:n)
 end
 
@@ -549,8 +563,8 @@ function _generation_potential(
     )
     n = only(current)
     n == 0 && return [0]
-    law = m === nothing ? offspring : _scale_mean(offspring, m)
-    return [_sum_offspring(rng, law, n)]
+    law = m === nothing ? offspring : scale_mean(offspring, m)
+    return [sum_offspring(rng, law, n)]
 end
 
 # Multi-type: each type's cases draw their total from its own law, scaled by
@@ -567,8 +581,8 @@ function _generation_potential(
         R = offspring.R_by_type[j]
         R <= 0 && continue
         law = _type_law(offspring.dist_fn, R, j)
-        law = m === nothing ? law : _scale_mean(law, m)
-        total = _sum_offspring(rng, law, current[j])
+        law = m === nothing ? law : scale_mean(law, m)
+        total = sum_offspring(rng, law, current[j])
         total == 0 && continue
         potential .+= rand(rng, Multinomial(total, offspring.alloc_probs[:, j]))
     end
@@ -615,18 +629,18 @@ end
 # ── The shared multiplier's mean-scaling rule ────────────────────────
 
 """
-    EpiBranch._scale_mean(d, m)
+    EpiBranch.scale_mean(d, m)
 
 `d`'s law with its mean scaled by `m`, the shared multiplier
 [`simulate_by_generation`](@ref) draws once per generation. Defined for
 `Poisson`, the family its negative-binomial identity needs; add a method of
 your own for another offspring family to use it with `multiplier`.
 """
-_scale_mean(d::Poisson, m::Real) = Poisson(mean(d) * m)
-function _scale_mean(d::Distribution, m::Real)
+scale_mean(d::Poisson, m::Real) = Poisson(mean(d) * m)
+function scale_mean(d::Distribution, m::Real)
     throw(
         ArgumentError(
-            "simulate_by_generation's multiplier has no EpiBranch._scale_mean method for " *
+            "simulate_by_generation's multiplier has no EpiBranch.scale_mean method for " *
                 "$(typeof(d)); it is defined for Poisson. Add a method of your own for " *
                 "another offspring family."
         )

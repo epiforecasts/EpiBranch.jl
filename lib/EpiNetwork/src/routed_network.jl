@@ -359,6 +359,7 @@ function simulate_once(
         ),
         introduction = _ext_active(model.external_hazard) ?
             (EpiBranch._ext_prepare(model.external_hazard), Tobs) : nothing,
+        seeded = sim_opts.initial_cases,
         contacts = (inf, st) -> _route_contacts(
             routes, interventions, st.individuals[inf], inf, st.rng
         )
@@ -368,7 +369,8 @@ function simulate_once(
     return state
 end
 
-# One route's susceptible targets, each with that route's kernel resolved for
+# One route's targets (infected neighbours included; `HostImmunity` holds them
+# back until they are susceptible again), each with the kernel of that route resolved for
 # the pair: a shared distribution, a per-edge vector, a covariate callable or a
 # `PairKernel`, exactly as `NetworkProcess` resolves its edge kernel (see
 # `_resolve_kernel`). A `reach` that proposes its own contacts is wrapped so
@@ -379,7 +381,6 @@ function _route_targets(w::RouteWindow, tracing::Bool)
     return (inf, st) -> (
         (nb, _resolve_kernel(kernel, adjacency, inf, pos, st, w.from))
             for (pos, nb) in enumerate(adjacency[inf])
-            if !is_infected(st.individuals[nb])
     )
 end
 

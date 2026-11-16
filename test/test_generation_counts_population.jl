@@ -13,19 +13,35 @@
 
         multi = BranchingProcess(
             [0.5 0.1; 0.1 0.5], R -> Poisson(R), EpiBranch.NoGenerationTime();
-            population_size = 1000
+            population = Population([400, 600])
         )
         state = simulate_by_generation(
-            multi; n_initial = [5, 5], immune = [100, 0], population_by_type = [400, 600],
-            max_generations = 1, rng = StableRNG(1)
+            multi; n_initial = [5, 5], immune = [100, 0], max_generations = 1, rng = StableRNG(1)
         )
         @test state.type_sizes == [400, 600]
+        @test state.population_size == 1000
         @test state.susceptibles == [400 - 100 - 5, 600 - 5] .- state.counts
         @test_throws ArgumentError simulate_by_generation(
-            multi; n_initial = [5, 5], population_by_type = [400, 500]
+            multi; n_initial = [5, 5], population_by_type = [400, 600]
         )
         @test_throws ArgumentError simulate_by_generation(
             multi; n_initial = [5, 5], population_by_type = [400, 600], immune = [1, 2, 3]
+        )
+
+        # `population_by_type` is deprecated: it still splits a total between
+        # types, and says so.
+        total = BranchingProcess(
+            [0.5 0.1; 0.1 0.5], R -> Poisson(R), EpiBranch.NoGenerationTime();
+            population_size = 1000
+        )
+        old = @test_logs (:warn, r"population_by_type") match_mode = :any simulate_by_generation(
+            total; n_initial = [5, 5], immune = [100, 0], population_by_type = [400, 600],
+            max_generations = 1, rng = StableRNG(1)
+        )
+        @test old.type_sizes == state.type_sizes
+        @test old.counts == state.counts
+        @test_throws ArgumentError simulate_by_generation(
+            total; n_initial = [5, 5], population_by_type = [400, 500]
         )
 
         # A type with many immune is depleted sooner: its contacts are
@@ -34,12 +50,11 @@
         # and 500 / 1000 of them.
         mixed = BranchingProcess(
             [1.0 1.0; 1.0 1.0], R -> Poisson(R), EpiBranch.NoGenerationTime();
-            population_size = 2000
+            population = Population([1000, 1000])
         )
         kept = [
             simulate_by_generation(
-                mixed; n_initial = [50, 500], immune = [800, 0],
-                population_by_type = [1000, 1000], max_generations = 1,
+                mixed; n_initial = [50, 500], immune = [800, 0], max_generations = 1,
                 depletion = StartOfGenerationDepletion(), rng = StableRNG(s)
             ).counts for s in 1:200
         ]
@@ -82,7 +97,7 @@
         rng = StableRNG(1)
         n, reps = 40, 20_000
         for law in (Poisson(1.3), NegBin(1.5, 0.4), Binomial(5, 0.3), Geometric(0.4))
-            closed = [EpiBranch._sum_offspring(rng, law, n) for _ in 1:reps]
+            closed = [EpiBranch.sum_offspring(rng, law, n) for _ in 1:reps]
             each = [sum(rand(rng, law) for _ in 1:n) for _ in 1:reps]
             se = sqrt(var(closed) / reps + var(each) / reps)
             @test isapprox(mean(closed), mean(each); atol = 5se)

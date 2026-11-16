@@ -1417,6 +1417,26 @@ function _mass_vaccination_block(mv::MassVaccination)
     return mv.coverage * efficacy(mv)
 end
 
+_no_symptom_efficacy(mv::MassVaccination) =
+    symptom_efficacy(mv) isa Real && symptom_efficacy(mv) == 0
+
+# Probability that a case becomes asymptomatic because of the vaccine: it is
+# vaccinated with probability c(1 - e) / (1 - c e) (vaccination blocks
+# infection with probability e) and then loses its onset with probability
+# `symptom_efficacy`.
+function _breakthrough_symptom_loss(mv::MassVaccination)
+    c = _mass_vaccination_block(mv) # also checks the closed form applies
+    se = symptom_efficacy(mv)
+    se isa Real || se isa Distribution || throw(
+        ArgumentError(
+            "Isolation's analytic effect needs a number or a distribution for " *
+                "`symptom_efficacy`, not a function of the individual; simulate instead."
+        )
+    )
+    vaccinated = mv.coverage * (1 - efficacy(mv)) / (1 - c)
+    return vaccinated * _closed_form_value(se)
+end
+
 function analytic_offspring_effect(mv::MassVaccination, offspring::Union{NegativeBinomial, Poisson})
     return scale_distribution(offspring, 1 - _mass_vaccination_block(mv))
 end

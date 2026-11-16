@@ -29,6 +29,8 @@ mathematical names (`Borel`, `GammaBorel`) are fair when they match
 the literature the user comes from; the operational names should
 match how the epidemiology describes what's happening.
 
+In prose, "score" keeps its statistical meaning: the gradient of the log-likelihood, or a proper scoring rule such as the CRPS. To say that a likelihood is computed, write "evaluate" or "calculate the likelihood", or say how something enters it ("is treated as censored").
+
 ### 3. Cleanly separable concerns
 
 Process model, observation model, data, inference, simulation, and
