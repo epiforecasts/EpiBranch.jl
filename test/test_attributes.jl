@@ -229,8 +229,7 @@ end
             attrs(StableRNG(id), ind)
             if iseven(id)
                 @test ind.state[:asymptomatic]
-                @test ind.state[:latent_incubation_period] == 2.0
-                @test isnan(ind.state[:incubation_period])
+                @test ind.state[:incubation_period] == 2.0
                 @test isnan(ind.state[:onset_time])
             else
                 @test !ind.state[:asymptomatic]
@@ -262,10 +261,13 @@ end
         model = ModelSpec(
             BranchingProcess(Poisson(0.0), Exponential(5.0));
             attributes = attrs,
-            observation = PerCaseObservation(
-                detection_prob = (rng, ind) -> ind.state[:reporting_probability],
-                from = :infection_time
-            )
+            progression = [
+                Reporting(
+                    delay = Dirac(0.0),
+                    probability = (rng, ind) -> ind.state[:reporting_probability],
+                    from = :infection
+                ),
+            ]
         )
         serial = simulate(model, 10; n_initial = 30, rng = StableRNG(42))
         parallel = simulate(

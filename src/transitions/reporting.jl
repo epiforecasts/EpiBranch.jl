@@ -25,7 +25,7 @@ reported".
 
 `simulate`, [`progression_loglik`](@ref), the chain-size likelihood and
 [`end_of_outbreak_probability`](@ref) all read this step's reporting
-probability. It replaces the deprecated [`PerCaseObservation`](@ref).
+probability.
 
 The chain-size likelihood treats each observed cluster as all the reported
 cases of exactly one true chain. An unreported case in the middle of a chain is
