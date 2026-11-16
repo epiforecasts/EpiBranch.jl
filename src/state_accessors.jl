@@ -41,6 +41,15 @@ function that links a case's generation time to its own incubation period.
 """
 incubation_period(ind::Individual) = onset_time(ind) - ind.infection_time
 
+# The incubation period drawn for a case whether or not it develops symptoms:
+# the onset-based value when there is an onset, otherwise the latent draw made
+# by `clinical_presentation`.
+function _latent_incubation_period(ind::Individual)
+    inc = incubation_period(ind)
+    isnan(inc) || return inc
+    return _state_real(ind.state, :latent_incubation_period, NaN)
+end
+
 """
     outcome_time(ind)
 

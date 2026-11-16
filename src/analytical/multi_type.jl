@@ -126,11 +126,17 @@ end
 # Probability generating functions of total-count laws: closed forms for
 # Poisson, negative binomial and Dirac, and a truncated series for any other
 # discrete distribution.
+# Mean `r (1 - p) / p` of a negative binomial from its parameters. `1 - p` is
+# the one remaining subtraction, and it is only as accurate as the stored `p`.
+_negbin_mean(d::NegativeBinomial) = d.r * (1 - d.p) / d.p
 _pgf(d::Poisson, s) = exp(mean(d) * (s - 1))
 function _pgf(d::NegativeBinomial, s)
-    r, p = params(d)
-    return (p / (1 - (1 - p) * s))^r
+    r = d.r
+    # `(p / (1 - (1 - p) s))^r = (1 + R (1 - s) / r)^(-r)`. `log1p` stops a
+    # large dispersion from rounding `1 + R (1 - s) / r` to 1.
+    return exp(-r * log1p(_negbin_mean(d) * (1 - s) / r))
 end
+_pgf(f::Function, s) = f(s)
 _pgf(d::Dirac, s) = s^d.value
 function _pgf(d::DiscreteUnivariateDistribution, s)
     lo, hi = _series_range(d)
@@ -262,4 +268,46 @@ function _reaches_supercritical_class(M::AbstractMatrix)
             supercritical[first(class)]
     end
     return [any(supercritical[i] && reach[i, j] for i in 1:n) for j in 1:n]
+end
+
+"""
+    emergence_probability(R_wild, R_adapted, mutation_probability; dist_fn=R -> Poisson(R), kwargs...)
+
+Probability that a single introduced case of a pathogen that cannot sustain
+transmission (`R_wild` at most 1) starts a major outbreak because it evolves
+into a type that can (`R_adapted` above 1), as in Antia et al. (2003) and
+`probability_emergence` in the superspreading R package.
+
+The process has two types. Each secondary case of a wild-type case is of the
+adapted type with probability `mutation_probability` and of the wild type
+otherwise; adapted-type cases only infect adapted-type cases. The result is one
+minus the extinction probability of that process, the wild type's entry of
+[`extinction_probability`](@ref) on the offspring matrix
+`[R_wild * (1 - mutation_probability) 0; R_wild * mutation_probability R_adapted]`.
+
+`dist_fn` is the total-count law, in either form [`MultiTypeOffspring`](@ref)
+takes: a function of the type's reproduction number, such as `R -> NegBin(R, 0.5)`
+to allow superspreading, or a vector of two laws, wild type first. Further
+keywords go to [`extinction_probability`](@ref). To start from an adapted-type
+case, use `1 - extinction_probability(R_adapted, k)`.
+
+# Examples
+
+```julia
+emergence_probability(0.5, 2.0, 0.1)
+emergence_probability(0.5, 2.0, 0.1; dist_fn = R -> NegBin(R, 0.5))
+```
+"""
+function emergence_probability(
+        R_wild::Real, R_adapted::Real, mutation_probability::Real;
+        dist_fn = R -> Poisson(R), kwargs...
+    )
+    R_wild >= 0 || throw(ArgumentError("R_wild must be non-negative"))
+    R_adapted > 0 || throw(ArgumentError("R_adapted must be positive"))
+    0 <= mutation_probability <= 1 ||
+        throw(ArgumentError("mutation_probability must be between 0 and 1"))
+    μ = mutation_probability
+    M = [R_wild * (1 - μ) zero(R_wild); R_wild * μ R_adapted]
+    q = extinction_probability(MultiTypeOffspring(M, dist_fn); kwargs...)
+    return 1 - q[1]
 end

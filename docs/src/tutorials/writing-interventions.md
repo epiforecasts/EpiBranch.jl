@@ -79,6 +79,7 @@ many people each case infects](@ref).
 | Hook | Called | Receives | Returns |
 |---|---|---|---|
 | `initialise_individual!(iv, individual, state)` | Once, when each person is created | An `Individual` whose `state` holds `:infected = false`, the values its population characteristics set and any the model sets, such as `:type` or `:household`; use `get!` for a key that may already be set | `nothing`; sets values in `individual.state` |
+| `initialise_episode!(iv, individual, state)` | On a reinfected person, as the new episode is settled and before `resolve_individual!`; never at creation | The reinfected `Individual`, whose `state` still holds what stands on them, such as a quarantine | `nothing`; refreshes values that belong to one episode, such as a test result; default does nothing |
 | `resolve_individual!(iv, individual, state)` | Once per case, when it is settled: after its clinical transitions, before it infects anyone. Never for a person who is not infected | The case, with `state.max_infection_time` at its infection time | `nothing`; sets values in `individual.state` |
 | `trace_contacts!(iv, state, infector, contacts[, not_before])` | Once per case, after it is settled and before any of its contacts is known to be infected or not; also once per ring member a ring of contact tracing grows from; a second time per case, for an intervention declaring `traces_source`, with the case's own infector | The case, the contacts it reached that it can still affect, and, from a model whose contacts can arise after the case's infection, when each became a contact (the four-argument method is called when the model gives no times, and by default for interventions that ignore them); on the second, backward call, `contacts` is the single-element `(source,)` | `nothing`; sets values on the contacts |
 | `intervention_actions(iv, state, candidates)` | Once per case, after every intervention's `trace_contacts!` for it | The people [`EpiBranch.action_candidates`](@ref) chooses: by default the case and the contacts it can still reach (those tracing reached from it, where there was tracing). [`GroupVaccination`](@ref) is offered the members of the case's group | `nothing`, or a vector of [`EpiBranch.InterventionAction`](@ref)s to put through the schedule and capacity limits (see [Intervention actions](@ref)) |
@@ -801,9 +802,7 @@ to say why.
 
 [`CapacityConstrained`](@ref) limits how many actions an intervention can take
 per period, such as the doses available or the appointments a clinic can offer.
-Contact tracing itself cannot be limited this way. Your intervention defines `EpiBranch.capacity_key(iv)`, the name of the
-`true`/`false` value recording that a person used the resource, and
-`EpiBranch.capacity_time_key(iv)`, the name of the value recording when. This
+[`ContactTracing`](@ref) can be limited too when its `action` is a [`Quarantine`](@ref): a contact is still found and still grows a ring once the budget runs out, but is not quarantined until a place frees up. `FlagOnly` has no removal to ration. Wrap tracing in [`CapacityConstrained`](@ref) to count quarantines admitted per period, or in [`HeldCapacity`](@ref) to cap how many are held at once. Your intervention defines `EpiBranch.capacity_key(iv)`, the name of the state value that records that a person used the resource by being present: a `Bool` for the vaccinations, a removal handle for `Isolation` and `Quarantine`. Any present value counts as used. `EpiBranch.capacity_time_key(iv)` names the value recording when. This
 places usage in the period its date falls in, whichever intervention sharing
 the same capacity gave it. Ring, group and mass vaccination use their
 dose-label names.

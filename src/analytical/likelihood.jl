@@ -38,18 +38,6 @@ function _chain_length_ll_pgf(data, G, ::Type{Tel}; n_initial::Int = 1) where {T
     return ll
 end
 
-"""Analytical chain length likelihood for NegBin offspring."""
-function _chain_length_ll_negbin(data, offspring::NegativeBinomial; n_initial::Int = 1)
-    k = offspring.r
-    R = mean(offspring)
-    R < 1.0 ||
-        throw(ArgumentError("chain length distribution only defined for subcritical process (R < 1)"))
-
-    p = k / (k + R)
-    G(s) = (p / (one(p) - (one(p) - p) * s))^k
-    return _chain_length_ll_pgf(data, G, typeof(p); n_initial)
-end
-
 # ── Utilities ────────────────────────────────────────────────────────
 
 """
