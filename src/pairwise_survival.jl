@@ -1204,9 +1204,9 @@ end
     seeded_hosts(data::InfectionLayer) -> Union{Nothing, AbstractVector{Bool}}
 
 The hosts chosen as initial cases, which the likelihood takes as given even
-when a community hazard explains every other infection. `nothing`, the default,
-is a layer recording none. A layer type that records them returns a vector
-shaped like `data.is_index`.
+when a community hazard explains every other infection. The default returns
+`nothing`, for a layer that records none. A layer type that records them
+returns a vector with the same shape as `data.is_index`.
 """
 seeded_hosts(::InfectionLayer) = nothing
 
