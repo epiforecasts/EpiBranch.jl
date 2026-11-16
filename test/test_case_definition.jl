@@ -57,6 +57,23 @@ _acute_load(rng, ind) = t -> max(0.0, 8.0 - abs(t - 5.0) * 1.6)
         @test nrow(case_classification_changes(state)) == 0
     end
 
+    @testset "a named test reads its own result" begin
+        state_for(; kwargs...) = begin
+            ind = _toy_case(; onset = 3.0, kwargs...)
+            ind.state[:pcr_time] = 6.0
+            ind.state[:pcr_result] = true
+            ind.state[:test_result] = false
+            return ind
+        end
+        ind = state_for()
+        EpiBranch._classify_cases!(_toy_sim_state([ind]), ClinicalCaseDefinition(test = :pcr))
+        @test case_classification(ind) == :confirmed
+        # The default test name does not pick up the PCR result.
+        ind = state_for()
+        EpiBranch._classify_cases!(_toy_sim_state([ind]), ClinicalCaseDefinition())
+        @test case_classification(ind) == :suspected
+    end
+
     @testset "FixedProportionConfirmed" begin
         inds = [_toy_case(; id = i, onset = 1.0) for i in 1:2000]
         state = _toy_sim_state(inds)
