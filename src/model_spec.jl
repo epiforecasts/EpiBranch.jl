@@ -308,7 +308,6 @@ end
 # each type is scanned once; a later definition, from an editor reload or a
 # hook rewritten in the REPL, advances it and arms the check again.
 const _CHECKED_INTERVENTIONS = Dict{Type, UInt}()
-const _CHECKED_TRAITS = Dict{Type, UInt}()
 const _CHECKED_INTERVENTIONS_LOCK = ReentrantLock()
 
 function _first_sight(T::Type, seen::Dict{Type, UInt} = _CHECKED_INTERVENTIONS)
@@ -318,66 +317,6 @@ function _first_sight(T::Type, seen::Dict{Type, UInt} = _CHECKED_INTERVENTIONS)
         seen[T] = world
         return true
     end
-end
-
-# The behaviour traits, as (trait, hooks that imply it, what declaring it
-# says). The method tables are read here and nowhere else. A type with the
-# hook and no declaration would run on the fixed default of the trait, which
-# differs from the behaviour its author wrote the hook for, without any sign
-# of it. `has_competing_risk` is left out: its default, `true`, is safe for a
-# type with the hook and costs only the fallback proposals.
-const _TRAIT_HOOKS = (
-    (time_aware, (intervention_time,), "it undoes what `intervention_time` names with `reset!`"),
-    (resolves_under_capacity, (capacity_key, resolve_individual!), "it rations its own `resolve_individual!` effect"),
-    (discovers_actions, (intervention_actions,), "it finds actions to propose"),
-)
-
-# Throw for a type that has the hook of a trait but no declaration of the
-# trait. The inherited forwarding methods of a wrapper are not a declaration,
-# so the comparison is against `InterventionWrapper`. An action is compared
-# against `TraceAction`, which has the same fallbacks.
-function _check_trait_declarations(T::Type, base::Type)
-    for (trait, hooks, says) in _TRAIT_HOOKS
-        all(h -> _has_own_method(h, T, base), hooks) || continue
-        _has_own_method(trait, T, base) && continue
-        throw(
-            ArgumentError(
-                "$(_hook_type_name(T)) has a method of its own for " *
-                    "`$(join((nameof(h) for h in hooks), "` and `"))`, but does not " *
-                    "declare `$(nameof(trait))`, so the package cannot tell " *
-                    "whether $says. Declare " *
-                    "`EpiBranch.$(nameof(trait))(::$(_hook_type_name(T))) = true` " *
-                    "(or `false`)."
-            )
-        )
-    end
-    return nothing
-end
-
-# A type is recorded as checked only once it has passed. One that throws
-# throws again whenever it is built into a model.
-function _check_trait_declarations(iv::AbstractIntervention)
-    T = typeof(iv)
-    _check_once(T, T <: InterventionWrapper ? InterventionWrapper : AbstractIntervention)
-    iv isa InterventionWrapper && _check_trait_declarations(iv.intervention)
-    iv isa ContactTracing && _check_trait_declarations(iv.action)
-    return nothing
-end
-
-function _check_trait_declarations(action::TraceAction)
-    return _check_once(typeof(action), TraceAction)
-end
-
-function _check_once(T::Type, base::Type)
-    world = Base.get_world_counter()
-    lock(_CHECKED_INTERVENTIONS_LOCK) do
-        get(_CHECKED_TRAITS, T, nothing) == world
-    end && return nothing
-    _check_trait_declarations(T, base)
-    lock(_CHECKED_INTERVENTIONS_LOCK) do
-        _CHECKED_TRAITS[T] = world
-    end
-    return nothing
 end
 
 # Warn when a composed intervention answers `has_effect` with `false`, which by
@@ -495,7 +434,7 @@ function ModelSpec(
     _warn_incomplete_terminal_coverage(prog)
     ivs = _intervention_vector(interventions)
     _validate_dose_schedule(ivs)
-    foreach(_check_trait_declarations, ivs)
+    foreach(_store_traits!, ivs)
     _warn_unmet_trigger_requirements(ivs, prog)
     _warn_inert_interventions(ivs)
     return ModelSpec(process, prog, ivs, attributes, observation, recorder)

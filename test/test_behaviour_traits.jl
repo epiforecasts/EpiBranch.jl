@@ -1,6 +1,18 @@
-# Traits the engine asks of an intervention. Each has a fixed default. A
-# type with the matching hook declares the trait; building a model throws for
-# one that does not.
+# Traits the engine asks of an intervention. Each is inferred once, from the
+# methods the type defines, when a `ModelSpec` is built; a method for the
+# trait itself overrides the inferred answer.
+
+# Counts the scans of the method tables. A specific method, so that it runs
+# before the one in the package and then hands the call on.
+const _SCANS = Ref(0)
+const _COUNT_SCANS = Ref(false)
+function EpiBranch._has_own_method(f, T::Type, base::Type, n::Nothing)
+    _COUNT_SCANS[] && (_SCANS[] += 1)
+    return invoke(
+        EpiBranch._has_own_method,
+        Tuple{Any, Type, Type, Union{Int, Nothing}}, f, T, base, n
+    )
+end
 
 # Has an `intervention_time` and `reset!` through a forwarding method but
 # declares it is not time aware.
@@ -50,6 +62,29 @@ end
 EpiBranch.intervention_time(::_UndeclaredWrapper, ind::Individual) = 1.0
 struct _UndeclaredTraceAction <: EpiBranch.TraceAction end
 EpiBranch.intervention_actions(::_UndeclaredTraceAction, state, candidates) = nothing
+
+# Undeclared and time aware: writes a mark, reports when, and undoes it.
+const _resets = Ref(0)
+struct _TimedUndo <: EpiBranch.AbstractIntervention end
+EpiBranch.intervention_time(::_TimedUndo, ind::Individual) =
+    get(ind.state, :_timed_at, -Inf)
+function EpiBranch.resolve_individual!(::_TimedUndo, ind, state)
+    ind.state[:_timed_at] = 5.0
+    return nothing
+end
+function EpiBranch.reset!(::_TimedUndo, ind::Individual)
+    _resets[] += 1
+    delete!(ind.state, :_timed_at)
+    return nothing
+end
+
+# Undeclared, and records the candidates it is offered.
+const _candidates_seen = Int[]
+struct _RecordsCandidates <: EpiBranch.AbstractIntervention end
+function EpiBranch.intervention_actions(::_RecordsCandidates, state, candidates)
+    push!(_candidates_seen, length(candidates))
+    return nothing
+end
 
 # Declares nothing and defines no hook.
 struct _Bare <: EpiBranch.AbstractIntervention end
@@ -143,40 +178,78 @@ struct _Bare <: EpiBranch.AbstractIntervention end
         @test !sched.time_aware
     end
 
-    @testset "a hook without its declaration is an error at build" begin
+    @testset "an undeclared hook is inferred, not an error" begin
         bp = BranchingProcess(Poisson(1.5), Exponential(5.0))
-        for (iv, trait) in (
-                (_UndeclaredTime(), "time_aware"),
-                (_UndeclaredEffect(), "resolves_under_capacity"),
-                (_UndeclaredActions(), "discovers_actions"),
-            )
-            err = try
-                ModelSpec(bp; interventions = [iv])
-                nothing
-            catch e
-                e
-            end
-            @test err isa ArgumentError
-            @test occursin("EpiBranch.$trait(::$(nameof(typeof(iv))))", err.msg)
-            # Found under a wrapper too.
-            @test_throws ArgumentError ModelSpec(
-                bp; interventions = [Scheduled(iv; start_time = 1.0)]
-            )
-        end
-        @test_throws ArgumentError ModelSpec(
-            bp; interventions = [_UndeclaredWrapper(_Bare())]
-        )
-        @test_throws ArgumentError ModelSpec(
-            bp; interventions = [
+        for iv in (
+                _UndeclaredTime(), _UndeclaredEffect(), _UndeclaredActions(),
+                _UndeclaredWrapper(_Bare()),
                 ContactTracing(
                     probability = 0.5, isolation_to_trace_delay = Exponential(1.0),
                     action = _UndeclaredTraceAction()
                 ),
-            ]
+            )
+            @test ModelSpec(bp; interventions = [iv]) isa ModelSpec
+        end
+        @test EpiBranch.time_aware(_UndeclaredTime())
+        @test EpiBranch.resolves_under_capacity(_UndeclaredEffect())
+        @test EpiBranch.discovers_actions(_UndeclaredActions())
+        @test EpiBranch.proposes_actions(_UndeclaredActions())
+        # A wrapper with no declaration asks what it wraps.
+        @test !EpiBranch.time_aware(_UndeclaredWrapper(_Bare()))
+        @test EpiBranch.time_aware(_UndeclaredWrapper(_UndeclaredTime()))
+        ct = ContactTracing(
+            probability = 0.5, isolation_to_trace_delay = Exponential(1.0),
+            action = _UndeclaredTraceAction()
         )
-        # Declared types build.
-        @test ModelSpec(
-            bp; interventions = [_OwnsEffect(), _ProposesNothing(), _ForwardsTime(Isolation(onset_to_isolation_delay = 1.0, duration = 5.0))]
-        ) isa ModelSpec
+        @test EpiBranch.discovers_actions(ct)
+        @test EpiBranch.discovers_actions(
+            CapacityConstrained(ct; budget_per_period = 1)
+        )
+    end
+
+    @testset "Scheduled runs and undoes an undeclared time-aware intervention" begin
+        @test Scheduled(_UndeclaredTime(); start_time = 1.0).time_aware
+        # An override changes the inferred answer.
+        @test !Scheduled(_ForwardsTime(iso); start_time = 1.0).time_aware
+        @test !EpiBranch.resolves_under_capacity(_DeclaredOwnsEffect())
+        # The inferred answer holds in a run: the isolation is undone when it
+        # falls outside the window, as it is for `Isolation` itself.
+        bp = BranchingProcess(Poisson(2.0), Exponential(5.0))
+        spec = ModelSpec(
+            bp; interventions = [Scheduled(_TimedUndo(); start_time = 1000.0)]
+        )
+        _resets[] = 0
+        state = simulate(spec; rng = Xoshiro(1), max_cases = 50)
+        @test _resets[] > 0
+        @test all(!haskey(ind.state, :_timed_at) for ind in state.individuals)
+    end
+
+    @testset "an undeclared action source is offered candidates" begin
+        bp = BranchingProcess(Poisson(2.0), Exponential(5.0))
+        spec = ModelSpec(bp; interventions = [_RecordsCandidates()])
+        empty!(_candidates_seen)
+        simulate(spec; rng = Xoshiro(1), max_cases = 20)
+        @test !isempty(_candidates_seen)
+    end
+
+    @testset "a run does not scan the method tables" begin
+        bp = BranchingProcess(Poisson(2.0), Exponential(5.0))
+        ivs = [
+            Scheduled(_TimedUndo(); start_time = 1.0),
+            Scheduled(_RecordsCandidates(); start_time = 0.0),
+            Isolation(onset_to_isolation_delay = 1.0, duration = 5.0),
+        ]
+        spec = ModelSpec(
+            bp; interventions = ivs,
+            attributes = clinical_presentation(incubation_period = Exponential(2.0))
+        )
+        _SCANS[] = 0
+        _COUNT_SCANS[] = true
+        try
+            simulate(spec; rng = Xoshiro(2), max_cases = 30)
+        finally
+            _COUNT_SCANS[] = false
+        end
+        @test _SCANS[] == 0
     end
 end

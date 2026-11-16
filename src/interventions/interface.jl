@@ -127,9 +127,7 @@ intervention written outside the package need not declare it. A type with a
 of tracing as [`CapacityConstrained`](@ref)'s does, defines
 `traces_contacts(::T) = false` itself.
 """
-function traces_contacts(iv::AbstractIntervention)
-    return _has_own_method(trace_contacts!, typeof(iv), AbstractIntervention)
-end
+traces_contacts(iv::AbstractIntervention) = _stored_traits(typeof(iv)).traces_contacts
 
 """
     traces_source(intervention) -> Bool
@@ -436,24 +434,86 @@ function has_effect(iv::AbstractIntervention)
     end
 end
 
+# The traits `time_aware`, `resolves_under_capacity`, `discovers_actions` and
+# `traces_contacts` are answered from the methods a type defines. That reads
+# the method tables, so it is done once per type when a `ModelSpec` is built
+# (`_store_traits!`) and kept here; a run reads the stored answer and never
+# the method tables. A trait method written for a type is more specific than
+# the defaults below and so overrides the inferred answer.
+struct _InferredTraits
+    time_aware::Bool
+    resolves_under_capacity::Bool
+    discovers_actions::Bool
+    traces_contacts::Bool
+    world::UInt
+end
+
+# Replaced whole on every update, never mutated, so a run can read it without
+# the lock.
+const _STORED_TRAITS = Ref(Dict{Type, _InferredTraits}())
+const _STORED_TRAITS_LOCK = ReentrantLock()
+
+function _infer_traits(T::Type)
+    # The inherited forwarding methods of a wrapper are not the hooks of the
+    # type itself, so the comparison is against `AbstractIntervention`; an
+    # action is compared against `TraceAction`, which has the same fallbacks.
+    base = T <: TraceAction ? TraceAction : AbstractIntervention
+    own(hooks) = all(h -> _has_own_method(h, T, base), hooks)
+    return _InferredTraits(
+        own((intervention_time,)),
+        own((capacity_key, resolve_individual!)),
+        own((intervention_actions,)),
+        own((trace_contacts!,)),
+        Base.get_world_counter()
+    )
+end
+
+# Infers the traits of `T` unless they were inferred in the current state of
+# the method tables. A method defined later, from an editor reload or a hook
+# rewritten in the REPL, advances the world counter and so arms the inference
+# again at the next `ModelSpec`.
+function _store_traits!(T::Type)
+    t = get(_STORED_TRAITS[], T, nothing)
+    t !== nothing && t.world == Base.get_world_counter() && return t
+    t = _infer_traits(T)
+    lock(_STORED_TRAITS_LOCK) do
+        d = copy(_STORED_TRAITS[])
+        d[T] = t
+        _STORED_TRAITS[] = d
+    end
+    return t
+end
+
+function _stored_traits(T::Type)
+    t = get(_STORED_TRAITS[], T, nothing)
+    return t === nothing ? _store_traits!(T) : t
+end
+
+# Every type whose own methods can supply an answer to a `ModelSpec`: the
+# intervention, the one a wrapper holds, and the action of a `ContactTracing`.
+function _store_traits!(iv::AbstractIntervention)
+    _store_traits!(typeof(iv))
+    iv isa InterventionWrapper && _store_traits!(iv.intervention)
+    iv isa ContactTracing && _store_traits!(typeof(iv.action))
+    return nothing
+end
+
 """
     time_aware(intervention) -> Bool
 
 Whether `intervention` has its own [`intervention_time`](@ref
-EpiBranch.intervention_time). By the contract of that hook it comes with a
-[`reset!`](@ref EpiBranch.reset!) that undoes whatever it names.
-[`Scheduled`](@ref) asks this once, when it is built. If `true`, it runs the
-intervention unconditionally and afterwards undoes whatever falls outside the
-schedule. If `false`, it gates the intervention up front, as it did for every
-hook before, because the defaults (`-Inf`, a no-op `reset!`) leave nothing to
-undo.
+EpiBranch.intervention_time), which by the contract of that hook comes with a
+[`reset!`](@ref EpiBranch.reset!) that undoes whatever it names. If `true`,
+[`Scheduled`](@ref) runs the intervention unconditionally and afterwards undoes
+whatever falls outside the schedule. If `false`, it gates the intervention up
+front.
 
-The default is `false`. A type with an `intervention_time` method of its own
-declares `EpiBranch.time_aware(::MyIntervention) = true`. Building a
-[`ModelSpec`](@ref) throws for one that does not, instead of gating it by
-default. A wrapper without such a method asks the intervention it wraps.
+The answer is inferred from the methods the type defines, so an intervention
+needs no declaration. Define `EpiBranch.time_aware(::MyIntervention)` to
+override the inferred answer. A wrapper without a method of its own asks the
+intervention it wraps.
 """
-time_aware(::AbstractIntervention) = false
+time_aware(iv::AbstractIntervention) = _stored_traits(typeof(iv)).time_aware
 
 """
     resolves_under_capacity(intervention) -> Bool
@@ -466,13 +526,15 @@ EpiBranch.InterventionAction), as a dose does. [`CapacityConstrained`](@ref) and
 [`reset!`](@ref EpiBranch.reset!) to undo the effect for anyone the budget turns
 away. They ration the second kind through the action funnel.
 
-The default is `false`. A type with methods of its own for both
-[`capacity_key`](@ref EpiBranch.capacity_key) and `resolve_individual!` declares
-`EpiBranch.resolves_under_capacity(::MyIntervention) = true`, or `false` if it
-proposes its effect as an action. Building a [`ModelSpec`](@ref) throws for one
-that does not. A wrapper without such a method asks the intervention it wraps.
+The answer is inferred from the methods the type defines: `true` for one with
+methods of its own for both [`capacity_key`](@ref EpiBranch.capacity_key) and
+`resolve_individual!`. Define `EpiBranch.resolves_under_capacity(::MyIntervention)`
+to override it, for an intervention that proposes its effect as an action
+despite having both. A wrapper without a method of its own asks the
+intervention it wraps.
 """
-resolves_under_capacity(::AbstractIntervention) = false
+resolves_under_capacity(iv::AbstractIntervention) =
+    _stored_traits(typeof(iv)).resolves_under_capacity
 
 """
     discovers_actions(intervention) -> Bool
@@ -481,14 +543,14 @@ Whether `intervention` finds actions of its own to propose. The race offers it
 candidates per settled case. An intervention answering `false` is never offered
 candidates and adds no per-case cost.
 
-The default is `false`. A type with an [`intervention_actions`](@ref
-EpiBranch.intervention_actions) method of its own declares
-`EpiBranch.discovers_actions(::MyIntervention) = true`, or `false` if the method
-proposes nothing for some settings. Building a [`ModelSpec`](@ref) throws for one
-that does not. A wrapper without such a method asks the intervention it wraps.
-[`ContactTracing`](@ref) asks its action instead, because it always forwards.
+The answer is inferred from the methods the type defines: `true` for one with an
+[`intervention_actions`](@ref EpiBranch.intervention_actions) method of its own.
+Define `EpiBranch.discovers_actions(::MyIntervention)` to override it, for a
+method that proposes nothing in some settings. A wrapper without a method of its
+own asks the intervention it wraps. [`ContactTracing`](@ref) asks its action,
+because it always forwards.
 """
-discovers_actions(::AbstractIntervention) = false
+discovers_actions(iv::AbstractIntervention) = _stored_traits(typeof(iv)).discovers_actions
 
 """
     proposes_actions(intervention) -> Bool
@@ -507,18 +569,7 @@ function proposes_actions(iv::AbstractIntervention)
     return discovers_actions(iv)
 end
 
-"""
-    has_competing_risk(intervention) -> Bool
-
-Whether `intervention` can supply a [`competing_risk`](@ref
-EpiBranch.competing_risk). When some intervention answers `true`, the
-continuous-time race keeps every proposal to a contact instead of only the
-earliest, because a blocked contact must then fall back to a later one. An
-intervention answering `false` adds no cost to a run without other risks.
-
-The default is `true`, which keeps the fallback proposals and is always correct.
-A type that never supplies a risk declares
-`EpiBranch.has_competing_risk(::MyIntervention) = false` to save the cost. Every
-wrapper answers `true` because it forwards the hook.
-"""
+# Whether `intervention` can supply a `competing_risk`, so the race keeps
+# fallback proposals for a blocked contact. The default, `true`, is always
+# correct; `false` only saves that work.
 has_competing_risk(::AbstractIntervention) = true

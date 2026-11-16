@@ -983,10 +983,11 @@ end
 # forwarding to `ct.action` above. It asks the action whether it has anything
 # to propose: a plain `Quarantine` or `FlagOnly` has nothing, and would
 # otherwise cost the race a per-settled-case call. An action that
-# overrides `intervention_actions` declares `discovers_actions` for its type.
+# defines `intervention_actions` is inferred to discover actions, as an
+# intervention is.
 discovers_actions(ct::ContactTracing) = discovers_actions(ct.action)
 
-discovers_actions(::TraceAction) = false
+discovers_actions(a::TraceAction) = _stored_traits(typeof(a)).discovers_actions
 
 # Forwarded so a `TraceAction` can read what a contact's own settlement
 # fixes, such as a test result that depends on whether the contact turned out
