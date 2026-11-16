@@ -1446,9 +1446,9 @@ Pass the result as `attributes` to [`ModelSpec`](@ref).
   (`:incubation_period`), and a symptomatic case's onset time is its infection
   time plus that draw. Give a distribution or a function of the random number
   generator and the individual, `(rng, ind) -> value`, to let the draw depend
-  on a trait. `:asymptomatic` is set before the draw, so the function can give
-  asymptomatic cases their own timing. The closed forms that read the
-  incubation period directly need a distribution and refuse a function.
+  on a trait. `:asymptomatic` is set before the draw, which lets the function
+  give asymptomatic cases their own timing. Closed forms that read the
+  incubation period directly accept a distribution but not a function.
 - `prob_asymptomatic`: probability that a case never develops symptoms
   (default 0). Asymptomatic cases have no onset time (`NaN`), but keep their incubation
   period, the time onset would have happened, which
