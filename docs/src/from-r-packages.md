@@ -31,7 +31,7 @@ EpiBranch covers what four R packages do: simulist (line lists and contacts), ep
 | The offspring distribution | `offspring_dist` | the first argument of `BranchingProcess`, a Distributions.jl distribution such as `NegBin(R, k)` or `Poisson(R)` |
 | The chain statistic and the threshold at which to stop | `statistic`, `stat_threshold` | `chain_statistics` gives `size` and `length` for each chain; `max_cases` and `max_generations` in `simulate` set the threshold |
 | The generation time | `generation_time` | the second argument of `BranchingProcess` |
-| A share of the population that is immune | `percent_immune` | see the recipe below |
+| An immune share of the population | `percent_immune` | see the recipe below |
 
 ## ringbp 1.0.0
 
@@ -104,7 +104,7 @@ An infectiousness of 0.5 halves the number of people a case infects. To match an
 
 ### Asymptomatic cases with their own offspring distribution
 
-To give asymptomatic cases their own dispersion as well, make symptom status a type in a two-type process. Column `j` of the next-generation matrix is the offspring of a type-`j` case, split between the two types in the proportions of that column. With the same split in both columns, a share `a` of every case's offspring is asymptomatic. A vector of distributions, one per type, sets each type's own offspring law. Then `prob_asymptomatic` reads the type, so the asymptomatic cases are exactly the second type:
+To give asymptomatic cases their own dispersion as well, make symptom status a type in a two-type process. Column `j` of the next-generation matrix is the offspring of a type-`j` case, split between the two types in the proportions of that column. With the same split in both columns, a share `a` of every case's offspring is asymptomatic. A vector of distributions, one per type, sets the offspring law of each type. Then `prob_asymptomatic` reads the type, so the asymptomatic cases are exactly the second type:
 
 ```@example fromr
 a = 0.3
