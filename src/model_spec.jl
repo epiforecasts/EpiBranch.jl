@@ -385,6 +385,25 @@ function _warn_unmet_trigger_requirements(interventions, progression)
     return nothing
 end
 
+# An `Isolation` whose `test_sensitivity` is a `Testing` step reads the result
+# that step writes into the progression, so the progression must hold one.
+function _validate_testing_sensitivity(interventions, progression)
+    for iv in interventions
+        iv isa Isolation || continue
+        iv.test_sensitivity isa Testing || continue
+        any(t -> t isa Testing, progression) && continue
+        throw(
+            ArgumentError(
+                "`Isolation(test_sensitivity = Testing(...))` reads the " *
+                    "test result a `Testing` step writes, but `progression` " *
+                    "has no `Testing` step, so no case would ever be " *
+                    "isolated. Add the same `Testing` step to `progression`."
+            )
+        )
+    end
+    return nothing
+end
+
 """
     ModelSpec(process; progression, interventions, attributes, observation, recorder,
               case_definition)
@@ -445,6 +464,7 @@ function ModelSpec(
     _warn_incomplete_terminal_coverage(prog)
     ivs = _intervention_vector(interventions)
     _validate_dose_schedule(ivs)
+    _validate_testing_sensitivity(ivs, prog)
     _warn_unmet_trigger_requirements(ivs, prog)
     _warn_inert_interventions(ivs)
     return ModelSpec(process, prog, ivs, attributes, observation, recorder, case_definition)
