@@ -21,7 +21,7 @@ made available by `using EpiBranch` and have to be written in full. The
 network and household names, such as [`NetworkProcess`](@ref) and
 [`HouseholdProcess`](@ref), come from the satellite packages and need `using
 EpiNetwork` or `using EpiHouseholds`. A function whose name ends in `!`
-changes one of its arguments in place. For the hooks the engine dispatches on,
+changes one of its arguments in place. For the hooks called during a simulation,
 that argument is the simulation state or the person being resolved, and the
 first argument is the intervention, step or action the method is written for.
 The last section, [For extension authors](@ref), lists what you need only to
@@ -67,6 +67,9 @@ ModelSpec
 single_type_offspring
 EpiBranch.has_single_type_law
 EpiBranch.offspring_law_unchanged
+EpiBranch.reporting_probability
+EpiBranch.reporting_from
+EpiBranch.onset_law
 EpiBranch.scale_mean
 EpiBranch.sum_offspring
 ```
@@ -171,6 +174,12 @@ Reporting
 Hospitalisation
 Death
 Recovery
+Testing
+AbstractAssay
+Assay
+within_host
+EpiBranch.trajectory_value
+EpiBranch.measure
 exclusive_probabilities
 is_terminal
 terminal_event
@@ -598,6 +607,7 @@ pairwise_surv_loglik
 PairwiseSurvivalData
 InfectionLayer
 compile_contact_pairs
+EpiBranch.seeded_hosts
 ContactPairsLayout
 MassActionHazard
 SumHazard
@@ -658,7 +668,7 @@ EpiBranch.resolve
 
 ## Population
 
-The people a model is run over, given once and read by every engine.
+The population is specified once and every model reads it.
 
 ```@docs
 Population

@@ -895,6 +895,7 @@ end
 function _abort_infection!(rv::RingVaccination, contact, vacc_t, rng)
     incubation = _state_real(contact.state, :incubation_period, NaN)
     isnan(incubation) && return nothing
+    is_asymptomatic(contact) && return nothing
     post = _post_exposure_efficacy(rv, contact)
     post > 0.0 || return nothing
     immunity = _immunity_time(rv, contact, vacc_t)
@@ -1275,6 +1276,9 @@ function _group_trigger_time(gv::GroupVaccination, state, group)
     t = Inf
     for id in _group_members(state, key, group)
         m = state.individuals[id]
+        # Contacts blocked by susceptibility or an intervention hold a
+        # provisional onset but never become cases.
+        is_infected(m) || continue
         is_eligible(gv.eligibility, m, m, state) || continue
         tt = trigger_time(gv.eligibility, m, state)
         isnan(tt) && continue

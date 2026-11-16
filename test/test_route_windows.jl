@@ -1174,3 +1174,71 @@ end
     # tuple did.
     @test mixed_types_bytes < 5 * same_type_bytes
 end
+
+@testset "Recovery and Death close a window like the terminal Transition" begin
+
+    hp = HomogeneousProcess(transmission_rate = 0.15, population_size = 1000)  # R0 = 0.75
+    mean_size(prog) = sum(
+        simulate(
+            ModelSpec(hp; progression = prog); n_initial = 5, max_time = 400.0,
+            rng = StableRNG(s)
+        ).cumulative_cases for s in 1:20
+    ) / 20
+    ref = mean_size([Transition(:recovered; from = :infection, delay = Exponential(5.0), terminal = true)])
+    rec = mean_size([Recovery(delay = Exponential(5.0), from = :infection)])
+    dth = mean_size([Death(delay = Exponential(5.0), probability = 1.0, from = :infection)])
+    @test ref < 100
+    @test rec < 100
+    @test dth < 100
+
+    bp = BranchingProcess(Infectiousness(Poisson(3.0); kernel = Gamma(3.0, 2.0), until = (:died,)))
+    frac(prog) = begin
+        st = simulate(
+            ModelSpec(bp; progression = prog); n_initial = 5000, max_generations = 1,
+            max_cases = nothing, rng = StableRNG(1)
+        )
+        count(i -> is_infected(i) && i.generation == 1, st.individuals) / 5000
+    end
+    @test frac([Death(delay = 2.0, probability = 1.0, from = :infection)]) ≈ 3 * cdf(Gamma(3, 2), 2) atol = 0.03
+
+    # A death that loses to recovery closes nothing.
+    st = simulate(
+        ModelSpec(
+            bp; progression = [
+                Recovery(delay = 1.0, from = :infection),
+                Death(delay = 2.0, probability = 1.0, from = :infection),
+            ]
+        );
+        n_initial = 50, max_generations = 0, rng = StableRNG(2)
+    )
+    @test all(i -> i.state[:recovered_time] == i.infection_time + 1.0, st.individuals)
+    @test all(i -> i.state[:died] == false && i.state[:died_time] == Inf, st.individuals)
+end
+
+@testset "A seeded case is infected past a certain block, an introduced one is not" begin
+    function seeded_race(seeded; declarations...)
+        rng = StableRNG(1)
+        state = EpiBranch.new_state(
+            BranchingProcess(Poisson(0.0), Exponential(1.0)),
+            AbstractClinicalTransition[], NoAttributes(), rng
+        )
+        interventions = [ProtectTo(1)]
+        EpiBranch.add_individuals!(state, 1, interventions)
+        EpiBranch._sellke_race!(
+            state, [1], rng;
+            from = :infection, until = (), interventions,
+            introduction = (Exponential(1.0), Inf), targets = (i, st) -> (),
+            seed! = (best, members, r) -> (best[1] = 1.0), seeded, declarations...
+        )
+        return only(state.individuals)
+    end
+    ind = seeded_race([1])
+    @test is_infected(ind)
+    @test ind.state[:seeded]
+    @test !haskey(ind.state, :infection_route)
+    @test !is_infected(seeded_race(nothing))
+    @test !is_infected(seeded_race(Int[]))
+    # a route that watches host records still takes the seeded opening
+    watched = seeded_race([1]; watches = ((:tag,),))
+    @test is_infected(watched) && watched.state[:seeded]
+end
