@@ -480,9 +480,7 @@ end
 # an `OffspringTimes` already gave.
 _window_infection_time(::NoGenerationTime, from_t::Real, state) = from_t
 _window_infection_time(offset::_FixedOffset, from_t::Real, state) = from_t + offset.offset
-# Any other kernel (a distribution, or a calendar-scaled kernel, which is not a
-# `Distribution`) is drawn from directly.
-function _window_infection_time(kernel, from_t::Real, state)
+function _window_infection_time(kernel::Distribution, from_t::Real, state)
     return from_t + rand(state.rng, kernel)
 end
 
@@ -495,7 +493,8 @@ _tag_window!(contact, until) = (contact.state[:censor_until] = until; nothing)
 # Offer `case`'s own infector to interventions tracing backward, as the sole
 # contact in `trace_contacts!`'s usual four-argument form. An index case or a
 # community introduction has no infector to offer. The race calls it once a
-# case is settled.
+# case is settled. It returns the infector when tracing has just isolated it,
+# and `nothing` otherwise.
 function _trace_source!(
         state::SimulationState, case, interventions,
         tracing_source = any(traces_source, interventions)
@@ -504,12 +503,15 @@ function _trace_source!(
     1 <= case.parent_id <= length(state.individuals) || return nothing
     infector = state.individuals[case.parent_id]
     contacts = (infector,)
+    was_isolated = is_isolated(infector)
     _each(interventions) do intervention
         traces_source(intervention) &&
             trace_contacts!(intervention, state, case, contacts)
         return nothing
     end
-    return nothing
+    # An infector isolated here was settled, and its forward tracing decided,
+    # before it was isolated. The caller traces forward from it again.
+    return !was_isolated && is_isolated(infector) ? infector : nothing
 end
 
 """
@@ -1444,7 +1446,11 @@ Pass the result as `attributes` to [`ModelSpec`](@ref).
 - `incubation_period`: distribution of the time from infection to symptom
   onset, in days. Every case gets a draw from it, asymptomatic or not
   (`:incubation_period`), and a symptomatic case's onset time is its infection
-  time plus that draw.
+  time plus that draw. Give a distribution or a function of the random number
+  generator and the individual, `(rng, ind) -> value`, to let the draw depend
+  on a trait. `:asymptomatic` is set before the draw, which lets the function
+  give asymptomatic cases their own timing. Closed forms that read the
+  incubation period directly accept a distribution but not a function.
 - `prob_asymptomatic`: probability that a case never develops symptoms
   (default 0). Asymptomatic cases have no onset time (`NaN`), but keep their incubation
   period, the time onset would have happened, which
@@ -1464,7 +1470,7 @@ with an `infectiousness` that reads `ind.state[:asymptomatic]`.
 Use `transmission_traits` for traits known when the case is created (age, sex,
 whether the case is asymptomatic), because it draws its factor then. A change
 during the infection, such as tracing or quarantine, needs an intervention.
-Combining the two is tracked in #972.
+The tutorial "Making cases more or less infectious" compares the options.
 
 # Examples
 
@@ -1521,10 +1527,22 @@ attributes = [
 ]
 ```
 
+Asymptomatic cases with their own incubation period, here a shorter one
+(`:asymptomatic` is already set when the function runs):
+
+```julia
+attributes = clinical_presentation(
+    incubation_period = (rng, ind) -> rand(
+        rng, ind.state[:asymptomatic] ? LogNormal(1.2, 0.5) : LogNormal(1.6, 0.5)
+    ),
+    prob_asymptomatic = 0.3,
+)
+```
+
 See also [`demographics`](@ref), [`transmission_traits`](@ref).
 """
 function clinical_presentation(;
-        incubation_period::Distribution,
+        incubation_period,
         prob_asymptomatic = 0.0
     )
     return ClinicalPresentation(incubation_period, prob_asymptomatic)
@@ -1535,12 +1553,16 @@ struct ClinicalPresentation{D, P}
     prob_asymptomatic::P
 end
 
+function onset_law(c::ClinicalPresentation)
+    return (incubation_period = c.incubation_period, prob_asymptomatic = c.prob_asymptomatic)
+end
+
 function (clinical::ClinicalPresentation)(rng, ind)
     rng = stream(rng, ind.id, :clinical_presentation)
     pa = sample_value(clinical.prob_asymptomatic, rng, ind)
     is_asymp = rand(rng) < pa
     ind.state[:asymptomatic] = is_asymp
-    ind.state[:incubation_period] = rand(rng, clinical.incubation_period)
+    ind.state[:incubation_period] = sample_value(clinical.incubation_period, rng, ind)
     return _set_onset_from_incubation!(ind)
 end
 
@@ -1630,8 +1652,8 @@ not cluster within them. To make it cluster, use a multi-type
 [`BranchingProcess`](@ref) with one type per group and a next-generation
 matrix with most transmission within types, and use the type itself as the
 group in `GroupVaccination(...; group_key = :type)`. [`group_attribute`](@ref)
-and [`vaccine_acceptance`](@ref) cannot group by type, since population
-characteristics are drawn before a person's type is set.
+and [`vaccine_acceptance`](@ref) can group by `:type` too, because a person's
+type is set before their population characteristics are drawn.
 
 # Examples
 
@@ -1675,6 +1697,15 @@ Give each person a susceptibility and an infectiousness. Pass the result as
 - `susceptibility`: probability that an exposed person is infected.
 - `infectiousness`: probability that each contact the person makes once
   infected leads to infection, so 0.5 halves the number they infect.
+
+The factor is drawn once, when the case is created, and cannot depend on
+anything that happens later. To reduce transmission from the time of an event
+such as tracing or isolation, use an intervention (its
+[`transmission_risks`](@ref EpiBranch.transmission_risks) and
+[`competing_risk`](@ref EpiBranch.competing_risk)); to limit transmission to
+certain disease states, use the `from` and `until` of an
+[`Infectiousness`](@ref) window. The tutorial "Making cases more or less
+infectious" compares the options.
 
 Both default to 1 (no change). In the continuous-time models
 ([`HomogeneousProcess`](@ref), [`MixingProcess`](@ref), network and household
