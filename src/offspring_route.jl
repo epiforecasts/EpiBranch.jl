@@ -183,7 +183,7 @@ end
 (::_Offspring)(infector_id, state) = ()
 _pair_kernel(::_Offspring, infector_id, target_id, state) = nothing
 
-_route_open(o::_Offspring, ind, w::RouteWindow) = _state_time(ind, o.window.from, o.window.from_key)
+_route_open(o::_Offspring, ind, w::RouteWindow) = _window_open_time(ind, o.window)
 _route_may_block(::_Offspring) = true
 _route_builtin_blocks(::_Offspring) = _offspring_builtin_risk_blocks
 
@@ -192,7 +192,7 @@ _route_builtin_blocks(::_Offspring) = _offspring_builtin_risk_blocks
 _record_infection!(::_Offspring, infector, ind, w, named) = nothing
 
 function _offspring_builtin_risk_blocks(parent, contact, state, transmission_time)
-    pop_suscept = susceptible_fraction(state)
+    pop_suscept = susceptible_fraction(state, contact)
     pop_suscept <= 0.0 && return true
     pop_suscept < 1.0 && rand(state.rng) > pop_suscept && return true
     return _builtin_risk_blocks(parent, contact, state, transmission_time)
@@ -287,7 +287,7 @@ end
 function _draws_early(rts, ind)
     for (_, o) in rts
         _draws_before_settling(o.window) || return false
-        isfinite(_state_time(ind, o.window.from, o.window.from_key)) || return false
+        isfinite(_window_open_time(ind, o.window)) || return false
     end
     return true
 end
@@ -298,7 +298,7 @@ end
 function _draw_contacts!(o::_Offspring, race, ind, max_generation, born::Bool)
     first_place = length(o.tree) + 1
     ind.generation >= max_generation && return first_place:(first_place - 1)
-    from_t = _state_time(ind, o.window.from, o.window.from_key)
+    from_t = _window_open_time(ind, o.window)
     isfinite(from_t) || return first_place:(first_place - 1)
     (; state) = race
     counts = draw_offspring(state.rng, o.window.offspring, ind, state)
@@ -477,6 +477,15 @@ end
 # its offspring and `model_generation_time` its kernel, so it runs on the same
 # route. Whether a tracing ring may draw a person's count before they settle is
 # the model's own answer to `reads_settled_state`.
+function generate_offspring(model::TransmissionModel, parent, state)
+    throw(
+        ArgumentError(
+            "$(typeof(model)) defines neither `generate_offspring` nor `contacts_of`; " *
+                "define one to say who each case infects."
+        )
+    )
+end
+
 struct _Generated{M <: TransmissionModel}
     model::M
 end
@@ -501,6 +510,7 @@ function _simulate_offspring(
     state = initialise_state(model, sim_opts, interventions, progression, attributes, rng)
     # The race counts the index cases as it settles them.
     state.cumulative_cases = 0
+    fill!(state.group_cases, 0)
     T = _timetype(state)
     tree = _take_tree(T, length(state.individuals), map(w -> w.until, windows))
     routes = ntuple(
@@ -520,4 +530,12 @@ function _simulate_offspring(
     state.continuation === nothing && _return_pooled!(tree)
     apply_observation!(observation, state, rng)
     return state
+end
+
+# When a window opens for a case. A window measured from onset opens at the time
+# onset would have happened, so infectiousness that follows a shared course
+# relative to onset also applies to a case that never has symptoms.
+function _window_open_time(ind, window)
+    window.from_key === :onset_time && return _potential_onset_time(ind)
+    return _state_time(ind, window.from, window.from_key)
 end

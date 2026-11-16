@@ -35,19 +35,26 @@ end
 """
     incubation_period(ind)
 
-Incubation period: days from infection to symptom onset (`NaN` if the person
-is asymptomatic or has no onset time). Useful inside a `generation_time`
-function that links a case's generation time to its own incubation period.
+Incubation period: days from infection to symptom onset, or to the time onset
+would have happened for a case that stays asymptomatic. `NaN` if no incubation
+period was drawn for the person. Useful inside a `generation_time` function that
+links a case's generation time to its own incubation period.
 """
-incubation_period(ind::Individual) = onset_time(ind) - ind.infection_time
+function incubation_period(ind::Individual{T}) where {T}
+    haskey(ind.state, :incubation_period) &&
+        return _state_real(ind.state, :incubation_period, T(NaN))
+    return onset_time(ind) - ind.infection_time
+end
 
-# The incubation period drawn for a case whether or not it develops symptoms:
-# the onset-based value when there is an onset, otherwise the latent draw made
-# by `clinical_presentation`.
-function _latent_incubation_period(ind::Individual)
-    inc = incubation_period(ind)
-    isnan(inc) || return inc
-    return _state_real(ind.state, :latent_incubation_period, NaN)
+# The time infectiousness that follows onset is measured from. A case that stays
+# asymptomatic has no observed onset but still has the time it would have
+# happened. A shared course of infectiousness relative to onset therefore applies
+# to it. A case whose symptoms were prevented by vaccination, or whose infection
+# was aborted, has no such onset. Its window from onset stays closed.
+function _potential_onset_time(ind::Individual{T}) where {T}
+    haskey(ind.state, :incubation_period) || return onset_time(ind)
+    get(ind.state, :asymptomatic, false)::Bool || return onset_time(ind)
+    return ind.infection_time + _state_real(ind.state, :incubation_period, T(NaN))
 end
 
 """
@@ -218,7 +225,8 @@ function abort_infection!(ind::Individual, time::Real)
                 "$(ind.infection_time), abort time $time)"
         )
     )
-    incubation = _state_real(ind.state, :incubation_period, NaN)
+    incubation = get(ind.state, :asymptomatic, false)::Bool ? NaN :
+        _state_real(ind.state, :incubation_period, NaN)
     isnan(incubation) || time < ind.infection_time + incubation || throw(
         ArgumentError(
             "an infection can only be aborted before symptom onset (onset " *

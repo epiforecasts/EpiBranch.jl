@@ -1206,3 +1206,31 @@ EpiBranch.may_lapse(::SeasonalClosureLapsing) = true
     @test permanent(SeasonalClosure(FlatBlock(1.0)))
     @test !permanent(SeasonalClosureLapsing(FlatBlock(1.0)))
 end
+
+@testset "A seeded case is infected past a certain block, an introduced one is not" begin
+    function seeded_race(seeded; declarations...)
+        rng = StableRNG(1)
+        state = EpiBranch.new_state(
+            BranchingProcess(Poisson(0.0), Exponential(1.0)),
+            AbstractClinicalTransition[], NoAttributes(), rng
+        )
+        interventions = [ProtectTo(1)]
+        EpiBranch.add_individuals!(state, 1, interventions)
+        EpiBranch._sellke_race!(
+            state, [1], rng;
+            from = :infection, until = (), interventions,
+            introduction = (Exponential(1.0), Inf), targets = (i, st) -> (),
+            seed! = (best, members, r) -> (best[1] = 1.0), seeded, declarations...
+        )
+        return only(state.individuals)
+    end
+    ind = seeded_race([1])
+    @test is_infected(ind)
+    @test ind.state[:seeded]
+    @test !haskey(ind.state, :infection_route)
+    @test !is_infected(seeded_race(nothing))
+    @test !is_infected(seeded_race(Int[]))
+    # a route that watches host records still takes the seeded opening
+    watched = seeded_race([1]; watches = ((:tag,),))
+    @test is_infected(watched) && watched.state[:seeded]
+end
