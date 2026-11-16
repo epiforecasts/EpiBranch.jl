@@ -21,7 +21,7 @@ made available by `using EpiBranch` and have to be written in full. The
 network and household names, such as [`NetworkProcess`](@ref) and
 [`HouseholdProcess`](@ref), come from the satellite packages and need `using
 EpiNetwork` or `using EpiHouseholds`. A function whose name ends in `!`
-changes one of its arguments in place. For the hooks the engine dispatches on,
+changes one of its arguments in place. For the hooks called during a simulation,
 that argument is the simulation state or the person being resolved, and the
 first argument is the intervention, step or action the method is written for.
 The last section, [For extension authors](@ref), lists what you need only to
@@ -41,6 +41,7 @@ fixed set of contacts. [`ModelSpec`](@ref) adds the rest of the scenario.
 BranchingProcess
 Infectiousness
 OffspringTimes
+RenewalOffspring
 transmission_timing
 implied_R
 EpiBranch.MultiTypeOffspring
@@ -66,6 +67,11 @@ ModelSpec
 single_type_offspring
 EpiBranch.has_single_type_law
 EpiBranch.offspring_law_unchanged
+EpiBranch.reporting_probability
+EpiBranch.reporting_from
+EpiBranch.onset_law
+EpiBranch.scale_mean
+EpiBranch.sum_offspring
 ```
 
 ## Approximate population dynamics
@@ -126,6 +132,10 @@ discrete-generation models usually do. With the second rule and an offspring
 law with a closed-form sum (`Poisson`, `NegBin`, `Binomial`), a generation
 costs the same whatever the number of cases.
 
+A [`ModelSpec`](@ref) built on the process, with a `generation_length`, also
+runs here, and applies its `GroupVaccination` campaigns to the susceptibles of
+each type between generations.
+
 ```@docs
 simulate_by_generation
 GenerationCounts
@@ -164,6 +174,12 @@ Reporting
 Hospitalisation
 Death
 Recovery
+Testing
+AbstractAssay
+Assay
+within_host
+EpiBranch.trajectory_value
+EpiBranch.measure
 exclusive_probabilities
 is_terminal
 terminal_event
@@ -205,9 +221,7 @@ OnIsolation
 TraceEveryone
 TraceNobody
 PreviouslyTraced
-AlwaysEligible
 SymptomaticParent
-NoTracing
 AnyOf
 AllOf
 NoneOf
@@ -232,6 +246,8 @@ RingVaccination
 MassVaccination
 GroupVaccination
 AbstractEffectMode
+EpiBranch.effect_mode
+EpiBranch.dose_label
 LeakyMode
 AllOrNothingMode
 ```
@@ -283,6 +299,7 @@ simulation: the cases and the contacts they exposed for a
 
 ```@docs
 simulate
+outbreak_state_space
 SimOpts
 AbstractStoppingRule
 Extinction
@@ -358,10 +375,14 @@ chain_statistics
 compute_trace_level!
 realised_generation_interval
 realised_generation_intervals
+realised_serial_interval
+realised_serial_intervals
 containment_probability
 is_extinct
 generation_R
 weekly_incidence
+incidence
+summarise
 scenario_sweep
 ```
 
@@ -378,8 +399,10 @@ distribution of chain sizes (as in epichains).
 reproduction_number
 extinction_probability
 epidemic_probability
+emergence_probability
 probability_contain
 end_of_outbreak_probability
+end_of_outbreak_inputs
 proportion_transmission
 proportion_cases_individual
 proportion_cases_offspring
@@ -461,7 +484,7 @@ A [`Signal`](@ref) reads a population quantity off a simulated
 [`SimulationState`](@ref) over a reporting step: [`TransitionCount`](@ref)
 (new cases per step) or [`Prevalence`](@ref) (cases currently in a state).
 [`SignalData`](@ref) pairs several of these, each with a measurement density
-of your own, and scores them all against the same simulated path, rather
+of your own, and evaluates their likelihoods on one shared simulated path, rather
 than letting separate `~` statements each simulate their own outbreak:
 
 ```julia
@@ -548,7 +571,6 @@ given size are seen. Add one to a model with `observation = ...`.
 ```@docs
 ObservationModel
 NoObservation
-PerCaseObservation
 MinimumSize
 ChainDetection
 observe
@@ -556,6 +578,13 @@ ChainSizeLaw
 ThinnedChainSize
 TruncatedChainSize
 DetectedChainSize
+```
+
+### Poisson mixtures
+
+```@docs
+PoissonLognormal
+PoissonWeibull
 ```
 
 ### Reproduction number varying between chains
@@ -578,6 +607,7 @@ pairwise_surv_loglik
 PairwiseSurvivalData
 InfectionLayer
 compile_contact_pairs
+EpiBranch.seeded_hosts
 ContactPairsLayout
 MassActionHazard
 SumHazard
@@ -636,13 +666,33 @@ Conditional
 EpiBranch.resolve
 ```
 
+## Population
+
+The population is specified once and every model reads it.
+
+```@docs
+Population
+NoPopulation
+EpiBranch.SinglePopulation
+EpiBranch.GroupedPopulation
+EpiBranch.population
+```
+
+How the groups of a population meet is a mixing value, which a
+[`BranchingProcess`](@ref) and a [`MixingProcess`](@ref) both take.
+
+```@docs
+Mixing
+FrequencyDependent
+DensityDependent
+```
+
 ## Default placeholders
 
 The values shown as defaults in signatures when a setting is left out, such as
 `max_cases = NoCases()`.
 
 ```@docs
-NoPopulation
 NoAttributes
 NoTypeLabels
 NoAgeDistribution
@@ -721,6 +771,10 @@ EpiBranch.proposes_own_contacts
 EpiBranch.propose_along
 EpiBranch.route_pair_kernel
 EpiBranch.pending_beyond
+EpiBranch.resume_route!
+EpiBranch.resumable_route
+EpiBranch.MassAction
+EpiBranch.mass_action_schedule
 ```
 
 ### Stopping rules
@@ -736,6 +790,7 @@ EpiBranch.honoured_without_should_stop
 
 ```@docs
 EpiBranch.initialise_individual!
+EpiBranch.initialise_episode!
 EpiBranch.resolve_individual!
 EpiBranch.on_infection_settled!
 EpiBranch.trace_contacts!
@@ -744,6 +799,7 @@ EpiBranch.traces_source
 EpiBranch.has_effect
 EpiBranch.supplies_contacts
 EpiBranch.keep_active
+InterventionWrapper
 EpiBranch.competing_risk
 Risk
 EpiBranch.HostSusceptibility
@@ -754,6 +810,7 @@ EpiBranch.HostImmunity
 EpiBranch.infectious_removal_time
 EpiBranch.risk_applies
 EpiBranch.standing_block
+EpiBranch.infinite_draw_is_final
 intervention_time
 EpiBranch.reset!
 EpiBranch.abort_infection!
@@ -851,6 +908,7 @@ EpiBranch.apply_observation!
 EpiBranch.calendar_multiplier
 EpiBranch.next_calendar_break
 EpiBranch.calendar_shape
+EpiBranch.calendar_bound
 EpiBranch.PiecewiseConstantCalendar
 EpiBranch.SmoothCalendar
 EpiBranch.pair_kernel
@@ -887,10 +945,7 @@ helpers the package may change at any time.
 
 ```@docs
 EpiBranch.get_generation_time
-EpiBranch._settle_case!
-EpiBranch._at_case!
 EpiBranch.population_size
-EpiBranch._create_individual
 EpiBranch.logsumexp
 EpiBranch.required_fields
 EpiBranch._validate_required_fields

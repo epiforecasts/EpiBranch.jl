@@ -1,13 +1,14 @@
 # Inference
 
 What can you learn about R and the dispersion k from outbreak data? This page
-estimates them from three kinds of data:
+estimates them from four kinds of data:
 
 | Data | What you observe | Typical source | Estimates |
 |:-----|:-----------------|:---------------|:----------|
 | Offspring counts ([`OffspringCounts`](@ref)) | the number of secondary cases each case caused | contact tracing that links infectors to infectees | R and k |
 | Chain sizes ([`ChainSizes`](@ref)) | the final number of cases in each cluster, but not who infected whom | cluster investigations, imported cases and their clusters | R, and k given enough clusters |
 | Chain lengths ([`ChainLengths`](@ref)) | the number of generations in each cluster | generation-linked tracing data | R |
+| Case time series ([`IncidenceCounts`](@ref)) | the number of new cases in each day or week of one outbreak | surveillance counts | R and k, given the generation time |
 
 `NegBin(R, k)` is the negative binomial offspring distribution with mean R and
 dispersion k; smaller k means more superspreading.
@@ -82,12 +83,14 @@ are used in the same place below.
 
 !!! warning "Offspring counts and interventions"
     `offspring_distribution` of a bare process describes secondary cases
-    without interventions. Given a [`ModelSpec`](@ref) with isolation or
-    quarantine it throws an error, since no built-in intervention has a
-    closed-form effect on the offspring distribution. If your offspring counts
-    come from a period with isolation or quarantine in place, the R you
-    estimate from the bare process is the R under those interventions, not the
-    R without them.
+    without interventions. Given a [`ModelSpec`](@ref), it applies the
+    interventions that have a closed-form effect on the offspring
+    distribution: `Isolation` and a [`MassVaccination`](@ref) campaign that is
+    already complete before the simulation starts. It throws an error for
+    interventions without one, such as contact tracing and its quarantine (see
+    [Analytical results](analytical.md)). If your offspring counts come from a
+    period with interventions in place, the R you estimate from the bare
+    process is the R under those interventions.
 
 ### Maximum likelihood
 
@@ -350,6 +353,69 @@ sampling variation alone; with more data both would move closer to it. Because t
 independent datasets add up, you can also fit both together by adding the two
 `loglikelihood` values, or by putting both `~` lines in one Turing model.
 
+## From a case time series
+
+Most outbreaks produce a daily count of new cases. [`IncidenceCounts`](@ref) holds such a series: the number of new cases in each successive step (day, week or whatever unit the series is recorded in), after `seeds` index cases introduced at step 0. `loglikelihood` scores it in closed form, without simulating, against an offspring distribution and a generation-time distribution. Any of the fitting methods above works on it.
+
+The series below is simulated from a negative binomial offspring distribution with R = 1.6 and k = 0.5, a gamma generation time with a mean of 5 days, and 20 index cases. Cases are counted by day of infection. The generation time is in the same unit as a step (days).
+
+```@example inference
+rng = StableRNG(11)
+true_R, true_k = 1.6, 0.5
+generation_time = Gamma(4.0, 1.25)  # mean 5 days
+n_days = 28
+state = simulate(
+    BranchingProcess(NegBin(true_R, true_k), generation_time);
+    n_initial = 20, max_time = n_days, rng = rng
+)
+# day t holds the infections in (t - 1, t]
+cases = zeros(Int, n_days)
+for ind in state.individuals
+    day = ceil(Int, ind.infection_time)
+    1 <= day <= n_days && (cases[day] += 1)
+end
+incidence = IncidenceCounts(cases; seeds = 20)
+println("Daily cases: ", cases)
+```
+
+The likelihood is built from [`incidence_moments`](@ref), the mean and covariance of the daily counts under the model. It matches a distribution to them, and the third argument of `loglikelihood` selects which:
+
+- [`NormalApproximation`](@ref), the default, matches a multivariate normal. It accepts any counts, including zeros.
+- [`LognormalApproximation`](@ref) matches a multivariate lognormal, which cannot go negative, but needs every count to be at least 1.
+
+Either way the likelihood is an approximation to the true, unknown distribution of the counts. The profile-likelihood fit from above works unchanged; only the log-likelihood function differs. The approximation is passed as part of the `data` argument so the same code fits with either:
+
+```@example inference
+function incidence_loglik(θ, (series, approximation))
+    offspring = NegBin(exp(θ[1]), exp(θ[2]))  # θ = [log R, log k]
+    return loglikelihood(series, offspring, generation_time, approximation)
+end
+
+function incidence_problem(series, approximation)
+    return LikelihoodProblem(
+        incidence_loglik, [0.0, 0.0];
+        data = (series, approximation),
+        syms = [:log_R, :log_k],
+        f_kwargs = (adtype = AutoForwardDiff(),),
+        prob_kwargs = (lb = log.([0.01, 0.01]), ub = log.([10.0, 100.0]))
+    )
+end
+
+for approximation in (NormalApproximation(), LognormalApproximation())
+    println(nameof(typeof(approximation)))
+    print_intervals(incidence_problem(incidence, approximation))
+end
+```
+
+The two approximations can disagree, and here they do: the interval for R under the normal approximation contains the value used to simulate the data (R = 1.6), while the lognormal interval, fitted to counts that are mostly small, sits well below it. Start with the normal approximation, and check a fit against simulated series (simulate the fitted model, count the cases per day as above, and compare) before trusting either.
+
+The interval for k under the normal approximation is wide and reaches its upper bound, as in the offspring-count fit, because four weeks of one outbreak say little about superspreading.
+
+!!! note "What this fit covers"
+    The likelihood assumes one constant R, a fixed number of seeds at step 0, and a known generation time. It ignores depletion of susceptibles and models no interventions. It can score cases by report date with `reporting_probability` and `reporting_delay`, which assume each case is reported independently with the same probability. A generation time that is short relative to the step, such as a few days against a weekly series, is binned coarsely and biases the fit. It does not estimate a time-varying R: for that, use a tool built for it, or the particle filter in [Filtering an outbreak over time](@ref) below, which follows an outbreak through a simulated model.
+
+[`SignalSeries`](@ref) and [`SignalData`](@ref) are the route for data that has no closed form here: they score observed series against one simulated outbreak, with a measurement density of your choosing, at the cost of simulating for each likelihood evaluation.
+
 ## Inference under interventions
 
 If the outbreaks you observed were under isolation, fitting the offspring
@@ -417,6 +483,77 @@ isolation and the cap on outbreak size.
     Each likelihood evaluation runs `n_sim` simulations, and fitting takes
     much longer than with an exact formula.
 
+    Changing the seed measures only the Monte Carlo noise. The simulated sizes are smoothed and their sparse upper tail is scored with a fitted geometric tail. This is approximate, and estimates can be biased at small `n_sim`. Compare with a larger `n_sim`, or with an exact formula on a case that has one, before trusting a fit.
+
+## Filtering an outbreak over time
+
+The fits above use a finished outbreak. To follow one as it unfolds, treat the outbreak as a state-space model: the latent state is the simulated outbreak, the dynamics advance it by one reporting interval, and each day's report is the data. [`outbreak_state_space`](@ref) builds that model for [SSMProblems.jl](https://github.com/TuringLang/SSMProblems.jl). Particle filters written against that interface run on it unchanged. The example below uses the bootstrap filter from [GeneralisedFilters.jl](https://github.com/TuringLang/GeneralisedFilters.jl). Each step continues a copy of the previous state with `simulate(model, state; max_time)`.
+
+!!! note
+    EpiBranch does not install SSMProblems; add it with `using Pkg; Pkg.add("SSMProblems")`. Loading it makes `outbreak_state_space` available. The extension works with SSMProblems 0.6 and 0.7.
+
+The outbreak below runs in a population of 500 with infections at rate 0.4 per infectious person per day and recovery at rate 0.2. Each case is reported with probability about one half, so the daily report is Poisson with mean half the new infections of the day, plus 0.1 to allow a report on a day with no new infections. `observe(t, state)` gives the distribution of the report on day `t`, reading the new infections off the state with the [`TransitionCount`](@ref) signal. The data are generated by stepping the dynamics and drawing each report from `observe`. This works the same on SSMProblems 0.6 and 0.7.
+
+```@example inference
+using SSMProblems, GeneralisedFilters
+
+make_model(rate) = ModelSpec(
+    HomogeneousProcess(transmission_rate = rate, population_size = 500);
+    progression = [Transition(:recovered; rate = 0.2, terminal = true)]
+)
+
+new_infections = TransitionCount(:infection)
+infectious = Prevalence(:infection, :recovered)
+observe(t, state) = Poisson(0.5 * new_infections(state, (t - 1.0, Float64(t))) + 0.1)
+
+# the prior starts the outbreak with 5 cases; `dt` is the step length in days
+truth = outbreak_state_space(make_model(0.4), observe; n_initial = 5)
+function simulate_outbreak(rng, ssm, n_days)
+    state = SSMProblems.simulate(rng, SSMProblems.prior(ssm))
+    true_infectious = Float64[]
+    reports = Int[]
+    for t in 1:n_days
+        state = SSMProblems.simulate(rng, SSMProblems.dyn(ssm), t, state)
+        push!(true_infectious, infectious(state, (t - 1.0, Float64(t))))
+        push!(reports, rand(rng, observe(t, state)))
+    end
+    return true_infectious, reports
+end
+
+true_infectious, reports = simulate_outbreak(StableRNG(11), truth, 20)
+println("Daily reports: ", reports)
+```
+
+`GeneralisedFilters.filter` runs a bootstrap filter with 100 particles over the reports. Each day it advances the simulated outbreaks with the dynamics, weights them by their fit to the report of that day and resamples. It returns the weighted particles after the last report and the log marginal likelihood of the reports. Filtering the first 5, 10, 15 and 20 days gives the weighted mean number of infectious cases on each of those days, which follows the rise in the true number although the filter never sees it. With only 100 particles it runs above the true number late on. More particles narrow that gap.
+
+```@example inference
+function filter_outbreak(rng, ssm, reports, n_days; n_particles = 100)
+    final, log_evidence = GeneralisedFilters.filter(
+        rng, ssm, GeneralisedFilters.BF(n_particles), reports[1:n_days]
+    )
+    w = GeneralisedFilters.get_weights(final)
+    n = [infectious(p.state, (n_days - 1.0, Float64(n_days))) for p in final.particles]
+    return sum(w .* n), log_evidence
+end
+
+days = 5:5:20
+filtered = [filter_outbreak(StableRNG(1), truth, reports, d)[1] for d in days]
+println("True infectious: ", true_infectious[days])
+println("Filtered mean:   ", round.(filtered; digits = 0))
+```
+
+The log marginal likelihood of the reports can be compared across parameter values. The estimate is noisy because it comes from a finite number of particles. Each rate below is therefore filtered three times.
+
+```@example inference
+for rate in (0.2, 0.3, 0.4, 0.5, 0.6)
+    ssm = outbreak_state_space(make_model(rate), observe; n_initial = 5)
+    estimates = [filter_outbreak(StableRNG(s), ssm, reports, 20)[2] for s in 1:3]
+    println("rate = $rate: log marginal likelihood ", round.(estimates; digits = 1))
+end
+```
+
+The likelihood is highest near the true rate of 0.4.
+
 ## Gradients of simulated outcomes
 
 A gradient-based sampler needs the slope of what it samples, and a discrete
@@ -434,7 +571,7 @@ over many calls should match a reference derivative.
 !!! note
     StochasticAD.jl is not installed with EpiBranch; add it with
     `using Pkg; Pkg.add("StochasticAD")`. It is an experimental package,
-    checked so far only against the parts of the engine below, not the whole
+    checked so far only against the parts of the simulation below, not the whole
     of `simulate`.
 
 The offspring distributions already compose with it, with no change needed in
@@ -456,9 +593,9 @@ negbin_grad = mean(
 println("d(mean offspring)/dR ≈ $(round(negbin_grad, digits = 2)) (exact: 1.0)")
 ```
 
-The engine's competing-risk draw — which decides whether host
+The competing-risk draw, which decides whether host
 susceptibility, infector infectiousness or an intervention's leaky effect
-blocks a transmission — draws from `Bernoulli(prob)` rather than comparing a
+blocks a transmission, draws from `Bernoulli(prob)` rather than comparing a
 raw uniform against `prob`, so `prob` is already free to be a
 `StochasticTriple`. That alone is not enough: the decision that follows the
 draw is itself a step function of `prob`, and StochasticAD refuses to branch

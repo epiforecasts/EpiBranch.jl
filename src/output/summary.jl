@@ -8,7 +8,16 @@ going when the simulation stopped (at `max_cases`, `max_time` or
 
 With `max_cases`, an outbreak that reached that many cases also counts as not
 contained, even if it then died out. Pass the cap used in `simulate`, so that
-outbreaks large enough to reach it count as uncontrolled, as in ringbp.
+outbreaks large enough to reach it count as uncontrolled.
+
+The event is extinction before the cap. ringbp's `extinct_prob` instead counts
+an outbreak as extinct if it has no new cases in a window of weeks (weeks 12 to
+16 by default) and it stays under the case cap. The two can disagree for slowly
+dying outbreaks: one that still has cases in the window but dies out later
+(after week 16, say) counts as contained here but not in ringbp. To use the
+ringbp event, take
+`is_extinct(state; by_week = 12:16, max_cases)` over the states, or look at
+[`weekly_incidence`](@ref).
 
 This is the simulation estimate. [`probability_contain`](@ref) gives the
 closed-form value for negative binomial offspring with simple control
@@ -67,8 +76,7 @@ function containment_probability(
     return count(contained) / n
 end
 
-_is_contained(s::SimulationState, ::NoCases) = s.extinct
-_is_contained(s::SimulationState, cap::Int) = s.cumulative_cases < cap && s.extinct
+_is_contained(s::SimulationState, cap) = s.extinct && !_check_max_cases(s, cap)
 
 """Whether a simulation has exceeded the max_cases cap (false if no cap)."""
 _check_max_cases(::SimulationState, ::NoCases) = false
@@ -185,8 +193,7 @@ simulation day 0) and `cases`. Weeks with no cases are left out.
   `clinical_presentation`) is placed by its infection time.
 - `:infection`: infection time. This is not observed in real surveillance,
   and the curve comes out earlier by roughly one incubation period.
-- `:reporting`: reporting time, set by [`Reporting`](@ref) or by
-  [`PerCaseObservation`](@ref), whichever the model uses. Cases never reported
+- `:reporting`: reporting time, set by [`Reporting`](@ref). Cases never reported
   are left out.
 - any other recorded time, such as `:admission_time`.
 """
@@ -195,31 +202,254 @@ function weekly_incidence(
         by::Symbol = :onset,
         reference_date::Date = Date(2020, 1, 1)
     )
-    infected = filter(is_infected, state.individuals)
-    isempty(infected) && return DataFrame(week = Date[], cases = Int[])
-
-    times = Float64[]
-    for ind in infected
-        t = _weekly_time(by, ind)
-        # Skip non-finite times: `NaN` (no such field) and `Inf` (an
-        # unreached state, e.g. an unreported case whose `:reporting_time`
-        # keeps its default). `Day(floor(Int, Inf))` would otherwise throw.
-        isfinite(t) || continue
-        push!(times, t)
-    end
-    isempty(times) && return DataFrame(week = Date[], cases = Int[])
-
-    weeks = Dict{Date, Int}()
-    for t in times
-        date = reference_date + Day(floor(Int, t))
-        week_start = date - Day(dayofweek(date) - 1)
-        weeks[week_start] = get(weeks, week_start, 0) + 1
-    end
-
-    df = DataFrame(week = collect(keys(weeks)), cases = collect(values(weeks)))
-    sort!(df, :week)
-    return df
+    # Skip non-finite times: `NaN` (no such field) and `Inf` (an unreached
+    # state, e.g. an unreported case whose `:reporting_time` keeps its
+    # default). `Day(floor(Int, Inf))` would otherwise throw.
+    times = filter(
+        isfinite,
+        [_weekly_time(by, ind) for ind in state.individuals if is_infected(ind)]
+    )
+    dates = [reference_date + Day(floor(Int, t)) for t in times]
+    df = DataFrame(week = [d - Day(dayofweek(d) - 1) for d in dates])
+    return sort!(combine(groupby(df, :week), nrow => :cases), :week)
 end
+
+"""
+    weekly_incidence(df::AbstractDataFrame; date=:date_onset)
+
+Weekly case counts from a table with one row per case, such as a
+[`linelist`](@ref) or observed surveillance data. `date` names the column
+that places a case in a week. The result has the columns `week` and `cases`
+of the `SimulationState` method. Rows with a `missing` date are left out,
+unlike the `SimulationState` method, which places a case without an onset
+by its infection time.
+"""
+function weekly_incidence(df::AbstractDataFrame; date::Symbol = :date_onset)
+    dates = Date.(collect(skipmissing(df[!, date])))
+    weeks = DataFrame(week = [d - Day(dayofweek(d) - 1) for d in dates])
+    return sort!(combine(groupby(weeks, :week), nrow => :cases), :week)
+end
+
+"""
+    weekly_incidence(states::Vector{<:SimulationState}; by=:onset,
+                     reference_date::Date=Date(2020, 1, 1))
+
+Weekly case counts across several simulated outbreaks, such as the output of
+`simulate(model, n)`. Returns a DataFrame with columns `sim_id` (the position
+of the outbreak in `states`), `week` and `cases`, with `by` and
+`reference_date` as for a single outbreak.
+
+Every outbreak has a row for every week from the first to the last week in
+which any outbreak has a case, and a week with no cases in an outbreak is
+counted as 0. Quantiles over outbreaks, as [`summarise`](@ref) takes them,
+need those zeros: dropping the empty weeks would leave only the outbreaks that
+had cases in the week and bias the quantiles upwards. An outbreak that ended
+early keeps its zeros up to the last week of the longest one.
+"""
+function weekly_incidence(
+        states::Vector{<:SimulationState};
+        by::Symbol = :onset,
+        reference_date::Date = Date(2020, 1, 1)
+    )
+    tables = [weekly_incidence(s; by, reference_date) for s in states]
+    populated = filter(!isempty, tables)
+    isempty(populated) &&
+        return DataFrame(sim_id = Int[], week = Date[], cases = Int[])
+
+    first_week = minimum(t.week[1] for t in populated)
+    last_week = maximum(t.week[end] for t in populated)
+    all_weeks = collect(first_week:Week(1):last_week)
+    n_weeks = length(all_weeks)
+
+    sim_ids = Int[]
+    weeks = Date[]
+    cases = Int[]
+    for (i, t) in enumerate(tables)
+        counts = zeros(Int, n_weeks)
+        for r in eachrow(t)
+            counts[div(Dates.value(r.week - first_week), 7) + 1] = r.cases
+        end
+        append!(sim_ids, fill(i, n_weeks))
+        append!(weeks, all_weeks)
+        append!(cases, counts)
+    end
+    return DataFrame(sim_id = sim_ids, week = weeks, cases = cases)
+end
+
+"""
+    incidence(state::SimulationState; interval=7, by=:onset,
+              reference_date::Date=Date(2020, 1, 1), range=nothing,
+              cumulative=false, by_generation=false)
+    incidence(states::Vector{<:SimulationState}; kwargs...)
+
+Case counts in bins of `interval` days: the epidemic curve of one simulated
+outbreak, or of several. Returns a DataFrame with columns `date` (the first day
+of each bin) and `cases`, plus `generation` when `by_generation = true` and
+`sim_id` (the position of the outbreak in `states`) for a vector of outbreaks.
+A bin with no cases has a row with 0. Tables from different runs therefore have
+the same rows and line up.
+
+- `interval`: the bin width in days, `1` for daily counts and `7` for weekly. With
+  a multiple of 7 the bins start on a Monday, as in [`weekly_incidence`](@ref);
+  otherwise they start at `reference_date`, simulation day 0.
+- `by`: which date places a case in a bin, as in [`weekly_incidence`](@ref).
+- `range`: a tuple of dates `(first, last)`. The bins are those containing these
+  two dates. Cases outside them are not counted. By default the bins run
+  from the first to the last bin with a case in any of the outbreaks.
+- `cumulative`: if `true`, `cases` is the running total up to and including each
+  bin, within each outbreak (and generation). A `range` that starts after the
+  first case counts only from its start.
+- `by_generation`: if `true`, there is one row for every generation, from 0 to the
+  latest generation of any outbreak, in every bin. This is the count by
+  generation that `aggregate(by = "generation")` gives in epichains.
+
+Without any case and without `range`, the table is empty.
+
+# Examples
+
+```julia
+states = simulate(model, 100; max_time = 84.0)
+incidence(states; interval = 1)                       # daily counts, one table
+incidence(states[1]; cumulative = true, by_generation = true)
+```
+"""
+function incidence(
+        state::SimulationState;
+        interval::Integer = 7,
+        by::Symbol = :onset,
+        reference_date::Date = Date(2020, 1, 1),
+        range::Union{Nothing, Tuple{Date, Date}} = nothing,
+        cumulative::Bool = false,
+        by_generation::Bool = false
+    )
+    return select!(
+        _incidence([state]; interval, by, reference_date, range, cumulative, by_generation),
+        Not(:sim_id)
+    )
+end
+
+function incidence(
+        states::Vector{<:SimulationState};
+        interval::Integer = 7,
+        by::Symbol = :onset,
+        reference_date::Date = Date(2020, 1, 1),
+        range::Union{Nothing, Tuple{Date, Date}} = nothing,
+        cumulative::Bool = false,
+        by_generation::Bool = false
+    )
+    return _incidence(states; interval, by, reference_date, range, cumulative, by_generation)
+end
+
+function _incidence(states; interval, by, reference_date, range, cumulative, by_generation)
+    interval >= 1 || throw(ArgumentError("incidence: interval must be at least 1 day"))
+    range === nothing || range[1] <= range[2] ||
+        throw(ArgumentError("incidence: range must be (first, last) with first <= last"))
+
+    # Bins start on a Monday for whole weeks, so that `interval = 7` matches
+    # `weekly_incidence`.
+    origin = interval % 7 == 0 ?
+        reference_date - Day(dayofweek(reference_date) - 1) : reference_date
+    bin_of(d::Date) = fld(Dates.value(d - origin), interval)
+
+    bins = [Int[] for _ in states]
+    gens = [Int[] for _ in states]
+    for (i, s) in enumerate(states), ind in s.individuals
+        is_infected(ind) || continue
+        t = _weekly_time(by, ind)
+        isfinite(t) || continue
+        push!(bins[i], bin_of(reference_date + Day(floor(Int, t))))
+        push!(gens[i], ind.generation)
+    end
+
+    if range === nothing
+        all_bins = reduce(vcat, bins; init = Int[])
+        isempty(all_bins) && return _empty_incidence(by_generation)
+        first_bin, last_bin = extrema(all_bins)
+    else
+        first_bin, last_bin = bin_of(range[1]), bin_of(range[2])
+    end
+    n_bins = last_bin - first_bin + 1
+    all_gens = reduce(vcat, gens; init = Int[])
+    n_gens = by_generation ? (isempty(all_gens) ? 1 : maximum(all_gens) + 1) : 1
+
+    sim_ids = Int[]
+    dates = Date[]
+    generations = Int[]
+    cases = Int[]
+    for i in eachindex(states)
+        counts = zeros(Int, n_bins, n_gens)
+        for (b, g) in zip(bins[i], gens[i])
+            first_bin <= b <= last_bin || continue
+            counts[b - first_bin + 1, by_generation ? g + 1 : 1] += 1
+        end
+        cumulative && (counts = cumsum(counts; dims = 1))
+        for g in 1:n_gens, k in 1:n_bins
+            push!(sim_ids, i)
+            push!(dates, origin + Day((first_bin + k - 1) * interval))
+            push!(generations, g - 1)
+            push!(cases, counts[k, g])
+        end
+    end
+    out = DataFrame(sim_id = sim_ids, date = dates, generation = generations, cases = cases)
+    by_generation || select!(out, Not(:generation))
+    return out
+end
+
+function _empty_incidence(by_generation::Bool)
+    out = DataFrame(sim_id = Int[], date = Date[], generation = Int[], cases = Int[])
+    by_generation || select!(out, Not(:generation))
+    return out
+end
+
+"""
+    summarise(df::AbstractDataFrame; value=:cases, by=:week,
+              probs=[0.025, 0.25, 0.5, 0.75, 0.975])
+
+Quantiles of `value` across the simulated outbreaks in `df`, one row per
+distinct value of the `by` column. `df` has one row per outbreak (`sim_id`)
+and time, as `weekly_incidence(states)` returns, or one row per outbreak, as
+a table of outbreak sizes or durations. Returns a DataFrame with the `by`
+column(s), `n_sim` (the number of outbreaks in that group) and one column per
+probability in `probs`, named `q` followed by the percentage with the
+decimal point written `_` (`q2_5` for 0.025, `q50` for 0.5). The default `probs`
+give the median with 50% and 95% bands.
+
+`by` is a column name, a vector of names, or `Symbol[]` for a single summary
+over the whole table, such as the distribution of outbreak sizes from
+`chain_statistics(states)` with `value = :size`. The quantiles are of the rows
+as given. A table with a row missing for an outbreak and time summarises only the
+outbreaks that have one, so zero-fill counts first, as `weekly_incidence(states)` does.
+
+# Examples
+
+```julia
+states = simulate(model, 1000; max_time = 84.0)
+summarise(weekly_incidence(states))                    # median and 50%, 95% bands per week
+summarise(chain_statistics(states); value = :size, by = Symbol[])
+```
+"""
+function summarise(
+        df::AbstractDataFrame;
+        value::Symbol = :cases,
+        by::Union{Symbol, AbstractVector{Symbol}} = :week,
+        probs::AbstractVector{<:Real} = [0.025, 0.25, 0.5, 0.75, 0.975]
+    )
+    all(p -> 0 <= p <= 1, probs) ||
+        throw(ArgumentError("summarise: probs must lie in [0, 1]"))
+    keys_by = by isa Symbol ? [by] : collect(by)
+    names = [_quantile_name(p) for p in probs]
+    ps = collect(probs)
+    compute(v) = (; n_sim = length(v), (nm => quantile(v, p) for (nm, p) in zip(names, ps))...)
+
+    if isempty(keys_by)
+        return DataFrame([compute(df[!, value])])
+    end
+    out = combine(groupby(df, keys_by), value => compute => AsTable)
+    return sort!(out, keys_by)
+end
+
+_quantile_name(p::Real) =
+    Symbol("q", replace(replace(string(round(100 * p; digits = 6)), r"\.0$" => ""), "." => "_"))
 
 # Onset with infection-time fallback for cases without a recorded onset.
 function _weekly_time(by::Symbol, ind)
@@ -228,12 +458,9 @@ function _weekly_time(by::Symbol, ind)
         return v isa Real && !isnan(v) ? float(v) : ind.infection_time
     elseif by === :infection
         return ind.infection_time
-    elseif by === :reporting
-        # No fallback: a case without a reporting time has not been observed.
-        v = get(ind.state, :reporting_time, NaN)
-        return v isa Real ? float(v) : NaN
     else
-        v = get(ind.state, by, NaN)
+        # No fallback: a case without the recorded time has not been observed.
+        v = get(ind.state, by === :reporting ? :reporting_time : by, NaN)
         return v isa Real ? float(v) : NaN
     end
 end
@@ -253,7 +480,9 @@ returned DataFrame holds one combination of the listed values and its
 varies, and any other key is rejected, including settings that do change a
 simulation, such as `:progression`. Settings that apply to every run, such as
 `max_cases`, are passed once as keywords. A setting that is a sweep axis is
-given as a vector even when there is only one value to use.
+given as a vector even when there is only one value to use. To vary anything
+else, or to summarise something other than containment, use the method that
+takes a function from a parameter row to a model.
 
 ```julia
 results = scenario_sweep(
@@ -327,4 +556,65 @@ function scenario_sweep(
     end
 
     return DataFrame(rows)
+end
+
+"""
+    scenario_sweep(build, rows; summary, n_sim=500, rng=Random.default_rng(), sim_kwargs...)
+
+Run a scenario once per row of parameters and summarise each. `build` takes a
+row and returns the model to simulate, a [`ModelSpec`](@ref) or any
+[`TransmissionModel`](@ref). The process, the progression, the
+interventions and any parameter inside a delay distribution can all vary. `rows`
+is any iterable of `NamedTuple`s or `DataFrameRow`s, such as the rows of a
+DataFrame of posterior or literature draws.
+
+Each row's `n_sim` outbreaks are simulated with `sim_kwargs` (the keywords of
+[`simulate`](@ref)`(model, n)`) and passed to `summary`, a function of the
+`Vector` of [`SimulationState`](@ref)s. It returns a `NamedTuple`, whose
+entries become columns next to the row's own, or a single value, stored in a
+`:summary` column. The default is the row's
+[`containment_probability`](@ref).
+
+`rng` is one generator shared by all rows, which draw different random
+numbers. To compare rows on the same ones, pass a function returning a fresh
+generator. It is called once per row, for example
+`() -> CommonRandomNumbers(1)`; see [`CommonRandomNumbers`](@ref).
+
+```julia
+draws = DataFrame(R = [1.5, 2.0, 2.5], k = [0.3, 0.5, 0.2])
+results = scenario_sweep(
+    row -> ModelSpec(
+        BranchingProcess(NegBin(row.R, row.k), LogNormal(1.6, 0.5));
+        progression = [Recovery(delay = Exponential(2.0))],
+        attributes = clinical_presentation(incubation_period = LogNormal(1.6, 0.5))
+    ),
+    eachrow(draws);
+    summary = states -> (; max_cases_seen = maximum(s.cumulative_cases for s in states)),
+    n_sim = 200, max_cases = 500, rng = () -> CommonRandomNumbers(1)
+)
+```
+"""
+function scenario_sweep(
+        build, rows;
+        summary = nothing,
+        n_sim::Int = 500,
+        rng = Random.default_rng(),
+        sim_kwargs...
+    )
+    cap = something(get(sim_kwargs, :max_cases, nothing), NoCases())
+    summarise = something(
+        summary,
+        states -> (; containment_probability = containment_probability(states; max_cases = cap))
+    )
+    out = NamedTuple[]
+    for row in rows
+        params = NamedTuple(row)
+        model = build(row)
+        run_rng = rng isa AbstractRNG ? rng : rng()
+        states = simulate(model, n_sim; rng = run_rng, sim_kwargs...)
+        result = summarise(states)
+        result = result isa NamedTuple ? result : (; summary = result)
+        push!(out, merge(params, result))
+    end
+    return DataFrame(out)
 end

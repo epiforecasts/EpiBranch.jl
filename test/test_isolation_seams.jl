@@ -5,7 +5,7 @@ end
 function EpiBranch.is_eligible_for_isolation(e::OnlyOlder, ind, state)
     return !is_asymptomatic(ind) && get(ind.state, :age, 0) >= e.age_threshold
 end
-EpiBranch._required_for_eligibility(::OnlyOlder) = [:onset_time, :asymptomatic, :age]
+EpiBranch.required_fields(::OnlyOlder) = [:asymptomatic, :age]
 
 # A ward shut until day 5, blocking with certainty while shut and reopening
 # after. Its `Risk` holds plain numbers and looks identical to a standing block,
@@ -118,10 +118,11 @@ EpiBranch.infectious_removal_time(f::FixedRemoval, ::Individual) = f.time
         @test iso.post_isolation_transmission == 0.0
     end
 
-    @testset "AllCases eligibility isolates asymptomatic individuals too" begin
+    @testset "AllCases eligibility tests asymptomatic individuals but does not isolate them" begin
         # Make the population partially asymptomatic, then with AllCases
-        # eligibility (and full sensitivity) every case should get
-        # :test_positive = true.
+        # eligibility (and full sensitivity) every case gets
+        # :test_positive = true. Isolation is timed from onset, so a case
+        # without one is not isolated.
         clin_mixed = clinical_presentation(
             incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.5
         )
@@ -138,6 +139,10 @@ EpiBranch.infectious_removal_time(f::FixedRemoval, ::Individual) = f.time
         # AllCases + sensitivity = 1.0 means every individual tests
         # positive, including asymptomatic ones.
         @test all(get(ind.state, :test_positive, false) for ind in state.individuals)
+        asymptomatic = filter(is_asymptomatic, state.individuals)
+        @test !isempty(asymptomatic)
+        @test !any(is_isolated, asymptomatic)
+        @test any(is_isolated, filter(!is_asymptomatic, state.individuals))
     end
 
     @testset "test_sensitivity accepts a function" begin
@@ -363,7 +368,7 @@ EpiBranch.infectious_removal_time(f::FixedRemoval, ::Individual) = f.time
         # recorded stretch has its own release, which the per-contact risk
         # re-checks the schedule against at every proposal regardless.
         # Narrowing here would turn a removal due to lapse into one that
-        # never does (see issue #410).
+        # never does.
         lapsing = Scheduled(perfect; start_time = 0.0, end_time = 10.0)
         @test EpiBranch.infectious_removal_time(lapsing, case) == Inf
 
@@ -541,4 +546,21 @@ EpiBranch.infectious_removal_time(f::FixedRemoval, ::Individual) = f.time
             @test is_infected(state.individuals[2])
         end
     end
+end
+
+@testset "Isolation's closed form accounts for vaccine symptom_efficacy" begin
+    off, gt = NegBin(2.0, 0.5), Gamma(2.0, 2.5)
+    cp = clinical_presentation(incubation_period = Gamma(2.0, 2.0), prob_asymptomatic = 0.3)
+    iso = Isolation(onset_to_isolation_delay = 1.0, duration = Inf)
+    function spec_with(se)
+        mv = MassVaccination(
+            efficacy = 0.5, eligibility_time = 0.0, coverage = 0.6, symptom_efficacy = se
+        )
+        return ModelSpec(BranchingProcess(off, gt); interventions = [mv, iso], attributes = cp)
+    end
+    R0 = reproduction_number(spec_with(0.0))
+    R9 = reproduction_number(spec_with(0.9))
+    @test R9 > R0
+    # Simulated value from the same model: about 1.12.
+    @test isapprox(R9, 1.12; atol = 0.05)
 end

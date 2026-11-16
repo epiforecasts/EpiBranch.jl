@@ -1,0 +1,1 @@
+Small repeated blocks in the engine files now share helpers. Behaviour is unchanged except in two cases: `_route_pair_kernel` on a route number outside the model throws a `BoundsError` instead of returning `nothing`, and `WindowCensor` reads its `until` times at the time type of the simulation.

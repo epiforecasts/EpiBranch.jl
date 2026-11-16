@@ -129,31 +129,23 @@ function _timed_from_outcome(individual, from::Symbol)
 end
 _timed_from_outcome(individual, from) = false
 
-function _censor_event!(individual, flag_key::Symbol, time_key::Symbol, from)
+# With the resolved key of `from` already in hand.
+function _timed_from_outcome(individual, ::Symbol, key::Symbol)
+    outcome = get(individual.state, :outcome, nothing)
+    outcome isa Symbol || return false
+    return key === _resolved_key(outcome)
+end
+_timed_from_outcome(individual, from, ::Nothing) = _timed_from_outcome(individual, from)
+
+function _censor_event!(
+        individual, flag_key::Symbol, time_key::Symbol, from, from_key = nothing
+    )
     individual.state[time_key] > individual.state[:outcome_time] || return nothing
-    _timed_from_outcome(individual, from) && return nothing
+    _timed_from_outcome(individual, from, from_key) && return nothing
     individual.state[flag_key] = false
     individual.state[time_key] = Inf
     return nothing
 end
-
-# ── Heterogeneity helpers ───────────────────────────────────────────
-#
-# Transition fields (`probability`, `delay`) are read through `sample_value`,
-# per individual at `resolve_individual!` time, and accept:
-#
-# - a `Real` / `Distribution`: constant across the population.
-# - a `Conditional(ind -> dist)`: a distribution chosen per individual.
-# - a `Function (rng, ind) -> value`: arbitrary per-individual rule.
-#   Use this for age-dependent CFRs, vulnerability-conditioned delays,
-#   risk-group-specific reporting, etc. The function is called with the
-#   simulation RNG and the individual; return the probability (as a
-#   `Real`) or the delay (as a `Real` time, typically days).
-#
-# Distribution-valued delays sample from the distribution. Function
-# delays return a sample directly. The pattern matches `transmission_traits`
-# and `clinical_presentation` so heterogeneity is configured the same way
-# across the package.
 
 # ── Evaluating ──────────────────────────────────────────────────────
 #
@@ -289,7 +281,7 @@ The log-likelihood of what a step did to one case: the log-probability that
 the step happened (or did not), plus the log-density of its delay when it did.
 [`progression_loglik`](@ref) calls it once per step per case. It is `0.0` when
 the case never reached the state the step starts from. A step that has not
-happened by `followup_end` is scored as censored there, by its survival
+happened by `followup_end` is treated as censored there, by its survival
 probability, rather than by a density; the built-in steps take this keyword.
 
 Defined for the built-in steps ([`Transition`](@ref), [`Reporting`](@ref),
@@ -478,6 +470,11 @@ end
 # itself, kept for backward compatibility) resolves to itself.
 _resolved_key(s::Symbol) = endswith(String(s), "_time") ? s : Symbol(s, :_time)
 
+# `_resolved_key` of a `from` given as a name, `nothing` for a callable. The key
+# depends only on `from`, so the object that holds `from` builds it once.
+_from_key(from::Symbol) = _resolved_key(from)
+_from_key(from) = nothing
+
 # A transition occurs only from a finite anchor. An anchor is missing (`NaN`)
 # when the `from` key was never written, and non-finite (`Inf`) when the
 # upstream transition initialised the key but never occurred — both mean "the
@@ -502,7 +499,8 @@ _from_required(_) = Symbol[]
 
 After all `resolve_individual!`s have run, collect terminal candidates
 across all terminal transitions and set `:outcome` and `:outcome_time`
-to the earliest. If no terminal transition occurs, neither key is set.
+to the earliest. It also records the winner under its own state and
+`<label>_time` keys. If no terminal transition occurs, none of them is set.
 
 Once the outcome is set, [`censor_after_outcome!`](@ref
 EpiBranch.censor_after_outcome!) runs on every non-terminal transition: a
@@ -516,6 +514,11 @@ function _finalise_terminal!(individual, transitions)
     if has_any
         individual.state[:outcome_time] = best_time
         individual.state[:outcome] = best_label
+        # The winning outcome's own state and `*_time` key, as a terminal
+        # `Transition` writes them, so an infectious window listing the state
+        # in `until` closes there. A losing candidate writes nothing.
+        individual.state[best_label] = true
+        individual.state[Symbol(best_label, :_time)] = best_time
         _each(transitions) do t
             is_terminal(t) || censor_after_outcome!(t, individual)
             return nothing

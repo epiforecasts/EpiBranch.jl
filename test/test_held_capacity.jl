@@ -221,6 +221,23 @@ end
         @test [isolation_time(c) for c in contacts] == [1.0, 5.0, 9.0]
     end
 
+    @testset "A repeat trace of a quarantined contact takes no further place" begin
+        ct = ContactTracing(TraceEveryone(), 1.0, Dirac(0.0), Quarantine(duration = 4.0))
+        hc = HeldCapacity(ct; capacity = 1, hold = 4.0)
+        state = empty_state()
+        infector = Individual(id = 1)
+        set_isolated!(infector, 0.0; release_time = Inf)
+        a, b = Individual(id = 2), Individual(id = 3)
+        append!(state.individuals, [a, b])
+        EpiBranch.trace_contacts!(hc, state, infector, [a], [5.0])
+        # `b` is refused while `a` holds the place; the repeat trace of `a`,
+        # dated earlier than the stay, must not start a second quarantine.
+        EpiBranch.trace_contacts!(hc, state, infector, [b, a], [6.0, 2.0])
+        @test EpiBranch.removal_stretches(a, EpiBranch.QUARANTINE_STRETCHES_KEY) == [(5.0, 9.0)]
+        @test !is_quarantined(b)
+        @test held_usage(hc, state, 6.0).held == 1
+    end
+
     @testset "Caps how many are isolated at once" begin
         iso = Isolation(onset_to_isolation_delay = Dirac(0.0), duration = 5.0)
         hc = HeldCapacity(iso; capacity = 1)

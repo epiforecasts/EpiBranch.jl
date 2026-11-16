@@ -55,20 +55,11 @@ output of `simulate(model, n)`. Returns a DataFrame with columns `sim_id`
 outbreak above.
 """
 function chain_statistics(states::Vector{<:SimulationState})
-    sim_ids = Int[]
-    chain_ids = Int[]
-    sizes = Int[]
-    lengths = Int[]
-
-    for (s, state) in enumerate(states)
-        cs = chain_statistics(state)
-        # append column arrays directly instead of iterating eachrow
-        n = nrow(cs)
-        append!(sim_ids, fill(s, n))
-        append!(chain_ids, cs.chain_id)
-        append!(sizes, cs.size)
-        append!(lengths, cs.length)
-    end
-
-    return DataFrame(sim_id = sim_ids, chain_id = chain_ids, size = sizes, length = lengths)
+    per_sim = [
+        insertcols(chain_statistics(state), 1, :sim_id => s)
+            for (s, state) in enumerate(states)
+    ]
+    return isempty(per_sim) ?
+        DataFrame(sim_id = Int[], chain_id = Int[], size = Int[], length = Int[]) :
+        reduce(vcat, per_sim)
 end

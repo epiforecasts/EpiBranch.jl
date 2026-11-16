@@ -149,6 +149,12 @@ end
     )
     @test invlogccdf(loop_risk, -1.0) ≈ (b - o) + (100 - (b - o)) / 0.5
 
+    # The kernel is a continuous univariate distribution, so the generic
+    # distribution methods apply without kernel-specific ones.
+    @test EpiBranch._CalendarScaledKernel <: ContinuousUnivariateDistribution
+    @test EpiBranch._ext_prepare(loop_risk) === loop_risk
+    @test EpiBranch._ext_partype(loop_risk, 3) == Distributions.partype(loop_risk)
+
     # A later segment that starts beyond the support of a bounded profile must
     # not subtract one infinite cumulative hazard from another: the contact is
     # certain by then, whatever the calendar does after.
@@ -195,6 +201,21 @@ end
     )
     @test ForwardDiff.derivative(u -> settle_top(u, Steps([2.0], [1.0, 1.0])), 5.0) == 1.0
     @test settle_top(5.0, Steps([7.0], [1.0, 0.0])) == 5.0
+end
+
+# A kernel written outside the package that inverts by itself and answers
+# `Inf` once its total hazard of 1 is spent, while its `logccdf` at infinity
+# reports no survival, declares the answer final through the public trait.
+import Distributions
+struct SpentKernel end
+Distributions.logccdf(::SpentKernel, t::Real) = isfinite(t) ? -min(t, 1.0) : -Inf
+Distributions.invlogccdf(::SpentKernel, lp::Real) = lp > -1.0 ? -lp : Inf
+EpiBranch.infinite_draw_is_final(::SpentKernel) = true
+
+@testset "infinite_draw_is_final is a kernel trait" begin
+    @test !EpiBranch.infinite_draw_is_final(Exponential(1.0))
+    @test EpiBranch._time_at_log_survival(SpentKernel(), -5.0) == Inf
+    @test EpiBranch._time_at_log_survival(SpentKernel(), -0.5) ≈ 0.5
 end
 
 # A smooth seasonal calendar schedule, `rate * (1 + amplitude * sin(2πt / period))`,
