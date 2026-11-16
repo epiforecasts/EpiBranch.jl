@@ -130,14 +130,11 @@ label share one budget, and doses given by another intervention under that
 label count against it; use different labels for separate budgets.
 [`capacity_usage`](@ref) reports the capacity used and available.
 
-By default everyone draws on the same budget. An intervention with a
-[`resource_key`](@ref EpiBranch.resource_key) method splits it instead: each
-distinct value (a district, a treatment centre) gets its own
-`budget_per_period`, tracked under the same `period`, `carry_over` and
-`priority` independently of every other. Pass the value to `capacity_usage`
-to read one group's own usage. A [`GroupVaccination`](@ref) with
-`group_key = :type` (the types of a `BranchingProcess`) has such a method and
-gives each type its own budget.
+By default all groups share one budget, in every model. An intervention with a [`resource_key`](@ref EpiBranch.resource_key)
+method splits it: each distinct value (a district, a treatment centre)
+gets its own `budget_per_period` with the same `period`, `carry_over` and
+`priority`, tracked separately from the others. Pass the value to
+`capacity_usage` to read the usage of one group.
 
 [`Scheduled`](@ref) and `CapacityConstrained` can be combined in either
 order: both check each action's own proposed date.
@@ -281,12 +278,6 @@ state alone, with nothing of the original proposal kept around.
 """
 resource_key(::AbstractIntervention, individual, state) = nothing
 
-# Each type of a branching process has its own `budget_per_period`, as in
-# `simulate_by_generation`. Groups under any other key share one budget, as in
-# the mixing approximations.
-resource_key(gv::GroupVaccination, individual, state) =
-    gv.group_key === :type ? get(individual.state, :type, nothing) : nothing
-
 resource_key(w::InterventionWrapper, individual, state) =
     resource_key(w.intervention, individual, state)
 capacity_key(v::RingVaccination) = _vaccinated_key(dose_label(v))
@@ -339,7 +330,17 @@ capacity_time_key(::TraceAction) = nothing
 # for the entries it has recorded (see `_reset_traced!`),
 # present and non-empty exactly when a quarantine has used the budget.
 capacity_key(::Quarantine) = :_quarantine_removal_handles
-capacity_time_key(::Quarantine) = :trace_time
+capacity_time_key(::Quarantine) = _QUARANTINE_START_KEY
+
+# Whether an action for someone who has already used the resource still goes
+# to the wrapped intervention. A dose does no harm there, because `record_dose!`
+# skips a second one. A further trace of a quarantined contact would record a
+# second entry with no budget or place charged for it. It is dropped.
+_repeat_use_passes(::AbstractIntervention) = true
+_repeat_use_passes(ct::_Tracing) = _repeat_use_passes(ct.action)
+_repeat_use_passes(::TraceAction) = true
+_repeat_use_passes(::Quarantine) = false
+_repeat_use_passes(w::InterventionWrapper) = _repeat_use_passes(w.intervention)
 
 function refused_action(p::DeferRefused, cc::CapacityConstrained, times, action)
     period_start, _ = _period_bounds(cc, action.time)

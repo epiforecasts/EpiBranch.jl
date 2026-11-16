@@ -12,6 +12,7 @@ restricts it.
 abstract type InterventionWrapper <: AbstractIntervention end
 
 initialise_individual!(w::InterventionWrapper, ind, state) = initialise_individual!(w.intervention, ind, state)
+initialise_episode!(w::InterventionWrapper, ind, state) = initialise_episode!(w.intervention, ind, state)
 resolve_individual!(w::InterventionWrapper, ind, state) = resolve_individual!(w.intervention, ind, state)
 competing_risk(w::InterventionWrapper, parent, contact, state) = competing_risk(w.intervention, parent, contact, state)
 is_active(w::InterventionWrapper, state::SimulationState) = is_active(w.intervention, state)

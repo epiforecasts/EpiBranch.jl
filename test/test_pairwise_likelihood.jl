@@ -285,6 +285,15 @@ end
         @test Ls.infector == Ld.infector
         @test Ls.component == Ld.component
 
+        # a chosen initial case is conditioned on even when the hazard explains the index cases
+        Lseed = compile_contact_pairs(
+            membership, is_index, infected; external = true, seeded = [false, false, false, true, false]
+        )
+        @test Lseed.sus == [1, 1, 2, 2, 3, 3, 3, 5, 5]
+        @test isempty(Lseed.no_rows)
+        @test_throws ArgumentError compile_contact_pairs(
+            membership, is_index, infected; seeded = [true]
+        )
         @test_throws ArgumentError compile_contact_pairs([1, 1], [true], [true, false])
         @test length(compile_contact_pairs(Int[], Bool[], Bool[])) == 0
 
@@ -385,6 +394,8 @@ end
 
     @testset "an infection layer must name its contact structure" begin
         @test_throws ArgumentError EpiBranch.contact_structure(_NoStructure())
+        # a layer that records no seeded hosts reports none
+        @test EpiBranch.seeded_hosts(_NoStructure()) === nothing
     end
 
     @testset "a partition and its clique graph give the same likelihood" begin
@@ -509,7 +520,7 @@ end
         @test_throws ArgumentError MassActionHazard(; transmission_rate = 0.1, population_size = 0)
         m = MassActionHazard(; transmission_rate = 0.6, population_size = 4)
         @test m.transmission_rate == 0.6
-        @test m.population_size == 4
+        @test m.population == Population(4)
         @test EpiBranch._valid_external(m)
         @test EpiBranch._ext_active(m)
         @test !EpiBranch._ext_active(MassActionHazard(; transmission_rate = 0.0, population_size = 4))
