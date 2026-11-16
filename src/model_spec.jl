@@ -565,6 +565,11 @@ function simulate(
         spec::ModelSpec, state::SimulationState; max_time::Real,
         rng::AbstractRNG = state.rng
     )
+    # A run not cut by `max_time` is returned unchanged, its classification
+    # with it: reclassifying to the new `max_time` would read events the race
+    # never simulated, or drop ones it did.
+    continuation = state.continuation
+    (continuation === nothing || !continuation.cut_by_max_time) && return state
     _continue_sellke!(
         state, rng, max_time, spec.interventions, transmission_risks(spec.process),
         spec.recorder

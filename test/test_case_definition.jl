@@ -201,6 +201,12 @@ _acute_load(rng, ind) = t -> max(0.0, 8.0 - abs(t - 5.0) * 1.6)
         plain = simulate(plain_spec; max_time = 10.0, rng = StableRNG(4))
         simulate(plain_spec, plain; max_time = 14.0)
         @test count(is_infected, plain.individuals) == count(is_infected, state.individuals)
+        # A run stopped by `max_cases` cannot be continued and keeps its
+        # classification.
+        stopped = simulate(spec; max_cases = 30, rng = StableRNG(4))
+        before = case_classification_changes(stopped)
+        simulate(spec, stopped; max_time = 1.0)
+        @test isequal(case_classification_changes(stopped), before)
         # A generator that cannot be copied still classifies.
         device = simulate(spec; max_time = 10.0, rng = RandomDevice())
         @test any(i -> !ismissing(case_classification(i)), device.individuals)
