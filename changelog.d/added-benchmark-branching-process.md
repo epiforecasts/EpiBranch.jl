@@ -1,5 +1,5 @@
-The benchmark suite under `benchmark/` gains a `BranchingProcess` case, with
-and without isolation and contact tracing, run on the same continuous-time
-race as every other entry (network, household or homogeneous); the suite
-previously had none that drove the race through `BranchingProcess`, as the
-tutorials and `docs/src/benchmarks.md` do.
+The benchmark suite under `benchmark/` now includes `BranchingProcess`,
+with and without isolation and contact tracing. It uses the same continuous-time
+race as the network, household and homogeneous benchmarks. The suite previously
+had no benchmark for the `BranchingProcess` simulations used in the tutorials
+and `docs/src/benchmarks.md`.

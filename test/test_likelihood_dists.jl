@@ -1,4 +1,42 @@
+using ForwardDiff
+using Distributions
+using StableRNGs
+using EpiBranch: GammaBorel
+
+struct BrokenExactOffspring{E} <: DiscreteUnivariateDistribution
+    error::E
+end
+EpiBranch.chain_size_distribution(d::BrokenExactOffspring) = throw(d.error)
+
 @testset "Likelihood distributions" begin
+    @testset "Errors inside exact laws propagate" begin
+        for err in (MethodError(logpdf, (nothing, 1)), ArgumentError("invalid exact law"))
+            bp = BranchingProcess(BrokenExactOffspring(err))
+            for model in (bp, ModelSpec(bp))
+                @test_throws typeof(err) chain_size_distribution(model)
+                @test_throws typeof(err) loglikelihood(ChainSizes([1, 2]), model; n_sim = 0)
+            end
+        end
+    end
+    @testset "Fitted reporting probability keeps the exact law" begin
+        sizes = [1, 1, 2, 3, 1, 5, 2]
+        build(p) = ModelSpec(
+            BranchingProcess(NegBin(0.8, 0.5), Gamma(2, 1));
+            progression = [Reporting(delay = 1.0, probability = p)],
+            attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
+        )
+        @test chain_size_distribution(build(ForwardDiff.Dual(0.5, 1.0))) isa ThinnedChainSize
+        exact(p) = sum(logpdf(ThinnedChainSize(GammaBorel(0.5, 0.8), p), n) for n in sizes)
+        fd = (exact(0.50001) - exact(0.49999)) / 0.00002
+        @test abs(fd) > 0.1
+        for f in (
+                p -> sum(logpdf(chain_size_distribution(build(p)), n) for n in sizes),
+                p -> loglikelihood(ChainSizes(sizes), build(p); n_sim = 0),
+            )
+            @test f(0.5) ≈ exact(0.5)
+            @test ForwardDiff.derivative(f, 0.5) ≈ fd rtol = 1.0e-5
+        end
+    end
     @testset "offspring_distribution returns the bare offspring" begin
         bp = BranchingProcess(Poisson(1.0))
         d = offspring_distribution(bp)
@@ -84,16 +122,16 @@
     end
 
     @testset "chain_size_distribution — bare-pgf GeneratingFunctionOffspring falls back" begin
-        # Regression: a GeneratingFunctionOffspring has a chain_size_distribution
+        # A GeneratingFunctionOffspring has a chain_size_distribution
         # method, so has_single_type_law's hasmethod check passes, but calling
         # it on a bare-pgf instance (no stored pmf) throws ArgumentError.
-        # The analytical fast path must catch that and fall through to the
-        # simulation-based wrapper, rather than let it escape the primary
-        # `~` entry point as an uncaught error.
+        # The analytical fast path checks for the missing pmf and uses the
+        # simulation-based wrapper without constructing the law.
         R, k = 2.5, 0.16
         off = GeneratingFunctionOffspring(s -> EpiBranch._pgf(NegBin(R, k), s), R)
         bp = BranchingProcess(off, Exponential(5.0))
-        @test chain_size_distribution(bp) isa Distribution
+        @test chain_size_distribution(bp) isa EpiBranch._ChainSizeLaw
+        @test chain_size_distribution(ModelSpec(bp)) isa EpiBranch._ChainSizeLaw
     end
 
     @testset "chain_length_distribution" begin
@@ -101,6 +139,52 @@
         d = chain_length_distribution(bp)
         data = [0, 1, 2, 0, 3, 1]
         @test logpdf(d, data) ≈ loglikelihood(ChainLengths(data), Poisson(0.5))
+
+        @testset "Scalar pdf and logpdf" begin
+            @test logpdf(d, 2) ≈ logpdf(d, [2])
+            @test pdf(d, 2) ≈ exp(logpdf(d, [2]))
+            @test sum(pdf(d, k) for k in 0:60) ≈ 1 atol = 1.0e-6
+        end
+
+        @testset "Onset-timed Reporting misses asymptomatic cases" begin
+            message = "per-case detection does not give a well-defined chain length"
+            cp(p) = clinical_presentation(
+                incubation_period = Gamma(2.0, 2.0), prob_asymptomatic = p
+            )
+            onset = [Reporting(probability = 1.0, delay = 1.0)]
+            asym = ModelSpec(bp; progression = onset, attributes = cp(0.4))
+            @test_throws message loglikelihood(ChainLengths(data), asym)
+            @test_throws message chain_length_distribution(asym)
+            sympt = ModelSpec(bp; progression = onset, attributes = cp(0.0))
+            @test isfinite(loglikelihood(ChainLengths(data), sympt))
+
+            # The symptomatic share must be a fixed number from one presentation.
+            @test_throws "needs exactly one" loglikelihood(
+                ChainLengths(data), ModelSpec(bp; progression = onset)
+            )
+            @test_throws "needs exactly one" loglikelihood(
+                ChainLengths(data),
+                ModelSpec(bp; progression = onset, attributes = (cp(0.0), cp(0.0)))
+            )
+            @test_throws "fixed prob_asymptomatic" loglikelihood(
+                ChainLengths(data),
+                ModelSpec(bp; progression = onset, attributes = cp(ind -> 0.0))
+            )
+
+            # A terminal step with full reporting is not a reporting fraction.
+            terminal = ModelSpec(
+                bp;
+                progression = [
+                    Reporting(probability = 1.0, delay = 1.0, from = :infection),
+                    Recovery(delay = 5.0),
+                ]
+            )
+            @test isfinite(
+                loglikelihood(
+                    ChainLengths(data), terminal; n_sim = 50, rng = StableRNG(1)
+                )
+            )
+        end
 
         @testset "Reporting requires full detection" begin
             message = "per-case detection does not give a well-defined chain length"
@@ -131,12 +215,11 @@
         end
     end
 
-    @testset "chain_size_distribution — per-case observation" begin
+    @testset "chain_size_distribution — Reporting step" begin
         data = [1, 2, 1, 3, 1]
         obs = ModelSpec(
-            BranchingProcess(Poisson(0.5)); observation = PerCaseObservation(;
-                detection_prob = 0.7
-            )
+            BranchingProcess(Poisson(0.5));
+            progression = [Reporting(delay = Dirac(0.0), probability = 0.7, from = :infection)]
         )
         d = chain_size_distribution(obs; n_sim = 0)
         # n_sim=0 forces the wrapper path; logpdf should still match the
@@ -163,7 +246,6 @@
         pc = fill(1.0, length(data))
         specs = (
             ModelSpec(bp; observation = MinimumSize(2)),
-            ModelSpec(bp; observation = PerCaseObservation(; detection_prob = 0.5)),
             ModelSpec(bp; observation = ChainDetection(0.4)),
             ModelSpec(bp; progression = [Reporting(delay = Dirac(0.0), probability = 0.5, from = :infection)]),
         )
@@ -187,7 +269,24 @@
                 ),
             ]
         )
-        @test chain_size_distribution(model) isa Distribution
+        @test chain_size_distribution(model) isa EpiBranch._ChainSizeLaw
+    end
+
+    @testset "Multiple Reporting steps fall back to simulation" begin
+        model = ModelSpec(
+            BranchingProcess(Poisson(0.5));
+            progression = [
+                Reporting(delay = 0.0, probability = p, from = :infection)
+                    for p in (0.5, 0.7)
+            ]
+        )
+        @test chain_size_distribution(model) isa EpiBranch._ChainSizeLaw
+        data = [1, 2, 3]
+        ll = loglikelihood(ChainSizes(data), model; n_sim = 500, rng = StableRNG(1))
+        @test isfinite(ll)
+        @test logpdf(
+            chain_size_distribution(model; n_sim = 500, rng = StableRNG(1)), data
+        ) ≈ ll
     end
 
     @testset "chain_size_distribution — Reporting thins by the share of cases that reach `from`" begin
@@ -367,7 +466,7 @@
         bp = BranchingProcess(Poisson(0.5))
         bp_obs = ModelSpec(
             BranchingProcess(Poisson(0.5));
-            observation = PerCaseObservation(detection_prob = 0.6)
+            progression = [Reporting(delay = Dirac(0.0), probability = 0.6, from = :infection)]
         )
         bp_cm = BranchingProcess(ClusterMixed(Poisson, Gamma(2.0, 0.4)))
         bp_mt = BranchingProcess(
@@ -387,10 +486,8 @@
 
         @testset "chain_length_distribution" begin
             @test chain_length_distribution(bp) isa Distribution
-            # per-case detection has no well-defined chain length; the
-            # refusal surfaces when the law is evaluated, not at construction.
-            dl = chain_length_distribution(bp_obs)
-            @test_throws ArgumentError logpdf(dl, [0, 1, 2])
+            # per-case reporting has no well-defined chain length.
+            @test_throws ArgumentError chain_length_distribution(bp_obs)
         end
 
         @testset "offspring_distribution" begin

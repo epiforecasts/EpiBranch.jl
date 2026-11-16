@@ -7,7 +7,7 @@ end
 
 EpiBranch.vaccine_effect(v::_TestCampaignVaccination) = v.effect
 
-# An `AbstractEffectMode` defined outside the package (#373): deterministic
+# An `AbstractEffectMode` defined outside the package: deterministic
 # instead of either `LeakyMode`'s identity or `AllOrNothingMode`'s Bernoulli
 # draw, exercising the two public hooks a new mode needs.
 struct _TestThresholdMode <: AbstractEffectMode
@@ -226,10 +226,7 @@ EpiBranch.realised_efficacy(::_TestBlockedMode, eff, rng) =
         for ind in contacts
             EpiBranch.initialise_individual!(cc.intervention, ind, nothing)
         end
-        cc_state = EpiBranch.new_state(
-            BranchingProcess(Poisson(0.0)),
-            EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
-        )
+        cc_state = empty_state(BranchingProcess(Poisson(0.0)); rng = StableRNG(1))
         append!(cc_state.individuals, contacts)
         EpiBranch.apply_actions!(cc, cc_state, contacts)
         @test count(is_vaccinated, contacts) == 1

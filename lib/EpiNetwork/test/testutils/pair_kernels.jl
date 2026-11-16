@@ -1,4 +1,4 @@
-# Copy of test/testutils/pair_kernels.jl in the core package, kept here so this
+# Copy of lib/EpiHouseholds/test/testutils/pair_kernels.jl, kept here so this
 # package's tests run from a registry copy. Keep the two in step.
 
 function test_contextual_simulation(make_process, extract)

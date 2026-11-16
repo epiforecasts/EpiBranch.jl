@@ -24,7 +24,7 @@ using StableRNGs
         # must agree case for case, not just in distribution.
         N = 500
         β = 2.0
-        prog = [Transition(:recovered; from = :infection, delay = Exponential(1.0), terminal = true)]
+        prog = sir(Exponential(1.0))
         rate = (from, to) -> β / N
 
         homog = simulate(
@@ -53,7 +53,7 @@ using StableRNGs
         # for case, not just in distribution.
         N = 500
         schedule = Steps([2.0], [0.4, 1.5])
-        prog = [Transition(:recovered; from = :infection, delay = Exponential(1.0), terminal = true)]
+        prog = sir(Exponential(1.0))
 
         homog = simulate(
             ModelSpec(
@@ -85,7 +85,7 @@ using StableRNGs
         M = [3.0 0.5; 0.5 0.5]
         band = (rng, ind) -> (ind.state[:age_band] = ind.id <= N ÷ 2 ? 1 : 2)
         rate = (from, to) -> M[to[1], from[1]] / (N ÷ 2)
-        prog = [Transition(:recovered; from = :infection, delay = Exponential(1.0), terminal = true)]
+        prog = sir(Exponential(1.0))
         state = simulate(
             ModelSpec(
                 MixingProcess(; population_size = N, mixing_by = (:age_band,), rate);
@@ -108,7 +108,7 @@ using StableRNGs
         N = 1000
         patch = (rng, ind) -> (ind.state[:patch] = ind.id <= N ÷ 2 ? 1 : 2)
         rate = (from, to) -> 2.0 / (N ÷ 2)
-        prog = [Transition(:recovered; from = :infection, delay = Exponential(1.0), terminal = true)]
+        prog = sir(Exponential(1.0))
         clinical = clinical_presentation(
             incubation_period = Dirac(0.0), prob_asymptomatic = 0.0
         )
@@ -130,8 +130,7 @@ using StableRNGs
     @testset "from override and derivation from progression" begin
         rate = (from, to) -> 0.0
         # With no latent transition the window opens at :infection.
-        sir = [Transition(:recovered; from = :infection, delay = 1.0, terminal = true)]
-        @test EpiBranch.infectious_from(sir) === :infection
+        @test EpiBranch.infectious_from(sir(1.0)) === :infection
         # A latent transition moves the window's open state to :infectious.
         seir = [
             Transition(:infectious; from = :infection, delay = 1.0),
@@ -145,7 +144,7 @@ using StableRNGs
 
     @testset "termination controls on the structured population" begin
         rate = (from, to) -> 2.0 / 200
-        prog = [Transition(:recovered; from = :infection, delay = 1.0, terminal = true)]
+        prog = sir(1.0)
         spec = ModelSpec(MixingProcess(; population_size = 200, rate); progression = prog)
         # An explicit, non-default max_cases now caps the population, with no
         # warning that it had no effect.
@@ -161,7 +160,7 @@ using StableRNGs
 
     @testset "n_initial is validated" begin
         rate = (from, to) -> 0.0
-        prog = [Transition(:recovered; from = :infection, delay = 1.0, terminal = true)]
+        prog = sir(1.0)
         spec = ModelSpec(MixingProcess(; population_size = 10, rate); progression = prog)
         @test_throws ArgumentError simulate(spec; n_initial = 0, rng = StableRNG(1))
         @test_throws ArgumentError simulate(spec; n_initial = 11, rng = StableRNG(1))
@@ -169,7 +168,7 @@ using StableRNGs
 
     @testset "condition retries through the public simulate_once seam" begin
         rate = (from, to) -> 2.0 / 500
-        prog = [Transition(:recovered; from = :infection, delay = 1.0, terminal = true)]
+        prog = sir(1.0)
         spec = ModelSpec(MixingProcess(; population_size = 500, rate); progression = prog)
         state = simulate(spec; condition = 100:500, n_initial = 5, rng = StableRNG(1))
         @test state.cumulative_cases in 100:500

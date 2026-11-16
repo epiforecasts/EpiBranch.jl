@@ -135,3 +135,77 @@ end
     # isolation, half a day later, falls inside the window.
     @test reached_before_infection
 end
+
+@testset "The race walks the progression as a Tuple with the same result as the Vector" begin
+    progression = [
+        Transition(:infectious; from = :infection, delay = Exponential(2.0)),
+        Transition(:hospitalised; from = :infectious, delay = Exponential(3.0)),
+        Transition(:recovered; from = :hospitalised, delay = 4.0, terminal = true),
+        Transition(:dead; from = :infectious, delay = Exponential(9.0), terminal = true),
+        _RecordTransitionClock(),
+    ]
+    model = ModelSpec(
+        BranchingProcess(Poisson(2.0), Exponential(5.0)); progression
+    )
+    state = simulate(model; rng = StableRNG(3), max_generations = 3)
+    cases = filter(is_infected, state.individuals)
+    @test length(cases) > 1
+    transitions = Tuple(state.transitions)
+
+    for case in cases
+        # The same infection settled twice from the same stream: once through
+        # the public method over the `Vector`, once through the `Tuple` used
+        # by the race.
+        settled = map((nothing, transitions)) do typed
+            ind = Individual(id = case.id)
+            ind.infection_time = case.infection_time
+            Random.seed!(state.rng, 11)
+            if typed === nothing
+                EpiBranch.resolve_transitions!(state, ind)
+            else
+                EpiBranch._resolve_transitions!(state, ind, typed)
+            end
+            return ind.state
+        end
+        @test settled[1] == settled[2]
+        @test haskey(settled[1], :_transition_clock)
+    end
+end
+
+@testset "The terminal fold and the per-element walk agree over a Tuple and a Vector" begin
+    visited = Symbol[]
+    record(x) = (push!(visited, x); nothing)
+    EpiBranch._each(record, (:a, :b, :c))
+    EpiBranch._each(record, [:d, :e])
+    EpiBranch._each(record, ())
+    @test visited == [:a, :b, :c, :d, :e]
+
+    progression = [
+        Transition(:recovered; from = :infection, delay = 4.0, terminal = true),
+        Transition(:dead; from = :infection, delay = 2.0, terminal = true),
+        Transition(:hospitalised; from = :infection, delay = 3.0),
+    ]
+    model = ModelSpec(
+        BranchingProcess(Poisson(2.0), Exponential(5.0)); progression
+    )
+    state = simulate(model; rng = StableRNG(5), max_generations = 2)
+    outcomes = map((state.transitions, Tuple(state.transitions))) do transitions
+        ind = Individual(id = 1)
+        ind.infection_time = 0.0
+        EpiBranch._resolve_transitions!(state, ind, transitions)
+        return (ind.state[:outcome], ind.state[:outcome_time])
+    end
+    @test outcomes[1] == outcomes[2]
+    @test outcomes[1][1] == :dead
+    @test outcomes[1][2] == 2.0
+end
+
+# Settling a case must not dispatch at run time on the route context, which
+# boxed several values per case. This run allocates about 1.8 MiB, against
+# about 7.9 MiB when the context was not concretely typed.
+@testset "Settling a case allocates little" begin
+    model = BranchingProcess(NegBin(2.5, 0.16), LogNormal(1.6, 0.5))
+    run() = simulate(model; n_initial = 5, max_cases = 5000, rng = StableRNG(2))
+    run()
+    @test (@allocated run()) < 4_000_000
+end

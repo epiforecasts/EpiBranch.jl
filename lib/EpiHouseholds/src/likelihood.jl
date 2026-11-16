@@ -122,6 +122,13 @@ abstract type ConditionOn end
 
 Condition each household on its recruited index case, `data.is_index`, as
 recorded.
+
+Only that one member is taken as given. Co-primary cases infected from outside
+at about the same time are assumed to come from household transmission unless the model
+has a community hazard. Recruitment that depends on the index case's detection,
+symptoms or secondary cases makes the households unrepresentative. The
+estimate is then biased unless the likelihood is conditioned on that
+recruitment, which this rule does not do.
 """
 struct RecruitedIndex <: ConditionOn end
 
@@ -132,6 +139,12 @@ Condition each household on whichever member has the earliest
 `infection_time` (on a tie, the lowest person number). This is worked out from
 `data` on every call, so the conditioned member can change as imputed
 infection times change.
+
+This covers an index case that was not the first infected, but it still takes
+only one member per household as given. Co-primary cases infected from outside
+at about the same time are assumed to come from household transmission unless the model
+has a community hazard. Recruitment that depends on detection, symptoms or
+secondary cases biases the estimate unless the likelihood is conditioned on it.
 """
 struct EarliestInfected <: ConditionOn end
 
@@ -151,9 +164,10 @@ end
 
 """
     loglikelihood(data::HouseholdInfections, model::HouseholdProcess;
-                  condition_on = RecruitedIndex(), susceptibility = nothing) -> Float64
+                  condition_on = RecruitedIndex(), susceptibility = nothing,
+                  layout = nothing) -> Float64
     loglikelihood(data::HouseholdInfections, model::ModelSpec{<:HouseholdProcess};
-                  condition_on = RecruitedIndex()) -> Float64
+                  condition_on = RecruitedIndex(), layout = nothing) -> Float64
 
 Log-likelihood of household outbreak data under `model`'s contact interval and
 community hazard, conditioning on index cases as `condition_on` says (see
@@ -162,16 +176,27 @@ community hazard, conditioning on index cases as `condition_on` says (see
 For a `ModelSpec`, `susceptibility` is the model's interventions, so a
 vaccination in the model is evaluated from the immunity times
 [`household_infections`](@ref) recorded.
+
+The pair layout is rebuilt on every call unless `layout` supplies one. In a
+fitting loop, build it once with [`compile_household_pairs`](@ref) and pass it
+as `layout`, with the `external` and `explain_index` settings the model's
+`external_hazard` implies; `condition_on` is then ignored. A layout is fixed to
+the data it was built from. Rebuild it when the set of infected members
+changes, and at every evaluation with `condition_on = EarliestInfected()`.
 """
 function Distributions.loglikelihood(
         data::HouseholdInfections, model::HouseholdProcess;
-        condition_on::ConditionOn = RecruitedIndex(), susceptibility = nothing
+        condition_on::ConditionOn = RecruitedIndex(), susceptibility = nothing,
+        layout::Union{Nothing, ContactPairsLayout} = nothing
     )
     external = _ext_active(model.external_hazard)
-    layout = compile_household_pairs(
-        data; external, explain_index = external && _ext_explains_index(model.external_hazard),
-        condition_on
-    )
+    if layout === nothing
+        layout = compile_household_pairs(
+            data; external,
+            explain_index = external && _ext_explains_index(model.external_hazard),
+            condition_on
+        )
+    end
     return pairwise_surv_loglik(
         model.kernel, data, layout; external_hazard = model.external_hazard, susceptibility
     )
@@ -180,11 +205,12 @@ end
 function Distributions.loglikelihood(
         data::HouseholdInfections,
         model::ModelSpec{<:HouseholdProcess};
-        condition_on::ConditionOn = RecruitedIndex()
+        condition_on::ConditionOn = RecruitedIndex(),
+        layout::Union{Nothing, ContactPairsLayout} = nothing
     )
     EpiBranch._validate_infection_likelihood(model)
     return loglikelihood(
-        data, model.process; condition_on, susceptibility = model.interventions
+        data, model.process; condition_on, susceptibility = model.interventions, layout
     )
 end
 

@@ -99,10 +99,7 @@ _case_hook_model(ivs) = ModelSpec(
         # `_traced_from` node 1 set first.
         interventions = AbstractIntervention[_TraceOnly()]
         rng = StableRNG(18)
-        state = EpiBranch.new_state(
-            BranchingProcess(Poisson(1.0), Exponential(1.0)),
-            EpiBranch.AbstractClinicalTransition[], NoAttributes(), rng
-        )
+        state = empty_state(BranchingProcess(Poisson(1.0), Exponential(1.0)); rng = rng)
         EpiBranch.add_individuals!(state, 3, interventions)
         neighbours = Dict(1 => [2], 2 => [1, 3], 3 => [2])
         targets(inf, st) = (
@@ -139,10 +136,7 @@ _case_hook_model(ivs) = ModelSpec(
     end
 
     @testset "A node reached by a case and a ring member keeps the wider ring" begin
-        state = EpiBranch.new_state(
-            BranchingProcess(Poisson(1.0)),
-            EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(20)
-        )
+        state = empty_state(BranchingProcess(Poisson(1.0)); rng = StableRNG(20))
         case = Individual(id = 1, infection_time = 0.0)
         case.state[:onset_time] = 1.0
         case.state[:asymptomatic] = false

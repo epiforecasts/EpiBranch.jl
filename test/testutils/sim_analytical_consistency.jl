@@ -6,19 +6,12 @@
 #
 # Protocol a new model type must define to participate:
 #
-#   generative_model(m)  — strip any observation wrappers; returns
-#                          a model that `simulate(model, n)` can run.
 #   observe_chain_sizes(m, true_sizes, rng) — transform simulated
 #                          chain sizes into the observed form the
 #                          likelihood expects. Default: identity.
 #
 # `chain_size_distribution(m)` must return the corresponding
 # distribution over observed chain sizes.
-
-# The generative model is what we simulate from. `chain_statistics`
-# counts all infected cases (the observation only flags `:reported`), so
-# simulating the model directly yields the true chain sizes.
-generative_model(m::Union{TransmissionModel, ModelSpec}) = m
 
 """
 Transform simulated true chain sizes into the observed sizes matching
@@ -34,15 +27,6 @@ end
 
 _observe_sizes(::NoObservation, true_sizes, ::AbstractRNG) = true_sizes
 
-function _observe_sizes(o::PerCaseObservation, true_sizes, rng::AbstractRNG)
-    p = EpiBranch.scalar_detection_prob(o)
-    # Chains with no detected case leave no trace in the data (matching
-    # `_sim_chain_sizes`), so the analytical PMF is conditioned on at least
-    # one detection and the empirical marginal must drop them too.
-    obs = [rand(rng, Binomial(n, p)) for n in true_sizes]
-    return filter(>(0), obs)
-end
-
 function _observe_sizes(o::ChainDetection, true_sizes, rng::AbstractRNG)
     # A whole chain is kept or dropped as one draw, matching
     # `apply_observation!`: never partly reported.
@@ -52,7 +36,7 @@ end
 """
     sim_analytical_consistent(model; n_chains=5000, sizes=1:4, rng, max_cases=500)
 
-Simulate from `generative_model(model)`, transform the simulated chain
+Simulate from `model`, transform the simulated chain
 sizes via `observe_chain_sizes(model, ...)`, and compare the empirical
 PMF at `sizes` against `pdf(chain_size_distribution(model), size)`.
 
@@ -67,9 +51,8 @@ function sim_analytical_consistent(
         rng::AbstractRNG = Random.default_rng(),
         max_cases::Int = 500
     )
-    gen = generative_model(model)
     states = simulate(
-        gen, n_chains;
+        model, n_chains;
         max_cases = max_cases, rng = rng
     )
     true_sizes = Int[]

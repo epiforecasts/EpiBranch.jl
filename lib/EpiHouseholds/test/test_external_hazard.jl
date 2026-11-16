@@ -28,6 +28,20 @@
         )
     end
 
+    @testset "obs_end must be non-negative, Inf allowed" begin
+        for bad in (-5.0, NaN)
+            @test_throws ArgumentError HouseholdProcess(
+                fill(3, 5), Exponential(2.0); external_hazard = 0.01, obs_end = bad
+            )
+        end
+        @test HouseholdProcess(
+            fill(3, 5), Exponential(2.0); external_hazard = 0.01, obs_end = Inf
+        ).obs_end == Inf
+        @test HouseholdProcess(
+            fill(3, 5), Exponential(2.0); external_hazard = 0.01, obs_end = 0
+        ).obs_end == 0.0
+    end
+
     @testset "the same rate for everyone matches the shared rate" begin
         shared = ModelSpec(
             HouseholdProcess(sizes, Exponential(3.0); external_hazard = 0.02, obs_end = 30.0);
@@ -213,7 +227,7 @@ end
         # cases, conditioned on; 1 is infectious over (0, 3] and 2 is never
         # infected, exposed to both the household kernel and the wider
         # community's mass action. compile_household_pairs must build a layout
-        # with explain_index = false for this source, since it has nothing
+        # with explain_index = false for this source, because it has nothing
         # infectious before the first case to explain one, or loglikelihood
         # throws on every call.
         β, N = 0.6, 3

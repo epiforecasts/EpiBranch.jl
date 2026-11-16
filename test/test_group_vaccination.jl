@@ -13,10 +13,7 @@ end
             efficacy = 0.9, eligibility = OnLabConfirmation(),
             dose_delay = 2.0
         )
-        state = EpiBranch.new_state(
-            BranchingProcess(Poisson(1.0), Exponential(5.0)),
-            EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
-        )
+        state = empty_state(; rng = StableRNG(1))
 
         confirmed = _group_member(gv, 1, :A, test_positive = true)
         set_isolated!(confirmed, 5.0; release_time = Inf)
@@ -41,10 +38,7 @@ end
             efficacy = 0.9, eligibility = OnLabConfirmation(),
             dose_delay = 3.0
         )
-        state = EpiBranch.new_state(
-            BranchingProcess(Poisson(1.0), Exponential(5.0)),
-            EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
-        )
+        state = empty_state(; rng = StableRNG(1))
 
         confirmed = _group_member(gv, 1, :A, test_positive = true)
         set_isolated!(confirmed, 6.0; release_time = Inf)
@@ -66,10 +60,7 @@ end
             efficacy = 0.9, eligibility = OnLabConfirmation(),
             dose_delay = Uniform(1.0, 4.0), delay_to_immunity = Uniform(5.0, 10.0)
         )
-        state = EpiBranch.new_state(
-            BranchingProcess(Poisson(1.0), Exponential(5.0)),
-            EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
-        )
+        state = empty_state(; rng = StableRNG(1))
 
         confirmed = _group_member(gv, 1, :A, test_positive = true)
         set_isolated!(confirmed, 6.0; release_time = Inf)
@@ -93,10 +84,7 @@ end
             efficacy = 0.0, severity_efficacy = 0.4,
             delay_to_immunity = 5.0, dose_delay = 1.0
         )
-        state = EpiBranch.new_state(
-            BranchingProcess(Poisson(1.0), Exponential(5.0)),
-            EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
-        )
+        state = empty_state(; rng = StableRNG(1))
 
         confirmed = _group_member(gv, 1, :A, test_positive = true)
         set_isolated!(confirmed, 2.0; release_time = Inf)
@@ -119,10 +107,7 @@ end
             efficacy = 0.9, severity_efficacy = 0.4,
             delay_to_immunity = 5.0, dose_delay = 1.0, waning = decay
         )
-        state = EpiBranch.new_state(
-            BranchingProcess(Poisson(1.0), Exponential(5.0)),
-            EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
-        )
+        state = empty_state(; rng = StableRNG(1))
 
         confirmed = _group_member(gv, 1, :A, test_positive = true)
         set_isolated!(confirmed, 2.0; release_time = Inf)
@@ -150,10 +135,7 @@ end
             efficacy = 0.9, eligibility = OnLabConfirmation(),
             dose_delay = 1.0
         )
-        state = EpiBranch.new_state(
-            BranchingProcess(Poisson(1.0), Exponential(5.0)),
-            EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
-        )
+        state = empty_state(; rng = StableRNG(1))
 
         confirmed = _group_member(gv, 1, :A, test_positive = true)
         set_isolated!(confirmed, 4.0; release_time = Inf)
@@ -183,10 +165,7 @@ end
             efficacy = 0.9, eligibility = OnLabConfirmation(),
             dose_delay = 1.0
         )
-        state = EpiBranch.new_state(
-            BranchingProcess(Poisson(1.0), Exponential(5.0)),
-            EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
-        )
+        state = empty_state(; rng = StableRNG(1))
 
         confirmed = _group_member(gv, 1, :A, test_positive = true)
         set_isolated!(confirmed, 4.0; release_time = Inf)
@@ -217,10 +196,7 @@ end
             efficacy = 0.9, eligibility = OnLabConfirmation(),
             dose_delay = 1.0, delay_to_immunity = 3.0
         )
-        state = EpiBranch.new_state(
-            BranchingProcess(Poisson(1.0), Exponential(5.0)),
-            EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
-        )
+        state = empty_state(; rng = StableRNG(1))
 
         a = _group_member(gv, 1, :A, test_positive = false)
         b = _group_member(gv, 2, :A, test_positive = false)
@@ -290,10 +266,7 @@ end
             efficacy = 0.9, eligibility = OnLabConfirmation(),
             dose_delay = 1.0
         )
-        state = EpiBranch.new_state(
-            BranchingProcess(Poisson(1.0), Exponential(5.0)),
-            EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
-        )
+        state = empty_state(; rng = StableRNG(1))
 
         confirmed = _group_member(gv, 1, :A, test_positive = false)
         member = _group_member(gv, 2, :A, test_positive = false)
@@ -318,10 +291,7 @@ end
 
     @testset "No triggering case leaves the group unvaccinated" begin
         gv = GroupVaccination(efficacy = 0.9, eligibility = OnLabConfirmation())
-        state = EpiBranch.new_state(
-            BranchingProcess(Poisson(1.0), Exponential(5.0)),
-            EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
-        )
+        state = empty_state(; rng = StableRNG(1))
 
         members = [_group_member(gv, i, :A, test_positive = false) for i in 1:3]
         append!(state.individuals, members)
@@ -339,10 +309,7 @@ end
             efficacy = 0.9, eligibility = OnLabConfirmation(),
             dose_delay = 2.0, delay_to_immunity = 5.0
         )
-        state = EpiBranch.new_state(
-            BranchingProcess(Poisson(1.0), Exponential(5.0)),
-            EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
-        )
+        state = empty_state(; rng = StableRNG(1))
 
         confirmed = _group_member(gv, 1, :A, test_positive = true)
         set_isolated!(confirmed, 10.0; release_time = Inf)
@@ -454,10 +421,7 @@ end
             efficacy = 0.9, eligibility = OnLabConfirmation(),
             coverage = 0.5
         )
-        state = EpiBranch.new_state(
-            BranchingProcess(Poisson(1.0), Exponential(5.0)),
-            EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(2)
-        )
+        state = empty_state(; rng = StableRNG(2))
 
         confirmed = _group_member(gv, 1, :A, test_positive = true)
         set_isolated!(confirmed, 5.0; release_time = Inf)
@@ -551,10 +515,7 @@ end
 end
 
 @testset "The group-to-members index tracks new individuals without rescanning old ones" begin
-    state = EpiBranch.new_state(
-        BranchingProcess(Poisson(0.0)),
-        EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
-    )
+    state = empty_state(BranchingProcess(Poisson(0.0)); rng = StableRNG(1))
     append!(
         state.individuals,
         [Individual(id = i, state = Dict{Symbol, Any}(:group => (i <= 2 ? :A : :B))) for i in 1:3]

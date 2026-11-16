@@ -26,25 +26,27 @@ function NegBin(R::Real, k::Real)
 end
 
 """
-    incubation_linked_generation_time(; presymptomatic_fraction=0.3, omega=2.0)
+    incubation_linked_generation_time(; presymptomatic_fraction=0.3, relative_spread=0.5)
 
-A generation time linked to each case's own incubation period, as in
-Hellewell et al. (2020), for use as the `generation_time` of a
+A generation time linked to each case's own incubation period, in the manner
+of Hellewell et al. (2020), for use as the `generation_time` of a
 [`BranchingProcess`](@ref). Incubation periods come from
 [`clinical_presentation`](@ref).
 
 - `presymptomatic_fraction`: the share of transmission that happens before
   the infector's symptom onset.
-- `omega`: the spread, in days, of the generation time around the
-  incubation period.
+- `relative_spread`: the spread of the generation time around the incubation
+  period, as a fraction of that incubation period.
 
 Each case's generation time is drawn from a skew-normal distribution centred
-on its incubation period, with scale `omega` and the skew chosen so that
-`presymptomatic_fraction` of generation times are shorter than the incubation
-period. Negative values are excluded, which makes the realised presymptomatic
-share approximate: close when the incubation period is long compared with
-`omega`, less so for short ones. Cases without an incubation period (for
-example asymptomatic cases) are centred on 5 days.
+on its incubation period, with scale `relative_spread` times the incubation
+period, truncated at zero. The skew is chosen for the truncated distribution:
+the share of generation times shorter than the incubation period equals
+`presymptomatic_fraction` whatever the incubation period. The spread scales
+with the incubation period, so the skew is the same for every case. An
+asymptomatic case has no onset but still draws an incubation period, and its
+generation time is centred on that. A case with no incubation period at all is
+an error.
 
 # Examples
 ```julia
@@ -56,29 +58,53 @@ model = BranchingProcess(
 """
 function incubation_linked_generation_time(;
         presymptomatic_fraction::Real = 0.3,
-        omega::Real = 2.0
+        relative_spread::Real = 0.5
     )
     0.0 < presymptomatic_fraction < 1.0 || throw(
         ArgumentError(
             "presymptomatic_fraction must be in (0, 1), got $presymptomatic_fraction"
         )
     )
-    omega > 0.0 || throw(ArgumentError("omega must be positive, got $omega"))
+    relative_spread > 0.0 || throw(
+        ArgumentError("relative_spread must be positive, got $relative_spread")
+    )
 
-    # Compute skew-normal alpha from presymptomatic fraction
-    # For SN(xi, omega, alpha): P(X < xi) = 0.5 - arctan(alpha)/π
-    # => alpha = tan(π(0.5 - presymp_frac))
-    alpha = tan(float(π) * (0.5 - float(presymptomatic_fraction)))
-    om = float(omega)
+    rel = float(relative_spread)
+    alpha = _truncated_skewness(float(presymptomatic_fraction), rel)
 
     return function (individual)
-        inc_period = incubation_period(individual)
-        if isnan(inc_period) || inc_period <= 0.0
-            @debug "Missing or non-positive incubation period (e.g. asymptomatic individual); using 5.0 days" maxlog = 1
-            inc_period = 5.0
-        end
-        return _TruncatedSkewNormal(inc_period, om, alpha)
+        inc_period = _latent_incubation_period(individual)
+        (isnan(inc_period) || inc_period <= 0.0) && throw(
+            ArgumentError(
+                "incubation_linked_generation_time needs a positive incubation " *
+                    "period for every case; provide attributes = clinical_presentation(...)"
+            )
+        )
+        return _TruncatedSkewNormal(inc_period, rel * inc_period, alpha)
     end
+end
+
+# The skew `α` for which a skew-normal centred on `ξ` with scale `rel * ξ`,
+# truncated at zero, puts `fraction` of its mass below `ξ`. Truncation removes
+# mass from the lower side. The untruncated relation
+# `P(X < ξ) = 0.5 - atan(α) / π` therefore understates the skew needed once
+# `rel` is not small. The problem is scale-free and is solved once in units of
+# `ξ`. Bisection on `atan(α)` finds the root because the truncated share
+# falls from 1 to 0 as `α` runs from `-Inf` to `Inf`.
+function _truncated_skewness(fraction::Float64, rel::Float64)
+    centre = 1 / rel
+    function share(θ)
+        d = SkewNormal(centre, 1.0, tan(θ))
+        below = first(quadgk(x -> pdf(d, x), 0.0, centre))
+        total = below + first(quadgk(x -> pdf(d, x), centre, centre + 10.0, centre + 50.0))
+        return below / total
+    end
+    lo, hi = -π / 2 + 1.0e-9, π / 2 - 1.0e-9
+    for _ in 1:80
+        mid = (lo + hi) / 2
+        share(mid) > fraction ? (lo = mid) : (hi = mid)
+    end
+    return tan((lo + hi) / 2)
 end
 
 """Skew-normal truncated to [0, ∞) via rejection sampling (cdf not available).
@@ -86,15 +112,11 @@ end
 lazily on first use so the simulation path (which only samples) never pays for
 the numerical integral."""
 struct _TruncatedSkewNormal{T <: AbstractFloat} <: ContinuousUnivariateDistribution
-    ξ::T
-    ω::T
-    α::T
     inner::SkewNormal{T}
     logZ::Base.RefValue{T}   # log P(inner ≥ 0); NaN until first computed
     function _TruncatedSkewNormal(ξ::Real, ω::Real, α::Real)
         T = float(promote_type(typeof(ξ), typeof(ω), typeof(α)))
-        inner = SkewNormal(T(ξ), T(ω), T(α))
-        return new{T}(T(ξ), T(ω), T(α), inner, Ref(T(NaN)))
+        return new{T}(SkewNormal(T(ξ), T(ω), T(α)), Ref(T(NaN)))
     end
 end
 
@@ -115,8 +137,9 @@ end
 # quadrature tracks fine regardless of how wide. Shared by `_trunc_logZ`
 # (integrating to `Inf`) and `logcdf` (integrating to `x`).
 function _peak_breakpoints(d::_TruncatedSkewNormal, upper::Real)
-    margin = 10 * float(d.ω)
-    inner = (float(d.ξ) - margin, float(d.ξ) + margin)
+    (; ξ, ω) = d.inner
+    margin = 10 * float(ω)
+    inner = (float(ξ) - margin, float(ξ) + margin)
     lo = zero(float(upper))
     return (lo, filter(p -> lo < p < upper, inner)..., upper)
 end
@@ -172,7 +195,7 @@ function Distributions.quantile(d::_TruncatedSkewNormal, p::Real)
     0.0 <= p <= 1.0 || throw(DomainError(p, "quantile needs p in [0, 1]"))
     iszero(p) && return 0.0
     isone(p) && return Inf
-    lo, hi = 0.0, max(abs(d.ξ), d.ω, one(d.ξ))
+    lo, hi = 0.0, max(abs(d.inner.ξ), d.inner.ω, one(d.inner.ξ))
     while cdf(d, hi) < p
         hi *= 2
     end
@@ -190,27 +213,26 @@ end
 """
     HazardKernel(hazard; upper = Inf, onset = 0.0)
 
-A contact-interval distribution built directly from an instantaneous hazard
-rather than from a named family: `hazard(t)` is the rate of transmission at
+A contact-interval distribution defined by the instantaneous hazard
+`hazard(t)`, the rate of transmission at
 time `t` since the window opened, for `t` from `onset` up to `upper`
 (unbounded by default). Use it as the `kernel` of an [`Infectiousness`](@ref)
-window, built fresh for each case from a function of the individual,
-`kernel = ind -> ...`, when transmission should follow something computed on
-the fly rather than a named distribution: most usefully a per-case
-within-host trajectory, drawn once at infection and stored on the
-individual, read through a link that turns it into a rate.
+window, built for each case from a function of the individual,
+`kernel = ind -> ...`. For example, transmission can depend on a
+within-host trajectory drawn once at infection and stored on the
+individual, through a link that converts it to a transmission rate.
 
-`onset` is the time before which the hazard is zero, defaulting to 0, since a
-hazard built from a named distribution's own hazard already starts there. A
-trajectory whose hazard switches on later should give its own onset rather
-than leave `hazard` to encode a flat run-up: the kernel treats `hazard` as
+The hazard is zero before `onset`, which defaults to 0, matching the
+start of the hazard from a named distribution. A trajectory with a later
+start should specify its onset explicitly instead of encoding a flat run-up
+in `hazard`. The kernel treats `hazard` as
 zero before `onset` regardless of what it returns there, and rejects an
-`onset` still followed by a flat stretch of zero, since nothing would then
+`onset` still followed by a flat stretch of zero, because nothing would then
 distinguish a trajectory still to switch on from one that has permanently
 cleared.
 
-`hazard` is called many times to integrate and invert the cumulative hazard
-by quadrature, so it should be cheap and non-negative throughout
+Integrating and inverting the cumulative hazard by quadrature requires many
+calls to `hazard`. It should be inexpensive to evaluate and non-negative throughout
 `(onset, upper)`. `upper` is where the integration stops: the hazard counts
 as zero beyond it, and a draw the total hazard up to there cannot reach is
 `Inf`, a contact that never happens. Give a hazard that clears an `upper`
@@ -253,9 +275,9 @@ community = Infectiousness(
 model = ModelSpec(BranchingProcess(community); attributes)
 ```
 
-Generation time, incubation period and serial interval are then whatever the
-trajectory and its links to each clinical event imply, instead of separate
-inputs drawn independently of one another.
+The trajectory and its links to each clinical event determine the generation
+time, incubation period and serial interval. These quantities are no longer
+separate, independent draws.
 """
 struct HazardKernel{F, T <: Real} <: ContinuousUnivariateDistribution
     hazard::F
@@ -356,7 +378,7 @@ end
 A [`HazardKernel`](@ref) conditioned on falling at or before `hi`: what
 `transmission_timing`'s `offspring` form needs so every draw is realised
 rather than thinned away by the case's own recovery. The lower bound is
-always 0, since a `HazardKernel`'s own support already starts there.
+always 0, because a `HazardKernel`'s own support already starts there.
 
 This is the usual meaning of `Distributions.truncated`, a rescaled
 conditional distribution; the kernel's own `upper` only bounds its

@@ -1,0 +1,1 @@
+The extinction and containment probability functions now share one fixed-point routine. `probability_contain` for a `Poisson` offspring distribution is now exact, where it used to approximate the Poisson as a negative binomial with `k = 1e6`. Results change by about 1e-6.

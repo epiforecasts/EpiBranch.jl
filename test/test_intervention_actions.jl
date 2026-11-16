@@ -57,10 +57,7 @@ function EpiBranch.is_triggered!(t::_DistrictTrigger, state, action)
 end
 
 @testset "Intervention action admission" begin
-    newstate() = EpiBranch.new_state(
-        BranchingProcess(Poisson(0.0)),
-        EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(18)
-    )
+    newstate() = empty_state(BranchingProcess(Poisson(0.0)); rng = StableRNG(18))
     for wrap in (
             v -> Scheduled(
                 CapacityConstrained(
@@ -145,10 +142,7 @@ end
 end
 
 @testset "a start_after trigger can read the action it gates" begin
-    state = EpiBranch.new_state(
-        BranchingProcess(Poisson(0.0)),
-        EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(18)
-    )
+    state = empty_state(BranchingProcess(Poisson(0.0)); rng = StableRNG(18))
     low, high = (
         Individual(
             id = i, state = Dict{Symbol, Any}(
@@ -176,10 +170,7 @@ end
     # already given from the first trace found must move to a genuinely
     # earlier one found afterwards, for a contact still pending its own
     # infection.
-    state = EpiBranch.new_state(
-        BranchingProcess(Poisson(0.0)),
-        EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
-    )
+    state = empty_state(BranchingProcess(Poisson(0.0)); rng = StableRNG(1))
     rv = RingVaccination(efficacy = 0.9, dose_delay = 1.0, delay_to_immunity = 3.0)
     a = Individual(id = 1, state = Dict{Symbol, Any}())
     b = Individual(id = 2, state = Dict{Symbol, Any}())
@@ -207,10 +198,7 @@ end
 end
 
 @testset "An earlier re-trace does not move a dose before the dose it requires" begin
-    state = EpiBranch.new_state(
-        BranchingProcess(Poisson(0.0)),
-        EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
-    )
+    state = empty_state(BranchingProcess(Poisson(0.0)); rng = StableRNG(1))
     rv = RingVaccination(
         efficacy = 0.9, dose_delay = 1.0, requires_dose = :prime, dose_label = :boost
     )
@@ -243,10 +231,7 @@ end
     # outside the window, but a later, earlier-trigger call must still take
     # the genuine first-dose path below. Its stale cached trigger would
     # otherwise route it into the "already has a dose" branch instead.
-    state = EpiBranch.new_state(
-        BranchingProcess(Poisson(0.0)),
-        EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
-    )
+    state = empty_state(BranchingProcess(Poisson(0.0)); rng = StableRNG(1))
     rv = RingVaccination(efficacy = 0.9, dose_delay = 1.0, eligibility_window = 2.0)
     ind = Individual(id = 1, state = Dict{Symbol, Any}(:traced => true))
     EpiBranch.initialise_individual!(rv, ind, state)
@@ -273,10 +258,7 @@ end
 @testset "Ring vaccination times a dose only from a recorded isolation" begin
     # A traced contact with no `:trace_time` falls back to its isolation, which
     # counts only when the isolation was recorded as a detection.
-    state = EpiBranch.new_state(
-        BranchingProcess(Poisson(0.0)),
-        EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(18)
-    )
+    state = empty_state(BranchingProcess(Poisson(0.0)); rng = StableRNG(18))
     rv = RingVaccination(efficacy = 0.8, dose_delay = 2.0)
     function traced_contact(id, unrecorded)
         ind = Individual(id = id, state = Dict{Symbol, Any}(:traced => true))
@@ -301,10 +283,7 @@ function EpiBranch.action_candidates(
     return [state.individuals[id] for id in members if id == current.id || is_pending(id)]
 end
 @testset "Per-case action boundaries" begin
-    state = EpiBranch.new_state(
-        BranchingProcess(Poisson(0.0)),
-        EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(18)
-    )
+    state = empty_state(BranchingProcess(Poisson(0.0)); rng = StableRNG(18))
     append!(
         state.individuals,
         [
@@ -368,10 +347,7 @@ end
 end
 
 @testset "is_settled reflects a continuous-time race's own round of discovery" begin
-    state = EpiBranch.new_state(
-        BranchingProcess(Poisson(0.0)),
-        EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
-    )
+    state = empty_state(BranchingProcess(Poisson(0.0)); rng = StableRNG(1))
     append!(
         state.individuals,
         [Individual(id = i, state = Dict{Symbol, Any}(:appointment_time => 1.0)) for i in 1:2]
@@ -400,10 +376,7 @@ EpiBranch.intervention_actions(::_UndeclaredAction, state, candidates) = nothing
     processed = falses(n)
     pos = Dict(id => k for (k, id) in enumerate(members))
     is_pending = id -> EpiBranch._pending(id, members, processed, pos)
-    state = EpiBranch.new_state(
-        BranchingProcess(Poisson(0.0)),
-        EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
-    )
+    state = empty_state(BranchingProcess(Poisson(0.0)); rng = StableRNG(1))
     append!(state.individuals, [Individual(id = i) for i in 1:n])
     current = state.individuals[1]
 
@@ -450,10 +423,7 @@ end
     processed = falses(n)
     pos = Dict(id => k for (k, id) in enumerate(members))
     is_pending = id -> EpiBranch._pending(id, members, processed, pos)
-    state = EpiBranch.new_state(
-        BranchingProcess(Poisson(0.0)),
-        EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
-    )
+    state = empty_state(BranchingProcess(Poisson(0.0)); rng = StableRNG(1))
     append!(state.individuals, [Individual(id = i) for i in 1:n])
 
     # `current` here is not the target: a custom method answers however it
@@ -475,10 +445,7 @@ end
                 v -> CapacityConstrained(Scheduled(v, st -> active); budget_per_period = 0.0),
             )
 
-        state = EpiBranch.new_state(
-            BranchingProcess(Poisson(0.0)),
-            EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(18)
-        )
+        state = empty_state(BranchingProcess(Poisson(0.0)); rng = StableRNG(18))
         ind = Individual(
             id = 1, infection_time = 1.0,
             state = Dict{Symbol, Any}(
@@ -557,10 +524,7 @@ end
     # network suites run the whole path; here each way out of
     # `RingVaccination`'s method is driven directly, and the default is checked
     # to be a no-op so the seam carries the dispatch.
-    state = EpiBranch.new_state(
-        BranchingProcess(Poisson(0.0)),
-        EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(5)
-    )
+    state = empty_state(BranchingProcess(Poisson(0.0)); rng = StableRNG(5))
     rv = RingVaccination(
         efficacy = 0.0, post_exposure_efficacy = 1.0, delay_to_immunity = 1.0
     )
@@ -626,10 +590,7 @@ end
 
 @testset "MassVaccination coverage declines without redrawing" begin
     mv = MassVaccination(efficacy = 0.9, eligibility_time = 0.0, coverage = 0.5)
-    state = EpiBranch.new_state(
-        BranchingProcess(Poisson(1.0), Exponential(5.0)),
-        EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(3)
-    )
+    state = empty_state(; rng = StableRNG(3))
     candidates = [Individual(id = i, state = Dict{Symbol, Any}()) for i in 1:200]
     append!(state.individuals, candidates)
 

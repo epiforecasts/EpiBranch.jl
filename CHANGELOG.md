@@ -73,8 +73,8 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
   and only the front of that order is admitted; `carry_over` decides
   whether an unused allowance rolls into the next period. Rations
   `RingVaccination`, `MassVaccination` and `GroupVaccination` out of the box,
-  and, as a count of admissions per period rather than beds held at once,
-  `Isolation` and a `ContactTracing` whose action is `Quarantine`; a resource
+  and `Isolation` and `ContactTracing` with a `Quarantine` action, counting
+  admissions per period rather than beds held at once; a resource
   other than these needs its own `capacity_key` method, not yet defined for
   anything else in this package. `capacity_usage` reads back doses used
   against doses available.
@@ -279,18 +279,18 @@ EpiBranch 0.1.0 lacks the interfaces they use. Release publication is pending.
   `until`, while vaccinations, and by default any other intervention, reach
   every route.
 - The continuous-time models' warning about interventions they cannot honour
-  now names only those that need a case's own contacts to trace or act
-  along on a mass-action pool (`HomogeneousProcess`, `MixingProcess`), which
-  random mixing names none of: `RingVaccination` and `ContactTracing`.
-  `MassVaccination` and `GroupVaccination` reach the whole population
-  without needing any, so are no longer named. An intervention defined
+  now names `RingVaccination` and `ContactTracing`, which need named
+  contacts unavailable in a randomly mixing mass-action pool
+  (`HomogeneousProcess`, `MixingProcess`). `MassVaccination` and
+  `GroupVaccination` reach the whole population without named contacts
+  and are no longer included in the warning. An intervention defined
   outside the package is named too when it traces contacts, or needs them
   for its own actions, with nothing for its author to declare.
 - Individuals created up front by a structure-driven model and never infected
   now have `infection_time = NaN` in state, which is also the default of
   `add_individuals!`. They previously had `0.0`, which looked the same as a case
   infected at the start of the simulation.
-- `MixingProcess`'s mixing structure is keyed on the individual's real
+- The mixing structure of `MixingProcess` is keyed on individual
   attributes: a model names which attributes define mixing via `mixing_by`
   (a tuple of attribute keys, e.g. `(:age_band, :ses)`), and susceptibles are
   bucketed by the actual values of those attributes. The between-group

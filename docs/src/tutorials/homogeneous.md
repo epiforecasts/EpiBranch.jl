@@ -201,9 +201,9 @@ An [`Isolation`](@ref) that leaves some transmission after isolating
 !!! note "Stopping the simulation"
     A `HomogeneousProcess` runs until no one is infectious or until
     `max_time`, whichever comes first. The `max_cases` and `max_generations`
-    keyword shortcuts default to off here, so a run keeps going to
-    extinction or `max_time` unless an explicit value, or a `stopping_rules`
-    entry, asks for a cap.
+    keyword shortcuts are disabled by default. A run continues to
+    extinction or `max_time` unless an explicit value or a `stopping_rules`
+    entry sets a cap.
 
 ## Structured mixing
 

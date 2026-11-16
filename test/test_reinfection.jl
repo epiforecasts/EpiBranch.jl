@@ -66,6 +66,42 @@ using StableRNGs
         @test EpiBranch.transition_loglik(step, ind) ≈ logpdf(Exponential(1.0), 1.0)
     end
 
+    @testset "Nobody holds an episodes vector until one is closed" begin
+        a = Individual(; id = 1)
+        b = Individual(; id = 2)
+        @test getfield(a, :_episodes) === nothing
+        @test isempty(a.episodes)
+        # A push straight onto the property is not shared with anyone else.
+        push!(a.episodes, InfectionEpisode(a))
+        @test isempty(a.episodes)
+        @test isempty(b.episodes)
+
+        close_episode!(a, InfectionEpisode(a))
+        @test length(a.episodes) == 1
+        @test isempty(b.episodes)
+        @test :episodes in propertynames(a)
+        @test !(:_episodes in propertynames(a))
+    end
+
+    @testset "Assigning ind.episodes keeps the archive private" begin
+        a = Individual(; id = 1)
+        @test !EpiBranch._has_episodes(a)
+        @test EpiBranch._n_episodes(a) == 0
+
+        a.episodes = [InfectionEpisode(a), InfectionEpisode(a)]
+        @test EpiBranch._has_episodes(a)
+        @test EpiBranch._n_episodes(a) == 2
+        @test length(a.episodes) == 2
+
+        a.episodes = InfectionEpisode{Float64}[]
+        @test !EpiBranch._has_episodes(a)
+        @test getfield(a, :_episodes) === nothing
+        @test isempty(a.episodes)
+
+        a.id = 7
+        @test a.id == 7
+    end
+
     @testset "A second episode no longer overwrites the first in silence" begin
         ind = Individual(; id = 1, infection_time = 5.0)
         ind.state[:recovered] = true
@@ -182,7 +218,7 @@ using StableRNGs
         close_episode!(ind, InfectionEpisode(ind))
         ind.infection_time = 30.0
 
-        # The only terminal step never fires, so `resolve_transitions!` finds
+        # The only terminal step never occurs, so `resolve_transitions!` finds
         # no terminal candidate of its own for this episode.
         progression = AbstractClinicalTransition[
             Transition(:recovered, from = :infection, delay = 1.0, probability = 0.0, terminal = true),
@@ -227,13 +263,18 @@ using StableRNGs
     end
 
     # Counts, on each individual, how many times `initialise_individual!` has
-    # run: once when they are created, and again every time a reinfection
-    # settles a new episode. A host whose count stalls at 1 past its first
-    # episode would be reusing an earlier episode's intervention state (such
-    # as `Isolation`'s `:test_positive`) for every later one.
+    # run (once, when they are created) and how many times
+    # `initialise_episode!` has (every time a reinfection settles a new
+    # episode). A host whose episode count stalls past its first reinfection
+    # would be reusing an earlier episode's intervention state (such as
+    # `Isolation`'s `:test_positive`) for every later one.
     struct _CountInitialisations <: EpiBranch.AbstractIntervention end
     function EpiBranch.initialise_individual!(::_CountInitialisations, ind, state)
         ind.state[:_init_count] = get(ind.state, :_init_count, 0) + 1
+        return nothing
+    end
+    function EpiBranch.initialise_episode!(::_CountInitialisations, ind, state)
+        ind.state[:_episode_count] = get(ind.state, :_episode_count, 0) + 1
         return nothing
     end
 
@@ -250,8 +291,10 @@ using StableRNGs
         one, two = state.individuals
 
         @test length(one.episodes) >= 1
-        @test one.state[:_init_count] == length(one.episodes) + 1
-        @test two.state[:_init_count] == length(two.episodes) + 1
+        @test one.state[:_init_count] == 1
+        @test two.state[:_init_count] == 1
+        @test one.state[:_episode_count] == length(one.episodes)
+        @test two.state[:_episode_count] == length(two.episodes)
     end
 
     @testset "MaxCases counts people, not reinfection episodes" begin

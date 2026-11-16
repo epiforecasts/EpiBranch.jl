@@ -60,7 +60,7 @@ still-infectious household-mate, or a later community introduction, can reach
 them from [`susceptible_again_time`](@ref) onward, and their earlier infection
 is kept on [`Individual.episodes`](@ref Individual) rather than overwritten
 (see [`close_episode!`](@ref)). Without such a step every member is infected
-at most once, as before.
+at most once.
 
 !!! warning "What isolation means here"
     The only transmission this process represents is *within* a household;
@@ -141,6 +141,7 @@ function HouseholdProcess(
     )
     all(s -> s >= 1, sizes) || throw(ArgumentError("household sizes must be ≥ 1"))
     _check_external(external_hazard, sum(sizes))
+    obs_end_value = _check_obs_end(obs_end)
 
     household_of = Int[]
     members = Vector{Int}[]
@@ -157,7 +158,7 @@ function HouseholdProcess(
 
     return HouseholdProcess(
         household_of, members, kernel, from, Tuple(until),
-        _normalise_external(external_hazard), Float64(obs_end)
+        _normalise_external(external_hazard), obs_end_value
     )
 end
 

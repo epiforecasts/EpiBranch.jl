@@ -119,6 +119,14 @@ Fit R under the reporting you believe applies: assuming complete reporting
 when some cases are missed makes clusters look smaller than they are, and
 biases the estimate of R downwards.
 
+!!! note "What an observed cluster is"
+    The likelihood treats each observed cluster as all the reported cases of
+    one true chain. An unreported case in the middle of a
+    chain is assumed not to split it into two observed clusters. Cluster data
+    built from contact tracing can break this when a link runs through an
+    undetected case. With `MinimumSize` and `R > 1`, the event "the chain
+    reached at least `min_size`" also includes chains that never end.
+
 !!! warning "Clusters with no detected case"
     A cluster in which no case was detected never appears in the data, and the
     likelihood should allow for that. At present it does not, so it penalises
@@ -249,15 +257,21 @@ using Turing
 end
 ```
 
-With no interventions this uses the exact formula and fitting is fast. The
-formula also covers the options `seeds` (the number of index cases in each
-cluster) and `prob_concluded` (the probability that each cluster has finished
-growing):
+With no interventions this uses the exact chain-size formula and fitting is
+fast. The formula also covers the options `seeds` (the number of index cases in
+each cluster) and `prob_concluded` (the probability that each cluster has
+finished growing):
 
 ```julia
 data ~ chain_size_distribution(BranchingProcess(Poisson(R));
     seeds = seeds, prob_concluded = prob_concluded)
 ```
+
+The chain-size terms are exact, but `prob_concluded` enters as a mixture,
+`π P(X = x) + (1 − π) P(X ≥ x)`, that treats whether a cluster is over as an
+independent event. It is an approximation to the exact probability of the
+data, which also uses the time since the last case. Because `π` depends on `R`
+and `k`, compute it inside the model from the current parameter values.
 
 If the model includes interventions, EpiBranch estimates the likelihood by
 simulation instead, which is slower. `seeds` and `prob_concluded` work there

@@ -79,10 +79,10 @@ dispatched-on trait.
 1. **Distributions from Distributions.jl**: a delay, an offspring distribution
    or a contact-interval kernel is a standard `Distributions.jl` type wherever
    one exists, passed as it is. Do not wrap one in a distribution type of our
-   own: the user would lose the family's own methods and every one added to it
-   later, `truncated`, `convolve`, `fit_mle`, `partype` and whatever the
-   wrapper does not forward. A univariate law with no standard family subtypes
-   the matching `UnivariateDistribution` and implements `rand`, `logpdf`,
+   own: the user would lose access to methods of that family, including
+   `truncated`, `convolve`, `fit_mle`, `partype` and any later additions
+   that the wrapper does not forward. A univariate law with no standard family
+   subtypes the matching `UnivariateDistribution` and implements `rand`, `logpdf`,
    `cdf`, `minimum` and `maximum`. A kernel, such as one defined by an
    arbitrary hazard, is a `ContinuousUnivariateDistribution` and also
    implements `logccdf`, `invlogccdf`, `loghazard` and `cumhazard` directly,

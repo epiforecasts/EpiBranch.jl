@@ -8,13 +8,13 @@ first, because the satellites depend on it.
 
 1. Open a release pull request that sets `version` in `Project.toml` and folds
    the changelog fragments into `CHANGELOG.md` with
-   `task changelog-release -- X.Y.Z`. That step deletes the fragments, so the
-   pull request takes the `no changelog` label.
+   `task changelog-release -- X.Y.Z`. This deletes the fragments; apply the
+   `no changelog` label to the pull request.
 2. Merge it. Comment `/register` on any issue or pull request, or run the
    Register workflow from the Actions tab. The workflow posts
-   `@JuliaRegistrator register` on the head of `main`, JuliaRegistrator opens
-   the registry pull request, and TagBot creates the GitHub release once that
-   merges.
+   `@JuliaRegistrator register` on the head of `main`. JuliaRegistrator opens
+   the registry pull request. Once it merges, TagBot creates the GitHub
+   release.
 
 ## Releasing a satellite
 

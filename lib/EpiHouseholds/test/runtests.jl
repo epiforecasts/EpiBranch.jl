@@ -27,6 +27,26 @@ end
 struct _MaskLessRule <: EpiHouseholds.ConditionOn end
 
 @testset "EpiHouseholds.jl" begin
+    @testset "loglikelihood accepts a precompiled layout" begin
+        spec = ModelSpec(
+            HouseholdProcess(fill(4, 60), Exponential(4.0));
+            progression = _sir(6.0)
+        )
+        data = household_infections(simulate(spec; rng = StableRNG(900)), spec)
+        layout = compile_household_pairs(data)
+        expected = loglikelihood(data, spec)
+        @test loglikelihood(data, spec; layout) == expected
+        @test loglikelihood(data, spec.process; layout) ==
+            loglikelihood(data, spec.process)
+        # A supplied layout is used as given: one that does not match the
+        # external hazard of the model is rejected.
+        other = compile_household_pairs(data; external = true)
+        @test_throws ArgumentError loglikelihood(data, spec.process; layout = other)
+        loglikelihood(data, spec; layout)
+        @test (@allocated loglikelihood(data, spec; layout)) <
+            (@allocated loglikelihood(data, spec))
+    end
+
     @testset "max_time ends a household outbreak at that time" begin
         spec = ModelSpec(
             HouseholdProcess(fill(6, 40), Exponential(2.0));
@@ -666,13 +686,13 @@ struct _MaskLessRule <: EpiHouseholds.ConditionOn end
         @test isfinite(joint(log(1 / 3)))
     end
 
-    @testset "the model's observation is applied in simulate" begin
-        # an observation model composed onto the process reports cases through the
-        # shared observation protocol, like core simulate.
-        obs = PerCaseObservation(; detection_prob = 0.5, delay = Exponential(2.0))
+    @testset "a Reporting step is applied in simulate" begin
+        reporting = Reporting(
+            delay = Exponential(2.0), probability = 0.5, from = :infection
+        )
         m = ModelSpec(
             HouseholdProcess(fill(4, 200), Exponential(3.0));
-            progression = _sir(6.0), observation = obs
+            progression = [_sir(6.0)..., reporting]
         )
         df = linelist(simulate(m; rng = StableRNG(11)))
         @test :reported in propertynames(df)            # observation ran
