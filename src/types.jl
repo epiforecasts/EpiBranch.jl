@@ -442,9 +442,9 @@ end
 # ── Simulation state ───────────────────────────────────────────────
 
 """
-Supertype of the results of [`simulate`](@ref). Code that reads the people in a
-run does so through [`individuals`](@ref) rather than a field, so that a result
-that builds its people on request can stand in for a [`SimulationState`](@ref).
+Supertype of the results of [`simulate`](@ref). Code reads the people in a run
+through [`individuals`](@ref), so a result that builds its people on request can
+stand in for a [`SimulationState`](@ref).
 """
 abstract type AbstractSimulationState end
 
@@ -454,7 +454,7 @@ abstract type AbstractSimulationState end
 The [`Individual`](@ref)s of a simulated outbreak, one per person in the
 simulation: the cases and the contacts they exposed for a
 [`BranchingProcess`](@ref), everyone for models with a fixed population. Read the
-people of a run through this function, not through a field of `state`.
+people of a run through this function.
 """
 function individuals end
 

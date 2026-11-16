@@ -1,1 +1,1 @@
-`individuals(state)` reads the people of a simulated outbreak. The package now reads them through it rather than through the `individuals` field, and `SimulationState` is a subtype of the new `AbstractSimulationState`. Code that reads `state.individuals` keeps working on a `SimulationState`.
+`individuals(state)` returns the people of a simulated outbreak. The package reads them through it, and `SimulationState` is a subtype of the new `AbstractSimulationState`. Code that reads `state.individuals` still works on a `SimulationState`.
