@@ -42,7 +42,7 @@ infectiousness, spread at random over the people of a type. Each person then
 receives an independent Poisson number of contacts, and the number of new
 infections is binomial: one draw per type, at a cost independent of the number
 of cases. For any other offspring law the number of contacts between two that
-reach a susceptible is geometric, and skipping over it makes the cost grow
+reach a susceptible is geometric. Skipping over them makes the cost grow
 with the number of new infections alone.
 """
 struct PerContactDepletion <: AbstractDepletion end
@@ -562,7 +562,7 @@ _contact_rate(::AbstractRNG, ::Distribution, ::Int) = nothing
 # offspring law draws its one total, after the shared multiplier `m`, when
 # given, has scaled the mean of the law. With a finite population and a mixed
 # Poisson law the entry is the Poisson mean of the contacts (a `Float64`)
-# rather than their number, which `_deplete!` draws from exactly.
+# rather than their number; `_deplete!` draws from it exactly.
 function _generation_potential(
         rng::AbstractRNG, offspring::Distribution, current::Vector{Int}, m, finite::Bool
     )
@@ -580,8 +580,8 @@ end
 # case); accumulated over every type with cases this generation. A sink type
 # (zero column) is skipped, as `draw_offspring` skips calling `dist_fn` for it.
 # When every type's law is a mixed Poisson and the population is finite, the
-# means are split by the columns instead: Poisson contacts split between types
-# are independent Poisson, so no total is drawn.
+# means are split by the columns instead. Poisson contacts split between types
+# are independent Poisson, and no total is drawn.
 function _generation_potential(
         rng::AbstractRNG, offspring::MultiTypeOffspring, current::Vector{Int}, m,
         finite::Bool
@@ -625,8 +625,8 @@ end
 # single type; the draws below give that law without visiting every contact.
 
 # Poisson contacts with mean `potential[i]`, spread at random over the `sizes[i]`
-# people of the type: each receives an independent Poisson number of them, so
-# each of the susceptibles is reached with probability `1 - exp(-mean / size)`.
+# people of the type. Each receives an independent Poisson number of them.
+# Each susceptible is therefore reached with probability `1 - exp(-mean / size)`.
 function _deplete!(
         rng, ::PerContactDepletion, potential::Vector{Float64}, susceptibles, sizes
     )
@@ -642,7 +642,7 @@ end
 
 # A given number of contacts: the number that fall before the next one that
 # reaches a susceptible is geometric, with the susceptible share as its
-# success probability, so only the contacts that infect are visited.
+# success probability. Only the contacts that infect are visited.
 function _deplete!(rng, ::PerContactDepletion, potential::Vector{Int}, susceptibles, sizes)
     kept = zeros(Int, length(potential))
     for i in eachindex(potential)

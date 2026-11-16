@@ -123,9 +123,9 @@ max_generations)` with the exact, individual-based simulation.
 The state holds the susceptibles of each type, set from the population size
 and the number immune. `PerContactDepletion` removes them one potential contact
 at a time, as the individual-based simulation does, but draws the result
-without visiting every contact. With a `Poisson` or `NegBin` offspring law a
-generation costs the same whatever the number of cases; with another law it
-costs in proportion to the number of new infections.
+without visiting every contact. With a `Poisson` or `NegBin` offspring law the
+cost of a generation is independent of the number of cases; with another law it
+is proportional to the number of new infections.
 
 A [`ModelSpec`](@ref) built on the process, with a `generation_length`, also
 runs here, and applies its `GroupVaccination` campaigns to the susceptibles of
