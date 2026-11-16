@@ -116,6 +116,47 @@ end
 
 # ── The campaign read from a ModelSpec ───────────────────────────────
 
+"""
+    GroupDosing
+
+What a model that keeps counts or compartments, rather than individuals, reads
+of an intervention that gives doses to groups: the `group_key` its groups are
+the values of, the dose's `efficacy` and `mode`, the `coverage` of a group
+reached, the `dose_delay` after the trigger, and the dose's
+`delay_to_immunity` and `waning`. See [`count_dosing`](@ref EpiBranch.count_dosing).
+"""
+struct GroupDosing{E, M, C, D, I, W}
+    group_key::Symbol
+    efficacy::E
+    mode::M
+    coverage::C
+    dose_delay::D
+    delay_to_immunity::I
+    waning::W
+end
+
+"""
+    count_dosing(intervention) -> Union{Nothing, GroupDosing}
+
+For extension authors: what `intervention` does to a model that keeps counts of
+cases by type or compartments by mixing group, as `simulate_by_generation` and
+the approximations for mixing populations do. Those models have no individual to
+offer an intervention to, so they apply only an intervention that says what it
+does to a group: it returns a [`GroupDosing`](@ref EpiBranch.GroupDosing). The
+default, `nothing`, means it has no such description, and the model refuses it in
+the same words as any other intervention it cannot apply. [`GroupVaccination`](@ref)
+defines it; a new intervention that gives doses to groups opts in by defining it.
+A model that hands an individual-based run over to a mixing approximation also
+needs `EpiBranch._group_trigger_time` for the intervention.
+"""
+count_dosing(::AbstractIntervention) = nothing
+function count_dosing(gv::GroupVaccination)
+    return GroupDosing(
+        gv.group_key, efficacy(gv), effect_mode(gv), gv.coverage, gv.dose_delay,
+        delay_to_immunity(gv), waning(gv)
+    )
+end
+
 # A model with no vaccination, so no doses flow between compartments.
 struct NoCampaign end
 
@@ -124,7 +165,7 @@ struct NoCampaign end
 # (a value of `group_key`) mixing group `m` belongs to, `members[v]` the
 # mixing groups in vaccination group `v`. `budget` is the
 # `CapacityConstrained` wrapper, or `nothing` for unlimited doses.
-struct GroupCampaign{B, A <: DoseAllocation, GV <: GroupVaccination}
+struct GroupCampaign{B, A <: DoseAllocation, GV <: AbstractIntervention}
     vaccination::GV
     key::Symbol
     values::Vector{Any}
@@ -210,8 +251,9 @@ function _read_campaign(ivs::AbstractVector, mixing_by, groups, allocation, what
     isempty(ivs) && return NoCampaign()
     length(ivs) == 1 || _refuse_campaign(what, "a model with $(length(ivs)) interventions")
     iv, window, budget = _unwrap_campaign(only(ivs), (-Inf, Inf), nothing, what)
-    iv isa GroupVaccination || _refuse_campaign(what, nameof(typeof(iv)))
-    key = iv.group_key
+    dosing = count_dosing(iv)
+    dosing === nothing && _refuse_campaign(what, nameof(typeof(iv)))
+    key = dosing.group_key
     position = findfirst(==(key), mixing_by)
     position === nothing && throw(
         ArgumentError(
@@ -220,8 +262,8 @@ function _read_campaign(ivs::AbstractVector, mixing_by, groups, allocation, what
                 "mixing groups the compartments are kept for"
         )
     )
-    _check_dose_inputs(iv)
-    outcome = _dose_outcome(effect_mode(iv), efficacy(iv))
+    _check_dose_inputs(dosing)
+    outcome = _dose_outcome(dosing.mode, dosing.efficacy)
     _check_allocation(allocation, budget)
     values = Any[]
     group_of = Int[]
@@ -238,7 +280,7 @@ function _read_campaign(ivs::AbstractVector, mixing_by, groups, allocation, what
     return GroupCampaign(
         iv, key, values, group_of, members,
         Float64(outcome.immune), Float64(outcome.vaccinated), Float64(outcome.hazard),
-        Float64(iv.coverage), Float64(iv.dose_delay), Float64(window[1]), Float64(window[2]),
+        Float64(dosing.coverage), Float64(dosing.dose_delay), Float64(window[1]), Float64(window[2]),
         budget, allocation, _group_budget_wrappers(budget, names), names
     )
 end
@@ -256,10 +298,10 @@ end
 # The inputs a compartment can only take as numbers. A distribution or a
 # function varies from person to person, and an average cannot stand in for
 # it without a choice by the caller.
-function _check_dose_inputs(iv::GroupVaccination)
+function _check_dose_inputs(dosing::GroupDosing)
     for (name, x, lo, hi) in (
-            ("efficacy", efficacy(iv), 0.0, 1.0), ("coverage", iv.coverage, 0.0, 1.0),
-            ("dose_delay", iv.dose_delay, 0.0, Inf),
+            ("efficacy", dosing.efficacy, 0.0, 1.0), ("coverage", dosing.coverage, 0.0, 1.0),
+            ("dose_delay", dosing.dose_delay, 0.0, Inf),
         )
         x isa Real && lo <= x <= hi || throw(
             ArgumentError(
@@ -268,14 +310,14 @@ function _check_dose_inputs(iv::GroupVaccination)
             )
         )
     end
-    delay = delay_to_immunity(iv)
+    delay = dosing.delay_to_immunity
     (delay isa Real && delay == 0) || throw(
         ArgumentError(
             "the approximations do not model `delay_to_immunity`: a dose protects " *
                 "from the day it is given, so it must be 0, got $delay"
         )
     )
-    waning(iv) === nothing || throw(
+    dosing.waning === nothing || throw(
         ArgumentError("the approximations do not model `waning`, so it must be `nothing`")
     )
     return nothing

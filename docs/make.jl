@@ -24,6 +24,7 @@ makedocs(;
             "Interventions" => [
                 "Isolation and contact tracing" => "tutorials/interventions.md",
                 "Vaccination" => "tutorials/vaccination.md",
+                "What each model applies" => "tutorials/intervention-support.md",
             ],
             "Clinical transitions" => "tutorials/transitions.md",
             "Transmission models" => [

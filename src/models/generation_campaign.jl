@@ -15,51 +15,36 @@ struct _Campaign{B}
     budget::B
 end
 
-# Walks the wrappers around a `GroupVaccination`, intersecting the windows of
-# any `Scheduled` and finding the one `CapacityConstrained`. Anything else, or
-# a `Scheduled` whose condition is not a calendar window, cannot be applied to
-# a count and is named in the error.
-_campaign(iv::AbstractIntervention, window, budget) =
-    _refuse_campaign("simulate_by_generation", nameof(typeof(iv)))
-function _campaign(s::Scheduled, window, budget)
-    w = _clock_window(s, "simulate_by_generation")
-    return _campaign(
-        s.intervention, (max(window[1], w.start), min(window[2], w.stop)), budget
-    )
-end
-function _campaign(cc::CapacityConstrained, window, budget)
-    budget === nothing || _refuse_campaign(
-        "simulate_by_generation", "a campaign with more than one CapacityConstrained"
-    )
-    cc.on_refusal isa DropRefused || _refuse_campaign(
-        "simulate_by_generation", "`on_refusal = $(nameof(typeof(cc.on_refusal)))`",
-        " (each person is offered a dose once)"
-    )
-    return _campaign(cc.intervention, window, cc)
-end
-function _campaign(gv::GroupVaccination, window, budget)
+# Reads the wrappers around an intervention (the same ones the mixing
+# approximations read), then what it does to a group (`count_dosing`). Anything
+# else, or a `Scheduled` whose condition is not a calendar window, cannot be
+# applied to a count and is named in the error.
+function _campaign(iv::AbstractIntervention, window, budget)
+    engine = "simulate_by_generation"
+    leaf, window, budget = _unwrap_campaign(iv, window, budget, engine)
+    dosing = count_dosing(leaf)
+    dosing === nothing && _refuse_campaign(engine, nameof(typeof(leaf)))
     budget === nothing && throw(
         ArgumentError(
             "simulate_by_generation needs GroupVaccination wrapped in CapacityConstrained: " *
                 "without a dose budget there is no number of doses to give"
         )
     )
-    gv.group_key === :type || throw(
+    dosing.group_key === :type || throw(
         ArgumentError(
             "simulate_by_generation applies GroupVaccination to the types, so it needs " *
-                "group_key = :type, not :$(gv.group_key)"
+                "group_key = :type, not :$(dosing.group_key)"
         )
     )
-    eff = efficacy(gv)
-    eff isa Real || throw(
+    dosing.efficacy isa Real || throw(
         ArgumentError(
             "simulate_by_generation needs a numeric efficacy for GroupVaccination, " *
-                "not $(typeof(eff))"
+                "not $(typeof(dosing.efficacy))"
         )
     )
     for (name, value, none) in (
-            (:coverage, gv.coverage, 1), (:dose_delay, gv.dose_delay, 0),
-            (:delay_to_immunity, delay_to_immunity(gv), 0), (:waning, waning(gv), nothing),
+            (:coverage, dosing.coverage, 1), (:dose_delay, dosing.dose_delay, 0),
+            (:delay_to_immunity, dosing.delay_to_immunity, 0), (:waning, dosing.waning, nothing),
         )
         value === none || (value isa Real && none isa Real && value == none) || throw(
             ArgumentError(
@@ -68,7 +53,7 @@ function _campaign(gv::GroupVaccination, window, budget)
             )
         )
     end
-    return _Campaign(Float64(eff), window, budget)
+    return _Campaign(Float64(dosing.efficacy), window, budget)
 end
 
 # The campaigns a spec holds, or an error naming every intervention that

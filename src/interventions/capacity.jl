@@ -101,7 +101,8 @@ CapacityConstrained(GroupVaccination(efficacy = 0.9); budget_per_period = doses,
   callable `t -> budget(t)`) giving a different number for the period
   starting on each calendar day `t`. A finite `period` is required with a
   schedule to determine the period start at which
-  to read the budget.
+  to read the budget. A [`PerGroup`](@ref) gives each group of the model's
+  population its own number or schedule instead of one pool for everyone.
 - `period`: length of a period in days, measured on the date each dose is
   actually given. `Inf` (default) gives a single budget for the whole
   outbreak.

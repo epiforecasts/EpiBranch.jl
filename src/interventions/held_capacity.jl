@@ -23,7 +23,8 @@ HeldCapacity(
 ```
 
 # Arguments
-- `capacity`: the number of places, at most this many held at any one time.
+- `capacity`: the number of places, at most this many held at any one time. A
+  [`PerGroup`](@ref) gives each group of the model's population its own number.
 - `hold`: how long a place is kept once taken, in days: a number, a
   `Distribution` or an `(rng, individual)` callable, as a delay is anywhere
   else. The default, `Inf`, keeps it until [`release_capacity!`](@ref) gives it
