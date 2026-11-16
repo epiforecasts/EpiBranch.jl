@@ -283,7 +283,7 @@ end
 
     @testset "a bare MassActionHazard is rejected; RoutedMassActionHazard reads one route" begin
         # two unconnected people on both routes, so only the external hazard
-        # can score anything: 1 is a conditioned-on index case infectious on
+        # can contribute anything: 1 is a conditioned-on index case infectious on
         # the community route over (0, 3]; 2 is a secondary infected at the
         # exact instant 1 is removed, which a pairwise row and mass action
         # must agree on (see the core likelihood's own boundary test)
@@ -313,6 +313,30 @@ end
                 :nonexistent, MassActionHazard(; transmission_rate = N, population_size = N)
             )
         )
+    end
+
+    @testset "seeded hosts are conditioned on" begin
+        empty_contacts = [Int[], Int[]]
+        windows = [
+            RouteWindow(:household; until = (:recovered,), kernel = Exponential(1.0), reach = empty_contacts),
+            RouteWindow(:community; until = (:recovered,), kernel = Exponential(1.0), reach = empty_contacts),
+        ]
+        args = (
+            [:household, :community], [empty_contacts, empty_contacts],
+            [[0.0, NaN], [0.0, NaN]], [[3.0, Inf], [3.0, Inf]],
+            [0.0, 3.0], [true, false],
+        )
+        plain = RoutedNetworkInfections(args...; obs_end = 5.0)
+        seeded = RoutedNetworkInfections(args...; obs_end = 5.0, seeded = [false, true])
+        @test !any(EpiBranch.seeded_hosts(plain))
+        @test EpiBranch.seeded_hosts(seeded) == [false, true]
+        hazard = RoutedMassActionHazard(
+            :community, MassActionHazard(; transmission_rate = 5, population_size = 5)
+        )
+        # a seeded host is taken as given and adds no term
+        @test pairwise_surv_loglik(windows, seeded; external_hazard = hazard) >
+            pairwise_surv_loglik(windows, plain; external_hazard = hazard)
+        @test_throws ArgumentError RoutedNetworkInfections(args...; seeded = [true])
     end
 
     @testset "RoutedMassActionHazard rejected as a process's own external_hazard" begin

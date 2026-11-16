@@ -57,7 +57,7 @@ using StableRNGs
             (R, d) -> loglikelihood(OffspringCounts(d), Poisson(R[1])),
             [0.5], counts_data
         ),
-        # Per-case detection thins the chain-size law through
+        # A `Reporting` step thins the chain-size law through
         # `ThinnedChainSize`, whose cached normalising constant must hold
         # a `Dual` for this to differentiate.
         scenario(
@@ -65,7 +65,7 @@ using StableRNGs
                 ChainSizes(d),
                 ModelSpec(
                     BranchingProcess(Poisson(R[1]));
-                    observation = PerCaseObservation(detection_prob = 0.7)
+                    progression = [Reporting(delay = Dirac(0.0), probability = 0.7, from = :infection)]
                 )
             ),
             [0.5], sizes_data
@@ -119,6 +119,12 @@ using StableRNGs
         rtol = 1.0e-5,
         atol = 1.0e-8
     )
+end
+
+@testset "logsumexp differentiates through a generator" begin
+    f_gen(x) = EpiBranch.logsumexp(xi * x for xi in (1.0, 2.0))
+    f_vec(x) = EpiBranch.logsumexp([x, 2x])
+    @test ForwardDiff.derivative(f_gen, 1.0) ≈ ForwardDiff.derivative(f_vec, 1.0)
 end
 
 # Reverse-mode (Mooncake) coverage of the same analytical likelihoods. Each
@@ -375,7 +381,7 @@ end
 
     onward(efficacy) = EpiBranch._onward_risk(
         RingVaccination(efficacy = 0.6, onward_efficacy = efficacy),
-        parent
+        parent, contact
     ).block_probability
     @test ForwardDiff.derivative(onward, 0.5) == 1.0
 end

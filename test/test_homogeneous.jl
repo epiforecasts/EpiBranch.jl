@@ -881,7 +881,7 @@ end
         EpiBranch.add_individuals!(
             state, N, AbstractIntervention[]; setup = (ind, i) -> nothing
         )
-        m = EpiBranch._MassAction(
+        m = EpiBranch.MassAction(
             state, collect(1:N);
             rate = (_, _) -> 1 / N, calendar = schedule, from = :infection
         )
@@ -924,7 +924,7 @@ end
         EpiBranch._sellke_race!(
             state, members, rng;
             seed! = (best, _, r) -> (best[randperm(r, N)[1:n_initial]] .= 0),
-            targets = EpiBranch._MassAction(
+            targets = EpiBranch.MassAction(
                 state, members; mixing_by = (:age_band,), rate, from = :infection
             ),
             from = :infection, until = (:recovered, EpiBranch.INTERVENTION_REMOVAL),
@@ -1107,7 +1107,7 @@ end
         # their own `susceptible_again_time`, not on susceptibility (which
         # stays > 0 throughout), so it is still reachable once the
         # progression reinfects and their draw gave them a finite wait.
-        m = EpiBranch._MassAction(
+        m = EpiBranch.MassAction(
             [[1]], Dict(1 => 1), reshape([1.0], 1, 1), [1.0], reshape([true], 1, 1),
             Tuple{Int, Float64}[], nothing, :infection
         )

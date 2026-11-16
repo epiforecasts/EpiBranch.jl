@@ -36,6 +36,8 @@ terminal_certainty(::Recovery) = true
 
 function initialise_individual!(::Recovery, individual, state)
     individual.state[:recovery_candidate_time] = Inf
+    individual.state[:recovered] = false
+    individual.state[:recovered_time] = Inf
     return nothing
 end
 
@@ -71,7 +73,7 @@ function transition_loglik(r::Recovery, individual::Individual; followup_end = I
         # No gate of its own, so a candidate is missing only where an abort
         # undid it; anything else rules the individual out.
         # A line list holds only the outcome that happened. A recovery that
-        # lost to another outcome is scored as not having happened by that
+        # lost to another outcome is treated as not having happened by that
         # outcome's time.
         competing = _competing_outcome_time(individual, :recovered)
         isinf(competing) && isinf(infection_aborted_time(individual)) && return -Inf
@@ -163,6 +165,8 @@ terminal_certainty(d::Death) = _certain_probability(d.probability)
 
 function initialise_individual!(::Death, individual, state)
     individual.state[:death_candidate_time] = Inf
+    individual.state[:died] = false
+    individual.state[:died_time] = Inf
     return nothing
 end
 

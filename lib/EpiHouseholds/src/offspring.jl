@@ -321,11 +321,14 @@ function EpiBranch.extinction_probability(
     )
     reproduction_number(o) <= 1 && return ones(length(o.sizes))
     s = 0.0
+    converged = false
     for _ in 1:max_iter
         s_new = sum(o.mixing[i] * _pgf(o.laws[i], s) for i in eachindex(o.laws))
-        abs(s_new - s) < tol && break
+        converged = abs(s_new - s) < tol
         s = s_new
+        converged && break
     end
+    converged || EpiBranch.@warn_unconverged_extinction(max_iter, "the reproduction number")
     return [_pgf(law, s) for law in o.laws]
 end
 

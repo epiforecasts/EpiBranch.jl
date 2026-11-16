@@ -210,11 +210,6 @@ function _case_cap(opts::SimOpts)
     return typemax(Int)
 end
 
-# Positional form taking the initial count and the stopping rules only.
-function SimOpts(n_initial, rules)
-    return SimOpts(n_initial, nothing, nothing, rules)
-end
-
 function _validate_initial_cases(model::TransmissionModel, opts::SimOpts)
     opts.initial_cases === nothing ||
         throw(ArgumentError("$(nameof(typeof(model))) does not support initial_cases"))
