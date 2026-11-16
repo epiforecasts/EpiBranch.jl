@@ -29,7 +29,7 @@ EpiBranch.single_type_offspring(m::LawOnlyModel) = m.law
         seeded = zeros(2)
         for _ in 1:n
             state = simulate(model; max_cases = 200, rng)
-            t = individual_type(state.individuals[1])
+            t = individual_type(individuals(state)[1])
             seeded[t] += 1
             extinct[t] += state.extinct
         end

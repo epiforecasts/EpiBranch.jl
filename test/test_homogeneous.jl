@@ -100,11 +100,11 @@ end
             )
             selected = run([iv])
             @test selected.cumulative_cases == baseline.cumulative_cases == 20
-            @test getfield.(selected.individuals, :infection_time) ==
-                getfield.(baseline.individuals, :infection_time)
+            @test getfield.(individuals(selected), :infection_time) ==
+                getfield.(individuals(baseline), :infection_time)
             @test all(
                 get(ind.state, :route_block_resolved, false)
-                    for ind in selected.individuals
+                    for ind in individuals(selected)
             )
         end
         @test run([RouteSelectedBlock(:transmission)]).cumulative_cases == 1
@@ -123,10 +123,10 @@ end
                 interventions = [ResolveInfectiousness(include_seeds)]
             )
             state = simulate(model; n_initial = 20, rng = MersenneTwister(1))
-            parents = [ind.parent_id for ind in state.individuals if ind.parent_id != 0]
+            parents = [ind.parent_id for ind in individuals(state) if ind.parent_id != 0]
             @test !isempty(parents)
-            @test any(ind.infectiousness == 0 for ind in state.individuals)
-            @test all(state.individuals[id].infectiousness > 0 for id in parents)
+            @test any(ind.infectiousness == 0 for ind in individuals(state))
+            @test all(individuals(state)[id].infectiousness > 0 for id in parents)
         end
     end
 
@@ -142,7 +142,7 @@ end
             interventions = [Scheduled(LeakyVaccine(1.0, 0.0); end_time = 1.0)]
         )
         state = simulate(model; n_initial = 2, rng = StableRNG(1))
-        secondary = filter(ind -> ind.parent_id != 0, state.individuals)
+        secondary = filter(ind -> ind.parent_id != 0, individuals(state))
         @test !isempty(secondary)
         @test all(ind.infection_time > 1.0 for ind in secondary)
     end
@@ -296,7 +296,7 @@ end
 
         # A case's isolation time is actually written (the hook ran).
         state = simulate(iso; rng = StableRNG(1), n_initial = 3)
-        @test any(isfinite(EpiBranch.isolation_time(ind)) for ind in state.individuals)
+        @test any(isfinite(EpiBranch.isolation_time(ind)) for ind in individuals(state))
     end
 
     @testset "Interventions the pool offers to every member or group" begin
@@ -317,7 +317,7 @@ end
         dosed = @test_logs min_level = Base.CoreLogging.Warn simulate(
             mass; rng = StableRNG(1), n_initial = 2
         )
-        @test any(is_vaccinated, dosed.individuals)
+        @test any(is_vaccinated, individuals(dosed))
 
         # `GroupVaccination` declares `needs_contacts = false`, so it finds a
         # case's group through its `group_key` on the pool, which names no
@@ -338,7 +338,7 @@ end
         dosed = @test_logs min_level = Base.CoreLogging.Warn simulate(
             grouped; rng = StableRNG(1), n_initial = 2
         )
-        @test any(is_vaccinated, dosed.individuals)
+        @test any(is_vaccinated, individuals(dosed))
 
         # Nesting `Scheduled` inside `CapacityConstrained` must not be mistaken
         # for an action producer: `Scheduled`'s own `intervention_actions`
@@ -478,11 +478,11 @@ end
             st = simulate(half_silent; rng = StableRNG(s), n_initial = 20)
             parents = [
                 ind.parent_id
-                    for ind in st.individuals
+                    for ind in individuals(st)
                     if is_infected(ind) && ind.parent_id > 0
             ]
             @test !isempty(parents)
-            @test all(p -> st.individuals[p].infectiousness > 0, parents)
+            @test all(p -> individuals(st)[p].infectiousness > 0, parents)
         end
         varied = ModelSpec(
             pool; progression = prog,
@@ -668,10 +668,10 @@ end
         # isolated once its own isolation falls after it.
         st = simulate(mk(3.0); rng = StableRNG(1), n_initial = 10)
         @test all(
-            ind -> !is_isolated(ind) || isolation_time(ind) >= 3.0, st.individuals
+            ind -> !is_isolated(ind) || isolation_time(ind) >= 3.0, individuals(st)
         )
-        @test any(ind -> ind.infection_time < 3.0 && is_isolated(ind), st.individuals)
-        @test any(ind -> ind.infection_time >= 3.0 && is_isolated(ind), st.individuals)
+        @test any(ind -> ind.infection_time < 3.0 && is_isolated(ind), individuals(st))
+        @test any(ind -> ind.infection_time >= 3.0 && is_isolated(ind), individuals(st))
     end
 
     @testset "removal before infectious onset never infects" begin
@@ -722,7 +722,7 @@ end
         state = simulate(m; n_initial = 1, rng = StableRNG(3))
         secondary = [
             ind
-                for ind in state.individuals
+                for ind in individuals(state)
                 if is_infected(ind) && ind.parent_id != 0
         ]
         @test !isempty(secondary)
@@ -761,7 +761,7 @@ end
         df = contacts(state)
         @test size(df, 1) == count(!=(0), linelist(state).parent_id)
         @test all(df.infected)
-        expected = Set((ind.parent_id, ind.id) for ind in state.individuals if ind.parent_id != 0)
+        expected = Set((ind.parent_id, ind.id) for ind in individuals(state) if ind.parent_id != 0)
         @test Set(zip(df.from, df.to)) == expected
     end
 
@@ -885,7 +885,7 @@ end
             state, collect(1:N);
             rate = (_, _) -> 1 / N, calendar = schedule, from = :infection
         )
-        infector = state.individuals[1]
+        infector = individuals(state)[1]
         infector.infection_time = 2.0
         kernel = EpiBranch.route_pair_kernel(m, 1, 2, state)
         integrated(t) = min(t, 1.5) + 0.25 * max(t - 1.5, 0.0)
@@ -933,7 +933,7 @@ end
         return state
     end
     band(ind) = ind.state[:age_band]
-    infected(state) = filter(is_infected, state.individuals)
+    infected(state) = filter(is_infected, individuals(state))
 
     @testset "two-band uniform matrix reduces to one population" begin
         # Two bands with uniform contact behave as a single population of size N:
@@ -997,7 +997,7 @@ end
 
         state = run_bands(1)
         @test all(infected(state)) do ind
-            ind.parent_id == 0 || band(state.individuals[ind.parent_id]) == band(ind)
+            ind.parent_id == 0 || band(individuals(state)[ind.parent_id]) == band(ind)
         end
 
         base = major([band1_attack(run_bands(s)) for s in 1:30])
@@ -1079,9 +1079,9 @@ end
         full = simulate(spec; n_initial = 3, rng = StableRNG(4))
         # Honoured, so no warning; the cut run matches the full run up to 2.
         cut = @test_logs simulate(spec; n_initial = 3, max_time = 2.0, rng = StableRNG(4))
-        by(state, t) = [is_infected(i) && i.infection_time <= t for i in state.individuals]
-        @test is_infected.(cut.individuals) == by(full, 2.0)
-        @test count(is_infected, cut.individuals) < count(is_infected, full.individuals)
+        by(state, t) = [is_infected(i) && i.infection_time <= t for i in individuals(state)]
+        @test is_infected.(individuals(cut)) == by(full, 2.0)
+        @test count(is_infected, individuals(cut)) < count(is_infected, individuals(full))
         # The pool ran to extinction on its own, but the cut run was stopped
         # with candidates still pending, so only the full run is extinct.
         @test is_extinct(full)
@@ -1096,9 +1096,9 @@ end
         )
         si_cut = simulate(si; n_initial = 3, max_time = 1.0, rng = StableRNG(4))
         @test !is_extinct(si_cut)
-        @test all(i -> !is_infected(i) || i.infection_time <= 1.0, si_cut.individuals)
+        @test all(i -> !is_infected(i) || i.infection_time <= 1.0, individuals(si_cut))
         si_all = simulate(si; n_initial = 3, max_time = 100.0, rng = StableRNG(4))
-        @test count(is_infected, si_all.individuals) == 500
+        @test count(is_infected, individuals(si_all)) == 500
         @test is_extinct(si_all)
     end
 
@@ -1235,7 +1235,7 @@ end
             ]
         )
         state = simulate(model; n_initial = 1, max_time = 50.0, rng = MersenneTwister(1))
-        @test any(ind -> !isempty(ind.episodes), state.individuals)
+        @test any(ind -> !isempty(ind.episodes), individuals(state))
     end
 end
 

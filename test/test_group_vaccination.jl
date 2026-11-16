@@ -22,7 +22,7 @@ end
         b1 = _group_member(gv, 4, :B, test_positive = false)
         b2 = _group_member(gv, 5, :B, test_positive = false)
         new_contacts = [confirmed, other_a, another_a, b1, b2]
-        append!(state.individuals, new_contacts)
+        append!(individuals(state), new_contacts)
 
         EpiBranch.apply_actions!(gv, state, new_contacts)
 
@@ -44,7 +44,7 @@ end
         set_isolated!(confirmed, 6.0; release_time = Inf)
         member = _group_member(gv, 2, :A, test_positive = false)
         new_contacts = [confirmed, member]
-        append!(state.individuals, new_contacts)
+        append!(individuals(state), new_contacts)
 
         EpiBranch.apply_actions!(gv, state, new_contacts)
 
@@ -66,7 +66,7 @@ end
         set_isolated!(confirmed, 6.0; release_time = Inf)
         members = [_group_member(gv, i, :A, test_positive = false) for i in 2:20]
         new_contacts = [confirmed; members]
-        append!(state.individuals, new_contacts)
+        append!(individuals(state), new_contacts)
 
         EpiBranch.apply_actions!(gv, state, new_contacts)
 
@@ -90,7 +90,7 @@ end
         set_isolated!(confirmed, 2.0; release_time = Inf)
         member = _group_member(gv, 2, :A, test_positive = false)
         new_contacts = [confirmed, member]
-        append!(state.individuals, new_contacts)
+        append!(individuals(state), new_contacts)
 
         EpiBranch.apply_actions!(gv, state, new_contacts)
 
@@ -113,7 +113,7 @@ end
         set_isolated!(confirmed, 2.0; release_time = Inf)
         member = _group_member(gv, 2, :A, test_positive = false)
         new_contacts = [confirmed, member]
-        append!(state.individuals, new_contacts)
+        append!(individuals(state), new_contacts)
 
         EpiBranch.apply_actions!(gv, state, new_contacts)
 
@@ -140,7 +140,7 @@ end
         confirmed = _group_member(gv, 1, :A, test_positive = true)
         set_isolated!(confirmed, 4.0; release_time = Inf)
         first_gen = [confirmed]
-        append!(state.individuals, first_gen)
+        append!(individuals(state), first_gen)
         EpiBranch.apply_actions!(gv, state, first_gen)
         @test is_vaccinated(confirmed)
 
@@ -149,7 +149,7 @@ end
         # group trigger time.
         latecomer = _group_member(gv, 2, :A, test_positive = false)
         second_gen = [latecomer]
-        append!(state.individuals, second_gen)
+        append!(individuals(state), second_gen)
         EpiBranch.apply_actions!(gv, state, second_gen)
 
         @test is_vaccinated(latecomer)
@@ -171,7 +171,7 @@ end
         set_isolated!(confirmed, 4.0; release_time = Inf)
         member = _group_member(gv, 2, :A, test_positive = false)
         first_gen = [confirmed, member]
-        append!(state.individuals, first_gen)
+        append!(individuals(state), first_gen)
         EpiBranch.apply_actions!(gv, state, first_gen)
         @test member.state[:vaccination_time] == 5.0
 
@@ -180,7 +180,7 @@ end
         earlier_confirmed = _group_member(gv, 3, :A, test_positive = true)
         set_isolated!(earlier_confirmed, 1.0; release_time = Inf)
         second_gen = [earlier_confirmed]
-        append!(state.individuals, second_gen)
+        append!(individuals(state), second_gen)
         EpiBranch.apply_actions!(gv, state, second_gen)
 
         @test member.state[:vaccination_time] == 5.0
@@ -201,7 +201,7 @@ end
         a = _group_member(gv, 1, :A, test_positive = false)
         b = _group_member(gv, 2, :A, test_positive = false)
         c = _group_member(gv, 3, :A, test_positive = false)
-        append!(state.individuals, [a, b, c])
+        append!(individuals(state), [a, b, c])
         members = [1, 2, 3]
         processed = falses(3)
 
@@ -252,7 +252,7 @@ end
             rng = StableRNG(1)
         )
 
-        index = only(state.individuals)
+        index = only(individuals(state))
         @test index.parent_id == 0
         @test is_vaccinated(index)
     end
@@ -270,7 +270,7 @@ end
 
         confirmed = _group_member(gv, 1, :A, test_positive = false)
         member = _group_member(gv, 2, :A, test_positive = false)
-        append!(state.individuals, [confirmed, member])
+        append!(individuals(state), [confirmed, member])
 
         EpiBranch.apply_actions!(gv, state, [confirmed, member])
         @test !is_vaccinated(confirmed)
@@ -294,7 +294,7 @@ end
         state = empty_state(; rng = StableRNG(1))
 
         members = [_group_member(gv, i, :A, test_positive = false) for i in 1:3]
-        append!(state.individuals, members)
+        append!(individuals(state), members)
         EpiBranch.apply_actions!(gv, state, members)
 
         @test !any(is_vaccinated, members)
@@ -315,7 +315,7 @@ end
         set_isolated!(confirmed, 10.0; release_time = Inf)
         member = _group_member(gv, 2, :A, test_positive = false)
         new_contacts = [confirmed, member]
-        append!(state.individuals, new_contacts)
+        append!(individuals(state), new_contacts)
         EpiBranch.apply_actions!(gv, state, new_contacts)
 
         # Trigger at 10, dose at 12, immunity at 12 + 5 = 17.
@@ -361,7 +361,7 @@ end
                 );
                 max_cases = 60, rng = StableRNG(seed)
             )
-            n_group_doses += count(is_vaccinated, state_group.individuals)
+            n_group_doses += count(is_vaccinated, individuals(state_group))
 
             rv = RingVaccination(efficacy = 0.9)
             state_ring = simulate(
@@ -371,7 +371,7 @@ end
                 );
                 max_cases = 60, rng = StableRNG(seed)
             )
-            n_ring_doses += count(is_vaccinated, state_ring.individuals)
+            n_ring_doses += count(is_vaccinated, individuals(state_ring))
         end
 
         # Every case triggers its whole (roughly population/3-sized) group,
@@ -406,12 +406,12 @@ end
             # A dose recorded by the ring is not overwritten by the group pass:
             # every vaccinated individual has a single, well-defined vaccination
             # time, whichever of the two interventions set it.
-            for ind in state.individuals
+            for ind in individuals(state)
                 if is_vaccinated(ind)
                     @test isfinite(ind.state[:vaccination_time])
                 end
             end
-            n_vaccinated += count(is_vaccinated, state.individuals)
+            n_vaccinated += count(is_vaccinated, individuals(state))
         end
         @test n_vaccinated > 0
     end
@@ -426,7 +426,7 @@ end
         confirmed = _group_member(gv, 1, :A, test_positive = true)
         set_isolated!(confirmed, 5.0; release_time = Inf)
         members = [_group_member(gv, i, :A, test_positive = false) for i in 2:201]
-        append!(state.individuals, [confirmed; members])
+        append!(individuals(state), [confirmed; members])
 
         EpiBranch.apply_actions!(gv, state, [confirmed])
         first_round = Set(ind.id for ind in members if is_vaccinated(ind))
@@ -464,9 +464,9 @@ end
             campaign_state, 4000, [gv];
             setup = (ind, i) -> (ind.state[:group] = :A)
         )
-        campaign_state.individuals[1].state[:test_positive] = true
-        set_isolated!(campaign_state.individuals[1], 5.0; release_time = Inf)
-        EpiBranch.apply_actions!(gv, campaign_state, campaign_state.individuals)
+        individuals(campaign_state)[1].state[:test_positive] = true
+        set_isolated!(individuals(campaign_state)[1], 5.0; release_time = Inf)
+        EpiBranch.apply_actions!(gv, campaign_state, individuals(campaign_state))
         return campaign_state
     end
 
@@ -475,15 +475,15 @@ end
         share = count(
             ind -> is_vaccinated(ind) &&
                 ind.state[:vaccination_time] == 5.0 + time,
-            state.individuals
-        ) / length(state.individuals)
+            individuals(state)
+        ) / length(individuals(state))
         @test isapprox(share, 0.9 * first_reached[i]; atol = 0.025)
     end
-    refused = filter(ind -> !ind.state[:willing], state.individuals)
-    absent = filter(ind -> ind.state[:willing] && !is_vaccinated(ind), state.individuals)
+    refused = filter(ind -> !ind.state[:willing], individuals(state))
+    absent = filter(ind -> ind.state[:willing] && !is_vaccinated(ind), individuals(state))
     later = filter(
         ind -> is_vaccinated(ind) && ind.state[:vaccination_time] > 5.0,
-        state.individuals
+        individuals(state)
     )
     @test !isempty(refused)
     @test !isempty(absent)
@@ -495,21 +495,21 @@ end
         (
             ind.state[:willing], is_vaccinated(ind),
             ind.state[:vaccination_time],
-        ) for ind in st.individuals
+        ) for ind in individuals(st)
     ]
     original = outcomes(state)
     @test isequal(outcomes(campaign(19)), original)
     for _ in 1:5
-        EpiBranch.apply_actions!(gv, state, state.individuals)
+        EpiBranch.apply_actions!(gv, state, individuals(state))
     end
     @test isequal(outcomes(state), original)
 
     # Another labelled dose can have different willingness without altering this one.
     boost = GroupVaccination(efficacy = 0.8, dose_label = :boost, dose_delay = Dirac(21.0))
-    for ind in state.individuals
+    for ind in individuals(state)
         EpiBranch.initialise_individual!(boost, ind, state)
     end
-    EpiBranch.apply_actions!(boost, state, state.individuals)
+    EpiBranch.apply_actions!(boost, state, individuals(state))
     @test all(ind -> is_vaccinated(ind; dose_label = :boost), refused)
     @test isequal(outcomes(state), original)
 end
@@ -517,7 +517,7 @@ end
 @testset "The group-to-members index tracks new individuals without rescanning old ones" begin
     state = empty_state(BranchingProcess(Poisson(0.0)); rng = StableRNG(1))
     append!(
-        state.individuals,
+        individuals(state),
         [Individual(id = i, state = Dict{Symbol, Any}(:group => (i <= 2 ? :A : :B))) for i in 1:3]
     )
     @test Set(EpiBranch._group_members(state, :group, :A)) == Set([1, 2])
@@ -526,12 +526,12 @@ end
 
     # A member of an already-queried group, created after that query, is
     # still found: the cache only skips ids it has already seen, not groups.
-    push!(state.individuals, Individual(id = 4, state = Dict{Symbol, Any}(:group => :A)))
+    push!(individuals(state), Individual(id = 4, state = Dict{Symbol, Any}(:group => :A)))
     @test Set(EpiBranch._group_members(state, :group, :A)) == Set([1, 2, 4])
 
     # A different `group_key` gets its own cache.
-    state.individuals[1].state[:household] = :H1
-    state.individuals[2].state[:household] = :H1
+    individuals(state)[1].state[:household] = :H1
+    individuals(state)[2].state[:household] = :H1
     @test Set(EpiBranch._group_members(state, :household, :H1)) == Set([1, 2])
     @test Set(EpiBranch._group_members(state, :group, :A)) == Set([1, 2, 4])
 

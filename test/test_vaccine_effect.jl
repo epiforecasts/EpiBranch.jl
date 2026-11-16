@@ -227,7 +227,7 @@ EpiBranch.realised_efficacy(::_TestBlockedMode, eff, rng) =
             EpiBranch.initialise_individual!(cc.intervention, ind, nothing)
         end
         cc_state = empty_state(BranchingProcess(Poisson(0.0)); rng = StableRNG(1))
-        append!(cc_state.individuals, contacts)
+        append!(individuals(cc_state), contacts)
         EpiBranch.apply_actions!(cc, cc_state, contacts)
         @test count(is_vaccinated, contacts) == 1
     end
@@ -409,7 +409,7 @@ end
             )
         )
         states = simulate(model, n; max_cases = 60, rng = StableRNG(7))
-        return [i for s in states for i in s.individuals if is_infected(i)]
+        return [i for s in states for i in individuals(s) if is_infected(i)]
     end
     mass(; kw...) = MassVaccination(; efficacy = 0.0, eligibility_time = 0.0, kw...)
 
@@ -445,7 +445,7 @@ end
             attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.3))
         )
         states = simulate(model, 20; max_cases = 60, rng = StableRNG(5))
-        cases = [i for s in states for i in s.individuals if is_infected(i)]
+        cases = [i for s in states for i in individuals(s) if is_infected(i)]
         # A dose given after the incubation period has run its course comes
         # too late to prevent symptoms.
         in_time(i) = is_vaccinated(i) &&

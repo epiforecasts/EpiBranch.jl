@@ -26,11 +26,11 @@ _settle_calls(ind) = get(ind.state, :_settle_calls, NamedTuple[])
 # Each case's own settlement record, checked against its infection time and
 # its place among the cases settled before it.
 function _check_settled_once(state)
-    cases = filter(is_infected, state.individuals)
+    cases = filter(is_infected, individuals(state))
     @test all(ind -> length(_settle_calls(ind)) == 1, cases)
     @test all(
         ind -> isempty(_settle_calls(ind)),
-        filter(!is_infected, state.individuals)
+        filter(!is_infected, individuals(state))
     )
     calls = [only(_settle_calls(ind)) for ind in cases]
     @test all(c -> c.infected && c.outcome_set, calls)
@@ -41,7 +41,7 @@ end
 
 # A case counts every case infected no later than it, whatever its generation.
 function _check_time_order_counts(state)
-    cases = sort(filter(is_infected, state.individuals); by = c -> c.infection_time)
+    cases = sort(filter(is_infected, individuals(state)); by = c -> c.infection_time)
     @test [only(_settle_calls(c)).count for c in cases] == 1:length(cases)
     return nothing
 end
@@ -94,7 +94,7 @@ end
                 (ModelSpec(bp; progression = prog), (; max_generations = 3)),
             )
             state = simulate(model; rng = StableRNG(3), kw...)
-            cases = filter(is_infected, state.individuals)
+            cases = filter(is_infected, individuals(state))
             @test length(cases) > 1
             @test all(c -> c.state[:_transition_clock] == c.infection_time, cases)
             @test all(c -> c.state[:_transition_count] >= 1, cases)
@@ -118,7 +118,7 @@ end
         )
         for seed in 1:100
             state = simulate(model; rng = StableRNG(seed), kw...)
-            for ind in filter(is_infected, state.individuals)
+            for ind in filter(is_infected, individuals(state))
                 isolated = isfinite(get(ind.state, :isolation_time, Inf))
                 if isolated
                     @test ind.state[:isolation_time] >= 10.0
@@ -148,7 +148,7 @@ end
         BranchingProcess(Poisson(2.0), Exponential(5.0)); progression
     )
     state = simulate(model; rng = StableRNG(3), max_generations = 3)
-    cases = filter(is_infected, state.individuals)
+    cases = filter(is_infected, individuals(state))
     @test length(cases) > 1
     transitions = Tuple(state.transitions)
 

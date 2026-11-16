@@ -83,7 +83,7 @@ function household_infections(
         followup_end = Inf, host_times = ()
     )
     _warn_uncovered_episodes(state)
-    household_of = [ind.state[:household]::Int for ind in state.individuals]
+    household_of = [ind.state[:household]::Int for ind in individuals(state)]
     columns = _infection_layer_columns(state, model)
     return HouseholdInfections(
         household_of, columns...; obs_end, followup_end,
@@ -99,7 +99,7 @@ end
 # earlier episode is archived onto `episodes` instead, and neither this
 # layer nor `loglikelihood` reads it.
 function _warn_uncovered_episodes(state::SimulationState)
-    any(ind -> !isempty(ind.episodes), state.individuals) || return nothing
+    any(ind -> !isempty(ind.episodes), individuals(state)) || return nothing
     @warn "this outbreak has hosts with more than one infection episode " *
         "(`ind.episodes`), from a progression that reaches `:susceptible_again`; " *
         "`household_infections` records only each host's current episode, so " *

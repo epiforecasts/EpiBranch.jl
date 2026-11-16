@@ -36,13 +36,13 @@ test_continuous_vaccine_actions(k -> HouseholdProcess([4], k))
         # A periodic budget is shared across households, and the one clock
         # they share makes its admission chronological.
         state = simulate(build(process, wrap(rv)); rng = StableRNG(32))
-        @test count(is_vaccinated, state.individuals) >= 1
+        @test count(is_vaccinated, individuals(state)) >= 1
         state = simulate(build(HouseholdProcess([3], (i, j) -> Dirac(2.0)), wrap(rv)); rng = StableRNG(32))
-        @test count(is_vaccinated, state.individuals) >= 1
+        @test count(is_vaccinated, individuals(state)) >= 1
     end
     lifetime = CapacityConstrained(rv; budget_per_period = 1.0, period = Inf)
     state = simulate(build(process, lifetime); rng = StableRNG(32))
-    @test count(is_vaccinated, state.individuals) == 1
+    @test count(is_vaccinated, individuals(state)) == 1
     @test state.cumulative_cases == 6
     nested = CapacityConstrained(
         Scheduled(
@@ -53,5 +53,5 @@ test_continuous_vaccine_actions(k -> HouseholdProcess([4], k))
     # A periodic budget nested inside a lifetime one is admitted for the same
     # reason; the outer budget caps what the inner one lets through.
     state = simulate(build(process, nested); rng = StableRNG(32))
-    @test count(is_vaccinated, state.individuals) == 1
+    @test count(is_vaccinated, individuals(state)) == 1
 end

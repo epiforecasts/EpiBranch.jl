@@ -505,7 +505,7 @@ function _handover_progress(c::GroupCampaign, es, t, cases)
         end
     end
     given = Dict{Float64, Float64}()
-    for ind in es.individuals
+    for ind in individuals(es)
         dose_t = _dose_time(dose_label(c.vaccination), ind)
         dose_t !== nothing && dose_t <= t &&
             (given[dose_t] = get(given, dose_t, 0.0) + 1.0)

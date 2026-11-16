@@ -129,14 +129,14 @@ _member!(tree::_Tree, race, k) = _birth!(tree, race, k)
 function _birth!(tree::_Tree, race, k)
     (; state) = race
     if tree.ids[k] != 0
-        contact = state.individuals[tree.ids[k]]
+        contact = individuals(state)[tree.ids[k]]
         slot = tree.slots[k]
         slot != 0 && isnan(contact.infection_time) &&
             (contact.infection_time = tree.drawn[abs(slot)].time)
         return contact
     end
     drawn = tree.drawn[abs(tree.slots[k])]
-    parent = state.individuals[drawn.infector]
+    parent = individuals(state)[drawn.infector]
     contact = drawn.type == 0 ? make_contact!(state, parent, drawn.time) :
         make_contact!(state, parent, drawn.time; type_idx = drawn.type)
     contact.generation = parent.generation + 1
@@ -265,7 +265,7 @@ function _case_contacts(
         contacts, rts::Tuple{Vararg{Tuple{RouteWindow, _Offspring}}}, race, max_generation
     )
     return function (id, state)
-        ind = state.individuals[id]
+        ind = individuals(state)[id]
         settled = race.processed[first(rts)[2].tree.places[id]]
         early = !settled && _draws_early(rts, ind)
         for (_, o) in rts
@@ -429,7 +429,7 @@ function _finish!(o::_Offspring, race, stop_t, extinct, cut_by_max_time)
         undecided && extinct && _release_draw!(o.tree, k)
         id = o.tree.ids[k]
         id == 0 && continue
-        contact = state.individuals[id]
+        contact = individuals(state)[id]
         # An index case the run stopped before reaching stays an index case.
         contact.parent_id == 0 && continue
         # A shared tree has already had this place's draw released by an
@@ -446,7 +446,7 @@ function _finish!(o::_Offspring, race, stop_t, extinct, cut_by_max_time)
     # only on one that was infected before it.
     isempty(race.interventions) && return nothing
     for id in o.tree.ids
-        id == 0 || _drop_stale_abort!(state.individuals[id])
+        id == 0 || _drop_stale_abort!(individuals(state)[id])
     end
     return nothing
 end
@@ -512,7 +512,7 @@ function _simulate_offspring(
     state.cumulative_cases = 0
     fill!(state.group_cases, 0)
     T = _timetype(state)
-    tree = _take_tree(T, length(state.individuals), map(w -> w.until, windows))
+    tree = _take_tree(T, length(individuals(state)), map(w -> w.until, windows))
     routes = ntuple(
         i -> (_offspring_window(windows[i]), _Offspring(windows[i], i, tree, n_types(model))),
         length(windows)
@@ -520,7 +520,7 @@ function _simulate_offspring(
     sellke_race!(
         state, tree, rng, sim_opts;
         seed! = (best, _, _) -> fill!(best, zero(T)), routes,
-        interventions, contacts = (id, state) -> state.individuals[id].secondary_case_ids,
+        interventions, contacts = (id, state) -> individuals(state)[id].secondary_case_ids,
         risks = transmission_risks(model), recorder
     )
     # A race cut off rather than reaching extinction keeps `tree` as its

@@ -635,7 +635,7 @@ _rep(p, delay = Dirac(0.0)) = [Reporting(; delay, probability = p, from = :infec
                 n = count(
                     ind -> EpiBranch.is_infected(ind) &&
                         ind.state[:reported],
-                    state.individuals
+                    individuals(state)
                 )
                 n > 0 && push!(sizes, n)
             end
@@ -1132,7 +1132,7 @@ _rep(p, delay = Dirac(0.0)) = [Reporting(; delay, probability = p, from = :infec
             )
             by_chain = Dict{Int, Bool}()
             consistent = true
-            for ind in state.individuals
+            for ind in individuals(state)
                 is_infected(ind) || continue
                 flag = ind.state[:reported]
                 if haskey(by_chain, ind.chain_id) && by_chain[ind.chain_id] != flag
@@ -1171,11 +1171,11 @@ _rep(p, delay = Dirac(0.0)) = [Reporting(; delay, probability = p, from = :infec
                 );
                 rng = StableRNG(42)
             )
-            @test all(haskey(ind.state, :reported) for ind in sim_state.individuals)
-            @test all(haskey(ind.state, :reporting_time) for ind in sim_state.individuals)
+            @test all(haskey(ind.state, :reported) for ind in individuals(sim_state))
+            @test all(haskey(ind.state, :reporting_time) for ind in individuals(sim_state))
             @test all(
                 ind.state[:reporting_time] >= ind.infection_time
-                    for ind in sim_state.individuals if ind.state[:reported]
+                    for ind in individuals(sim_state) if ind.state[:reported]
             )
         end
 
@@ -1245,7 +1245,7 @@ _rep(p, delay = Dirac(0.0)) = [Reporting(; delay, probability = p, from = :infec
             rep_sizes = Int[]
             for st in simulate(rep_spec, 5000; max_cases = 500, rng = StableRNG(7))
                 counts = Dict{Int, Int}()
-                for ind in st.individuals
+                for ind in individuals(st)
                     (is_infected(ind) && ind.state[:reported]) || continue
                     counts[ind.chain_id] = get(counts, ind.chain_id, 0) + 1
                 end
@@ -1283,7 +1283,7 @@ _rep(p, delay = Dirac(0.0)) = [Reporting(; delay, probability = p, from = :infec
             all_consistent = true
             for s in states
                 by_chain = Dict{Int, Float64}()
-                for ind in s.individuals
+                for ind in individuals(s)
                     haskey(ind.state, :cluster_theta) || continue
                     θ = ind.state[:cluster_theta]
                     if haskey(by_chain, ind.chain_id) &&
@@ -1308,7 +1308,7 @@ _rep(p, delay = Dirac(0.0)) = [Reporting(; delay, probability = p, from = :infec
             thetas = Float64[]
             for s in states_multi
                 seen_chains = Set{Int}()
-                for ind in s.individuals
+                for ind in individuals(s)
                     ind.chain_id in seen_chains && continue
                     haskey(ind.state, :cluster_theta) || continue
                     push!(thetas, ind.state[:cluster_theta])
@@ -1654,7 +1654,7 @@ _rep(p, delay = Dirac(0.0)) = [Reporting(; delay, probability = p, from = :infec
             state = simulate(mk([rep]); max_cases = 300, rng = StableRNG(7))
             sizes = EpiBranch._sim_chain_sizes(state, EpiBranch.NoObservation(), [rep])
             counts = Dict{Int, Int}()
-            for ind in state.individuals
+            for ind in individuals(state)
                 (is_infected(ind) && ind.state[:reported]) || continue
                 counts[ind.chain_id] = get(counts, ind.chain_id, 0) + 1
             end
@@ -2240,11 +2240,11 @@ _rep(p, delay = Dirac(0.0)) = [Reporting(; delay, probability = p, from = :infec
             counts = Int[]
             for _ in 1:4000
                 state = simulate(spec; max_cases = 200, rng)
-                for ind in state.individuals
+                for ind in individuals(state)
                     is_infected(ind) || continue
                     push!(
                         counts,
-                        count(id -> is_infected(state.individuals[id]), ind.secondary_case_ids)
+                        count(id -> is_infected(individuals(state)[id]), ind.secondary_case_ids)
                     )
                 end
             end

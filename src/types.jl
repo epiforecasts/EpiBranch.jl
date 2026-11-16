@@ -442,6 +442,24 @@ end
 # ── Simulation state ───────────────────────────────────────────────
 
 """
+Supertype of the results of [`simulate`](@ref). Code that reads the people in a
+run does so through [`individuals`](@ref) rather than a field, so that a result
+that builds its people on request can stand in for a [`SimulationState`](@ref).
+"""
+abstract type AbstractSimulationState end
+
+"""
+    individuals(state)
+
+The [`Individual`](@ref)s of a simulated outbreak, one per person in the
+simulation: the cases and the contacts they exposed for a
+[`BranchingProcess`](@ref), everyone for models with a fixed population. Read the
+people of a run through this function, not through a field of `state`.
+"""
+function individuals end
+
+
+"""
 One simulated outbreak, as returned by [`simulate`](@ref). Turn it into
 tables with [`linelist`](@ref) (one row per case), [`contacts`](@ref) (one
 row per exposure), [`chain_statistics`](@ref) or [`weekly_incidence`](@ref).
@@ -474,7 +492,7 @@ some other reason; nothing outside the simulation engine reads or writes it.
 a population created as the race reaches it, `nothing` for one built
 upfront; nothing outside the simulation engine reads or writes it either.
 """
-mutable struct SimulationState{T <: Real, R <: AbstractRNG, P, A}
+mutable struct SimulationState{T <: Real, R <: AbstractRNG, P, A} <: AbstractSimulationState
     individuals::Union{Vector{Individual{T}}, _SharedPeople{T}}
     active_ids::Vector{Int}
     current_generation::Int
@@ -495,6 +513,8 @@ end
 # `continuation`, `lazy` or `group_cases`; they start absent (`group_cases`
 # with a count of zero for each group of the population), so this fills them in
 # rather than requiring every call site to name them.
+individuals(state::SimulationState) = state.individuals
+
 function SimulationState(
         individuals, active_ids, current_generation, rng, cumulative_cases,
         extinct, population, max_infection_time, attributes, transitions
@@ -514,7 +534,7 @@ function Base.show(io::IO, s::SimulationState)
     status = s.extinct ? "extinct" : "active"
     return print(
         io,
-        "SimulationState(cases=$(s.cumulative_cases), individuals=$(length(s.individuals)), gen=$(s.current_generation), $(status))"
+        "SimulationState(cases=$(s.cumulative_cases), individuals=$(length(individuals(s))), gen=$(s.current_generation), $(status))"
     )
 end
 

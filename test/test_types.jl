@@ -146,11 +146,11 @@ struct _UndeclaredTransition <: EpiBranch.AbstractClinicalTransition end
             NoAttributes(), Xoshiro(1)
         )
         EpiBranch.lazily_populate!(state, 5, AbstractIntervention[])
-        @test length(state.individuals) == 5
+        @test length(individuals(state)) == 5
         # Every slot shares the one placeholder: never infected, untouched
         # by any intervention, at neutral susceptibility and infectiousness.
-        placeholder = state.individuals[1]
-        @test all(ind -> ind === placeholder, state.individuals)
+        placeholder = individuals(state)[1]
+        @test all(ind -> ind === placeholder, individuals(state))
         @test !is_infected(placeholder)
         @test placeholder.susceptibility == 1 && placeholder.infectiousness == 1
 
@@ -159,23 +159,23 @@ struct _UndeclaredTransition <: EpiBranch.AbstractClinicalTransition end
         first_read = EpiBranch._realised!(state, 3)
         @test first_read !== placeholder
         @test first_read.id == 3
-        @test state.individuals[3] === first_read
+        @test individuals(state)[3] === first_read
         @test EpiBranch._realised!(state, 3) === first_read
 
         # `realise!` creates everyone left, and is a no-op on a model that
         # was never set up lazily in the first place.
         realise!(state)
-        @test all(ind -> ind !== placeholder, state.individuals)
-        @test [ind.id for ind in state.individuals] == 1:5
+        @test all(ind -> ind !== placeholder, individuals(state))
+        @test [ind.id for ind in individuals(state)] == 1:5
 
         eager_state = EpiBranch.new_state(
             BranchingProcess(Poisson(2.0), Exponential(5.0)), AbstractClinicalTransition[],
             NoAttributes(), Xoshiro(1)
         )
         EpiBranch.add_individuals!(eager_state, 3, AbstractIntervention[])
-        before = copy(eager_state.individuals)
+        before = copy(individuals(eager_state))
         realise!(eager_state)
-        @test eager_state.individuals == before
+        @test individuals(eager_state) == before
     end
 
     @testset "Individual with state" begin

@@ -38,7 +38,7 @@ EpiBranch.records_isolation(::_DetectAfterOutcome, ind, state, t) = true
         state = simulate(model; n_initial = 4, rng = StableRNG(7))
         @test all(
             is_isolated(ind) == (enabled && isodd(ind.id))
-                for ind in state.individuals
+                for ind in individuals(state)
         )
     end
 end
@@ -96,12 +96,12 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             max_cases = 50, rng = rng
         )
 
-        n_traced = count(is_traced, state.individuals)
-        n_with_isolated_parent = count(state.individuals) do ind
+        n_traced = count(is_traced, individuals(state))
+        n_with_isolated_parent = count(individuals(state)) do ind
             ind.parent_id == 0 && return false
-            parent_idx = findfirst(i -> i.id == ind.parent_id, state.individuals)
+            parent_idx = findfirst(i -> i.id == ind.parent_id, individuals(state))
             parent_idx === nothing && return false
-            parent = state.individuals[parent_idx]
+            parent = individuals(state)[parent_idx]
             is_isolated(parent) && !is_asymptomatic(parent)
         end
         if n_with_isolated_parent > 0
@@ -121,7 +121,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             max_cases = 50, rng = rng
         )
 
-        @test all(ind -> ind.infection_time < 1000.0, filter(is_infected, state.individuals))
+        @test all(ind -> ind.infection_time < 1000.0, filter(is_infected, individuals(state)))
     end
 
     @testset "FlagOnly records no traced isolation for an asymptomatic contact" begin
@@ -317,7 +317,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             state = empty_state(; rng = StableRNG(1))
             EpiBranch.add_individuals!(state, n, [ct])
             clock === nothing || (state.max_infection_time = clock)
-            case = state.individuals[1]
+            case = individuals(state)[1]
             case.state[:infected] = true
             case.infection_time = 0.0
             set_isolated!(case, 2.0; release_time = Inf)
@@ -325,7 +325,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             # earlier on a persistent network would be: its own infection is
             # final, but the walk still reaches it and grows past it.
             for id in infected_before
-                state.individuals[id].state[:infected] = true
+                individuals(state)[id].state[:infected] = true
             end
             neighbours = [
                 filter(j -> 1 <= j <= n, [i - 1, i + 1]) for i in 1:n
@@ -340,7 +340,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             reached = EpiBranch._trace_from!(
                 state, case, [ct], contacts, pos
             )
-            return state.individuals, reached
+            return individuals(state), reached
         end
 
         inds, reached = walk(3)
@@ -658,7 +658,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             interventions = [Isolation(onset_to_isolation_delay = Dirac(5.0), duration = Inf)]
         )
         state = simulate(model; n_initial = 1, rng = StableRNG(1))
-        ind = only(state.individuals)
+        ind = only(individuals(state))
         @test ind.state[:recovered_time] == 2.0
         @test !is_isolated(ind)
         @test isolation_time(ind) == 6.0
@@ -667,7 +667,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
     @testset "An unrecorded isolation still removes the case as before" begin
         # Every case is test-positive, so each one is removed, including those
         # isolating after their outcome. Only the detection record may differ.
-        removed(s) = count(i -> isfinite(isolation_time(i)), s.individuals)
+        removed(s) = count(i -> isfinite(isolation_time(i)), individuals(s))
         configs = (
             (Recovery(delay = Gamma(2.0, 3.0)), 7),
             (Death(delay = 0.0, probability = 1.0), 11),
@@ -683,7 +683,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             cases = [s.cumulative_cases for s in results]
             @test any(>(1), cases)
             @test [removed(s) for s in results] == cases
-            @test sum(s -> count(is_isolated, s.individuals), results) < sum(cases)
+            @test sum(s -> count(is_isolated, individuals(s)), results) < sum(cases)
         end
     end
 
@@ -708,9 +708,9 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                 interventions = interventions
             )
             s = simulate(model; n_initial = 5, max_cases = 200, rng = StableRNG(3))
-            kids = filter(s.individuals) do ind
+            kids = filter(individuals(s)) do ind
                 (ind.parent_id == 0 || !is_infected(ind)) && return false
-                p = s.individuals[ind.parent_id]
+                p = individuals(s)[ind.parent_id]
                 ind.infection_time >= get(p.state, :died_time, Inf)
             end
             return s, kids
@@ -721,11 +721,11 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         s, controlled = funeral_cases([Isolation(onset_to_isolation_delay = Dirac(3.0), duration = Inf)])
         @test length(controlled) < length(uncontrolled)
         for ind in controlled
-            @test ind.infection_time < isolation_time(s.individuals[ind.parent_id])
+            @test ind.infection_time < isolation_time(individuals(s)[ind.parent_id])
         end
         # The removal is in force, but no isolation after death is a detection.
-        @test any(i -> isfinite(isolation_time(i)), s.individuals)
-        @test !any(is_isolated, s.individuals)
+        @test any(i -> isfinite(isolation_time(i)), individuals(s))
+        @test !any(is_isolated, individuals(s))
     end
 
     @testset "An unrecorded isolation is not a detection" begin
@@ -746,16 +746,16 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         end
 
         s = run(SymptomaticOnly())
-        @test any(i -> isfinite(isolation_time(i)), s.individuals)
-        @test !any(is_isolated, s.individuals)
-        @test !any(is_traced, s.individuals)
+        @test any(i -> isfinite(isolation_time(i)), individuals(s))
+        @test !any(is_isolated, individuals(s))
+        @test !any(is_traced, individuals(s))
         df = linelist(s)
         @test !any(df.isolated)
         @test !hasproperty(df, :date_isolation) || all(ismissing, df.date_isolation)
         @test !hasproperty(df, :_isolation_unrecorded)
 
         s_late = run(_DetectAfterOutcome())
-        @test any(is_traced, s_late.individuals)
+        @test any(is_traced, individuals(s_late))
         df_late = linelist(s_late)
         @test any(df_late.isolated)
         @test any(!ismissing, df_late.date_isolation)
@@ -1191,12 +1191,12 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             max_cases = 500, rng = rng
         )
 
-        for ind in state.individuals
+        for ind in individuals(state)
             if is_asymptomatic(ind)
                 @test !is_isolated(ind)
             end
         end
-        @test any(is_asymptomatic, state.individuals)
+        @test any(is_asymptomatic, individuals(state))
     end
 
     @testset "Test sensitivity affects isolation" begin
@@ -1210,7 +1210,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             max_cases = 100, rng = StableRNG(42)
         )
 
-        n_isolated = count(is_isolated, state.individuals)
+        n_isolated = count(is_isolated, individuals(state))
         @test n_isolated == 0
     end
 
@@ -1254,7 +1254,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             max_cases = 20, rng = rng
         )
 
-        for ind in state.individuals
+        for ind in individuals(state)
             @test haskey(ind.state, :isolated)
             @test haskey(ind.state, :traced)
         end
@@ -1281,7 +1281,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             max_cases = 50, rng = rng
         )
 
-        ind = state.individuals[1]
+        ind = individuals(state)[1]
         @test haskey(ind.state, :onset_time)
         @test haskey(ind.state, :age)
         @test haskey(ind.state, :sex)
@@ -1334,10 +1334,10 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                 max_cases = 100, rng = StableRNG(42)
             )
 
-            n_vaccinated = count(is_vaccinated, state.individuals)
+            n_vaccinated = count(is_vaccinated, individuals(state))
             @test n_vaccinated > 0
 
-            for ind in state.individuals
+            for ind in individuals(state)
                 @test haskey(ind.state, :vaccinated)
                 @test haskey(ind.state, :vaccination_time)
             end
@@ -1400,7 +1400,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                         );
                         max_cases = 400, rng = StableRNG(seed)
                     )
-                    count(is_infected, state.individuals)
+                    count(is_infected, individuals(state))
                 end
 
                 none = cases([iso, ct])
@@ -1603,7 +1603,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             )
             delays = [
                 immunity_time(ind) - ind.state[:vaccination_time]
-                    for ind in state.individuals if is_vaccinated(ind)
+                    for ind in individuals(state) if is_vaccinated(ind)
             ]
             @test !isempty(delays)
             @test all(7.0 .<= delays .<= 21.0)
@@ -1639,7 +1639,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                 );
                 condition = 50:300, max_cases = 300, rng = StableRNG(2)
             )
-            vaccinated = filter(is_vaccinated, state.individuals)
+            vaccinated = filter(is_vaccinated, individuals(state))
             @test !isempty(vaccinated)  # otherwise the test is vacuous
             for ind in vaccinated
                 @test immunity_time(ind) ==
@@ -1663,8 +1663,8 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                 );
                 max_cases = 100, rng = StableRNG(42)
             )
-            @test count(is_vaccinated, state.individuals) == 0
-            @test count(is_traced, state.individuals) > 0
+            @test count(is_vaccinated, individuals(state)) == 0
+            @test count(is_traced, individuals(state)) > 0
 
             # Coverage = 1 reproduces the previous behaviour: every eligible
             # traced contact is vaccinated.
@@ -1676,14 +1676,14 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                 );
                 max_cases = 100, rng = StableRNG(42)
             )
-            n_vacc_full = count(is_vaccinated, state_full.individuals)
+            n_vacc_full = count(is_vaccinated, individuals(state_full))
             @test n_vacc_full > 0
 
             # Partial coverage gives strictly fewer vaccinations than full
             # coverage (over enough simulations).
             rv_partial = RingVaccination(efficacy = 0.9, coverage = 0.3)
             n_vacc_partial = sum(
-                count(is_vaccinated, s.individuals)
+                count(is_vaccinated, individuals(s))
                     for s in simulate(
                         ModelSpec(
                             BranchingProcess(Poisson(3.0), Exponential(5.0));
@@ -1693,7 +1693,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                     )
             )
             n_vacc_full_batch = sum(
-                count(is_vaccinated, s.individuals)
+                count(is_vaccinated, individuals(s))
                     for s in simulate(
                         ModelSpec(
                             BranchingProcess(Poisson(3.0), Exponential(5.0));
@@ -1727,7 +1727,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                 );
                 max_cases = 200, rng = StableRNG(101)
             )
-            for ind in state.individuals
+            for ind in individuals(state)
                 is_vaccinated(ind) && @test ind.state[:age] >= 50
             end
         end
@@ -1744,7 +1744,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
 
             rv_inf = RingVaccination(efficacy = 0.9, eligibility_window = Inf)
             n_inf = sum(
-                count(is_vaccinated, s.individuals)
+                count(is_vaccinated, individuals(s))
                     for s in simulate(
                         ModelSpec(
                             BranchingProcess(Poisson(3.0), Exponential(5.0));
@@ -1763,13 +1763,13 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                 50; max_cases = 100, rng = StableRNG(3)
             )
             n_narrow = sum(
-                count(is_vaccinated, s.individuals) for s in states_narrow
+                count(is_vaccinated, individuals(s)) for s in states_narrow
             )
             @test n_narrow < n_inf
 
             # Every vaccinated contact must satisfy the window.
             for state in states_narrow
-                for ind in filter(is_infected, state.individuals)
+                for ind in filter(is_infected, individuals(state))
                     if is_vaccinated(ind)
                         @test isolation_time(ind) - ind.infection_time <= 1.0
                     end
@@ -1849,7 +1849,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                     condition = 50:200, max_cases = 200, rng = StableRNG(11)
                 )
                 n_checked = 0
-                for ind in state.individuals
+                for ind in individuals(state)
                     is_vaccinated(ind) || continue
                     n_checked += 1
                     @test ind.state[:vaccination_time] == ind.state[:trace_time]
@@ -1883,7 +1883,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             )
             traced_asymp = filter(
                 ind -> is_traced(ind) && get(ind.state, :asymptomatic, false),
-                state.individuals
+                individuals(state)
             )
             @test !isempty(traced_asymp)  # otherwise the test is vacuous
             @test all(is_vaccinated, traced_asymp)
@@ -1915,7 +1915,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                     condition = 50:200, max_cases = 200, rng = StableRNG(5)
                 )
                 n_boosted = 0
-                for ind in state.individuals
+                for ind in individuals(state)
                     get(ind.state, :vaccinated_boost, false) || continue
                     n_boosted += 1
                     @test ind.state[:vaccination_time_boost] ==
@@ -1979,11 +1979,11 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                     condition = 50:300, max_cases = 300, rng = StableRNG(6)
                 )
                 primed = count(
-                    ind -> get(ind.state, :vaccinated_prime, false), state.individuals
+                    ind -> get(ind.state, :vaccinated_prime, false), individuals(state)
                 )
                 boosted = [
                     ind
-                        for ind in state.individuals
+                        for ind in individuals(state)
                         if get(ind.state, :vaccinated_boost, false)
                 ]
                 @test primed > 0
@@ -2009,7 +2009,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                 )
                 boosted = filter(
                     ind -> get(ind.state, :vaccinated_boost, false),
-                    state.individuals
+                    individuals(state)
                 )
                 @test !isempty(boosted)  # otherwise the test is vacuous
                 for ind in boosted
@@ -2073,10 +2073,10 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                     );
                     condition = 50:200, max_cases = 200, rng = StableRNG(5)
                 )
-                @test count(is_traced, state.individuals) > 0
+                @test count(is_traced, individuals(state)) > 0
                 @test !any(
                     i -> get(i.state, :vaccinated_boost, false),
-                    state.individuals
+                    individuals(state)
                 )
             end
 
@@ -2101,15 +2101,15 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                         30; max_cases = 100, rng = StableRNG(9)
                     )
                     primed = sum(
-                        count(i -> i.state[:vaccinated_prime], s.individuals)
+                        count(i -> i.state[:vaccinated_prime], individuals(s))
                             for s in states
                     )
                     boosted = sum(
-                        count(i -> i.state[:vaccinated_boost], s.individuals)
+                        count(i -> i.state[:vaccinated_boost], individuals(s))
                             for s in states
                     )
                     @test primed > 0  # otherwise the test is vacuous
-                    for s in states, ind in s.individuals
+                    for s in states, ind in individuals(s)
 
                         ind.state[:vaccinated_boost] && @test ind.state[:vaccinated_prime]
                     end
@@ -2140,7 +2140,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                         ),
                         20; max_cases = 300, rng = StableRNG(3)
                     )
-                    for s in states, ind in s.individuals
+                    for s in states, ind in individuals(s)
 
                         get(ind.state, :vaccinated_boost, false) || continue
                         n_boosted += 1
@@ -2236,11 +2236,11 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                 )
                 posts = [
                     ind.state[:post_exposure_efficacy]
-                        for ind in state.individuals if is_vaccinated(ind)
+                        for ind in individuals(state) if is_vaccinated(ind)
                 ]
                 onwards = [
                     ind.state[:onward_efficacy]
-                        for ind in state.individuals if is_vaccinated(ind)
+                        for ind in individuals(state) if is_vaccinated(ind)
                 ]
                 @test !isempty(posts)
                 @test all(0 .<= posts .<= 1)
@@ -2300,7 +2300,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                     scen([iso, ct, rv]); condition = 50:300,
                     max_cases = 300, rng = StableRNG(11)
                 )
-                vaccinated = filter(is_vaccinated, state.individuals)
+                vaccinated = filter(is_vaccinated, individuals(state))
                 @test !isempty(vaccinated)  # otherwise the test is vacuous
                 for key in (:post_exposure_efficacy, :onward_efficacy)
                     @test !any(ind -> haskey(ind.state, key), vaccinated)
@@ -2340,7 +2340,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                     model; max_generations = 2, max_cases = nothing,
                     rng = StableRNG(4)
                 )
-                cases = filter(is_infected, state.individuals)
+                cases = filter(is_infected, individuals(state))
                 return state, filter(i -> i.generation == 1, cases),
                     filter(i -> i.generation == 2, cases)
             end
@@ -2354,7 +2354,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                 # Transmission before immunity stands; none follows it.
                 @test !isempty(grandcontacts)
                 @test all(g -> g.infection_time < 5.5, grandcontacts)
-                @test any(state.individuals) do ind
+                @test any(individuals(state)) do ind
                     ind.generation == 2 && !is_infected(ind) &&
                         ind.infection_time > 5.5
                 end
@@ -2362,7 +2362,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
 
             @testset "An aborted infection has no onset or outcome" begin
                 state, contacts, _ = aborted_outbreak()
-                index = state.individuals[1]
+                index = individuals(state)[1]
                 @test onset_time(index) == 5.0
                 @test index.state[:outcome] == :recovered
                 for c in contacts
@@ -2377,7 +2377,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                 aborted_rows = filter(r -> r.generation == 1, df)
                 @test all(ismissing, aborted_rows.date_onset)
                 @test all(!ismissing, aborted_rows.date_infection_aborted)
-                @test size(df, 1) == length(filter(is_infected, state.individuals))
+                @test size(df, 1) == length(filter(is_infected, individuals(state)))
             end
 
             @testset "An aborted infection's clinical course ends at the abort" begin
@@ -2456,7 +2456,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                 late = 0
                 miscounted = 0
                 for s in results
-                    for ind in filter(is_infected, s.individuals)
+                    for ind in filter(is_infected, individuals(s))
                         t = get(ind.state, :infection_aborted_time, nothing)
                         t === nothing && continue
                         aborted += 1
@@ -2469,7 +2469,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                         end
                     end
                     # Aborted cases stay in the line list and the chain sizes.
-                    n_cases = count(is_infected, s.individuals)
+                    n_cases = count(is_infected, individuals(s))
                     size(linelist(s), 1) == n_cases &&
                         sum(chain_statistics(s).size) == n_cases || (miscounted += 1)
                 end
@@ -2482,7 +2482,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                 state, _, grandcontacts = aborted_outbreak(OnSymptomOnset())
                 @test !isempty(grandcontacts)
                 @test !any(is_traced, grandcontacts)
-                @test !any(ind -> isnan(isolation_time(ind)), state.individuals)
+                @test !any(ind -> isnan(isolation_time(ind)), individuals(state))
             end
 
             @testset "Protects contacts a pre-exposure dose cannot reach" begin
@@ -2549,7 +2549,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                             by = first
                         ),
                     )
-                        for s in states for ind in s.individuals
+                        for s in states for ind in individuals(s)
                 ]
                 base = simulate(
                     scen([iso, ct, slow(0.0)]), 100; max_cases = 200,
@@ -2693,12 +2693,12 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                 aborted = 0
                 after_abort = 0
                 for s in results
-                    for ind in filter(is_infected, s.individuals)
+                    for ind in filter(is_infected, individuals(s))
                         t = get(ind.state, :infection_aborted_time, nothing)
                         t === nothing && continue
                         aborted += 1
                         after_abort += count(ind.secondary_case_ids) do id
-                            child = s.individuals[id]
+                            child = individuals(s)[id]
                             is_infected(child) && child.infection_time >= t
                         end
                     end
@@ -2740,8 +2740,8 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                     );
                     max_cases = 500, rng = StableRNG(seed)
                 )
-                by_id = Dict(ind.id => ind for ind in state.individuals)
-                for child in state.individuals
+                by_id = Dict(ind.id => ind for ind in individuals(state))
+                for child in individuals(state)
                     child.parent_id == 0 && continue
                     is_infected(child) || continue
                     parent = by_id[child.parent_id]
@@ -2867,15 +2867,15 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                     [s.cumulative_cases for s in results_unprotected]
 
                 n_vaccinated = sum(
-                    count(is_vaccinated, s.individuals)
+                    count(is_vaccinated, individuals(s))
                         for s in results_protected
                 )
                 n_died_protected = sum(
-                    count(died, s.individuals)
+                    count(died, individuals(s))
                         for s in results_protected
                 )
                 n_died_unprotected = sum(
-                    count(died, s.individuals)
+                    count(died, individuals(s))
                         for s in results_unprotected
                 )
 
@@ -2884,7 +2884,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                 # Anyone whose immunity arrived before their own onset is
                 # fully protected (severity_efficacy = 1.0).
                 @test all(results_protected) do s
-                    all(s.individuals) do ind
+                    all(individuals(s)) do ind
                         immunity_time(ind) > onset_time(ind) || !died(ind)
                     end
                 end
@@ -2936,11 +2936,11 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                 )
 
                 n_vaccinated = sum(
-                    count(is_vaccinated, s.individuals)
+                    count(is_vaccinated, individuals(s))
                         for s in results_late
                 )
-                n_died_late = sum(count(died, s.individuals) for s in results_late)
-                n_died_none = sum(count(died, s.individuals) for s in results_none)
+                n_died_late = sum(count(died, individuals(s)) for s in results_late)
+                n_died_none = sum(count(died, individuals(s)) for s in results_none)
 
                 @test n_vaccinated > 0  # otherwise the test is vacuous
                 @test n_died_late == n_died_none
@@ -2991,10 +2991,10 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             max_cases = 50, rng = rng
         )
 
-        n_traced = count(is_traced, state.individuals)
+        n_traced = count(is_traced, individuals(state))
         if n_traced > 0
             # Traced contacts should not be quarantined
-            traced = filter(is_traced, state.individuals)
+            traced = filter(is_traced, individuals(state))
             @test !any(is_quarantined, traced)
         end
     end
@@ -3024,8 +3024,8 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             max_cases = 300, rng = StableRNG(3)
         )
         # Contacts were flagged (not quarantined) and then ring-vaccinated.
-        @test any(ind -> is_traced(ind) && !is_quarantined(ind), state.individuals)
-        @test count(is_vaccinated, state.individuals) > 0
+        @test any(ind -> is_traced(ind) && !is_quarantined(ind), individuals(state))
+        @test count(is_vaccinated, individuals(state)) > 0
     end
 
     @testset "Traced test-negative contacts isolate via tracing pathway" begin
@@ -3051,7 +3051,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             max_cases = 500, rng = rng
         )
 
-        resolved = filter(is_infected, state.individuals)
+        resolved = filter(is_infected, individuals(state))
         traced_symptomatic = filter(
             ind -> is_traced(ind) && !is_asymptomatic(ind),
             resolved
@@ -3100,7 +3100,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                 );
                 max_cases = 50, rng = StableRNG(99)
             )
-            for ind in state.individuals
+            for ind in individuals(state)
                 @test haskey(ind.state, :isolated)
             end
         end
@@ -3476,8 +3476,8 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                     ),
                     50; max_cases = 300, rng = StableRNG(3)
                 )
-                isolated = sum(s -> count(is_isolated, s.individuals), results)
-                return isolated / sum(s -> length(s.individuals), results)
+                isolated = sum(s -> count(is_isolated, individuals(s)), results)
+                return isolated / sum(s -> length(individuals(s)), results)
             end
             # 0.36 of cases isolated against 0.47 over these 50 outbreaks.
             @test isolated_share(ReportedCases(20)) < isolated_share(Infections(20))
@@ -3494,12 +3494,12 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             )
             n = 10
             infection_times = sort(
-                [ind.infection_time for ind in state.individuals if is_infected(ind)]
+                [ind.infection_time for ind in individuals(state) if is_infected(ind)]
             )
             @test length(infection_times) >= n
             reported_due = count(
                 ind -> get(ind.state, :reporting_time, Inf) <= infection_times[n],
-                state.individuals
+                individuals(state)
             )
             @test reported_due < n
         end
@@ -3519,7 +3519,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             )
 
             # Verify the intervention ran without errors and fields exist
-            for ind in state.individuals
+            for ind in individuals(state)
                 @test haskey(ind.state, :isolated)
             end
         end
@@ -3540,7 +3540,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             )
 
             # Late individuals should not be isolated
-            late = filter(i -> is_infected(i) && i.infection_time > 15.0, state.individuals)
+            late = filter(i -> is_infected(i) && i.infection_time > 15.0, individuals(state))
             if !isempty(late)
                 @test !any(is_isolated, late)
             end
@@ -3565,7 +3565,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             )
 
             # All individuals should have both isolation and tracing fields
-            for ind in state.individuals
+            for ind in individuals(state)
                 @test haskey(ind.state, :isolated)
                 @test haskey(ind.state, :traced)
             end
@@ -3583,7 +3583,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             )
 
             # No individual should be isolated with isolation_time < 15.0
-            for ind in state.individuals
+            for ind in individuals(state)
                 if is_isolated(ind)
                     @test isolation_time(ind) >= 15.0
                 end

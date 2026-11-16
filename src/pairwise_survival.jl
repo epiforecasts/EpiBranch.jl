@@ -538,7 +538,7 @@ end
 function _host_time_columns(state::SimulationState, keys)
     names = Tuple(Symbol(key) for key in keys)
     columns = map(names) do key
-        [get(ind.state, key, missing) for ind in state.individuals]
+        [get(ind.state, key, missing) for ind in individuals(state)]
     end
     return NamedTuple{names}(columns)
 end
@@ -552,12 +552,12 @@ function _infection_layer_columns(state::SimulationState, model::ModelSpec)
     process = model.process
     from = something(process.from, infectious_from(model.progression))
     window = _shorthand_window(from, process.until)
-    n = length(state.individuals)
+    n = length(individuals(state))
     infection_time = fill(NaN, n)
     infectious_time = fill(NaN, n)
     removal_time = fill(Inf, n)
     is_index = falses(n)
-    for (k, ind) in enumerate(state.individuals)
+    for (k, ind) in enumerate(individuals(state))
         get(ind.state, :infected, false) || continue
         infection_time[k] = ind.infection_time
         infectious_time[k] = window_open(ind, window)
@@ -847,7 +847,7 @@ function _layer_host_times(state::SimulationState, model::ModelSpec, host_times)
     leaky_keys = _leaky_gap_keys(model)
     result = columns
     if !isempty(gap_keys)
-        merged = _merged_gap_column(columns, gap_keys, state.individuals)
+        merged = _merged_gap_column(columns, gap_keys, individuals(state))
         result = merge(result, NamedTuple{(REMOVAL_STRETCHES_KEY,)}((merged,)))
     end
     if !isempty(leaky_keys)
@@ -859,7 +859,7 @@ function _layer_host_times(state::SimulationState, model::ModelSpec, host_times)
                     "supported by the pairwise likelihood"
             )
         )
-        merged = _merged_gap_column(columns, first.(leaky_keys), state.individuals)
+        merged = _merged_gap_column(columns, first.(leaky_keys), individuals(state))
         leak = leaks[1]
         tagged = [[(a, b, leak) for (a, b) in host] for host in merged]
         result = merge(result, NamedTuple{(LEAKY_REMOVAL_STRETCHES_KEY,)}((tagged,)))
@@ -1180,7 +1180,7 @@ seeded_hosts(::InfectionLayer) = nothing
 
 # Which of a simulation's people were chosen initial cases.
 _seeded_column(state::SimulationState) =
-    Bool[get(ind.state, :seeded, false) for ind in state.individuals]
+    Bool[get(ind.state, :seeded, false) for ind in individuals(state)]
 
 # A layer's `seeded` column over `n` hosts, none seeded where it is not given.
 _seeded_mask(::Nothing, n) = fill(false, n)

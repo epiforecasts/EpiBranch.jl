@@ -499,7 +499,7 @@ function _simulated_person_time(
     # through the same stretches the intervention recorded.
     gap_fractions = _removal_gap_fractions(spec.interventions)
     person_time = zeros(length(sample.members))
-    for (i, ind) in enumerate(state.individuals)
+    for (i, ind) in enumerate(individuals(state))
         is_infected(ind) || continue
         opened = window_open(ind, window)
         closed = window_close(ind, window, spec.interventions)

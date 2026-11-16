@@ -54,7 +54,7 @@ function _mixing_group_layout(::Population, spec, mixing_by, rng)
     keys = Tuple[]
     index = Dict{Any, Int}()
     sizes = Int[]
-    for ind in state.individuals
+    for ind in individuals(state)
         key = _group_key(ind, mixing_by)
         g = get!(index, key) do
             push!(keys, key)

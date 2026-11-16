@@ -67,7 +67,7 @@ deterministic final-size equation `z = 1 - exp(-R0 z)` gives:
 
 ```@example homogeneous
 N = 3000
-round(count(is_infected, state.individuals) / N, digits = 2)
+round(count(is_infected, individuals(state)) / N, digits = 2)
 ```
 
 The simulated attack rate is close to the final-size prediction. With 5 index

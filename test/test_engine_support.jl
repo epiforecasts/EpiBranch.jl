@@ -169,7 +169,7 @@ end
         shared(e) = CapacityConstrained(_support_gv(e); budget_per_period = 100.0)
         e = _SUPPORT_ENGINES.individual
         state = _support_branching(e.spec([shared(e)]))
-        @test count(is_vaccinated, state.individuals) == 100
+        @test count(is_vaccinated, individuals(state)) == 100
 
         e = _SUPPORT_ENGINES.mean_field
         state = _support_mean_field(e.spec([shared(e)]))

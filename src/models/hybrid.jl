@@ -190,7 +190,7 @@ function _group_compartments(es::SimulationState, t::Real, approx)
     S, I, V, P, D = copy(N), zeros(G), zeros(G), zeros(G), zeros(G)
     index = Dict(g => i for (i, g) in enumerate(approx.groups))
     campaign = approx.campaign
-    for ind in es.individuals
+    for ind in individuals(es)
         idx = index[_group_key(ind, approx.mixing_by)]
         dosed = _dose_given(campaign, ind, t)
         dosed && (D[idx] += 1.0)

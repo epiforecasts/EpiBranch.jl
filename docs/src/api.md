@@ -297,7 +297,9 @@ Extinction
 MaxCases
 MaxGenerations
 MaxTime
+AbstractSimulationState
 SimulationState
+individuals
 Base.copy(::SimulationState)
 Individual
 EpiBranch.IndividualState
