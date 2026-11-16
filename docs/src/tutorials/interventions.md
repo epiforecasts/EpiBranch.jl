@@ -13,7 +13,7 @@ the moment a case is isolated. A secondary case is infected only if their
 infection would have happened before their infector was isolated: whichever
 happens first decides. Isolation follows symptom onset, and how much it
 prevents depends on how the incubation period compares with the generation
-time. With a plain generation-time distribution, as used on this page, each generation time is drawn independently of the case's incubation period. The share of transmission before onset is then `P(G < incubation)` for independent draws of the two. A short incubation period relative to the generation time leaves most transmission after onset, where isolation can stop it; a long one leaves most of it before onset, when isolation cannot act. To link the timing of transmission to each case's own onset instead, use [`incubation_linked_generation_time`](@ref). More generally, `generation_time` can be any `ind -> Distribution`. Such a function can place a custom infectiousness profile relative to each case's onset, for example `ind -> truncated(incubation_period(ind) + profile, 0, Inf)`. That example assumes every case has an onset: `incubation_period(ind)` is `NaN` for asymptomatic cases; add a fallback for them if `prob_asymptomatic > 0`. [`incubation_linked_generation_time`](@ref) handles them: an asymptomatic case still draws an incubation period, and its generation time is centred on that.
+time. With a plain generation-time distribution, as used on this page, each generation time is drawn independently of the case's incubation period. The share of transmission before onset is then `P(G < incubation)` for independent draws of the two. A short incubation period relative to the generation time leaves most transmission after onset, where isolation can stop it; a long one leaves most of it before onset, when isolation cannot act. To link the timing of transmission to each case's own onset instead, use [`incubation_linked_generation_time`](@ref). More generally, `generation_time` can be any `ind -> Distribution`. Such a function can place a custom infectiousness profile relative to each case's onset, for example `ind -> truncated(incubation_period(ind) + profile, 0, Inf)`. `clinical_presentation` draws an incubation period for asymptomatic cases too, as the time onset would have happened, so `incubation_period(ind)` is defined for them.
 
 All times on this page are in days. Everything here needs only keyword
 arguments; if Julia syntax such as `;` in a function call or `x -> ...` is new,
@@ -293,6 +293,19 @@ disease_less_infectious = [
 ```
 
 Use `transmission_traits` for traits known when the case is created (age, sex, whether the case is asymptomatic), because it draws its factor then. A change during the infection, such as tracing or quarantine, needs an intervention. Combining the two is tracked in #972.
+
+Asymptomatic cases can also have their own incubation period. Every case draws one, an asymptomatic case's included, and it sets the timing that [`incubation_linked_generation_time`](@ref) reads where there is no onset. Give `incubation_period` a function of the random number generator and the individual instead of a distribution. `:asymptomatic` is set before the draw, so the function can use it, or any trait set by an earlier attribute such as age:
+
+```julia
+disease_own_timing = clinical_presentation(
+    incubation_period = (rng, ind) -> rand(
+        rng, ind.state[:asymptomatic] ? LogNormal(1.2, 0.5) : LogNormal(1.5, 0.5)
+    ),
+    prob_asymptomatic = 0.3,
+)
+```
+
+The closed forms that read the incubation period directly, such as the analytic effect of `Isolation`, need a distribution and refuse a function with an error; simulate instead.
 
 ## Contact tracing workload
 

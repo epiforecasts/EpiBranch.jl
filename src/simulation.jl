@@ -1480,14 +1480,22 @@ _fresh_attributes(xs::Union{Tuple, AbstractVector}) = map(_fresh_attributes, xs)
 """
     clinical_presentation(; incubation_period, prob_asymptomatic = 0.0)
 
-Give each case a symptom onset time and decide whether it is asymptomatic.
+Give each case an incubation period and a symptom onset time, and decide whether it is asymptomatic.
 Pass the result as `attributes` to [`ModelSpec`](@ref).
 
 - `incubation_period`: distribution of the time from infection to symptom
-  onset, in days. Each symptomatic case's onset time is its infection time
-  plus a draw from it.
+  onset, in days. Every case gets a draw from it, asymptomatic or not
+  (`:incubation_period`), and a symptomatic case's onset time is its infection
+  time plus that draw. Give a distribution or a function of the random number
+  generator and the individual, `(rng, ind) -> value`, to let the draw depend
+  on a trait. `:asymptomatic` is set before the draw, which lets the function
+  give asymptomatic cases their own timing. Closed forms that read the
+  incubation period directly accept a distribution but not a function.
 - `prob_asymptomatic`: probability that a case never develops symptoms
-  (default 0). Asymptomatic cases have no onset time (`NaN`). Give a number,
+  (default 0). Asymptomatic cases have no onset time (`NaN`), but keep their incubation
+  period, the time onset would have happened, which
+  [`incubation_linked_generation_time`](@ref) and an
+  [`Infectiousness`](@ref) window with `from = :onset` use. Give a number,
   a distribution (one probability drawn per case) or a function of the random
   number generator and the individual, `(rng, ind) -> probability`, for
   example to make it depend on age.
@@ -1559,10 +1567,22 @@ attributes = [
 ]
 ```
 
+Asymptomatic cases with their own incubation period, here a shorter one
+(`:asymptomatic` is already set when the function runs):
+
+```julia
+attributes = clinical_presentation(
+    incubation_period = (rng, ind) -> rand(
+        rng, ind.state[:asymptomatic] ? LogNormal(1.2, 0.5) : LogNormal(1.6, 0.5)
+    ),
+    prob_asymptomatic = 0.3,
+)
+```
+
 See also [`demographics`](@ref), [`transmission_traits`](@ref).
 """
 function clinical_presentation(;
-        incubation_period::Distribution,
+        incubation_period,
         prob_asymptomatic = 0.0
     )
     return ClinicalPresentation(incubation_period, prob_asymptomatic)
@@ -1578,11 +1598,7 @@ function (clinical::ClinicalPresentation)(rng, ind)
     pa = sample_value(clinical.prob_asymptomatic, rng, ind)
     is_asymp = rand(rng) < pa
     ind.state[:asymptomatic] = is_asymp
-    # Every case draws an incubation period, including asymptomatic cases,
-    # which have no onset. A generation time linked to incubation needs it.
-    latent = rand(rng, clinical.incubation_period)
-    ind.state[:latent_incubation_period] = latent
-    ind.state[:incubation_period] = is_asymp ? NaN : latent
+    ind.state[:incubation_period] = sample_value(clinical.incubation_period, rng, ind)
     return _set_onset_from_incubation!(ind)
 end
 
@@ -1590,15 +1606,16 @@ end
     _set_onset_from_incubation!(ind)
 
 Set `:onset_time` to `infection_time + :incubation_period` from the
-stored host incubation period. Asymptomatic individuals (`NaN`
-incubation) get a `NaN` onset, and so does an infection aborted before
-onset, which never reaches it. Applies when `:incubation_period` is
-present on the individual.
+stored host incubation period. Asymptomatic individuals get a `NaN`
+onset, and so does an infection aborted before onset, which never reaches
+it; their incubation period stays recorded, as the time onset would have
+happened. Applies when `:incubation_period` is present on the individual.
 """
 function _set_onset_from_incubation!(ind::Individual)
     haskey(ind.state, :incubation_period) || return nothing
     inc = _state_real(ind.state, :incubation_period, NaN)
-    ind.state[:onset_time] = isnan(inc) || _infection_aborted(ind) || _symptoms_prevented(ind) ? NaN :
+    ind.state[:onset_time] = isnan(inc) || get(ind.state, :asymptomatic, false)::Bool ||
+        _infection_aborted(ind) || _symptoms_prevented(ind) ? NaN :
         ind.infection_time + inc
     return nothing
 end
