@@ -173,4 +173,17 @@
             HouseholdFinalStatuses([true, false]), pk; window = 2.0
         )
     end
+
+    @testset "calendar external hazard" begin
+        data = HouseholdFinalStatuses([true, false, false])
+        flat = HouseholdProcess(
+            [3], Exponential(3.0); external_hazard = 0.05, obs_end = 10.0
+        )
+        steps = HouseholdProcess(
+            [3], Exponential(3.0);
+            external_hazard = Steps([5.0], [0.05, 0.05]), obs_end = 10.0
+        )
+        @test loglikelihood(data, steps; window = 6.0) ≈
+            loglikelihood(data, flat; window = 6.0)
+    end
 end
