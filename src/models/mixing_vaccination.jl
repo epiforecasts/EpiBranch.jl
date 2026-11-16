@@ -119,11 +119,11 @@ end
 """
     GroupDosing
 
-What a model that keeps counts or compartments, rather than individuals, reads
-of an intervention that gives doses to groups: the `group_key` its groups are
-the values of, the dose's `efficacy` and `mode`, the `coverage` of a group
-reached, the `dose_delay` after the trigger, and the dose's
-`delay_to_immunity` and `waning`. See [`count_dosing`](@ref EpiBranch.count_dosing).
+The description of an intervention that gives doses to groups, as read by a
+model that keeps counts or compartments rather than individuals: the `group_key`
+whose values are the groups, the `efficacy` and `mode` of the dose, the
+`coverage` of a group reached, the `dose_delay` after the trigger, and the
+`delay_to_immunity` and `waning` of the dose. See [`count_dosing`](@ref EpiBranch.count_dosing).
 """
 struct GroupDosing{E, M, C, D, I, W}
     group_key::Symbol
@@ -138,12 +138,12 @@ end
 """
     count_dosing(intervention) -> Union{Nothing, GroupDosing}
 
-For extension authors: what `intervention` does to a model that keeps counts of
-cases by type or compartments by mixing group, as `simulate_by_generation` and
-the approximations for mixing populations do. Those models have no individual to
-offer an intervention to, so they apply only an intervention that says what it
-does to a group: it returns a [`GroupDosing`](@ref EpiBranch.GroupDosing). The
-default, `nothing`, means it has no such description, and the model refuses it in
+For extension authors: the effect of `intervention` on a model that keeps counts
+of cases by type or compartments by mixing group, such as `simulate_by_generation`
+and the approximations for mixing populations. These models have no individual to
+offer an intervention to, so they apply only an intervention that describes its
+effect on a group: it returns a [`GroupDosing`](@ref EpiBranch.GroupDosing). The
+default, `nothing`, means it has no such description. The model then refuses it in
 the same words as any other intervention it cannot apply. [`GroupVaccination`](@ref)
 defines it; a new intervention that gives doses to groups opts in by defining it.
 A model that hands an individual-based run over to a mixing approximation also
@@ -413,7 +413,7 @@ end
 # `CapacityConstrained` wrapper counts them for one more person: those
 # available through the end of the period `d` falls in (with `carry_over`,
 # including everything unspent before it), less those already given.
-# `group` is the mixing group whose own budget it is, or `0` for a shared one.
+# `group` is the mixing group of the budget, or `0` for a shared one.
 _budget_left(::Nothing, log, d, group = 0) = Inf
 function _budget_left(cc::CapacityConstrained, log, d, group = 0)
     period_start, period_end = _period_bounds(cc, d)
@@ -460,9 +460,9 @@ function _fire_doses!(c::GroupCampaign, model, x, Σ, progress, t)
     return nothing
 end
 
-# One pool for the groups of a batch: it takes what the people it can reach
-# or the doses left allow, spread over the groups in proportion to who each
-# can reach.
+# One pool for the groups of a batch: it gives the smaller of the number of
+# people it can reach and the doses left, spread over the groups in proportion
+# to their reach.
 function _give_batch!(c, ::Nothing, v, reach, x, Σ, progress, d, N)
     given = min(sum(reach), _budget_left(c.budget, progress.log, d))
     given > 0 || return nothing
@@ -564,7 +564,7 @@ function _dose_given(c::GroupCampaign, ind, t)
     return dose_t !== nothing && dose_t <= t
 end
 
-# The mixing group whose budget a dose to `ind` was drawn from: `0` for a budget
+# The mixing group of the budget a dose to `ind` was drawn from: `0` for a budget
 # shared by all.
 _budget_group(c::GroupCampaign, es, ind) = _budget_group(c.group_budgets, c, es, ind)
 _budget_group(::Nothing, c, es, ind) = 0

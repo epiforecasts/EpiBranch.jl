@@ -77,7 +77,7 @@ _pg_mixing_vaccinated(state, name) = count(
         state = _pg_types(PerGroup(:under5 => 40.0, :over5 => 70.0))
         @test _pg_vaccinated(state, 1) == 40
         @test _pg_vaccinated(state, 2) == 70
-        # A group not named in the budget is an error, not a group with no doses.
+        # A group missing from the budget is an error.
         @test_throws ArgumentError _pg_types(PerGroup(:under5 => 40.0))
         # A name that is no group of the population is an error too.
         @test_throws ArgumentError _pg_types(
@@ -86,7 +86,7 @@ _pg_mixing_vaccinated(state, name) = count(
         # Groups the population leaves unnamed are numbered from one.
         state = _pg_types(PerGroup(1 => 10.0, 2 => 20.0); names = NoTypeLabels())
         @test (_pg_vaccinated(state, 1), _pg_vaccinated(state, 2)) == (10, 20)
-        # Each group's usage is read by its name.
+        # The usage of each group is read by its name.
         spec = ModelSpec(
             BranchingProcess(
                 _PG_MATRIX, R -> Poisson(R), Dirac(14.0);

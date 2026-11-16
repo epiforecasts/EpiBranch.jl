@@ -101,8 +101,8 @@ CapacityConstrained(GroupVaccination(efficacy = 0.9); budget_per_period = doses,
   callable `t -> budget(t)`) giving a different number for the period
   starting on each calendar day `t`. A finite `period` is required with a
   schedule to determine the period start at which
-  to read the budget. A [`PerGroup`](@ref) gives each group of the model's
-  population its own number or schedule instead of one pool for everyone.
+  to read the budget. A [`PerGroup`](@ref) gives each group of the
+  population of the model its own number or schedule instead of one pool for everyone.
 - `period`: length of a period in days, measured on the date each dose is
   actually given. `Inf` (default) gives a single budget for the whole
   outbreak.
@@ -283,7 +283,7 @@ resource_key(::AbstractIntervention, individual, state) = nothing
 resource_key(w::InterventionWrapper, individual, state) =
     resource_key(w.intervention, individual, state)
 
-# A budget per group splits the wrapper's budget by the group of the person,
+# A budget per group splits the budget of the wrapper by the group of the person,
 # whatever the wrapped intervention does. The group is the whole resource
 # unless the intervention splits it further by a `resource_key` of its own.
 struct _GroupResource
@@ -308,8 +308,8 @@ _resource_group(resource::_GroupResource) = resource.group
 _resource_group(resource) = resource
 
 # The name of the group `individual` belongs to in the population of `state`:
-# its type for a grouped population of types, and the values of the model's
-# `mixing_by` attributes for one of mixing groups.
+# its type for a grouped population of types, and the values of the
+# `mixing_by` attributes of the model for one of mixing groups.
 function _group_of(state, individual)
     names = _group_names(state.population)
     keys = get(state.scratch, :_mixing_by, ())
@@ -317,8 +317,8 @@ function _group_of(state, individual)
     return _group_name(Tuple(individual.state[k] for k in keys))
 end
 
-# `cc` with the budget of the resource a person draws on, which is `cc` itself
-# for one pool shared by everyone.
+# `cc` with the budget of the resource a person draws on: `cc` itself for one
+# pool shared by everyone.
 _for_resource(cc::CapacityConstrained, resource) =
     _for_resource(cc.budget_per_period, cc, resource)
 _for_resource(::Any, cc::CapacityConstrained, resource) = cc
@@ -344,8 +344,8 @@ end
 _per_group_budgets(w::InterventionWrapper) = _per_group_budgets(w.intervention)
 _per_group_budgets(::AbstractIntervention) = PerGroup[]
 
-# Fails before a run starts when a budget per group does not fit the model's
-# population.
+# Fails before a run starts when a budget per group does not fit the
+# population of the model.
 function _check_group_budgets(interventions, population)
     for pg in _per_group_budgets(interventions)
         _group_budgets(pg, population)

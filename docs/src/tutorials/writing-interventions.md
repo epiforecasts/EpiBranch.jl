@@ -822,7 +822,7 @@ placed in their group again from their recorded state alone, with nothing of
 the original proposal kept around. `capacity_usage(cc, state, key)` reads
 one group's own usage.
 
-To limit an intervention by the groups of the model's population, pass
+To limit an intervention by the groups of the population, pass
 `budget_per_period = PerGroup(...)` to `CapacityConstrained` (or `capacity =
 PerGroup(...)` to `HeldCapacity`). The wrapper finds each person's group
 itself, so your intervention needs no `resource_key` method for it. A model

@@ -8,11 +8,11 @@ accepted wherever a capacity wrapper takes a budget:
 `budget_per_period`, a schedule such as [`Steps`](@ref) or [`Seasonal`](@ref).
 A budget given as a plain number or schedule is one pool shared by every group.
 
-The groups are those of the model's [`Population`](@ref) and nowhere else: the
+The groups are those of the [`Population`](@ref) of the model: the
 `groups` of a grouped population, or `1, 2, ...` when it names none. A name
 written as a `Symbol` matches the same name written as a string. Every group of
-the population needs an entry, and an entry naming no group is an error, so a
-misspelt group is never a scenario with no doses. A population with no groups
+the population needs an entry. An entry naming no group is an error, so a
+misspelt group cannot become a scenario with no doses. A population with no groups
 has nothing to name, so `PerGroup` is refused there.
 
 Every model that reads a budget reads this one the same way.

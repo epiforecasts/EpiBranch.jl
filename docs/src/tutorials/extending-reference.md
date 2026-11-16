@@ -848,15 +848,15 @@ with nothing of that call's own proposal kept around. The default, `nothing`,
 puts everyone in a single group, unchanged from an intervention with no
 method of it.
 
-A budget per group of the model's population needs no method of yours:
+A budget per group of the population needs no method of yours:
 `PerGroup` as `budget_per_period` (or as the `capacity` of `HeldCapacity`)
 splits the budget by the group of each person, from the population alone. If
 `iv` also has a `resource_key`, each group is split again by it.
 
 A model that keeps counts of cases by type or compartments by mixing group has
 no individual to offer an intervention to. It applies an intervention only if
-`EpiBranch.count_dosing(iv)` returns an `EpiBranch.GroupDosing`, the `group_key`
-of the groups it doses and the `efficacy`, `mode`, `coverage`, `dose_delay`,
+`EpiBranch.count_dosing(iv)` returns an `EpiBranch.GroupDosing`: the `group_key`
+of the groups it doses, and the `efficacy`, `mode`, `coverage`, `dose_delay`,
 `delay_to_immunity` and `waning` of its dose. The default, `nothing`, makes
 every such model refuse it in the shared wording of [What each model
 applies](@ref).
@@ -1037,7 +1037,7 @@ before.
 | A capacity limit | `CapacityConstrained(iv; budget_per_period = ...)`, with `capacity_key` and `capacity_time_key` for `iv` (or for its `TraceAction`, for `ContactTracing`) | When actions are admitted, once per case; or, for an effect `iv` writes directly in `resolve_individual!`, right after that hook runs |
 | A capacity limit per group of the population | Nothing: `CapacityConstrained(iv; budget_per_period = PerGroup(...))` finds each person's group | When actions are admitted, once per case |
 | A capacity limit per district, centre or other split of your own | `resource_key(iv, individual, state)` for `iv` | When actions are admitted, once per case |
-| What an intervention does to counts of cases or compartments | `EpiBranch.count_dosing(iv)`, returning an `EpiBranch.GroupDosing` | When a model of counts or compartments reads the specification |
+| The effect of an intervention on counts of cases or compartments | `EpiBranch.count_dosing(iv)`, returning an `EpiBranch.GroupDosing` | When a model of counts or compartments reads the specification |
 | An exact effect on the offspring distribution | `analytic_offspring_effect` for an intervention | Closed-form results on a `ModelSpec` |
 | A model, attribute or progression transition that leaves the single-type offspring law exactly as drawn | `EpiBranch.offspring_law_unchanged` | The chain-size and incidence likelihoods' analytical path |
 | A stopping rule | A type `<: AbstractStoppingRule` and `should_stop` | Each step |

@@ -16,8 +16,8 @@ struct _Campaign{B}
 end
 
 # Reads the wrappers around an intervention (the same ones the mixing
-# approximations read), then what it does to a group (`count_dosing`). Anything
-# else, or a `Scheduled` whose condition is not a calendar window, cannot be
+# approximations read), then its effect on a group (`count_dosing`). Anything
+# else, or a `Scheduled` with a condition other than a calendar window, cannot be
 # applied to a count and is named in the error.
 function _campaign(iv::AbstractIntervention, window, budget)
     engine = "simulate_by_generation"
@@ -87,7 +87,7 @@ function _generation_campaigns(spec::ModelSpec, generation_length, finite_popula
 end
 
 # A budget per group becomes one budget for each type, in the order of the
-# types, checked against the population's groups. A budget shared by the types
+# types, checked against the groups of the population. A budget shared by the types
 # stays as it is.
 _by_type(c::_Campaign, population) = _by_type(c, c.budget.budget_per_period, population)
 _by_type(c::_Campaign, ::Any, population) = c
