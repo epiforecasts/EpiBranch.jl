@@ -434,8 +434,8 @@ function has_effect(iv::AbstractIntervention)
     end
 end
 
-# The traits `time_aware`, `resolves_under_capacity`, `discovers_actions` and
-# `traces_contacts` are answered from the methods a type defines. Reading the
+# The traits `time_aware`, `resolves_under_capacity`, `discovers_actions`,
+# `traces_contacts` and `has_competing_risk` are answered from the methods a type defines. Reading the
 # method tables is done once per type, when a `ModelSpec` is built
 # (`_store_traits!`). The answer is kept here, and a run reads it from here. A trait method written for a type is more specific than
 # the defaults below and so overrides the inferred answer.
@@ -444,6 +444,7 @@ struct _InferredTraits
     resolves_under_capacity::Bool
     discovers_actions::Bool
     traces_contacts::Bool
+    has_competing_risk::Bool
     world::UInt
 end
 
@@ -463,6 +464,7 @@ function _infer_traits(T::Type)
         own((capacity_key, resolve_individual!)),
         own((intervention_actions,)),
         own((trace_contacts!,)),
+        own((competing_risk,)),
         Base.get_world_counter()
     )
 end
@@ -568,7 +570,18 @@ function proposes_actions(iv::AbstractIntervention)
     return discovers_actions(iv)
 end
 
-# Whether `intervention` can supply a `competing_risk`, so the race keeps
-# fallback proposals for a blocked contact. The default, `true`, is always
-# correct; `false` only saves that work.
-has_competing_risk(::AbstractIntervention) = true
+"""
+    has_competing_risk(intervention) -> Bool
+
+Whether `intervention` can supply a [`competing_risk`](@ref
+EpiBranch.competing_risk). When some intervention answers `true`, the
+continuous-time race keeps every proposal to a contact instead of only the
+earliest, because a blocked contact must then fall back to a later one. An
+intervention answering `false` adds no cost to a run without other risks.
+
+The answer is inferred from the methods the type defines: `true` for a type with
+a `competing_risk` method of its own, and so for every wrapper, which forwards
+it. Define `EpiBranch.has_competing_risk(::MyIntervention)` to override it, for
+a risk that comes through some other seam.
+"""
+has_competing_risk(iv::AbstractIntervention) = _stored_traits(typeof(iv)).has_competing_risk

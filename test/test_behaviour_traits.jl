@@ -159,8 +159,8 @@ struct _Bare <: EpiBranch.AbstractIntervention end
         @test EpiBranch.has_competing_risk(iso)
         @test EpiBranch.has_competing_risk(_NoRisk())
         @test !EpiBranch.has_competing_risk(_NoRiskDeclared())
-        # The default is the conservative answer.
-        @test EpiBranch.has_competing_risk(_ProposesNothing())
+        # No `competing_risk` method of its own, so no fallback proposals are kept.
+        @test !EpiBranch.has_competing_risk(_ProposesNothing())
         # A wrapper forwards the hook, so it answers `true`.
         @test EpiBranch.has_competing_risk(Scheduled(iso; start_time = 1.0))
     end
@@ -171,7 +171,7 @@ struct _Bare <: EpiBranch.AbstractIntervention end
         @test !EpiBranch.resolves_under_capacity(bare)
         @test !EpiBranch.discovers_actions(bare)
         @test !EpiBranch.proposes_actions(bare)
-        @test EpiBranch.has_competing_risk(bare)
+        @test !EpiBranch.has_competing_risk(bare)
         # The same through a wrapper.
         sched = Scheduled(bare; start_time = 1.0)
         @test !EpiBranch.time_aware(sched)
