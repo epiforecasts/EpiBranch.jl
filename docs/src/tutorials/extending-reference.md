@@ -15,7 +15,7 @@ the transmission tree, infection time, susceptibility and infectiousness), and
 a dictionary, `ind.state`, holding everything else. Interventions, population
 characteristics, clinical transitions and observation models each keep a few
 named values (keys) there. The reasons for this split are in [Notes for
-contributors](@ref "Why individual state is an open dictionary").
+contributors](@ref "Individual state as an open dictionary").
 
 Read a value with a one-line accessor that supplies a default when the value is
 missing, such as `is_traced(ind) = get(ind.state, :traced, false)::Bool`.
@@ -107,7 +107,10 @@ underscore are internal.
 | `:cluster_theta` | `Float64` | — | `ClusterMixed` | First read in a simulation |
 | `:vaccine_acceptance` | `Float64` | — | `vaccine_acceptance` | Creation (default key; can be changed) |
 | `:infectious_time` | `Float64` | `Inf` | `Transition(:infectious, …)` | `resolve_individual!` |
-| `:recovered_time` | `Float64` | `Inf` | `Transition(:recovered, …)` | `resolve_individual!` |
+| `:recovered` | `Bool` | `false` | `Recovery` | `initialise_individual!`; `Recovery` sets it to `true` when it wins the terminal outcome. Overwrites a user `Transition(:recovered, …)` value |
+| `:recovered_time` | `Float64` | `Inf` | `Transition(:recovered, …)`, `Recovery` | `resolve_individual!` (`Transition`); `Recovery` resets it on initialisation and writes the outcome time when it wins. Overwrites a user `Transition(:recovered, …)` value |
+| `:died` | `Bool` | `false` | `Death` | `initialise_individual!`; `Death` sets it to `true` when it wins the terminal outcome. Overwrites a user `Transition(:died, …)` value |
+| `:died_time` | `Float64` | `Inf` | `Death` | `initialise_individual!` resets it, and `Death` writes the outcome time when it wins. Overwrites a user `Transition(:died, …)` value |
 | `:susceptible_again_time` | `Float64` | `Inf` | `Transition(:susceptible_again, …)` | `resolve_individual!` |
 | `:_exclusive_draw#N` | `Float64` | — | `exclusive_probabilities` | `resolve_individual!`; internal. The uniform draw a group of mutually exclusive outcomes shares, under a key unique to that call of `exclusive_probabilities` |
 
@@ -204,8 +207,7 @@ does record a late detection, such as a death found at burial.
 ### Tracing keys
 
 Both kinds of model write the tracing keys through `trace_contacts!`, once per
-case, so the keys and their meanings are the same either way; see [Which hooks
-run on which model](@ref).
+case. The keys and their meanings are the same for both; see [Hooks by model](@ref).
 
 `:tracers` lists every case whose trace reached a contact, in the order they
 did. `:traced_by` is the one of them that reached it first, by the earliest
@@ -277,7 +279,7 @@ population (network, household, homogeneous, mixing, and one written against
 ## Continuous-time models: further details
 
 These points concern the network, household, homogeneous and mixing models, which
-simulate a fixed population in continuous time (see [Which hooks run on which
+simulate a fixed population in continuous time (see [Hooks by
 model](@ref)).
 
 - **Susceptibility and infectiousness.** These are fixed properties of the two
