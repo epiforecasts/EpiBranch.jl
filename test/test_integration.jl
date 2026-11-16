@@ -181,7 +181,7 @@ using Dates
             i for s in states for i in s.individuals if is_infected(i) && is_asymptomatic(i)
         ]
         @test all(i -> isnan(i.state[:onset_time]), asymp)
-        @test all(i -> i.state[:latent_incubation_period] > 0, asymp)
+        @test all(i -> i.state[:incubation_period] > 0, asymp)
         bare = Individual(id = 1, infection_time = 0.0)
         @test_throws ArgumentError gt_fn(bare)
     end
