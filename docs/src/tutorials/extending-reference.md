@@ -97,7 +97,7 @@ underscore are internal.
 | `:test_tested` | `Bool` | `false` | `Testing` transition | `resolve_individual!`; reset to `false` by `censor_after_outcome!` if `:test_time` falls after `:outcome_time` |
 | `:test_time` | `Float64` | `Inf` | `Testing` transition | `resolve_individual!`, `Isolation` with `AfterPositiveTest`; reset to `Inf` by `censor_after_outcome!` if it falls after `:outcome_time` |
 | `:test_value` | `Float64` | `NaN` | `Testing` transition | `resolve_individual!` |
-| `:test_result` | `Bool` | `false` | `Testing` transition | `resolve_individual!`, `Isolation` with `AfterPositiveTest`; the four `:test_*` keys are for the default `name = :test`; a test called `:pcr` writes `:pcr_tested`, `:pcr_time`, `:pcr_value` and `:pcr_result` instead |
+| `:test_result` | `Bool` | `false` | `Testing` transition | `resolve_individual!`, `Isolation` with `AfterPositiveTest`; the four `:test_*` keys apply to the default `name = :test`, while a test called `:pcr` writes `:pcr_tested`, `:pcr_time`, `:pcr_value` and `:pcr_result` instead |
 | `:death_candidate_time` | `Float64` | `Inf` | `Death` transition | `resolve_individual!` |
 | `:recovery_candidate_time` | `Float64` | `Inf` | `Recovery` transition | `resolve_individual!` |
 | `:outcome` | `Symbol` | — | Any terminal transition (`Death`, `Recovery`, `Transition(...; terminal = true)`, your own) | `resolve_individual!` (terminal) |
