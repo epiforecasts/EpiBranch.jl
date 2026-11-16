@@ -440,18 +440,18 @@ end
     time_aware(intervention) -> Bool
 
 Whether `intervention` has its own [`intervention_time`](@ref
-EpiBranch.intervention_time), which by that hook's contract comes paired with a
-[`reset!`](@ref EpiBranch.reset!) undoing whatever it names. [`Scheduled`](@ref)
-asks this once, when it is built. For `true` it runs the intervention
-unconditionally and corrects the result afterwards, undoing whatever falls
-outside the schedule; for `false` it gates the intervention up front, as every
-hook always was, since the defaults (`-Inf`, a no-op `reset!`) give it nothing
-to undo.
+EpiBranch.intervention_time). By the contract of that hook it comes with a
+[`reset!`](@ref EpiBranch.reset!) that undoes whatever it names.
+[`Scheduled`](@ref) asks this once, when it is built. If `true`, it runs the
+intervention unconditionally and afterwards undoes whatever falls outside the
+schedule. If `false`, it gates the intervention up front, as it did for every
+hook before, because the defaults (`-Inf`, a no-op `reset!`) leave nothing to
+undo.
 
 The default is `false`. A type with an `intervention_time` method of its own
-declares `EpiBranch.time_aware(::MyIntervention) = true`; building a
-[`ModelSpec`](@ref) throws for one that does not, instead of gating it
-by default. A wrapper that does not write one asks the intervention it wraps.
+declares `EpiBranch.time_aware(::MyIntervention) = true`. Building a
+[`ModelSpec`](@ref) throws for one that does not, instead of gating it by
+default. A wrapper without such a method asks the intervention it wraps.
 """
 time_aware(::AbstractIntervention) = false
 
@@ -460,48 +460,46 @@ time_aware(::AbstractIntervention) = false
 
 Whether `intervention` writes its effect directly in
 [`resolve_individual!`](@ref EpiBranch.resolve_individual!), as [`Isolation`](@ref)
-does, rather than proposing it as an [`InterventionAction`](@ref
+does, or proposes it as an [`InterventionAction`](@ref
 EpiBranch.InterventionAction), as a dose does. [`CapacityConstrained`](@ref) and
-[`HeldCapacity`](@ref) ration the first kind by undoing the effect with
-[`reset!`](@ref EpiBranch.reset!) for anyone the budget turns away, and the
-second through the action funnel.
+[`HeldCapacity`](@ref) ration the first kind by calling
+[`reset!`](@ref EpiBranch.reset!) to undo the effect for anyone the budget turns
+away. They ration the second kind through the action funnel.
 
 The default is `false`. A type with methods of its own for both
 [`capacity_key`](@ref EpiBranch.capacity_key) and `resolve_individual!` declares
-`EpiBranch.resolves_under_capacity(::MyIntervention) = true`, or `false` where it
-proposes its effect as an action instead; building a [`ModelSpec`](@ref) throws
-for one that does not. A wrapper that does not write one asks the intervention
-it wraps.
+`EpiBranch.resolves_under_capacity(::MyIntervention) = true`, or `false` if it
+proposes its effect as an action. Building a [`ModelSpec`](@ref) throws for one
+that does not. A wrapper without such a method asks the intervention it wraps.
 """
 resolves_under_capacity(::AbstractIntervention) = false
 
 """
     discovers_actions(intervention) -> Bool
 
-Whether `intervention` finds actions of its own to propose, which the race
-offers it per settled case. An intervention answering `false` is never offered
+Whether `intervention` finds actions of its own to propose. The race offers it
+candidates per settled case. An intervention answering `false` is never offered
 candidates and adds no per-case cost.
 
 The default is `false`. A type with an [`intervention_actions`](@ref
 EpiBranch.intervention_actions) method of its own declares
-`EpiBranch.discovers_actions(::MyIntervention) = true`, or `false` where the
-method proposes nothing for some settings; building a [`ModelSpec`](@ref) throws
-for one that does not. A wrapper that does not write one asks the intervention
-it wraps. [`ContactTracing`](@ref) asks its action instead, because it always
-forwards.
+`EpiBranch.discovers_actions(::MyIntervention) = true`, or `false` if the method
+proposes nothing for some settings. Building a [`ModelSpec`](@ref) throws for one
+that does not. A wrapper without such a method asks the intervention it wraps.
+[`ContactTracing`](@ref) asks its action instead, because it always forwards.
 """
 discovers_actions(::AbstractIntervention) = false
 
 """
     proposes_actions(intervention) -> Bool
 
-Whether the simulation offers `intervention` candidates per settled case:
-[`discovers_actions`](@ref) holds, and it is not one offered the whole
-population at once instead ([`acts_on_population`](@ref
+Whether the simulation offers `intervention` candidates per settled case. This
+holds when [`discovers_actions`](@ref) does and the intervention is not offered
+the whole population at once ([`acts_on_population`](@ref
 EpiBranch.acts_on_population)). [`CapacityConstrained`](@ref) and
-[`HeldCapacity`](@ref) are asked for actions even when the intervention they
-wrap proposes none, so that wrapping one with nothing to ration fails when the
-run starts; they answer `false` for an intervention that rations through
+[`HeldCapacity`](@ref) are asked for actions even when the intervention they wrap
+proposes none, so wrapping one with nothing to ration fails when the run starts.
+They answer `false` for an intervention that rations through
 [`resolves_under_capacity`](@ref) instead.
 """
 function proposes_actions(iv::AbstractIntervention)
@@ -513,12 +511,12 @@ end
     has_competing_risk(intervention) -> Bool
 
 Whether `intervention` can supply a [`competing_risk`](@ref
-EpiBranch.competing_risk). The continuous-time race keeps every proposal to a
-contact, rather than only the earliest, when some intervention answers `true`,
-because a blocked contact must then fall back to a later one. An intervention
-answering `false` adds no cost to a run without other risks.
+EpiBranch.competing_risk). When some intervention answers `true`, the
+continuous-time race keeps every proposal to a contact instead of only the
+earliest, because a blocked contact must then fall back to a later one. An
+intervention answering `false` adds no cost to a run without other risks.
 
-The default is `true`. It keeps the fallback proposals and is always correct.
+The default is `true`, which keeps the fallback proposals and is always correct.
 A type that never supplies a risk declares
 `EpiBranch.has_competing_risk(::MyIntervention) = false` to save the cost. Every
 wrapper answers `true` because it forwards the hook.
