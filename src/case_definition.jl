@@ -128,7 +128,7 @@ positive result.
 # Examples
 
 ```julia
-assay = Assay(ct = load -> 40.0 - 3.3 * load, detect = 2.0)
+assay = Assay(value = load -> 40.0 - 3.3 * load, detect = 2.0)
 model = ModelSpec(
     BranchingProcess(NegBin(2.0, 0.5), Gamma(2.0, 3.0));
     attributes = [

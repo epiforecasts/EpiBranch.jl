@@ -90,7 +90,7 @@ _acute_load(rng, ind) = t -> max(0.0, 8.0 - abs(t - 5.0) * 1.6)
     @testset "in a ModelSpec" begin
         process = BranchingProcess(NegBin(2.5, 0.5), Gamma(2.0, 2.0))
         clinical = clinical_presentation(incubation_period = LogNormal(1.2, 0.4))
-        assay = Assay(ct = load -> 40.0 - 3.0 * load, detect = 2.0)
+        assay = Assay(value = load -> 40.0 - 3.0 * load, detect = 2.0)
         interventions = [
             ContactTracing(
                 OnSymptomOnset(), 0.8, Exponential(1.0), Quarantine(duration = 10.0)
