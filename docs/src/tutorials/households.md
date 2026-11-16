@@ -295,8 +295,9 @@ Interventions apply here too. Isolating a case for good
 (`duration = Inf`) ends their infectious period early. That reduces both the housemates they infect and their community
 contacts, and lowers R\*. Here every case isolates after a delay with a mean
 of 1 day from symptom onset, which comes 1 day after infection. `AllCases()`
-makes every case eligible for isolation; the default isolates only cases with
-symptoms, which needs a [`clinical_presentation`](@ref).
+makes every case eligible for a test result; the default isolates only cases with
+symptoms, which needs a [`clinical_presentation`](@ref). Isolation is timed from
+onset, so a case without symptoms is not isolated under either rule.
 
 ```@example households
 isolated = ModelSpec(HouseholdProcess(fill(4, 300), Weibull(1.5, 3.0));
