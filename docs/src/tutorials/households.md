@@ -236,7 +236,7 @@ exact distribution, which is not Poisson:
 Take R\* from either, and the extinction probability from
 [`household_offspring`](@ref).
 
-### When households differ in who lives in them
+### Households that differ in composition
 
 If transmission differs between people, two households of the same size need
 not behave alike. The contact-interval distribution can then be a function of
@@ -295,8 +295,9 @@ Interventions apply here too. Isolating a case for good
 (`duration = Inf`) ends their infectious period early. That reduces both the housemates they infect and their community
 contacts, and lowers R\*. Here every case isolates after a delay with a mean
 of 1 day from symptom onset, which comes 1 day after infection. `AllCases()`
-makes every case eligible for isolation; the default isolates only cases with
-symptoms, which needs a [`clinical_presentation`](@ref).
+makes every case eligible for a test result; the default isolates only cases with
+symptoms, which needs a [`clinical_presentation`](@ref). Isolation is timed from
+onset, so a case without symptoms is not isolated under either rule.
 
 ```@example households
 isolated = ModelSpec(HouseholdProcess(fill(4, 300), Weibull(1.5, 3.0));
@@ -494,7 +495,7 @@ The estimate is close to the 4 days the outbreak was simulated with.
 The contact-interval distribution can also depend on who infects whom, for
 example adults transmitting faster than children, through a function
 `(infector, susceptible) -> Distribution` of the two people's numbers, as in
-[the example above](#When-households-differ-in-who-lives-in-them). The same
+[the example above](#Households-that-differ-in-composition). The same
 function works for simulating and for fitting, and fitting a simulated
 outbreak recovers each of its parameters.
 [Covariates and time-varying transmission](@ref) covers contact intervals
