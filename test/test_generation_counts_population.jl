@@ -129,8 +129,8 @@ using Statistics
         function check(model, n_initial, immune; sizes)
             counts = [
                 simulate_by_generation(
-                        model; n_initial, immune, max_generations = 1, rng = StableRNG(i)
-                    ).counts for i in 1:reps
+                    model; n_initial, immune, max_generations = 1, rng = StableRNG(i)
+                ).counts for i in 1:reps
             ]
             rng = StableRNG(10^6)
             offspring = EpiBranch._generation_offspring(model)
