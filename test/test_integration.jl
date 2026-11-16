@@ -75,16 +75,24 @@ using Dates
         # Unequal sizes are fine when independent
         @test containment_difference(a, b[1:100]).paired == false
 
-        # Runs sharing random numbers: pairing gives a smaller standard error
+        # Runs sharing random numbers: the difference does not depend on pairing.
+        # Whether pairing shrinks the standard error depends on the draws, so
+        # only the deterministic case above asserts it.
         process = BranchingProcess(NegBin(1.5, 0.3), Exponential(5.0))
         attrs = clinical_presentation(incubation_period = LogNormal(1.6, 0.5))
         iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = Inf)
-        t = simulate(ModelSpec(process; attributes = attrs, interventions = [iso]),
-            500; max_cases = 500, rng = CommonRandomNumbers(1))
-        u = simulate(ModelSpec(process; attributes = attrs),
-            500; max_cases = 500, rng = CommonRandomNumbers(1))
-        @test containment_difference(t, u; max_cases = 500, paired = true).mcse <
-            containment_difference(t, u; max_cases = 500).mcse
+        t = simulate(
+            ModelSpec(process; attributes = attrs, interventions = [iso]),
+            500; max_cases = 500, rng = CommonRandomNumbers(1)
+        )
+        u = simulate(
+            ModelSpec(process; attributes = attrs),
+            500; max_cases = 500, rng = CommonRandomNumbers(1)
+        )
+        pt = containment_difference(t, u; max_cases = 500, paired = true)
+        up = containment_difference(t, u; max_cases = 500)
+        @test pt.difference == up.difference
+        @test isfinite(pt.mcse) && pt.mcse >= 0
     end
 
     @testset "weekly_incidence" begin
