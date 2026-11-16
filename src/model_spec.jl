@@ -384,6 +384,26 @@ function _warn_unmet_trigger_requirements(interventions, progression)
     return nothing
 end
 
+# An `Isolation` that follows a test needs the `Testing` step of that name in
+# the progression; without it no case ever records a result.
+_wrapped_interventions(iv::AbstractIntervention) = (iv,)
+_wrapped_interventions(s::Scheduled) = (s, _wrapped_interventions(s.intervention)...)
+
+function _validate_test_triggers(interventions, progression)
+    for iv in interventions, w in _wrapped_interventions(iv)
+        w isa Isolation && w.trigger isa AfterPositiveTest || continue
+        name = w.trigger.name
+        any(t -> t isa Testing && t.name === name, progression) && continue
+        throw(
+            ArgumentError(
+                "Isolation(trigger = AfterPositiveTest(name = :$name)) needs a " *
+                    "Testing(name = :$name) step in `progression`, and this model has none."
+            )
+        )
+    end
+    return nothing
+end
+
 """
     ModelSpec(process; progression, interventions, attributes, observation, recorder)
 
@@ -434,6 +454,7 @@ function ModelSpec(
     _warn_incomplete_terminal_coverage(prog)
     ivs = _intervention_vector(interventions)
     _validate_dose_schedule(ivs)
+    _validate_test_triggers(ivs, prog)
     _warn_unmet_trigger_requirements(ivs, prog)
     _warn_inert_interventions(ivs)
     return ModelSpec(process, prog, ivs, attributes, observation, recorder)

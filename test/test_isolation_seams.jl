@@ -197,10 +197,31 @@ EpiBranch.infectious_removal_time(f::FixedRemoval, ::Individual) = f.time
         end
         @test isolated_at(AfterPositiveTest(name = :pcr)) == 2.5
         @test isolated_at(AfterPositiveTest(name = :serology)) == 6.5
-        # The default name :test matches neither step; its keys are missing.
-        @test_throws ErrorException isolated_at(AfterPositiveTest())
+        # The default name :test matches neither step.
+        @test_throws ArgumentError isolated_at(AfterPositiveTest())
         @test EpiBranch.required_fields(AfterPositiveTest(name = :pcr)) ==
             [:pcr_time, :pcr_result]
+    end
+
+    @testset "AfterPositiveTest needs no onset" begin
+        iso = Isolation(
+            onset_to_isolation_delay = 0.5, duration = Inf,
+            trigger = AfterPositiveTest(), eligibility = AllCases()
+        )
+        @test :onset_time ∉ EpiBranch.required_fields(iso)
+        @test :onset_time ∈ EpiBranch.required_fields(Isolation(onset_to_isolation_delay = 1.0, duration = Inf))
+        spec = ModelSpec(
+            BranchingProcess(Poisson(0.0), Exponential(5.0));
+            interventions = [iso], attributes = [within_host((rng, ind) -> t -> 8.0)],
+            progression = [
+                Testing(
+                    assay = Assay(value = load -> 40.0 - 3.0 * load, detect = 2.0),
+                    delay = 3.0, from = :infection
+                ),
+            ]
+        )
+        state = simulate(spec; max_cases = 1, rng = StableRNG(1))
+        @test isolation_time(state.individuals[1]) == 3.5
     end
 
     @testset "A trigger of one's own sets the isolation time" begin

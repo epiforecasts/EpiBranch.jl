@@ -84,55 +84,18 @@ end
         end
     end
 
-    @testset "Isolation takes its sensitivity from the test" begin
-        positive = Assay(value = load -> 30.0, detect = 0.0)
-        negative = Assay(value = load -> NaN, detect = 1.0e6)
-        for (assay, isolated) in ((positive, true), (negative, false))
-            testing = Testing(assay = assay, delay = 0.0)
-            spec = testing_spec(
-                progression = [testing],
-                interventions = [
-                    Isolation(
-                        onset_to_isolation_delay = 1.0, duration = Inf,
-                        test_sensitivity = testing,
-                    ),
-                ]
-            )
-            state = simulate(spec; max_cases = 50, rng = StableRNG(6), n_initial = 20)
-            for ind in filter(is_infected, state.individuals)
-                is_asymptomatic(ind) && continue
-                @test is_isolated(ind) == isolated
-                @test is_test_positive(ind) == isolated
-            end
-        end
-    end
-
-    @testset "numeric test_sensitivity is unchanged and keeps its closed form" begin
-        iso = Isolation(
-            onset_to_isolation_delay = Exponential(2.0), duration = Inf,
-            test_sensitivity = 0.8
+    @testset "AfterPositiveTest without a Testing step of that name is refused" begin
+        iso(name) = Isolation(
+            onset_to_isolation_delay = 1.0, duration = Inf,
+            trigger = AfterPositiveTest(name = name)
         )
-        @test iso.test_sensitivity == 0.8
-        testing = Testing(assay = test_assay, delay = 0.0)
-        iso_t = Isolation(
-            onset_to_isolation_delay = Exponential(2.0), duration = Inf,
-            test_sensitivity = testing
+        process = BranchingProcess(NegBin(2.5, 0.5), LogNormal(1.6, 0.5))
+        testing = Testing(assay = test_assay, delay = 0.0, name = :pcr)
+        @test_throws ArgumentError ModelSpec(process; interventions = [iso(:pcr)])
+        @test_throws ArgumentError ModelSpec(
+            process; progression = [testing], interventions = [iso(:test)]
         )
-        @test_throws ArgumentError EpiBranch._closed_form_value(iso_t.test_sensitivity)
-    end
-
-    @testset "Isolation with a Testing step absent from the progression is reported" begin
-        testing = Testing(assay = test_assay, delay = 0.0)
-        spec = testing_spec(
-            progression = [],
-            interventions = [
-                Isolation(
-                    onset_to_isolation_delay = 1.0, duration = Inf,
-                    test_sensitivity = testing,
-                ),
-            ]
-        )
-        @test_throws ArgumentError simulate(spec; max_cases = 20, rng = StableRNG(7), n_initial = 20)
+        @test ModelSpec(process; progression = [testing], interventions = [iso(:pcr)]) isa ModelSpec
     end
 
     @testset "missing trajectory is reported" begin
