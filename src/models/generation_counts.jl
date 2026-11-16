@@ -498,7 +498,7 @@ function _continue_generations(
         )
         # Without a finite population nothing is thinned.
         counts = susceptibles === nothing ? potential :
-            _deplete!(rng, state.depletion, potential, susceptibles, sizes)
+            _deplete!(rng, state.depletion, potential, susceptibles, something(sizes))
         cumulative += sum(counts)
         gen += 1
     end
