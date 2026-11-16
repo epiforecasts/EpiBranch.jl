@@ -137,7 +137,7 @@ Whether `x` leaves a model's single-type offspring law exactly as the
 offspring distribution draws it, with nothing reshaping how many of the
 drawn contacts end up as cases. `loglikelihood(::ChainSizes, model)`,
 [`chain_size_distribution`](@ref) and the closed-form incidence likelihood
-take their analytical path, scoring the bare offspring distribution, only
+take their analytical path, using the bare offspring distribution, only
 once the process, every entry of `attributes` and every `progression`
 transition each answer `true` here; any one of them answering `false` sends
 the evaluation to simulation instead.
@@ -504,6 +504,10 @@ Useful fields:
   (see [`realise!`](@ref)); a person it never reached reads as never
   infected and untouched by any intervention.
 - `cumulative_cases`: the total number of cases.
+- `population`: the [`Population`](@ref) the model was run over, or
+  `NoPopulation()`.
+- `group_cases`: the number of cases in each group of a grouped population,
+  empty for any other.
 - `extinct`: whether transmission had died out when the run stopped.
 - `current_generation`: the last generation simulated.
 
@@ -526,26 +530,28 @@ mutable struct SimulationState{T <: Real, R <: AbstractRNG, P, A}
     rng::R
     cumulative_cases::Int
     extinct::Bool
-    population_size::P
+    population::P
     max_infection_time::T
     attributes::A
     transitions::Vector{AbstractClinicalTransition}
     scratch::Dict{Any, Any}
     continuation::Union{Nothing, AbstractRaceContinuation}
     lazy::Union{Nothing, _LazyPopulation}
+    group_cases::Vector{Int}
 end
 
 # Pre-existing callers construct a `SimulationState` without `scratch`,
-# `continuation` or `lazy`; all three start absent, so this fills them in
+# `continuation`, `lazy` or `group_cases`; they start absent (`group_cases`
+# with a count of zero for each group of the population), so this fills them in
 # rather than requiring every call site to name them.
 function SimulationState(
         individuals, active_ids, current_generation, rng, cumulative_cases,
-        extinct, population_size, max_infection_time, attributes, transitions
+        extinct, population, max_infection_time, attributes, transitions
     )
     return SimulationState(
         individuals, active_ids, current_generation, rng, cumulative_cases,
-        extinct, population_size, max_infection_time, attributes, transitions,
-        Dict{Any, Any}(), nothing, nothing
+        extinct, population, max_infection_time, attributes, transitions,
+        Dict{Any, Any}(), nothing, nothing, _empty_group_cases(population)
     )
 end
 
@@ -606,8 +612,8 @@ function Base.copy(state::SimulationState)
     return SimulationState(
         people, copy(state.active_ids), state.current_generation,
         deepcopy(state.rng), state.cumulative_cases, state.extinct,
-        state.population_size, state.max_infection_time, state.attributes,
+        state.population, state.max_infection_time, state.attributes,
         copy(state.transitions), deepcopy(state.scratch),
-        deepcopy(state.continuation), lazy
+        deepcopy(state.continuation), lazy, copy(state.group_cases)
     )
 end

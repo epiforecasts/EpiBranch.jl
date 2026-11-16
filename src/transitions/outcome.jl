@@ -71,7 +71,7 @@ function transition_loglik(r::Recovery, individual::Individual; followup_end = I
         # No gate of its own, so a candidate is missing only where an abort
         # undid it; anything else rules the individual out.
         # A line list holds only the outcome that happened. A recovery that
-        # lost to another outcome is scored as not having happened by that
+        # lost to another outcome is treated as not having happened by that
         # outcome's time.
         competing = _competing_outcome_time(individual, :recovered)
         isinf(competing) && isinf(infection_aborted_time(individual)) && return -Inf

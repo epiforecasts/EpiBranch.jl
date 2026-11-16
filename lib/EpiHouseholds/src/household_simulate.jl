@@ -73,6 +73,7 @@ function simulate_once(
         ),
         introduction = _ext_active(model.external_hazard) ?
             (EpiBranch._ext_prepare(model.external_hazard), Tobs) : nothing,
+        seeded = initial_cases,
         targets = (inf, st) -> (
             (oid, _pairkernel(model.kernel, inf, oid, st, from))
                 for oid in model.members[model.household_of[inf]] if oid != inf
