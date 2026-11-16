@@ -164,6 +164,45 @@ EpiBranch.infectious_removal_time(f::FixedRemoval, ::Individual) = f.time
         @test !is_isolated(first_case(test_iso; detect = 10.0))
     end
 
+    @testset "AfterPositiveTest follows only the test it names" begin
+        asymptomatic = clinical_presentation(
+            incubation_period = Dirac(1.0), prob_asymptomatic = 1.0
+        )
+        curve(rng, ind) = t -> 8.0
+        # :pcr samples at day 2 and detects; :serology samples at day 6 and detects.
+        progression = [
+            Testing(
+                assay = Assay(value = load -> 40.0 - 3.0 * load, detect = 2.0),
+                delay = 2.0, from = :infection, name = :pcr
+            ),
+            Testing(
+                assay = Assay(value = load -> 40.0 - 3.0 * load, detect = 2.0),
+                delay = 6.0, from = :infection, name = :serology
+            ),
+        ]
+        function isolated_at(trigger)
+            iso = Isolation(
+                onset_to_isolation_delay = 0.5, duration = Inf,
+                trigger = trigger, eligibility = AllCases()
+            )
+            state = simulate(
+                ModelSpec(
+                    BranchingProcess(Poisson(0.0), Exponential(5.0));
+                    interventions = [iso], attributes = [asymptomatic, within_host(curve)],
+                    progression = progression
+                );
+                max_cases = 1, rng = StableRNG(1)
+            )
+            return isolation_time(state.individuals[1])
+        end
+        @test isolated_at(AfterPositiveTest(name = :pcr)) == 2.5
+        @test isolated_at(AfterPositiveTest(name = :serology)) == 6.5
+        # The default name :test matches neither step, so the keys are missing.
+        @test_throws ErrorException isolated_at(AfterPositiveTest())
+        @test EpiBranch.required_fields(AfterPositiveTest(name = :pcr)) ==
+            [:pcr_time, :pcr_result]
+    end
+
     @testset "A trigger of one's own sets the isolation time" begin
         struct AtInfection <: IsolationTrigger end
         EpiBranch.isolation_reference_time(::AtInfection, ind, state) = ind.infection_time

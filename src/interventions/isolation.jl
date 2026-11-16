@@ -93,27 +93,33 @@ struct AfterSymptomOnset <: IsolationTrigger end
 isolation_reference_time(::AfterSymptomOnset, individual, state) = onset_time(individual)
 
 """
-    AfterPositiveTest()
+    AfterPositiveTest(; name = :test)
 
 Isolate a case when its test result comes back positive: the sampling time
-that [`Testing`](@ref) records in `:test_time`, plus the `onset_to_isolation_delay`
-of the isolation, which then stands for the turnaround from sample to result.
-A case never tested has `:test_time` of `Inf`. A case with a negative
-`:test_result` is not isolated through the test. The trigger needs no symptoms:
-pair it with `eligibility = AllCases()` to isolate screened cases without them.
+that the [`Testing`](@ref) step called `name` records in `:<name>_time`, plus
+the `onset_to_isolation_delay` of the isolation, which then stands for the
+turnaround from sample to result. The result is read from `:<name>_result`.
+A case never tested has a time of `Inf`. A case with a negative result is not
+isolated through the test. With several `Testing` steps, `name` picks the one
+that starts isolation. The trigger needs no symptoms: pair it with
+`eligibility = AllCases()` to isolate screened cases without them.
 `test_sensitivity` still applies on top of the recorded result.
 """
-struct AfterPositiveTest <: IsolationTrigger end
-function isolation_reference_time(::AfterPositiveTest, individual, state)
+struct AfterPositiveTest <: IsolationTrigger
+    name::Symbol
+end
+AfterPositiveTest(; name::Symbol = :test) = AfterPositiveTest(name)
+
+function isolation_reference_time(t::AfterPositiveTest, individual, state)
     st = individual.state
-    get(st, :test_result, false)::Bool || return Inf
-    return _state_real(st, :test_time, Inf)
+    get(st, Symbol(t.name, :_result), false)::Bool || return Inf
+    return _state_real(st, Symbol(t.name, :_time), Inf)
 end
 
 # Fields a trigger reads. A custom trigger extends this for its own type.
 required_fields(::IsolationTrigger) = Symbol[]
 required_fields(::AfterSymptomOnset) = [:onset_time]
-required_fields(::AfterPositiveTest) = [:test_time, :test_result]
+required_fields(t::AfterPositiveTest) = [Symbol(t.name, :_time), Symbol(t.name, :_result)]
 
 # ── Isolation intervention ──────────────────────────────────────────
 
@@ -143,7 +149,8 @@ known cases are quarantined through [`ContactTracing`](@ref).
   because indefinite isolation is a modelling choice to make explicitly.
 - `trigger`: what the delay is counted from, [`AfterSymptomOnset`](@ref)
   (default) or [`AfterPositiveTest`](@ref), which isolates a case when a
-  positive result comes back, with or without symptoms.
+  positive result comes back, with or without symptoms. `AfterPositiveTest(name = :pcr)`
+  follows the [`Testing`](@ref) step called `:pcr`.
 - `eligibility`: who can be isolated, [`SymptomaticOnly`](@ref) (default) or
   [`AllCases`](@ref) (for example with mass testing).
 - `test_sensitivity`: probability that an eligible case is detected and
