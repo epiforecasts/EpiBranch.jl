@@ -123,7 +123,7 @@ A model is the whole description of how the data arise. It has five parts:
   infectiousness), which can affect transmission, the course of disease, and
   whom interventions reach;
 - **interventions**: what is done about it (isolation, tracing, vaccination);
-- **observation**: how cases are seen. Per-case reporting (the probability that a case is reported and the delay to its report) is a `Reporting` step of the disease progression, so each case records whether and when it was reported. Observation models cover the chain-level recording, such as `MinimumSize` and `ChainDetection`, which turn the true outbreak into the chains that are observed. A case definition, which classifies each case as confirmed, probable or suspected from the events recorded on them, belongs here too. It is re-evaluated as each event is recorded.
+- **observation**: how cases are seen. Per-case reporting (the probability that a case is reported and the delay to its report) is a `Reporting` step of the disease progression. Each case records whether and when it was reported. Observation models cover chain-level recording, such as `MinimumSize` and `ChainDetection`, which turn the true outbreak into the observed chains. A case definition also belongs here. It classifies each case as confirmed, probable or suspected from the events recorded on it, and is re-evaluated as each event is recorded.
 
 These match how epidemiologists describe an outbreak: a pathogen spreads,
 infection causes disease, in a population of people, under a response, watched
