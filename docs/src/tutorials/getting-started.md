@@ -144,7 +144,7 @@ One outbreak says little; the question is how often the measures work. Simulate
 ```@example gettingstarted
 rng = StableRNG(42)
 results = simulate(spec, 500; max_cases = 5000, rng = rng)
-println("Containment probability: $(round(containment_probability(results), digits=3))")
+println("Containment probability: $(round(containment_probability(results).proportion, digits=3))")
 ```
 
 The containment probability is the proportion of simulated outbreaks in which

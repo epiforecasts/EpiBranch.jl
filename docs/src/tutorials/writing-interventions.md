@@ -378,8 +378,8 @@ isolation_only = simulate(ModelSpec(process; interventions = [iso], attributes =
 with_closure = simulate(
     ModelSpec(process; interventions = [iso, BorderClosure(10.0, 0.05)], attributes = attrs),
     200; max_cases = 500, rng = StableRNG(42))
-(isolation_only = containment_probability(isolation_only),
- with_closure = containment_probability(with_closure))
+(isolation_only = containment_probability(isolation_only).proportion,
+ with_closure = containment_probability(with_closure).proportion)
 ```
 
 Adding the closure raises the proportion of outbreaks contained, because from

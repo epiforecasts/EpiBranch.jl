@@ -244,7 +244,7 @@ using EpiBranch, Distributions, Random
 
 model = BranchingProcess(NegBin(2.5, 0.16), Gamma(2.5, 2.0))
 states = simulate(model, 1000; max_cases = 5000, rng = Xoshiro(1))
-containment_probability(states; max_cases = 5000)
+containment_probability(states; max_cases = 5000).proportion
 ```
 """
 simulate(model::TransmissionModel, n::Int; kwargs...) =

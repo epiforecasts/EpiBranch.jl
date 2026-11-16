@@ -41,7 +41,7 @@ model = ModelSpec(
 
 results = simulate(model, 500; max_cases = 5000)
 
-containment_probability(results)
+containment_probability(results).proportion
 ```
 
 ## Why Julia?

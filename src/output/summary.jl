@@ -1,8 +1,14 @@
 """
-    containment_probability(states::Vector{<:SimulationState}; max_cases=NoCases())
+    containment_probability(states::Vector{<:SimulationState}; max_cases=NoCases(), level=0.95)
 
 Containment probability: the proportion of simulated outbreaks that died out,
-from a vector of simulations such as `simulate(model, n)`. An outbreak still
+from a vector of simulations such as `simulate(model, n)`. Returns a named
+tuple `(; n_contained, n, proportion, lower, upper)`: the number of outbreaks
+that were contained, the number simulated, their ratio, and a Wilson score
+interval for the underlying probability at confidence `level`. The interval
+reflects simulation error only and ignores uncertainty in the parameters of the
+model. If it is too wide to separate scenarios, simulate more outbreaks. To
+compare two scenarios, use [`containment_difference`](@ref). An outbreak still
 going when the simulation stopped (at `max_cases`, `max_time` or
 `max_generations`) counts as not contained.
 
@@ -35,23 +41,23 @@ model = ModelSpec(
         duration = Inf)]
 )
 states = simulate(model, 1000; max_cases = 5000)
-containment_probability(states; max_cases = 5000)
+containment_probability(states; max_cases = 5000).proportion
 ```
 """
 function containment_probability(
         states::Vector{<:SimulationState};
-        max_cases::Union{Int, NoCases} = NoCases()
+        max_cases::Union{Int, NoCases} = NoCases(), level::Real = 0.95
     )
-    n_extinct = count(s -> _is_contained(s, max_cases), states)
-    return n_extinct / length(states)
+    n_contained = count(s -> _is_contained(s, max_cases), states)
+    return _binomial_estimate(n_contained, length(states), level)
 end
 
 """
-    containment_probability(model, n::Int; max_cases, rng, parallel=false, ...)
+    containment_probability(model, n::Int; max_cases, level=0.95, rng, parallel=false, ...)
 
-The containment probability over `n` outbreaks simulated from `model`. It
-takes the keywords of `simulate(model, n)` and, for the same `rng`, gives the
-same answer as `containment_probability(simulate(model, n; kwargs...);
+The containment probability over `n` outbreaks simulated from `model`, returned
+as above. It takes the keywords of `simulate(model, n)`, except that `level` is
+not passed on to it, and for the same `rng` gives the same answer as `containment_probability(simulate(model, n; kwargs...);
 max_cases)`. Each outbreak is checked once it has run and then discarded, so
 memory holds one outbreak at a time. Use it when only the containment
 probability is needed.
@@ -69,50 +75,88 @@ containment_probability(model, 10_000; max_cases = 5000)
 ```
 """
 function containment_probability(
-        model::Union{TransmissionModel, ModelSpec}, n::Int; kwargs...
-    )
-    cap = something(get(kwargs, :max_cases, nothing), NoCases())
-    contained = _simulate_each(s -> _is_contained(s, cap), Bool, model, n; kwargs...)
-    return count(contained) / n
-end
-
-"""
-    containment_estimate(states::Vector{<:SimulationState}; max_cases=NoCases(), level=0.95)
-    containment_estimate(model, n::Int; max_cases, level=0.95, rng, ...)
-
-The containment probability with its Monte Carlo uncertainty. Returns a named
-tuple `(; n_contained, n, proportion, lower, upper)`: the number of outbreaks
-that were contained, the number simulated, their ratio, and a Wilson score
-interval for the underlying probability at confidence `level`. The interval
-reflects simulation error only and ignores uncertainty in the parameters of the model. If the
-interval is too wide to separate scenarios, simulate more outbreaks.
-
-Containment is defined as in [`containment_probability`](@ref), which gives the
-bare proportion. The model method takes the keywords of `simulate(model, n)`;
-`level` is not passed on to it.
-
-# Examples
-
-```julia
-model = BranchingProcess(NegBin(1.5, 0.3))
-containment_estimate(model, 200; max_cases = 500)
-```
-"""
-function containment_estimate(
-        states::Vector{<:SimulationState};
-        max_cases::Union{Int, NoCases} = NoCases(), level::Real = 0.95
-    )
-    n_contained = count(s -> _is_contained(s, max_cases), states)
-    return _binomial_estimate(n_contained, length(states), level)
-end
-
-function containment_estimate(
         model::Union{TransmissionModel, ModelSpec}, n::Int;
         level::Real = 0.95, kwargs...
     )
     cap = something(get(kwargs, :max_cases, nothing), NoCases())
     contained = _simulate_each(s -> _is_contained(s, cap), Bool, model, n; kwargs...)
     return _binomial_estimate(count(contained), n, level)
+end
+
+"""
+    containment_difference(a, b; max_cases=NoCases(), paired=false, level=0.95)
+
+The difference in containment probability between two sets of simulations,
+`a` minus `b`, each a vector of [`SimulationState`](@ref)s. Returns a named
+tuple `(; difference, lower, upper, a, b, paired)`, where `a` and `b` are the
+proportions contained and the interval is at confidence `level`. It reflects
+simulation error only.
+
+Set `paired = true` when the two sets were run with shared random numbers
+(for example `rng = CommonRandomNumbers(1)`, see [`CommonRandomNumbers`](@ref))
+and so have the same number of runs in the same order. The interval then uses
+the agreement between runs, and is much narrower than the two intervals of
+[`containment_probability`](@ref) suggest when the scenarios differ little.
+Otherwise the sets are treated as independent and may differ in size. Both
+intervals are Newcombe's, built from Wilson score intervals for each
+proportion.
+
+`max_cases` is applied to both sets, as in [`containment_probability`](@ref).
+
+# Examples
+
+```julia
+base = simulate(model, 500; max_cases = 500, rng = CommonRandomNumbers(1))
+treated = simulate(treated_model, 500; max_cases = 500, rng = CommonRandomNumbers(1))
+containment_difference(treated, base; max_cases = 500, paired = true)
+```
+"""
+function containment_difference(
+        a::Vector{<:SimulationState}, b::Vector{<:SimulationState};
+        max_cases::Union{Int, NoCases} = NoCases(), paired::Bool = false,
+        level::Real = 0.95
+    )
+    ca = [_is_contained(s, max_cases) for s in a]
+    cb = [_is_contained(s, max_cases) for s in b]
+    return _contained_difference(ca, cb, paired, level)
+end
+
+function _contained_difference(
+        ca::AbstractVector{Bool}, cb::AbstractVector{Bool}, paired::Bool, level::Real
+    )
+    paired && length(ca) != length(cb) && throw(
+        ArgumentError(
+            "Paired comparison needs the same number of runs, got $(length(ca)) and $(length(cb))."
+        )
+    )
+    ea = _binomial_estimate(count(ca), length(ca), level)
+    eb = _binomial_estimate(count(cb), length(cb), level)
+    phi = paired ? _paired_correlation(ca, cb) : 0.0
+    d = ea.proportion - eb.proportion
+    la, ua = ea.proportion - ea.lower, ea.upper - ea.proportion
+    lb, ub = eb.proportion - eb.lower, eb.upper - eb.proportion
+    lower = d - sqrt(max(la^2 + ub^2 - 2phi * la * ub, 0.0))
+    upper = d + sqrt(max(ua^2 + lb^2 - 2phi * ua * lb, 0.0))
+    return (;
+        difference = d, lower = max(lower, -1.0), upper = min(upper, 1.0),
+        a = ea.proportion, b = eb.proportion, paired,
+    )
+end
+
+# Correlation of the paired outcomes, floored as in Newcombe's method 10 so that
+# chance agreement does not narrow the interval.
+function _paired_correlation(ca::AbstractVector{Bool}, cb::AbstractVector{Bool})
+    n = length(ca)
+    n11 = count(ca .& cb)
+    n10 = count(ca .& .!cb)
+    n01 = count(.!ca .& cb)
+    n00 = n - n11 - n10 - n01
+    denom = sqrt(float(n11 + n10) * (n01 + n00) * (n11 + n01) * (n10 + n00))
+    denom == 0 && return 0.0
+    A = float(n11) * n00 - float(n10) * n01
+    A > n / 2 && return (A - n / 2) / denom
+    A >= 0 && return 0.0
+    return A / denom
 end
 
 function _binomial_estimate(k::Int, n::Int, level::Real)
@@ -603,7 +647,7 @@ function scenario_sweep(
         end
         push!(
             rows[:containment_probability],
-            containment_probability(model, n_sim; rng = rng, sim_kwargs...)
+            containment_probability(model, n_sim; rng = rng, sim_kwargs...).proportion
         )
     end
 
@@ -656,7 +700,7 @@ function scenario_sweep(
     cap = something(get(sim_kwargs, :max_cases, nothing), NoCases())
     summarise = something(
         summary,
-        states -> (; containment_probability = containment_probability(states; max_cases = cap))
+        states -> (; containment_probability = containment_probability(states; max_cases = cap).proportion)
     )
     out = NamedTuple[]
     for row in rows

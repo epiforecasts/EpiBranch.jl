@@ -555,7 +555,7 @@ end
             ModelSpec(model; interventions = ivs, attributes), 200;
             max_cases = 200, rng = StableRNG(11)
         )
-        return containment_probability(states; max_cases = 200)
+        return containment_probability(states; max_cases = 200).proportion
     end
     @test contained([gv]) > contained(AbstractIntervention[]) + 0.5
 end

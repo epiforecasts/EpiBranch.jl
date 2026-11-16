@@ -386,7 +386,7 @@ EpiBranch.realised_efficacy(::_TestBlockedMode, eff, rng) =
                 ),
                 2000; max_cases = 200, rng = StableRNG(seed)
             )
-            return containment_probability(results)
+            return containment_probability(results).proportion
         end
         unvaccinated = containment(0.0, LeakyMode(), 101)
         leaky = containment(0.4, LeakyMode(), 102)

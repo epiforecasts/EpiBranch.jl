@@ -195,7 +195,7 @@ results = simulate(model, 1000;
     max_cases = 10_000, max_generations = 200,
     rng = StableRNG(42),
 )
-q_sim = containment_probability(results)
+q_sim = containment_probability(results).proportion
 
 println("R=$R, k=$k:")
 println("  Exact:      $(round(q_exact, digits=4))")

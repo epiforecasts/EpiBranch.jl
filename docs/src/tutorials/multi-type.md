@@ -158,7 +158,7 @@ estimates the average of the per-type extinction probabilities:
 ```@example multitype
 results = simulate(model, 1000; max_cases = 200, rng = StableRNG(1))
 println("Analytical: $(round(sum(q) / length(q), digits = 3))")
-println("Simulated:  $(round(containment_probability(results), digits = 3))")
+println("Simulated:  $(round(containment_probability(results).proportion, digits = 3))")
 ```
 
 The two agree up to simulation noise and the small chance that an outbreak
@@ -172,7 +172,7 @@ run counts:
 ```@example multitype
 elderly_results = simulate(model, 1000; max_cases = 200, index_types = [3], rng = StableRNG(1))
 println("Analytical (65+): $(round(q[3], digits = 3))")
-println("Simulated (65+):  $(round(containment_probability(elderly_results), digits = 3))")
+println("Simulated (65+):  $(round(containment_probability(elderly_results).proportion, digits = 3))")
 ```
 
 ## Custom offspring function
@@ -240,7 +240,7 @@ model = ModelSpec(BranchingProcess(M, R_j -> NegBin(R_j, 0.5), LogNormal(1.6, 0.
 
 rng = StableRNG(42)
 results = simulate(model, 200; max_cases = 500, rng = rng)
-println("Containment: $(round(containment_probability(results), digits=3))")
+println("Containment: $(round(containment_probability(results).proportion, digits=3))")
 ```
 
 Isolation raises the proportion of outbreaks that are contained above the

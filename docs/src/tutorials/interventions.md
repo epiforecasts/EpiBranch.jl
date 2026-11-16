@@ -46,7 +46,7 @@ scenario(interventions = AbstractIntervention[], attributes = clinical) =
 
 rng = StableRNG(42)
 results_baseline = simulate(scenario(), 200; max_cases = 500, rng = rng)
-println("Containment (no interventions): $(round(containment_probability(results_baseline), digits=3))")
+println("Containment (no interventions): $(round(containment_probability(results_baseline).proportion, digits=3))")
 ```
 
 This simulates 200 outbreaks, each starting from one index case and stopped
@@ -67,7 +67,7 @@ iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = 7.0)
 
 rng = StableRNG(42)
 results = simulate(scenario([iso]), 200; max_cases = 500, rng = rng)
-println("Containment (isolation): $(round(containment_probability(results), digits=3))")
+println("Containment (isolation): $(round(containment_probability(results).proportion, digits=3))")
 ```
 
 The sooner a case is isolated after symptom onset, the fewer of their
@@ -79,7 +79,7 @@ for d in [0.5, 2.0, 10.0]
     let iso = Isolation(onset_to_isolation_delay = Exponential(d), duration = 7.0),
         rng = StableRNG(42)
         results = simulate(scenario([iso]), 200; max_cases = 500, rng = rng)
-        println("Mean delay $d days: containment = $(round(containment_probability(results), digits=3))")
+        println("Mean delay $d days: containment = $(round(containment_probability(results).proportion, digits=3))")
     end
 end
 ```
@@ -98,7 +98,7 @@ iso_leaky = Isolation(onset_to_isolation_delay = Exponential(2.0), post_isolatio
 
 rng = StableRNG(42)
 results = simulate(scenario([iso_leaky]), 200; max_cases = 500, rng = rng)
-println("Leaky isolation: $(round(containment_probability(results), digits=3))")
+println("Leaky isolation: $(round(containment_probability(results).proportion, digits=3))")
 ```
 
 That falls between the 0.04 with no isolation and the 0.12 the same isolation
@@ -172,11 +172,11 @@ ct = ContactTracing(
 
 rng = StableRNG(42)
 results = simulate(scenario([iso]), 200; max_cases = 500, rng = rng)
-println("Isolation alone: $(round(containment_probability(results), digits=3))")
+println("Isolation alone: $(round(containment_probability(results).proportion, digits=3))")
 
 rng = StableRNG(42)
 results = simulate(scenario([iso, ct]), 200; max_cases = 500, rng = rng)
-println("Isolation + tracing: $(round(containment_probability(results), digits=3))")
+println("Isolation + tracing: $(round(containment_probability(results).proportion, digits=3))")
 ```
 
 Quarantine stops transmission from secondary cases before they show
@@ -264,7 +264,7 @@ disease_hard = clinical_presentation(
 iso_imperfect = Isolation(onset_to_isolation_delay = Exponential(2.0), test_sensitivity = 0.8, duration = Inf)
 rng = StableRNG(42)
 results = simulate(scenario([iso_imperfect, ct], disease_hard), 200; max_cases = 500, rng = rng)
-println("30% asymptomatic, 80% test sensitivity: $(round(containment_probability(results), digits=3))")
+println("30% asymptomatic, 80% test sensitivity: $(round(containment_probability(results).proportion, digits=3))")
 ```
 
 Containment is lower than with isolation and tracing when every case is
@@ -350,7 +350,7 @@ iso_delayed = Scheduled(Isolation(onset_to_isolation_delay = Exponential(2.0), d
 
 rng = StableRNG(42)
 results = simulate(scenario([iso_delayed]), 200; max_cases = 500, rng = rng)
-println("Isolation from day 10: $(round(containment_probability(results), digits=3))")
+println("Isolation from day 10: $(round(containment_probability(results).proportion, digits=3))")
 ```
 
 Containment is lower than with isolation from the start, because the first
@@ -369,7 +369,7 @@ ct_triggered = Scheduled(
 
 rng = StableRNG(42)
 results = simulate(scenario([iso, ct_triggered]), 200; max_cases = 500, rng = rng)
-println("Tracing after 20 cases: $(round(containment_probability(results), digits=3))")
+println("Tracing after 20 cases: $(round(containment_probability(results).proportion, digits=3))")
 ```
 
 Tracing that waits for 20 cases misses the contacts of the first cases, and

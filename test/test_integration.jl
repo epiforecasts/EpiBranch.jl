@@ -15,22 +15,22 @@ using Dates
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(0.8), Exponential(5.0))
         results = simulate(model, 200; rng = rng)
-        cp = containment_probability(results)
+        cp = containment_probability(results).proportion
         @test cp > 0.5
     end
 
-    @testset "containment_estimate" begin
+    @testset "containment_probability interval" begin
         model = BranchingProcess(NegBin(1.5, 0.3))
         results = simulate(model, 200; max_cases = 500, rng = StableRNG(42))
-        est = containment_estimate(results; max_cases = 500)
+        est = containment_probability(results; max_cases = 500)
         @test est.n == 200
-        @test est.proportion == containment_probability(results; max_cases = 500)
+        @test est.proportion == count(s -> s.extinct && s.cumulative_cases < 500, results) / 200
         @test est.n_contained == round(Int, est.proportion * 200)
         @test est.lower < est.proportion < est.upper
-        wide = containment_estimate(results; max_cases = 500, level = 0.99)
+        wide = containment_probability(results; max_cases = 500, level = 0.99)
         @test wide.lower < est.lower && wide.upper > est.upper
 
-        est_model = containment_estimate(model, 200; max_cases = 500, rng = StableRNG(42))
+        est_model = containment_probability(model, 200; max_cases = 500, rng = StableRNG(42))
         @test est_model == est
 
         # Wilson interval stays inside [0, 1] at the boundaries
@@ -43,7 +43,43 @@ using Dates
         w = EpiBranch._binomial_estimate(8, 10, 0.95)
         @test w.lower ≈ 0.4902 atol = 1.0e-3
         @test w.upper ≈ 0.9433 atol = 1.0e-3
-        @test_throws ArgumentError containment_estimate(results; max_cases = 500, level = 1.5)
+        @test_throws ArgumentError containment_probability(results; max_cases = 500, level = 1.5)
+    end
+
+    @testset "containment_difference" begin
+        # Newcombe (1998) independent example: 56/70 against 48/80
+        ca = [trues(56); falses(14)]
+        cb = [trues(48); falses(32)]
+        ind = EpiBranch._contained_difference(ca, cb, false, 0.95)
+        @test ind.difference ≈ 0.2
+        @test ind.lower ≈ 0.0524 atol = 1.0e-3
+        @test ind.upper ≈ 0.3339 atol = 1.0e-3
+
+        # Runs that mostly agree give a much narrower paired interval
+        base = [trues(60); falses(40)]
+        other = copy(base)
+        other[1:10] .= false
+        pair = EpiBranch._contained_difference(base, other, true, 0.95)
+        unpair = EpiBranch._contained_difference(base, other, false, 0.95)
+        @test pair.difference == unpair.difference
+        @test pair.difference ≈ 0.1
+        @test pair.upper - pair.lower < 0.6 * (unpair.upper - unpair.lower)
+        @test pair.lower < pair.difference < pair.upper
+
+        # Uncorrelated outcomes get no narrowing from pairing
+        flip = [i % 2 == 0 for i in 1:100]
+        @test EpiBranch._paired_correlation(base, flip) == 0.0
+
+        model = BranchingProcess(NegBin(1.5, 0.3))
+        a = simulate(model, 200; max_cases = 500, rng = CommonRandomNumbers(1))
+        b = simulate(model, 200; max_cases = 500, rng = CommonRandomNumbers(1))
+        same = containment_difference(a, b; max_cases = 500, paired = true)
+        @test same.difference == 0.0
+        @test same.a == containment_probability(a; max_cases = 500).proportion
+        @test same.paired
+        @test_throws ArgumentError containment_difference(a, b[1:100]; paired = true)
+        # Unequal sizes are fine when independent
+        @test containment_difference(a, b[1:100]).paired == false
     end
 
     @testset "weekly_incidence" begin
@@ -114,7 +150,7 @@ using Dates
             500; max_cases = 5000, max_generations = 50, rng = rng
         )
 
-        @test containment_probability(results) >= 0.5
+        @test containment_probability(results).proportion >= 0.5
     end
 
     @testset "Full pipeline: simulate → linelist → chain_statistics" begin
@@ -156,8 +192,8 @@ using Dates
             200; max_cases = 200, rng = rng2
         )
 
-        @test containment_probability(results_perfect) >=
-            containment_probability(results_leaky)
+        @test containment_probability(results_perfect).proportion >=
+            containment_probability(results_leaky).proportion
     end
 
     @testset "incubation_linked_generation_time convenience" begin
@@ -334,8 +370,8 @@ using Dates
             max_cases = 50, rng = rng
         )
 
-        cp_naive = containment_probability(results)
-        cp_aware = containment_probability(results; max_cases = 50)
+        cp_naive = containment_probability(results).proportion
+        cp_aware = containment_probability(results; max_cases = 50).proportion
         @test cp_aware <= cp_naive
     end
 
@@ -357,7 +393,7 @@ using Dates
             model, 200; max_cases = 50, rng = StableRNG(7),
             parallel = true
         )
-        @test 0.0 <= p <= 1.0
+        @test 0.0 <= p.proportion <= 1.0
         @test_throws MethodError containment_probability(model, 10; condition = 1:5)
     end
 
@@ -386,7 +422,7 @@ using Dates
             model, 500;
             max_cases = 5000, max_generations = 200, rng = rng
         )
-        q_simulated = containment_probability(results)
+        q_simulated = containment_probability(results).proportion
 
         @test abs(q_analytical - q_simulated) < 0.1
     end

@@ -74,8 +74,8 @@ uncapped = simulate(BranchingProcess(NegBin(2.5, 0.16), Exponential(5.0)), 500;
     max_cases = 500, rng = StableRNG(1))
 capped = simulate(BranchingProcess(capped_offspring, Exponential(5.0)), 500;
     max_cases = 500, rng = StableRNG(1))
-(uncapped = containment_probability(uncapped),
- capped = containment_probability(capped))
+(uncapped = containment_probability(uncapped).proportion,
+ capped = containment_probability(capped).proportion)
 ```
 
 The containment probability is the proportion of the 500 simulated outbreaks
@@ -131,7 +131,7 @@ end
 model_risk = ModelSpec(BranchingProcess(risk_offspring, Exponential(5.0));
     attributes = risk_group!)
 results = simulate(model_risk, 200; max_cases = 500, rng = StableRNG(42))
-containment_probability(results)
+containment_probability(results).proportion
 ```
 
 A fifth of cases are high-risk, giving an average R of 0.2 × 4 + 0.8 × 1.5 = 2,
@@ -148,7 +148,7 @@ end
 
 model_waning = BranchingProcess(waning_offspring, Exponential(5.0))
 results = simulate(model_waning, 200; max_cases = 500, rng = StableRNG(42))
-containment_probability(results)
+containment_probability(results).proportion
 ```
 
 R drops below 1 after about 11 generations, by which time most outbreaks have
@@ -423,8 +423,8 @@ closed_border = ModelSpec(process; attributes = region!,
 
 open_runs = simulate(open_border, 500; max_cases = 500, rng = StableRNG(1))
 closed_runs = simulate(closed_border, 500; max_cases = 500, rng = StableRNG(1))
-(open = containment_probability(open_runs),
- closed = containment_probability(closed_runs))
+(open = containment_probability(open_runs).proportion,
+ closed = containment_probability(closed_runs).proportion)
 ```
 
 With R = 1.6 and the border open, a sizeable share of outbreaks grow past 500

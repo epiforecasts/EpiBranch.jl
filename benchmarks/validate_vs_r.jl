@@ -95,7 +95,7 @@ q_analytical = extinction_probability(1.5, 0.5)
 model = BranchingProcess(NegBin(1.5, 0.5))
 rng = StableRNG(42)
 results = simulate(model, 2000; max_cases = 5000, rng = rng)
-q_simulated = containment_probability(results)
+q_simulated = containment_probability(results).proportion
 println("   Analytical: $(round(q_analytical, digits = 4))")
 println("   Simulated:  $(round(q_simulated, digits = 4))")
 @test abs(q_analytical - q_simulated) < 0.05
@@ -109,7 +109,7 @@ println("7. Population control: R reduced from 1.2 to 0.9")
 model_controlled = BranchingProcess(NegBin(0.9, 0.5))
 rng = StableRNG(42)
 results = simulate(model_controlled, 200; max_cases = 99, rng = rng)
-cp = containment_probability(results)
+cp = containment_probability(results).proportion
 println("   Containment probability: $(round(cp, digits = 3))")
 # With R=0.9 (subcritical), most chains should die out
 @test cp > 0.5

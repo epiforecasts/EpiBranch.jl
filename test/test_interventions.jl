@@ -1235,7 +1235,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             200; max_cases = 200, rng = rng2
         )
 
-        @test containment_probability(results_fast) >= containment_probability(results_slow)
+        @test containment_probability(results_fast).proportion >= containment_probability(results_slow).proportion
     end
 
     @testset "Intervention initialises state on individuals" begin
@@ -1314,8 +1314,8 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                 100; max_cases = 200, rng = rng2
             )
 
-            @test containment_probability(results_vacc) >=
-                containment_probability(results_no_vacc)
+            @test containment_probability(results_vacc).proportion >=
+                containment_probability(results_no_vacc).proportion
         end
 
         @testset "All-or-nothing mode" begin
@@ -1371,8 +1371,8 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             )
 
             # Instant immunity should contain at least as well as delayed
-            @test containment_probability(results_instant) >=
-                containment_probability(results_delayed) - 0.05
+            @test containment_probability(results_instant).proportion >=
+                containment_probability(results_delayed).proportion - 0.05
         end
 
         @testset "Waning immunity" begin
@@ -2502,8 +2502,8 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                     400; max_cases = 200, rng = StableRNG(42)
                 )
 
-                @test containment_probability(pre) == containment_probability(base)
-                @test containment_probability(post) > containment_probability(base)
+                @test containment_probability(pre).proportion == containment_probability(base).proportion
+                @test containment_probability(post).proportion > containment_probability(base).proportion
             end
 
             @testset "Aborting protects less than blocking all later transmission" begin
@@ -2517,7 +2517,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                             scen([iso, ct, rv]), 200;
                             max_cases = 200, rng = StableRNG(seed)
                         )
-                    )
+                    ).proportion
                         for seed in 1:5
                 )
                 onward = containment(
@@ -3089,8 +3089,8 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                 100; max_cases = 200, rng = rng2
             )
 
-            @test containment_probability(results_always) >=
-                containment_probability(results_late)
+            @test containment_probability(results_always).proportion >=
+                containment_probability(results_late).proportion
 
             # Fields should still be initialised on all individuals
             state = simulate(
@@ -3128,8 +3128,8 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                 100; max_cases = 200, rng = rng2
             )
 
-            @test containment_probability(results_always) >=
-                containment_probability(results_scheduled)
+            @test containment_probability(results_always).proportion >=
+                containment_probability(results_scheduled).proportion
         end
 
         @testset "Infections and ReportedCases triggers" begin

@@ -96,7 +96,7 @@ model = ModelSpec(BranchingProcess(NegBin(2.5, 0.16), LogNormal(1.6, 0.5));
 rng = StableRNG(42)  # a fixed random seed, like set.seed() in R
 results = simulate(model, 500; max_cases = 5000, rng = rng)
 
-containment_probability(results)
+containment_probability(results).proportion
 ```
 
 This simulates 500 outbreaks, each starting from one index case and stopped once

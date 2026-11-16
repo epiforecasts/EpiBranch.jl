@@ -330,7 +330,7 @@ using StableRNGs
 zero_inflated = MixtureModel([Dirac(0), NegativeBinomial(0.5, 0.5 / (0.5 + 3.0))], [0.4, 0.6])
 mixture_runs = simulate(BranchingProcess(zero_inflated, Exponential(5.0)), 200;
     max_cases = 200, rng = StableRNG(1))
-(mean_R = mean(zero_inflated), contained = containment_probability(mixture_runs))
+(mean_R = mean(zero_inflated), contained = containment_probability(mixture_runs).proportion)
 ```
 
 The mean R is 0.6 × 3 = 1.8. A mixture like this works for simulation, but has
