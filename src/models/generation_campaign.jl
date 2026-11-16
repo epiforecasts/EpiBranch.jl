@@ -97,7 +97,19 @@ function _generation_campaigns(spec::ModelSpec, generation_length, finite_popula
                 "interventions $names to act on"
         )
     )
-    return [_campaign(iv, (0.0, Inf), nothing) for iv in ivs]
+    population = EpiBranch.population(process(spec))
+    return [_by_type(_campaign(iv, (0.0, Inf), nothing), population) for iv in ivs]
+end
+
+# A budget per group becomes one budget for each type, in the order of the
+# types, checked against the population's groups. A budget shared by the types
+# stays as it is.
+_by_type(c::_Campaign, population) = _by_type(c, c.budget.budget_per_period, population)
+_by_type(c::_Campaign, ::Any, population) = c
+function _by_type(c::_Campaign, pg::PerGroup, population)
+    _group_budgets(pg, population)
+    budgets = [_for_resource(c.budget, name) for name in _group_names(population)]
+    return _Campaign(c.efficacy, c.window, budgets)
 end
 
 # The doses a campaign gives to each type between `t0` and `t1`. With
@@ -106,12 +118,11 @@ end
 # are the cumulative budget of the periods begun by then, none before the
 # window opens. Without it, each period's own budget is given in the period.
 # Only whole doses are given.
-function _interval_doses(c::_Campaign, t0::Real, t1::Real)
+function _interval_doses(c::_Campaign, t0::Real, t1::Real, cc = c.budget)
     s, e = c.window
     a = max(t0, s)
     b = min(t1, e)
     b > a || return 0
-    cc = c.budget
     if cc.carry_over || isinf(cc.period)
         before = a <= s ? 0.0 : _doses_by(cc, a)
         return max(0, floor(Int, _doses_by(cc, b)) - floor(Int, before))
@@ -137,10 +148,16 @@ function _doses_by(cc::CapacityConstrained, t)
     )
 end
 
-# The doses of `[t0, t1)` given to each type. The budget is a pool of doses
+# The doses of `[t0, t1)` given to each type. A shared budget is a pool of doses
 # for everyone: each dose goes to a type in proportion to its population, as it
-# would to a person picked at random.
+# would to a person picked at random. A budget per group gives each type its own.
 function _doses_by_type(rng::AbstractRNG, c::_Campaign, t0, t1, sizes)
+    return _doses_by_type(rng, c, c.budget, t0, t1, sizes)
+end
+function _doses_by_type(rng::AbstractRNG, c::_Campaign, budgets::AbstractVector, t0, t1, sizes)
+    return [_interval_doses(c, t0, t1, b) for b in budgets]
+end
+function _doses_by_type(rng::AbstractRNG, c::_Campaign, ::CapacityConstrained, t0, t1, sizes)
     doses = _interval_doses(c, t0, t1)
     doses == 0 && return zeros(Int, length(sizes))
     length(sizes) == 1 && return [doses]
