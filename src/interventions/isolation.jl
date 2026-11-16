@@ -9,8 +9,9 @@
     IsolationEligibility
 
 Rule for which cases can draw a test result: [`SymptomaticOnly`](@ref) (the
-default) or [`AllCases`](@ref). Isolation is timed from symptom onset, so under
-either rule a case with no onset is never isolated. Whether an eligible case is
+default) or [`AllCases`](@ref). Under the default [`AfterSymptomOnset`](@ref)
+trigger isolation is timed from symptom onset, so a case with no onset is never
+isolated; [`AfterPositiveTest`](@ref) has no such limit. Whether an eligible case is
 isolated also depends on the `test_sensitivity` of the intervention.
 
 To write a new rule, define a subtype and a method of
@@ -57,10 +58,10 @@ is_eligible_for_isolation(::SymptomaticOnly, ind, state) = !is_asymptomatic(ind)
 
 """Every case is eligible to draw a test result, including asymptomatic ones.
 
-Isolation is timed from symptom onset, so a case with no onset is never
-isolated. `AllCases` widens who draws `:test_positive`, and isolation itself
-follows [`SymptomaticOnly`](@ref). Mass testing of asymptomatic cases needs a
-custom rule and an isolation time that does not depend on onset."""
+`AllCases` widens who draws `:test_positive`. Under the default
+[`AfterSymptomOnset`](@ref) trigger isolation is timed from symptom onset, so a
+case with no onset is still not isolated. To isolate screened cases without
+symptoms, pair it with [`AfterPositiveTest`](@ref)."""
 struct AllCases <: IsolationEligibility end
 
 # Fields an eligibility rule reads beyond the onset time every isolation needs.
@@ -157,8 +158,10 @@ known cases are quarantined through [`ContactTracing`](@ref).
   positive result comes back, with or without symptoms. `AfterPositiveTest(name = :pcr)`
   follows the [`Testing`](@ref) step called `:pcr`.
 - `eligibility`: who can be isolated, [`SymptomaticOnly`](@ref) (default) or
-  [`AllCases`](@ref), which lets asymptomatic cases draw a test result but
-  does not isolate them, because isolation is timed from symptom onset.
+  [`AllCases`](@ref), which lets asymptomatic cases draw a test result. With the
+  default [`AfterSymptomOnset`](@ref) trigger they are still not isolated,
+  because isolation is timed from symptom onset; use [`AfterPositiveTest`](@ref)
+  to isolate them.
 - `test_sensitivity`: probability that an eligible case is detected and
   isolated (default 1). A number, a distribution or a function
   `(rng, ind) -> ...`, drawn once per case. To isolate on a test result, use
@@ -192,7 +195,7 @@ spec = ModelSpec(model; interventions = [iso], attributes = clinical_presentatio
 state = simulate(spec; max_cases = 500)
 
 # Leaky isolation lasting 14 days; AllCases lets every case draw a test result,
-# but only cases with an onset are isolated
+# but with the default trigger only cases with an onset are isolated
 Isolation(
     onset_to_isolation_delay = 1.0, duration = 14.0,
     eligibility = AllCases(), post_isolation_transmission = 0.25,
@@ -365,7 +368,7 @@ function resolve_individual!(iso::Isolation, individual, state)
     end
 
     # Three isolation pathways, each independent:
-    #   - test_isolation_time:  onset + delay, occurs iff test_positive
+    #   - test_isolation_time:  trigger time + delay, occurs iff test_positive
     #   - _traced_isolation_time: set by ContactTracing's FlagOnly action
     #     for traced contacts, occurs iff contact was traced and has an onset
     # Isolation occurs at the earlier of any active pathway. A
