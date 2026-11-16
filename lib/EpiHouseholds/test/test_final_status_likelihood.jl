@@ -84,6 +84,28 @@
         end
     end
 
+    @testset "random window: one infector's contacts share its window" begin
+        α, T, β, θ = 0.15, 4.0, 0.3, 5.0
+        process = HouseholdProcess(
+            [3], Exponential(1 / β); external_hazard = α, obs_end = T
+        )
+        π_esc = exp(-α * T)
+        # Only person 1 infected: they escape both household-mates' contacts
+        # over one shared window, E[exp(-2βW)] = (1/θ) / (1/θ + 2β) for W ~
+        # Exponential(θ), not the square of the single-contact escape.
+        shared = (1 / θ) / (1 / θ + 2β)
+        expected = log((1 - π_esc) * π_esc^2 * shared)
+        pattern = HouseholdFinalStatuses([true, false, false])
+        @test loglikelihood(pattern, process; window = Exponential(θ)) ≈ expected
+        # the quadrature route (a Gamma with shape 1 is the same law)
+        @test loglikelihood(pattern, process; window = Gamma(1.0, θ)) ≈ expected rtol = 1.0e-8
+        total = sum(
+            exp(loglikelihood(HouseholdFinalStatuses(collect(p)), process; window = Gamma(2.0, 2.5)))
+                for p in Iterators.product(ntuple(_ -> (false, true), 3)...)
+        )
+        @test total ≈ 1.0
+    end
+
     @testset "susceptibility and infectiousness shift the probability of spread" begin
         α, T, β, L = 0.1, 4.0, 0.5, 2.0
         process = HouseholdProcess(
