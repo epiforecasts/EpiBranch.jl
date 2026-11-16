@@ -991,6 +991,7 @@ end
 
     @testset "resource_key splits the budget per group" begin
         struct _GroupedAppointment <: EpiBranch.AbstractIntervention end
+        EpiBranch.discovers_actions(::_GroupedAppointment) = true
         function EpiBranch.intervention_actions(::_GroupedAppointment, state, candidates)
             return [
                 EpiBranch.InterventionAction(

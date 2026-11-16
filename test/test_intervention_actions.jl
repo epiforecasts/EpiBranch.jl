@@ -1,6 +1,7 @@
 struct AppointmentAction <: EpiBranch.AbstractIntervention end
 EpiBranch.capacity_key(::AppointmentAction) = :attended
 EpiBranch.capacity_time_key(::AppointmentAction) = :appointment_time
+EpiBranch.discovers_actions(::AppointmentAction) = true
 function EpiBranch.intervention_actions(iv::AppointmentAction, state, candidates)
     return [
         EpiBranch.InterventionAction(
