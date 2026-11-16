@@ -236,7 +236,7 @@ exact distribution, which is not Poisson:
 Take R\* from either, and the extinction probability from
 [`household_offspring`](@ref).
 
-### When households differ in who lives in them
+### Households that differ in composition
 
 If transmission differs between people, two households of the same size need
 not behave alike. The contact-interval distribution can then be a function of
@@ -495,7 +495,7 @@ The estimate is close to the 4 days the outbreak was simulated with.
 The contact-interval distribution can also depend on who infects whom, for
 example adults transmitting faster than children, through a function
 `(infector, susceptible) -> Distribution` of the two people's numbers, as in
-[the example above](#When-households-differ-in-who-lives-in-them). The same
+[the example above](#Households-that-differ-in-composition). The same
 function works for simulating and for fitting, and fitting a simulated
 outbreak recovers each of its parameters.
 [Covariates and time-varying transmission](@ref) covers contact intervals

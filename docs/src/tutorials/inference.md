@@ -571,7 +571,7 @@ over many calls should match a reference derivative.
 !!! note
     StochasticAD.jl is not installed with EpiBranch; add it with
     `using Pkg; Pkg.add("StochasticAD")`. It is an experimental package,
-    checked so far only against the parts of the engine below, not the whole
+    checked so far only against the parts of the simulation below, not the whole
     of `simulate`.
 
 The offspring distributions already compose with it, with no change needed in
@@ -593,9 +593,9 @@ negbin_grad = mean(
 println("d(mean offspring)/dR ≈ $(round(negbin_grad, digits = 2)) (exact: 1.0)")
 ```
 
-The engine's competing-risk draw — which decides whether host
+The competing-risk draw, which decides whether host
 susceptibility, infector infectiousness or an intervention's leaky effect
-blocks a transmission — draws from `Bernoulli(prob)` rather than comparing a
+blocks a transmission, draws from `Bernoulli(prob)` rather than comparing a
 raw uniform against `prob`, so `prob` is already free to be a
 `StochasticTriple`. That alone is not enough: the decision that follows the
 draw is itself a step function of `prob`, and StochasticAD refuses to branch

@@ -15,7 +15,7 @@ the transmission tree, infection time, susceptibility and infectiousness), and
 a dictionary, `ind.state`, holding everything else. Interventions, population
 characteristics, clinical transitions and observation models each keep a few
 named values (keys) there. The reasons for this split are in [Notes for
-contributors](@ref "Why individual state is an open dictionary").
+contributors](@ref "Individual state as an open dictionary").
 
 Read a value with a one-line accessor that supplies a default when the value is
 missing, such as `is_traced(ind) = get(ind.state, :traced, false)::Bool`.
@@ -204,8 +204,7 @@ does record a late detection, such as a death found at burial.
 ### Tracing keys
 
 Both kinds of model write the tracing keys through `trace_contacts!`, once per
-case, so the keys and their meanings are the same either way; see [Which hooks
-run on which model](@ref).
+case. The keys and their meanings are the same for both; see [Hooks by model](@ref).
 
 `:tracers` lists every case whose trace reached a contact, in the order they
 did. `:traced_by` is the one of them that reached it first, by the earliest
@@ -277,7 +276,7 @@ population (network, household, homogeneous, mixing, and one written against
 ## Continuous-time models: further details
 
 These points concern the network, household, homogeneous and mixing models, which
-simulate a fixed population in continuous time (see [Which hooks run on which
+simulate a fixed population in continuous time (see [Hooks by
 model](@ref)).
 
 - **Susceptibility and infectiousness.** These are fixed properties of the two

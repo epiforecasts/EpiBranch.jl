@@ -197,7 +197,7 @@ ContactTracing(
 )
 ```
 
-### What triggers contact tracing
+### Default tracing trigger
 
 By default, a contact is traced once their infector has developed symptoms
 and been isolated, and the delay counts from the isolation. Real
@@ -245,7 +245,7 @@ nothing # hide
 ```
 
 To write a trigger of your own, such as one that depends on the infector's
-age, see [Who triggers contact tracing](@ref).
+age, see [Eligibility for contact tracing](@ref).
 
 ## Asymptomatic cases and test sensitivity
 
