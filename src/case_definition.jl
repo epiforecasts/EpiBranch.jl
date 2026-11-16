@@ -119,8 +119,8 @@ The three events are named as in [`event_time`](@ref). A person's test counts
 as positive when the `<test>_result` that [`Testing`](@ref) records is true, and
 its result is available at the time `test` names: by default `:test`, the
 sampling time `Testing` records as `:test_time` next to `:test_result`. A
-`Testing(name = :pcr)` step records `:pcr_result` and `:pcr_time`, so
-`test = :pcr` reads those. A model with no `Testing` step
+`test = :pcr` reads the `:pcr_result` and `:pcr_time` that a
+`Testing(name = :pcr)` step records. A model with no `Testing` step
 has no confirmed cases under this definition. The contact is
 `:trace`, the time [`ContactTracing`](@ref) reached the person. The definition is evaluated as events happen. A case is `suspected` at onset,
 becomes `probable` if tracing reaches them later, and becomes `confirmed` at a
