@@ -81,20 +81,27 @@ function _isolation_duration(D)
     )
 end
 
-# The `ClinicalPresentation` among a model's `attributes`, or `nothing` if
-# there is none.
-_clinical_presentation(::NoAttributes) = nothing
-_clinical_presentation(c::ClinicalPresentation) = c
-function _clinical_presentation(attrs::Union{Tuple, AbstractVector})
-    i = findfirst(a -> a isa ClinicalPresentation, attrs)
-    return i === nothing ? nothing : attrs[i]
+# The `onset_law` of the single attribute in `attributes` that defines one,
+# or `nothing` if none does.
+_onset_law(attrs::Union{Tuple, AbstractVector}) = _onset_law_of(attrs)
+_onset_law(::NoAttributes) = nothing
+_onset_law(attr) = onset_law(attr)
+function _onset_law_of(attrs)
+    laws = filter(!isnothing, map(onset_law, attrs))
+    isempty(laws) && return nothing
+    length(laws) == 1 || throw(
+        ArgumentError(
+            "Isolation's analytic effect needs exactly one attribute that defines " *
+                "`onset_law`; this model has $(length(laws))"
+        )
+    )
+    return only(laws)
 end
-_clinical_presentation(::Any) = nothing
 
-# The incubation period a closed form reads directly. A function of the
-# individual has no distribution to integrate over, so it is refused here with
-# an error that names the cause.
-function _closed_form_incubation(cp::ClinicalPresentation, what)
+# The incubation period that a closed form reads directly. A function of the
+# individual has no distribution to integrate over, and the error here names
+# that cause.
+function _closed_form_incubation(cp, what)
     inc = cp.incubation_period
     inc isa Union{Real, Distribution} && return inc
     throw(
@@ -182,7 +189,7 @@ default throws, pointing at simulation instead.
 function analytic_offspring_effect(
         iso::Isolation, offspring::DiscreteUnivariateDistribution, spec
     )
-    cp = _clinical_presentation(attributes(spec))
+    cp = _onset_law(attributes(spec))
     cp === nothing && throw(
         ArgumentError(
             "Isolation's analytic effect needs the incubation period, from " *

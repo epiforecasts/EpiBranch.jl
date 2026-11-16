@@ -1477,7 +1477,7 @@ with an `infectiousness` that reads `ind.state[:asymptomatic]`.
 Use `transmission_traits` for traits known when the case is created (age, sex,
 whether the case is asymptomatic), because it draws its factor then. A change
 during the infection, such as tracing or quarantine, needs an intervention.
-Combining the two is tracked in #972.
+The tutorial "Making cases more or less infectious" compares the options.
 
 # Examples
 
@@ -1558,6 +1558,10 @@ end
 struct ClinicalPresentation{D, P}
     incubation_period::D
     prob_asymptomatic::P
+end
+
+function onset_law(c::ClinicalPresentation)
+    return (incubation_period = c.incubation_period, prob_asymptomatic = c.prob_asymptomatic)
 end
 
 function (clinical::ClinicalPresentation)(rng, ind)
@@ -1700,6 +1704,15 @@ Give each person a susceptibility and an infectiousness. Pass the result as
 - `susceptibility`: probability that an exposed person is infected.
 - `infectiousness`: probability that each contact the person makes once
   infected leads to infection, so 0.5 halves the number they infect.
+
+The factor is drawn once, when the case is created, and cannot depend on
+anything that happens later. To reduce transmission from the time of an event
+such as tracing or isolation, use an intervention (its
+[`transmission_risks`](@ref EpiBranch.transmission_risks) and
+[`competing_risk`](@ref EpiBranch.competing_risk)); to limit transmission to
+certain disease states, use the `from` and `until` of an
+[`Infectiousness`](@ref) window. The tutorial "Making cases more or less
+infectious" compares the options.
 
 Both default to 1 (no change). In the continuous-time models
 ([`HomogeneousProcess`](@ref), [`MixingProcess`](@ref), network and household
