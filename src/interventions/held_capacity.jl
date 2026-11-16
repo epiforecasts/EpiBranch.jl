@@ -120,7 +120,8 @@ function _admit_actions!(hc::HeldCapacity, state, actions, admitter = hc)
         a -> !_capacity_used(get(a.individual.state, key, nothing)) &&
             !haskey(stays, a.individual.id), actions
     )
-    _admit_actions!(hc.intervention, state, already_used, admitter)
+    _repeat_use_passes(hc.intervention) &&
+        _admit_actions!(hc.intervention, state, already_used, admitter)
     isempty(candidates) && return nothing
     group_idxs, group_keys = _resource_groups(hc, state, [a.individual for a in candidates])
     for (idxs, resource) in zip(group_idxs, group_keys)
