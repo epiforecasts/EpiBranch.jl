@@ -435,10 +435,9 @@ function has_effect(iv::AbstractIntervention)
 end
 
 # The traits `time_aware`, `resolves_under_capacity`, `discovers_actions` and
-# `traces_contacts` are answered from the methods a type defines. That reads
-# the method tables, so it is done once per type when a `ModelSpec` is built
-# (`_store_traits!`) and kept here; a run reads the stored answer and never
-# the method tables. A trait method written for a type is more specific than
+# `traces_contacts` are answered from the methods a type defines. Reading the
+# method tables is done once per type, when a `ModelSpec` is built
+# (`_store_traits!`). The answer is kept here, and a run reads it from here. A trait method written for a type is more specific than
 # the defaults below and so overrides the inferred answer.
 struct _InferredTraits
     time_aware::Bool
@@ -470,8 +469,8 @@ end
 
 # Infers the traits of `T` unless they were inferred in the current state of
 # the method tables. A method defined later, from an editor reload or a hook
-# rewritten in the REPL, advances the world counter and so arms the inference
-# again at the next `ModelSpec`.
+# rewritten in the REPL, advances the world counter. The next `ModelSpec` then
+# infers again.
 function _store_traits!(T::Type)
     t = get(_STORED_TRAITS[], T, nothing)
     t !== nothing && t.world == Base.get_world_counter() && return t

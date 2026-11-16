@@ -2,8 +2,8 @@
 # methods the type defines, when a `ModelSpec` is built; a method for the
 # trait itself overrides the inferred answer.
 
-# Counts the scans of the method tables. A specific method, so that it runs
-# before the one in the package and then hands the call on.
+# Counts the scans of the method tables. It is more specific than the method
+# in the package, so it runs first and then hands the call on.
 const _SCANS = Ref(0)
 const _COUNT_SCANS = Ref(false)
 function EpiBranch._has_own_method(f, T::Type, base::Type, n::Nothing)
