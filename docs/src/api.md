@@ -67,6 +67,9 @@ ModelSpec
 single_type_offspring
 EpiBranch.has_single_type_law
 EpiBranch.offspring_law_unchanged
+EpiBranch.reporting_probability
+EpiBranch.reporting_from
+EpiBranch.onset_law
 EpiBranch.scale_mean
 EpiBranch.sum_offspring
 ```
@@ -175,7 +178,7 @@ Testing
 AbstractAssay
 Assay
 within_host
-EpiBranch.trajectory_load
+EpiBranch.trajectory_value
 EpiBranch.measure
 exclusive_probabilities
 is_terminal

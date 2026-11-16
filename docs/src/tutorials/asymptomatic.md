@@ -131,7 +131,7 @@ Asymptomatic cases now transmit earlier, centred on their shorter incubation per
 
 ## Onset and infectiousness both follow a trajectory
 
-A within-host trajectory is a function of time since infection that the user draws once per case and stores on the individual. [`within_host`](@ref) is the builder that stores it, under `:trajectory`, and `EpiBranch.trajectory_load(ind, t)` reads the load at `t` days after infection. Everything linked to it is derived from that one draw. Here the load rises to a peak and clears. A case develops symptoms if its peak passes a threshold, at the time the load crosses it, and a case whose peak stays below is asymptomatic. The same load, scaled, is the rate of transmission of the case through a [`HazardKernel`](@ref). Symptoms depend on the same draw. The builder therefore draws the trajectory itself and stores it under `:trajectory`. It also sets `:asymptomatic` and `:incubation_period` (the time onset happens or would have happened), from which the onset time follows:
+A within-host trajectory is a function of time since infection that the user draws once per case and stores on the individual. [`within_host`](@ref) is the builder that stores it, under `:trajectory`, and `EpiBranch.trajectory_value(ind, t)` reads the load at `t` days after infection. Everything linked to it is derived from that one draw. Here the load rises to a peak and clears. A case develops symptoms if its peak passes a threshold, at the time the load crosses it, and a case whose peak stays below is asymptomatic. The same load, scaled, is the rate of transmission of the case through a [`HazardKernel`](@ref). Symptoms depend on the same draw. The builder therefore draws the trajectory itself and stores it under `:trajectory`. It also sets `:asymptomatic` and `:incubation_period` (the time onset happens or would have happened), from which the onset time follows:
 
 ```@example asymptomatic
 function draw_trajectory(rng)
@@ -153,7 +153,7 @@ end
 
 from_trajectory = Infectiousness(
     Poisson(6.0);
-    kernel = ind -> HazardKernel(t -> 0.4 * EpiBranch.trajectory_load(ind, t); upper = 60.0),
+    kernel = ind -> HazardKernel(t -> 0.4 * EpiBranch.trajectory_value(ind, t); upper = 60.0),
 )
 trajectory_model = ModelSpec(BranchingProcess(from_trajectory); attributes = both_follow)
 compare(trajectory_model)
@@ -192,14 +192,14 @@ compare(onset_follows)
 | Asymptomatic cases make more contacts | the offspring of the `Infectiousness`, `(rng, ind) -> n` |
 | Asymptomatic infection is shorter | the `delay` of a `Transition`, `(rng, ind) -> delay`, with `until` on the window |
 | Onset linked to infectiousness, no trajectory | `incubation_linked_generation_time`, or any `ind -> Distribution` as the generation time; `incubation_period` of `clinical_presentation` can be `(rng, ind) -> value` to give asymptomatic cases their own |
-| Trajectory drives onset, infectiousness or both | `within_host` to store the trajectory, an attribute builder that also sets `:asymptomatic` and `:incubation_period` where symptoms follow it, and a `HazardKernel` that reads it with `trajectory_load` |
+| Trajectory drives onset, infectiousness or both | `within_host` to store the trajectory, an attribute builder that also sets `:asymptomatic` and `:incubation_period` where symptoms follow it, and a `HazardKernel` that reads it with `trajectory_value` |
 
 ## Who is tested and classified
 
 Whether a case is noticed is a separate statement from whether it has symptoms. [`Isolation`](@ref) isolates symptomatic cases by default, and its eligibility decides who else is picked up. A [`Testing`](@ref) step samples the same trajectory through an [`Assay`](@ref), so a test result follows from the load that drives infectiousness. By default a test is taken a delay after onset, and an asymptomatic case has no onset, so it is not tested. Timing the sample from infection tests every case, whether or not it has symptoms. A `case_definition` on the [`ModelSpec`](@ref) then classifies each case from what has happened to it. [`ClinicalCaseDefinition`](@ref) calls a case confirmed at a positive test, and a symptomatic case with no positive test suspected:
 
 ```@example asymptomatic
-assay = Assay(ct = load -> 40.0 - 3.3 * load, detect = 0.5)
+assay = Assay(value = load -> 40.0 - 3.3 * load, detect = 0.5)
 screening = Testing(assay = assay, from = :infection, delay = Uniform(3.0, 8.0))
 classified = ModelSpec(
     BranchingProcess(from_trajectory);
@@ -211,7 +211,7 @@ states = simulate(classified, 100; max_generations = 3, max_cases = 2000, rng = 
 cases = [ind for state in states for ind in state.individuals if EpiBranch.is_infected(ind)]
 asymptomatic_cases = filter(is_asymptomatic, cases)
 (
-    asymptomatic_tested = count(ind -> ind.state[:tested], asymptomatic_cases),
+    asymptomatic_tested = count(ind -> ind.state[:test_tested], asymptomatic_cases),
     asymptomatic_confirmed = count(
         ind -> isequal(get(ind.state, :case_classification, missing), :confirmed),
         asymptomatic_cases,

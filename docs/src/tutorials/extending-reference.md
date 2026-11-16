@@ -97,11 +97,11 @@ underscore are internal.
 | `:reporting_time` | `Float64` | `Inf` | `Reporting` transition | `resolve_individual!` / after the simulation; reset to `Inf` by `censor_after_outcome!` if it falls after `:outcome_time` |
 | `:admitted` | `Bool` | `false` | `Hospitalisation` transition | `resolve_individual!`; reset to `false` by `censor_after_outcome!` if `:admission_time` falls after `:outcome_time` |
 | `:admission_time` | `Float64` | `Inf` | `Hospitalisation` transition | `resolve_individual!`; reset to `Inf` by `censor_after_outcome!` if it falls after `:outcome_time` |
-| `:trajectory` | `Function` | — | `within_host` attribute builder | Read through `trajectory_load`; a function of the days since infection returning the pathogen load |
-| `:tested` | `Bool` | `false` | `Testing` transition | `resolve_individual!`; reset to `false` by `censor_after_outcome!` if `:test_time` falls after `:outcome_time` |
+| `:trajectory` | `Function` | — | `within_host` attribute builder | Read through `trajectory_value`; a function of the days since infection returning the measured quantity (a load, a titre) |
+| `:test_tested` | `Bool` | `false` | `Testing` transition | `resolve_individual!`; reset to `false` by `censor_after_outcome!` if `:test_time` falls after `:outcome_time` |
 | `:test_time` | `Float64` | `Inf` | `Testing` transition | `resolve_individual!`; reset to `Inf` by `censor_after_outcome!` if it falls after `:outcome_time` |
-| `:test_ct` | `Float64` | `NaN` | `Testing` transition | `resolve_individual!` |
-| `:test_result` | `Bool` | `false` | `Testing` transition | `resolve_individual!` |
+| `:test_value` | `Float64` | `NaN` | `Testing` transition | `resolve_individual!` |
+| `:test_result` | `Bool` | `false` | `Testing` transition | `resolve_individual!`; the four `:test_*` keys are for the default `name = :test`; a test called `:pcr` writes `:pcr_tested`, `:pcr_time`, `:pcr_value` and `:pcr_result` instead |
 | `:death_candidate_time` | `Float64` | `Inf` | `Death` transition | `resolve_individual!` |
 | `:recovery_candidate_time` | `Float64` | `Inf` | `Recovery` transition | `resolve_individual!` |
 | `:outcome` | `Symbol` | — | Any terminal transition (`Death`, `Recovery`, `Transition(...; terminal = true)`, your own) | `resolve_individual!` (terminal) |
@@ -1035,6 +1035,8 @@ before.
 | A capacity limit per group | `resource_key(iv, individual, state)` for `iv` | When actions are admitted, once per case |
 | An exact effect on the offspring distribution | `analytic_offspring_effect` for an intervention | Closed-form results on a `ModelSpec` |
 | A model, attribute or progression transition that leaves the single-type offspring law exactly as drawn | `EpiBranch.offspring_law_unchanged` | The chain-size and incidence likelihoods' analytical path |
+| A progression transition that reports cases with a fixed probability, and the time it reports from | `EpiBranch.reporting_probability`, `EpiBranch.reporting_from` | The chain-size and incidence closed forms, which thin by it |
+| An attribute that sets the onset time, with its incubation period and asymptomatic share | `EpiBranch.onset_law` | The analytic effect of `Isolation` and the closed forms for reporting timed from onset |
 | A stopping rule | A type `<: AbstractStoppingRule` and `should_stop` | Each step |
 | A case definition | A type `<: AbstractCaseDefinition` and `EpiBranch.classify_case`, or a function `history -> label`; `relevant_events` to name the events it reads | After the run, at each time an event was recorded on a case |
 | A contact recorder | A type `<: ContactRecorder` and `records_contacts` | Continuous-time models, each blocked proposal |

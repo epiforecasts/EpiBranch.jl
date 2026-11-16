@@ -1,21 +1,22 @@
 """
     within_host(trajectory; key = :trajectory)
 
-An attribute builder that gives each case its within-host trajectory: the
-pathogen load over the days since that case was infected. `trajectory` is a
+An attribute builder that gives each case its within-host trajectory: a
+measured quantity over the days since that case was infected, such as pathogen
+load, an antibody titre or infectiousness measured by culture. `trajectory` is a
 function of the random number generator and the individual,
-`(rng, ind) -> load`, returning a function `load(t)` of the days `t` since
-infection. It is called once per case, so the load can differ between cases
+`(rng, ind) -> value`, returning a function `value(t)` of the days `t` since
+infection. It is called once per case, so the value can differ between cases
 and depend on anything already recorded on them, such as age.
 
-The package includes no pathogen. The caller supplies the trajectory, whether
-an acute rise and clearance or a chronic plateau, and everything that depends
-on load reads it from there. [`Testing`](@ref) samples
+The package includes no pathogen: the caller supplies the trajectory, whether
+an acute rise and clearance or a chronic plateau. Define it
+once and let everything that depends on it read it. [`Testing`](@ref) samples
 it at the time a test is taken, and a [`HazardKernel`](@ref) can turn it into
-infectiousness through [`trajectory_load`](@ref EpiBranch.trajectory_load).
+infectiousness through [`trajectory_value`](@ref EpiBranch.trajectory_value).
 The curve is stored in `ind.state[:trajectory]` (or under `key`).
 
-The unit of load is the caller's own (copies per millilitre, log10 copies, a
+The unit is the caller's own (copies per millilitre, log10 copies, a titre, a
 relative scale); the assay in [`Testing`](@ref) reads it on the same scale.
 
 # Examples
@@ -38,13 +39,13 @@ function within_host(trajectory; key::Symbol = :trajectory)
 end
 
 """
-    trajectory_load(ind, t; key = :trajectory) -> Float64
+    trajectory_value(ind, t; key = :trajectory) -> Float64
 
-The pathogen load of `ind` at `t` days after its infection, read from the
-trajectory [`within_host`](@ref) stored on it. Use it inside a kernel,
-a link or an assay function that follows the case's own load.
+The value of the trajectory of `ind` at `t` days after its infection, read from
+the trajectory [`within_host`](@ref) stored on it. Use it inside a kernel,
+a link or an assay function that follows the case's own trajectory.
 """
-function trajectory_load(ind::Individual, t::Real; key::Symbol = :trajectory)
+function trajectory_value(ind::Individual, t::Real; key::Symbol = :trajectory)
     curve = get(ind.state, key, nothing)
     curve === nothing && throw(
         ArgumentError(
@@ -56,33 +57,33 @@ function trajectory_load(ind::Individual, t::Real; key::Symbol = :trajectory)
 end
 
 """
-Parent type of an assay: how a sample's pathogen load becomes a test result.
+Parent type of an assay: how a sample's measured value becomes a test result.
 [`Assay`](@ref) is the general implementation. Define `measure` for a new type
-to read load differently.
+to read the value differently.
 """
 abstract type AbstractAssay end
 
 """
-    measure(assay::AbstractAssay, rng, load) -> (ct, positive)
+    measure(assay::AbstractAssay, rng, value) -> (reading, positive)
 
-The Ct value and the result of testing a sample of pathogen `load`:
-`ct` a number (`NaN` when the sample gives none) and `positive` a `Bool`.
+The reading and the result of testing a sample at trajectory value `value`:
+`reading` a number (`NaN` when the sample gives none) and `positive` a `Bool`.
 Draws from `rng` only if the assay is stochastic.
 """
 function measure end
 
 """
-    Assay(; ct, detect)
+    Assay(; value, detect)
 
-An assay that maps the load in a sample to a Ct value and to a result.
+An assay that maps the value in a sample to a reading and to a result.
 
-- `ct`: a function `load -> Ct value`, on the scale of the assay (for example a
-  log-linear calibration from load to Ct). Return `NaN` for a load too low to
-  give a Ct value.
+- `value`: a function `value -> reading`, on the scale of the assay (for example
+  a log-linear calibration from load to Ct, or a titre dilution). Return `NaN`
+  for a value too low to give a reading.
 - `detect`: when the sample is positive. A number is a limit of detection: the
-  result is positive when the load reaches it. A function `(rng, load) -> Bool`
-  gives a result that can be probabilistic, for example a detection probability
-  that rises with load.
+  result is positive when the value reaches it. A function
+  `(rng, value) -> Bool` gives a result that can be probabilistic, for example a
+  detection probability that rises with the value.
 
 Neither has a default, as both depend on the assay and the pathogen tested for.
 
@@ -90,36 +91,39 @@ Neither has a default, as both depend on the assay and the pathogen tested for.
 
 ```julia
 # load in log10 copies per mL, Ct falling 3.3 per log10, detected from 2 log10
-Assay(ct = load -> 40.0 - 3.3 * load, detect = 2.0)
+Assay(value = load -> 40.0 - 3.3 * load, detect = 2.0)
 ```
 """
-struct Assay{C, D} <: AbstractAssay
-    ct::C
+struct Assay{V, D} <: AbstractAssay
+    value::V
     detect::D
 end
-Assay(; ct, detect) = Assay(ct, detect)
+Assay(; value, detect) = Assay(value, detect)
 
-_detected(limit::Real, rng, load) = load >= limit
-_detected(rule, rng, load) = rule(rng, load)::Bool
+_detected(limit::Real, rng, value) = value >= limit
+_detected(rule, rng, value) = rule(rng, value)::Bool
 
-function measure(a::Assay, rng, load)
-    return (float(a.ct(load)), _detected(a.detect, rng, load))
+function measure(a::Assay, rng, value)
+    return (float(a.value(value)), _detected(a.detect, rng, value))
 end
 
 """
-    Testing(; assay, delay, from = :onset_time, probability = 1.0, key = :trajectory)
+    Testing(; assay, delay, from = :onset_time, probability = 1.0,
+            name = :test, key = :trajectory)
 
 A test taken from a case: a sample is drawn `delay` days after `from`, and the
-case's pathogen load at that time, read from its within-host trajectory
-([`within_host`](@ref)), goes through `assay` to give a Ct value and a result.
-A case with a test records:
+case's trajectory at that time, read from its within-host trajectory
+([`within_host`](@ref)), goes through `assay` to give a reading and a result.
+A case with a test called `name` records:
 
-- `:tested` (`true`/`false`) and `:test_time` (`Inf` if not tested);
-- `:test_ct`, the Ct value (`NaN` if not tested);
-- `:test_result`, whether the test was positive.
+- `:<name>_tested` (`true`/`false`) and `:<name>_time` (`Inf` if not tested);
+- `:<name>_value`, the reading of the assay (`NaN` if not tested);
+- `:<name>_result`, whether the test was positive.
 
-These appear in [`linelist`](@ref) as `tested`, `date_test`, `test_ct` and
-`test_result`.
+With the default name these are `:test_tested`, `:test_time`, `:test_value` and
+`:test_result`. They appear in [`linelist`](@ref) as `test_tested`, `date_test`,
+`test_value` and `test_result` (`pcr_tested`, `date_pcr`, `pcr_value` and
+`pcr_result` for `name = :pcr`).
 
 - `assay`: an [`Assay`](@ref) or another [`AbstractAssay`](@ref).
 - `delay`, `from`, `probability`: as for [`Reporting`](@ref). The sampling rule
@@ -128,6 +132,9 @@ These appear in [`linelist`](@ref) as `tested`, `date_test`, `test_ct` and
   schedule, and the chance a case is sampled at all. Cases that never reached
   `from` are not tested. A test timed for after the case has died or recovered
   is reset to "not tested".
+- `name`: the name of the test. A case can have several tests, each a
+  `Testing` step with its own name (a PCR test and a serology test, say). Steps
+  with the same name write the same keys.
 - `key`: where the trajectory is stored on the case.
 
 A case is not tested for an infection it was never infected with: the sample
@@ -139,12 +146,12 @@ with a positive test.
 # Examples
 
 ```julia
-assay = Assay(ct = load -> 40.0 - 3.3 * load, detect = 2.0)
+assay = Assay(value = load -> 40.0 - 3.3 * load, detect = 2.0)
 spec = ModelSpec(
     BranchingProcess(NegBin(2.5, 0.16), LogNormal(1.6, 0.5));
     attributes = [clinical_presentation(incubation_period = LogNormal(1.6, 0.5)),
                   within_host(acute)],
-    progression = [Testing(assay = assay, delay = Gamma(2.0, 1.0))],
+    progression = [Testing(assay = assay, delay = Gamma(2.0, 1.0), name = :pcr)],
 )
 ```
 """
@@ -153,14 +160,23 @@ struct Testing{A <: AbstractAssay, D, P, F} <: AbstractClinicalTransition
     delay::D
     probability::P
     from::F
+    name::Symbol
     key::Symbol
 end
 
 function Testing(;
         assay::AbstractAssay, delay, from = :onset_time,
-        probability = 1.0, key::Symbol = :trajectory
+        probability = 1.0, name::Symbol = :test, key::Symbol = :trajectory
     )
-    return Testing(assay, delay, probability, from, key)
+    return Testing(assay, delay, probability, from, name, key)
+end
+
+# The keys a test called `name` writes.
+function _test_keys(t::Testing)
+    return (
+        tested = Symbol(t.name, :_tested), time = Symbol(t.name, :_time),
+        value = Symbol(t.name, :_value), result = Symbol(t.name, :_result),
+    )
 end
 
 # Only writes the test's own keys; never touches susceptibility or
@@ -169,36 +185,39 @@ offspring_law_unchanged(::Testing) = true
 
 required_fields(t::Testing) = _from_required(t.from)
 
-function initialise_individual!(::Testing, individual, state)
-    individual.state[:tested] = false
-    individual.state[:test_time] = Inf
-    individual.state[:test_ct] = NaN
-    individual.state[:test_result] = false
+function initialise_individual!(t::Testing, individual, state)
+    k = _test_keys(t)
+    individual.state[k.tested] = false
+    individual.state[k.time] = Inf
+    individual.state[k.value] = NaN
+    individual.state[k.result] = false
     return nothing
 end
 
 function resolve_individual!(t::Testing, individual, state)
+    k = _test_keys(t)
     anchor = _state_time(individual, t.from)
     time = transition_time(
         state.rng, individual, anchor, t.delay;
-        probability = t.probability, purpose = :tested
+        probability = t.probability, purpose = k.tested
     )
     time === nothing && return nothing
-    load = trajectory_load(individual, time - individual.infection_time; key = t.key)
-    assay_rng = stream(state.rng, individual.id, (:tested, :assay))
-    ct, positive = measure(t.assay, assay_rng, load)
-    individual.state[:tested] = true
-    individual.state[:test_time] = time
-    individual.state[:test_ct] = ct
-    individual.state[:test_result] = positive
+    value = trajectory_value(individual, time - individual.infection_time; key = t.key)
+    assay_rng = stream(state.rng, individual.id, (k.tested, :assay))
+    reading, positive = measure(t.assay, assay_rng, value)
+    individual.state[k.tested] = true
+    individual.state[k.time] = time
+    individual.state[k.value] = reading
+    individual.state[k.result] = positive
     return nothing
 end
 
 function censor_after_outcome!(t::Testing, individual)
-    _censor_event!(individual, :tested, :test_time, t.from)
-    if !individual.state[:tested]::Bool
-        individual.state[:test_ct] = NaN
-        individual.state[:test_result] = false
+    k = _test_keys(t)
+    _censor_event!(individual, k.tested, k.time, t.from)
+    if !individual.state[k.tested]::Bool
+        individual.state[k.value] = NaN
+        individual.state[k.result] = false
     end
     return nothing
 end
@@ -208,10 +227,17 @@ end
 # read from it once the progression has resolved.
 _draw_test_positive(::Testing, rng, individual) = false
 
-function _read_test_positive!(::Testing, iso, individual, state)
+function _read_test_positive!(t::Testing, iso, individual, state)
+    k = _test_keys(t)
     st = individual.state
+    haskey(st, k.tested) || throw(
+        ArgumentError(
+            "Isolation(test_sensitivity = Testing(name = :$(t.name))) needs the " *
+                "same Testing step in the model's progression; none writes :$(k.tested)."
+        )
+    )
     st[:test_positive] = is_eligible_for_isolation(iso.eligibility, individual, state) &&
-        get(st, :tested, false)::Bool &&
-        get(st, :test_result, false)::Bool
+        st[k.tested]::Bool &&
+        st[k.result]::Bool
     return nothing
 end

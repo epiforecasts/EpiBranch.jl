@@ -121,7 +121,7 @@ end
 
     @testset "trajectory drives onset and infectiousness" begin
         kernel = ind -> HazardKernel(
-            t -> 0.4 * EpiBranch.trajectory_load(ind, t); upper = 60.0
+            t -> 0.4 * EpiBranch.trajectory_value(ind, t); upper = 60.0
         )
         window = Infectiousness(Poisson(6.0); kernel)
 
@@ -143,9 +143,9 @@ end
 
     @testset "who is tested and classified follows the trajectory, not only symptoms" begin
         kernel = ind -> HazardKernel(
-            t -> 0.4 * EpiBranch.trajectory_load(ind, t); upper = 60.0
+            t -> 0.4 * EpiBranch.trajectory_value(ind, t); upper = 60.0
         )
-        assay = Assay(ct = load -> 40.0 - 3.3 * load, detect = 0.5)
+        assay = Assay(value = load -> 40.0 - 3.3 * load, detect = 0.5)
         model = ModelSpec(
             BranchingProcess(Infectiousness(Poisson(6.0); kernel));
             attributes = _both_follow,
@@ -155,7 +155,7 @@ end
         states = simulate(model, 40; max_generations = 3, max_cases = 2000, rng = StableRNG(2))
         cases = [ind for s in states for ind in s.individuals if EpiBranch.is_infected(ind)]
         asymptomatic = filter(is_asymptomatic, cases)
-        @test any(ind -> ind.state[:tested], asymptomatic)
+        @test any(ind -> ind.state[:test_tested], asymptomatic)
         @test any(ind -> isequal(get(ind.state, :case_classification, missing), :confirmed), asymptomatic)
     end
 end
