@@ -66,7 +66,7 @@ abstract type AbstractAssay end
 """
     measure(assay::AbstractAssay, rng, value) -> (reading, positive)
 
-The reading and the result of testing a sample whose trajectory has `value`:
+The reading and the result of testing a sample at trajectory value `value`:
 `reading` a number (`NaN` when the sample gives none) and `positive` a `Bool`.
 Draws from `rng` only if the assay is stochastic.
 """
@@ -133,9 +133,9 @@ With the default name these are `:test_tested`, `:test_time`, `:test_value` and
   schedule, and the chance a case is sampled at all. Cases that never reached
   `from` are not tested. A test timed for after the case has died or recovered
   is reset to "not tested".
-- `name`: what the test is called. A case can have several tests, each a
+- `name`: the name of the test. A case can have several tests, each a
   `Testing` step with its own name (a PCR test and a serology test, say). Steps
-  with the same name overwrite each other's keys.
+  with the same name write the same keys.
 - `key`: where the trajectory is stored on the case.
 
 A case is not tested for an infection it was never infected with: the sample
