@@ -658,7 +658,7 @@ EpiBranch.resolve
 
 ## Population
 
-The people a model is run over, given once and read by every model.
+The population is specified once and every model reads it.
 
 ```@docs
 Population
