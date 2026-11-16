@@ -385,8 +385,9 @@ function _warn_unmet_trigger_requirements(interventions, progression)
     return nothing
 end
 
-# An `Isolation` whose `test_sensitivity` is a `Testing` step reads the result
-# that step writes into the progression, so the progression must hold one.
+# An `Isolation` with a `Testing` step as its `test_sensitivity` reads the
+# result that step writes into the progression. The progression must contain
+# a `Testing` step.
 function _validate_testing_sensitivity(interventions, progression)
     for iv in interventions
         iv isa Isolation || continue
