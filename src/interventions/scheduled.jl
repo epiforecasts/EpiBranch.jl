@@ -121,8 +121,8 @@ struct ClockWindow
     stop::Float64
 end
 
-# A schedule changes when the wrapped intervention acts, not how, so the
-# traits are the wrapped intervention's and the hook is forwarded.
+# A schedule changes when the wrapped intervention acts, not how. The traits
+# come from the wrapped intervention and the hook is forwarded.
 time_aware(s::Scheduled) = time_aware(s.intervention)
 resolves_under_capacity(s::Scheduled) = resolves_under_capacity(s.intervention)
 discovers_actions(s::Scheduled) = discovers_actions(s.intervention)

@@ -319,13 +319,12 @@ function _first_sight(T::Type, seen::Dict{Type, UInt} = _CHECKED_INTERVENTIONS)
     end
 end
 
-# The behaviour traits and the hook each one is otherwise tempting to infer
-# from, as (trait, hooks that imply it, what declaring it says). The method
-# tables are read here and nowhere else: a type with the hook and no
-# declaration would otherwise run on the trait's fixed default, a different
-# behaviour from the one its author wrote the hook for, and with no sign of it.
-# `has_competing_risk` is left out because its default, `true`, is the safe
-# answer for a type with the hook and costs only the fallback proposals.
+# The behaviour traits, as (trait, hooks that imply it, what declaring it
+# says). The method tables are read here and nowhere else. A type with the
+# hook and no declaration would run on the fixed default of the trait, which
+# differs from the behaviour its author wrote the hook for, without any sign
+# of it. `has_competing_risk` is left out: its default, `true`, is safe for a
+# type with the hook and costs only the fallback proposals.
 const _TRAIT_HOOKS = (
     (time_aware, (intervention_time,), "it undoes what `intervention_time` names with `reset!`"),
     (resolves_under_capacity, (capacity_key, resolve_individual!), "it rations its own `resolve_individual!` effect"),
@@ -333,9 +332,9 @@ const _TRAIT_HOOKS = (
 )
 
 # Throw for a type that has the hook of a trait but no declaration of the
-# trait. A wrapper's inherited forwarding methods are not a declaration, so
-# the comparison is against `InterventionWrapper`; an action is compared
-# against `TraceAction`, whose fallbacks are the same.
+# trait. The inherited forwarding methods of a wrapper are not a declaration,
+# so the comparison is against `InterventionWrapper`. An action is compared
+# against `TraceAction`, which has the same fallbacks.
 function _check_trait_declarations(T::Type, base::Type)
     for (trait, hooks, says) in _TRAIT_HOOKS
         all(h -> _has_own_method(h, T, base), hooks) || continue
@@ -354,7 +353,7 @@ function _check_trait_declarations(T::Type, base::Type)
     return nothing
 end
 
-# A type is recorded as checked only once it has passed, so one that throws
+# A type is recorded as checked only once it has passed. One that throws
 # throws again whenever it is built into a model.
 function _check_trait_declarations(iv::AbstractIntervention)
     T = typeof(iv)

@@ -1007,9 +1007,9 @@ function intervention_actions(ct::ContactTracing, state, candidates)
 end
 
 # `ContactTracing` always defines its own `intervention_actions` method,
-# forwarding to `ct.action` above, so it asks the action whether it has
-# anything to propose: a plain `Quarantine` or `FlagOnly` does not, and would
-# otherwise cost the race a per-settled-case call for nothing. An action that
+# forwarding to `ct.action` above. It asks the action whether it has anything
+# to propose: a plain `Quarantine` or `FlagOnly` has nothing, and would
+# otherwise cost the race a per-settled-case call. An action that
 # overrides `intervention_actions` declares `discovers_actions` for its type.
 discovers_actions(ct::ContactTracing) = discovers_actions(ct.action)
 
@@ -1203,8 +1203,8 @@ end
 traces_contacts(::SourceTracing) = false
 traces_source(::SourceTracing) = true
 
-# Both write `intervention_time` for the isolation they set, and ask for a
-# capacity key without writing their own `resolve_individual!`.
+# Both write `intervention_time` for the isolation they set. They ask for a
+# capacity key but write no `resolve_individual!` of their own.
 for T in (ContactTracing, SourceTracing)
     @eval time_aware(::$T) = true
     @eval resolves_under_capacity(::$T) = false

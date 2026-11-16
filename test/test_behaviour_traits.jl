@@ -1,8 +1,8 @@
-# Traits the engine asks of an intervention. Each has a fixed default, and a
+# Traits the engine asks of an intervention. Each has a fixed default. A
 # type with the matching hook declares the trait; building a model throws for
 # one that does not.
 
-# Has an `intervention_time` and `reset!` through a forwarding method, and
+# Has an `intervention_time` and `reset!` through a forwarding method but
 # declares it is not time aware.
 struct _ForwardsTime <: EpiBranch.AbstractIntervention
     inner::Isolation

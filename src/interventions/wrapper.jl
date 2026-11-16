@@ -35,8 +35,8 @@ function infectious_removal_time(w::InterventionWrapper, ind::Individual)
 end
 traces_contacts(w::InterventionWrapper) = traces_contacts(w.intervention)
 # A wrapper that declares nothing of its own asks the intervention it wraps,
-# which is the one whose methods would run; `has_competing_risk` is `true`
-# because the hook is forwarded.
+# because the methods that run are those of the wrapped intervention.
+# `has_competing_risk` is `true` because the hook is forwarded.
 time_aware(w::InterventionWrapper) = time_aware(w.intervention)
 resolves_under_capacity(w::InterventionWrapper) = resolves_under_capacity(w.intervention)
 discovers_actions(w::InterventionWrapper) = discovers_actions(w.intervention)

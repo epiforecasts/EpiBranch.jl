@@ -436,8 +436,8 @@ to undo.
 
 The default is `false`. A type with an `intervention_time` method of its own
 declares `EpiBranch.time_aware(::MyIntervention) = true`; building a
-[`ModelSpec`](@ref) throws for one that does not, rather than gating it by
-default. A wrapper that does not write one asks the intervention it wraps.
+[`ModelSpec`](@ref) throws for one that does not, instead of gating it
+by default. A wrapper that does not write one asks the intervention it wraps.
 """
 time_aware(::AbstractIntervention) = false
 
@@ -473,7 +473,7 @@ EpiBranch.intervention_actions) method of its own declares
 `EpiBranch.discovers_actions(::MyIntervention) = true`, or `false` where the
 method proposes nothing for some settings; building a [`ModelSpec`](@ref) throws
 for one that does not. A wrapper that does not write one asks the intervention
-it wraps. [`ContactTracing`](@ref) asks its action instead, since it always
+it wraps. [`ContactTracing`](@ref) asks its action instead, because it always
 forwards.
 """
 discovers_actions(::AbstractIntervention) = false
@@ -504,9 +504,9 @@ contact, rather than only the earliest, when some intervention answers `true`,
 because a blocked contact must then fall back to a later one. An intervention
 answering `false` adds no cost to a run without other risks.
 
-The default is `true`, which keeps the fallback proposals and so is always
-correct; a type that never supplies a risk declares
+The default is `true`. It keeps the fallback proposals and is always correct.
+A type that never supplies a risk declares
 `EpiBranch.has_competing_risk(::MyIntervention) = false` to save the cost. Every
-wrapper answers `true`, because it forwards the hook.
+wrapper answers `true` because it forwards the hook.
 """
 has_competing_risk(::AbstractIntervention) = true
