@@ -1,14 +1,16 @@
 """
-    containment_probability(states::Vector{<:SimulationState}; max_cases=NoCases(), level=0.95)
+    containment_probability(states::Vector{<:SimulationState}; max_cases=NoCases())
 
 Containment probability: the proportion of simulated outbreaks that died out,
 from a vector of simulations such as `simulate(model, n)`. Returns a named
-tuple `(; n_contained, n, proportion, lower, upper)`: the number of outbreaks
-that were contained, the number simulated, their ratio, and a Wilson score
-interval for the underlying probability at confidence `level`. The interval
-reflects simulation error only and ignores uncertainty in the parameters of the
-model. If it is too wide to separate scenarios, simulate more outbreaks. To
-compare two scenarios, use [`containment_difference`](@ref). An outbreak still
+tuple `(; n_contained, n, proportion, mcse, distribution)`: the number of
+outbreaks that were contained, the number simulated, their ratio, the Monte
+Carlo standard error `sqrt(p * (1 - p) / n)` of that ratio, and a
+`Beta(n_contained + 0.5, n - n_contained + 0.5)` distribution for the
+underlying probability, from which any quantiles can be taken. The `mcse` is 0
+when every run is contained, but the Beta still has width. Both reflect
+simulation error only and ignore uncertainty in the parameters of the model.
+To compare two scenarios, use [`containment_difference`](@ref). An outbreak still
 going when the simulation stopped (at `max_cases`, `max_time` or
 `max_generations`) counts as not contained.
 
@@ -46,18 +48,17 @@ containment_probability(states; max_cases = 5000).proportion
 """
 function containment_probability(
         states::Vector{<:SimulationState};
-        max_cases::Union{Int, NoCases} = NoCases(), level::Real = 0.95
+        max_cases::Union{Int, NoCases} = NoCases()
     )
     n_contained = count(s -> _is_contained(s, max_cases), states)
-    return _binomial_estimate(n_contained, length(states), level)
+    return _binomial_estimate(n_contained, length(states))
 end
 
 """
-    containment_probability(model, n::Int; max_cases, level=0.95, rng, parallel=false, ...)
+    containment_probability(model, n::Int; max_cases, rng, parallel=false, ...)
 
 The containment probability over `n` outbreaks simulated from `model`, returned
-as above. It takes the keywords of `simulate(model, n)`, except `level`, which
-it does not pass on. For the same `rng` it gives the same answer as `containment_probability(simulate(model, n; kwargs...);
+as above. It takes the keywords of `simulate(model, n)`. For the same `rng` it gives the same answer as `containment_probability(simulate(model, n; kwargs...);
 max_cases)`. Each outbreak is checked once it has run and then discarded, so
 memory holds one outbreak at a time. Use it when only the containment
 probability is needed.
@@ -75,31 +76,29 @@ containment_probability(model, 10_000; max_cases = 5000)
 ```
 """
 function containment_probability(
-        model::Union{TransmissionModel, ModelSpec}, n::Int;
-        level::Real = 0.95, kwargs...
+        model::Union{TransmissionModel, ModelSpec}, n::Int; kwargs...
     )
     cap = something(get(kwargs, :max_cases, nothing), NoCases())
     contained = _simulate_each(s -> _is_contained(s, cap), Bool, model, n; kwargs...)
-    return _binomial_estimate(count(contained), n, level)
+    return _binomial_estimate(count(contained), n)
 end
 
 """
-    containment_difference(a, b; max_cases=NoCases(), paired=false, level=0.95)
+    containment_difference(a, b; max_cases=NoCases(), paired=false)
 
 The difference in containment probability between two sets of simulations,
 `a` minus `b`, each a vector of [`SimulationState`](@ref)s. Returns a named
-tuple `(; difference, lower, upper, a, b, paired)`, where `a` and `b` are the
-proportions contained and the interval is at confidence `level`. It reflects
-simulation error only.
+tuple `(; difference, mcse, a, b, paired)`, where `a` and `b` are the
+proportions contained and `mcse` is the Monte Carlo standard error of the
+difference. It reflects simulation error only.
 
 Set `paired = true` when the two sets were run with shared random numbers
 (for example `rng = CommonRandomNumbers(1)`, see [`CommonRandomNumbers`](@ref))
-and so have the same number of runs in the same order. The interval then uses
-the agreement between runs. It is much narrower than the two intervals of
-[`containment_probability`](@ref) suggest when the scenarios differ little.
-Otherwise the sets are treated as independent and may differ in size. Both
-intervals are Newcombe's, built from Wilson score intervals for each
-proportion.
+and so have the same number of runs in the same order. The `mcse` is then the
+standard deviation of the per-run differences over `sqrt(n)`, which is smaller
+than the unpaired value when the runs agree. Otherwise the sets are treated as
+independent and may differ in size, and the `mcse` combines the two
+proportions' standard errors.
 
 `max_cases` is applied to both sets, as in [`containment_probability`](@ref).
 
@@ -113,62 +112,41 @@ containment_difference(treated, base; max_cases = 500, paired = true)
 """
 function containment_difference(
         a::Vector{<:SimulationState}, b::Vector{<:SimulationState};
-        max_cases::Union{Int, NoCases} = NoCases(), paired::Bool = false,
-        level::Real = 0.95
+        max_cases::Union{Int, NoCases} = NoCases(), paired::Bool = false
     )
     ca = [_is_contained(s, max_cases) for s in a]
     cb = [_is_contained(s, max_cases) for s in b]
-    return _contained_difference(ca, cb, paired, level)
+    return _contained_difference(ca, cb, paired)
 end
 
 function _contained_difference(
-        ca::AbstractVector{Bool}, cb::AbstractVector{Bool}, paired::Bool, level::Real
+        ca::AbstractVector{Bool}, cb::AbstractVector{Bool}, paired::Bool
     )
     paired && length(ca) != length(cb) && throw(
         ArgumentError(
             "Paired comparison needs the same number of runs, got $(length(ca)) and $(length(cb))."
         )
     )
-    ea = _binomial_estimate(count(ca), length(ca), level)
-    eb = _binomial_estimate(count(cb), length(cb), level)
-    phi = paired ? _paired_correlation(ca, cb) : 0.0
-    d = ea.proportion - eb.proportion
-    la, ua = ea.proportion - ea.lower, ea.upper - ea.proportion
-    lb, ub = eb.proportion - eb.lower, eb.upper - eb.proportion
-    lower = d - sqrt(max(la^2 + ub^2 - 2phi * la * ub, 0.0))
-    upper = d + sqrt(max(ua^2 + lb^2 - 2phi * ua * lb, 0.0))
+    ea = _binomial_estimate(count(ca), length(ca))
+    eb = _binomial_estimate(count(cb), length(cb))
+    mcse = if paired
+        diffs = Int.(ca) .- Int.(cb)
+        length(diffs) > 1 ? std(diffs) / sqrt(length(diffs)) : 0.0
+    else
+        sqrt(ea.mcse^2 + eb.mcse^2)
+    end
     return (;
-        difference = d, lower = max(lower, -1.0), upper = min(upper, 1.0),
+        difference = ea.proportion - eb.proportion, mcse,
         a = ea.proportion, b = eb.proportion, paired,
     )
 end
 
-# Correlation of the paired outcomes, floored as in Newcombe's method 10 so that
-# chance agreement does not narrow the interval.
-function _paired_correlation(ca::AbstractVector{Bool}, cb::AbstractVector{Bool})
-    n = length(ca)
-    n11 = count(ca .& cb)
-    n10 = count(ca .& .!cb)
-    n01 = count(.!ca .& cb)
-    n00 = n - n11 - n10 - n01
-    denom = sqrt(float(n11 + n10) * (n01 + n00) * (n11 + n01) * (n10 + n00))
-    denom == 0 && return 0.0
-    A = float(n11) * n00 - float(n10) * n01
-    A > n / 2 && return (A - n / 2) / denom
-    A >= 0 && return 0.0
-    return A / denom
-end
-
-function _binomial_estimate(k::Int, n::Int, level::Real)
-    0 < level < 1 || throw(ArgumentError("`level` must be between 0 and 1, got $level."))
+function _binomial_estimate(k::Int, n::Int)
     n > 0 || throw(ArgumentError("At least one simulation is needed."))
-    z = quantile(Normal(), 1 - (1 - level) / 2)
     p = k / n
-    centre = (p + z^2 / (2n)) / (1 + z^2 / n)
-    half = z * sqrt(p * (1 - p) / n + z^2 / (4n^2)) / (1 + z^2 / n)
     return (;
-        n_contained = k, n, proportion = p,
-        lower = max(centre - half, 0.0), upper = min(centre + half, 1.0),
+        n_contained = k, n, proportion = p, mcse = sqrt(p * (1 - p) / n),
+        distribution = Beta(k + 0.5, n - k + 0.5),
     )
 end
 

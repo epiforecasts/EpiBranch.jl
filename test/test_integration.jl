@@ -19,67 +19,72 @@ using Dates
         @test cp > 0.5
     end
 
-    @testset "containment_probability interval" begin
+    @testset "containment_probability mcse and distribution" begin
         model = BranchingProcess(NegBin(1.5, 0.3))
         results = simulate(model, 200; max_cases = 500, rng = StableRNG(42))
         est = containment_probability(results; max_cases = 500)
         @test est.n == 200
         @test est.proportion == count(s -> s.extinct && s.cumulative_cases < 500, results) / 200
         @test est.n_contained == round(Int, est.proportion * 200)
-        @test est.lower < est.proportion < est.upper
-        wide = containment_probability(results; max_cases = 500, level = 0.99)
-        @test wide.lower < est.lower && wide.upper > est.upper
+        @test est.mcse ≈ sqrt(est.proportion * (1 - est.proportion) / 200)
+        @test est.distribution == Beta(est.n_contained + 0.5, 200 - est.n_contained + 0.5)
 
         est_model = containment_probability(model, 200; max_cases = 500, rng = StableRNG(42))
-        @test est_model == est
+        @test est_model.n_contained == est.n_contained
+        @test est_model.mcse == est.mcse
 
-        # Wilson interval stays inside [0, 1] at the boundaries
-        all_out = EpiBranch._binomial_estimate(50, 50, 0.95)
-        @test all_out.upper ≈ 1.0 && 0.9 < all_out.lower < 1.0
-        none_out = EpiBranch._binomial_estimate(0, 50, 0.95)
-        @test isapprox(none_out.lower, 0.0; atol = 1.0e-12)
-        @test 0.0 < none_out.upper < 0.1
-        # Known value: 8/10 at 95% is (0.4902, 0.9433)
-        w = EpiBranch._binomial_estimate(8, 10, 0.95)
-        @test w.lower ≈ 0.4902 atol = 1.0e-3
-        @test w.upper ≈ 0.9433 atol = 1.0e-3
-        @test_throws ArgumentError containment_probability(results; max_cases = 500, level = 1.5)
+        # Every run contained: no standard error, but the Beta still has width
+        all_in = EpiBranch._binomial_estimate(50, 50)
+        @test all_in.mcse == 0.0
+        @test all_in.distribution == Beta(50.5, 0.5)
+        @test std(all_in.distribution) > 0
+        none_in = EpiBranch._binomial_estimate(0, 50)
+        @test none_in.mcse == 0.0
+        @test none_in.distribution == Beta(0.5, 50.5)
+        @test_throws ArgumentError EpiBranch._binomial_estimate(0, 0)
     end
 
     @testset "containment_difference" begin
-        # Newcombe (1998) independent example: 56/70 against 48/80
+        # Independent: the standard errors of the two proportions add
         ca = [trues(56); falses(14)]
         cb = [trues(48); falses(32)]
-        ind = EpiBranch._contained_difference(ca, cb, false, 0.95)
+        ind = EpiBranch._contained_difference(ca, cb, false)
         @test ind.difference ≈ 0.2
-        @test ind.lower ≈ 0.0524 atol = 1.0e-3
-        @test ind.upper ≈ 0.3339 atol = 1.0e-3
+        @test ind.mcse ≈ sqrt(0.8 * 0.2 / 70 + 0.6 * 0.4 / 80)
 
-        # Runs that mostly agree give a much narrower paired interval
+        # Paired: standard deviation of the per-run differences over sqrt(n)
         base = [trues(60); falses(40)]
         other = copy(base)
         other[1:10] .= false
-        pair = EpiBranch._contained_difference(base, other, true, 0.95)
-        unpair = EpiBranch._contained_difference(base, other, false, 0.95)
-        @test pair.difference == unpair.difference
-        @test pair.difference ≈ 0.1
-        @test pair.upper - pair.lower < 0.6 * (unpair.upper - unpair.lower)
-        @test pair.lower < pair.difference < pair.upper
-
-        # Uncorrelated outcomes get no narrowing from pairing
-        flip = [i % 2 == 0 for i in 1:100]
-        @test EpiBranch._paired_correlation(base, flip) == 0.0
+        pair = EpiBranch._contained_difference(base, other, true)
+        unpair = EpiBranch._contained_difference(base, other, false)
+        @test pair.difference == unpair.difference ≈ 0.1
+        d = Int.(base) .- Int.(other)
+        @test pair.mcse ≈ std(d) / sqrt(100)
+        @test pair.mcse < unpair.mcse
 
         model = BranchingProcess(NegBin(1.5, 0.3))
         a = simulate(model, 200; max_cases = 500, rng = CommonRandomNumbers(1))
         b = simulate(model, 200; max_cases = 500, rng = CommonRandomNumbers(1))
         same = containment_difference(a, b; max_cases = 500, paired = true)
         @test same.difference == 0.0
+        @test same.mcse == 0.0
         @test same.a == containment_probability(a; max_cases = 500).proportion
         @test same.paired
         @test_throws ArgumentError containment_difference(a, b[1:100]; paired = true)
         # Unequal sizes are fine when independent
         @test containment_difference(a, b[1:100]).paired == false
+
+        # Runs sharing random numbers: pairing gives a smaller standard error
+        process = BranchingProcess(NegBin(1.5, 0.3), Exponential(5.0))
+        attrs = clinical_presentation(incubation_period = LogNormal(1.6, 0.5))
+        iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = Inf)
+        t = simulate(ModelSpec(process; attributes = attrs, interventions = [iso]),
+            500; max_cases = 500, rng = CommonRandomNumbers(1))
+        u = simulate(ModelSpec(process; attributes = attrs),
+            500; max_cases = 500, rng = CommonRandomNumbers(1))
+        @test containment_difference(t, u; max_cases = 500, paired = true).mcse <
+            containment_difference(t, u; max_cases = 500).mcse
     end
 
     @testset "weekly_incidence" begin

@@ -137,12 +137,7 @@ end
 
 ### Delay to immunity
 
-A vaccine that takes time to protect can be too late. Here protection starts
-7 days after the dose, compared with no vaccination and same-day protection
-over more outbreaks. The three sets of runs share random numbers, so
-[`containment_difference`](@ref) with `paired = true` compares each with no
-vaccination, and its interval is narrower than the two intervals for the
-proportions suggest:
+A vaccine that takes time to protect can be too late. Here protection starts 7 days after the dose, compared with no vaccination and same-day protection over more outbreaks. The three sets of runs share random numbers, so [`containment_difference`](@ref) with `paired = true` compares each with no vaccination, and its standard error is smaller than the two standard errors for the proportions suggest. Each estimate is shown with its Monte Carlo standard error (MCSE):
 
 ```@example vaccination
 rv_delayed = RingVaccination(efficacy = 0.8, delay_to_immunity = 7.0)
@@ -159,16 +154,15 @@ delay_runs = Dict(
 for label in ("no vaccination", "same-day protection", "7-day delay")
     est = containment_probability(delay_runs[label]; max_cases = 500)
     println(rpad(label, 22), round(est.proportion, digits = 3),
-        " (95% interval ", round(est.lower, digits = 3), " to ",
-        round(est.upper, digits = 3), ")")
+        " (MCSE ", round(est.mcse, digits = 3), ")")
 end
 
 for label in ("same-day protection", "7-day delay")
     diff = containment_difference(delay_runs[label], delay_runs["no vaccination"];
         max_cases = 500, paired = true)
     println(rpad(label, 22), "difference from no vaccination ",
-        round(diff.difference, digits = 3), " (95% interval ",
-        round(diff.lower, digits = 3), " to ", round(diff.upper, digits = 3), ")")
+        round(diff.difference, digits = 3), " (MCSE ",
+        round(diff.mcse, digits = 3), ")")
 end
 ```
 
@@ -454,8 +448,7 @@ for (label, interventions) in (
         ("independent refusal", [iso, ct_noquarantine, rv_independent_onward]))
     est = containment_probability(runs(interventions); max_cases = 200)
     println(rpad(label, 20), round(est.proportion, digits = 3),
-        " (95% interval ", round(est.lower, digits = 3), " to ",
-        round(est.upper, digits = 3), ")")
+        " (MCSE ", round(est.mcse, digits = 3), ")")
 end
 
 base_runs = runs([iso, ct_noquarantine])
@@ -464,14 +457,14 @@ for (label, rv_onward) in (("clustered refusal", rv_clustered_onward),
     diff = containment_difference(runs([iso, ct_noquarantine, rv_onward]), base_runs;
         max_cases = 200, paired = true)
     println(rpad(label, 20), "gain over no vaccination ",
-        round(diff.difference, digits = 3), " (95% interval ",
-        round(diff.lower, digits = 3), " to ", round(diff.upper, digits = 3), ")")
+        round(diff.difference, digits = 3), " (MCSE ",
+        round(diff.mcse, digits = 3), ")")
 end
 ```
 
 Vaccinating about half the traced contacts raises containment a little. The
-runs share random numbers, so the paired interval for each gain is much
-narrower than the two intervals for the proportions suggest. To compare
+runs share random numbers, so the paired standard error for each gain is much
+smaller than the two standard errors for the proportions suggest. To compare
 clustered and independent refusal directly, apply
 [`containment_difference`](@ref) to those two sets of runs.
 
