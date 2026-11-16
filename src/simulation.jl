@@ -1474,7 +1474,7 @@ infectiousness (more contacts, a shorter infectious period, a within-host
 trajectory that drives onset) are written by the user; the asymptomatic-cases
 tutorial shows each. A builder that replaces this one sets `:asymptomatic` and
 `:incubation_period` (the time onset happens, or would have happened for an
-asymptomatic case), from which the onset time is worked out.
+asymptomatic case), from which the onset time follows.
 
 # Examples
 
