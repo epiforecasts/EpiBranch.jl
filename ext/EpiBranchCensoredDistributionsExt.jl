@@ -30,6 +30,13 @@ function EpiBranch.serial_interval(model, infector::Individual, infectee::Indivi
                 "attributes = clinical_presentation(...)"
         )
     )
+    cp.incubation_period isa Union{Real, Distribution} || throw(
+        ArgumentError(
+            "serial_interval reads the incubation period directly and needs a " *
+                "number or a distribution, not a function of the individual " *
+                "(got $(typeof(cp.incubation_period)))."
+        )
+    )
     inc_infector = EpiBranch.resolve(cp.incubation_period, infector)
     inc_infectee = EpiBranch.resolve(cp.incubation_period, infectee)
     return convolved(gt, difference(inc_infectee, inc_infector))

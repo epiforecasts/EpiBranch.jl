@@ -1444,7 +1444,11 @@ Pass the result as `attributes` to [`ModelSpec`](@ref).
 - `incubation_period`: distribution of the time from infection to symptom
   onset, in days. Every case gets a draw from it, asymptomatic or not
   (`:incubation_period`), and a symptomatic case's onset time is its infection
-  time plus that draw.
+  time plus that draw. Give a distribution or a function of the random number
+  generator and the individual, `(rng, ind) -> value`, to let the draw depend
+  on a trait. `:asymptomatic` is set before the draw, so the function can give
+  asymptomatic cases their own timing. The closed forms that read the
+  incubation period directly need a distribution and refuse a function.
 - `prob_asymptomatic`: probability that a case never develops symptoms
   (default 0). Asymptomatic cases have no onset time (`NaN`), but keep their incubation
   period, the time onset would have happened, which
@@ -1528,10 +1532,22 @@ attributes = [
 ]
 ```
 
+Asymptomatic cases with their own incubation period, here a shorter one
+(`:asymptomatic` is already set when the function runs):
+
+```julia
+attributes = clinical_presentation(
+    incubation_period = (rng, ind) -> rand(
+        rng, ind.state[:asymptomatic] ? LogNormal(1.2, 0.5) : LogNormal(1.6, 0.5)
+    ),
+    prob_asymptomatic = 0.3,
+)
+```
+
 See also [`demographics`](@ref), [`transmission_traits`](@ref).
 """
 function clinical_presentation(;
-        incubation_period::Distribution,
+        incubation_period,
         prob_asymptomatic = 0.0
     )
     return ClinicalPresentation(incubation_period, prob_asymptomatic)
@@ -1547,7 +1563,7 @@ function (clinical::ClinicalPresentation)(rng, ind)
     pa = sample_value(clinical.prob_asymptomatic, rng, ind)
     is_asymp = rand(rng) < pa
     ind.state[:asymptomatic] = is_asymp
-    ind.state[:incubation_period] = rand(rng, clinical.incubation_period)
+    ind.state[:incubation_period] = sample_value(clinical.incubation_period, rng, ind)
     return _set_onset_from_incubation!(ind)
 end
 
