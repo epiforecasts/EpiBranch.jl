@@ -17,6 +17,8 @@ include("docstrings.jl")
 # Core types
 include("individual_state.jl")
 include("types.jl")
+include("population.jl")
+include("mixing_values.jl")
 include("state_accessors.jl")
 include("options.jl")
 include("distributions.jl")
@@ -46,6 +48,7 @@ include("transitions/transition.jl")
 include("transitions/reporting.jl")
 include("transitions/hospitalisation.jl")
 include("transitions/outcome.jl")
+include("transitions/testing.jl")
 
 # Signals: population quantities read off a simulated state, which every
 # engine that produces one can compute (transition counts per step,
@@ -123,6 +126,7 @@ include("models/mixing.jl")
 
 # ModelSpec: compose a process with its forcing/observation layers.
 include("model_spec.jl")
+include("case_definition.jl")
 
 # Approximate population dynamics as state-space models: mean-field and
 # linear-noise approximations of a closed population, and a hybrid that
@@ -177,11 +181,15 @@ include("progression_likelihood.jl")
 include("serial_interval.jl")
 
 # Exports — types
+export AbstractCaseDefinition, ClinicalCaseDefinition, FixedProportionConfirmed
+export CaseHistory, event_time, has_happened
+export case_classification, case_classification_changes
 export TransmissionModel, BranchingProcess, Infectiousness, OffspringTimes,
     RenewalOffspring,
     HomogeneousProcess, MixingProcess, ModelSpec
 export MeanFieldProcess, MeanFieldState, LinearNoiseProcess, LinearNoiseState
 export StratifiedContacts, flatten_contacts, contacts_from_table, mixing_rate
+export Mixing, FrequencyDependent, DensityDependent
 export read_contacts, ContactFileFormat, CSVFormat, NetCDFFormat
 export MixingMeanFieldProcess, MixingMeanFieldState
 export MixingLinearNoiseProcess, MixingLinearNoiseState
@@ -197,8 +205,8 @@ export AbstractStoppingRule, Extinction, MaxCases, MaxGenerations, MaxTime, shou
 export AbstractIntervention, Isolation, ContactTracing, SourceTracing
 export IsolationEligibility, SymptomaticOnly, AllCases
 export is_eligible_for_isolation
-export TraceEligibility, AlwaysEligible, SymptomaticParent
-export OnSymptomOnset, OnLabConfirmation, OnIsolation, TraceEveryone, TraceNobody, NoTracing
+export TraceEligibility, SymptomaticParent
+export OnSymptomOnset, OnLabConfirmation, OnIsolation, TraceEveryone, TraceNobody
 export PreviouslyTraced
 export AnyOf, AllOf, NoneOf
 export TraceRate, ConstantRate
@@ -217,15 +225,16 @@ export OnRoutes
 export RouteWindow, window_open, window_close
 export is_active, intervention_time
 export AbstractClinicalTransition, Transition, Reporting, Hospitalisation, Death, Recovery
+export Testing, AbstractAssay, Assay, within_host
 export is_terminal, terminal_event, terminal_target, exclusive_probabilities
 export Signal, TransitionCount, Prevalence
-export ObservationModel, PerCaseObservation, NoObservation, MinimumSize, ChainDetection,
+export ObservationModel, NoObservation, MinimumSize, ChainDetection,
     observe
 export ContactRecorder, NoContactRecorder, ExposedContactRecorder
 export single_type_offspring
 
 # Exports — sentinel types
-export NoPopulation, NoAttributes, NoTypeLabels
+export Population, NoPopulation, NoAttributes, NoTypeLabels
 export NoAgeDistribution, NoCases
 
 # Exports — accessors
@@ -264,7 +273,7 @@ export generate_offspring, contacts_of
 export event_time_metadata, linelist, contacts, chain_statistics, compute_trace_level!
 export realised_generation_interval, realised_generation_intervals,
     realised_serial_interval, realised_serial_intervals
-export containment_probability, is_extinct, generation_R, weekly_incidence, scenario_sweep
+export containment_probability, is_extinct, generation_R, weekly_incidence, incidence, scenario_sweep
 export summarise
 
 # Exports — analytical

@@ -16,6 +16,7 @@ public resolve
 # Intervention interface: a package subtyping `AbstractIntervention`
 # overrides these.
 public initialise_individual!
+public initialise_episode!
 public resolve_individual!
 public on_infection_settled!
 public trace_contacts!
@@ -89,12 +90,19 @@ public attributes
 public observation
 public recorder
 public population_size
+public population
+public SinglePopulation
+public GroupedPopulation
 public n_types
 public model_generation_time
 # The two remaining layers of a `ModelSpec`, alongside the four above: the
 # within-host progression and the transmission model it wraps.
 public progression
 public process
+public case_definition
+# The two hooks of a case definition written outside the package.
+public classify_case
+public relevant_events
 #   - `transmission_risks` to contribute per-pair competing risks (e.g. a
 #     network's per-edge probability), resolved alongside the built-ins.
 public transmission_risks

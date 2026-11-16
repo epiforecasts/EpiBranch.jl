@@ -78,15 +78,6 @@ function is_eligible(::SymptomaticParent, infector, contact, state)
     return _develops_symptoms(infector) && is_isolated(infector)
 end
 
-# `AlwaysEligible` and `NoTracing` were the previous names for tracing
-# everyone / no-one; their semantics are identical to the new policies,
-# so they are aliases.
-"""Another name for [`TraceEveryone`](@ref): every contact is traced."""
-const AlwaysEligible = TraceEveryone
-
-"""Another name for [`TraceNobody`](@ref): no contact is traced."""
-const NoTracing = TraceNobody
-
 # ── Composition ────────────────────────────────────────────────────
 #
 # Policies form a boolean algebra over the infector predicate. The
@@ -581,10 +572,6 @@ traced contacts who are not yet known cases.
 - `depth`: how far tracing reaches: 1 (default) traces contacts, 2 also
   contacts of contacts, and so on. Must be at least 1.
 
-The keyword `quarantine_on_trace` is deprecated: `quarantine_on_trace = true`
-means `action = Quarantine(duration = Inf)` and `false` means
-`action = FlagOnly()`. It still works but gives a deprecation warning.
-
 # Examples
 ```julia
 # Trace on symptoms, without waiting for confirmation; quarantine for 7 days
@@ -683,38 +670,14 @@ function ContactTracing(;
         probability::Float64,
         isolation_to_trace_delay::Distribution,
         action::Union{TraceAction, Nothing} = nothing,
-        quarantine_on_trace::Union{Bool, Nothing} = nothing,
         eligibility::TraceEligibility = SymptomaticParent(),
         depth::Integer = 1
     )
-    action = _resolve_action(action, quarantine_on_trace)
+    action === nothing &&
+        throw(ArgumentError("ContactTracing requires `action`"))
     return ContactTracing(
         eligibility, probability, isolation_to_trace_delay, action; depth
     )
-end
-
-# `quarantine_on_trace` hid the action behind a `Bool`; `action` replaces it,
-# with no default, since a plausible policy might flag a contact without
-# quarantining it, or quarantine it for any length of time. The deprecated
-# keyword still resolves to an action for a release, mapping onto the same
-# indefinite `Quarantine` it always built.
-function _resolve_action(action, quarantine_on_trace)
-    if quarantine_on_trace !== nothing
-        action === nothing || throw(
-            ArgumentError(
-                "pass only one of `action` and the deprecated `quarantine_on_trace`"
-            )
-        )
-        Base.depwarn(
-            "`quarantine_on_trace` is deprecated, pass `action` instead " *
-                "(`Quarantine(duration = ...)` or `FlagOnly()`)",
-            :ContactTracing; force = true
-        )
-        return quarantine_on_trace ? Quarantine(duration = Inf) : FlagOnly()
-    end
-    action === nothing &&
-        throw(ArgumentError("ContactTracing requires `action`"))
-    return action
 end
 
 required_fields(t::_Tracing) = required_fields(t.eligibility)

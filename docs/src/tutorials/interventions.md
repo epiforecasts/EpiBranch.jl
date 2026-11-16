@@ -197,11 +197,6 @@ ContactTracing(
 )
 ```
 
-!!! note "`quarantine_on_trace` is deprecated"
-    Older code may use `quarantine_on_trace = true` or `false`. These still
-    run with a warning: `true` means `action = Quarantine(duration = Inf)` and
-    `false` means `action = FlagOnly()`. Write the `action` instead.
-
 ### What triggers contact tracing
 
 By default, a contact is traced once their infector has developed symptoms

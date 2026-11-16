@@ -1,0 +1,1 @@
+`Testing` takes a test from a case's own within-host trajectory (`within_host`), mapping the load at the sampling time to a Ct value and a result through a user-supplied `Assay`. The `test_sensitivity` of `Isolation` can be a `Testing` step; numbers, distributions and functions work as before.

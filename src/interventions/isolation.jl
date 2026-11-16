@@ -90,7 +90,11 @@ known cases are quarantined through [`ContactTracing`](@ref).
   [`AllCases`](@ref) (for example with mass testing).
 - `test_sensitivity`: probability that an eligible case is detected and
   isolated (default 1). A number, a distribution or a function
-  `(rng, ind) -> ...`, drawn once per case.
+  `(rng, ind) -> ...`, drawn once per case. A [`Testing`](@ref) step in the
+  model's `progression` can be given instead: a case is then detected when its
+  own test, taken from its within-host trajectory, is positive. Isolation still
+  starts `onset_to_isolation_delay` after onset. Analytic effects
+  (`analytic_offspring_effect`) need a number or a distribution and refuse this form.
 - `post_isolation_transmission`: fraction of normal transmission that
   continues while isolated, between 0 and 1 (default 0, perfect isolation;
   0.25 would be leaky isolation).
@@ -247,17 +251,39 @@ function initialise_individual!(iso::Isolation, individual, state)
     clear_isolated!(individual)
     delete!(individual.state, :_isolation_handle)
     delete!(individual.state, :_isolation_start)
+    _draw_test_positive!(iso, individual, state)
+    return nothing
+end
+
+# A reinfection redraws the test result and ends the earlier episode's own
+# self-isolation, but leaves any quarantine standing on the person alone.
+function initialise_episode!(iso::Isolation, individual, state)
+    reset!(iso, individual)
+    _draw_test_positive!(iso, individual, state)
+    return nothing
+end
+
+function _draw_test_positive!(iso::Isolation, individual, state)
     if is_eligible_for_isolation(iso.eligibility, individual, state)
         rng = stream(state.rng, individual.id, (:isolation, :test))
-        sens = sample_value(iso.test_sensitivity, rng, individual)
-        individual.state[:test_positive] = rand(rng) < sens
+        individual.state[:test_positive] = _draw_test_positive(iso.test_sensitivity, rng, individual)
     else
         individual.state[:test_positive] = false
     end
     return nothing
 end
 
+# `test_sensitivity` as a probability: drawn once per case when the case is
+# created.
+function _draw_test_positive(sensitivity, rng, individual)
+    return rand(rng) < sample_value(sensitivity, rng, individual)
+end
+
+# A sensitivity given as a step in the progression is read from the case once
+# the progression has resolved, instead of being drawn at creation.
+_read_test_positive!(sensitivity, iso, individual, state) = nothing
 function resolve_individual!(iso::Isolation, individual, state)
+    _read_test_positive!(iso.test_sensitivity, iso, individual, state)
     # An isolation already standing on the individual is a quarantine written by
     # `ContactTracing`: a case's contacts are traced when the *infector* is
     # settled, which is before the contact itself resolves. Self-isolation from

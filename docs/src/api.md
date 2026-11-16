@@ -171,6 +171,12 @@ Reporting
 Hospitalisation
 Death
 Recovery
+Testing
+AbstractAssay
+Assay
+within_host
+EpiBranch.trajectory_load
+EpiBranch.measure
 exclusive_probabilities
 is_terminal
 terminal_event
@@ -212,9 +218,7 @@ OnIsolation
 TraceEveryone
 TraceNobody
 PreviouslyTraced
-AlwaysEligible
 SymptomaticParent
-NoTracing
 AnyOf
 AllOf
 NoneOf
@@ -327,6 +331,29 @@ NoContactRecorder
 ExposedContactRecorder
 ```
 
+## Case definitions
+
+A case definition classifies each case (confirmed, probable, suspected, or
+whatever a surveillance system uses) from what has happened to them. Pass one
+as the `case_definition` of a [`ModelSpec`](@ref). It is evaluated each
+time an event is recorded on a case, such as symptoms, a trace or a test result.
+The classification can therefore change over time, and
+[`case_classification_changes`](@ref) lists each change with its time.
+[`linelist`](@ref) shows the final classification as `case_classification`. A definition
+of your own is a function `history -> label`, or a subtype of
+[`AbstractCaseDefinition`](@ref) with an `EpiBranch.classify_case` method.
+
+```@docs
+AbstractCaseDefinition
+ClinicalCaseDefinition
+FixedProportionConfirmed
+CaseHistory
+event_time
+has_happened
+case_classification
+case_classification_changes
+```
+
 ## Information about each case
 
 Read what happened to a simulated case: when symptoms began, whether and when
@@ -374,6 +401,7 @@ containment_probability
 is_extinct
 generation_R
 weekly_incidence
+incidence
 summarise
 scenario_sweep
 ```
@@ -476,7 +504,7 @@ A [`Signal`](@ref) reads a population quantity off a simulated
 [`SimulationState`](@ref) over a reporting step: [`TransitionCount`](@ref)
 (new cases per step) or [`Prevalence`](@ref) (cases currently in a state).
 [`SignalData`](@ref) pairs several of these, each with a measurement density
-of your own, and scores them all against the same simulated path, rather
+of your own, and evaluates their likelihoods on one shared simulated path, rather
 than letting separate `~` statements each simulate their own outbreak:
 
 ```julia
@@ -563,7 +591,6 @@ given size are seen. Add one to a model with `observation = ...`.
 ```@docs
 ObservationModel
 NoObservation
-PerCaseObservation
 MinimumSize
 ChainDetection
 observe
@@ -658,13 +685,33 @@ Conditional
 EpiBranch.resolve
 ```
 
+## Population
+
+The people a model is run over, given once and read by every engine.
+
+```@docs
+Population
+NoPopulation
+EpiBranch.SinglePopulation
+EpiBranch.GroupedPopulation
+EpiBranch.population
+```
+
+How the groups of a population meet is a mixing value, which a
+[`BranchingProcess`](@ref) and a [`MixingProcess`](@ref) both take.
+
+```@docs
+Mixing
+FrequencyDependent
+DensityDependent
+```
+
 ## Default placeholders
 
 The values shown as defaults in signatures when a setting is left out, such as
 `max_cases = NoCases()`.
 
 ```@docs
-NoPopulation
 NoAttributes
 NoTypeLabels
 NoAgeDistribution
@@ -762,6 +809,7 @@ EpiBranch.honoured_without_should_stop
 
 ```@docs
 EpiBranch.initialise_individual!
+EpiBranch.initialise_episode!
 EpiBranch.resolve_individual!
 EpiBranch.on_infection_settled!
 EpiBranch.trace_contacts!
@@ -862,6 +910,13 @@ EpiBranch.transition_term
 EpiBranch.GroupAttribute
 EpiBranch.records_contacts
 EpiBranch.sample_value
+```
+
+### Writing a case definition
+
+```@docs
+EpiBranch.classify_case
+EpiBranch.relevant_events
 ```
 
 ### Writing an observation model
