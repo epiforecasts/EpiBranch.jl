@@ -435,10 +435,11 @@ function has_effect(iv::AbstractIntervention)
 end
 
 # The traits `time_aware`, `resolves_under_capacity`, `discovers_actions`,
-# `traces_contacts` and `has_competing_risk` are answered from the methods a type defines. Reading the
-# method tables is done once per type, when a `ModelSpec` is built
-# (`_store_traits!`). The answer is kept here, and a run reads it from here. A trait method written for a type is more specific than
-# the defaults below and so overrides the inferred answer.
+# `traces_contacts` and `has_competing_risk` are answered from the methods a
+# type defines. The method tables are read once per type, when a `ModelSpec` is
+# built (`_store_traits!`). The answer is stored here and a run reads it from
+# here. A trait method written for a type is more specific than the defaults
+# below and overrides the inferred answer.
 struct _InferredTraits
     time_aware::Bool
     resolves_under_capacity::Bool
@@ -580,8 +581,8 @@ earliest, because a blocked contact must then fall back to a later one. An
 intervention answering `false` adds no cost to a run without other risks.
 
 The answer is inferred from the methods the type defines: `true` for a type with
-a `competing_risk` method of its own, and so for every wrapper, which forwards
-it. Define `EpiBranch.has_competing_risk(::MyIntervention)` to override it, for
+a `competing_risk` method of its own. Every wrapper forwards the hook and
+answers `true`. Define `EpiBranch.has_competing_risk(::MyIntervention)` to override it, for
 a risk that comes through some other seam.
 """
 has_competing_risk(iv::AbstractIntervention) = _stored_traits(typeof(iv)).has_competing_risk

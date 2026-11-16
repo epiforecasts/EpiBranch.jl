@@ -159,7 +159,7 @@ struct _Bare <: EpiBranch.AbstractIntervention end
         @test EpiBranch.has_competing_risk(iso)
         @test EpiBranch.has_competing_risk(_NoRisk())
         @test !EpiBranch.has_competing_risk(_NoRiskDeclared())
-        # No `competing_risk` method of its own, so no fallback proposals are kept.
+        # Without a `competing_risk` method of its own, the race keeps no fallback proposals.
         @test !EpiBranch.has_competing_risk(_ProposesNothing())
         # A wrapper forwards the hook, so it answers `true`.
         @test EpiBranch.has_competing_risk(Scheduled(iso; start_time = 1.0))
