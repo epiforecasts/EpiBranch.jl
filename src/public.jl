@@ -25,6 +25,10 @@ public HostImmunity, AbortedInfection, infinite_draw_is_final
 # End an infection early from any intervention hook, and read when it ended.
 public abort_infection!, infection_aborted_time
 
+# Testing: `trajectory_value` reads the within-host trajectory stored by
+# `within_host`. A new `AbstractAssay` defines `measure`.
+public trajectory_value, measure
+
 # Isolation eligibility: whether an isolation time counts as a detection.
 public records_isolation
 
@@ -105,9 +109,12 @@ public pair_kernel
 # `calendar_shape` method returning `SmoothCalendar()`.
 public calendar_multiplier, next_calendar_break, calendar_shape,
     PiecewiseConstantCalendar, SmoothCalendar
-public infection_likelihood_compatible, susceptibility_components,
-    susceptibility_host_times, HazardScaling, binding_release,
-    removal_gap_host_times, removal_gap_host_times_withdrawn,
+public infection_likelihood_compatible
+# Traits the closed forms ask instead of matching `Reporting` and
+# `clinical_presentation` by type.
+public reporting_probability, reporting_from, onset_law
+public susceptibility_components, susceptibility_host_times, HazardScaling,
+    binding_release, removal_gap_host_times, removal_gap_host_times_withdrawn,
     removal_block_probability, record_removal!, revise_removal!, withdraw_removal!,
     removal_stretches
 public InterventionAction, intervention_actions, action_draw!, action_cache,

@@ -14,7 +14,7 @@ An intervention is a `struct` that subtypes `AbstractIntervention`. You write
 methods only for the hooks it needs; every other hook leaves the simulation
 unchanged.
 
-## What happens to each case
+## Handling of each case
 
 Every built-in model, the branching process as much as the network,
 household, homogeneous and mixing models, settles one case at a time, in
@@ -122,7 +122,7 @@ The [`AbstractIntervention`](@ref) docstring and the
 [Extension reference](@ref "Continuous-time models: further details") have the
 remaining details for the continuous-time models.
 
-## Which hooks run on which model
+## Hooks by model
 
 Every model, built in or written against `generate_offspring` or
 `contacts_of`, decides each potential infection, a drawn time for an infector
@@ -386,7 +386,7 @@ Adding the closure raises the proportion of outbreaks contained, because from
 day 10 most transmission between regions is blocked on top of what isolation
 prevents.
 
-## Who triggers contact tracing
+## Eligibility for contact tracing
 
 [`ContactTracing`](@ref) decides which cases have their contacts traced
 through an eligibility policy, such as `OnSymptomOnset()` or
@@ -822,7 +822,7 @@ placed in their group again from their recorded state alone, with nothing of
 the original proposal kept around. `capacity_usage(cc, state, key)` reads
 one group's own usage.
 
-### What happens to a refused action
+### Refused actions
 
 An action `CapacityConstrained` turns away is dropped by default. Pass
 `on_refusal = DeferRefused()` to book it into the first later period with room
