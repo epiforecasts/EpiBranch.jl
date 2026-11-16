@@ -221,7 +221,8 @@ function _admit_actions!(cc::CapacityConstrained, state, actions, admitter = cc)
     key = capacity_key(cc.intervention)
     already_used = filter(a -> _capacity_used(get(a.individual.state, key, nothing)), actions)
     candidates = filter(a -> !_capacity_used(get(a.individual.state, key, nothing)), actions)
-    _admit_actions!(cc.intervention, state, already_used, admitter)
+    _repeat_use_passes(cc.intervention) &&
+        _admit_actions!(cc.intervention, state, already_used, admitter)
     cache = _capacity_cache(cc, state)
     for a in already_used
         _record_capacity_use!(cache, a.individual, state)
@@ -257,6 +258,10 @@ end
 function _filing_use(cc::CapacityConstrained, action)
     key = capacity_key(cc.intervention)
     effect! = function (person, at, state)
+        # An effect queued before the person's first use took effect finds
+        # that use standing by the time it runs.
+        _capacity_used(get(person.state, key, nothing)) &&
+            !_repeat_use_passes(cc.intervention) && return nothing
         further = action.effect!(person, at, state)
         _capacity_used(get(person.state, key, nothing)) && _note_capacity_use!(state, key, person)
         return further
