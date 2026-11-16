@@ -97,8 +97,8 @@ Set `paired = true` when the two sets were run with shared random numbers
 and so have the same number of runs in the same order. The `mcse` is then the
 standard deviation of the per-run differences over `sqrt(n)`, which is smaller
 than the unpaired value when the runs agree. Otherwise the sets are treated as
-independent and may differ in size, and the `mcse` combines the two
-proportions' standard errors.
+independent and may differ in size, and the `mcse` combines the
+standard errors of the two proportions.
 
 `max_cases` is applied to both sets, as in [`containment_probability`](@ref).
 

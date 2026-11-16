@@ -45,7 +45,7 @@ using Dates
     end
 
     @testset "containment_difference" begin
-        # Independent: the standard errors of the two proportions add
+        # Independent: the variances of the two proportions add
         ca = [trues(56); falses(14)]
         cb = [trues(48); falses(32)]
         ind = EpiBranch._contained_difference(ca, cb, false)
