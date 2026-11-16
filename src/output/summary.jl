@@ -56,8 +56,8 @@ end
     containment_probability(model, n::Int; max_cases, level=0.95, rng, parallel=false, ...)
 
 The containment probability over `n` outbreaks simulated from `model`, returned
-as above. It takes the keywords of `simulate(model, n)`, except that `level` is
-not passed on to it, and for the same `rng` gives the same answer as `containment_probability(simulate(model, n; kwargs...);
+as above. It takes the keywords of `simulate(model, n)`, except `level`, which
+it does not pass on. For the same `rng` it gives the same answer as `containment_probability(simulate(model, n; kwargs...);
 max_cases)`. Each outbreak is checked once it has run and then discarded, so
 memory holds one outbreak at a time. Use it when only the containment
 probability is needed.
@@ -95,7 +95,7 @@ simulation error only.
 Set `paired = true` when the two sets were run with shared random numbers
 (for example `rng = CommonRandomNumbers(1)`, see [`CommonRandomNumbers`](@ref))
 and so have the same number of runs in the same order. The interval then uses
-the agreement between runs, and is much narrower than the two intervals of
+the agreement between runs. It is much narrower than the two intervals of
 [`containment_probability`](@ref) suggest when the scenarios differ little.
 Otherwise the sets are treated as independent and may differ in size. Both
 intervals are Newcombe's, built from Wilson score intervals for each

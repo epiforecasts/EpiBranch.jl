@@ -471,9 +471,9 @@ end
 
 Vaccinating about half the traced contacts raises containment a little. The
 runs share random numbers, so the paired interval for each gain is much
-narrower than the two intervals for the proportions suggest. Whether
-clustered and independent refusal differ is a separate comparison, with
-[`containment_difference`](@ref) on those two sets of runs.
+narrower than the two intervals for the proportions suggest. To compare
+clustered and independent refusal directly, apply
+[`containment_difference`](@ref) to those two sets of runs.
 
 Clustering has little effect here because `groups(20)` puts each person in a
 community independently of who infected them. A case's contacts are spread
