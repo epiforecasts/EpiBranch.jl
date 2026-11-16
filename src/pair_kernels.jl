@@ -583,7 +583,7 @@ end
 # exact wherever the profile's own hazard is. A smooth schedule integrates the
 # scaled hazard by quadrature and inverts it by bisection.
 
-struct _CalendarScaledKernel{P, S, T <: Real}
+struct _CalendarScaledKernel{P, S, T <: Real} <: ContinuousUnivariateDistribution
     profile::P
     calendar::S
     opening::T
