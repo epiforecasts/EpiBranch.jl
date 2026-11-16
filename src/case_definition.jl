@@ -7,7 +7,8 @@
 # all of them: symptoms and a test from the progression, a trace from the
 # interventions.
 #
-# The classification does not feed back into the simulation. It is worked out
+# The classification does not feed back into the simulation, and draws nothing
+# from the generator the run uses. It is worked out
 # once the race has finished, from the event times recorded on each person. A
 # rule is evaluated at every time a relevant event was recorded and sees only
 # the events at or before that time, as it would if evaluated as each event
@@ -207,6 +208,7 @@ relevant_events(def::FixedProportionConfirmed) = (def.from,)
 const _CLASSIFICATION_KEY = :case_classification
 const _CLASSIFICATION_CHANGES_KEY = :_case_classification_changes
 const _CLASSIFICATION_DRAW_KEY = :_case_definition_draw
+const _CLASSIFICATION_SEED_KEY = :_case_definition_seed
 
 # The times at which to evaluate the definition on one person: their
 # infection, and each later time an event the definition reads was recorded.
@@ -230,7 +232,7 @@ function _classify_individual!(def, ind::Individual, state)
     # One draw per person, kept so that re-evaluating a continued run does not
     # reclassify a case already classified.
     draw = get!(ind.state, _CLASSIFICATION_DRAW_KEY) do
-        rand(stream(state.rng, ind.id, :case_definition))
+        rand(_classification_rng(state.rng, state, ind.id))
     end::Float64
     changes = Tuple{typeof(ind.infection_time), Any}[]
     current = missing
@@ -246,6 +248,19 @@ function _classify_individual!(def, ind::Individual, state)
     # line list leaves blank.
     ind.state[_CLASSIFICATION_KEY] = current
     return nothing
+end
+
+# The generator a person's classification draw comes from. It never draws
+# from the run's own generator, which the user's `rng` is, so that adding a
+# definition leaves later runs of a batch and a continued run unchanged.
+# `CommonRandomNumbers` already keeps a stream per person and purpose. Any
+# other generator gives a seed, taken once from a copy and kept with the
+# state, from which each person's generator is derived.
+_classification_rng(rng::CommonRandomNumbers, state, id) =
+    stream(rng, id, :case_definition)
+function _classification_rng(rng::Random.AbstractRNG, state, id)
+    seed = get!(() -> rand(copy(rng), UInt64), state.scratch, _CLASSIFICATION_SEED_KEY)
+    return Random.Xoshiro(hash((seed::UInt64, id)))
 end
 
 # No definition: nothing to do. A definition that is a function or an

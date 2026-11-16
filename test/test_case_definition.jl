@@ -154,6 +154,13 @@ _acute_load(rng, ind) = t -> max(0.0, 8.0 - abs(t - 5.0) * 1.6)
 
         states = simulate(spec, 3; max_cases = 50, rng = StableRNG(2))
         @test all(s -> nrow(case_classification_changes(s)) > 0, states)
+        # Later runs of a batch share the generator with the earlier ones.
+        plain_states = simulate(
+            ModelSpec(spec; case_definition = nothing), 3; max_cases = 50, rng = StableRNG(2)
+        )
+        @test all(zip(states, plain_states)) do (s, p)
+            isequal(linelist(p), linelist(s)[!, Not(:case_classification)])
+        end
     end
 
     @testset "no confirmed cases without a Testing step" begin
@@ -183,6 +190,11 @@ _acute_load(rng, ind) = t -> max(0.0, 8.0 - abs(t - 5.0) * 1.6)
         first_labels = Dict(i.id => case_classification(i) for i in state.individuals if is_infected(i) && !ismissing(case_classification(i)))
         simulate(spec, state; max_time = 14.0)
         @test nrow(case_classification_changes(state)) >= n1
+        # The continued run draws from the same generator as the first part.
+        plain_spec = ModelSpec(spec; case_definition = nothing)
+        plain = simulate(plain_spec; max_time = 10.0, rng = StableRNG(4))
+        simulate(plain_spec, plain; max_time = 14.0)
+        @test count(is_infected, plain.individuals) == count(is_infected, state.individuals)
         @test all(first_labels) do (id, label)
             case_classification(state.individuals[id]) == label
         end
