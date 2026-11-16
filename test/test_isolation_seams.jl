@@ -197,7 +197,7 @@ EpiBranch.infectious_removal_time(f::FixedRemoval, ::Individual) = f.time
         end
         @test isolated_at(AfterPositiveTest(name = :pcr)) == 2.5
         @test isolated_at(AfterPositiveTest(name = :serology)) == 6.5
-        # The default name :test matches neither step, so the keys are missing.
+        # The default name :test matches neither step; its keys are missing.
         @test_throws ErrorException isolated_at(AfterPositiveTest())
         @test EpiBranch.required_fields(AfterPositiveTest(name = :pcr)) ==
             [:pcr_time, :pcr_result]

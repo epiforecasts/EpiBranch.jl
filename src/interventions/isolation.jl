@@ -97,7 +97,7 @@ isolation_reference_time(::AfterSymptomOnset, individual, state) = onset_time(in
 
 Isolate a case when its test result comes back positive: the sampling time
 that the [`Testing`](@ref) step called `name` records in `:<name>_time`, plus
-the `onset_to_isolation_delay` of the isolation, which then stands for the
+the `onset_to_isolation_delay` of the isolation. The delay then stands for the
 turnaround from sample to result. The result is read from `:<name>_result`.
 A case never tested has a time of `Inf`. A case with a negative result is not
 isolated through the test. With several `Testing` steps, `name` picks the one
