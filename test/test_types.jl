@@ -199,7 +199,7 @@ struct _UndeclaredTransition <: EpiBranch.AbstractClinicalTransition end
         model = BranchingProcess(NegBin(2.5, 0.16), LogNormal(1.6, 0.5))
         @test single_type_offspring(model) isa NegativeBinomial
         @test model.infectiousness[1].kernel isa Distribution
-        @test model.population_size isa NoPopulation
+        @test EpiBranch.population(model) isa NoPopulation
     end
 
     @testset "has_single_type_law" begin
@@ -256,7 +256,7 @@ struct _UndeclaredTransition <: EpiBranch.AbstractClinicalTransition end
 
     @testset "BranchingProcess with population_size" begin
         model = BranchingProcess(Poisson(2.0), Exponential(5.0); population_size = 1000)
-        @test model.population_size == 1000
+        @test EpiBranch.population_size(model) == 1000
     end
 
     @testset "BranchingProcess with function generation time" begin

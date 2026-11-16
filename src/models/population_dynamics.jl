@@ -9,10 +9,11 @@
 # can treat all three as interchangeable state-space transitions.
 
 """
-    MeanFieldProcess(; population_size, transmission_rate, removal_rate, step = 0.05)
+    MeanFieldProcess(; population, transmission_rate, removal_rate, step = 0.05)
 
-The deterministic SIR mean-field approximation of a closed population of
-`population_size` people that mixes homogeneously, the large-population limit
+The deterministic SIR mean-field approximation of a closed population that
+mixes homogeneously, given as `population = Population(n)` or
+`population_size = n`, the large-population limit
 of [`HomogeneousProcess`](@ref) composed with a single exponential removal
 step (`Transition(:recovered; rate = removal_rate, terminal = true)`):
 
@@ -37,7 +38,7 @@ switching between exact simulation and either one.
 ```julia
 using EpiBranch
 model = MeanFieldProcess(;
-    population_size = 10_000, transmission_rate = 0.4, removal_rate = 0.2
+    population = Population(10_000), transmission_rate = 0.4, removal_rate = 0.2
 )
 state = simulate(model; n_initial = 5, max_time = 30.0)
 state = simulate(model, state; max_time = 60.0)
@@ -51,10 +52,12 @@ struct MeanFieldProcess
 end
 
 function MeanFieldProcess(;
-        population_size::Integer, transmission_rate::Real, removal_rate::Real,
-        step::Real = 0.05
+        population = NoPopulation(), population_size = NoPopulation(),
+        transmission_rate::Real, removal_rate::Real, step::Real = 0.05
     )
-    population_size >= 1 || throw(ArgumentError("population_size must be ≥ 1"))
+    pop = _single_population(
+        _closed_population(population, population_size), "MeanFieldProcess"
+    )
     (isfinite(transmission_rate) && transmission_rate >= 0) || throw(
         ArgumentError("transmission_rate must be finite and non-negative")
     )
@@ -62,7 +65,7 @@ function MeanFieldProcess(;
         throw(ArgumentError("removal_rate must be finite and non-negative"))
     step > 0 || throw(ArgumentError("step must be positive"))
     return MeanFieldProcess(
-        Int(population_size), Float64(transmission_rate), Float64(removal_rate), Float64(step)
+        pop.size, Float64(transmission_rate), Float64(removal_rate), Float64(step)
     )
 end
 
@@ -177,7 +180,7 @@ function _integrate_sir(model::MeanFieldProcess, S, I, t0, max_time)
 end
 
 """
-    LinearNoiseProcess(; population_size, transmission_rate, removal_rate, step = 0.05)
+    LinearNoiseProcess(; population, transmission_rate, removal_rate, step = 0.05)
 
 The same closed-population SIR dynamics as [`MeanFieldProcess`](@ref), represented
 as a Gaussian process around the deterministic mean path (the linear noise
@@ -205,7 +208,7 @@ integrates identically, with the addition of the covariance.
 ```julia
 using EpiBranch
 model = LinearNoiseProcess(;
-    population_size = 10_000, transmission_rate = 0.4, removal_rate = 0.2
+    population = Population(10_000), transmission_rate = 0.4, removal_rate = 0.2
 )
 state = simulate(model; n_initial = 5, max_time = 30.0)
 state.covariance   # 2×2 covariance of (S, I)
@@ -219,10 +222,12 @@ struct LinearNoiseProcess
 end
 
 function LinearNoiseProcess(;
-        population_size::Integer, transmission_rate::Real, removal_rate::Real,
-        step::Real = 0.05
+        population = NoPopulation(), population_size = NoPopulation(),
+        transmission_rate::Real, removal_rate::Real, step::Real = 0.05
     )
-    mean_field = MeanFieldProcess(; population_size, transmission_rate, removal_rate, step)
+    mean_field = MeanFieldProcess(;
+        population, population_size, transmission_rate, removal_rate, step
+    )
     return LinearNoiseProcess(
         mean_field.population_size, mean_field.transmission_rate,
         mean_field.removal_rate, mean_field.step

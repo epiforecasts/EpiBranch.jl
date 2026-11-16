@@ -27,15 +27,6 @@ end
 
 _observe_sizes(::NoObservation, true_sizes, ::AbstractRNG) = true_sizes
 
-function _observe_sizes(o::PerCaseObservation, true_sizes, rng::AbstractRNG)
-    p = EpiBranch.scalar_detection_prob(o)
-    # Chains with no detected case leave no trace in the data (matching
-    # `_sim_chain_sizes`), so the analytical PMF is conditioned on at least
-    # one detection and the empirical marginal must drop them too.
-    obs = [rand(rng, Binomial(n, p)) for n in true_sizes]
-    return filter(>(0), obs)
-end
-
 function _observe_sizes(o::ChainDetection, true_sizes, rng::AbstractRNG)
     # A whole chain is kept or dropped as one draw, matching
     # `apply_observation!`: never partly reported.
