@@ -263,11 +263,15 @@ end
 # definition leaves later runs of a batch and a continued run unchanged.
 # `CommonRandomNumbers` already keeps a stream per person and purpose. Any
 # other generator gives a seed, taken once from a copy and kept with the
-# state, from which each person's generator is derived.
+# state, from which each person's generator is derived. A generator that
+# cannot be copied, such as `RandomDevice`, has no sequence to protect and
+# gives the seed directly.
 _classification_rng(rng::CommonRandomNumbers, state, id) =
     stream(rng, id, :case_definition)
 function _classification_rng(rng::Random.AbstractRNG, state, id)
-    seed = get!(() -> rand(copy(rng), UInt64), state.scratch, _CLASSIFICATION_SEED_KEY)
+    seed = get!(state.scratch, _CLASSIFICATION_SEED_KEY) do
+        rand(applicable(copy, rng) ? copy(rng) : rng, UInt64)
+    end
     return Random.Xoshiro(hash((seed::UInt64, id)))
 end
 
