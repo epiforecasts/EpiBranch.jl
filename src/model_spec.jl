@@ -53,6 +53,7 @@ end
 # `susceptibility_components` is defined in a file loaded after this one.
 _effect_hooks() = (
     (initialise_individual!, 3, "initialise_individual!(intervention, individual, state)"),
+    (initialise_episode!, 3, "initialise_episode!(intervention, individual, state)"),
     (resolve_individual!, 3, "resolve_individual!(intervention, individual, state)"),
     (competing_risk, 4, "competing_risk(intervention, parent, contact, state)"),
     (trace_contacts!, 4, "trace_contacts!(intervention, state, infector, contacts)"),
@@ -470,6 +471,7 @@ progression(s::ModelSpec) = s.progression
 composed onto `spec`."""
 process(s::ModelSpec) = s.process
 population_size(s::ModelSpec) = population_size(s.process)
+population(s::ModelSpec) = population(s.process)
 
 # Structural accessors delegate to the wrapped process, so the analytical
 # helpers and the Turing `~` distribution wrappers treat a spec like the
@@ -592,7 +594,7 @@ function _require_unreshaped_offspring_law(model, name)
         offspring_law_unchanged(attributes(model)) &&
         all(offspring_law_unchanged, progression(model)) || throw(
         ArgumentError(
-            "$name has no closed form for this model: a finite population_size, an " *
+            "$name has no closed form for this model: a finite population, an " *
                 "infectiousness window with `until`, or an attribute (such as " *
                 "transmission_traits away from its neutral value) reshapes the offspring " *
                 "law away from the distribution it was built with. Simulate instead."

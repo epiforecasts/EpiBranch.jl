@@ -27,11 +27,25 @@ abstract type AbstractIntervention end
 """Record this intervention's starting information on a person when they
 enter the simulation (for example "not yet isolated"). Default: does nothing.
 
-Also called again, before [`resolve_individual!`](@ref), on a case settling a
-new episode after a reinfection, so per-episode state it draws (such as
-`Isolation`'s `:test_positive`) is fresh for that episode rather than left
-over from an earlier one."""
+Called once per person, not again on a reinfection. State set here, such as a
+quarantine, belongs to the time the person spends in the population and stays
+in place. State that belongs to one infection is set in
+[`initialise_episode!`](@ref EpiBranch.initialise_episode!)."""
 initialise_individual!(::AbstractIntervention, individual, state) = nothing
+
+"""
+    initialise_episode!(intervention, individual, state)
+
+Refresh the state an intervention keeps for one infection episode, for example
+`Isolation`'s `:test_positive`. Default: does nothing.
+
+Called before [`resolve_individual!`](@ref) on a case settling a new episode
+after a reinfection, so a per-episode draw is fresh rather than left over from
+the earlier episode. Anything standing on the person that does not belong to
+the earlier episode, such as a quarantine imposed while they were susceptible,
+is left alone.
+"""
+initialise_episode!(::AbstractIntervention, individual, state) = nothing
 
 """
     resolve_individual!(intervention, case, state)

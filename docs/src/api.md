@@ -212,9 +212,7 @@ OnIsolation
 TraceEveryone
 TraceNobody
 PreviouslyTraced
-AlwaysEligible
 SymptomaticParent
-NoTracing
 AnyOf
 AllOf
 NoneOf
@@ -374,6 +372,7 @@ containment_probability
 is_extinct
 generation_R
 weekly_incidence
+incidence
 summarise
 scenario_sweep
 ```
@@ -563,7 +562,6 @@ given size are seen. Add one to a model with `observation = ...`.
 ```@docs
 ObservationModel
 NoObservation
-PerCaseObservation
 MinimumSize
 ChainDetection
 observe
@@ -658,13 +656,33 @@ Conditional
 EpiBranch.resolve
 ```
 
+## Population
+
+The people a model is run over, given once and read by every engine.
+
+```@docs
+Population
+NoPopulation
+EpiBranch.SinglePopulation
+EpiBranch.GroupedPopulation
+EpiBranch.population
+```
+
+How the groups of a population meet is a mixing value, which a
+[`BranchingProcess`](@ref) and a [`MixingProcess`](@ref) both take.
+
+```@docs
+Mixing
+FrequencyDependent
+DensityDependent
+```
+
 ## Default placeholders
 
 The values shown as defaults in signatures when a setting is left out, such as
 `max_cases = NoCases()`.
 
 ```@docs
-NoPopulation
 NoAttributes
 NoTypeLabels
 NoAgeDistribution
@@ -762,6 +780,7 @@ EpiBranch.honoured_without_should_stop
 
 ```@docs
 EpiBranch.initialise_individual!
+EpiBranch.initialise_episode!
 EpiBranch.resolve_individual!
 EpiBranch.on_infection_settled!
 EpiBranch.trace_contacts!

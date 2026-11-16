@@ -348,3 +348,8 @@ end
     @test count(is_vaccinated, s.individuals) == 3
     @test s.cumulative_cases == 1
 end
+
+@testset "generate_offspring without a method for the model" begin
+    model = BranchingProcess(Poisson(1.0), Exponential(1.0))
+    @test_throws ArgumentError EpiBranch.generate_offspring(model, nothing, nothing)
+end

@@ -193,7 +193,7 @@ struct _ChainLengthLaw{M, K} <:
     kwargs::K
 
     function _ChainLengthLaw(model::M, kwargs::K) where {M, K}
-        _chain_length_assert_full_reporting(progression(model))
+        _chain_length_assert_full_reporting(progression(model), attributes(model))
         return new{M, K}(model, kwargs)
     end
 end
