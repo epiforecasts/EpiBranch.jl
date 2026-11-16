@@ -36,6 +36,8 @@ terminal_certainty(::Recovery) = true
 
 function initialise_individual!(::Recovery, individual, state)
     individual.state[:recovery_candidate_time] = Inf
+    individual.state[:recovered] = false
+    individual.state[:recovered_time] = Inf
     return nothing
 end
 
@@ -163,6 +165,8 @@ terminal_certainty(d::Death) = _certain_probability(d.probability)
 
 function initialise_individual!(::Death, individual, state)
     individual.state[:death_candidate_time] = Inf
+    individual.state[:died] = false
+    individual.state[:died_time] = Inf
     return nothing
 end
 

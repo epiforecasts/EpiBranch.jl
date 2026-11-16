@@ -44,6 +44,7 @@ const TEST_GROUPS = (
         "test_isolation_seams.jl",
         "test_stopping_rules.jl",
         "test_transitions.jl",
+        "test_testing.jl",
         "test_infectiousness.jl",
         "test_renewal_offspring.jl",
         "test_funeral.jl",

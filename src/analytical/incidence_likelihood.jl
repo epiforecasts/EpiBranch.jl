@@ -130,6 +130,21 @@ function _discretize_report_delay(
     b isa Real && return _bin_cdf(
         _censored_cdf(t -> cdf(a, t - b)), 0, tol, max_lag, "reporting delay"
     )
+    # A fixed first delay has no density for the quadrature to sample. It
+    # shifts the second delay instead.
+    if a isa Dirac
+        shift = a.value
+        return _bin_cdf(
+            _censored_cdf(t -> cdf(b, t - shift)), 0, tol, max_lag, "reporting delay"
+        )
+    end
+    # A fixed second delay shifts the first in the same way.
+    if b isa Dirac
+        shift = b.value
+        return _bin_cdf(
+            _censored_cdf(t -> cdf(a, t - shift)), 0, tol, max_lag, "reporting delay"
+        )
+    end
     # P(A + B ≤ t) = ∫ f_A(x) F_B(t - x) dx over x ≤ t, B being non-negative.
     lo = minimum(a)
     F(t) = t <= lo ? 0.0 : first(quadgk(x -> pdf(a, x) * cdf(b, t - x), lo, t))
@@ -596,16 +611,23 @@ function _incidence_reporting(model)
         )
     )
     r = only(prog)
+    hasproperty(r, :delay) || throw(
+        ArgumentError(
+            "loglikelihood(IncidenceCounts, model) reads the delay of a " *
+                "reporting step from its `delay` field; $(typeof(r)) has none"
+        )
+    )
     r.delay isa Union{Real, Distribution} || throw(
         ArgumentError(
             "loglikelihood(IncidenceCounts, model) needs the Reporting delay to be a " *
                 "number or a distribution, not a per-case function"
         )
     )
-    reached, to_anchor = _infection_to(r.from, attributes(model))
+    reached, to_anchor = _infection_to(reporting_from(r), attributes(model))
+    anchor = to_anchor isa Real ? Dirac(float(to_anchor)) : to_anchor
     return (
         reporting_probability = _reporting_probability(prog) * reached,
-        reporting_delay = to_anchor === nothing ? r.delay : _DelaySum(to_anchor, r.delay),
+        reporting_delay = anchor === nothing ? r.delay : _DelaySum(anchor, r.delay),
     )
 end
 
@@ -636,24 +658,25 @@ end
 function _infection_to_onset(attrs)
     builders = attrs isa NoAttributes ? () :
         attrs isa Union{Tuple, AbstractVector} ? Tuple(attrs) : (attrs,)
-    presentations = filter(b -> b isa ClinicalPresentation, builders)
-    length(presentations) == 1 || throw(
+    laws = filter(!isnothing, map(onset_law, builders))
+    length(laws) == 1 || throw(
         ArgumentError(
             "The closed form reads the onset a Reporting step " *
-                "reports from from the model's clinical_presentation, and needs exactly " *
-                "one; this model has $(length(presentations))"
+                "reports from from the model's clinical_presentation (or another " *
+                "attribute that defines `onset_law`), and needs exactly " *
+                "one; this model has $(length(laws))"
         )
     )
     # Fresh copies, so the probe leaves the model's own builders as they were.
     _check_onset_builders(_fresh_attributes(builders))
-    cp = only(presentations)
+    cp = only(laws)
     cp.prob_asymptomatic isa Real || throw(
         ArgumentError(
             "The closed form needs a fixed prob_asymptomatic, not " *
                 "a per-case function"
         )
     )
-    return (1 - cp.prob_asymptomatic, cp.incubation_period)
+    return (1 - cp.prob_asymptomatic, _closed_form_incubation(cp, "The closed form"))
 end
 
 function _check_onset_builders(builders)
@@ -673,10 +696,9 @@ function _check_onset_builders(builders)
                 )
             )
         end
-        b isa ClinicalPresentation || isequal(onset(probe), before) || throw(
+        onset_law(b) !== nothing || isequal(onset(probe), before) || throw(
             ArgumentError(
-                "the closed form: an attribute builder other than " *
-                    "clinical_presentation records an onset, which this closed form cannot read"
+                "the closed form: an attribute builder that does not define `onset_law` records an onset, which this closed form cannot read"
             )
         )
     end

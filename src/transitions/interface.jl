@@ -499,7 +499,8 @@ _from_required(_) = Symbol[]
 
 After all `resolve_individual!`s have run, collect terminal candidates
 across all terminal transitions and set `:outcome` and `:outcome_time`
-to the earliest. If no terminal transition occurs, neither key is set.
+to the earliest. It also records the winner under its own state and
+`<label>_time` keys. If no terminal transition occurs, none of them is set.
 
 Once the outcome is set, [`censor_after_outcome!`](@ref
 EpiBranch.censor_after_outcome!) runs on every non-terminal transition: a
@@ -513,6 +514,11 @@ function _finalise_terminal!(individual, transitions)
     if has_any
         individual.state[:outcome_time] = best_time
         individual.state[:outcome] = best_label
+        # The winning outcome's own state and `*_time` key, as a terminal
+        # `Transition` writes them, so an infectious window listing the state
+        # in `until` closes there. A losing candidate writes nothing.
+        individual.state[best_label] = true
+        individual.state[Symbol(best_label, :_time)] = best_time
         _each(transitions) do t
             is_terminal(t) || censor_after_outcome!(t, individual)
             return nothing

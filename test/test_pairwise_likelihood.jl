@@ -115,6 +115,21 @@ end
         @test ForwardDiff.derivative(f, log(3.0)) ≈ fd rtol = 1.0e-4
     end
 
+    @testset "hazards stay finite in the far tail" begin
+        # `ccdf` underflows to zero here, so `-log(ccdf)` is `Inf`
+        rows = PairwiseSurvivalData([1], [0.0], [800.0], [false])
+        @test isfinite(pairwise_surv_loglik(Exponential(1.0), rows))
+        @test pairwise_surv_loglik(Exponential(1.0), rows) ≈ -800.0
+        @test EpiBranch._cumhazard(Exponential(1.0), 800.0) == 800.0
+        @test EpiBranch._cumhazard(Weibull(2.0, 1.0), 30.0) ≈ 900.0
+        for k in (Exponential(2.0), Weibull(1.5, 2.0), Gamma(2.0, 1.5), LogNormal(0.5, 0.7))
+            for t in (0.3, 1.0, 4.0)
+                @test EpiBranch._cumhazard(k, t) ≈ EpiBranch.cumhazard(k, t)
+                @test EpiBranch._fast_loghazard(k, t) ≈ EpiBranch.loghazard(k, t)
+            end
+        end
+    end
+
     @testset "a zero hazard adds no NaN to a gradient" begin
         # A pair before a shifted kernel's support has log-hazard -Inf, whose
         # partials can be NaN; the reduction must skip it.
@@ -285,6 +300,15 @@ end
         @test Ls.infector == Ld.infector
         @test Ls.component == Ld.component
 
+        # a chosen initial case is conditioned on even when the hazard explains the index cases
+        Lseed = compile_contact_pairs(
+            membership, is_index, infected; external = true, seeded = [false, false, false, true, false]
+        )
+        @test Lseed.sus == [1, 1, 2, 2, 3, 3, 3, 5, 5]
+        @test isempty(Lseed.no_rows)
+        @test_throws ArgumentError compile_contact_pairs(
+            membership, is_index, infected; seeded = [true]
+        )
         @test_throws ArgumentError compile_contact_pairs([1, 1], [true], [true, false])
         @test length(compile_contact_pairs(Int[], Bool[], Bool[])) == 0
 
@@ -385,6 +409,8 @@ end
 
     @testset "an infection layer must name its contact structure" begin
         @test_throws ArgumentError EpiBranch.contact_structure(_NoStructure())
+        # a layer that records no seeded hosts reports none
+        @test EpiBranch.seeded_hosts(_NoStructure()) === nothing
     end
 
     @testset "a partition and its clique graph give the same likelihood" begin

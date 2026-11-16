@@ -27,6 +27,7 @@ makedocs(;
                 "What each model applies" => "tutorials/intervention-support.md",
             ],
             "Clinical transitions" => "tutorials/transitions.md",
+            "Making cases more or less infectious" => "tutorials/infectiousness.md",
             "Transmission models" => [
                 "Multi-type models" => "tutorials/multi-type.md",
                 "Network models" => "tutorials/networks.md",

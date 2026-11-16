@@ -90,8 +90,8 @@ function pairwise_surv_loglik(kernel, data::PairwiseSurvivalData)
     end
     for r in eachindex(data.stop)
         kr = _rowkernel(kernel, r)
-        ll -= cumhazard(kr, data.stop[r])
-        data.start[r] > 0 && (ll += cumhazard(kr, data.start[r]))
+        ll -= _cumhazard(kr, data.stop[r])
+        data.start[r] > 0 && (ll += _cumhazard(kr, data.start[r]))
     end
     return ll
 end
@@ -982,7 +982,7 @@ end
 # an infection of one has zero density.
 function _contact_pairs_layout(
         sus, infector, contact_index, is_ext, external, explain_index,
-        is_index, n, component, ncomponents
+        conditioned, n, component, ncomponents
     )
     n_rows = length(sus)
     sus_row_order = sortperm(sus)
@@ -1005,7 +1005,7 @@ function _contact_pairs_layout(
     end
     has_rows = falses(n)
     has_rows[sus_unique] .= true
-    no_rows = [j for j in 1:n if !has_rows[j] && (explain_index || !is_index[j])]
+    no_rows = [j for j in 1:n if !has_rows[j] && !conditioned[j]]
     return ContactPairsLayout(
         sus, infector, contact_index, is_ext, sus_unique,
         sus_row_ranges, sus_row_order, no_rows, external, explain_index, n,
@@ -1041,11 +1041,17 @@ the first case to explain one. The single-argument form reads the contact
 structure from `data` with [`contact_structure`](@ref
 EpiBranch.contact_structure) and takes as infected everyone with a non-`NaN`
 `infection_time`.
+
+`seeded`, a mask like `is_index`, marks chosen initial cases. They are
+conditioned on whatever the hazard, so they get no external row even when it
+explains every other index case. The single-argument form reads it from
+[`seeded_hosts`](@ref EpiBranch.seeded_hosts).
 """
 function compile_contact_pairs(
         membership::AbstractVector{<:Integer},
         is_index::AbstractVector{Bool}, infected::AbstractVector{Bool};
-        external::Bool = false, explain_index::Bool = external
+        external::Bool = false, explain_index::Bool = external,
+        seeded::Union{Nothing, AbstractVector{Bool}} = nothing
     )
     n = length(membership)
     _check_host_masks(n, is_index, infected)
@@ -1065,7 +1071,9 @@ function compile_contact_pairs(
             g_lo = k + 1
         end
     end
-    layout = compile_contact_pairs(contacts, is_index, infected; external, explain_index)
+    layout = compile_contact_pairs(
+        contacts, is_index, infected; external, explain_index, seeded
+    )
     # A group has no per-edge list for a kernel to index into.
     fill!(layout.contact_index, 0)
     return layout
@@ -1074,10 +1082,19 @@ end
 function compile_contact_pairs(
         contacts::AbstractVector{<:AbstractVector{<:Integer}},
         is_index::AbstractVector{Bool}, infected::AbstractVector{Bool};
-        external::Bool = false, explain_index::Bool = external
+        external::Bool = false, explain_index::Bool = external,
+        seeded::Union{Nothing, AbstractVector{Bool}} = nothing
     )
     n = length(contacts)
     _check_host_masks(n, is_index, infected)
+    seeded === nothing || length(seeded) == n ||
+        throw(ArgumentError("seeded must cover the same hosts as the contact structure"))
+    # The hosts the likelihood takes as given rather than explaining: index
+    # cases unless the hazard explains them, and chosen initial cases always.
+    conditioned = [
+        (!explain_index && is_index[j]) || (seeded !== nothing && seeded[j])
+            for j in 1:n
+    ]
 
     # Invert the out-lists of infected hosts into in-lists (compressed rows), so
     # each susceptible's possible infectors come out together, in infector order.
@@ -1109,7 +1126,7 @@ function compile_contact_pairs(
 
     n_rows = 0
     for j in 1:n
-        (!explain_index && is_index[j]) && continue
+        conditioned[j] && continue
         n_rows += (ptr[j + 1] - ptr[j]) + external
     end
     sus = Vector{Int}(undef, n_rows)
@@ -1118,7 +1135,7 @@ function compile_contact_pairs(
     is_ext = Vector{Bool}(undef, n_rows)
     r = 0
     for j in 1:n
-        (!explain_index && is_index[j]) && continue
+        conditioned[j] && continue
         if external
             r += 1
             sus[r] = j
@@ -1137,7 +1154,7 @@ function compile_contact_pairs(
     component, ncomponents = _structure_components(contacts)
     return _contact_pairs_layout(
         sus, infector, contact_index, is_ext, external, explain_index,
-        is_index, n, component, ncomponents
+        conditioned, n, component, ncomponents
     )
 end
 
@@ -1147,8 +1164,30 @@ function compile_contact_pairs(
     infected = .!isnan.(data.infection_time)
     return compile_contact_pairs(
         contact_structure(data), data.is_index, infected;
-        external, explain_index
+        external, explain_index, seeded = seeded_hosts(data)
     )
+end
+
+"""
+    seeded_hosts(data::InfectionLayer) -> Union{Nothing, AbstractVector{Bool}}
+
+The hosts chosen as initial cases, which the likelihood takes as given even
+when a community hazard explains every other infection. `nothing`, the default,
+is a layer recording none. A layer type that records them returns a vector
+shaped like `data.is_index`.
+"""
+seeded_hosts(::InfectionLayer) = nothing
+
+# Which of a simulation's people were chosen initial cases.
+_seeded_column(state::SimulationState) =
+    Bool[get(ind.state, :seeded, false) for ind in state.individuals]
+
+# A layer's `seeded` column over `n` hosts, none seeded where it is not given.
+_seeded_mask(::Nothing, n) = fill(false, n)
+function _seeded_mask(seeded, n)
+    length(seeded) == n ||
+        throw(ArgumentError("the contact structure and seeded must cover the same hosts"))
+    return Vector{Bool}(seeded)
 end
 
 # ── The community hazard ─────────────────────────────────────────────
@@ -1275,7 +1314,7 @@ _ext_survival(source) = _calendar_external_survival(source)
 
 # Person `j`'s survival distribution under the community hazard, or `nothing`
 # when they face none. A calendar schedule is the same for everyone, like a
-# shared distribution; `_CalendarScaledKernel` is its own prepared form.
+# shared distribution. A `_CalendarScaledKernel` is itself a distribution.
 _ext_survival_of(::Nothing, j) = nothing
 _ext_survival_of(d::ContinuousUnivariateDistribution, j) = d
 _ext_survival_of(α::Real, j) = _ext_active(α) ? _ext_survival(α) : nothing
@@ -1284,7 +1323,6 @@ function _ext_survival_of(f::Function, j)
     s = _check_person_external(f(j), j)
     return _ext_survival_of(s, j)
 end
-_ext_survival_of(k::_CalendarScaledKernel, j) = k
 _ext_survival_of(source, j) = _calendar_external_survival(source)
 
 # The source with each rate turned into its survival distribution once, for
@@ -1303,7 +1341,6 @@ _ext_prepare(source, data) = _ext_prepare(source)
 # The parameter type of the community hazard over the `n` people, so that AD
 # values in a fitted rate survive the reduction.
 _ext_partype(d::ContinuousUnivariateDistribution, n) = Distributions.partype(d)
-_ext_partype(k::_CalendarScaledKernel, n) = Distributions.partype(k)
 function _ext_partype(source, n)
     T = Union{}
     for j in 1:n
@@ -1361,6 +1398,10 @@ household or network structure, the infectious household members of a
 susceptible are counted in `I(t)` as well as in their own pairwise rows, as in
 [`HomogeneousProcess`](@ref) with households. Keep this in mind when
 interpreting `transmission_rate`.
+
+For a sample, give the community force of infection directly as the
+`external_hazard` instead of using `MassActionHazard`. It is a `Steps` schedule
+over calendar time, for instance from surveillance incidence.
 
 A person is counted in `I(t)` over `(infectious_time, removal_time]`, the same
 convention a pairwise row's own exposure uses, so a secondary infected at the
@@ -1973,11 +2014,11 @@ end
 # `origin` plus that), under a modifier. A constant factor splits the integral
 # exactly at `start`, since `cumhazard` is itself an integral of the hazard; a
 # factor that varies is integrated numerically against the kernel's hazard.
-_scaled_cumhazard(::Nothing, kernel, origin, stop) = cumhazard(kernel, stop)
+_scaled_cumhazard(::Nothing, kernel, origin, stop) = _cumhazard(kernel, stop)
 function _scaled_cumhazard(m::HazardScaling{<:Real, <:Real}, kernel, origin, stop)
     boundary = clamp(m.start - origin, zero(stop), stop)
-    before = cumhazard(kernel, boundary)
-    tail = cumhazard(kernel, stop) - before
+    before = _cumhazard(kernel, boundary)
+    tail = _cumhazard(kernel, stop) - before
     # An infinite tail under a zero factor contributes nothing, where the
     # product would give NaN. A finite tail stays in the product so that the
     # derivative with respect to the factor survives a factor of exactly zero.
@@ -1986,7 +2027,7 @@ function _scaled_cumhazard(m::HazardScaling{<:Real, <:Real}, kernel, origin, sto
 end
 function _scaled_cumhazard(m::HazardScaling, kernel, origin, stop)
     boundary = clamp(m.start - origin, zero(stop), stop)
-    before = cumhazard(kernel, boundary)
+    before = _cumhazard(kernel, boundary)
     # A bounded profile's survival reaches zero at the top of its support, past
     # which its hazard is undefined, so the cumulative hazard is infinite there,
     # as the kernel's own `cumhazard` has it.
@@ -2052,7 +2093,7 @@ function _component_loglik(
             (tj >= 0 && tj <= data.obs_end) || continue
             extdist = _ext_survival_of(extsrc, layout.sus[r])
             extdist === nothing && continue
-            _push!(acc, _scaled_loghazard(modifier, loghazard(extdist, tj), tj))
+            _push!(acc, _scaled_loghazard(modifier, _fast_loghazard(extdist, tj), tj))
         else
             i = infector[r]
             oi = data.infectious_time[i]
