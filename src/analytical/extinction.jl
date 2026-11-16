@@ -70,9 +70,11 @@ function extinction_probability(R::Real, k::Real; tol::Real = 1.0e-10, max_iter:
 
     R <= 1.0 && return 1.0
 
-    offspring = NegativeBinomial(k, k / (k + R))
+    # Built from `R` and `k` directly, because `p = k / (k + R)` stored in a
+    # `NegativeBinomial` rounds `R` away once `k` is far larger than `R`.
+    pgf(s) = exp(-k * log1p(R * (1 - s) / k))
 
-    q, converged = _contain_fixed_point(offspring; tol, max_iter)
+    q, converged = _contain_fixed_point(pgf; tol, max_iter)
     converged || @warn_unconverged_extinction(max_iter, "the reproduction number")
     return q
 end
@@ -168,10 +170,7 @@ this throws an `ArgumentError` that points to simulation. For a single-type
 model the result is one number; for a multi-type model built from an offspring
 matrix it has one value per type of index case.
 
-For a `ModelSpec`, or a process that stores its own interventions, each
-intervention's [`EpiBranch.analytic_offspring_effect`](@ref) is applied to
-the offspring distribution first. If an intervention has no such method, this
-throws an error that names the simulation-based alternative.
+A `ModelSpec`, or a process that stores its own interventions, has them applied through [`EpiBranch.analytic_offspring_effect`](@ref).
 """
 function extinction_probability(model::Union{TransmissionModel, ModelSpec}; kwargs...)
     _require_unreshaped_offspring_law(model, "extinction_probability")
@@ -287,10 +286,7 @@ A model whose offspring law is reshaped (a finite `population_size`, an
 infectiousness window with `until`, or `transmission_traits` away from their
 neutral values) gives an error that points to simulation.
 
-For a `ModelSpec`, or a process that stores its own interventions, each
-intervention's [`EpiBranch.analytic_offspring_effect`](@ref) is applied to
-the offspring distribution first. If an intervention has no such method, this
-throws an error that names the simulation-based alternative.
+A `ModelSpec`, or a process that stores its own interventions, has them applied through [`EpiBranch.analytic_offspring_effect`](@ref).
 """
 function probability_contain(model::Union{TransmissionModel, ModelSpec}; kwargs...)
     off = _unreshaped_single_type_offspring(model, "probability_contain(model)")

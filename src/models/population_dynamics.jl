@@ -47,10 +47,11 @@ function _rk4_step(f, x, t::Real, h::Real)
 end
 
 """
-    MeanFieldProcess(; population_size, transmission_rate, removal_rate, step = 0.05)
+    MeanFieldProcess(; population, transmission_rate, removal_rate, step = 0.05)
 
-The deterministic SIR mean-field approximation of a closed population of
-`population_size` people that mixes homogeneously, the large-population limit
+The deterministic SIR mean-field approximation of a closed population that
+mixes homogeneously, given as `population = Population(n)` or
+`population_size = n`, the large-population limit
 of [`HomogeneousProcess`](@ref) composed with a single exponential removal
 step (`Transition(:recovered; rate = removal_rate, terminal = true)`):
 
@@ -75,7 +76,7 @@ switching between exact simulation and either one.
 ```julia
 using EpiBranch
 model = MeanFieldProcess(;
-    population_size = 10_000, transmission_rate = 0.4, removal_rate = 0.2
+    population = Population(10_000), transmission_rate = 0.4, removal_rate = 0.2
 )
 state = simulate(model; n_initial = 5, max_time = 30.0)
 state = simulate(model, state; max_time = 60.0)
@@ -89,10 +90,12 @@ struct MeanFieldProcess
 end
 
 function MeanFieldProcess(;
-        population_size::Integer, transmission_rate::Real, removal_rate::Real,
-        step::Real = 0.05
+        population = NoPopulation(), population_size = NoPopulation(),
+        transmission_rate::Real, removal_rate::Real, step::Real = 0.05
     )
-    population_size >= 1 || throw(ArgumentError("population_size must be ≥ 1"))
+    pop = _single_population(
+        _closed_population(population, population_size), "MeanFieldProcess"
+    )
     (isfinite(transmission_rate) && transmission_rate >= 0) || throw(
         ArgumentError("transmission_rate must be finite and non-negative")
     )
@@ -100,7 +103,7 @@ function MeanFieldProcess(;
         throw(ArgumentError("removal_rate must be finite and non-negative"))
     step > 0 || throw(ArgumentError("step must be positive"))
     return MeanFieldProcess(
-        Int(population_size), Float64(transmission_rate), Float64(removal_rate), Float64(step)
+        pop.size, Float64(transmission_rate), Float64(removal_rate), Float64(step)
     )
 end
 
@@ -209,7 +212,7 @@ function _integrate_sir(model, S, I, Σ, t0, max_time)
 end
 
 """
-    LinearNoiseProcess(; population_size, transmission_rate, removal_rate, step = 0.05)
+    LinearNoiseProcess(; population, transmission_rate, removal_rate, step = 0.05)
 
 The same closed-population SIR dynamics as [`MeanFieldProcess`](@ref), represented
 as a Gaussian process around the deterministic mean path (the linear noise
@@ -221,6 +224,14 @@ external Kalman filter needs for its prediction step; a particle filter can
 draw its own particles from the returned mean and covariance instead of
 running the exact simulation.
 
+The Gaussian has no mass on early extinction, and the approximation needs
+enough initial cases for extinction to be negligible. From one or a few cases
+it describes only the outbreaks that take off, and only roughly: the mean and
+variance are off. With around 50 initial cases it matches the exact
+simulation well. When early extinction matters, use the exact simulation or
+[`HybridProcess`](@ref), which simulates exactly while few people are
+infectious.
+
 Accepts the same keywords as [`MeanFieldProcess`](@ref). The mean path
 integrates identically, with the addition of the covariance.
 
@@ -229,7 +240,7 @@ integrates identically, with the addition of the covariance.
 ```julia
 using EpiBranch
 model = LinearNoiseProcess(;
-    population_size = 10_000, transmission_rate = 0.4, removal_rate = 0.2
+    population = Population(10_000), transmission_rate = 0.4, removal_rate = 0.2
 )
 state = simulate(model; n_initial = 5, max_time = 30.0)
 state.covariance   # 2×2 covariance of (S, I)
@@ -243,10 +254,12 @@ struct LinearNoiseProcess
 end
 
 function LinearNoiseProcess(;
-        population_size::Integer, transmission_rate::Real, removal_rate::Real,
-        step::Real = 0.05
+        population = NoPopulation(), population_size = NoPopulation(),
+        transmission_rate::Real, removal_rate::Real, step::Real = 0.05
     )
-    mean_field = MeanFieldProcess(; population_size, transmission_rate, removal_rate, step)
+    mean_field = MeanFieldProcess(;
+        population, population_size, transmission_rate, removal_rate, step
+    )
     return _with_fields_of(LinearNoiseProcess, mean_field)
 end
 
@@ -290,7 +303,11 @@ end
 
 Integrate the linear noise approximation of `model` from `t = 0`, with
 `n_initial` people infected, the rest susceptible, and no uncertainty yet
-(a zero covariance), up to `max_time`. Returns a [`LinearNoiseState`](@ref);
+(a zero covariance), up to `max_time`. The default of one initial case is
+only a starting value. The Gaussian approximation ignores early extinction and
+from one or a few cases describes only outbreaks that take off, and only
+roughly. Use enough initial cases for extinction to be negligible (around 50
+is close to the exact simulation). Returns a [`LinearNoiseState`](@ref);
 continue it further with `simulate(model, state; max_time)`.
 """
 function simulate(model::LinearNoiseProcess; n_initial::Integer = 1, max_time::Real)

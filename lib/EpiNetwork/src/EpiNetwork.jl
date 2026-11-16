@@ -20,7 +20,7 @@ import EpiBranch: population_size, new_state, add_individuals!, apply_observatio
 # well, and agree on when that term applies and what it is.
 import EpiBranch: _infection_layer_columns, _infection_layer_fields,
     _layer_host_times, _ext_active, _ext_survival_of, _ext_prepare,
-    _ext_draw, _ext_partype, _check_external, _normalise_external
+    _ext_draw, _ext_partype, _check_external, _check_obs_end, _normalise_external
 # The routed likelihood leaves each route's removal to the same lapsing-stretch
 # record the single-route likelihood reads, gated per route, and evaluates a
 # susceptibility effect over every route and the external hazard the same way
@@ -29,7 +29,7 @@ import EpiBranch: _removal_gaps, _host_stretches, _gapped_cumhazard, _removed_at
     _host_leaky_stretches, _leak_log_at,
     _validate_infection_likelihood, susceptibility_components, _scaled_cumhazard,
     _scaled_loghazard, _mixtures_partype, _layer_host, _is_minus_inf,
-    INTERVENTION_REMOVAL, followup_end, contact_structure,
+    _weighted_logsumexp, INTERVENTION_REMOVAL, followup_end, contact_structure,
     cumhazard, loghazard, logsumexp
 
 export NetworkProcess, RoutedNetwork

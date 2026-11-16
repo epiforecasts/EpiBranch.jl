@@ -1006,7 +1006,7 @@ end
         @test sort(first.(contacts)) == [2, 3, 4, 5]
         @test sort(wrapped.proposed[1]) == [2, 3, 4, 5]
         # a second call for the same infector, as a resumed redraw makes
-        # (`EpiBranch._resume_route!`), adds to what is recorded rather than
+        # (`EpiBranch.resume_route!`), adds to what is recorded rather than
         # replacing it
         EpiBranch.propose_along(wrapped, 1, state, 10.0, 20.0, false, false)
         @test sort(wrapped.proposed[1]) == [2, 2, 3, 3, 4, 4, 5, 5]
@@ -1046,7 +1046,7 @@ end
     end
 
     @testset "RoutedNetwork: a self-proposing route with a never-closing window continues" begin
-        # Mass action (`EpiBranch._MassAction`) only samples a window with no
+        # Mass action (`EpiBranch.MassAction`) only samples a window with no
         # natural close up to the race's time limit, and must redraw what it
         # left past that on `simulate(model, state; max_time)` (`EpiBranch`'s
         # own continuation tests). Wrapped in a route's `_TracedProposals` for
@@ -1059,7 +1059,7 @@ end
                 Transition[], NoAttributes(), StableRNG(0)
             )
             EpiBranch.add_individuals!(state, n, AbstractIntervention[])
-            route = EpiBranch._MassAction(state, collect(1:n); rate = (_, _) -> β / n)
+            route = EpiBranch.MassAction(state, collect(1:n); rate = (_, _) -> β / n)
             w = RouteWindow(:community; kernel = nothing, reach = route)
             ModelSpec(RoutedNetwork([w]; n = n))
         end
@@ -2054,4 +2054,39 @@ end
     @test count(is_infected, cut.individuals) < count(is_infected, full.individuals)
     @test is_extinct(full)
     @test !is_extinct(cut)
+end
+
+@testset "Network reinfection once susceptible again" begin
+    prog = [
+        Transition(:recovered; delay = 3.0, terminal = true),
+        Transition(:susceptible_again; from = :recovered, delay = 0.1),
+    ]
+    adjacency = [[2, 3, 4, 5], [1], [1], [1], [1]]
+    routed = RoutedNetwork(
+        [
+            RouteWindow(
+                :only; until = (:recovered,), kernel = Exponential(1.0),
+                reach = adjacency
+            ),
+        ]
+    )
+    for process in (NetworkProcess(adjacency, Exponential(1.0)), routed)
+        n = sum(
+            length(
+                simulate(
+                    ModelSpec(process; progression = prog);
+                    initial_cases = [1], max_time = 100.0, rng = StableRNG(s)
+                ).individuals[1].episodes
+            ) for s in 1:20
+        )
+        @test n > 0
+    end
+
+    # Without a route back to susceptibility nobody is reinfected.
+    sir = [Transition(:recovered; delay = 3.0, terminal = true)]
+    state = simulate(
+        ModelSpec(NetworkProcess(adjacency, Exponential(1.0)); progression = sir);
+        initial_cases = [1], max_time = 100.0, rng = StableRNG(1)
+    )
+    @test all(isempty(ind.episodes) for ind in state.individuals)
 end

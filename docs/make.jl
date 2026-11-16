@@ -38,6 +38,7 @@ makedocs(;
                 "Chain statistics" => "tutorials/chains.md",
                 "Analytical functions" => "tutorials/analytical.md",
                 "Inference" => "tutorials/inference.md",
+                "Parameter sweeps across processes" => "tutorials/parameter-sweeps.md",
             ],
             "Extending EpiBranch" => [
                 "Extending EpiBranch" => "tutorials/extending.md",

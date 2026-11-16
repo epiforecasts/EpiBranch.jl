@@ -21,7 +21,7 @@
 # The removed are the remainder of the group size, `R`.
 
 # A member's mixing group, read off its state the same missing-safe way
-# `_MassAction` reads it when the exact race is built (mass_action.jl), so a
+# `MassAction` reads it when the exact race is built (mass_action.jl), so a
 # person the attributes left without one of `mixing_by`'s keys falls into a
 # `missing` group here too, rather than erroring in one path and not the
 # other.
@@ -34,8 +34,20 @@ _group_key(ind, mixing_by::Tuple) = Tuple(get(ind.state, k, missing) for k in mi
 # id, say — is read exactly as the exact model would read it. A stochastic
 # assignment would make the group sizes themselves random on every draw,
 # which a fixed-size compartment cannot represent, so `attributes` is
-# expected to assign groups deterministically.
+# expected to assign groups deterministically. A population with sizes by
+# group assigns them itself, in exactly those sizes.
 function _mixing_group_layout(spec::ModelSpec, mixing_by::Tuple, rng::AbstractRNG)
+    bare = process(spec)
+    return _mixing_group_layout(population(bare), spec, mixing_by, rng)
+end
+
+# A population with sizes by group has its layout already: those groups, in
+# that order, in exactly those sizes.
+function _mixing_group_layout(pop::GroupedPopulation, spec, mixing_by, rng)
+    return _group_tuples(pop.groups, length(pop.sizes), length(mixing_by)), copy(pop.sizes)
+end
+
+function _mixing_group_layout(::Population, spec, mixing_by, rng)
     bare = process(spec)
     state = new_state(bare, progression(spec), attributes(spec), rng)
     add_individuals!(state, population_size(bare), (); setup = (ind, i) -> nothing)

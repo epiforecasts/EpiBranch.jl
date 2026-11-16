@@ -161,16 +161,9 @@ function SimOpts(;
         stopping_rules::Union{Vector{<:AbstractStoppingRule}, Nothing} = nothing
     )
     initial_cases !== nothing && n_initial !== nothing &&
-        throw(
-        ArgumentError(
-            "provide either initial_cases or n_initial, not both"
-        )
-    )
-    index_types isa AbstractVector && n_initial !== nothing &&
-        throw(
-        ArgumentError(
-            "provide either index_types as a vector of types or n_initial, not both"
-        )
+        throw(ArgumentError("provide either initial_cases or n_initial, not both"))
+    index_types isa AbstractVector && n_initial !== nothing && throw(
+        ArgumentError("provide either index_types as a vector of types or n_initial, not both")
     )
     ids = initial_cases === nothing ? nothing : collect(Int, initial_cases)
     if ids !== nothing
@@ -183,11 +176,7 @@ function SimOpts(;
         all(>(0), types) || throw(ArgumentError("index_types must contain positive type indices"))
     end
     if ids !== nothing && types isa Vector{Int} && length(ids) != length(types)
-        throw(
-            ArgumentError(
-                "initial_cases and index_types must have the same length"
-            )
-        )
+        throw(ArgumentError("initial_cases and index_types must have the same length"))
     end
     count = if ids !== nothing
         length(ids)
@@ -221,17 +210,9 @@ function _case_cap(opts::SimOpts)
     return typemax(Int)
 end
 
-# Preserve the positional constructor used by external simulation methods.
-function SimOpts(n_initial, rules)
-    return SimOpts(n_initial, nothing, nothing, rules)
-end
-
 function _validate_initial_cases(model::TransmissionModel, opts::SimOpts)
-    opts.initial_cases === nothing || throw(
-        ArgumentError(
-            "$(nameof(typeof(model))) does not support initial_cases"
-        )
-    )
+    opts.initial_cases === nothing ||
+        throw(ArgumentError("$(nameof(typeof(model))) does not support initial_cases"))
     return nothing
 end
 
@@ -247,9 +228,7 @@ function _validate_index_types(model::TransmissionModel, opts::SimOpts)
     opts.index_types === nothing && return nothing
     nt = n_types(model)
     nt > 1 || throw(
-        ArgumentError(
-            "$(nameof(typeof(model))) does not support index_types (it has a single type)"
-        )
+        ArgumentError("$(nameof(typeof(model))) does not support index_types (it has a single type)")
     )
     types = opts.index_types
     types isa AbstractVector || return nothing
@@ -261,11 +240,7 @@ end
 function _validate_initial_case_ids(opts::SimOpts, n)
     ids = opts.initial_cases
     ids === nothing && return nothing
-    all(id -> id <= n, ids) || throw(
-        ArgumentError(
-            "initial_cases IDs must be in 1:$n"
-        )
-    )
+    all(id -> id <= n, ids) || throw(ArgumentError("initial_cases IDs must be in 1:$n"))
     return nothing
 end
 

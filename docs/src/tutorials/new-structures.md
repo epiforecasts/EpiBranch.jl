@@ -228,7 +228,7 @@ Listing a route's contacts costs nothing when there are few of them: a
 household, a handful of named neighbours. It costs more when there are many,
 such as a spatial kernel over a large population or contact with everyone in
 an area, where listing them first turns an *O(contacts)* process into an
-*O(candidates)* one. Mass action (`EpiBranch._MassAction`, behind
+*O(candidates)* one. Mass action (`EpiBranch.MassAction`, behind
 [`HomogeneousProcess`](@ref) and [`MixingProcess`](@ref)) is the package's own
 example: rather than list every member as a candidate contact and discard
 most of them, it samples directly the pairs that do have one, by skipping
@@ -485,7 +485,7 @@ transitions and the interventions' `resolve_individual!`), and updates the
 running totals for you. For contact tracing and ring or group vaccination to
 act, the model also declares `EpiBranch.supplies_contacts(::MyModel) = true`
 and passes `sellke_race!` a `contacts` function naming each case's contacts;
-without them those interventions have no effect, and nothing warns about it.
+without them those interventions have no effect; `simulate` warns once per run, naming each such intervention and noting that its effect on a case itself still applies.
 A loop that does not use the race instead calls
 [`resolve_transitions!`](@ref EpiBranch.resolve_transitions!)`(state, individual)`
 once per case, after its population characteristics and intervention values
@@ -518,8 +518,9 @@ without calling `single_type_offspring`, that no law is available.
 For **likelihoods** of data that do not go through the offspring
 distribution, define methods of `loglikelihood` directly.
 
-If your model has values for them, also define `population_size` and
-`n_types`; the defaults (`NoPopulation()` and `1`) are fine otherwise. If your
+If your model has values for them, also define `population_size` (or
+[`population`](@ref EpiBranch.population), returning a [`Population`](@ref))
+and `n_types`; the defaults (`NoPopulation()` and `1`) are fine otherwise. If your
 generation-time distribution is not stored in a field called
 `generation_time`, define [`model_generation_time`](@ref EpiBranch.model_generation_time)`(m)`
 to return it.
@@ -741,8 +742,12 @@ your own. You supply two things:
     `group[1]`.
 
 Below is a population in two age bands with an asymmetric contact matrix: the
-younger, more socially active band mixes more than the older one. The
-`:age_band` value is an ordinary population characteristic:
+younger, more socially active band mixes more than the older one. Giving the
+process the sizes of the bands, `Population(n)`, makes it write each person's
+`:age_band` itself, so the bands have exactly those sizes. Leave the sizes out
+(`Population(N)`) and draw the band in the model's `attributes` instead, such
+as with `rand(rng, 1:2)`, for bands whose sizes vary from run to run; an
+attribute that also writes `:age_band` alongside the sizes is an error:
 
 ```@example mixing
 using EpiBranch, Distributions, Random
@@ -750,7 +755,6 @@ using EpiBranch, Distributions, Random
 # A closed population of N in two age bands of equal size.
 N = 2000
 n = [N ÷ 2, N ÷ 2]                     # band sizes
-band = (rng, ind) -> (ind.state[:age_band] = ind.id <= n[1] ? 1 : 2)
 
 # M[b, a] is the mean rate at which one infectious person in band a contacts
 # the people of band b. Band 1 mixes far more.
@@ -762,10 +766,9 @@ M = [3.0 0.5;
 rate = (from, to) -> M[to[1], from[1]] / n[to[1]]
 
 model = ModelSpec(
-    MixingProcess(; population_size = N, mixing_by = (:age_band,), rate);
+    MixingProcess(; population = Population(n), mixing_by = (:age_band,), rate);
     progression = [Transition(:recovered; from = :infection,
-        delay = Exponential(1.0), terminal = true)],
-    attributes = band)
+        delay = Exponential(1.0), terminal = true)])
 state = simulate(model; n_initial = 5, rng = MersenneTwister(1))
 
 attack_rate(b) = count(ind -> ind.state[:age_band] == b && is_infected(ind),

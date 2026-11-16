@@ -12,16 +12,10 @@ control measure that cuts transmission by a fixed proportion. Defined for
 scale_distribution(NegBin(2.5, 0.16), 0.5)   # R = 1.25, k = 0.16
 ```
 """
-function scale_distribution(d::Poisson, factor::Real)
-    return Poisson(mean(d) * factor)
-end
+scale_distribution(d::Poisson, factor::Real) = Poisson(mean(d) * factor)
 
-function scale_distribution(d::NegativeBinomial, factor::Real)
-    k = d.r
-    new_mean = mean(d) * factor
-    p = k / (k + new_mean)
-    return NegativeBinomial(k, p)
-end
+scale_distribution(d::NegativeBinomial, factor::Real) =
+    NegativeBinomial(d.r, d.r / (d.r + mean(d) * factor))
 
 function scale_distribution(d::Distribution, ::Real)
     throw(

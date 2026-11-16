@@ -136,7 +136,8 @@ end
             bp = BranchingProcess(Poisson(0.8))
             spec = ModelSpec(bp; attributes = transmission_traits(susceptibility = 0.0))
             ll = loglikelihood(ChainSizes([1]), spec; rng = StableRNG(1), n_sim = 500)
-            @test isapprox(ll, 0.0; atol = 1.0e-9)
+            # The smoothed geometric tail puts a little probability beyond size 1.
+            @test isapprox(ll, 0.0; atol = 1.0e-2)
         end
     end
 
@@ -164,7 +165,8 @@ end
         bp = BranchingProcess(Poisson(0.8))
         spec = ModelSpec(bp; attributes = (rng, ind) -> (ind.susceptibility = 0.0))
         ll = loglikelihood(ChainSizes([1]), spec; rng = StableRNG(1), n_sim = 500)
-        @test isapprox(ll, 0.0; atol = 1.0e-9)
+        # The smoothed geometric tail puts a little probability beyond size 1.
+        @test isapprox(ll, 0.0; atol = 1.0e-2)
     end
 
     @testset "clinical_presentation prob_asymptomatic accepts distribution and function" begin
@@ -226,10 +228,13 @@ end
         model = ModelSpec(
             BranchingProcess(Poisson(0.0), Exponential(5.0));
             attributes = attrs,
-            observation = PerCaseObservation(
-                detection_prob = (rng, ind) -> ind.state[:reporting_probability],
-                from = :infection_time
-            )
+            progression = [
+                Reporting(
+                    delay = Dirac(0.0),
+                    probability = (rng, ind) -> ind.state[:reporting_probability],
+                    from = :infection
+                ),
+            ]
         )
         serial = simulate(model, 10; n_initial = 30, rng = StableRNG(42))
         parallel = simulate(
