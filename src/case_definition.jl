@@ -94,7 +94,12 @@ end
 """
 function classify_case end
 
-classify_case(f::Function, h::CaseHistory) = f(h)
+# Any callable serves as a definition. A type of its own that has no method of
+# its own is told so, where calling it would report that it is not callable.
+classify_case(f, h) = f(h)
+function classify_case(d::AbstractCaseDefinition, h)
+    throw(ArgumentError("`$(typeof(d))` needs a method of `EpiBranch.classify_case`."))
+end
 
 """
     EpiBranch.relevant_events(definition)

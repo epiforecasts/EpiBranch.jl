@@ -102,6 +102,12 @@ _acute_load(rng, ind) = t -> max(0.0, 8.0 - abs(t - 5.0) * 1.6)
         by_function = h -> has_happened(h, :onset) ? :symptomatic : missing
         EpiBranch._classify_cases!(state, by_function)
         @test case_classification(ind) == :symptomatic
+        # Any callable serves, not only a `Function`.
+        struct _Callable end
+        (::_Callable)(h) = has_happened(h, :onset) ? :callable : missing
+        state = _toy_sim_state([_toy_case(; onset = 2.0)])
+        EpiBranch._classify_cases!(state, _Callable())
+        @test case_classification(state.individuals[1]) === :callable
     end
 
     @testset "in a ModelSpec" begin
