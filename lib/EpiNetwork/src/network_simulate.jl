@@ -65,6 +65,7 @@ function simulate_once(
         ),
         introduction = _ext_active(model.external_hazard) ?
             (EpiBranch._ext_prepare(model.external_hazard), Tobs) : nothing,
+        seeded = sim_opts.initial_cases,
         targets = (inf, st) -> (
             (nb, _edge_kernel(model, inf, k, st, from))
                 for (k, nb) in enumerate(model.adjacency[inf])
