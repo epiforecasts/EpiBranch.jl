@@ -44,8 +44,7 @@ function _both_follow(rng, ind)
     symptomatic = trajectory.peak > 0.8
     onset = trajectory.peak_time * 0.8 / trajectory.peak
     ind.state[:asymptomatic] = !symptomatic
-    ind.state[:latent_incubation_period] = onset
-    ind.state[:incubation_period] = symptomatic ? onset : NaN
+    ind.state[:incubation_period] = onset
     return nothing
 end
 
@@ -102,15 +101,35 @@ end
         @test s.before_onset ≈ 0.3 atol = 0.06
     end
 
+    @testset "asymptomatic cases with their own incubation period" begin
+        own = clinical_presentation(
+            incubation_period = (rng, ind) -> rand(
+                rng, ind.state[:asymptomatic] ? LogNormal(1.2, 0.5) : LogNormal(1.5, 0.5)
+            ),
+            prob_asymptomatic = 0.3
+        )
+        linked = incubation_linked_generation_time(presymptomatic_fraction = 0.3)
+        model = ModelSpec(BranchingProcess(Poisson(3.0), linked); attributes = own)
+        states = simulate(model, 100; max_generations = 2, max_cases = 2000, rng = StableRNG(3))
+        cases = [ind for s in states for ind in s.individuals if EpiBranch.is_infected(ind)]
+        asymptomatic = [incubation_period(ind) for ind in cases if is_asymptomatic(ind)]
+        symptomatic = [incubation_period(ind) for ind in cases if !is_asymptomatic(ind)]
+        @test !any(isnan, asymptomatic)
+        @test mean(log, asymptomatic) < mean(log, symptomatic)
+        @test all(ind -> isnan(onset_time(ind)), filter(is_asymptomatic, cases))
+    end
+
     @testset "trajectory drives onset and infectiousness" begin
-        kernel = ind -> HazardKernel(t -> 0.4 * ind.state[:trajectory](t); upper = 60.0)
+        kernel = ind -> HazardKernel(
+            t -> 0.4 * EpiBranch.trajectory_load(ind, t); upper = 60.0
+        )
         window = Infectiousness(Poisson(6.0); kernel)
 
         both = _link_summary(ModelSpec(BranchingProcess(window); attributes = _both_follow))
         @test both.R_asymptomatic < 0.8 * both.R_symptomatic
 
         # Only infectiousness follows it: symptoms stay independent of load.
-        store_only(rng, ind) = (ind.state[:trajectory] = _draw_trajectory(rng).load)
+        store_only = within_host((rng, ind) -> _draw_trajectory(rng).load)
         infectiousness = _link_summary(
             ModelSpec(BranchingProcess(window); attributes = [clinical, store_only])
         )
@@ -120,5 +139,23 @@ end
         onset = _link_summary(ModelSpec(plain; attributes = _both_follow))
         @test onset.R_asymptomatic ≈ onset.R_symptomatic atol = 0.5
         @test 0.0 < onset.asymptomatic < 1.0
+    end
+
+    @testset "who is tested and classified follows the trajectory, not only symptoms" begin
+        kernel = ind -> HazardKernel(
+            t -> 0.4 * EpiBranch.trajectory_load(ind, t); upper = 60.0
+        )
+        assay = Assay(ct = load -> 40.0 - 3.3 * load, detect = 0.5)
+        model = ModelSpec(
+            BranchingProcess(Infectiousness(Poisson(6.0); kernel));
+            attributes = _both_follow,
+            progression = [Testing(assay = assay, from = :infection, delay = Uniform(3.0, 8.0))],
+            case_definition = ClinicalCaseDefinition()
+        )
+        states = simulate(model, 40; max_generations = 3, max_cases = 2000, rng = StableRNG(2))
+        cases = [ind for s in states for ind in s.individuals if EpiBranch.is_infected(ind)]
+        asymptomatic = filter(is_asymptomatic, cases)
+        @test any(ind -> ind.state[:tested], asymptomatic)
+        @test any(ind -> isequal(get(ind.state, :case_classification, missing), :confirmed), asymptomatic)
     end
 end
