@@ -270,7 +270,7 @@ attributes = within_host((rng, ind) -> load_curve(rng))
 # The load has cleared long before 100 days, so the integration stops there.
 community = Infectiousness(
     NegBin(1.2, 0.5);
-    kernel = ind -> HazardKernel(t -> 0.1 * trajectory_value(ind, t); upper = 100.0)
+    kernel = ind -> HazardKernel(t -> 0.1 * EpiBranch.trajectory_value(ind, t); upper = 100.0)
 )
 model = ModelSpec(BranchingProcess(community); attributes)
 ```
