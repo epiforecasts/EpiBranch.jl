@@ -42,6 +42,9 @@ time_aware(w::InterventionWrapper) = time_aware(w.intervention)
 resolves_under_capacity(w::InterventionWrapper) = resolves_under_capacity(w.intervention)
 discovers_actions(w::InterventionWrapper) = discovers_actions(w.intervention)
 has_competing_risk(::InterventionWrapper) = true
+# Asked of the wrapped intervention too, so that a capacity wrapper inside
+# `Scheduled` or `OnRoutes` still answers for itself.
+proposes_actions(w::InterventionWrapper) = proposes_actions(w.intervention)
 traces_source(w::InterventionWrapper) = traces_source(w.intervention)
 function on_infection_settled!(w::InterventionWrapper, ind, state, rng)
     return on_infection_settled!(w.intervention, ind, state, rng)

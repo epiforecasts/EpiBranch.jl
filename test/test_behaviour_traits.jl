@@ -104,6 +104,10 @@ struct _Bare <: EpiBranch.AbstractIntervention end
         @test !EpiBranch.discovers_actions(
             CapacityConstrained(_ProposesNothing(); budget_per_period = 1.0)
         )
+        # The same holds with the capacity wrapper inside another wrapper.
+        cap = CapacityConstrained(_ProposesNothing(); budget_per_period = 1.0)
+        @test EpiBranch.proposes_actions(Scheduled(cap; start_time = 1.0))
+        @test EpiBranch.proposes_actions(OnRoutes(cap, (:household,)))
         mass = MassVaccination(efficacy = 0.8, coverage = 0.5, eligibility_time = 1.0)
         @test EpiBranch.discovers_actions(mass)
         @test !EpiBranch.proposes_actions(mass)
