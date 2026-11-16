@@ -51,6 +51,23 @@ function _eligible_fraction(elig::IsolationEligibility, prob_asymptomatic)
     )
 end
 
+# Share of cases with no onset time. A vaccine with a `symptom_efficacy` makes
+# some breakthrough cases asymptomatic on top of `prob_asymptomatic`. Breakthrough
+# cases are a larger share of cases than of the population, which lowers the share
+# that can self-report.
+function _asymptomatic_among_cases(prob_asymptomatic, ivs)
+    pa = _closed_form_value(prob_asymptomatic)
+    mvs = [iv for iv in ivs if iv isa MassVaccination && !_no_symptom_efficacy(iv)]
+    isempty(mvs) && return pa
+    length(mvs) == 1 || throw(
+        ArgumentError(
+            "Isolation's analytic effect covers at most one MassVaccination with " *
+                "a non-zero `symptom_efficacy`; simulate instead."
+        )
+    )
+    return pa + (1.0 - pa) * _breakthrough_symptom_loss(only(mvs))
+end
+
 # `duration` enters the keep-probability nonlinearly (through F_g(T + D)), so
 # unlike `test_sensitivity` and `prob_asymptomatic` above, its mean would not
 # give an exact answer: it must be a fixed value.
@@ -73,6 +90,21 @@ function _clinical_presentation(attrs::Union{Tuple, AbstractVector})
     return i === nothing ? nothing : attrs[i]
 end
 _clinical_presentation(::Any) = nothing
+
+# The incubation period a closed form reads directly. A function of the
+# individual has no distribution to integrate over, so it is refused here with
+# an error that names the cause.
+function _closed_form_incubation(cp::ClinicalPresentation, what)
+    inc = cp.incubation_period
+    inc isa Union{Real, Distribution} && return inc
+    throw(
+        ArgumentError(
+            "$what reads the incubation period directly and needs a number or " *
+                "a distribution, not a function of the individual (got $(typeof(inc))); " *
+                "simulate instead."
+        )
+    )
+end
 
 # Expectation of `f` over a fixed value, over a continuous distribution or a
 # discrete-nonparametric one (`_mixture_expectation`, shared with
@@ -171,11 +203,13 @@ function analytic_offspring_effect(
                 "simulate a model with another trigger instead."
         )
     )
-    incubation = cp.incubation_period
+    incubation = _closed_form_incubation(cp, "Isolation's analytic effect")
     delay = iso.onset_to_isolation_delay
     ε = iso.post_isolation_transmission
     D = _isolation_duration(iso.duration)
-    q = _eligible_fraction(iso.eligibility, cp.prob_asymptomatic) *
+    q = _eligible_fraction(
+        iso.eligibility, _asymptomatic_among_cases(cp.prob_asymptomatic, interventions(spec))
+    ) *
         _closed_form_value(iso.test_sensitivity)
 
     # The keep probability for a case whose incubation period is `a` and

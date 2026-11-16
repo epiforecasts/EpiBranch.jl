@@ -17,6 +17,8 @@ include("docstrings.jl")
 # Core types
 include("individual_state.jl")
 include("types.jl")
+include("population.jl")
+include("mixing_values.jl")
 include("state_accessors.jl")
 include("options.jl")
 include("distributions.jl")
@@ -183,6 +185,7 @@ export TransmissionModel, BranchingProcess, Infectiousness, OffspringTimes,
     HomogeneousProcess, MixingProcess, ModelSpec
 export MeanFieldProcess, MeanFieldState, LinearNoiseProcess, LinearNoiseState
 export StratifiedContacts, flatten_contacts, contacts_from_table, mixing_rate
+export Mixing, FrequencyDependent, DensityDependent
 export read_contacts, ContactFileFormat, CSVFormat, NetCDFFormat
 export MixingMeanFieldProcess, MixingMeanFieldState
 export MixingLinearNoiseProcess, MixingLinearNoiseState
@@ -199,8 +202,8 @@ export AbstractIntervention, Isolation, ContactTracing, SourceTracing
 export IsolationEligibility, SymptomaticOnly, AllCases
 export IsolationTrigger, AfterSymptomOnset, AfterPositiveTest
 export is_eligible_for_isolation
-export TraceEligibility, AlwaysEligible, SymptomaticParent
-export OnSymptomOnset, OnLabConfirmation, OnIsolation, TraceEveryone, TraceNobody, NoTracing
+export TraceEligibility, SymptomaticParent
+export OnSymptomOnset, OnLabConfirmation, OnIsolation, TraceEveryone, TraceNobody
 export PreviouslyTraced
 export AnyOf, AllOf, NoneOf
 export TraceRate, ConstantRate
@@ -222,13 +225,13 @@ export AbstractClinicalTransition, Transition, Reporting, Hospitalisation, Death
 export Testing, AbstractAssay, Assay, within_host
 export is_terminal, terminal_event, terminal_target, exclusive_probabilities
 export Signal, TransitionCount, Prevalence
-export ObservationModel, PerCaseObservation, NoObservation, MinimumSize, ChainDetection,
+export ObservationModel, NoObservation, MinimumSize, ChainDetection,
     observe
 export ContactRecorder, NoContactRecorder, ExposedContactRecorder
 export single_type_offspring
 
 # Exports — sentinel types
-export NoPopulation, NoAttributes, NoTypeLabels
+export Population, NoPopulation, NoAttributes, NoTypeLabels
 export NoAgeDistribution, NoCases
 
 # Exports — accessors
@@ -267,7 +270,7 @@ export generate_offspring, contacts_of
 export event_time_metadata, linelist, contacts, chain_statistics, compute_trace_level!
 export realised_generation_interval, realised_generation_intervals,
     realised_serial_interval, realised_serial_intervals
-export containment_probability, is_extinct, generation_R, weekly_incidence, scenario_sweep
+export containment_probability, is_extinct, generation_R, weekly_incidence, incidence, scenario_sweep
 export summarise
 
 # Exports — analytical
