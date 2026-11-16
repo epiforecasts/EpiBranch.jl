@@ -14,6 +14,14 @@ function EpiBranch.apply_trace!(::SharedKeyQuarantine, contact, state, trace_tim
     return nothing
 end
 
+# Records its removal and leaves `:quarantined` unset. The record alone blocks
+# transmission.
+struct UnflaggedQuarantine <: EpiBranch.TraceAction end
+function EpiBranch.apply_trace!(::UnflaggedQuarantine, contact, state, trace_time, rng)
+    isfinite(trace_time) && set_isolated!(contact, trace_time; release_time = trace_time + 7.0)
+    return nothing
+end
+
 # One that keeps its own record and names it, which is what the extending guide
 # prescribes.
 const OWN_QUARANTINE_KEY = :own_quarantine_stretches
@@ -120,14 +128,6 @@ end
         @test ct.action isa Quarantine
     end
 
-    @testset "quarantine_on_trace = false selects FlagOnly" begin
-        ct = @test_deprecated ContactTracing(
-            probability = 1.0, isolation_to_trace_delay = Exponential(0.1),
-            quarantine_on_trace = false
-        )
-        @test ct.action isa FlagOnly
-    end
-
     @testset "Default ContactTracing reproduces existing behaviour" begin
         # Tracing on isolated symptomatic parents, with quarantine.
         rng = StableRNG(42)
@@ -176,6 +176,23 @@ end
             @test Base.ispublic(EpiBranch, :trigger_time)
         else
             @info "Skipping Base.ispublic check on Julia $VERSION"
+            @test_skip true
+        end
+    end
+
+    @testset "extension hooks the guides name are public" begin
+        if VERSION >= v"1.11"
+            for n in (
+                    :keep_active, :traces, :draw_trace_delay, :apply_trace!,
+                    :capacity_key, :capacity_time_key, :resource_key, :held_until,
+                    :refused_action, :InterventionWrapper, :draw_offspring,
+                    :offspring_law_unchanged, :has_single_type_law, :lazily_populate!,
+                    :effect_mode, :dose_label, :HostImmunity, :AbortedInfection,
+                    :scale_mean, :sum_offspring,
+                )
+                @test Base.ispublic(EpiBranch, n)
+            end
+        else
             @test_skip true
         end
     end
@@ -272,6 +289,12 @@ end
             OnSymptomOnset(), ConstantRate(1.0),
             ConstantDelay(Exponential(0.5)), Quarantine(duration = Inf); depth = 2
         ).depth == 2
+    end
+
+    @testset "a missing action is rejected" begin
+        @test_throws ArgumentError ContactTracing(
+            probability = 1.0, isolation_to_trace_delay = Exponential(0.5)
+        )
     end
 
     @testset "depth below 1 is rejected" begin
@@ -665,6 +688,16 @@ end
     @test EpiBranch.infectious_removal_time(ct_keyed, untouched) == Inf
     @test EpiBranch.competing_risk(ct_keyed, untouched, Individual(id = 11), nothing) ===
         nothing
+
+    # The removal alone blocks, whether or not the action sets `:quarantined`.
+    ct_unflagged = ContactTracing(TraceEveryone(), 1.0, Dirac(0.0), UnflaggedQuarantine())
+    unflagged = Individual(id = 4)
+    EpiBranch.apply_trace!(UnflaggedQuarantine(), unflagged, nothing, 4.0, StableRNG(1))
+    @test !is_quarantined(unflagged)
+    unflagged_risk = only(
+        EpiBranch.competing_risk(ct_unflagged, unflagged, Individual(id = 12), nothing)
+    )
+    @test (unflagged_risk.event_time, unflagged_risk.release_time) == (4.0, 11.0)
 end
 
 @testset "A TraceAction can follow a contact up and release it once settled" begin
