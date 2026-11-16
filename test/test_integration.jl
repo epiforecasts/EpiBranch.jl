@@ -75,9 +75,9 @@ using Dates
         # Unequal sizes are fine when independent
         @test containment_difference(a, b[1:100]).paired == false
 
-        # Runs sharing random numbers: the difference does not depend on pairing.
-        # Whether pairing shrinks the standard error depends on the draws, so
-        # only the deterministic case above asserts it.
+        # Runs sharing random numbers give the same difference with or without
+        # pairing. Pairing may or may not shrink the standard error, depending
+        # on the draws, so only the deterministic case above tests that.
         process = BranchingProcess(NegBin(1.5, 0.3), Exponential(5.0))
         attrs = clinical_presentation(incubation_period = LogNormal(1.6, 0.5))
         iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = Inf)
