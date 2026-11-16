@@ -81,8 +81,8 @@ function _isolation_duration(D)
     )
 end
 
-# The onset law (`onset_law`) of the one attribute among the
-# `attributes` of a model that defines it, or `nothing` if there is none.
+# The `onset_law` of the single attribute in `attributes` that defines one,
+# or `nothing` if none does.
 _onset_law(attrs::Union{Tuple, AbstractVector}) = _onset_law_of(attrs)
 _onset_law(::NoAttributes) = nothing
 _onset_law(attr) = onset_law(attr)
@@ -98,9 +98,9 @@ function _onset_law_of(attrs)
     return only(laws)
 end
 
-# The incubation period a closed form reads directly. A function of the
-# individual has no distribution to integrate over, so it is refused here with
-# an error that names the cause.
+# The incubation period that a closed form reads directly. A function of the
+# individual has no distribution to integrate over, and the error here names
+# that cause.
 function _closed_form_incubation(cp, what)
     inc = cp.incubation_period
     inc isa Union{Real, Distribution} && return inc
