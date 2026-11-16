@@ -1006,7 +1006,7 @@ end
         @test sort(first.(contacts)) == [2, 3, 4, 5]
         @test sort(wrapped.proposed[1]) == [2, 3, 4, 5]
         # a second call for the same infector, as a resumed redraw makes
-        # (`EpiBranch._resume_route!`), adds to what is recorded rather than
+        # (`EpiBranch.resume_route!`), adds to what is recorded rather than
         # replacing it
         EpiBranch.propose_along(wrapped, 1, state, 10.0, 20.0, false, false)
         @test sort(wrapped.proposed[1]) == [2, 2, 3, 3, 4, 4, 5, 5]
@@ -1046,7 +1046,7 @@ end
     end
 
     @testset "RoutedNetwork: a self-proposing route with a never-closing window continues" begin
-        # Mass action (`EpiBranch._MassAction`) only samples a window with no
+        # Mass action (`EpiBranch.MassAction`) only samples a window with no
         # natural close up to the race's time limit, and must redraw what it
         # left past that on `simulate(model, state; max_time)` (`EpiBranch`'s
         # own continuation tests). Wrapped in a route's `_TracedProposals` for
@@ -1059,7 +1059,7 @@ end
                 Transition[], NoAttributes(), StableRNG(0)
             )
             EpiBranch.add_individuals!(state, n, AbstractIntervention[])
-            route = EpiBranch._MassAction(state, collect(1:n); rate = (_, _) -> β / n)
+            route = EpiBranch.MassAction(state, collect(1:n); rate = (_, _) -> β / n)
             w = RouteWindow(:community; kernel = nothing, reach = route)
             ModelSpec(RoutedNetwork([w]; n = n))
         end
@@ -2054,4 +2054,91 @@ end
     @test count(is_infected, cut.individuals) < count(is_infected, full.individuals)
     @test is_extinct(full)
     @test !is_extinct(cut)
+end
+
+@testset "Chosen initial cases are infected whatever the risks" begin
+    adjacency = [Int[] for _ in 1:6]
+    process = NetworkProcess(
+        adjacency, Exponential(1.0); external_hazard = 0.001, obs_end = 50.0
+    )
+    vaccine = MassVaccination(eligibility_time = -30.0, efficacy = 1.0)
+    state = simulate(
+        ModelSpec(
+            process;
+            progression = [Transition(:recovered; delay = 5.0, terminal = true)],
+            interventions = [vaccine]
+        );
+        initial_cases = [1, 4], rng = StableRNG(1)
+    )
+    for id in (1, 4)
+        ind = state.individuals[id]
+        @test is_infected(ind) && ind.infection_time == 0
+        @test ind.state[:seeded]
+    end
+end
+
+@testset "Chosen initial cases on a routed network and in the layers" begin
+    n = 6
+    reach = [Int[] for _ in 1:n]
+    process = RoutedNetwork(
+        [RouteWindow(:a; until = (:recovered,), kernel = Exponential(1.0), reach = reach)];
+        external_hazard = 0.001, obs_end = 50.0
+    )
+    m = ModelSpec(
+        process;
+        progression = [Transition(:recovered; delay = 5.0, terminal = true)],
+        interventions = [MassVaccination(eligibility_time = -30.0, efficacy = 1.0)]
+    )
+    state = simulate(m; initial_cases = [1, 4], rng = StableRNG(1))
+    for id in (1, 4)
+        ind = state.individuals[id]
+        @test is_infected(ind) && ind.infection_time == 0
+        @test ind.state[:seeded]
+    end
+    @test findall(routed_network_infections(state, m).seeded) == [1, 4]
+
+    nm = ModelSpec(
+        NetworkProcess(reach, Exponential(1.0); external_hazard = 0.001, obs_end = 50.0);
+        progression = [Transition(:recovered; delay = 5.0, terminal = true)]
+    )
+    ndata = network_infections(simulate(nm; initial_cases = [2], rng = StableRNG(2)), nm)
+    @test findall(ndata.seeded) == [2]
+    @test_throws ArgumentError NetworkInfections(
+        reach, fill(0.0, n), fill(0.0, n), fill(1.0, n), fill(true, n); seeded = [true]
+    )
+end
+
+@testset "Network reinfection once susceptible again" begin
+    prog = [
+        Transition(:recovered; delay = 3.0, terminal = true),
+        Transition(:susceptible_again; from = :recovered, delay = 0.1),
+    ]
+    adjacency = [[2, 3, 4, 5], [1], [1], [1], [1]]
+    routed = RoutedNetwork(
+        [
+            RouteWindow(
+                :only; until = (:recovered,), kernel = Exponential(1.0),
+                reach = adjacency
+            ),
+        ]
+    )
+    for process in (NetworkProcess(adjacency, Exponential(1.0)), routed)
+        n = sum(
+            length(
+                simulate(
+                    ModelSpec(process; progression = prog);
+                    initial_cases = [1], max_time = 100.0, rng = StableRNG(s)
+                ).individuals[1].episodes
+            ) for s in 1:20
+        )
+        @test n > 0
+    end
+
+    # Without a route back to susceptibility nobody is reinfected.
+    sir = [Transition(:recovered; delay = 3.0, terminal = true)]
+    state = simulate(
+        ModelSpec(NetworkProcess(adjacency, Exponential(1.0)); progression = sir);
+        initial_cases = [1], max_time = 100.0, rng = StableRNG(1)
+    )
+    @test all(isempty(ind.episodes) for ind in state.individuals)
 end

@@ -137,7 +137,7 @@ Whether `x` leaves a model's single-type offspring law exactly as the
 offspring distribution draws it, with nothing reshaping how many of the
 drawn contacts end up as cases. `loglikelihood(::ChainSizes, model)`,
 [`chain_size_distribution`](@ref) and the closed-form incidence likelihood
-take their analytical path, scoring the bare offspring distribution, only
+take their analytical path, using the bare offspring distribution, only
 once the process, every entry of `attributes` and every `progression`
 transition each answer `true` here; any one of them answering `false` sends
 the evaluation to simulation instead.
@@ -186,6 +186,55 @@ offspring_law_unchanged(::AbstractClinicalTransition) = false
 function offspring_law_unchanged(xs::Union{Tuple, AbstractVector})
     return all(offspring_law_unchanged, xs)
 end
+
+"""
+    reporting_probability(transition) -> Union{Nothing, Real, Function}
+
+The probability that `transition` reports a case, or `nothing` (the default)
+when it is not a reporting step. The closed forms that thin a chain-size law
+or an incidence series by under-reporting ask this of every `progression`
+transition rather than matching [`Reporting`](@ref) by type. A reporting
+step of your own (one with a probability that varies with age, or a testing
+transition) reaches them by defining it. [`Reporting`](@ref) returns its
+`probability` field.
+
+A closed form needs a number and falls back to simulation for a function.
+The time the report is measured from is read with
+[`EpiBranch.reporting_from`](@ref), and a step must also record `:reported`
+and `:reporting_time` as [`Reporting`](@ref) does for `simulate` to agree with
+the closed form.
+"""
+reporting_probability(::Any) = nothing
+
+"""
+    reporting_from(transition)
+
+The time a reporting step measures its delay from, in the form
+taken by the `from` field of [`Reporting`](@ref): `:infection`, a recorded time such as
+`:onset_time`, or a function of the individual. Only asked of a transition
+that answers [`EpiBranch.reporting_probability`](@ref). The default is
+`:onset_time`.
+"""
+reporting_from(::Any) = :onset_time
+
+"""
+    onset_law(attribute)
+
+The law of a case's symptom onset that `attribute` sets, as a
+`NamedTuple` `(incubation_period, prob_asymptomatic)`: the incubation-period
+distribution and the share of cases that never develop symptoms. The default
+is `nothing`, for an attribute that records no onset.
+
+The closed forms that need the onset (the analytic effect of
+[`Isolation`](@ref), and reporting timed from onset in the incidence
+likelihood and the chain-size law) ask each of the model's attributes this
+rather than matching the type of [`clinical_presentation`](@ref). An onset
+builder of your own reaches them by defining it. A model must have exactly
+one attribute that answers, and its `prob_asymptomatic` must be a number for
+the closed forms to use it. `simulate` must set `:onset_time` and
+`:asymptomatic` consistently with the law you declare.
+"""
+onset_law(::Any) = nothing
 
 """The number of types of case `model` has, or `1` for a single-type model
 (the default). A multi-type model, such as a [`BranchingProcess`](@ref)
@@ -455,6 +504,10 @@ Useful fields:
   (see [`realise!`](@ref)); a person it never reached reads as never
   infected and untouched by any intervention.
 - `cumulative_cases`: the total number of cases.
+- `population`: the [`Population`](@ref) the model was run over, or
+  `NoPopulation()`.
+- `group_cases`: the number of cases in each group of a grouped population,
+  empty for any other.
 - `extinct`: whether transmission had died out when the run stopped.
 - `current_generation`: the last generation simulated.
 
@@ -477,26 +530,28 @@ mutable struct SimulationState{T <: Real, R <: AbstractRNG, P, A}
     rng::R
     cumulative_cases::Int
     extinct::Bool
-    population_size::P
+    population::P
     max_infection_time::T
     attributes::A
     transitions::Vector{AbstractClinicalTransition}
     scratch::Dict{Any, Any}
     continuation::Union{Nothing, AbstractRaceContinuation}
     lazy::Union{Nothing, _LazyPopulation}
+    group_cases::Vector{Int}
 end
 
 # Pre-existing callers construct a `SimulationState` without `scratch`,
-# `continuation` or `lazy`; all three start absent, so this fills them in
+# `continuation`, `lazy` or `group_cases`; they start absent (`group_cases`
+# with a count of zero for each group of the population), so this fills them in
 # rather than requiring every call site to name them.
 function SimulationState(
         individuals, active_ids, current_generation, rng, cumulative_cases,
-        extinct, population_size, max_infection_time, attributes, transitions
+        extinct, population, max_infection_time, attributes, transitions
     )
     return SimulationState(
         individuals, active_ids, current_generation, rng, cumulative_cases,
-        extinct, population_size, max_infection_time, attributes, transitions,
-        Dict{Any, Any}(), nothing, nothing
+        extinct, population, max_infection_time, attributes, transitions,
+        Dict{Any, Any}(), nothing, nothing, _empty_group_cases(population)
     )
 end
 
@@ -557,8 +612,8 @@ function Base.copy(state::SimulationState)
     return SimulationState(
         people, copy(state.active_ids), state.current_generation,
         deepcopy(state.rng), state.cumulative_cases, state.extinct,
-        state.population_size, state.max_infection_time, state.attributes,
+        state.population, state.max_infection_time, state.attributes,
         copy(state.transitions), deepcopy(state.scratch),
-        deepcopy(state.continuation), lazy
+        deepcopy(state.continuation), lazy, copy(state.group_cases)
     )
 end

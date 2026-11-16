@@ -14,7 +14,7 @@ An intervention is a `struct` that subtypes `AbstractIntervention`. You write
 methods only for the hooks it needs; every other hook leaves the simulation
 unchanged.
 
-## What happens to each case
+## Handling of each case
 
 Every built-in model, the branching process as much as the network,
 household, homogeneous and mixing models, settles one case at a time, in
@@ -79,6 +79,7 @@ many people each case infects](@ref).
 | Hook | Called | Receives | Returns |
 |---|---|---|---|
 | `initialise_individual!(iv, individual, state)` | Once, when each person is created | An `Individual` whose `state` holds `:infected = false`, the values its population characteristics set and any the model sets, such as `:type` or `:household`; use `get!` for a key that may already be set | `nothing`; sets values in `individual.state` |
+| `initialise_episode!(iv, individual, state)` | On a reinfected person, as the new episode is settled and before `resolve_individual!`; never at creation | The reinfected `Individual`, whose `state` still holds what stands on them, such as a quarantine | `nothing`; refreshes values that belong to one episode, such as a test result; default does nothing |
 | `resolve_individual!(iv, individual, state)` | Once per case, when it is settled: after its clinical transitions, before it infects anyone. Never for a person who is not infected | The case, with `state.max_infection_time` at its infection time | `nothing`; sets values in `individual.state` |
 | `trace_contacts!(iv, state, infector, contacts[, not_before])` | Once per case, after it is settled and before any of its contacts is known to be infected or not; also once per ring member a ring of contact tracing grows from; a second time per case, for an intervention declaring `traces_source`, with the case's own infector | The case, the contacts it reached that it can still affect, and, from a model whose contacts can arise after the case's infection, when each became a contact (the four-argument method is called when the model gives no times, and by default for interventions that ignore them); on the second, backward call, `contacts` is the single-element `(source,)` | `nothing`; sets values on the contacts |
 | `intervention_actions(iv, state, candidates)` | Once per case, after every intervention's `trace_contacts!` for it | The people [`EpiBranch.action_candidates`](@ref) chooses: by default the case and the contacts it can still reach (those tracing reached from it, where there was tracing). [`GroupVaccination`](@ref) is offered the members of the case's group | `nothing`, or a vector of [`EpiBranch.InterventionAction`](@ref)s to put through the schedule and capacity limits (see [Intervention actions](@ref)) |
@@ -121,7 +122,7 @@ The [`AbstractIntervention`](@ref) docstring and the
 [Extension reference](@ref "Continuous-time models: further details") have the
 remaining details for the continuous-time models.
 
-## Which hooks run on which model
+## Hooks by model
 
 Every model, built in or written against `generate_offspring` or
 `contacts_of`, decides each potential infection, a drawn time for an infector
@@ -385,7 +386,7 @@ Adding the closure raises the proportion of outbreaks contained, because from
 day 10 most transmission between regions is blocked on top of what isolation
 prevents.
 
-## Who triggers contact tracing
+## Eligibility for contact tracing
 
 [`ContactTracing`](@ref) decides which cases have their contacts traced
 through an eligibility policy, such as `OnSymptomOnset()` or
@@ -821,7 +822,7 @@ placed in their group again from their recorded state alone, with nothing of
 the original proposal kept around. `capacity_usage(cc, state, key)` reads
 one group's own usage.
 
-### What happens to a refused action
+### Refused actions
 
 An action `CapacityConstrained` turns away is dropped by default. Pass
 `on_refusal = DeferRefused()` to book it into the first later period with room

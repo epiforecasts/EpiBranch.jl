@@ -8,7 +8,7 @@
 # back to the existing `loglikelihood` methods so analytical fast
 # paths and simulation fallbacks are unchanged. `rand(d, n)` simulates
 # from the underlying model, applies the same reporting and observation
-# `logpdf` scores against, and projects to the relevant data type, so a
+# `logpdf` evaluates, and projects to the relevant data type, so a
 # prior or posterior predictive check draws from what the likelihood
 # evaluates rather than from the unobserved simulation. Each stored keyword
 # is forwarded only to the callee that accepts it: `rand` forwards only what
@@ -79,8 +79,8 @@ function Distributions.logpdf(
     )
     cs = _chain_sizes(data, d.seeds)
     # `loglikelihood(::ChainSizes, model)` itself picks the analytical or
-    # simulation-based route and, either way, now honours `prob_concluded`
-    # (the simulation-based route from its empirical tail).
+    # simulation-based route; either honours `prob_concluded` (the
+    # simulation-based route from its empirical tail).
     loglik_kwargs = _simulate_kwargs(d.kwargs, _CHAIN_SIZE_LOGLIK_KWARGS)
     return loglikelihood(cs, d.model; prob_concluded = d.prob_concluded, loglik_kwargs...)
 end
@@ -193,7 +193,7 @@ struct _ChainLengthLaw{M, K} <:
     kwargs::K
 
     function _ChainLengthLaw(model::M, kwargs::K) where {M, K}
-        _chain_length_assert_full_reporting(progression(model))
+        _chain_length_assert_full_reporting(progression(model), attributes(model))
         return new{M, K}(model, kwargs)
     end
 end
@@ -210,6 +210,12 @@ function Distributions.loglikelihood(
     )
     return logpdf(d, data)
 end
+
+# A single cluster length is scored as a one-element data vector. The
+# analytical chain-size laws (`Borel`, `HittingTimeChainSize`) take
+# one value at a time.
+Distributions.logpdf(d::_ChainLengthLaw, x::Integer) = logpdf(d, [x])
+Distributions.pdf(d::_ChainLengthLaw, x::Integer) = exp(logpdf(d, x))
 
 function Base.rand(rng::AbstractRNG, d::_ChainLengthLaw, n::Int)
     sim_kwargs = _simulate_kwargs(d.kwargs, _SIMULATE_BATCH_KWARGS)
@@ -361,10 +367,7 @@ in Turing.jl:
 end
 ```
 
-For a `ModelSpec`, or a process that stores its own interventions, each
-intervention's [`EpiBranch.analytic_offspring_effect`](@ref) is applied to
-the offspring distribution first. If an intervention has no such method, this
-throws an error that names the simulation-based alternative.
+A `ModelSpec`, or a process that stores its own interventions, has them applied through [`EpiBranch.analytic_offspring_effect`](@ref).
 """
 function offspring_distribution(model::TransmissionModel)
     return _offspring_through_interventions(model, _per_case_offspring(model))
