@@ -211,8 +211,11 @@ const _CLASSIFICATION_DRAW_KEY = :_case_definition_draw
 const _CLASSIFICATION_SEED_KEY = :_case_definition_seed
 
 # The times at which to evaluate the definition on one person: their
-# infection, and each later time an event the definition reads was recorded.
-function _evaluation_times(def, ind::Individual)
+# infection, and each later time up to `horizon` an event the definition reads
+# was recorded. A person's progression is drawn when they are infected, so
+# events can be recorded past a `max_time` cut; the race did not simulate what
+# would have followed them, tracing among it, so they are left out.
+function _evaluation_times(def, ind::Individual, horizon = Inf)
     t0 = ind.infection_time
     times = typeof(t0)[t0]
     events = relevant_events(def)
@@ -221,12 +224,12 @@ function _evaluation_times(def, ind::Individual)
         (_resolved_key(e) for e in events if e !== :infection)
     for key in keys_
         t = _reported_state(ind, key)
-        t isa Real && isfinite(t) && t > t0 && push!(times, t)
+        t isa Real && isfinite(t) && t0 < t <= horizon && push!(times, t)
     end
     return sort!(unique!(times))
 end
 
-function _classify_individual!(def, ind::Individual, state)
+function _classify_individual!(def, ind::Individual, state, horizon = Inf)
     delete!(ind.state, _CLASSIFICATION_KEY)
     delete!(ind.state, _CLASSIFICATION_CHANGES_KEY)
     # One draw per person, kept so that re-evaluating a continued run does not
@@ -236,7 +239,7 @@ function _classify_individual!(def, ind::Individual, state)
     end::Float64
     changes = Tuple{typeof(ind.infection_time), Any}[]
     current = missing
-    for t in _evaluation_times(def, ind)
+    for t in _evaluation_times(def, ind, horizon)
         label = classify_case(def, CaseHistory(ind, t, draw))
         isequal(label, current) && continue
         push!(changes, (t, label))
@@ -265,10 +268,11 @@ end
 
 # No definition: nothing to do. A definition that is a function or an
 # `AbstractCaseDefinition` classifies every infected person.
-_classify_cases!(state::SimulationState, ::Nothing) = state
-function _classify_cases!(state::SimulationState, def)
+# `horizon` is the run's `max_time`, `Inf` when it had none.
+_classify_cases!(state::SimulationState, ::Nothing, horizon = Inf) = state
+function _classify_cases!(state::SimulationState, def, horizon = Inf)
     for ind in state.individuals
-        is_infected(ind) && _classify_individual!(def, ind, state)
+        is_infected(ind) && _classify_individual!(def, ind, state, horizon)
     end
     return state
 end
@@ -277,7 +281,9 @@ end
     case_classification(individual)
 
 The classification the model's case definition gives the person at the end of
-the run (`missing` if none). See [`ModelSpec`](@ref)'s `case_definition`.
+the run (`missing` if none): at `max_time` when the run was given one, from the
+events recorded up to then, and otherwise once every recorded event has
+happened. See [`ModelSpec`](@ref)'s `case_definition`.
 """
 case_classification(ind::Individual) = get(ind.state, _CLASSIFICATION_KEY, missing)
 

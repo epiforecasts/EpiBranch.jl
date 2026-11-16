@@ -195,6 +195,9 @@ _acute_load(rng, ind) = t -> max(0.0, 8.0 - abs(t - 5.0) * 1.6)
         plain = simulate(plain_spec; max_time = 10.0, rng = StableRNG(4))
         simulate(plain_spec, plain; max_time = 14.0)
         @test count(is_infected, plain.individuals) == count(is_infected, state.individuals)
+        # Onsets drawn past the cut are not classified.
+        @test all(<=(14.0), case_classification_changes(state).time)
+        @test any(i -> is_infected(i) && onset_time(i) > 14.0, state.individuals)
         @test all(first_labels) do (id, label)
             case_classification(state.individuals[id]) == label
         end

@@ -62,7 +62,7 @@ underscore are internal.
 | `:_quarantine_removal_handles` | `Vector{Int}` | — | `ContactTracing`/`SourceTracing`'s `Quarantine` | `apply_trace!`; internal. The handles of every entry a quarantine has recorded, so a reset of the shared bookkeeping can withdraw each one. The `reset!` of a tracer withdraws only the entries listed under its own handles key |
 | `:_quarantine_start` | `Float64` | — | `ContactTracing`/`SourceTracing`'s `Quarantine` | `apply_trace!`; internal. The start of the earliest quarantine entry still standing, which is the day a capacity is charged on |
 | `:test_positive` | `Bool` | `false` | `Isolation` | `initialise_individual!` and `initialise_episode!` |
-| `:case_classification` | any | — | `ModelSpec`'s `case_definition` | After the run. The classification at the end of it; absent for a case never classified |
+| `:case_classification` | any | — | `ModelSpec`'s `case_definition` | After the run. The classification at the end of it, from the events up to `max_time` when the run has one; absent for a case never classified |
 | `:_case_classification_changes` | `Vector{Tuple{Float64,Any}}` | — | `ModelSpec`'s `case_definition` | After the run; internal. Each change of classification with its time, read by `case_classification_changes` |
 | `:_case_definition_draw` | `Float64` | — | `ModelSpec`'s `case_definition` | After the run; internal. One uniform draw per case, for a definition with a random element |
 | `:traced` | `Bool` | `false` | `ContactTracing`, `SourceTracing` | `trace_contacts!` |
