@@ -75,6 +75,11 @@ function EpiBranch.terminal_event(::LostToFollowUp, individual)
     return isfinite(t) ? (t, :lost) : nothing
 end
 
+struct PeopleOnlyState <: EpiBranch.AbstractSimulationState
+    people::Dict{Int, Individual{Float64}}
+end
+EpiBranch.individuals(s::PeopleOnlyState) = s.people
+
 @testset "HomogeneousProcess (Sellke fixed pool)" begin
     @testset "Pool risk selection preserves other intervention hooks" begin
         process = HomogeneousProcess(; transmission_rate = 20.0, population_size = 20)
@@ -1115,7 +1120,7 @@ end
         waiting.state[:susceptible_again_time] = 5.0
         race(ind, reinfects) = (;
             processed = [true], pos = Dict(1 => 1),
-            state = (; individuals = Dict(1 => ind)), reinfects,
+            state = PeopleOnlyState(Dict(1 => ind)), reinfects,
         )
         @test EpiBranch._pending_beyond(m, race(waiting, true))
         @test !EpiBranch._pending_beyond(m, race(waiting, false))

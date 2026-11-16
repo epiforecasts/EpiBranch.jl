@@ -68,9 +68,9 @@ function test_continuous_vaccine_actions(make_process)
             interventions = [ct, rv]
         )
         states = [simulate(model; rng = StableRNG(s)) for s in 1:30]
-        individuals = vcat((individuals(s) for s in states)...)
-        @test count(is_vaccinated, individuals) > 0
-        aborted = filter(ind -> haskey(ind.state, :infection_aborted_time), individuals)
+        people = vcat((individuals(s) for s in states)...)
+        @test count(is_vaccinated, people) > 0
+        aborted = filter(ind -> haskey(ind.state, :infection_aborted_time), people)
         @test !isempty(aborted)
         @test all(ind -> is_infected(ind) && isnan(onset_time(ind)), aborted)
         @test_logs min_level = Base.CoreLogging.Warn simulate(model; rng = StableRNG(1))
