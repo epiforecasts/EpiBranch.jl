@@ -128,7 +128,7 @@ EpiBranch.infectious_removal_time(f::FixedRemoval, ::Individual) = f.time
             incubation_period = Dirac(1.0), prob_asymptomatic = 1.0
         )
         curve(rng, ind) = t -> 8.0
-        assay(detect) = Assay(ct = load -> 40.0 - 3.0 * load, detect = detect)
+        assay(detect) = Assay(value = load -> 40.0 - 3.0 * load, detect = detect)
         function first_case(iso; detect = 2.0)
             state = simulate(
                 ModelSpec(

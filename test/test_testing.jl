@@ -4,7 +4,7 @@
 const TEST_PEAK_DAY = 5.0
 const TEST_PEAK = 8.0
 test_curve(rng, ind) = t -> max(0.0, TEST_PEAK - abs(t - TEST_PEAK_DAY) * 1.6)
-test_assay = Assay(ct = load -> 40.0 - 3.0 * load, detect = 2.0)
+test_assay = Assay(value = load -> 40.0 - 3.0 * load, detect = 2.0)
 
 function testing_spec(; progression, interventions = [], seed_cases = 1, kwargs...)
     return ModelSpec(
@@ -28,17 +28,17 @@ end
         symptomatic = filter(ind -> is_infected(ind) && !is_asymptomatic(ind), state.individuals)
         @test !isempty(symptomatic)
         for ind in symptomatic
-            @test ind.state[:tested]
+            @test ind.state[:test_tested]
             # onset at 3 days, sample 4 days later
             t = ind.state[:test_time] - ind.infection_time
             @test t ≈ 7.0
             load = test_curve(nothing, nothing)(t)
-            @test ind.state[:test_ct] ≈ 40.0 - 3.0 * load
+            @test ind.state[:test_value] ≈ 40.0 - 3.0 * load
             @test ind.state[:test_result] == (load >= 2.0)
         end
         for ind in filter(ind -> is_infected(ind) && is_asymptomatic(ind), state.individuals)
-            @test !ind.state[:tested]
-            @test isnan(ind.state[:test_ct])
+            @test !ind.state[:test_tested]
+            @test isnan(ind.state[:test_value])
         end
     end
 
@@ -52,7 +52,7 @@ end
         )
         for (spec, expected) in ((early, true), (late, false))
             state = simulate(spec; max_cases = 100, rng = StableRNG(2), n_initial = 20)
-            tested = filter(ind -> is_infected(ind) && ind.state[:tested], state.individuals)
+            tested = filter(ind -> is_infected(ind) && ind.state[:test_tested], state.individuals)
             @test !isempty(tested)
             @test all(ind -> ind.state[:test_result] == expected, tested)
         end
@@ -63,7 +63,7 @@ end
             progression = [Testing(assay = test_assay, delay = 1.0)]
         )
         ll = linelist(simulate(spec; max_cases = 50, rng = StableRNG(4), n_initial = 20))
-        for col in (:tested, :date_test, :test_ct, :test_result)
+        for col in (:test_tested, :date_test, :test_value, :test_result)
             @test col in propertynames(ll)
         end
     end
@@ -78,15 +78,15 @@ end
         state = simulate(spec; max_cases = 100, rng = StableRNG(5), n_initial = 20)
         for ind in filter(is_infected, state.individuals)
             # recovery 1 day after onset, test 2 days after it
-            @test !ind.state[:tested]
+            @test !ind.state[:test_tested]
             @test !ind.state[:test_result]
-            @test isnan(ind.state[:test_ct])
+            @test isnan(ind.state[:test_value])
         end
     end
 
     @testset "Isolation takes its sensitivity from the test" begin
-        positive = Assay(ct = load -> 30.0, detect = 0.0)
-        negative = Assay(ct = load -> NaN, detect = 1.0e6)
+        positive = Assay(value = load -> 30.0, detect = 0.0)
+        negative = Assay(value = load -> NaN, detect = 1.0e6)
         for (assay, isolated) in ((positive, true), (negative, false))
             testing = Testing(assay = assay, delay = 0.0)
             spec = testing_spec(
@@ -131,11 +131,50 @@ end
     end
 
     @testset "a stochastic assay draws from the rng" begin
-        always = Assay(ct = load -> 30.0, detect = (rng, load) -> rand(rng) < 0.5)
+        always = Assay(value = load -> 30.0, detect = (rng, load) -> rand(rng) < 0.5)
         spec = testing_spec(progression = [Testing(assay = always, delay = 0.0)])
         state = simulate(spec; max_cases = 300, rng = StableRNG(8), n_initial = 20)
-        tested = filter(ind -> is_infected(ind) && ind.state[:tested], state.individuals)
+        tested = filter(ind -> is_infected(ind) && ind.state[:test_tested], state.individuals)
         share = count(ind -> ind.state[:test_result], tested) / length(tested)
         @test 0.35 < share < 0.65
+    end
+
+    @testset "named tests keep separate keys and columns" begin
+        # a second test, read from a different trajectory, as a serology titre
+        titre(rng, ind) = t -> 10.0 * t
+        titre_assay = Assay(value = v -> v, detect = 20.0)
+        spec = ModelSpec(
+            BranchingProcess(NegBin(2.5, 0.5), LogNormal(1.6, 0.5));
+            attributes = [
+                clinical_presentation(incubation_period = Dirac(3.0)),
+                within_host(test_curve),
+                within_host(titre; key = :titre),
+            ],
+            progression = [
+                Testing(assay = test_assay, delay = 0.0, name = :pcr),
+                Testing(assay = titre_assay, delay = 4.0, name = :serology, key = :titre),
+            ]
+        )
+        state = simulate(spec; max_cases = 100, rng = StableRNG(9), n_initial = 20)
+        cases = filter(ind -> is_infected(ind) && !is_asymptomatic(ind), state.individuals)
+        @test !isempty(cases)
+        for ind in cases
+            st = ind.state
+            @test st[:pcr_tested] && st[:serology_tested]
+            @test st[:pcr_time] - ind.infection_time ≈ 3.0
+            @test st[:serology_time] - ind.infection_time ≈ 7.0
+            @test st[:pcr_value] ≈ 40.0 - 3.0 * test_curve(nothing, nothing)(3.0)
+            @test st[:serology_value] ≈ 70.0
+            @test st[:pcr_result]
+            @test st[:serology_result]
+            @test !haskey(st, :test_time)
+        end
+        ll = linelist(state)
+        for col in (
+                :pcr_tested, :date_pcr, :pcr_value, :pcr_result,
+                :serology_tested, :date_serology, :serology_value, :serology_result,
+            )
+            @test col in propertynames(ll)
+        end
     end
 end
