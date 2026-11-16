@@ -31,6 +31,7 @@ offspring_law_unchanged(::Recovery) = true
 required_fields(r::Recovery) = _from_required(r.from)
 is_terminal(::Recovery) = true
 terminal_target(::Recovery) = :recovered
+_terminal_time_key(::Recovery, label) = :recovered_time
 # No `probability` field at all: unconditional once the anchor is reached.
 terminal_certainty(::Recovery) = true
 
@@ -161,6 +162,7 @@ offspring_law_unchanged(::Death) = true
 required_fields(d::Death) = _from_required(d.from)
 is_terminal(::Death) = true
 terminal_target(::Death) = :died
+_terminal_time_key(::Death, label) = :died_time
 terminal_certainty(d::Death) = _certain_probability(d.probability)
 
 function initialise_individual!(::Death, individual, state)
