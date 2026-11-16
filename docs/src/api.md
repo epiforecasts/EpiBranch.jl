@@ -175,7 +175,7 @@ Testing
 AbstractAssay
 Assay
 within_host
-EpiBranch.trajectory_load
+EpiBranch.trajectory_value
 EpiBranch.measure
 exclusive_probabilities
 is_terminal
