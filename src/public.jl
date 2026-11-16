@@ -40,8 +40,8 @@ public analytic_offspring_effect
 public abort_infection!
 public infection_aborted_time
 
-# Testing: `trajectory_value` reads the within-host trajectory that
-# `within_host` stores, and a new `AbstractAssay` defines `measure`.
+# Testing: `trajectory_value` reads the within-host trajectory stored by
+# `within_host`. A new `AbstractAssay` defines `measure`.
 public trajectory_value
 public measure
 
