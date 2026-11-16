@@ -232,12 +232,12 @@ The state holds `S`, `I` and `R` as continuous numbers, and `t`. The number ever
 
 ```@example homogeneous
 # A hybrid run that has not reached the threshold by `max_time` is still exact
-infected(h) = h.phase == :approx ? N - h.approx.S : count(is_infected, h.exact.individuals)
+infected(h) = h.phase == :approx ? N - h.approx.S : count(is_infected, individuals(h.exact))
 
 function compare(n_initial; max_time = 20.0)
     exact_runs = [simulate(exact; n_initial, max_time, rng = StableRNG(s))
                   for s in 1:200]
-    exact_cases = [count(is_infected, r.individuals) for r in exact_runs]
+    exact_cases = [count(is_infected, individuals(r)) for r in exact_runs]
     hybrid_cases = [infected(simulate(hybrid; n_initial, max_time, rng = StableRNG(s)))
                     for s in 1:200]
     mf = simulate(mean_field; n_initial, max_time)

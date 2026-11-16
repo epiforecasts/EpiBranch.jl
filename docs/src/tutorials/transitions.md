@@ -280,7 +280,7 @@ model = ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0));
     attributes = within_host(curve), progression = [onset])
 
 state = simulate(model; max_cases = 200, rng = StableRNG(42))
-infected = filter(is_infected, state.individuals)
+infected = filter(is_infected, individuals(state))
 println("Symptomatic: ", count(ind -> ind.state[:symptomatic], infected),
     " of ", length(infected))
 ```
