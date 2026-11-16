@@ -231,8 +231,14 @@ _draw_test_positive(::Testing, rng, individual) = false
 function _read_test_positive!(t::Testing, iso, individual, state)
     k = _test_keys(t)
     st = individual.state
+    haskey(st, k.tested) || throw(
+        ArgumentError(
+            "Isolation(test_sensitivity = Testing(name = :$(t.name))) needs the " *
+                "same Testing step in the model's progression; none writes :$(k.tested)."
+        )
+    )
     st[:test_positive] = is_eligible_for_isolation(iso.eligibility, individual, state) &&
-        get(st, k.tested, false)::Bool &&
-        get(st, k.result, false)::Bool
+        st[k.tested]::Bool &&
+        st[k.result]::Bool
     return nothing
 end

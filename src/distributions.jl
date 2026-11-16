@@ -73,7 +73,7 @@ function incubation_linked_generation_time(;
     alpha = _truncated_skewness(float(presymptomatic_fraction), rel)
 
     return function (individual)
-        inc_period = _latent_incubation_period(individual)
+        inc_period = incubation_period(individual)
         (isnan(inc_period) || inc_period <= 0.0) && throw(
             ArgumentError(
                 "incubation_linked_generation_time needs a positive incubation " *
@@ -270,7 +270,7 @@ attributes = within_host((rng, ind) -> load_curve(rng))
 # The load has cleared long before 100 days, so the integration stops there.
 community = Infectiousness(
     NegBin(1.2, 0.5);
-    kernel = ind -> HazardKernel(t -> 0.1 * trajectory_value(ind, t); upper = 100.0)
+    kernel = ind -> HazardKernel(t -> 0.1 * EpiBranch.trajectory_value(ind, t); upper = 100.0)
 )
 model = ModelSpec(BranchingProcess(community); attributes)
 ```

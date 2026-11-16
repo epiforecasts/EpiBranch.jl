@@ -50,6 +50,9 @@ end
 # infectiousness.
 offspring_law_unchanged(::Reporting) = true
 
+reporting_probability(r::Reporting) = r.probability
+reporting_from(r::Reporting) = r.from
+
 required_fields(r::Reporting) = _from_required(r.from)
 
 function initialise_individual!(::Reporting, individual, state)

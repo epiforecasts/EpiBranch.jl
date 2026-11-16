@@ -134,6 +134,19 @@ end
         @test_throws ArgumentError EpiBranch._closed_form_value(iso_t.test_sensitivity)
     end
 
+    @testset "Isolation with a Testing step absent from the progression is reported" begin
+        testing = Testing(assay = test_assay, delay = 0.0)
+        @test_throws ArgumentError testing_spec(
+            progression = [],
+            interventions = [
+                Isolation(
+                    onset_to_isolation_delay = 1.0, duration = Inf,
+                    test_sensitivity = testing,
+                ),
+            ]
+        )
+    end
+
     @testset "missing trajectory is reported" begin
         spec = ModelSpec(
             BranchingProcess(NegBin(2.5, 0.5), LogNormal(1.6, 0.5));

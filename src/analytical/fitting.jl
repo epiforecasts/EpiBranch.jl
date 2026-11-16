@@ -304,11 +304,11 @@ end
 # `Reporting` step in `progression`, detection is not thinned at all, so
 # every infected case counts; otherwise only `:reported` cases do.
 function _sim_chain_sizes(state, obs::MinimumSize, progression)
-    return any(t -> t isa Reporting, progression) ?
+    return any(_is_reporting, progression) ?
         _reported_chain_sizes(state) : chain_statistics(state).size
 end
 function _sim_chain_sizes(state, obs, progression)
-    if obs isa NoObservation && !any(t -> t isa Reporting, progression)
+    if obs isa NoObservation && !any(_is_reporting, progression)
         return chain_statistics(state).size
     end
     return _reported_chain_sizes(state)
@@ -478,26 +478,27 @@ end
 function _chain_length_reporting_share(prog, attrs)
     ρ = _reporting_probability(prog)
     ρ === nothing && return nothing
-    r = only(filter(t -> t isa Reporting, prog))
-    if r.from isa Symbol && _resolved_key(r.from) === :onset_time
+    r = only(filter(t -> reporting_probability(t) !== nothing, prog))
+    from = reporting_from(r)
+    if from isa Symbol && _resolved_key(from) === :onset_time
         builders = attrs isa NoAttributes ? () :
             attrs isa Union{Tuple, AbstractVector} ? Tuple(attrs) : (attrs,)
-        presentations = filter(b -> b isa ClinicalPresentation, builders)
-        length(presentations) == 1 || throw(
+        laws = filter(!isnothing, map(onset_law, builders))
+        length(laws) == 1 || throw(
             ArgumentError(
                 "A Reporting step from onset needs exactly one " *
-                    "clinical_presentation to read the symptomatic share from; " *
-                    "this model has $(length(presentations))"
+                    "attribute that defines `onset_law` to read the symptomatic " *
+                    "share from; this model has $(length(laws))"
             )
         )
-        cp = only(presentations)
-        cp.prob_asymptomatic isa Real || throw(
+        prob_asymptomatic = only(laws)[2]
+        prob_asymptomatic isa Real || throw(
             ArgumentError(
                 "A Reporting step from onset needs a fixed " *
                     "prob_asymptomatic, not a per-case function"
             )
         )
-        ρ *= 1 - cp.prob_asymptomatic
+        ρ *= 1 - prob_asymptomatic
     end
     return ρ
 end
