@@ -40,9 +40,7 @@ function _grow!(g::_Grown, race)
         race.may_block && push!(race.head, 0)
         isempty(race.interventions) && continue
         contact = state.individuals[g.n]
-        for intervention in race.interventions
-            initialise_individual!(intervention, contact, state)
-        end
+        _initialise!(race.interventions, contact, state)
         _apply_population_actions!(state, race.interventions, (contact.id,))
         _apply_creation_actions!(state, race.creating, contact)
     end
@@ -213,6 +211,7 @@ function _simulate_contacts_of(
     state = initialise_state(model, sim_opts, interventions, progression, attributes, rng)
     # The race counts the index cases as it settles them.
     state.cumulative_cases = 0
+    fill!(state.group_cases, 0)
     T = _timetype(state)
     route = _ContactsOf(model, T)
     seeds = [is_infected(ind) for ind in state.individuals]

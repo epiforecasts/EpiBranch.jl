@@ -474,11 +474,11 @@ The estimate is close to the 4 days the outbreak was simulated with.
     recorded in the data, and the likelihood allows for it. Isolation that
     still lets some transmission through is recorded too, as a stretch of
     reduced rather than zero hazard, which both `pairwise_surv_loglik` and
-    `loglikelihood(data, model)` score.
+    `loglikelihood(data, model)` evaluate it.
 
 !!! warning "Removals must not depend on who infected whom"
     The likelihood takes each person's removal time and vaccination dates as
-    fixed data and does not score how they came about, so it is a partial
+    fixed data and does not model how they came about, so it is a partial
     likelihood conditional on them. That is valid when removals and doses
     depend only on the observed history (onsets, detections, infections of
     household members) and on parameters other than the contact interval.
@@ -547,7 +547,7 @@ check convergence (for example the R-hat values in `summarize(chain)`).
     exposure after that date are then ignored, and cases still infectious at
     that date are treated as not yet recovered.
 
-    `progression_loglik` takes the same date as `followup_end` and scores a
+    `progression_loglik` takes the same date as `followup_end` and treats a
     step that has not happened by then as censored. The delays of the steps
     that did happen are not corrected for right truncation. A delay
     distribution fitted to a line list cut at a date is still biased towards
@@ -569,6 +569,8 @@ check convergence (for example the R-hat values in `summarize(chain)`).
     layout, which is slower. Passing `condition_on = EarliestInfected()` to
     `loglikelihood(data, model)` does the same without building the layout
     yourself.
+
+    Neither rule covers every way recruitment can depart from the model. Both take exactly one member per household as given. Co-primary cases, infected from outside at about the same time, are assumed to come from household transmission unless the model has a community hazard. Households may also enter the study because the index case was detected, had symptoms or had secondary cases. Such households are unrepresentative and bias the estimates unless the likelihood is conditioned on that recruitment.
 
 If the log-likelihood is `-Inf`, the data contain a case the model cannot
 explain, such as someone infected when none of their housemates was infectious
@@ -722,7 +724,7 @@ outside the household alike.
 
 Some household studies, such as a serosurvey after an outbreak, record
 final infection statuses without infection times.
-[`HouseholdFinalStatuses`](@ref) scores that kind of data under the
+[`HouseholdFinalStatuses`](@ref) gives the likelihood of that kind of data under the
 same community hazard and within-household kernel, from the final-size
 recursion of [Ball (1986)](https://doi.org/10.2307/1427301), with no
 infection times at all; `missing` marks anyone not followed up.

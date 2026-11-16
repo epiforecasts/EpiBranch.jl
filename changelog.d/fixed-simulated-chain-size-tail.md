@@ -1,0 +1,1 @@
+The simulation-based chain-size likelihood no longer scores an observed size that no simulation reached at a fixed pseudo-count. That pseudo-count biased the estimated reproduction number downwards. The sparse upper tail of the simulated sizes is now pooled and scored with a fitted geometric tail, and `prob_concluded` uses the same tail model.

@@ -1,0 +1,1 @@
+The households tutorial and the `RecruitedIndex` and `EarliestInfected` docstrings now state that co-primary cases are scored as household transmission unless the model has a community hazard, and that recruitment depending on the index case's detection, symptoms or secondary cases biases the estimate unless the likelihood is conditioned on it.

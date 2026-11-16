@@ -27,8 +27,7 @@ _bare_process(m) = m
 # ...)` call stops only for extinction or `max_time`, never silently capped
 # by the `max_cases`/`max_generations` shortcuts' defaults. Those would
 # otherwise leave a state that `simulate(model, state; max_time)` cannot
-# continue (see `added-simulate-continuation.md`), stuck for good partway
-# through `_advance_exact!`'s loop below.
+# continue, stuck for good partway through `_advance_exact!`'s loop below.
 function _matching_exact(exact, approx)
     required = _exact_requirement(approx)
     bare = _bare_process(exact)
@@ -82,7 +81,7 @@ the exact model would have given them.
 
 Simulating and continuing both use [`simulate`](@ref), exactly as for the
 exact and approximate models on their own, so an external Kalman or particle
-filter can score what it returns against data without knowing which half of
+filter can evaluate the likelihood of data given what it returns without knowing which half of
 the model produced it.
 
 # Example
@@ -166,7 +165,7 @@ _n_infectious(es::SimulationState, t::Real) = Prevalence(:infection)(es, (0.0, t
 # changes how many people have ever been infected).
 function _compartment_counts(es::SimulationState, t::Real)
     I = Float64(_n_infectious(es, t))
-    S = Float64(es.population_size) - Float64(es.cumulative_cases)
+    S = Float64(total_size(es.population::Union{SinglePopulation, GroupedPopulation})) - Float64(es.cumulative_cases)
     R = Float64(es.cumulative_cases) - I
     return S, I, R
 end

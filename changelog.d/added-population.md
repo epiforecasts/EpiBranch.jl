@@ -1,0 +1,5 @@
+`Population` gives a model its people once, and every engine reads it: `Population(5000)` is one group, `Population([1500, 3500]; groups = [...])` is one group per size, and `NoPopulation()` is none. `BranchingProcess`, `HomogeneousProcess` and `MixingProcess` take it as `population`, with `population_size = n` kept as shorthand for `Population(n)`.
+
+`simulate` now supports a finite multi-type `BranchingProcess`: each type is depleted against its own size, so a small type is used up while a large one carries on, and `SimulationState` holds the cases of each group in `group_cases`. A multi-type process given only a `population_size` is refused because it has no size for each type. The closed forms refuse a finite multi-type population, as they do for a single type, because it reshapes the offspring law.
+
+`MixingProcess` given `Population(sizes; groups)` writes the `mixing_by` attributes itself, giving the groups exactly those sizes. An attribute builder that also writes one is an error. With `Population(n)` the attributes draw the groups, whose sizes may vary between runs.

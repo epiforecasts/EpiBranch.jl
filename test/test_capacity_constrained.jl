@@ -214,7 +214,7 @@ end
             EpiBranch.infectious_removal_time(rv, contact)
         @test EpiBranch.keep_active(cc, state, [contact], [true]) ==
             EpiBranch.keep_active(rv, state, [contact], [true])
-        @test EpiBranch._unwrap_scheduled(cc) === rv
+        @test EpiBranch._innermost(cc) === rv
         @test EpiBranch.resolve_individual!(cc, contact, state) ===
             EpiBranch.resolve_individual!(rv, contact, state)
         @test EpiBranch.reset!(cc, contact) === EpiBranch.reset!(rv, contact)

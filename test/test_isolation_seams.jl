@@ -363,7 +363,7 @@ EpiBranch.infectious_removal_time(f::FixedRemoval, ::Individual) = f.time
         # recorded stretch has its own release, which the per-contact risk
         # re-checks the schedule against at every proposal regardless.
         # Narrowing here would turn a removal due to lapse into one that
-        # never does (see issue #410).
+        # never does.
         lapsing = Scheduled(perfect; start_time = 0.0, end_time = 10.0)
         @test EpiBranch.infectious_removal_time(lapsing, case) == Inf
 
@@ -541,4 +541,21 @@ EpiBranch.infectious_removal_time(f::FixedRemoval, ::Individual) = f.time
             @test is_infected(state.individuals[2])
         end
     end
+end
+
+@testset "Isolation's closed form accounts for vaccine symptom_efficacy" begin
+    off, gt = NegBin(2.0, 0.5), Gamma(2.0, 2.5)
+    cp = clinical_presentation(incubation_period = Gamma(2.0, 2.0), prob_asymptomatic = 0.3)
+    iso = Isolation(onset_to_isolation_delay = 1.0, duration = Inf)
+    function spec_with(se)
+        mv = MassVaccination(
+            efficacy = 0.5, eligibility_time = 0.0, coverage = 0.6, symptom_efficacy = se
+        )
+        return ModelSpec(BranchingProcess(off, gt); interventions = [mv, iso], attributes = cp)
+    end
+    R0 = reproduction_number(spec_with(0.0))
+    R9 = reproduction_number(spec_with(0.9))
+    @test R9 > R0
+    # Simulated value from the same model: about 1.12.
+    @test isapprox(R9, 1.12; atol = 0.05)
 end

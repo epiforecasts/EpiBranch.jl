@@ -1019,7 +1019,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
     end
 
     @testset "A released quarantine does not block a later, unrelated infection" begin
-        # Reproduces the bug: a contact traced and quarantined long before it is
+        # A contact traced and quarantined long before it is
         # actually infected, through another route, must not still be carrying
         # that old quarantine. The competing risk from tracing must respect the
         # release time, not just the isolation time.
@@ -1144,27 +1144,6 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         @test_throws ArgumentError ContactTracing(
             probability = 1.0, isolation_to_trace_delay = Exponential(0.5)
         )
-    end
-
-    @testset "ContactTracing rejects action together with quarantine_on_trace" begin
-        @test_throws ArgumentError ContactTracing(
-            probability = 1.0, isolation_to_trace_delay = Exponential(0.5),
-            action = FlagOnly(), quarantine_on_trace = false
-        )
-    end
-
-    @testset "quarantine_on_trace is deprecated but still resolves an action" begin
-        ct = @test_deprecated ContactTracing(
-            probability = 1.0, isolation_to_trace_delay = Exponential(0.5),
-            quarantine_on_trace = true
-        )
-        @test ct.action == Quarantine(duration = Inf)
-
-        flag_only = @test_deprecated ContactTracing(
-            probability = 1.0, isolation_to_trace_delay = Exponential(0.5),
-            quarantine_on_trace = false
-        )
-        @test flag_only.action == FlagOnly()
     end
 
     @testset "A Scheduled reset restores a standing isolation's record" begin
@@ -1487,7 +1466,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                 parent.state[:vaccination_time] = 0.0
                 contact2 = Individual(id = 6)
 
-                risk = EpiBranch._onward_risk(rv2, parent)
+                risk = EpiBranch._onward_risk(rv2, parent, contact2)
 
                 contact2.infection_time = 0.0
                 prob_now = EpiBranch.sample_value(
@@ -1592,7 +1571,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
 
                     other = Individual(id = 10, infection_time = imm_t + 20.0)
                     @test EpiBranch.sample_value(
-                        EpiBranch._onward_risk(rv8, c).block_probability,
+                        EpiBranch._onward_risk(rv8, c, other).block_probability,
                         StableRNG(1), c, other, nothing
                     ) ≈ onward * retained
 
@@ -1802,14 +1781,10 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             # A never-exposed individual's infection time is NaN; no time has
             # passed since an exposure, so any window admits it.
             unexposed = Individual(id = 1, infection_time = NaN)
-            rng = StableRNG(1)
-            @test EpiBranch._within_eligibility_window(Inf, unexposed, 3.0, rng)
-            @test EpiBranch._within_eligibility_window(
-                (rng, ind) -> Inf, unexposed, 3.0, rng
-            )
-            @test EpiBranch._within_eligibility_window(21.0, unexposed, 3.0, rng)
+            @test EpiBranch._within_window(Inf, unexposed, 3.0)
+            @test EpiBranch._within_window(21.0, unexposed, 3.0)
             exposed = Individual(id = 2, infection_time = 1.0)
-            @test !EpiBranch._within_eligibility_window(1.0, exposed, 3.0, rng)
+            @test !EpiBranch._within_window(1.0, exposed, 3.0)
         end
 
         @testset "A dose given while pending is withdrawn once settling excludes it" begin
@@ -3054,12 +3029,11 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
     end
 
     @testset "Traced test-negative contacts isolate via tracing pathway" begin
-        # Regression test: with test_sensitivity < 1 and FlagOnly tracing,
-        # test-negative contacts must still be isolated via the tracing
-        # pathway. Previously a `is_test_positive || return` gate in
-        # Isolation::resolve_individual discarded _traced_isolation_time for
-        # test-negative contacts, so 1 − test_sensitivity of cases never
-        # isolated even when traced.
+        # With test_sensitivity < 1 and FlagOnly tracing, test-negative
+        # contacts must still be isolated via the tracing pathway:
+        # Isolation::resolve_individual must not discard
+        # _traced_isolation_time for them, or 1 − test_sensitivity of cases
+        # would never isolate even when traced.
         #
         # Filter to the cases, which are the people `resolve_individual!` ran on.
         rng = StableRNG(20260601)
@@ -3233,7 +3207,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             state.max_infection_time = 10.0
 
             # A `:reported` flag from anywhere else is not a report this
-            # trigger counts. `PerCaseObservation` sets one after the
+            # trigger counts. An observation model sets one after the
             # simulation, so a trigger never meets it mid-run.
             inds[4].state[:reported] = true
             inds[4].state[:reporting_time] = 1.0
@@ -3344,7 +3318,9 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             # The keys a trigger reads are written by the progression, so a
             # model without the transition leaves the gate shut for the whole
             # run. `ModelSpec` asks the trigger and warns.
-            bp = BranchingProcess(Poisson(1.5), Exponential(5.0))
+            bp = BranchingProcess(
+                Infectiousness(Poisson(1.5); kernel = Exponential(5.0), until = (:recovered,))
+            )
             iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = Inf)
             no_report = [Recovery(delay = Exponential(5.0))]
             with_report = [

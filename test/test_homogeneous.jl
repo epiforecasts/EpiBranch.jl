@@ -3,7 +3,7 @@ using Random
 # A leaky vaccine written from outside the package: the whole population is
 # dosed at `from_time`, and every exposure from then on is blocked with
 # probability `efficacy`. The entire intervention is one competing risk, which
-# is the shape #232's seam has to carry.
+# is the shape the seam has to carry.
 struct LeakyVaccine <: EpiBranch.AbstractIntervention
     efficacy::Float64
     from_time::Float64
@@ -60,7 +60,7 @@ function EpiBranch.resolve_individual!(::RouteSelectedBlock, ind, state)
     return (ind.state[:route_block_resolved] = true)
 end
 
-# A terminal clinical transition written outside the package (#373):
+# A terminal clinical transition written outside the package:
 # declares `terminal_target` alongside `is_terminal`/`terminal_event`, so
 # the `until`-coverage check can see it the same way it sees `Death`/`Recovery`.
 struct LostToFollowUp <: EpiBranch.AbstractClinicalTransition end
@@ -881,7 +881,7 @@ end
         EpiBranch.add_individuals!(
             state, N, AbstractIntervention[]; setup = (ind, i) -> nothing
         )
-        m = EpiBranch._MassAction(
+        m = EpiBranch.MassAction(
             state, collect(1:N);
             rate = (_, _) -> 1 / N, calendar = schedule, from = :infection
         )
@@ -924,7 +924,7 @@ end
         EpiBranch._sellke_race!(
             state, members, rng;
             seed! = (best, _, r) -> (best[randperm(r, N)[1:n_initial]] .= 0),
-            targets = EpiBranch._MassAction(
+            targets = EpiBranch.MassAction(
                 state, members; mixing_by = (:age_band,), rate, from = :infection
             ),
             from = :infection, until = (:recovered, EpiBranch.INTERVENTION_REMOVAL),
@@ -1107,7 +1107,7 @@ end
         # their own `susceptible_again_time`, not on susceptibility (which
         # stays > 0 throughout), so it is still reachable once the
         # progression reinfects and their draw gave them a finite wait.
-        m = EpiBranch._MassAction(
+        m = EpiBranch.MassAction(
             [[1]], Dict(1 => 1), reshape([1.0], 1, 1), [1.0], reshape([true], 1, 1),
             Tuple{Int, Float64}[], nothing, :infection
         )
