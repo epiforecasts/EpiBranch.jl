@@ -26,7 +26,7 @@ users](../julia-for-r-users.md) covers what you need.
 | A rule of your own for when a simulation stops | a small type and one method | [Stopping rules](#Stopping-rules) |
 | A control measure that blocks some transmissions (a border closure, prophylaxis) | a type and a `competing_risk` method | [A custom intervention: closing a border](@ref) |
 | Treatment that ends infections early, vaccination aimed at a group, a measure limited by a start date or by capacity | an intervention type with further methods | [Writing an intervention](writing-interventions.md) |
-| A rule of your own for which cases have their contacts traced | a small type and one `is_eligible` method | [Eligibility for contact tracing](@ref) |
+| A rule of your own for selecting cases for contact tracing | a small type and one `is_eligible` method | [Eligibility for contact tracing](@ref) |
 | A clinical event of your own (testing, treatment, loss to follow-up) | a clinical transition type | [Custom clinical transitions](@ref) |
 | A latent period, several routes of transmission (community, household, funeral), seasonal transmission | infectiousness windows and routes | [New transmission structures](new-structures.md) |
 | A contact structure the package lacks (a ward, a school, a network you build), or a closed population with structured mixing | a transmission model type | [New transmission structures](new-structures.md) |
