@@ -509,12 +509,12 @@ mutable struct SimulationState{T <: Real, R <: AbstractRNG, P, A} <: AbstractSim
     group_cases::Vector{Int}
 end
 
+individuals(state::SimulationState) = state.individuals
+
 # Pre-existing callers construct a `SimulationState` without `scratch`,
 # `continuation`, `lazy` or `group_cases`; they start absent (`group_cases`
 # with a count of zero for each group of the population), so this fills them in
 # rather than requiring every call site to name them.
-individuals(state::SimulationState) = state.individuals
-
 function SimulationState(
         individuals, active_ids, current_generation, rng, cumulative_cases,
         extinct, population, max_infection_time, attributes, transitions
