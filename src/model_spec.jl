@@ -552,7 +552,7 @@ function simulate(
         progression = spec.progression, observation = spec.observation,
         recorder = spec.recorder, rng
     )
-    return _classify_cases!(state, spec.case_definition, something(max_time, Inf))
+    return _classify_cases!(state, spec.case_definition, _max_time(sim_opts))
 end
 
 simulate(spec::ModelSpec, n::Int; kwargs...) =
@@ -602,7 +602,7 @@ function _simulate_each(
     )
     _validate_initial_cases(spec.process, sim_opts)
     _validate_index_types(spec.process, sim_opts)
-    horizon = something(max_time, Inf)
+    horizon = _max_time(sim_opts)
     classified(s) = each(_classify_cases!(s, spec.case_definition, horizon))
     return _simulate_n(
         classified, T, spec.process, n, sim_opts;

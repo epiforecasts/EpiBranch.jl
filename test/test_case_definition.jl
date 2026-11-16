@@ -222,6 +222,11 @@ _acute_load(rng, ind) = t -> max(0.0, 8.0 - abs(t - 5.0) * 1.6)
         simulate(extinct_spec, continued; max_time = 30.0)
         straight = simulate(extinct_spec; max_time = 30.0, n_initial = 3, rng = StableRNG(1))
         @test isequal(case_classification_changes(continued), case_classification_changes(straight))
+        # A `MaxTime` stopping rule cuts the classification like `max_time`.
+        by_rule = simulate(spec; stopping_rules = [MaxTime(10.0)], rng = Xoshiro(4))
+        @test all(<=(10.0), case_classification_changes(by_rule).time)
+        by_rule_n = simulate(spec, 2; stopping_rules = [MaxTime(10.0)], rng = Xoshiro(4))
+        @test all(s -> all(<=(10.0), case_classification_changes(s).time), by_rule_n)
         # A generator that cannot be copied still classifies.
         device = simulate(spec; max_time = 10.0, rng = RandomDevice())
         @test any(i -> !ismissing(case_classification(i)), device.individuals)
