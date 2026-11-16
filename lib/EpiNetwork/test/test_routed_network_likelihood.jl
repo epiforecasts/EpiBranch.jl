@@ -283,7 +283,7 @@ end
 
     @testset "a bare MassActionHazard is rejected; RoutedMassActionHazard reads one route" begin
         # two unconnected people on both routes, so only the external hazard
-        # can score anything: 1 is a conditioned-on index case infectious on
+        # can contribute anything: 1 is a conditioned-on index case infectious on
         # the community route over (0, 3]; 2 is a secondary infected at the
         # exact instant 1 is removed, which a pairwise row and mass action
         # must agree on (see the core likelihood's own boundary test)
@@ -496,8 +496,8 @@ end
             # A vaccinated host's mixture goes through `_routed_modifier_loglik`
             # for every route and the external hazard alike. A route gated to
             # `INTERVENTION_REMOVAL` and a non-zero `external_hazard` must both
-            # reach the survival and event terms in that function, just as an
-            # unvaccinated host's plain sum does.
+            # reach the survival and event terms in that function, which an
+            # unvaccinated host's plain sum goes through with no modifier.
             REM = EpiBranch.INTERVENTION_REMOVAL
             windows3 = [
                 RouteWindow(:household; until = (:recovered,), kernel = Exponential(3.0), reach = hh),

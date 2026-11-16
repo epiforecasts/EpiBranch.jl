@@ -766,14 +766,14 @@ end
 
 @testset "Community introductions respect susceptibility" begin
     for source in (0.5, Gamma(2.0, 3.0))
-        @test EpiBranch._ext_draw(StableRNG(7), source, 1.0) ==
-            EpiBranch._ext_draw(StableRNG(7), source)
+        @test EpiBranch._ext_draw(StableRNG(7), source, 1, 1.0) ==
+            rand(StableRNG(7), EpiBranch._ext_survival(source))
         rng = StableRNG(7)
-        @test EpiBranch._ext_draw(rng, source, 0.0) == Inf
+        @test EpiBranch._ext_draw(rng, source, 1, 0.0) == Inf
         @test rand(rng) == rand(StableRNG(7))
     end
     # Scaling a constant hazard by susceptibility scales its mean waiting time.
-    draws = [EpiBranch._ext_draw(StableRNG(seed), 0.5, 0.25) for seed in 1:4000]
+    draws = [EpiBranch._ext_draw(StableRNG(seed), 0.5, 1, 0.25) for seed in 1:4000]
     @test isapprox(sum(draws) / length(draws), 8.0; rtol = 0.04)
 end
 
@@ -832,8 +832,8 @@ end
 @testset "Unbounded blocked introductions stop without asking again" begin
     # `ProtectTo(1)` is a certain, non-fading block, so the community
     # introduction is dropped after the first block rather than redrawing
-    # towards a window that never closes — what used to need the
-    # rejection-continuation guard to refuse promptly now never reaches it.
+    # towards a window that never closes, so the rejection-continuation guard is
+    # never reached.
     rng = StableRNG(1)
     state = EpiBranch.new_state(
         BranchingProcess(Poisson(0.0), Exponential(1.0)),
@@ -1144,11 +1144,10 @@ end
 (d::FixedDayOffspring)(rng, ind) = rand(rng, Poisson(0.5))
 
 @testset "A route of another type among many does not box the per-case loop" begin
-    # Regression test for #586: `_sellke_race!` settled every case by looping
-    # over its routes, which boxed every visit once the routes were not all
-    # the same type (a different offspring law, kernel or `until`), costing
-    # memory in proportion to how many cases settled rather than to how many
-    # routes there were.
+    # `_sellke_race!` settles every case by looping over its routes, which
+    # must not box each visit when the routes are not all the same type (a
+    # different offspring law, kernel or `until`): memory should grow with the
+    # number of routes, not with how many cases settled.
     stop_soon(rng, ind) = (ind.state[:stopped_time] = ind.infection_time + 5.0; nothing)
     same_type = BranchingProcess(
         Tuple(

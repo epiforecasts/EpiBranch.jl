@@ -1,14 +1,14 @@
-# ── Scoring several signals against one simulated path ───────────────
-# A `SignalData`'s series have to be scored against one simulated path
+# ── Likelihood of several signals given one simulated path ───────────────
+# A `SignalData`'s series have to be evaluated against one simulated path
 # rather than left to compose on their own: separate `~` statements would
 # each simulate their own outbreak. `loglikelihood(::SignalData,
-# ::SimulationState)` does the actual scoring; the model methods below
+# ::SimulationState)` does the actual evaluation; the model methods below
 # simulate once and call it.
 
 """
     loglikelihood(data::SignalData, state::SimulationState)
 
-Score `data` against one simulated path `state`: for every step, every
+Evaluate the likelihood of `data` given one simulated path `state`: for every step, every
 series' signal reads a value off `state` over that step's interval, and
 `logpdf(series.density(value), series.data[step])` is added.
 
@@ -34,7 +34,7 @@ end
     loglikelihood(data::SignalData, model::TransmissionModel; rng = Random.default_rng(), kwargs...)
     loglikelihood(data::SignalData, spec::ModelSpec; rng = Random.default_rng(), kwargs...)
 
-Simulate `model` (or `spec`) once and score `data` against that single
+Simulate `model` (or `spec`) once and evaluate the likelihood of `data` given that single
 simulated path (see `loglikelihood(data::SignalData, state::SimulationState)`).
 `kwargs` are passed on to [`simulate`](@ref) (`max_cases`, `max_time`, and so
 on).
@@ -48,7 +48,7 @@ on).
     also rough in the parameters, so optimisers and gradient-based samplers
     cannot use it. It suits pseudo-marginal MCMC, which keeps the current
     estimate and compares proposals against it. For longer series use a
-    particle method, which scores the data step by step and resamples paths.
+    particle method, which evaluates the likelihood of the data step by step and resamples paths.
 """
 function loglikelihood(
         data::SignalData, model::TransmissionModel;
