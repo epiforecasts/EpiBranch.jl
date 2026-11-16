@@ -1,0 +1,96 @@
+# The R functions that docs/src/from-r-packages.md maps to EpiBranch, with the
+# release each package was checked against and every argument of each function,
+# mapped on the page or not, so that a new argument shows up as a change.
+# docs/check_r_mapping.jl compares this list with the latest release of each
+# package. After a change in R, update the page and then this list. `unmapped`
+# holds the exports the page does not cover, so that a new export shows up.
+
+[simulist]
+repo = "epiverse-trace/simulist"
+release = "0.7.1"
+unmapped = ["censor_linelist", "create_config", "messy_linelist", "truncate_linelist"]
+
+[simulist.functions]
+sim_linelist = [
+    "contact_distribution", "infectious_period", "prob_infection",
+    "onset_to_hosp", "onset_to_death", "onset_to_recovery", "reporting_delay",
+    "hosp_risk", "hosp_death_risk", "non_hosp_death_risk",
+    "outbreak_start_date", "anonymise", "outbreak_size", "population_age",
+    "case_type_probs", "config",
+]
+sim_contacts = [
+    "contact_distribution", "infectious_period", "prob_infection",
+    "outbreak_start_date", "anonymise", "outbreak_size", "population_age",
+    "contact_tracing_status_probs", "config",
+]
+sim_outbreak = [
+    "contact_distribution", "infectious_period", "prob_infection",
+    "onset_to_hosp", "onset_to_death", "onset_to_recovery", "reporting_delay",
+    "hosp_risk", "hosp_death_risk", "non_hosp_death_risk",
+    "outbreak_start_date", "anonymise", "outbreak_size", "population_age",
+    "case_type_probs", "contact_tracing_status_probs", "config",
+]
+
+[epichains]
+repo = "epiverse-trace/epichains"
+release = "0.1.1"
+unmapped = ["dborel", "rborel", "rgborel"]
+
+[epichains.functions]
+simulate_chains = [
+    "n_chains", "statistic", "offspring_dist", "stat_threshold", "pop",
+    "percent_immune", "generation_time", "t0", "tf",
+]
+simulate_chain_stats = [
+    "n_chains", "statistic", "offspring_dist", "stat_threshold", "pop",
+    "percent_immune",
+]
+likelihood = [
+    "chains", "statistic", "offspring_dist", "nsim_obs", "obs_prob",
+    "stat_threshold", "log", "exclude", "individual",
+]
+
+[ringbp]
+repo = "epiforecasts/ringbp"
+release = "1.0.0"
+unmapped = ["detect_extinct", "incubation_to_generation_time", "outbreak_model", "outbreak_setup", "outbreak_step"]
+
+[ringbp.functions]
+scenario_sim = [
+    "n", "initial_cases", "offspring", "delays", "event_probs",
+    "interventions", "sim",
+]
+offspring_opts = ["community", "isolated", "asymptomatic"]
+delay_opts = [
+    "incubation_period", "onset_to_isolation", "latent_period",
+    "onset_to_self_isolation",
+]
+event_prob_opts = [
+    "asymptomatic", "presymptomatic_transmission", "symptomatic_traced",
+    "symptomatic_self_isolate",
+]
+intervention_opts = ["quarantine", "test_sensitivity"]
+sim_opts = ["cap_max_days", "cap_cases"]
+extinct_prob = ["scenario", "extinction_week"]
+
+[superspreading]
+repo = "epiverse-trace/superspreading"
+release = "0.4.0"
+unmapped = ["calc_network_R", "dpoislnorm", "dpoisweibull", "ic_tbl", "ppoislnorm", "ppoisweibull", "probability_emergence"]
+
+[superspreading.functions]
+probability_epidemic = [
+    "R", "k", "num_init_infect", "ind_control", "pop_control", "offspring_dist",
+]
+probability_extinct = [
+    "R", "k", "num_init_infect", "ind_control", "pop_control", "offspring_dist",
+]
+probability_contain = [
+    "R", "k", "num_init_infect", "ind_control", "pop_control", "simulate",
+    "case_threshold", "outbreak_time", "generation_time", "offspring_dist",
+]
+proportion_transmission = [
+    "R", "k", "prop_transmission", "method", "simulate", "offspring_dist",
+    "format_prop",
+]
+proportion_cluster_size = ["R", "k", "cluster_size", "offspring_dist", "format_prop"]

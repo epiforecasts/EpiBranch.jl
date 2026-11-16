@@ -141,3 +141,7 @@ Any extension with both an analytical chain-size distribution and a simulation
 path should have a regression test confirming they agree; the test suite
 provides a helper for this (see [Checking simulation against the closed
 form](@ref)).
+
+## Checking the mapping from R packages
+
+[Coming from simulist, epichains, ringbp and superspreading](from-r-packages.md) maps R functions and arguments to EpiBranch calls. Run `julia docs/check_r_mapping.jl` before each release. It reads the exports and the arguments of the mapped functions from the latest release of each package on GitHub, compares them with the list in `docs/r_mapping.toml`, and reports what changed. After a change in R, update the page and the list, and the release named in each section heading. The script is not part of the docs build or CI. Set `GITHUB_TOKEN` to raise the GitHub API rate limit.
