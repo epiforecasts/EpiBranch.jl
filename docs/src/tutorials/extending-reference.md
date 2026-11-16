@@ -15,7 +15,7 @@ the transmission tree, infection time, susceptibility and infectiousness), and
 a dictionary, `ind.state`, holding everything else. Interventions, population
 characteristics, clinical transitions and observation models each keep a few
 named values (keys) there. The reasons for this split are in [Notes for
-contributors](@ref "Why individual state is an open dictionary").
+contributors](@ref "Individual state as an open dictionary").
 
 Read a value with a one-line accessor that supplies a default when the value is
 missing, such as `is_traced(ind) = get(ind.state, :traced, false)::Bool`.
@@ -94,6 +94,11 @@ underscore are internal.
 | `:reporting_time` | `Float64` | `Inf` | `Reporting` transition | `resolve_individual!` / after the simulation; reset to `Inf` by `censor_after_outcome!` if it falls after `:outcome_time` |
 | `:admitted` | `Bool` | `false` | `Hospitalisation` transition | `resolve_individual!`; reset to `false` by `censor_after_outcome!` if `:admission_time` falls after `:outcome_time` |
 | `:admission_time` | `Float64` | `Inf` | `Hospitalisation` transition | `resolve_individual!`; reset to `Inf` by `censor_after_outcome!` if it falls after `:outcome_time` |
+| `:trajectory` | `Function` | — | `within_host` attribute builder | Read through `trajectory_value`; a function of the days since infection returning the measured quantity (a load, a titre) |
+| `:test_tested` | `Bool` | `false` | `Testing` transition | `resolve_individual!`; reset to `false` by `censor_after_outcome!` if `:test_time` falls after `:outcome_time` |
+| `:test_time` | `Float64` | `Inf` | `Testing` transition | `resolve_individual!`; reset to `Inf` by `censor_after_outcome!` if it falls after `:outcome_time` |
+| `:test_value` | `Float64` | `NaN` | `Testing` transition | `resolve_individual!` |
+| `:test_result` | `Bool` | `false` | `Testing` transition | `resolve_individual!`; the four `:test_*` keys are for the default `name = :test`; a test called `:pcr` writes `:pcr_tested`, `:pcr_time`, `:pcr_value` and `:pcr_result` instead |
 | `:death_candidate_time` | `Float64` | `Inf` | `Death` transition | `resolve_individual!` |
 | `:recovery_candidate_time` | `Float64` | `Inf` | `Recovery` transition | `resolve_individual!` |
 | `:outcome` | `Symbol` | — | Any terminal transition (`Death`, `Recovery`, `Transition(...; terminal = true)`, your own) | `resolve_individual!` (terminal) |
@@ -102,7 +107,10 @@ underscore are internal.
 | `:cluster_theta` | `Float64` | — | `ClusterMixed` | First read in a simulation |
 | `:vaccine_acceptance` | `Float64` | — | `vaccine_acceptance` | Creation (default key; can be changed) |
 | `:infectious_time` | `Float64` | `Inf` | `Transition(:infectious, …)` | `resolve_individual!` |
-| `:recovered_time` | `Float64` | `Inf` | `Transition(:recovered, …)` | `resolve_individual!` |
+| `:recovered` | `Bool` | `false` | `Recovery` | `initialise_individual!`; `Recovery` sets it to `true` when it wins the terminal outcome. Overwrites a user `Transition(:recovered, …)` value |
+| `:recovered_time` | `Float64` | `Inf` | `Transition(:recovered, …)`, `Recovery` | `resolve_individual!` (`Transition`); `Recovery` resets it on initialisation and writes the outcome time when it wins. Overwrites a user `Transition(:recovered, …)` value |
+| `:died` | `Bool` | `false` | `Death` | `initialise_individual!`; `Death` sets it to `true` when it wins the terminal outcome. Overwrites a user `Transition(:died, …)` value |
+| `:died_time` | `Float64` | `Inf` | `Death` | `initialise_individual!` resets it, and `Death` writes the outcome time when it wins. Overwrites a user `Transition(:died, …)` value |
 | `:susceptible_again_time` | `Float64` | `Inf` | `Transition(:susceptible_again, …)` | `resolve_individual!` |
 | `:_exclusive_draw#N` | `Float64` | — | `exclusive_probabilities` | `resolve_individual!`; internal. The uniform draw a group of mutually exclusive outcomes shares, under a key unique to that call of `exclusive_probabilities` |
 
@@ -199,8 +207,7 @@ does record a late detection, such as a death found at burial.
 ### Tracing keys
 
 Both kinds of model write the tracing keys through `trace_contacts!`, once per
-case, so the keys and their meanings are the same either way; see [Which hooks
-run on which model](@ref).
+case. The keys and their meanings are the same for both; see [Hooks by model](@ref).
 
 `:tracers` lists every case whose trace reached a contact, in the order they
 did. `:traced_by` is the one of them that reached it first, by the earliest
@@ -272,7 +279,7 @@ population (network, household, homogeneous, mixing, and one written against
 ## Continuous-time models: further details
 
 These points concern the network, household, homogeneous and mixing models, which
-simulate a fixed population in continuous time (see [Which hooks run on which
+simulate a fixed population in continuous time (see [Hooks by
 model](@ref)).
 
 - **Susceptibility and infectiousness.** These are fixed properties of the two
@@ -412,6 +419,7 @@ compatible with these likelihoods. The built-in parts declare:
 | `clinical_presentation`, no population characteristics | yes |
 | Other population characteristics (`demographics`, `groups`, `transmission_traits`, `vaccine_acceptance`, and your own functions) | no, unless declared |
 | `Transition`, `Reporting`, `Hospitalisation`, `Recovery`, `Death` | yes |
+| `Testing` | the infection likelihood yes; `progression_loglik` has no term for `Testing` |
 | `Isolation` | yes, complete or leaky |
 | `ContactTracing` with `Quarantine` or `FlagOnly` | yes |
 | `MassVaccination`, `GroupVaccination` | only with the default `dose_label` and a fixed (numeric) `efficacy` |
@@ -1026,6 +1034,8 @@ before.
 | A capacity limit per group | `resource_key(iv, individual, state)` for `iv` | When actions are admitted, once per case |
 | An exact effect on the offspring distribution | `analytic_offspring_effect` for an intervention | Closed-form results on a `ModelSpec` |
 | A model, attribute or progression transition that leaves the single-type offspring law exactly as drawn | `EpiBranch.offspring_law_unchanged` | The chain-size and incidence likelihoods' analytical path |
+| A progression transition that reports cases with a fixed probability, and the time it reports from | `EpiBranch.reporting_probability`, `EpiBranch.reporting_from` | The chain-size and incidence closed forms, which thin by it |
+| An attribute that sets the onset time, with its incubation period and asymptomatic share | `EpiBranch.onset_law` | The analytic effect of `Isolation` and the closed forms for reporting timed from onset |
 | A stopping rule | A type `<: AbstractStoppingRule` and `should_stop` | Each step |
 | A contact recorder | A type `<: ContactRecorder` and `records_contacts` | Continuous-time models, each blocked proposal |
 | A terminal clinical transition | A type `<: AbstractClinicalTransition` with `is_terminal`, `terminal_event`, `terminal_target` | When a case is settled |

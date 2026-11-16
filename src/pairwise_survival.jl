@@ -90,8 +90,8 @@ function pairwise_surv_loglik(kernel, data::PairwiseSurvivalData)
     end
     for r in eachindex(data.stop)
         kr = _rowkernel(kernel, r)
-        ll -= cumhazard(kr, data.stop[r])
-        data.start[r] > 0 && (ll += cumhazard(kr, data.start[r]))
+        ll -= _cumhazard(kr, data.stop[r])
+        data.start[r] > 0 && (ll += _cumhazard(kr, data.start[r]))
     end
     return ll
 end
@@ -1314,7 +1314,7 @@ _ext_survival(source) = _calendar_external_survival(source)
 
 # Person `j`'s survival distribution under the community hazard, or `nothing`
 # when they face none. A calendar schedule is the same for everyone, like a
-# shared distribution; `_CalendarScaledKernel` is its own prepared form.
+# shared distribution. A `_CalendarScaledKernel` is itself a distribution.
 _ext_survival_of(::Nothing, j) = nothing
 _ext_survival_of(d::ContinuousUnivariateDistribution, j) = d
 _ext_survival_of(α::Real, j) = _ext_active(α) ? _ext_survival(α) : nothing
@@ -1323,7 +1323,6 @@ function _ext_survival_of(f::Function, j)
     s = _check_person_external(f(j), j)
     return _ext_survival_of(s, j)
 end
-_ext_survival_of(k::_CalendarScaledKernel, j) = k
 _ext_survival_of(source, j) = _calendar_external_survival(source)
 
 # The source with each rate turned into its survival distribution once, for
@@ -1342,7 +1341,6 @@ _ext_prepare(source, data) = _ext_prepare(source)
 # The parameter type of the community hazard over the `n` people, so that AD
 # values in a fitted rate survive the reduction.
 _ext_partype(d::ContinuousUnivariateDistribution, n) = Distributions.partype(d)
-_ext_partype(k::_CalendarScaledKernel, n) = Distributions.partype(k)
 function _ext_partype(source, n)
     T = Union{}
     for j in 1:n
@@ -1400,6 +1398,10 @@ household or network structure, the infectious household members of a
 susceptible are counted in `I(t)` as well as in their own pairwise rows, as in
 [`HomogeneousProcess`](@ref) with households. Keep this in mind when
 interpreting `transmission_rate`.
+
+For a sample, give the community force of infection directly as the
+`external_hazard` instead of using `MassActionHazard`. It is a `Steps` schedule
+over calendar time, for instance from surveillance incidence.
 
 A person is counted in `I(t)` over `(infectious_time, removal_time]`, the same
 convention a pairwise row's own exposure uses, so a secondary infected at the
@@ -2012,11 +2014,11 @@ end
 # `origin` plus that), under a modifier. A constant factor splits the integral
 # exactly at `start`, since `cumhazard` is itself an integral of the hazard; a
 # factor that varies is integrated numerically against the kernel's hazard.
-_scaled_cumhazard(::Nothing, kernel, origin, stop) = cumhazard(kernel, stop)
+_scaled_cumhazard(::Nothing, kernel, origin, stop) = _cumhazard(kernel, stop)
 function _scaled_cumhazard(m::HazardScaling{<:Real, <:Real}, kernel, origin, stop)
     boundary = clamp(m.start - origin, zero(stop), stop)
-    before = cumhazard(kernel, boundary)
-    tail = cumhazard(kernel, stop) - before
+    before = _cumhazard(kernel, boundary)
+    tail = _cumhazard(kernel, stop) - before
     # An infinite tail under a zero factor contributes nothing, where the
     # product would give NaN. A finite tail stays in the product so that the
     # derivative with respect to the factor survives a factor of exactly zero.
@@ -2025,7 +2027,7 @@ function _scaled_cumhazard(m::HazardScaling{<:Real, <:Real}, kernel, origin, sto
 end
 function _scaled_cumhazard(m::HazardScaling, kernel, origin, stop)
     boundary = clamp(m.start - origin, zero(stop), stop)
-    before = cumhazard(kernel, boundary)
+    before = _cumhazard(kernel, boundary)
     # A bounded profile's survival reaches zero at the top of its support, past
     # which its hazard is undefined, so the cumulative hazard is infinite there,
     # as the kernel's own `cumhazard` has it.
@@ -2091,7 +2093,7 @@ function _component_loglik(
             (tj >= 0 && tj <= data.obs_end) || continue
             extdist = _ext_survival_of(extsrc, layout.sus[r])
             extdist === nothing && continue
-            _push!(acc, _scaled_loghazard(modifier, loghazard(extdist, tj), tj))
+            _push!(acc, _scaled_loghazard(modifier, _fast_loghazard(extdist, tj), tj))
         else
             i = infector[r]
             oi = data.infectious_time[i]

@@ -286,3 +286,72 @@ end
         @test tracer.infection_time >= ind.infection_time
     end
 end
+
+@testset "A source found by SourceTracing is traced forward under OnIsolation" begin
+    cp = clinical_presentation(incubation_period = LogNormal(1.0, 0.4))
+    bp = BranchingProcess(NegBin(2.0, 0.3), Gamma(4.0, 2.5))
+    iso = Isolation(onset_to_isolation_delay = 1.0, duration = Inf, test_sensitivity = 0.5)
+    st = SourceTracing(
+        probability = 1.0, isolation_to_trace_delay = Dirac(0.0),
+        action = Quarantine(duration = Inf)
+    )
+    ct = ContactTracing(
+        probability = 1.0, isolation_to_trace_delay = Dirac(0.0),
+        action = Quarantine(duration = Inf), eligibility = OnIsolation()
+    )
+    spec = ModelSpec(
+        bp; interventions = AbstractIntervention[iso, ct, st], attributes = cp
+    )
+    res = simulate(spec, 1500; max_generations = 2, max_cases = nothing, rng = StableRNG(1))
+    found = 0
+    traced = 0
+    total = 0
+    for s in res
+        idx = s.individuals[1]
+        get(idx.state, :test_positive, true) && continue
+        get(idx.state, :source_traced_by, 0) == 0 && continue
+        found += 1
+        kids = [i for i in s.individuals if i.parent_id == 1]
+        total += length(kids)
+        traced += count(is_traced, kids)
+    end
+    @test found > 100
+    @test traced == total
+end
+
+@testset "Contacts traced forward from a source reach a ring action" begin
+    cp = clinical_presentation(incubation_period = LogNormal(1.0, 0.4))
+    bp = BranchingProcess(NegBin(2.0, 0.3), Gamma(4.0, 2.5))
+    iso = Isolation(onset_to_isolation_delay = 1.0, duration = Inf, test_sensitivity = 0.5)
+    st = SourceTracing(
+        probability = 1.0, isolation_to_trace_delay = Dirac(0.0),
+        action = Quarantine(duration = Inf)
+    )
+    ct = ContactTracing(
+        probability = 1.0, isolation_to_trace_delay = Dirac(0.0),
+        action = Quarantine(duration = Inf), eligibility = OnIsolation()
+    )
+    rv = RingVaccination(efficacy = 1.0)
+    spec = ModelSpec(
+        bp; interventions = AbstractIntervention[iso, ct, st, rv], attributes = cp
+    )
+    res = simulate(spec, 1500; max_generations = 2, max_cases = nothing, rng = StableRNG(1))
+    found = 0
+    traced = 0
+    vaccinated = 0
+    for s in res
+        idx = s.individuals[1]
+        get(idx.state, :test_positive, true) && continue
+        get(idx.state, :source_traced_by, 0) == 0 && continue
+        found += 1
+        kids = filter(is_traced, [i for i in s.individuals if i.parent_id == 1])
+        traced += length(kids)
+        vaccinated += count(is_vaccinated, kids)
+    end
+    @test found > 100
+    @test traced > 0
+    # A contact already infected when the dose arrives stays unvaccinated, so
+    # some traced children are not vaccinated. If these contacts missed the
+    # action pass, fewer than half would be.
+    @test vaccinated > 0.8 * traced
+end

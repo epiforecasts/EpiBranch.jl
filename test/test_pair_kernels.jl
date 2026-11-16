@@ -149,6 +149,12 @@ end
     )
     @test invlogccdf(loop_risk, -1.0) ≈ (b - o) + (100 - (b - o)) / 0.5
 
+    # The kernel is a continuous univariate distribution, so the generic
+    # distribution methods apply without kernel-specific ones.
+    @test EpiBranch._CalendarScaledKernel <: ContinuousUnivariateDistribution
+    @test EpiBranch._ext_prepare(loop_risk) === loop_risk
+    @test EpiBranch._ext_partype(loop_risk, 3) == Distributions.partype(loop_risk)
+
     # A later segment that starts beyond the support of a bounded profile must
     # not subtract one infinite cumulative hazard from another: the contact is
     # certain by then, whatever the calendar does after.

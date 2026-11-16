@@ -281,6 +281,13 @@ end
         @test extinction_probability(o) == [1.0]
     end
 
+    @testset "extinction warns when the iteration stops unconverged" begin
+        o = household_offspring(_markov(4); global_rate = 0.15)
+        @test reproduction_number(o) > 1
+        @test_logs (:warn, r"without converging") extinction_probability(o; max_iter = 3)
+        @test_logs extinction_probability(o)
+    end
+
     @testset "isolation shortens the window and lowers R*" begin
         prog = [
             Transition(:onset; from = :infection, delay = 0.5),

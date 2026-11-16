@@ -23,7 +23,7 @@ function EpiBranch.serial_interval(model, infector::Individual, infectee::Indivi
                 "BranchingProcess(offspring, LogNormal(1.6, 0.5))."
         )
     )
-    cp = EpiBranch._clinical_presentation(EpiBranch.attributes(model))
+    cp = EpiBranch._onset_law(EpiBranch.attributes(model))
     cp === nothing && throw(
         ArgumentError(
             "serial_interval needs the incubation period, from " *
