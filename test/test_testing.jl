@@ -96,6 +96,9 @@ end
             process; progression = [testing], interventions = [iso(:test)]
         )
         @test ModelSpec(process; progression = [testing], interventions = [iso(:pcr)]) isa ModelSpec
+        @test_throws ArgumentError ModelSpec(
+            process; interventions = [OnRoutes(iso(:pcr), [:household])]
+        )
     end
 
     @testset "missing trajectory is reported" begin

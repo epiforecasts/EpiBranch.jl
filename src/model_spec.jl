@@ -387,7 +387,7 @@ end
 # An `Isolation` that follows a test needs the `Testing` step of that name in
 # the progression; without it no case ever records a result.
 _wrapped_interventions(iv::AbstractIntervention) = (iv,)
-_wrapped_interventions(s::Scheduled) = (s, _wrapped_interventions(s.intervention)...)
+_wrapped_interventions(w::InterventionWrapper) = (w, _wrapped_interventions(w.intervention)...)
 
 function _validate_test_triggers(interventions, progression)
     for iv in interventions, w in _wrapped_interventions(iv)
