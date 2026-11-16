@@ -5,12 +5,12 @@ using DataFrames
 
 function _toy_case(;
         id = 1, infection = 0.0, onset = NaN, isolation = Inf, trace = NaN,
-        test = NaN, positive = false
+        test = NaN, positive = false, test_name = :test
     )
-    state = Dict{Symbol, Any}(:onset_time => onset, :test_result => positive)
+    state = Dict{Symbol, Any}(:onset_time => onset, Symbol(test_name, :_result) => positive)
     isfinite(isolation) && (state[:isolation_time] = isolation)
     isnan(trace) || (state[:trace_time] = trace)
-    isnan(test) || (state[:test_time] = test)
+    isnan(test) || (state[Symbol(test_name, :_time)] = test)
     return Individual(; id, infection_time = infection, state)
 end
 
@@ -55,6 +55,18 @@ _acute_load(rng, ind) = t -> max(0.0, 8.0 - abs(t - 5.0) * 1.6)
         @test ismissing(case_classification(contact))
         @test ismissing(case_classification(asymptomatic))
         @test nrow(case_classification_changes(state)) == 0
+    end
+
+    @testset "ClinicalCaseDefinition reads a named test" begin
+        ind = _toy_case(;
+            onset = 3.0, test = 6.0, positive = true, test_name = :pcr
+        )
+        state = _toy_sim_state([ind])
+        EpiBranch._classify_cases!(state, ClinicalCaseDefinition(test = :pcr))
+        @test case_classification(ind) == :confirmed
+        other = _toy_case(; onset = 3.0, test = 6.0, positive = true, test_name = :pcr)
+        EpiBranch._classify_cases!(_toy_sim_state([other]), ClinicalCaseDefinition())
+        @test case_classification(other) == :suspected
     end
 
     @testset "FixedProportionConfirmed" begin

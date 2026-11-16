@@ -116,9 +116,11 @@ with a case, and `suspected` once they have symptoms alone. Someone with a
 contact but no symptoms is not a case (`missing`) until they develop some.
 
 The three events are named as in [`event_time`](@ref). A person's test counts
-as positive when the `:test_result` that [`Testing`](@ref) records is true, and
+as positive when the `<test>_result` that [`Testing`](@ref) records is true, and
 its result is available at the time `test` names: by default `:test`, the
-sampling time `Testing` records as `:test_time`. A model with no `Testing` step
+sampling time `Testing` records as `:test_time` next to `:test_result`. A
+`Testing(name = :pcr)` step records `:pcr_result` and `:pcr_time`, so
+`test = :pcr` reads those. A model with no `Testing` step
 has no confirmed cases under this definition. The contact is
 `:trace`, the time [`ContactTracing`](@ref) reached the person. The definition is evaluated as events happen. A case is `suspected` at onset,
 becomes `probable` if tracing reaches them later, and becomes `confirmed` at a
@@ -159,8 +161,8 @@ function ClinicalCaseDefinition(;
 end
 
 function classify_case(def::ClinicalCaseDefinition, h::CaseHistory)
-    get(h.individual.state, :test_result, false)::Bool && has_happened(h, def.test) &&
-        return def.confirmed
+    get(h.individual.state, Symbol(def.test, :_result), false)::Bool &&
+        has_happened(h, def.test) && return def.confirmed
     has_happened(h, def.symptoms) || return missing
     return has_happened(h, def.contact) ? def.probable : def.suspected
 end
