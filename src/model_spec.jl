@@ -565,11 +565,17 @@ function simulate(
         spec::ModelSpec, state::SimulationState; max_time::Real,
         rng::AbstractRNG = state.rng
     )
-    # A run not cut by `max_time` is returned unchanged, its classification
-    # with it: reclassifying to the new `max_time` would read events the race
-    # never simulated, or drop ones it did.
+    # A run not cut by `max_time` is not resumed. One stopped by `max_cases` or
+    # a stopping rule keeps its classification: a new horizon would read events
+    # the race never simulated, or drop ones it did. One that went extinct has
+    # nothing left to simulate, so a run straight to the later `max_time` would
+    # classify up to it, and so does this one.
     continuation = state.continuation
-    (continuation === nothing || !continuation.cut_by_max_time) && return state
+    if continuation === nothing || !continuation.cut_by_max_time
+        state.extinct && max_time > get(state.scratch, _CLASSIFICATION_HORIZON_KEY, Inf) &&
+            _classify_cases!(state, spec.case_definition, max_time)
+        return state
+    end
     _continue_sellke!(
         state, rng, max_time, spec.interventions, transmission_risks(spec.process),
         spec.recorder

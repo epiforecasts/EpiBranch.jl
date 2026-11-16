@@ -207,6 +207,21 @@ _acute_load(rng, ind) = t -> max(0.0, 8.0 - abs(t - 5.0) * 1.6)
         before = case_classification_changes(stopped)
         simulate(spec, stopped; max_time = 1.0)
         @test isequal(case_classification_changes(stopped), before)
+        # An extinct run continued to a later `max_time` is classified as a run
+        # straight to it would be.
+        extinct_spec = ModelSpec(
+            BranchingProcess(Poisson(0.5), Exponential(1.0));
+            progression = [
+                Transition(:onset; delay = Exponential(6.0)),
+                Transition(:recovered; from = :onset, delay = Exponential(4.0), terminal = true),
+            ],
+            case_definition = FixedProportionConfirmed(0.5),
+        )
+        continued = simulate(extinct_spec; max_time = 10.0, n_initial = 3, rng = StableRNG(1))
+        @test continued.extinct
+        simulate(extinct_spec, continued; max_time = 30.0)
+        straight = simulate(extinct_spec; max_time = 30.0, n_initial = 3, rng = StableRNG(1))
+        @test isequal(case_classification_changes(continued), case_classification_changes(straight))
         # A generator that cannot be copied still classifies.
         device = simulate(spec; max_time = 10.0, rng = RandomDevice())
         @test any(i -> !ismissing(case_classification(i)), device.individuals)

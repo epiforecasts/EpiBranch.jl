@@ -214,6 +214,7 @@ const _CLASSIFICATION_KEY = :case_classification
 const _CLASSIFICATION_CHANGES_KEY = :_case_classification_changes
 const _CLASSIFICATION_DRAW_KEY = :_case_definition_draw
 const _CLASSIFICATION_SEED_KEY = :_case_definition_seed
+const _CLASSIFICATION_HORIZON_KEY = :_case_definition_horizon
 
 # The times at which to evaluate the definition on one person: their
 # infection, and each later time up to `horizon` an event the definition reads
@@ -280,6 +281,7 @@ end
 # `horizon` is the run's `max_time`, `Inf` when it had none.
 _classify_cases!(state::SimulationState, ::Nothing, horizon = Inf) = state
 function _classify_cases!(state::SimulationState, def, horizon = Inf)
+    state.scratch[_CLASSIFICATION_HORIZON_KEY] = horizon
     for ind in state.individuals
         is_infected(ind) && _classify_individual!(def, ind, state, horizon)
     end
