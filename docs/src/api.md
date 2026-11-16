@@ -67,6 +67,9 @@ ModelSpec
 single_type_offspring
 EpiBranch.has_single_type_law
 EpiBranch.offspring_law_unchanged
+EpiBranch.reporting_probability
+EpiBranch.reporting_from
+EpiBranch.onset_law
 EpiBranch.scale_mean
 EpiBranch.sum_offspring
 ```
@@ -171,6 +174,12 @@ Reporting
 Hospitalisation
 Death
 Recovery
+Testing
+AbstractAssay
+Assay
+within_host
+EpiBranch.trajectory_value
+EpiBranch.measure
 exclusive_probabilities
 is_terminal
 terminal_event
@@ -599,6 +608,7 @@ pairwise_surv_loglik
 PairwiseSurvivalData
 InfectionLayer
 compile_contact_pairs
+EpiBranch.seeded_hosts
 ContactPairsLayout
 MassActionHazard
 SumHazard

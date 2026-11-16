@@ -38,16 +38,16 @@ underscore are internal.
 | `:infection_route` | `Symbol` | — | Simulation (models with routes; `:external` for a case introduced by the `external_hazard` of a network or household model) | When infection is decided |
 | `:censor_until` | `Tuple` | `()` | Simulation (`BranchingProcess` with `Infectiousness` windows that name `until` states) | When a contact is created on a window with `until` states, which it names |
 | `:index` | `Bool` | `false` | Simulation (continuous-time models) | When the case's infector is fixed; `true` for a case infected from outside the population |
+| `:seeded` | `Bool` | absent | Simulation (household and network models) | When infection is decided; `true` only for a chosen `initial_case`, which is infected at day 0 whatever the risks and is not an `external_hazard` introduction |
 | `:type` | `Int` | `1` | Simulation (multi-type) | When the contact is created |
 | `:onset_time` | `Float64` | `NaN` | `clinical_presentation` | Creation |
 | `:asymptomatic` | `Bool` | `false` | `clinical_presentation` | Creation |
-| `:incubation_period` | `Float64` | — | `clinical_presentation` | Creation; `NaN` for an asymptomatic case |
-| `:latent_incubation_period` | `Float64` | — | `clinical_presentation` | Creation; drawn for every case, asymptomatic or not |
+| `:incubation_period` | `Float64` | — | `clinical_presentation` | Creation; drawn for an asymptomatic case too, as the time its onset would have happened |
 | `:age` | `Real` | — | `demographics` | Creation |
 | `:sex` | `Symbol` | — | `demographics` | Creation |
 | `:group` | `Int` | — | `groups` | Creation |
 | `:household` | `Int` | — | `HouseholdProcess` | Creation |
-| `:isolated` | `Bool` | `false` | `Isolation`, `ContactTracing`/`SourceTracing`'s `Quarantine` | `resolve_individual!` / `apply_trace!` |
+| `:isolated` | `Bool` | `false` | `Isolation`, `Quarantine` in `ContactTracing`/`SourceTracing` | `resolve_individual!` / `apply_trace!` |
 | `:isolation_time` | `Float64` | `Inf` | `Isolation`, `ContactTracing`/`SourceTracing`'s `Quarantine` | `resolve_individual!` / `apply_trace!` |
 | `:isolation_release_time` | `Float64` | `Inf` | `Isolation`, `ContactTracing`/`SourceTracing`'s `Quarantine` | `resolve_individual!` / `apply_trace!`; when the block ends |
 | `:_removal_stretches` | `Vector{Tuple{Float64,Float64}}` | `[]` | `set_isolated!` | Internal. Removals recorded under the shared default key, as merged, sorted `(start, release)` pairs; a release of `Inf` means permanent removal |
@@ -60,6 +60,7 @@ underscore are internal.
 | `:_isolation_unrecorded` | `Bool` | `false` | `Isolation`, `ContactTracing`/`SourceTracing` | `resolve_individual!` / `apply_trace!`; internal. The isolation removes the case from transmission without counting as a detection |
 | `:_isolation_handle` | `Int` | — | `Isolation` | `resolve_individual!`; internal. The handle of `Isolation`'s own entry, so `reset!` can withdraw exactly it |
 | `:_quarantine_removal_handles` | `Vector{Int}` | — | `ContactTracing`/`SourceTracing`'s `Quarantine` | `apply_trace!`; internal. The handles of every entry a quarantine has recorded, so a reset of the shared bookkeeping can withdraw each one. The `reset!` of a tracer withdraws only the entries listed under its own handles key |
+| `:_quarantine_start` | `Float64` | — | `ContactTracing`/`SourceTracing`'s `Quarantine` | `apply_trace!`; internal. The start of the earliest quarantine entry still standing, which is the day a capacity is charged on |
 | `:test_positive` | `Bool` | `false` | `Isolation` | `initialise_individual!` and `initialise_episode!` |
 | `:traced` | `Bool` | `false` | `ContactTracing`, `SourceTracing` | `trace_contacts!` |
 | `:quarantined` | `Bool` | `false` | `ContactTracing`, `SourceTracing` | `trace_contacts!` |
@@ -93,6 +94,11 @@ underscore are internal.
 | `:reporting_time` | `Float64` | `Inf` | `Reporting` transition | `resolve_individual!` / after the simulation; reset to `Inf` by `censor_after_outcome!` if it falls after `:outcome_time` |
 | `:admitted` | `Bool` | `false` | `Hospitalisation` transition | `resolve_individual!`; reset to `false` by `censor_after_outcome!` if `:admission_time` falls after `:outcome_time` |
 | `:admission_time` | `Float64` | `Inf` | `Hospitalisation` transition | `resolve_individual!`; reset to `Inf` by `censor_after_outcome!` if it falls after `:outcome_time` |
+| `:trajectory` | `Function` | — | `within_host` attribute builder | Read through `trajectory_value`; a function of the days since infection returning the measured quantity (a load, a titre) |
+| `:test_tested` | `Bool` | `false` | `Testing` transition | `resolve_individual!`; reset to `false` by `censor_after_outcome!` if `:test_time` falls after `:outcome_time` |
+| `:test_time` | `Float64` | `Inf` | `Testing` transition | `resolve_individual!`; reset to `Inf` by `censor_after_outcome!` if it falls after `:outcome_time` |
+| `:test_value` | `Float64` | `NaN` | `Testing` transition | `resolve_individual!` |
+| `:test_result` | `Bool` | `false` | `Testing` transition | `resolve_individual!`; the four `:test_*` keys are for the default `name = :test`; a test called `:pcr` writes `:pcr_tested`, `:pcr_time`, `:pcr_value` and `:pcr_result` instead |
 | `:death_candidate_time` | `Float64` | `Inf` | `Death` transition | `resolve_individual!` |
 | `:recovery_candidate_time` | `Float64` | `Inf` | `Recovery` transition | `resolve_individual!` |
 | `:outcome` | `Symbol` | — | Any terminal transition (`Death`, `Recovery`, `Transition(...; terminal = true)`, your own) | `resolve_individual!` (terminal) |
@@ -411,6 +417,7 @@ compatible with these likelihoods. The built-in parts declare:
 | `clinical_presentation`, no population characteristics | yes |
 | Other population characteristics (`demographics`, `groups`, `transmission_traits`, `vaccine_acceptance`, and your own functions) | no, unless declared |
 | `Transition`, `Reporting`, `Hospitalisation`, `Recovery`, `Death` | yes |
+| `Testing` | the infection likelihood yes; `progression_loglik` has no term for `Testing` |
 | `Isolation` | yes, complete or leaky |
 | `ContactTracing` with `Quarantine` or `FlagOnly` | yes |
 | `MassVaccination`, `GroupVaccination` | only with the default `dose_label` and a fixed (numeric) `efficacy` |
@@ -1025,6 +1032,8 @@ before.
 | A capacity limit per group | `resource_key(iv, individual, state)` for `iv` | When actions are admitted, once per case |
 | An exact effect on the offspring distribution | `analytic_offspring_effect` for an intervention | Closed-form results on a `ModelSpec` |
 | A model, attribute or progression transition that leaves the single-type offspring law exactly as drawn | `EpiBranch.offspring_law_unchanged` | The chain-size and incidence likelihoods' analytical path |
+| A progression transition that reports cases with a fixed probability, and the time it reports from | `EpiBranch.reporting_probability`, `EpiBranch.reporting_from` | The chain-size and incidence closed forms, which thin by it |
+| An attribute that sets the onset time, with its incubation period and asymptomatic share | `EpiBranch.onset_law` | The analytic effect of `Isolation` and the closed forms for reporting timed from onset |
 | A stopping rule | A type `<: AbstractStoppingRule` and `should_stop` | Each step |
 | A contact recorder | A type `<: ContactRecorder` and `records_contacts` | Continuous-time models, each blocked proposal |
 | A terminal clinical transition | A type `<: AbstractClinicalTransition` with `is_terminal`, `terminal_event`, `terminal_target` | When a case is settled |

@@ -1438,14 +1438,22 @@ _fresh_attributes(xs::Union{Tuple, AbstractVector}) = map(_fresh_attributes, xs)
 """
     clinical_presentation(; incubation_period, prob_asymptomatic = 0.0)
 
-Give each case a symptom onset time and decide whether it is asymptomatic.
+Give each case an incubation period and a symptom onset time, and decide whether it is asymptomatic.
 Pass the result as `attributes` to [`ModelSpec`](@ref).
 
 - `incubation_period`: distribution of the time from infection to symptom
-  onset, in days. Each symptomatic case's onset time is its infection time
-  plus a draw from it.
+  onset, in days. Every case gets a draw from it, asymptomatic or not
+  (`:incubation_period`), and a symptomatic case's onset time is its infection
+  time plus that draw. Give a distribution or a function of the random number
+  generator and the individual, `(rng, ind) -> value`, to let the draw depend
+  on a trait. `:asymptomatic` is set before the draw, which lets the function
+  give asymptomatic cases their own timing. Closed forms that read the
+  incubation period directly accept a distribution but not a function.
 - `prob_asymptomatic`: probability that a case never develops symptoms
-  (default 0). Asymptomatic cases have no onset time (`NaN`). Give a number,
+  (default 0). Asymptomatic cases have no onset time (`NaN`), but keep their incubation
+  period, the time onset would have happened, which
+  [`incubation_linked_generation_time`](@ref) and an
+  [`Infectiousness`](@ref) window with `from = :onset` use. Give a number,
   a distribution (one probability drawn per case) or a function of the random
   number generator and the individual, `(rng, ind) -> probability`, for
   example to make it depend on age.
@@ -1460,7 +1468,7 @@ with an `infectiousness` that reads `ind.state[:asymptomatic]`.
 Use `transmission_traits` for traits known when the case is created (age, sex,
 whether the case is asymptomatic), because it draws its factor then. A change
 during the infection, such as tracing or quarantine, needs an intervention.
-Combining the two is tracked in #972.
+The tutorial "Making cases more or less infectious" compares the options.
 
 # Examples
 
@@ -1517,10 +1525,22 @@ attributes = [
 ]
 ```
 
+Asymptomatic cases with their own incubation period, here a shorter one
+(`:asymptomatic` is already set when the function runs):
+
+```julia
+attributes = clinical_presentation(
+    incubation_period = (rng, ind) -> rand(
+        rng, ind.state[:asymptomatic] ? LogNormal(1.2, 0.5) : LogNormal(1.6, 0.5)
+    ),
+    prob_asymptomatic = 0.3,
+)
+```
+
 See also [`demographics`](@ref), [`transmission_traits`](@ref).
 """
 function clinical_presentation(;
-        incubation_period::Distribution,
+        incubation_period,
         prob_asymptomatic = 0.0
     )
     return ClinicalPresentation(incubation_period, prob_asymptomatic)
@@ -1531,16 +1551,16 @@ struct ClinicalPresentation{D, P}
     prob_asymptomatic::P
 end
 
+function onset_law(c::ClinicalPresentation)
+    return (incubation_period = c.incubation_period, prob_asymptomatic = c.prob_asymptomatic)
+end
+
 function (clinical::ClinicalPresentation)(rng, ind)
     rng = stream(rng, ind.id, :clinical_presentation)
     pa = sample_value(clinical.prob_asymptomatic, rng, ind)
     is_asymp = rand(rng) < pa
     ind.state[:asymptomatic] = is_asymp
-    # Every case draws an incubation period, including asymptomatic cases,
-    # which have no onset. A generation time linked to incubation needs it.
-    latent = rand(rng, clinical.incubation_period)
-    ind.state[:latent_incubation_period] = latent
-    ind.state[:incubation_period] = is_asymp ? NaN : latent
+    ind.state[:incubation_period] = sample_value(clinical.incubation_period, rng, ind)
     return _set_onset_from_incubation!(ind)
 end
 
@@ -1548,15 +1568,16 @@ end
     _set_onset_from_incubation!(ind)
 
 Set `:onset_time` to `infection_time + :incubation_period` from the
-stored host incubation period. Asymptomatic individuals (`NaN`
-incubation) get a `NaN` onset, and so does an infection aborted before
-onset, which never reaches it. Applies when `:incubation_period` is
-present on the individual.
+stored host incubation period. Asymptomatic individuals get a `NaN`
+onset, and so does an infection aborted before onset, which never reaches
+it; their incubation period stays recorded, as the time onset would have
+happened. Applies when `:incubation_period` is present on the individual.
 """
 function _set_onset_from_incubation!(ind::Individual)
     haskey(ind.state, :incubation_period) || return nothing
     inc = _state_real(ind.state, :incubation_period, NaN)
-    ind.state[:onset_time] = isnan(inc) || _infection_aborted(ind) || _symptoms_prevented(ind) ? NaN :
+    ind.state[:onset_time] = isnan(inc) || get(ind.state, :asymptomatic, false)::Bool ||
+        _infection_aborted(ind) || _symptoms_prevented(ind) ? NaN :
         ind.infection_time + inc
     return nothing
 end
@@ -1629,8 +1650,8 @@ not cluster within them. To make it cluster, use a multi-type
 [`BranchingProcess`](@ref) with one type per group and a next-generation
 matrix with most transmission within types, and use the type itself as the
 group in `GroupVaccination(...; group_key = :type)`. [`group_attribute`](@ref)
-and [`vaccine_acceptance`](@ref) cannot group by type, since population
-characteristics are drawn before a person's type is set.
+and [`vaccine_acceptance`](@ref) can group by `:type` too, because a person's
+type is set before their population characteristics are drawn.
 
 # Examples
 
@@ -1674,6 +1695,15 @@ Give each person a susceptibility and an infectiousness. Pass the result as
 - `susceptibility`: probability that an exposed person is infected.
 - `infectiousness`: probability that each contact the person makes once
   infected leads to infection, so 0.5 halves the number they infect.
+
+The factor is drawn once, when the case is created, and cannot depend on
+anything that happens later. To reduce transmission from the time of an event
+such as tracing or isolation, use an intervention (its
+[`transmission_risks`](@ref EpiBranch.transmission_risks) and
+[`competing_risk`](@ref EpiBranch.competing_risk)); to limit transmission to
+certain disease states, use the `from` and `until` of an
+[`Infectiousness`](@ref) window. The tutorial "Making cases more or less
+infectious" compares the options.
 
 Both default to 1 (no change). In the continuous-time models
 ([`HomogeneousProcess`](@ref), [`MixingProcess`](@ref), network and household

@@ -1,13 +1,14 @@
 # Inference
 
 What can you learn about R and the dispersion k from outbreak data? This page
-estimates them from three kinds of data:
+estimates them from four kinds of data:
 
 | Data | What you observe | Typical source | Estimates |
 |:-----|:-----------------|:---------------|:----------|
 | Offspring counts ([`OffspringCounts`](@ref)) | the number of secondary cases each case caused | contact tracing that links infectors to infectees | R and k |
 | Chain sizes ([`ChainSizes`](@ref)) | the final number of cases in each cluster, but not who infected whom | cluster investigations, imported cases and their clusters | R, and k given enough clusters |
 | Chain lengths ([`ChainLengths`](@ref)) | the number of generations in each cluster | generation-linked tracing data | R |
+| Case time series ([`IncidenceCounts`](@ref)) | the number of new cases in each day or week of one outbreak | surveillance counts | R and k, given the generation time |
 
 `NegBin(R, k)` is the negative binomial offspring distribution with mean R and
 dispersion k; smaller k means more superspreading.
@@ -351,6 +352,69 @@ The two estimates differ from each other and from the true value through
 sampling variation alone; with more data both would move closer to it. Because the log-likelihoods of
 independent datasets add up, you can also fit both together by adding the two
 `loglikelihood` values, or by putting both `~` lines in one Turing model.
+
+## From a case time series
+
+Most outbreaks produce a daily count of new cases. [`IncidenceCounts`](@ref) holds such a series: the number of new cases in each successive step (day, week or whatever unit the series is recorded in), after `seeds` index cases introduced at step 0. `loglikelihood` scores it in closed form, without simulating, against an offspring distribution and a generation-time distribution. Any of the fitting methods above works on it.
+
+The series below is simulated from a negative binomial offspring distribution with R = 1.6 and k = 0.5, a gamma generation time with a mean of 5 days, and 20 index cases. Cases are counted by day of infection. The generation time is in the same unit as a step (days).
+
+```@example inference
+rng = StableRNG(11)
+true_R, true_k = 1.6, 0.5
+generation_time = Gamma(4.0, 1.25)  # mean 5 days
+n_days = 28
+state = simulate(
+    BranchingProcess(NegBin(true_R, true_k), generation_time);
+    n_initial = 20, max_time = n_days, rng = rng
+)
+# day t holds the infections in (t - 1, t]
+cases = zeros(Int, n_days)
+for ind in state.individuals
+    day = ceil(Int, ind.infection_time)
+    1 <= day <= n_days && (cases[day] += 1)
+end
+incidence = IncidenceCounts(cases; seeds = 20)
+println("Daily cases: ", cases)
+```
+
+The likelihood is built from [`incidence_moments`](@ref), the mean and covariance of the daily counts under the model. It matches a distribution to them, and the third argument of `loglikelihood` selects which:
+
+- [`NormalApproximation`](@ref), the default, matches a multivariate normal. It accepts any counts, including zeros.
+- [`LognormalApproximation`](@ref) matches a multivariate lognormal, which cannot go negative, but needs every count to be at least 1.
+
+Either way the likelihood is an approximation to the true, unknown distribution of the counts. The profile-likelihood fit from above works unchanged; only the log-likelihood function differs. The approximation is passed as part of the `data` argument so the same code fits with either:
+
+```@example inference
+function incidence_loglik(θ, (series, approximation))
+    offspring = NegBin(exp(θ[1]), exp(θ[2]))  # θ = [log R, log k]
+    return loglikelihood(series, offspring, generation_time, approximation)
+end
+
+function incidence_problem(series, approximation)
+    return LikelihoodProblem(
+        incidence_loglik, [0.0, 0.0];
+        data = (series, approximation),
+        syms = [:log_R, :log_k],
+        f_kwargs = (adtype = AutoForwardDiff(),),
+        prob_kwargs = (lb = log.([0.01, 0.01]), ub = log.([10.0, 100.0]))
+    )
+end
+
+for approximation in (NormalApproximation(), LognormalApproximation())
+    println(nameof(typeof(approximation)))
+    print_intervals(incidence_problem(incidence, approximation))
+end
+```
+
+The two approximations can disagree, and here they do: the interval for R under the normal approximation contains the value used to simulate the data (R = 1.6), while the lognormal interval, fitted to counts that are mostly small, sits well below it. Start with the normal approximation, and check a fit against simulated series (simulate the fitted model, count the cases per day as above, and compare) before trusting either.
+
+The interval for k under the normal approximation is wide and reaches its upper bound, as in the offspring-count fit, because four weeks of one outbreak say little about superspreading.
+
+!!! note "What this fit covers"
+    The likelihood assumes one constant R, a fixed number of seeds at step 0, and a known generation time. It ignores depletion of susceptibles and models no interventions. It can score cases by report date with `reporting_probability` and `reporting_delay`, which assume each case is reported independently with the same probability. A generation time that is short relative to the step, such as a few days against a weekly series, is binned coarsely and biases the fit. It does not estimate a time-varying R: for that, use a tool built for it, or the particle filter in [Filtering an outbreak over time](@ref) below, which follows an outbreak through a simulated model.
+
+[`SignalSeries`](@ref) and [`SignalData`](@ref) are the route for data that has no closed form here: they score observed series against one simulated outbreak, with a measurement density of your choosing, at the cost of simulating for each likelihood evaluation.
 
 ## Inference under interventions
 
