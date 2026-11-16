@@ -192,7 +192,7 @@ export DoseAllocation, TriggeredInPriority, SplitByGroupSize, SplitBySusceptible
 export ImmuneShare, ImmuneCount
 export HybridProcess, HybridState
 export GenerationCounts, simulate_by_generation
-export AbstractDepletion, PerContactDepletion, StartOfGenerationDepletion
+export AbstractDepletion, PerContactDepletion
 export transmission_timing, implied_R
 export Individual, InfectionEpisode, close_episode!, SimulationState
 export SimOpts
