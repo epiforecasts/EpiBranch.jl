@@ -120,9 +120,8 @@ as positive when the `:test_result` that [`Testing`](@ref) records is true, and
 its result is available at the time `test` names: by default `:test`, the
 sampling time `Testing` records as `:test_time`. A model with no `Testing` step
 has no confirmed cases under this definition. The contact is
-`:trace`, the time [`ContactTracing`](@ref) reached the person. Because the
-definition is evaluated as events happen, a case is `suspected` at onset,
-becomes `probable` if tracing reaches them later, and `confirmed` at a
+`:trace`, the time [`ContactTracing`](@ref) reached the person. The definition is evaluated as events happen. A case is `suspected` at onset,
+becomes `probable` if tracing reaches them later, and becomes `confirmed` at a
 positive result.
 
 # Examples

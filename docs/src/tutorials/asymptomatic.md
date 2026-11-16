@@ -98,7 +98,7 @@ compare(shorter)
 
 ## Onset linked to infectiousness, with no trajectory
 
-[`incubation_linked_generation_time`](@ref) centres each case's generation time on its own incubation period, so that a set share of transmission comes before onset. An asymptomatic case has no onset, but [`clinical_presentation`](@ref) still draws it an incubation period, the time onset would have happened (`incubation_period(ind)`), and by default its generation time is centred on that. That is one choice among several. Because a generation time is any function of the individual, a different one for asymptomatic cases is a one-line wrapper. Here they transmit on the plain exponential timescale instead:
+[`incubation_linked_generation_time`](@ref) centres each case's generation time on its own incubation period, so that a set share of transmission comes before onset. An asymptomatic case has no onset, but [`clinical_presentation`](@ref) still draws it an incubation period, the time onset would have happened (`incubation_period(ind)`), and by default its generation time is centred on that. A generation time can be any function of the individual, so giving asymptomatic cases a different one takes a one-line wrapper. Here they transmit on the plain exponential timescale instead:
 
 ```@example asymptomatic
 linked = incubation_linked_generation_time(presymptomatic_fraction = 0.3)
@@ -127,11 +127,11 @@ shorter_incubation = ModelSpec(BranchingProcess(Poisson(3.0), linked); attribute
 compare(shorter_incubation)
 ```
 
-Asymptomatic cases now transmit earlier, centred on their shorter incubation period. The closed forms that read the incubation period directly, such as the analytic effect of [`Isolation`](@ref), need a distribution and refuse a function: simulate instead.
+Asymptomatic cases now transmit earlier, centred on their shorter incubation period. The closed forms that read the incubation period directly, such as the analytic effect of [`Isolation`](@ref), need a distribution and refuse a function, so simulate instead.
 
 ## Onset and infectiousness both follow a trajectory
 
-A within-host trajectory is a function of time since infection that the user draws once per case and stores on the individual. [`within_host`](@ref) is the builder that stores it, under `:trajectory`, and `EpiBranch.trajectory_load(ind, t)` reads the load at `t` days after infection. Everything linked to it is then derived from that one draw. Here the load rises to a peak and clears. A case develops symptoms if its peak passes a threshold, at the time the load crosses it, and a case whose peak stays below is asymptomatic. The same load, scaled, is the case's rate of transmission through a [`HazardKernel`](@ref). Symptoms depend on the same draw, so the builder draws the trajectory itself, stores it under `:trajectory`, and sets `:asymptomatic` and `:incubation_period`, the time onset happens or would have happened, from which the onset time is worked out:
+A within-host trajectory is a function of time since infection that the user draws once per case and stores on the individual. [`within_host`](@ref) is the builder that stores it, under `:trajectory`, and `EpiBranch.trajectory_load(ind, t)` reads the load at `t` days after infection. Everything linked to it is derived from that one draw. Here the load rises to a peak and clears. A case develops symptoms if its peak passes a threshold, at the time the load crosses it, and a case whose peak stays below is asymptomatic. The same load, scaled, is the rate of transmission of the case through a [`HazardKernel`](@ref). Symptoms depend on the same draw. The builder therefore draws the trajectory itself and stores it under `:trajectory`. It also sets `:asymptomatic` and `:incubation_period` (the time onset happens or would have happened), from which the onset time follows:
 
 ```@example asymptomatic
 function draw_trajectory(rng)
@@ -218,5 +218,3 @@ asymptomatic_cases = filter(is_asymptomatic, cases)
     ),
 )
 ```
-
-A case definition that uses the test result and the symptoms is a statement of its own. It is separate from the link between symptoms and infectiousness above.

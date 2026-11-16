@@ -8,9 +8,9 @@ function of the random number generator and the individual,
 infection. It is called once per case, so the load can differ between cases
 and depend on anything already recorded on them, such as age.
 
-The package includes no pathogen: the caller supplies the trajectory, whether
-an acute rise and clearance or a chronic plateau. Define it
-once and let everything that depends on load read it. [`Testing`](@ref) samples
+The package includes no pathogen. The caller supplies the trajectory, whether
+an acute rise and clearance or a chronic plateau, and everything that depends
+on load reads it from there. [`Testing`](@ref) samples
 it at the time a test is taken, and a [`HazardKernel`](@ref) can turn it into
 infectiousness through [`trajectory_load`](@ref EpiBranch.trajectory_load).
 The curve is stored in `ind.state[:trajectory]` (or under `key`).
@@ -84,8 +84,7 @@ An assay that maps the load in a sample to a Ct value and to a result.
   gives a result that can be probabilistic, for example a detection probability
   that rises with load.
 
-Neither has a default, because both belong to the assay and the pathogen being
-tested for.
+Neither has a default, as both depend on the assay and the pathogen tested for.
 
 # Examples
 
