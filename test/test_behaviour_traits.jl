@@ -1,8 +1,9 @@
-# Traits the engine asks of an intervention, whose defaults read the methods a
-# type defines and which a type can declare instead.
+# Traits the engine asks of an intervention. Each has a fixed default, and a
+# type with the matching hook declares the trait; building a model throws for
+# one that does not.
 
-# Has an `intervention_time` and `reset!` through a forwarding method the
-# default does not see as its own.
+# Has an `intervention_time` and `reset!` through a forwarding method, and
+# declares it is not time aware.
 struct _ForwardsTime <: EpiBranch.AbstractIntervention
     inner::Isolation
 end
@@ -10,12 +11,13 @@ EpiBranch.intervention_time(f::_ForwardsTime, ind::Individual) =
     EpiBranch.intervention_time(f.inner, ind)
 EpiBranch.time_aware(::_ForwardsTime) = false
 
-# Writes its effect in `resolve_individual!` but declares it is rationed as
-# an action.
 struct _OwnsEffect <: EpiBranch.AbstractIntervention end
 EpiBranch.capacity_key(::_OwnsEffect) = :_owns_effect
 EpiBranch.resolve_individual!(::_OwnsEffect, ind, state) = nothing
+EpiBranch.resolves_under_capacity(::_OwnsEffect) = true
 
+# Writes its effect in `resolve_individual!` but declares it is rationed as
+# an action.
 struct _DeclaredOwnsEffect <: EpiBranch.AbstractIntervention end
 EpiBranch.capacity_key(::_DeclaredOwnsEffect) = :_declared_owns_effect
 EpiBranch.resolve_individual!(::_DeclaredOwnsEffect, ind, state) = nothing
@@ -30,6 +32,27 @@ EpiBranch.has_competing_risk(::_NoRiskDeclared) = false
 struct _ProposesNothing <: EpiBranch.AbstractIntervention end
 EpiBranch.intervention_actions(::_ProposesNothing, state, candidates) = nothing
 EpiBranch.discovers_actions(::_ProposesNothing) = false
+
+# Hooks with no declaration.
+struct _UndeclaredTime <: EpiBranch.AbstractIntervention end
+EpiBranch.intervention_time(::_UndeclaredTime, ind::Individual) = 1.0
+struct _UndeclaredEffect <: EpiBranch.AbstractIntervention end
+EpiBranch.capacity_key(::_UndeclaredEffect) = :_undeclared_effect
+EpiBranch.resolve_individual!(::_UndeclaredEffect, ind, state) = nothing
+struct _UndeclaredActions <: EpiBranch.AbstractIntervention end
+EpiBranch.intervention_actions(::_UndeclaredActions, state, candidates) = nothing
+
+# A wrapper with its own `intervention_time`, and an action with its own
+# `intervention_actions`, neither declared.
+struct _UndeclaredWrapper{I <: EpiBranch.AbstractIntervention} <: EpiBranch.InterventionWrapper
+    intervention::I
+end
+EpiBranch.intervention_time(::_UndeclaredWrapper, ind::Individual) = 1.0
+struct _UndeclaredTraceAction <: EpiBranch.TraceAction end
+EpiBranch.intervention_actions(::_UndeclaredTraceAction, state, candidates) = nothing
+
+# Declares nothing and defines no hook.
+struct _Bare <: EpiBranch.AbstractIntervention end
 
 @testset "Behaviour traits" begin
     iso = Isolation(onset_to_isolation_delay = 1.0, duration = 5.0)
@@ -97,8 +120,59 @@ EpiBranch.discovers_actions(::_ProposesNothing) = false
         @test EpiBranch.has_competing_risk(iso)
         @test EpiBranch.has_competing_risk(_NoRisk())
         @test !EpiBranch.has_competing_risk(_NoRiskDeclared())
-        @test !EpiBranch.has_competing_risk(_ProposesNothing())
+        # The default is the conservative answer.
+        @test EpiBranch.has_competing_risk(_ProposesNothing())
         # A wrapper forwards the hook, so it answers `true`.
         @test EpiBranch.has_competing_risk(Scheduled(iso; start_time = 1.0))
+    end
+
+    @testset "defaults of a type that declares nothing" begin
+        bare = _Bare()
+        @test !EpiBranch.time_aware(bare)
+        @test !EpiBranch.resolves_under_capacity(bare)
+        @test !EpiBranch.discovers_actions(bare)
+        @test !EpiBranch.proposes_actions(bare)
+        @test EpiBranch.has_competing_risk(bare)
+        # The same through a wrapper.
+        sched = Scheduled(bare; start_time = 1.0)
+        @test !EpiBranch.time_aware(sched)
+        @test !sched.time_aware
+    end
+
+    @testset "a hook without its declaration is an error at build" begin
+        bp = BranchingProcess(Poisson(1.5), Exponential(5.0))
+        for (iv, trait) in (
+                (_UndeclaredTime(), "time_aware"),
+                (_UndeclaredEffect(), "resolves_under_capacity"),
+                (_UndeclaredActions(), "discovers_actions"),
+            )
+            err = try
+                ModelSpec(bp; interventions = [iv])
+                nothing
+            catch e
+                e
+            end
+            @test err isa ArgumentError
+            @test occursin("EpiBranch.$trait(::$(nameof(typeof(iv))))", err.msg)
+            # Found under a wrapper too.
+            @test_throws ArgumentError ModelSpec(
+                bp; interventions = [Scheduled(iv; start_time = 1.0)]
+            )
+        end
+        @test_throws ArgumentError ModelSpec(
+            bp; interventions = [_UndeclaredWrapper(_Bare())]
+        )
+        @test_throws ArgumentError ModelSpec(
+            bp; interventions = [
+                ContactTracing(
+                    probability = 0.5, isolation_to_trace_delay = Exponential(1.0),
+                    action = _UndeclaredTraceAction()
+                ),
+            ]
+        )
+        # Declared types build.
+        @test ModelSpec(
+            bp; interventions = [_OwnsEffect(), _ProposesNothing(), _ForwardsTime(Isolation(onset_to_isolation_delay = 1.0, duration = 5.0))]
+        ) isa ModelSpec
     end
 end

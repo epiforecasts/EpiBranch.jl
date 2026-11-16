@@ -34,6 +34,7 @@ end
 
 # Doses every contact it is offered at a fixed time, through actions alone.
 struct _ActionsOnly <: AbstractIntervention end
+EpiBranch.discovers_actions(::_ActionsOnly) = true
 function EpiBranch.intervention_actions(::_ActionsOnly, state, candidates)
     return [
         EpiBranch.InterventionAction(c, 3.0, (ind, at, st) -> ind.state[:_served_at] = at)

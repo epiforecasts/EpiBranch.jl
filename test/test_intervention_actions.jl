@@ -15,6 +15,7 @@ end
 # clock it actually runs on (`state.max_infection_time`) rather than the one
 # in force when it was admitted, and returns a further action of its own.
 struct DeferredCheckIn <: EpiBranch.AbstractIntervention end
+EpiBranch.discovers_actions(::DeferredCheckIn) = true
 function EpiBranch.intervention_actions(::DeferredCheckIn, state, candidates)
     return [
         EpiBranch.InterventionAction(
@@ -366,6 +367,7 @@ end
 
 struct _UndeclaredAction <: AbstractIntervention end
 EpiBranch.intervention_actions(::_UndeclaredAction, state, candidates) = nothing
+EpiBranch.discovers_actions(::_UndeclaredAction) = true
 
 @testset "Continuous-time candidates scale with the ring or group, not the population" begin
     # A settled case's own ring or group is tiny; most of the population is

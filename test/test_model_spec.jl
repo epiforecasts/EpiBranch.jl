@@ -71,6 +71,7 @@ struct _CacheProbe <: AbstractIntervention end
 # is read rather than a subset headlined by `competing_risk`.
 struct _ActionsHookOnly <: AbstractIntervention end
 EpiBranch.intervention_actions(::_ActionsHookOnly, state, candidates) = nothing
+EpiBranch.discovers_actions(::_ActionsHookOnly) = true
 
 # A `competing_risk` hook written with a trailing `args...`: a method a
 # four-argument call does reach, despite `methods` listing its own arity as

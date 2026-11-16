@@ -86,6 +86,7 @@ function EpiBranch.intervention_actions(ta::TestAndRelease, state, candidates)
 end
 EpiBranch.capacity_key(::TestAndRelease) = :_test_claimed
 EpiBranch.capacity_time_key(::TestAndRelease) = :_test_time
+EpiBranch.discovers_actions(::TestAndRelease) = true
 
 function EpiBranch.on_infection_settled!(ta::TestAndRelease, ind, state, rng)
     get(ind.state, :_test_claimed, false) || return nothing

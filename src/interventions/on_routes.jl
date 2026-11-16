@@ -41,6 +41,12 @@ struct OnRoutes{I <: AbstractIntervention, R} <: InterventionWrapper
     routes::R
 end
 
+# Every trait is the wrapped intervention's, and the hook forwarded.
+time_aware(o::OnRoutes) = time_aware(o.intervention)
+resolves_under_capacity(o::OnRoutes) = resolves_under_capacity(o.intervention)
+discovers_actions(o::OnRoutes) = discovers_actions(o.intervention)
+has_competing_risk(::OnRoutes) = true
+
 function risk_applies(o::OnRoutes, route)
     route !== nothing && route.name in o.routes || return false
     return risk_applies(o.intervention, route)

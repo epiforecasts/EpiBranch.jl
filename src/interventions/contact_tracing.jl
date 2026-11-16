@@ -1007,16 +1007,13 @@ function intervention_actions(ct::ContactTracing, state, candidates)
 end
 
 # `ContactTracing` always defines its own `intervention_actions` method,
-# forwarding to `ct.action` above, so checking `ct` directly would credit
-# every instance with discovering actions regardless of whether its action
-# does: a plain `Quarantine` or `FlagOnly`, neither of which overrides
-# `intervention_actions`, would still pay the race's per-settled-case cost
-# for nothing. Checking the action's own method instead, against the
-# fallback `TraceAction` declares, avoids that for actions with nothing to
-# propose.
-function discovers_actions(ct::ContactTracing)
-    return _has_own_method(intervention_actions, typeof(ct.action), TraceAction)
-end
+# forwarding to `ct.action` above, so it asks the action whether it has
+# anything to propose: a plain `Quarantine` or `FlagOnly` does not, and would
+# otherwise cost the race a per-settled-case call for nothing. An action that
+# overrides `intervention_actions` declares `discovers_actions` for its type.
+discovers_actions(ct::ContactTracing) = discovers_actions(ct.action)
+
+discovers_actions(::TraceAction) = false
 
 # Forwarded so a `TraceAction` can read what a contact's own settlement
 # fixes, such as a test result that depends on whether the contact turned out
@@ -1205,6 +1202,15 @@ end
 # route instead (see `trace_contacts!`'s docstring).
 traces_contacts(::SourceTracing) = false
 traces_source(::SourceTracing) = true
+
+# Both write `intervention_time` for the isolation they set, and ask for a
+# capacity key without writing their own `resolve_individual!`.
+for T in (ContactTracing, SourceTracing)
+    @eval time_aware(::$T) = true
+    @eval resolves_under_capacity(::$T) = false
+    @eval has_competing_risk(::$T) = true
+end
+discovers_actions(::SourceTracing) = false
 
 """Trace `case` back to its own infector, named in `contacts` as the race
 offers it (see [`traces_source`](@ref EpiBranch.traces_source)): the same

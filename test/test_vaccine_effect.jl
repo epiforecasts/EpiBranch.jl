@@ -6,6 +6,9 @@ struct _TestCampaignVaccination{V <: VaccineEffect} <: AbstractVaccination
 end
 
 EpiBranch.vaccine_effect(v::_TestCampaignVaccination) = v.effect
+EpiBranch.time_aware(::_TestCampaignVaccination) = false
+EpiBranch.resolves_under_capacity(::_TestCampaignVaccination) = false
+EpiBranch.discovers_actions(::_TestCampaignVaccination) = true
 
 # An `AbstractEffectMode` defined outside the package: deterministic
 # instead of either `LeakyMode`'s identity or `AllOrNothingMode`'s Bernoulli

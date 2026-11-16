@@ -16,6 +16,7 @@ struct _Bed2 <: EpiBranch.AbstractIntervention
 end
 EpiBranch.capacity_key(::_Bed2) = :bed
 EpiBranch.capacity_time_key(::_Bed2) = :bed_time
+EpiBranch.discovers_actions(::_Bed2) = true
 function EpiBranch.intervention_actions(b::_Bed2, state, candidates)
     return [
         InterventionAction(
@@ -36,6 +37,7 @@ end
 
 struct _Ward <: EpiBranch.AbstractIntervention end
 EpiBranch.capacity_key(::_Ward) = :ward_bed
+EpiBranch.discovers_actions(::_Ward) = true
 EpiBranch.resource_key(::_Ward, ind, state) = ind.state[:ward]
 EpiBranch.intervention_actions(::_Ward, state, candidates) = [
     InterventionAction(ind, 1.0, (p, t, s) -> (p.state[:ward_bed] = true))

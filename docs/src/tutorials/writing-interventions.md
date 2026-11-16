@@ -90,10 +90,10 @@ many people each case infects](@ref).
 | `acts_on_population(iv)` | Once, before the simulation processes any case, and for each contact a branching process creates | Nothing | `Bool`: whether this intervention's actions belong to the whole population rather than a case's contacts or group, so `intervention_actions` is called once, upfront, with every member. Default `false`; [`MassVaccination`](@ref) declares it |
 | `needs_contacts(iv)` | Whenever the simulation decides whether an intervention can be offered actions on a model that names no contacts | Nothing | `Bool`: whether this intervention's candidates come from the model's named contacts. Default `true`, the conservative choice; [`GroupVaccination`](@ref) declares `false`, since its candidates come from a case's group |
 | `has_effect(iv)` | Once per intervention type, when a `ModelSpec` is built | Nothing | `Bool`: whether the intervention can change a simulation or a likelihood. The default is `true` for a type with a method of its own, with the right number of arguments, for a hook it can act through, such as `competing_risk` or `trace_contacts!`; `ModelSpec` warns on `false` |
-| `time_aware(iv)` | Once, when a [`Scheduled`](@ref) is built around the intervention | Nothing | `Bool`: whether the intervention has an `intervention_time` paired with a `reset!`, so `Scheduled` runs it and undoes what falls outside its window rather than gating it up front. The default is `true` for a type with an `intervention_time` method of its own; a wrapper asks the intervention it wraps |
-| `resolves_under_capacity(iv)` | When [`CapacityConstrained`](@ref) or [`HeldCapacity`](@ref) is built or resolves a case | Nothing | `Bool`: whether the intervention writes its effect in `resolve_individual!` (rationed by `reset!`) rather than proposing it as an action. The default is `true` for a type with its own `capacity_key` and `resolve_individual!`; a wrapper asks the intervention it wraps |
-| `discovers_actions(iv)`, `proposes_actions(iv)` | Whenever the simulation decides whether to offer an intervention candidates per settled case | Nothing | `Bool`: whether the intervention finds actions of its own, and whether it is offered candidates (`false` for `acts_on_population`). The default of `discovers_actions` is `true` for a type with an `intervention_actions` method of its own; a wrapper asks the intervention it wraps |
-| `has_competing_risk(iv)` | When the race is set up | Nothing | `Bool`: whether the intervention can supply a `competing_risk`, so the race keeps fallback proposals for a blocked contact. The default is `true` for a type with a `competing_risk` method of its own, which includes every wrapper |
+| `time_aware(iv)` | Once, when a [`Scheduled`](@ref) is built around the intervention | Nothing | `Bool`: whether the intervention has an `intervention_time` paired with a `reset!`, so `Scheduled` runs it and undoes what falls outside its window rather than gating it up front. The default is `false`. A type with an `intervention_time` method declares `true`, and building a `ModelSpec` throws for one that does not; a wrapper asks the intervention it wraps |
+| `resolves_under_capacity(iv)` | When [`CapacityConstrained`](@ref) or [`HeldCapacity`](@ref) is built or resolves a case | Nothing | `Bool`: whether the intervention writes its effect in `resolve_individual!` (rationed by `reset!`) rather than proposing it as an action. The default is `false`. A type with its own `capacity_key` and `resolve_individual!` declares the answer, and building a `ModelSpec` throws for one that does not; a wrapper asks the intervention it wraps |
+| `discovers_actions(iv)`, `proposes_actions(iv)` | Whenever the simulation decides whether to offer an intervention candidates per settled case | Nothing | `Bool`: whether the intervention finds actions of its own, and whether it is offered candidates (`false` for `acts_on_population`). The default of `discovers_actions` is `false`. A type with an `intervention_actions` method declares the answer, and building a `ModelSpec` throws for one that does not; a wrapper asks the intervention it wraps |
+| `has_competing_risk(iv)` | When the race is set up | Nothing | `Bool`: whether the intervention can supply a `competing_risk`, so the race keeps fallback proposals for a blocked contact. The default is `true`, which is always correct; declare `false` for an intervention that never supplies a risk to save the cost. Every wrapper answers `true` |
 | `infectious_removal_time(iv, individual)` | Every built-in model: when a case's infectious period is closed | A person | The time this intervention removes them from onward transmission (default `Inf`) |
 | `on_infection_settled!(iv, individual, state, rng)` | Every built-in model: once a case's infection time is fixed, before its onset or clinical transitions read it | The case, and the random number generator to use | `nothing`; sets values on the case (default: does nothing) |
 | `risk_applies(iv, route)` | Every built-in model choosing the risks for a route or infectiousness window | The route's `RouteWindow`, or `nothing` for an introduction from outside | `Bool`; default `true` |
@@ -486,6 +486,7 @@ function EpiBranch.apply_trace!(ta::TestAndRelease, contact, state, trace_time, 
     return nothing
 end
 EpiBranch.removal_gap_host_times(::TestAndRelease) = (TEST_RELEASE_STRETCHES,)
+EpiBranch.discovers_actions(::TestAndRelease) = true
 
 function EpiBranch.intervention_actions(ta::TestAndRelease, state, candidates)
     actions = EpiBranch.InterventionAction[]
@@ -721,11 +722,13 @@ methods:
 - `EpiBranch.intervention_time(intervention, individual)`: the time at which the
   intervention acts on the person (for example the isolation time).
 - `EpiBranch.reset!(intervention, individual)`: undo its effect on the person.
+- `EpiBranch.time_aware(intervention) = true`: the declaration. An intervention with an `intervention_time` method and no declaration is an error when a `ModelSpec` is built, since the default, `false`, would gate it up front.
 
-A simplified version of the pair `Isolation` defines:
+A simplified version of the pair `Isolation` defines, with the declaration that tells `Scheduled` to use it:
 
 ```julia
 EpiBranch.intervention_time(::Isolation, ind::Individual) = isolation_time(ind)
+EpiBranch.time_aware(::Isolation) = true
 
 function EpiBranch.reset!(::Isolation, ind::Individual)
     clear_isolated!(ind)
@@ -919,6 +922,9 @@ end
 
 EpiBranch.vaccine_effect(v::OlderAdultVaccination) = v.effect
 EpiBranch.required_fields(::OlderAdultVaccination) = [:age]
+EpiBranch.time_aware(::OlderAdultVaccination) = false
+EpiBranch.resolves_under_capacity(::OlderAdultVaccination) = false
+EpiBranch.discovers_actions(::OlderAdultVaccination) = true
 
 function EpiBranch.intervention_actions(v::OlderAdultVaccination, state, candidates)
     actions = EpiBranch.InterventionAction[]
@@ -1084,6 +1090,7 @@ function EpiBranch.intervention_actions(visit::ClinicAppointment, state, candida
 end
 
 EpiBranch.capacity_key(::ClinicAppointment) = :attended
+EpiBranch.discovers_actions(::ClinicAppointment) = true
 EpiBranch.capacity_time_key(::ClinicAppointment) = :appointment_time
 
 appointments = CapacityConstrained(

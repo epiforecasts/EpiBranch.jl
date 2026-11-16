@@ -157,6 +157,12 @@ required_fields(iso::Isolation) = union([:onset_time], required_fields(iso.eligi
 intervention_time(::Isolation, ind::Individual) =
     _state_real(ind.state, :_isolation_start, Inf)
 
+# Its effect is written in `resolve_individual!` and undone by `reset!`.
+time_aware(::Isolation) = true
+resolves_under_capacity(::Isolation) = true
+discovers_actions(::Isolation) = false
+has_competing_risk(::Isolation) = true
+
 # Perfect isolation removes a case from onward transmission at its isolation
 # time, so a continuous-time model closes the infectious window there. Leaky
 # isolation (`post_isolation_transmission > 0`) only reduces transmission, which

@@ -362,6 +362,17 @@ function _revisable_dose_action(v::AbstractVaccination, ind, trigger, time)
     return InterventionAction(ind, time, (person, at, state) -> nothing, claim!)
 end
 
+# A dose is proposed as an action, so there is no `intervention_time` to undo
+# and no effect written in `resolve_individual!`. Declared on each type rather
+# than on `AbstractVaccination`, so a vaccination written outside the package
+# is checked against its own methods.
+for T in (RingVaccination, GroupVaccination, MassVaccination)
+    @eval time_aware(::$T) = false
+    @eval resolves_under_capacity(::$T) = false
+    @eval discovers_actions(::$T) = true
+    @eval has_competing_risk(::$T) = true
+end
+
 function intervention_actions(rv::RingVaccination, state, candidates)
     actions = InterventionAction[]
     label = dose_label(rv)

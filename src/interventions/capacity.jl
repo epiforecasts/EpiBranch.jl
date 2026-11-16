@@ -636,6 +636,9 @@ end
 # own override too, which looks past its always-present forwarding method to
 # what its action overrides.
 discovers_actions(w::_CapacityWrapper) = discovers_actions(w.intervention)
+time_aware(w::_CapacityWrapper) = time_aware(w.intervention)
+resolves_under_capacity(w::_CapacityWrapper) = resolves_under_capacity(w.intervention)
+has_competing_risk(::_CapacityWrapper) = true
 # Asked for its actions on every settled case even when the intervention it
 # wraps proposes none, so that wrapping one with nothing to ration fails when
 # the run starts rather than going unrationed (see `intervention_actions`),
