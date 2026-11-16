@@ -480,9 +480,7 @@ end
 # an `OffspringTimes` already gave.
 _window_infection_time(::NoGenerationTime, from_t::Real, state) = from_t
 _window_infection_time(offset::_FixedOffset, from_t::Real, state) = from_t + offset.offset
-# Any other kernel (a distribution, or a calendar-scaled kernel, which is not a
-# `Distribution`) is drawn from directly.
-function _window_infection_time(kernel, from_t::Real, state)
+function _window_infection_time(kernel::Distribution, from_t::Real, state)
     return from_t + rand(state.rng, kernel)
 end
 
@@ -495,7 +493,8 @@ _tag_window!(contact, until) = (contact.state[:censor_until] = until; nothing)
 # Offer `case`'s own infector to interventions tracing backward, as the sole
 # contact in `trace_contacts!`'s usual four-argument form. An index case or a
 # community introduction has no infector to offer. The race calls it once a
-# case is settled.
+# case is settled. It returns the infector when tracing has just isolated it,
+# and `nothing` otherwise.
 function _trace_source!(
         state::SimulationState, case, interventions,
         tracing_source = any(traces_source, interventions)
@@ -504,12 +503,15 @@ function _trace_source!(
     1 <= case.parent_id <= length(state.individuals) || return nothing
     infector = state.individuals[case.parent_id]
     contacts = (infector,)
+    was_isolated = is_isolated(infector)
     _each(interventions) do intervention
         traces_source(intervention) &&
             trace_contacts!(intervention, state, case, contacts)
         return nothing
     end
-    return nothing
+    # An infector isolated here was settled, and its forward tracing decided,
+    # before it was isolated. The caller traces forward from it again.
+    return !was_isolated && is_isolated(infector) ? infector : nothing
 end
 
 """
@@ -1650,8 +1652,8 @@ not cluster within them. To make it cluster, use a multi-type
 [`BranchingProcess`](@ref) with one type per group and a next-generation
 matrix with most transmission within types, and use the type itself as the
 group in `GroupVaccination(...; group_key = :type)`. [`group_attribute`](@ref)
-and [`vaccine_acceptance`](@ref) cannot group by type, since population
-characteristics are drawn before a person's type is set.
+and [`vaccine_acceptance`](@ref) can group by `:type` too, because a person's
+type is set before their population characteristics are drawn.
 
 # Examples
 
