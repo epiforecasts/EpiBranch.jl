@@ -4,7 +4,7 @@ using DataAPI: DataAPI
 using DataFrames
 using Dates
 using Distributions
-using LinearAlgebra: LinearAlgebra, Diagonal, I, Symmetric, cholesky, diag, eigvals, issuccess
+using LinearAlgebra: LinearAlgebra, Diagonal, I, Symmetric, eigvals
 using QuadGK
 using Random
 using SpecialFunctions
