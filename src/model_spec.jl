@@ -458,7 +458,7 @@ function ModelSpec(
         attributes = attributes(process),
         observation = observation(process),
         recorder = recorder(process),
-        case_definition = nothing
+        case_definition = case_definition(process)
     )
     prog = _progvec(progression)
     _validate_process_windows(process, prog)
