@@ -233,6 +233,24 @@ _rep(p, delay = Dirac(0.0)) = [Reporting(; delay, probability = p, from = :infec
         end
     end
 
+    @testset "A user-written ChainSizeLaw inherits the defaults" begin
+        # Only `logpdf` is defined: `pdf`, the support, `cdf` and `logccdf`
+        # come from `ChainSizeLaw`.
+        @eval struct GeometricSizeLaw <: EpiBranch.ChainSizeLaw end
+        @eval Distributions.logpdf(::GeometricSizeLaw, n::Integer) =
+            n >= 1 ? n * log(0.5) : -Inf
+        d = GeometricSizeLaw()
+        @test pdf(d, 3) ≈ 0.125
+        @test minimum(d) == 1
+        @test maximum(d) == Inf
+        @test insupport(d, 1)
+        @test !insupport(d, 0)
+        @test cdf(d, 3) ≈ 0.5 + 0.25 + 0.125
+        @test cdf(d, 0) == 0.0
+        @test cdf(d, 3.5) ≈ cdf(d, 3)
+        @test logccdf(d, 3) ≈ log(1 - cdf(d, 3))
+    end
+
     @testset "cdf of chain-size distributions" begin
         # Each needs its own `cdf`/`cdf(d, ::Integer)` method:
         # Distributions.jl's discrete fallback calls itself until the stack
@@ -2593,8 +2611,10 @@ end
     @test 0.0 < probability_contain(plain) <= 1.0
     @test 0.0 < extinction_probability(plain) <= 1.0
     @test 0.0 < proportion_transmission(plain) < 1.0
+    @test reproduction_number(plain) ≈ 0.8
 
     for reshaped in (finite, windowed, susceptible)
+        @test_throws ArgumentError reproduction_number(reshaped)
         @test_throws ArgumentError end_of_outbreak_probability(reshaped, 5.0)
         @test_throws ArgumentError probability_contain(reshaped)
         @test_throws ArgumentError extinction_probability(reshaped)

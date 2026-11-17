@@ -125,12 +125,10 @@ max_generations)` with the exact, individual-based simulation.
 
 The state holds the susceptibles of each type, set from the population size
 and the number immune. `PerContactDepletion` removes them one potential contact
-at a time, as the individual-based simulation does. `StartOfGenerationDepletion`
-thins the contacts of a type by its susceptible share at the start of the
-generation, in one binomial draw capped at the susceptibles left, as
-discrete-generation models usually do. With the second rule and an offspring
-law with a closed-form sum (`Poisson`, `NegBin`, `Binomial`), a generation
-costs the same whatever the number of cases.
+at a time, as the individual-based simulation does, but draws the result
+without visiting every contact. With a `Poisson` or `NegBin` offspring law the
+cost of a generation is independent of the number of cases; with another law it
+is proportional to the number of new infections.
 
 A [`ModelSpec`](@ref) built on the process, with a `generation_length`, also
 runs here, and applies its `GroupVaccination` campaigns to the susceptibles of
@@ -141,7 +139,6 @@ simulate_by_generation
 GenerationCounts
 AbstractDepletion
 PerContactDepletion
-StartOfGenerationDepletion
 ```
 
 ## Population characteristics
@@ -185,6 +182,7 @@ exclusive_probabilities
 is_terminal
 terminal_event
 terminal_target
+produced_states
 progression_loglik
 ```
 
@@ -396,7 +394,9 @@ realised generation intervals.
 
 ```@docs
 linelist
+censor_linelist
 event_time_metadata
+EpiBranch.reported_value
 contacts
 chain_statistics
 compute_trace_level!
@@ -824,6 +824,8 @@ EpiBranch.initialise_episode!
 EpiBranch.resolve_individual!
 EpiBranch.on_infection_settled!
 EpiBranch.trace_contacts!
+EpiBranch.admit_trace_actions!
+EpiBranch.is_ring_hop
 EpiBranch.traces_contacts
 EpiBranch.traces_source
 EpiBranch.has_effect
@@ -840,6 +842,7 @@ EpiBranch.HostImmunity
 EpiBranch.infectious_removal_time
 EpiBranch.risk_applies
 EpiBranch.standing_block
+EpiBranch.prevents_contact
 EpiBranch.infinite_draw_is_final
 intervention_time
 EpiBranch.reset!
@@ -849,6 +852,8 @@ EpiBranch.prevent_symptoms!
 EpiBranch.symptoms_prevented_time
 set_isolated!
 clear_isolated!
+EpiBranch.flag_for_isolation!
+EpiBranch.traced_isolation_time
 ```
 
 #### Isolation and contact tracing rules

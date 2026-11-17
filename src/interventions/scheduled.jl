@@ -566,7 +566,6 @@ function removal_gap_host_times(s::Scheduled)
     s.can_lapse && return ()
     return removal_gap_host_times(s.intervention)
 end
-removal_block_probability(s::Scheduled) = removal_block_probability(s.intervention)
 
 function competing_risk(s::Scheduled, parent, contact, state)
     (persistent_competing_risks(s.intervention) || is_active(s, state)) || return nothing

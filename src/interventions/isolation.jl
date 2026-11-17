@@ -73,7 +73,7 @@ required_fields(::SymptomaticOnly) = [:asymptomatic]
 """
     Isolation(; onset_to_isolation_delay, duration,
               eligibility = SymptomaticOnly(), test_sensitivity = 1.0,
-              post_isolation_transmission = 0.0)
+              post_isolation_transmission = 0.0, prevents_contact = true)
 
 Isolate cases a delay after symptom onset, so they stop (or reduce) onward
 transmission. Isolation applies to cases; traced contacts who are not yet
@@ -104,6 +104,12 @@ known cases are quarantined through [`ContactTracing`](@ref).
 - `post_isolation_transmission`: fraction of normal transmission that
   continues while isolated, between 0 and 1 (default 0, perfect isolation;
   0.25 would be leaky isolation).
+- `prevents_contact`: whether an isolated case has no contact with the people
+  it would have infected (default `true`, as in hospital), so the contacts the
+  isolation blocks are left out of [`contacts`](@ref) and tracing does not
+  reach them. Set it to `false` for isolation at home, where household
+  contacts continue: the isolation still prevents infection, but the contact
+  is recorded and can be traced. See [`prevents_contact`](@ref EpiBranch.prevents_contact).
 
 After a finite `duration` the case transmits again at its normal
 rate from the release time ([`isolation_release_time`](@ref)) until its
@@ -146,6 +152,7 @@ struct Isolation{E <: IsolationEligibility, D, S, U} <: AbstractIntervention
     test_sensitivity::S
     post_isolation_transmission::Float64
     duration::U
+    prevents_contact::Bool
 end
 
 function Isolation(;
@@ -153,13 +160,16 @@ function Isolation(;
         duration,
         eligibility::IsolationEligibility = SymptomaticOnly(),
         test_sensitivity = 1.0,
-        post_isolation_transmission::Real = 0.0
+        post_isolation_transmission::Real = 0.0,
+        prevents_contact::Bool = true
     )
     return Isolation(
         eligibility, onset_to_isolation_delay, test_sensitivity,
-        Float64(post_isolation_transmission), duration
+        Float64(post_isolation_transmission), duration, prevents_contact
     )
 end
+
+prevents_contact(iso::Isolation) = iso.prevents_contact
 
 required_fields(iso::Isolation) = union([:onset_time], required_fields(iso.eligibility))
 # Read from the entry recorded for this isolation, not the folded span. While
@@ -309,7 +319,8 @@ function resolve_individual!(iso::Isolation, individual, state)
 
     # Three isolation pathways, each independent:
     #   - test_isolation_time:  onset + delay, occurs iff test_positive
-    #   - _traced_isolation_time: set by ContactTracing's FlagOnly action
+    #   - traced_isolation_time: set by the FlagOnly action of ContactTracing
+    #     or by any intervention through `flag_for_isolation!`,
     #     for traced contacts, occurs iff contact was traced and has an onset
     # Isolation occurs at the earlier of any active pathway. A
     # test-negative-but-traced contact is still isolated via tracing.
@@ -322,7 +333,7 @@ function resolve_individual!(iso::Isolation, individual, state)
     # the recorded time is held back to the onset.
     onset = onset_time(individual)
     traced_time = isnan(onset) ? Inf :
-        max(_state_real(individual.state, :_traced_isolation_time, Inf), onset)
+        max(traced_isolation_time(individual), onset)
     test_time = is_test_positive(individual) ?
         _self_isolation_time(iso, individual, state) : Inf
     final = min(test_time, traced_time)

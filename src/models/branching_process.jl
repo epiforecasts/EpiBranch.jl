@@ -378,7 +378,7 @@ function _validate_windows(windows, progression)
     end
     produced = Set{Symbol}((:infection,))
     for t in progression
-        hasproperty(t, :state) && push!(produced, t.state::Symbol)
+        union!(produced, produced_states(t))
     end
     for w in windows
         w.from isa Symbol || continue

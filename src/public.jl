@@ -20,6 +20,15 @@ public initialise_episode!
 public resolve_individual!
 public on_infection_settled!
 public trace_contacts!
+# What a tracer written outside the package needs to work with the built-in
+# ones: ration its follow-up actions through whatever wraps it, learn that it
+# is called for a ring member, and hand a traced contact over to `Isolation`.
+public admit_trace_actions!
+public is_ring_hop
+public flag_for_isolation!
+public traced_isolation_time
+# How the line list reports a state key.
+public reported_value
 public traces_contacts
 public traces_source
 public has_effect
@@ -31,6 +40,7 @@ public required_fields
 public infectious_removal_time
 public risk_applies
 public standing_block
+public prevents_contact
 # The built-in risk sources the guides link to, and the kernel trait for a
 # kernel with mass at infinity.
 public HostImmunity
