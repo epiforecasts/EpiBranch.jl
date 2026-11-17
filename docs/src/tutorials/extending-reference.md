@@ -62,6 +62,8 @@ underscore are internal.
 | `:_quarantine_removal_handles` | `Vector{Int}` | — | `ContactTracing`/`SourceTracing`'s `Quarantine` | `apply_trace!`; internal. The handles of every entry a quarantine has recorded, so a reset of the shared bookkeeping can withdraw each one. The `reset!` of a tracer withdraws only the entries listed under its own handles key |
 | `:_quarantine_start` | `Float64` | — | `ContactTracing`/`SourceTracing`'s `Quarantine` | `apply_trace!`; internal. The start of the earliest quarantine entry still standing, which is the day a capacity is charged on |
 | `:test_positive` | `Bool` | `false` | `Isolation` | `initialise_individual!` and `initialise_episode!` |
+| `:case_classification` | any | — | `ModelSpec`'s `case_definition` | After the run. The classification at the end of it, from the events up to `max_time` when the run has one; absent for a case never classified |
+| `:_case_classification_changes` | `Vector{Tuple{Float64,Any}}` | — | `ModelSpec`'s `case_definition` | After the run; internal. Each change of classification with its time, read by `case_classification_changes` |
 | `:traced` | `Bool` | `false` | `ContactTracing`, `SourceTracing` | `trace_contacts!` |
 | `:quarantined` | `Bool` | `false` | `ContactTracing`, `SourceTracing` | `trace_contacts!` |
 | `:_traced_isolation_time` | `Float64` | `Inf` | `ContactTracing` → `Isolation` | Internal hand-over; may precede onset, so `Isolation` holds it back to onset |
@@ -1052,6 +1054,7 @@ before.
 | A progression transition that reports cases with a fixed probability, and the time it reports from | `EpiBranch.reporting_probability`, `EpiBranch.reporting_from` | The chain-size and incidence closed forms, which thin by it |
 | An attribute that sets the onset time, with its incubation period and asymptomatic share | `EpiBranch.onset_law` | The analytic effect of `Isolation` and the closed forms for reporting timed from onset |
 | A stopping rule | A type `<: AbstractStoppingRule` and `should_stop` | Each step |
+| A case definition | A type `<: AbstractCaseDefinition` and `EpiBranch.classify_case`, or a function `history -> label`; `relevant_events` to name the events it reads | After the run, at each time an event was recorded on a case |
 | A contact recorder | A type `<: ContactRecorder` and `records_contacts` | Continuous-time models, each blocked proposal |
 | A terminal clinical transition | A type `<: AbstractClinicalTransition` with `is_terminal`, `terminal_event`, `terminal_target` | When a case is settled |
 | Population characteristics | A function `(rng, ind) -> nothing` | When a person is created |

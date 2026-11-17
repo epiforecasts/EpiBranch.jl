@@ -104,6 +104,10 @@ public model_generation_time
 # within-host progression and the transmission model it wraps.
 public progression
 public process
+public case_definition
+# The two hooks of a case definition written outside the package.
+public classify_case
+public relevant_events
 #   - `transmission_risks` to contribute per-pair competing risks (e.g. a
 #     network's per-edge probability), resolved alongside the built-ins.
 public transmission_risks

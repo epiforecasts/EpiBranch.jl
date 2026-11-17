@@ -128,6 +128,7 @@ include("models/mixing.jl")
 
 # ModelSpec: compose a process with its forcing/observation layers.
 include("model_spec.jl")
+include("case_definition.jl")
 
 # Approximate population dynamics as state-space models: mean-field and
 # linear-noise approximations of a closed population, and a hybrid that
@@ -182,6 +183,9 @@ include("progression_likelihood.jl")
 include("serial_interval.jl")
 
 # Exports — types
+export AbstractCaseDefinition, ClinicalCaseDefinition
+export CaseHistory, event_time, has_happened
+export case_classification, case_classification_changes
 export TransmissionModel, BranchingProcess, Infectiousness, OffspringTimes,
     RenewalOffspring,
     HomogeneousProcess, MixingProcess, ModelSpec

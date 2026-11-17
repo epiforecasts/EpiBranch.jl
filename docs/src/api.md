@@ -337,6 +337,29 @@ NoContactRecorder
 ExposedContactRecorder
 ```
 
+## Case definitions
+
+A case definition classifies each case (confirmed, probable, suspected, or
+whatever a surveillance system uses) from what has happened to them. Pass one
+as the `case_definition` of a [`ModelSpec`](@ref). It is evaluated each
+time an event is recorded on a case, such as symptoms, a trace or a test result.
+The classification can therefore change over time, and
+[`case_classification_changes`](@ref) lists each change with its time.
+[`linelist`](@ref) shows the final classification as `case_classification`. A definition
+of your own is a function `history -> label`, or a subtype of
+[`AbstractCaseDefinition`](@ref) with an `EpiBranch.classify_case` method.
+
+```@docs
+AbstractCaseDefinition
+ClinicalCaseDefinition
+CaseHistory
+event_time
+has_happened
+case_classification
+case_classification_changes
+EpiBranch.case_definition
+```
+
 ## Information about each case
 
 Read what happened to a simulated case: when symptoms began, whether and when
@@ -896,6 +919,13 @@ EpiBranch.transition_term
 EpiBranch.GroupAttribute
 EpiBranch.records_contacts
 EpiBranch.sample_value
+```
+
+### Writing a case definition
+
+```@docs
+EpiBranch.classify_case
+EpiBranch.relevant_events
 ```
 
 ### Writing an observation model

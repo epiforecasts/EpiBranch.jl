@@ -26,6 +26,7 @@ const TEST_GROUPS = (
         "test_quality.jl",
         "test_types.jl",
         "test_signals.jl",
+        "test_case_definition.jl",
         "test_streams.jl",
         "test_branching_process.jl",
         "test_attributes.jl",
