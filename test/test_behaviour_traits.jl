@@ -67,6 +67,11 @@ struct _ActingWrapper{I <: EpiBranch.AbstractIntervention} <: EpiBranch.Interven
     intervention::I
 end
 EpiBranch.intervention_actions(::_ActingWrapper, state, candidates) = nothing
+struct _OptedOutWrapper{I <: EpiBranch.AbstractIntervention} <: EpiBranch.InterventionWrapper
+    intervention::I
+end
+EpiBranch.intervention_actions(::_OptedOutWrapper, state, candidates) = nothing
+EpiBranch.discovers_actions(::_OptedOutWrapper) = false
 struct _UndeclaredTraceAction <: EpiBranch.TraceAction end
 EpiBranch.intervention_actions(::_UndeclaredTraceAction, state, candidates) = nothing
 
@@ -167,6 +172,12 @@ struct _Bare <: EpiBranch.AbstractIntervention end
         @test EpiBranch.discovers_actions(w)
         @test EpiBranch.proposes_actions(w)
         @test !EpiBranch.proposes_actions(_DefaultWrapper(iso))
+    end
+
+    @testset "a wrapper's discovers_actions override is honoured" begin
+        w = _OptedOutWrapper(iso)
+        @test !EpiBranch.discovers_actions(w)
+        @test !EpiBranch.proposes_actions(w)
     end
 
     @testset "has_competing_risk" begin
