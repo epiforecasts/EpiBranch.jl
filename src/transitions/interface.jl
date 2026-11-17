@@ -500,17 +500,20 @@ non-terminal event recorded after the outcome describes something that could
 not have happened to this individual.
 """
 function _finalise_terminal!(individual, transitions)
-    best_time, best_label, has_any = _earliest_terminal(
-        transitions, individual, (Inf, :none, false)
+    best_time, best_label, best_time_key, has_any = _earliest_terminal(
+        transitions, individual, (Inf, :none, nothing, false)
     )
     if has_any
         individual.state[:outcome_time] = best_time
         individual.state[:outcome] = best_label
         # The winning outcome's own state and `*_time` key, as a terminal
         # `Transition` writes them, so an infectious window listing the state
-        # in `until` closes there. A losing candidate writes nothing.
-        individual.state[best_label] = true
-        individual.state[Symbol(best_label, :_time)] = best_time
+        # in `until` closes there. A losing candidate writes nothing, and a
+        # winning `Transition`, which has written both already, gives no key.
+        if best_time_key !== nothing
+            individual.state[best_label] = true
+            individual.state[best_time_key] = best_time
+        end
         _each(transitions) do t
             is_terminal(t) || censor_after_outcome!(t, individual)
             return nothing
@@ -520,14 +523,22 @@ function _finalise_terminal!(individual, transitions)
 end
 
 # The earliest terminal event over `transitions`, folded through `best`, the
-# `(time, label, found)` so far. A `Tuple` is walked by recursion, as in `_each`.
+# `(time, label, time_key, found)` so far. A `Tuple` is walked by recursion, as
+# in `_each`.
 @inline function _earlier_terminal(t, individual, best)
     is_terminal(t) || return best
     ev = terminal_event(t, individual)
     ev === nothing && return best
     time, label = ev
-    return time < best[1] ? (time, label, true) : best
+    time < best[1] || return best
+    return (time, label, _terminal_time_key(t, label), true)
 end
+
+# The `*_time` key `_finalise_terminal!` records a winning outcome under, or
+# `nothing` for a transition that records its own when it resolves. Built-in
+# transitions know theirs; building one from the label interns a new `Symbol`,
+# which is slow enough to show on every case, so it is only the fallback.
+_terminal_time_key(t, label) = Symbol(label, :_time)
 _earliest_terminal(::Tuple{}, individual, best) = best
 @inline function _earliest_terminal(transitions::Tuple, individual, best)
     return _earliest_terminal(
