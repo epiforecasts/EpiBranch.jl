@@ -489,7 +489,7 @@ end
 
 function _stored_traits(T::Type)
     t = get(_STORED_TRAITS[], T, nothing)
-    return t === nothing ? _store_traits!(T) : t
+    return t !== nothing && t.world == Base.get_world_counter() ? t : _store_traits!(T)
 end
 
 # Every type whose own methods can supply an answer to a `ModelSpec`: the

@@ -258,4 +258,11 @@ struct _Bare <: EpiBranch.AbstractIntervention end
         end
         @test _SCANS[] == 0
     end
+    @testset "a method defined after a first read is picked up" begin
+        @eval struct _LateTime <: EpiBranch.AbstractIntervention end
+        @test !EpiBranch.time_aware(Scheduled(_LateTime(); start_time = 0.0))
+        @eval EpiBranch.intervention_time(::_LateTime, ind::Individual) = 0.0
+        @eval EpiBranch.reset!(::_LateTime, ind::Individual) = nothing
+        @test Base.invokelatest(() -> EpiBranch.time_aware(Scheduled(_LateTime(); start_time = 0.0)))
+    end
 end
