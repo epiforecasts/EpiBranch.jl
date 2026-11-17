@@ -724,6 +724,7 @@ function add_individuals!(
         n_types::Integer = 1, setup = (ind, i) -> nothing, infection_time::Real = NaN,
         types = nothing, assign = _NoAssignment()
     )
+    _check_group_budgets(interventions, state.population)
     base = length(state.individuals)
     added = eltype(state.individuals)[]
     for i in 1:n
@@ -763,6 +764,7 @@ function lazily_populate!(
         state::SimulationState, n::Integer, interventions;
         setup = (ind, i) -> nothing
     )
+    _check_group_budgets(interventions, state.population)
     T = _timetype(state)
     s = IndividualState{T}()
     s[:infected] = false

@@ -754,6 +754,8 @@ day's own `budget_per_period` is ever available. With `carry_over = true`
 admissions can bunch: a quiet spell builds an allowance that a later day
 spends at once, well above `budget_per_period` in a day.
 
+To give each group its own budget, such as separate dose series for the under 5s and the over 5s, pass a [`PerGroup`](@ref) as `budget_per_period`. Its groups are those of the [`Population`](@ref) of the model. See [What each model applies](@ref) for how every model reads it.
+
 !!! note "Which models support capacity limits"
     On the network and household models, capacity limits work for group
     vaccination, ring vaccination and mass vaccination, with any

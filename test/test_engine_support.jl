@@ -27,21 +27,20 @@ end
 function _support_counts(spec; seed = 1)
     return simulate_by_generation(
         spec; n_initial = [10, 2], max_generations = 3,
-        population_by_type = [40_000, 160_000], depletion = StartOfGenerationDepletion(),
+        depletion = StartOfGenerationDepletion(),
         generation_length = 14.0, rng = StableRNG(seed)
     )
 end
 
 function _support_mixing_spec(ivs; n = 2_000)
-    band = (rng, ind) -> (ind.state[:age_band] = ind.id % 2 + 1)
     clinical = clinical_presentation(incubation_period = Dirac(0.0), prob_asymptomatic = 0.0)
     return ModelSpec(
         MixingProcess(;
-            population_size = 2n, mixing_by = (:age_band,),
-            rate = (from, to) -> (from == to ? 0.5 : 0.1) / n
+            population = Population([n, n]), mixing_by = (:age_band,),
+            mixing = FrequencyDependent([0.5 0.1; 0.1 0.5])
         );
         progression = [Transition(:recovered; rate = 0.2, terminal = true)],
-        attributes = [band, clinical], interventions = ivs
+        attributes = clinical, interventions = ivs
     )
 end
 
@@ -60,7 +59,10 @@ const _SUPPORT_ENGINES = (
     individual = (
         key = :type, groups = (1, 2), eligibility = _SupportEligibleAt(30.0),
         spec = ivs -> ModelSpec(
-            BranchingProcess(_SUPPORT_MATRIX, R -> Poisson(R), Dirac(14.0));
+            BranchingProcess(
+                _SUPPORT_MATRIX, R -> Poisson(R), Dirac(14.0);
+                population = Population([60_000, 60_000])
+            );
             attributes = clinical_presentation(
                 incubation_period = Dirac(0.0), prob_asymptomatic = 0.0
             ), interventions = ivs
@@ -72,7 +74,7 @@ const _SUPPORT_ENGINES = (
         spec = ivs -> ModelSpec(
             BranchingProcess(
                 _SUPPORT_MATRIX, R -> Poisson(R), EpiBranch.NoGenerationTime();
-                population_size = 200_000
+                population = Population([40_000, 160_000])
             ); interventions = ivs
         ),
         run = _support_counts,
@@ -100,6 +102,21 @@ const _SUPPORT_CASES = [
         applies = (:individual, :generation_counts, :mean_field, :hybrid),
     ),
     (
+        name = "GroupVaccination, budget per group",
+        build = e -> CapacityConstrained(
+            _support_gv(e); budget_per_period = PerGroup(1 => 100.0, 2 => 50.0)
+        ),
+        applies = (:individual, :generation_counts, :mean_field, :hybrid),
+    ),
+    (
+        name = "GroupVaccination, schedule per group",
+        build = e -> CapacityConstrained(
+            _support_gv(e);
+            budget_per_period = PerGroup(1 => Steps([10.0], [0.0, 20.0]), 2 => 5.0), period = 1.0
+        ),
+        applies = (:individual, :generation_counts, :mean_field, :hybrid),
+    ),
+    (
         name = "GroupVaccination under Scheduled with a window",
         build = e -> Scheduled(
             CapacityConstrained(_support_gv(e); budget_per_period = 100.0);
@@ -122,6 +139,14 @@ const _SUPPORT_CASES = [
         applies = (:individual,),
     ),
     (
+        name = "GroupVaccination with DeferRefused, budget per group",
+        build = e -> CapacityConstrained(
+            _support_gv(e); budget_per_period = PerGroup(1 => 100.0, 2 => 50.0), period = 1.0,
+            on_refusal = DeferRefused()
+        ),
+        applies = (:individual,),
+    ),
+    (
         name = "RingVaccination under CapacityConstrained",
         build = e -> [
             ContactTracing(TraceEveryone(), 1.0, Dirac(0.0), Quarantine(duration = Inf)),
@@ -133,6 +158,22 @@ const _SUPPORT_CASES = [
         name = "Isolation under CapacityConstrained, shared budget",
         build = e -> CapacityConstrained(
             Isolation(onset_to_isolation_delay = 1.0, duration = 7.0); budget_per_period = 10.0
+        ),
+        applies = (:individual,),
+    ),
+    (
+        name = "Isolation under CapacityConstrained, budget per group",
+        build = e -> CapacityConstrained(
+            Isolation(onset_to_isolation_delay = 1.0, duration = 7.0);
+            budget_per_period = PerGroup(1 => 10.0, 2 => 5.0)
+        ),
+        applies = (:individual,),
+    ),
+    (
+        name = "Isolation under HeldCapacity, places per group",
+        build = e -> HeldCapacity(
+            Isolation(onset_to_isolation_delay = 1.0, duration = 7.0);
+            capacity = PerGroup(1 => 10, 2 => 5)
         ),
         applies = (:individual,),
     ),
@@ -161,6 +202,34 @@ end
                     @test occursin(EpiBranch._CAMPAIGN_SUPPORT, outcome.msg)
             end
         end
+    end
+
+    @testset "a budget per group is checked against the population in every model" begin
+        # The same words in every model, whichever way the budget is wrong.
+        for (engine, e) in pairs(_SUPPORT_ENGINES)
+            missing_group = CapacityConstrained(
+                _support_gv(e); budget_per_period = PerGroup(1 => 100.0)
+            )
+            outcome = _support_outcome(() -> e.run(e.spec([missing_group])))
+            @test outcome isa ArgumentError
+            outcome isa ArgumentError &&
+                @test occursin("PerGroup has no budget for the group(s) 2", outcome.msg)
+            unknown_group = CapacityConstrained(
+                _support_gv(e); budget_per_period = PerGroup(1 => 100.0, 2 => 1.0, 3 => 1.0)
+            )
+            outcome = _support_outcome(() -> e.run(e.spec([unknown_group])))
+            @test outcome isa ArgumentError
+            outcome isa ArgumentError &&
+                @test occursin("PerGroup names 3, which is not among", outcome.msg)
+        end
+    end
+
+    @testset "only an intervention that describes its doses is applied to counts" begin
+        @test EpiBranch.count_dosing(_support_gv(_SUPPORT_ENGINES.individual)) isa
+            EpiBranch.GroupDosing
+        @test EpiBranch.count_dosing(RingVaccination(efficacy = 0.9)) === nothing
+        @test EpiBranch.count_dosing(Isolation(onset_to_isolation_delay = 1.0, duration = 7.0)) ===
+            nothing
     end
 
     @testset "a shared budget is one pool in every model" begin

@@ -265,6 +265,7 @@ Infections
 ReportedCases
 opened_at
 After
+PerGroup
 CapacityConstrained
 capacity_usage
 default_capacity_priority
@@ -865,6 +866,8 @@ EpiBranch.record_capacity_use!
 EpiBranch.resource_key
 EpiBranch.refused_action
 EpiBranch.held_until
+EpiBranch.count_dosing
+EpiBranch.GroupDosing
 ```
 
 #### Start triggers
