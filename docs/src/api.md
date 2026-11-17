@@ -349,7 +349,6 @@ of your own is a function `history -> label`, or a subtype of
 ```@docs
 AbstractCaseDefinition
 ClinicalCaseDefinition
-FixedProportionConfirmed
 CaseHistory
 event_time
 has_happened

@@ -27,12 +27,22 @@ _acute_load(rng, ind) = t -> max(0.0, 8.0 - abs(t - 5.0) * 1.6)
 @testset "Case definitions" begin
     @testset "history only shows events up to its time" begin
         ind = _toy_case(; onset = 3.0, trace = 5.0)
-        early = CaseHistory(ind, 4.0, 0.5)
+        early = CaseHistory(ind, 4.0)
         @test has_happened(early, :onset)
         @test !has_happened(early, :trace)
         @test event_time(early, :trace) == Inf
         @test event_time(early, :onset) == 3.0
-        @test has_happened(CaseHistory(ind, 5.0, 0.5), :trace)
+        @test has_happened(CaseHistory(ind, 5.0), :trace)
+    end
+
+    @testset "a definition can be asked at any time" begin
+        def = ClinicalCaseDefinition()
+        ind = _toy_case(; onset = 3.0, trace = 5.0, test = 6.0, positive = true)
+        label(t) = EpiBranch.classify_case(def, CaseHistory(ind, t))
+        @test ismissing(label(2.0))
+        @test label(4.0) == :suspected
+        @test label(5.5) == :probable
+        @test label(6.0) == :confirmed
     end
 
     @testset "ClinicalCaseDefinition changes over time" begin
@@ -72,20 +82,6 @@ _acute_load(rng, ind) = t -> max(0.0, 8.0 - abs(t - 5.0) * 1.6)
         ind = state_for()
         EpiBranch._classify_cases!(_toy_sim_state([ind]), ClinicalCaseDefinition())
         @test case_classification(ind) == :suspected
-    end
-
-    @testset "FixedProportionConfirmed" begin
-        inds = [_toy_case(; id = i, onset = 1.0) for i in 1:2000]
-        state = _toy_sim_state(inds)
-        EpiBranch._classify_cases!(state, FixedProportionConfirmed(0.3))
-        share = count(==(:confirmed), case_classification.(inds)) / length(inds)
-        @test 0.25 < share < 0.35
-        @test all(in((:confirmed, :probable)), case_classification.(inds))
-        # Re-evaluating keeps each case's classification.
-        before = case_classification.(inds)
-        EpiBranch._classify_cases!(state, FixedProportionConfirmed(0.3))
-        @test case_classification.(inds) == before
-        @test_throws ArgumentError FixedProportionConfirmed(1.5)
     end
 
     @testset "a definition written outside the package" begin
@@ -189,7 +185,7 @@ _acute_load(rng, ind) = t -> max(0.0, 8.0 - abs(t - 5.0) * 1.6)
                 Transition(:onset; delay = Exponential(2.0)),
                 Transition(:recovered; from = :onset, delay = Exponential(4.0), terminal = true),
             ],
-            case_definition = FixedProportionConfirmed(0.5),
+            case_definition = ClinicalCaseDefinition(),
         )
         state = simulate(spec; max_time = 10.0, rng = StableRNG(4))
         n1 = nrow(case_classification_changes(state))
@@ -215,7 +211,7 @@ _acute_load(rng, ind) = t -> max(0.0, 8.0 - abs(t - 5.0) * 1.6)
                 Transition(:onset; delay = Exponential(6.0)),
                 Transition(:recovered; from = :onset, delay = Exponential(4.0), terminal = true),
             ],
-            case_definition = FixedProportionConfirmed(0.5),
+            case_definition = ClinicalCaseDefinition(),
         )
         continued = simulate(extinct_spec; max_time = 10.0, n_initial = 3, rng = StableRNG(1))
         @test continued.extinct

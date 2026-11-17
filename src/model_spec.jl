@@ -428,8 +428,7 @@ not stored in the model).
 - `recorder`: rarely needed; see [`ContactRecorder`](@ref).
 - `case_definition`: how each case is classified (confirmed, probable,
   suspected, ...) from what has happened to them, such as a
-  [`ClinicalCaseDefinition`](@ref), a [`FixedProportionConfirmed`](@ref), a
-  type of your own (see [`EpiBranch.classify_case`](@ref)) or a function
+  [`ClinicalCaseDefinition`](@ref), a type of your own (see [`EpiBranch.classify_case`](@ref)) or a function
   `history -> label`. It is re-evaluated at each event recorded on a case, so
   the classification changes over time; read the changes with
   [`case_classification_changes`](@ref). `nothing` (the default) classifies

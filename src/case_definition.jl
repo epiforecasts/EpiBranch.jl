@@ -2,17 +2,17 @@
 #
 # A case definition is a rule that reads what has happened to a person and
 # returns their classification (confirmed, probable, suspected, or whatever a
-# surveillance system uses). It is a layer of a `ModelSpec`, held beside the
+# surveillance system uses). The classification is a function of the person
+# and a time, worked out from the events recorded on them up to that time, so
+# anything that can see a case can ask it: an intervention during the run, and
+# the line list after it. It is a layer of a `ModelSpec`, held beside the
 # progression and the interventions, because the events it reads come from
 # all of them: symptoms and a test from the progression, a trace from the
 # interventions.
 #
-# The classification does not feed back into the simulation, and draws nothing
-# from the generator the run uses. It is worked out
-# once the race has finished, from the event times recorded on each person. A
-# rule is evaluated at every time a relevant event was recorded and sees only
-# the events at or before that time, as it would if evaluated as each event
-# happened. Events recorded late in the run, tracing among them, reach the
+# For the line list, a rule is evaluated once the race has finished, at every
+# time a relevant event was recorded, and sees only the events at or before
+# that time. Events recorded late in the run, tracing among them, reach the
 # classification like any other.
 
 """
@@ -22,17 +22,17 @@ classification from the events recorded on them. Pass one (or a plain function
 
 A new definition subtypes this and extends [`EpiBranch.classify_case`](@ref),
 and optionally [`EpiBranch.relevant_events`](@ref). Built in:
-[`ClinicalCaseDefinition`](@ref) and [`FixedProportionConfirmed`](@ref).
+[`ClinicalCaseDefinition`](@ref).
 """
 abstract type AbstractCaseDefinition end
 
 """
-    CaseHistory
+    CaseHistory(individual, time)
 
 What a case definition can see of one person at one time: the person
-(`history.individual`), the time (`history.time`), and `history.draw`, a
-uniform random number on `[0, 1)` drawn once for the person and the same at
-every time the definition is evaluated, for a rule with a random element.
+(`history.individual`) and the time (`history.time`). Build one to ask a
+definition what a case is at a given time, for instance from an intervention:
+`EpiBranch.classify_case(definition, CaseHistory(individual, t))`.
 
 Read the events through [`event_time`](@ref) and [`has_happened`](@ref), which
 ignore any event after `history.time`, and anything else recorded on the
@@ -41,7 +41,6 @@ person through `history.individual` (`history.individual.state[:test_result]`, `
 struct CaseHistory{I <: Individual, T <: Real}
     individual::I
     time::T
-    draw::Float64
 end
 
 # The time an event was recorded as happening to the person, as the line list
@@ -176,44 +175,10 @@ end
 
 relevant_events(def::ClinicalCaseDefinition) = (def.test, def.symptoms, def.contact)
 
-"""
-    FixedProportionConfirmed(proportion; from = :onset, confirmed = :confirmed,
-                             otherwise = :probable)
-
-A definition that classifies a fixed `proportion` of cases as `confirmed` and
-the rest as `otherwise`, from the time the event `from` (named as in
-[`event_time`](@ref)) happens. Each case is drawn once, so its classification
-does not change after that.
-"""
-struct FixedProportionConfirmed <: AbstractCaseDefinition
-    proportion::Float64
-    from::Symbol
-    confirmed::Symbol
-    otherwise::Symbol
-    function FixedProportionConfirmed(
-            proportion::Real; from::Symbol = :onset,
-            confirmed::Symbol = :confirmed, otherwise::Symbol = :probable
-        )
-        0 <= proportion <= 1 || throw(
-            ArgumentError("proportion must be between 0 and 1, got $proportion")
-        )
-        return new(proportion, from, confirmed, otherwise)
-    end
-end
-
-function classify_case(def::FixedProportionConfirmed, h::CaseHistory)
-    has_happened(h, def.from) || return missing
-    return h.draw < def.proportion ? def.confirmed : def.otherwise
-end
-
-relevant_events(def::FixedProportionConfirmed) = (def.from,)
-
 # ── Applying a definition ───────────────────────────────────────────
 
 const _CLASSIFICATION_KEY = :case_classification
 const _CLASSIFICATION_CHANGES_KEY = :_case_classification_changes
-const _CLASSIFICATION_DRAW_KEY = :_case_definition_draw
-const _CLASSIFICATION_SEED_KEY = :_case_definition_seed
 const _CLASSIFICATION_HORIZON_KEY = :_case_definition_horizon
 
 # The times at which to evaluate the definition on one person: their
@@ -235,18 +200,13 @@ function _evaluation_times(def, ind::Individual, horizon = Inf)
     return sort!(unique!(times))
 end
 
-function _classify_individual!(def, ind::Individual, state, horizon = Inf)
+function _classify_individual!(def, ind::Individual, horizon = Inf)
     delete!(ind.state, _CLASSIFICATION_KEY)
     delete!(ind.state, _CLASSIFICATION_CHANGES_KEY)
-    # One draw per person, kept so that re-evaluating a continued run does not
-    # reclassify a case already classified.
-    draw = get!(ind.state, _CLASSIFICATION_DRAW_KEY) do
-        rand(_classification_rng(state.rng, state, ind.id))
-    end::Float64
     changes = Tuple{typeof(ind.infection_time), Any}[]
     current = missing
     for t in _evaluation_times(def, ind, horizon)
-        label = classify_case(def, CaseHistory(ind, t, draw))
+        label = classify_case(def, CaseHistory(ind, t))
         isequal(label, current) && continue
         push!(changes, (t, label))
         current = label
@@ -259,23 +219,6 @@ function _classify_individual!(def, ind::Individual, state, horizon = Inf)
     return nothing
 end
 
-# The generator a person's classification draw comes from. It never draws
-# from the run's own generator, which the user's `rng` is, so that adding a
-# definition leaves later runs of a batch and a continued run unchanged.
-# `CommonRandomNumbers` already keeps a stream per person and purpose. Any
-# other generator gives a seed, taken once from a copy and kept with the
-# state, from which each person's generator is derived. A generator that
-# cannot be copied, such as `RandomDevice`, has no sequence to protect and
-# gives the seed directly.
-_classification_rng(rng::CommonRandomNumbers, state, id) =
-    stream(rng, id, :case_definition)
-function _classification_rng(rng::Random.AbstractRNG, state, id)
-    seed = get!(state.scratch, _CLASSIFICATION_SEED_KEY) do
-        rand(applicable(copy, rng) ? copy(rng) : rng, UInt64)
-    end
-    return Random.Xoshiro(hash((seed::UInt64, id)))
-end
-
 # No definition: nothing to do. A definition that is a function or an
 # `AbstractCaseDefinition` classifies every infected person.
 # `horizon` is the run's `max_time`, `Inf` when it had none.
@@ -283,7 +226,7 @@ _classify_cases!(state::SimulationState, ::Nothing, horizon = Inf) = state
 function _classify_cases!(state::SimulationState, def, horizon = Inf)
     state.scratch[_CLASSIFICATION_HORIZON_KEY] = horizon
     for ind in state.individuals
-        is_infected(ind) && _classify_individual!(def, ind, state, horizon)
+        is_infected(ind) && _classify_individual!(def, ind, horizon)
     end
     return state
 end

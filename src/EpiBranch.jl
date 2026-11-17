@@ -181,7 +181,7 @@ include("progression_likelihood.jl")
 include("serial_interval.jl")
 
 # Exports — types
-export AbstractCaseDefinition, ClinicalCaseDefinition, FixedProportionConfirmed
+export AbstractCaseDefinition, ClinicalCaseDefinition
 export CaseHistory, event_time, has_happened
 export case_classification, case_classification_changes
 export TransmissionModel, BranchingProcess, Infectiousness, OffspringTimes,
