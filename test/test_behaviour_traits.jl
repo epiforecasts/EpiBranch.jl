@@ -197,8 +197,8 @@ struct _Bare <: EpiBranch.AbstractIntervention end
         @test EpiBranch.resolves_under_capacity(_UndeclaredEffect())
         @test EpiBranch.discovers_actions(_UndeclaredActions())
         @test EpiBranch.proposes_actions(_UndeclaredActions())
-        # A wrapper with hooks of its own is read from them; one with none asks
-        # what it wraps.
+        # A wrapper with hooks of its own is read from them; one with none takes
+        # the traits of the wrapped intervention.
         @test EpiBranch.time_aware(_UndeclaredWrapper(_Bare()))
         @test !EpiBranch.time_aware(_DefaultWrapper(_Bare()))
         @test EpiBranch.time_aware(_DefaultWrapper(_UndeclaredTime()))
