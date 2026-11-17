@@ -394,6 +394,7 @@ realised generation intervals.
 
 ```@docs
 linelist
+censor_linelist
 event_time_metadata
 EpiBranch.reported_value
 contacts
