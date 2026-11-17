@@ -185,9 +185,8 @@ like the offspring parameters.
 Returns a `(mean, cov)` named tuple: `mean[t]` is the expected count at step
 `t`, and `cov` is their `n × n` covariance matrix, both ignoring susceptible
 depletion (see `loglikelihood` for the likelihood this feeds and its
-limits). It describes the model the likelihood scores and checks it: call it
-for a forecast, or to compare against simulated incidence (`seeds` simulated
-introductions, summed into steps the same way `data` is).
+limits). Use it for a forecast, or to compare against simulated incidence
+(`seeds` simulated introductions, summed into steps the same way `data` is).
 
 # Examples
 
@@ -221,11 +220,11 @@ end
 # ── Renewal count likelihood ──────────────────────────────────────────
 #
 # The counts are scored with the model that `incidence_moments` describes, in
-# its count form. The cases infected at step `s` are a cohort `C_s`. With
-# negative binomial offspring their combined offspring mean is
-# `V_s ~ Gamma(k * C_s, R / k)`, since gammas with a shared scale add, and the
-# count at step `t` is `Poisson(Σ_s V_s * w[t - s])`. Given the cohorts, the
-# count at step `t` is then a Poisson mixture with mean
+# its count form. The cases infected at step `s` form a cohort `C_s`. With
+# negative binomial offspring the combined offspring mean of a cohort is
+# `V_s ~ Gamma(k * C_s, R / k)`, because gammas with a shared scale add, and
+# the count at step `t` is `Poisson(Σ_s V_s * w[t - s])`. Given the cohorts,
+# the count at step `t` is a Poisson mixture with mean
 #
 #   μ_t = R * Σ_s w[t - s] * C_s
 #
@@ -234,22 +233,22 @@ end
 #   e_t = (σ² - R) * Σ_s w[t - s]² * C_s,
 #
 # where σ² is the variance of the offspring law (R²/k for the negative
-# binomial, so the mean-variance relation is exact for it, and any law is
-# covered the same way: a case's offspring landing `j` steps later are its
-# offspring thinned by `w[j]`). A negative binomial with that mean and
-# variance, `μ_t + e_t`, scores the count, and a Poisson stands in where
-# `e_t = 0`. Each step is scored given the observed counts before it, so the
-# likelihood is the product over steps; it treats the steps as independent
-# given the past, which drops the correlation between the offspring of one
-# infector spread over several steps.
+# binomial, for which the mean-variance relation is exact). Any other law is
+# covered the same way: the offspring of a case landing `j` steps later are
+# its offspring thinned by `w[j]`. A negative binomial with that mean and
+# variance, `μ_t + e_t`, scores the count, with a Poisson where `e_t = 0`.
+# Each step is scored given the observed counts before it, and the likelihood
+# is the product over steps. This treats the steps as independent given the
+# past and drops the correlation between the offspring of one infector spread
+# over several steps.
 #
 # With under-reporting the cohorts are not observed. The reports `Z_s` stand
 # in for them: a report probability `ρ` and delay `d` commute with the
-# generation-time convolution, so `R * Σ_s w[t - s] * Z_s` is the expected
-# count of reports at step `t`, plus the seeds' own reports. Thinning scales a
-# Poisson mixture's variance by `ρ²` and the cohort by `1 / ρ`, so `e_t`
-# carries a factor `ρ`. The seeds' own reports, a binomial draw, are scored as
-# if Poisson. Both are approximations that vanish without under-reporting.
+# generation-time convolution, so `R * Σ_s w[t - s] * Z_s` plus the seeds' own
+# reports is the expected count of reports at step `t`. Thinning scales the
+# variance of a Poisson mixture by `ρ²` and the cohort by `1 / ρ`, so `e_t`
+# has a factor `ρ`. The seeds' own reports, a binomial draw, are scored as
+# if Poisson. Both are approximations that are exact without under-reporting.
 
 # Variance of an offspring law, with the same fallback as `_law_mean` for a
 # law that has no `var` method.
@@ -354,8 +353,7 @@ function _incidence_cohorts(Y::AbstractMatrix, seeds, ρ, d)
 end
 
 # The cohorts when only the total over types is observed: each step's total is
-# split by the type shares of the model's expected counts at that step, which
-# is the model's own composition rather than an estimate from the data.
+# split by the type shares of the expected counts of the model at that step.
 function _incidence_cohorts(
         y::AbstractVector, expected::AbstractMatrix, seeds, ρ, d
     )
@@ -383,29 +381,30 @@ offspring law `offspring` and a `generation_time` distribution, both as in
 It is a renewal count likelihood: given the counts before it, the count at
 step `t` is negative binomial with mean `R * Σ_s w[s] * C[t - s]`, `w` being
 the discretised generation time and `C` the cases infected at each step (the
-`seeds` at step 0). The dispersion comes from the offspring law's variance,
-`σ²`, so the count's variance is `μ + (σ² - R) * Σ_s w[s]² * C[t - s]`. For
-negative binomial offspring with mean `R` and dispersion `k` that is the
-variance of the count `Poisson(Σ_s V_s * w[t - s])`, where `V_s` is the
-combined offspring mean of the cohort `C_s`, `Gamma(k * C_s, R / k)`; a
-Poisson offspring law gives a Poisson count, the limit as `k` grows. Counts
-of zero are scored like any other.
+`seeds` at step 0). The dispersion comes from the variance `σ²` of the
+offspring law, giving the count a variance of
+`μ + (σ² - R) * Σ_s w[s]² * C[t - s]`. For negative binomial offspring with
+mean `R` and dispersion `k` this is the variance of the count
+`Poisson(Σ_s V_s * w[t - s])`, where `V_s` is the combined offspring mean of
+the cohort `C_s`, `Gamma(k * C_s, R / k)`. A Poisson offspring law gives a
+Poisson count, the limit as `k` grows. Counts of zero are scored like any
+other.
 
 With `reporting_probability` below 1, or a `reporting_delay`, the counts are
-of reports and stand in for the unobserved infections: the mean is the
-expected reports given the earlier ones, and the extra variance is scaled by
-the reporting probability. That is exact for the mean and approximate for the
+of reports and stand in for the unobserved infections. The mean is the
+expected reports given the earlier ones and the extra variance is scaled by
+the reporting probability. This is exact for the mean and approximate for the
 variance.
 
 !!! warning "Limits"
-    The steps are scored one at a time given the past, so the correlation
-    between the offspring of one infector spread over several steps is
-    dropped. The model ignores susceptible depletion, so it holds only while
-    the population is effectively unsaturated. It models no interventions, and
+    The steps are scored one at a time given the past, which drops the
+    correlation between the offspring of one infector spread over several
+    steps. The model ignores susceptible depletion and holds only while the
+    population is effectively unsaturated. It models no interventions, and
     under-reporting only as each case reported independently with the same
-    probability. The
-    `generation_time` distribution and `reporting_delay` are discretised
-    onto `data`'s own time step with each infection uniform within its step.
+    probability. The `generation_time` distribution and `reporting_delay` are
+    discretised onto the time step of `data`, with each infection uniform
+    within its step.
     The recursion has no lag of 0, so generation times shorter than a step
     lose their same-step mass and the estimate is biased when the step is long
     compared with the generation time. An offspring law with a variance below
@@ -590,8 +589,8 @@ end
 
 Log-likelihood of an incidence time series under a multi-type branching
 process: the renewal count likelihood of the single-type method, with a count
-for each type at each step. A type-`j` cohort's offspring land in type `i`
-with probability `a[i, j]`, so the count of type `i` has mean
+for each type at each step. The offspring of a type-`j` cohort land in type `i`
+with probability `a[i, j]`, giving the count of type `i` a mean of
 `Σ_j a[i, j] * R_j * Σ_s w[s] * C_j[t - s]` and the dispersion of the type-`j`
 offspring law. The counts of different types at one step are scored as
 independent given the past, which drops their correlation through the shared
@@ -599,8 +598,8 @@ parent.
 
 `data` holds the counts by type, one column per type, or their total over
 types as a vector; its `seeds` give the index cases of each type. The cohorts
-of a total are split by type in the proportions of the model's expected
-counts at each step, since the observed counts carry no split. The limits are
+of a total are split by type in the proportions of the expected counts of the
+model at each step, because the observed counts have no split. The limits are
 those of the single-type method.
 
 # Examples

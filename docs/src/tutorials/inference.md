@@ -403,7 +403,7 @@ print_intervals(incidence_problem(incidence))
 
 The interval for R contains the value used to simulate the data (R = 1.6). The interval for k is wide and reaches its upper bound, as in the offspring-count fit, because four weeks of one outbreak say little about superspreading.
 
-The likelihood scores each day given the earlier ones, so it drops the correlation between the offspring of one infector spread over several days, so it approximates the full distribution of the counts. Check a fit against simulated series (simulate the fitted model, count the cases per day as above, and compare) before relying on it.
+The likelihood scores each day given the earlier ones. It therefore drops the correlation between the offspring of one infector spread over several days and only approximates the full distribution of the counts. Check a fit against simulated series (simulate the fitted model, count the cases per day as above, and compare) before relying on it.
 
 !!! note "What this fit covers"
     The likelihood assumes one constant R, a fixed number of seeds at step 0, and a known generation time. It ignores depletion of susceptibles and models no interventions. It can score cases by report date with `reporting_probability` and `reporting_delay`, which assume each case is reported independently with the same probability. A generation time that is short relative to the step, such as a few days against a weekly series, is binned coarsely and biases the fit. It does not estimate a time-varying R: for that, use a tool built for it, or the particle filter in [Filtering an outbreak over time](@ref) below, which follows an outbreak through a simulated model.
