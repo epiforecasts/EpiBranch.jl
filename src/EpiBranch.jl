@@ -4,7 +4,6 @@ using DataAPI: DataAPI
 using DataFrames
 using Dates
 using Distributions
-using ForwardDiff
 using LinearAlgebra: LinearAlgebra, Diagonal, I, Symmetric, cholesky, diag, eigvals, issuccess
 using QuadGK
 using Random
