@@ -537,7 +537,7 @@ EpiBranch.intervention_time), which by the contract of that hook comes with a
 whatever falls outside the schedule. If `false`, it gates the intervention up
 front.
 
-The answer is inferred from the methods the type defines, so an intervention
+The answer is inferred from the methods the type defines, and an intervention
 needs no declaration. Define `EpiBranch.time_aware(::MyIntervention)` to
 override the inferred answer. A wrapper without a method of its own asks the
 intervention it wraps.
@@ -609,7 +609,7 @@ intervention answering `false` adds no cost to a run without other risks.
 
 The answer is inferred from the methods the type defines: `true` for a type with
 a `competing_risk` method of its own. Every wrapper forwards the hook and
-answers `true`. Define `EpiBranch.has_competing_risk(::MyIntervention)` to override it, for
-a risk that comes through some other seam.
+answers `true`. Define `EpiBranch.has_competing_risk(::MyIntervention)` to
+override it, for a risk that comes through some other route.
 """
 has_competing_risk(iv::AbstractIntervention) = _stored_traits(typeof(iv)).has_competing_risk
