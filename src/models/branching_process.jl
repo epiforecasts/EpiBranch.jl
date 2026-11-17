@@ -51,7 +51,7 @@ different routes, such as community and funeral transmission of Ebola.
   lockdown or a seasonal pattern that changes how quickly this window's
   contacts arrive. Unused where `kernel` draws no contact
   (`NoGenerationTime()`) or where `offspring` already timed them
-  (`OffspringTimes`). `loglikelihood(IncidenceCounts, ...)`,
+  (`OffspringTimes`). `incidence_moments`,
   `end_of_outbreak_probability` and `Isolation`'s analytic effect all read a
   window's `kernel` directly and throw an `ArgumentError` on a window with a
   `calendar` rather than ignoring it; simulate a model that needs one
@@ -463,7 +463,7 @@ n_types(m::BranchingProcess) = m.n_types
 # `until` stops it before every drawn contact happens, and a window's
 # `calendar` scales its kernel's hazard over time; all three reshape the
 # offspring law away from the bare distribution, so the analytical chain-size
-# and incidence likelihoods must not take the model's offspring law as read.
+# likelihood must not take the model's offspring law as read.
 function offspring_law_unchanged(m::BranchingProcess)
     m.population isa NoPopulation || return false
     return all(w -> isempty(w.until) && w.calendar === nothing, m.infectiousness)

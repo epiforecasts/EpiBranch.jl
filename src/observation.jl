@@ -298,8 +298,7 @@ end
 Per-case probability that a case is reported, or `nothing` when `progression`
 has no `Reporting` step: the probability of the step times the share of cases that
 reach the time it reports from (all of them from infection, the symptomatic
-ones from onset, read from the model's `clinical_presentation`), as
-`_incidence_reporting` does. `simulate` never reports a case whose `from` time
+ones from onset, read from the model's `clinical_presentation`). `simulate` never reports a case whose `from` time
 is missing, and resets a report drawn after the case's outcome. A
 progression with a terminal step, a step that overwrites the `from` time, or a
 `from` the closed form cannot read therefore throws an `ArgumentError` instead
@@ -331,6 +330,80 @@ function _effective_reporting_probability(progression, attrs)
         )
     )
     return ρ * reached
+end
+
+# The share of cases that reach the time a `Reporting` step measures its delay
+# from, and that time's delay after infection (`nothing` for infection itself).
+function _infection_to(from::Symbol, attrs)
+    from === :infection && return (1.0, nothing)
+    _resolved_key(from) === :onset_time && return _infection_to_onset(attrs)
+    throw(
+        ArgumentError(
+            "The closed form supports a Reporting step from " *
+                "infection or onset, not from `:$from`"
+        )
+    )
+end
+function _infection_to(from, attrs)
+    throw(
+        ArgumentError(
+            "The closed form supports a Reporting step from " *
+                "infection or onset, not from a function"
+        )
+    )
+end
+
+# Onset from the model's `clinical_presentation`, its incubation period and
+# asymptomatic share. The builders are run once, in order, on a probe case, as
+# `simulate` runs them, to check that no other one records an onset of its own.
+function _infection_to_onset(attrs)
+    builders = attrs isa NoAttributes ? () :
+        attrs isa Union{Tuple, AbstractVector} ? Tuple(attrs) : (attrs,)
+    laws = filter(!isnothing, map(onset_law, builders))
+    length(laws) == 1 || throw(
+        ArgumentError(
+            "The closed form reads the onset a Reporting step " *
+                "reports from from the model's clinical_presentation (or another " *
+                "attribute that defines `onset_law`), and needs exactly " *
+                "one; this model has $(length(laws))"
+        )
+    )
+    # Fresh copies, so the probe leaves the model's own builders as they were.
+    _check_onset_builders(_fresh_attributes(builders))
+    cp = only(laws)
+    cp.prob_asymptomatic isa Real || throw(
+        ArgumentError(
+            "The closed form needs a fixed prob_asymptomatic, not " *
+                "a per-case function"
+        )
+    )
+    return (1 - cp.prob_asymptomatic, _closed_form_incubation(cp, "The closed form"))
+end
+
+function _check_onset_builders(builders)
+    probe = Individual(id = 1, infection_time = 0.0)
+    rng = Random.Xoshiro(1)
+    onset(ind) = (get(ind.state, :onset_time, nothing), get(ind.state, :incubation_period, nothing))
+    for b in builders
+        before = onset(probe)
+        try
+            _apply_attributes!(b, rng, probe)
+        catch err
+            throw(
+                ArgumentError(
+                    "The closed form could not check the model's " *
+                        "attribute builders for an onset of their own: running them on " *
+                        "a probe case failed with $(sprint(showerror, err))"
+                )
+            )
+        end
+        onset_law(b) !== nothing || isequal(onset(probe), before) || throw(
+            ArgumentError(
+                "the closed form: an attribute builder that does not define `onset_law` records an onset, which this closed form cannot read"
+            )
+        )
+    end
+    return nothing
 end
 
 """

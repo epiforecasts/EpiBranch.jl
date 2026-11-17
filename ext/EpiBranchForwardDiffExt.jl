@@ -1,6 +1,6 @@
 module EpiBranchForwardDiffExt
 
-# The incidence likelihood gets the mean and covariance of the step counts from
+# `incidence_moments` gets the mean and covariance of the step counts from
 # derivatives of a cumulant generating function. `ForwardDiff` supplies them
 # here, so users who only simulate do not need it.
 

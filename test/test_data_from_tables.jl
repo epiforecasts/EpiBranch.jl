@@ -24,24 +24,17 @@ using EpiBranch, Distributions, DataFrames, Dates, StableRNGs, Test
         @test_throws ArgumentError ChainSizes(typeof(st)[])
     end
 
-    @testset "IncidenceCounts and weekly_incidence" begin
+    @testset "weekly_incidence" begin
         df = DataFrame(
             date_onset = Date(2024, 3, 1) .+
                 Day.([0, 1, 3, 4, 4, 8, 9, 9, 10, 12, 12])
         )
-        ic = IncidenceCounts(df; step = 3)
-        @test ic.seeds == 2
-        @test ic.data == [3, 1, 3, 2]
-        @test_throws ArgumentError IncidenceCounts(df; step = 100)
         wk = weekly_incidence(df)
         @test wk.cases == [2, 6, 3]
         @test wk.week == [Date(2024, 2, 26), Date(2024, 3, 4), Date(2024, 3, 11)]
         @test weekly_incidence(
             DataFrame(date_onset = [Date(2024, 3, 1), missing])
         ).cases == [1]
-        sim = simulate(model; rng = StableRNG(3), max_cases = 200)
-        ics = IncidenceCounts(sim; step = 7)
-        @test ics.seeds + sum(ics.data) == nrow(linelist(sim))
     end
 
     @testset "end_of_outbreak_inputs" begin

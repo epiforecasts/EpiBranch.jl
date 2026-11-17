@@ -1846,10 +1846,9 @@ attributes = [
 
 For rules this function does not cover, an `attributes` entry can set the
 fields directly, as in `(rng, ind) -> (ind.susceptibility = ...)`. Such a
-closure sends `loglikelihood(::ChainSizes, model)`, `chain_size_distribution`
-and the closed-form incidence likelihood to simulation rather than their
-analytical path, since [`EpiBranch.offspring_law_unchanged`](@ref) cannot
-tell what a bare function does; wrap it in its own callable type with a
+closure sends `loglikelihood(::ChainSizes, model)` and `chain_size_distribution`
+to simulation rather than their analytical path, since
+[`EpiBranch.offspring_law_unchanged`](@ref) cannot tell what a bare function does; wrap it in its own callable type with a
 method on that trait to get the analytical path back.
 
 See also [`clinical_presentation`](@ref), [`demographics`](@ref).

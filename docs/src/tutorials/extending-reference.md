@@ -1052,7 +1052,7 @@ before.
 | A capacity limit per district, centre or other split of your own | `resource_key(iv, individual, state)` for `iv` | When actions are admitted, once per case |
 | The effect of an intervention on counts of cases or compartments | `EpiBranch.count_dosing(iv)`, returning an `EpiBranch.GroupDosing` | When a model of counts or compartments reads the specification |
 | An exact effect on the offspring distribution | `analytic_offspring_effect` for an intervention | Closed-form results on a `ModelSpec` |
-| A model, attribute or progression transition that leaves the single-type offspring law exactly as drawn | `EpiBranch.offspring_law_unchanged` | The chain-size and incidence likelihoods' analytical path |
+| A model, attribute or progression transition that leaves the single-type offspring law exactly as drawn | `EpiBranch.offspring_law_unchanged` | The chain-size likelihood's analytical path |
 | A progression transition that reports cases with a fixed probability, and the time it reports from | `EpiBranch.reporting_probability`, `EpiBranch.reporting_from` | The chain-size and incidence closed forms, which thin by it |
 | An attribute that sets the onset time, with its incubation period and asymptomatic share | `EpiBranch.onset_law` | The analytic effect of `Isolation` and the closed forms for reporting timed from onset |
 | A stopping rule | A type `<: AbstractStoppingRule` and `should_stop` | Each step |

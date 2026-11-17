@@ -539,21 +539,8 @@ EpiBranch.offspring_law_unchanged(::OwnOnset) = true
     @test eff(own).mean ≈ eff(builtin).mean
     @test eff(own).pgf(0.3) ≈ eff(builtin).pgf(0.3)
 
-    # The incidence likelihood reads the onset the same way.
-    data = IncidenceCounts([1, 2, 4, 5, 9, 12, 18]; seeds = 2)
-    rep = [Reporting(delay = Gamma(2.0, 1.5), probability = 0.7)]
-    @test loglikelihood(data, ModelSpec(proc; attributes = OwnOnset(inner), progression = rep)) ≈
-        loglikelihood(data, ModelSpec(proc; attributes = inner, progression = rep))
-
-    # A reporting step without a `delay` field gives the incidence
-    # likelihood no delay to read. Two onset laws are ambiguous.
-    @test_throws ArgumentError loglikelihood(
-        data, ModelSpec(proc; progression = [TestingReport(0.6)])
-    )
+    # Two onset laws are ambiguous.
     @test_throws ArgumentError EpiBranch.analytic_offspring_effect(
         iso, off, ModelSpec(proc; interventions = [iso], attributes = (inner, OwnOnset(inner)))
-    )
-    @test_throws ArgumentError loglikelihood(
-        data, ModelSpec(proc; attributes = (inner, OwnOnset(inner)), progression = rep)
     )
 end
