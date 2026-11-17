@@ -236,7 +236,11 @@ outbreaks.
 With `parallel = true` the runs are spread over the CPU threads Julia was
 started with (for example `julia --threads 4`). The results are reproducible
 for a given seeded `rng`. When Julia has more than one thread, they are not
-the same outbreaks as with `parallel = false`.
+the same outbreaks as with `parallel = false`. Outbreaks are handed to threads
+one at a time. A few large ones do not leave the other threads idle. Much of
+the remaining cost is garbage collection, which pauses every thread; starting
+Julia with extra collector threads (for example `julia --threads 6
+--gcthreads 6,1`) reduces it.
 
 # Examples
 ```julia
@@ -296,15 +300,32 @@ function _simulate_n(
         )
     )
     if parallel && Threads.nthreads() > 1
-        seeds = [rand(rng, UInt64) for _ in 1:n]
-        results = Vector{T}(undef, n)
-        Threads.@threads for i in 1:n
-            results[i] = run(Random.Xoshiro(seeds[i]))
-        end
-        return results
+        return _simulate_n_threaded(run, T, n, rng)
     else
         return [run(rng) for _ in 1:n]
     end
+end
+# Separate from the `nthreads() > 1` check so that it can be tested on a single
+# thread.
+function _simulate_n_threaded(run, ::Type{T}, n::Int, rng) where {T}
+    seeds = [rand(rng, UInt64) for _ in 1:n]
+    results = Vector{T}(undef, n)
+    # Outbreak sizes are heavy-tailed. An even split of `1:n` would leave
+    # threads idle while one works through the large outbreaks. Each task
+    # instead takes the next outbreak from a shared counter. Seeds are indexed
+    # by outbreak, giving the same results whichever thread runs it.
+    next_index = Threads.Atomic{Int}(1)
+    tasks = map(1:min(Threads.nthreads(), n)) do _
+        Threads.@spawn begin
+            while true
+                i = Threads.atomic_add!(next_index, 1)
+                i > n && break
+                results[i] = run(Random.Xoshiro(seeds[i]))
+            end
+        end
+    end
+    foreach(wait, tasks)
+    return results
 end
 
 # ── Shared helpers for the race's models ─────────────────────────────
