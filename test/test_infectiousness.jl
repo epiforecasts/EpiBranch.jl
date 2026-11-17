@@ -48,9 +48,8 @@ EpiBranch.has_effect(::_SeenRoutes) = true
     end
 
     @testset "a named window reaches risk_applies by that name" begin
-        # `risk_applies` could not previously tell the two windows apart: both
-        # reached the race as a `RouteWindow` named `:transmission`. Naming
-        # them lets an intervention select one and leave the other alone.
+        # Naming the windows lets `risk_applies` tell them apart, so an
+        # intervention can select one and leave the other alone.
         household = Infectiousness(Poisson(1.0); kernel = Uniform(0, 5), name = :household)
         community = Infectiousness(Poisson(2.0); kernel = Uniform(0, 5), name = :community)
         model = BranchingProcess(household, community)
@@ -77,8 +76,8 @@ EpiBranch.has_effect(::_SeenRoutes) = true
             m;
             n_initial = 30, max_generations = 1, rng = StableRNG(1)
         )
-        kids = filter(i -> i.parent_id != 0 && is_infected(i), s.individuals)
-        gi = [k.infection_time - s.individuals[k.parent_id].infection_time for k in kids]
+        kids = filter(i -> i.parent_id != 0 && is_infected(i), individuals(s))
+        gi = [k.infection_time - individuals(s)[k.parent_id].infection_time for k in kids]
         @test minimum(gi) > 4.0   # latent 4 + a positive contact interval
     end
 
@@ -126,7 +125,7 @@ EpiBranch.has_effect(::_SeenRoutes) = true
             m; n_initial = 1, max_generations = 1,
             rng = StableRNG(3)
         )
-        kids = filter(i -> i.parent_id != 0, s.individuals)
+        kids = filter(i -> i.parent_id != 0, individuals(s))
         @test length(kids) == 5   # 2 + 3 from the single index
     end
 
@@ -142,7 +141,7 @@ EpiBranch.has_effect(::_SeenRoutes) = true
             ModelSpec(BranchingProcess(win); progression = [rec_late]);
             opts..., rng = StableRNG(1)
         )
-        kids_late = count(i -> i.parent_id != 0 && is_infected(i), s_late.individuals)
+        kids_late = count(i -> i.parent_id != 0 && is_infected(i), individuals(s_late))
         @test kids_late == 50   # 5 index × 10, nothing removed early
 
         # Near-instant recovery: almost every contact lands after removal.
@@ -151,7 +150,7 @@ EpiBranch.has_effect(::_SeenRoutes) = true
             ModelSpec(BranchingProcess(win); progression = [rec_early]);
             opts..., rng = StableRNG(1)
         )
-        kids_early = count(i -> i.parent_id != 0 && is_infected(i), s_early.individuals)
+        kids_early = count(i -> i.parent_id != 0 && is_infected(i), individuals(s_early))
         @test kids_early < 5
         @test kids_early < kids_late
     end
@@ -169,7 +168,8 @@ EpiBranch.has_effect(::_SeenRoutes) = true
         )
         @test !EpiBranch.offspring_law_unchanged(spec.process)
         ll = loglikelihood(ChainSizes([1]), spec; rng = StableRNG(1), n_sim = 500)
-        @test isapprox(ll, 0.0; atol = 1.0e-9)
+        # The smoothed geometric tail puts a little mass on sizes above 1.
+        @test isapprox(ll, 0.0; atol = 1.0e-2)
     end
 
     @testset "an offspring function can return OffspringTimes instead of a count" begin
@@ -178,7 +178,7 @@ EpiBranch.has_effect(::_SeenRoutes) = true
         off = (rng, ind) -> OffspringTimes([1.0, 1.0, 4.5])
         m = BranchingProcess(Infectiousness(off; kernel = Exponential(1000.0)))
         s = simulate(m; n_initial = 1, max_generations = 1, rng = StableRNG(1))
-        kids = filter(i -> i.parent_id != 0 && is_infected(i), s.individuals)
+        kids = filter(i -> i.parent_id != 0 && is_infected(i), individuals(s))
         @test sort([k.infection_time for k in kids]) == [1.0, 1.0, 4.5]
     end
 
@@ -193,7 +193,7 @@ EpiBranch.has_effect(::_SeenRoutes) = true
             progression = [latent]
         )
         s = simulate(m; n_initial = 1, max_generations = 1, rng = StableRNG(1))
-        kids = filter(i -> i.parent_id != 0 && is_infected(i), s.individuals)
+        kids = filter(i -> i.parent_id != 0 && is_infected(i), individuals(s))
         @test length(kids) == 1
         @test only(kids).infection_time ≈ 5.0
     end
@@ -265,10 +265,10 @@ end
             ModelSpec(BranchingProcess(window));
             n_initial = 50, max_generations = 1, rng = StableRNG(1)
         )
-        kids = filter(i -> i.parent_id != 0 && is_infected(i), s.individuals)
+        kids = filter(i -> i.parent_id != 0 && is_infected(i), individuals(s))
         @test length(kids) > 0
         @test all(kids) do kid
-            kid.infection_time - s.individuals[kid.parent_id].infection_time >= 15.0
+            kid.infection_time - individuals(s)[kid.parent_id].infection_time >= 15.0
         end
     end
 
@@ -301,7 +301,7 @@ end
                 ModelSpec(BranchingProcess(w));
                 n_initial = 200, max_generations = 1, rng = StableRNG(3)
             )
-            count(i -> i.parent_id != 0 && is_infected(i), s.individuals)
+            count(i -> i.parent_id != 0 && is_infected(i), individuals(s))
         end
         # The multiplier is about 1.5 over the few days the hazard lasts.
         expected = 10 * (1 - exp(-0.15))
@@ -332,7 +332,7 @@ end
             k = HazardKernel(t -> 0.1 * exp(-t); upper)
             m = ModelSpec(BranchingProcess(Infectiousness(Poisson(10.0); kernel = k)))
             s = simulate(m; n_initial = 200, max_generations = 1, rng = StableRNG(3))
-            count(i -> i.parent_id != 0 && is_infected(i), s.individuals)
+            count(i -> i.parent_id != 0 && is_infected(i), individuals(s))
         end
         bounded, unbounded = count_kids(50.0), count_kids(Inf)
         @test isapprox(bounded / 200, 10 * (1 - exp(-0.1)); rtol = 0.15)
@@ -465,11 +465,11 @@ end
         cu = EpiBranch._CalendarScaledKernel(tu, Seasonal(amplitude = 0.5, peak_day = 0.0, period = 365.0), 0.0)
         @test EpiBranch.cumhazard(cu, 4.0) == Inf
         @test isfinite(EpiBranch.cumhazard(cu, 2.0))
-        interval(s, kid) = kid.infection_time - s.individuals[kid.parent_id].infection_time
+        interval(s, kid) = kid.infection_time - individuals(s)[kid.parent_id].infection_time
         # As a bare window kernel, through `get_generation_time`.
         m = ModelSpec(BranchingProcess(Infectiousness(Poisson(3.0); kernel = tk)))
         s = simulate(m; n_initial = 50, max_generations = 1, rng = StableRNG(1))
-        kids = filter(i -> i.parent_id != 0 && is_infected(i), s.individuals)
+        kids = filter(i -> i.parent_id != 0 && is_infected(i), individuals(s))
         @test length(kids) > 0
         @test all(kid -> interval(s, kid) <= 5.0, kids)
         # Per case under a calendar, through the calendar-scaled wrapper.
@@ -482,7 +482,7 @@ end
             ModelSpec(BranchingProcess(w)); n_initial = 50, max_generations = 1,
             rng = StableRNG(1)
         )
-        kids2 = filter(i -> i.parent_id != 0 && is_infected(i), s2.individuals)
+        kids2 = filter(i -> i.parent_id != 0 && is_infected(i), individuals(s2))
         @test length(kids2) > 0
         @test all(kid -> interval(s2, kid) <= 5.0, kids2)
         # A late onset under the calendar: contacts start at the onset and
@@ -496,7 +496,7 @@ end
             ModelSpec(BranchingProcess(late)); n_initial = 200, max_generations = 1,
             rng = StableRNG(1)
         )
-        intervals = [interval(s3, kid) for kid in s3.individuals if kid.parent_id != 0 && is_infected(kid)]
+        intervals = [interval(s3, kid) for kid in individuals(s3) if kid.parent_id != 0 && is_infected(kid)]
         @test minimum(intervals) >= 15.0
         @test minimum(intervals) < 15.01
         # Conditional on falling before 20, exp(-2 * 0.06) of the mass is
@@ -520,7 +520,7 @@ end
         )
         model = ModelSpec(BranchingProcess(timing.window); progression = timing.progression)
         s = simulate(model; n_initial = 200, max_generations = 1, rng = StableRNG(4))
-        kids = filter(i -> i.parent_id != 0 && is_infected(i), s.individuals)
+        kids = filter(i -> i.parent_id != 0 && is_infected(i), individuals(s))
         @test length(kids) > 0
     end
 
@@ -532,7 +532,7 @@ end
         timing = transmission_timing(k; contacts = NegBin(3.0, 0.5))
         model = ModelSpec(BranchingProcess(timing.window))
         s = simulate(model; n_initial = 200, max_generations = 1, rng = StableRNG(1))
-        kids = filter(i -> i.parent_id != 0 && is_infected(i), s.individuals)
+        kids = filter(i -> i.parent_id != 0 && is_infected(i), individuals(s))
         @test length(kids) > 0
     end
 
@@ -549,7 +549,7 @@ end
         )
         model = ModelSpec(BranchingProcess(timing.window); progression = timing.progression)
         s = simulate(model; n_initial = 200, max_generations = 1, rng = StableRNG(1))
-        kids = filter(i -> i.parent_id != 0 && is_infected(i), s.individuals)
+        kids = filter(i -> i.parent_id != 0 && is_infected(i), individuals(s))
         @test length(kids) > 0
     end
 
@@ -591,7 +591,7 @@ end
             BranchingProcess(timing.window); progression = timing.progression, attributes
         )
         s = simulate(model; n_initial = 100, max_generations = 1, rng = StableRNG(1))
-        @test count(i -> i.parent_id != 0 && is_infected(i), s.individuals) == 0
+        @test count(i -> i.parent_id != 0 && is_infected(i), individuals(s)) == 0
     end
 
     @testset "a per-case trajectory times contacts through a hazard built from it" begin
@@ -605,10 +605,10 @@ end
             attributes
         )
         s = simulate(m; n_initial = 50, max_generations = 1, rng = StableRNG(1))
-        kids = filter(i -> i.parent_id != 0 && is_infected(i), s.individuals)
+        kids = filter(i -> i.parent_id != 0 && is_infected(i), individuals(s))
         @test length(kids) > 0
         @test all(kids) do k
-            parent = s.individuals[k.parent_id]
+            parent = individuals(s)[k.parent_id]
             k.infection_time - parent.infection_time >= parent.state[:switch_on]
         end
     end
@@ -675,7 +675,7 @@ end
         model = ModelSpec(BranchingProcess(timing.window); progression = timing.progression)
         n = 3000
         s = simulate(model; n_initial = n, max_generations = 1, max_cases = nothing, rng = StableRNG(2))
-        kids = count(i -> i.parent_id != 0 && is_infected(i), s.individuals)
+        kids = count(i -> i.parent_id != 0 && is_infected(i), individuals(s))
         @test isapprox(kids / n, implied_R(contacts, ci, infectious); rtol = 0.1)
         @test implied_R(contacts, ci, infectious) < mean(contacts)
     end
@@ -691,10 +691,10 @@ end
         model = ModelSpec(BranchingProcess(timing.window); progression = timing.progression)
         n = 3000
         s = simulate(model; n_initial = n, max_generations = 1, max_cases = nothing, rng = StableRNG(3))
-        kids = filter(i -> i.parent_id != 0 && is_infected(i), s.individuals)
+        kids = filter(i -> i.parent_id != 0 && is_infected(i), individuals(s))
         @test isapprox(length(kids) / n, mean(offspring); rtol = 0.1)
         @test all(kids) do k
-            parent = s.individuals[k.parent_id]
+            parent = individuals(s)[k.parent_id]
             k.infection_time <= parent.state[:recovered_time]
         end
     end
@@ -739,10 +739,10 @@ end
                 ModelSpec(m; progression, interventions = [ct]);
                 max_generations = 4, max_cases = nothing, rng = StableRNG(seed)
             )
-            for ind in s.individuals
+            for ind in individuals(s)
                 is_infected(ind) && ind.generation < 4 || continue
                 drawn = count(
-                    c -> !isnan(s.individuals[c].infection_time), ind.secondary_case_ids
+                    c -> !isnan(individuals(s)[c].infection_time), ind.secondary_case_ids
                 )
                 drawn == (severe(ind) ? 3 : 1) || (wrong += 1)
             end
@@ -778,11 +778,11 @@ end
                 ModelSpec(m; interventions = [ct], attributes);
                 max_generations = 4, max_cases = nothing, rng = StableRNG(seed)
             )
-            for ind in s.individuals
+            for ind in individuals(s)
                 is_infected(ind) && ind.parent_id != 0 || continue
-                parent = s.individuals[ind.parent_id]
+                parent = individuals(s)[ind.parent_id]
                 parent.parent_id == 0 && continue
-                grandparent = s.individuals[parent.parent_id]
+                grandparent = individuals(s)[parent.parent_id]
                 is_traced(parent) && is_asymptomatic(parent) &&
                     !is_asymptomatic(grandparent) || continue
                 reached += 1
@@ -817,9 +817,9 @@ end
         wrong = 0
         for seed in 1:10
             s = simulate(m; max_generations = 4, max_cases = nothing, rng = StableRNG(seed))
-            for c in s.individuals
+            for c in individuals(s)
                 c.parent_id == 0 && continue
-                b = s.individuals[c.parent_id]
+                b = individuals(s)[c.parent_id]
                 b.parent_id != 0 && is_traced(b) && is_infected(b) || continue
                 haskey(c.state, :trace_time) || continue
                 trigger = EpiBranch.trigger_time(ct.eligibility, b, c, s)
@@ -831,4 +831,56 @@ end
         @test checked > 0
         @test wrong == 0
     end
+end
+
+@testset "Asymptomatic cases keep an onset-relative course" begin
+    inc = LogNormal(log(1.4), 0.35)
+    gt = incubation_linked_generation_time(presymptomatic_fraction = 0.3)
+    means = Float64[]
+    counts = Int[]
+    for pa in (0.0, 1.0)
+        attrs = clinical_presentation(incubation_period = inc, prob_asymptomatic = pa)
+        linked = ModelSpec(BranchingProcess(Poisson(1.5), gt); attributes = attrs)
+        g = realised_generation_intervals(
+            simulate(linked; max_cases = 3000, n_initial = 50, rng = Xoshiro(1))
+        )
+        push!(means, mean(g))
+        window = Infectiousness(Poisson(1.5); from = :onset, kernel = Gamma(2, 1))
+        from_onset = ModelSpec(BranchingProcess((window,)); attributes = attrs)
+        push!(
+            counts,
+            length(
+                realised_generation_intervals(
+                    simulate(from_onset; max_cases = 3000, n_initial = 50, rng = Xoshiro(1))
+                )
+            )
+        )
+    end
+    @test abs(means[1] - means[2]) < 0.3
+    @test counts[2] > 0.8 * counts[1]
+
+    state = simulate(
+        ModelSpec(
+            BranchingProcess(Poisson(1.5), gt);
+            attributes = clinical_presentation(incubation_period = inc, prob_asymptomatic = 1.0)
+        ); max_cases = 20, rng = Xoshiro(2)
+    )
+    @test all(isnan(onset_time(i)) for i in individuals(state))
+    @test all(isfinite(incubation_period(i)) for i in individuals(state))
+    @test all(is_asymptomatic(i) for i in individuals(state))
+end
+
+@testset "Only asymptomatic cases open an onset window without onset" begin
+    asymptomatic = Individual(id = 1, infection_time = 1.0)
+    asymptomatic.state[:incubation_period] = 3.0
+    asymptomatic.state[:asymptomatic] = true
+    asymptomatic.state[:onset_time] = NaN
+    @test EpiBranch._potential_onset_time(asymptomatic) == 4.0
+
+    aborted = Individual(id = 2, infection_time = 1.0)
+    aborted.state[:incubation_period] = 3.0
+    aborted.state[:asymptomatic] = false
+    aborted.state[:infection_aborted_time] = 2.0
+    aborted.state[:onset_time] = NaN
+    @test isnan(EpiBranch._potential_onset_time(aborted))
 end

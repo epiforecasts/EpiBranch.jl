@@ -36,7 +36,7 @@ end
         infected = findall(!isnan, data.infection_time)
         @test !isempty(infected)
         for (r, w) in enumerate(windows), i in infected
-            ind = state.individuals[i]
+            ind = individuals(state)[i]
             @test data.infectious_time[r][i] == window_open(ind, w)
             @test data.removal_time[r][i] == window_close(ind, w, ())
         end
@@ -119,8 +119,8 @@ end
         )
         a = simulate(shared; rng = StableRNG(4))
         b = simulate(per_node; rng = StableRNG(4))
-        @test [i.infection_time for i in a.individuals] ==
-            [i.infection_time for i in b.individuals]
+        @test [i.infection_time for i in individuals(a)] ==
+            [i.infection_time for i in individuals(b)]
         data = routed_network_infections(a, shared)
         @test loglikelihood(data, per_node) ≈ loglikelihood(data, shared)
         # a node without a community hazard has no external term
@@ -283,7 +283,7 @@ end
 
     @testset "a bare MassActionHazard is rejected; RoutedMassActionHazard reads one route" begin
         # two unconnected people on both routes, so only the external hazard
-        # can score anything: 1 is a conditioned-on index case infectious on
+        # can contribute anything: 1 is a conditioned-on index case infectious on
         # the community route over (0, 3]; 2 is a secondary infected at the
         # exact instant 1 is removed, which a pairwise row and mass action
         # must agree on (see the core likelihood's own boundary test)
@@ -313,6 +313,30 @@ end
                 :nonexistent, MassActionHazard(; transmission_rate = N, population_size = N)
             )
         )
+    end
+
+    @testset "seeded hosts are conditioned on" begin
+        empty_contacts = [Int[], Int[]]
+        windows = [
+            RouteWindow(:household; until = (:recovered,), kernel = Exponential(1.0), reach = empty_contacts),
+            RouteWindow(:community; until = (:recovered,), kernel = Exponential(1.0), reach = empty_contacts),
+        ]
+        args = (
+            [:household, :community], [empty_contacts, empty_contacts],
+            [[0.0, NaN], [0.0, NaN]], [[3.0, Inf], [3.0, Inf]],
+            [0.0, 3.0], [true, false],
+        )
+        plain = RoutedNetworkInfections(args...; obs_end = 5.0)
+        seeded = RoutedNetworkInfections(args...; obs_end = 5.0, seeded = [false, true])
+        @test !any(EpiBranch.seeded_hosts(plain))
+        @test EpiBranch.seeded_hosts(seeded) == [false, true]
+        hazard = RoutedMassActionHazard(
+            :community, MassActionHazard(; transmission_rate = 5, population_size = 5)
+        )
+        # a seeded host is taken as given and adds no term
+        @test pairwise_surv_loglik(windows, seeded; external_hazard = hazard) >
+            pairwise_surv_loglik(windows, plain; external_hazard = hazard)
+        @test_throws ArgumentError RoutedNetworkInfections(args...; seeded = [true])
     end
 
     @testset "RoutedMassActionHazard rejected as a process's own external_hazard" begin
@@ -496,8 +520,8 @@ end
             # A vaccinated host's mixture goes through `_routed_modifier_loglik`
             # for every route and the external hazard alike. A route gated to
             # `INTERVENTION_REMOVAL` and a non-zero `external_hazard` must both
-            # reach the survival and event terms in that function, just as an
-            # unvaccinated host's plain sum does.
+            # reach the survival and event terms in that function, which an
+            # unvaccinated host's plain sum goes through with no modifier.
             REM = EpiBranch.INTERVENTION_REMOVAL
             windows3 = [
                 RouteWindow(:household; until = (:recovered,), kernel = Exponential(3.0), reach = hh),

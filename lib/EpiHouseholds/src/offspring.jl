@@ -1,30 +1,21 @@
 # ── The household-level offspring law ────────────────────────────────
 #
-# The classical households construction. Within a household the epidemic runs
-# over a small, depleting clique; between households it is a branching process
-# whose unit is a whole household. One infected household's offspring are the
-# households its members infect through community contact, so the household-level
-# offspring law is a compound: the community contact rate applied to the total
-# infectious person-time the within-household epidemic generates, which is itself
-# random.
+# Between households the epidemic is a branching process whose unit is a whole
+# household. The household-level offspring law is therefore a compound.
+# Community contacts arrive at rate `global_rate` while any member is
+# infectious. Given the total community-infectious person-time A of the
+# household, the number of contacts is Poisson(global_rate · A), mixed over the
+# law of A (the within-household epidemic). Each contact is taken to reach a
+# fresh, fully susceptible household, the branching approximation the
+# construction rests on.
 #
-# Two pieces have to be right, and both are easy to get wrong by hand.
-#
-# The compounding. Community contacts arrive at rate `global_rate` for as long as
-# any member is infectious, so given the household's total community-infectious
-# person-time A the number of contacts is Poisson(global_rate · A), and the
-# offspring law is that Poisson mixed over the law of A. Early in an epidemic
-# every contact reaches a fresh, fully susceptible household, which is the
-# branching approximation this whole construction rests on.
-#
-# The size-biasing. A community contact reaches a *person*, and with them their
-# household, so a household of a given size is reached in proportion to its size
-# times how common it is. Type is therefore household size, and the mean matrix
-# `M[i, j]` (the expected number of size-`i` households infected by a size-`j`
-# one) is a product of a column that depends only on the parent's size and a row
-# of size-biased weights that does not depend on it at all. Rank one collapses
-# the multi-type threshold to a single weighted sum, R*, and makes the
-# extinction probability a one-dimensional fixed point.
+# A community contact reaches a *person*, and with them their household. A
+# household is therefore reached in proportion to its size times how common it
+# is, and type is household size. The mean matrix `M[i, j]` (the expected number
+# of size-`i` households infected by a size-`j` one) is a column depending only
+# on the size of the parent times a row of size-biased weights that does not.
+# Rank one collapses the multi-type threshold to a single weighted sum, R*, and
+# makes the extinction probability a one-dimensional fixed point.
 
 const _OffspringLaw = DiscreteNonParametric{Int, Float64, Vector{Int}, Vector{Float64}}
 
@@ -330,11 +321,14 @@ function EpiBranch.extinction_probability(
     )
     reproduction_number(o) <= 1 && return ones(length(o.sizes))
     s = 0.0
+    converged = false
     for _ in 1:max_iter
         s_new = sum(o.mixing[i] * _pgf(o.laws[i], s) for i in eachindex(o.laws))
-        abs(s_new - s) < tol && break
+        converged = abs(s_new - s) < tol
         s = s_new
+        converged && break
     end
+    converged || EpiBranch.@warn_unconverged_extinction(max_iter, "the reproduction number")
     return [_pgf(law, s) for law in o.laws]
 end
 
@@ -508,7 +502,7 @@ function _simulated_person_time(
     # through the same stretches the intervention recorded.
     gap_fractions = _removal_gap_fractions(spec.interventions)
     person_time = zeros(length(sample.members))
-    for (i, ind) in enumerate(state.individuals)
+    for (i, ind) in enumerate(individuals(state))
         is_infected(ind) || continue
         opened = window_open(ind, window)
         closed = window_close(ind, window, spec.interventions)

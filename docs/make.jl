@@ -24,8 +24,10 @@ makedocs(;
             "Interventions" => [
                 "Isolation and contact tracing" => "tutorials/interventions.md",
                 "Vaccination" => "tutorials/vaccination.md",
+                "What each model applies" => "tutorials/intervention-support.md",
             ],
             "Clinical transitions" => "tutorials/transitions.md",
+            "Making cases more or less infectious" => "tutorials/infectiousness.md",
             "Transmission models" => [
                 "Multi-type models" => "tutorials/multi-type.md",
                 "Network models" => "tutorials/networks.md",
@@ -38,6 +40,7 @@ makedocs(;
                 "Chain statistics" => "tutorials/chains.md",
                 "Analytical functions" => "tutorials/analytical.md",
                 "Inference" => "tutorials/inference.md",
+                "Parameter sweeps across processes" => "tutorials/parameter-sweeps.md",
             ],
             "Extending EpiBranch" => [
                 "Extending EpiBranch" => "tutorials/extending.md",

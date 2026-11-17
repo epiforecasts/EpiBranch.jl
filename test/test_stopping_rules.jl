@@ -4,8 +4,8 @@ struct MaxChainLengthRule <: AbstractStoppingRule
     n::Int
 end
 function EpiBranch.should_stop(r::MaxChainLengthRule, state::SimulationState)
-    isempty(state.individuals) && return false
-    return maximum(ind.generation for ind in state.individuals) >= r.n
+    isempty(individuals(state)) && return false
+    return maximum(ind.generation for ind in individuals(state)) >= r.n
 end
 
 # A user-defined time-bounding rule, used below to check that `time_bound`
@@ -65,7 +65,7 @@ EpiBranch.time_bound(r::TimeOrCasesRule) = r.t
             rng = rng
         )
         @test 15.0 < state.max_infection_time <= 20.0
-        @test all(ind -> ind.infection_time <= 20.0, filter(is_infected, state.individuals))
+        @test all(ind -> ind.infection_time <= 20.0, filter(is_infected, individuals(state)))
         @test !state.extinct
     end
 
@@ -85,7 +85,7 @@ EpiBranch.time_bound(r::TimeOrCasesRule) = r.t
             stopping_rules = [Extinction(), MaxChainLengthRule(3)],
             rng = rng
         )
-        @test maximum(ind.generation for ind in state.individuals) <= 3
+        @test maximum(ind.generation for ind in individuals(state)) <= 3
     end
 
     @testset "time_bound lets a custom rule end a Sellke run" begin
@@ -107,7 +107,7 @@ EpiBranch.time_bound(r::TimeOrCasesRule) = r.t
             spec; n_initial = 3,
             stopping_rules = [Extinction(), CustomTimeBoundRule(2.0)], rng = StableRNG(4)
         )
-        @test count(is_infected, cut.individuals) < count(is_infected, full.individuals)
+        @test count(is_infected, individuals(cut)) < count(is_infected, individuals(full))
         @test !is_extinct(cut)
     end
 
@@ -132,7 +132,7 @@ EpiBranch.time_bound(r::TimeOrCasesRule) = r.t
             spec; n_initial = 3,
             stopping_rules = [Extinction(), TimeOrCasesRule(2.0, 5)], rng = StableRNG(4)
         )
-        @test count(is_infected, cut.individuals) < count(is_infected, full.individuals)
+        @test count(is_infected, individuals(cut)) < count(is_infected, individuals(full))
         @test !is_extinct(cut)
         # An explicit `MaxCases`, with no time bound at all, now stops the
         # race exactly at the cap instead of being ignored.
@@ -157,7 +157,7 @@ EpiBranch.time_bound(r::TimeOrCasesRule) = r.t
             spec; n_initial = 3,
             stopping_rules = [Extinction(), MaxGenerations(3)], rng = StableRNG(4)
         )
-        @test maximum(ind.generation for ind in capped.individuals if is_infected(ind)) <= 3
+        @test maximum(ind.generation for ind in individuals(capped) if is_infected(ind)) <= 3
         # Capping depth is not the same as stopping the race the instant that
         # depth is seen: cases below the cap, settling later in time than a
         # capped one, still arise and are counted.
@@ -226,7 +226,7 @@ end
 
 @testset "Positional simulation options" begin
     rules = [MaxCases(10)]
-    opts = SimOpts(1, rules)
+    opts = SimOpts(1, nothing, nothing, rules)
     @test opts.n_initial == 1
     @test opts.initial_cases === nothing
     @test opts.stopping_rules == rules

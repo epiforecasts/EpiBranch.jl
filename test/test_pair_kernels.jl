@@ -149,6 +149,12 @@ end
     )
     @test invlogccdf(loop_risk, -1.0) ≈ (b - o) + (100 - (b - o)) / 0.5
 
+    # The kernel is a continuous univariate distribution, so the generic
+    # distribution methods apply without kernel-specific ones.
+    @test EpiBranch._CalendarScaledKernel <: ContinuousUnivariateDistribution
+    @test EpiBranch._ext_prepare(loop_risk) === loop_risk
+    @test EpiBranch._ext_partype(loop_risk, 3) == Distributions.partype(loop_risk)
+
     # A later segment that starts beyond the support of a bounded profile must
     # not subtract one infinite cumulative hazard from another: the contact is
     # certain by then, whatever the calendar does after.
@@ -197,6 +203,21 @@ end
     @test settle_top(5.0, Steps([7.0], [1.0, 0.0])) == 5.0
 end
 
+# A kernel written outside the package that inverts by itself and answers
+# `Inf` once its total hazard of 1 is spent, while its `logccdf` at infinity
+# reports no survival, declares the answer final through the public trait.
+import Distributions
+struct SpentKernel end
+Distributions.logccdf(::SpentKernel, t::Real) = isfinite(t) ? -min(t, 1.0) : -Inf
+Distributions.invlogccdf(::SpentKernel, lp::Real) = lp > -1.0 ? -lp : Inf
+EpiBranch.infinite_draw_is_final(::SpentKernel) = true
+
+@testset "infinite_draw_is_final is a kernel trait" begin
+    @test !EpiBranch.infinite_draw_is_final(Exponential(1.0))
+    @test EpiBranch._time_at_log_survival(SpentKernel(), -5.0) == Inf
+    @test EpiBranch._time_at_log_survival(SpentKernel(), -0.5) ≈ 0.5
+end
+
 # A smooth seasonal calendar schedule, `rate * (1 + amplitude * sin(2πt / period))`,
 # integrated by quadrature where `Steps` is integrated segment by segment.
 struct SeasonalSchedule{T <: Real}
@@ -217,7 +238,7 @@ end
 struct RecordKernelPolicy <: AbstractIntervention end
 function EpiBranch.resolve_individual!(::RecordKernelPolicy, ind, state)
     ind.id == 2 || return nothing
-    state.individuals[3].state[:policy_time] = ind.infection_time + 0.5
+    individuals(state)[3].state[:policy_time] = ind.infection_time + 0.5
     return nothing
 end
 
@@ -247,7 +268,7 @@ end
 # therefore has to make something move.
 struct TickEveryCase <: AbstractIntervention end
 function EpiBranch.resolve_individual!(::TickEveryCase, ind, state)
-    for person in state.individuals
+    for person in individuals(state)
         person.state[:tick] = state.cumulative_cases
     end
     return nothing
@@ -559,7 +580,7 @@ EpiBranch.contact_structure(::StateKernelInfections) = [[2], [1]]
 
     state = EpiBranch.new_state(BranchingProcess(Poisson(0.0)), [], NoAttributes(), StableRNG(233))
     EpiBranch.add_individuals!(state, 2, [])
-    for (ind, record) in zip(state.individuals, records)
+    for (ind, record) in zip(individuals(state), records)
         ind.state[:log_scale] = record.log_scale
         ind.state[:history] = [1.0]
     end
@@ -568,7 +589,7 @@ EpiBranch.contact_structure(::StateKernelInfections) = [[2], [1]]
     @test pairwise_surv_loglik(saved, data, layout) ≈ reference(x)
     @test record_kernel(Exponential(), state) == Exponential()
     history = record_kernel(PairKernel(callback; state = ind -> ind.state[:history], watches = (:history,)), state)
-    push!(state.individuals[1].state[:history], 2.0)
+    push!(individuals(state)[1].state[:history], 2.0)
     @test history.state[1] == [1.0]
     @test !(saved.state isa Function)
     # Extracted records cannot move, so the recorded kernel watches nothing and
@@ -624,10 +645,10 @@ function stateful_test_race(
             j,
             EpiBranch.pair_kernel(
                 kernel, i, j,
-                st.individuals[i].infection_time, st.individuals[i].infection_time, st
+                individuals(st)[i].infection_time, individuals(st)[i].infection_time, st
             ),
         )
-            for j in 1:n if j != i && !is_infected(st.individuals[j])
+            for j in 1:n if j != i && !is_infected(individuals(st)[j])
     )
     EpiBranch._sellke_race!(
         state, collect(1:n), rng;
@@ -656,14 +677,14 @@ end
         StableRNG(233)
     )
     EpiBranch.add_individuals!(state, 3, [])
-    for ind in state.individuals
+    for ind in individuals(state)
         ind.state[:history] = Float64[]
     end
     members = [1, 2, 3]
     watched_keys = [:history]
     key_routes = [[1]]            # the one route reads `:history`
     snapshot = Any[
-        EpiBranch._remember(EpiBranch._watched_value(state.individuals[i], key))
+        EpiBranch._remember(EpiBranch._watched_value(individuals(state)[i], key))
             for key in watched_keys, i in members
     ]
     # Case 1 has an open opening that reaches member 2; member 3 is out of reach.
@@ -682,14 +703,14 @@ end
     @test !changed!(1)
     # An intervention appending in place must not compare equal to its own
     # remembered record, which is why the race keeps a copy rather than an alias.
-    push!(state.individuals[2].state[:history], 1.0)
+    push!(individuals(state)[2].state[:history], 1.0)
     @test changed!(1)
     @test !changed!(1)
     # No pending or future draw reads a member out of reach, and the settled
     # case's own record is only brought up to date.
-    push!(state.individuals[3].state[:history], 1.0)
+    push!(individuals(state)[3].state[:history], 1.0)
     @test !changed!(1)
-    push!(state.individuals[1].state[:history], 1.0)
+    push!(individuals(state)[1].state[:history], 1.0)
     @test !changed!(1)
     @test snapshot[1, 1] == [1.0]
     # Member 2 is compared once however many open openings reach it, and leaves
@@ -702,7 +723,7 @@ end
     @test watch.open == [3]
     @test !changed!(1, 9.0)
     @test isempty(watch.tracked)
-    push!(state.individuals[2].state[:history], 2.0)
+    push!(individuals(state)[2].state[:history], 2.0)
     @test !changed!(1, 9.0)
 end
 
@@ -785,7 +806,7 @@ end
 @testset "Shared race refreshes live pair kernels" begin
     ties = PairKernel((c, a, b) -> Dirac(1.0); state = tick_state, watches = (:tick,))
     state = stateful_test_race(ties, [0.0, Inf, Inf]; interventions = [TickEveryCase()])
-    @test [i.infection_time for i in state.individuals] == [0.0, 1.0, 1.0]
+    @test [i.infection_time for i in individuals(state)] == [0.0, 1.0, 1.0]
 
     project(ind) = (date = get(ind.state, :policy_time, Inf)::Float64,)
     callback = function (c, a, b)
@@ -799,8 +820,8 @@ end
         kernel, [0.0, Inf, Inf];
         interventions = [RecordKernelPolicy()]
     )
-    @test changed.individuals[2].infection_time == 1.0
-    @test changed.individuals[3].state[:policy_time] == 1.5
+    @test individuals(changed)[2].infection_time == 1.0
+    @test individuals(changed)[3].state[:policy_time] == 1.5
     recorded = record_kernel(kernel, changed)
     @test logccdf(EpiBranch.pair_kernel(kernel, 1, 3, 0.0, 0.0, changed), 2.0) ≈
         logccdf(EpiBranch.pair_kernel(recorded, 1, 3, 0.0), 2.0)
@@ -811,8 +832,8 @@ end
     replay = stateful_test_race(fixed, [0.0, Inf])
     ordinary = stateful_test_race(Exponential(1.0), [0.0, Inf])
     @test isequal(
-        [i.infection_time for i in replay.individuals],
-        [i.infection_time for i in ordinary.individuals]
+        [i.infection_time for i in individuals(replay)],
+        [i.infection_time for i in individuals(ordinary)]
     )
 
     # Retried introductions must remain later than the admission boundary even
@@ -823,7 +844,7 @@ end
         interventions = [WaitForKernelDay(), TickEveryCase()],
         introduction = (Exponential(0.2), 3.0)
     )
-    cases = filter(is_infected, introduced.individuals)
+    cases = filter(is_infected, individuals(introduced))
     @test length(cases) == 3
     @test all(i -> 1.0 <= i.infection_time <= 3.0, cases)
 end
@@ -860,7 +881,7 @@ end
             atoms, [0.0, Inf, Inf];
             interventions = [TickEveryCase()], seed
         )
-        state.individuals[2].infection_time == 1.0
+        individuals(state)[2].infection_time == 1.0
     end / 2000
     @test isapprox(at_one, 0.5; atol = 0.04)
 
@@ -870,7 +891,7 @@ end
     seeds = [0.0; fill(Inf, 29)]
     law = Exponential(4.0)
     live = PairKernel((c, a, b) -> law; state = tick_state, watches = (:tick,))
-    early(state) = count(ind -> ind.infection_time < 1.0, state.individuals)
+    early(state) = count(ind -> ind.infection_time < 1.0, individuals(state))
     redrawn = mean(
         early(
             stateful_test_race(
@@ -904,7 +925,7 @@ function reinfecting_test_race(kernel, initial_times; interventions = (), seed =
             j,
             EpiBranch.pair_kernel(
                 kernel, i, j,
-                st.individuals[i].infection_time, st.individuals[i].infection_time, st
+                individuals(st)[i].infection_time, individuals(st)[i].infection_time, st
             ),
         )
             for j in 1:n if j != i
@@ -925,7 +946,7 @@ end
 # by someone else's settling can exercise a held proposal's redraw.
 struct _MarkSecondOnFourth <: EpiBranch.AbstractIntervention end
 function EpiBranch.resolve_individual!(::_MarkSecondOnFourth, ind, state)
-    ind.id == 4 && (state.individuals[2].state[:tick] = 1)
+    ind.id == 4 && (individuals(state)[2].state[:tick] = 1)
     return nothing
 end
 
@@ -947,8 +968,8 @@ end
     state = reinfecting_test_race(
         kernel, [0.0, Inf, 0.0, Inf]; interventions = [_MarkSecondOnFourth()]
     )
-    @test state.individuals[2].episodes[1].infection_time == 1.0
-    @test state.individuals[2].infection_time == 8.0
+    @test individuals(state)[2].episodes[1].infection_time == 1.0
+    @test individuals(state)[2].infection_time == 8.0
 end
 
 @testset "Live kernels outside a race" begin
@@ -998,8 +1019,8 @@ end
         StableRNG(1)
     )
     EpiBranch.add_individuals!(state, 3, [])
-    state.individuals[1].state[:onset_time] = 2.0
-    state.individuals[2].state[:onset_time] = NaN
+    individuals(state)[1].state[:onset_time] = 2.0
+    individuals(state)[2].state[:onset_time] = NaN
     columns = EpiBranch._host_time_columns(state, (:onset_time, :policy_time))
     @test isequal(columns.onset_time, [2.0, NaN, missing])
     @test all(ismissing, columns.policy_time)

@@ -43,7 +43,7 @@ EpiBranch.route_pair_kernel(r::_EveryoneElse, infector_id, target_id, state) =
 # record redraws its pending contacts at each step.
 struct _TickHosts <: EpiBranch.AbstractIntervention end
 function EpiBranch.resolve_individual!(::_TickHosts, ind, state)
-    for person in state.individuals
+    for person in individuals(state)
         person.state[:tick] = state.cumulative_cases
     end
     return nothing
@@ -54,7 +54,7 @@ end
 struct _FlagHosts <: EpiBranch.AbstractIntervention end
 function EpiBranch.resolve_individual!(::_FlagHosts, ind, state)
     state.cumulative_cases == 2 || return nothing
-    for person in state.individuals
+    for person in individuals(state)
         person.state[:flag] = 1
     end
     return nothing
@@ -71,7 +71,7 @@ function EpiBranch.initialise_individual!(n::_SetMode, individual, state)
 end
 
 # Number of infected nodes in a finished simulation.
-n_infected(state) = count(is_infected, state.individuals)
+n_infected(state) = count(is_infected, individuals(state))
 
 # The within-host natural history, composed onto the process with a ModelSpec:
 # a recovery removal (SIR) unless a latent step is prepended (SEIR).
@@ -325,9 +325,9 @@ end
 
         # A node never reached reads as never infected, untouched by any
         # intervention, at the neutral susceptibility and infectiousness.
-        untouched = findfirst(ind -> !is_infected(ind) && ind.id == 0, lazy.individuals)
+        untouched = findfirst(ind -> !is_infected(ind) && ind.id == 0, individuals(lazy))
         @test untouched !== nothing
-        placeholder = lazy.individuals[untouched]
+        placeholder = individuals(lazy)[untouched]
         @test placeholder.susceptibility == 1 && placeholder.infectiousness == 1
         @test isempty(placeholder.state) || collect(keys(placeholder.state)) == [:infected]
 
@@ -347,15 +347,15 @@ end
         # NaN on both sides, which `==` never counts as a match.
         @test all(
             isequal.(
-                getfield.(lazy_crn.individuals, :infection_time),
-                getfield.(eager_crn.individuals, :infection_time)
+                getfield.(individuals(lazy_crn), :infection_time),
+                getfield.(individuals(eager_crn), :infection_time)
             )
         )
 
         EpiBranch.realise!(lazy_crn)
-        @test getfield.(lazy_crn.individuals, :susceptibility) ==
-            getfield.(eager_crn.individuals, :susceptibility)
-        @test all(i -> lazy_crn.individuals[i].id == i, eachindex(lazy_crn.individuals))
+        @test getfield.(individuals(lazy_crn), :susceptibility) ==
+            getfield.(individuals(eager_crn), :susceptibility)
+        @test all(i -> individuals(lazy_crn)[i].id == i, eachindex(individuals(lazy_crn)))
     end
 
     @testset "a risk reads another case's trace before exposure" begin
@@ -384,8 +384,8 @@ end
         traced_at_infection(ind) = is_traced(ind) && ind.parent_id != 0 &&
             ind.state[:trace_time] <= ind.infection_time
         runs = [simulate(model; rng = StableRNG(s), n_initial = 3) for s in 1:15]
-        @test any(st -> count(is_traced, st.individuals) > 0, runs)
-        @test !any(st -> any(traced_at_infection, st.individuals), runs)
+        @test any(st -> count(is_traced, individuals(st)) > 0, runs)
+        @test !any(st -> any(traced_at_infection, individuals(st)), runs)
     end
 
     @testset "onset is measured from each case's own infection time" begin
@@ -404,7 +404,7 @@ end
         state = simulate(m; n_initial = 1, rng = StableRNG(3))
         secondary = [
             ind
-                for ind in state.individuals
+                for ind in individuals(state)
                 if is_infected(ind) && ind.parent_id != 0
         ]
         @test !isempty(secondary)
@@ -472,7 +472,7 @@ end
         state = simulate(routed; n_initial = 1, rng = StableRNG(3))
         secondary = [
             ind
-                for ind in state.individuals
+                for ind in individuals(state)
                 if is_infected(ind) && ind.parent_id != 0
         ]
         @test !isempty(secondary)
@@ -504,7 +504,7 @@ end
         df = contacts(state)
         @test size(df, 1) == count(!=(0), linelist(state).parent_id)
         @test all(df.infected)
-        expected = Set((ind.parent_id, ind.id) for ind in state.individuals if ind.parent_id != 0)
+        expected = Set((ind.parent_id, ind.id) for ind in individuals(state) if ind.parent_id != 0)
         @test Set(zip(df.from, df.to)) == expected
     end
 
@@ -529,7 +529,7 @@ end
         # scales the community hazard, and an intervention's block stops the
         # introduction it is in force for.
         n = 200
-        infected(state) = count(is_infected, state.individuals)
+        infected(state) = count(is_infected, individuals(state))
         function community(ext, susceptibility, ivs = AbstractIntervention[])
             m = ModelSpec(
                 # a contact interval far beyond the window leaves only
@@ -595,13 +595,13 @@ end
             );
             n_initial = 3, rng = StableRNG(42)
         )
-        @test [ind.infection_time for ind in st.individuals] ≈
+        @test [ind.infection_time for ind in individuals(st)] ≈
             [
             0.9132388449809826, 0.0, 1.4907960097331951, 3.0946387152619605,
             1.5146027102204256, 0.02580085388107159, 0.0, 0.6196859650483677,
             0.7149127125395202, 0.0,
         ]
-        @test [ind.parent_id for ind in st.individuals] == [10, 0, 2, 5, 6, 7, 0, 7, 10, 0]
+        @test [ind.parent_id for ind in individuals(st)] == [10, 0, 2, 5, 6, 7, 0, 7, 10, 0]
 
         st = simulate(
             ModelSpec(
@@ -610,9 +610,9 @@ end
             );
             n_initial = 3, rng = StableRNG(42)
         )
-        @test [ind.infection_time for ind in st.individuals] ≈
+        @test [ind.infection_time for ind in individuals(st)] ≈
             [1.0, 0.0, 1.0, 2.0, 2.0, 1.0, 0.0, 1.0, 1.0, 0.0]
-        @test [ind.parent_id for ind in st.individuals] == [2, 0, 2, 3, 6, 7, 0, 7, 10, 0]
+        @test [ind.parent_id for ind in individuals(st)] == [2, 0, 2, 3, 6, 7, 0, 7, 10, 0]
     end
 
     @testset "seeding multiple index nodes" begin
@@ -767,7 +767,7 @@ end
         hh_of(i) = (i - 1) ÷ hs
         pairs = [
             (ind.id, ind.parent_id)
-                for ind in st.individuals
+                for ind in individuals(st)
                 if is_infected(ind) && ind.parent_id != 0
         ]
         @test !isempty(pairs)
@@ -816,8 +816,8 @@ end
         # A case's recorded route matches the route its infector actually
         # reached it on: a household neighbour's route is :household, and vice
         # versa.
-        by_id = Dict(ind.id => ind for ind in state.individuals)
-        for ind in state.individuals
+        by_id = Dict(ind.id => ind for ind in individuals(state))
+        for ind in individuals(state)
             is_infected(ind) && ind.parent_id != 0 || continue
             infector = by_id[ind.parent_id]
             route = ind.state[:infection_route]
@@ -854,7 +854,7 @@ end
         @test all(==("external"), df.infection_route[df.index])
         @test all(
             !haskey(ind.state, :infection_route)
-                for ind in state.individuals if is_infected(ind) && !ind.state[:index]
+                for ind in individuals(state) if is_infected(ind) && !ind.state[:index]
         )
     end
 
@@ -875,7 +875,7 @@ end
                 ModelSpec(RoutedNetwork([w]); progression = seir);
                 n_initial = 1, rng = StableRNG(1)
             )
-            maximum(ind.infection_time for ind in st.individuals)
+            maximum(ind.infection_time for ind in individuals(st))
         end
         @test contact_time(nothing) >= 5.0
         @test contact_time(:infection) < 5.0
@@ -949,7 +949,7 @@ end
         simulate(build(; eager = true); rng = StableRNG(1), n_initial = 1)
         @test calls[] == n
 
-        untouched = findfirst(ind -> !is_infected(ind) && ind.id == 0, lazy.individuals)
+        untouched = findfirst(ind -> !is_infected(ind) && ind.id == 0, individuals(lazy))
         @test untouched !== nothing
     end
 
@@ -989,7 +989,7 @@ end
         @test 1 < state.cumulative_cases <= 10
         @test all(
             ind.state[:infection_route] == :community
-                for ind in state.individuals if !get(ind.state, :index, false) && is_infected(ind)
+                for ind in individuals(state) if !get(ind.state, :index, false) && is_infected(ind)
         )
     end
 
@@ -1006,7 +1006,7 @@ end
         @test sort(first.(contacts)) == [2, 3, 4, 5]
         @test sort(wrapped.proposed[1]) == [2, 3, 4, 5]
         # a second call for the same infector, as a resumed redraw makes
-        # (`EpiBranch._resume_route!`), adds to what is recorded rather than
+        # (`EpiBranch.resume_route!`), adds to what is recorded rather than
         # replacing it
         EpiBranch.propose_along(wrapped, 1, state, 10.0, 20.0, false, false)
         @test sort(wrapped.proposed[1]) == [2, 2, 3, 3, 4, 4, 5, 5]
@@ -1042,11 +1042,11 @@ end
         )
         state = simulate(model; n_initial = 1, rng = StableRNG(1))
         @test state.cumulative_cases == 20
-        @test count(is_traced, state.individuals) == 20
+        @test count(is_traced, individuals(state)) == 20
     end
 
     @testset "RoutedNetwork: a self-proposing route with a never-closing window continues" begin
-        # Mass action (`EpiBranch._MassAction`) only samples a window with no
+        # Mass action (`EpiBranch.MassAction`) only samples a window with no
         # natural close up to the race's time limit, and must redraw what it
         # left past that on `simulate(model, state; max_time)` (`EpiBranch`'s
         # own continuation tests). Wrapped in a route's `_TracedProposals` for
@@ -1059,7 +1059,7 @@ end
                 Transition[], NoAttributes(), StableRNG(0)
             )
             EpiBranch.add_individuals!(state, n, AbstractIntervention[])
-            route = EpiBranch._MassAction(state, collect(1:n); rate = (_, _) -> β / n)
+            route = EpiBranch.MassAction(state, collect(1:n); rate = (_, _) -> β / n)
             w = RouteWindow(:community; kernel = nothing, reach = route)
             ModelSpec(RoutedNetwork([w]; n = n))
         end
@@ -1125,7 +1125,7 @@ end
         for s in 1:10
             a, b = run(routed, s), run(plain, s)
             @test a.cumulative_cases == b.cumulative_cases
-            @test count(is_traced, a.individuals) == count(is_traced, b.individuals)
+            @test count(is_traced, individuals(a)) == count(is_traced, individuals(b))
         end
         @test sum(count(is_traced, run(routed, s).individuals) for s in 1:10) > 0
     end
@@ -1160,8 +1160,8 @@ end
             for s in 1:5
                 a, b = run(routed, s), run(plain, s)
                 @test a.cumulative_cases == b.cumulative_cases
-                @test [i.infection_time for i in a.individuals] ==
-                    [i.infection_time for i in b.individuals]
+                @test [i.infection_time for i in individuals(a)] ==
+                    [i.infection_time for i in individuals(b)]
             end
         end
 
@@ -1188,8 +1188,8 @@ end
             b = live_run(NetworkProcess(adj, live; until = (:recovered,)), s)
             @test a.cumulative_cases == b.cumulative_cases
             @test isequal(
-                [i.infection_time for i in a.individuals],
-                [i.infection_time for i in b.individuals]
+                [i.infection_time for i in individuals(a)],
+                [i.infection_time for i in individuals(b)]
             )
         end
 
@@ -1248,8 +1248,8 @@ end
             declared = simulate(two_routes((:quiet,)); n_initial = 2, rng = StableRNG(s))
             silent = simulate(two_routes(()); n_initial = 2, rng = StableRNG(s))
             @test isequal(
-                [i.infection_time for i in declared.individuals],
-                [i.infection_time for i in silent.individuals]
+                [i.infection_time for i in individuals(declared)],
+                [i.infection_time for i in individuals(silent)]
             )
         end
         # The other direction: a record only the second route reads redraws
@@ -1306,7 +1306,7 @@ end
 
         # Both routes reach cases, so the first comparison has something in it.
         reached = simulate(two_routes((:quiet,)); n_initial = 2, rng = StableRNG(1))
-        routes = [get(i.state, :infection_route, nothing) for i in reached.individuals]
+        routes = [get(i.state, :infection_route, nothing) for i in individuals(reached)]
         @test :moving in routes
         @test :quiet in routes
     end
@@ -1380,7 +1380,7 @@ end
         for s in 1:10
             a, b = run(on_route, s), run(on_model, s)
             @test a.cumulative_cases == b.cumulative_cases
-            @test count(is_traced, a.individuals) == count(is_traced, b.individuals)
+            @test count(is_traced, individuals(a)) == count(is_traced, individuals(b))
         end
     end
 
@@ -1415,9 +1415,9 @@ end
         )
         for s in 1:20
             st = simulate(m; n_initial = 1, rng = StableRNG(s))
-            @test !is_traced(st.individuals[3])
+            @test !is_traced(individuals(st)[3])
             # node 3's own funeral route never opens either
-            is_infected(st.individuals[3]) && @test !is_traced(st.individuals[1])
+            is_infected(individuals(st)[3]) && @test !is_traced(individuals(st)[1])
         end
     end
 
@@ -1451,15 +1451,15 @@ end
         checked = 0
         for s in 1:60
             st = simulate(m; n_initial = 1, rng = StableRNG(s))
-            case = st.individuals[1]
-            (get(case.state, :index, false) && is_traced(st.individuals[3])) || continue
+            case = individuals(st)[1]
+            (get(case.state, :index, false) && is_traced(individuals(st)[3])) || continue
             checked += 1
             died = case.state[:died_time]
             # a quarantined contact's isolation time is its trace time, and the
             # trace delay runs from the funeral rather than being absorbed by
             # the case's much earlier isolation
-            @test isolation_time(st.individuals[3]) > died
-            @test isolation_time(st.individuals[2]) < died
+            @test isolation_time(individuals(st)[3]) > died
+            @test isolation_time(individuals(st)[2]) < died
         end
         @test checked > 0
 
@@ -1477,11 +1477,11 @@ end
         isolated_first = 0
         for s in 1:60
             st = simulate(m_safe; n_initial = 1, rng = StableRNG(s))
-            case = st.individuals[1]
+            case = individuals(st)[1]
             get(case.state, :index, false) || continue
             isolation_time(case) < case.state[:died_time] || continue
             isolated_first += 1
-            @test !is_traced(st.individuals[3])
+            @test !is_traced(individuals(st)[3])
         end
         @test isolated_first > 0
     end
@@ -1686,7 +1686,7 @@ end
         # Contacts are actually marked, and a quarantined contact carries a
         # finite isolation time for the window to close on.
         st = simulate(build([iso, ct]); n_initial = 1, rng = StableRNG(3))
-        traced = filter(is_traced, st.individuals)
+        traced = filter(is_traced, individuals(st))
         @test !isempty(traced)
         @test all(is_quarantined, traced)
         @test all(t -> isfinite(isolation_time(t)), traced)
@@ -1711,7 +1711,7 @@ end
         dosed_within_window = @test_logs min_level = Base.CoreLogging.Warn simulate(
             build([iso, ct, windowed]); n_initial = 1, rng = StableRNG(4)
         )
-        vaccinated = filter(is_vaccinated, dosed_within_window.individuals)
+        vaccinated = filter(is_vaccinated, individuals(dosed_within_window))
         @test !isempty(vaccinated)
         # A vaccinated contact never itself infected (`infection_time` is
         # `NaN`) satisfies any window vacuously, as `_within_window` says.
@@ -1728,7 +1728,7 @@ end
         dosed = @test_logs min_level = Base.CoreLogging.Warn simulate(
             build([iso, ct, mv]); n_initial = 1, rng = StableRNG(4)
         )
-        @test all(is_vaccinated, dosed.individuals)
+        @test all(is_vaccinated, individuals(dosed))
 
         # Tracing and actions share the continuous-time candidate state. A
         # post-exposure dose applies too: a contact traced while still
@@ -1738,7 +1738,7 @@ end
         dosed = @test_logs min_level = Base.CoreLogging.Warn simulate(
             build([iso, ct, pep]); n_initial = 1, rng = StableRNG(4)
         )
-        @test any(is_vaccinated, dosed.individuals)
+        @test any(is_vaccinated, individuals(dosed))
 
         @test_logs min_level = Base.CoreLogging.Warn simulate(
             build([iso, ct, RingVaccination(efficacy = 0.8)]);
@@ -1768,11 +1768,11 @@ end
             ]
         )
         st = simulate(model; initial_cases = [1], rng = StableRNG(1))
-        @test !is_infected(st.individuals[2])
-        @test !is_infected(st.individuals[3])
-        @test is_traced(st.individuals[2])
-        @test is_traced(st.individuals[3])
-        @test is_vaccinated(st.individuals[3])
+        @test !is_infected(individuals(st)[2])
+        @test !is_infected(individuals(st)[3])
+        @test is_traced(individuals(st)[2])
+        @test is_traced(individuals(st)[3])
+        @test is_vaccinated(individuals(st)[3])
 
         # depth 1 stops at the direct contact: node 3 is never reached.
         depth1 = ModelSpec(
@@ -1785,8 +1785,8 @@ end
             ]
         )
         st1 = simulate(depth1; initial_cases = [1], rng = StableRNG(1))
-        @test is_traced(st1.individuals[2])
-        @test !is_traced(st1.individuals[3])
+        @test is_traced(individuals(st1)[2])
+        @test !is_traced(individuals(st1)[3])
     end
 
     @testset "ContactTracing reaches a neighbour infected before the traced case" begin
@@ -1817,11 +1817,11 @@ end
             ]
         )
         st = simulate(model; initial_cases = [1], rng = StableRNG(1))
-        @test is_infected(st.individuals[1])
-        @test is_infected(st.individuals[2])
-        @test !is_infected(st.individuals[4])
-        @test is_traced(st.individuals[1])
-        @test is_traced(st.individuals[4])
+        @test is_infected(individuals(st)[1])
+        @test is_infected(individuals(st)[2])
+        @test !is_infected(individuals(st)[4])
+        @test is_traced(individuals(st)[1])
+        @test is_traced(individuals(st)[4])
     end
 
     @testset "Whether a ring member is interviewed again is the policy's call" begin
@@ -1949,7 +1949,7 @@ end
             ),
         ]
     )
-    infected_ids(state) = [i.id for i in state.individuals if is_infected(i)]
+    infected_ids(state) = [i.id for i in individuals(state) if is_infected(i)]
     for model in (process, ModelSpec(process), routed, ModelSpec(routed))
         ids = [4, 2]
         state = simulate(model; initial_cases = ids, rng = StableRNG(7))
@@ -1957,7 +1957,7 @@ end
         @test ids == [4, 2]
         @test all(
             i -> i.infection_time == 0 && i.parent_id == 0,
-            filter(is_infected, state.individuals)
+            filter(is_infected, individuals(state))
         )
         @test isempty(infected_ids(simulate(model; initial_cases = Int[], rng = StableRNG(7))))
         for parallel in (false, true)
@@ -1982,10 +1982,10 @@ end
     adjacency = [Int[] for _ in 1:5]
     external = NetworkProcess(adjacency, Exponential(1.0); external_hazard = 0.5, obs_end = 5.0)
     state = simulate(external; initial_cases = [2], rng = StableRNG(7))
-    @test is_infected(state.individuals[2]) && state.individuals[2].infection_time == 0
+    @test is_infected(individuals(state)[2]) && individuals(state)[2].infection_time == 0
     # With the external hazard active on the rest of the network, some other
     # node is seeded too, which the disallowed combination could never produce.
-    @test any(i -> is_infected(i) && i.id != 2, state.individuals)
+    @test any(i -> is_infected(i) && i.id != 2, individuals(state))
 end
 
 @testset "max_time ends the network race at that time" begin
@@ -2003,9 +2003,9 @@ end
     )
     full = simulate(spec; n_initial = 3, rng = StableRNG(8))
     cut = @test_logs simulate(spec; n_initial = 3, max_time = 5.0, rng = StableRNG(8))
-    by(state, t) = [is_infected(i) && i.infection_time <= t for i in state.individuals]
-    @test is_infected.(cut.individuals) == by(full, 5.0)
-    @test count(is_infected, cut.individuals) < count(is_infected, full.individuals)
+    by(state, t) = [is_infected(i) && i.infection_time <= t for i in individuals(state)]
+    @test is_infected.(individuals(cut)) == by(full, 5.0)
+    @test count(is_infected, individuals(cut)) < count(is_infected, individuals(full))
     # The race ran to extinction on its own, but the cut run was stopped with
     # candidates still pending, so only the full run is extinct.
     @test is_extinct(full)
@@ -2027,10 +2027,10 @@ end
     @test shallow.cumulative_cases > state.cumulative_cases
     @test shallow.cumulative_cases == deep.cumulative_cases
     @test isequal(
-        [i.infection_time for i in shallow.individuals],
-        [i.infection_time for i in deep.individuals]
+        [i.infection_time for i in individuals(shallow)],
+        [i.infection_time for i in individuals(deep)]
     )
-    @test count(is_infected, state.individuals) < shallow.cumulative_cases
+    @test count(is_infected, individuals(state)) < shallow.cumulative_cases
 end
 
 @testset "max_time ends the routed race at that time" begin
@@ -2051,7 +2051,94 @@ end
     )
     full = simulate(spec; n_initial = 3, rng = StableRNG(8))
     cut = @test_logs simulate(spec; n_initial = 3, max_time = 5.0, rng = StableRNG(8))
-    @test count(is_infected, cut.individuals) < count(is_infected, full.individuals)
+    @test count(is_infected, individuals(cut)) < count(is_infected, individuals(full))
     @test is_extinct(full)
     @test !is_extinct(cut)
+end
+
+@testset "Chosen initial cases are infected whatever the risks" begin
+    adjacency = [Int[] for _ in 1:6]
+    process = NetworkProcess(
+        adjacency, Exponential(1.0); external_hazard = 0.001, obs_end = 50.0
+    )
+    vaccine = MassVaccination(eligibility_time = -30.0, efficacy = 1.0)
+    state = simulate(
+        ModelSpec(
+            process;
+            progression = [Transition(:recovered; delay = 5.0, terminal = true)],
+            interventions = [vaccine]
+        );
+        initial_cases = [1, 4], rng = StableRNG(1)
+    )
+    for id in (1, 4)
+        ind = individuals(state)[id]
+        @test is_infected(ind) && ind.infection_time == 0
+        @test ind.state[:seeded]
+    end
+end
+
+@testset "Chosen initial cases on a routed network and in the layers" begin
+    n = 6
+    reach = [Int[] for _ in 1:n]
+    process = RoutedNetwork(
+        [RouteWindow(:a; until = (:recovered,), kernel = Exponential(1.0), reach = reach)];
+        external_hazard = 0.001, obs_end = 50.0
+    )
+    m = ModelSpec(
+        process;
+        progression = [Transition(:recovered; delay = 5.0, terminal = true)],
+        interventions = [MassVaccination(eligibility_time = -30.0, efficacy = 1.0)]
+    )
+    state = simulate(m; initial_cases = [1, 4], rng = StableRNG(1))
+    for id in (1, 4)
+        ind = individuals(state)[id]
+        @test is_infected(ind) && ind.infection_time == 0
+        @test ind.state[:seeded]
+    end
+    @test findall(routed_network_infections(state, m).seeded) == [1, 4]
+
+    nm = ModelSpec(
+        NetworkProcess(reach, Exponential(1.0); external_hazard = 0.001, obs_end = 50.0);
+        progression = [Transition(:recovered; delay = 5.0, terminal = true)]
+    )
+    ndata = network_infections(simulate(nm; initial_cases = [2], rng = StableRNG(2)), nm)
+    @test findall(ndata.seeded) == [2]
+    @test_throws ArgumentError NetworkInfections(
+        reach, fill(0.0, n), fill(0.0, n), fill(1.0, n), fill(true, n); seeded = [true]
+    )
+end
+
+@testset "Network reinfection once susceptible again" begin
+    prog = [
+        Transition(:recovered; delay = 3.0, terminal = true),
+        Transition(:susceptible_again; from = :recovered, delay = 0.1),
+    ]
+    adjacency = [[2, 3, 4, 5], [1], [1], [1], [1]]
+    routed = RoutedNetwork(
+        [
+            RouteWindow(
+                :only; until = (:recovered,), kernel = Exponential(1.0),
+                reach = adjacency
+            ),
+        ]
+    )
+    for process in (NetworkProcess(adjacency, Exponential(1.0)), routed)
+        n = sum(
+            length(
+                simulate(
+                    ModelSpec(process; progression = prog);
+                    initial_cases = [1], max_time = 100.0, rng = StableRNG(s)
+                ).individuals[1].episodes
+            ) for s in 1:20
+        )
+        @test n > 0
+    end
+
+    # Without a route back to susceptibility nobody is reinfected.
+    sir = [Transition(:recovered; delay = 3.0, terminal = true)]
+    state = simulate(
+        ModelSpec(NetworkProcess(adjacency, Exponential(1.0)); progression = sir);
+        initial_cases = [1], max_time = 100.0, rng = StableRNG(1)
+    )
+    @test all(isempty(ind.episodes) for ind in individuals(state))
 end

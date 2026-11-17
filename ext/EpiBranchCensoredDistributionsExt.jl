@@ -23,11 +23,18 @@ function EpiBranch.serial_interval(model, infector::Individual, infectee::Indivi
                 "BranchingProcess(offspring, LogNormal(1.6, 0.5))."
         )
     )
-    cp = EpiBranch._clinical_presentation(EpiBranch.attributes(model))
+    cp = EpiBranch._onset_law(EpiBranch.attributes(model))
     cp === nothing && throw(
         ArgumentError(
             "serial_interval needs the incubation period, from " *
                 "attributes = clinical_presentation(...)"
+        )
+    )
+    cp.incubation_period isa Union{Real, Distribution} || throw(
+        ArgumentError(
+            "serial_interval reads the incubation period directly and needs a " *
+                "number or a distribution, not a function of the individual " *
+                "(got $(typeof(cp.incubation_period)))."
         )
     )
     inc_infector = EpiBranch.resolve(cp.incubation_period, infector)

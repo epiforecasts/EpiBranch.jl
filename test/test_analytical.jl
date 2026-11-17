@@ -1,5 +1,9 @@
 using ForwardDiff
 
+# A `Reporting` progression step that reports each case with probability `p`,
+# `delay` days after infection.
+_rep(p, delay = Dirac(0.0)) = [Reporting(; delay, probability = p, from = :infection)]
+
 @testset "Analytical" begin
     @testset "Extinction probability" begin
         @testset "Subcritical always extinct" begin
@@ -68,14 +72,13 @@ using ForwardDiff
         end
 
         @testset "Delegates through Observed" begin
-            # Regression: extinction_probability goes via
-            # single_type_offspring, which must delegate through
-            # observation wrappers. Before the fix it threw FieldError
-            # because the wrapper has no `offspring` field.
+            # `extinction_probability` goes via `single_type_offspring`, which
+            # must delegate through observation wrappers because the wrapper
+            # has no `offspring` field.
             bp = BranchingProcess(NegBin(0.5, 0.5))
             obs_model = ModelSpec(
                 BranchingProcess(NegBin(0.5, 0.5));
-                observation = PerCaseObservation(0.7, Dirac(0.0))
+                progression = _rep(0.7)
             )
             @test extinction_probability(obs_model) ==
                 extinction_probability(bp)
@@ -92,6 +95,7 @@ using ForwardDiff
             d = Borel(0.5)
             @test d.μ == 0.5
             @test_throws ArgumentError Borel(-0.1)
+            @test Borel(0.0).μ == 0.0
             # Supercritical allowed: PMF valid pointwise, used inside quadrature
             d_super = Borel(1.5)
             @test d_super.μ == 1.5
@@ -115,11 +119,17 @@ using ForwardDiff
         end
 
         @testset "rand throws on supercritical" begin
-            # Regression: previously silently returned 10_000 with a
-            # warning, giving a nominally valid sample for a distribution
-            # whose total mass is < 1.
+            # Sampling must throw rather than return a truncated sample for a
+            # distribution whose total mass is < 1.
             @test_throws ArgumentError rand(Borel(1.5))
             @test_throws ArgumentError rand(Borel(1.0))
+        end
+
+        @testset "Poisson with mean 0" begin
+            @test loglikelihood(ChainSizes([1, 1, 1]), Poisson(0.0)) == 0.0
+            @test loglikelihood(ChainSizes([1, 1, 1]), NegativeBinomial(0.5, 1.0)) == 0.0
+            @test loglikelihood(ChainSizes([1, 2]), Poisson(0.0)) == -Inf
+            @test loglikelihood(ChainSizes([2, 2]; seeds = [2, 2]), Poisson(0.0)) == 0.0
         end
     end
 
@@ -147,10 +157,9 @@ using ForwardDiff
         end
 
         @testset "Supercritical allowed in logpdf, rejected in rand" begin
-            # Regression: supercritical GammaBorel is needed for
-            # quadrature integrands that cross R=1, so logpdf stays
-            # defined, but rand would silently truncate at chain size
-            # 10_000.
+            # A supercritical GammaBorel is needed for quadrature integrands
+            # that cross R=1, so logpdf stays defined, but rand would
+            # truncate at chain size 10_000 and must throw.
             d_super = GammaBorel(0.5, 1.5)
             @test isfinite(logpdf(d_super, 3))
             @test_throws ArgumentError rand(d_super)
@@ -225,9 +234,9 @@ using ForwardDiff
     end
 
     @testset "cdf of chain-size distributions" begin
-        # Regression: none of these defined a `cdf`/`cdf(d, ::Integer)`
-        # method, so Distributions.jl's discrete fallback called itself
-        # until the stack overflowed.
+        # Each needs its own `cdf`/`cdf(d, ::Integer)` method:
+        # Distributions.jl's discrete fallback calls itself until the stack
+        # overflows.
         @testset "Borel" begin
             d = Borel(0.5)
             @test cdf(d, 3) ≈ sum(pdf(d, n) for n in 1:3)
@@ -256,10 +265,9 @@ using ForwardDiff
             @test cdf(d, 5) + ccdf(d, 5) ≈ 1.0
             @test logccdf(d, 5) ≈ log(ccdf(d, 5))
 
-            # Regression: cdf/logccdf/rand summed pdf(d, n) one n at a time,
-            # each restarting the hitting-time coefficient build-up from
-            # scratch, so a walk of a few hundred terms used to be
-            # impractically slow.
+            # cdf/logccdf/rand must share one hitting-time coefficient
+            # build-up across terms, not restart it for each pdf(d, n), so a
+            # walk of a few hundred terms stays practical.
             @test cdf(d, 150) ≈ sum(pdf(d, n) for n in 1:150)
             rng = StableRNG(1)
             @test rand(rng, d) isa Integer
@@ -292,16 +300,15 @@ using ForwardDiff
 
         @testset "ThinnedChainSize" begin
             base = chain_size_distribution(NegBin(0.8, 0.5))
-            d = observe(base, PerCaseObservation(0.7, Dirac(0.0)))
-            @test d isa ThinnedChainSize
+            d = ThinnedChainSize(base, 0.7)
             @test cdf(d, 5) ≈ sum(pdf(d, n) for n in 1:5)
             @test cdf(d, 5) + ccdf(d, 5) ≈ 1.0
             @test logccdf(d, 5) ≈ log(ccdf(d, 5))
 
-            # Regression: loglikelihood(::ChainSizes, ::ThinnedChainSize) used
-            # to fall through to the generic offspring-distribution method and
-            # throw a MethodError, since a ThinnedChainSize is itself a
-            # chain-size law rather than an offspring distribution.
+            # A ThinnedChainSize is itself a chain-size law rather than an
+            # offspring distribution, so loglikelihood(::ChainSizes,
+            # ::ThinnedChainSize) must not fall through to the generic
+            # offspring-distribution method.
             data = ChainSizes([1, 1, 2, 5])
             ll = loglikelihood(data, d)
             @test ll ≈ sum(logpdf(d, n) for n in data.data)
@@ -337,9 +344,9 @@ using ForwardDiff
             @test_throws ArgumentError ChainDetection(0.0)
             @test_throws ArgumentError ChainDetection(1.5)
 
-            # Regression: two or more consecutive zeros at the start of
-            # `base`'s support fed the streaming log-sum-exp a
-            # -Inf − -Inf term, giving a NaN normalising constant.
+            # Two or more consecutive zeros at the start of `base`'s support
+            # must not feed the streaming log-sum-exp a -Inf − -Inf term,
+            # which gives a NaN normalising constant.
             d_threshold = observe(base, ChainDetection(n -> n < 3 ? 0.0 : 1.0))
             @test isfinite(d_threshold.log_prob_recorded)
             @test pdf(d_threshold, 1) == 0.0
@@ -372,11 +379,9 @@ using ForwardDiff
         end
 
         @testset "PMF matches the manual formula for a generic offspring" begin
-            # Regression: for a HittingTimeChainSize dist, the mixture sum
-            # used to rebuild the hitting-time coefficient table from
-            # scratch for every secondary-case count, instead of sharing one
-            # table across them, so a chain size of a few hundred was
-            # impractically slow.
+            # For a HittingTimeChainSize dist, the mixture sum must share one
+            # hitting-time coefficient table across secondary-case counts, so
+            # a chain size of a few hundred stays practical.
             index = Poisson(0.4)
             off = DiscreteNonParametric([0, 1, 2], [0.5, 0.3, 0.2])
             d = IndexChainSize(index, off)
@@ -509,12 +514,31 @@ using ForwardDiff
                 sum(n -> logpdf(GammaBorel(0.5, 0.6), n), data.data)
         end
 
-        @testset "Zero-mean Poisson is rejected, not NaN" begin
-            @test_throws ArgumentError loglikelihood(ChainSizes([1, 2]), Poisson(0.0))
+        @testset "Zero-mean Poisson gives 0 or -Inf, not NaN" begin
+            @test loglikelihood(ChainSizes([1, 2]), Poisson(0.0)) == -Inf
+        end
+
+        @testset "Large dispersion tracks the Poisson limit" begin
+            # With `k` far above `R`, the log-likelihood must survive the
+            # cancellation between the gamma ratio and the power terms.
+            for k in (1.0e10, 1.0e12, 1.0e14, 1.0e16, 1.0e20)
+                for x in (1, 2, 3, 7)
+                    @test EpiBranch._gammaborel_logpdf(k, 0.5, x) ≈
+                        logpdf(EpiBranch.Borel(0.5), x) rtol = 1.0e-6
+                    @test EpiBranch._gammaborel_logpdf(k, 0.5, x, 1) <= 0
+                end
+                # Two seeds: s / x * exp(-R x) (R x)^(x - s) / (x - s)!
+                @test EpiBranch._gammaborel_logpdf(k, 0.5, 4, 2) ≈
+                    log(2 / 4) - 0.5 * 4 + 2 * log(0.5 * 4) - log(2) rtol = 1.0e-6
+                @test EpiBranch._poisson_gamma_logpdf(k, 0.5, 3) ≈
+                    logpdf(EpiBranch.Borel(0.5), 3) rtol = 1.0e-6
+            end
+            @test extinction_probability(2.0, 1.0e16) ≈ extinction_probability(Poisson(2.0)) rtol = 1.0e-6
+            @test extinction_probability(2.0, 1.0e14) ≈ extinction_probability(Poisson(2.0)) rtol = 1.0e-6
         end
 
         @testset "Extreme dispersion stays finite" begin
-            # Regression: k ≳ 1e16·R swamps R in the floating-point sum
+            # k ≳ 1e16·R swamps R in the floating-point sum
             # k + R inside NegBin's p = k / (k + R), so R rounds to exactly 0
             # and GammaBorel(k, 0) — the degenerate "no onward transmission"
             # law — is the best the stored NegativeBinomial can give. The
@@ -528,9 +552,9 @@ using ForwardDiff
             @test d_huge isa GammaBorel && d_huge.k == 1.0e16 && d_huge.R == 0.0
             @test loglikelihood(data, BranchingProcess(huge_k)) == -Inf
 
-            # Regression: k ≲ 1e-16·R previously hit a spurious Gamma-function
-            # pole from catastrophic cancellation in k * x + x - s at x == s,
-            # giving +Inf instead of a finite log-likelihood.
+            # k ≲ 1e-16·R must not hit a spurious Gamma-function pole from
+            # catastrophic cancellation in k * x + x - s at x == s, which
+            # would give +Inf instead of a finite log-likelihood.
             tiny_k = NegBin(0.5, 1.0e-17)
             @test isfinite(loglikelihood(data, tiny_k))
 
@@ -557,7 +581,7 @@ using ForwardDiff
         @testset "With partial observation" begin
             mk(p) = ModelSpec(
                 BranchingProcess(Poisson(0.5));
-                observation = PerCaseObservation(p, Dirac(0.0))
+                progression = _rep(p)
             )
 
             ll = loglikelihood(ChainSizes([1, 1, 2]), mk(0.8))
@@ -578,43 +602,17 @@ using ForwardDiff
                 ChainSizes([1, 1, 2]),
                 ModelSpec(
                     BranchingProcess(Poisson(0.5));
-                    observation = PerCaseObservation(0.7, LogNormal(1.0, 0.5))
+                    progression = _rep(0.7, LogNormal(1.0, 0.5))
                 )
             )
             ll_no_delay = loglikelihood(
                 ChainSizes([1, 1, 2]),
                 ModelSpec(
                     BranchingProcess(Poisson(0.5));
-                    observation = PerCaseObservation(0.7, Dirac(0.0))
+                    progression = _rep(0.7)
                 )
             )
             @test ll_with_delay ≈ ll_no_delay atol = 1.0e-12
-        end
-
-        @testset "Reporting step gives the same likelihood as PerCaseObservation" begin
-            # A `Reporting` step in `progression` and a `PerCaseObservation`
-            # describe the same reporting process, so a model built either
-            # way must score identically.
-            proc = BranchingProcess(NegBin(0.8, 0.5))
-            data = ChainSizes([1, 1, 1, 2, 1, 3, 1, 1, 5, 1])
-            by_transition = ModelSpec(
-                proc;
-                progression = [
-                    Reporting(
-                        delay = Dirac(0.0), probability = 0.5, from = :infection
-                    ),
-                ]
-            )
-            by_observation = ModelSpec(
-                proc; observation = PerCaseObservation(detection_prob = 0.5)
-            )
-            ll_transition = loglikelihood(data, by_transition)
-            ll_observation = loglikelihood(data, by_observation)
-            @test ll_transition ≈ ll_observation
-            # Thinning at 0.5 must differ from the unthinned, full-reporting
-            # likelihood: both routes have to apply the probability instead
-            # of silently skipping it.
-            @test ll_transition != loglikelihood(data, ModelSpec(proc))
         end
 
         @testset "ThinnedChainSize conditions on at least one detection" begin
@@ -628,7 +626,7 @@ using ForwardDiff
             # chains with at least one reported case.
             model = ModelSpec(
                 BranchingProcess(Poisson(0.5));
-                observation = PerCaseObservation(detection_prob = 0.5)
+                progression = _rep(0.5)
             )
             rng = StableRNG(1)
             sizes = Int[]
@@ -637,7 +635,7 @@ using ForwardDiff
                 n = count(
                     ind -> EpiBranch.is_infected(ind) &&
                         ind.state[:reported],
-                    state.individuals
+                    individuals(state)
                 )
                 n > 0 && push!(sizes, n)
             end
@@ -648,7 +646,7 @@ using ForwardDiff
             data = ChainSizes([1, 1, 2, 1, 3, 1, 1, 5, 1, 2])
             mk09(p) = ModelSpec(
                 BranchingProcess(Poisson(0.9));
-                observation = PerCaseObservation(detection_prob = p)
+                progression = _rep(p)
             )
             ll_full = loglikelihood(data, mk09(1.0))
             ll_07 = loglikelihood(data, mk09(0.7))
@@ -690,6 +688,22 @@ using ForwardDiff
             cm_quad = ClusterMixed(λ -> Poisson(λ), Gamma(k, R / k))
             ll_quad = loglikelihood(data_pg, cm_quad)
             @test ll_quad ≈ ll_closed atol = 0.05
+        end
+
+        @testset "Cluster-mixed chain size averages over the whole mixing law" begin
+            # Discrete mixing: exact weighted sum of Borel-type probabilities.
+            o = ClusterMixed(Poisson, DiscreteNonParametric([0.3, 0.6], [0.5, 0.5]))
+            @test pdf(chain_size_distribution(o), 1) ≈
+                0.5 * exp(-0.3) + 0.5 * exp(-0.6)
+            @test isfinite(loglikelihood(ChainSizes([1, 2, 1]), o))
+
+            # Continuous mixing: no mass dropped from the tails.
+            build = R -> NegBin(R, 0.5)
+            g = ClusterMixed(build, Gamma(2.0, 0.3))
+            expected = EpiBranch._mixture_expectation(
+                θ -> pdf(chain_size_distribution(build(θ)), 1), Gamma(2.0, 0.3)
+            )
+            @test pdf(chain_size_distribution(g), 1) ≈ expected rtol = 1.0e-8
         end
 
         @testset "Cluster-mixed reproduction number and extinction probability" begin
@@ -870,6 +884,45 @@ using ForwardDiff
             @test_throws ArgumentError ChainSizes([3]; seeds = [1, 1])
         end
 
+        @testset "Right tail does not underflow" begin
+            logsumexp_tail(d, x, s) =
+                log(sum(exp(EpiBranch._chain_size_logpdf(d, n, s)) for n in x:5000))
+            d = chain_size_distribution(Poisson(0.3))
+            @test isfinite(logccdf(d, 99))
+            @test logccdf(d, 99) ≈ logsumexp_tail(d, 100, 1)
+            @test logccdf(d, 99) >= logpdf(d, 100)
+            @test isfinite(loglikelihood(ChainSizes([100]), Poisson(0.3); prob_concluded = [0.0]))
+            classes = ChainSizeClasses([1, 100], [99, Inf], [10, 1])
+            @test isfinite(loglikelihood(classes, Poisson(0.3)))
+            # Multiple seeds.
+            b = Borel(0.6)
+            @test EpiBranch._chain_size_right_tail_logprob(b, 150, 3) ≈
+                logsumexp_tail(b, 150, 3) rtol = 1.0e-6
+            # GammaBorel stays finite and ordered.
+            g = GammaBorel(2.0, 0.3)
+            @test isfinite(logccdf(g, 80))
+            @test logccdf(g, 80) <= logccdf(g, 40)
+            # Supercritical: the infinite-chain mass is included.
+            sup = Borel(1.5)
+            q = extinction_probability(Poisson(1.5))
+            tail = exp(EpiBranch._chain_size_right_tail_logprob(sup, 200, 1))
+            @test tail ≈ 1 - q rtol = 1.0e-6
+            # Near-critical laws use the complement, which avoids truncating the heavy tail.
+            for b in (Borel(0.99), Borel(1.0)), x in (50, 100, 200)
+                @test EpiBranch._chain_size_right_tail_logprob(b, x, 1) ≈
+                    log(1 - sum(exp(EpiBranch._chain_size_logpdf(b, j, 1)) for j in 1:(x - 1))) rtol = 1.0e-8
+            end
+            # Beyond the default summation cap the tail is not truncated.
+            near = Borel(0.99)
+            lt = EpiBranch._chain_size_right_tail_logprob(near, 250_000, 1)
+            @test isfinite(lt)
+            @test lt < log(1.0e-4)
+            @test lt > EpiBranch._chain_size_right_tail_logprob(near, 400_000, 1)
+            # Agrees with the complement where that is accurate.
+            @test EpiBranch._chain_size_right_tail_logprob(Borel(0.8), 10, 2) ≈
+                log(1 - sum(exp(EpiBranch._chain_size_logpdf(Borel(0.8), j, 2)) for j in 2:9))
+        end
+
         @testset "Real-time mixture likelihood and end_of_outbreak_probability" begin
             # Right-tail helper: P(X ≥ s) = 1 ⇒ logright_tail = 0.
             d = GammaBorel(0.5, 0.8)
@@ -958,17 +1011,9 @@ using ForwardDiff
             )
             @test_throws ArgumentError end_of_outbreak_probability(scheduled, 5.0)
 
-            # The Observed{..., PerCaseObservation} wrapper is refused
-            # explicitly: under-reporting (ρ < 1) needs the Volterra
-            # recursion which is not implemented.
-            om = ModelSpec(
-                BranchingProcess(NegBin(R, k), GT);
-                observation = PerCaseObservation(0.5, Dirac(0.0))
-            )
-            @test_throws ArgumentError end_of_outbreak_probability(om, 5.0)
-
-            # A `Reporting` step below certainty is under-reporting too, and
-            # must be refused the same way as `PerCaseObservation`.
+            # A `Reporting` step below certainty is under-reporting, which
+            # needs the Volterra recursion that is not implemented, so it is
+            # refused.
             rm = ModelSpec(
                 BranchingProcess(NegBin(R, k), GT);
                 progression = [Reporting(delay = Dirac(0.0), probability = 0.5, from = :infection)]
@@ -1126,7 +1171,7 @@ using ForwardDiff
             )
             by_chain = Dict{Int, Bool}()
             consistent = true
-            for ind in state.individuals
+            for ind in individuals(state)
                 is_infected(ind) || continue
                 flag = ind.state[:reported]
                 if haskey(by_chain, ind.chain_id) && by_chain[ind.chain_id] != flag
@@ -1161,15 +1206,15 @@ using ForwardDiff
             sim_state = simulate(
                 ModelSpec(
                     BranchingProcess(NegBin(R, k), gt);
-                    observation = PerCaseObservation(0.6, LogNormal(1.0, 0.4))
+                    progression = _rep(0.6, LogNormal(1.0, 0.4))
                 );
                 rng = StableRNG(42)
             )
-            @test all(haskey(ind.state, :reported) for ind in sim_state.individuals)
-            @test all(haskey(ind.state, :reporting_time) for ind in sim_state.individuals)
+            @test all(haskey(ind.state, :reported) for ind in individuals(sim_state))
+            @test all(haskey(ind.state, :reporting_time) for ind in individuals(sim_state))
             @test all(
                 ind.state[:reporting_time] >= ind.infection_time
-                    for ind in sim_state.individuals if ind.state[:reported]
+                    for ind in individuals(sim_state) if ind.state[:reported]
             )
         end
 
@@ -1179,7 +1224,7 @@ using ForwardDiff
             cm = ClusterMixed(Poisson, Gamma(k, R / k))
             mk(p) = ModelSpec(
                 BranchingProcess(cm);
-                observation = PerCaseObservation(p, Dirac(0.0))
+                progression = _rep(p)
             )
 
             # ρ = 1 should equal the bare likelihood.
@@ -1198,7 +1243,7 @@ using ForwardDiff
                 data,
                 ModelSpec(
                     BranchingProcess(cm_nb);
-                    observation = PerCaseObservation(0.7, Dirac(0.0))
+                    progression = _rep(0.7)
                 )
             )
             @test isfinite(ll_nb_partial)
@@ -1229,20 +1274,25 @@ using ForwardDiff
                 @test e ≈ a atol = 0.02
             end
 
-            # BranchingProcess with a PerCaseObservation(p, ...): simulate
-            # bare, thin per case, compare against ThinnedChainSize PMF.
-            # This is how any new observation model should be tested —
-            # define observe_chain_sizes and the helper does the rest.
-            emp_po,
-                ana_po = sim_analytical_consistent(
-                ModelSpec(
-                    BranchingProcess(NegBin(0.6, 0.5), Exponential(5.0));
-                    observation = PerCaseObservation(0.6, Dirac(0.0))
-                );
-                n_chains = 5000, rng = StableRNG(7)
+            # BranchingProcess with a `Reporting` step: count the reported
+            # cases in each simulated chain, drop chains with none, and
+            # compare against the ThinnedChainSize PMF.
+            rep_spec = ModelSpec(
+                BranchingProcess(NegBin(0.6, 0.5), Exponential(5.0));
+                progression = _rep(0.6)
             )
-            for (e, a) in zip(emp_po, ana_po)
-                @test e ≈ a atol = 0.02
+            rep_sizes = Int[]
+            for st in simulate(rep_spec, 5000; max_cases = 500, rng = StableRNG(7))
+                counts = Dict{Int, Int}()
+                for ind in individuals(st)
+                    (is_infected(ind) && ind.state[:reported]) || continue
+                    counts[ind.chain_id] = get(counts, ind.chain_id, 0) + 1
+                end
+                append!(rep_sizes, values(counts))
+            end
+            rep_dist = chain_size_distribution(rep_spec)
+            for n in 1:4
+                @test mean(==(n), rep_sizes) ≈ pdf(rep_dist, n) atol = 0.02
             end
 
             # BranchingProcess with a ChainDetection(q): simulate bare, keep
@@ -1272,7 +1322,7 @@ using ForwardDiff
             all_consistent = true
             for s in states
                 by_chain = Dict{Int, Float64}()
-                for ind in s.individuals
+                for ind in individuals(s)
                     haskey(ind.state, :cluster_theta) || continue
                     θ = ind.state[:cluster_theta]
                     if haskey(by_chain, ind.chain_id) &&
@@ -1297,7 +1347,7 @@ using ForwardDiff
             thetas = Float64[]
             for s in states_multi
                 seen_chains = Set{Int}()
-                for ind in s.individuals
+                for ind in individuals(s)
                     ind.chain_id in seen_chains && continue
                     haskey(ind.state, :cluster_theta) || continue
                     push!(thetas, ind.state[:cluster_theta])
@@ -1407,6 +1457,70 @@ using ForwardDiff
             @test sum(probs) ≈ 1.0 atol = 1.0e-6
         end
 
+        @testset "Simulated chain length stops on generations, not cases" begin
+            model = ModelSpec(
+                BranchingProcess(NegativeBinomial(0.5, 0.5 / (0.5 + 0.9)), Gamma(2.0, 2.5));
+                interventions = [Isolation(onset_to_isolation_delay = 100.0, duration = Inf)],
+                attributes = clinical_presentation(incubation_period = Gamma(2.0, 2.5))
+            )
+            data = ChainLengths([6, 8, 10])
+            @test_throws ArgumentError loglikelihood(data, model; max_cases = 25)
+            ll(gens) = loglikelihood(
+                data, model; n_sim = 20_000, max_generations = gens, rng = StableRNG(1)
+            )
+            # A tighter generation limit censors more runs but stays close to
+            # the uncensored value, without dropping probability mass.
+            @test abs(ll(12) - ll(100)) < 0.5
+        end
+
+        @testset "Simulated chain length of a supercritical model stays bounded" begin
+            # With R above 1 and no cap on cases, runs would grow without
+            # limit. The internal safety stop censors them at the length
+            # reached, and the call returns.
+            model = ModelSpec(
+                BranchingProcess(Poisson(2.0), Exponential(1.0));
+                interventions = [Isolation(onset_to_isolation_delay = 100.0, duration = Inf)],
+                attributes = clinical_presentation(incubation_period = Gamma(2.0, 2.5))
+            )
+            ll = loglikelihood(
+                ChainLengths([3, 5]), model; n_sim = 5, rng = StableRNG(1)
+            )
+            @test ll isa Real
+            @test !isnan(ll)
+        end
+
+        @testset "_empirical_ll with censored_at_value" begin
+            f = EpiBranch._empirical_ll
+            sim = [1, 2, 2, 3, 3]
+            cens = [false, false, false, true, true]
+            # Hazards (events + 1) / (at risk + 2): 2/7, 3/6, 1/4 for values 1-3.
+            # P(X = 2) = 1/2 * 5/7.
+            @test f([2], sim; min_val = 1, censored = cens, censored_at_value = true) ≈
+                log(5 / 14)
+            # An observation below the minimum value has no support.
+            @test f([0], sim; min_val = 1, censored = cens, censored_at_value = true) == -Inf
+            # prob_concluded at 1 and 0 reduce to the point mass and right tail.
+            lc = f([2], sim; min_val = 1, censored = cens, censored_at_value = true)
+            @test f(
+                [2], sim; min_val = 1, censored = cens, censored_at_value = true,
+                prob_concluded = [1.0]
+            ) ≈ lc
+            tail = f(
+                [2], sim; min_val = 1, censored = cens, censored_at_value = true,
+                prob_concluded = [0.0]
+            )
+            @test tail ≈ log(5 / 7)
+            mix = f(
+                [2], sim; min_val = 1, censored = cens, censored_at_value = true,
+                prob_concluded = [0.5]
+            )
+            @test mix ≈ log(0.5 * exp(lc) + 0.5 * exp(tail))
+            @test_throws ArgumentError f(
+                [2], sim; min_val = 1, censored = cens, censored_at_value = true,
+                prob_concluded = [1.5]
+            )
+        end
+
         @testset "Non-positive n_initial throws" begin
             @test_throws ArgumentError loglikelihood(
                 ChainLengths([0]), Poisson(0.8); n_initial = 0
@@ -1415,7 +1529,7 @@ using ForwardDiff
                 ChainLengths([0]), NegBin(0.8, 0.5); n_initial = -1
             )
 
-            # Regression: dispatching through a model must still throw here,
+            # Dispatching through a model must still throw here,
             # rather than falling back to simulation and swallowing the error.
             @test_throws ArgumentError loglikelihood(
                 ChainLengths([0]), BranchingProcess(Poisson(0.8)); n_initial = 0
@@ -1427,15 +1541,15 @@ using ForwardDiff
             @test_throws ArgumentError loglikelihood(ChainLengths([1, 2]), NegBin(1.5, 0.5))
         end
 
-        @testset "Observed + PerCaseObservation rejects ChainLengths" begin
-            # Per-case detection doesn't cleanly transform chain length.
+        @testset "A Reporting step rejects ChainLengths" begin
+            # Per-case reporting doesn't cleanly transform chain length.
             # Raise a clear error rather than routing through an undefined
             # simulate path.
             @test_throws ArgumentError loglikelihood(
                 ChainLengths([0, 1]),
                 ModelSpec(
                     BranchingProcess(Poisson(0.5), Exponential(5.0));
-                    observation = PerCaseObservation(0.7, Dirac(0.0))
+                    progression = _rep(0.7)
                 )
             )
         end
@@ -1450,7 +1564,7 @@ using ForwardDiff
         end
 
         @testset "max_cases/max_generations defaults stay off for a fixed-population model" begin
-            # Regression: a fixed-population model's extinction race leaves
+            # A fixed-population model's extinction race leaves
             # max_cases and max_generations off by default, so fitting must
             # build SimOpts through the same path as `simulate` rather than
             # straight from the keywords, which would reimpose those defaults
@@ -1508,16 +1622,16 @@ using ForwardDiff
         end
 
         @testset "Observed sim path with interventions" begin
-            # Regression: previously crashed because the generic sim
-            # fallback accessed model.offspring, which the Observed
-            # wrapper does not have. The intervention path now simulates
-            # the wrapped process, thins chain sizes per case, and compares.
+            # The generic sim fallback must not access model.offspring, which
+            # the Observed wrapper does not have. The intervention path
+            # simulates the wrapped process, thins chain sizes per case, and
+            # compares.
             iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
             ll = loglikelihood(
                 ChainSizes([1, 1, 2, 1]),
                 ModelSpec(
                     BranchingProcess(Poisson(2.0), Exponential(5.0));
-                    observation = PerCaseObservation(0.7, Dirac(0.0)),
+                    progression = _rep(0.7),
                     interventions = [iso],
                     attributes = clinical_presentation(
                         incubation_period = LogNormal(1.5, 0.5)
@@ -1528,6 +1642,28 @@ using ForwardDiff
                 rng = StableRNG(42)
             )
             @test isfinite(ll)
+        end
+
+        @testset "Simulated chain-size likelihood is not biased by unreached sizes" begin
+            # Simulated sizes drawn from the exact law at each R: the
+            # estimate has to sit inside the exact likelihood's 95% interval
+            # even though the largest observed sizes are beyond the draws.
+            data = ChainSizes(rand(StableRNG(51), chain_size_distribution(NegBin(0.85, 0.5)), 300))
+            grid = 0.6:0.02:0.95
+            exact = [loglikelihood(data, NegBin(R, 0.5)) for R in grid]
+            lo, hi = extrema(grid[exact .>= maximum(exact) - 1.92])
+            rng = StableRNG(9)
+            sim = map(grid) do R
+                draws = rand(rng, chain_size_distribution(NegBin(R, 0.5)), 1000)
+                EpiBranch._empirical_ll(data.data, draws; min_val = 1)
+            end
+            @test lo <= grid[argmax(sim)] <= hi
+            # An observed size beyond every simulated size still scores
+            # according to the parameter.
+            small = [1, 1, 2, 1, 3, 1, 2, 1]
+            ll_low = EpiBranch._empirical_ll([40], small; min_val = 1)
+            ll_high = EpiBranch._empirical_ll([40], [small; 30; 35]; min_val = 1)
+            @test isfinite(ll_low) && ll_high > ll_low
         end
 
         @testset "MinimumSize falls through to the simulation path" begin
@@ -1594,9 +1730,9 @@ using ForwardDiff
         end
 
         @testset "A Reporting step thins the simulated chain sizes too" begin
-            # Regression: with interventions present (forcing the simulation
-            # path), a `Reporting` step in `progression` used to be ignored,
-            # so every infected case counted as if detection were perfect.
+            # With interventions present (forcing the simulation path), a
+            # `Reporting` step in `progression` must still thin the chain
+            # sizes, not count every infected case as perfectly detected.
             iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
             clinical = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
             mk(progression) = ModelSpec(
@@ -1617,26 +1753,24 @@ using ForwardDiff
             @test isfinite(ll_reported)
             @test ll_reported != ll_full
 
-            # Simulated chains under `Reporting` count only `:reported` cases,
-            # the same way an explicit `PerCaseObservation` does.
+            # Simulated chains under `Reporting` count only `:reported` cases.
             state = simulate(mk([rep]); max_cases = 300, rng = StableRNG(7))
             sizes = EpiBranch._sim_chain_sizes(state, EpiBranch.NoObservation(), [rep])
             counts = Dict{Int, Int}()
-            for ind in state.individuals
+            for ind in individuals(state)
                 (is_infected(ind) && ind.state[:reported]) || continue
                 counts[ind.chain_id] = get(counts, ind.chain_id, 0) + 1
             end
             @test sort(sizes) == sort(collect(values(counts)))
         end
 
-        @testset "Honours seeds (regression for issue #447)" begin
-            # Previously every simulation drew `n_initial = 1` seed and
-            # compared each seed's own chain against the data, so a 3-seed
-            # cluster's observed size was scored as if it were a single-seed
-            # chain. A 3-seed cluster reaching a given total size needs far
-            # less onward transmission than a single-seed chain reaching the
-            # same size; once `seeds` is honoured the two must differ, and
-            # the multi-seed reading must be the more probable one.
+        @testset "Honours seeds" begin
+            # Each simulation must draw `seeds` index cases, not one, or a
+            # 3-seed cluster's observed size is scored as if it were a
+            # single-seed chain. A 3-seed cluster reaching a given total size needs
+            # far less onward transmission than a single-seed chain reaching
+            # the same size. The two must differ, and the multi-seed reading
+            # must be the more probable one.
             iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = 7.0)
             spec = ModelSpec(
                 BranchingProcess(Poisson(0.5), Exponential(5.0));
@@ -1662,7 +1796,7 @@ using ForwardDiff
             )
         end
 
-        @testset "prob_concluded no longer refused under interventions (regression for issue #447)" begin
+        @testset "prob_concluded is accepted under interventions" begin
             iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = 7.0)
             spec = ModelSpec(
                 BranchingProcess(Poisson(0.5), Exponential(5.0));
@@ -1711,13 +1845,12 @@ using ForwardDiff
             @test ll_default == ll_uncapped
         end
 
-        @testset "n_initial combines seeds into the longest chain (regression for issue #532)" begin
+        @testset "n_initial combines seeds into the longest chain" begin
             # Interventions force the simulation path. Each simulated outbreak
-            # must contribute one cluster length — the longest of its
-            # n_initial seeded chains — rather than each seed's own chain
-            # length as a separate observation, which would leave the sim
-            # path matching the single-seed length distribution regardless
-            # of n_initial.
+            # must contribute one cluster length, the longest of its
+            # n_initial seeded chains, not each seed's own chain length as a
+            # separate observation, which would make the sim path match the
+            # single-seed length distribution regardless of n_initial.
             iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = 7.0)
             spec = ModelSpec(
                 BranchingProcess(Poisson(0.5), Exponential(5.0));
@@ -1728,10 +1861,10 @@ using ForwardDiff
             )
             data = ChainLengths([5])
             ll_one = loglikelihood(
-                data, spec; n_initial = 1, max_cases = 500, n_sim = 20_000, rng = StableRNG(1)
+                data, spec; n_initial = 1, n_sim = 20_000, rng = StableRNG(1)
             )
             ll_many = loglikelihood(
-                data, spec; n_initial = 5, max_cases = 500, n_sim = 20_000, rng = StableRNG(1)
+                data, spec; n_initial = 5, n_sim = 20_000, rng = StableRNG(1)
             )
             @test isfinite(ll_one)
             @test isfinite(ll_many)
@@ -2210,11 +2343,11 @@ using ForwardDiff
             counts = Int[]
             for _ in 1:4000
                 state = simulate(spec; max_cases = 200, rng)
-                for ind in state.individuals
+                for ind in individuals(state)
                     is_infected(ind) || continue
                     push!(
                         counts,
-                        count(id -> is_infected(state.individuals[id]), ind.secondary_case_ids)
+                        count(id -> is_infected(individuals(state)[id]), ind.secondary_case_ids)
                     )
                 end
             end

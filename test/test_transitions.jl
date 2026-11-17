@@ -64,7 +64,7 @@ EpiBranch.observation(m::SingleSpawnModel) = m.observation
             model; attributes = clinical,
             max_cases = 20, rng = StableRNG(1)
         )
-        for ind in filter(is_infected, state.individuals)
+        for ind in filter(is_infected, individuals(state))
             @test !haskey(ind.state, :reported)
             @test !haskey(ind.state, :admitted)
             @test !haskey(ind.state, :outcome)
@@ -84,7 +84,7 @@ EpiBranch.observation(m::SingleSpawnModel) = m.observation
             max_cases = 100, rng = rng
         )
 
-        for ind in filter(is_infected, state.individuals)
+        for ind in filter(is_infected, individuals(state))
             @test haskey(ind.state, :reported)
             @test haskey(ind.state, :reporting_time)
             if is_asymptomatic(ind)
@@ -106,8 +106,8 @@ EpiBranch.observation(m::SingleSpawnModel) = m.observation
             model; attributes = clinical, transitions = [rep],
             max_cases = 400, rng = rng
         )
-        frac_reported = count(ind -> ind.state[:reported], filter(is_infected, state.individuals)) /
-            length(filter(is_infected, state.individuals))
+        frac_reported = count(ind -> ind.state[:reported], filter(is_infected, individuals(state))) /
+            length(filter(is_infected, individuals(state)))
         @test 0.35 <= frac_reported <= 0.65
     end
 
@@ -119,14 +119,14 @@ EpiBranch.observation(m::SingleSpawnModel) = m.observation
             model; attributes = clinical, transitions = [h0],
             max_cases = 50, rng = StableRNG(4)
         )
-        @test all(!ind.state[:admitted] for ind in filter(is_infected, state0.individuals))
+        @test all(!ind.state[:admitted] for ind in filter(is_infected, individuals(state0)))
 
         h1 = Hospitalisation(delay = LogNormal(2.0, 0.5), probability = 1.0)
         state1 = tsim(
             model; attributes = clinical, transitions = [h1],
             max_cases = 50, rng = StableRNG(5)
         )
-        @test all(ind.state[:admitted] for ind in filter(is_infected, state1.individuals))
+        @test all(ind.state[:admitted] for ind in filter(is_infected, individuals(state1)))
     end
 
     @testset "Hospitalisation gated on reporting via probability closure" begin
@@ -146,7 +146,7 @@ EpiBranch.observation(m::SingleSpawnModel) = m.observation
             transitions = [rep, hosp],
             max_cases = 200, rng = rng
         )
-        for ind in filter(is_infected, state.individuals)
+        for ind in filter(is_infected, individuals(state))
             ind.state[:admitted] && @test ind.state[:reported]
         end
     end
@@ -167,9 +167,9 @@ EpiBranch.observation(m::SingleSpawnModel) = m.observation
             model; attributes = clinical, transitions = [hosp, rep],
             max_cases = 200, rng = StableRNG(11)
         )
-        @test all(!ind.state[:admitted] for ind in filter(is_infected, state.individuals))
-        @test all(!ind.state[:reported] for ind in filter(is_infected, state.individuals))
-        @test all(!isfinite(ind.state[:reporting_time]) for ind in filter(is_infected, state.individuals))
+        @test all(!ind.state[:admitted] for ind in filter(is_infected, individuals(state)))
+        @test all(!ind.state[:reported] for ind in filter(is_infected, individuals(state)))
+        @test all(!isfinite(ind.state[:reporting_time]) for ind in filter(is_infected, individuals(state)))
     end
 
     @testset "A non-terminal event after the outcome is censored" begin
@@ -184,7 +184,7 @@ EpiBranch.observation(m::SingleSpawnModel) = m.observation
             model; attributes = clinical, transitions = [hosp, recovery],
             max_cases = 50, rng = rng
         )
-        for ind in filter(is_infected, state.individuals)
+        for ind in filter(is_infected, individuals(state))
             @test ind.state[:outcome] == :recovered
             @test ind.state[:admitted] == false
             @test ind.state[:admission_time] == Inf
@@ -200,7 +200,7 @@ EpiBranch.observation(m::SingleSpawnModel) = m.observation
             model; attributes = clinical, transitions = [d, r],
             max_cases = 200, rng = rng
         )
-        for ind in filter(is_infected, state.individuals)
+        for ind in filter(is_infected, individuals(state))
             @test haskey(ind.state, :outcome)
             @test ind.state[:outcome] in (:died, :recovered)
             @test isfinite(ind.state[:outcome_time])
@@ -227,7 +227,7 @@ EpiBranch.observation(m::SingleSpawnModel) = m.observation
             model; attributes = clinical, transitions = [d, r],
             max_cases = 50, rng = rng
         )
-        @test all(ind.state[:outcome] == :recovered for ind in filter(is_infected, state.individuals))
+        @test all(ind.state[:outcome] == :recovered for ind in filter(is_infected, individuals(state)))
     end
 
     @testset "Asymptomatic cases skip all transitions" begin
@@ -247,7 +247,7 @@ EpiBranch.observation(m::SingleSpawnModel) = m.observation
             model; attributes = all_asymp, transitions = ts,
             max_cases = 50, rng = rng
         )
-        for ind in filter(is_infected, state.individuals)
+        for ind in filter(is_infected, individuals(state))
             @test ind.state[:reported] == false
             @test ind.state[:admitted] == false
             @test !haskey(ind.state, :outcome)
@@ -284,7 +284,7 @@ EpiBranch.observation(m::SingleSpawnModel) = m.observation
             transitions = [rep_onset, hosp_infection, rec_infection],
             max_cases = 50, rng = rng
         )
-        for ind in filter(is_infected, state.individuals)
+        for ind in filter(is_infected, individuals(state))
             @test ind.state[:reported]
             @test ind.state[:reporting_time] ≈ onset_time(ind) + 1.0
             @test ind.state[:admitted]
@@ -297,7 +297,7 @@ EpiBranch.observation(m::SingleSpawnModel) = m.observation
             model; attributes = clinical, transitions = [rep_infection],
             max_cases = 50, rng = StableRNG(22)
         )
-        for ind in filter(is_infected, state2.individuals)
+        for ind in filter(is_infected, individuals(state2))
             @test ind.state[:reported]
             @test ind.state[:reporting_time] ≈ ind.infection_time + 1.0
         end
@@ -341,7 +341,7 @@ EpiBranch.observation(m::SingleSpawnModel) = m.observation
         )
         n_died_80plus = 0
         n_died_under80 = 0
-        for ind in filter(is_infected, state.individuals)
+        for ind in filter(is_infected, individuals(state))
             ind.state[:outcome] == :died || continue
             ind.state[:age] >= 80 ? (n_died_80plus += 1) : (n_died_under80 += 1)
         end
@@ -370,7 +370,7 @@ EpiBranch.observation(m::SingleSpawnModel) = m.observation
             transitions = [hosp],
             max_cases = 100, rng = rng
         )
-        for ind in filter(is_infected, state.individuals)
+        for ind in filter(is_infected, individuals(state))
             ind.state[:admitted] || continue
             d = ind.state[:admission_time] - onset_time(ind)
             if ind.state[:age] < 30
@@ -400,7 +400,7 @@ EpiBranch.observation(m::SingleSpawnModel) = m.observation
             transitions = test_then_report,
             max_cases = 50, rng = rng
         )
-        for ind in filter(is_infected, state.individuals)
+        for ind in filter(is_infected, individuals(state))
             @test ind.state[:reported]
             @test ind.state[:reporting_time] ≈ ind.state[:test_time] + 1.0
         end
@@ -421,7 +421,7 @@ EpiBranch.observation(m::SingleSpawnModel) = m.observation
             model; transitions = [rep],
             max_cases = 30, rng = rng
         )
-        for ind in filter(is_infected, state.individuals)
+        for ind in filter(is_infected, individuals(state))
             @test ind.state[:reported]
             @test ind.state[:reporting_time] ≈ ind.infection_time + 1.0
         end
@@ -438,8 +438,8 @@ EpiBranch.observation(m::SingleSpawnModel) = m.observation
             transitions = [DummyTest(LogNormal(0.5, 0.2))],
             max_cases = 30, rng = rng
         )
-        @test all(ind.state[:tested] for ind in filter(is_infected, state.individuals))
-        @test all(isfinite(ind.state[:test_time]) for ind in filter(is_infected, state.individuals))
+        @test all(ind.state[:tested] for ind in filter(is_infected, individuals(state)))
+        @test all(isfinite(ind.state[:test_time]) for ind in filter(is_infected, individuals(state)))
     end
 
     @testset "Custom TransmissionModel — engine resolves transitions automatically" begin
@@ -452,8 +452,8 @@ EpiBranch.observation(m::SingleSpawnModel) = m.observation
             max_cases = 5,
             rng = rng
         )
-        @test all(ind.state[:tested] for ind in state.individuals)
-        @test all(isfinite(ind.state[:test_time]) for ind in state.individuals)
+        @test all(ind.state[:tested] for ind in individuals(state))
+        @test all(isfinite(ind.state[:test_time]) for ind in individuals(state))
     end
 end
 
@@ -511,7 +511,7 @@ end
     )
     state = simulate(model; rng = StableRNG(17))
     for key in (:arrived_time, :reporting_time, :admission_time, :followup_time)
-        @test only(state.individuals).state[key] == 2.0
+        @test only(individuals(state)).state[key] == 2.0
     end
 end
 
@@ -588,9 +588,9 @@ end
             model; attributes = clinical, transitions = [died, recovered],
             condition = 500:1000, max_cases = 1000, rng = rng
         )
-        @test all(ind -> haskey(ind.state, :outcome), filter(is_infected, state.individuals))
-        n_died = count(ind -> ind.state[:outcome] == :died, filter(is_infected, state.individuals))
-        @test isapprox(n_died / length(filter(is_infected, state.individuals)), 0.36; atol = 0.05)
+        @test all(ind -> haskey(ind.state, :outcome), filter(is_infected, individuals(state)))
+        n_died = count(ind -> ind.state[:outcome] == :died, filter(is_infected, individuals(state)))
+        @test isapprox(n_died / length(filter(is_infected, individuals(state))), 0.36; atol = 0.05)
     end
 end
 
@@ -603,7 +603,7 @@ end
             progression = [Transition(:onset; delay = Conditional(ind -> Gamma(2.0, 1.0)))]
         )
         state = simulate(spec; max_cases = 20, rng = StableRNG(1))
-        @test all(ind -> isfinite(onset_time(ind)), filter(is_infected, state.individuals))
+        @test all(ind -> isfinite(onset_time(ind)), filter(is_infected, individuals(state)))
     end
 
     @testset "Conditional probability" begin
@@ -615,7 +615,7 @@ end
             ]
         )
         state = simulate(spec; max_cases = 20, rng = StableRNG(1))
-        @test all(ind -> ind.state[:death], filter(is_infected, state.individuals))
+        @test all(ind -> ind.state[:death], filter(is_infected, individuals(state)))
     end
 
     @testset "Conditional trait" begin
@@ -624,7 +624,7 @@ end
             attributes = [transmission_traits(susceptibility = Conditional(ind -> Beta(2, 2)))]
         )
         state = simulate(spec; max_cases = 20, rng = StableRNG(1))
-        @test length(state.individuals) > 0
+        @test length(individuals(state)) > 0
     end
 end
 
@@ -643,7 +643,7 @@ end
     @testset "writes :state and :state_time, anchored on :infection" begin
         latent = Transition(:infectious, from = :infection, delay = (rng, ind) -> 2.0)
         state = simulate(bp([latent]; attributes = clinical); max_cases = 30, rng = StableRNG(1))
-        for ind in filter(is_infected, state.individuals)
+        for ind in filter(is_infected, individuals(state))
             @test ind.state[:infectious] == true
             @test ind.state[:infectious_time] ≈ ind.infection_time + 2.0
         end
@@ -652,7 +652,7 @@ end
     @testset "chains: a state measured from an earlier transition's state" begin
         severe = Transition(:severe, from = :onset, delay = (rng, ind) -> 1.0)
         state = simulate(bp([severe]; attributes = clinical); max_cases = 30, rng = StableRNG(2))
-        for ind in filter(is_infected, state.individuals)
+        for ind in filter(is_infected, individuals(state))
             @test ind.state[:severe_time] ≈ onset_time(ind) + 1.0
         end
     end
@@ -661,7 +661,7 @@ end
         never = Transition(:flagged, delay = (rng, ind) -> 1.0, probability = 0.0)
         always = Transition(:marked, delay = (rng, ind) -> 1.0, probability = 1.0)
         state = simulate(bp([never, always]; attributes = clinical); max_cases = 30, rng = StableRNG(3))
-        for ind in filter(is_infected, state.individuals)
+        for ind in filter(is_infected, individuals(state))
             @test ind.state[:flagged] == false
             @test ind.state[:flagged_time] == Inf
             @test ind.state[:marked] == true
@@ -680,7 +680,7 @@ end
             terminal = true
         )
         state = simulate(bp([severe, died]; attributes = clinical); max_cases = 30, rng = StableRNG(4))
-        for ind in filter(is_infected, state.individuals)
+        for ind in filter(is_infected, individuals(state))
             @test ind.state[:died] == false
             @test ind.state[:died_time] == Inf
             @test !haskey(ind.state, :outcome)
@@ -697,7 +697,7 @@ end
             terminal = true
         )
         state = simulate(bp([died, recovered]; attributes = clinical); max_cases = 30, rng = StableRNG(5))
-        for ind in filter(is_infected, state.individuals)
+        for ind in filter(is_infected, individuals(state))
             @test ind.state[:outcome] == :died
             @test ind.state[:outcome_time] ≈ onset_time(ind) + 2.0
         end
@@ -709,7 +709,7 @@ end
         )
         sev = Transition(:severe, from = :onset, delay = (rng, ind) -> 1.0)
         state = simulate(bp([sev]; attributes = all_asymp); max_cases = 30, rng = StableRNG(6))
-        for ind in filter(is_infected, state.individuals)
+        for ind in filter(is_infected, individuals(state))
             @test ind.state[:severe] == false
         end
     end
@@ -721,7 +721,7 @@ end
         # A fixed scalar delay is deterministic.
         rec = Transition(:recovered; from = :infection, delay = 4.0, terminal = true)
         state = simulate(bp([rec]); max_cases = 30, rng = StableRNG(8))
-        for ind in filter(is_infected, state.individuals)
+        for ind in filter(is_infected, individuals(state))
             @test ind.state[:recovered_time] ≈ ind.infection_time + 4.0
         end
         # Exactly one of delay/rate.
@@ -731,4 +731,33 @@ end
             delay = 6.0, rate = 1 / 6
         )
     end
+end
+
+@testset "Transition resolves its `from` key once" begin
+    # Reading the `from` time of a transition must not build a key symbol per case.
+    for from in (:onset, :onset_time)
+        t = Transition(:admitted; from = from, delay = 1.0)
+        @test t.from_key === :onset_time
+    end
+    @test Transition(:admitted; delay = 1.0).from_key === :infection_time
+    @test Transition(:admitted; from = ind -> 1.0, delay = 1.0).from_key === nothing
+
+    t = Transition(:admitted; from = :onset, delay = 1.0)
+    ind = Individual(id = 1, infection_time = 0.0)
+    ind.state[:onset_time] = 2.5
+    @test EpiBranch._state_time(ind, t.from, t.from_key) == 2.5
+    # Pass concretely typed arguments. The allocation count would otherwise
+    # depend on how the compiler splits the `Union` type of the field.
+    from, key = t.from::Symbol, t.from_key::Symbol
+    read_anchor(ind, from, key) = EpiBranch._state_time(ind, from, key)
+    read_anchor(ind, from, key)
+    # Julia 1.10 may box the returned time. Building the key on each call allocates more.
+    resolve_anchor(ind, from) = EpiBranch._state_time(ind, from)
+    resolve_anchor(ind, from)
+    stored = @allocated read_anchor(ind, from, key)
+    @test stored < @allocated resolve_anchor(ind, from)
+    VERSION >= v"1.11" && @test stored == 0
+
+    f = Transition(:admitted; from = i -> 4.0, delay = 1.0)
+    @test EpiBranch._state_time(ind, f.from, f.from_key) == 4.0
 end

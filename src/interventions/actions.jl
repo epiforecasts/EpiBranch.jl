@@ -67,15 +67,6 @@ finite time, since nothing about the new person is settled yet.
 through their own gates.
 """
 intervention_actions(::AbstractIntervention, state, candidates) = nothing
-function intervention_actions(w::InterventionWrapper, state, candidates)
-    return intervention_actions(w.intervention, state, candidates)
-end
-# Asking for the resource key first makes a wrapped intervention that has none,
-# and so cannot be rationed, fail when its actions are first sought.
-function intervention_actions(cc::CapacityConstrained, state, candidates)
-    capacity_key(cc.intervention)
-    return intervention_actions(cc.intervention, state, candidates)
-end
 
 """
     action_cache(individual)
@@ -169,7 +160,7 @@ function _fire_action!(admitter, state, action)
 end
 
 function _fire_action!(admitter, state, action::_DeferredAction)
-    person = state.individuals[action.individual_id]
+    person = individuals(state)[action.individual_id]
     return _fire_action!(admitter, state, InterventionAction(person, action.time, action.effect!))
 end
 
@@ -190,14 +181,23 @@ returns, throws, or is itself run re-entrantly (a dose action admitted while
 another is still running). A continuous-time race calls this around each span
 during which admitted actions belong on its own event queue.
 """
-function _with_action_sink(f, state, sink)
-    previous = get(state.scratch, _ACTION_SINK_KEY, nothing)
-    state.scratch[_ACTION_SINK_KEY] = sink
+_with_action_sink(f, state, sink) = _with_scratch(f, state, _ACTION_SINK_KEY, sink)
+
+"""
+    _with_scratch(f, state, key, value)
+
+Run `f()` with `state.scratch[key]` set to `value`, returning what `f`
+returns, and put back whatever `key` held before (or remove it) once `f`
+returns or throws.
+"""
+function _with_scratch(f, state, key, value)
+    previous = get(state.scratch, key, nothing)
+    state.scratch[key] = value
     try
         return f()
     finally
-        previous === nothing ? delete!(state.scratch, _ACTION_SINK_KEY) :
-            (state.scratch[_ACTION_SINK_KEY] = previous)
+        previous === nothing ? delete!(state.scratch, key) :
+            (state.scratch[key] = previous)
     end
 end
 
@@ -221,7 +221,8 @@ function _admit_actions!(cc::CapacityConstrained, state, actions, admitter = cc)
     key = capacity_key(cc.intervention)
     already_used = filter(a -> _capacity_used(get(a.individual.state, key, nothing)), actions)
     candidates = filter(a -> !_capacity_used(get(a.individual.state, key, nothing)), actions)
-    _admit_actions!(cc.intervention, state, already_used, admitter)
+    _repeat_use_passes(cc.intervention) &&
+        _admit_actions!(cc.intervention, state, already_used, admitter)
     cache = _capacity_cache(cc, state)
     for a in already_used
         _record_capacity_use!(cache, a.individual, state)
@@ -235,8 +236,9 @@ function _admit_actions!(cc::CapacityConstrained, state, actions, admitter = cc)
         for i in order
             action = group[i]
             _capacity_used(get(action.individual.state, key, nothing)) && continue
-            if !_fits_budget(cc, times, Float64[], action.time)
-                action = refused_action(cc.on_refusal, cc, times, action)
+            own = _for_resource(cc, group_key)
+            if !_fits_budget(own, times, Float64[], action.time)
+                action = refused_action(cc.on_refusal, own, times, action)
                 action === nothing && continue
             end
             _admit_actions!(cc.intervention, state, [_filing_use(cc, action)], admitter)
@@ -257,6 +259,10 @@ end
 function _filing_use(cc::CapacityConstrained, action)
     key = capacity_key(cc.intervention)
     effect! = function (person, at, state)
+        # An effect queued before the person's first use took effect finds
+        # that use standing by the time it runs.
+        _capacity_used(get(person.state, key, nothing)) &&
+            !_repeat_use_passes(cc.intervention) && return nothing
         further = action.effect!(person, at, state)
         _capacity_used(get(person.state, key, nothing)) && _note_capacity_use!(state, key, person)
         return further
@@ -324,9 +330,6 @@ when `new_trigger` is earlier, since in continuous-time models a group's
 earliest eligible case, or a contact's earliest trace, may only be found
 after a later one."""
 may_revise(::AbstractIntervention, prior_trigger, new_trigger) = false
-function may_revise(w::InterventionWrapper, prior_trigger, new_trigger)
-    return may_revise(w.intervention, prior_trigger, new_trigger)
-end
 may_revise(::GroupVaccination, prior_trigger, new_trigger) = new_trigger < prior_trigger
 may_revise(::RingVaccination, prior_trigger, new_trigger) = new_trigger < prior_trigger
 
@@ -430,7 +433,7 @@ function intervention_actions(gv::GroupVaccination, state, candidates)
         trigger = _group_trigger_time(gv, state, group)
         isfinite(trigger) || continue
         for id in _group_members(state, gv.group_key, group)
-            ind = state.individuals[id]
+            ind = individuals(state)[id]
             prior = get(action_cache(ind), _trigger_cache_key(gv), nothing)
             if prior !== nothing || get(ind.state, _vaccinated_key(dose_label(gv)), false)
                 # A settled member's dose keeps its date; a member still
@@ -504,9 +507,6 @@ the recorded dose time when a candidate infection is popped, not when it was
 proposed.
 """
 acts_on_population(::AbstractIntervention) = false
-function acts_on_population(w::InterventionWrapper)
-    return acts_on_population(w.intervention)
-end
 acts_on_population(::MassVaccination) = true
 
 """
@@ -525,9 +525,6 @@ branching process offers an intervention declaring `false` each contact as it
 creates it, too, so a group's dose reaches a member created after it.
 """
 needs_contacts(::AbstractIntervention) = true
-function needs_contacts(w::InterventionWrapper)
-    return needs_contacts(w.intervention)
-end
 needs_contacts(::GroupVaccination) = false
 
 # Whether `id` belongs to this race and the race has not finalised it yet, so
@@ -571,13 +568,6 @@ function action_candidates(
     )
     return _reached_candidates(state, current, traced, is_pending, contacts)
 end
-function action_candidates(
-        w::InterventionWrapper, state, current, traced, is_pending, members, contacts
-    )
-    return action_candidates(
-        w.intervention, state, current, traced, is_pending, members, contacts
-    )
-end
 
 function action_candidates(
         gv::GroupVaccination, state, current, traced, is_pending, members, contacts
@@ -588,7 +578,7 @@ function action_candidates(
     for id in _group_members(state, gv.group_key, group)
         id == current.id && continue
         is_pending(id) || continue
-        push!(candidates, state.individuals[id])
+        push!(candidates, individuals(state)[id])
     end
     return candidates
 end
@@ -604,7 +594,7 @@ function _reached_candidates(state, current, traced, is_pending, contacts)
     end
     for cid in traced
         is_pending(cid) || continue
-        push!(candidates, state.individuals[cid])
+        push!(candidates, individuals(state)[cid])
     end
     return candidates
 end

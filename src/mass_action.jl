@@ -25,7 +25,7 @@
 # the infector of a case is the member whose contact reached it first.
 
 """
-    _MassAction(state, members; mixing_by = (), rate, calendar = nothing, from)
+    MassAction(state, members; mixing_by = (), rate, calendar = nothing, from)
 
 Mass-action contacts among `members` (global ids) of `state`, as the `targets`
 of a `_sellke_race!` route.
@@ -56,7 +56,7 @@ run but not rise above that bound, which is how the race already reads it: as se
 when the member is created. The route also records what it left past the run's
 time limit, so build one for each run.
 """
-struct _MassAction{T <: Real, S <: Real, U <: Real, C}
+struct MassAction{T <: Real, S <: Real, U <: Real, C}
     groups::Vector{Vector{Int}}  # member ids in each mixing group
     group_of::Dict{Int, Int}     # member id → index of its group
     rate::Matrix{T}              # rate[a, b]: one infective in a to one member of b
@@ -72,7 +72,7 @@ struct _MassAction{T <: Real, S <: Real, U <: Real, C}
     from::Symbol                 # the state each member's window opens at
 end
 
-function _MassAction(
+function MassAction(
         state::SimulationState, members; mixing_by::Tuple = (), rate,
         calendar = nothing, from::Symbol = :infection
     )
@@ -81,7 +81,7 @@ function _MassAction(
     groups = Vector{Int}[]
     group_of = Dict{Int, Int}()
     for id in members
-        record = state.individuals[id].state
+        record = individuals(state)[id].state
         key = Tuple(get(record, k, missing) for k in mixing_by)
         g = get!(index, key) do
             push!(keys, key)
@@ -96,9 +96,9 @@ function _MassAction(
         ArgumentError("mass-action contact rates must be finite and non-negative")
     )
     max_susceptibility = [
-        maximum(id -> state.individuals[id].susceptibility, group) for group in groups
+        maximum(id -> individuals(state)[id].susceptibility, group) for group in groups
     ]
-    return _MassAction(
+    return MassAction(
         groups, group_of, float.(rates), max_susceptibility,
         zeros(Bool, length(groups), length(groups)),
         Tuple{Int, _timetype(state)}[], calendar, from
@@ -109,19 +109,19 @@ end
 # is for anything that walks a route's targets; the race itself proposes
 # through `propose_along` below and asks for single pairs through
 # `route_pair_kernel`.
-function (m::_MassAction)(infector_id, state)
+function (m::MassAction)(infector_id, state)
     a = m.group_of[infector_id]
     return (
         (id, Exponential(inv(m.rate[a, b])))
             for b in eachindex(m.groups) if m.rate[a, b] > 0
             for id in m.groups[b]
-            if id != infector_id && !is_infected(state.individuals[id])
+            if id != infector_id && !is_infected(individuals(state)[id])
     )
 end
 
-proposes_own_contacts(::_MassAction) = true
+proposes_own_contacts(::MassAction) = true
 
-function route_pair_kernel(m::_MassAction, infector_id, target_id, state)
+function route_pair_kernel(m::MassAction, infector_id, target_id, state)
     r = m.rate[m.group_of[infector_id], m.group_of[target_id]]
     r > 0 || return nothing
     kernel = Exponential(inv(r))
@@ -129,12 +129,12 @@ function route_pair_kernel(m::_MassAction, infector_id, target_id, state)
     # The race scales this kernel's redraw by elapsed time since the window
     # opened (see `_next_contact`), so the opening it needs is this infector's
     # own, recovered from `from` exactly as it was then.
-    opening = _window_open(state.individuals[infector_id], m.from)
+    opening = _window_open(individuals(state)[infector_id], m.from)
     return _CalendarScaledKernel(kernel, m.calendar, opening)
 end
 
-function propose_along(m::_MassAction, infector_id, state, open_t, close_t, capped, traits)
-    infector = state.individuals[infector_id]
+function propose_along(m::MassAction, infector_id, state, open_t, close_t, capped, traits)
+    infector = individuals(state)[infector_id]
     a = m.group_of[infector_id]
     window = close_t - open_t
     contacts = empty!(m.contacts)
@@ -179,7 +179,7 @@ function _sample_contacts!(
         contacts, state, group, r, bound, traits, open_t, window, calendar
     )
     rng = state.rng
-    pair_rate(id) = traits ? r * state.individuals[id].susceptibility : r
+    pair_rate(id) = traits ? r * individuals(state)[id].susceptibility : r
     check_bound(rate) = rate <= bound || throw(
         ArgumentError(
             "a member's susceptibility rose above its group's largest when " *
@@ -187,20 +187,13 @@ function _sample_contacts!(
         )
     )
     cal_bound = calendar === nothing ? nothing : calendar_bound(calendar)
-    if calendar !== nothing && cal_bound === nothing
+    if calendar === nothing ? !isfinite(window) : cal_bound === nothing
         for id in group
             rate = pair_rate(id)
             rate > 0 || continue
-            dt = rand(rng, _CalendarScaledKernel(Exponential(inv(rate)), calendar, open_t))
+            dt = calendar === nothing ? randexp(rng) / rate :
+                rand(rng, _CalendarScaledKernel(Exponential(inv(rate)), calendar, open_t))
             isfinite(dt) && dt <= window && push!(contacts, (id, open_t + dt))
-        end
-        return nothing
-    end
-    if calendar === nothing && !isfinite(window)
-        for id in group
-            rate = pair_rate(id)
-            rate > 0 || continue
-            push!(contacts, (id, open_t + randexp(rng) / rate))
         end
         return nothing
     end
@@ -249,8 +242,8 @@ end
 # Only one redraw per infector: several resumes can each leave their own
 # now-superseded opening recorded for the same member, and resampling for
 # each would draw that member's remaining contacts more than once.
-_resumable_route(::_MassAction) = true
-function _resume_route!(m::_MassAction, race, ri, old_max_time, traits, proposer = m)
+resumable_route(::MassAction) = true
+function resume_route!(m::MassAction, race, ri, old_max_time, traits, proposer = m)
     any(m.cut) || return nothing
     (; buffers, members) = race
     T = typeof(old_max_time)
@@ -273,12 +266,12 @@ end
 
 # Whether a window sampled only up to the time limit could still have reached a
 # member left uninfected, in which case the run was cut off rather than extinct.
-function pending_beyond(m::_MassAction, state, reinfects::Bool)
+function pending_beyond(m::MassAction, state, reinfects::Bool)
     any(m.cut) || return false
     return any(CartesianIndices(m.cut)) do ab
         a, b = Tuple(ab)
         m.cut[a, b] && any(m.groups[b]) do id
-            ind = state.individuals[id]
+            ind = individuals(state)[id]
             (!is_infected(ind) || (reinfects && isfinite(susceptible_again_time(ind)))) &&
                 ind.susceptibility > 0
         end

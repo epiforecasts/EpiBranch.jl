@@ -18,7 +18,7 @@
         rng = StableRNG(99)
         model = BranchingProcess(Poisson(0.5), Exponential(5.0))
         state = simulate(model; n_initial = 5, rng = rng)
-        index_chains = [ind.chain_id for ind in state.individuals if ind.parent_id == 0]
+        index_chains = [ind.chain_id for ind in individuals(state) if ind.parent_id == 0]
         @test length(unique(index_chains)) == 5
     end
 
@@ -26,7 +26,7 @@
         rng = StableRNG(77)
         model = BranchingProcess(Poisson(2.0), Exponential(5.0))
         state = simulate(model; max_generations = 3, rng = rng)
-        max_gen = maximum(ind.generation for ind in state.individuals)
+        max_gen = maximum(ind.generation for ind in individuals(state))
         @test max_gen <= 3
     end
 
@@ -35,10 +35,10 @@
         model = BranchingProcess(Poisson(2.0), Exponential(5.0))
         state = simulate(model; max_cases = 100, rng = rng)
 
-        for ind in filter(is_infected, state.individuals)
+        for ind in filter(is_infected, individuals(state))
             if ind.parent_id > 0
-                parent_idx = findfirst(i -> i.id == ind.parent_id, state.individuals)
-                parent = state.individuals[parent_idx]
+                parent_idx = findfirst(i -> i.id == ind.parent_id, individuals(state))
+                parent = individuals(state)[parent_idx]
                 @test ind.infection_time > parent.infection_time
             end
         end
@@ -52,7 +52,7 @@
             max_cases = 50, rng = rng
         )
 
-        for ind in filter(is_infected, state.individuals)
+        for ind in filter(is_infected, individuals(state))
             @test !isnan(onset_time(ind))
             @test onset_time(ind) >= ind.infection_time
         end
@@ -86,7 +86,7 @@
         # is actually exercised, not just the index case.
         secondary = filter(
             ind -> is_infected(ind) && ind.parent_id > 0,
-            state.individuals
+            individuals(state)
         )
         @test !isempty(secondary)
         for ind in secondary
@@ -117,10 +117,10 @@
             condition = 20:500, max_cases = 500, rng = rng
         )
 
-        for ind in filter(is_infected, state.individuals)
+        for ind in filter(is_infected, individuals(state))
             if ind.parent_id > 0
-                parent_idx = findfirst(i -> i.id == ind.parent_id, state.individuals)
-                parent = state.individuals[parent_idx]
+                parent_idx = findfirst(i -> i.id == ind.parent_id, individuals(state))
+                parent = individuals(state)[parent_idx]
                 @test ind.infection_time - parent.infection_time >= 3.0 - 1.0e-10
             end
         end
@@ -140,7 +140,7 @@ struct CallableOffspringFamily end
 @testset "Callable model inputs" begin
     signature(state) = [
         (i.parent_id, i.infection_time, i.generation)
-            for i in state.individuals
+            for i in individuals(state)
     ]
     compare(a, b) = @test signature(simulate(a; rng = StableRNG(718))) ==
         signature(simulate(b; rng = StableRNG(718)))
@@ -225,7 +225,7 @@ end
             for _ in 1:n
     ]
     sim_times = [
-        [ind.infection_time for ind in s.individuals if is_infected(ind)]
+        [ind.infection_time for ind in individuals(s) if is_infected(ind)]
             for s in simulated
     ]
     for day in (5.0, 10.0, 20.0, 30.0)
@@ -262,11 +262,11 @@ end
         for seed in 1:30
             s = simulate(spec; rng = StableRNG(seed), opts...)
             stop_t = cutoff(s)
-            for ind in s.individuals
+            for ind in individuals(s)
                 ind.parent_id == 0 && continue
                 isnan(ind.infection_time) && continue
                 ind.infection_time > stop_t && (listed_late += 1)
-                isnan(s.individuals[ind.parent_id].infection_time) && (from_undecided += 1)
+                isnan(individuals(s)[ind.parent_id].infection_time) && (from_undecided += 1)
             end
         end
         @test listed_late == 0
@@ -289,10 +289,10 @@ end
     )
     # No one is infected, or even exposed, before their infector's infection.
     early = 0
-    for s in states, ind in s.individuals
+    for s in states, ind in individuals(s)
         ind.parent_id == 0 && continue
         isnan(ind.infection_time) && continue
-        ind.infection_time < s.individuals[ind.parent_id].infection_time && (early += 1)
+        ind.infection_time < individuals(s)[ind.parent_id].infection_time && (early += 1)
     end
     @test early == 0
     @test any(s -> s.cumulative_cases > 1, states)
@@ -320,7 +320,7 @@ end
             rng = StableRNG(seed)
         )
         s.extinct || continue
-        phantom += count(ind -> isnan(ind.infection_time), s.individuals)
+        phantom += count(ind -> isnan(ind.infection_time), individuals(s))
     end
     @test phantom == 0
 end
@@ -344,7 +344,12 @@ end
         interventions = [MassVaccination(efficacy = 1.0, eligibility_time = 10.0)]
     )
     s = simulate(spec; max_generations = 1, rng = StableRNG(1))
-    @test is_vaccinated(s.individuals[1])
-    @test count(is_vaccinated, s.individuals) == 3
+    @test is_vaccinated(individuals(s)[1])
+    @test count(is_vaccinated, individuals(s)) == 3
     @test s.cumulative_cases == 1
+end
+
+@testset "generate_offspring without a method for the model" begin
+    model = BranchingProcess(Poisson(1.0), Exponential(1.0))
+    @test_throws ArgumentError EpiBranch.generate_offspring(model, nothing, nothing)
 end

@@ -72,8 +72,7 @@ or an intervention reaches it (contact tracing reaches every neighbour,
 infected or not), drawing its population characteristics from the same
 per-person streams used for every other draw. Run time scales with
 the number of people the outbreak reaches. Pass
-`eager = true` to create and draw every node upfront instead, as every
-version before this did; [`EpiBranch.realise!`](@ref) creates the rest of
+`eager = true` to create and draw every node upfront instead; [`EpiBranch.realise!`](@ref) creates the rest of
 the population after a lazy run, for the characteristics of people the
 outbreak never reached.
 
@@ -108,12 +107,7 @@ function NetworkProcess(
     adj = _as_adjacency(adjacency)
     edge_kernel = _validate_kernel(kernel, adj)
     _check_external(external_hazard, length(adj))
-    obs_end_value = Float64(obs_end)
-    (!isnan(obs_end_value) && obs_end_value >= 0) || throw(
-        ArgumentError(
-            "obs_end must be a non-negative number (Inf allowed), got $obs_end"
-        )
-    )
+    obs_end_value = _check_obs_end(obs_end)
 
     return NetworkProcess(
         adj, edge_kernel, from, Tuple(until),
@@ -222,7 +216,7 @@ _resolve_kernel(k::ContinuousUnivariateDistribution, adjacency, i, pos, state, f
 _resolve_kernel(k::AbstractVector, adjacency, i, pos, state, from) = k[i][pos]
 function _resolve_kernel(k, adjacency, i, pos, state, from)
     return EpiBranch.pair_kernel(
-        k, i, adjacency[i][pos], state.individuals[i].infection_time,
-        EpiBranch._window_open(state.individuals[i], from), state
+        k, i, adjacency[i][pos], individuals(state)[i].infection_time,
+        EpiBranch._window_open(individuals(state)[i], from), state
     )
 end

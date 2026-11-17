@@ -10,7 +10,7 @@
 # from infection to recovery.
 function person_time_by_household(state, n_households)
     person_time = zeros(n_households)
-    for ind in state.individuals
+    for ind in individuals(state)
         is_infected(ind) || continue
         person_time[ind.state[:household]] += ind.state[:recovered_time] -
             ind.infection_time
@@ -141,7 +141,7 @@ end
         )
         state = simulate(model; rng = StableRNG(1))
         sizes = zeros(Int, 20_000)
-        for ind in state.individuals
+        for ind in individuals(state)
             is_infected(ind) && (sizes[ind.state[:household]] += 1)
         end
         simulated = [count(==(k), sizes) / length(sizes) for k in 1:n]
@@ -279,6 +279,13 @@ end
         o = household_offspring(_markov(4); global_rate = 0.005)
         @test reproduction_number(o) < 1
         @test extinction_probability(o) == [1.0]
+    end
+
+    @testset "extinction warns when the iteration stops unconverged" begin
+        o = household_offspring(_markov(4); global_rate = 0.15)
+        @test reproduction_number(o) > 1
+        @test_logs (:warn, r"without converging") extinction_probability(o; max_iter = 3)
+        @test_logs extinction_probability(o)
     end
 
     @testset "isolation shortens the window and lowers R*" begin
@@ -553,7 +560,7 @@ end
         state = simulate(model(20_000); rng = StableRNG(52))
         person_time = sum(
             min(ind.state[:recovered_time], ind.state[:died_time]) - ind.infection_time
-                for ind in state.individuals if is_infected(ind)
+                for ind in individuals(state) if is_infected(ind)
         )
         @test reproduction_number(o) ≈ λG * person_time / 20_000 rtol = 0.03
     end

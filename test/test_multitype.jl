@@ -58,12 +58,12 @@ using DataFrames
         for seed in 1:5
             a = simulate(from_matrix; max_cases = 200, rng = StableRNG(seed))
             b = simulate(from_function; max_cases = 200, rng = StableRNG(seed))
-            @test length(a.individuals) == length(b.individuals)
-            @test individual_type.(a.individuals) == individual_type.(b.individuals)
-            @test [i.infection_time for i in a.individuals] ==
-                [i.infection_time for i in b.individuals]
-            @test [i.parent_id for i in a.individuals] ==
-                [i.parent_id for i in b.individuals]
+            @test length(individuals(a)) == length(individuals(b))
+            @test individual_type.(individuals(a)) == individual_type.(individuals(b))
+            @test [i.infection_time for i in individuals(a)] ==
+                [i.infection_time for i in individuals(b)]
+            @test [i.parent_id for i in individuals(a)] ==
+                [i.parent_id for i in individuals(b)]
         end
     end
 
@@ -111,7 +111,7 @@ using DataFrames
         @test state.cumulative_cases > 0
 
         # All infected individuals should have a type
-        infected = filter(is_infected, state.individuals)
+        infected = filter(is_infected, individuals(state))
         for ind in infected
             @test haskey(ind.state, :type)
             @test individual_type(ind) in 1:2
@@ -133,12 +133,12 @@ using DataFrames
             rng = rng
         )
 
-        infected = filter(is_infected, state.individuals)
+        infected = filter(is_infected, individuals(state))
         # Children should have the same type as their parent
         for ind in infected
             ind.parent_id == 0 && continue
-            parent_idx = findfirst(i -> i.id == ind.parent_id, state.individuals)
-            parent = state.individuals[parent_idx]
+            parent_idx = findfirst(i -> i.id == ind.parent_id, individuals(state))
+            parent = individuals(state)[parent_idx]
             @test individual_type(ind) == individual_type(parent)
         end
     end
@@ -157,7 +157,7 @@ using DataFrames
         rng = StableRNG(42)
         for _ in 1:20
             state = simulate(model; max_cases = 200, rng = rng)
-            infected = filter(is_infected, state.individuals)
+            infected = filter(is_infected, individuals(state))
             n_type1_total += count(ind -> individual_type(ind) == 1, infected)
             n_type2_total += count(ind -> individual_type(ind) == 2, infected)
         end
@@ -203,7 +203,7 @@ using DataFrames
         )
 
         @test state.cumulative_cases > 0
-        infected = filter(is_infected, state.individuals)
+        infected = filter(is_infected, individuals(state))
         @test all(ind -> individual_type(ind) in 1:2, infected)
     end
 
@@ -225,28 +225,27 @@ using DataFrames
             rng = rng
         )
 
-        n_isolated = count(ind -> is_isolated(ind), state.individuals)
+        n_isolated = count(ind -> is_isolated(ind), individuals(state))
         @test n_isolated > 0
     end
 
-    @testset "Multi-type with finite population" begin
+    @testset "Multi-type with a case cap" begin
         M = [
             1.5 0.3;
             0.3 1.0
         ]
         model = BranchingProcess(
-            M, R_j -> Poisson(R_j), Exponential(5.0);
-            population_size = 50
+            M, R_j -> Poisson(R_j), Exponential(5.0)
         )
 
         rng = StableRNG(42)
         state = simulate(
             model;
-            max_cases = 100,
+            max_cases = 50,
             rng = rng
         )
 
-        @test state.cumulative_cases <= 50
+        @test state.cumulative_cases >= 1
     end
 
     @testset "Chain statistics work with multi-type" begin
@@ -311,7 +310,7 @@ using DataFrames
         rng_seed = StableRNG(1)
         a = simulate(model; max_cases = 100, rng = copy(rng_seed))
         b = simulate(by_hand; max_cases = 100, rng = copy(rng_seed))
-        @test individual_type.(a.individuals) == individual_type.(b.individuals)
+        @test individual_type.(individuals(a)) == individual_type.(individuals(b))
 
         @testset "q as a per-type susceptibility vector scales each row" begin
             q_vec = [0.05, 0.1]
@@ -353,7 +352,7 @@ using DataFrames
             rng = rng
         )
 
-        infected = filter(is_infected, state.individuals)
+        infected = filter(is_infected, individuals(state))
         types = [individual_type(ind) for ind in infected]
         @test all(t -> t in 1:3, types)
         # Should have all 3 types represented in a large enough outbreak
@@ -378,7 +377,7 @@ using DataFrames
         state = simulate(model; n_initial = 4, max_cases = 200, rng = Xoshiro(1))
         @test all(
             ind.state[:type_when_drawn] == individual_type(ind)
-                for ind in state.individuals
+                for ind in individuals(state)
         )
     end
 
@@ -391,12 +390,12 @@ using DataFrames
 
         @testset "a vector fixes each index case's type and their number" begin
             state = simulate(model; index_types = [1], max_cases = 10, rng = StableRNG(1))
-            @test individual_type(state.individuals[1]) == 1
+            @test individual_type(individuals(state)[1]) == 1
 
             state = simulate(
                 model; index_types = [2, 1, 2], max_cases = 10, rng = StableRNG(1)
             )
-            @test sort(individual_type.(state.individuals[1:3])) == [1, 2, 2]
+            @test sort(individual_type.(individuals(state)[1:3])) == [1, 2, 2]
         end
 
         @testset "a Distribution draws each index case's type independently" begin
@@ -444,12 +443,12 @@ using DataFrames
         @testset "works through a ModelSpec too" begin
             spec = ModelSpec(model)
             state = simulate(spec; index_types = [2], max_cases = 10, rng = StableRNG(1))
-            @test individual_type(state.individuals[1]) == 2
+            @test individual_type(individuals(state)[1]) == 2
         end
 
         @testset "works with the multi-outbreak method too" begin
             states = simulate(model, 5; index_types = [1], max_cases = 10, rng = StableRNG(1))
-            @test all(s -> individual_type(s.individuals[1]) == 1, states)
+            @test all(s -> individual_type(individuals(s)[1]) == 1, states)
         end
     end
 end

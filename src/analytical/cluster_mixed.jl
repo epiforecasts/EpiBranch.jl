@@ -65,8 +65,8 @@ Chain size distribution when the reproduction number varies between chains
 probabilities of `build(θ)`, averaged over `θ` drawn from `mixing`.
 [`chain_size_distribution`](@ref) returns it.
 
-The average is computed by numerical integration over the central 99.8% of
-`mixing` (its 0.001 to 0.999 quantiles).
+The average sums over the support of a `DiscreteNonParametric` `mixing` and
+is otherwise computed by numerical integration over the whole of `mixing`.
 """
 struct ChainSizeMixture{F, D <: Distribution} <: ChainSizeLaw
     build::F
@@ -79,10 +79,10 @@ Distributions.insupport(::ChainSizeMixture, n::Integer) = n >= 1
 
 function Distributions.logpdf(d::ChainSizeMixture, n::Integer)
     n < 1 && return -Inf
-    lo = quantile(d.mixing, 1.0e-3)
-    hi = quantile(d.mixing, 1 - 1.0e-3)
-    integrand = θ -> pdf(chain_size_distribution(d.build(θ)), n) * pdf(d.mixing, θ)
-    prob, _ = quadgk(integrand, lo, hi)
+    # No absolute tolerance: chain size probabilities can be far below 1e-10.
+    prob = _mixture_expectation(
+        θ -> pdf(chain_size_distribution(d.build(θ)), n), d.mixing; atol = 0.0
+    )
     return prob > 0.0 ? log(prob) : -Inf
 end
 
@@ -114,19 +114,17 @@ function chain_size_distribution(o::ClusterMixed{PoissonFamily, <:Gamma})
     return PoissonGammaChainSize(k, R)
 end
 
-function loglikelihood(data::ChainSizes, o::ClusterMixed)
-    d = chain_size_distribution(o)
-    return _chain_size_loglik(d, data)
+# Goes through the generic `ChainSizeLaw` methods, which take the same keywords.
+function loglikelihood(data::ChainSizes, o::ClusterMixed; kwargs...)
+    return loglikelihood(data, chain_size_distribution(o); kwargs...)
 end
-
 function loglikelihood(data::ChainSizeClasses, o::ClusterMixed)
-    d = chain_size_distribution(o)
-    return _chain_size_classes_loglik(d, data)
+    return loglikelihood(data, chain_size_distribution(o))
 end
 
 """
-    BranchingProcess(offspring::ClusterMixed, gt; population_size=NoPopulation())
-    BranchingProcess(offspring::ClusterMixed; population_size=NoPopulation())
+    BranchingProcess(offspring::ClusterMixed, gt; population=NoPopulation())
+    BranchingProcess(offspring::ClusterMixed; population=NoPopulation())
 
 A branching process in which the reproduction number varies between chains:
 each chain draws `θ` once, from the `mixing` distribution of the
@@ -139,19 +137,22 @@ Add interventions, population characteristics or an observation model with a
 """
 function BranchingProcess(
         offspring::ClusterMixed, gt;
-        population_size::Union{Int, NoPopulation} = NoPopulation()
+        population = NoPopulation(), population_size = NoPopulation()
     )
     return BranchingProcess(
-        (Infectiousness(offspring; kernel = gt),), population_size, 1,
-        NoTypeLabels()
+        (Infectiousness(offspring; kernel = gt),),
+        _branching_population(population, population_size, 1), 1, NoTypeLabels()
     )
 end
 
 function BranchingProcess(
         offspring::ClusterMixed;
-        population_size::Union{Int, NoPopulation} = NoPopulation()
+        population = NoPopulation(), population_size = NoPopulation()
     )
-    return BranchingProcess((Infectiousness(offspring),), population_size, 1, NoTypeLabels())
+    return BranchingProcess(
+        (Infectiousness(offspring),),
+        _branching_population(population, population_size, 1), 1, NoTypeLabels()
+    )
 end
 
 """
@@ -169,7 +170,7 @@ function draw_offspring(
         if individual.parent_id == 0
             rand(rng, offspring.mixing)
         else
-            state.individuals[individual.parent_id].state[:cluster_theta]
+            individuals(state)[individual.parent_id].state[:cluster_theta]
         end
     end
     return rand(rng, offspring.build(θ))

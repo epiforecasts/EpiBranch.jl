@@ -15,7 +15,7 @@ the transmission tree, infection time, susceptibility and infectiousness), and
 a dictionary, `ind.state`, holding everything else. Interventions, population
 characteristics, clinical transitions and observation models each keep a few
 named values (keys) there. The reasons for this split are in [Notes for
-contributors](@ref "Why individual state is an open dictionary").
+contributors](@ref "Individual state as an open dictionary").
 
 Read a value with a one-line accessor that supplies a default when the value is
 missing, such as `is_traced(ind) = get(ind.state, :traced, false)::Bool`.
@@ -38,15 +38,16 @@ underscore are internal.
 | `:infection_route` | `Symbol` | — | Simulation (models with routes; `:external` for a case introduced by the `external_hazard` of a network or household model) | When infection is decided |
 | `:censor_until` | `Tuple` | `()` | Simulation (`BranchingProcess` with `Infectiousness` windows that name `until` states) | When a contact is created on a window with `until` states, which it names |
 | `:index` | `Bool` | `false` | Simulation (continuous-time models) | When the case's infector is fixed; `true` for a case infected from outside the population |
+| `:seeded` | `Bool` | absent | Simulation (household and network models) | When infection is decided; `true` only for a chosen `initial_case`, which is infected at day 0 whatever the risks and is not an `external_hazard` introduction |
 | `:type` | `Int` | `1` | Simulation (multi-type) | When the contact is created |
 | `:onset_time` | `Float64` | `NaN` | `clinical_presentation` | Creation |
 | `:asymptomatic` | `Bool` | `false` | `clinical_presentation` | Creation |
-| `:incubation_period` | `Float64` | — | `clinical_presentation` | Creation; `NaN` for an asymptomatic case |
+| `:incubation_period` | `Float64` | — | `clinical_presentation` | Creation; drawn for an asymptomatic case too, as the time its onset would have happened |
 | `:age` | `Real` | — | `demographics` | Creation |
 | `:sex` | `Symbol` | — | `demographics` | Creation |
 | `:group` | `Int` | — | `groups` | Creation |
 | `:household` | `Int` | — | `HouseholdProcess` | Creation |
-| `:isolated` | `Bool` | `false` | `Isolation`, `ContactTracing`/`SourceTracing`'s `Quarantine` | `resolve_individual!` / `apply_trace!` |
+| `:isolated` | `Bool` | `false` | `Isolation`, `Quarantine` in `ContactTracing`/`SourceTracing` | `resolve_individual!` / `apply_trace!` |
 | `:isolation_time` | `Float64` | `Inf` | `Isolation`, `ContactTracing`/`SourceTracing`'s `Quarantine` | `resolve_individual!` / `apply_trace!` |
 | `:isolation_release_time` | `Float64` | `Inf` | `Isolation`, `ContactTracing`/`SourceTracing`'s `Quarantine` | `resolve_individual!` / `apply_trace!`; when the block ends |
 | `:_removal_stretches` | `Vector{Tuple{Float64,Float64}}` | `[]` | `set_isolated!` | Internal. Removals recorded under the shared default key, as merged, sorted `(start, release)` pairs; a release of `Inf` means permanent removal |
@@ -59,7 +60,10 @@ underscore are internal.
 | `:_isolation_unrecorded` | `Bool` | `false` | `Isolation`, `ContactTracing`/`SourceTracing` | `resolve_individual!` / `apply_trace!`; internal. The isolation removes the case from transmission without counting as a detection |
 | `:_isolation_handle` | `Int` | — | `Isolation` | `resolve_individual!`; internal. The handle of `Isolation`'s own entry, so `reset!` can withdraw exactly it |
 | `:_quarantine_removal_handles` | `Vector{Int}` | — | `ContactTracing`/`SourceTracing`'s `Quarantine` | `apply_trace!`; internal. The handles of every entry a quarantine has recorded, so a reset of the shared bookkeeping can withdraw each one. The `reset!` of a tracer withdraws only the entries listed under its own handles key |
-| `:test_positive` | `Bool` | `false` | `Isolation` | `initialise_individual!` |
+| `:_quarantine_start` | `Float64` | — | `ContactTracing`/`SourceTracing`'s `Quarantine` | `apply_trace!`; internal. The start of the earliest quarantine entry still standing, which is the day a capacity is charged on |
+| `:test_positive` | `Bool` | `false` | `Isolation` | `initialise_individual!` and `initialise_episode!` |
+| `:case_classification` | any | — | `ModelSpec`'s `case_definition` | After the run. The classification at the end of it, from the events up to `max_time` when the run has one; absent for a case never classified |
+| `:_case_classification_changes` | `Vector{Tuple{Float64,Any}}` | — | `ModelSpec`'s `case_definition` | After the run; internal. Each change of classification with its time, read by `case_classification_changes` |
 | `:traced` | `Bool` | `false` | `ContactTracing`, `SourceTracing` | `trace_contacts!` |
 | `:quarantined` | `Bool` | `false` | `ContactTracing`, `SourceTracing` | `trace_contacts!` |
 | `:_traced_isolation_time` | `Float64` | `Inf` | `ContactTracing` → `Isolation` | Internal hand-over; may precede onset, so `Isolation` holds it back to onset |
@@ -89,32 +93,28 @@ underscore are internal.
 | `:infection_aborted_time` | `Float64` | — | Simulation, through `abort_infection!` (for example by `RingVaccination`'s `post_exposure_efficacy`) | Any intervention hook |
 | `:_settled` | `Bool` | `false` | Simulation (action delivery) | Once a case's own round of action discovery has run; internal, read through `is_settled` |
 | `:_intervention_actions` | `Dict` | `Dict()` | Any intervention using the action protocol | `action_draw!`; internal. Each intervention's own draws for this person, so a draw is made once and reread |
-| `:reporting_time` | `Float64` | `Inf` | `Reporting` transition *or* `PerCaseObservation` | `resolve_individual!` / after the simulation; reset to `Inf` by `censor_after_outcome!` if it falls after `:outcome_time` |
+| `:reporting_time` | `Float64` | `Inf` | `Reporting` transition | `resolve_individual!` / after the simulation; reset to `Inf` by `censor_after_outcome!` if it falls after `:outcome_time` |
 | `:admitted` | `Bool` | `false` | `Hospitalisation` transition | `resolve_individual!`; reset to `false` by `censor_after_outcome!` if `:admission_time` falls after `:outcome_time` |
 | `:admission_time` | `Float64` | `Inf` | `Hospitalisation` transition | `resolve_individual!`; reset to `Inf` by `censor_after_outcome!` if it falls after `:outcome_time` |
+| `:trajectory` | `Function` | — | `within_host` attribute builder | Read through `trajectory_value`; a function of the days since infection returning the measured quantity (a load, a titre) |
+| `:test_tested` | `Bool` | `false` | `Testing` transition | `resolve_individual!`; reset to `false` by `censor_after_outcome!` if `:test_time` falls after `:outcome_time` |
+| `:test_time` | `Float64` | `Inf` | `Testing` transition | `resolve_individual!`; reset to `Inf` by `censor_after_outcome!` if it falls after `:outcome_time` |
+| `:test_value` | `Float64` | `NaN` | `Testing` transition | `resolve_individual!` |
+| `:test_result` | `Bool` | `false` | `Testing` transition | `resolve_individual!`; the four `:test_*` keys are for the default `name = :test`; a test called `:pcr` writes `:pcr_tested`, `:pcr_time`, `:pcr_value` and `:pcr_result` instead |
 | `:death_candidate_time` | `Float64` | `Inf` | `Death` transition | `resolve_individual!` |
 | `:recovery_candidate_time` | `Float64` | `Inf` | `Recovery` transition | `resolve_individual!` |
 | `:outcome` | `Symbol` | — | Any terminal transition (`Death`, `Recovery`, `Transition(...; terminal = true)`, your own) | `resolve_individual!` (terminal) |
 | `:outcome_time` | `Float64` | — | Any terminal transition (`Death`, `Recovery`, `Transition(...; terminal = true)`, your own) | `resolve_individual!` (terminal) |
-| `:reported` | `Bool` | `false` | `Reporting` transition *or* `PerCaseObservation` | `resolve_individual!` / after the simulation; reset to `false` by `censor_after_outcome!` if `:reporting_time` falls after `:outcome_time` |
+| `:reported` | `Bool` | `false` | `Reporting` transition | `resolve_individual!` / after the simulation; reset to `false` by `censor_after_outcome!` if `:reporting_time` falls after `:outcome_time` |
 | `:cluster_theta` | `Float64` | — | `ClusterMixed` | First read in a simulation |
 | `:vaccine_acceptance` | `Float64` | — | `vaccine_acceptance` | Creation (default key; can be changed) |
 | `:infectious_time` | `Float64` | `Inf` | `Transition(:infectious, …)` | `resolve_individual!` |
-| `:recovered_time` | `Float64` | `Inf` | `Transition(:recovered, …)` | `resolve_individual!` |
+| `:recovered` | `Bool` | `false` | `Recovery` | `initialise_individual!`; `Recovery` sets it to `true` when it wins the terminal outcome. Overwrites a user `Transition(:recovered, …)` value |
+| `:recovered_time` | `Float64` | `Inf` | `Transition(:recovered, …)`, `Recovery` | `resolve_individual!` (`Transition`); `Recovery` resets it on initialisation and writes the outcome time when it wins. Overwrites a user `Transition(:recovered, …)` value |
+| `:died` | `Bool` | `false` | `Death` | `initialise_individual!`; `Death` sets it to `true` when it wins the terminal outcome. Overwrites a user `Transition(:died, …)` value |
+| `:died_time` | `Float64` | `Inf` | `Death` | `initialise_individual!` resets it, and `Death` writes the outcome time when it wins. Overwrites a user `Transition(:died, …)` value |
 | `:susceptible_again_time` | `Float64` | `Inf` | `Transition(:susceptible_again, …)` | `resolve_individual!` |
 | `:_exclusive_draw#N` | `Float64` | — | `exclusive_probabilities` | `resolve_individual!`; internal. The uniform draw a group of mutually exclusive outcomes shares, under a key unique to that call of `exclusive_probabilities` |
-
-!!! warning "Reporting transition and per-case observation clash"
-    `:reported` and `:reporting_time` are written both by the `Reporting`
-    clinical transition, from its probability during the simulation, and by
-    the deprecated `PerCaseObservation`, from its detection probability after
-    the simulation. `Reporting` is the one the chain-size likelihood,
-    `chain_size_distribution` and `end_of_outbreak_probability` read. Both
-    leave `:reporting_time` at `Inf` for a case not reported, so
-    [`weekly_incidence`](@ref) with `by = :reporting` counts reported cases
-    the same way whichever wrote them. A model can use only one of them:
-    `simulate` stops with an error when `PerCaseObservation` finds `:reported`
-    already written by a transition.
 
 ### Vaccination keys
 
@@ -209,8 +209,7 @@ does record a late detection, such as a death found at burial.
 ### Tracing keys
 
 Both kinds of model write the tracing keys through `trace_contacts!`, once per
-case, so the keys and their meanings are the same either way; see [Which hooks
-run on which model](@ref).
+case. The keys and their meanings are the same for both; see [Hooks by model](@ref).
 
 `:tracers` lists every case whose trace reached a contact, in the order they
 did. `:traced_by` is the one of them that reached it first, by the earliest
@@ -282,7 +281,7 @@ population (network, household, homogeneous, mixing, and one written against
 ## Continuous-time models: further details
 
 These points concern the network, household, homogeneous and mixing models, which
-simulate a fixed population in continuous time (see [Which hooks run on which
+simulate a fixed population in continuous time (see [Hooks by
 model](@ref)).
 
 - **Susceptibility and infectiousness.** These are fixed properties of the two
@@ -422,6 +421,7 @@ compatible with these likelihoods. The built-in parts declare:
 | `clinical_presentation`, no population characteristics | yes |
 | Other population characteristics (`demographics`, `groups`, `transmission_traits`, `vaccine_acceptance`, and your own functions) | no, unless declared |
 | `Transition`, `Reporting`, `Hospitalisation`, `Recovery`, `Death` | yes |
+| `Testing` | the infection likelihood yes; `progression_loglik` has no term for `Testing` |
 | `Isolation` | yes, complete or leaky |
 | `ContactTracing` with `Quarantine` or `FlagOnly` | yes |
 | `MassVaccination`, `GroupVaccination` | only with the default `dose_label` and a fixed (numeric) `efficacy` |
@@ -774,7 +774,7 @@ lost_model = ModelSpec(
     ]
 )
 lost_state = simulate(lost_model; n_initial = 20, rng = StableRNG(7))
-count(ind -> get(ind.state, :outcome, :none) == :lost, lost_state.individuals)
+count(ind -> get(ind.state, :outcome, :none) == :lost, individuals(lost_state))
 ```
 
 Each of the 20 cases is lost to follow-up on day 5 with probability 0.6, before
@@ -858,6 +858,19 @@ earlier call is placed in the same group again from their recorded state,
 with nothing of that call's own proposal kept around. The default, `nothing`,
 puts everyone in a single group, unchanged from an intervention with no
 method of it.
+
+A budget per group of the population needs no method of yours:
+`PerGroup` as `budget_per_period` (or as the `capacity` of `HeldCapacity`)
+splits the budget by the group of each person, from the population alone. If
+`iv` also has a `resource_key`, each group is split again by it.
+
+A model that keeps counts of cases by type or compartments by mixing group has
+no individual to offer an intervention to. It applies an intervention only if
+`EpiBranch.count_dosing(iv)` returns an `EpiBranch.GroupDosing`: the `group_key`
+of the groups it doses, and the `efficacy`, `mode`, `coverage`, `dose_delay`,
+`delay_to_immunity` and `waning` of its dose. The default, `nothing`, makes
+every such model refuse it in the shared wording of [What each model
+applies](@ref).
 
 Recorded protection follows its effect date even when the delivery schedule is
 no longer active. Vaccination declares this with
@@ -1033,10 +1046,15 @@ before.
 | A start date for an intervention | `Scheduled(iv; start_time = ...)`, with `intervention_time` and `reset!` for `iv` | After each hook |
 | A condition that starts a schedule | A type `<: AbstractTrigger` with `is_triggered!`; `trigger_can_lapse` and `required_transitions` if the defaults do not fit | Each time the schedule is checked |
 | A capacity limit | `CapacityConstrained(iv; budget_per_period = ...)`, with `capacity_key` and `capacity_time_key` for `iv` (or for its `TraceAction`, for `ContactTracing`) | When actions are admitted, once per case; or, for an effect `iv` writes directly in `resolve_individual!`, right after that hook runs |
-| A capacity limit per group | `resource_key(iv, individual, state)` for `iv` | When actions are admitted, once per case |
+| A capacity limit per group of the population | Nothing: `CapacityConstrained(iv; budget_per_period = PerGroup(...))` finds each person's group | When actions are admitted, once per case |
+| A capacity limit per district, centre or other split of your own | `resource_key(iv, individual, state)` for `iv` | When actions are admitted, once per case |
+| The effect of an intervention on counts of cases or compartments | `EpiBranch.count_dosing(iv)`, returning an `EpiBranch.GroupDosing` | When a model of counts or compartments reads the specification |
 | An exact effect on the offspring distribution | `analytic_offspring_effect` for an intervention | Closed-form results on a `ModelSpec` |
 | A model, attribute or progression transition that leaves the single-type offspring law exactly as drawn | `EpiBranch.offspring_law_unchanged` | The chain-size and incidence likelihoods' analytical path |
+| A progression transition that reports cases with a fixed probability, and the time it reports from | `EpiBranch.reporting_probability`, `EpiBranch.reporting_from` | The chain-size and incidence closed forms, which thin by it |
+| An attribute that sets the onset time, with its incubation period and asymptomatic share | `EpiBranch.onset_law` | The analytic effect of `Isolation` and the closed forms for reporting timed from onset |
 | A stopping rule | A type `<: AbstractStoppingRule` and `should_stop` | Each step |
+| A case definition | A type `<: AbstractCaseDefinition` and `EpiBranch.classify_case`, or a function `history -> label`; `relevant_events` to name the events it reads | After the run, at each time an event was recorded on a case |
 | A contact recorder | A type `<: ContactRecorder` and `records_contacts` | Continuous-time models, each blocked proposal |
 | A terminal clinical transition | A type `<: AbstractClinicalTransition` with `is_terminal`, `terminal_event`, `terminal_target` | When a case is settled |
 | Population characteristics | A function `(rng, ind) -> nothing` | When a person is created |
@@ -1047,8 +1065,8 @@ before.
 | An offspring specification, generation time or transmission model that reads nothing a case's settlement writes | `EpiBranch.reads_settled_state(::YourType) = false` | Tracing rings of depth 2 or more |
 | A transmission model | A type `<: TransmissionModel` with `generate_offspring` (offspring-driven) or `initialise_state` and `contacts_of` (structure-driven), or `EpiBranch.simulate_once` running `EpiBranch.sellke_race!` (its own continuous-time loop); optionally `single_type_offspring` and accessors | Simulation and closed-form results |
 | A transmission route | `RouteWindow(name; from, until, kernel, reach)` on a model that reads routes | Continuous-time models, each case |
-| A route that finds its own contacts rather than listing them | `EpiBranch.proposes_own_contacts(route) = true` on its `reach`, with `EpiBranch.propose_along` and `EpiBranch.route_pair_kernel`; `EpiBranch.pending_beyond` if it samples only up to the run's time limit, and `EpiBranch._resumable_route` with `EpiBranch._resume_route!` if that cap must still be redrawn on a later `simulate(model, state; max_time)`, proposing redrawn contacts through its `proposer` argument rather than itself, letting a tracing wrapper around it still see them | Continuous-time models with routes, each case |
-| Structured mixing in a closed population | `MixingProcess(; population_size, mixing_by, rate)`: the characteristics that define the groups, and the contact rate between one person in each of two groups | Simulation |
+| A route that finds its own contacts rather than listing them | `EpiBranch.proposes_own_contacts(route) = true` on its `reach`, with `EpiBranch.propose_along` and `EpiBranch.route_pair_kernel`; `EpiBranch.pending_beyond` if it samples only up to the time limit of the run, and `EpiBranch.resumable_route` with `EpiBranch.resume_route!` if that cap must be redrawn on a later `simulate(model, state; max_time)`. The redraw proposes contacts through the `proposer` argument, so a tracing wrapper around the route still sees them | Continuous-time models with routes, each case |
+| Structured mixing in a closed population | `MixingProcess(; population, mixing_by, mixing)` (or `rate`): the characteristics that define the groups, the group sizes, and how the groups mix, as contacts per person or a rate per pair (or any `rate` between one person in each of two groups) | Simulation |
 | A clinical transition | A type `<: AbstractClinicalTransition` with `initialise_individual!` and `resolve_individual!`; `is_terminal`, `terminal_event` and `terminal_target` if terminal; `transition_loglik` to evaluate it | When a case is settled |
 | A calendar schedule for a contact interval | A type with `calendar_multiplier`, and `next_calendar_break` or `EpiBranch.calendar_shape(::YourSchedule) = EpiBranch.SmoothCalendar()` | Simulation and likelihood |
 | A pairwise likelihood for a contact structure | A type `<: InfectionLayer` with `contact_structure`; `compile_contact_pairs` and `pairwise_surv_loglik` then apply | Likelihood |
@@ -1059,5 +1077,5 @@ before.
 | A chain-size distribution to fit chain sizes with | A type `<: ChainSizeLaw` with `logpdf` | Likelihood |
 | Per-cluster information | Either computed into existing `ChainSizes` fields, or a new data type with a `loglikelihood` method that passes each group to `loglikelihood(ChainSizes(sizes; seeds), offspring)` | Likelihood |
 | A per-person or per-pair draw that should stay aligned under `CommonRandomNumbers` | `EpiBranch.stream(rng, id, purpose)` in place of `rng` | Wherever the draw happens |
-| An offspring family usable with `simulate_by_generation`'s `multiplier` | `EpiBranch._scale_mean(::YourDistribution, m::Real)`, returning the law with its mean scaled by `m` | Each generation, once, before every case of it draws |
-| An offspring family whose generation total `simulate_by_generation` draws in one step | `EpiBranch._sum_offspring(rng, ::YourDistribution, n::Int)`, returning the sum of `n` independent draws | Each generation, in place of `n` draws |
+| An offspring family usable with the `multiplier` of `simulate_by_generation` | `EpiBranch.scale_mean(::YourDistribution, m::Real)`, returning the law with its mean scaled by `m` | Each generation, once, before every case of it draws |
+| An offspring family whose generation total `simulate_by_generation` draws in one step | `EpiBranch.sum_offspring(rng, ::YourDistribution, n::Int)`, returning the sum of `n` independent draws | Each generation, in place of `n` draws |

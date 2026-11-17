@@ -29,7 +29,7 @@ using DataFrames
         state = simulate(model; max_cases = 50, rng = rng)
 
         df = chain_statistics(state)
-        max_gen = maximum(ind.generation for ind in state.individuals if is_infected(ind))
+        max_gen = maximum(ind.generation for ind in individuals(state) if is_infected(ind))
         @test maximum(df.length) == max_gen
     end
 
@@ -44,5 +44,14 @@ using DataFrames
         @test "size" in names(df)
         @test "length" in names(df)
         @test length(unique(df.sim_id)) == 10
+        @test names(df) == ["sim_id", "chain_id", "size", "length"]
+        @test df.sim_id == sort(df.sim_id)
+    end
+
+    @testset "Batch chain statistics of no simulations" begin
+        df = chain_statistics(SimulationState[])
+        @test names(df) == ["sim_id", "chain_id", "size", "length"]
+        @test nrow(df) == 0
+        @test eltype(df.size) == Int
     end
 end
