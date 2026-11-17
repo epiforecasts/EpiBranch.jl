@@ -822,6 +822,14 @@ placed in their group again from their recorded state alone, with nothing of
 the original proposal kept around. `capacity_usage(cc, state, key)` reads
 one group's own usage.
 
+To limit an intervention by the groups of the population, pass
+`budget_per_period = PerGroup(...)` to `CapacityConstrained` (or `capacity =
+PerGroup(...)` to `HeldCapacity`). The wrapper finds each person's group
+itself, so your intervention needs no `resource_key` method for it. A model
+that keeps counts or compartments rather than individuals applies an
+intervention only if it defines `EpiBranch.count_dosing`; see [What each model
+applies](@ref).
+
 ### Refused actions
 
 An action `CapacityConstrained` turns away is dropped by default. Pass

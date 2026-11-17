@@ -209,3 +209,25 @@ end
     run()
     @test (@allocated run()) < 4_000_000
 end
+
+# Two per-case costs that each added an allocation to every settled case: an
+# outcome key built as a new `Symbol`, and a variable captured by the action
+# closure and then reassigned, which boxed it. A terminal transition records one
+# outcome per case, so it may add at most one allocation per case over the same
+# transition when it is not terminal; the plain run stays under six per case.
+@testset "Settling a case: allocations per case" begin
+    spec(terminal) = ModelSpec(
+        BranchingProcess(NegBin(2.5, 0.16), LogNormal(1.6, 0.5));
+        progression = [Transition(:recovered; delay = 3.0, terminal)]
+    )
+    function allocations(spec)
+        run() = simulate(spec; n_initial = 5, max_cases = 2000, rng = StableRNG(1))
+        n = length(run().individuals)
+        return (@allocations run()), n
+    end
+    terminal, n = allocations(spec(true))
+    plain, n_plain = allocations(spec(false))
+    @test n == n_plain
+    @test terminal - plain <= n + 10
+    @test plain / n < 6
+end

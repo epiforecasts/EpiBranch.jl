@@ -390,7 +390,8 @@ settled by the intervention, so it is a choice: `allocation`, a
 [`DoseAllocation`](@ref). The default, [`TriggeredInPriority`](@ref), follows
 the exact model; [`SplitByGroupSize`](@ref) and
 [`SplitBySusceptibles`](@ref) share a budget's daily rate over the groups
-instead.
+instead. A [`PerGroup`](@ref) budget gives each mixing group its own doses
+under any allocation, with the groups named by the population.
 
 Pass the result to [`simulate`](@ref) for a [`MixingMeanFieldState`](@ref),
 and that state back to [`simulate`](@ref), with a later `max_time`, to continue

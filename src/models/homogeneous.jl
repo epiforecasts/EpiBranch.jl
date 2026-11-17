@@ -208,6 +208,7 @@ function _simulate_mass_action(
     from = something(model.from, infectious_from(progression))
 
     state = new_state(model, progression, attributes, rng)
+    state.scratch[:_mixing_by] = mixing_by
     add_individuals!(
         state, N, interventions;
         setup = (ind, i) -> nothing, assign = _group_assignment(pop, rng, mixing_by)

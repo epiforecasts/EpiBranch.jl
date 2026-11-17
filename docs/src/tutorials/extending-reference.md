@@ -857,6 +857,19 @@ with nothing of that call's own proposal kept around. The default, `nothing`,
 puts everyone in a single group, unchanged from an intervention with no
 method of it.
 
+A budget per group of the population needs no method of yours:
+`PerGroup` as `budget_per_period` (or as the `capacity` of `HeldCapacity`)
+splits the budget by the group of each person, from the population alone. If
+`iv` also has a `resource_key`, each group is split again by it.
+
+A model that keeps counts of cases by type or compartments by mixing group has
+no individual to offer an intervention to. It applies an intervention only if
+`EpiBranch.count_dosing(iv)` returns an `EpiBranch.GroupDosing`: the `group_key`
+of the groups it doses, and the `efficacy`, `mode`, `coverage`, `dose_delay`,
+`delay_to_immunity` and `waning` of its dose. The default, `nothing`, makes
+every such model refuse it in the shared wording of [What each model
+applies](@ref).
+
 Recorded protection follows its effect date even when the delivery schedule is
 no longer active. Vaccination declares this with
 `EpiBranch.persistent_competing_risks(iv) = true`. An intervention of your own
@@ -1031,7 +1044,9 @@ before.
 | A start date for an intervention | `Scheduled(iv; start_time = ...)`, with `intervention_time` and `reset!` for `iv` | After each hook |
 | A condition that starts a schedule | A type `<: AbstractTrigger` with `is_triggered!`; `trigger_can_lapse` and `required_transitions` if the defaults do not fit | Each time the schedule is checked |
 | A capacity limit | `CapacityConstrained(iv; budget_per_period = ...)`, with `capacity_key` and `capacity_time_key` for `iv` (or for its `TraceAction`, for `ContactTracing`) | When actions are admitted, once per case; or, for an effect `iv` writes directly in `resolve_individual!`, right after that hook runs |
-| A capacity limit per group | `resource_key(iv, individual, state)` for `iv` | When actions are admitted, once per case |
+| A capacity limit per group of the population | Nothing: `CapacityConstrained(iv; budget_per_period = PerGroup(...))` finds each person's group | When actions are admitted, once per case |
+| A capacity limit per district, centre or other split of your own | `resource_key(iv, individual, state)` for `iv` | When actions are admitted, once per case |
+| The effect of an intervention on counts of cases or compartments | `EpiBranch.count_dosing(iv)`, returning an `EpiBranch.GroupDosing` | When a model of counts or compartments reads the specification |
 | An exact effect on the offspring distribution | `analytic_offspring_effect` for an intervention | Closed-form results on a `ModelSpec` |
 | A model, attribute or progression transition that leaves the single-type offspring law exactly as drawn | `EpiBranch.offspring_law_unchanged` | The chain-size and incidence likelihoods' analytical path |
 | A progression transition that reports cases with a fixed probability, and the time it reports from | `EpiBranch.reporting_probability`, `EpiBranch.reporting_from` | The chain-size and incidence closed forms, which thin by it |

@@ -101,7 +101,8 @@ CapacityConstrained(GroupVaccination(efficacy = 0.9); budget_per_period = doses,
   callable `t -> budget(t)`) giving a different number for the period
   starting on each calendar day `t`. A finite `period` is required with a
   schedule to determine the period start at which
-  to read the budget.
+  to read the budget. A [`PerGroup`](@ref) gives each group of the
+  population of the model its own number or schedule instead of one pool for everyone.
 - `period`: length of a period in days, measured on the date each dose is
   actually given. `Inf` (default) gives a single budget for the whole
   outbreak.
@@ -186,7 +187,7 @@ function CapacityConstrained(
     )
     budget = _prepared_budget(budget_per_period)
     period > 0 || throw(ArgumentError("period must be positive, got $period"))
-    isfinite(period) || budget isa Real || throw(
+    isfinite(period) || !_has_schedule(budget) || throw(
         ArgumentError("budget_per_period as a schedule needs a finite period")
     )
     _check_refusal_policy(on_refusal, intervention)
@@ -207,6 +208,7 @@ function _prepared_budget(budget::Real)
     )
     return Float64(budget)
 end
+_prepared_budget(pg::PerGroup) = PerGroup(pg.groups, Any[_prepared_budget(b) for b in pg.budgets])
 _prepared_budget(schedule) = schedule
 
 """
@@ -280,6 +282,76 @@ resource_key(::AbstractIntervention, individual, state) = nothing
 
 resource_key(w::InterventionWrapper, individual, state) =
     resource_key(w.intervention, individual, state)
+
+# A budget per group splits the budget of the wrapper by the group of the person,
+# whatever the wrapped intervention does. The group is the whole resource
+# unless the intervention splits it further by a `resource_key` of its own.
+struct _GroupResource
+    group::Any
+    inner::Any
+end
+
+_resource_budget(cc::CapacityConstrained) = cc.budget_per_period
+_resource_budget(hc) = hc.capacity
+
+function resource_key(w::_CapacityWrapper, individual, state)
+    inner = resource_key(w.intervention, individual, state)
+    return _split_resource(_resource_budget(w), inner, individual, state)
+end
+_split_resource(budget, inner, individual, state) = inner
+function _split_resource(::PerGroup, inner, individual, state)
+    group = _group_of(state, individual)
+    return inner === nothing ? group : _GroupResource(group, inner)
+end
+
+_resource_group(resource::_GroupResource) = resource.group
+_resource_group(resource) = resource
+
+# The name of the group `individual` belongs to in the population of `state`:
+# its type for a grouped population of types, and the values of the
+# `mixing_by` attributes of the model for one of mixing groups.
+function _group_of(state, individual)
+    names = _group_names(state.population)
+    keys = get(state.scratch, :_mixing_by, ())
+    isempty(keys) && return names[individual_type(individual)]
+    return _group_name(Tuple(individual.state[k] for k in keys))
+end
+
+# `cc` with the budget of the resource a person draws on: `cc` itself for one
+# pool shared by everyone.
+_for_resource(cc::CapacityConstrained, resource) =
+    _for_resource(cc.budget_per_period, cc, resource)
+_for_resource(::Any, cc::CapacityConstrained, resource) = cc
+function _for_resource(pg::PerGroup, cc::CapacityConstrained, resource)
+    budget = _budget_of(pg, _resource_group(resource))
+    return CapacityConstrained(
+        cc.intervention, budget, cc.period, cc.carry_over, cc.priority, cc.on_refusal
+    )
+end
+
+# The resource a user names in `capacity_usage` and `held_usage`: the name of
+# a group when the budget is per group.
+_user_resource(::Any, key) = key
+_user_resource(::PerGroup, key) = _group_name(key)
+
+# The `PerGroup` budgets among `interventions`, looking through wrappers.
+_per_group_budgets(::Nothing) = PerGroup[]
+_per_group_budgets(ivs) = reduce(vcat, (_per_group_budgets(iv) for iv in ivs); init = PerGroup[])
+function _per_group_budgets(w::_CapacityWrapper)
+    own = _resource_budget(w) isa PerGroup ? [_resource_budget(w)] : PerGroup[]
+    return vcat(own, _per_group_budgets(w.intervention))
+end
+_per_group_budgets(w::InterventionWrapper) = _per_group_budgets(w.intervention)
+_per_group_budgets(::AbstractIntervention) = PerGroup[]
+
+# Fails before a run starts when a budget per group does not fit the
+# population of the model.
+function _check_group_budgets(interventions, population)
+    for pg in _per_group_budgets(interventions)
+        _group_budgets(pg, population)
+    end
+    return nothing
+end
 capacity_key(v::RingVaccination) = _vaccinated_key(dose_label(v))
 capacity_time_key(v::RingVaccination) = _vaccination_time_key(dose_label(v))
 capacity_key(v::MassVaccination) = _vaccinated_key(dose_label(v))
@@ -391,7 +463,7 @@ end
 # usage without rescanning the population once per candidate or once per key.
 function _dose_times_by_key(cc::CapacityConstrained, state)
     times = Dict{Any, Vector{Float64}}()
-    for (_, resource, t) in _capacity_uses(cc.intervention, state)
+    for (_, resource, t) in _capacity_uses(cc, state)
         push!(get!(Vector{Float64}, times, resource), t)
     end
     foreach(sort!, values(times))
@@ -431,13 +503,13 @@ _CapacityCache(iv) = _CapacityCache(iv, Dict{Any, Vector{Float64}}(), Dict{Int, 
 
 function _capacity_cache(cc::CapacityConstrained, state)
     cache = get!(
-        () -> _CapacityCache(cc.intervention), state.scratch,
+        () -> _CapacityCache(cc), state.scratch,
         (:capacity_cache, capacity_key(cc.intervention))
     )::_CapacityCache
     key = capacity_key(cc.intervention)
     n = length(individuals(state))
     if cache.scanned == 0
-        for (ind, resource, t) in _capacity_uses(cc.intervention, state)
+        for (ind, resource, t) in _capacity_uses(cc, state)
             push!(get!(Vector{Float64}, cache.times, resource), t)
             cache.recorded[ind.id] = (resource, t)
         end
@@ -610,7 +682,8 @@ function _fits_budget(cc::CapacityConstrained, times, extra, at)
 end
 
 function _capacity_usage(cc::CapacityConstrained, state, at = state.max_infection_time, key = nothing)
-    return _usage_at(cc, _dose_times(cc, state, key), Float64[], at)
+    resource = _user_resource(cc.budget_per_period, key)
+    return _usage_at(_for_resource(cc, resource), _dose_times(cc, state, resource), Float64[], at)
 end
 
 # The indices of `individuals` sharing each `resource_key` value, as a vector
@@ -623,7 +696,7 @@ function _resource_groups(cc, state, individuals)
     order = Any[]
     groups = Dict{Any, Vector{Int}}()
     for (i, ind) in enumerate(individuals)
-        key = resource_key(cc.intervention, ind, state)
+        key = resource_key(cc, ind, state)
         haskey(groups, key) || push!(order, key)
         push!(get!(Vector{Int}, groups, key), i)
     end
@@ -744,9 +817,9 @@ _ration_own_effect!(cc::CapacityConstrained, ind, state) =
 # the effect `resolve_individual!` just wrote on `excluded` keeps every
 # period within budget, which must not count that same use twice.
 function _dose_times(cc::CapacityConstrained, state, excluded::Individual)
-    resource = resource_key(cc.intervention, excluded, state)
+    resource = resource_key(cc, excluded, state)
     times = Float64[]
-    for (ind, r, t) in _capacity_uses(cc.intervention, state)
+    for (ind, r, t) in _capacity_uses(cc, state)
         ind.id == excluded.id && continue
         r == resource || continue
         push!(times, t)
@@ -766,7 +839,8 @@ function _reset_unless_within_budget!(cc::CapacityConstrained, ind::Individual, 
     t = intervention_time(cc.intervention, ind)
     isfinite(t) || return nothing
     times = _dose_times(cc, state, ind)
-    _fits_budget(cc, times, Float64[], t) || reset!(cc.intervention, ind)
+    own = _for_resource(cc, resource_key(cc, ind, state))
+    _fits_budget(own, times, Float64[], t) || reset!(cc.intervention, ind)
     return nothing
 end
 
