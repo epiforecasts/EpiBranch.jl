@@ -357,8 +357,8 @@ end
 function _incidence_cohorts(
         y::AbstractVector, expected::AbstractMatrix, seeds, ρ, d
     )
-    n, m = size(expected)
-    Y = zeros(promote_type(Float64, eltype(expected)), n, m)
+    n, m = size(expected, 1), size(expected, 2)
+    Y = zeros(promote_type(Float64, eltype(expected)), n, m)::Matrix
     for s in 1:n
         tot = sum(expected[s, :])
         shares = tot > 0 ? expected[s, :] ./ tot : seeds ./ sum(seeds)
