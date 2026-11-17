@@ -73,7 +73,7 @@ function _exponential_removal_rate(exact, bare)
         ok = t.from === :infection && coalesce(_certain_probability(t.probability), false) &&
             t.delay isa Exponential &&
             (bare.from === nothing || bare.from === :infection) &&
-            !any(s -> s isa Transition && s.state === :infectious, steps)
+            !any(s -> :infectious in produced_states(s), steps)
     end
     ok || throw(
         ArgumentError(
