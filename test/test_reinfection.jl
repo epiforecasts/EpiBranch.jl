@@ -13,7 +13,7 @@ using StableRNGs
                 progression
             )
             s = simulate(m; n_initial = 1, max_time = 20.0, rng = StableRNG(1))
-            @test count(i -> get(i.state, :susceptible_again, false), s.individuals) > 0
+            @test count(i -> get(i.state, :susceptible_again, false), individuals(s)) > 0
         end
     end
 
@@ -142,18 +142,17 @@ using StableRNGs
         return state
     end
     function EpiBranch.contacts_of(::PingPongModel, parent, state::EpiBranch.SimulationState)
-        other = state.individuals[parent.id == 1 ? 2 : 1]
+        other = individuals(state)[parent.id == 1 ? 2 : 1]
         return [(other, parent.infection_time + 1.0)]
     end
 
-    # A custom reinfection step written exactly as the `FollowupVisit` idiom
-    # in the docs: one `transition_time` call, gated on `probability`, that
-    # only sometimes sets its target field. `_allows_reinfection` must read
-    # this as capable regardless of how a given probe draw would have landed.
-    struct _ProbabilisticReinfection <: EpiBranch.AbstractClinicalTransition
+    # A custom step has no `state` field; it declares the state it produces
+    # through `produced_states`, which is all `_allows_reinfection` reads.
+    struct _DeclaredReinfection <: EpiBranch.AbstractClinicalTransition
         probability::Float64
     end
-    function EpiBranch.resolve_individual!(t::_ProbabilisticReinfection, ind, state)
+    EpiBranch.produced_states(::_DeclaredReinfection) = (:susceptible_again,)
+    function EpiBranch.resolve_individual!(t::_DeclaredReinfection, ind, state)
         time = EpiBranch.transition_time(
             state.rng, ind, ind.infection_time, 0.0; probability = t.probability
         )
@@ -161,54 +160,39 @@ using StableRNGs
         return nothing
     end
 
-    @testset "A low-probability custom reinfection step is still detected" begin
-        for seed in 1:20
-            transitions = EpiBranch.AbstractClinicalTransition[_ProbabilisticReinfection(0.05)]
+    struct _UndeclaredStep <: EpiBranch.AbstractClinicalTransition end
+
+    @testset "A custom step declaring :susceptible_again is detected" begin
+        for p in (0.05, 1.0)
+            transitions = EpiBranch.AbstractClinicalTransition[_DeclaredReinfection(p)]
             state = EpiBranch.new_state(
-                PingPongModel(), transitions, NoAttributes(), MersenneTwister(seed)
+                PingPongModel(), transitions, NoAttributes(), MersenneTwister(1)
             )
             @test EpiBranch._allows_reinfection(state)
         end
     end
 
-    @testset "A custom step that can never reinfect is not detected" begin
-        transitions = EpiBranch.AbstractClinicalTransition[_ProbabilisticReinfection(0.0)]
-        state = EpiBranch.new_state(
-            PingPongModel(), transitions, NoAttributes(), MersenneTwister(1)
-        )
-        @test !EpiBranch._allows_reinfection(state)
-    end
-
-    @testset "An attribute-dependent progression alongside a custom step does not crash the probe" begin
-        # A `Transition` whose `delay` reads `:age` sits alongside a custom
-        # transition, which forces `_allows_reinfection` to probe every
-        # transition; the probe must have `:age` set on it too.
+    @testset "A progression with no declared :susceptible_again is not detected" begin
         transitions = EpiBranch.AbstractClinicalTransition[
-            Transition(:recovered; from = :infection, delay = (rng, ind) -> ind.state[:age] < 18 ? 2.0 : 5.0),
-            _ProbabilisticReinfection(0.0),
+            Transition(:recovered; from = :infection, delay = 2.0), _UndeclaredStep(),
         ]
         state = EpiBranch.new_state(
-            PingPongModel(), transitions, demographics(), MersenneTwister(1)
+            PingPongModel(), transitions, NoAttributes(), MersenneTwister(1)
         )
         @test !EpiBranch._allows_reinfection(state)
     end
 
-    # The key comes from a model's own per-individual `setup` (as
-    # `HouseholdProcess` sets `:household` there), rather than from
-    # `state.attributes` or a literal `Transition`, so the probe individual
-    # never has it.
-    struct _ReadsSetupKey <: EpiBranch.AbstractClinicalTransition end
-    function EpiBranch.resolve_individual!(::_ReadsSetupKey, ind, state)
-        ind.state[:household]
-        return nothing
+    struct _OpensInfectious <: EpiBranch.AbstractClinicalTransition end
+    EpiBranch.produced_states(::_OpensInfectious) = (:infectious,)
+
+    @testset "infectious_from sees a custom step that produces :infectious" begin
+        @test EpiBranch.infectious_from([_OpensInfectious()]) === :infectious
+        @test EpiBranch.infectious_from([_UndeclaredStep()]) === :infection
     end
 
-    @testset "A custom step reading a setup-only key does not crash the probe" begin
-        transitions = EpiBranch.AbstractClinicalTransition[_ReadsSetupKey()]
-        state = EpiBranch.new_state(
-            PingPongModel(), transitions, NoAttributes(), MersenneTwister(1)
-        )
-        @test EpiBranch._allows_reinfection(state)
+    @testset "produced_states defaults to nothing and reads a Transition's state" begin
+        @test EpiBranch.produced_states(_UndeclaredStep()) == ()
+        @test EpiBranch.produced_states(Transition(:onset; delay = 1.0)) == (:onset,)
     end
 
     @testset "A reinfection that reaches no terminal step drops the earlier outcome" begin
@@ -240,7 +224,7 @@ using StableRNGs
         ]
         spec = ModelSpec(PingPongModel(); progression)
         state = simulate(spec; n_initial = 1, stopping_rules = [MaxGenerations(4)])
-        one, two = state.individuals
+        one, two = individuals(state)
 
         @test length(one.episodes) >= 1
         @test length(two.episodes) >= 1
@@ -288,7 +272,7 @@ using StableRNGs
             interventions = [_CountInitialisations()]
         )
         state = simulate(spec; n_initial = 1, stopping_rules = [MaxGenerations(4)])
-        one, two = state.individuals
+        one, two = individuals(state)
 
         @test length(one.episodes) >= 1
         @test one.state[:_init_count] == 1
@@ -335,11 +319,11 @@ using StableRNGs
             interventions = [Scheduled(iso; start_after = ReportedCases(3))]
         )
         state = simulate(spec; n_initial = 1, stopping_rules = [MaxGenerations(6)])
-        @test any(ind -> !isempty(ind.episodes), state.individuals)
+        @test any(ind -> !isempty(ind.episodes), individuals(state))
 
         due(st, clock) = get(st, :reported, false) && st[:reporting_time] <= clock
         function recount(clock)
-            return sum(state.individuals) do ind
+            return sum(individuals(state)) do ind
                 count(e -> due(e.state, clock), ind.episodes) + due(ind.state, clock)
             end
         end

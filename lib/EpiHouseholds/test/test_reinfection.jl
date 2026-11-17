@@ -18,7 +18,7 @@ end
     )
     state = simulate(model; rng = StableRNG(1))
 
-    infected = filter(is_infected, state.individuals)
+    infected = filter(is_infected, individuals(state))
     @test !isempty(infected)
     @test any(ind -> !isempty(ind.episodes), infected)
     @test any(ind -> length(ind.episodes) >= 2, infected)
@@ -32,7 +32,7 @@ end
         first_episode.infection_time + 2.0 + 3.0
     # A fresh episode starts with no secondary cases of its own.
     @test length(reinfected.secondary_case_ids) <=
-        count(ind -> ind.parent_id == reinfected.id, state.individuals)
+        count(ind -> ind.parent_id == reinfected.id, individuals(state))
 end
 
 @testset "reinfection redraws from the reinfected host's own external hazard" begin
@@ -50,8 +50,8 @@ end
     )
     state = simulate(model; rng = StableRNG(1))
 
-    @test length(state.individuals[1].episodes) >= 1
-    @test all(ind -> isempty(ind.episodes) && !is_infected(ind), state.individuals[2:end])
+    @test length(individuals(state)[1].episodes) >= 1
+    @test all(ind -> isempty(ind.episodes) && !is_infected(ind), individuals(state)[2:end])
 end
 
 @testset "is_settled is false again for a host whose reinfection is being processed" begin
@@ -81,7 +81,7 @@ end
         interventions = [recorder]
     )
     state = simulate(model; rng = StableRNG(1))
-    @test any(ind -> length(ind.episodes) >= 1, state.individuals)
+    @test any(ind -> length(ind.episodes) >= 1, individuals(state))
 
     reinfection_rounds = filter(((episodes, _),) -> episodes >= 1, recorder.observed)
     @test !isempty(reinfection_rounds)
@@ -97,7 +97,7 @@ end
         progression = [Transition(:recovered; from = :infection, delay = 2.0)]
     )
     state = simulate(model; rng = StableRNG(1))
-    @test all(isempty(ind.episodes) for ind in state.individuals)
+    @test all(isempty(ind.episodes) for ind in individuals(state))
 end
 
 @testset "A probabilistic susceptible_again step leaves some hosts immune for good" begin
@@ -115,7 +115,7 @@ end
         ]
     )
     state = simulate(model; rng = StableRNG(1))
-    infected = filter(is_infected, state.individuals)
+    infected = filter(is_infected, individuals(state))
     @test any(ind -> isempty(ind.episodes) && isfinite(ind.infection_time), infected)
     @test any(ind -> !isempty(ind.episodes), infected)
 end
@@ -129,7 +129,7 @@ end
         progression = _waning_progression()
     )
     state = simulate(model; rng = StableRNG(1))
-    @test any(ind -> !isempty(ind.episodes), state.individuals)
+    @test any(ind -> !isempty(ind.episodes), individuals(state))
     @test_logs (:warn, r"episode") match_mode = :any household_infections(state, model)
 
     once_only = ModelSpec(

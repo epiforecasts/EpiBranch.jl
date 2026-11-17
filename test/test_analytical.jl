@@ -233,6 +233,24 @@ _rep(p, delay = Dirac(0.0)) = [Reporting(; delay, probability = p, from = :infec
         end
     end
 
+    @testset "A user-written ChainSizeLaw inherits the defaults" begin
+        # Only `logpdf` is defined: `pdf`, the support, `cdf` and `logccdf`
+        # come from `ChainSizeLaw`.
+        @eval struct GeometricSizeLaw <: EpiBranch.ChainSizeLaw end
+        @eval Distributions.logpdf(::GeometricSizeLaw, n::Integer) =
+            n >= 1 ? n * log(0.5) : -Inf
+        d = GeometricSizeLaw()
+        @test pdf(d, 3) ≈ 0.125
+        @test minimum(d) == 1
+        @test maximum(d) == Inf
+        @test insupport(d, 1)
+        @test !insupport(d, 0)
+        @test cdf(d, 3) ≈ 0.5 + 0.25 + 0.125
+        @test cdf(d, 0) == 0.0
+        @test cdf(d, 3.5) ≈ cdf(d, 3)
+        @test logccdf(d, 3) ≈ log(1 - cdf(d, 3))
+    end
+
     @testset "cdf of chain-size distributions" begin
         # Each needs its own `cdf`/`cdf(d, ::Integer)` method:
         # Distributions.jl's discrete fallback calls itself until the stack
@@ -635,7 +653,7 @@ _rep(p, delay = Dirac(0.0)) = [Reporting(; delay, probability = p, from = :infec
                 n = count(
                     ind -> EpiBranch.is_infected(ind) &&
                         ind.state[:reported],
-                    state.individuals
+                    individuals(state)
                 )
                 n > 0 && push!(sizes, n)
             end
@@ -1171,7 +1189,7 @@ _rep(p, delay = Dirac(0.0)) = [Reporting(; delay, probability = p, from = :infec
             )
             by_chain = Dict{Int, Bool}()
             consistent = true
-            for ind in state.individuals
+            for ind in individuals(state)
                 is_infected(ind) || continue
                 flag = ind.state[:reported]
                 if haskey(by_chain, ind.chain_id) && by_chain[ind.chain_id] != flag
@@ -1210,11 +1228,11 @@ _rep(p, delay = Dirac(0.0)) = [Reporting(; delay, probability = p, from = :infec
                 );
                 rng = StableRNG(42)
             )
-            @test all(haskey(ind.state, :reported) for ind in sim_state.individuals)
-            @test all(haskey(ind.state, :reporting_time) for ind in sim_state.individuals)
+            @test all(haskey(ind.state, :reported) for ind in individuals(sim_state))
+            @test all(haskey(ind.state, :reporting_time) for ind in individuals(sim_state))
             @test all(
                 ind.state[:reporting_time] >= ind.infection_time
-                    for ind in sim_state.individuals if ind.state[:reported]
+                    for ind in individuals(sim_state) if ind.state[:reported]
             )
         end
 
@@ -1284,7 +1302,7 @@ _rep(p, delay = Dirac(0.0)) = [Reporting(; delay, probability = p, from = :infec
             rep_sizes = Int[]
             for st in simulate(rep_spec, 5000; max_cases = 500, rng = StableRNG(7))
                 counts = Dict{Int, Int}()
-                for ind in st.individuals
+                for ind in individuals(st)
                     (is_infected(ind) && ind.state[:reported]) || continue
                     counts[ind.chain_id] = get(counts, ind.chain_id, 0) + 1
                 end
@@ -1322,7 +1340,7 @@ _rep(p, delay = Dirac(0.0)) = [Reporting(; delay, probability = p, from = :infec
             all_consistent = true
             for s in states
                 by_chain = Dict{Int, Float64}()
-                for ind in s.individuals
+                for ind in individuals(s)
                     haskey(ind.state, :cluster_theta) || continue
                     θ = ind.state[:cluster_theta]
                     if haskey(by_chain, ind.chain_id) &&
@@ -1347,7 +1365,7 @@ _rep(p, delay = Dirac(0.0)) = [Reporting(; delay, probability = p, from = :infec
             thetas = Float64[]
             for s in states_multi
                 seen_chains = Set{Int}()
-                for ind in s.individuals
+                for ind in individuals(s)
                     ind.chain_id in seen_chains && continue
                     haskey(ind.state, :cluster_theta) || continue
                     push!(thetas, ind.state[:cluster_theta])
@@ -1757,7 +1775,7 @@ _rep(p, delay = Dirac(0.0)) = [Reporting(; delay, probability = p, from = :infec
             state = simulate(mk([rep]); max_cases = 300, rng = StableRNG(7))
             sizes = EpiBranch._sim_chain_sizes(state, EpiBranch.NoObservation(), [rep])
             counts = Dict{Int, Int}()
-            for ind in state.individuals
+            for ind in individuals(state)
                 (is_infected(ind) && ind.state[:reported]) || continue
                 counts[ind.chain_id] = get(counts, ind.chain_id, 0) + 1
             end
@@ -2343,11 +2361,11 @@ _rep(p, delay = Dirac(0.0)) = [Reporting(; delay, probability = p, from = :infec
             counts = Int[]
             for _ in 1:4000
                 state = simulate(spec; max_cases = 200, rng)
-                for ind in state.individuals
+                for ind in individuals(state)
                     is_infected(ind) || continue
                     push!(
                         counts,
-                        count(id -> is_infected(state.individuals[id]), ind.secondary_case_ids)
+                        count(id -> is_infected(individuals(state)[id]), ind.secondary_case_ids)
                     )
                 end
             end
@@ -2593,8 +2611,10 @@ end
     @test 0.0 < probability_contain(plain) <= 1.0
     @test 0.0 < extinction_probability(plain) <= 1.0
     @test 0.0 < proportion_transmission(plain) < 1.0
+    @test reproduction_number(plain) ≈ 0.8
 
     for reshaped in (finite, windowed, susceptible)
+        @test_throws ArgumentError reproduction_number(reshaped)
         @test_throws ArgumentError end_of_outbreak_probability(reshaped, 5.0)
         @test_throws ArgumentError probability_contain(reshaped)
         @test_throws ArgumentError extinction_probability(reshaped)

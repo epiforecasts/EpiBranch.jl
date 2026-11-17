@@ -83,23 +83,23 @@ function household_infections(
         followup_end = Inf, host_times = ()
     )
     _warn_uncovered_episodes(state)
-    household_of = [ind.state[:household]::Int for ind in state.individuals]
-    columns = _infection_layer_columns(state, model)
+    household_of = [ind.state[:household]::Int for ind in individuals(state)]
+    columns = infection_layer_columns(state, model)
     return HouseholdInfections(
         household_of, columns...; obs_end, followup_end,
-        host_times = _layer_host_times(state, model, host_times),
+        host_times = layer_host_times(state, model, host_times),
         seeded = EpiBranch._seeded_column(state)
     )
 end
 
-# `_infection_layer_columns` reads each individual's live fields. A
+# `infection_layer_columns` reads each individual's live fields. A
 # progression reaching `:susceptible_again` moves those fields on to the
 # person's latest infection once a household race lets `HostImmunity`
 # reinfect them (see `_allows_reinfection` in EpiBranch's sellke.jl): the
 # earlier episode is archived onto `episodes` instead, and neither this
 # layer nor `loglikelihood` reads it.
 function _warn_uncovered_episodes(state::SimulationState)
-    any(ind -> !isempty(ind.episodes), state.individuals) || return nothing
+    any(ind -> !isempty(ind.episodes), individuals(state)) || return nothing
     @warn "this outbreak has hosts with more than one infection episode " *
         "(`ind.episodes`), from a progression that reaches `:susceptible_again`; " *
         "`household_infections` records only each host's current episode, so " *
@@ -217,7 +217,7 @@ function Distributions.loglikelihood(
         condition_on::ConditionOn = RecruitedIndex(),
         layout::Union{Nothing, ContactPairsLayout} = nothing
     )
-    EpiBranch._validate_infection_likelihood(model)
+    EpiBranch.validate_infection_likelihood(model)
     return loglikelihood(
         data, model.process; condition_on, susceptibility = model.interventions, layout
     )

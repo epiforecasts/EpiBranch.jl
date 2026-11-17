@@ -117,7 +117,7 @@ fit_states = simulate(fit_model, 1000; rng = rng)
 fit_counts = Int[]
 for s in fit_states
     tally = Dict{Int, Int}()
-    for ind in s.individuals
+    for ind in individuals(s)
         is_infected(ind) || continue
         tally[ind.id] = get(tally, ind.id, 0)
         ind.parent_id == 0 && continue

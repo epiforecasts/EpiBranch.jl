@@ -129,14 +129,14 @@ _member!(tree::_Tree, race, k) = _birth!(tree, race, k)
 function _birth!(tree::_Tree, race, k)
     (; state) = race
     if tree.ids[k] != 0
-        contact = state.individuals[tree.ids[k]]
+        contact = individuals(state)[tree.ids[k]]
         slot = tree.slots[k]
         slot != 0 && isnan(contact.infection_time) &&
             (contact.infection_time = tree.drawn[abs(slot)].time)
         return contact
     end
     drawn = tree.drawn[abs(tree.slots[k])]
-    parent = state.individuals[drawn.infector]
+    parent = individuals(state)[drawn.infector]
     contact = drawn.type == 0 ? make_contact!(state, parent, drawn.time) :
         make_contact!(state, parent, drawn.time; type_idx = drawn.type)
     contact.generation = parent.generation + 1
@@ -190,6 +190,43 @@ _route_builtin_blocks(::_Offspring) = _offspring_builtin_risk_blocks
 # The contact was registered on its infector when it was created, and a
 # branching process names no route.
 _record_infection!(::_Offspring, infector, ind, w, named) = nothing
+
+# Remove a contact that the race found was never made from the contacts of its
+# infector.
+_withdraw_contact!(::_Offspring, race, parent, contact) = _unmake_contact!(parent, contact)
+
+# Whether the sources that stop the meeting itself certainly block the contact
+# `ind` drew at `t`, so that it was never a contact. Only a block that is
+# already in force and certain counts. It is read from the risks of the
+# interventions without a draw, and the race decides the probabilistic blocks
+# when it reaches the contact. A contact that comes after the infector's
+# isolation can therefore be left out before tracing reaches it.
+function _certainly_prevented(o::_Offspring, race, ind, contact, t, window)
+    (; state) = race
+    for iv in race.interventions
+        prevents_contact(iv) && risk_applies(iv, window) || continue
+        for risk in _iter_risks(competing_risk(iv, ind, contact, state))
+            _in_force_certainly(risk, t) && t < risk.release_time && return true
+        end
+    end
+    return false
+end
+
+# Take the place `k`, born as a contact of `ind`, back out of the outbreak if
+# `_certainly_prevented`. Its draw is released, which stops the race proposing it.
+function _drop_if_prevented!(o::_Offspring, race, ind, k)
+    isempty(race.interventions) && return false
+    slot = o.tree.slots[k]
+    slot == 0 && return false
+    contact = race.state.individuals[o.tree.ids[k]]
+    _is_withdrawn(contact) && return false
+    t = o.tree.drawn[abs(slot)].time
+    _certainly_prevented(o, race, ind, contact, t, _offspring_window(o.window)) ||
+        return false
+    _unmake_contact!(ind, contact)
+    _release_draw!(o.tree, k)
+    return true
+end
 
 function _offspring_builtin_risk_blocks(parent, contact, state, transmission_time)
     pop_suscept = susceptible_fraction(state, contact)
@@ -265,13 +302,14 @@ function _case_contacts(
         contacts, rts::Tuple{Vararg{Tuple{RouteWindow, _Offspring}}}, race, max_generation
     )
     return function (id, state)
-        ind = state.individuals[id]
+        ind = individuals(state)[id]
         settled = race.processed[first(rts)[2].tree.places[id]]
         early = !settled && _draws_early(rts, ind)
         for (_, o) in rts
             if settled
                 for k in o.pending
                     _birth!(o.tree, race, k)
+                    _drop_if_prevented!(o, race, ind, k)
                 end
             elseif early && !haskey(o.reached, id)
                 o.reached[id] = _draw_contacts!(o, race, ind, max_generation, true)
@@ -384,13 +422,15 @@ end
 function _propose_along!(
         o::_Offspring, race, infector_id, opening_id, open_t, close_t, traits, live, ri
     )
+    infector = race.state.individuals[infector_id]
     for k in o.pending
+        o.tree.slots[k] == 0 && continue  # dropped when tracing reached it
         t = o.tree.drawn[abs(o.tree.slots[k])].time
         if t <= close_t
             _propose!(race, k, opening_id, t)
         else
             _birth!(o.tree, race, k)
-            o.tree.excluded[k] = true
+            _drop_if_prevented!(o, race, infector, k) || (o.tree.excluded[k] = true)
         end
     end
     o.pending = 1:0
@@ -429,9 +469,11 @@ function _finish!(o::_Offspring, race, stop_t, extinct, cut_by_max_time)
         undecided && extinct && _release_draw!(o.tree, k)
         id = o.tree.ids[k]
         id == 0 && continue
-        contact = state.individuals[id]
+        contact = individuals(state)[id]
         # An index case the run stopped before reaching stays an index case.
         contact.parent_id == 0 && continue
+        # A contact that never happened has no exposure time to mark undecided.
+        _is_withdrawn(contact) && continue
         # A shared tree has already had this place's draw released by an
         # earlier window's turn at `_finish!`; nothing more to restore then.
         if excluded && slot != 0
@@ -446,7 +488,7 @@ function _finish!(o::_Offspring, race, stop_t, extinct, cut_by_max_time)
     # only on one that was infected before it.
     isempty(race.interventions) && return nothing
     for id in o.tree.ids
-        id == 0 || _drop_stale_abort!(state.individuals[id])
+        id == 0 || _drop_stale_abort!(individuals(state)[id])
     end
     return nothing
 end
@@ -512,7 +554,7 @@ function _simulate_offspring(
     state.cumulative_cases = 0
     fill!(state.group_cases, 0)
     T = _timetype(state)
-    tree = _take_tree(T, length(state.individuals), map(w -> w.until, windows))
+    tree = _take_tree(T, length(individuals(state)), map(w -> w.until, windows))
     routes = ntuple(
         i -> (_offspring_window(windows[i]), _Offspring(windows[i], i, tree, n_types(model))),
         length(windows)
@@ -520,7 +562,7 @@ function _simulate_offspring(
     sellke_race!(
         state, tree, rng, sim_opts;
         seed! = (best, _, _) -> fill!(best, zero(T)), routes,
-        interventions, contacts = (id, state) -> state.individuals[id].secondary_case_ids,
+        interventions, contacts = (id, state) -> individuals(state)[id].secondary_case_ids,
         risks = transmission_risks(model), recorder
     )
     # A race cut off rather than reaching extinction keeps `tree` as its

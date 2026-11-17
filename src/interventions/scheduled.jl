@@ -114,6 +114,9 @@ struct Scheduled{I <: AbstractIntervention, F, T <: Tuple, W} <: InterventionWra
     window::W
 end
 
+# The start condition reads the clock or case count of the population.
+gates_on_population_clock(::Scheduled) = true
+
 # The days between which a `Scheduled` built from `start_time` and
 # `end_time` alone acts.
 struct ClockWindow
@@ -290,7 +293,7 @@ function opened_at(t::Infections, state::SimulationState)
     T = typeof(state.max_infection_time)
     cached === nothing || return cached::T
     times = T[]
-    for ind in state.individuals
+    for ind in individuals(state)
         for episode in ind.episodes
             push!(times, episode.infection_time)
         end
@@ -316,7 +319,7 @@ end
 function _confirmed_report_log(state::SimulationState)
     T = typeof(state.max_infection_time)
     log = get!(() -> _report_log(state), state.scratch, (:report_log,))
-    _confirm_reports!(log::_ReportLog{T}, state.individuals)
+    _confirm_reports!(log::_ReportLog{T}, individuals(state))
     return log
 end
 
@@ -574,7 +577,6 @@ function removal_gap_host_times(s::Scheduled)
     s.can_lapse && return ()
     return removal_gap_host_times(s.intervention)
 end
-removal_block_probability(s::Scheduled) = removal_block_probability(s.intervention)
 
 function competing_risk(s::Scheduled, parent, contact, state)
     (persistent_competing_risks(s.intervention) || is_active(s, state)) || return nothing

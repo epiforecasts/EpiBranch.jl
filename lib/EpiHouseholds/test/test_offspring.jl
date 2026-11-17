@@ -10,7 +10,7 @@
 # from infection to recovery.
 function person_time_by_household(state, n_households)
     person_time = zeros(n_households)
-    for ind in state.individuals
+    for ind in individuals(state)
         is_infected(ind) || continue
         person_time[ind.state[:household]] += ind.state[:recovered_time] -
             ind.infection_time
@@ -141,7 +141,7 @@ end
         )
         state = simulate(model; rng = StableRNG(1))
         sizes = zeros(Int, 20_000)
-        for ind in state.individuals
+        for ind in individuals(state)
             is_infected(ind) && (sizes[ind.state[:household]] += 1)
         end
         simulated = [count(==(k), sizes) / length(sizes) for k in 1:n]
@@ -560,7 +560,7 @@ end
         state = simulate(model(20_000); rng = StableRNG(52))
         person_time = sum(
             min(ind.state[:recovered_time], ind.state[:died_time]) - ind.infection_time
-                for ind in state.individuals if is_infected(ind)
+                for ind in individuals(state) if is_infected(ind)
         )
         @test reproduction_number(o) ≈ λG * person_time / 20_000 rtol = 0.03
     end
@@ -604,6 +604,24 @@ end
             ]
         )
         @test_throws ArgumentError household_offspring(scheduled; global_rate = λG)
+        # The refusal sees through wrappers and covers a capacity budget.
+        iso = Isolation(
+            onset_to_isolation_delay = Exponential(1.0),
+            eligibility = AllCases(), duration = Inf
+        )
+        for iv in (
+                OnRoutes(Scheduled(iso; start_time = 10.0), (:transmission,)),
+                CapacityConstrained(Scheduled(iso; start_time = 10.0); budget_per_period = 5, period = 7.0),
+                CapacityConstrained(iso; budget_per_period = 5, period = 7.0),
+                HeldCapacity(iso; capacity = 2),
+            )
+            wrapped = ModelSpec(
+                HouseholdProcess(fill(4, 10), Exponential(1 / β));
+                progression = scheduled.progression, interventions = [iv]
+            )
+            @test_throws ArgumentError household_offspring(wrapped; global_rate = λG)
+        end
+        @test EpiBranch.gates_on_population_clock(OnRoutes(iso, (:transmission,))) == false
         o = household_offspring(_markov(4); global_rate = λG)
         @test_throws ArgumentError household_offspring_law(o, 5)
         @test household_offspring_law(o, 4) === o.laws[1]

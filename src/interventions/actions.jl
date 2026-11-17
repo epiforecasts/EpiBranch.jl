@@ -160,7 +160,7 @@ function _fire_action!(admitter, state, action)
 end
 
 function _fire_action!(admitter, state, action::_DeferredAction)
-    person = state.individuals[action.individual_id]
+    person = individuals(state)[action.individual_id]
     return _fire_action!(admitter, state, InterventionAction(person, action.time, action.effect!))
 end
 
@@ -236,8 +236,9 @@ function _admit_actions!(cc::CapacityConstrained, state, actions, admitter = cc)
         for i in order
             action = group[i]
             _capacity_used(get(action.individual.state, key, nothing)) && continue
-            if !_fits_budget(cc, times, Float64[], action.time)
-                action = refused_action(cc.on_refusal, cc, times, action)
+            own = _for_resource(cc, group_key)
+            if !_fits_budget(own, times, Float64[], action.time)
+                action = refused_action(cc.on_refusal, own, times, action)
                 action === nothing && continue
             end
             _admit_actions!(cc.intervention, state, [_filing_use(cc, action)], admitter)
@@ -367,13 +368,23 @@ function _revisable_dose_action(v::AbstractVaccination, ind, trigger, time)
     return InterventionAction(ind, time, (person, at, state) -> nothing, claim!)
 end
 
+# The delay before a dose and whether it is accepted are drawn once per person
+# and cached. A revisited dose reuses the same draw.
+_dose_delay!(v, ind, state) =
+    action_draw!(() -> sample_value(v.dose_delay, state.rng, ind), ind, (v, :delay))
+
+_accepts!(v, ind, state) =
+    action_draw!(ind, (v, :acceptance)) do
+    _covers(v.coverage, ind, stream(state.rng, ind.id, (v, :acceptance)))
+end
+
 function intervention_actions(rv::RingVaccination, state, candidates)
     actions = InterventionAction[]
     label = dose_label(rv)
     for ind in candidates
         is_traced(ind) || continue
         trace_t = haskey(ind.state, :trace_time) ? ind.state[:trace_time] :
-            min(_recorded_isolation_time(ind), _state_real(ind.state, :_traced_isolation_time, Inf))
+            min(_recorded_isolation_time(ind), traced_isolation_time(ind))
         prior = get(action_cache(ind), _trigger_cache_key(rv), nothing)
         applied = get(ind.state, _vaccinated_key(label), false)
         # Gated on `applied` alone: `_withdraw_dose!` clears it on a dose
@@ -389,9 +400,7 @@ function intervention_actions(rv::RingVaccination, state, candidates)
                 push!(actions, InterventionAction(ind, state.max_infection_time, effect!))
             end
             if isfinite(trace_t) && prior !== nothing && may_revise(rv, prior, trace_t)
-                delay = action_draw!(ind, (rv, :delay)) do
-                    sample_value(rv.dose_delay, state.rng, ind)
-                end
+                delay = _dose_delay!(rv, ind, state)
                 time = trace_t + delay
                 # An earlier date must still follow the dose this one requires.
                 _has_required_dose(rv, ind, time) &&
@@ -400,9 +409,7 @@ function intervention_actions(rv::RingVaccination, state, candidates)
             continue
         end
         isfinite(trace_t) || continue
-        delay = action_draw!(ind, (rv, :delay)) do
-            sample_value(rv.dose_delay, state.rng, ind)
-        end
+        delay = _dose_delay!(rv, ind, state)
         time = trace_t + delay
         isfinite(time) || continue
         _has_required_dose(rv, ind, time) || continue
@@ -410,9 +417,7 @@ function intervention_actions(rv::RingVaccination, state, candidates)
             sample_value(rv.eligibility_window, state.rng, ind)
         end
         _within_window(window, ind, time) || continue
-        accepted = action_draw!(ind, (rv, :acceptance)) do
-            _covers(rv.coverage, ind, stream(state.rng, ind.id, (rv, :acceptance)))
-        end
+        accepted = _accepts!(rv, ind, state)
         accepted && push!(actions, _revisable_dose_action(rv, ind, trace_t, time))
     end
     return actions
@@ -432,7 +437,7 @@ function intervention_actions(gv::GroupVaccination, state, candidates)
         trigger = _group_trigger_time(gv, state, group)
         isfinite(trigger) || continue
         for id in _group_members(state, gv.group_key, group)
-            ind = state.individuals[id]
+            ind = individuals(state)[id]
             prior = get(action_cache(ind), _trigger_cache_key(gv), nothing)
             if prior !== nothing || get(ind.state, _vaccinated_key(dose_label(gv)), false)
                 # A settled member's dose keeps its date; a member still
@@ -442,23 +447,17 @@ function intervention_actions(gv::GroupVaccination, state, candidates)
                 # within the members this call actually received.
                 (ind.id in allowed && !is_settled(state, ind)) || continue
                 (prior !== nothing && may_revise(gv, prior, trigger)) || continue
-                delay = action_draw!(ind, (gv, :delay)) do
-                    sample_value(gv.dose_delay, state.rng, ind)
-                end
+                delay = _dose_delay!(gv, ind, state)
                 push!(actions, _revisable_dose_action(gv, ind, trigger, trigger + delay))
                 continue
             end
             get(ind.state, _coverage_declined_key(dose_label(gv)), false) && continue
-            accepted = action_draw!(ind, (gv, :acceptance)) do
-                _covers(gv.coverage, ind, stream(state.rng, ind.id, (gv, :acceptance)))
-            end
+            accepted = _accepts!(gv, ind, state)
             if !accepted
                 ind.state[_coverage_declined_key(dose_label(gv))] = true
                 continue
             end
-            delay = action_draw!(ind, (gv, :delay)) do
-                sample_value(gv.dose_delay, state.rng, ind)
-            end
+            delay = _dose_delay!(gv, ind, state)
             push!(actions, _revisable_dose_action(gv, ind, trigger, trigger + delay))
         end
     end
@@ -475,9 +474,7 @@ function intervention_actions(mv::MassVaccination, state, candidates)
             sample_value(mv.eligibility_time, state.rng, ind)
         end
         isfinite(time) || continue
-        accepted = action_draw!(ind, (mv, :acceptance)) do
-            _covers(mv.coverage, ind, stream(state.rng, ind.id, (mv, :acceptance)))
-        end
+        accepted = _accepts!(mv, ind, state)
         if accepted
             push!(actions, dose_action(mv, ind, time))
         else
@@ -577,7 +574,7 @@ function action_candidates(
     for id in _group_members(state, gv.group_key, group)
         id == current.id && continue
         is_pending(id) || continue
-        push!(candidates, state.individuals[id])
+        push!(candidates, individuals(state)[id])
     end
     return candidates
 end
@@ -593,7 +590,7 @@ function _reached_candidates(state, current, traced, is_pending, contacts)
     end
     for cid in traced
         is_pending(cid) || continue
-        push!(candidates, state.individuals[cid])
+        push!(candidates, individuals(state)[cid])
     end
     return candidates
 end

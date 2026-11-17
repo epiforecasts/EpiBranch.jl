@@ -21,13 +21,13 @@ function test_continuous_vaccine_actions(make_process)
         rv = RingVaccination(efficacy = 1.0)
         state = simulate(build(rv); rng = StableRNG(22))
         @test state.cumulative_cases == 1
-        @test count(is_vaccinated, state.individuals) == 3
+        @test count(is_vaccinated, individuals(state)) == 3
         for wrap in (
                 v -> CapacityConstrained(Scheduled(v; start_time = 0.0); budget_per_period = 1.0),
                 v -> Scheduled(CapacityConstrained(v; budget_per_period = 1.0); start_time = 0.0),
             )
             state = simulate(build(wrap(rv)); rng = StableRNG(22))
-            @test count(is_vaccinated, state.individuals) == 1
+            @test count(is_vaccinated, individuals(state)) == 1
         end
         gv = CapacityConstrained(GroupVaccination(efficacy = 1.0); budget_per_period = 2.0)
         grouped = ModelSpec(
@@ -36,7 +36,7 @@ function test_continuous_vaccine_actions(make_process)
             interventions = [iso, gv]
         )
         state = simulate(grouped; rng = StableRNG(23))
-        @test count(is_vaccinated, state.individuals) == 2
+        @test count(is_vaccinated, individuals(state)) == 2
 
         # `MassVaccination` declares `acts_on_population`, so it reaches
         # everybody before the race starts, needing no contacts at all.
@@ -45,7 +45,7 @@ function test_continuous_vaccine_actions(make_process)
             ModelSpec(process; progression, attributes = clinical, interventions = [mv]);
             rng = StableRNG(24)
         )
-        @test all(is_vaccinated, state.individuals)
+        @test all(is_vaccinated, individuals(state))
     end
 
     @testset "Post-exposure abort of a dose given while still pending" begin
@@ -68,9 +68,9 @@ function test_continuous_vaccine_actions(make_process)
             interventions = [ct, rv]
         )
         states = [simulate(model; rng = StableRNG(s)) for s in 1:30]
-        individuals = vcat((s.individuals for s in states)...)
-        @test count(is_vaccinated, individuals) > 0
-        aborted = filter(ind -> haskey(ind.state, :infection_aborted_time), individuals)
+        people = vcat((individuals(s) for s in states)...)
+        @test count(is_vaccinated, people) > 0
+        aborted = filter(ind -> haskey(ind.state, :infection_aborted_time), people)
         @test !isempty(aborted)
         @test all(ind -> is_infected(ind) && isnan(onset_time(ind)), aborted)
         @test_logs min_level = Base.CoreLogging.Warn simulate(model; rng = StableRNG(1))

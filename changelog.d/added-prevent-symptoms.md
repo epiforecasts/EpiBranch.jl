@@ -1,0 +1,1 @@
+`EpiBranch.prevent_symptoms!(ind, from)` lets any intervention keep a case from developing symptoms from day `from`, as a vaccine dose with a `symptom_efficacy` does, and `EpiBranch.symptoms_prevented_time(ind)` reads the earliest such day. The protection is kept apart from the vaccine doses, so withdrawing a dose does not remove it.

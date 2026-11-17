@@ -85,16 +85,16 @@ function network_infections(
     )
     adjacency = model.process.adjacency
     n = length(adjacency)
-    length(state.individuals) == n || throw(
+    length(individuals(state)) == n || throw(
         ArgumentError(
-            "the state has $(length(state.individuals)) individuals but the network " *
+            "the state has $(length(individuals(state))) individuals but the network " *
                 "has $n nodes"
         )
     )
-    columns = _infection_layer_columns(state, model)
+    columns = infection_layer_columns(state, model)
     return NetworkInfections(
         adjacency, columns...; obs_end, followup_end,
-        host_times = _layer_host_times(state, model, host_times),
+        host_times = layer_host_times(state, model, host_times),
         seeded = EpiBranch._seeded_column(state)
     )
 end
@@ -129,6 +129,6 @@ function Distributions.loglikelihood(
         data::NetworkInfections,
         model::ModelSpec{<:NetworkProcess}
     )
-    EpiBranch._validate_infection_likelihood(model)
+    EpiBranch.validate_infection_likelihood(model)
     return loglikelihood(data, model.process; susceptibility = model.interventions)
 end

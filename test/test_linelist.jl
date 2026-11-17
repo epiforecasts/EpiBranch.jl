@@ -200,6 +200,35 @@ using Dates
         @test "infected" in names(df)
     end
 
+    @testset "contacts reports exposure times and the contacts' attributes" begin
+        spec = ModelSpec(
+            BranchingProcess(Poisson(3.0), Exponential(5.0));
+            attributes = [transmission_traits(susceptibility = 0.3), demographics()]
+        )
+        state = simulate(spec; max_cases = 20, rng = StableRNG(1))
+        df = contacts(state; reference_date = Date(2024, 1, 1))
+        @test !("infection_time" in names(df))
+        @test !("date_infection" in names(df))
+        @test "exposure_time" in names(df)
+        @test "date_exposure" in names(df)
+        @test any(!, df.infected)
+        for col in ("age", "sex")
+            @test col in names(df)
+            @test !any(ismissing, df[!, col])
+        end
+        for row in eachrow(df)
+            ind = state.individuals[row.to]
+            @test row.age == ind.state[:age]
+            @test row.sex == String(ind.state[:sex])
+        end
+        @test !("infected" in names(df)[7:end])
+
+        # Flags match those in the line list.
+        state.individuals[df.to[1]].state[:isolated] = true
+        df = contacts(state)
+        @test df.isolated[1] == is_isolated(state.individuals[df.to[1]])
+    end
+
     @testset "contacts lists exposures an ExposedContactRecorder keeps" begin
         # A permanent, population-wide vaccine blocks every onward
         # transmission from the index case, so the fixed-population race
@@ -214,7 +243,7 @@ using Dates
         )
         state = simulate(spec; n_initial = 1, rng = StableRNG(3))
         @test state.cumulative_cases == 1
-        index_id = findfirst(is_infected, state.individuals)
+        index_id = findfirst(is_infected, individuals(state))
 
         df = contacts(state)
         @test nrow(df) > 0
@@ -284,17 +313,23 @@ using Dates
             BranchingProcess(Poisson(2.5), Exponential(5.0); population_size = 400);
             attributes = clinical,
             interventions = [
-                Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf),
+                # Home isolation and quarantine keep the contacts they block.
+                # That leaves uninfected contacts to report.
+                Isolation(
+                    onset_to_isolation_delay = Exponential(1.0), duration = Inf,
+                    prevents_contact = false
+                ),
                 ContactTracing(
                     probability = 0.8,
-                    isolation_to_trace_delay = Exponential(1.0), action = Quarantine(duration = Inf)
+                    isolation_to_trace_delay = Exponential(1.0),
+                    action = Quarantine(duration = Inf, prevents_contact = false)
                 ),
                 RingVaccination(efficacy = 0.9),
             ]
         )
         state = simulate(spec; n_initial = 3, rng = StableRNG(1), max_cases = 200)
         df = linelist(state; infected_only = false)
-        @test nrow(df) == length(state.individuals)
+        @test nrow(df) == length(individuals(state))
 
         uninfected = df[.!df.infected, :]
         @test nrow(uninfected) > 0
@@ -321,6 +356,7 @@ using Dates
         metadata = EpiBranch.event_time_metadata(Val(:isolation_time))
         function replaced(unrecorded)
             ind = Individual(id = 1)
+            ind.state[:infected] = false
             EpiBranch._set_isolated!(ind, 5.0; release_time = 20.0, unrecorded)
             handle = EpiBranch._set_isolated!(ind, 30.0; release_time = 40.0)
             ind.state[:_isolation_handle] = handle
@@ -334,6 +370,7 @@ using Dates
         release_metadata = EpiBranch.event_time_metadata(Val(:isolation_release_time))
         function replaced_release(unrecorded)
             ind = Individual(id = 1)
+            ind.state[:infected] = false
             EpiBranch._set_isolated!(ind, 5.0; release_time = 20.0, unrecorded)
             handle = EpiBranch._set_isolated!(ind, 30.0; release_time = 40.0)
             ind.state[:_isolation_handle] = handle
@@ -395,7 +432,7 @@ end
 @testset "External event dates" begin
     state = simulate(BranchingProcess(Poisson(0.0)); n_initial = 4, rng = StableRNG(42))
     reference = Date(2020, 1, 1)
-    for (i, ind) in enumerate(state.individuals)
+    for (i, ind) in enumerate(individuals(state))
         ind.state[:infected] = i == 1
         ind.state[:appointment_time] = (2.0, 3.0, Inf, missing)[i]
         ind.state[:onset_time] = 4.0
@@ -427,4 +464,88 @@ end
     @test nrow(linelist(state)) == 1
     @test event_time_metadata(Val(:ordinary_value)) === nothing
     @test event_time_metadata(Val(:custom_disease_time)).requires_infection
+end
+
+@testset "Line list as known on a date and censored dates" begin
+    model = ModelSpec(
+        BranchingProcess(Poisson(2.0), Exponential(5.0));
+        progression = [Reporting(delay = LogNormal(1.0, 0.3), probability = 0.6)],
+        attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
+    )
+    state = simulate(model; max_cases = 200, rng = StableRNG(7))
+    ref = Date(2020, 1, 1)
+    full = linelist(state; reference_date = ref)
+
+    @testset "reported_only keeps reported cases" begin
+        ll = linelist(state; reference_date = ref, reported_only = true)
+        @test 0 < nrow(ll) < nrow(full)
+        @test all(!ismissing, ll.date_reporting)
+        @test nrow(ll) == count(ind -> get(ind.state, :reported, false), state.individuals)
+    end
+
+    @testset "as_of truncates by reporting date" begin
+        as_of = ref + Day(20)
+        ll = linelist(state; reference_date = ref, as_of = as_of)
+        @test 0 < nrow(ll) < nrow(linelist(state; reference_date = ref, reported_only = true))
+        @test all(<=(as_of), ll.date_reporting)
+        for name in names(ll)
+            startswith(name, "date_") || continue
+            @test all(d -> ismissing(d) || d <= as_of, ll[!, name])
+        end
+        # A date long after everything keeps all reported cases unchanged.
+        late = linelist(state; reference_date = ref, as_of = ref + Day(10_000))
+        @test late == linelist(state; reference_date = ref, reported_only = true)
+    end
+
+    @testset "as_of blanks outcome and isolated with their dates" begin
+        full_model = ModelSpec(
+            BranchingProcess(Poisson(2.0), Exponential(5.0));
+            progression = [
+                Reporting(delay = LogNormal(1.0, 0.3), probability = 1.0),
+                Death(delay = LogNormal(2.5, 0.4), probability = 0.5),
+            ],
+            interventions = [
+                Isolation(onset_to_isolation_delay = Exponential(10.0), duration = Inf),
+            ],
+            attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
+        )
+        st = simulate(full_model; max_cases = 200, n_initial = 20, rng = StableRNG(11))
+        as_of = ref + Day(25)
+        ll = linelist(st; reference_date = ref, as_of = as_of)
+        everything = linelist(st; reference_date = ref, as_of = ref + Day(10_000))
+        for (name, date_name) in (("outcome", "date_outcome"), ("isolated", "date_isolation"))
+            late = [
+                !ismissing(d) && d > as_of
+                    for d in leftjoin(ll[!, [:id]], everything[!, [:id, Symbol(date_name)]]; on = :id)[!, date_name]
+            ]
+            @test any(late)
+            @test all(ismissing, ll[late, name])
+            @test all(!ismissing, ll[.!late .& .!ismissing.(ll[!, date_name]), name])
+        end
+    end
+
+    @testset "needs a reporting step" begin
+        plain = simulate(
+            ModelSpec(BranchingProcess(Poisson(1.5), Exponential(5.0)));
+            max_cases = 20, rng = StableRNG(1)
+        )
+        @test_throws ArgumentError linelist(plain; as_of = ref)
+        @test_throws ArgumentError linelist(plain; reported_only = true)
+    end
+
+    @testset "censor_linelist" begin
+        weekly = censor_linelist(full)
+        @test nrow(weekly) == nrow(full)
+        @test all(d -> ismissing(d) || dayofweek(d) == 1, weekly.date_infection)
+        @test all(weekly.date_infection .<= full.date_infection)
+        @test all(weekly.date_infection .> full.date_infection .- Day(7))
+        @test isequal(ismissing.(weekly.date_onset), ismissing.(full.date_onset))
+        @test weekly.id == full.id
+        sundays = censor_linelist(full, d -> Dates.toprev(d, Sunday; same = true))
+        @test all(d -> ismissing(d) || dayofweek(d) == 7, sundays.date_infection)
+        monthly = censor_linelist(full, Month(1))
+        @test all(d -> ismissing(d) || day(d) == 1, monthly.date_infection)
+        # The input is not modified.
+        @test full.date_infection != weekly.date_infection
+    end
 end

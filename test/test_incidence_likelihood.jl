@@ -588,7 +588,7 @@ struct _RiskFromAge end
         for i in 1:nsim
             rng = StableRNG(i)
             state = simulate(model; rng, max_time = n + 0.5)
-            for ind in state.individuals
+            for ind in individuals(state)
                 is_infected(ind) && get(ind.state, :reported, false) || continue
                 t = ceil(Int, ind.state[:reporting_time] - rand(rng))
                 1 <= t <= n && (sims[i, t] += 1)
@@ -602,4 +602,11 @@ struct _RiskFromAge end
         @test maximum(abs.(emp_mean .- m.mean)) < 0.06
         @test maximum(abs.(emp_cov .- m.cov)) < 0.2
     end
+end
+
+@testset "Missing ForwardDiff extension" begin
+    # The core fallback, called directly because the extension is loaded here.
+    @test_throws ArgumentError invoke(
+        EpiBranch._gradient_and_hessian, Tuple{Any, Any}, identity, [0.0]
+    )
 end

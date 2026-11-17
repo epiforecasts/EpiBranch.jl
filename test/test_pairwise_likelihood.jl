@@ -159,18 +159,18 @@ end
             interventions = [Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)]
         )
         state = simulate(m; rng = StableRNG(1), n_initial = 3)
-        columns = EpiBranch._infection_layer_columns(state, m)
+        columns = EpiBranch.infection_layer_columns(state, m)
 
-        infected = findall(is_infected, state.individuals)
+        infected = findall(is_infected, individuals(state))
         @test findall(!isnan, columns.infection_time) == infected
         @test count(columns.is_index) == 3
-        inds = state.individuals[infected]
+        inds = individuals(state)[infected]
         infectious = [ind.state[:infectious_time] for ind in inds]
         recovered = [ind.state[:recovered_time] for ind in inds]
         @test columns.infectious_time[infected] == infectious
         @test columns.removal_time[infected] == min.(recovered, isolation_time.(inds))
         @test any(columns.removal_time[infected] .< recovered)
-        uninfected = setdiff(eachindex(state.individuals), infected)
+        uninfected = setdiff(eachindex(individuals(state)), infected)
         @test all(isinf, columns.removal_time[uninfected])
     end
 

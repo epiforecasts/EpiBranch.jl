@@ -477,7 +477,7 @@ end
 
 # Applies `_certain_release` to each source in turn, stopping at the first whose
 # releases do not bind. Tuples are walked element by element, as in
-# `_any_risk_blocks`, which resolves each call at compile time.
+# `_walk_risks`, which resolves each call at compile time.
 _fold_release(release, ::Tuple{}, parent, contact, state, transmission_time) = release, true
 @inline function _fold_release(
         release, sources::Tuple, parent, contact, state, transmission_time
@@ -539,7 +539,7 @@ end
 _never_skip(source) = false
 
 # Whether any source not skipped by `skip` contributes a standing risk, walked
-# like `_any_risk_blocks` to keep each call resolved at compile time.
+# like `_walk_risks` to keep each call resolved at compile time.
 _any_standing(skip, ::Tuple{}, parent, contact, state, transmission_time) = false
 @inline function _any_standing(
         skip, sources::Tuple, parent, contact, state, transmission_time
@@ -562,11 +562,12 @@ function _any_standing(skip, sources, parent, contact, state, transmission_time)
 end
 
 # Whether the composed risks block `parent` infecting `contact` at the proposed
-# `transmission_time`, and whether that block is permanent (see
-# `_permanently_blocked`). A risk may read the exposure from the contact's
-# `infection_time`, but a proposed contact is still susceptible, so it holds
-# nothing yet: set it to the proposed time for the resolution, and put it back
-# if the contact is blocked, leaving it as it was.
+# `transmission_time`, whether the block stops the meeting itself rather than
+# only the infection (see `prevents_contact`), and whether the block is
+# permanent (see `_permanently_blocked`). A risk may read the exposure from the
+# contact's `infection_time`, but a proposed contact is still susceptible, so it
+# holds nothing yet: set it to the proposed time for the resolution, and put it
+# back if the contact is blocked, leaving it as it was.
 function _proposal_blocked(
         state::SimulationState, parent, contact, transmission_time,
         model_risks, interventions, builtin_blocks = _sellke_builtin_risk_blocks
@@ -577,10 +578,11 @@ function _proposal_blocked(
     # Scheduled risks use the proposed contact time even when earlier contacts
     # were blocked. Outside this evaluation the clock records accepted infections.
     state.max_infection_time = transmission_time
-    blocked = _composed_risks_block(
+    level = _composed_risks_block(
         state, parent, contact, transmission_time,
         model_risks, interventions, builtin_blocks
     )
+    blocked = level != _NOT_BLOCKED
     permanent = blocked && _permanently_blocked(
         state, parent, contact, transmission_time, model_risks, interventions
     )
@@ -590,7 +592,7 @@ function _proposal_blocked(
         ) : nothing
     state.max_infection_time = previous_clock
     blocked && (contact.infection_time = previous)
-    return blocked, permanent, release
+    return blocked, level == _CONTACT_PREVENTED, permanent, release
 end
 
 """
@@ -794,7 +796,7 @@ function _walk_ring!(
             for id in keep_active(iv, state, pending, is_new)
                 k = get(pos, id, 0)
                 k == 0 && continue
-                push!(frontier, state.individuals[id])
+                push!(frontier, individuals(state)[id])
             end
         end
     end
@@ -811,56 +813,13 @@ again (see [`HostImmunity`](@ref EpiBranch.HostImmunity)). Read from
 declares a `:susceptible_again` step, with no extra bookkeeping cost where it
 does not.
 
-A literal [`Transition`](@ref) is recognised directly from its `state`
-field, which costs nothing and is exact regardless of its `probability`. Any
-other `AbstractClinicalTransition` is probed instead: a disposable individual
-is given `state.attributes`, to keep a `Transition` reading one of them from
-failing on a missing key, then marked to make `_transition_selected` take
-every `probability` gate it meets unless the probability is exactly zero; it
-is run through every transition's `initialise_individual!` and
-`resolve_individual!` on a copy of `state.rng`, and the result is read back
-off `susceptible_again_time`. That marking keeps detection exact regardless
-of probability on the custom-transition path too, instead of leaving it to
-the single draw a real run would make.
-
-The probe never runs a model's own per-individual `setup` (`HouseholdProcess`
-sets `:household` there, for instance), so a custom transition that reads a
-key only `setup` supplies raises a `KeyError` on the probe, even though a
-real run always has it. Treating that as "reinfection cannot be ruled out",
-rather than letting it abort the whole simulation, costs only the
-bookkeeping that keeps a settled member's proposals pending: the real run
-never hits this path, because the key is always set there.
+A step is read through [`produced_states`](@ref): the progression allows
+reinfection when any step declares `:susceptible_again`, whatever its
+`probability`. A custom step that sets `susceptible_again_time` without
+declaring the state is ignored.
 """
 function _allows_reinfection(state)
-    transitions = state.transitions
-    any(t -> t isa Transition && t.state === :susceptible_again, transitions) && return true
-    any(t -> !(t isa Transition), transitions) || return false
-    probe = try
-        _reinfection_probe(state)
-    catch e
-        e isa KeyError && return true
-        rethrow()
-    end
-    return isfinite(susceptible_again_time(probe))
-end
-
-function _reinfection_probe(state)
-    probe = Individual(; id = 0, infection_time = zero(_timetype(state)))
-    probe.state[_REINFECTION_PROBE_KEY] = true
-    saved_rng = state.rng
-    state.rng = copy(saved_rng)
-    try
-        _apply_attributes!(state.attributes, state.rng, probe)
-        for t in state.transitions
-            initialise_individual!(t, probe, state)
-        end
-        for t in state.transitions
-            resolve_individual!(t, probe, state)
-        end
-    finally
-        state.rng = saved_rng
-    end
-    return probe
+    return any(t -> :susceptible_again in produced_states(t), state.transitions)
 end
 
 """
@@ -1332,10 +1291,10 @@ function _sellke_race_typed!(
         # risks read. A risk of your own that reads the infector should
         # therefore return nothing when the two are the same individual. An
         # index case is put to no risk at all.
-        source = infector_id == 0 ? ind : state.individuals[infector_id]
+        source = infector_id == 0 ? ind : individuals(state)[infector_id]
         is_seeded = opening.route == _SEEDED_ROUTE
         if checks && !is_seeded && (infector_id != 0 || introduction !== nothing)
-            blocked, permanent, certain_release = _proposal_blocked(
+            blocked, prevented, permanent, certain_release = _proposal_blocked(
                 state, source, ind, bt, risks,
                 opening.route == 0 ? introduction_interventions :
                     route_interventions[opening.route],
@@ -1348,7 +1307,12 @@ function _sellke_race_typed!(
                 # proposal, and a permanent one keeps drawing only if it says
                 # the pair's draws still matter (see the `_sellke_race!`
                 # docstring).
-                keeps_drawing = _logs_blocked(members, source, ind) &&
+                # A block that stops the meeting leaves no contact to record, to
+                # keep drawing for or to list on the infector.
+                prevented && opening.route != 0 && _on_route(
+                    (_, rt) -> _withdraw_contact!(rt, race, source, ind), rts, opening.route
+                )
+                keeps_drawing = !prevented && _logs_blocked(members, source, ind) &&
                     records_contacts(recorder, source, ind, state, bt)
                 if !may_block
                     _discard_proposal!(members, best, j)
@@ -1422,7 +1386,7 @@ function _sellke_race_typed!(
         ind.state[:infected] = true
         ind.state[:index] = infector_id == 0
         if infector_id != 0
-            infector = state.individuals[infector_id]
+            infector = individuals(state)[infector_id]
             ind.parent_id = infector.id
             ind.generation = infector.generation + 1
             ind.chain_id = infector.chain_id
@@ -1508,22 +1472,26 @@ function _sellke_race_typed!(
         self_proposing && (
             capped_generation = _open_routes!(rts, open_ctx, capped_generation, true)
         )
-        traced = _trace_from!(
-            state, ind, typed_interventions, case_contacts, pos, tracing
-        )
-        found = _trace_source!(state, ind, typed_interventions, tracing_source)
-        # An infector isolated by being traced back becomes eligible for forward
-        # tracing under a rule such as `OnIsolation()` only now. The walk made
-        # when it settled could not see that.
-        if found !== nothing
-            retraced = _trace_from!(
-                state, found, typed_interventions, case_contacts, pos, tracing
+        # `traced` is assigned once, from the `let`: the closure below captures
+        # it, and reassigning a captured variable boxes it on every settled case.
+        traced = let traced = _trace_from!(
+                state, ind, typed_interventions, case_contacts, pos, tracing
             )
-            # The action pass picks its candidates from the traced set, which
-            # must therefore include contacts reached from the infector.
-            if retraced !== nothing
-                traced === nothing ? (traced = retraced) : union!(traced, retraced)
+            found = _trace_source!(state, ind, typed_interventions, tracing_source)
+            # An infector isolated by being traced back becomes eligible for
+            # forward tracing under a rule such as `OnIsolation()` only now. The
+            # walk made when it settled could not see that.
+            if found !== nothing
+                retraced = _trace_from!(
+                    state, found, typed_interventions, case_contacts, pos, tracing
+                )
+                # The action pass picks its candidates from the traced set,
+                # which must therefore include contacts reached from the infector.
+                if retraced !== nothing
+                    traced = traced === nothing ? retraced : union!(traced, retraced)
+                end
             end
+            traced
         end
         # A model with nothing in `acting` never calls `_admit_actions!`
         # inside `_apply_case_actions!`. Installing the sink anyway, a
@@ -1850,6 +1818,11 @@ _case_contacts(contacts, rts, race, max_generation) = contacts
 _route_open(route_targets, ind, w::RouteWindow) = window_open(ind, w)
 _route_may_block(route_targets) = false
 _route_builtin_blocks(route_targets) = _sellke_builtin_risk_blocks
+# Take back a contact the race has just found was never made, for a route that
+# lists the contacts it creates on their infector. A route over a fixed
+# population records no contact for a blocked proposal and has nothing to
+# take back.
+_withdraw_contact!(route_targets, race, parent, contact) = nothing
 function _record_infection!(route_targets, infector, ind, w, named)
     push!(infector.secondary_case_ids, ind.id)
     named && (ind.state[:infection_route] = w.name)
@@ -1888,7 +1861,7 @@ EpiBranch.proposes_own_contacts); every other route lists its targets instead
 time itself. The race does the rest: a target already settled, or the
 infector itself, is dropped from what this returns, without `route` having to
 check either; the per-individual `susceptibility` and `infectiousness` `route`
-reads off `state.individuals[...]` are not scaled again afterwards. `traits`
+reads off `individuals(state)[...]` are not scaled again afterwards. `traits`
 is whether any individual in the run departs from the defaults of each, which
 `route` may use to skip the pair-by-pair lookup where neither does, as mass
 action does; it is only ever a hint, since reading the records directly gives
@@ -2009,7 +1982,7 @@ function _propose_along!(
         state, rng, pos, processed, watch, snapshot, watched_keys,
         route_projections, full_snapshot, reinfects,
     ) = race
-    infector = state.individuals[infector_id]
+    infector = individuals(state)[infector_id]
     proj = route_projections[ri]
     for (target_id, kernel) in route_targets(infector_id, state)
         k = get(pos, target_id, 0)
@@ -2297,7 +2270,7 @@ function _records_changed!(
     # `case == 0` is a deferred action's own event, which settles nobody: it
     # has no position of its own to pre-stamp against its own writes, and the
     # scan below, over every tracked host, already covers whomever it wrote to.
-    case == 0 || _refresh_host!(snapshot, watched_keys, state.individuals[members[case]], case)
+    case == 0 || _refresh_host!(snapshot, watched_keys, individuals(state)[members[case]], case)
     kept = 0
     for oi in w.open
         if openings[oi].close_t >= now
@@ -2323,7 +2296,7 @@ function _records_changed!(
             _untrack_at!(w, idx)
             continue
         end
-        ind = state.individuals[members[k]]
+        ind = individuals(state)[members[k]]
         # The routes this host's own moved keys already explain, so the
         # undeclared-read check below compares only a route none of them
         # cover.
@@ -2500,13 +2473,13 @@ function _redraw_moved!(
     for oi in sort!(collect(keys(redo)))
         members_hit = redo[oi]
         opening = openings[oi]
-        source = state.individuals[opening.infector]
+        source = individuals(state)[opening.infector]
         passed_since = _passed_since(pops, passed, oi)
         for (id, kernel) in _on_route((_, t) -> t(opening.infector, state), rts, opening.route)
             j = get(pos, id, 0)
             (j == 0 || (processed[j] && !reinfects)) && continue
             members_hit === nothing || j in members_hit || continue
-            m = source.infectiousness * state.individuals[id].susceptibility
+            m = source.infectiousness * individuals(state)[id].susceptibility
             m <= 0 && continue
             pair_rng = stream(rng, (opening.infector, id), (:contact, opening.route))
             lower = now - opening.open_t - slack

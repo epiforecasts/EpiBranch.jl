@@ -568,7 +568,7 @@ record_kernel(k::PairKernel{F, Nothing}, state::SimulationState) where {F} = k
 function record_kernel(k::PairKernel, state::SimulationState)
     return PairKernel(
         k.callback,
-        [deepcopy(_pair_state(k.state, ind)) for ind in state.individuals],
+        [deepcopy(_pair_state(k.state, ind)) for ind in individuals(state)],
         k.calendar, ()
     )
 end
@@ -767,9 +767,9 @@ function _profile_bounds(k::_TruncatedHazardKernel)
     return k.kernel.onset, min(k.kernel.upper, k.hi), !_no_mass(k)
 end
 
-# A value stripped of every dual level, for the ends of a bracket.
+# A value stripped of every dual level, for the ends of a bracket (the
+# `ForwardDiff.Dual` method is in `ext/EpiBranchForwardDiffExt.jl`).
 _plain(x::Real) = x
-_plain(x::ForwardDiff.Dual) = _plain(ForwardDiff.value(x))
 
 function _calendar_invlogccdf(::SmoothCalendar, k::_CalendarScaledKernel, target)
     rate = s -> _calendar_hazard(k, s)

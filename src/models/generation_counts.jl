@@ -19,8 +19,8 @@
 """
     AbstractDepletion
 
-How [`simulate_by_generation`](@ref) removes susceptibles as cases are made:
-[`PerContactDepletion`](@ref) or [`StartOfGenerationDepletion`](@ref).
+How [`simulate_by_generation`](@ref) removes susceptibles as cases are made.
+[`PerContactDepletion`](@ref) is the only rule.
 """
 abstract type AbstractDepletion end
 
@@ -33,29 +33,19 @@ each kept contact lowers the share for the next. For a single type this is the
 rule of the individual-based simulation. For several types it differs, because
 the individual-based simulation thins every contact against one shared
 population fraction, while this rule uses the share of each type. It is the
-default of [`simulate_by_generation`](@ref), and its run time is proportional
-to the number of potential contacts.
+default of [`simulate_by_generation`](@ref).
+
+The rule is drawn exactly, without visiting every contact. Where the offspring
+law is a mixed Poisson (`Poisson`, with or without `multiplier`, and `NegBin`),
+the contacts of a generation are Poisson with a mean equal to its total
+infectiousness, spread at random over the people of a type. Each person then
+receives an independent Poisson number of contacts, and the number of new
+infections is binomial: one draw per type, at a cost independent of the number
+of cases. For any other offspring law the number of contacts between two that
+reach a susceptible is geometric. Skipping over them makes the cost grow
+with the number of new infections alone.
 """
 struct PerContactDepletion <: AbstractDepletion end
-
-"""
-    StartOfGenerationDepletion()
-
-Thin the potential contacts of a type by its susceptible share at the *start*
-of the generation, as the standard discrete-generation (TSIR) model does: one
-binomial draw per type, capped at the susceptibles left, so that a generation
-costs the same whatever the number of cases. Where the offspring law has a
-closed-form sum, the whole generation is then drawn in a fixed number of
-steps.
-
-It differs from [`PerContactDepletion`](@ref) because the share does not fall
-as the contacts of the generation are made. With many contacts relative to the
-susceptibles left, the binomial rule keeps more of them (held back only by the
-cap at the susceptibles), while the per-contact rule slows down as it uses
-them up. The two agree closely while a generation uses only a small part of
-the susceptibles, as in a large population early in an outbreak.
-"""
-struct StartOfGenerationDepletion <: AbstractDepletion end
 
 """
     GenerationCounts
@@ -254,11 +244,10 @@ offspring matrix (`MultiTypeOffspring`); any other model raises an
   from the model's [`Population`](@ref), `Population(sizes)` for a multi-type
   model.
 - `depletion`: how contacts are thinned against the susceptibles left,
-  [`PerContactDepletion`](@ref) (the default) or
-  [`StartOfGenerationDepletion`](@ref). The second draws the kept contacts of
-  a type in one binomial draw. For an offspring law with a closed-form
-  sum (`Poisson`, with or without `multiplier`, `NegBin` and `Binomial`), a
-  generation then costs the same whatever the number of cases.
+  [`PerContactDepletion`](@ref) (the default), the only rule. For a
+  `Poisson` or `NegBin` offspring law a generation costs the same whatever
+  the number of cases; for another law it costs in proportion to the number
+  of new infections.
 - `generation_length`: the length of a generation in days. The state records
   it and is at day `generation * generation_length`. The default, `nothing`,
   leaves it unset.
@@ -288,7 +277,8 @@ The doses of generation `g` cover `[g * generation_length, (g + 1) *
 generation_length)` and are applied after generation `g` is drawn and before
 `g + 1` is. The `budget_per_period` is shared by the types, as in every model:
 each dose goes to a type in proportion to its population, as it would to a
-person picked at random. The doses are those of the periods that start in the interval; with
+person picked at random. A [`PerGroup`](@ref) budget gives each type the doses of its
+own budget instead. The doses are those of the periods that start in the interval; with
 `carry_over`, budget left from earlier periods, or from before a window opens,
 is given in the first interval open to it. A dose reaches a susceptible of a
 type with probability equal to the share of susceptibles in the population of
@@ -332,8 +322,7 @@ state = simulate_by_generation(
 model = BranchingProcess(Poisson(2.0); population = Population(2_500_000))
 state = simulate_by_generation(
     model; n_initial = 10, max_generations = 30, immune = 250_000,
-    depletion = StartOfGenerationDepletion(), generation_length = 7.0,
-    multiplier = Gamma(6.5, 1 / 6.5), rng = Xoshiro(1)
+    generation_length = 7.0, multiplier = Gamma(6.5, 1 / 6.5), rng = Xoshiro(1)
 )
 
 # A vaccination campaign of 2,000 doses a day for a fortnight
@@ -344,7 +333,7 @@ campaign = CapacityConstrained(GroupVaccination(efficacy = 0.9, group_key = :typ
 state = simulate_by_generation(
     ModelSpec(model; interventions = [campaign]); n_initial = [10, 2], max_generations = 30,
     immune = [20_000, 190_000],
-    depletion = StartOfGenerationDepletion(), generation_length = 14.0
+    generation_length = 14.0
 )
 ```
 """
@@ -505,10 +494,12 @@ function _continue_generations(
             _vaccinate!(rng, campaign, t0, t1, susceptibles, sizes)
         end
         m = multiplier === nothing ? nothing : rand(rng, multiplier)
-        potential = _generation_potential(rng, offspring, counts, m)
+        potential = _generation_potential(
+            rng, offspring, counts, m, susceptibles !== nothing
+        )
         # Without a finite population nothing is thinned.
         counts = susceptibles === nothing ? potential :
-            _deplete!(rng, state.depletion, potential, susceptibles, sizes)
+            _deplete!(rng, state.depletion, potential, susceptibles, something(sizes))
         cumulative += sum(counts)
         gen += 1
     end
@@ -554,16 +545,33 @@ function sum_offspring(rng::AbstractRNG, law::Distribution, n::Int)
     return sum(rand(rng, law) for _ in 1:n)
 end
 
+# The Poisson mean of the contacts made by `n` cases drawing from `law`, where
+# the law is a mixed Poisson: the contacts are then Poisson given this mean,
+# which is what lets a finite population deplete in one binomial draw. `nothing`
+# for any other law, whose contacts are drawn as a total.
+_contact_rate(rng::AbstractRNG, law::Poisson, n::Int) = n * mean(law)
+function _contact_rate(rng::AbstractRNG, law::NegativeBinomial, n::Int)
+    # A negative binomial is a Poisson with a gamma-distributed mean, and the
+    # sum of `n` of them has the gamma shape `n * r`.
+    law.p >= 1 && return 0.0
+    return rand(rng, Gamma(n * law.r, (1 - law.p) / law.p))
+end
+_contact_rate(::AbstractRNG, ::Distribution, ::Int) = nothing
+
 # One entry per type of the contacts made by the cases of the generation,
 # before any of them is thinned against the susceptibles. A single-type
 # offspring law draws its one total, after the shared multiplier `m`, when
-# given, has scaled the mean of the law.
+# given, has scaled the mean of the law. With a finite population and a mixed
+# Poisson law the entry is the Poisson mean of the contacts (a `Float64`)
+# rather than their number; `_deplete!` draws from it exactly.
 function _generation_potential(
-        rng::AbstractRNG, offspring::Distribution, current::Vector{Int}, m
+        rng::AbstractRNG, offspring::Distribution, current::Vector{Int}, m, finite::Bool
     )
     n = only(current)
     n == 0 && return [0]
     law = m === nothing ? offspring : scale_mean(offspring, m)
+    rate = finite ? _contact_rate(rng, law, n) : nothing
+    rate === nothing || return [Float64(rate)]
     return [sum_offspring(rng, law, n)]
 end
 
@@ -572,17 +580,37 @@ end
 # matrix's columns (as `draw_offspring(::MultiTypeOffspring, ...)` does per
 # case); accumulated over every type with cases this generation. A sink type
 # (zero column) is skipped, as `draw_offspring` skips calling `dist_fn` for it.
+# When every type's law is a mixed Poisson and the population is finite, the
+# means are split by the columns instead. Poisson contacts split between types
+# are independent Poisson, and no total is drawn.
 function _generation_potential(
-        rng::AbstractRNG, offspring::MultiTypeOffspring, current::Vector{Int}, m
+        rng::AbstractRNG, offspring::MultiTypeOffspring, current::Vector{Int}, m,
+        finite::Bool
     )
-    potential = zeros(Int, _n_types(offspring))
+    nt = _n_types(offspring)
+    rates = zeros(nt)
+    totals = zeros(Int, nt)
+    by_rate = trues(nt)
     for j in eachindex(current)
         current[j] == 0 && continue
         R = offspring.R_by_type[j]
         R <= 0 && continue
         law = _type_law(offspring.dist_fn, R, j)
         law = m === nothing ? law : scale_mean(law, m)
-        total = sum_offspring(rng, law, current[j])
+        rate = finite ? _contact_rate(rng, law, current[j]) : nothing
+        if rate === nothing
+            totals[j] = sum_offspring(rng, law, current[j])
+            by_rate[j] = false
+        else
+            rates[j] = rate
+        end
+    end
+    if all(by_rate)
+        return offspring.alloc_probs * rates
+    end
+    potential = zeros(Int, nt)
+    for j in 1:nt
+        total = by_rate[j] ? rand(rng, Poisson(rates[j])) : totals[j]
         total == 0 && continue
         potential .+= rand(rng, Multinomial(total, offspring.alloc_probs[:, j]))
     end
@@ -592,36 +620,40 @@ end
 # ── Depletion ────────────────────────────────────────────────────────
 
 # The contacts kept after thinning `potential` against `susceptibles`, which
-# is lowered by what is kept.
+# is lowered by what is kept. Each potential contact is decided in turn
+# against the susceptible share of its type at that moment, as
+# `_offspring_builtin_risk_blocks` does on the individual-based race for a
+# single type; the draws below give that law without visiting every contact.
 
-# One at a time, as `_offspring_builtin_risk_blocks` decides each contact on
-# the individual-based race for a single type. Each type has its own share.
-function _deplete!(rng, ::PerContactDepletion, potential, susceptibles, sizes)
-    kept = similar(potential)
+# Poisson contacts with mean `potential[i]`, spread at random over the `sizes[i]`
+# people of the type. Each receives an independent Poisson number of them.
+# Each susceptible is therefore reached with probability `1 - exp(-mean / size)`.
+function _deplete!(
+        rng, ::PerContactDepletion, potential::Vector{Float64}, susceptibles, sizes
+    )
+    kept = zeros(Int, length(potential))
     for i in eachindex(potential)
-        kept[i] = 0
-        for _ in 1:potential[i]
-            susceptibles[i] <= 0 && break
-            if rand(rng) <= susceptibles[i] / sizes[i]
-                kept[i] += 1
-                susceptibles[i] -= 1
-            end
-        end
+        (potential[i] <= 0 || susceptibles[i] <= 0) && continue
+        reached = -expm1(-potential[i] / sizes[i])
+        kept[i] = rand(rng, Binomial(susceptibles[i], reached))
+        susceptibles[i] -= kept[i]
     end
     return kept
 end
 
-# One binomial draw per type at the susceptible share the generation started
-# with, capped at the susceptibles left.
-function _deplete!(rng, ::StartOfGenerationDepletion, potential, susceptibles, sizes)
-    kept = similar(potential)
+# A given number of contacts: the number that fall before the next one that
+# reaches a susceptible is geometric, with the susceptible share as its
+# success probability. Only the contacts that infect are visited.
+function _deplete!(rng, ::PerContactDepletion, potential::Vector{Int}, susceptibles, sizes)
+    kept = zeros(Int, length(potential))
     for i in eachindex(potential)
-        if potential[i] == 0 || susceptibles[i] <= 0
-            kept[i] = 0
-            continue
+        remaining = potential[i]
+        while remaining > 0 && susceptibles[i] > 0
+            remaining -= rand(rng, Geometric(susceptibles[i] / sizes[i])) + 1
+            remaining < 0 && break
+            kept[i] += 1
+            susceptibles[i] -= 1
         end
-        kept[i] = min(rand(rng, Binomial(potential[i], susceptibles[i] / sizes[i])), susceptibles[i])
-        susceptibles[i] -= kept[i]
     end
     return kept
 end

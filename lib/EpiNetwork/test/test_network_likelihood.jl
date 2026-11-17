@@ -65,7 +65,7 @@ end
         @test data.contacts == adj
         @test count(data.is_index) == 3
         infected = .!isnan.(data.infection_time)
-        @test count(infected) == count(is_infected, state.individuals)
+        @test count(infected) == count(is_infected, individuals(state))
         @test all(data.infectious_time[infected] .> data.infection_time[infected])
         @test all(isfinite, data.removal_time[infected])
         @test all(isinf, data.removal_time[.!infected])
@@ -190,7 +190,7 @@ end
         expected = [
             min(
                 data.infection_time[i] + 8.0,
-                EpiBranch.isolation_time(state.individuals[i])
+                EpiBranch.isolation_time(individuals(state)[i])
             ) for i in infected
         ]
         @test data.removal_time[infected] == expected

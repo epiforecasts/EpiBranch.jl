@@ -134,7 +134,7 @@ end
         found = get(state.scratch, :_sources_found, Set{Int}())
         @test all(==(1), state.scratch[:_contacts_sizes])
 
-        children = filter(ind -> ind.parent_id != 0, state.individuals)
+        children = filter(ind -> ind.parent_id != 0, individuals(state))
         @test !isempty(children)
         for child in children
             @test child.id in found
@@ -150,7 +150,7 @@ end
         end
 
         # The index case has no infector, so it never triggers the hook.
-        index_case = only(filter(ind -> ind.parent_id == 0, state.individuals))
+        index_case = only(filter(ind -> ind.parent_id == 0, individuals(state)))
         @test index_case.id ∉ found
     end
 
@@ -162,7 +162,7 @@ end
         neighbours = Dict(1 => [2], 2 => [1, 3], 3 => [2])
         targets(inf, st) = (
             (to, Dirac(1.0)) for to in neighbours[inf]
-                if !get(st.individuals[to].state, :infected, false)
+                if !get(individuals(st)[to].state, :infected, false)
         )
         # No `contacts` function is passed: backward tracing needs none, unlike
         # the forward ring walk, since the infector comes straight off the
@@ -239,11 +239,11 @@ end
         max_cases = 200, rng = StableRNG(31)
     )
     traced_sources = filter(
-        ind -> haskey(ind.state, :source_traced_by), state.individuals
+        ind -> haskey(ind.state, :source_traced_by), individuals(state)
     )
     @test !isempty(traced_sources)
     for source in traced_sources
-        case = state.individuals[source.state[:source_traced_by]]
+        case = individuals(state)[source.state[:source_traced_by]]
         @test case.parent_id == source.id
     end
 end
@@ -272,17 +272,17 @@ end
     # `ContactTracing`'s `:traced_by` always names an earlier-infected node,
     # the invariant `compute_trace_level!` relies on; `SourceTracing` never
     # writes it.
-    for ind in state.individuals
+    for ind in individuals(state)
         haskey(ind.state, :traced_by) || continue
-        tracer = state.individuals[ind.state[:traced_by]]
+        tracer = individuals(state)[ind.state[:traced_by]]
         @test tracer.infection_time <= ind.infection_time
     end
     @test compute_trace_level!(state) === state  # must not cycle or error
 
     # `:source_traced_by` always names a later-infected node: the reverse.
-    for ind in state.individuals
+    for ind in individuals(state)
         haskey(ind.state, :source_traced_by) || continue
-        tracer = state.individuals[ind.state[:source_traced_by]]
+        tracer = individuals(state)[ind.state[:source_traced_by]]
         @test tracer.infection_time >= ind.infection_time
     end
 end

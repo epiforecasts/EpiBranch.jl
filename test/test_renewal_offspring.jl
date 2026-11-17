@@ -75,7 +75,7 @@
                 rng = StableRNG(seed)
             )
             counts = zeros(13)
-            for c in s.individuals
+            for c in individuals(s)
                 counts[Int(c.infection_time) + 1] += 1
             end
             counts

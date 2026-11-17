@@ -81,7 +81,7 @@ function MassAction(
     groups = Vector{Int}[]
     group_of = Dict{Int, Int}()
     for id in members
-        record = state.individuals[id].state
+        record = individuals(state)[id].state
         key = Tuple(get(record, k, missing) for k in mixing_by)
         g = get!(index, key) do
             push!(keys, key)
@@ -96,7 +96,7 @@ function MassAction(
         ArgumentError("mass-action contact rates must be finite and non-negative")
     )
     max_susceptibility = [
-        maximum(id -> state.individuals[id].susceptibility, group) for group in groups
+        maximum(id -> individuals(state)[id].susceptibility, group) for group in groups
     ]
     return MassAction(
         groups, group_of, float.(rates), max_susceptibility,
@@ -115,7 +115,7 @@ function (m::MassAction)(infector_id, state)
         (id, Exponential(inv(m.rate[a, b])))
             for b in eachindex(m.groups) if m.rate[a, b] > 0
             for id in m.groups[b]
-            if id != infector_id && !is_infected(state.individuals[id])
+            if id != infector_id && !is_infected(individuals(state)[id])
     )
 end
 
@@ -129,12 +129,12 @@ function route_pair_kernel(m::MassAction, infector_id, target_id, state)
     # The race scales this kernel's redraw by elapsed time since the window
     # opened (see `_next_contact`), so the opening it needs is this infector's
     # own, recovered from `from` exactly as it was then.
-    opening = _window_open(state.individuals[infector_id], m.from)
+    opening = _window_open(individuals(state)[infector_id], m.from)
     return _CalendarScaledKernel(kernel, m.calendar, opening)
 end
 
 function propose_along(m::MassAction, infector_id, state, open_t, close_t, capped, traits)
-    infector = state.individuals[infector_id]
+    infector = individuals(state)[infector_id]
     a = m.group_of[infector_id]
     window = close_t - open_t
     contacts = empty!(m.contacts)
@@ -179,7 +179,7 @@ function _sample_contacts!(
         contacts, state, group, r, bound, traits, open_t, window, calendar
     )
     rng = state.rng
-    pair_rate(id) = traits ? r * state.individuals[id].susceptibility : r
+    pair_rate(id) = traits ? r * individuals(state)[id].susceptibility : r
     check_bound(rate) = rate <= bound || throw(
         ArgumentError(
             "a member's susceptibility rose above its group's largest when " *
@@ -271,7 +271,7 @@ function pending_beyond(m::MassAction, state, reinfects::Bool)
     return any(CartesianIndices(m.cut)) do ab
         a, b = Tuple(ab)
         m.cut[a, b] && any(m.groups[b]) do id
-            ind = state.individuals[id]
+            ind = individuals(state)[id]
             (!is_infected(ind) || (reinfects && isfinite(susceptible_again_time(ind)))) &&
                 ind.susceptibility > 0
         end

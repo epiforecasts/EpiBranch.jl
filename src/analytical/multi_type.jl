@@ -153,7 +153,10 @@ not the time-varying reproduction number Rt. Given a model, each of its
 interventions changes the offspring distribution first, through
 [`EpiBranch.analytic_offspring_effect`](@ref), so the result is the basic
 reproduction number only when the model has none; an intervention without
-such an effect raises an error.
+such an effect raises an error. A finite population size, an infectiousness
+window with `until`, or [`transmission_traits`](@ref) away from 1 reshapes the
+offspring law and also raises an `ArgumentError`, because the offspring mean is
+then not the mean number of secondary cases. Simulate instead.
 
 - Single-type model: the mean of the offspring distribution.
 - [`ClusterMixed`](@ref) offspring: that mean averaged over the chains'
@@ -192,17 +195,20 @@ reproduction_number(o::MultiTypeOffspring) = _spectral_radius(_mean_matrix(o))
 # Each of the model's interventions applies its `analytic_offspring_effect` to
 # the offspring distribution first; an intervention without one throws.
 function reproduction_number(model::Union{TransmissionModel, ModelSpec})
+    _require_unreshaped_offspring_law(model, "reproduction_number")
     off = _offspring_through_interventions(model, _analytic_offspring(model))
     return reproduction_number(off)
 end
 
 """
-    extinction_probability(o::MultiTypeOffspring; tol=1e-10, max_iter=1000)
+    extinction_probability(o::MultiTypeOffspring; n_initial=1, tol=1e-10, max_iter=1000)
 
 Probability that transmission dies out in a multi-type branching process,
 one value per type: element `j` is the probability that an outbreak started
 by a single type-`j` case dies out. Call it on a model as
-`extinction_probability(model)`.
+`extinction_probability(model)`. `n_initial` must be 1: with several
+introductions it is not defined which type each starts in, so larger values
+raise an `ArgumentError`.
 
 It is 1 for types whose cases cannot lead, directly or through other types,
 to a group of types that sustain transmission among themselves (reproduction
@@ -222,8 +228,15 @@ most 1. A warning is given if the calculation has not converged after
     for which returning 1 is wrong.
 """
 function extinction_probability(
-        o::MultiTypeOffspring; tol::Real = 1.0e-10,
+        o::MultiTypeOffspring; n_initial::Int = 1, tol::Real = 1.0e-10,
         max_iter::Int = 1000
+    )
+    n_initial == 1 || throw(
+        ArgumentError(
+            "n_initial other than 1 is not supported for a multi-type " *
+                "offspring distribution: the type of each introduced case is " *
+                "not specified."
+        )
     )
     n = _n_types(o)
     laws = _total_count_laws(o)

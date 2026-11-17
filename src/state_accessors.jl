@@ -24,13 +24,12 @@ simulated outbreak:
 
 ```julia
 state = simulate(model)
-count(is_isolated, state.individuals)                 # number isolated
-onsets = [onset_time(i) for i in state.individuals if is_infected(i)]
+count(is_isolated, individuals(state))                 # number isolated
+onsets = [onset_time(i) for i in individuals(state) if is_infected(i)]
 ```
 """
-function onset_time(ind::Individual{T}) where {T}
-    return _state_real(ind.state, :onset_time, T(NaN))
-end
+onset_time(ind::Individual{T}) where {T} =
+    _state_real(ind.state, :onset_time, T(NaN))
 
 """
     incubation_period(ind)
@@ -65,9 +64,8 @@ start of the outbreak: the earliest step of the natural history that ends the
 case (see [`Transition`](@ref)). `Inf` if there is none yet, or if the
 natural history has no such step.
 """
-function outcome_time(ind::Individual{T}) where {T}
-    return _state_real(ind.state, :outcome_time, T(Inf))
-end
+outcome_time(ind::Individual{T}) where {T} =
+    _state_real(ind.state, :outcome_time, T(Inf))
 
 """Whether the person was isolated in a way that counts as detecting them, so
 that tracing and group vaccination start from them and the line list shows
@@ -79,9 +77,8 @@ is_isolated(ind::Individual) = _isolation_in_force(ind) && !_isolation_unrecorde
 """Time from which isolation or quarantine stops the person transmitting, in
 days since the start of the outbreak (`Inf` if never), whether or not it
 counts as a detection (see [`is_isolated`](@ref))."""
-function isolation_time(ind::Individual{T}) where {T}
-    return _state_real(ind.state, :isolation_time, T(Inf))
-end
+isolation_time(ind::Individual{T}) where {T} =
+    _state_real(ind.state, :isolation_time, T(Inf))
 
 """Time at which the isolation or quarantine that began at
 [`isolation_time`](@ref) ends, in days since the start of the outbreak (`Inf`
@@ -89,9 +86,8 @@ if it never does). It is finite when [`Isolation`](@ref) or the
 [`Quarantine`](@ref) of [`ContactTracing`](@ref) has a duration, so a
 quarantine that ended before the person was later infected does not stop
 their own onward transmission. Set by [`set_isolated!`](@ref)."""
-function isolation_release_time(ind::Individual{T}) where {T}
-    return _state_real(ind.state, :isolation_release_time, T(Inf))
-end
+isolation_release_time(ind::Individual{T}) where {T} =
+    _state_real(ind.state, :isolation_release_time, T(Inf))
 
 
 # Whether an isolation or quarantine stands on the individual, recorded or not.
@@ -107,6 +103,52 @@ _isolation_unrecorded(ind::Individual) = get(ind.state, :_isolation_unrecorded, 
 function _recorded_isolation_time(ind::Individual{T}) where {T}
     return _isolation_unrecorded(ind) ? T(Inf) : isolation_time(ind)
 end
+
+"""
+    flag_for_isolation!(individual, time)
+
+For extension authors: record that `individual` has been traced and should be
+isolated once they show symptoms. [`Isolation`](@ref) then isolates them at
+the later of `time` and their onset. If they isolate themselves earlier, that
+time is used instead. A person with no onset is never isolated this way. This
+is the hand-over that [`FlagOnly`](@ref) uses, open to a tracer or other
+intervention written outside the package. A person flagged more than once keeps the
+earliest `time`. `time` may precede the onset, or be given before the onset is
+known.
+"""
+function flag_for_isolation!(ind::Individual, time::Real)
+    ind.state[:_traced_isolation_time] = min(traced_isolation_time(ind), time)
+    return nothing
+end
+
+"""
+    traced_isolation_time(individual) -> Float64
+
+For extension authors: the earliest time recorded for `individual` by
+[`flag_for_isolation!`](@ref), or `Inf` if they were never flagged. It may
+precede their onset; a reader that isolates on symptoms holds it back to the
+onset.
+"""
+function traced_isolation_time(ind::Individual{T}) where {T}
+    return _state_real(ind.state, :_traced_isolation_time, T(Inf))
+end
+
+# Withdraws a flag recorded by `flag_for_isolation!`.
+_clear_isolation_flag!(ind::Individual) = (delete!(ind.state, :_traced_isolation_time); nothing)
+
+"""
+    is_ring_hop(individual) -> Bool
+
+For extension authors: whether `individual`, as the `infector` handed to
+[`trace_contacts!`](@ref EpiBranch.trace_contacts!), is a case the walk of a
+contact-tracing ring is passing through, rather than one settling on its own
+account. The walk reaches an already-infected neighbour as a member of the
+ring and calls the `trace_contacts!` of every intervention from it. A tracer that
+starts a fresh trace from every eligible case reads this to trace from such a
+member as a ring member only, as [`ContactTracing`](@ref) does. `false`
+outside the walk.
+"""
+is_ring_hop(ind::Individual) = get(ind.state, :_ring_hop, false)::Bool
 
 """Whether the person was found by contact tracing."""
 is_traced(ind::Individual) = get(ind.state, :traced, false)::Bool
@@ -127,9 +169,8 @@ can compare it with the time an outcome would take effect (for example
 `onset_time(ind)` for the default [`Death`](@ref)) to decide whether the
 dose's [`severity_efficacy`](@ref) applies: immunity that develops later
 gives no protection."""
-function immunity_time(ind::Individual{T}; dose_label::Symbol = :default) where {T}
-    return _state_real(ind.state, _immunity_time_key(dose_label), T(Inf))
-end
+immunity_time(ind::Individual{T}; dose_label::Symbol = :default) where {T} =
+    _state_real(ind.state, _immunity_time_key(dose_label), T(Inf))
 
 """The full-strength efficacy against infection drawn for this person's dose
 named `dose_label`, as it was sampled when the dose was given: the probability
@@ -173,7 +214,8 @@ function symptom_efficacy(ind::Individual; dose_label::Symbol = :default)
 end
 
 """Whether the case never develops symptoms, because it was drawn as
-asymptomatic or because a vaccine dose with a `symptom_efficacy` kept it from
+asymptomatic or because protection (a vaccine dose with a `symptom_efficacy`,
+or [`prevent_symptoms!`](@ref EpiBranch.prevent_symptoms!)) kept it from
 developing them."""
 function is_asymptomatic(ind::Individual)
     return get(ind.state, :asymptomatic, false)::Bool || _symptoms_prevented(ind)
@@ -187,9 +229,8 @@ example by post-exposure vaccination, in days since the start of the outbreak
 (`Inf` if it was not). Set by
 [`abort_infection!`](@ref EpiBranch.abort_infection!).
 """
-function infection_aborted_time(ind::Individual{T}) where {T}
-    return _state_real(ind.state, :infection_aborted_time, T(Inf))
-end
+infection_aborted_time(ind::Individual{T}) where {T} =
+    _state_real(ind.state, :infection_aborted_time, T(Inf))
 
 """
     abort_infection!(ind, time)
@@ -263,9 +304,8 @@ models does.
 Set it with a step in the model's `progression`, timed from the state that
 starts waning, for example
 `Transition(:susceptible_again, from = :recovered, delay = Exponential(180))`."""
-function susceptible_again_time(ind::Individual{T}) where {T}
-    return _state_real(ind.state, :susceptible_again_time, T(Inf))
-end
+susceptible_again_time(ind::Individual{T}) where {T} =
+    _state_real(ind.state, :susceptible_again_time, T(Inf))
 
 """
     is_settled(state, ind) -> Bool
@@ -281,19 +321,34 @@ is_settled(state, ind::Individual) = get(ind.state, :_settled, false)::Bool
 (1 in a single-type model)."""
 individual_type(ind::Individual) = get(ind.state, :type, 1)::Int
 
-# The key `set_isolated!` records a removal's history under. A component that
-# removes a host through a path of its own records under its own key instead,
-# and names it from `removal_gap_host_times`.
+"""
+    EpiBranch.REMOVAL_STRETCHES_KEY
+
+The key `set_isolated!` records a removal's history under, and the name of the
+column of merged removal stretches that [`layer_host_times`](@ref
+EpiBranch.layer_host_times) gives an [`InfectionLayer`](@ref)'s `host_times`. The
+pairwise likelihood reads removals from this column: a layer without it is scored
+as if nobody were ever removed. A component that removes a host through a path
+of its own records under its own key instead, and names it from
+[`removal_gap_host_times`](@ref EpiBranch.removal_gap_host_times).
+"""
 const REMOVAL_STRETCHES_KEY = :_removal_stretches
 
 # Isolation reads its own removals to keep its route coverage separate from
 # that of quarantine when the two interventions are combined.
 const ISOLATION_STRETCHES_KEY = :_isolation_stretches
 
-# The key a removal that only blocks a fraction of the hazard (see
-# `removal_block_probability`) records its stretches under, apart from
-# `REMOVAL_STRETCHES_KEY`'s complete ones, so a likelihood never mistakes one
-# for the other. `Isolation` writes here for itself when leaky.
+"""
+    EpiBranch.LEAKY_REMOVAL_STRETCHES_KEY
+
+The key a removal that only blocks a fraction of the hazard (see
+[`removal_block_probability`](@ref EpiBranch.removal_block_probability)) records
+its stretches under, apart from [`REMOVAL_STRETCHES_KEY`](@ref
+EpiBranch.REMOVAL_STRETCHES_KEY)'s complete ones, so a likelihood never mistakes
+one for the other. `Isolation` writes here for itself when leaky, and
+[`layer_host_times`](@ref EpiBranch.layer_host_times) gives the column to the
+layer under this name.
+"""
 const LEAKY_REMOVAL_STRETCHES_KEY = :_leaky_removal_stretches
 
 const _NO_STRETCHES = Tuple{Float64, Float64}[]
@@ -434,7 +489,16 @@ recorded this way, because they keep the handle under a key of their own
 (see the `:_isolation_handle` key in [`Isolation`](@ref)).
 """
 function revise_removal!(ind::Individual, handle; release::Real)
-    _revise_removal_entry!(ind, handle, release)
+    entries = get(ind.state, :_removal_entries, nothing)
+    i = _find_removal_entry(entries, handle)
+    i === nothing && return nothing
+    h, key, start, _, isolation_span, unrecorded = entries[i]
+    S = promote_type(typeof(start), typeof(release))
+    new_entries = _widen_removal_entries(entries, S)
+    new_entries[i] = (h, key, start, convert(S, release), isolation_span, unrecorded)
+    ind.state[:_removal_entries] = new_entries
+    _recompute_removal_cache!(ind, key)
+    isolation_span && _refresh_isolation_span!(ind)
     return nothing
 end
 
@@ -455,7 +519,15 @@ a removal outright calls it too. A policy that wants the same for its own
 only be withdrawn wholesale, with [`clear_isolated!`](@ref).
 """
 function withdraw_removal!(ind::Individual, handle)
-    _withdraw_removal_entry!(ind, handle)
+    entries = get(ind.state, :_removal_entries, nothing)
+    i = _find_removal_entry(entries, handle)
+    i === nothing && return nothing
+    key, isolation_span = entries[i][2], entries[i][5]
+    new_entries = copy(entries)
+    deleteat!(new_entries, i)
+    ind.state[:_removal_entries] = new_entries
+    _recompute_removal_cache!(ind, key)
+    isolation_span && _refresh_isolation_span!(ind)
     return nothing
 end
 
@@ -472,8 +544,8 @@ _find_removal_entry(entries, handle) = findfirst(e -> e[1] == handle, entries)
 
 # A copy of `old`, widened to the type promoted from its own element type
 # and `S` (an AD dual release following a plain `Float64` one, say), so that
-# neither `_push_removal_entry!`'s push nor `_revise_removal_entry!`'s
-# `setindex!` narrows the new entry back down to fit. `old` already at `S`,
+# neither the push in `_push_removal_entry!` nor the `setindex!` in
+# `revise_removal!` narrows the new entry back down to fit. `old` already at `S`,
 # the common case, takes the plain `copy` the generic conversion below would
 # reach the same place by, more slowly.
 _widen_removal_entries(old::Vector{_RemovalEntry{S}}, ::Type{S}) where {S} = copy(old)
@@ -535,33 +607,6 @@ function _push_qualifying_removal!(
     # does closes the infectious window instead (see `infectious_removal_time`),
     # which the likelihood already reads with no key of its own.
     isfinite(release) && _note_lapsing_removal_key!(ind, key)
-    return nothing
-end
-
-function _revise_removal_entry!(ind::Individual, handle, release::Real)
-    entries = get(ind.state, :_removal_entries, nothing)
-    i = _find_removal_entry(entries, handle)
-    i === nothing && return nothing
-    h, key, start, _, isolation_span, unrecorded = entries[i]
-    S = promote_type(typeof(start), typeof(release))
-    new_entries = _widen_removal_entries(entries, S)
-    new_entries[i] = (h, key, start, convert(S, release), isolation_span, unrecorded)
-    ind.state[:_removal_entries] = new_entries
-    _recompute_removal_cache!(ind, key)
-    isolation_span && _refresh_isolation_span!(ind)
-    return nothing
-end
-
-function _withdraw_removal_entry!(ind::Individual, handle)
-    entries = get(ind.state, :_removal_entries, nothing)
-    i = _find_removal_entry(entries, handle)
-    i === nothing && return nothing
-    key, isolation_span = entries[i][2], entries[i][5]
-    new_entries = copy(entries)
-    deleteat!(new_entries, i)
-    ind.state[:_removal_entries] = new_entries
-    _recompute_removal_cache!(ind, key)
-    isolation_span && _refresh_isolation_span!(ind)
     return nothing
 end
 
@@ -672,15 +717,8 @@ function _refresh_isolation_span!(ind::Individual{T}) where {T}
     # them untyped rather than asserting `ind`'s own element type here.
     entries = get(ind.state, :_removal_entries, ())
     span = _fold_isolation_span(entries)
-    if span === nothing
-        ind.state[:isolated] = false
-        ind.state[:isolation_time] = T(Inf)
-        ind.state[:isolation_release_time] = T(Inf)
-        delete!(ind.state, :_isolation_unrecorded)
-        return nothing
-    end
-    start, release, unrecorded = span
-    ind.state[:isolated] = true
+    start, release, unrecorded = something(span, (T(Inf), T(Inf), false))
+    ind.state[:isolated] = span !== nothing
     ind.state[:isolation_time] = start
     ind.state[:isolation_release_time] = release
     if unrecorded
@@ -720,7 +758,7 @@ end
 # individuals, in first-seen order.
 function _lapsing_removal_keys(state::SimulationState)
     keys = Symbol[]
-    for ind in state.individuals, key in get(ind.state, :_lapsing_removal_keys, ())
+    for ind in individuals(state), key in get(ind.state, :_lapsing_removal_keys, ())
         key in keys || push!(keys, key)
     end
     return keys
@@ -731,11 +769,7 @@ end
 # widens to match, rather than narrowing the new stretch down to fit it.
 function _with_stretch(old::Vector{Tuple{T, T}}, stretch::Tuple{S, S}) where {T, S}
     P = promote_type(T, S)
-    new = Vector{Tuple{P, P}}(undef, length(old) + 1)
-    copyto!(new, old)
-    new[end] = stretch
-    sort!(new; by = first)
-    return _merge_stretches!(new)
+    return _merge_stretches!(sort!(push!(Vector{Tuple{P, P}}(old), stretch); by = first))
 end
 _with_stretch(old, stretch) = _merge_stretches(sort!(push!(copy(old), stretch); by = first))
 
@@ -808,16 +842,52 @@ function clear_isolated!(ind::Individual)
     return nothing
 end
 
-# Day from which a dose's protection against symptoms applies: the earliest
-# immunity day among the doses whose symptom draw succeeded (`Inf` if none).
-# Kept as one entry to avoid scanning the state when reading symptom status.
-_symptom_protection_time(ind::Individual{T}) where {T} =
-    _state_real(ind.state, :symptom_protection_from, T(Inf))
+# Key for protection recorded through `prevent_symptoms!`, kept apart from the
+# per-dose vaccine entries so that withdrawing a dose does not drop it.
+const _SYMPTOM_PREVENTED_KEY = :symptom_prevented_from
 
-# Rebuild the entry above from the per-dose entries, and the onset that
-# depends on it. Called when a dose is recorded or withdrawn.
+"""
+    symptoms_prevented_time(ind)
+
+Day from which protection against symptoms applies to the person, in days
+since the start of the outbreak (`Inf` if nothing protects them): the earliest
+of the protection recorded by [`prevent_symptoms!`](@ref
+EpiBranch.prevent_symptoms!) and that of any vaccine dose whose
+`symptom_efficacy` draw succeeded. Whether it keeps a given case from
+developing symptoms depends on when the case would have had onset; see
+[`is_asymptomatic`](@ref).
+"""
+function symptoms_prevented_time(ind::Individual{T}) where {T}
+    return _state_real(ind.state, :symptom_protection_from, T(Inf))
+end
+
+"""
+    prevent_symptoms!(ind, from)
+
+Record that something protects the person against symptoms from day `from`:
+a case whose symptom onset would come at or after `from` never develops
+symptoms (it counts as [`is_asymptomatic`](@ref) and has no
+[`onset_time`](@ref)), as with a vaccine dose with a `symptom_efficacy`. For
+intervention authors, such as an antiviral that prevents symptoms: call it
+from an intervention hook for any person, whether or not they are infected
+yet. If it is called more than once, the earliest `from` counts. Unlike
+[`abort_infection!`](@ref EpiBranch.abort_infection!), the infection carries
+on, so the person stays infectious.
+"""
+function prevent_symptoms!(ind::Individual{T}, from::Real) where {T}
+    ind.state[_SYMPTOM_PREVENTED_KEY] = min(
+        _state_real(ind.state, _SYMPTOM_PREVENTED_KEY, T(Inf)), T(from)
+    )
+    _refresh_symptom_protection!(ind)
+    return nothing
+end
+
+# Rebuild the combined entry read by `symptoms_prevented_time` from the
+# per-dose entries and the `prevent_symptoms!` entry, and the onset that
+# depends on it. Kept as one entry to avoid scanning the state when reading
+# symptom status. Called when protection is recorded or withdrawn.
 function _refresh_symptom_protection!(ind::Individual{T}) where {T}
-    earliest = T(Inf)
+    earliest = _state_real(ind.state, _SYMPTOM_PREVENTED_KEY, T(Inf))
     for (key, value) in ind.state
         value isa Real || continue
         startswith(String(key), "symptom_protection_time") || continue
@@ -837,5 +907,5 @@ end
 function _symptoms_prevented(ind::Individual)
     haskey(ind.state, :symptom_protection_from) || return false
     inc = _state_real(ind.state, :incubation_period, NaN)
-    return _symptom_protection_time(ind) <= ind.infection_time + inc
+    return symptoms_prevented_time(ind) <= ind.infection_time + inc
 end

@@ -212,9 +212,9 @@ function routed_network_infections(
     )
     process = model.process
     n = process.n
-    length(state.individuals) == n || throw(
+    length(individuals(state)) == n || throw(
         ArgumentError(
-            "the state has $(length(state.individuals)) individuals but the routed " *
+            "the state has $(length(individuals(state))) individuals but the routed " *
                 "network has $n nodes"
         )
     )
@@ -226,7 +226,7 @@ function routed_network_infections(
     is_index = falses(n)
     infectious_time = [fill(NaN, n) for _ in 1:n_routes]
     removal_time = [fill(Inf, n) for _ in 1:n_routes]
-    for (k, ind) in enumerate(state.individuals)
+    for (k, ind) in enumerate(individuals(state))
         get(ind.state, :infected, false) || continue
         infection_time[k] = ind.infection_time
         is_index[k] = get(ind.state, :index, false)
@@ -246,7 +246,7 @@ function routed_network_infections(
     end
     contacts = [Vector{Int}[Int.(nb) for nb in w.reach] for w in windows]
     route_names = Symbol[w.name for w in windows]
-    host_times = _layer_host_times(state, model, ())
+    host_times = layer_host_times(state, model, ())
     return RoutedNetworkInfections(
         route_names, contacts, infectious_time, removal_time,
         infection_time, is_index; obs_end, followup_end, host_times,
@@ -532,6 +532,6 @@ function Distributions.loglikelihood(
         data::RoutedNetworkInfections,
         model::ModelSpec{<:RoutedNetwork}
     )
-    _validate_infection_likelihood(model)
+    validate_infection_likelihood(model)
     return loglikelihood(data, model.process; susceptibility = model.interventions)
 end
