@@ -66,7 +66,7 @@ underscore are internal.
 | `:_case_classification_changes` | `Vector{Tuple{Float64,Any}}` | — | `ModelSpec`'s `case_definition` | After the run; internal. Each change of classification with its time, read by `case_classification_changes` |
 | `:traced` | `Bool` | `false` | `ContactTracing`, `SourceTracing` | `trace_contacts!` |
 | `:quarantined` | `Bool` | `false` | `ContactTracing`, `SourceTracing` | `trace_contacts!` |
-| `:_traced_isolation_time` | `Float64` | `Inf` | `ContactTracing` → `Isolation` | Internal hand-over; may precede onset, so `Isolation` holds it back to onset |
+| `:_traced_isolation_time` | `Float64` | `Inf` | `ContactTracing`, or any intervention → `Isolation` | Internal hand-over, written by `flag_for_isolation!` and read by `traced_isolation_time`; may precede onset. `Isolation` holds it back to onset |
 | `:trace_time` | `Float64` | — | `ContactTracing`, `SourceTracing` | `trace_contacts!`. The earlier of the trace times of the two tracers |
 | `:_contact_trace_time` | `Float64` | — | `ContactTracing` | `intervention_time`; internal. The time at which `ContactTracing` traced the person |
 | `:_source_trace_time` | `Float64` | — | `SourceTracing` | `intervention_time`; internal. The time at which `SourceTracing` traced the person |
@@ -74,7 +74,7 @@ underscore are internal.
 | `:_source_trace_handles` | `Vector{Int}` | — | `SourceTracing` | `reset!`; internal. The handles of the removal entries that `SourceTracing` created when tracing |
 | `:_ring_remaining` | `Int` | `0` | `ContactTracing` (`depth > 1`) | `trace_contacts!`; internal |
 | `:_ring_propagated` | `Bool` | `false` | `ContactTracing` (`depth > 1`) | `trace_contacts!`; internal |
-| `:_ring_hop` | `Bool` | `false` | `ContactTracing` (`depth > 1`) | Set and cleared around each `trace_contacts!` call in the ring walk; internal. Marks an already-settled case the walk passes through, so it is traced from as a ring member only, not reseeded |
+| `:_ring_hop` | `Bool` | `false` | `ContactTracing` (`depth > 1`) | Set and cleared around each `trace_contacts!` call in the ring walk; read through `is_ring_hop`. Marks an already-settled case the walk passes through. It is traced from as a ring member only and is not reseeded |
 | `:traced_by` | `Int` | — | `ContactTracing` | `trace_contacts!` |
 | `:tracers` | `Vector{Int}` | — | `ContactTracing` | `trace_contacts!`, `compute_trace_level!`; every case whose trace reached the person |
 | `:source_traced_by` | `Int` | — | `SourceTracing` | `trace_contacts!`; the reverse of `:traced_by` (names a *later*-infected node) |
@@ -799,6 +799,10 @@ EpiBranch.event_time_metadata(::Val{:appointment_time}) =
 ```
 
 The intervention writes the simulation time to `ind.state[:appointment_time]`.
+A key whose stored value is not what the line list should show, such as one
+that has to be read together with other state, defines
+[`EpiBranch.reported_value`](@ref)`(::Val{key}, individual)` as well; the
+isolation columns do.
 `linelist(state; infected_only = false)` then includes the date for uninfected
 people too. Missing and infinite times stay missing. The default line list,
 of infected people only, still includes cases only.
