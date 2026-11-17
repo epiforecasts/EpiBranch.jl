@@ -456,9 +456,10 @@ const _STORED_TRAITS_LOCK = ReentrantLock()
 
 function _infer_traits(T::Type)
     # The inherited forwarding methods of a wrapper are not the hooks of the
-    # type itself, so the comparison is against `AbstractIntervention`; an
+    # type itself, so a wrapper is compared against `InterventionWrapper`; an
     # action is compared against `TraceAction`, which has the same fallbacks.
-    base = T <: TraceAction ? TraceAction : AbstractIntervention
+    base = T <: TraceAction ? TraceAction :
+        T <: InterventionWrapper ? InterventionWrapper : AbstractIntervention
     own(hooks) = all(h -> _has_own_method(h, T, base), hooks)
     return _InferredTraits(
         own((intervention_time,)),

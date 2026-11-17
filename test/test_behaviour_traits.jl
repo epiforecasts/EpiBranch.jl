@@ -60,6 +60,9 @@ struct _UndeclaredWrapper{I <: EpiBranch.AbstractIntervention} <: EpiBranch.Inte
     intervention::I
 end
 EpiBranch.intervention_time(::_UndeclaredWrapper, ind::Individual) = 1.0
+struct _DefaultWrapper{I <: EpiBranch.AbstractIntervention} <: EpiBranch.InterventionWrapper
+    intervention::I
+end
 struct _UndeclaredTraceAction <: EpiBranch.TraceAction end
 EpiBranch.intervention_actions(::_UndeclaredTraceAction, state, candidates) = nothing
 
@@ -194,8 +197,11 @@ struct _Bare <: EpiBranch.AbstractIntervention end
         @test EpiBranch.resolves_under_capacity(_UndeclaredEffect())
         @test EpiBranch.discovers_actions(_UndeclaredActions())
         @test EpiBranch.proposes_actions(_UndeclaredActions())
-        # A wrapper with no declaration asks what it wraps.
-        @test !EpiBranch.time_aware(_UndeclaredWrapper(_Bare()))
+        # A wrapper with hooks of its own is read from them; one with none asks
+        # what it wraps.
+        @test EpiBranch.time_aware(_UndeclaredWrapper(_Bare()))
+        @test !EpiBranch.time_aware(_DefaultWrapper(_Bare()))
+        @test EpiBranch.time_aware(_DefaultWrapper(_UndeclaredTime()))
         @test EpiBranch.time_aware(_UndeclaredWrapper(_UndeclaredTime()))
         ct = ContactTracing(
             probability = 0.5, isolation_to_trace_delay = Exponential(1.0),

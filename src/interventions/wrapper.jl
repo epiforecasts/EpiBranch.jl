@@ -35,12 +35,20 @@ function infectious_removal_time(w::InterventionWrapper, ind::Individual)
     return t
 end
 traces_contacts(w::InterventionWrapper) = traces_contacts(w.intervention)
-# A wrapper that declares nothing of its own asks the intervention it wraps,
-# because the methods that run are those of the wrapped intervention.
-# `has_competing_risk` is `true` because the hook is forwarded.
-time_aware(w::InterventionWrapper) = time_aware(w.intervention)
-resolves_under_capacity(w::InterventionWrapper) = resolves_under_capacity(w.intervention)
-discovers_actions(w::InterventionWrapper) = discovers_actions(w.intervention)
+# A wrapper that writes the hooks itself is read from its own methods, like any
+# other intervention. One that defines none of them asks the intervention it
+# wraps, because the methods that run are then those of the wrapped
+# intervention. `has_competing_risk` is `true` because the hook is forwarded.
+function time_aware(w::InterventionWrapper)
+    return _stored_traits(typeof(w)).time_aware || time_aware(w.intervention)
+end
+function resolves_under_capacity(w::InterventionWrapper)
+    return _stored_traits(typeof(w)).resolves_under_capacity ||
+        resolves_under_capacity(w.intervention)
+end
+function discovers_actions(w::InterventionWrapper)
+    return _stored_traits(typeof(w)).discovers_actions || discovers_actions(w.intervention)
+end
 has_competing_risk(::InterventionWrapper) = true
 # Forwarded to the wrapped intervention. A capacity wrapper inside `Scheduled`
 # or `OnRoutes` then still answers for itself.
