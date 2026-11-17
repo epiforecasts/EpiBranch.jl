@@ -827,6 +827,7 @@ EpiBranch.time_aware
 EpiBranch.resolves_under_capacity
 EpiBranch.discovers_actions
 EpiBranch.proposes_actions
+EpiBranch.has_competing_risk
 EpiBranch.supplies_contacts
 EpiBranch.keep_active
 InterventionWrapper
