@@ -1,5 +1,5 @@
 
-# Branching process models for infectious disease epidemiology <img src="docs/src/assets/logo.svg" align="right" height="139" alt="EpiBranch.jl logo" />
+# Branching process models for infectious disease epidemiology <img src="docs/src/assets/logo-dark.svg" align="right" height="139" alt="EpiBranch.jl logo" />
 
 <!-- badges: start -->
 [![CI](https://github.com/epiforecasts/EpiBranch.jl/actions/workflows/CI.yml/badge.svg)](https://github.com/epiforecasts/EpiBranch.jl/actions/workflows/CI.yml)

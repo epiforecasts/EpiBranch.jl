@@ -115,6 +115,21 @@ end
         @test ForwardDiff.derivative(f, log(3.0)) ≈ fd rtol = 1.0e-4
     end
 
+    @testset "hazards stay finite in the far tail" begin
+        # `ccdf` underflows to zero here, so `-log(ccdf)` is `Inf`
+        rows = PairwiseSurvivalData([1], [0.0], [800.0], [false])
+        @test isfinite(pairwise_surv_loglik(Exponential(1.0), rows))
+        @test pairwise_surv_loglik(Exponential(1.0), rows) ≈ -800.0
+        @test EpiBranch._cumhazard(Exponential(1.0), 800.0) == 800.0
+        @test EpiBranch._cumhazard(Weibull(2.0, 1.0), 30.0) ≈ 900.0
+        for k in (Exponential(2.0), Weibull(1.5, 2.0), Gamma(2.0, 1.5), LogNormal(0.5, 0.7))
+            for t in (0.3, 1.0, 4.0)
+                @test EpiBranch._cumhazard(k, t) ≈ EpiBranch.cumhazard(k, t)
+                @test EpiBranch._fast_loghazard(k, t) ≈ EpiBranch.loghazard(k, t)
+            end
+        end
+    end
+
     @testset "a zero hazard adds no NaN to a gradient" begin
         # A pair before a shifted kernel's support has log-hazard -Inf, whose
         # partials can be NaN; the reduction must skip it.
@@ -146,16 +161,16 @@ end
         state = simulate(m; rng = StableRNG(1), n_initial = 3)
         columns = EpiBranch._infection_layer_columns(state, m)
 
-        infected = findall(is_infected, state.individuals)
+        infected = findall(is_infected, individuals(state))
         @test findall(!isnan, columns.infection_time) == infected
         @test count(columns.is_index) == 3
-        inds = state.individuals[infected]
+        inds = individuals(state)[infected]
         infectious = [ind.state[:infectious_time] for ind in inds]
         recovered = [ind.state[:recovered_time] for ind in inds]
         @test columns.infectious_time[infected] == infectious
         @test columns.removal_time[infected] == min.(recovered, isolation_time.(inds))
         @test any(columns.removal_time[infected] .< recovered)
-        uninfected = setdiff(eachindex(state.individuals), infected)
+        uninfected = setdiff(eachindex(individuals(state)), infected)
         @test all(isinf, columns.removal_time[uninfected])
     end
 

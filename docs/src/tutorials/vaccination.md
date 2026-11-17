@@ -39,7 +39,7 @@ nothing # hide
 traces 70% of their contacts a mean of 1 day after the infector's isolation
 and quarantines them, also for good.
 
-## How a dose protects
+## Protection from a dose
 
 A dose protects from `delay_to_immunity` days after it is given (0 by
 default). It has up to five effects, each a probability; two of them,
@@ -60,6 +60,9 @@ proportion of vaccinated people fully protected and leaves the rest
 unprotected. In a branching process every exposure is a different person, and
 the two give the same results on average. They differ in models where a
 person can be exposed more than once, such as households and networks.
+
+!!! note "A fitted leaky `efficacy` is a hazard ratio"
+    In households, on networks and in the other continuous-time models, a leaky `efficacy` `e` blocks each contact along a pair with probability `e`, which multiplies the hazard of infection by `1 - e`. A person whose risk of infection would be `1 - S` then has risk `1 - S^(1 - e)`. Fitting `efficacy` with `loglikelihood(data, model)` therefore estimates the reduction in the hazard per contact, a hazard ratio of `1 - e`. The reduction in the risk of infection, such as the household secondary attack rate, is smaller. A published efficacy against the attack rate `VE = 1 - (1 - S^(1 - e)) / (1 - S)` is a different quantity. To use it as `efficacy`, solve for `e = 1 - log(1 - (1 - VE)(1 - S)) / log(S)`, or compare the two on the risk scale.
 
 `severity_efficacy` is the one effect the model does not apply on its own. It
 reaches the outbreak only through a clinical step in the model's `progression`
@@ -172,17 +175,17 @@ not yet vaccinated, so the run here is bounded by generations instead:
 cases in the fifth generation and leaves every earlier case with all its
 contacts decided. `condition = 50:200` keeps simulating until an outbreak
 stops with between 50 and 200 cases and returns it.
-`count(is_vaccinated, state.individuals)` then counts everyone vaccinated,
+`count(is_vaccinated, individuals(state))` then counts everyone vaccinated,
 like `sum(is_vaccinated(x))` in R:
 
 ```@example vaccination
 rng = StableRNG(42)
 state = simulate(scenario([iso, ct, rv]); condition = 50:200,
     max_cases = nothing, max_generations = 5, rng = rng)
-n_vaccinated = count(is_vaccinated, state.individuals)
-n_infected = count(is_infected, state.individuals)
+n_vaccinated = count(is_vaccinated, individuals(state))
+n_infected = count(is_infected, individuals(state))
 # Cases in the fifth generation drew no contacts to vaccinate
-n_complete = count(ind -> is_infected(ind) && ind.generation < 5, state.individuals)
+n_complete = count(ind -> is_infected(ind) && ind.generation < 5, individuals(state))
 println("Vaccinated: $n_vaccinated, Infected: $n_infected")
 println("Doses per case: $(round(n_vaccinated / n_complete, digits = 1))")
 ```
@@ -210,8 +213,8 @@ ct2 = ContactTracing(
 rng = StableRNG(42)
 state = simulate(scenario([iso, ct2, rv]); condition = 50:200,
     max_cases = nothing, max_generations = 5, rng = rng)
-doses_depth2 = count(is_vaccinated, state.individuals)
-n_complete2 = count(ind -> is_infected(ind) && ind.generation < 5, state.individuals)
+doses_depth2 = count(is_vaccinated, individuals(state))
+n_complete2 = count(ind -> is_infected(ind) && ind.generation < 5, individuals(state))
 println("Doses with a second ring: $doses_depth2, ",
     "per case: $(round(doses_depth2 / n_complete2, digits = 1))")
 ```
@@ -260,8 +263,8 @@ ct_noquarantine = ContactTracing(probability = 0.7,
     isolation_to_trace_delay = Exponential(1.0), action = FlagOnly())
 
 function secondary_per_traced(runs)
-    mean(count(id -> is_infected(s.individuals[id]), ind.secondary_case_ids)
-    for s in runs for ind in s.individuals
+    mean(count(id -> is_infected(individuals(s)[id]), ind.secondary_case_ids)
+    for s in runs for ind in individuals(s)
     if is_infected(ind) && is_traced(ind) && ind.generation < 5)
 end
 traced_runs(interventions) = simulate(scenario(interventions), 400;
@@ -305,7 +308,7 @@ for days in [0.0, 2.0, 5.0, 21.0]
     let pep = RingVaccination(efficacy = 0.0, post_exposure_efficacy = 0.9,
             delay_to_immunity = days)
         results = traced_runs([iso, ct_noquarantine, pep])
-        cases = [ind for s in results for ind in s.individuals
+        cases = [ind for s in results for ind in individuals(s)
                  if is_infected(ind) && is_traced(ind)]
         stopped = count(ind -> isfinite(EpiBranch.infection_aborted_time(ind)), cases)
         println("Protection after $(lpad(Int(days), 2)) days: ",
@@ -370,7 +373,7 @@ each simulated outbreak, and records the share of them vaccinated:
 function coverage_by_community(states)
     out = Float64[]
     for state in states, g in 1:20
-        members = filter(state.individuals) do ind
+        members = filter(individuals(state)) do ind
             is_traced(ind) && get(ind.state, :group, 0) == g
         end
         length(members) >= 5 || continue
@@ -602,7 +605,7 @@ The mean number of each dose per simulated outbreak shows what the second
 dose costs:
 
 ```@example vaccination
-doses(label) = mean(count(i -> is_vaccinated(i; dose_label = label), s.individuals)
+doses(label) = mean(count(i -> is_vaccinated(i; dose_label = label), individuals(s))
     for s in results)
 println("Primed: $(round(doses(:prime), digits = 1)), ",
     "boosted: $(round(doses(:boost), digits = 1))")
@@ -672,7 +675,7 @@ outbreaks:
 
 ```@example vaccination
 campaign_runs = simulate(campaign_model, 200; max_cases = 300, rng = StableRNG(42))
-people = [ind for s in campaign_runs for ind in s.individuals]
+people = [ind for s in campaign_runs for ind in individuals(s)]
 willing_people = filter(ind -> get(ind.state, :willing, false), people)
 println("Measured: among willing people ",
     round(count(is_vaccinated, willing_people) / length(willing_people), digits = 3),
@@ -709,8 +712,8 @@ rv_capped = CapacityConstrained(rv; budget_per_period = 5.0, period = 1.0)
 state_uncapped = simulate(scenario([iso, ct, rv]); condition = 50:200, max_cases = 200, rng = StableRNG(42))
 state_capped = simulate(scenario([iso, ct, rv_capped]); condition = 50:200, max_cases = 200, rng = StableRNG(42))
 
-println("Doses without a limit: $(count(is_vaccinated, state_uncapped.individuals))")
-println("Doses with at most 5 people admitted a day: $(count(is_vaccinated, state_capped.individuals))")
+println("Doses without a limit: $(count(is_vaccinated, individuals(state_uncapped)))")
+println("Doses with at most 5 people admitted a day: $(count(is_vaccinated, individuals(state_capped)))")
 ```
 
 The simulation offers one case's traced contacts at a time, in the order it
@@ -750,6 +753,8 @@ allowance to the next day's; `carry_over = false` discards it, so only that
 day's own `budget_per_period` is ever available. With `carry_over = true`
 admissions can bunch: a quiet spell builds an allowance that a later day
 spends at once, well above `budget_per_period` in a day.
+
+To give each group its own budget, such as separate dose series for the under 5s and the over 5s, pass a [`PerGroup`](@ref) as `budget_per_period`. Its groups are those of the [`Population`](@ref) of the model. See [What each model applies](@ref) for how every model reads it.
 
 !!! note "Which models support capacity limits"
     On the network and household models, capacity limits work for group

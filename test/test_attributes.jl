@@ -16,9 +16,9 @@ end
                 ModelSpec(BranchingProcess(Poisson(0.0), Exponential(5.0)); attributes);
                 n_initial = 3, rng = StableRNG(1)
             )
-            @test length(state.individuals) == 3
-            @test all(ind.state[:tag] == ind.id for ind in state.individuals)
-            @test all(haskey(ind.state, :group) for ind in state.individuals)
+            @test length(individuals(state)) == 3
+            @test all(ind.state[:tag] == ind.id for ind in individuals(state))
+            @test all(haskey(ind.state, :group) for ind in individuals(state))
         end
     end
 
@@ -41,12 +41,12 @@ end
             );
             n_initial = 3, rng = StableRNG(1)
         )
-        @test all(ind.susceptibility == 0.4 for ind in run.individuals)
-        @test all(ind.infectiousness == 0.7 for ind in run.individuals)
-        @test all(ind.state[:vaccine_acceptance] == 0.6 for ind in run.individuals)
+        @test all(ind.susceptibility == 0.4 for ind in individuals(run))
+        @test all(ind.infectiousness == 0.7 for ind in individuals(run))
+        @test all(ind.state[:vaccine_acceptance] == 0.6 for ind in individuals(run))
         @test all(
             ind.state[:onset_time] == ind.infection_time + 2.0
-                for ind in run.individuals
+                for ind in individuals(run)
         )
     end
 
@@ -117,8 +117,8 @@ end
                 ModelSpec(BranchingProcess(Poisson(1.5), Exponential(5.0)); attributes = attrs);
                 max_cases = 30, rng = StableRNG(1)
             )
-            @test all(ind.susceptibility == 0.5 for ind in state.individuals)
-            @test all(ind.infectiousness == 0.8 for ind in state.individuals)
+            @test all(ind.susceptibility == 0.5 for ind in individuals(state))
+            @test all(ind.infectiousness == 0.8 for ind in individuals(state))
         end
 
         @testset "offspring_law_unchanged" begin
@@ -277,7 +277,7 @@ end
         probabilities(states) = [
             [
                 ind.state[:reporting_probability]
-                    for ind in run.individuals
+                    for ind in individuals(run)
             ] for run in states
         ]
         @test probabilities(parallel) == probabilities(
@@ -293,7 +293,7 @@ end
                 unique(
                     [
                         ind.state[:reporting_probability]
-                            for ind in run.individuals
+                            for ind in individuals(run)
                             if ind.state[:household] == h
                     ]
                 ) for h in 1:2
@@ -312,7 +312,7 @@ end
             ModelSpec(BranchingProcess(Poisson(0.0), Exponential(5.0)); attributes = callback_attrs);
             n_initial = 3, rng = StableRNG(1)
         )
-        @test all(ind.state[:first_member] == 1 for ind in callback_state.individuals)
+        @test all(ind.state[:first_member] == 1 for ind in individuals(callback_state))
         @test_throws ArgumentError simulate(
             ModelSpec(
                 BranchingProcess(Poisson(0.0), Exponential(5.0));
@@ -413,6 +413,8 @@ end
             )
             people = EpiBranch.add_individuals!(state, 40, [])
             for ind in people
+                ind.infection_time = 0.0
+                ind.state[:infected] = true
                 ind.state[:test_positive] = true
                 set_isolated!(ind, 2.0; release_time = Inf)
             end
@@ -450,13 +452,13 @@ end
 
             traced = [
                 ind for state in states
-                    for ind in state.individuals
+                    for ind in individuals(state)
                     if is_traced(ind)
             ]
             @test !isempty(traced)
             for state in states
                 by_group = Dict{Int, Vector{Bool}}()
-                for ind in filter(is_traced, state.individuals)
+                for ind in filter(is_traced, individuals(state))
                     push!(get!(by_group, ind.state[:group], Bool[]), is_vaccinated(ind))
                 end
                 @test all(length(unique(v)) == 1 for v in values(by_group))
@@ -532,6 +534,22 @@ end
             ind = Individual(id = 1)
             attrs(StableRNG(1), ind)
             @test ind.state[:group] == 1
+        end
+    end
+
+    @testset "group_attribute and vaccine_acceptance group by :type" begin
+        bp = BranchingProcess([1.2 0.4; 0.3 0.9], R -> Poisson(R), Exponential(5.0))
+        for (builder, key) in (
+                (group_attribute(:level; value = Uniform(), group_key = :type), :level),
+                (vaccine_acceptance(propensity = Beta(2, 2), group_key = :type), :vaccine_acceptance),
+            )
+            spec = ModelSpec(bp; attributes = [builder])
+            state = simulate(spec; n_initial = 20, max_cases = 200, rng = StableRNG(1))
+            cases = filter(is_infected, state.individuals)
+            for k in 1:2
+                values_k = Set(i.state[key] for i in cases if i.state[:type] == k)
+                @test length(values_k) == 1
+            end
         end
     end
 end

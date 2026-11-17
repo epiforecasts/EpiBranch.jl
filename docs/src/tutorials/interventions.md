@@ -197,7 +197,7 @@ ContactTracing(
 )
 ```
 
-### What triggers contact tracing
+### Default tracing trigger
 
 By default, a contact is traced once their infector has developed symptoms
 and been isolated, and the delay counts from the isolation. Real
@@ -245,7 +245,7 @@ nothing # hide
 ```
 
 To write a trigger of your own, such as one that depends on the infector's
-age, see [Who triggers contact tracing](@ref).
+age, see [Eligibility for contact tracing](@ref).
 
 ## Asymptomatic cases and test sensitivity
 
@@ -324,16 +324,16 @@ rng = StableRNG(42)
 state = simulate(scenario([iso, ct]); condition = 50:200,
     max_cases = nothing, max_generations = 5, rng = rng)
 
-contacts = length(state.individuals)
-infected = count(is_infected, state.individuals)
-traced = count(is_traced, state.individuals)
+contacts = length(individuals(state))
+infected = count(is_infected, individuals(state))
+traced = count(is_traced, individuals(state))
 # Cases in the fifth generation drew no contacts to trace
-complete = count(ind -> is_infected(ind) && ind.generation < 5, state.individuals)
+complete = count(ind -> is_infected(ind) && ind.generation < 5, individuals(state))
 println("Contacts: $contacts, Infections: $infected, Traced: $traced")
 println("Traced contacts per case: $(round(traced / complete, digits=1))")
 ```
 
-`count(is_traced, state.individuals)` counts the people for whom `is_traced`
+`count(is_traced, individuals(state))` counts the people for whom `is_traced`
 is true, like `sum(is_traced(x))` in R. Every contact generated is
 infected unless an intervention prevents it. The gap between contacts and
 infections is the number of infections isolation and quarantine prevented.
@@ -414,7 +414,7 @@ model = ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
 state = simulate(model; max_cases = 500, rng = StableRNG(42))
 reported = count(
     ind -> get(ind.state, :reporting_time, Inf) <= state.max_infection_time,
-    state.individuals)
+    individuals(state))
 println("Cases: $(state.cumulative_cases), reported by the end: $(reported)")
 ```
 
@@ -452,6 +452,46 @@ iso_gen3 = Scheduled(
 )
 nothing # hide
 ```
+
+## Comparing many scenarios
+
+The loops above change one setting at a time. [`scenario_sweep`](@ref) runs every combination of the settings you list and returns a table with one row per combination and its containment probability. Each setting is a vector of the values to try, and `:offspring` is required. Each value of `:interventions` is a whole stack of interventions, given as one vector per scenario. Settings that apply to every run, such as `max_cases` and `rng`, are passed once:
+
+```@example interventions
+sweep = scenario_sweep(
+    Dict(
+        :offspring => [Poisson(1.5), Poisson(3.0)],
+        :interventions => [
+            [Isolation(onset_to_isolation_delay = Exponential(d), duration = 7.0)]
+                for d in [0.5, 2.0, 5.0]
+        ],
+        :attributes => [clinical],
+        :generation_time => [Exponential(5.0)],
+    );
+    n_sim = 200, max_cases = 500, rng = StableRNG(42),
+)
+sweep.R = mean.(sweep.offspring)
+sweep.mean_delay = [only(i).onset_to_isolation_delay.θ for i in sweep.interventions]
+sort(sweep[:, [:R, :mean_delay, :containment_probability]], [:R, :mean_delay])
+```
+
+The six rows are the two offspring distributions crossed with the three delays. The `R` and `mean_delay` columns are read back from the offspring distribution and isolation of each scenario. The table is sorted by R and then by delay. Containment is higher with R = 1.5 than with R = 3, and falls in both cases as isolation is delayed.
+
+### Containment by a chosen week
+
+A simulation that stops at `max_cases` is not extinct, but an outbreak can also be small or slow at a given time. Reports of ringbp results usually count an outbreak as contained when no case has symptom onset in a window of weeks. `is_extinct(state; by_week = ...)` does that: `by_week = 12:20` is `true` when no case has onset in weeks 12 to 20, counted in 7-day blocks from day 0, and a single week takes an integer. The simulation has to run to the end of the window, here day 140, so `max_time = 140.0`:
+
+```@example interventions
+model_r15 = ModelSpec(BranchingProcess(Poisson(1.5), Exponential(5.0));
+    interventions = [iso], attributes = clinical)
+states = simulate(model_r15, 200; max_cases = 500, max_time = 140.0, rng = StableRNG(42))
+
+extinct = mean(is_extinct.(states))
+quiet = mean(is_extinct.(states; by_week = 12:20, max_cases = 500))
+println("Extinct: $(round(extinct, digits=3)); no onsets in weeks 12-20: $(round(quiet, digits=3))")
+```
+
+The two shares differ because they define containment differently: an outbreak that has died out can still have a case with onset inside it, and one that is alive can have none. Pass the same `max_cases` to `is_extinct`: a run stopped at the cap before week 12 has no onsets in the window, and without `max_cases` it would be counted as contained.
 
 ## Writing your own intervention
 

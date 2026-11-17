@@ -117,7 +117,7 @@ function linelist(
     # never drawn.
     cases = filter(
         ind -> is_infected(ind) || !(infected_only || _is_withdrawn(ind)),
-        state.individuals
+        individuals(state)
     )
     isempty(cases) && return DataFrame()
 
@@ -193,13 +193,13 @@ function contacts(
         state::SimulationState;
         reference_date::Date = Date(2020, 1, 1)
     )
-    individuals = state.individuals
+    people = individuals(state)
     # A contact whose exposure fell after the run stopped was never exposed
     # within it.
     exposures = (
-        (ind.id, individuals[child_id])
-            for ind in individuals for child_id in ind.secondary_case_ids
-            if child_id <= length(individuals)
+        (ind.id, people[child_id])
+            for ind in people for child_id in ind.secondary_case_ids
+            if child_id <= length(people)
     )
     df = DataFrame(
         [

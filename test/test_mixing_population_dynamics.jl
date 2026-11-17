@@ -97,7 +97,7 @@ end
 
         approx = simulate(model; n_initial = 20, max_time = 120.0)
         exact = simulate(spec; n_initial = 20, max_time = 120.0, rng = StableRNG(7))
-        exact_final_size = count(i -> isfinite(i.infection_time), exact.individuals)
+        exact_final_size = count(i -> isfinite(i.infection_time), individuals(exact))
 
         # A near-deterministic epidemic this large settles close to the
         # mean-field path from the same initial condition (Kurtz's theorem),

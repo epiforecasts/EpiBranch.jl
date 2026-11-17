@@ -5,7 +5,7 @@ test_stateful_simulation((k; kwargs...) -> HouseholdProcess([3], k; kwargs...), 
 
 struct RecordKernelClock <: AbstractIntervention end
 function EpiBranch.resolve_individual!(::RecordKernelClock, ind, state)
-    clock = get!(state.individuals[1].state, :kernel_clock, Float64[])
+    clock = get!(individuals(state)[1].state, :kernel_clock, Float64[])
     push!(clock, ind.infection_time)
     return nothing
 end
@@ -21,15 +21,15 @@ end
         interventions = [RecordKernelClock()]
     )
     state = simulate(model; initial_cases = [1, 3], rng = StableRNG(233))
-    @test issorted(state.individuals[1].state[:kernel_clock])
-    @test [i.id for i in state.individuals if get(i.state, :index, false)] == [1, 3]
+    @test issorted(individuals(state)[1].state[:kernel_clock])
+    @test [i.id for i in individuals(state) if get(i.state, :index, false)] == [1, 3]
     @test state.cumulative_cases == 4
-    @test state.individuals[2].parent_id == 1
-    @test state.individuals[4].parent_id == 3
+    @test individuals(state)[2].parent_id == 1
+    @test individuals(state)[4].parent_id == 3
     # Default household seeding still chooses one index in each partition.
     default = simulate(model; rng = StableRNG(233))
-    @test count(i -> get(i.state, :index, false), default.individuals[1:2]) == 1
-    @test count(i -> get(i.state, :index, false), default.individuals[3:4]) == 1
+    @test count(i -> get(i.state, :index, false), individuals(default)[1:2]) == 1
+    @test count(i -> get(i.state, :index, false), individuals(default)[3:4]) == 1
 end
 
 @testset "A count-gated Scheduled shares one household clock" begin
@@ -52,8 +52,8 @@ end
         interventions = [iso]
     )
     state = simulate(model; initial_cases = [1, 5], rng = StableRNG(1))
-    @test state.individuals[5].infection_time == 0.0
-    @test !is_isolated(state.individuals[5])
+    @test individuals(state)[5].infection_time == 0.0
+    @test !is_isolated(individuals(state)[5])
 end
 
 @testset "A kernel watching no record matches an ordinary kernel" begin
@@ -73,7 +73,7 @@ end
                 obs_end = 10.0
             )
             state = simulate(ModelSpec(process; progression); rng = StableRNG(seed))
-            [i.infection_time for i in state.individuals]
+            [i.infection_time for i in individuals(state)]
         end
         @test isequal(runs...)
     end
@@ -84,7 +84,7 @@ end
     for seed in 1:20
         state = simulate(model; rng = StableRNG(seed))
         for members in ((1, 2), (3, 4), (5, 6))
-            @test count(i -> get(i.state, :index, false), state.individuals[[members...]]) == 1
+            @test count(i -> get(i.state, :index, false), individuals(state)[[members...]]) == 1
         end
     end
 end
@@ -94,7 +94,7 @@ end
     # household order, so a seed gives the same outbreak on every Julia version.
     state = simulate(HouseholdProcess(fill(3, 20), Exponential(2.0)); rng = StableRNG(3))
     index = [
-        findfirst(i -> get(i.state, :index, false), state.individuals[(3h - 2):3h])
+        findfirst(i -> get(i.state, :index, false), individuals(state)[(3h - 2):3h])
             for h in 1:20
     ]
     rng = StableRNG(3)

@@ -34,6 +34,7 @@ include("interventions/contact_tracing.jl")
 include("interventions/vaccination.jl")
 include("interventions/wrapper.jl")
 include("interventions/scheduled.jl")
+include("interventions/per_group.jl")
 include("interventions/capacity.jl")
 include("interventions/held_capacity.jl")
 include("interventions/on_routes.jl")
@@ -48,6 +49,8 @@ include("transitions/transition.jl")
 include("transitions/reporting.jl")
 include("transitions/hospitalisation.jl")
 include("transitions/outcome.jl")
+include("transitions/event_step.jl")
+include("transitions/testing.jl")
 
 # Signals: population quantities read off a simulated state, which every
 # engine that produces one can compute (transition counts per step,
@@ -195,6 +198,7 @@ export GenerationCounts, simulate_by_generation
 export AbstractDepletion, PerContactDepletion, StartOfGenerationDepletion
 export transmission_timing, implied_R
 export Individual, InfectionEpisode, close_episode!, SimulationState
+export AbstractSimulationState, individuals
 export SimOpts
 export AbstractStoppingRule, Extinction, MaxCases, MaxGenerations, MaxTime, should_stop
 export AbstractIntervention, Isolation, ContactTracing, SourceTracing
@@ -213,13 +217,14 @@ export AbstractEffectMode, LeakyMode, AllOrNothingMode
 export Scheduled, Risk
 export AbstractTrigger, is_triggered!, trigger_can_lapse, required_transitions,
     Infections, ReportedCases, opened_at, After
-export CapacityConstrained, capacity_usage, default_capacity_priority
+export PerGroup, CapacityConstrained, capacity_usage, default_capacity_priority
 export RefusalPolicy, DropRefused, DeferRefused
 export HeldCapacity, held_usage, release_capacity!
 export OnRoutes
 export RouteWindow, window_open, window_close
 export is_active, intervention_time
 export AbstractClinicalTransition, Transition, Reporting, Hospitalisation, Death, Recovery
+export Testing, AbstractAssay, Assay, within_host
 export is_terminal, terminal_event, terminal_target, exclusive_probabilities
 export Signal, TransitionCount, Prevalence
 export ObservationModel, NoObservation, MinimumSize, ChainDetection,

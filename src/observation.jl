@@ -45,7 +45,7 @@ function _reporting_conflict(obs)
 end
 
 function apply_observation!(o::ChainDetection, state, rng)
-    cases = filter(is_infected, state.individuals)
+    cases = filter(is_infected, individuals(state))
     # A progression transition (such as `Reporting`) that records `:reported`
     # owns that key, and its likelihood reads what it wrote.
     any(case -> haskey(case.state, :reported), cases) && _reporting_conflict(o)
@@ -266,6 +266,10 @@ observe(base, ::NoObservation) = base
 observe(base, o::MinimumSize) = TruncatedChainSize(base, o.min_size)
 observe(base, o::ChainDetection) = DetectedChainSize(base, o.recording_probability)
 
+# Whether a progression step is a reporting step, by the
+# `reporting_probability` trait rather than by type.
+_is_reporting(t) = reporting_probability(t) !== nothing
+
 """
 Scalar detection probability from a model's `Reporting` step in
 `progression`, or `nothing` when it has none. Shared by the closed-form
@@ -273,7 +277,7 @@ chain-size law, `chain_size_distribution` and `end_of_outbreak_probability`,
 which all read the same per-case reporting source.
 """
 function _reporting_probability(progression)
-    reporting = filter(t -> t isa Reporting, progression)
+    reporting = filter(_is_reporting, progression)
     isempty(reporting) && return nothing
     length(reporting) == 1 || throw(
         ArgumentError(
@@ -281,7 +285,7 @@ function _reporting_probability(progression)
                 "got $(length(reporting))"
         )
     )
-    p = only(reporting).probability
+    p = reporting_probability(only(reporting))
     p isa Real || throw(
         ArgumentError(
             "a scalar `Reporting` probability is needed here; got $(typeof(p))"
@@ -311,17 +315,18 @@ function _effective_reporting_probability(progression, attrs)
                 "not model; simulate instead."
         )
     )
-    r = only(filter(t -> t isa Reporting, progression))
-    reached, _ = _infection_to(r.from, attrs)
+    r = only(filter(_is_reporting, progression))
+    from = reporting_from(r)
+    reached, _ = _infection_to(from, attrs)
     # Another step writes the time that `Reporting` reports from and overrides
     # the onset the share is read from. The share then misdescribes who is
     # reported.
-    r.from isa Symbol && r.from !== :infection && any(
-        t -> t isa Transition && t.time_key === _resolved_key(r.from), progression
+    from isa Symbol && from !== :infection && any(
+        t -> t isa Transition && t.time_key === _resolved_key(from), progression
     ) && throw(
         ArgumentError(
             "a progression step also writes the time `Reporting` reports from " *
-                "(`:$(_resolved_key(r.from))`), which the closed form does not " *
+                "(`:$(_resolved_key(from))`), which the closed form does not " *
                 "model; simulate instead."
         )
     )
@@ -352,8 +357,8 @@ end
 function _exact_reported_chain_size(offspring, prog, obs, attrs)
     hasmethod(chain_size_distribution, Tuple{typeof(offspring)}) || return nothing
     offspring isa GeneratingFunctionOffspring && offspring.pmf === nothing && return nothing
-    count(t -> t isa Reporting, prog) > 1 && return nothing
-    any(t -> t isa Reporting && !(t.probability isa Real), prog) && return nothing
+    count(_is_reporting, prog) > 1 && return nothing
+    any(t -> _is_reporting(t) && !(reporting_probability(t) isa Real), prog) && return nothing
     # A progression the closed form cannot read (a terminal step, or a step
     # that overwrites the `from` time) is simulated instead.
     try

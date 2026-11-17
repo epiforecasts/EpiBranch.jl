@@ -214,7 +214,7 @@ using Dates
         )
         state = simulate(spec; n_initial = 1, rng = StableRNG(3))
         @test state.cumulative_cases == 1
-        index_id = findfirst(is_infected, state.individuals)
+        index_id = findfirst(is_infected, individuals(state))
 
         df = contacts(state)
         @test nrow(df) > 0
@@ -300,7 +300,7 @@ using Dates
         )
         state = simulate(spec; n_initial = 3, rng = StableRNG(1), max_cases = 200)
         df = linelist(state; infected_only = false)
-        @test nrow(df) == length(state.individuals)
+        @test nrow(df) == length(individuals(state))
 
         uninfected = df[.!df.infected, :]
         @test nrow(uninfected) > 0
@@ -401,7 +401,7 @@ end
 @testset "External event dates" begin
     state = simulate(BranchingProcess(Poisson(0.0)); n_initial = 4, rng = StableRNG(42))
     reference = Date(2020, 1, 1)
-    for (i, ind) in enumerate(state.individuals)
+    for (i, ind) in enumerate(individuals(state))
         ind.state[:infected] = i == 1
         ind.state[:appointment_time] = (2.0, 3.0, Inf, missing)[i]
         ind.state[:onset_time] = 4.0

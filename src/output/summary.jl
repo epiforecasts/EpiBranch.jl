@@ -121,7 +121,7 @@ function is_extinct(
     # Week-based extinction, binned on onset (with infection fallback) to match
     # the docstring and `weekly_incidence`.
     weeks = by_week isa Int ? (by_week:by_week) : by_week
-    for ind in state.individuals
+    for ind in individuals(state)
         !is_infected(ind) && continue
         t = _weekly_time(:onset, ind)
         isfinite(t) || continue
@@ -153,7 +153,7 @@ to the bound.
 function generation_R(state::SimulationState)
     # Single-pass: count infected individuals per generation
     gen_counts = Dict{Int, Int}()
-    for ind in state.individuals
+    for ind in individuals(state)
         is_infected(ind) || continue
         g = ind.generation
         gen_counts[g] = get(gen_counts, g, 0) + 1
@@ -207,7 +207,7 @@ function weekly_incidence(
     # default). `Day(floor(Int, Inf))` would otherwise throw.
     times = filter(
         isfinite,
-        [_weekly_time(by, ind) for ind in state.individuals if is_infected(ind)]
+        [_weekly_time(by, ind) for ind in individuals(state) if is_infected(ind)]
     )
     dates = [reference_date + Day(floor(Int, t)) for t in times]
     df = DataFrame(week = [d - Day(dayofweek(d) - 1) for d in dates])
@@ -353,7 +353,7 @@ function _incidence(states; interval, by, reference_date, range, cumulative, by_
 
     bins = [Int[] for _ in states]
     gens = [Int[] for _ in states]
-    for (i, s) in enumerate(states), ind in s.individuals
+    for (i, s) in enumerate(states), ind in individuals(s)
         is_infected(ind) || continue
         t = _weekly_time(by, ind)
         isfinite(t) || continue
