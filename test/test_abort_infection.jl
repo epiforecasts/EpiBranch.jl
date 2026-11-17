@@ -174,9 +174,9 @@ end
         state = simulate(spec; rng = StableRNG(seed), max_cases = 200)
         stale += count(
             ind -> !is_infected(ind) && EpiBranch._infection_aborted(ind),
-            state.individuals
+            individuals(state)
         )
-        for ind in filter(is_infected, state.individuals)
+        for ind in filter(is_infected, individuals(state))
             ind.generation == 0 && continue
             aborted += 1
             t = EpiBranch.infection_aborted_time(ind)
@@ -186,7 +186,7 @@ end
                 get(ind.state, :late_time, Inf) == Inf ||
                 (misplaced += 1)
             for id in ind.secondary_case_ids
-                child = state.individuals[id]
+                child = individuals(state)[id]
                 is_infected(child) || continue
                 child.infection_time >= t ? (after_abort += 1) : (before_abort += 1)
             end
@@ -214,7 +214,7 @@ end
         EpiBranch.add_individuals!(state, 3, interventions)
         function edge(from, to, t)
             return (inf, st) -> inf == from &&
-                !get(st.individuals[to].state, :infected, false) ?
+                !get(individuals(st)[to].state, :infected, false) ?
                 ((to, Dirac(t)),) : ()
         end
         routes = (
@@ -227,16 +227,16 @@ end
         )
         return state
     end
-    infected(state) = [get(ind.state, :infected, false) for ind in state.individuals]
+    infected(state) = [get(ind.state, :infected, false) for ind in individuals(state)]
 
     untreated = race(AbstractIntervention[])
     @test infected(untreated) == [true, true, true]
-    @test onset_time(untreated.individuals[2]) == 6.0
-    @test untreated.individuals[2].state[:late_time] == 11.0
+    @test onset_time(individuals(untreated)[2]) == 6.0
+    @test individuals(untreated)[2].state[:late_time] == 11.0
 
     treated = race(AbstractIntervention[EndAfter(2.0)])
     @test infected(treated) == [true, true, false]
-    node2 = treated.individuals[2]
+    node2 = individuals(treated)[2]
     @test EpiBranch.infection_aborted_time(node2) == 3.0
     @test isnan(onset_time(node2))
     @test node2.state[:early_time] == 2.0

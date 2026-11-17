@@ -187,6 +187,55 @@ function offspring_law_unchanged(xs::Union{Tuple, AbstractVector})
     return all(offspring_law_unchanged, xs)
 end
 
+"""
+    reporting_probability(transition) -> Union{Nothing, Real, Function}
+
+The probability that `transition` reports a case, or `nothing` (the default)
+when it is not a reporting step. The closed forms that thin a chain-size law
+or an incidence series by under-reporting ask this of every `progression`
+transition rather than matching [`Reporting`](@ref) by type. A reporting
+step of your own (one with a probability that varies with age, or a testing
+transition) reaches them by defining it. [`Reporting`](@ref) returns its
+`probability` field.
+
+A closed form needs a number and falls back to simulation for a function.
+The time the report is measured from is read with
+[`EpiBranch.reporting_from`](@ref), and a step must also record `:reported`
+and `:reporting_time` as [`Reporting`](@ref) does for `simulate` to agree with
+the closed form.
+"""
+reporting_probability(::Any) = nothing
+
+"""
+    reporting_from(transition)
+
+The time a reporting step measures its delay from, in the form
+taken by the `from` field of [`Reporting`](@ref): `:infection`, a recorded time such as
+`:onset_time`, or a function of the individual. Only asked of a transition
+that answers [`EpiBranch.reporting_probability`](@ref). The default is
+`:onset_time`.
+"""
+reporting_from(::Any) = :onset_time
+
+"""
+    onset_law(attribute)
+
+The law of a case's symptom onset that `attribute` sets, as a
+`NamedTuple` `(incubation_period, prob_asymptomatic)`: the incubation-period
+distribution and the share of cases that never develop symptoms. The default
+is `nothing`, for an attribute that records no onset.
+
+The closed forms that need the onset (the analytic effect of
+[`Isolation`](@ref), and reporting timed from onset in the incidence
+likelihood and the chain-size law) ask each of the model's attributes this
+rather than matching the type of [`clinical_presentation`](@ref). An onset
+builder of your own reaches them by defining it. A model must have exactly
+one attribute that answers, and its `prob_asymptomatic` must be a number for
+the closed forms to use it. `simulate` must set `:onset_time` and
+`:asymptomatic` consistently with the law you declare.
+"""
+onset_law(::Any) = nothing
+
 """The number of types of case `model` has, or `1` for a single-type model
 (the default). A multi-type model, such as a [`BranchingProcess`](@ref)
 built from an offspring matrix, overrides this with its own number of
@@ -442,6 +491,24 @@ end
 # ── Simulation state ───────────────────────────────────────────────
 
 """
+Supertype of the results of [`simulate`](@ref). Code should read the people in a
+run through [`individuals`](@ref). A result that builds its people on request can
+then stand in for a [`SimulationState`](@ref).
+"""
+abstract type AbstractSimulationState end
+
+"""
+    individuals(state)
+
+The [`Individual`](@ref)s of a simulated outbreak, one per person in the
+simulation. For a [`BranchingProcess`](@ref) these are the cases and the contacts
+they exposed; for models with a fixed population they are everyone. Use this
+function rather than reading a field of the state.
+"""
+function individuals end
+
+
+"""
 One simulated outbreak, as returned by [`simulate`](@ref). Turn it into
 tables with [`linelist`](@ref) (one row per case), [`contacts`](@ref) (one
 row per exposure), [`chain_statistics`](@ref) or [`weekly_incidence`](@ref).
@@ -474,7 +541,7 @@ some other reason; nothing outside the simulation engine reads or writes it.
 a population created as the race reaches it, `nothing` for one built
 upfront; nothing outside the simulation engine reads or writes it either.
 """
-mutable struct SimulationState{T <: Real, R <: AbstractRNG, P, A}
+mutable struct SimulationState{T <: Real, R <: AbstractRNG, P, A} <: AbstractSimulationState
     individuals::Union{Vector{Individual{T}}, _SharedPeople{T}}
     active_ids::Vector{Int}
     current_generation::Int
@@ -490,6 +557,8 @@ mutable struct SimulationState{T <: Real, R <: AbstractRNG, P, A}
     lazy::Union{Nothing, _LazyPopulation}
     group_cases::Vector{Int}
 end
+
+individuals(state::SimulationState) = state.individuals
 
 # Pre-existing callers construct a `SimulationState` without `scratch`,
 # `continuation`, `lazy` or `group_cases`; they start absent (`group_cases`
@@ -514,7 +583,7 @@ function Base.show(io::IO, s::SimulationState)
     status = s.extinct ? "extinct" : "active"
     return print(
         io,
-        "SimulationState(cases=$(s.cumulative_cases), individuals=$(length(s.individuals)), gen=$(s.current_generation), $(status))"
+        "SimulationState(cases=$(s.cumulative_cases), individuals=$(length(individuals(s))), gen=$(s.current_generation), $(status))"
     )
 end
 

@@ -236,7 +236,11 @@ outbreaks.
 With `parallel = true` the runs are spread over the CPU threads Julia was
 started with (for example `julia --threads 4`). The results are reproducible
 for a given seeded `rng`. When Julia has more than one thread, they are not
-the same outbreaks as with `parallel = false`.
+the same outbreaks as with `parallel = false`. Outbreaks are handed to threads
+one at a time. A few large ones do not leave the other threads idle. Much of
+the remaining cost is garbage collection, which pauses every thread; starting
+Julia with extra collector threads (for example `julia --threads 6
+--gcthreads 6,1`) reduces it.
 
 # Examples
 ```julia
@@ -296,15 +300,32 @@ function _simulate_n(
         )
     )
     if parallel && Threads.nthreads() > 1
-        seeds = [rand(rng, UInt64) for _ in 1:n]
-        results = Vector{T}(undef, n)
-        Threads.@threads for i in 1:n
-            results[i] = run(Random.Xoshiro(seeds[i]))
-        end
-        return results
+        return _simulate_n_threaded(run, T, n, rng)
     else
         return [run(rng) for _ in 1:n]
     end
+end
+# Separate from the `nthreads() > 1` check so that it can be tested on a single
+# thread.
+function _simulate_n_threaded(run, ::Type{T}, n::Int, rng) where {T}
+    seeds = [rand(rng, UInt64) for _ in 1:n]
+    results = Vector{T}(undef, n)
+    # Outbreak sizes are heavy-tailed. An even split of `1:n` would leave
+    # threads idle while one works through the large outbreaks. Each task
+    # instead takes the next outbreak from a shared counter. Seeds are indexed
+    # by outbreak, giving the same results whichever thread runs it.
+    next_index = Threads.Atomic{Int}(1)
+    tasks = map(1:min(Threads.nthreads(), n)) do _
+        Threads.@spawn begin
+            while true
+                i = Threads.atomic_add!(next_index, 1)
+                i > n && break
+                results[i] = run(Random.Xoshiro(seeds[i]))
+            end
+        end
+    end
+    foreach(wait, tasks)
+    return results
 end
 
 # ── Shared helpers for the race's models ─────────────────────────────
@@ -402,7 +423,7 @@ function _reconcile_sellke_bookkeeping!(state::SimulationState, extinct::Bool)
     max_time = 0.0
     max_generation = 0
     fill!(state.group_cases, 0)
-    for ind in state.individuals
+    for ind in individuals(state)
         get(ind.state, :infected, false) || continue
         cases += 1
         isempty(state.group_cases) || (state.group_cases[individual_type(ind)] += 1)
@@ -480,9 +501,7 @@ end
 # an `OffspringTimes` already gave.
 _window_infection_time(::NoGenerationTime, from_t::Real, state) = from_t
 _window_infection_time(offset::_FixedOffset, from_t::Real, state) = from_t + offset.offset
-# Any other kernel (a distribution, or a calendar-scaled kernel, which is not a
-# `Distribution`) is drawn from directly.
-function _window_infection_time(kernel, from_t::Real, state)
+function _window_infection_time(kernel::Distribution, from_t::Real, state)
     return from_t + rand(state.rng, kernel)
 end
 
@@ -495,21 +514,25 @@ _tag_window!(contact, until) = (contact.state[:censor_until] = until; nothing)
 # Offer `case`'s own infector to interventions tracing backward, as the sole
 # contact in `trace_contacts!`'s usual four-argument form. An index case or a
 # community introduction has no infector to offer. The race calls it once a
-# case is settled.
+# case is settled. It returns the infector when tracing has just isolated it,
+# and `nothing` otherwise.
 function _trace_source!(
         state::SimulationState, case, interventions,
         tracing_source = any(traces_source, interventions)
     )
     tracing_source || return nothing
-    1 <= case.parent_id <= length(state.individuals) || return nothing
-    infector = state.individuals[case.parent_id]
+    1 <= case.parent_id <= length(individuals(state)) || return nothing
+    infector = individuals(state)[case.parent_id]
     contacts = (infector,)
+    was_isolated = is_isolated(infector)
     _each(interventions) do intervention
         traces_source(intervention) &&
             trace_contacts!(intervention, state, case, contacts)
         return nothing
     end
-    return nothing
+    # An infector isolated here was settled, and its forward tracing decided,
+    # before it was isolated. The caller traces forward from it again.
+    return !was_isolated && is_isolated(infector) ? infector : nothing
 end
 
 """
@@ -701,8 +724,9 @@ function add_individuals!(
         n_types::Integer = 1, setup = (ind, i) -> nothing, infection_time::Real = NaN,
         types = nothing, assign = _NoAssignment()
     )
-    base = length(state.individuals)
-    added = eltype(state.individuals)[]
+    _check_group_budgets(interventions, state.population)
+    base = length(individuals(state))
+    added = eltype(individuals(state))[]
     for i in 1:n
         type_idx = n_types > 1 ? _draw_type(state.rng, types, i, n_types) : NoTypeLabels()
         ind = _create_individual(
@@ -712,7 +736,7 @@ function add_individuals!(
         _verify(assign, ind, i)
         setup(ind, i)
         _initialise!(interventions, ind, state)
-        push!(state.individuals, ind)
+        push!(individuals(state), ind)
         push!(added, ind)
     end
     return added
@@ -726,7 +750,7 @@ Set `state` up for `n` people none of which exist yet, in place of
 large relative to the outbreaks it simulates, such as `NetworkProcess` or
 `RoutedNetwork`, so that a run costs in proportion to the people the
 outbreak reaches rather than to the size of the population. Every slot in
-`state.individuals` starts out pointing to one placeholder, shared by every
+`individuals(state)` starts out pointing to one placeholder, shared by every
 slot and never mutated: it reads as never infected (`is_infected` false),
 untouched by any intervention, with susceptibility and infectiousness at
 their neutral value of 1. The engine replaces it with a real person, drawing
@@ -740,6 +764,7 @@ function lazily_populate!(
         state::SimulationState, n::Integer, interventions;
         setup = (ind, i) -> nothing
     )
+    _check_group_budgets(interventions, state.population)
     T = _timetype(state)
     s = IndividualState{T}()
     s[:infected] = false
@@ -747,8 +772,8 @@ function lazily_populate!(
         0, 0, 0, 0, T(NaN), one(T), one(T), Int[], s, nothing
     )
     state.lazy = _LazyPopulation(placeholder, interventions, setup)
-    resize!(state.individuals, n)
-    fill!(state.individuals, placeholder)
+    resize!(individuals(state), n)
+    fill!(individuals(state), placeholder)
     return state
 end
 
@@ -757,7 +782,7 @@ end
 # upfront (`state.lazy === nothing`) never stores the placeholder, so this
 # is one pointer comparison for every model but the lazily populated ones.
 @inline function _realised!(state::SimulationState, id::Int)
-    ind = @inbounds state.individuals[id]
+    ind = @inbounds individuals(state)[id]
     lazy = state.lazy
     (lazy === nothing || ind !== lazy.placeholder) && return ind
     return _realise!(state, lazy, id)
@@ -767,7 +792,7 @@ function _realise!(state::SimulationState, lazy::_LazyPopulation, id::Int)
     ind = _create_individual(state, 0, id, id, NaN)
     lazy.setup(ind, id)
     _initialise!(lazy.interventions, ind, state)
-    state.individuals[id] = ind
+    individuals(state)[id] = ind
     return ind
 end
 
@@ -785,7 +810,7 @@ upfront, which is every model but these two.
 Call this when you need the characteristics of people the outbreak never
 reached, such as comparing susceptibility across the whole population rather
 than just the cases. Without it, `linelist(state; infected_only = false)`
-and anything else that reads every person in `state.individuals` sees an
+and anything else that reads every person in `individuals(state)` sees an
 unrealised person as never infected, with no population characteristics
 drawn and susceptibility and infectiousness both at their neutral value of
 1.
@@ -793,7 +818,7 @@ drawn and susceptibility and infectiousness both at their neutral value of
 function realise!(state::SimulationState)
     lazy = state.lazy
     lazy === nothing && return state
-    for id in eachindex(state.individuals)
+    for id in eachindex(individuals(state))
         _realised!(state, id)
     end
     return state
@@ -831,13 +856,13 @@ missing population characteristic gives a clear error.
 function seed!(state::SimulationState, ids, interventions, transitions)
     T = _timetype(state)
     for id in ids
-        ind = state.individuals[id]
+        ind = individuals(state)[id]
         ind.infection_time = zero(T)
         ind.state[:infected] = true
         _set_onset_from_incubation!(ind)
     end
     if !isempty(ids)
-        first_ind = state.individuals[first(ids)]
+        first_ind = individuals(state)[first(ids)]
         _validate_required_fields(first_ind, interventions)
         # Building the probe costs a copy of the case's state on every outbreak,
         # so it is built only when a transition has a field to check.
@@ -846,7 +871,7 @@ function seed!(state::SimulationState, ids, interventions, transitions)
         end
     end
     state.cumulative_cases = length(ids)
-    _reset_group_cases!(state, (state.individuals[id] for id in ids))
+    _reset_group_cases!(state, (individuals(state)[id] for id in ids))
     state.active_ids = collect(ids)
     state.extinct = isempty(ids)
     return state
@@ -1042,13 +1067,13 @@ function make_contact!(
         infection_time::Real;
         type_idx::Union{Int, NoTypeLabels} = NoTypeLabels()
     )
-    next_id = length(state.individuals) + 1
+    next_id = length(individuals(state)) + 1
     contact = _create_individual(
         state, parent.id, parent.chain_id,
         next_id, infection_time; type_idx
     )
     push!(parent.secondary_case_ids, next_id)
-    push!(state.individuals, contact)
+    push!(individuals(state), contact)
     return contact
 end
 
@@ -1444,7 +1469,11 @@ Pass the result as `attributes` to [`ModelSpec`](@ref).
 - `incubation_period`: distribution of the time from infection to symptom
   onset, in days. Every case gets a draw from it, asymptomatic or not
   (`:incubation_period`), and a symptomatic case's onset time is its infection
-  time plus that draw.
+  time plus that draw. Give a distribution or a function of the random number
+  generator and the individual, `(rng, ind) -> value`, to let the draw depend
+  on a trait. `:asymptomatic` is set before the draw, which lets the function
+  give asymptomatic cases their own timing. Closed forms that read the
+  incubation period directly accept a distribution but not a function.
 - `prob_asymptomatic`: probability that a case never develops symptoms
   (default 0). Asymptomatic cases have no onset time (`NaN`), but keep their incubation
   period, the time onset would have happened, which
@@ -1464,7 +1493,7 @@ with an `infectiousness` that reads `ind.state[:asymptomatic]`.
 Use `transmission_traits` for traits known when the case is created (age, sex,
 whether the case is asymptomatic), because it draws its factor then. A change
 during the infection, such as tracing or quarantine, needs an intervention.
-Combining the two is tracked in #972.
+The tutorial "Making cases more or less infectious" compares the options.
 
 # Examples
 
@@ -1521,10 +1550,22 @@ attributes = [
 ]
 ```
 
+Asymptomatic cases with their own incubation period, here a shorter one
+(`:asymptomatic` is already set when the function runs):
+
+```julia
+attributes = clinical_presentation(
+    incubation_period = (rng, ind) -> rand(
+        rng, ind.state[:asymptomatic] ? LogNormal(1.2, 0.5) : LogNormal(1.6, 0.5)
+    ),
+    prob_asymptomatic = 0.3,
+)
+```
+
 See also [`demographics`](@ref), [`transmission_traits`](@ref).
 """
 function clinical_presentation(;
-        incubation_period::Distribution,
+        incubation_period,
         prob_asymptomatic = 0.0
     )
     return ClinicalPresentation(incubation_period, prob_asymptomatic)
@@ -1535,12 +1576,16 @@ struct ClinicalPresentation{D, P}
     prob_asymptomatic::P
 end
 
+function onset_law(c::ClinicalPresentation)
+    return (incubation_period = c.incubation_period, prob_asymptomatic = c.prob_asymptomatic)
+end
+
 function (clinical::ClinicalPresentation)(rng, ind)
     rng = stream(rng, ind.id, :clinical_presentation)
     pa = sample_value(clinical.prob_asymptomatic, rng, ind)
     is_asymp = rand(rng) < pa
     ind.state[:asymptomatic] = is_asymp
-    ind.state[:incubation_period] = rand(rng, clinical.incubation_period)
+    ind.state[:incubation_period] = sample_value(clinical.incubation_period, rng, ind)
     return _set_onset_from_incubation!(ind)
 end
 
@@ -1630,8 +1675,8 @@ not cluster within them. To make it cluster, use a multi-type
 [`BranchingProcess`](@ref) with one type per group and a next-generation
 matrix with most transmission within types, and use the type itself as the
 group in `GroupVaccination(...; group_key = :type)`. [`group_attribute`](@ref)
-and [`vaccine_acceptance`](@ref) cannot group by type, since population
-characteristics are drawn before a person's type is set.
+and [`vaccine_acceptance`](@ref) can group by `:type` too, because a person's
+type is set before their population characteristics are drawn.
 
 # Examples
 
@@ -1675,6 +1720,15 @@ Give each person a susceptibility and an infectiousness. Pass the result as
 - `susceptibility`: probability that an exposed person is infected.
 - `infectiousness`: probability that each contact the person makes once
   infected leads to infection, so 0.5 halves the number they infect.
+
+The factor is drawn once, when the case is created, and cannot depend on
+anything that happens later. To reduce transmission from the time of an event
+such as tracing or isolation, use an intervention (its
+[`transmission_risks`](@ref EpiBranch.transmission_risks) and
+[`competing_risk`](@ref EpiBranch.competing_risk)); to limit transmission to
+certain disease states, use the `from` and `until` of an
+[`Infectiousness`](@ref) window. The tutorial "Making cases more or less
+infectious" compares the options.
 
 Both default to 1 (no change). In the continuous-time models
 ([`HomogeneousProcess`](@ref), [`MixingProcess`](@ref), network and household

@@ -52,7 +52,7 @@ _case_hook_model(ivs) = ModelSpec(
             _case_hook_model([_RecordCaseHooks()]);
             max_cases = 200, max_generations = 6, rng = StableRNG(11)
         )
-        contacts = filter(ind -> ind.parent_id != 0, state.individuals)
+        contacts = filter(ind -> ind.parent_id != 0, individuals(state))
         offered = filter(ind -> haskey(ind.state, :_offered_by), contacts)
         @test !isempty(contacts)
         @test length(offered) == length(contacts)
@@ -60,12 +60,12 @@ _case_hook_model(ivs) = ModelSpec(
         # The hook sees the infector's own clock, as `resolve_individual!` does.
         @test all(
             ind -> ind.state[:_offered_clock] ==
-                state.individuals[ind.parent_id].infection_time, offered
+                individuals(state)[ind.parent_id].infection_time, offered
         )
         # The count is the infector's place among the cases infected up to it.
-        cases = filter(is_infected, state.individuals)
+        cases = filter(is_infected, individuals(state))
         for ind in offered
-            infector = state.individuals[ind.parent_id]
+            infector = individuals(state)[ind.parent_id]
             @test ind.state[:_offered_count] ==
                 count(c -> c.infection_time <= infector.infection_time, cases)
         end
@@ -79,8 +79,8 @@ _case_hook_model(ivs) = ModelSpec(
             _case_hook_model([Scheduled(_RecordCaseHooks(); start_time = 5.0)]);
             max_cases = 200, max_generations = 6, rng = StableRNG(15)
         )
-        contacts = filter(ind -> ind.parent_id != 0, state.individuals)
-        infected_from(ind) = state.individuals[ind.parent_id].infection_time
+        contacts = filter(ind -> ind.parent_id != 0, individuals(state))
+        infected_from(ind) = individuals(state)[ind.parent_id].infection_time
         @test any(ind -> infected_from(ind) < 5.0, contacts)
         @test any(ind -> infected_from(ind) >= 5.0, contacts)
         @test all(
@@ -105,7 +105,7 @@ _case_hook_model(ivs) = ModelSpec(
         neighbours = Dict(1 => [2], 2 => [1, 3], 3 => [2])
         targets(inf, st) = (
             (to, Dirac(1.0)) for to in neighbours[inf]
-                if !get(st.individuals[to].state, :infected, false)
+                if !get(individuals(st)[to].state, :infected, false)
         )
         EpiBranch._sellke_race!(
             state, [1, 2, 3], rng;
@@ -113,9 +113,9 @@ _case_hook_model(ivs) = ModelSpec(
             interventions, contacts = (inf, st) -> neighbours[inf],
             seed! = (best, members, r) -> (best[1] = 0.0)
         )
-        @test state.individuals[1].state[:_traced_from] == 2
-        @test state.individuals[2].state[:_traced_from] == 3
-        @test state.individuals[3].state[:_traced_from] == 2
+        @test individuals(state)[1].state[:_traced_from] == 2
+        @test individuals(state)[2].state[:_traced_from] == 3
+        @test individuals(state)[3].state[:_traced_from] == 2
     end
 
     @testset "An intervention with only intervention_actions acts" begin
@@ -126,8 +126,8 @@ _case_hook_model(ivs) = ModelSpec(
         # A case's contacts are offered to it when the case settles, and an
         # action cannot be dated before then: those of cases settled by day 3
         # are served on day 3, and those of later cases are not.
-        contacts = filter(ind -> ind.parent_id != 0, state.individuals)
-        early(ind) = state.individuals[ind.parent_id].infection_time <= 3.0
+        contacts = filter(ind -> ind.parent_id != 0, individuals(state))
+        early(ind) = individuals(state)[ind.parent_id].infection_time <= 3.0
         @test any(early, contacts)
         @test any(!early, contacts)
         @test all(
@@ -144,7 +144,7 @@ _case_hook_model(ivs) = ModelSpec(
         set_isolated!(case, 2.0; release_time = Inf)
         member = Individual(id = 2, parent_id = 1, infection_time = 1.0)
         node = Individual(id = 3, parent_id = 1, infection_time = 3.0)
-        append!(state.individuals, [case, member, node])
+        append!(individuals(state), [case, member, node])
         ct = ContactTracing(
             probability = 1.0, isolation_to_trace_delay = Dirac(0.5),
             action = FlagOnly(), depth = 2

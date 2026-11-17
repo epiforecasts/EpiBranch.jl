@@ -145,7 +145,7 @@ end
             max_cases = 50, rng = rng
         )
         # At least one traced contact should be quarantined.
-        @test any(get(ind.state, :quarantined, false) for ind in state.individuals)
+        @test any(get(ind.state, :quarantined, false) for ind in individuals(state))
     end
 
     @testset "Custom TraceEligibility trait integrates via constructor" begin
@@ -224,10 +224,10 @@ end
                 );
                 max_cases = 50, rng = StableRNG(9)
             )
-            by_id = Dict(ind.id => ind for ind in state.individuals)
+            by_id = Dict(ind.id => ind for ind in individuals(state))
             [
                 ind.state[:trace_time] - isolation_time(by_id[ind.state[:traced_by]])
-                    for ind in state.individuals if is_traced(ind)
+                    for ind in individuals(state) if is_traced(ind)
             ]
         end
 
@@ -250,7 +250,7 @@ end
             );
             max_cases = 300, rng = StableRNG(11)
         )
-        traced = filter(is_traced, state.individuals)
+        traced = filter(is_traced, individuals(state))
         @test !isempty(traced)  # otherwise the test is vacuous
         # Some trace time has to have been skipped, or this proves nothing.
         @test any(ind -> !haskey(ind.state, :trace_time), traced)
@@ -338,10 +338,10 @@ end
                 );
                 opts..., rng = StableRNG(s)
             )
-            for ind in state.individuals
+            for ind in individuals(state)
                 t = get(ind.state, :trace_time, Inf)
                 (is_traced(ind) && isfinite(t)) || continue
-                tracer = state.individuals[ind.state[:traced_by]]
+                tracer = individuals(state)[ind.state[:traced_by]]
                 isodd(tracer.id) && continue
                 checked += 1
                 @test isfinite(get(tracer.state, :trace_time, Inf))
@@ -362,9 +362,9 @@ end
             opts..., rng = StableRNG(1)
         )
         # No uninfected contact ever generated contacts of its own.
-        for ind in state.individuals
+        for ind in individuals(state)
             ind.parent_id == 0 && continue
-            parent = state.individuals[ind.parent_id]
+            parent = individuals(state)[ind.parent_id]
             @test is_infected(parent)
         end
     end
@@ -392,14 +392,14 @@ end
         )
 
         # The uninfected fringe now grows its own contacts: more nodes.
-        @test length(s2.individuals) > length(s1.individuals)
+        @test length(individuals(s2)) > length(individuals(s1))
 
         # Some traced contact has an uninfected parent: a contact-of-
         # contact the ring could only reach by growing past the fringe.
         reached = false
-        for ind in s2.individuals
+        for ind in individuals(s2)
             ind.parent_id == 0 && continue
-            parent = s2.individuals[ind.parent_id]
+            parent = individuals(s2)[ind.parent_id]
             if !is_infected(parent) && is_traced(ind)
                 reached = true
             end
@@ -423,9 +423,9 @@ end
             );
             n_initial = 3, max_generations = 6, rng = StableRNG(7)
         )
-        for ind in state.individuals
+        for ind in individuals(state)
             ind.parent_id == 0 && continue
-            parent = state.individuals[ind.parent_id]
+            parent = individuals(state)[ind.parent_id]
             # A contact of an uninfected ring member is the outer edge:
             # its own ring budget is exhausted.
             if !is_infected(parent) && is_traced(ind)
@@ -450,9 +450,9 @@ end
         # At least one vaccinated contact sits past the fringe (its parent
         # was never infected): the level-2 ring delivered doses there.
         outer_vaccinated = false
-        for ind in state.individuals
+        for ind in individuals(state)
             ind.parent_id == 0 && continue
-            parent = state.individuals[ind.parent_id]
+            parent = individuals(state)[ind.parent_id]
             if !is_infected(parent) && is_vaccinated(ind)
                 outer_vaccinated = true
             end
@@ -630,7 +630,7 @@ end
 
         # Every traced node records the infector it was traced from; on a
         # branching process that is its (final) parent.
-        for ind in state.individuals
+        for ind in individuals(state)
             is_traced(ind) || continue
             @test get(ind.state, :traced_by, nothing) == ind.parent_id
         end
@@ -638,14 +638,14 @@ end
         compute_trace_level!(state)
         levels = collect(
             skipmissing(
-                get(ind.state, :trace_level, missing) for ind in state.individuals
+                get(ind.state, :trace_level, missing) for ind in individuals(state)
             )
         )
         @test 0 in levels        # the index/anchor
         @test 1 in levels        # directly traced contacts
         @test 2 in levels        # contacts-of-contacts (the depth-2 reach)
         # Every traced node carries a positive level; only the anchor is 0.
-        for ind in state.individuals
+        for ind in individuals(state)
             is_traced(ind) || continue
             @test get(ind.state, :trace_level, 0) >= 1
         end
@@ -722,7 +722,7 @@ end
         state = simulate(
             build(0.0); n_initial = 1, max_generations = 1, rng = StableRNG(1)
         )
-        contact = state.individuals[2]
+        contact = individuals(state)[2]
         @test is_infected(contact)
         @test contact.state[:trace_time] == 3.0
         @test contact.infection_time < contact.state[:trace_time]
@@ -732,7 +732,7 @@ end
         state = simulate(
             build(0.0); n_initial = 1, max_generations = 1, rng = StableRNG(1)
         )
-        contact = state.individuals[2]
+        contact = individuals(state)[2]
         @test EpiBranch.removal_stretches(contact, TEST_RELEASE_STRETCHES) == [(3.0, 6.0)]
     end
 
@@ -740,7 +740,7 @@ end
         state = simulate(
             build(1.0); n_initial = 1, max_generations = 1, rng = StableRNG(1)
         )
-        contact = state.individuals[2]
+        contact = individuals(state)[2]
         @test EpiBranch.removal_stretches(contact, TEST_RELEASE_STRETCHES) == [(3.0, 17.0)]
     end
 end
@@ -777,7 +777,7 @@ end
 @testset "Scheduled tracing is judged at the trace's own time" begin
     clinical = clinical_presentation(incubation_period = Dirac(1.0))
     bp = BranchingProcess(Dirac(2), Dirac(2.0))
-    traced_count(state) = count(is_traced, state.individuals)
+    traced_count(state) = count(is_traced, individuals(state))
 
     @testset "FlagOnly before start_time traces nobody" begin
         for action in (FlagOnly(), Quarantine(duration = Inf))
@@ -787,7 +787,7 @@ end
                 max_generations = 3, rng = StableRNG(1)
             )
             @test traced_count(state) == 0
-            @test all(ind -> !haskey(ind.state, :_traced_isolation_time), state.individuals)
+            @test all(ind -> !haskey(ind.state, :_traced_isolation_time), individuals(state))
         end
     end
 
@@ -809,7 +809,7 @@ end
             );
             max_generations = 3, rng = StableRNG(1)
         )
-        for ind in filter(is_infected, state.individuals)
+        for ind in filter(is_infected, individuals(state))
             isfinite(isolation_time(ind)) || continue
             @test isolation_time(ind) >= onset_time(ind) + 100.0
         end

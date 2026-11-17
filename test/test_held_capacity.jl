@@ -50,7 +50,7 @@ EpiBranch.intervention_actions(::_Ward, state, candidates) = [
         cc = CapacityConstrained(rv; budget_per_period = 2.0, period = 5.0, on_refusal = policy)
         state = empty_state()
         contacts = [_held_contact(rv, i, 0.5 * i) for i in 1:5]
-        append!(state.individuals, contacts)
+        append!(individuals(state), contacts)
         state.max_infection_time = 0.5
         EpiBranch.apply_actions!(cc, state, contacts)
         return cc, state, contacts
@@ -97,7 +97,7 @@ end
         hc = HeldCapacity(rv; capacity = 2, hold = 3.0)
         state = empty_state()
         contacts = [_held_contact(rv, i, Float64(i)) for i in 1:5]
-        append!(state.individuals, contacts)
+        append!(individuals(state), contacts)
         state.max_infection_time = 1.0
         EpiBranch.apply_actions!(hc, state, contacts)
 
@@ -118,7 +118,7 @@ end
         state = empty_state()
         late = _held_contact(rv, 1, 3.0)
         early = _held_contact(rv, 2, 2.0)
-        append!(state.individuals, [late, early])
+        append!(individuals(state), [late, early])
         state.max_infection_time = 1.0
         EpiBranch.apply_actions!(hc, state, [late])
         EpiBranch.apply_actions!(hc, state, [early])
@@ -132,7 +132,7 @@ end
         hc = HeldCapacity(rv; capacity = 1, hold = 4.0, on_refusal = DeferRefused())
         state = empty_state()
         contacts = [_held_contact(rv, i, Float64(i)) for i in 1:3]
-        append!(state.individuals, contacts)
+        append!(individuals(state), contacts)
         state.max_infection_time = 1.0
         EpiBranch.apply_actions!(hc, state, contacts)
         days = [c.state[EpiBranch._vaccination_time_key(:default)] for c in contacts]
@@ -145,7 +145,7 @@ end
         hc = HeldCapacity(bed; capacity = 1)
         state = empty_state()
         people = [Individual(id = i) for i in 1:2]
-        append!(state.individuals, people)
+        append!(individuals(state), people)
         state.max_infection_time = 0.0
 
         EpiBranch.apply_actions!(hc, state, people[1:1])
@@ -157,7 +157,7 @@ end
         hc2 = HeldCapacity(_Bed2(100.0); capacity = 1)
         s2 = empty_state()
         p2 = [Individual(id = i) for i in 1:2]
-        append!(s2.individuals, p2)
+        append!(individuals(s2), p2)
         s2.max_infection_time = 0.0
         EpiBranch.apply_actions!(hc2, s2, p2)
         @test count(p -> get(p.state, :bed, false), p2) == 1
@@ -169,7 +169,7 @@ end
         state = empty_state()
         a = _held_contact(rv, 1, 1.0)
         b = _held_contact(rv, 2, 6.0)
-        append!(state.individuals, [a, b])
+        append!(individuals(state), [a, b])
         state.max_infection_time = 1.0
         EpiBranch.apply_actions!(hc, state, [a])
         EpiBranch.apply_actions!(hc, state, [b])
@@ -194,7 +194,7 @@ end
             Individual(id = 2, state = Dict{Symbol, Any}(:ward => :a)),
             Individual(id = 3, state = Dict{Symbol, Any}(:ward => :b)),
         ]
-        append!(state.individuals, people)
+        append!(individuals(state), people)
         state.max_infection_time = 0.0
         EpiBranch.apply_actions!(hc, state, people)
         @test [get(p.state, :ward_bed, false) for p in people] == [true, false, true]
@@ -209,7 +209,7 @@ end
         infector = Individual(id = 1)
         set_isolated!(infector, 0.0; release_time = Inf)
         contacts = [Individual(id = i) for i in 2:4]
-        append!(state.individuals, contacts)
+        append!(individuals(state), contacts)
         EpiBranch.trace_contacts!(hc, state, infector, contacts, [1.0, 2.0, 5.0])
         @test all(is_traced, contacts)
         @test [is_quarantined(c) for c in contacts] == [true, false, true]
@@ -217,7 +217,7 @@ end
         deferring = HeldCapacity(ct; capacity = 1, hold = 4.0, on_refusal = DeferRefused())
         state = empty_state()
         contacts = [Individual(id = i) for i in 2:4]
-        append!(state.individuals, contacts)
+        append!(individuals(state), contacts)
         EpiBranch.trace_contacts!(deferring, state, infector, contacts, [1.0, 2.0, 3.0])
         @test all(is_quarantined, contacts)
         @test [isolation_time(c) for c in contacts] == [1.0, 5.0, 9.0]
@@ -230,7 +230,7 @@ end
         infector = Individual(id = 1)
         set_isolated!(infector, 0.0; release_time = Inf)
         a, b = Individual(id = 2), Individual(id = 3)
-        append!(state.individuals, [a, b])
+        append!(individuals(state), [a, b])
         EpiBranch.trace_contacts!(hc, state, infector, [a], [5.0])
         # `b` is refused while `a` holds the place; the repeat trace of `a`,
         # dated earlier than the stay, must not start a second quarantine.
@@ -251,7 +251,7 @@ end
                 )
             ) for (i, t) in enumerate([1.0, 3.0, 7.0])
         ]
-        append!(state.individuals, people)
+        append!(individuals(state), people)
         for p in people
             EpiBranch.resolve_individual!(hc, p, state)
         end
@@ -278,13 +278,69 @@ end
             state = simulate(model; max_cases = 60, rng = StableRNG(seed))
             iso = [
                 (isolation_time(c), isolation_release_time(c))
-                    for c in state.individuals if isfinite(isolation_time(c))
+                    for c in individuals(state) if isfinite(isolation_time(c))
             ]
             @test !isempty(iso)
             for (s, _) in iso
                 @test count(((a, b),) -> a <= s < b, iso) <= cap
             end
         end
+    end
+
+    @testset "A capacity schedule is checked across the whole stay" begin
+        rv = RingVaccination(efficacy = 0.9)
+        function run_schedule(capacity, days, hold; policy = DropRefused())
+            hc = HeldCapacity(rv; capacity, hold, on_refusal = policy)
+            state = empty_state()
+            contacts = [_held_contact(rv, i, d) for (i, d) in enumerate(days)]
+            append!(state.individuals, contacts)
+            state.max_infection_time = 1.0
+            EpiBranch.apply_actions!(hc, state, contacts)
+            return hc, state, contacts
+        end
+        key = EpiBranch._vaccination_time_key(:default)
+
+        # Capacity drops to 1 at day 5. The second stay would span the drop
+        # with the first still held, so it is refused although a place is free
+        # at its start.
+        hc, state, contacts = run_schedule(Steps([5.0], [2.0, 1.0]), [1.0, 2.0, 3.0], 6.0)
+        @test [c.id for c in contacts if is_vaccinated(c)] == [1]
+        @test held_usage(hc, state, 1.5).capacity == 2
+        @test held_usage(hc, state, 5.5).capacity == 1
+
+        # Stays that end before the drop are not affected by it, and nothing
+        # is admitted on top of a place held at the lower capacity.
+        hc, state, contacts = run_schedule(Steps([5.0], [2.0, 1.0]), [1.0, 2.0, 6.0, 7.0], 2.0)
+        @test [c.id for c in contacts if is_vaccinated(c)] == [1, 2, 3]
+        @test held_usage(hc, state, 2.5).held == 2
+        @test all(t -> held_usage(hc, state, t).held <= held_usage(hc, state, t).capacity, 0.0:0.25:12.0)
+
+        # Places that open after a refusal let a deferred action in.
+        hc, state, contacts = run_schedule(
+            Steps([10.0], [1.0, 3.0]), [1.0, 2.0, 3.0], 20.0; policy = DeferRefused()
+        )
+        @test [c.state[key] for c in contacts] == [1.0, 10.0, 10.0]
+
+        # DeferRefused still waits for a rise that comes after every stay has
+        # ended, or when there are no stays at all.
+        hc, state, contacts = run_schedule(
+            Steps([10.0], [0.0, 3.0]), [1.0], 2.0; policy = DeferRefused()
+        )
+        @test [c.state[key] for c in contacts] == [10.0]
+        hc, state, contacts = run_schedule(
+            Steps([5.0, 10.0], [1.0, 0.0, 3.0]), [1.0, 6.0], 2.0; policy = DeferRefused()
+        )
+        @test [c.state[key] for c in contacts] == [1.0, 10.0]
+
+        # A rise whose stay would span a later fall is skipped for the next rise.
+        hc, state, contacts = run_schedule(
+            Steps([10.0, 12.0, 20.0], [0.0, 1.0, 0.0, 3.0]), [1.0], 5.0; policy = DeferRefused()
+        )
+        @test [c.state[key] for c in contacts] == [20.0]
+
+        @test_throws ArgumentError HeldCapacity(rv; capacity = Seasonal(amplitude = 0.5, peak_day = 0.0))
+        @test_throws ArgumentError HeldCapacity(rv; capacity = t -> 2.0)
+        @test_throws ArgumentError HeldCapacity(rv; capacity = "two")
     end
 
     @testset "Constructor validates its arguments" begin

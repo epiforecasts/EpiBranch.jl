@@ -23,7 +23,7 @@
         state = simulate(model; rng = StableRNG(11))
         responders = [
             ind
-                for ind in state.individuals
+                for ind in individuals(state)
                 if is_vaccinated(ind) && ind.state[:vaccine_efficacy] == 1.0
         ]
         @test length(responders) > 50
@@ -41,7 +41,7 @@
                 interventions = [ct, rv]
             )
             state = simulate(model; rng = StableRNG(seed))
-            vaccinated = [ind for ind in state.individuals if is_vaccinated(ind)]
+            vaccinated = [ind for ind in individuals(state) if is_vaccinated(ind)]
             return count(is_infected, vaccinated), length(vaccinated)
         end
         leaky_infected, leaky_n = vaccinated_attack_rate(LeakyMode(), 21)

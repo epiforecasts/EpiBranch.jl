@@ -1,0 +1,1 @@
+The `groups` docstring no longer says that `group_attribute` and `vaccine_acceptance` cannot group by type. They can, with `group_key = :type`, because a person's type is set before their population characteristics are drawn.

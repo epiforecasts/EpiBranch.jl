@@ -360,7 +360,7 @@ function simulate_once(
             (EpiBranch._ext_prepare(model.external_hazard), Tobs) : nothing,
         seeded = sim_opts.initial_cases,
         contacts = (inf, st) -> _route_contacts(
-            routes, interventions, st.individuals[inf], inf, st.rng
+            routes, interventions, individuals(st)[inf], inf, st.rng
         )
     )
 

@@ -160,7 +160,7 @@ function _fire_action!(admitter, state, action)
 end
 
 function _fire_action!(admitter, state, action::_DeferredAction)
-    person = state.individuals[action.individual_id]
+    person = individuals(state)[action.individual_id]
     return _fire_action!(admitter, state, InterventionAction(person, action.time, action.effect!))
 end
 
@@ -236,8 +236,9 @@ function _admit_actions!(cc::CapacityConstrained, state, actions, admitter = cc)
         for i in order
             action = group[i]
             _capacity_used(get(action.individual.state, key, nothing)) && continue
-            if !_fits_budget(cc, times, Float64[], action.time)
-                action = refused_action(cc.on_refusal, cc, times, action)
+            own = _for_resource(cc, group_key)
+            if !_fits_budget(own, times, Float64[], action.time)
+                action = refused_action(cc.on_refusal, own, times, action)
                 action === nothing && continue
             end
             _admit_actions!(cc.intervention, state, [_filing_use(cc, action)], admitter)
@@ -443,7 +444,7 @@ function intervention_actions(gv::GroupVaccination, state, candidates)
         trigger = _group_trigger_time(gv, state, group)
         isfinite(trigger) || continue
         for id in _group_members(state, gv.group_key, group)
-            ind = state.individuals[id]
+            ind = individuals(state)[id]
             prior = get(action_cache(ind), _trigger_cache_key(gv), nothing)
             if prior !== nothing || get(ind.state, _vaccinated_key(dose_label(gv)), false)
                 # A settled member's dose keeps its date; a member still
@@ -588,7 +589,7 @@ function action_candidates(
     for id in _group_members(state, gv.group_key, group)
         id == current.id && continue
         is_pending(id) || continue
-        push!(candidates, state.individuals[id])
+        push!(candidates, individuals(state)[id])
     end
     return candidates
 end
@@ -604,7 +605,7 @@ function _reached_candidates(state, current, traced, is_pending, contacts)
     end
     for cid in traced
         is_pending(cid) || continue
-        push!(candidates, state.individuals[cid])
+        push!(candidates, individuals(state)[cid])
     end
     return candidates
 end

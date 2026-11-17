@@ -635,7 +635,7 @@ _rep(p, delay = Dirac(0.0)) = [Reporting(; delay, probability = p, from = :infec
                 n = count(
                     ind -> EpiBranch.is_infected(ind) &&
                         ind.state[:reported],
-                    state.individuals
+                    individuals(state)
                 )
                 n > 0 && push!(sizes, n)
             end
@@ -882,6 +882,45 @@ _rep(p, delay = Dirac(0.0)) = [Reporting(; delay, probability = p, from = :infec
             @test_throws ArgumentError ChainSizes([3]; seeds = [0])
             @test_throws ArgumentError ChainSizes([2]; seeds = [3])
             @test_throws ArgumentError ChainSizes([3]; seeds = [1, 1])
+        end
+
+        @testset "Right tail does not underflow" begin
+            logsumexp_tail(d, x, s) =
+                log(sum(exp(EpiBranch._chain_size_logpdf(d, n, s)) for n in x:5000))
+            d = chain_size_distribution(Poisson(0.3))
+            @test isfinite(logccdf(d, 99))
+            @test logccdf(d, 99) ≈ logsumexp_tail(d, 100, 1)
+            @test logccdf(d, 99) >= logpdf(d, 100)
+            @test isfinite(loglikelihood(ChainSizes([100]), Poisson(0.3); prob_concluded = [0.0]))
+            classes = ChainSizeClasses([1, 100], [99, Inf], [10, 1])
+            @test isfinite(loglikelihood(classes, Poisson(0.3)))
+            # Multiple seeds.
+            b = Borel(0.6)
+            @test EpiBranch._chain_size_right_tail_logprob(b, 150, 3) ≈
+                logsumexp_tail(b, 150, 3) rtol = 1.0e-6
+            # GammaBorel stays finite and ordered.
+            g = GammaBorel(2.0, 0.3)
+            @test isfinite(logccdf(g, 80))
+            @test logccdf(g, 80) <= logccdf(g, 40)
+            # Supercritical: the infinite-chain mass is included.
+            sup = Borel(1.5)
+            q = extinction_probability(Poisson(1.5))
+            tail = exp(EpiBranch._chain_size_right_tail_logprob(sup, 200, 1))
+            @test tail ≈ 1 - q rtol = 1.0e-6
+            # Near-critical laws use the complement, which avoids truncating the heavy tail.
+            for b in (Borel(0.99), Borel(1.0)), x in (50, 100, 200)
+                @test EpiBranch._chain_size_right_tail_logprob(b, x, 1) ≈
+                    log(1 - sum(exp(EpiBranch._chain_size_logpdf(b, j, 1)) for j in 1:(x - 1))) rtol = 1.0e-8
+            end
+            # Beyond the default summation cap the tail is not truncated.
+            near = Borel(0.99)
+            lt = EpiBranch._chain_size_right_tail_logprob(near, 250_000, 1)
+            @test isfinite(lt)
+            @test lt < log(1.0e-4)
+            @test lt > EpiBranch._chain_size_right_tail_logprob(near, 400_000, 1)
+            # Agrees with the complement where that is accurate.
+            @test EpiBranch._chain_size_right_tail_logprob(Borel(0.8), 10, 2) ≈
+                log(1 - sum(exp(EpiBranch._chain_size_logpdf(Borel(0.8), j, 2)) for j in 2:9))
         end
 
         @testset "Real-time mixture likelihood and end_of_outbreak_probability" begin
@@ -1132,7 +1171,7 @@ _rep(p, delay = Dirac(0.0)) = [Reporting(; delay, probability = p, from = :infec
             )
             by_chain = Dict{Int, Bool}()
             consistent = true
-            for ind in state.individuals
+            for ind in individuals(state)
                 is_infected(ind) || continue
                 flag = ind.state[:reported]
                 if haskey(by_chain, ind.chain_id) && by_chain[ind.chain_id] != flag
@@ -1171,11 +1210,11 @@ _rep(p, delay = Dirac(0.0)) = [Reporting(; delay, probability = p, from = :infec
                 );
                 rng = StableRNG(42)
             )
-            @test all(haskey(ind.state, :reported) for ind in sim_state.individuals)
-            @test all(haskey(ind.state, :reporting_time) for ind in sim_state.individuals)
+            @test all(haskey(ind.state, :reported) for ind in individuals(sim_state))
+            @test all(haskey(ind.state, :reporting_time) for ind in individuals(sim_state))
             @test all(
                 ind.state[:reporting_time] >= ind.infection_time
-                    for ind in sim_state.individuals if ind.state[:reported]
+                    for ind in individuals(sim_state) if ind.state[:reported]
             )
         end
 
@@ -1245,7 +1284,7 @@ _rep(p, delay = Dirac(0.0)) = [Reporting(; delay, probability = p, from = :infec
             rep_sizes = Int[]
             for st in simulate(rep_spec, 5000; max_cases = 500, rng = StableRNG(7))
                 counts = Dict{Int, Int}()
-                for ind in st.individuals
+                for ind in individuals(st)
                     (is_infected(ind) && ind.state[:reported]) || continue
                     counts[ind.chain_id] = get(counts, ind.chain_id, 0) + 1
                 end
@@ -1283,7 +1322,7 @@ _rep(p, delay = Dirac(0.0)) = [Reporting(; delay, probability = p, from = :infec
             all_consistent = true
             for s in states
                 by_chain = Dict{Int, Float64}()
-                for ind in s.individuals
+                for ind in individuals(s)
                     haskey(ind.state, :cluster_theta) || continue
                     θ = ind.state[:cluster_theta]
                     if haskey(by_chain, ind.chain_id) &&
@@ -1308,7 +1347,7 @@ _rep(p, delay = Dirac(0.0)) = [Reporting(; delay, probability = p, from = :infec
             thetas = Float64[]
             for s in states_multi
                 seen_chains = Set{Int}()
-                for ind in s.individuals
+                for ind in individuals(s)
                     ind.chain_id in seen_chains && continue
                     haskey(ind.state, :cluster_theta) || continue
                     push!(thetas, ind.state[:cluster_theta])
@@ -1416,6 +1455,70 @@ _rep(p, delay = Dirac(0.0)) = [Reporting(; delay, probability = p, from = :infec
             ]
             @test all(≥(0), probs)
             @test sum(probs) ≈ 1.0 atol = 1.0e-6
+        end
+
+        @testset "Simulated chain length stops on generations, not cases" begin
+            model = ModelSpec(
+                BranchingProcess(NegativeBinomial(0.5, 0.5 / (0.5 + 0.9)), Gamma(2.0, 2.5));
+                interventions = [Isolation(onset_to_isolation_delay = 100.0, duration = Inf)],
+                attributes = clinical_presentation(incubation_period = Gamma(2.0, 2.5))
+            )
+            data = ChainLengths([6, 8, 10])
+            @test_throws ArgumentError loglikelihood(data, model; max_cases = 25)
+            ll(gens) = loglikelihood(
+                data, model; n_sim = 20_000, max_generations = gens, rng = StableRNG(1)
+            )
+            # A tighter generation limit censors more runs but stays close to
+            # the uncensored value, without dropping probability mass.
+            @test abs(ll(12) - ll(100)) < 0.5
+        end
+
+        @testset "Simulated chain length of a supercritical model stays bounded" begin
+            # With R above 1 and no cap on cases, runs would grow without
+            # limit. The internal safety stop censors them at the length
+            # reached, and the call returns.
+            model = ModelSpec(
+                BranchingProcess(Poisson(2.0), Exponential(1.0));
+                interventions = [Isolation(onset_to_isolation_delay = 100.0, duration = Inf)],
+                attributes = clinical_presentation(incubation_period = Gamma(2.0, 2.5))
+            )
+            ll = loglikelihood(
+                ChainLengths([3, 5]), model; n_sim = 5, rng = StableRNG(1)
+            )
+            @test ll isa Real
+            @test !isnan(ll)
+        end
+
+        @testset "_empirical_ll with censored_at_value" begin
+            f = EpiBranch._empirical_ll
+            sim = [1, 2, 2, 3, 3]
+            cens = [false, false, false, true, true]
+            # Hazards (events + 1) / (at risk + 2): 2/7, 3/6, 1/4 for values 1-3.
+            # P(X = 2) = 1/2 * 5/7.
+            @test f([2], sim; min_val = 1, censored = cens, censored_at_value = true) ≈
+                log(5 / 14)
+            # An observation below the minimum value has no support.
+            @test f([0], sim; min_val = 1, censored = cens, censored_at_value = true) == -Inf
+            # prob_concluded at 1 and 0 reduce to the point mass and right tail.
+            lc = f([2], sim; min_val = 1, censored = cens, censored_at_value = true)
+            @test f(
+                [2], sim; min_val = 1, censored = cens, censored_at_value = true,
+                prob_concluded = [1.0]
+            ) ≈ lc
+            tail = f(
+                [2], sim; min_val = 1, censored = cens, censored_at_value = true,
+                prob_concluded = [0.0]
+            )
+            @test tail ≈ log(5 / 7)
+            mix = f(
+                [2], sim; min_val = 1, censored = cens, censored_at_value = true,
+                prob_concluded = [0.5]
+            )
+            @test mix ≈ log(0.5 * exp(lc) + 0.5 * exp(tail))
+            @test_throws ArgumentError f(
+                [2], sim; min_val = 1, censored = cens, censored_at_value = true,
+                prob_concluded = [1.5]
+            )
         end
 
         @testset "Non-positive n_initial throws" begin
@@ -1654,7 +1757,7 @@ _rep(p, delay = Dirac(0.0)) = [Reporting(; delay, probability = p, from = :infec
             state = simulate(mk([rep]); max_cases = 300, rng = StableRNG(7))
             sizes = EpiBranch._sim_chain_sizes(state, EpiBranch.NoObservation(), [rep])
             counts = Dict{Int, Int}()
-            for ind in state.individuals
+            for ind in individuals(state)
                 (is_infected(ind) && ind.state[:reported]) || continue
                 counts[ind.chain_id] = get(counts, ind.chain_id, 0) + 1
             end
@@ -1758,10 +1861,10 @@ _rep(p, delay = Dirac(0.0)) = [Reporting(; delay, probability = p, from = :infec
             )
             data = ChainLengths([5])
             ll_one = loglikelihood(
-                data, spec; n_initial = 1, max_cases = 500, n_sim = 20_000, rng = StableRNG(1)
+                data, spec; n_initial = 1, n_sim = 20_000, rng = StableRNG(1)
             )
             ll_many = loglikelihood(
-                data, spec; n_initial = 5, max_cases = 500, n_sim = 20_000, rng = StableRNG(1)
+                data, spec; n_initial = 5, n_sim = 20_000, rng = StableRNG(1)
             )
             @test isfinite(ll_one)
             @test isfinite(ll_many)
@@ -2240,11 +2343,11 @@ _rep(p, delay = Dirac(0.0)) = [Reporting(; delay, probability = p, from = :infec
             counts = Int[]
             for _ in 1:4000
                 state = simulate(spec; max_cases = 200, rng)
-                for ind in state.individuals
+                for ind in individuals(state)
                     is_infected(ind) || continue
                     push!(
                         counts,
-                        count(id -> is_infected(state.individuals[id]), ind.secondary_case_ids)
+                        count(id -> is_infected(individuals(state)[id]), ind.secondary_case_ids)
                     )
                 end
             end

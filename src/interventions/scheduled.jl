@@ -284,7 +284,7 @@ function opened_at(t::Infections, state::SimulationState)
     T = typeof(state.max_infection_time)
     cached === nothing || return cached::T
     times = T[]
-    for ind in state.individuals
+    for ind in individuals(state)
         for episode in ind.episodes
             push!(times, episode.infection_time)
         end
@@ -310,7 +310,7 @@ end
 function _confirmed_report_log(state::SimulationState)
     T = typeof(state.max_infection_time)
     log = get!(() -> _report_log(state), state.scratch, (:report_log,))
-    _confirm_reports!(log::_ReportLog{T}, state.individuals)
+    _confirm_reports!(log::_ReportLog{T}, individuals(state))
     return log
 end
 

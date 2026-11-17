@@ -69,7 +69,7 @@
             progression = [Transition(:recovered; from = :infection, delay = L, terminal = true)]
         )
         state = simulate(spec; rng = StableRNG(11))
-        infected = reshape(is_infected.(state.individuals), 3, n)
+        infected = reshape(is_infected.(individuals(state)), 3, n)
 
         process = HouseholdProcess(
             [3], Exponential(1 / β); external_hazard = α, obs_end = T
@@ -82,6 +82,28 @@
             se = sqrt(expected * (1 - expected) / n)
             @test abs(observed - expected) < max(5 * se, 0.002)
         end
+    end
+
+    @testset "random window: one infector's contacts share its window" begin
+        α, T, β, θ = 0.15, 4.0, 0.3, 5.0
+        process = HouseholdProcess(
+            [3], Exponential(1 / β); external_hazard = α, obs_end = T
+        )
+        π_esc = exp(-α * T)
+        # Only person 1 infected: they escape both household-mates' contacts
+        # over one shared window, E[exp(-2βW)] = (1/θ) / (1/θ + 2β) for W ~
+        # Exponential(θ), not the square of the single-contact escape.
+        shared = (1 / θ) / (1 / θ + 2β)
+        expected = log((1 - π_esc) * π_esc^2 * shared)
+        pattern = HouseholdFinalStatuses([true, false, false])
+        @test loglikelihood(pattern, process; window = Exponential(θ)) ≈ expected
+        # the quadrature route (a Gamma with shape 1 is the same law)
+        @test loglikelihood(pattern, process; window = Gamma(1.0, θ)) ≈ expected rtol = 1.0e-8
+        total = sum(
+            exp(loglikelihood(HouseholdFinalStatuses(collect(p)), process; window = Gamma(2.0, 2.5)))
+                for p in Iterators.product(ntuple(_ -> (false, true), 3)...)
+        )
+        @test total ≈ 1.0
     end
 
     @testset "susceptibility and infectiousness shift the probability of spread" begin
@@ -172,5 +194,18 @@
         @test_throws ArgumentError loglikelihood(
             HouseholdFinalStatuses([true, false]), pk; window = 2.0
         )
+    end
+
+    @testset "calendar external hazard" begin
+        data = HouseholdFinalStatuses([true, false, false])
+        flat = HouseholdProcess(
+            [3], Exponential(3.0); external_hazard = 0.05, obs_end = 10.0
+        )
+        steps = HouseholdProcess(
+            [3], Exponential(3.0);
+            external_hazard = Steps([5.0], [0.05, 0.05]), obs_end = 10.0
+        )
+        @test loglikelihood(data, steps; window = 6.0) ≈
+            loglikelihood(data, flat; window = 6.0)
     end
 end

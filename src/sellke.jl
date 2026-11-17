@@ -775,7 +775,7 @@ function _walk_ring!(
             for id in keep_active(iv, state, pending, is_new)
                 k = get(pos, id, 0)
                 k == 0 && continue
-                push!(frontier, state.individuals[id])
+                push!(frontier, individuals(state)[id])
             end
         end
     end
@@ -1308,7 +1308,7 @@ function _sellke_race_typed!(
         # risks read. A risk of your own that reads the infector should
         # therefore return nothing when the two are the same individual. An
         # index case is put to no risk at all.
-        source = infector_id == 0 ? ind : state.individuals[infector_id]
+        source = infector_id == 0 ? ind : individuals(state)[infector_id]
         is_seeded = opening.route == _SEEDED_ROUTE
         if checks && !is_seeded && (infector_id != 0 || introduction !== nothing)
             blocked, permanent, certain_release = _proposal_blocked(
@@ -1398,7 +1398,7 @@ function _sellke_race_typed!(
         ind.state[:infected] = true
         ind.state[:index] = infector_id == 0
         if infector_id != 0
-            infector = state.individuals[infector_id]
+            infector = individuals(state)[infector_id]
             ind.parent_id = infector.id
             ind.generation = infector.generation + 1
             ind.chain_id = infector.chain_id
@@ -1484,10 +1484,27 @@ function _sellke_race_typed!(
         self_proposing && (
             capped_generation = _open_routes!(rts, open_ctx, capped_generation, true)
         )
-        traced = _trace_from!(
-            state, ind, typed_interventions, case_contacts, pos, tracing
-        )
-        _trace_source!(state, ind, typed_interventions, tracing_source)
+        # `traced` is assigned once, from the `let`: the closure below captures
+        # it, and reassigning a captured variable boxes it on every settled case.
+        traced = let traced = _trace_from!(
+                state, ind, typed_interventions, case_contacts, pos, tracing
+            )
+            found = _trace_source!(state, ind, typed_interventions, tracing_source)
+            # An infector isolated by being traced back becomes eligible for
+            # forward tracing under a rule such as `OnIsolation()` only now. The
+            # walk made when it settled could not see that.
+            if found !== nothing
+                retraced = _trace_from!(
+                    state, found, typed_interventions, case_contacts, pos, tracing
+                )
+                # The action pass picks its candidates from the traced set,
+                # which must therefore include contacts reached from the infector.
+                if retraced !== nothing
+                    traced = traced === nothing ? retraced : union!(traced, retraced)
+                end
+            end
+            traced
+        end
         # A model with nothing in `acting` never calls `_admit_actions!`
         # inside `_apply_case_actions!`. Installing the sink anyway, a
         # `Dict{Any, Any}` write and delete per settled case, would cost
@@ -1851,7 +1868,7 @@ EpiBranch.proposes_own_contacts); every other route lists its targets instead
 time itself. The race does the rest: a target already settled, or the
 infector itself, is dropped from what this returns, without `route` having to
 check either; the per-individual `susceptibility` and `infectiousness` `route`
-reads off `state.individuals[...]` are not scaled again afterwards. `traits`
+reads off `individuals(state)[...]` are not scaled again afterwards. `traits`
 is whether any individual in the run departs from the defaults of each, which
 `route` may use to skip the pair-by-pair lookup where neither does, as mass
 action does; it is only ever a hint, since reading the records directly gives
@@ -1972,7 +1989,7 @@ function _propose_along!(
         state, rng, pos, processed, watch, snapshot, watched_keys,
         route_projections, full_snapshot, reinfects,
     ) = race
-    infector = state.individuals[infector_id]
+    infector = individuals(state)[infector_id]
     proj = route_projections[ri]
     for (target_id, kernel) in route_targets(infector_id, state)
         k = get(pos, target_id, 0)
@@ -2260,7 +2277,7 @@ function _records_changed!(
     # `case == 0` is a deferred action's own event, which settles nobody: it
     # has no position of its own to pre-stamp against its own writes, and the
     # scan below, over every tracked host, already covers whomever it wrote to.
-    case == 0 || _refresh_host!(snapshot, watched_keys, state.individuals[members[case]], case)
+    case == 0 || _refresh_host!(snapshot, watched_keys, individuals(state)[members[case]], case)
     kept = 0
     for oi in w.open
         if openings[oi].close_t >= now
@@ -2286,7 +2303,7 @@ function _records_changed!(
             _untrack_at!(w, idx)
             continue
         end
-        ind = state.individuals[members[k]]
+        ind = individuals(state)[members[k]]
         # The routes this host's own moved keys already explain, so the
         # undeclared-read check below compares only a route none of them
         # cover.
@@ -2463,13 +2480,13 @@ function _redraw_moved!(
     for oi in sort!(collect(keys(redo)))
         members_hit = redo[oi]
         opening = openings[oi]
-        source = state.individuals[opening.infector]
+        source = individuals(state)[opening.infector]
         passed_since = _passed_since(pops, passed, oi)
         for (id, kernel) in _on_route((_, t) -> t(opening.infector, state), rts, opening.route)
             j = get(pos, id, 0)
             (j == 0 || (processed[j] && !reinfects)) && continue
             members_hit === nothing || j in members_hit || continue
-            m = source.infectiousness * state.individuals[id].susceptibility
+            m = source.infectiousness * individuals(state)[id].susceptibility
             m <= 0 && continue
             pair_rng = stream(rng, (opening.infector, id), (:contact, opening.route))
             lower = now - opening.open_t - slack

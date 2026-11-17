@@ -126,7 +126,7 @@ SUITE["simulation: network, live kernel"] = @benchmarkable simulate(
 struct BenchmarkPolicy <: AbstractIntervention end
 function EpiBranch.resolve_individual!(::BenchmarkPolicy, ind, state)
     state.cumulative_cases == 5 || return nothing
-    for person in state.individuals
+    for person in individuals(state)
         person.state[:tag] = ind.infection_time
     end
     return nothing

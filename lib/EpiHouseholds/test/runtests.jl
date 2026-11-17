@@ -54,12 +54,12 @@ struct _MaskLessRule <: EpiHouseholds.ConditionOn end
         )
         full = simulate(spec; rng = StableRNG(5))
         cut = @test_logs simulate(spec; max_time = 1.5, rng = StableRNG(5))
-        by(state, t) = [is_infected(i) && i.infection_time <= t for i in state.individuals]
+        by(state, t) = [is_infected(i) && i.infection_time <= t for i in individuals(state)]
         # Households race in turn on one RNG, so stopping one early shifts the
         # draws of those after it; only the first matches the full run exactly.
-        @test is_infected.(cut.individuals[1:6]) == by(full, 1.5)[1:6]
-        @test all(i.infection_time <= 1.5 for i in cut.individuals if is_infected(i))
-        @test count(is_infected, cut.individuals) < count(is_infected, full.individuals)
+        @test is_infected.(individuals(cut)[1:6]) == by(full, 1.5)[1:6]
+        @test all(i.infection_time <= 1.5 for i in individuals(cut) if is_infected(i))
+        @test count(is_infected, individuals(cut)) < count(is_infected, individuals(full))
         # Every household race in the full run reached its own extinction, but
         # at least one was cut off mid-race in `cut`, so only the full run
         # counts as extinct overall.
@@ -78,8 +78,8 @@ struct _MaskLessRule <: EpiHouseholds.ConditionOn end
         capped = simulate(spec; stopping_rules = [MaxCases(3)], rng = StableRNG(1))
         @test capped.cumulative_cases == 3
         @test !is_extinct(capped)
-        @test count(is_infected, capped.individuals[1:2]) == 1
-        @test count(is_infected, capped.individuals[3:4]) == 2
+        @test count(is_infected, individuals(capped)[1:2]) == 1
+        @test count(is_infected, individuals(capped)[3:4]) == 2
     end
 
     @testset "construction" begin
@@ -183,7 +183,7 @@ struct _MaskLessRule <: EpiHouseholds.ConditionOn end
         df = contacts(state)
         @test size(df, 1) == count(!=(0), linelist(state).parent_id)
         @test all(df.infected)
-        expected = Set((ind.parent_id, ind.id) for ind in state.individuals if ind.parent_id != 0)
+        expected = Set((ind.parent_id, ind.id) for ind in individuals(state) if ind.parent_id != 0)
         @test Set(zip(df.from, df.to)) == expected
     end
 
@@ -214,12 +214,12 @@ struct _MaskLessRule <: EpiHouseholds.ConditionOn end
             );
             rng = StableRNG(7)
         )
-        @test [ind.infection_time for ind in st.individuals] ≈
+        @test [ind.infection_time for ind in individuals(st)] ≈
             [
             1.2332841100671945, 0.0, 1.5775672740571718, 1.9586646650106947,
             0.9392894514788435, 0.0, 0.8046109695374931,
         ]
-        @test [ind.parent_id for ind in st.individuals] == [2, 0, 2, 6, 6, 0, 6]
+        @test [ind.parent_id for ind in individuals(st)] == [2, 0, 2, 6, 6, 0, 6]
     end
 
     @testset "no within-household spread when the kernel is far out of the period" begin
@@ -322,7 +322,7 @@ struct _MaskLessRule <: EpiHouseholds.ConditionOn end
             for s in 1:5
                 st = simulate(spec; rng = StableRNG(s))
                 counts = zeros(Int, 400)
-                for ind in st.individuals
+                for ind in individuals(st)
                     is_infected(ind) && (counts[(ind.id - 1) ÷ size + 1] += 1)
                 end
                 append!(sizes, counts)
@@ -378,7 +378,7 @@ struct _MaskLessRule <: EpiHouseholds.ConditionOn end
         state = simulate(m; rng = StableRNG(3))
         secondary = [
             ind
-                for ind in state.individuals
+                for ind in individuals(state)
                 if is_infected(ind) && ind.parent_id != 0
         ]
         @test !isempty(secondary)
@@ -504,7 +504,7 @@ struct _MaskLessRule <: EpiHouseholds.ConditionOn end
         expected = [
             min(
                 data.infection_time[i] + 8.0,
-                EpiBranch.isolation_time(state.individuals[i])
+                EpiBranch.isolation_time(individuals(state)[i])
             ) for i in infected
         ]
         @test data.removal_time[infected] == expected
@@ -576,8 +576,8 @@ struct _MaskLessRule <: EpiHouseholds.ConditionOn end
         # so simulation from either gives the identical outbreak
         fstate = simulate(make(j -> rates[j]); rng = StableRNG(11))
         @test isequal(
-            [i.infection_time for i in fstate.individuals],
-            [i.infection_time for i in state.individuals]
+            [i.infection_time for i in individuals(fstate)],
+            [i.infection_time for i in individuals(state)]
         )
     end
 
@@ -1207,12 +1207,12 @@ struct _MaskLessRule <: EpiHouseholds.ConditionOn end
         @test meansize([iso, ct]) < meansize([iso])
 
         st = simulate(build([iso, ct]); rng = StableRNG(2))
-        traced = filter(is_traced, st.individuals)
+        traced = filter(is_traced, individuals(st))
         @test !isempty(traced)
         @test all(is_quarantined, traced)
         # Everyone traced is a household-mate of whoever traced them.
         for t in traced
-            src = st.individuals[t.state[:traced_by]]
+            src = individuals(st)[t.state[:traced_by]]
             @test t.state[:household] == src.state[:household]
         end
 

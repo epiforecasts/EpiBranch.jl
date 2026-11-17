@@ -568,7 +568,7 @@ record_kernel(k::PairKernel{F, Nothing}, state::SimulationState) where {F} = k
 function record_kernel(k::PairKernel, state::SimulationState)
     return PairKernel(
         k.callback,
-        [deepcopy(_pair_state(k.state, ind)) for ind in state.individuals],
+        [deepcopy(_pair_state(k.state, ind)) for ind in individuals(state)],
         k.calendar, ()
     )
 end
@@ -583,7 +583,7 @@ end
 # exact wherever the profile's own hazard is. A smooth schedule integrates the
 # scaled hazard by quadrature and inverts it by bisection.
 
-struct _CalendarScaledKernel{P, S, T <: Real}
+struct _CalendarScaledKernel{P, S, T <: Real} <: ContinuousUnivariateDistribution
     profile::P
     calendar::S
     opening::T
@@ -601,10 +601,21 @@ function SurvivalDistributions.loghazard(k::_CalendarScaledKernel, τ::Real)
     return lh + log(calendar_multiplier(k.calendar, k.opening + τ))
 end
 
+# SurvivalDistributions defines `cumhazard` as `-log(ccdf)` and `loghazard` as
+# `log(pdf / ccdf)`, so an `exp` and a `log` cancel. In the tail `ccdf`
+# underflows to zero and the cumulative hazard becomes infinite. These families
+# have a closed-form `logccdf`, so the hazards are computed from it directly.
+# Other kernels keep the documented `cumhazard`/`loghazard` route.
+const _LOGCCDF_FAMILIES = Union{Exponential, Weibull, Gamma, LogNormal}
+_cumhazard(k, τ::Real) = cumhazard(k, τ)
+_cumhazard(k::_LOGCCDF_FAMILIES, τ::Real) = -logccdf(k, τ)
+_fast_loghazard(k, τ::Real) = loghazard(k, τ)
+_fast_loghazard(k::_LOGCCDF_FAMILIES, τ::Real) = logpdf(k, τ) - logccdf(k, τ)
+
 # `loghazard` of a truncated kernel is `logpdf - logccdf`, which is `-Inf - -Inf`
 # beyond the upper bound. The hazard there is zero and its log is `-Inf`.
 function _loghazard(k, τ::Real)
-    lh = loghazard(k, τ)
+    lh = _fast_loghazard(k, τ)
     # Other NaNs (a NaN time or NaN kernel parameters) are left to propagate.
     isnan(lh) && !isnan(τ) && logpdf(k, τ) == -Inf && return oftype(lh, -Inf)
     return lh

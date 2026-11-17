@@ -40,7 +40,7 @@ struct _UntrackedTransition <: EpiBranch.AbstractClinicalTransition end
         state = simulate(spec; max_cases = 200, rng = StableRNG(1))
 
         expected = 0.0
-        for ind in state.individuals
+        for ind in individuals(state)
             get(ind.state, :infected, false) || continue
             onset = onset_time(ind)
             isfinite(onset) || continue
@@ -58,7 +58,7 @@ struct _UntrackedTransition <: EpiBranch.AbstractClinicalTransition end
         end
         @test expected < 0  # sanity: the hand-computed sum is a genuine log-likelihood
         @test progression_loglik(spec, state) ≈ expected
-        @test progression_loglik(spec, state.individuals) ≈ expected
+        @test progression_loglik(spec, individuals(state)) ≈ expected
     end
 
     @testset "never-infected individuals contribute nothing" begin
@@ -68,8 +68,8 @@ struct _UntrackedTransition <: EpiBranch.AbstractClinicalTransition end
             progression = [Recovery(delay = Exponential(2.0))], attributes = attrs
         )
         state = simulate(spec; max_cases = 300, rng = StableRNG(2))
-        @test any(!get(ind.state, :infected, false) for ind in state.individuals)
-        infected_only = filter(ind -> get(ind.state, :infected, false), state.individuals)
+        @test any(!get(ind.state, :infected, false) for ind in individuals(state))
+        infected_only = filter(ind -> get(ind.state, :infected, false), individuals(state))
         @test progression_loglik(spec, state) ≈ progression_loglik(spec, infected_only)
     end
 
@@ -95,7 +95,7 @@ struct _UntrackedTransition <: EpiBranch.AbstractClinicalTransition end
             progression = [Reporting(delay = LogNormal(1.0, 0.3))], attributes = all_asymp
         )
         state = simulate(spec; max_cases = 50, rng = StableRNG(3))
-        @test all(!isfinite(onset_time(ind)) for ind in state.individuals)
+        @test all(!isfinite(onset_time(ind)) for ind in individuals(state))
         @test progression_loglik(spec, state) == 0.0
     end
 
@@ -490,7 +490,7 @@ struct _UntrackedTransition <: EpiBranch.AbstractClinicalTransition end
         state = simulate(spec; n_initial = 3, max_cases = 300, rng = StableRNG(1))
         aborted = count(
             ind -> isfinite(get(ind.state, :infection_aborted_time, Inf)),
-            state.individuals
+            individuals(state)
         )
         @test aborted > 0                     # otherwise the test is vacuous
         @test isfinite(progression_loglik(spec, state))
@@ -565,7 +565,7 @@ end
         attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
     )
     st = simulate(spec; max_cases = 300, rng = StableRNG(2))
-    for c in filter(is_infected, st.individuals)
+    for c in filter(is_infected, individuals(st))
         o = get(c.state, :outcome, nothing)
         o == :died && (c.state[:recovery_candidate_time] = Inf)
         o == :recovered && (c.state[:death_candidate_time] = Inf)

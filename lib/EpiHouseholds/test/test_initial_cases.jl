@@ -10,8 +10,8 @@
         ]
     )
     state = simulate(model; initial_cases = [2, 5], rng = StableRNG(42))
-    @test [i.id for i in state.individuals if is_infected(i)] == [2, 5]
-    @test all(i -> i.infection_time == 0, filter(is_infected, state.individuals))
+    @test [i.id for i in individuals(state) if is_infected(i)] == [2, 5]
+    @test all(i -> i.infection_time == 0, filter(is_infected, individuals(state)))
     @test simulate(model; initial_cases = Int[], rng = StableRNG(42)).cumulative_cases == 0
     @test_throws ArgumentError simulate(model; initial_cases = [6])
 end
@@ -28,11 +28,11 @@ end
         ]
     )
     state = simulate(model; initial_cases = [2, 5], rng = StableRNG(42))
-    chosen = filter(i -> i.id in (2, 5), state.individuals)
+    chosen = filter(i -> i.id in (2, 5), individuals(state))
     @test all(i -> is_infected(i) && i.infection_time == 0, chosen)
     # With a household-wide external hazard active, some other member is
     # infected too, which the disallowed combination could never produce.
-    @test any(i -> is_infected(i) && !(i.id in (2, 5)), state.individuals)
+    @test any(i -> is_infected(i) && !(i.id in (2, 5)), individuals(state))
 end
 
 @testset "Chosen initial cases are infected whatever the risks" begin
@@ -46,7 +46,7 @@ end
         initial_cases = [1, 4], rng = StableRNG(1)
     )
     for id in (1, 4)
-        ind = state.individuals[id]
+        ind = individuals(state)[id]
         @test is_infected(ind)
         @test ind.infection_time == 0
         @test ind.state[:seeded]

@@ -1,0 +1,1 @@
+The SSMProblems extension builds its observation process from its own `ObservationProcess` subtype with a `distribution` method rather than `DistributionObservation`. This makes `outbreak_state_space` work with SSMProblems 0.6 and 0.7. The inference page now runs its particle filter through GeneralisedFilters.jl.
