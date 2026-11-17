@@ -1508,10 +1508,27 @@ function _sellke_race_typed!(
         self_proposing && (
             capped_generation = _open_routes!(rts, open_ctx, capped_generation, true)
         )
-        traced = _trace_from!(
-            state, ind, typed_interventions, case_contacts, pos, tracing
-        )
-        _trace_source!(state, ind, typed_interventions, tracing_source)
+        # `traced` is assigned once, from the `let`: the closure below captures
+        # it, and reassigning a captured variable boxes it on every settled case.
+        traced = let traced = _trace_from!(
+                state, ind, typed_interventions, case_contacts, pos, tracing
+            )
+            found = _trace_source!(state, ind, typed_interventions, tracing_source)
+            # An infector isolated by being traced back becomes eligible for
+            # forward tracing under a rule such as `OnIsolation()` only now. The
+            # walk made when it settled could not see that.
+            if found !== nothing
+                retraced = _trace_from!(
+                    state, found, typed_interventions, case_contacts, pos, tracing
+                )
+                # The action pass picks its candidates from the traced set,
+                # which must therefore include contacts reached from the infector.
+                if retraced !== nothing
+                    traced = traced === nothing ? retraced : union!(traced, retraced)
+                end
+            end
+            traced
+        end
         # A model with nothing in `acting` never calls `_admit_actions!`
         # inside `_apply_case_actions!`. Installing the sink anyway, a
         # `Dict{Any, Any}` write and delete per settled case, would cost

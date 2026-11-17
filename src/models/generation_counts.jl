@@ -277,7 +277,8 @@ The doses of generation `g` cover `[g * generation_length, (g + 1) *
 generation_length)` and are applied after generation `g` is drawn and before
 `g + 1` is. The `budget_per_period` is shared by the types, as in every model:
 each dose goes to a type in proportion to its population, as it would to a
-person picked at random. The doses are those of the periods that start in the interval; with
+person picked at random. A [`PerGroup`](@ref) budget gives each type the doses of its
+own budget instead. The doses are those of the periods that start in the interval; with
 `carry_over`, budget left from earlier periods, or from before a window opens,
 is given in the first interval open to it. A dose reaches a susceptible of a
 type with probability equal to the share of susceptibles in the population of

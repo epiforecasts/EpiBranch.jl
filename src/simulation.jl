@@ -236,7 +236,11 @@ outbreaks.
 With `parallel = true` the runs are spread over the CPU threads Julia was
 started with (for example `julia --threads 4`). The results are reproducible
 for a given seeded `rng`. When Julia has more than one thread, they are not
-the same outbreaks as with `parallel = false`.
+the same outbreaks as with `parallel = false`. Outbreaks are handed to threads
+one at a time. A few large ones do not leave the other threads idle. Much of
+the remaining cost is garbage collection, which pauses every thread; starting
+Julia with extra collector threads (for example `julia --threads 6
+--gcthreads 6,1`) reduces it.
 
 # Examples
 ```julia
@@ -296,15 +300,32 @@ function _simulate_n(
         )
     )
     if parallel && Threads.nthreads() > 1
-        seeds = [rand(rng, UInt64) for _ in 1:n]
-        results = Vector{T}(undef, n)
-        Threads.@threads for i in 1:n
-            results[i] = run(Random.Xoshiro(seeds[i]))
-        end
-        return results
+        return _simulate_n_threaded(run, T, n, rng)
     else
         return [run(rng) for _ in 1:n]
     end
+end
+# Separate from the `nthreads() > 1` check so that it can be tested on a single
+# thread.
+function _simulate_n_threaded(run, ::Type{T}, n::Int, rng) where {T}
+    seeds = [rand(rng, UInt64) for _ in 1:n]
+    results = Vector{T}(undef, n)
+    # Outbreak sizes are heavy-tailed. An even split of `1:n` would leave
+    # threads idle while one works through the large outbreaks. Each task
+    # instead takes the next outbreak from a shared counter. Seeds are indexed
+    # by outbreak, giving the same results whichever thread runs it.
+    next_index = Threads.Atomic{Int}(1)
+    tasks = map(1:min(Threads.nthreads(), n)) do _
+        Threads.@spawn begin
+            while true
+                i = Threads.atomic_add!(next_index, 1)
+                i > n && break
+                results[i] = run(Random.Xoshiro(seeds[i]))
+            end
+        end
+    end
+    foreach(wait, tasks)
+    return results
 end
 
 # ── Shared helpers for the race's models ─────────────────────────────
@@ -480,9 +501,7 @@ end
 # an `OffspringTimes` already gave.
 _window_infection_time(::NoGenerationTime, from_t::Real, state) = from_t
 _window_infection_time(offset::_FixedOffset, from_t::Real, state) = from_t + offset.offset
-# Any other kernel (a distribution, or a calendar-scaled kernel, which is not a
-# `Distribution`) is drawn from directly.
-function _window_infection_time(kernel, from_t::Real, state)
+function _window_infection_time(kernel::Distribution, from_t::Real, state)
     return from_t + rand(state.rng, kernel)
 end
 
@@ -495,7 +514,8 @@ _tag_window!(contact, until) = (contact.state[:censor_until] = until; nothing)
 # Offer `case`'s own infector to interventions tracing backward, as the sole
 # contact in `trace_contacts!`'s usual four-argument form. An index case or a
 # community introduction has no infector to offer. The race calls it once a
-# case is settled.
+# case is settled. It returns the infector when tracing has just isolated it,
+# and `nothing` otherwise.
 function _trace_source!(
         state::SimulationState, case, interventions,
         tracing_source = any(traces_source, interventions)
@@ -504,12 +524,15 @@ function _trace_source!(
     1 <= case.parent_id <= length(state.individuals) || return nothing
     infector = state.individuals[case.parent_id]
     contacts = (infector,)
+    was_isolated = is_isolated(infector)
     _each(interventions) do intervention
         traces_source(intervention) &&
             trace_contacts!(intervention, state, case, contacts)
         return nothing
     end
-    return nothing
+    # An infector isolated here was settled, and its forward tracing decided,
+    # before it was isolated. The caller traces forward from it again.
+    return !was_isolated && is_isolated(infector) ? infector : nothing
 end
 
 """
@@ -701,6 +724,7 @@ function add_individuals!(
         n_types::Integer = 1, setup = (ind, i) -> nothing, infection_time::Real = NaN,
         types = nothing, assign = _NoAssignment()
     )
+    _check_group_budgets(interventions, state.population)
     base = length(state.individuals)
     added = eltype(state.individuals)[]
     for i in 1:n
@@ -740,6 +764,7 @@ function lazily_populate!(
         state::SimulationState, n::Integer, interventions;
         setup = (ind, i) -> nothing
     )
+    _check_group_budgets(interventions, state.population)
     T = _timetype(state)
     s = IndividualState{T}()
     s[:infected] = false
@@ -1468,7 +1493,7 @@ with an `infectiousness` that reads `ind.state[:asymptomatic]`.
 Use `transmission_traits` for traits known when the case is created (age, sex,
 whether the case is asymptomatic), because it draws its factor then. A change
 during the infection, such as tracing or quarantine, needs an intervention.
-Combining the two is tracked in #972.
+The tutorial "Making cases more or less infectious" compares the options.
 
 # Examples
 
@@ -1549,6 +1574,10 @@ end
 struct ClinicalPresentation{D, P}
     incubation_period::D
     prob_asymptomatic::P
+end
+
+function onset_law(c::ClinicalPresentation)
+    return (incubation_period = c.incubation_period, prob_asymptomatic = c.prob_asymptomatic)
 end
 
 function (clinical::ClinicalPresentation)(rng, ind)
@@ -1646,8 +1675,8 @@ not cluster within them. To make it cluster, use a multi-type
 [`BranchingProcess`](@ref) with one type per group and a next-generation
 matrix with most transmission within types, and use the type itself as the
 group in `GroupVaccination(...; group_key = :type)`. [`group_attribute`](@ref)
-and [`vaccine_acceptance`](@ref) cannot group by type, since population
-characteristics are drawn before a person's type is set.
+and [`vaccine_acceptance`](@ref) can group by `:type` too, because a person's
+type is set before their population characteristics are drawn.
 
 # Examples
 
@@ -1691,6 +1720,15 @@ Give each person a susceptibility and an infectiousness. Pass the result as
 - `susceptibility`: probability that an exposed person is infected.
 - `infectiousness`: probability that each contact the person makes once
   infected leads to infection, so 0.5 halves the number they infect.
+
+The factor is drawn once, when the case is created, and cannot depend on
+anything that happens later. To reduce transmission from the time of an event
+such as tracing or isolation, use an intervention (its
+[`transmission_risks`](@ref EpiBranch.transmission_risks) and
+[`competing_risk`](@ref EpiBranch.competing_risk)); to limit transmission to
+certain disease states, use the `from` and `until` of an
+[`Infectiousness`](@ref) window. The tutorial "Making cases more or less
+infectious" compares the options.
 
 Both default to 1 (no change). In the continuous-time models
 ([`HomogeneousProcess`](@ref), [`MixingProcess`](@ref), network and household

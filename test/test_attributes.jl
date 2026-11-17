@@ -413,6 +413,8 @@ end
             )
             people = EpiBranch.add_individuals!(state, 40, [])
             for ind in people
+                ind.infection_time = 0.0
+                ind.state[:infected] = true
                 ind.state[:test_positive] = true
                 set_isolated!(ind, 2.0; release_time = Inf)
             end
@@ -532,6 +534,22 @@ end
             ind = Individual(id = 1)
             attrs(StableRNG(1), ind)
             @test ind.state[:group] == 1
+        end
+    end
+
+    @testset "group_attribute and vaccine_acceptance group by :type" begin
+        bp = BranchingProcess([1.2 0.4; 0.3 0.9], R -> Poisson(R), Exponential(5.0))
+        for (builder, key) in (
+                (group_attribute(:level; value = Uniform(), group_key = :type), :level),
+                (vaccine_acceptance(propensity = Beta(2, 2), group_key = :type), :vaccine_acceptance),
+            )
+            spec = ModelSpec(bp; attributes = [builder])
+            state = simulate(spec; n_initial = 20, max_cases = 200, rng = StableRNG(1))
+            cases = filter(is_infected, state.individuals)
+            for k in 1:2
+                values_k = Set(i.state[key] for i in cases if i.state[:type] == k)
+                @test length(values_k) == 1
+            end
         end
     end
 end
