@@ -4,7 +4,13 @@
 # Run from the logo/ directory:
 #   julia --project=. make_logo.jl
 #
-# Outputs logo.svg and logo.png in this directory.
+# Draws the same sticker from two palettes and writes:
+#   logo.svg, logo.png             dark sticker
+#   logo-light.svg, logo-light.png light sticker
+#   ../docs/src/assets/logo-dark.svg, logo.png  dark sticker
+#   ../docs/src/assets/logo.svg                 light sticker
+# Documenter shows assets/logo.svg in light mode and assets/logo-dark.svg in
+# dark mode; the README embeds logo-dark.svg.
 
 using Luxor
 using Distributions
@@ -15,9 +21,24 @@ const JULIA_RED = "#CB3C33"
 const JULIA_GREEN = "#389826"
 const JULIA_PURPLE = "#9558B2"
 const JULIA_BLUE = "#4063D8"
-const BG_DARK = "#1A1A2E"
-const RIM_COLOUR = "#E8E8F0"
-const EDGE_COLOUR = "#9DA3B4"
+
+const DARK = (
+    ground = "#1A1A2E",
+    rim = "#E8E8F0",
+    edge = "#9DA3B4",
+    root = "#FFFFFF",
+    generations = [JULIA_RED, JULIA_GREEN, JULIA_PURPLE, JULIA_BLUE],
+)
+
+# The root is navy here so it stays the most prominent node on a pale ground;
+# the edges are darker than in the dark palette to keep their contrast.
+const LIGHT = (
+    ground = "#F7F7FB",
+    rim = "#1A1A2E",
+    edge = "#7C8296",
+    root = "#1A1A2E",
+    generations = [JULIA_RED, JULIA_GREEN, JULIA_PURPLE, JULIA_BLUE],
+)
 
 # Pointy-top hex sticker. R hexSticker convention: height > width.
 # Scale: width 1200 → height = 1200 * 2/√3 ≈ 1386.
@@ -108,20 +129,19 @@ function pick_tree(seed_range; target_nodes = (12, 22), target_gens = (3, 4))
     error("No seed in $(seed_range) produced a tree matching targets")
 end
 
-"Generation-coloured palette cycling through Julia brand colours."
-function node_colour(gen)
-    gen == 0 && return "#FFFFFF"
-    palette = [JULIA_RED, JULIA_GREEN, JULIA_PURPLE, JULIA_BLUE]
-    return palette[mod1(gen, length(palette))]
+"Node colour by generation, cycling through the palette's generation colours."
+function node_colour(gen, palette)
+    gen == 0 && return palette.root
+    return palette.generations[mod1(gen, length(palette.generations))]
 end
 
 function draw_tree(
-        tree, positions; node_radius_root = 34, node_radius = 22,
+        tree, positions, palette; node_radius_root = 34, node_radius = 22,
         edge_width = 5.0
     )
     setline(edge_width)
     setlinecap("round")
-    sethue(EDGE_COLOUR)
+    sethue(palette.edge)
     for n in tree
         n.parent == 0 && continue
         p = positions[n.parent]
@@ -131,16 +151,16 @@ function draw_tree(
     for n in tree
         x, y = positions[n.id]
         r = n.gen == 0 ? node_radius_root : node_radius
-        sethue(node_colour(n.gen))
+        sethue(node_colour(n.gen, palette))
         circle(Point(x, y), r, :fill)
-        sethue(BG_DARK)
+        sethue(palette.ground)
         setline(2.5)
         circle(Point(x, y), r, :stroke)
     end
     return
 end
 
-function draw_hex_frame(radius; border_width = 20)
+function draw_hex_frame(radius, palette; border_width = 20)
     # Pointy-top hex: first vertex at the top.
     vertices = [
         Point(
@@ -148,15 +168,15 @@ function draw_hex_frame(radius; border_width = 20)
             -radius * sin(π / 2 + i * π / 3)
         ) for i in 0:5
     ]
-    sethue(BG_DARK)
+    sethue(palette.ground)
     poly(vertices, :fill, close = true)
-    sethue(RIM_COLOUR)
+    sethue(palette.rim)
     setline(border_width)
     return poly(vertices, :stroke, close = true)
 end
 
-function draw_title(radius; text = "EpiBranch.jl", font_size = 112)
-    sethue(RIM_COLOUR)
+function draw_title(radius, palette; text = "EpiBranch.jl", font_size = 112)
+    sethue(palette.rim)
     fontface("Helvetica-Bold")
     fontsize(font_size)
     y = radius * 0.48
@@ -171,7 +191,7 @@ const LOGO_SEED = 13
 
 function build_logo(
         path_svg::AbstractString, path_png::AbstractString;
-        seed::Integer = LOGO_SEED
+        palette = DARK, seed::Integer = LOGO_SEED
     )
     rng = MersenneTwister(seed)
     tree = generate_tree(rng = rng)
@@ -202,9 +222,9 @@ function build_logo(
 
     function render()
         origin()
-        draw_hex_frame(HEX_RADIUS)
-        draw_tree(tree, drawables)
-        return draw_title(HEX_RADIUS)
+        draw_hex_frame(HEX_RADIUS, palette)
+        draw_tree(tree, drawables, palette)
+        return draw_title(HEX_RADIUS, palette)
     end
 
     Drawing(HEX_WIDTH, HEX_HEIGHT, path_svg)
@@ -220,6 +240,16 @@ end
 
 if abspath(PROGRAM_FILE) == @__FILE__
     here = @__DIR__
-    svg, png = build_logo(joinpath(here, "logo.svg"), joinpath(here, "logo.png"))
-    @info "Wrote logo" svg png
+    assets = joinpath(here, "..", "docs", "src", "assets")
+    for (palette, suffix) in ((DARK, ""), (LIGHT, "-light"))
+        svg, png = build_logo(
+            joinpath(here, "logo$(suffix).svg"),
+            joinpath(here, "logo$(suffix).png");
+            palette
+        )
+        @info "Wrote logo" svg png
+    end
+    cp(joinpath(here, "logo.svg"), joinpath(assets, "logo-dark.svg"); force = true)
+    cp(joinpath(here, "logo.png"), joinpath(assets, "logo.png"); force = true)
+    cp(joinpath(here, "logo-light.svg"), joinpath(assets, "logo.svg"); force = true)
 end
