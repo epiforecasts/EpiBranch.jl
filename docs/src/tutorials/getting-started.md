@@ -88,7 +88,7 @@ rng = StableRNG(42)
 outbreak = simulate(spec; max_cases = 500, rng = rng)
 
 # The index case: infected at day 0, with an onset some days later
-ind = outbreak.individuals[1]
+ind = individuals(outbreak)[1]
 println("Infection: day $(round(ind.infection_time, digits=1)), Onset: day $(round(onset_time(ind), digits=1))")
 ```
 
@@ -118,7 +118,7 @@ rng = StableRNG(18)
 outbreak = simulate(spec; max_cases = 500, rng = rng)
 println("Cases: $(outbreak.cumulative_cases), Extinct: $(outbreak.extinct)")
 # Leave out contacts whose infection was undecided when the run stopped
-decided = filter(i -> isfinite(i.infection_time), outbreak.individuals)
+decided = filter(i -> isfinite(i.infection_time), individuals(outbreak))
 println("Isolated or quarantined: $(count(is_isolated, decided))")
 println("Traced: $(count(is_traced, decided))")
 ```
@@ -133,7 +133,7 @@ isolation or quarantine that is never lifted.
 quarantined at some point, including quarantined contacts who were never
 infected. `decided` leaves out the contacts whose infection was still
 undecided when the run stopped at the cap, which have no infection time;
-counted over `outbreak.individuals`, they would add 371 to each line. `Extinct` shows whether the measures ended transmission in this
+counted over `individuals(outbreak)`, they would add 371 to each line. `Extinct` shows whether the measures ended transmission in this
 outbreak before it reached the cap.
 
 ## Estimating the containment probability
@@ -166,9 +166,9 @@ they would have been infected, which tells them apart from the contacts whose
 infection was still undecided when the run reached the cap:
 
 ```@example gettingstarted
-n_total = length(outbreak.individuals)
-n_infected = count(is_infected, outbreak.individuals)
-n_prevented = count(i -> !is_infected(i) && isfinite(i.infection_time), outbreak.individuals)
+n_total = length(individuals(outbreak))
+n_infected = count(is_infected, individuals(outbreak))
+n_prevented = count(i -> !is_infected(i) && isfinite(i.infection_time), individuals(outbreak))
 println("People in the simulation: $n_total")
 println("Infected (cases, including the index case): $n_infected")
 println("Potential secondary cases not infected: $n_prevented")

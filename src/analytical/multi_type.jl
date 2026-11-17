@@ -126,11 +126,17 @@ end
 # Probability generating functions of total-count laws: closed forms for
 # Poisson, negative binomial and Dirac, and a truncated series for any other
 # discrete distribution.
+# Mean `r (1 - p) / p` of a negative binomial from its parameters. `1 - p` is
+# the one remaining subtraction, and it is only as accurate as the stored `p`.
+_negbin_mean(d::NegativeBinomial) = d.r * (1 - d.p) / d.p
 _pgf(d::Poisson, s) = exp(mean(d) * (s - 1))
 function _pgf(d::NegativeBinomial, s)
-    r, p = params(d)
-    return (p / (1 - (1 - p) * s))^r
+    r = d.r
+    # `(p / (1 - (1 - p) s))^r = (1 + R (1 - s) / r)^(-r)`. `log1p` stops a
+    # large dispersion from rounding `1 + R (1 - s) / r` to 1.
+    return exp(-r * log1p(_negbin_mean(d) * (1 - s) / r))
 end
+_pgf(f::Function, s) = f(s)
 _pgf(d::Dirac, s) = s^d.value
 function _pgf(d::DiscreteUnivariateDistribution, s)
     lo, hi = _series_range(d)
@@ -191,12 +197,14 @@ function reproduction_number(model::Union{TransmissionModel, ModelSpec})
 end
 
 """
-    extinction_probability(o::MultiTypeOffspring; tol=1e-10, max_iter=1000)
+    extinction_probability(o::MultiTypeOffspring; n_initial=1, tol=1e-10, max_iter=1000)
 
 Probability that transmission dies out in a multi-type branching process,
 one value per type: element `j` is the probability that an outbreak started
 by a single type-`j` case dies out. Call it on a model as
-`extinction_probability(model)`.
+`extinction_probability(model)`. `n_initial` must be 1: with several
+introductions it is not defined which type each starts in, so larger values
+raise an `ArgumentError`.
 
 It is 1 for types whose cases cannot lead, directly or through other types,
 to a group of types that sustain transmission among themselves (reproduction
@@ -216,8 +224,15 @@ most 1. A warning is given if the calculation has not converged after
     for which returning 1 is wrong.
 """
 function extinction_probability(
-        o::MultiTypeOffspring; tol::Real = 1.0e-10,
+        o::MultiTypeOffspring; n_initial::Int = 1, tol::Real = 1.0e-10,
         max_iter::Int = 1000
+    )
+    n_initial == 1 || throw(
+        ArgumentError(
+            "n_initial other than 1 is not supported for a multi-type " *
+                "offspring distribution: the type of each introduced case is " *
+                "not specified."
+        )
     )
     n = _n_types(o)
     laws = _total_count_laws(o)

@@ -112,6 +112,9 @@ function _discovers_actions(iv::AbstractIntervention)
     return _has_own_method(intervention_actions, typeof(iv), AbstractIntervention)
 end
 
+# The `route` of the opening a chosen initial case is seeded through.
+const _SEEDED_ROUTE = -1
+
 # One case's window on one route: who it is, which route, and when that window
 # opened and closes. Every proposal a case makes along a route shares one of
 # these, and names it by its index, so the race remembers each proposal in a
@@ -791,7 +794,7 @@ function _walk_ring!(
             for id in keep_active(iv, state, pending, is_new)
                 k = get(pos, id, 0)
                 k == 0 && continue
-                push!(frontier, state.individuals[id])
+                push!(frontier, individuals(state)[id])
             end
         end
     end
@@ -929,7 +932,10 @@ blocked introduction is followed by the next one from the same hazard. The risks
 of isolation and quarantine are not: they
 stand in for removing an infector, and an introduction's source is outside the
 population. Omit `introduction` for a model whose seeds are index cases, which
-are put to no risk at all. An introduced case's `:infection_route` is
+are put to no risk at all. `seeded`, the ids of chosen initial cases, are
+seeded as index cases even when `introduction` is given: infected at the seed
+whatever the risks, and recorded with `:seeded` set rather than as
+introductions. An introduced case's `:infection_route` is
 `:external`, including on a model that also names routes.
 
 A `progression` whose transitions can reach `:susceptible_again` (see
@@ -996,7 +1002,8 @@ function _sellke_race_typed!(
         routes = nothing, interventions = (), contacts = nothing, risks = (),
         introduction = nothing, watches = nothing, projections = nothing,
         max_time = Inf, max_generation = typemax(Int), stopping_rules = (),
-        recorder::ContactRecorder = NoContactRecorder(), resume = nothing
+        recorder::ContactRecorder = NoContactRecorder(), resume = nothing,
+        seeded = nothing
     )
     # A model either passes `routes`, a collection of `(RouteWindow, targets)`
     # pairs, or the single-route shorthand `from`/`until`/`targets`. The
@@ -1195,6 +1202,15 @@ function _sellke_race_typed!(
 
     # The seeds' own opening: no infector, so nothing about it is ever read.
     resume === nothing && push!(openings, _RouteOpening(0, 0, zero(T), T(Inf)))
+    # The chosen initial cases' opening, which the risk check skips: they are
+    # infected at the seed whatever the risks.
+    if resume === nothing && seeded !== nothing
+        push!(openings, _RouteOpening(0, _SEEDED_ROUTE, zero(T), T(Inf)))
+        # Like the seeds' own opening, it is never watched, but it takes the
+        # slot its position in `openings` implies.
+        live && _watch_opening!(watch, 0, false)
+    end
+    seeded_ids = seeded === nothing ? nothing : Set{Int}(seeded)
     # Proposals a redraw has unlinked, which stay in `proposals` and the heap
     # until they are compacted away.
     orphans = 0
@@ -1225,9 +1241,12 @@ function _sellke_race_typed!(
     if resume === nothing
         for k in 1:m
             best[k] < Inf || continue
-            seeded = best[k]
+            seeded_time = best[k]
             best[k] = T(Inf)
-            _propose!(race, k, 1, seeded)
+            _propose!(
+                race, k, seeded_ids !== nothing && members[k] in seeded_ids ? 2 : 1,
+                seeded_time
+            )
         end
     else
         # A route that samples its own contacts rather than listing them
@@ -1313,8 +1332,9 @@ function _sellke_race_typed!(
         # risks read. A risk of your own that reads the infector should
         # therefore return nothing when the two are the same individual. An
         # index case is put to no risk at all.
-        source = infector_id == 0 ? ind : state.individuals[infector_id]
-        if checks && (infector_id != 0 || introduction !== nothing)
+        source = infector_id == 0 ? ind : individuals(state)[infector_id]
+        is_seeded = opening.route == _SEEDED_ROUTE
+        if checks && !is_seeded && (infector_id != 0 || introduction !== nothing)
             blocked, permanent, certain_release = _proposal_blocked(
                 state, source, ind, bt, risks,
                 opening.route == 0 ? introduction_interventions :
@@ -1402,7 +1422,7 @@ function _sellke_race_typed!(
         ind.state[:infected] = true
         ind.state[:index] = infector_id == 0
         if infector_id != 0
-            infector = state.individuals[infector_id]
+            infector = individuals(state)[infector_id]
             ind.parent_id = infector.id
             ind.generation = infector.generation + 1
             ind.chain_id = infector.chain_id
@@ -1418,6 +1438,8 @@ function _sellke_race_typed!(
                 (w, rt) -> _record_infection!(rt, infector, ind, w, routes !== nothing),
                 rts, opening.route
             )
+        elseif is_seeded
+            ind.state[:seeded] = true
         elseif introduction !== nothing
             ind.state[:infection_route] = :external
         end
@@ -1486,10 +1508,27 @@ function _sellke_race_typed!(
         self_proposing && (
             capped_generation = _open_routes!(rts, open_ctx, capped_generation, true)
         )
-        traced = _trace_from!(
-            state, ind, typed_interventions, case_contacts, pos, tracing
-        )
-        _trace_source!(state, ind, typed_interventions, tracing_source)
+        # `traced` is assigned once, from the `let`: the closure below captures
+        # it, and reassigning a captured variable boxes it on every settled case.
+        traced = let traced = _trace_from!(
+                state, ind, typed_interventions, case_contacts, pos, tracing
+            )
+            found = _trace_source!(state, ind, typed_interventions, tracing_source)
+            # An infector isolated by being traced back becomes eligible for
+            # forward tracing under a rule such as `OnIsolation()` only now. The
+            # walk made when it settled could not see that.
+            if found !== nothing
+                retraced = _trace_from!(
+                    state, found, typed_interventions, case_contacts, pos, tracing
+                )
+                # The action pass picks its candidates from the traced set,
+                # which must therefore include contacts reached from the infector.
+                if retraced !== nothing
+                    traced = traced === nothing ? retraced : union!(traced, retraced)
+                end
+            end
+            traced
+        end
         # A model with nothing in `acting` never calls `_admit_actions!`
         # inside `_apply_case_actions!`. Installing the sink anyway, a
         # `Dict{Any, Any}` write and delete per settled case, would cost
@@ -1853,7 +1892,7 @@ EpiBranch.proposes_own_contacts); every other route lists its targets instead
 time itself. The race does the rest: a target already settled, or the
 infector itself, is dropped from what this returns, without `route` having to
 check either; the per-individual `susceptibility` and `infectiousness` `route`
-reads off `state.individuals[...]` are not scaled again afterwards. `traits`
+reads off `individuals(state)[...]` are not scaled again afterwards. `traits`
 is whether any individual in the run departs from the defaults of each, which
 `route` may use to skip the pair-by-pair lookup where neither does, as mass
 action does; it is only ever a hint, since reading the records directly gives
@@ -1974,7 +2013,7 @@ function _propose_along!(
         state, rng, pos, processed, watch, snapshot, watched_keys,
         route_projections, full_snapshot, reinfects,
     ) = race
-    infector = state.individuals[infector_id]
+    infector = individuals(state)[infector_id]
     proj = route_projections[ri]
     for (target_id, kernel) in route_targets(infector_id, state)
         k = get(pos, target_id, 0)
@@ -2262,7 +2301,7 @@ function _records_changed!(
     # `case == 0` is a deferred action's own event, which settles nobody: it
     # has no position of its own to pre-stamp against its own writes, and the
     # scan below, over every tracked host, already covers whomever it wrote to.
-    case == 0 || _refresh_host!(snapshot, watched_keys, state.individuals[members[case]], case)
+    case == 0 || _refresh_host!(snapshot, watched_keys, individuals(state)[members[case]], case)
     kept = 0
     for oi in w.open
         if openings[oi].close_t >= now
@@ -2288,7 +2327,7 @@ function _records_changed!(
             _untrack_at!(w, idx)
             continue
         end
-        ind = state.individuals[members[k]]
+        ind = individuals(state)[members[k]]
         # The routes this host's own moved keys already explain, so the
         # undeclared-read check below compares only a route none of them
         # cover.
@@ -2465,13 +2504,13 @@ function _redraw_moved!(
     for oi in sort!(collect(keys(redo)))
         members_hit = redo[oi]
         opening = openings[oi]
-        source = state.individuals[opening.infector]
+        source = individuals(state)[opening.infector]
         passed_since = _passed_since(pops, passed, oi)
         for (id, kernel) in _on_route((_, t) -> t(opening.infector, state), rts, opening.route)
             j = get(pos, id, 0)
             (j == 0 || (processed[j] && !reinfects)) && continue
             members_hit === nothing || j in members_hit || continue
-            m = source.infectiousness * state.individuals[id].susceptibility
+            m = source.infectiousness * individuals(state)[id].susceptibility
             m <= 0 && continue
             pair_rng = stream(rng, (opening.infector, id), (:contact, opening.route))
             lower = now - opening.open_t - slack

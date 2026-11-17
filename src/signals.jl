@@ -2,9 +2,9 @@
 # A signal reads a population quantity off a simulated state over the
 # reporting interval a step covers, the same quantity every engine that
 # produces a `SimulationState` can compute. `SignalData` (in
-# `analytical/data_types.jl`) pairs one with a density to score it against
+# `analytical/data_types.jl`) pairs one with a density to evaluate its likelihood against
 # observed data; `loglikelihood(::SignalData, ...)` (in
-# `analytical/signal_likelihood.jl`) scores several together against the
+# `analytical/signal_likelihood.jl`) evaluates several together against the
 # same simulated path instead of letting separate `~` statements each
 # simulate their own outbreak.
 
@@ -44,7 +44,7 @@ end
 
 function (sig::TransitionCount)(state::SimulationState, interval::Tuple{<:Real, <:Real})
     lo, hi = interval
-    return count(state.individuals) do ind
+    return count(individuals(state)) do ind
         is_infected(ind) || return false
         t = _state_time(ind, sig.at)
         return isfinite(t) && lo < t <= hi
@@ -78,7 +78,7 @@ Prevalence(enter) = Prevalence(enter, :outcome)
 
 function (sig::Prevalence)(state::SimulationState, interval::Tuple{<:Real, <:Real})
     _, hi = interval
-    return count(state.individuals) do ind
+    return count(individuals(state)) do ind
         is_infected(ind) || return false
         enter_t = _state_time(ind, sig.enter)
         (isfinite(enter_t) && enter_t <= hi) || return false

@@ -257,7 +257,7 @@ struct _RiskFromAge end
         )
         @test_throws ArgumentError loglikelihood(data, with_iv)
 
-        with_obs = ModelSpec(model; observation = PerCaseObservation(detection_prob = 0.7))
+        with_obs = ModelSpec(model; observation = ChainDetection(0.7))
         @test_throws ArgumentError loglikelihood(data, with_obs)
 
         with_reporting = ModelSpec(
@@ -434,6 +434,28 @@ struct _RiskFromAge end
             EpiBranch._bin_cdf(
             EpiBranch._censored_cdf(t -> cdf(inc, t - 2.0)), 0, 1.0e-8, 10_000, "reporting delay"
         )
+        # A fixed first delay shifts the second.
+        rd = Gamma(2.0, 1.0)
+        d = EpiBranch._discretize_report_delay(EpiBranch._DelaySum(Dirac(5.0), rd))
+        @test sum(d) ≈ 1.0
+        @test all(isfinite, d)
+        @test all(iszero, d[1:5])
+        @test d ≈ EpiBranch._bin_cdf(
+            EpiBranch._censored_cdf(t -> cdf(rd, t - 5.0)), 0, 1.0e-8, 10_000, "reporting delay"
+        )
+        # A `Dirac` second delay does the same to the first.
+        @test EpiBranch._discretize_report_delay(EpiBranch._DelaySum(inc, Dirac(2.0))) ≈
+            EpiBranch._discretize_report_delay(EpiBranch._DelaySum(inc, 2.0))
+    end
+
+    @testset "A Dirac incubation period gives a finite likelihood" begin
+        data = IncidenceCounts([0, 0, 0, 0, 0, 0, 1, 1, 2, 2, 3])
+        m = ModelSpec(
+            BranchingProcess(NegBin(1.3, 0.5), Gamma(3.0, 1.0));
+            progression = [Reporting(probability = 0.8, delay = Gamma(2.0, 1.0))],
+            attributes = clinical_presentation(incubation_period = Dirac(5.0))
+        )
+        @test isfinite(loglikelihood(data, m))
     end
 
     @testset "loglikelihood on a model with a Reporting step" begin
@@ -566,7 +588,7 @@ struct _RiskFromAge end
         for i in 1:nsim
             rng = StableRNG(i)
             state = simulate(model; rng, max_time = n + 0.5)
-            for ind in state.individuals
+            for ind in individuals(state)
                 is_infected(ind) && get(ind.state, :reported, false) || continue
                 t = ceil(Int, ind.state[:reporting_time] - rand(rng))
                 1 <= t <= n && (sims[i, t] += 1)
@@ -580,4 +602,11 @@ struct _RiskFromAge end
         @test maximum(abs.(emp_mean .- m.mean)) < 0.06
         @test maximum(abs.(emp_cov .- m.cov)) < 0.2
     end
+end
+
+@testset "Missing ForwardDiff extension" begin
+    # The core fallback, called directly because the extension is loaded here.
+    @test_throws ArgumentError invoke(
+        EpiBranch._gradient_and_hessian, Tuple{Any, Any}, identity, [0.0]
+    )
 end

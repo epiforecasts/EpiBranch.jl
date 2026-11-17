@@ -16,7 +16,7 @@ The recipes below assume a little Julia: writing a function, and the
 `(rng, ind) -> ...` form of an anonymous function. [Julia for R
 users](../julia-for-r-users.md) covers what you need.
 
-## Which tool do I need?
+## Choosing a tool
 
 | What you want to model | What you write | Where |
 |---|---|---|
@@ -26,7 +26,7 @@ users](../julia-for-r-users.md) covers what you need.
 | A rule of your own for when a simulation stops | a small type and one method | [Stopping rules](#Stopping-rules) |
 | A control measure that blocks some transmissions (a border closure, prophylaxis) | a type and a `competing_risk` method | [A custom intervention: closing a border](@ref) |
 | Treatment that ends infections early, vaccination aimed at a group, a measure limited by a start date or by capacity | an intervention type with further methods | [Writing an intervention](writing-interventions.md) |
-| A rule of your own for which cases have their contacts traced | a small type and one `is_eligible` method | [Who triggers contact tracing](@ref) |
+| A rule of your own for selecting cases for contact tracing | a small type and one `is_eligible` method | [Eligibility for contact tracing](@ref) |
 | A clinical event of your own (testing, treatment, loss to follow-up) | a clinical transition type | [Custom clinical transitions](@ref) |
 | A latent period, several routes of transmission (community, household, funeral), seasonal transmission | infectiousness windows and routes | [New transmission structures](new-structures.md) |
 | A contact structure the package lacks (a ward, a school, a network you build), or a closed population with structured mixing | a transmission model type | [New transmission structures](new-structures.md) |
@@ -234,7 +234,7 @@ attrs = [
 
 model = ModelSpec(BranchingProcess(NegBin(2.5, 0.16), Exponential(5.0)); attributes = attrs)
 runs = simulate(model, 200; max_cases = 100, rng = StableRNG(42))
-people = reduce(vcat, [s.individuals for s in runs])
+people = reduce(vcat, [individuals(s) for s in runs])
 high_share(group) = count(ind -> ind.state[:risk_group] == :high, group) / length(group)
 (all_contacts = high_share(people), infected = high_share(filter(is_infected, people)))
 ```
@@ -259,7 +259,7 @@ combined = [
 model_combined = ModelSpec(BranchingProcess(NegBin(2.5, 0.16), Exponential(5.0));
     attributes = combined)
 state = simulate(model_combined; max_cases = 100, rng = StableRNG(42))
-ind = state.individuals[1]
+ind = individuals(state)[1]
 (age = ind.state[:age], sex = ind.state[:sex], risk = ind.state[:risk_group])
 ```
 
@@ -334,13 +334,13 @@ struct MaxChainLength <: AbstractStoppingRule
     n::Int
 end
 EpiBranch.should_stop(r::MaxChainLength, state::SimulationState) =
-    maximum(ind.generation for ind in state.individuals; init = 0) >= r.n
+    maximum(ind.generation for ind in individuals(state); init = 0) >= r.n
 
 chain_model = BranchingProcess(NegBin(2.5, 0.16), Exponential(5.0))
 chain_state = simulate(
     chain_model; stopping_rules = [Extinction(), MaxChainLength(5)], rng = StableRNG(3)
 )
-maximum(ind.generation for ind in chain_state.individuals; init = 0)
+maximum(ind.generation for ind in individuals(chain_state); init = 0)
 ```
 
 The printed value is the last generation reached: 5 if the rule stopped the
@@ -447,7 +447,7 @@ rare intervention that has one.
     needs, so compare a small simulation with and without your intervention,
     as above, before relying on it.
 
-## Where next
+## Next steps
 
 - [Writing an intervention](writing-interventions.md): every hook an
   intervention can use, the order in which they are called, ending an infection

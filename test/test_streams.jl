@@ -123,4 +123,24 @@ end
             @test baseline_crn[i].state[:risk] == noisy_crn[i].state[:risk]
         end
     end
+
+    @testset "copy is independent and keeps positions" begin
+        c = CommonRandomNumbers(7)
+        rand(c)
+        rand(EpiBranch.stream(c, 1, :a))
+        d = copy(c)
+        expected = (rand(copy(c)), rand(EpiBranch.stream(copy(c), 1, :a)))
+        @test (rand(d), rand(EpiBranch.stream(d, 1, :a))) == expected
+        # Drawing from the copy leaves the original where it was.
+        @test (rand(c), rand(EpiBranch.stream(c, 1, :a))) == expected
+    end
+
+    @testset "runs with a progression step other than Transition" begin
+        process = HomogeneousProcess(; transmission_rate = 4.0, population_size = 50)
+        run_it() = simulate(
+            ModelSpec(process; progression = [Recovery(delay = Exponential(3.0))]);
+            rng = CommonRandomNumbers(1)
+        ).cumulative_cases
+        @test run_it() == run_it()
+    end
 end

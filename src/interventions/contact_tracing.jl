@@ -78,15 +78,6 @@ function is_eligible(::SymptomaticParent, infector, contact, state)
     return _develops_symptoms(infector) && is_isolated(infector)
 end
 
-# `AlwaysEligible` and `NoTracing` were the previous names for tracing
-# everyone / no-one; their semantics are identical to the new policies,
-# so they are aliases.
-"""Another name for [`TraceEveryone`](@ref): every contact is traced."""
-const AlwaysEligible = TraceEveryone
-
-"""Another name for [`TraceNobody`](@ref): no contact is traced."""
-const NoTracing = TraceNobody
-
 # ── Composition ────────────────────────────────────────────────────
 #
 # Policies form a boolean algebra over the infector predicate. The
@@ -449,6 +440,7 @@ end
 # The key a quarantine records its own removals under, apart from the shared
 # history `set_isolated!` keeps, so that its block covers its own days only.
 const QUARANTINE_STRETCHES_KEY = :_quarantine_stretches
+const _QUARANTINE_START_KEY = :_quarantine_start
 
 """
     Quarantine(; duration)
@@ -512,6 +504,11 @@ function apply_trace!(q::Quarantine, contact, state, trace_time, rng)
     handles = get(contact.state, :_quarantine_removal_handles, nothing)
     contact.state[:_quarantine_removal_handles] =
         handles === nothing ? [handle] : push!(copy(handles), handle)
+    # The day the quarantine in force began, which is what a capacity is
+    # charged on: `:trace_time` is the earliest trace, including ones a
+    # capacity refused, and can predate every entry recorded.
+    contact.state[_QUARANTINE_START_KEY] =
+        min(_state_real(contact.state, _QUARANTINE_START_KEY, Inf), trace_time)
     # Filed here as well as by the built-in tracers (`_apply_trace!`), so a
     # tracer written outside the package, which calls this directly, still
     # counts the quarantine against the budget a wrapped tracer shares.
@@ -580,10 +577,6 @@ traced contacts who are not yet known cases.
   in whether and for how long traced contacts are quarantined.
 - `depth`: how far tracing reaches: 1 (default) traces contacts, 2 also
   contacts of contacts, and so on. Must be at least 1.
-
-The keyword `quarantine_on_trace` is deprecated: `quarantine_on_trace = true`
-means `action = Quarantine(duration = Inf)` and `false` means
-`action = FlagOnly()`. It still works but gives a deprecation warning.
 
 # Examples
 ```julia
@@ -683,38 +676,14 @@ function ContactTracing(;
         probability::Float64,
         isolation_to_trace_delay::Distribution,
         action::Union{TraceAction, Nothing} = nothing,
-        quarantine_on_trace::Union{Bool, Nothing} = nothing,
         eligibility::TraceEligibility = SymptomaticParent(),
         depth::Integer = 1
     )
-    action = _resolve_action(action, quarantine_on_trace)
+    action === nothing &&
+        throw(ArgumentError("ContactTracing requires `action`"))
     return ContactTracing(
         eligibility, probability, isolation_to_trace_delay, action; depth
     )
-end
-
-# `quarantine_on_trace` hid the action behind a `Bool`; `action` replaces it,
-# with no default, since a plausible policy might flag a contact without
-# quarantining it, or quarantine it for any length of time. The deprecated
-# keyword still resolves to an action for a release, mapping onto the same
-# indefinite `Quarantine` it always built.
-function _resolve_action(action, quarantine_on_trace)
-    if quarantine_on_trace !== nothing
-        action === nothing || throw(
-            ArgumentError(
-                "pass only one of `action` and the deprecated `quarantine_on_trace`"
-            )
-        )
-        Base.depwarn(
-            "`quarantine_on_trace` is deprecated, pass `action` instead " *
-                "(`Quarantine(duration = ...)` or `FlagOnly()`)",
-            :ContactTracing; force = true
-        )
-        return quarantine_on_trace ? Quarantine(duration = Inf) : FlagOnly()
-    end
-    action === nothing &&
-        throw(ArgumentError("ContactTracing requires `action`"))
-    return action
 end
 
 required_fields(t::_Tracing) = required_fields(t.eligibility)
@@ -796,8 +765,12 @@ function _reset_traced!(ind::Individual, owner::Symbol)
         kept = filter(h -> !(h in owned), standing)
         if isempty(kept)
             delete!(ind.state, :_quarantine_removal_handles)
+            delete!(ind.state, _QUARANTINE_START_KEY)
         else
             ind.state[:_quarantine_removal_handles] = kept
+            ind.state[_QUARANTINE_START_KEY] = minimum(
+                e[3] for e in get(ind.state, :_removal_entries, ()) if e[1] in kept
+            )
         end
     end
     delete!(ind.state, _own_trace_time_key(owner))
@@ -1135,16 +1108,17 @@ whose infector is found), `isolation_to_trace_delay` and `action` (required).
 
 # Engine differences
 
-By the time a case is itself confirmed and traced back, a branching process has
-usually already generated its infector's secondary cases in one step, together
-rather than over time, so there is nothing left for `SourceTracing` to shorten
-there; it still records the link. On a continuous-time model — the household
-and network processes, and the mass-action pools, where [`ContactTracing`](@ref)
-has no pairwise structure to act along at all — an infector's contacts already
-proposed but not yet resolved are checked against every intervention's
-[`competing_risk`](@ref) as each is reached, so quarantining the infector here
-blocks its remaining onward transmission without undoing any infection already
-settled.
+On every model the infector is found once the case itself is settled.
+Quarantining it blocks what it has not yet transmitted and leaves any infection
+already settled in place. A branching process runs on the same time-ordered
+race, so it shortens the infector's remaining transmission there as well as on
+the continuous-time household and network processes and the mass-action pools.
+On those, an infector's contacts already proposed but not yet resolved are
+checked against every intervention's [`competing_risk`](@ref) as each is
+reached. An infector isolated this way is offered to [`ContactTracing`](@ref)
+again, because its isolation began after it settled. Under [`OnIsolation`](@ref)
+its other contacts are then traced forward from the time it is quarantined, as
+for a case that isolated through testing.
 
 # Examples
 ```julia

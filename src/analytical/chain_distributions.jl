@@ -131,25 +131,27 @@ https://github.com/epiverse-trace/epichains, MIT).
 """
 function _gammaborel_logpdf(k, R, x::Integer, s::Integer = 1)
     (s < 1 || x < s) && return oftype(float(k), -Inf)
-    kx = k * x
-    # Grouped as `kx + (x - s)` rather than `(kx + x) - s`: at `x == s` this is
-    # exactly `kx`, so the two logabsgamma terms below cancel to exactly 0 even
-    # when `k` is so small that `kx` alone would sit at the Gamma pole. Left to
-    # right, `(k * x + x) - s` instead adds the tiny `kx` into `x` first, losing
-    # it, and leaves a spurious 0 where `kx` belongs.
-    gamma_term = logabsgamma(kx + (x - s))[1] - logabsgamma(kx)[1]
-    # `(x - s) * log(R / (k + R))` is always multiplied by zero at `x == s`,
-    # including when `k` is so large relative to `R` that `R / (k + R)` has
-    # underflowed to 0: skip the term outright rather than let `0 * -Inf`
-    # give `NaN`.
-    tail_term = x == s ? zero(gamma_term) : (x - s) * log(R / (k + R))
-    return (
-        log(s) - log(x)
-            + gamma_term
-            - logabsgamma(x - s + 1)[1]
-            + kx * log(k / (k + R))
-            + tail_term
-    )
+    # The gamma ratio `Γ(kx + x - s) / Γ(kx)` is the finite product of
+    # `kx + i` over `i = 0, …, x - s - 1`. Taking logs term by term and
+    # combining each with `log(R / (k + R))` and `-log((i + 1))` avoids
+    # subtracting `logabsgamma` values of size `kx` from each other. That
+    # subtraction loses all precision once `k` reaches about 1e10. At
+    # `x == s` the sum is empty, so the pole of the Gamma function at small
+    # `kx` never appears.
+    T = typeof(float(k * R))
+    acc = zero(T)
+    for i in 0:(x - s - 1)
+        if k > R
+            # `(kx + i) R / (k + R) = R x (1 + (i / x - R) / (k + R))`, so the
+            # large `k` cancels analytically.
+            acc += log(R * x) + log1p((i / x - R) / (k + R))
+        else
+            acc += log(k * x + i) + log(R / (k + R))
+        end
+        acc -= log(i + 1)
+    end
+    # `-kx * log1p(R / k)` is `kx * log(k / (k + R))` without the cancellation.
+    return log(s) - log(x) + acc - k * x * log1p(R / k)
 end
 
 Distributions.logpdf(d::GammaBorel, n::Integer) = _gammaborel_logpdf(d.k, d.R, n)
@@ -214,19 +216,17 @@ https://github.com/epiverse-trace/epichains, MIT).
 """
 function _poisson_gamma_logpdf(k, R, x::Integer)
     x < 1 && return oftype(float(k), -Inf)
-    return (
-        -log(x)
-            + (x - 1) * log(x)
-            - logabsgamma(x)[1]
-            +
-            logabsgamma(k + x - 1)[1]
-            -
-            logabsgamma(k)[1]
-            -
-            k * log(R / k)
-            -
-            (k + x - 1) * log(x + k / R)
-    )
+    # `Γ(k + x - 1) / Γ(k)` is the product of `k + i` for `i = 0, …, x - 2`.
+    # Dividing each factor by `k / R` gives `R (1 + i / k)`, which stays
+    # accurate for large `k`. The term `-(k + x - 1) log(x + k / R)` is split
+    # into `log(k / R)` and `log1p(x R / k)` parts, and the `k log(k / R)`
+    # part cancels exactly against `-k log(R / k)`.
+    L = log1p(x * R / k)
+    acc = zero(float(L))
+    for i in 0:(x - 2)
+        acc += log(R) + log1p(i / k)
+    end
+    return -log(x) + (x - 1) * log(x) - logabsgamma(x)[1] + acc - (k + x - 1) * L
 end
 
 function Distributions.logpdf(d::PoissonGammaChainSize, n::Integer)
@@ -300,26 +300,54 @@ function _independent_chain_size_logpdf(d, x::Integer, s::Integer)
 end
 
 """
+    _chain_size_log_infinite_mass(d, s)
+
+Internal: `log` of the probability that a chain started by `s` index cases
+never ends (`-Inf` when it always does), or `nothing` where there is no
+closed form for it. It is `log(1 - q^s)` for the extinction probability `q`.
+"""
+_chain_size_log_infinite_mass(d, s::Integer) = nothing
+function _chain_size_log_infinite_mass(d::Borel, s::Integer)
+    d.μ <= 1 && return oftype(float(d.μ), -Inf)
+    q = extinction_probability(Poisson(d.μ))
+    return _log1mexp(s * log(q))
+end
+function _chain_size_log_infinite_mass(d::GammaBorel, s::Integer)
+    d.R <= 1 && return oftype(float(d.R), -Inf)
+    q = extinction_probability(d.R, d.k)
+    return _log1mexp(s * log(q))
+end
+
+"""
     _chain_size_right_tail_logprob(d, x, s)
 
 Internal: multi-seed log-survival of a chain size distribution `d`,
-`log P(X ≥ x | s)`, computed as `log(1 − Σ_{j=s}^{x-1} P(X = j | s))`.
-For super-critical processes the missing mass `1 − Σ_{j ≥ s} P(X = j)`
-is the "chain takes off" probability and is included automatically.
+`log P(X ≥ x | s)`. While the tail `1 − Σ_{j=s}^{x-1} P(X = j | s)` stays
+above `1e-4` the complement itself is used. It is accurate there and, unlike
+a truncated upward sum, also for near-critical laws with a heavy tail. Below
+that the complement loses relative precision, and all of it once the tail
+falls below machine epsilon. The tail is then summed
+upwards from `x` in log space, with the infinite-chain mass added for a
+supercritical process. Distributions with no closed form for that mass
+(see `_chain_size_log_infinite_mass`) keep the complement throughout, and
+return `-Inf` when the partial sum reaches 1.
 
-Returns `0.0` when `x ≤ s` (trivially `P(X ≥ s) = 1`) and `-Inf` when
-the partial sum reaches or exceeds 1 (numerical underflow of the tail).
-Used by the real-time mixture likelihood in
-`loglikelihood(::ChainSizes, ...)`.
+Returns `0.0` when `x ≤ s` (trivially `P(X ≥ s) = 1`). Used by the real-time
+mixture likelihood in `loglikelihood(::ChainSizes, ...)`.
 """
 function _chain_size_right_tail_logprob(d, x::Integer, s::Integer)
     (s < 1 || x < 1) && return -Inf
     x <= s && return zero(_chain_size_logpdf(d, s, s))
     cum = zero(exp(_chain_size_logpdf(d, s, s)))
+    log_inf = _chain_size_log_infinite_mass(d, s)
     for j in s:(x - 1)
         cum += exp(_chain_size_logpdf(d, j, s))
-        cum >= one(cum) && return oftype(cum, -Inf)
+        if one(cum) - cum < 1.0e-4 && log_inf !== nothing
+            log_finite = _streaming_logsumexp(n -> _chain_size_logpdf(d, n, s), x; max_n = max(100_000, 10 * x))
+            return _logsumexp2(log_finite, log_inf)
+        end
     end
+    cum >= one(cum) && return oftype(cum, -Inf)
     p = one(cum) - cum
     return p > zero(p) ? log(p) : oftype(cum, -Inf)
 end
@@ -345,8 +373,8 @@ end
 # dedicated `cdf(d, ::Integer)` method calls straight back into that same
 # fallback and overflows the stack. Defining `cdf` here breaks the cycle
 # and, through Distributions' own `ccdf`/`logcdf` defaults, gives those for
-# free; `logccdf` is reused from `_chain_size_right_tail_logprob`, already
-# written to avoid cancellation in the tail.
+# too; `logccdf` reuses `_chain_size_right_tail_logprob`, which sums the
+# tail directly where the complement would lose precision.
 Distributions.cdf(d::Borel, n::Integer) = _chain_size_cdf(d, n)
 Distributions.logccdf(d::Borel, n::Integer) = _chain_size_right_tail_logprob(d, n + 1, 1)
 
@@ -395,7 +423,9 @@ pdf(d, 3)                   # probability a chain has exactly 3 cases
 sum(pdf(d, n) for n in 1:10)  # probability a chain has at most 10 cases
 ```
 """
-chain_size_distribution(d::NegativeBinomial) = GammaBorel(d.r, mean(d))
+function chain_size_distribution(d::NegativeBinomial)
+    return GammaBorel(d.r, _negbin_mean(d))
+end
 
 # `chain_size_distribution(model::TransmissionModel; ...)` lives in
 # `src/likelihood_dists.jl` so the kwargs-bearing wrapper path and the

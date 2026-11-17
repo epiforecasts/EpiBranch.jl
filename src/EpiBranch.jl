@@ -4,7 +4,6 @@ using DataAPI: DataAPI
 using DataFrames
 using Dates
 using Distributions
-using ForwardDiff
 using LinearAlgebra: LinearAlgebra, Diagonal, I, Symmetric, cholesky, diag, eigvals, issuccess
 using QuadGK
 using Random
@@ -17,6 +16,8 @@ include("docstrings.jl")
 # Core types
 include("individual_state.jl")
 include("types.jl")
+include("population.jl")
+include("mixing_values.jl")
 include("state_accessors.jl")
 include("options.jl")
 include("distributions.jl")
@@ -32,6 +33,7 @@ include("interventions/contact_tracing.jl")
 include("interventions/vaccination.jl")
 include("interventions/wrapper.jl")
 include("interventions/scheduled.jl")
+include("interventions/per_group.jl")
 include("interventions/capacity.jl")
 include("interventions/held_capacity.jl")
 include("interventions/on_routes.jl")
@@ -46,6 +48,8 @@ include("transitions/transition.jl")
 include("transitions/reporting.jl")
 include("transitions/hospitalisation.jl")
 include("transitions/outcome.jl")
+include("transitions/event_step.jl")
+include("transitions/testing.jl")
 
 # Signals: population quantities read off a simulated state, which every
 # engine that produces one can compute (transition counts per step,
@@ -124,6 +128,7 @@ include("models/mixing.jl")
 # ModelSpec: compose a process with its forcing/observation layers.
 include("model_spec.jl")
 include("observed_cases.jl")
+include("case_definition.jl")
 
 # Approximate population dynamics as state-space models: mean-field and
 # linear-noise approximations of a closed population, and a hybrid that
@@ -178,11 +183,15 @@ include("progression_likelihood.jl")
 include("serial_interval.jl")
 
 # Exports — types
+export AbstractCaseDefinition, ClinicalCaseDefinition
+export CaseHistory, event_time, has_happened
+export case_classification, case_classification_changes
 export TransmissionModel, BranchingProcess, Infectiousness, OffspringTimes,
     RenewalOffspring,
     HomogeneousProcess, MixingProcess, ModelSpec
 export MeanFieldProcess, MeanFieldState, LinearNoiseProcess, LinearNoiseState
 export StratifiedContacts, flatten_contacts, contacts_from_table, mixing_rate
+export Mixing, FrequencyDependent, DensityDependent
 export read_contacts, ContactFileFormat, CSVFormat, NetCDFFormat
 export MixingMeanFieldProcess, MixingMeanFieldState
 export MixingLinearNoiseProcess, MixingLinearNoiseState
@@ -193,13 +202,14 @@ export GenerationCounts, simulate_by_generation
 export AbstractDepletion, PerContactDepletion, StartOfGenerationDepletion
 export transmission_timing, implied_R
 export Individual, InfectionEpisode, close_episode!, SimulationState
+export AbstractSimulationState, individuals
 export SimOpts
 export AbstractStoppingRule, Extinction, MaxCases, MaxGenerations, MaxTime, should_stop
 export AbstractIntervention, Isolation, ContactTracing, SourceTracing
 export IsolationEligibility, SymptomaticOnly, AllCases
 export is_eligible_for_isolation
-export TraceEligibility, AlwaysEligible, SymptomaticParent
-export OnSymptomOnset, OnLabConfirmation, OnIsolation, TraceEveryone, TraceNobody, NoTracing
+export TraceEligibility, SymptomaticParent
+export OnSymptomOnset, OnLabConfirmation, OnIsolation, TraceEveryone, TraceNobody
 export PreviouslyTraced
 export AnyOf, AllOf, NoneOf
 export TraceRate, ConstantRate
@@ -211,22 +221,23 @@ export AbstractEffectMode, LeakyMode, AllOrNothingMode
 export Scheduled, Risk
 export AbstractTrigger, is_triggered!, trigger_can_lapse, required_transitions,
     Infections, ReportedCases, opened_at, After
-export CapacityConstrained, capacity_usage, default_capacity_priority
+export PerGroup, CapacityConstrained, capacity_usage, default_capacity_priority
 export RefusalPolicy, DropRefused, DeferRefused
 export HeldCapacity, held_usage, release_capacity!
 export OnRoutes
 export RouteWindow, window_open, window_close
 export is_active, intervention_time
 export AbstractClinicalTransition, Transition, Reporting, Hospitalisation, Death, Recovery
+export Testing, AbstractAssay, Assay, within_host
 export is_terminal, terminal_event, terminal_target, exclusive_probabilities
 export Signal, TransitionCount, Prevalence
-export ObservationModel, PerCaseObservation, NoObservation, MinimumSize, ChainDetection,
+export ObservationModel, NoObservation, MinimumSize, ChainDetection,
     observe
 export ContactRecorder, NoContactRecorder, ExposedContactRecorder
 export single_type_offspring
 
 # Exports — sentinel types
-export NoPopulation, NoAttributes, NoTypeLabels
+export Population, NoPopulation, NoAttributes, NoTypeLabels
 export NoAgeDistribution, NoCases
 
 # Exports — accessors
@@ -252,7 +263,7 @@ export IndexChainSize
 export ThinnedChainSize, TruncatedChainSize, DetectedChainSize
 
 # Exports — attributes functions
-export clinical_presentation, demographics, transmission_traits, groups,
+export clinical_presentation, demographics, age_bands, transmission_traits, groups,
     group_attribute, vaccine_acceptance
 
 # Exports — simulation
@@ -265,7 +276,7 @@ export generate_offspring, contacts_of
 export event_time_metadata, linelist, contacts, chain_statistics, compute_trace_level!
 export realised_generation_interval, realised_generation_intervals,
     realised_serial_interval, realised_serial_intervals
-export containment_probability, is_extinct, generation_R, weekly_incidence, scenario_sweep
+export containment_probability, is_extinct, generation_R, weekly_incidence, incidence, scenario_sweep
 export summarise
 
 # Exports — analytical

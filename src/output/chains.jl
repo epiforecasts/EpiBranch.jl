@@ -29,7 +29,7 @@ function chain_statistics(state::SimulationState)
     chain_size = Dict{Int, Int}()
     chain_maxgen = Dict{Int, Int}()
 
-    for ind in state.individuals
+    for ind in individuals(state)
         is_infected(ind) || continue
         cid = ind.chain_id
         chain_size[cid] = get(chain_size, cid, 0) + 1

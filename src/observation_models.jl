@@ -12,9 +12,8 @@ reporting takes, or which outbreaks are recorded at all. Pass one to a model
 as `observation = ...`. Built in: [`NoObservation`](@ref) (every case seen),
 [`MinimumSize`](@ref) (only chains of at least a given size are recorded),
 [`ChainDetection`](@ref) (a whole chain is recorded with a probability that
-grows with its size) and the deprecated [`PerCaseObservation`](@ref) (each
-case detected with some probability, after a reporting delay; use a
-[`Reporting`](@ref) step instead).
+grows with its size). To report each case with some probability after a
+delay, use a [`Reporting`](@ref) step in the model's `progression`.
 
 To write a new one, define [`observe`](@ref) (for the likelihood) and
 [`apply_observation!`](@ref EpiBranch.apply_observation!) (for simulation)
@@ -22,107 +21,6 @@ for it; see "Adding an observation model" in the Extending
 EpiBranch guide.
 """
 abstract type ObservationModel end
-
-"""
-    PerCaseObservation(; detection_prob = 1.0, delay = Dirac(0.0),
-                       from = :onset_time)
-
-Deprecated: report cases with a [`Reporting`](@ref) step in the model's
-`progression` instead. `simulate`, [`progression_loglik`](@ref), the chain-size
-likelihood and [`end_of_outbreak_probability`](@ref) all read the reporting
-probability from that step.
-
-Under-reporting and reporting delay: each case is reported independently with
-probability `detection_prob`, `delay` days after symptom onset (or after
-`from`). Each simulated case records `:reported` and `:reporting_time`.
-
-- `detection_prob`: the probability a case is reported, a number, a
-  distribution, or a function of the random number generator and the
-  individual, `(rng, ind) -> ...` (for example to make reporting depend on
-  age). It must be above 0 and at most 1; leave the observation model out
-  rather than setting it to 0.
-- `delay`: days from `from` to report, as a number, distribution or such a
-  function.
-- `from`: the time reporting is measured from. Symptom onset by default,
-  because surveillance follows onset; `from = ind -> ind.infection_time`
-  measures from infection. A case without an onset time (for example an
-  asymptomatic case from `clinical_presentation`) is measured from its
-  infection time.
-
-`detection_prob = 1.0, delay = Dirac(0.0)` (the defaults) means every case is
-seen at once; `detection_prob = ρ, delay = Dirac(0.0)` is under-reporting
-alone.
-
-!!! note
-    The closed-form chain-size results ([`observe`](@ref),
-    [`ThinnedChainSize`](@ref)) need `detection_prob` to be a single number
-    and give an error otherwise. For reporting that varies between cases, use
-    the simulation-based likelihood.
-
-# Examples
-
-```julia
-# 60% of cases reported, on average 3 days after onset
-PerCaseObservation(detection_prob = 0.6, delay = Gamma(3.0, 1.0))
-```
-
-Report cases with this or with a [`Reporting`](@ref) step in the progression,
-not both: they would each write the case's report, and `simulate` stops with
-an error if a model has both.
-"""
-struct PerCaseObservation{P, D, F} <: ObservationModel
-    detection_prob::P
-    delay::D
-    from::F
-end
-
-function PerCaseObservation(;
-        detection_prob = 1.0,
-        delay = Dirac(0.0),
-        from = :onset_time
-    )
-    Base.depwarn(
-        "`PerCaseObservation` is deprecated; use a `Reporting` progression " *
-            "step instead, which `simulate`, `progression_loglik`, the " *
-            "chain-size likelihood and `end_of_outbreak_probability` all read " *
-            "directly.",
-        :PerCaseObservation; force = true
-    )
-    if detection_prob isa Real
-        0.0 < detection_prob <= 1.0 || throw(
-            ArgumentError(
-                "detection_prob must be in (0, 1], got $detection_prob"
-            )
-        )
-    end
-    return PerCaseObservation(detection_prob, delay, from)
-end
-
-# Two-argument positional form, anchored at the default `:onset_time`.
-function PerCaseObservation(detection_prob, delay)
-    return PerCaseObservation(; detection_prob, delay)
-end
-
-function Base.show(io::IO, o::PerCaseObservation)
-    return print(
-        io, "PerCaseObservation(detection_prob=$(o.detection_prob), ",
-        "delay=$(o.delay), from=$(o.from))"
-    )
-end
-
-"""Extract a scalar `detection_prob` for analytical paths that need it
-(e.g. `ThinnedChainSize`). Throws if the observation model uses
-per-individual variation (a `Distribution` or callable)."""
-scalar_detection_prob(o::PerCaseObservation{<:Real}) = float(o.detection_prob)
-function scalar_detection_prob(o::PerCaseObservation)
-    throw(
-        ArgumentError(
-            "Closed-form analytics require a scalar detection_prob; " *
-                "got $(typeof(o.detection_prob)). Use the simulation-based " *
-                "likelihood instead, or pass a Real value."
-        )
-    )
-end
 
 """
     MinimumSize(min_size)
@@ -140,8 +38,7 @@ chain reached at least `min_size`" includes those chains as well as finite
 ones.
 
 It acts on whole chains rather than on individual cases, so it leaves the
-simulated cases themselves unchanged. A model has one observation model, so
-`MinimumSize` cannot be combined with [`PerCaseObservation`](@ref).
+simulated cases themselves unchanged.
 """
 struct MinimumSize <: ObservationModel
     min_size::Int
@@ -169,8 +66,7 @@ independently brings its chain to attention with probability `q`
 It acts on whole chains rather than on individual cases: every case in a
 recorded chain is marked `:reported`, and every case in a missed one is not.
 Because a model has only one observation model, `ChainDetection` cannot be
-combined with [`PerCaseObservation`](@ref) or a [`Reporting`](@ref)
-progression step.
+combined with a [`Reporting`](@ref) progression step.
 
 # Examples
 

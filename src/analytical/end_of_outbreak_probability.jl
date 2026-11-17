@@ -16,9 +16,12 @@
 #
 # with `S(τ) = ccdf(generation_time, τ)`. Reduces to the offspring
 # zero-probability `G(0) = (k/(k+R))^k` at `τ = 0` and tends to 1 as
-# `τ → ∞`. Reference: Thompson, Morgan & Jansen, *Phil Trans B* 2019,
+# `τ → ∞`. Reference: Thompson, Morgan & Jalava, *Phil Trans B* 2019,
 # in the per-case Markov-property reduction at the most recent
 # observed case.
+#
+# Also assumes no reporting delay: every case infected before the evaluation
+# date is already known.
 #
 # Under-reporting (`ρ < 1`) needs the full Volterra recursion for the
 # per-case η(τ) and is not implemented here.
@@ -27,9 +30,12 @@
     end_of_outbreak_probability(R, k, generation_time::Distribution, τ::Real)
 
 Probability that a single case causes no further cases, given that it was
-`τ` days ago. Assumes `NegBin(R, k)` offspring, a generation time
-distribution `generation_time` (days) and that every case is reported.
-Following Thompson, Morgan & Jansen (2019, Phil Trans B), it is
+`τ` days ago. `τ` is measured on the same scale as `generation_time`: from
+the case's infection for a generation time, or from its onset if you pass a
+serial interval instead. Assumes `NegBin(R, k)` offspring, a generation time
+distribution `generation_time` (days) and that every case is reported without
+delay: every case infected before the evaluation date is already known.
+Following Thompson, Morgan & Jalava (2019, Phil Trans B), it is
 
     ((k + R · (1 − S(τ))) / (k + R))^k
 
@@ -44,6 +50,11 @@ earliest rather than its most recent case. For a cluster of several cases
 still capable of transmitting, pass every case's own `τ` to the vector method
 below, which combines them properly. Using this method with only the most
 recent case's `τ` overstates the probability that the cluster is over.
+
+With a reporting delay, a cluster that looks quiet for `τ` days may already
+hold an infected case that has not been reported yet. The result then
+overstates the probability that the cluster is over. Measure `τ` to the last date by which
+reports are complete, or simulate.
 
 Use it as `prob_concluded` in `loglikelihood(::ChainSizes, ...)` or
 [`chain_size_distribution`](@ref) for real-time cluster data, where some
@@ -95,10 +106,14 @@ end
 
 End-of-outbreak probability using the offspring and generation time
 distributions of a `BranchingProcess`, `τ` days after the most recent case.
+`τ` is measured on the same scale as the generation time: from that case's
+infection, or from its onset if the model's kernel is a serial interval.
 
-This assumes every case is reported. Under-reporting (a [`Reporting`](@ref)
-step with a probability below 1, or any deprecated
-[`PerCaseObservation`](@ref)) needs the recursion of Thompson, Morgan & Jansen
+This assumes every case is reported with no delay between infection and
+report. With a reporting delay it overstates the probability that the outbreak
+is over; measure `τ` to the last date by which reports are complete, or
+simulate. Under-reporting (a [`Reporting`](@ref) step with a probability below
+1) needs the recursion of Thompson, Morgan & Jalava
 (2019), which is not implemented, and gives an error; use a model that reports
 every case for the full-reporting value. A model whose offspring law is
 reshaped (a finite `population_size`, an infectiousness window with `until`,
@@ -124,21 +139,7 @@ function end_of_outbreak_probability(model::Union{BranchingProcess, ModelSpec}, 
     return end_of_outbreak_probability(off, gt, τ)
 end
 
-_eoo_assert_full_reporting(::NoObservation) = nothing
-function _eoo_assert_full_reporting(::PerCaseObservation)
-    throw(
-        ArgumentError(
-            "end_of_outbreak_probability under per-case under-reporting (ρ < 1) " *
-                "is not implemented. The closed form here assumes full reporting; " *
-                "the ρ < 1 case needs the Volterra recursion of Thompson, Morgan & " *
-                "Jansen (2019). Evaluate on a model with no observation to compute " *
-                "the ρ = 1 value."
-        )
-    )
-end
-
 function _eoo_assert_full_reporting(obs, progression, attrs)
-    _eoo_assert_full_reporting(obs)
     ρ = _effective_reporting_probability(progression, attrs)
     (ρ === nothing || ρ >= 1.0) && return nothing
     throw(
@@ -146,7 +147,7 @@ function _eoo_assert_full_reporting(obs, progression, attrs)
             "end_of_outbreak_probability under per-case under-reporting (ρ < 1) " *
                 "is not implemented. The closed form here assumes full reporting; " *
                 "the ρ < 1 case needs the Volterra recursion of Thompson, Morgan & " *
-                "Jansen (2019). Evaluate on a model whose " *
+                "Jalava (2019). Evaluate on a model whose " *
                 "`Reporting` step reaches every case (probability 1, from infection or with " *
                 "no asymptomatic cases), or has none, to compute the ρ = 1 value."
         )
@@ -158,7 +159,8 @@ end
 
 End-of-outbreak probability for each of several clusters, given the days
 since each cluster's most recent case. Returns one value per cluster, ready
-to pass as `prob_concluded` to `loglikelihood(::ChainSizes, ...)`.
+to pass as `prob_concluded` to `loglikelihood(::ChainSizes, ...)`. Like the
+scalar method, it assumes full reporting with no reporting delay.
 """
 function end_of_outbreak_probability(
         R::Real, k::Real, generation_time::Distribution,
@@ -171,8 +173,10 @@ end
     end_of_outbreak_probability(R, k, gt, τs::AbstractVector, secondary_cases::AbstractVector{<:Integer})
     end_of_outbreak_probability(offspring::NegativeBinomial, gt, τs::AbstractVector, secondary_cases::AbstractVector{<:Integer})
 
-Probability that a whole cluster is over, given the time since onset of every
-one of its cases (`τs`) and the number of secondary cases each is already
+Probability that a whole cluster is over, given the time since every one of its
+cases (`τs`), each measured on the same scale as `gt`: from the case's
+infection for a generation time, or from its onset if you pass a serial
+interval instead. It also takes the number of secondary cases each is already
 known to have caused (`secondary_cases`). A cluster is over only once none of
 its cases transmits again: this is the product, over its cases, of
 [`end_of_outbreak_probability`](@ref)`(R, k, gt, τs[i])` raised to the power
@@ -180,6 +184,11 @@ its cases transmits again: this is the product, over its cases, of
 known to have caused more secondary cases is more likely to cause further
 ones too, so it contributes less to the cluster being over than a case with
 the same `τ` and no known onward transmission.
+
+This assumes full reporting with no reporting delay: the listed cases and
+`secondary_cases` are taken as complete up to the evaluation date. With a
+delay, measure `τs` to the last date by which reports are complete, or
+simulate.
 
 Pass `zeros(Int, length(τs))` for `secondary_cases` when the transmission
 tree within the cluster is unknown; this reduces to the plain product of the
@@ -190,10 +199,10 @@ per-case values,
 
 ```julia
 offspring = NegBin(0.95, 0.18)
-gt = Gamma(2.7, 5.7)             # mean about 15 days
-onsets = [0.0, 3.0, 5.0, 6.0]    # four cases
+gt = Gamma(2.7, 5.7)             # generation time, mean about 15 days
+infections = [0.0, 3.0, 5.0, 6.0]  # infection times of four cases
 t = 10.0
-τs = t .- onsets
+τs = t .- infections             # time since each case's infection
 secondary_cases = [2, 1, 0, 0]   # case 1 infected two, case 2 one
 end_of_outbreak_probability(offspring, gt, τs, secondary_cases)
 ```
@@ -264,7 +273,7 @@ function end_of_outbreak_inputs(
 end
 
 function end_of_outbreak_inputs(state::SimulationState, at::Real; by::Symbol = :onset)
-    cases = [ind for ind in state.individuals if is_infected(ind)]
+    cases = [ind for ind in individuals(state) if is_infected(ind)]
     times = [_weekly_time(by, ind) for ind in cases]
     observed = findall(t -> isfinite(t) && t <= at, times)
     secondary_cases = Dict(cases[i].id => 0 for i in observed)

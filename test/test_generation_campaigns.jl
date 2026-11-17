@@ -11,16 +11,15 @@ EpiBranch.trigger_time(e::_EligibleAt, infector, state) = e.time
 
 @testset "Vaccination campaigns in generation counts" begin
     matrix = [1.2 0.3; 0.3 1.2]
-    discrete(; N = 200_000) = BranchingProcess(
-        matrix, R -> Poisson(R), EpiBranch.NoGenerationTime(); population_size = N
+    discrete(; sizes = [40_000, 160_000]) = BranchingProcess(
+        matrix, R -> Poisson(R), EpiBranch.NoGenerationTime(); population = Population(sizes)
     )
     group(; efficacy = 0.5, kwargs...) = GroupVaccination(;
         efficacy, group_key = :type, kwargs...
     )
     run_counts(spec; seed = 1, kwargs...) = simulate_by_generation(
         spec; n_initial = [10, 2], max_generations = 7,
-        population_by_type = [40_000, 160_000], depletion = StartOfGenerationDepletion(),
-        generation_length = 14.0, rng = StableRNG(seed), kwargs...
+        depletion = StartOfGenerationDepletion(), generation_length = 14.0, rng = StableRNG(seed), kwargs...
     )
 
     @testset "doses of a generation's interval" begin
@@ -57,11 +56,11 @@ EpiBranch.trigger_time(e::_EligibleAt, infector, state) = e.time
     end
 
     @testset "a dose reaches the susceptibles it finds, and protects with efficacy" begin
+        sizes = [10_000, 10_000]
         campaign = EpiBranch._campaign(
             CapacityConstrained(group(; efficacy = 0.6); budget_per_period = 1_000.0),
             (0.0, Inf), nothing
         )
-        sizes = [10_000, 10_000]
         removed = [
             begin
                 s = [8_000, 2_000]
@@ -69,10 +68,14 @@ EpiBranch.trigger_time(e::_EligibleAt, infector, state) = e.time
                 [8_000, 2_000] .- s
             end for seed in 1:400
         ]
-        # Each type has its own 1,000 doses, a share 0.8 or 0.2 of which reach
-        # susceptibles, and 0.6 of those protect.
-        @test isapprox(mean(first, removed), 1_000 * 0.8 * 0.6; rtol = 0.03)
-        @test isapprox(mean(last, removed), 1_000 * 0.2 * 0.6; rtol = 0.05)
+        # Equal types share the 1,000 doses and get 500 each. A fraction 0.8 or
+        # 0.2 of them reaches susceptibles, and 0.6 of those protect.
+        @test isapprox(mean(first, removed), 500 * 0.8 * 0.6; rtol = 0.03)
+        @test isapprox(mean(last, removed), 500 * 0.2 * 0.6; rtol = 0.05)
+        # Doses are given out whole: the types together get all of them.
+        s = [8_000, 2_000]
+        pool = EpiBranch._doses_by_type(StableRNG(1), campaign, 0.0, 14.0, sizes)
+        @test sum(pool) == 1_000
     end
 
     @testset "a campaign with no doses changes nothing" begin
@@ -114,7 +117,7 @@ EpiBranch.trigger_time(e::_EligibleAt, infector, state) = e.time
         whole = run_counts(spec)
         first_part = simulate_by_generation(
             spec; n_initial = [10, 2], max_generations = 3,
-            population_by_type = [40_000, 160_000], depletion = StartOfGenerationDepletion(),
+            depletion = StartOfGenerationDepletion(),
             generation_length = 14.0, rng = StableRNG(1)
         )
         continued = simulate(spec, first_part; max_generations = 7)
@@ -164,7 +167,7 @@ EpiBranch.trigger_time(e::_EligibleAt, infector, state) = e.time
             )
         )
         @test occursin("start_time", err(spec(Scheduled(capacity; start_after_cases = 5))))
-        @test occursin("finite population", err(spec(capacity; model = BranchingProcess(matrix, R -> Poisson(R), EpiBranch.NoGenerationTime())); population_by_type = nothing))
+        @test occursin("finite population", err(spec(capacity; model = BranchingProcess(matrix, R -> Poisson(R), EpiBranch.NoGenerationTime()))))
         @test occursin(
             "BranchingProcess",
             err(ModelSpec(HomogeneousProcess(transmission_rate = 0.1, population_size = 100); interventions = [capacity]))
@@ -191,7 +194,7 @@ EpiBranch.trigger_time(e::_EligibleAt, infector, state) = e.time
                 spec; index_types = [fill(1, 10); fill(2, 2)], max_generations = generations,
                 rng = StableRNG(seed), max_cases = 10^6
             )
-            return count(i -> is_infected(i) && i.generation <= generations, state.individuals)
+            return count(i -> is_infected(i) && i.generation <= generations, individuals(state))
         end
         by_counts(spec, seed) = run_counts(spec; seed).cumulative_cases
         for ivs in ([], [campaign])
@@ -202,16 +205,9 @@ EpiBranch.trigger_time(e::_EligibleAt, infector, state) = e.time
         end
     end
 
-    @testset "GroupVaccination budgets are kept per type" begin
+    @testset "GroupVaccination budgets are shared by the types" begin
         gv = group()
         a = Individual(id = 1, state = Dict{Symbol, Any}(:type => 1))
-        b = Individual(id = 2, state = Dict{Symbol, Any}(:type => 2))
-        @test EpiBranch.resource_key(gv, a, nothing) == 1
-        @test EpiBranch.resource_key(gv, b, nothing) == 2
-        @test EpiBranch.resource_key(Scheduled(gv; start_time = 1.0), b, nothing) == 2
-        @test EpiBranch.resource_key(
-            GroupVaccination(efficacy = 0.5, group_key = :community),
-            Individual(id = 3, state = Dict{Symbol, Any}(:community => :north)), nothing
-        ) === nothing
+        @test EpiBranch.resource_key(gv, a, nothing) === nothing
     end
 end

@@ -34,6 +34,12 @@ function simulate_once(
         model::HouseholdProcess, sim_opts::SimOpts;
         interventions, attributes, progression, observation, recorder, rng
     )
+    sim_opts.n_initial_given && throw(
+        ArgumentError(
+            "HouseholdProcess seeds one index case in every household and does not " *
+                "support n_initial; use initial_cases to choose the index cases"
+        )
+    )
     from = something(model.from, infectious_from(progression))
     Tobs = model.obs_end
 
@@ -73,6 +79,7 @@ function simulate_once(
         ),
         introduction = _ext_active(model.external_hazard) ?
             (EpiBranch._ext_prepare(model.external_hazard), Tobs) : nothing,
+        seeded = initial_cases,
         targets = (inf, st) -> (
             (oid, _pairkernel(model.kernel, inf, oid, st, from))
                 for oid in model.members[model.household_of[inf]] if oid != inf
@@ -117,7 +124,7 @@ end
 function _seed_external!(best, members, state, extsrc, Tobs, rng, skip = ())
     for k in eachindex(members)
         members[k] in skip && continue
-        t = _ext_draw(rng, extsrc, members[k], state.individuals[members[k]].susceptibility)
+        t = _ext_draw(rng, extsrc, members[k], individuals(state)[members[k]].susceptibility)
         t <= Tobs && (best[k] = t)
     end
     return nothing
@@ -127,8 +134,8 @@ end
 # susceptible) pair: a shared distribution, or a callable for covariate models.
 function _pairkernel(k, i, j, state, from)
     return EpiBranch.pair_kernel(
-        k, i, j, state.individuals[i].infection_time,
-        EpiBranch._window_open(state.individuals[i], from), state
+        k, i, j, individuals(state)[i].infection_time,
+        EpiBranch._window_open(individuals(state)[i], from), state
     )
 end
 

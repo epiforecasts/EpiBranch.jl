@@ -65,8 +65,8 @@ Chain size distribution when the reproduction number varies between chains
 probabilities of `build(θ)`, averaged over `θ` drawn from `mixing`.
 [`chain_size_distribution`](@ref) returns it.
 
-The average is computed by numerical integration over the central 99.8% of
-`mixing` (its 0.001 to 0.999 quantiles).
+The average sums over the support of a `DiscreteNonParametric` `mixing` and
+is otherwise computed by numerical integration over the whole of `mixing`.
 """
 struct ChainSizeMixture{F, D <: Distribution} <: ChainSizeLaw
     build::F
@@ -79,10 +79,10 @@ Distributions.insupport(::ChainSizeMixture, n::Integer) = n >= 1
 
 function Distributions.logpdf(d::ChainSizeMixture, n::Integer)
     n < 1 && return -Inf
-    lo = quantile(d.mixing, 1.0e-3)
-    hi = quantile(d.mixing, 1 - 1.0e-3)
-    integrand = θ -> pdf(chain_size_distribution(d.build(θ)), n) * pdf(d.mixing, θ)
-    prob, _ = quadgk(integrand, lo, hi)
+    # No absolute tolerance: chain size probabilities can be far below 1e-10.
+    prob = _mixture_expectation(
+        θ -> pdf(chain_size_distribution(d.build(θ)), n), d.mixing; atol = 0.0
+    )
     return prob > 0.0 ? log(prob) : -Inf
 end
 
@@ -123,8 +123,8 @@ function loglikelihood(data::ChainSizeClasses, o::ClusterMixed)
 end
 
 """
-    BranchingProcess(offspring::ClusterMixed, gt; population_size=NoPopulation())
-    BranchingProcess(offspring::ClusterMixed; population_size=NoPopulation())
+    BranchingProcess(offspring::ClusterMixed, gt; population=NoPopulation())
+    BranchingProcess(offspring::ClusterMixed; population=NoPopulation())
 
 A branching process in which the reproduction number varies between chains:
 each chain draws `θ` once, from the `mixing` distribution of the
@@ -137,19 +137,22 @@ Add interventions, population characteristics or an observation model with a
 """
 function BranchingProcess(
         offspring::ClusterMixed, gt;
-        population_size::Union{Int, NoPopulation} = NoPopulation()
+        population = NoPopulation(), population_size = NoPopulation()
     )
     return BranchingProcess(
-        (Infectiousness(offspring; kernel = gt),), population_size, 1,
-        NoTypeLabels()
+        (Infectiousness(offspring; kernel = gt),),
+        _branching_population(population, population_size, 1), 1, NoTypeLabels()
     )
 end
 
 function BranchingProcess(
         offspring::ClusterMixed;
-        population_size::Union{Int, NoPopulation} = NoPopulation()
+        population = NoPopulation(), population_size = NoPopulation()
     )
-    return BranchingProcess((Infectiousness(offspring),), population_size, 1, NoTypeLabels())
+    return BranchingProcess(
+        (Infectiousness(offspring),),
+        _branching_population(population, population_size, 1), 1, NoTypeLabels()
+    )
 end
 
 """
@@ -167,7 +170,7 @@ function draw_offspring(
         if individual.parent_id == 0
             rand(rng, offspring.mixing)
         else
-            state.individuals[individual.parent_id].state[:cluster_theta]
+            individuals(state)[individual.parent_id].state[:cluster_theta]
         end
     end
     return rand(rng, offspring.build(θ))
@@ -239,11 +242,13 @@ end
 reproduction_number(o::ClusterMixed{PoissonFamily}) = mean(o.mixing)
 
 """
-    extinction_probability(o::ClusterMixed; tol=1e-10, max_iter=1000)
+    extinction_probability(o::ClusterMixed; n_initial=1, tol=1e-10, max_iter=1000)
 
-Probability that a chain started by a single index case dies out when the
-reproduction number varies between chains: the extinction probability of
-`build(θ)`, averaged over `θ` drawn from `mixing`. Chains whose `θ` gives a
+Probability that chains started by `n_initial` index cases die out. For one
+index case it is the extinction probability of `build(θ)`, averaged over `θ`
+drawn from `mixing`. Each index case draws its own `θ`, so the chains are
+independent and the result is that average raised to the power `n_initial`,
+not the average of the power. Chains whose `θ` gives a
 mean of at most 1 die out with certainty (assuming the number of secondary
 cases is not fixed).
 
@@ -251,11 +256,13 @@ cases is not fixed).
 distribution over a set of values.
 """
 function extinction_probability(
-        o::ClusterMixed; tol::Real = 1.0e-10,
+        o::ClusterMixed; n_initial::Int = 1, tol::Real = 1.0e-10,
         max_iter::Int = 1000
     )
-    return _mixture_expectation(
+    _check_n_initial(n_initial)
+    q = _mixture_expectation(
         θ -> _extinction_at_fixed_law(o.build(θ); tol, max_iter), o.mixing;
         atol = tol
     )
+    return q^n_initial
 end

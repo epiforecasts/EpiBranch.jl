@@ -12,7 +12,7 @@ give the model.
 """
 function realised_generation_interval(ind::Individual, state::SimulationState)
     (is_infected(ind) && ind.parent_id != 0) || return NaN
-    parent = state.individuals[ind.parent_id]
+    parent = individuals(state)[ind.parent_id]
     return ind.infection_time - parent.infection_time
 end
 
@@ -41,7 +41,7 @@ mean(realised_generation_intervals(state))   # compare with mean(Gamma(2.0, 3.0)
 ```
 """
 function realised_generation_intervals(state::SimulationState)
-    gts = (realised_generation_interval(ind, state) for ind in state.individuals)
+    gts = (realised_generation_interval(ind, state) for ind in individuals(state))
     return Float64[g for g in gts if !isnan(g)]
 end
 
@@ -73,7 +73,7 @@ generation time.
 """
 function realised_serial_interval(ind::Individual, state::SimulationState)
     (is_infected(ind) && ind.parent_id != 0) || return NaN
-    return onset_time(ind) - onset_time(state.individuals[ind.parent_id])
+    return onset_time(ind) - onset_time(individuals(state)[ind.parent_id])
 end
 
 """
@@ -96,7 +96,7 @@ realised_serial_intervals(state)
 ```
 """
 function realised_serial_intervals(state::SimulationState)
-    sis = (realised_serial_interval(ind, state) for ind in state.individuals)
+    sis = (realised_serial_interval(ind, state) for ind in individuals(state))
     return Float64[s for s in sis if !isnan(s)]
 end
 

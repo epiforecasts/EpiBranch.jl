@@ -193,10 +193,10 @@ EpiBranch.realised_efficacy(::_TestBlockedMode, eff, rng) =
 
     @testset "A user-defined vaccination uses the public action protocol" begin
         v = _TestCampaignVaccination(VaccineEffect(efficacy = 0.7), 5.0)
-        EpiBranch.capacity_key(v::_TestCampaignVaccination) = EpiBranch._vaccinated_key(:default)
-        function EpiBranch.capacity_time_key(v::_TestCampaignVaccination)
-            return EpiBranch._vaccination_time_key(:default)
-        end
+
+        # Without methods of its own it counts under its dose label.
+        @test EpiBranch.capacity_key(v) == :vaccinated
+        @test EpiBranch.capacity_time_key(v) == :vaccination_time
 
         contact = Individual(id = 2, parent_id = 1, infection_time = 10.0)
         EpiBranch.initialise_individual!(v, contact, nothing)
@@ -227,7 +227,7 @@ EpiBranch.realised_efficacy(::_TestBlockedMode, eff, rng) =
             EpiBranch.initialise_individual!(cc.intervention, ind, nothing)
         end
         cc_state = empty_state(BranchingProcess(Poisson(0.0)); rng = StableRNG(1))
-        append!(cc_state.individuals, contacts)
+        append!(individuals(cc_state), contacts)
         EpiBranch.apply_actions!(cc, cc_state, contacts)
         @test count(is_vaccinated, contacts) == 1
     end
@@ -409,7 +409,7 @@ end
             )
         )
         states = simulate(model, n; max_cases = 60, rng = StableRNG(7))
-        return [i for s in states for i in s.individuals if is_infected(i)]
+        return [i for s in states for i in individuals(s) if is_infected(i)]
     end
     mass(; kw...) = MassVaccination(; efficacy = 0.0, eligibility_time = 0.0, kw...)
 
@@ -445,7 +445,7 @@ end
             attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.3))
         )
         states = simulate(model, 20; max_cases = 60, rng = StableRNG(5))
-        cases = [i for s in states for i in s.individuals if is_infected(i)]
+        cases = [i for s in states for i in individuals(s) if is_infected(i)]
         # A dose given after the incubation period has run its course comes
         # too late to prevent symptoms.
         in_time(i) = is_vaccinated(i) &&

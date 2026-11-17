@@ -1,0 +1,1 @@
+`clinical_presentation` accepts `incubation_period` as a `(rng, ind) -> value` function as well as a distribution. Asymptomatic cases, or cases with any other trait, can then have their own incubation period. `:asymptomatic` is set before the draw. The closed forms that read the incubation period directly refuse a function with an error that says so.

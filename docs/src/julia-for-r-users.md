@@ -45,11 +45,11 @@ Julia does not match partial argument names.
 ## Fields and indexing: `.` and `[1]`
 
 ```@example juliar
-first_case = outbreak.individuals[1]
+first_case = individuals(outbreak)[1]
 first_case.infection_time
 ```
 
-`outbreak.individuals` is like `outbreak$individuals` in R. Indexing starts at
+`individuals(outbreak)` is like `outbreak$individuals` in R. Indexing starts at
 1, as in R.
 
 ## Strings with values: `"$(x)"`
@@ -109,7 +109,7 @@ adults.
 ## Passing a function: `count(f, x)` and `do` blocks
 
 ```@example juliar
-count(is_infected, outbreak.individuals)
+count(is_infected, individuals(outbreak))
 ```
 
 Many Julia functions take a function as their first argument. This counts the
@@ -119,14 +119,14 @@ people for whom `is_infected` is true, like
 A `do` block writes that first argument as a longer function below the call:
 
 ```@example juliar
-count(outbreak.individuals) do ind
+count(individuals(outbreak)) do ind
     is_infected(ind) && ind.generation >= 1
 end
 ```
 
 This counts secondary cases (infected people who are not the index case). It
 is the same as `count(ind -> is_infected(ind) && ind.generation >= 1,
-outbreak.individuals)`.
+individuals(outbreak))`.
 
 ## Applying to every element: `f.(x)`
 
@@ -178,7 +178,7 @@ traced = simulate(
     n_initial = 20, max_cases = 500, rng = StableRNG(3)
 )
 compute_trace_level!(traced)
-count(ind -> haskey(ind.state, :trace_level), traced.individuals)
+count(ind -> haskey(ind.state, :trace_level), individuals(traced))
 ```
 
 `compute_trace_level!(traced)` records, for each traced person, how many
