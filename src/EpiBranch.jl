@@ -4,7 +4,6 @@ using DataAPI: DataAPI
 using DataFrames
 using Dates
 using Distributions
-using ForwardDiff
 using LinearAlgebra: LinearAlgebra, Diagonal, I, Symmetric, cholesky, diag, eigvals, issuccess
 using QuadGK
 using Random
@@ -123,6 +122,7 @@ include("sellke.jl")
 include("mass_action.jl")
 include("offspring_route.jl")
 include("contacts_route.jl")
+include("models/fixed_population.jl")
 include("models/homogeneous.jl")
 include("models/mixing.jl")
 
@@ -199,7 +199,7 @@ export DoseAllocation, TriggeredInPriority, SplitByGroupSize, SplitBySusceptible
 export ImmuneShare, ImmuneCount
 export HybridProcess, HybridState
 export GenerationCounts, simulate_by_generation
-export AbstractDepletion, PerContactDepletion, StartOfGenerationDepletion
+export AbstractDepletion, PerContactDepletion
 export transmission_timing, implied_R
 export Individual, InfectionEpisode, close_episode!, SimulationState
 export AbstractSimulationState, individuals
@@ -229,7 +229,7 @@ export RouteWindow, window_open, window_close
 export is_active, intervention_time
 export AbstractClinicalTransition, Transition, Reporting, Hospitalisation, Death, Recovery
 export Testing, AbstractAssay, Assay, within_host
-export is_terminal, terminal_event, terminal_target, exclusive_probabilities
+export is_terminal, terminal_event, terminal_target, produced_states, exclusive_probabilities
 export Signal, TransitionCount, Prevalence
 export ObservationModel, NoObservation, MinimumSize, ChainDetection,
     observe
@@ -263,7 +263,7 @@ export IndexChainSize
 export ThinnedChainSize, TruncatedChainSize, DetectedChainSize
 
 # Exports — attributes functions
-export clinical_presentation, demographics, transmission_traits, groups,
+export clinical_presentation, demographics, age_bands, transmission_traits, groups,
     group_attribute, vaccine_acceptance
 
 # Exports — simulation
@@ -273,7 +273,7 @@ export CommonRandomNumbers
 export generate_offspring, contacts_of
 
 # Exports — output
-export event_time_metadata, linelist, contacts, chain_statistics, compute_trace_level!
+export event_time_metadata, linelist, censor_linelist, contacts, chain_statistics, compute_trace_level!
 export realised_generation_interval, realised_generation_intervals,
     realised_serial_interval, realised_serial_intervals
 export containment_probability, is_extinct, generation_R, weekly_incidence, incidence, scenario_sweep

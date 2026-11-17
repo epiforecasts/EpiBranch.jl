@@ -349,28 +349,36 @@ function _check_type_sizes(p::GroupedPopulation, n_types::Integer)
     return nothing
 end
 
-# Cross-tier check, run when a process is composed with a progression in a
-# [`ModelSpec`](@ref): warn when an infectiousness window opens at a `from`
-# state the progression never produces, so the window would silently never
-# open. Also warn when a window's `until` does not list a terminal state the
-# progression can reach, because the case would go on transmitting after it.
-# `from` may legitimately be a state written by an attribute or intervention
-# rather than a progression transition, hence a warning.
-# A no-op for models without infectiousness windows.
-_validate_process_windows(::TransmissionModel, progression) = nothing
-function _validate_process_windows(m::BranchingProcess, progression)
+"""
+    validate_process_windows(process::TransmissionModel, progression)
+
+Cross-tier check, run when a process is composed with a progression in a
+[`ModelSpec`](@ref): warn when an infectiousness window opens at a `from` state
+the progression never produces, because the window would then never open. Also
+warn when a window's `until` omits a terminal state the progression can reach,
+because the case would go on transmitting after it. `from`
+may legitimately be a state written by an attribute or intervention rather than
+a progression transition, so this is a warning. The default does nothing, for
+models without infectiousness windows; a [`FixedPopulationProcess`](@ref
+EpiBranch.FixedPopulationProcess) checks its `until` states against the
+progression's terminal states, and a structure with several windows extends this
+and calls [`warn_uncovered_terminal_states`](@ref
+EpiBranch.warn_uncovered_terminal_states) for each.
+"""
+validate_process_windows(::TransmissionModel, progression) = nothing
+function validate_process_windows(m::BranchingProcess, progression)
     return _validate_windows(m.infectiousness, progression)
 end
 function _validate_windows(windows, progression)
     for w in windows
-        _warn_uncovered_terminal_states(
+        warn_uncovered_terminal_states(
             w.until, progression;
             route = length(windows) > 1 ? w.name : nothing, from = w.from
         )
     end
     produced = Set{Symbol}((:infection,))
     for t in progression
-        hasproperty(t, :state) && push!(produced, t.state::Symbol)
+        union!(produced, produced_states(t))
     end
     for w in windows
         w.from isa Symbol || continue
@@ -400,12 +408,17 @@ function _uncovered_terminal_states(until::Tuple, progression; from = nothing)
     return unique(states)
 end
 
-# Warn once (per `ModelSpec`) when `until` does not cover every terminal state
-# the progression can reach, so the silent runaway is discoverable instead of
-# only showing up as an implausibly large outbreak. `route` labels the warning
-# when `until` belongs to one window among several (a `RouteWindow`); `from`
-# is that window's own opening state, excluded from the check (see above).
-function _warn_uncovered_terminal_states(
+"""
+    warn_uncovered_terminal_states(until::Tuple, progression; route = nothing, from = nothing)
+
+Warn when `until` does not cover every terminal state the progression can
+reach, so the silent runaway of a case that keeps generating exposure proposals
+is discoverable rather than showing up as an implausibly large outbreak.
+`route` labels the warning when `until` belongs to one window among several, and
+`from` is that window's own opening state, which counts as covered. A terminal
+transition that does not implement `terminal_target` is exempt.
+"""
+function warn_uncovered_terminal_states(
         until::Tuple, progression;
         route = nothing, from = nothing
     )

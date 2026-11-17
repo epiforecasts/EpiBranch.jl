@@ -603,3 +603,10 @@ struct _RiskFromAge end
         @test maximum(abs.(emp_cov .- m.cov)) < 0.2
     end
 end
+
+@testset "Missing ForwardDiff extension" begin
+    # The core fallback, called directly because the extension is loaded here.
+    @test_throws ArgumentError invoke(
+        EpiBranch._gradient_and_hessian, Tuple{Any, Any}, identity, [0.0]
+    )
+end

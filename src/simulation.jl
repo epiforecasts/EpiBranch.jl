@@ -100,13 +100,13 @@ function simulate(
     # A bare process is composed with no ModelSpec, so run the checks the spec
     # constructor would otherwise do (a ModelSpec routes here via its own
     # `simulate`, already validated at composition, so it never double-warns).
-    _validate_process_windows(model, progression(model))
+    validate_process_windows(model, progression(model))
     _warn_incomplete_terminal_coverage(progression(model))
     sim_opts = _build_sim_opts(
         model, n_initial, initial_cases, index_types, max_cases, max_generations,
         max_time, stopping_rules
     )
-    _validate_initial_cases(model, sim_opts)
+    validate_initial_cases(model, sim_opts)
     _validate_index_types(model, sim_opts)
     return _run_once_or_retry(
         model, sim_opts, condition, max_attempts;
@@ -269,13 +269,13 @@ function _simulate_each(
         rng::AbstractRNG = Random.default_rng(),
         parallel::Bool = false
     ) where {T}
-    _validate_process_windows(model, progression(model))
+    validate_process_windows(model, progression(model))
     _warn_incomplete_terminal_coverage(progression(model))
     sim_opts = _build_sim_opts(
         model, n_initial, initial_cases, index_types, max_cases, max_generations,
         max_time, stopping_rules
     )
-    _validate_initial_cases(model, sim_opts)
+    validate_initial_cases(model, sim_opts)
     _validate_index_types(model, sim_opts)
     return _simulate_n(
         each, T, model, n, sim_opts; interventions = interventions(model),
@@ -333,13 +333,18 @@ end
 # bookkeeping is reconciled from it afterwards, which the public `sellke_race!`
 # wrapper does through `_reconcile_sellke_bookkeeping!` below.
 
-# Whether a model's simulation honours the `max_cases`/`max_generations`
-# keyword shortcuts' *defaults* out of the box: a branching process and a model
-# of its own do. The built-in models over a fixed population leave these two
-# shortcuts' defaults off (`_drop_default_shortcuts`), so a run over a large
-# population keeps running to extinction or `max_time` unless a cap is
-# explicitly asked for. They override this to `false`.
-_honours_termination_controls(::TransmissionModel) = true
+"""
+    honours_termination_controls(model::TransmissionModel) -> Bool
+
+Whether a model's simulation applies the `max_cases` and `max_generations`
+keyword *defaults* out of the box. The default is `true`, as for a branching
+process. A model over a fixed population returns `false`, so a run over a large
+population keeps going to extinction or `max_time` unless a cap is asked for
+explicitly: a cap set through a non-default keyword value or through
+`stopping_rules` is applied either way. A subtype of [`FixedPopulationProcess`](@ref
+EpiBranch.FixedPopulationProcess) has `false` already.
+"""
+honours_termination_controls(::TransmissionModel) = true
 
 # The time at which a structure-driven run ends: the earliest `time_bound`
 # among the stopping rules, or `Inf`.
@@ -363,17 +368,19 @@ _poll_rules(sim_opts) = filter(!honoured_without_should_stop, sim_opts.stopping_
 
 # Drop the `MaxCases`/`MaxGenerations` rules `SimOpts` built from the
 # `max_cases`/`max_generations` keywords, on a model whose race does not
-# honour their defaults (`_honours_termination_controls` false), when each was
+# honour their defaults (`honours_termination_controls` false), when each was
 # left at its default — a cap set through a non-default keyword value, or
 # through `stopping_rules` directly, is never touched here.
 function _drop_default_shortcuts(model, sim_opts, max_cases, max_generations, stopping_rules)
-    (stopping_rules !== nothing || _honours_termination_controls(model)) && return sim_opts
+    (stopping_rules !== nothing || honours_termination_controls(model)) && return sim_opts
     rules = sim_opts.stopping_rules
     max_cases == _DEFAULT_MAX_CASES &&
         (rules = filter(r -> !(r isa MaxCases && r.n == max_cases), rules))
     max_generations == _DEFAULT_MAX_GENERATIONS &&
         (rules = filter(r -> !(r isa MaxGenerations && r.n == max_generations), rules))
-    return SimOpts(sim_opts.n_initial, sim_opts.initial_cases, sim_opts.index_types, rules)
+    return SimOpts(
+        sim_opts.n_initial, sim_opts.n_initial_given, sim_opts.initial_cases, sim_opts.index_types, rules
+    )
 end
 
 # Shared by all four `simulate` entry points (a bare process or a `ModelSpec`,
@@ -1077,6 +1084,20 @@ function make_contact!(
     return contact
 end
 
+# Take a contact back out of the outbreak: it was made as a person by
+# `make_contact!`, but the meeting it stands for never happened (see
+# `prevents_contact`). It is removed from the contacts of its infector, so
+# neither `contacts` nor tracing reaches it, and it is marked so that `linelist`
+# does not list it as a person who was exposed and escaped.
+function _unmake_contact!(parent::Individual, contact::Individual)
+    idx = findlast(==(contact.id), parent.secondary_case_ids)
+    idx === nothing || deleteat!(parent.secondary_case_ids, idx)
+    contact.state[:_withdrawn] = true
+    return nothing
+end
+
+_is_withdrawn(ind::Individual) = get(ind.state, :_withdrawn, false)::Bool
+
 """
     resolve_transitions!(state, individual)
 
@@ -1248,9 +1269,10 @@ unless a natural-history step sets it. Every model over a fixed population,
 built in or written against [`contacts_of`](@ref), applies it to every settled
 member once its `progression` can reach `:susceptible_again`, with no change
 needed to how it names contacts. A model allows reinfection by adding a step
-to its `progression` that sets `:susceptible_again_time`; the earlier
-infection is then kept as a past episode (see [`close_episode!`](@ref)) when
-the person is reinfected."""
+to its `progression` that sets `:susceptible_again_time` and declares
+`:susceptible_again` through [`produced_states`](@ref). A step that sets the
+time without declaring the state is ignored. When the person is reinfected, the
+earlier infection is kept as a past episode (see [`close_episode!`](@ref))."""
 struct HostImmunity end
 function competing_risk(::HostImmunity, parent, contact, state)
     is_infected(contact) || return nothing
@@ -1361,11 +1383,24 @@ Each source defines [`competing_risk`](@ref). Returns none by default.
 """
 transmission_risks(::TransmissionModel) = ()
 
-"""Whether any risk blocks the `parent` → `contact` transmission at
-`transmission_time`: the built-in sources (host susceptibility, infector
-infectiousness, …) first, then any the model contributes through
-[`transmission_risks`](@ref), then the interventions in stack order. The
-first to block wins.
+# The outcome of the composed risks for one proposed transmission: it went
+# through, it was blocked but the contact still happened, or a source that
+# stops the meeting itself blocked it and there was no contact either (see
+# `prevents_contact`).
+const _NOT_BLOCKED = 0
+const _BLOCKED = 1
+const _CONTACT_PREVENTED = 2
+
+"""What the risks decide about the `parent` → `contact` transmission at
+`transmission_time`: `_NOT_BLOCKED`, `_BLOCKED` where a risk blocked it but the
+contact still happened, or `_CONTACT_PREVENTED` where a source that
+[`prevents_contact`](@ref EpiBranch.prevents_contact) blocked it. The sources
+are the built-in ones (host susceptibility, infector infectiousness, …)
+first, then any the model contributes through [`transmission_risks`](@ref),
+then the interventions in stack order. The first to block wins the
+transmission, but a block by a source that leaves the contact standing does not
+hide a later source that prevents the contact. Only such later sources are still
+asked.
 
 Every model resolves a transmission through this one function, on each
 candidate infection time the race proposes, so an intervention writes one
@@ -1384,27 +1419,42 @@ function _composed_risks_block(
         transmission_time, model_risks, interventions,
         builtin_blocks = _builtin_risk_blocks
     )
-    builtin_blocks(parent, contact, state, transmission_time) && return true
-    _any_risk_blocks(model_risks, parent, contact, state, transmission_time) &&
-        return true
-    return _any_risk_blocks(interventions, parent, contact, state, transmission_time)
+    level = builtin_blocks(parent, contact, state, transmission_time) ?
+        _BLOCKED : _NOT_BLOCKED
+    level = _walk_risks(level, model_risks, parent, contact, state, transmission_time)
+    return _walk_risks(level, interventions, parent, contact, state, transmission_time)
 end
 
-# The sources in order, the first to block winning. A tuple is walked
-# element by element so each call is resolved when the method is compiled;
-# a call through a vector of mixed types is resolved at run time instead,
-# which boxes `transmission_time` on every call.
-_any_risk_blocks(::Tuple{}, parent, contact, state, transmission_time) = false
-@inline function _any_risk_blocks(sources::Tuple, parent, contact, state, transmission_time)
-    _risk_blocks(first(sources), parent, contact, state, transmission_time) &&
-        return true
-    return _any_risk_blocks(Base.tail(sources), parent, contact, state, transmission_time)
+# The sources in order, passing on how far the transmission has been blocked. A
+# tuple is walked element by element so each call is resolved when the method
+# is compiled; a call through a vector of mixed types is resolved at run time
+# instead, which boxes `transmission_time` on every call.
+_walk_risks(level, ::Tuple{}, parent, contact, state, transmission_time) = level
+@inline function _walk_risks(level, sources::Tuple, parent, contact, state, transmission_time)
+    level = _step_risks(level, first(sources), parent, contact, state, transmission_time)
+    level == _CONTACT_PREVENTED && return level
+    return _walk_risks(level, Base.tail(sources), parent, contact, state, transmission_time)
 end
-function _any_risk_blocks(sources, parent, contact, state, transmission_time)
+function _walk_risks(level, sources, parent, contact, state, transmission_time)
     for source in sources
-        _risk_blocks(source, parent, contact, state, transmission_time) && return true
+        level = _step_risks(level, source, parent, contact, state, transmission_time)
+        level == _CONTACT_PREVENTED && return level
     end
-    return false
+    return level
+end
+
+# One source's turn. Once the transmission is blocked, only a source that
+# prevents the contact is still asked, so a stack without one draws no more than
+# before.
+@inline function _step_risks(level, source, parent, contact, state, transmission_time)
+    if level == _NOT_BLOCKED
+        _risk_blocks(source, parent, contact, state, transmission_time) || return level
+        return prevents_contact(source) ? _CONTACT_PREVENTED : _BLOCKED
+    end
+    prevents_contact(source) &&
+        _risk_blocks(source, parent, contact, state, transmission_time) &&
+        return _CONTACT_PREVENTED
+    return level
 end
 
 """Apply attributes function to an individual. No-op for NoAttributes."""
@@ -1640,6 +1690,73 @@ function demographics(;
         prob_female::Real = 0.5
     )
     return Demographics(age_distribution, age_range, float(prob_female))
+end
+
+"""
+    age_bands(edges, proportions)
+    age_bands(df; lower = :lower, upper = :upper, proportion = :proportion)
+
+Build an age distribution from age bands and the share of the population in
+each, the form census tables come in. The result is a `MixtureModel` of
+`Uniform` distributions, one per band, weighted by `proportions`. Pass it as
+the `age_distribution` of [`demographics`](@ref).
+
+`edges` are the band boundaries in years, increasing, with one more entry than
+`proportions`: `[0, 5, 18, 65, 90]` gives the four bands 0 to 5, 5 to 18, 18
+to 65 and 65 to 90. Every band needs a finite upper edge: give an open-ended
+band such as "65+" the oldest age to use. `demographics` rounds ages down, which
+gives ages 0 to 4 for the band from 0 to 5. `proportions` need not sum to one;
+they are rescaled.
+
+The table method takes the band edges from the columns `lower` and `upper`,
+and the shares from `proportion`. Bands must be listed in order and be
+contiguous, each starting where the one before ends.
+
+# Examples
+```julia
+ages = age_bands([0, 5, 18, 65, 90], [0.06, 0.16, 0.60, 0.18])
+attributes = demographics(age_distribution = ages, age_range = (0, 89))
+
+df = DataFrame(lower = [0, 5, 18], upper = [5, 18, 90], proportion = [0.1, 0.2, 0.7])
+ages = age_bands(df)
+```
+"""
+function age_bands(edges::AbstractVector{<:Real}, proportions::AbstractVector{<:Real})
+    n = length(proportions)
+    n >= 1 || throw(ArgumentError("proportions needs at least one band"))
+    length(edges) == n + 1 || throw(
+        ArgumentError(
+            "edges has $(length(edges)) entries for $n proportions; " *
+                "expected $(n + 1), one more than the number of bands"
+        )
+    )
+    all(isfinite, edges) || throw(ArgumentError("edges must all be finite"))
+    all(diff(edges) .> 0) || throw(ArgumentError("edges must be strictly increasing"))
+    all(isfinite, proportions) && all(>=(0), proportions) || throw(
+        ArgumentError("proportions must be finite and non-negative")
+    )
+    total = sum(proportions)
+    total > 0 || throw(ArgumentError("proportions must not all be zero"))
+    bands = [Uniform(float(edges[i]), float(edges[i + 1])) for i in 1:n]
+    return MixtureModel(bands, Categorical(float.(proportions) ./ total))
+end
+
+function age_bands(
+        df::AbstractDataFrame; lower::Symbol = :lower, upper::Symbol = :upper,
+        proportion::Symbol = :proportion
+    )
+    for c in (lower, upper, proportion)
+        hasproperty(df, c) || throw(ArgumentError("the table has no column :$c"))
+    end
+    nrow(df) >= 1 || throw(ArgumentError("the table has no rows"))
+    lo = df[!, lower]
+    hi = df[!, upper]
+    (any(ismissing, lo) || any(ismissing, hi) || any(ismissing, df[!, proportion])) &&
+        throw(ArgumentError("the table has missing values"))
+    all(lo[2:end] .== hi[1:(end - 1)]) || throw(
+        ArgumentError("bands must be contiguous: each `$lower` must equal the previous `$upper`")
+    )
+    return age_bands(vcat(lo[1], hi), collect(df[!, proportion]))
 end
 
 """Callable population characteristic `demographics` returns. Has a type,

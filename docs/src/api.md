@@ -125,12 +125,10 @@ max_generations)` with the exact, individual-based simulation.
 
 The state holds the susceptibles of each type, set from the population size
 and the number immune. `PerContactDepletion` removes them one potential contact
-at a time, as the individual-based simulation does. `StartOfGenerationDepletion`
-thins the contacts of a type by its susceptible share at the start of the
-generation, in one binomial draw capped at the susceptibles left, as
-discrete-generation models usually do. With the second rule and an offspring
-law with a closed-form sum (`Poisson`, `NegBin`, `Binomial`), a generation
-costs the same whatever the number of cases.
+at a time, as the individual-based simulation does, but draws the result
+without visiting every contact. With a `Poisson` or `NegBin` offspring law the
+cost of a generation is independent of the number of cases; with another law it
+is proportional to the number of new infections.
 
 A [`ModelSpec`](@ref) built on the process, with a `generation_length`, also
 runs here, and applies its `GroupVaccination` campaigns to the susceptibles of
@@ -141,7 +139,6 @@ simulate_by_generation
 GenerationCounts
 AbstractDepletion
 PerContactDepletion
-StartOfGenerationDepletion
 ```
 
 ## Population characteristics
@@ -154,6 +151,7 @@ group membership, and willingness to be vaccinated. Pass them to `ModelSpec` as
 ```@docs
 clinical_presentation
 demographics
+age_bands
 transmission_traits
 groups
 group_attribute
@@ -184,6 +182,7 @@ exclusive_probabilities
 is_terminal
 terminal_event
 terminal_target
+produced_states
 progression_loglik
 ```
 
@@ -395,7 +394,9 @@ realised generation intervals.
 
 ```@docs
 linelist
+censor_linelist
 event_time_metadata
+EpiBranch.reported_value
 contacts
 chain_statistics
 compute_trace_level!
@@ -782,6 +783,15 @@ EpiBranch.recorder
 EpiBranch.progression
 EpiBranch.process
 EpiBranch.n_types
+EpiBranch.FixedPopulationProcess
+EpiBranch.process_window
+EpiBranch.honours_termination_controls
+EpiBranch.supports_initial_cases
+EpiBranch.validate_initial_cases
+EpiBranch.validate_initial_case_ids
+EpiBranch.seed_initial_cases!
+EpiBranch.validate_process_windows
+EpiBranch.warn_uncovered_terminal_states
 ```
 
 ### Writing a route that proposes its own contacts
@@ -820,6 +830,8 @@ EpiBranch.initialise_episode!
 EpiBranch.resolve_individual!
 EpiBranch.on_infection_settled!
 EpiBranch.trace_contacts!
+EpiBranch.admit_trace_actions!
+EpiBranch.is_ring_hop
 EpiBranch.traces_contacts
 EpiBranch.traces_source
 EpiBranch.has_effect
@@ -841,13 +853,18 @@ EpiBranch.HostImmunity
 EpiBranch.infectious_removal_time
 EpiBranch.risk_applies
 EpiBranch.standing_block
+EpiBranch.prevents_contact
 EpiBranch.infinite_draw_is_final
 intervention_time
 EpiBranch.reset!
 EpiBranch.abort_infection!
 EpiBranch.infection_aborted_time
+EpiBranch.prevent_symptoms!
+EpiBranch.symptoms_prevented_time
 set_isolated!
 clear_isolated!
+EpiBranch.flag_for_isolation!
+EpiBranch.traced_isolation_time
 ```
 
 #### Isolation and contact tracing rules
@@ -886,6 +903,7 @@ EpiBranch.action_cache
 EpiBranch.apply_actions!
 EpiBranch.action_candidates
 EpiBranch.acts_on_population
+EpiBranch.gates_on_population_clock
 EpiBranch.needs_contacts
 EpiBranch.may_revise
 EpiBranch.is_settled
@@ -954,6 +972,12 @@ EpiBranch.SmoothCalendar
 EpiBranch.pair_kernel
 pairwise_surv_loglik_by_component
 EpiBranch.infection_likelihood_compatible
+EpiBranch.validate_infection_likelihood
+EpiBranch.infection_layer_columns
+EpiBranch.layer_host_times
+EpiBranch.validate_removal_gap_keys
+EpiBranch.REMOVAL_STRETCHES_KEY
+EpiBranch.LEAKY_REMOVAL_STRETCHES_KEY
 EpiBranch.susceptibility_components
 EpiBranch.susceptibility_host_times
 EpiBranch.binding_release

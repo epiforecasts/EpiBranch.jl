@@ -22,7 +22,7 @@ _bare_process(m) = m
 
 # The exact model's own process, checked against what `approx` needs to be
 # built from. Its default termination controls are already off
-# (`_honours_termination_controls` is false for both `HomogeneousProcess` and
+# (`honours_termination_controls` is false for both `HomogeneousProcess` and
 # `MixingProcess`), so a run under this function's `simulate(exact; max_time,
 # ...)` call stops only for extinction or `max_time`, never silently capped
 # by the `max_cases`/`max_generations` shortcuts' defaults. Those would
@@ -73,7 +73,7 @@ function _exponential_removal_rate(exact, bare)
         ok = t.from === :infection && coalesce(_certain_probability(t.probability), false) &&
             t.delay isa Exponential &&
             (bare.from === nothing || bare.from === :infection) &&
-            !any(s -> s isa Transition && s.state === :infectious, steps)
+            !any(s -> :infectious in produced_states(s), steps)
     end
     ok || throw(
         ArgumentError(

@@ -47,6 +47,11 @@ resolves_under_capacity(o::OnRoutes) = resolves_under_capacity(o.intervention)
 discovers_actions(o::OnRoutes) = discovers_actions(o.intervention)
 has_competing_risk(::OnRoutes) = true
 
+# A recorded removal stretch has no route. Reading it back would remove the host
+# from the exposure of every pair, while `OnRoutes` blocks only the routes it
+# names. Declaring no key keeps the stretches out of the likelihood.
+removal_gap_host_times(::OnRoutes) = ()
+
 function risk_applies(o::OnRoutes, route)
     route !== nothing && route.name in o.routes || return false
     return risk_applies(o.intervention, route)

@@ -1,3 +1,7 @@
+using Distributions
+using StableRNGs
+using Statistics
+
 @testset "Generation counts with susceptibles and depletion rules" begin
     @testset "susceptibles and the immune, per type" begin
         model = BranchingProcess(Poisson(0.5); population_size = 1000)
@@ -55,39 +59,124 @@
         kept = [
             simulate_by_generation(
                 mixed; n_initial = [50, 500], immune = [800, 0], max_generations = 1,
-                depletion = StartOfGenerationDepletion(), rng = StableRNG(s)
+                rng = StableRNG(s)
             ).counts for s in 1:200
         ]
         @test isapprox(mean(first, kept) / mean(last, kept), 0.3; atol = 0.03)
     end
 
-    @testset "the binomial rule agrees with the per-contact rule in a large population" begin
-        N = 2_000_000
-        model = BranchingProcess(NegBin(2.0, 0.5); population_size = N)
-        run(dep, s) = simulate_by_generation(
-            model; n_initial = 500, max_generations = 4, depletion = dep, rng = StableRNG(s)
+    @testset "the exact draws match deciding contacts one at a time" begin
+        # The rule they must reproduce: each contact is kept with the
+        # susceptible share of its type at that moment.
+        function by_contact(rng, contacts, s, N)
+            kept = 0
+            for _ in 1:contacts
+                s <= 0 && break
+                if rand(rng) <= s / N
+                    kept += 1
+                    s -= 1
+                end
+            end
+            return kept
+        end
+        function same_law(a, b)
+            se = sqrt(var(a) / length(a) + var(b) / length(b))
+            @test isapprox(mean(a), mean(b); atol = 5se)
+            @test isapprox(var(a), var(b); rtol = 0.1)
+        end
+        deplete(rng, potential, s, N) = only(
+            EpiBranch._deplete!(rng, PerContactDepletion(), potential, [s], [N])
         )
-        per_contact = [run(PerContactDepletion(), s).cumulative_cases for s in 1:300]
-        binomial = [run(StartOfGenerationDepletion(), 10^6 + s).cumulative_cases for s in 1:300]
-        se = sqrt(var(per_contact) / 300 + var(binomial) / 300)
-        @test isapprox(mean(per_contact), mean(binomial); atol = 5se)
-        @test isapprox(var(per_contact), var(binomial); rtol = 0.35)
+        reps = 20_000
+        rng = StableRNG(1)
 
-        # In a small population the rules part: the binomial one keeps more
-        # of a generation's contacts, as its share does not fall as they are
-        # used.
-        small = BranchingProcess(Poisson(3.0); population_size = 200)
-        kept(dep) = mean(
-            simulate_by_generation(
-                small; n_initial = 50, max_generations = 1, depletion = dep, rng = StableRNG(s)
-            ).counts for s in 1:500
+        # A given number of contacts: several for each susceptible, a few
+        # relative to the susceptibles, and more than there are susceptibles.
+        for (contacts, s, N) in ((300, 40, 100), (30, 400, 1000), (5, 50, 60), (0, 10, 20))
+            same_law(
+                [by_contact(rng, contacts, s, N) for _ in 1:reps],
+                [deplete(rng, [contacts], s, N) for _ in 1:reps]
+            )
+        end
+
+        # Poisson contacts with a given mean
+        for (rate, s, N) in ((300.0, 40, 100), (30.0, 400, 1000), (0.5, 50, 60))
+            same_law(
+                [by_contact(rng, rand(rng, Poisson(rate)), s, N) for _ in 1:reps],
+                [deplete(rng, [rate], s, N) for _ in 1:reps]
+            )
+        end
+
+        # The draws never keep more than the susceptibles left
+        @test deplete(rng, [10_000], 7, 100) <= 7
+        @test deplete(rng, [10_000.0], 7, 100) <= 7
+        @test deplete(rng, [10.0], 0, 100) == 0
+    end
+
+    @testset "a generation matches drawing its contacts one at a time" begin
+        function by_contact(rng, potential, s, N)
+            kept = zeros(Int, length(potential))
+            for i in eachindex(potential), _ in 1:potential[i]
+                s[i] <= 0 && break
+                if rand(rng) <= s[i] / N[i]
+                    kept[i] += 1
+                    s[i] -= 1
+                end
+            end
+            return kept
+        end
+        reps = 20_000
+        function check(model, n_initial, immune; sizes)
+            counts = [
+                simulate_by_generation(
+                    model; n_initial, immune, max_generations = 1, rng = StableRNG(i)
+                ).counts for i in 1:reps
+            ]
+            rng = StableRNG(10^6)
+            offspring = EpiBranch._generation_offspring(model)
+            current = n_initial isa Integer ? [n_initial] : n_initial
+            susceptibles = sizes .- current .- immune
+            reference = map(1:reps) do _
+                potential = EpiBranch._generation_potential(rng, offspring, current, nothing, false)
+                by_contact(rng, potential, copy(susceptibles), sizes)
+            end
+            return counts, reference
+        end
+        function same_law(a, b)
+            se = sqrt(var(a) / length(a) + var(b) / length(b))
+            @test isapprox(mean(a), mean(b); atol = 5se)
+            @test isapprox(var(a), var(b); rtol = 0.1)
+        end
+
+        # Mixed Poisson offspring, drawn through the Poisson mean
+        for law in (Poisson(3.0), NegBin(3.0, 0.5))
+            model = BranchingProcess(law; population_size = 300)
+            counts, reference = check(model, 40, 60; sizes = [300])
+            same_law(counts, only.(reference))
+        end
+
+        # Another offspring law, drawn by skipping over the contacts that miss
+        model = BranchingProcess(Binomial(6, 0.5); population_size = 300)
+        counts, reference = check(model, 40, 60; sizes = [300])
+        same_law(counts, only.(reference))
+
+        # Several types, each thinned by its own share
+        multi = BranchingProcess(
+            [2.0 1.0; 0.5 2.5], R -> NegBin(R, 0.5), EpiBranch.NoGenerationTime();
+            population = Population([200, 400])
         )
-        @test kept(StartOfGenerationDepletion()) > kept(PerContactDepletion()) + 3
+        counts, reference = check(multi, [30, 10], [50, 100]; sizes = [200, 400])
+        for i in 1:2
+            same_law(getindex.(counts, i), getindex.(reference, i))
+        end
+    end
 
-        # Neither keeps more than the susceptibles left
+    @testset "a population with many contacts per susceptible is not overcounted" begin
+        # The contacts of the generation go to a few people each. The
+        # infections are capped at the susceptibles, and approach them.
         capped = simulate_by_generation(
             BranchingProcess(Poisson(50.0); population_size = 100); n_initial = 90,
-            max_generations = 1, depletion = StartOfGenerationDepletion(), rng = StableRNG(1)
+            max_generations = 1, rng = StableRNG(1)
         )
         @test capped.counts <= 10
         @test capped.susceptibles == 10 - capped.counts
@@ -111,7 +200,7 @@
             model = BranchingProcess(Poisson(2.0); population_size = N)
             run() = simulate_by_generation(
                 model; n_initial = 10, max_generations = 25, multiplier = Gamma(6.5, 1 / 6.5),
-                depletion = StartOfGenerationDepletion(), rng = StableRNG(1)
+                rng = StableRNG(1)
             )
             state = run()
             t = minimum(@elapsed(run()) for _ in 1:5)

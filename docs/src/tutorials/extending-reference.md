@@ -66,7 +66,7 @@ underscore are internal.
 | `:_case_classification_changes` | `Vector{Tuple{Float64,Any}}` | — | `ModelSpec`'s `case_definition` | After the run; internal. Each change of classification with its time, read by `case_classification_changes` |
 | `:traced` | `Bool` | `false` | `ContactTracing`, `SourceTracing` | `trace_contacts!` |
 | `:quarantined` | `Bool` | `false` | `ContactTracing`, `SourceTracing` | `trace_contacts!` |
-| `:_traced_isolation_time` | `Float64` | `Inf` | `ContactTracing` → `Isolation` | Internal hand-over; may precede onset, so `Isolation` holds it back to onset |
+| `:_traced_isolation_time` | `Float64` | `Inf` | `ContactTracing`, or any intervention → `Isolation` | Internal hand-over, written by `flag_for_isolation!` and read by `traced_isolation_time`; may precede onset. `Isolation` holds it back to onset |
 | `:trace_time` | `Float64` | — | `ContactTracing`, `SourceTracing` | `trace_contacts!`. The earlier of the trace times of the two tracers |
 | `:_contact_trace_time` | `Float64` | — | `ContactTracing` | `intervention_time`; internal. The time at which `ContactTracing` traced the person |
 | `:_source_trace_time` | `Float64` | — | `SourceTracing` | `intervention_time`; internal. The time at which `SourceTracing` traced the person |
@@ -74,7 +74,7 @@ underscore are internal.
 | `:_source_trace_handles` | `Vector{Int}` | — | `SourceTracing` | `reset!`; internal. The handles of the removal entries that `SourceTracing` created when tracing |
 | `:_ring_remaining` | `Int` | `0` | `ContactTracing` (`depth > 1`) | `trace_contacts!`; internal |
 | `:_ring_propagated` | `Bool` | `false` | `ContactTracing` (`depth > 1`) | `trace_contacts!`; internal |
-| `:_ring_hop` | `Bool` | `false` | `ContactTracing` (`depth > 1`) | Set and cleared around each `trace_contacts!` call in the ring walk; internal. Marks an already-settled case the walk passes through, so it is traced from as a ring member only, not reseeded |
+| `:_ring_hop` | `Bool` | `false` | `ContactTracing` (`depth > 1`) | Set and cleared around each `trace_contacts!` call in the ring walk; read through `is_ring_hop`. Marks an already-settled case the walk passes through. It is traced from as a ring member only and is not reseeded |
 | `:traced_by` | `Int` | — | `ContactTracing` | `trace_contacts!` |
 | `:tracers` | `Vector{Int}` | — | `ContactTracing` | `trace_contacts!`, `compute_trace_level!`; every case whose trace reached the person |
 | `:source_traced_by` | `Int` | — | `SourceTracing` | `trace_contacts!`; the reverse of `:traced_by` (names a *later*-infected node) |
@@ -88,7 +88,8 @@ underscore are internal.
 | `:severity_efficacy[_<label>]` | `Float64` | — | `AbstractVaccination` | When a dose is admitted |
 | `:symptom_efficacy[_<label>]` | `Float64` | — | `AbstractVaccination` | When a dose is admitted |
 | `:symptom_protection_time[_<label>]` | `Float64` | — | `AbstractVaccination` (when the dose's symptom draw succeeds) | When a dose is admitted |
-| `:symptom_protection_from` | `Float64` | — | `AbstractVaccination`, derived from the per-dose `:symptom_protection_time` entries (the earliest) | When a dose is admitted or removed; do not write it from an intervention |
+| `:symptom_prevented_from` | `Float64` | — | Any intervention, through `prevent_symptoms!` | Any intervention hook |
+| `:symptom_protection_from` | `Float64` | — | Derived from the per-dose `:symptom_protection_time` entries and `:symptom_prevented_from` (the earliest) | When a dose is admitted or removed, or `prevent_symptoms!` is called; do not write it from an intervention, call `prevent_symptoms!` and read it through `symptoms_prevented_time` |
 | `:coverage_declined[_<label>]` | `Bool` | `false` | `MassVaccination`, `GroupVaccination` | When a dose is offered and declined |
 | `:infection_aborted_time` | `Float64` | — | Simulation, through `abort_infection!` (for example by `RingVaccination`'s `post_exposure_efficacy`) | Any intervention hook |
 | `:_settled` | `Bool` | `false` | Simulation (action delivery) | Once a case's own round of action discovery has run; internal, read through `is_settled` |
@@ -278,6 +279,8 @@ population (network, household, homogeneous, mixing, and one written against
 `contacts_of`) does this on its own the moment the `progression` reaches
 `:susceptible_again`, with no change to how it names targets or contacts.
 
+The engine finds that from [`EpiBranch.produced_states`](@ref), which gives the states a step produces: `(state,)` for a `Transition`, and `()` by default. A custom step that sets `:susceptible_again_time`, or that opens infectiousness by writing `:infectious_time`, declares it with a method, such as `EpiBranch.produced_states(::WaningImmunity) = (:susceptible_again,)`. Without the method the engine ignores the step.
+
 ## Continuous-time models: further details
 
 These points concern the network, household, homogeneous and mixing models, which
@@ -353,6 +356,30 @@ model](@ref)).
   (exposures a vaccine averted, say, or effort spent on contacts who were not
   infected) needs the draws that would otherwise be skipped. See [Recording
   every contact event](@ref).
+
+- **Contacts that never happened.** [`EpiBranch.prevents_contact`](@ref) says
+  whether an infection your risk blocks was a contact at all. A mask or a
+  partly effective vaccine stops the infection while people still meet, so
+  the blocked contact stays in the outbreak: [`contacts`](@ref) lists it and
+  tracing can reach it. A ward closure or isolation in hospital stops the
+  meeting itself, so there is no contact to list or trace. The default,
+  `false`, keeps the contact; declare `true` for a measure that stops the meeting.
+
+  ```julia
+  EpiBranch.prevents_contact(::MyClosedWard) = true
+  ```
+
+  The branching process and a model written against `contacts_of` take such a
+  contact back out of the infector's contacts, and a model over a fixed
+  population does not offer it to a [`ContactRecorder`](@ref). Where several
+  sources block the same contact, it is dropped if any of those that prevent
+  contact blocks it, whichever is first in the stack. A contact that falls
+  after an infector's isolation is dropped before tracing reaches it; a
+  block that is only a probability, or that starts later, is decided when the
+  race reaches the contact, so tracing may already have followed up a contact
+  that is then dropped. The built-in [`Isolation`](@ref) and
+  [`Quarantine`](@ref) default to `true` and take `prevents_contact` as a
+  keyword, so `Isolation(...; prevents_contact = false)` is isolation at home.
 
 ### Recording every contact event
 
@@ -796,6 +823,10 @@ EpiBranch.event_time_metadata(::Val{:appointment_time}) =
 ```
 
 The intervention writes the simulation time to `ind.state[:appointment_time]`.
+A key whose stored value is not what the line list should show, such as one
+that has to be read together with other state, defines
+[`EpiBranch.reported_value`](@ref)`(::Val{key}, individual)` as well; the
+isolation columns do.
 `linelist(state; infected_only = false)` then includes the date for uninfected
 people too. Missing and infinite times stay missing. The default line list,
 of infected people only, still includes cases only.
@@ -1040,6 +1071,7 @@ before.
 | To add | You write | Used |
 |---|---|---|
 | An intervention | A type `<: AbstractIntervention` and hook methods | Once per case, and per infector–contact pair for `competing_risk` |
+| Preventing symptoms | `EpiBranch.prevent_symptoms!(ind, from)` from an intervention hook | In that hook |
 | Ending an infection early | `EpiBranch.abort_infection!(ind, time)` from an intervention hook | In that hook |
 | A vaccination | A type `<: AbstractVaccination` holding a `VaccineEffect`, with `vaccine_effect` and `intervention_actions` | Once per case |
 | A vaccine effect mode | A type `<: AbstractEffectMode` and `realised_efficacy`; `realise_prior_dose!` only to change what a dose recorded before the run gets | When a dose is recorded, or when a person is created |

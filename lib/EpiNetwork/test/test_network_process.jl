@@ -192,6 +192,16 @@ end
         @test 1 < k <= n                        # spread beyond the index, bounded by the graph
     end
 
+    @testset "n_initial larger than the population is refused" begin
+        m = ModelSpec(
+            NetworkProcess(ring_adjacency(10), Exponential(2.0));
+            progression = _sir(5.0)
+        )
+        @test_throws ArgumentError simulate(m; n_initial = 11, rng = StableRNG(1))
+        state = simulate(m; n_initial = 10, max_time = 0.0, rng = StableRNG(1))
+        @test n_infected(state) == 10
+    end
+
     @testset "very short contact interval infects the whole connected graph" begin
         n = 40
         # contact intervals (mean 0.05) almost always fall within a long

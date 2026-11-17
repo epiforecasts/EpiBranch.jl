@@ -180,6 +180,9 @@ struct CapacityConstrained{I <: AbstractIntervention, F, B} <: _CapacityWrapper
     on_refusal::RefusalPolicy
 end
 
+# The budget per period is counted on the clock of the population.
+gates_on_population_clock(::CapacityConstrained) = true
+
 function CapacityConstrained(
         intervention::AbstractIntervention;
         budget_per_period, period::Real = Inf, carry_over::Bool = true,
@@ -766,7 +769,7 @@ end
 # proposes (see `_trace_action`) is rationed. `state.scratch` passes this
 # wrapper down to the span of the wrapped intervention's own
 # `trace_contacts!` call, which admits through it instead of itself (see
-# `_admit_trace_actions!`). This composes with `Scheduled` in either order, as
+# `admit_trace_actions!`). This composes with `Scheduled` in either order, as
 # a dose already does.
 function trace_contacts!(w::_CapacityWrapper, state, infector, contacts, not_before = nothing)
     key = (:trace_admitter, _innermost(w))
@@ -823,8 +826,3 @@ function _reset_unless_within_budget!(cc::CapacityConstrained, ind::Individual, 
     _fits_budget(own, times, Float64[], t) || reset!(cc.intervention, ind)
     return nothing
 end
-
-# Capacity gates who a removal reaches, never whether one already delivered
-# still stands, so the stretches it recorded are read back unchanged.
-removal_gap_host_times(w::_CapacityWrapper) = removal_gap_host_times(w.intervention)
-removal_block_probability(w::_CapacityWrapper) = removal_block_probability(w.intervention)
