@@ -850,6 +850,7 @@ EpiBranch.HostImmunity
 EpiBranch.infectious_removal_time
 EpiBranch.risk_applies
 EpiBranch.standing_block
+EpiBranch.prevents_contact
 EpiBranch.infinite_draw_is_final
 intervention_time
 EpiBranch.reset!

@@ -357,6 +357,30 @@ model](@ref)).
   infected) needs the draws that would otherwise be skipped. See [Recording
   every contact event](@ref).
 
+- **Contacts that never happened.** [`EpiBranch.prevents_contact`](@ref) says
+  whether an infection your risk blocks was a contact at all. A mask or a
+  partly effective vaccine stops the infection while people still meet, so
+  the blocked contact stays in the outbreak: [`contacts`](@ref) lists it and
+  tracing can reach it. A ward closure or isolation in hospital stops the
+  meeting itself, so there is no contact to list or trace. The default,
+  `false`, keeps the contact; declare `true` for a measure that stops the meeting.
+
+  ```julia
+  EpiBranch.prevents_contact(::MyClosedWard) = true
+  ```
+
+  The branching process and a model written against `contacts_of` take such a
+  contact back out of the infector's contacts, and a model over a fixed
+  population does not offer it to a [`ContactRecorder`](@ref). Where several
+  sources block the same contact, it is dropped if any of those that prevent
+  contact blocks it, whichever is first in the stack. A contact that falls
+  after an infector's isolation is dropped before tracing reaches it; a
+  block that is only a probability, or that starts later, is decided when the
+  race reaches the contact, so tracing may already have followed up a contact
+  that is then dropped. The built-in [`Isolation`](@ref) and
+  [`Quarantine`](@ref) default to `true` and take `prevents_contact` as a
+  keyword, so `Isolation(...; prevents_contact = false)` is isolation at home.
+
 ### Recording every contact event
 
 A continuous-time model stops proposing contacts for a pair once a

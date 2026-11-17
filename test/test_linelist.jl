@@ -313,10 +313,16 @@ using Dates
             BranchingProcess(Poisson(2.5), Exponential(5.0); population_size = 400);
             attributes = clinical,
             interventions = [
-                Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf),
+                # Home isolation and quarantine keep the contacts they block.
+                # That leaves uninfected contacts to report.
+                Isolation(
+                    onset_to_isolation_delay = Exponential(1.0), duration = Inf,
+                    prevents_contact = false
+                ),
                 ContactTracing(
                     probability = 0.8,
-                    isolation_to_trace_delay = Exponential(1.0), action = Quarantine(duration = Inf)
+                    isolation_to_trace_delay = Exponential(1.0),
+                    action = Quarantine(duration = Inf, prevents_contact = false)
                 ),
                 RingVaccination(efficacy = 0.9),
             ]
