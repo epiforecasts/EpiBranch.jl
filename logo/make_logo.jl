@@ -9,8 +9,10 @@
 #   logo-light.svg, logo-light.png light sticker
 #   ../docs/src/assets/logo-dark.svg, logo.png  dark sticker
 #   ../docs/src/assets/logo.svg                 light sticker
-# Documenter shows assets/logo.svg in light mode and assets/logo-dark.svg in
-# dark mode; the README embeds logo-dark.svg.
+# The SVG pair follows Documenter's convention (logo.svg in light mode,
+# logo-dark.svg in dark mode) for pages that switch with their theme. The
+# DocumenterVitepress docs header takes assets/logo.png, the dark sticker, in
+# either mode, and the README embeds logo-dark.svg.
 
 using Luxor
 using Distributions
