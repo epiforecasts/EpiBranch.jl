@@ -78,7 +78,7 @@ EpiBranch.chain_size_distribution(d::BrokenExactOffspring) = throw(d.error)
         # With interventions, prob_concluded routes through the
         # simulation-based likelihood.
         clinical = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
-        iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
+        iso = Isolation(delay = Exponential(1.0), duration = Inf)
         d_iv = chain_size_distribution(
             ModelSpec(bp; interventions = [iso], attributes = clinical);
             seeds = seeds, prob_concluded = pc, n_sim = 500, rng = StableRNG(1)
@@ -531,7 +531,7 @@ EpiBranch.offspring_law_unchanged(::OwnOnset) = true
     @test chain_size_distribution(class).detection_prob ≈ 0.4
 
     # Isolation's analytic effect reads the incubation period the same way.
-    iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
+    iso = Isolation(delay = Exponential(1.0), duration = Inf)
     builtin = ModelSpec(proc; interventions = [iso], attributes = inner)
     own = ModelSpec(proc; interventions = [iso], attributes = OwnOnset(inner))
     off = NegBin(0.8, 0.5)

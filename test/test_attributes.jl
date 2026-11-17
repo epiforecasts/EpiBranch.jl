@@ -243,7 +243,7 @@ end
                 incubation_period = (rng, ind) -> rand(rng, LogNormal(1.5, 0.5))
             )
             bp = BranchingProcess(NegBin(2.0, 0.5), LogNormal(1.6, 0.5))
-            iso = Isolation(onset_to_isolation_delay = 1.0, duration = Inf)
+            iso = Isolation(delay = 1.0, duration = Inf)
             @test_throws r"incubation period directly" extinction_probability(
                 ModelSpec(bp; interventions = [iso], attributes = fn)
             )
@@ -429,7 +429,7 @@ end
         end
 
         @testset "0/1 propensity gives all-or-nothing groups at the independent mean" begin
-            iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
+            iso = Isolation(delay = Exponential(1.0), duration = Inf)
             ct = ContactTracing(
                 probability = 1.0, isolation_to_trace_delay = Exponential(0.5),
                 action = Quarantine(duration = Inf)

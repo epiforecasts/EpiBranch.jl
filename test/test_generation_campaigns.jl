@@ -143,7 +143,7 @@ EpiBranch.trigger_time(e::_EligibleAt, infector, state) = e.time
         )
         @test occursin(
             "Isolation",
-            err(spec(Isolation(onset_to_isolation_delay = 1.0, duration = 7.0)))
+            err(spec(Isolation(delay = 1.0, duration = 7.0)))
         )
         @test occursin(
             "group_key = :type", err(

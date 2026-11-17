@@ -71,7 +71,7 @@ required_fields(::SymptomaticOnly) = [:asymptomatic]
 # ── Isolation intervention ──────────────────────────────────────────
 
 """
-    Isolation(; onset_to_isolation_delay, duration,
+    Isolation(; delay, duration,
               eligibility = SymptomaticOnly(), test_sensitivity = 1.0,
               post_isolation_transmission = 0.0)
 
@@ -80,12 +80,13 @@ transmission. Isolation applies to cases; traced contacts who are not yet
 known cases are quarantined through [`ContactTracing`](@ref).
 
 # Arguments
-- `onset_to_isolation_delay`: days from symptom onset to isolation. A number,
+- `delay`: days from symptom onset to isolation. A number,
   a distribution such as `Exponential(2.0)` (mean 2 days), or a function of
   the random number generator and the individual, `(rng, ind) -> ...`, drawn
   for each case. The function can read information another intervention has
   recorded on the case, for example to shorten the delay once a case in the
-  same household has been detected.
+  same household has been detected. `onset_to_isolation_delay` is a
+  deprecated alias that warns once.
 - `duration` (required): days a case stays isolated before release.
   A number, a distribution or a function `(rng, ind) -> ...`. `Inf` isolates
   for good; with zero the case is still recorded as isolated, so tracing can
@@ -99,7 +100,7 @@ known cases are quarantined through [`ContactTracing`](@ref).
   `(rng, ind) -> ...`, drawn once per case. A [`Testing`](@ref) step in the
   model's `progression` can be given instead: a case is then detected when its
   own test, taken from its within-host trajectory, is positive. The isolation
-  time is still `onset_to_isolation_delay` after onset, and analytic effects
+  time is still `delay` after onset, and analytic effects
   (`analytic_offspring_effect`) need a number or a distribution and refuse this form.
 - `post_isolation_transmission`: fraction of normal transmission that
   continues while isolated, between 0 and 1 (default 0, perfect isolation;
@@ -124,7 +125,7 @@ continues.
 
 # Examples
 ```julia
-iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = Inf)
+iso = Isolation(delay = Exponential(2.0), duration = Inf)
 model = BranchingProcess(NegBin(2.5, 0.16), LogNormal(1.6, 0.5))
 spec = ModelSpec(model; interventions = [iso], attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5)))
 state = simulate(spec; max_cases = 500)
@@ -132,7 +133,7 @@ state = simulate(spec; max_cases = 500)
 # Leaky isolation lasting 14 days; AllCases lets every case draw a test result,
 # but only cases with an onset are isolated
 Isolation(
-    onset_to_isolation_delay = 1.0, duration = 14.0,
+    delay = 1.0, duration = 14.0,
     eligibility = AllCases(), post_isolation_transmission = 0.25,
 )
 ```
@@ -142,21 +143,32 @@ For extension authors: the case records `:isolated`, `:isolation_time`,
 """
 struct Isolation{E <: IsolationEligibility, D, S, U} <: AbstractIntervention
     eligibility::E
-    onset_to_isolation_delay::D
+    delay::D
     test_sensitivity::S
     post_isolation_transmission::Float64
     duration::U
 end
 
 function Isolation(;
-        onset_to_isolation_delay,
+        delay = nothing,
         duration,
         eligibility::IsolationEligibility = SymptomaticOnly(),
         test_sensitivity = 1.0,
-        post_isolation_transmission::Real = 0.0
+        post_isolation_transmission::Real = 0.0,
+        onset_to_isolation_delay = nothing
     )
+    if onset_to_isolation_delay !== nothing
+        delay === nothing || throw(
+            ArgumentError(
+                "give `delay` or the deprecated `onset_to_isolation_delay`, not both"
+            )
+        )
+        @warn "`onset_to_isolation_delay` is deprecated; use `delay`." maxlog = 1
+        delay = onset_to_isolation_delay
+    end
+    delay === nothing && throw(ArgumentError("`Isolation` needs a `delay`"))
     return Isolation(
-        eligibility, onset_to_isolation_delay, test_sensitivity,
+        eligibility, delay, test_sensitivity,
         Float64(post_isolation_transmission), duration
     )
 end
@@ -204,7 +216,7 @@ end
 # When a test-positive case isolates itself: its onset plus the delay.
 function _self_isolation_time(iso::Isolation, individual, state)
     delay = sample_value(
-        iso.onset_to_isolation_delay,
+        iso.delay,
         stream(state.rng, individual.id, (:isolation, :delay)), individual
     )
     return onset_time(individual) + delay

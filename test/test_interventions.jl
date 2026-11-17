@@ -27,7 +27,7 @@ EpiBranch.records_isolation(::_DetectAfterOutcome, ind, state, t) = true
 @testset "Callable isolation and scheduling parameters" begin
     for enabled in (false, true)
         iso = Isolation(
-            onset_to_isolation_delay = Dirac(1.0),
+            delay = Dirac(1.0),
             test_sensitivity = _CaseSensitivity(), duration = Inf
         )
         model = ModelSpec(
@@ -66,7 +66,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         )
 
         rng2 = StableRNG(42)
-        iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = Inf)
+        iso = Isolation(delay = Exponential(2.0), duration = Inf)
         results_iso = simulate(
             ModelSpec(
                 BranchingProcess(Poisson(3.0), Exponential(5.0));
@@ -82,7 +82,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
 
     @testset "Contact tracing marks individuals as traced" begin
         rng = StableRNG(101)
-        iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
+        iso = Isolation(delay = Exponential(1.0), duration = Inf)
         ct = ContactTracing(
             probability = 1.0, isolation_to_trace_delay = Exponential(1.0),
             action = Quarantine(duration = Inf)
@@ -111,7 +111,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
 
     @testset "Scheduled start_time respected" begin
         rng = StableRNG(200)
-        iso = Scheduled(Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf); start_time = 1000.0)
+        iso = Scheduled(Isolation(delay = Exponential(1.0), duration = Inf); start_time = 1000.0)
 
         state = simulate(
             ModelSpec(
@@ -149,7 +149,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         # `:isolated`/`:isolation_time` are shared: ContactTracing's Quarantine
         # writes them directly. A Scheduled(Isolation) resetting a pre-start
         # isolation must not un-quarantine a contact Isolation never touched.
-        iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
+        iso = Isolation(delay = Exponential(1.0), duration = Inf)
 
         # Isolation set by another intervention (no provenance marker).
         traced = Individual(id = 1)
@@ -209,7 +209,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         # only processes that drive them live in the companion packages, so the
         # core suite would otherwise never touch this code.
         ct = ContactTracing(TraceEveryone(), 1.0, Exponential(0.5), Quarantine(duration = Inf))
-        iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
+        iso = Isolation(delay = Exponential(1.0), duration = Inf)
 
         # Only interventions that trace declare themselves, so the race can skip
         # gathering contacts entirely when nothing needs them.
@@ -461,7 +461,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         # first: overlapping it where the two windows meet, and adding a
         # separate removal where a short or already-lapsed quarantine ends
         # before onset.
-        iso = Isolation(onset_to_isolation_delay = Exponential(1.0e-9), duration = Inf)
+        iso = Isolation(delay = Exponential(1.0e-9), duration = Inf)
         state = empty_state(; rng = StableRNG(1))
 
         # Quarantined late, but onset was early: the self-reported time wins.
@@ -510,7 +510,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
 
     @testset "Scheduled and CapacityConstrained judge Isolation's own start" begin
         state = empty_state(; rng = StableRNG(1))
-        iso = Isolation(onset_to_isolation_delay = Dirac(3.0), duration = Inf)
+        iso = Isolation(delay = Dirac(3.0), duration = Inf)
         function quarantined()
             ind = Individual(id = 1)
             ind.state[:onset_time] = 8.0
@@ -556,9 +556,9 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         # The eligibility decides: a policy that wants post-mortem detection,
         # as an Ebola death found at burial does, overrides
         # `records_isolation`. The default declines such a time.
-        iso_default = Isolation(onset_to_isolation_delay = Dirac(5.0), duration = Inf)
+        iso_default = Isolation(delay = Dirac(5.0), duration = Inf)
         iso_late = Isolation(
-            onset_to_isolation_delay = Dirac(5.0), eligibility = _DetectAfterOutcome(), duration = Inf
+            delay = Dirac(5.0), eligibility = _DetectAfterOutcome(), duration = Inf
         )
         state = empty_state(; rng = StableRNG(31))
         function after_outcome(iso)
@@ -599,7 +599,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         # death, or other terminal transition) still removes the case from
         # transmission, but a self-report or trace reaching a case that has
         # already recovered or died is not a detection.
-        iso = Isolation(onset_to_isolation_delay = Dirac(5.0), duration = Inf)
+        iso = Isolation(delay = Dirac(5.0), duration = Inf)
         state = empty_state(; rng = StableRNG(1))
 
         # Self-reported pathway: onset at 1.0 + delay 5.0 = 6.0, after the
@@ -655,7 +655,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             BranchingProcess(Poisson(0.0), Exponential(1.0e9));
             attributes = clinical_presentation(incubation_period = Dirac(1.0)),
             progression = [Transition(:recovered; from = :onset, delay = 1.0, terminal = true)],
-            interventions = [Isolation(onset_to_isolation_delay = Dirac(5.0), duration = Inf)]
+            interventions = [Isolation(delay = Dirac(5.0), duration = Inf)]
         )
         state = simulate(model; n_initial = 1, rng = StableRNG(1))
         ind = only(state.individuals)
@@ -677,7 +677,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                 BranchingProcess(Poisson(2.0), Gamma(2.0, 3.0));
                 attributes = clinical_presentation(incubation_period = LogNormal(1.6, 0.4)),
                 progression = [outcome],
-                interventions = [Isolation(onset_to_isolation_delay = Exponential(2.0), duration = Inf)]
+                interventions = [Isolation(delay = Exponential(2.0), duration = Inf)]
             )
             results = simulate(model, 10; max_cases = 100, rng = StableRNG(seed))
             cases = [s.cumulative_cases for s in results]
@@ -718,7 +718,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
 
         _, uncontrolled = funeral_cases(AbstractIntervention[])
         # Isolation two days after death, during the funeral window.
-        s, controlled = funeral_cases([Isolation(onset_to_isolation_delay = Dirac(3.0), duration = Inf)])
+        s, controlled = funeral_cases([Isolation(delay = Dirac(3.0), duration = Inf)])
         @test length(controlled) < length(uncontrolled)
         for ind in controlled
             @test ind.infection_time < isolation_time(s.individuals[ind.parent_id])
@@ -738,7 +738,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                 attributes = clinical_presentation(incubation_period = Dirac(1.0)),
                 progression = [Death(delay = 0.0, probability = 1.0)],
                 interventions = [
-                    Isolation(onset_to_isolation_delay = Dirac(2.0), eligibility = eligibility, duration = Inf),
+                    Isolation(delay = Dirac(2.0), eligibility = eligibility, duration = Inf),
                     ContactTracing(OnIsolation(), 1.0, Dirac(0.5), Quarantine(duration = Inf)),
                 ]
             )
@@ -873,7 +873,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         # The mirror of the trace path: an isolation starting earlier than a
         # standing quarantine must not discard the quarantine's release.
         iso = Isolation(
-            onset_to_isolation_delay = Dirac(1.0), duration = Dirac(2.0)
+            delay = Dirac(1.0), duration = Dirac(2.0)
         )
         state = empty_state(; rng = StableRNG(1))
         ind = Individual(id = 1)
@@ -897,14 +897,14 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         ind.state[:outcome_time] = 8.0
 
         late = Isolation(
-            onset_to_isolation_delay = Dirac(16.0), duration = Dirac(14.0)
+            delay = Dirac(16.0), duration = Dirac(14.0)
         )
         EpiBranch.resolve_individual!(late, ind, mkstate())
         @test isolation_time(ind) == 20.0
         @test !is_isolated(ind)                      # after the outcome: no detection
 
         early = Isolation(
-            onset_to_isolation_delay = Dirac(1.0), duration = Dirac(2.0)
+            delay = Dirac(1.0), duration = Dirac(2.0)
         )
         EpiBranch.resolve_individual!(early, ind, mkstate())
         # The earlier interval [5, 7) does not meet [20, 34), so the standing
@@ -920,7 +920,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         # `event_t <= t < release_t` and blocks nothing, and the race finds
         # nothing to close a window with.
         iso = Isolation(
-            onset_to_isolation_delay = Dirac(1.0), duration = Dirac(0.0)
+            delay = Dirac(1.0), duration = Dirac(0.0)
         )
         ind = Individual(id = 1, infection_time = 0.0)
         ind.state[:onset_time] = 3.0
@@ -949,7 +949,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             isolated.state[:test_positive] = true
             @test_throws ArgumentError EpiBranch.resolve_individual!(
                 Isolation(
-                    onset_to_isolation_delay = Dirac(1.0), duration = bad
+                    delay = Dirac(1.0), duration = bad
                 ),
                 isolated,
                 empty_state(; rng = StableRNG(1))
@@ -1023,7 +1023,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         # actually infected, through another route, must not still be carrying
         # that old quarantine. The competing risk from tracing must respect the
         # release time, not just the isolation time.
-        iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = Inf)
+        iso = Isolation(delay = Exponential(2.0), duration = Inf)
         ct = ContactTracing(
             probability = 1.0, isolation_to_trace_delay = Dirac(0.0),
             action = Quarantine(duration = 2.0)
@@ -1053,12 +1053,12 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
 
     @testset "duration has no default" begin
         @test_throws UndefKeywordError Isolation(
-            onset_to_isolation_delay = Exponential(2.0)
+            delay = Exponential(2.0)
         )
     end
 
     @testset "duration gives a self-reported isolation a release time" begin
-        iso = Isolation(onset_to_isolation_delay = Dirac(2.0), duration = Dirac(5.0))
+        iso = Isolation(delay = Dirac(2.0), duration = Dirac(5.0))
         state = empty_state(; rng = StableRNG(1))
         ind = Individual(id = 1)
         ind.state[:onset_time] = 1.0
@@ -1120,7 +1120,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         model = ModelSpec(
             BranchingProcess(offspring, Dirac(1.0)); attributes = attrs,
             interventions = [
-                Isolation(onset_to_isolation_delay = Dirac(0.0), duration = 10.0),
+                Isolation(delay = Dirac(0.0), duration = 10.0),
                 ContactTracing(
                     probability = 1.0, isolation_to_trace_delay = Dirac(1.0),
                     action = Quarantine(; duration)
@@ -1147,7 +1147,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
     end
 
     @testset "A Scheduled reset restores a standing isolation's record" begin
-        iso = Isolation(onset_to_isolation_delay = Dirac(2.0), duration = Inf)
+        iso = Isolation(delay = Dirac(2.0), duration = Inf)
         state = empty_state(; rng = StableRNG(1))
         # A self-report at 3.0, after the outcome at 2.0, revises a standing
         # isolation at 6.0 and is then undone.
@@ -1177,7 +1177,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
 
     @testset "Asymptomatic cases are not isolated" begin
         rng = StableRNG(42)
-        iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
+        iso = Isolation(delay = Exponential(1.0), duration = Inf)
         clinical_asymp = clinical_presentation(
             incubation_period = LogNormal(1.5, 0.5),
             prob_asymptomatic = 0.5
@@ -1200,7 +1200,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
     end
 
     @testset "Test sensitivity affects isolation" begin
-        iso = Isolation(onset_to_isolation_delay = Exponential(1.0), test_sensitivity = 0.0, duration = Inf)
+        iso = Isolation(delay = Exponential(1.0), test_sensitivity = 0.0, duration = Inf)
 
         state = simulate(
             ModelSpec(
@@ -1216,7 +1216,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
 
     @testset "Hazard-based isolation reduces more with early isolation" begin
         rng1 = StableRNG(42)
-        iso_fast = Isolation(onset_to_isolation_delay = Exponential(0.5), duration = Inf)
+        iso_fast = Isolation(delay = Exponential(0.5), duration = Inf)
         results_fast = simulate(
             ModelSpec(
                 BranchingProcess(Poisson(3.0), Exponential(5.0));
@@ -1226,7 +1226,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         )
 
         rng2 = StableRNG(42)
-        iso_slow = Isolation(onset_to_isolation_delay = Exponential(10.0), duration = Inf)
+        iso_slow = Isolation(delay = Exponential(10.0), duration = Inf)
         results_slow = simulate(
             ModelSpec(
                 BranchingProcess(Poisson(3.0), Exponential(5.0));
@@ -1240,7 +1240,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
 
     @testset "Intervention initialises state on individuals" begin
         rng = StableRNG(42)
-        iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
+        iso = Isolation(delay = Exponential(1.0), duration = Inf)
         ct = ContactTracing(
             probability = 0.5, isolation_to_trace_delay = Exponential(1.0),
             action = Quarantine(duration = Inf)
@@ -1261,7 +1261,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
     end
 
     @testset "Missing init gives helpful error" begin
-        iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
+        iso = Isolation(delay = Exponential(1.0), duration = Inf)
 
         @test_throws ErrorException simulate(
             ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0)); interventions = [iso]);
@@ -1289,7 +1289,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
 
     @testset "Ring vaccination" begin
         @testset "Leaky mode reduces transmission" begin
-            iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
+            iso = Isolation(delay = Exponential(1.0), duration = Inf)
             ct = ContactTracing(
                 probability = 1.0, isolation_to_trace_delay = Exponential(0.5),
                 action = Quarantine(duration = Inf)
@@ -1319,7 +1319,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         end
 
         @testset "All-or-nothing mode" begin
-            iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
+            iso = Isolation(delay = Exponential(1.0), duration = Inf)
             ct = ContactTracing(
                 probability = 1.0, isolation_to_trace_delay = Exponential(0.5),
                 action = Quarantine(duration = Inf)
@@ -1344,7 +1344,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         end
 
         @testset "Delay to immunity" begin
-            iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
+            iso = Isolation(delay = Exponential(1.0), duration = Inf)
             ct = ContactTracing(
                 probability = 1.0, isolation_to_trace_delay = Exponential(0.5),
                 action = Quarantine(duration = Inf)
@@ -1383,7 +1383,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                     incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0
                 )
                 iso = Isolation(
-                    onset_to_isolation_delay = Exponential(1.0),
+                    delay = Exponential(1.0),
                     post_isolation_transmission = 0.4, duration = Inf
                 )
                 ct = ContactTracing(
@@ -1588,7 +1588,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             # is stored on the contact at vaccination time (see
             # `_record_vaccination!`), so every exposure it faces reads
             # back the same immunity time.
-            iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
+            iso = Isolation(delay = Exponential(1.0), duration = Inf)
             ct = ContactTracing(
                 probability = 1.0, isolation_to_trace_delay = Exponential(0.5),
                 action = Quarantine(duration = Inf)
@@ -1622,7 +1622,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         end
 
         @testset "delay_to_immunity accepts a function" begin
-            iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
+            iso = Isolation(delay = Exponential(1.0), duration = Inf)
             ct = ContactTracing(
                 probability = 1.0, isolation_to_trace_delay = Exponential(0.5),
                 action = Quarantine(duration = Inf)
@@ -1648,7 +1648,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         end
 
         @testset "Coverage thins vaccinations" begin
-            iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
+            iso = Isolation(delay = Exponential(1.0), duration = Inf)
             ct = ContactTracing(
                 probability = 1.0, isolation_to_trace_delay = Exponential(0.5),
                 action = Quarantine(duration = Inf)
@@ -1711,7 +1711,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                 clinical,
                 demographics(age_distribution = Uniform(0, 90)),
             ]
-            iso = Isolation(onset_to_isolation_delay = Exponential(0.5), duration = Inf)
+            iso = Isolation(delay = Exponential(0.5), duration = Inf)
             ct = ContactTracing(
                 probability = 1.0, isolation_to_trace_delay = Exponential(0.5),
                 action = Quarantine(duration = Inf)
@@ -1736,7 +1736,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             # With a long isolation delay, only some traced contacts are
             # within a tight window. A short window should produce strictly
             # fewer vaccinations than an infinite one.
-            iso = Isolation(onset_to_isolation_delay = Exponential(5.0), duration = Inf)
+            iso = Isolation(delay = Exponential(5.0), duration = Inf)
             ct = ContactTracing(
                 probability = 1.0, isolation_to_trace_delay = Exponential(1.0),
                 action = Quarantine(duration = Inf)
@@ -1833,7 +1833,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         @testset "Doses are timed at the trace, whatever the trace action" begin
             # A ring member is vaccinated when the tracing team reaches
             # them, so `:vaccination_time` is the trace time.
-            iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = Inf)
+            iso = Isolation(delay = Exponential(2.0), duration = Inf)
             for quarantine in (true, false)
                 ct = ContactTracing(
                     probability = 1.0,
@@ -1866,7 +1866,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                 incubation_period = LogNormal(1.5, 0.5),
                 prob_asymptomatic = 0.3
             )
-            iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = Inf)
+            iso = Isolation(delay = Exponential(2.0), duration = Inf)
             ct = ContactTracing(
                 probability = 1.0,
                 isolation_to_trace_delay = Exponential(1.0),
@@ -1890,7 +1890,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         end
 
         @testset "Second dose" begin
-            iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = Inf)
+            iso = Isolation(delay = Exponential(2.0), duration = Inf)
             ct = ContactTracing(
                 probability = 1.0,
                 isolation_to_trace_delay = Exponential(1.0), action = Quarantine(duration = Inf)
@@ -2206,7 +2206,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         end
 
         @testset "Post-exposure efficacy" begin
-            iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = Inf)
+            iso = Isolation(delay = Exponential(2.0), duration = Inf)
             ct = ContactTracing(
                 probability = 0.7,
                 isolation_to_trace_delay = Exponential(1.0),
@@ -2322,7 +2322,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                     );
                     interventions = [
                         Isolation(
-                            onset_to_isolation_delay = Dirac(0.5),
+                            delay = Dirac(0.5),
                             test_sensitivity = (rng, ind) -> ind.parent_id == 0 ? 1.0 : 0.0, duration = Inf
                         ),
                         ContactTracing(
@@ -2720,7 +2720,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             # (i.e. before the parent was even traced/isolated) — once
             # the parent's immunity is in place the onward risk is
             # certain to block.
-            iso = Isolation(onset_to_isolation_delay = Exponential(0.5), duration = Inf)
+            iso = Isolation(delay = Exponential(0.5), duration = Inf)
             ct = ContactTracing(
                 probability = 1.0, isolation_to_trace_delay = Exponential(0.5),
                 action = Quarantine(duration = Inf)
@@ -2760,7 +2760,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             # with only the susceptibility risk in play, the simulation
             # should be bit-identical to the previous behaviour for the
             # same seed.
-            iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
+            iso = Isolation(delay = Exponential(1.0), duration = Inf)
             ct = ContactTracing(
                 probability = 1.0, isolation_to_trace_delay = Exponential(0.5),
                 action = Quarantine(duration = Inf)
@@ -2821,7 +2821,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                 # each case is detected post mortem, which the eligibility
                 # records for tracing to reach its contacts.
                 iso = Isolation(
-                    onset_to_isolation_delay = Exponential(1.0),
+                    delay = Exponential(1.0),
                     eligibility = _DetectAfterOutcome(), duration = Inf
                 )
                 ct = ContactTracing(
@@ -2895,7 +2895,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                 # every death exactly as if the dose were never given. Death
                 # comes at onset, so detection is post mortem.
                 iso = Isolation(
-                    onset_to_isolation_delay = Exponential(1.0),
+                    delay = Exponential(1.0),
                     eligibility = _DetectAfterOutcome(), duration = Inf
                 )
                 ct = ContactTracing(
@@ -2976,7 +2976,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
 
     @testset "Contact tracing without quarantine" begin
         rng = StableRNG(42)
-        iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
+        iso = Isolation(delay = Exponential(1.0), duration = Inf)
         ct = ContactTracing(
             probability = 1.0, isolation_to_trace_delay = Exponential(1.0),
             action = FlagOnly()
@@ -3009,7 +3009,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         # FlagOnly writes :_traced_isolation_time, not :isolation_time. Ring
         # vaccination keys on the trace-driven isolation time, so it must still
         # dose the contact (it silently no-op'd before, when tracing only flagged).
-        iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
+        iso = Isolation(delay = Exponential(1.0), duration = Inf)
         ct = ContactTracing(
             probability = 1.0,
             isolation_to_trace_delay = Exponential(0.5), action = FlagOnly()
@@ -3036,7 +3036,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         #
         # Filter to the cases, which are the people `resolve_individual!` ran on.
         rng = StableRNG(20260601)
-        iso = Isolation(onset_to_isolation_delay = Exponential(1.0), test_sensitivity = 0.4, duration = Inf)
+        iso = Isolation(delay = Exponential(1.0), test_sensitivity = 0.4, duration = Inf)
         ct = ContactTracing(
             probability = 1.0, isolation_to_trace_delay = Exponential(1.0),
             action = FlagOnly()
@@ -3069,7 +3069,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         @testset "start_time delays activation" begin
             # Compare scheduled (late start) vs always-on — scheduled should contain less
             rng1 = StableRNG(42)
-            iso_late = Scheduled(Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf); start_time = 20.0)
+            iso_late = Scheduled(Isolation(delay = Exponential(1.0), duration = Inf); start_time = 20.0)
             results_late = simulate(
                 ModelSpec(
                     BranchingProcess(Poisson(3.0), Exponential(5.0));
@@ -3079,7 +3079,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             )
 
             rng2 = StableRNG(42)
-            iso_always = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
+            iso_always = Isolation(delay = Exponential(1.0), duration = Inf)
             results_always = simulate(
                 ModelSpec(
                     BranchingProcess(Poisson(3.0), Exponential(5.0));
@@ -3105,7 +3105,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         end
 
         @testset "start_after_cases delays activation" begin
-            iso = Scheduled(Isolation(onset_to_isolation_delay = Exponential(0.5), duration = Inf); start_after_cases = 20)
+            iso = Scheduled(Isolation(delay = Exponential(0.5), duration = Inf); start_after_cases = 20)
 
             rng1 = StableRNG(42)
             results_scheduled = simulate(
@@ -3118,7 +3118,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
 
             # Compare with always-on isolation — scheduled should contain less
             rng2 = StableRNG(42)
-            iso_always = Isolation(onset_to_isolation_delay = Exponential(0.5), duration = Inf)
+            iso_always = Isolation(delay = Exponential(0.5), duration = Inf)
             results_always = simulate(
                 ModelSpec(
                     BranchingProcess(Poisson(3.0), Exponential(5.0));
@@ -3320,7 +3320,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             bp = BranchingProcess(
                 Infectiousness(Poisson(1.5); kernel = Exponential(5.0), until = (:recovered,))
             )
-            iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = Inf)
+            iso = Isolation(delay = Exponential(2.0), duration = Inf)
             no_report = [Recovery(delay = Exponential(5.0))]
             with_report = [
                 Reporting(delay = Exponential(2.0), probability = 0.5),
@@ -3395,7 +3395,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                 inds, Int[], 0, StableRNG(1), 0, false, nothing, 0.0, nothing,
                 AbstractClinicalTransition[]
             )
-            iso = Isolation(onset_to_isolation_delay = Dirac(0.0), duration = Inf)
+            iso = Isolation(delay = Dirac(0.0), duration = Inf)
             by_cases = Scheduled(iso; start_after_cases = 10)
             by_reports = Scheduled(iso; start_after = ReportedCases(10))
             for i in 1:12
@@ -3407,7 +3407,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         end
 
         @testset "a trigger names the fields it reads" begin
-            iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = Inf)
+            iso = Isolation(delay = Exponential(2.0), duration = Inf)
 
             # The default declares nothing, as `_AlwaysOpenTrigger` does.
             @test EpiBranch.required_fields(_AlwaysOpenTrigger()) == Symbol[]
@@ -3435,7 +3435,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             # checks the trigger again at the isolation's own time, by when
             # another case's report may have brought it open.
             iso = Scheduled(
-                Isolation(onset_to_isolation_delay = Dirac(0.0), duration = Inf);
+                Isolation(delay = Dirac(0.0), duration = Inf);
                 start_after = ReportedCases(1)
             )
             ind = Individual(id = 1, infection_time = 0.0)
@@ -3465,7 +3465,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
                 Reporting(delay = Exponential(2.0), probability = 0.2),
                 Recovery(delay = Exponential(5.0)),
             ]
-            iso = Isolation(onset_to_isolation_delay = Dirac(0.0), duration = Inf)
+            iso = Isolation(delay = Dirac(0.0), duration = Inf)
             function isolated_share(trigger)
                 results = simulate(
                     ModelSpec(
@@ -3505,7 +3505,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
 
         @testset "custom predicate" begin
             iso = Scheduled(
-                Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf),
+                Isolation(delay = Exponential(1.0), duration = Inf),
                 state -> state.current_generation >= 3
             )
 
@@ -3526,7 +3526,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         @testset "end_time deactivates" begin
             # Active only in a short window
             iso = Scheduled(
-                Isolation(onset_to_isolation_delay = Exponential(0.5), duration = Inf);
+                Isolation(delay = Exponential(0.5), duration = Inf);
                 start_time = 5.0, end_time = 10.0
             )
 
@@ -3546,7 +3546,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         end
 
         @testset "mixed Scheduled and always-on" begin
-            iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
+            iso = Isolation(delay = Exponential(1.0), duration = Inf)
             ct = Scheduled(
                 ContactTracing(
                     probability = 0.5, isolation_to_trace_delay = Exponential(1.0),
@@ -3571,7 +3571,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         end
 
         @testset "filters on action time not infection time" begin
-            iso = Scheduled(Isolation(onset_to_isolation_delay = Exponential(0.1), duration = Inf); start_time = 15.0)
+            iso = Scheduled(Isolation(delay = Exponential(0.1), duration = Inf); start_time = 15.0)
 
             state = simulate(
                 ModelSpec(
@@ -3594,7 +3594,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
             # infected on day 8 who develops symptoms on day 12: the case
             # itself predates the policy, but its own isolation does not.
             iso = Scheduled(
-                Isolation(onset_to_isolation_delay = Dirac(0.0), duration = Inf);
+                Isolation(delay = Dirac(0.0), duration = Inf);
                 start_time = 10.0
             )
             ind = Individual(id = 1, infection_time = 8.0)
@@ -3636,7 +3636,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         end
 
         @testset "requires at least one condition" begin
-            iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
+            iso = Isolation(delay = Exponential(1.0), duration = Inf)
             @test_throws ErrorException Scheduled(iso)
         end
     end
@@ -3696,7 +3696,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
     end
 
     @testset "Scheduled can_lapse" begin
-        iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
+        iso = Isolation(delay = Exponential(1.0), duration = Inf)
 
         # `Scheduled` reads `can_lapse` from the trigger. `Infections` and
         # `ReportedCases` both count something that can only rise, so neither
@@ -3711,7 +3711,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         # one it matches. With `can_lapse` these come back empty and the
         # likelihood charges each pair for the time the host was isolated.
         iso7 = Isolation(
-            onset_to_isolation_delay = Exponential(1.0), duration = 7.0
+            delay = Exponential(1.0), duration = 7.0
         )
         by_cases = Scheduled(iso7; start_after_cases = 10)
         by_reports = Scheduled(iso7; start_after = ReportedCases(10))
@@ -3721,4 +3721,17 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
         @test EpiBranch.binding_release(by_reports) ==
             EpiBranch.binding_release(by_cases)
     end
+end
+
+@testset "Isolation delay keyword" begin
+    iso = Isolation(delay = 2.0, duration = Inf)
+    @test iso.delay == 2.0
+    old = @test_logs (:warn, r"onset_to_isolation_delay.*deprecated") Isolation(
+        onset_to_isolation_delay = 2.0, duration = Inf
+    )
+    @test old.delay == 2.0
+    @test_throws ArgumentError Isolation(
+        delay = 1.0, onset_to_isolation_delay = 1.0, duration = Inf
+    )
+    @test_throws ArgumentError Isolation(duration = Inf)
 end

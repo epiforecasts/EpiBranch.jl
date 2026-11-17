@@ -93,7 +93,7 @@ end
                 progression = [testing],
                 interventions = [
                     Isolation(
-                        onset_to_isolation_delay = 1.0, duration = Inf,
+                        delay = 1.0, duration = Inf,
                         test_sensitivity = testing,
                     ),
                 ]
@@ -109,13 +109,13 @@ end
 
     @testset "numeric test_sensitivity is unchanged and keeps its closed form" begin
         iso = Isolation(
-            onset_to_isolation_delay = Exponential(2.0), duration = Inf,
+            delay = Exponential(2.0), duration = Inf,
             test_sensitivity = 0.8
         )
         @test iso.test_sensitivity == 0.8
         testing = Testing(assay = test_assay, delay = 0.0)
         iso_t = Isolation(
-            onset_to_isolation_delay = Exponential(2.0), duration = Inf,
+            delay = Exponential(2.0), duration = Inf,
             test_sensitivity = testing
         )
         @test_throws ArgumentError EpiBranch._closed_form_value(iso_t.test_sensitivity)
@@ -127,7 +127,7 @@ end
             progression = [],
             interventions = [
                 Isolation(
-                    onset_to_isolation_delay = 1.0, duration = Inf,
+                    delay = 1.0, duration = Inf,
                     test_sensitivity = testing,
                 ),
             ]

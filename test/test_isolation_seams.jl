@@ -28,7 +28,7 @@ EpiBranch.infectious_removal_time(f::FixedRemoval, ::Individual) = f.time
 
 @testset "Isolation trait seams" begin
     @testset "Isolation reads only its own removals alongside route-limited quarantine" begin
-        iso = Isolation(onset_to_isolation_delay = 0.0, duration = 4.0)
+        iso = Isolation(delay = 0.0, duration = 4.0)
         contact = Individual(id = 2)
         for release in (20.0, Inf)
             parent = Individual(id = 1)
@@ -63,7 +63,7 @@ EpiBranch.infectious_removal_time(f::FixedRemoval, ::Individual) = f.time
             EpiBranch.reset!(iso, parent)
             @test EpiBranch.competing_risk(iso, parent, contact, nothing) === nothing
             @test isolation_release_time(parent) == release
-            permanent = Isolation(onset_to_isolation_delay = 0.0, duration = Inf)
+            permanent = Isolation(delay = 0.0, duration = Inf)
             EpiBranch._isolate!(permanent, parent, (rng = StableRNG(1),), 25.0)
             @test EpiBranch.infectious_removal_time(permanent, parent) == 25.0
             clear_isolated!(parent)
@@ -74,7 +74,7 @@ EpiBranch.infectious_removal_time(f::FixedRemoval, ::Individual) = f.time
 
     @testset "Route-limited quarantine leaves household transmission open with Isolation" begin
         for duration in (14.0, Inf), restrict_routes in (false, true)
-            iso = Isolation(onset_to_isolation_delay = 0.0, duration = Inf, test_sensitivity = 0.0)
+            iso = Isolation(delay = 0.0, duration = Inf, test_sensitivity = 0.0)
             q = Quarantine(; duration)
             ct = ContactTracing(TraceEveryone(), 1.0, Dirac(0.0), q)
             interventions = [iso, restrict_routes ? OnRoutes(ct, (:community,)) : ct]
@@ -112,7 +112,7 @@ EpiBranch.infectious_removal_time(f::FixedRemoval, ::Individual) = f.time
     )
 
     @testset "Default keyword constructor reproduces previous behaviour" begin
-        iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
+        iso = Isolation(delay = Exponential(1.0), duration = Inf)
         @test iso.eligibility isa SymptomaticOnly
         @test iso.test_sensitivity == 1.0
         @test iso.post_isolation_transmission == 0.0
@@ -126,7 +126,7 @@ EpiBranch.infectious_removal_time(f::FixedRemoval, ::Individual) = f.time
         clin_mixed = clinical_presentation(
             incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.5
         )
-        iso = Isolation(onset_to_isolation_delay = Exponential(1.0), eligibility = AllCases(), duration = Inf)
+        iso = Isolation(delay = Exponential(1.0), eligibility = AllCases(), duration = Inf)
         rng = StableRNG(42)
         state = simulate(
             ModelSpec(
@@ -149,7 +149,7 @@ EpiBranch.infectious_removal_time(f::FixedRemoval, ::Individual) = f.time
         # Age-conditional sensitivity: 0+ → 0%, 50+ → 100%.
         attrs = [clinical, demographics(age_distribution = Uniform(0, 90))]
         iso = Isolation(
-            onset_to_isolation_delay = Exponential(0.1),
+            delay = Exponential(0.1),
             test_sensitivity = (rng, ind) -> ind.state[:age] >= 50 ? 1.0 : 0.0, duration = Inf
         )
         rng = StableRNG(13)
@@ -167,13 +167,13 @@ EpiBranch.infectious_removal_time(f::FixedRemoval, ::Individual) = f.time
         end
     end
 
-    @testset "onset_to_isolation_delay accepts a function" begin
+    @testset "delay accepts a function" begin
         # Age-conditional delay stands in for a delay that depends on
         # per-individual state recorded by another intervention, e.g. a
         # group's own event time.
         attrs = [clinical, demographics(age_distribution = Uniform(0, 90))]
         iso = Isolation(
-            onset_to_isolation_delay = (rng, ind) -> ind.state[:age] >= 50 ? 0.1 : 5.0, duration = Inf
+            delay = (rng, ind) -> ind.state[:age] >= 50 ? 0.1 : 5.0, duration = Inf
         )
         rng = StableRNG(21)
         state = simulate(
@@ -201,21 +201,21 @@ EpiBranch.infectious_removal_time(f::FixedRemoval, ::Individual) = f.time
     @testset "required_fields dispatches on eligibility" begin
         # Default SymptomaticOnly requires :asymptomatic.
         @test :asymptomatic in EpiBranch.required_fields(
-            Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
+            Isolation(delay = Exponential(1.0), duration = Inf)
         )
         # AllCases doesn't.
         @test :asymptomatic ∉ EpiBranch.required_fields(
-            Isolation(onset_to_isolation_delay = Exponential(1.0), eligibility = AllCases(), duration = Inf)
+            Isolation(delay = Exponential(1.0), eligibility = AllCases(), duration = Inf)
         )
         # Custom eligibility declares its own required fields.
         @test :age in EpiBranch.required_fields(
-            Isolation(onset_to_isolation_delay = Exponential(1.0), eligibility = OnlyOlder(50), duration = Inf)
+            Isolation(delay = Exponential(1.0), eligibility = OnlyOlder(50), duration = Inf)
         )
     end
 
     @testset "Custom IsolationEligibility integrates end-to-end" begin
         attrs = [clinical, demographics(age_distribution = Uniform(0, 90))]
-        iso = Isolation(onset_to_isolation_delay = Exponential(0.1), eligibility = OnlyOlder(50), duration = Inf)
+        iso = Isolation(delay = Exponential(0.1), eligibility = OnlyOlder(50), duration = Inf)
         rng = StableRNG(17)
         state = simulate(
             ModelSpec(
@@ -243,7 +243,7 @@ EpiBranch.infectious_removal_time(f::FixedRemoval, ::Individual) = f.time
         kernel = Uniform(0.0, 10.0)
         function race(duration)
             iso = Isolation(
-                onset_to_isolation_delay = Dirac(1.0), duration = duration
+                delay = Dirac(1.0), duration = duration
             )
             rng = StableRNG(3)
             state = EpiBranch.new_state(
@@ -281,7 +281,7 @@ EpiBranch.infectious_removal_time(f::FixedRemoval, ::Individual) = f.time
         # declaration a certain block raises rather than silently dropping
         # contacts that could still transmit.
         iso = Isolation(
-            onset_to_isolation_delay = Dirac(1.0), duration = Dirac(7.0)
+            delay = Dirac(1.0), duration = Dirac(7.0)
         )
         @test EpiBranch.binding_release(iso)
         @test EpiBranch.binding_release(Scheduled(iso; start_time = 0.0))
@@ -337,14 +337,14 @@ EpiBranch.infectious_removal_time(f::FixedRemoval, ::Individual) = f.time
         # window for it either, which would turn the reduction into a
         # permanent, perfect removal.
         leaky = Isolation(
-            onset_to_isolation_delay = Dirac(1.0), duration = Dirac(7.0),
+            delay = Dirac(1.0), duration = Dirac(7.0),
             post_isolation_transmission = 0.5
         )
         perfect = Isolation(
-            onset_to_isolation_delay = Dirac(1.0), duration = Dirac(7.0)
+            delay = Dirac(1.0), duration = Dirac(7.0)
         )
         permanent = Isolation(
-            onset_to_isolation_delay = Dirac(1.0), duration = Inf
+            delay = Dirac(1.0), duration = Inf
         )
         case = Individual(id = 1)
         set_isolated!(case, 8.0; release_time = 15.0)
@@ -411,7 +411,7 @@ EpiBranch.infectious_removal_time(f::FixedRemoval, ::Individual) = f.time
         prog = sir(30.0)
         attrs = clinical_presentation(incubation_period = Dirac(3.0))
         iso = Isolation(
-            onset_to_isolation_delay = Dirac(1.0), duration = Dirac(7.0)
+            delay = Dirac(1.0), duration = Dirac(7.0)
         )
 
         # The continuous-time race, which `HouseholdProcess` and `NetworkProcess`
@@ -476,7 +476,7 @@ EpiBranch.infectious_removal_time(f::FixedRemoval, ::Individual) = f.time
         prog = sir(30.0)
         attrs = clinical_presentation(incubation_period = Dirac(3.0))
         iso = Scheduled(
-            Isolation(onset_to_isolation_delay = Dirac(1.0), duration = Inf);
+            Isolation(delay = Dirac(1.0), duration = Inf);
             start_time = 0.0, end_time = 10.0
         )
 
@@ -523,7 +523,7 @@ EpiBranch.infectious_removal_time(f::FixedRemoval, ::Individual) = f.time
         prog = sir(30.0)
         attrs = clinical_presentation(incubation_period = Dirac(3.0))
         iso = Isolation(
-            onset_to_isolation_delay = Dirac(1.0), duration = Dirac(7.0)
+            delay = Dirac(1.0), duration = Dirac(7.0)
         )
 
         for wrapped in (
@@ -551,7 +551,7 @@ end
 @testset "Isolation's closed form accounts for vaccine symptom_efficacy" begin
     off, gt = NegBin(2.0, 0.5), Gamma(2.0, 2.5)
     cp = clinical_presentation(incubation_period = Gamma(2.0, 2.0), prob_asymptomatic = 0.3)
-    iso = Isolation(onset_to_isolation_delay = 1.0, duration = Inf)
+    iso = Isolation(delay = 1.0, duration = Inf)
     function spec_with(se)
         mv = MassVaccination(
             efficacy = 0.5, eligibility_time = 0.0, coverage = 0.6, symptom_efficacy = se

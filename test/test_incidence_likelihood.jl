@@ -253,7 +253,7 @@ struct _RiskFromAge end
 
         with_iv = ModelSpec(
             model;
-            interventions = [Isolation(onset_to_isolation_delay = 1.0, duration = 14.0)]
+            interventions = [Isolation(delay = 1.0, duration = 14.0)]
         )
         @test_throws ArgumentError loglikelihood(data, with_iv)
 

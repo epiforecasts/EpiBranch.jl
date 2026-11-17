@@ -167,7 +167,7 @@ traced = simulate(
     ModelSpec(
         model;
         interventions = [
-            Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf),
+            Isolation(delay = Exponential(1.0), duration = Inf),
             ContactTracing(
                 probability = 0.8, isolation_to_trace_delay = Exponential(1.5),
                 action = Quarantine(duration = Inf)

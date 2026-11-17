@@ -6,7 +6,7 @@ function test_continuous_vaccine_actions(make_process)
         process = make_process(Exponential(2.0))
         clinical = clinical_presentation(incubation_period = Dirac(0.0))
         iso = Isolation(
-            onset_to_isolation_delay = Dirac(0.0),
+            delay = Dirac(0.0),
             post_isolation_transmission = 1.0, duration = Inf
         )
         ct = ContactTracing(

@@ -803,7 +803,7 @@ end
     attributes = clinical_presentation(
         incubation_period = Exponential(2.0), prob_asymptomatic = 0.0
     )
-    iso = Isolation(onset_to_isolation_delay = Dirac(4.0), duration = Inf)
+    iso = Isolation(delay = Dirac(4.0), duration = Inf)
     ct = ContactTracing(
         probability = 1.0, isolation_to_trace_delay = Dirac(0.5),
         action = FlagOnly(), depth = 2

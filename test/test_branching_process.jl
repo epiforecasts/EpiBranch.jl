@@ -242,7 +242,7 @@ end
     spec = ModelSpec(
         BranchingProcess(Poisson(4.0), Gamma(4.0, 1.0));
         interventions = [
-            Isolation(onset_to_isolation_delay = Dirac(6.0), duration = Inf),
+            Isolation(delay = Dirac(6.0), duration = Inf),
             ContactTracing(
                 probability = 0.5, isolation_to_trace_delay = Dirac(0.1),
                 action = Quarantine(duration = Inf), depth = 2
@@ -304,7 +304,7 @@ end
             Infectiousness(Poisson(0.9); from = :onset, kernel = Normal(-2.0, 2.0))
         );
         interventions = [
-            Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf),
+            Isolation(delay = Exponential(1.0), duration = Inf),
             ContactTracing(
                 probability = 1.0, isolation_to_trace_delay = Exponential(0.5),
                 action = Quarantine(duration = Inf)

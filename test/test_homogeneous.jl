@@ -280,7 +280,7 @@ end
         iso = ModelSpec(
             HomogeneousProcess(; transmission_rate = 2.0, population_size = N);
             progression = prog,
-            interventions = [Isolation(onset_to_isolation_delay = Exponential(0.1), duration = Inf)]
+            interventions = [Isolation(delay = Exponential(0.1), duration = Inf)]
         )
 
         base_mean = mean(
@@ -347,7 +347,7 @@ end
         # no such method at all.
         cc_scheduled = CapacityConstrained(
             Scheduled(
-                Isolation(onset_to_isolation_delay = 1.0, duration = 5.0);
+                Isolation(delay = 1.0, duration = 5.0);
                 start_time = 1.0
             );
             budget_per_period = 1.0
@@ -360,10 +360,10 @@ end
             prob_asymptomatic = 0.0
         )
         honoured = [
-            Isolation(onset_to_isolation_delay = Exponential(0.5), duration = Inf),
+            Isolation(delay = Exponential(0.5), duration = Inf),
             Scheduled(
                 Isolation(
-                    onset_to_isolation_delay = Exponential(0.5),
+                    delay = Exponential(0.5),
                     post_isolation_transmission = 0.5, duration = Inf
                 );
                 start_time = 1.0
@@ -372,7 +372,7 @@ end
             # candidates or contacts: must not be mistaken for an action
             # producer either, the same as `cc_scheduled` above.
             CapacityConstrained(
-                Isolation(onset_to_isolation_delay = Exponential(0.5), duration = Inf);
+                Isolation(delay = Exponential(0.5), duration = Inf);
                 budget_per_period = 1.0
             ),
         ]
@@ -394,7 +394,7 @@ end
         )
         leaky(residual) = [
             Isolation(
-                onset_to_isolation_delay = Exponential(0.5),
+                delay = Exponential(0.5),
                 post_isolation_transmission = residual, duration = Inf
             ),
         ]
@@ -646,7 +646,7 @@ end
             progression = prog,
             interventions = [
                 Scheduled(
-                    Isolation(onset_to_isolation_delay = Exponential(0.1), duration = Inf); start_time
+                    Isolation(delay = Exponential(0.1), duration = Inf); start_time
                 ),
             ]
         )
@@ -706,7 +706,7 @@ end
         # onset must be counted from the time each case was infected.
         clinical = clinical_presentation(incubation_period = LogNormal(1.0, 0.3))
         iso = Isolation(
-            onset_to_isolation_delay = Exponential(1.0),
+            delay = Exponential(1.0),
             test_sensitivity = 1.0, duration = Inf
         )
         m = ModelSpec(
@@ -1012,7 +1012,7 @@ end
         @test isapprox(silent2, 0.7968; atol = 0.03)
 
         leaky = Isolation(
-            onset_to_isolation_delay = 0.1, post_isolation_transmission = 0.5,
+            delay = 0.1, post_isolation_transmission = 0.5,
             duration = Inf
         )
         @test major([band1_attack(run_bands(s; interventions = [leaky])) for s in 1:30]) < base
@@ -1244,7 +1244,7 @@ end
         probability = 0.5, isolation_to_trace_delay = Exponential(1.0),
         action = Quarantine(duration = Inf)
     )
-    iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
+    iso = Isolation(delay = Exponential(1.0), duration = Inf)
     attrs = clinical_presentation(
         incubation_period = LogNormal(1.4, 0.5), prob_asymptomatic = 0.0
     )

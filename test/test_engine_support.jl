@@ -132,7 +132,7 @@ const _SUPPORT_CASES = [
     (
         name = "Isolation under CapacityConstrained, shared budget",
         build = e -> CapacityConstrained(
-            Isolation(onset_to_isolation_delay = 1.0, duration = 7.0); budget_per_period = 10.0
+            Isolation(delay = 1.0, duration = 7.0); budget_per_period = 10.0
         ),
         applies = (:individual,),
     ),

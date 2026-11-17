@@ -9,7 +9,7 @@ two weeks into an outbreak.
 
 # Examples
 ```julia
-iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = 7.0)
+iso = Isolation(delay = Exponential(2.0), duration = 7.0)
 
 # Isolation from day 14
 Scheduled(iso; start_time = 14.0)

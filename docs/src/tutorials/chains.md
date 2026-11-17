@@ -227,7 +227,7 @@ symptom onset (mean 2 days) and stops all onward transmission for 7 days
 is log-normal with a median of about 4.5 days.
 
 ```@example chains
-iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = 7.0)
+iso = Isolation(delay = Exponential(2.0), duration = 7.0)
 
 model = ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0));
     interventions = [iso],

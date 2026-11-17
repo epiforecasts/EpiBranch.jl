@@ -316,7 +316,7 @@ _vacc_infected(model, s) = sum(model.group_sizes) - sum(s.S) - sum(s.V) - sum(s.
         # Other interventions are refused.
         for other in (
                 MassVaccination(; efficacy = 0.7, eligibility_time = 30.0),
-                Isolation(onset_to_isolation_delay = 1.0, duration = 7.0),
+                Isolation(delay = 1.0, duration = 7.0),
             )
             @test_throws ArgumentError MixingMeanFieldProcess(
                 _vacc_model(2_000, [other]); removal_rate = 0.2

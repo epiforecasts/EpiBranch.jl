@@ -221,7 +221,7 @@ end
     end
 
     @testset "Rations isolation through intervention_time and reset!, like Scheduled" begin
-        iso = Isolation(onset_to_isolation_delay = Dirac(0.0), duration = Inf)
+        iso = Isolation(delay = Dirac(0.0), duration = Inf)
         cc = CapacityConstrained(iso; budget_per_period = 1.0)
         state = empty_state()
         earlier = Individual(
@@ -254,7 +254,7 @@ end
         EpiBranch.resource_key(::_DistrictIsolation, individual, state) =
             individual.state[:district]
 
-        iso = Isolation(onset_to_isolation_delay = Dirac(0.0), duration = Inf)
+        iso = Isolation(delay = Dirac(0.0), duration = Inf)
         cc = CapacityConstrained(_DistrictIsolation(iso); budget_per_period = 1.0)
         state = empty_state()
         a = Individual(
@@ -325,7 +325,7 @@ end
         model = ModelSpec(
             BranchingProcess(Poisson(2.0), Exponential(5.0));
             interventions = [
-                Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf),
+                Isolation(delay = Exponential(1.0), duration = Inf),
                 CapacityConstrained(
                     ContactTracing(
                         probability = 1.0, isolation_to_trace_delay = Dirac(0.0),
@@ -393,7 +393,7 @@ end
         @test EpiBranch.capacity_time_key(Scheduled(rv; start_time = 1.0)) ==
             EpiBranch.capacity_time_key(rv)
 
-        iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
+        iso = Isolation(delay = Exponential(1.0), duration = Inf)
         @test EpiBranch.capacity_key(iso) == :_isolation_handle
         @test EpiBranch.capacity_time_key(iso) == :_isolation_start
 
@@ -1023,7 +1023,7 @@ end
 
     @testset "Fewer doses under a binding capacity constraint than without one" begin
         clinical = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
-        iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = Inf)
+        iso = Isolation(delay = Exponential(2.0), duration = Inf)
         ct = ContactTracing(
             probability = 0.9, isolation_to_trace_delay = Exponential(1.0),
             action = Quarantine(duration = Inf)
@@ -1055,7 +1055,7 @@ end
     # admitted after later ones; it must still leave every later day within
     # its cumulative allowance.
     clinical = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
-    iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = Inf)
+    iso = Isolation(delay = Exponential(2.0), duration = Inf)
     ct = ContactTracing(
         probability = 0.7, isolation_to_trace_delay = Exponential(1.0),
         action = Quarantine(duration = Inf)

@@ -5,7 +5,7 @@ test_continuous_vaccine_actions(k -> HouseholdProcess([4], k))
     process = HouseholdProcess([3, 3], (i, j) -> Dirac(2.0))
     clinical = clinical_presentation(incubation_period = Dirac(0.0))
     iso = Isolation(
-        onset_to_isolation_delay = Dirac(1.0),
+        delay = Dirac(1.0),
         post_isolation_transmission = 1.0, duration = Inf
     )
     ct = ContactTracing(

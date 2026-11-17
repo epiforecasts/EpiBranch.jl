@@ -299,7 +299,7 @@ end
             process(); progression = prog,
             interventions = [
                 Isolation(
-                    onset_to_isolation_delay = Exponential(1.0),
+                    delay = Exponential(1.0),
                     eligibility = AllCases(), duration = Inf
                 ),
             ]
@@ -332,7 +332,7 @@ end
             process(); progression = prog,
             interventions = [
                 Isolation(
-                    onset_to_isolation_delay = Exponential(1.0),
+                    delay = Exponential(1.0),
                     eligibility = AllCases(), duration = duration
                 ),
             ]
@@ -367,7 +367,7 @@ end
             process(); progression = prog,
             interventions = [
                 Isolation(
-                    onset_to_isolation_delay = Exponential(1.0),
+                    delay = Exponential(1.0),
                     eligibility = AllCases(), duration = Inf,
                     post_isolation_transmission = eps
                 ),
@@ -400,7 +400,7 @@ end
             ],
             interventions = [
                 Isolation(
-                    onset_to_isolation_delay = Exponential(1.0),
+                    delay = Exponential(1.0),
                     eligibility = AllCases(), duration = Inf
                 ),
                 ContactTracing(
@@ -429,12 +429,12 @@ end
             process; progression = prog,
             interventions = [
                 Isolation(
-                    onset_to_isolation_delay = Exponential(1.0),
+                    delay = Exponential(1.0),
                     eligibility = AllCases(), duration = Inf,
                     post_isolation_transmission = 0.5
                 ),
                 Isolation(
-                    onset_to_isolation_delay = Exponential(1.0),
+                    delay = Exponential(1.0),
                     eligibility = AllCases(), duration = Inf,
                     post_isolation_transmission = 0.2
                 ),
@@ -597,7 +597,7 @@ end
             interventions = [
                 Scheduled(
                     Isolation(
-                        onset_to_isolation_delay = Exponential(1.0),
+                        delay = Exponential(1.0),
                         eligibility = AllCases(), duration = Inf
                     ); start_after_cases = 10
                 ),

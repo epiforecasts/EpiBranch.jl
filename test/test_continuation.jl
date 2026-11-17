@@ -258,7 +258,7 @@ end
             BranchingProcess(NegBin(3, 0.5), Gamma(2.5, 2));
             attributes = clinical_presentation(incubation_period = Gamma(5, 1)),
             interventions = [
-                Isolation(onset_to_isolation_delay = Dirac(0.5), duration = Inf),
+                Isolation(delay = Dirac(0.5), duration = Inf),
             ]
         )
         for seed in (4, 5, 7, 12)
@@ -398,7 +398,7 @@ end
             progression = [Transition(:recovered; rate = 0.2, terminal = true)],
             interventions = [
                 Isolation(
-                    onset_to_isolation_delay = 1.0, duration = Inf,
+                    delay = 1.0, duration = Inf,
                     post_isolation_transmission = 0.5
                 ),
             ]

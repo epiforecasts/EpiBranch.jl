@@ -1,7 +1,7 @@
 `Isolation` now has a closed-form `analytic_offspring_effect`, so
 `extinction_probability`, `probability_contain` and `reproduction_number`
 work on a `ModelSpec` that holds it, without falling back to simulation. It
-covers a fixed or distributed `onset_to_isolation_delay`, leaky
+covers a fixed or distributed `delay`, leaky
 (`post_isolation_transmission`) and finite-`duration` isolation, and a
 generation time linked to the incubation period, such as
 `incubation_linked_generation_time`; a custom eligibility rule, or a

@@ -73,7 +73,7 @@ using Dates
 
     @testset "ringbp-style scenario" begin
         rng = StableRNG(314)
-        iso = Isolation(onset_to_isolation_delay = LogNormal(1.0, 0.5), duration = Inf)
+        iso = Isolation(delay = LogNormal(1.0, 0.5), duration = Inf)
         ct = ContactTracing(
             probability = 0.5, isolation_to_trace_delay = Exponential(2.0),
             action = Quarantine(duration = Inf)
@@ -110,7 +110,7 @@ using Dates
 
     @testset "Leaky isolation allows more transmission" begin
         rng1 = StableRNG(42)
-        iso_perfect = Isolation(onset_to_isolation_delay = Exponential(1.0), post_isolation_transmission = 0.0, duration = Inf)
+        iso_perfect = Isolation(delay = Exponential(1.0), post_isolation_transmission = 0.0, duration = Inf)
         results_perfect = simulate(
             ModelSpec(
                 BranchingProcess(Poisson(3.0), Exponential(5.0));
@@ -120,7 +120,7 @@ using Dates
         )
 
         rng2 = StableRNG(42)
-        iso_leaky = Isolation(onset_to_isolation_delay = Exponential(1.0), post_isolation_transmission = 0.5, duration = Inf)
+        iso_leaky = Isolation(delay = Exponential(1.0), post_isolation_transmission = 0.5, duration = Inf)
         results_leaky = simulate(
             ModelSpec(
                 BranchingProcess(Poisson(3.0), Exponential(5.0));
@@ -319,7 +319,7 @@ using Dates
             containment_probability(states; max_cases = 50)
 
         spec = ModelSpec(
-            model; interventions = [Isolation(onset_to_isolation_delay = 1.0, duration = Inf)],
+            model; interventions = [Isolation(delay = 1.0, duration = Inf)],
             attributes = clinical_presentation(incubation_period = Exponential(5.0))
         )
         states = simulate(spec, 200; max_time = 40.0, rng = StableRNG(7))

@@ -432,7 +432,7 @@
         p = Individual(id = 1)
         EpiBranch.record_removal!(p, 2.0, 4.0; key = EpiBranch.ISOLATION_STRETCHES_KEY)
         EpiBranch.record_removal!(p, 6.0, Inf; key = EpiBranch.ISOLATION_STRETCHES_KEY)
-        iso = Isolation(onset_to_isolation_delay = 1.0, duration = Inf)
+        iso = Isolation(delay = 1.0, duration = Inf)
         r = EpiBranch.competing_risk(iso, p, Individual(id = 2), nothing)
         @test length(r) == 2
         @test r[1].event_time == 2.0 && r[1].release_time == 4.0

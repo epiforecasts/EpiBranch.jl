@@ -25,12 +25,12 @@ function test_structured_composition(make_process, extract)
         @test isfinite(loglikelihood(data, spec))
         @test loglikelihood(data, spec) == pairwise_surv_loglik(Exponential(2.0), data)
         clinical = clinical_presentation(incubation_period = Exponential(0.2))
-        iso = Isolation(onset_to_isolation_delay = Exponential(0.2), duration = Inf)
+        iso = Isolation(delay = Exponential(0.2), duration = Inf)
         supported = ModelSpec(process; progression, attributes = clinical, interventions = [iso])
         sample = extract(simulate(supported; rng = StableRNG(45)), supported)
         @test isfinite(loglikelihood(sample, supported))
         leaky = Isolation(
-            onset_to_isolation_delay = Exponential(0.2), post_isolation_transmission = 0.5,
+            delay = Exponential(0.2), post_isolation_transmission = 0.5,
             duration = Inf
         )
         leaky_spec = ModelSpec(process; progression, attributes = clinical, interventions = [leaky])

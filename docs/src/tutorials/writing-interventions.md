@@ -272,7 +272,7 @@ function resolve_individual!(iso::Isolation, individual, state)
     onset = onset_time(individual)
     # Self-isolation after a positive test.
     test_time = if is_test_positive(individual)
-        onset + sample_value(iso.onset_to_isolation_delay, state.rng, individual)
+        onset + sample_value(iso.delay, state.rng, individual)
     else
         Inf
     end
@@ -370,7 +370,7 @@ attrs = [
     clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
     (rng, ind) -> (ind.state[:region] = rand(rng, (:north, :south))),
 ]
-iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = 7.0)
+iso = Isolation(delay = Exponential(2.0), duration = 7.0)
 process = BranchingProcess(NegBin(2.5, 0.16), Exponential(5.0))
 
 isolation_only = simulate(ModelSpec(process; interventions = [iso], attributes = attrs),
@@ -411,7 +411,7 @@ end
 
 attrs = [clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
     demographics(age_distribution = Normal(50, 20))]
-iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = 7.0)
+iso = Isolation(delay = Exponential(2.0), duration = 7.0)
 process = BranchingProcess(NegBin(2.5, 0.16), Exponential(5.0))
 n_traced(runs) = sum(s -> count(ind -> get(ind.state, :traced, false), s.individuals), runs)
 

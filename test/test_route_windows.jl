@@ -233,7 +233,7 @@ EpiBranch.records_contacts(::AlwaysRecord, parent, contact, state, t) = true
         # removal. This is the whole mechanism behind a control measure cutting
         # one route and leaving another: the household route survives isolation,
         # the community route does not.
-        iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
+        iso = Isolation(delay = Exponential(1.0), duration = Inf)
         ind = Individual(id = 1)
         ind.infection_time = 0.0
         ind.state[:recovered_time] = 10.0
@@ -250,7 +250,7 @@ EpiBranch.records_contacts(::AlwaysRecord, parent, contact, state, t) = true
 
         # Leaky isolation removes no one, so even the opted-in route runs on.
         leaky = Isolation(
-            onset_to_isolation_delay = Exponential(1.0),
+            delay = Exponential(1.0),
             post_isolation_transmission = 0.3, duration = Inf
         )
         @test EpiBranch._route_close(ind, community, (leaky,)) == 10.0
@@ -303,7 +303,7 @@ EpiBranch.records_contacts(::AlwaysRecord, parent, contact, state, t) = true
         community = RouteWindow(:community; until = (:recovered, REM), kernel = Dirac(5.0))
         household = RouteWindow(:household; until = (:recovered,), kernel = Dirac(5.0))
         routes = ((community, edge(2)), (household, edge(3)))
-        isolate = [Isolation(onset_to_isolation_delay = Dirac(0.0), duration = Inf)]
+        isolate = [Isolation(delay = Dirac(0.0), duration = Inf)]
 
         @test infected_after(routes, AbstractIntervention[]) == [true, true, true]
         # isolation at 1 cuts the community contact at 5; the household one runs on
@@ -357,7 +357,7 @@ EpiBranch.records_contacts(::AlwaysRecord, parent, contact, state, t) = true
             )
             return [get(ind.state, :infected, false) for ind in state.individuals]
         end
-        isolate = Isolation(onset_to_isolation_delay = Dirac(0.0), duration = Inf)
+        isolate = Isolation(delay = Dirac(0.0), duration = Inf)
         @test infected_after([isolate]) == [true, false, false]
         @test infected_after([OnRoutes(isolate, (:community,))]) == [true, false, true]
     end
@@ -403,7 +403,7 @@ EpiBranch.records_contacts(::AlwaysRecord, parent, contact, state, t) = true
             return state
         end
         infected(state) = [get(ind.state, :infected, false) for ind in state.individuals]
-        iso = Isolation(onset_to_isolation_delay = Dirac(0.0), duration = Inf)
+        iso = Isolation(delay = Dirac(0.0), duration = Inf)
         ct = ContactTracing(
             probability = 1.0, isolation_to_trace_delay = Dirac(0.0),
             action = Quarantine(duration = Inf)
@@ -717,7 +717,7 @@ EpiBranch.records_contacts(::AlwaysRecord, parent, contact, state, t) = true
                 RouteWindow(:community; until = (REM,), kernel = Dirac(1.0)),
             )
             removes = route !== nothing && REM in route.until
-            @test EpiBranch.risk_applies(Isolation(onset_to_isolation_delay = Dirac(1.0), duration = Inf), route) ==
+            @test EpiBranch.risk_applies(Isolation(delay = Dirac(1.0), duration = Inf), route) ==
                 removes
             @test EpiBranch.risk_applies(
                 ContactTracing(
@@ -1101,7 +1101,7 @@ end
         attributes = clinical_presentation(incubation_period = Exponential(1.0)),
         progression = [Transition(:recovered; delay = 2.0, terminal = true)],
         interventions = [
-            Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf),
+            Isolation(delay = Exponential(1.0), duration = Inf),
             ContactTracing(
                 probability = 0.8, isolation_to_trace_delay = Exponential(1.0),
                 action = Quarantine(duration = Inf)

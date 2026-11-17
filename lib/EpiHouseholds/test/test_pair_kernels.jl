@@ -42,7 +42,7 @@ end
     # as early as household 1's.
     clinical = clinical_presentation(incubation_period = Dirac(0.0))
     iso = Scheduled(
-        Isolation(onset_to_isolation_delay = Dirac(0.0), duration = Inf);
+        Isolation(delay = Dirac(0.0), duration = Inf);
         start_after_cases = 4
     )
     kernel(i, j) = i <= 4 ? Dirac(1.0) : Dirac(10.0)

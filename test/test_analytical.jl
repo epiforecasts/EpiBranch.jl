@@ -1460,7 +1460,7 @@ _rep(p, delay = Dirac(0.0)) = [Reporting(; delay, probability = p, from = :infec
         @testset "Simulated chain length stops on generations, not cases" begin
             model = ModelSpec(
                 BranchingProcess(NegativeBinomial(0.5, 0.5 / (0.5 + 0.9)), Gamma(2.0, 2.5));
-                interventions = [Isolation(onset_to_isolation_delay = 100.0, duration = Inf)],
+                interventions = [Isolation(delay = 100.0, duration = Inf)],
                 attributes = clinical_presentation(incubation_period = Gamma(2.0, 2.5))
             )
             data = ChainLengths([6, 8, 10])
@@ -1479,7 +1479,7 @@ _rep(p, delay = Dirac(0.0)) = [Reporting(; delay, probability = p, from = :infec
             # reached, and the call returns.
             model = ModelSpec(
                 BranchingProcess(Poisson(2.0), Exponential(1.0));
-                interventions = [Isolation(onset_to_isolation_delay = 100.0, duration = Inf)],
+                interventions = [Isolation(delay = 100.0, duration = Inf)],
                 attributes = clinical_presentation(incubation_period = Gamma(2.0, 2.5))
             )
             ll = loglikelihood(
@@ -1604,7 +1604,7 @@ _rep(p, delay = Dirac(0.0)) = [Reporting(; delay, probability = p, from = :infec
         end
 
         @testset "With interventions" begin
-            iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
+            iso = Isolation(delay = Exponential(1.0), duration = Inf)
             ll = loglikelihood(
                 ChainSizes([1, 1, 2, 1]),
                 ModelSpec(
@@ -1626,7 +1626,7 @@ _rep(p, delay = Dirac(0.0)) = [Reporting(; delay, probability = p, from = :infec
             # the Observed wrapper does not have. The intervention path
             # simulates the wrapped process, thins chain sizes per case, and
             # compares.
-            iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
+            iso = Isolation(delay = Exponential(1.0), duration = Inf)
             ll = loglikelihood(
                 ChainSizes([1, 1, 2, 1]),
                 ModelSpec(
@@ -1670,7 +1670,7 @@ _rep(p, delay = Dirac(0.0)) = [Reporting(; delay, probability = p, from = :infec
             # With interventions present the likelihood is empirical, and the
             # observation has to drop the simulated clusters below its minimum
             # there as well, so both paths condition the same way.
-            iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
+            iso = Isolation(delay = Exponential(1.0), duration = Inf)
             ll = loglikelihood(
                 ChainSizes([2, 3, 2]),
                 ModelSpec(
@@ -1692,7 +1692,7 @@ _rep(p, delay = Dirac(0.0)) = [Reporting(; delay, probability = p, from = :infec
             # Two seeds, each chain capped at size 1 by zero offspring, so a
             # simulated cluster is always 1 + 1 = 2: below `min_size` per
             # seed chain, but at it once the seeds are summed.
-            iso = Isolation(onset_to_isolation_delay = Dirac(1000.0), duration = Inf)
+            iso = Isolation(delay = Dirac(1000.0), duration = Inf)
             ll = loglikelihood(
                 ChainSizes([2]; seeds = [2]),
                 ModelSpec(
@@ -1711,7 +1711,7 @@ _rep(p, delay = Dirac(0.0)) = [Reporting(; delay, probability = p, from = :infec
         @testset "ChainDetection falls through to the simulation path" begin
             # With interventions present, the same whole-chain draw the
             # closed form uses has to come from the simulated chains instead.
-            iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
+            iso = Isolation(delay = Exponential(1.0), duration = Inf)
             ll = loglikelihood(
                 ChainSizes([2, 3, 2]),
                 ModelSpec(
@@ -1733,7 +1733,7 @@ _rep(p, delay = Dirac(0.0)) = [Reporting(; delay, probability = p, from = :infec
             # With interventions present (forcing the simulation path), a
             # `Reporting` step in `progression` must still thin the chain
             # sizes, not count every infected case as perfectly detected.
-            iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
+            iso = Isolation(delay = Exponential(1.0), duration = Inf)
             clinical = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
             mk(progression) = ModelSpec(
                 BranchingProcess(NegBin(1.5, 0.5), Exponential(5.0));
@@ -1771,7 +1771,7 @@ _rep(p, delay = Dirac(0.0)) = [Reporting(; delay, probability = p, from = :infec
             # far less onward transmission than a single-seed chain reaching
             # the same size. The two must differ, and the multi-seed reading
             # must be the more probable one.
-            iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = 7.0)
+            iso = Isolation(delay = Exponential(2.0), duration = 7.0)
             spec = ModelSpec(
                 BranchingProcess(Poisson(0.5), Exponential(5.0));
                 interventions = [iso],
@@ -1797,7 +1797,7 @@ _rep(p, delay = Dirac(0.0)) = [Reporting(; delay, probability = p, from = :infec
         end
 
         @testset "prob_concluded is accepted under interventions" begin
-            iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = 7.0)
+            iso = Isolation(delay = Exponential(2.0), duration = 7.0)
             spec = ModelSpec(
                 BranchingProcess(Poisson(0.5), Exponential(5.0));
                 interventions = [iso],
@@ -1851,7 +1851,7 @@ _rep(p, delay = Dirac(0.0)) = [Reporting(; delay, probability = p, from = :infec
             # n_initial seeded chains, not each seed's own chain length as a
             # separate observation, which would make the sim path match the
             # single-seed length distribution regardless of n_initial.
-            iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = 7.0)
+            iso = Isolation(delay = Exponential(2.0), duration = 7.0)
             spec = ModelSpec(
                 BranchingProcess(Poisson(0.5), Exponential(5.0));
                 interventions = [iso],
@@ -2154,7 +2154,7 @@ _rep(p, delay = Dirac(0.0)) = [Reporting(; delay, probability = p, from = :infec
             gt = Exponential(θ)
             incubation = Gamma(α, β)
             iso = Isolation(
-                onset_to_isolation_delay = d0, duration = 7.0,
+                delay = d0, duration = 7.0,
                 post_isolation_transmission = 0.2
             )
             spec = ModelSpec(
@@ -2183,7 +2183,7 @@ _rep(p, delay = Dirac(0.0)) = [Reporting(; delay, probability = p, from = :infec
             # here through `extinction_probability`, one of several routes
             # that apply `analytic_offspring_effect` to an offspring law.
             offspring = NegBin(2.0, 0.5)
-            iso = Isolation(onset_to_isolation_delay = 1.5, duration = 7.0)
+            iso = Isolation(delay = 1.5, duration = 7.0)
             scheduled_spec = ModelSpec(
                 BranchingProcess(
                     Infectiousness(
@@ -2207,7 +2207,7 @@ _rep(p, delay = Dirac(0.0)) = [Reporting(; delay, probability = p, from = :infec
             offspring = Poisson(3.0)
             gt = Exponential(θ)
             incubation = Gamma(α, β)
-            iso = Isolation(onset_to_isolation_delay = d0, duration = Inf)
+            iso = Isolation(delay = d0, duration = Inf)
             spec = ModelSpec(
                 BranchingProcess(offspring, gt); interventions = [iso],
                 attributes = clinical_presentation(incubation_period = incubation)
@@ -2223,7 +2223,7 @@ _rep(p, delay = Dirac(0.0)) = [Reporting(; delay, probability = p, from = :infec
             offspring = NegBin(2.0, 0.5)
             gt = Exponential(θ)
             incubation = Gamma(α, β)
-            iso = Isolation(onset_to_isolation_delay = d0, duration = Inf)
+            iso = Isolation(delay = d0, duration = Inf)
             spec = ModelSpec(
                 BranchingProcess(offspring, gt); interventions = [iso],
                 attributes = clinical_presentation(
@@ -2246,13 +2246,13 @@ _rep(p, delay = Dirac(0.0)) = [Reporting(; delay, probability = p, from = :infec
             incubation = Gamma(2.0, 1.5)
             spec_fixed = ModelSpec(
                 BranchingProcess(offspring, gt);
-                interventions = [Isolation(onset_to_isolation_delay = 1.5, duration = 7.0)],
+                interventions = [Isolation(delay = 1.5, duration = 7.0)],
                 attributes = clinical_presentation(incubation_period = incubation)
             )
             spec_dirac = ModelSpec(
                 BranchingProcess(offspring, gt);
                 interventions = [
-                    Isolation(onset_to_isolation_delay = Dirac(1.5), duration = 7.0),
+                    Isolation(delay = Dirac(1.5), duration = 7.0),
                 ],
                 attributes = clinical_presentation(incubation_period = incubation)
             )
@@ -2275,7 +2275,7 @@ _rep(p, delay = Dirac(0.0)) = [Reporting(; delay, probability = p, from = :infec
             gt = Exponential(5.0)
             incubation = Gamma(2.0, 1.5)
             delay = DiscreteNonParametric([0.5, 3.2], [0.4, 0.6])
-            iso = Isolation(onset_to_isolation_delay = delay, duration = Inf)
+            iso = Isolation(delay = delay, duration = Inf)
             spec = ModelSpec(
                 BranchingProcess(offspring, gt); interventions = [iso],
                 attributes = clinical_presentation(incubation_period = incubation)
@@ -2285,7 +2285,7 @@ _rep(p, delay = Dirac(0.0)) = [Reporting(; delay, probability = p, from = :infec
             direct_mean = sum(
                 p * EpiBranch._law_mean(
                     EpiBranch.analytic_offspring_effect(
-                        Isolation(onset_to_isolation_delay = b, duration = Inf),
+                        Isolation(delay = b, duration = Inf),
                         offspring, spec
                     )
                 ) for (b, p) in zip(support(delay), probs(delay))
@@ -2301,7 +2301,7 @@ _rep(p, delay = Dirac(0.0)) = [Reporting(; delay, probability = p, from = :infec
             gt = Exponential(4.0)
             incubation = Gamma(2.0, 1.0)
             delay = Poisson(1.0)
-            iso = Isolation(onset_to_isolation_delay = delay, duration = Inf)
+            iso = Isolation(delay = delay, duration = Inf)
             spec = ModelSpec(
                 BranchingProcess(offspring, gt); interventions = [iso],
                 attributes = clinical_presentation(incubation_period = incubation)
@@ -2312,7 +2312,7 @@ _rep(p, delay = Dirac(0.0)) = [Reporting(; delay, probability = p, from = :infec
                 pdf(delay, b) *
                     EpiBranch._law_mean(
                     EpiBranch.analytic_offspring_effect(
-                        Isolation(onset_to_isolation_delay = float(b), duration = Inf),
+                        Isolation(delay = float(b), duration = Inf),
                         offspring, spec
                     )
                 ) for b in 0:30
@@ -2329,7 +2329,7 @@ _rep(p, delay = Dirac(0.0)) = [Reporting(; delay, probability = p, from = :infec
             offspring = NegBin(1.3, 0.6)
             gt = Exponential(5.0)
             incubation = LogNormal(1.4, 0.4)
-            iso = Isolation(onset_to_isolation_delay = Exponential(1.5), duration = Inf)
+            iso = Isolation(delay = Exponential(1.5), duration = Inf)
             spec = ModelSpec(
                 BranchingProcess(offspring, gt); interventions = [iso],
                 attributes = clinical_presentation(incubation_period = incubation)
@@ -2361,7 +2361,7 @@ _rep(p, delay = Dirac(0.0)) = [Reporting(; delay, probability = p, from = :infec
             clinical = clinical_presentation(incubation_period = LogNormal(1.5, 0.3))
 
             # No incubation period at all.
-            iso = Isolation(onset_to_isolation_delay = 1.0, duration = Inf)
+            iso = Isolation(delay = 1.0, duration = Inf)
             @test_throws r"needs the incubation period" extinction_probability(
                 ModelSpec(bp; interventions = [iso])
             )
@@ -2369,7 +2369,7 @@ _rep(p, delay = Dirac(0.0)) = [Reporting(; delay, probability = p, from = :infec
             # A custom eligibility rule.
             struct _AgeOnly <: EpiBranch.IsolationEligibility end
             iso_custom = Isolation(
-                onset_to_isolation_delay = 1.0, duration = Inf,
+                delay = 1.0, duration = Inf,
                 eligibility = _AgeOnly()
             )
             @test_throws r"only covers SymptomaticOnly and AllCases" extinction_probability(
@@ -2377,14 +2377,14 @@ _rep(p, delay = Dirac(0.0)) = [Reporting(; delay, probability = p, from = :infec
             )
 
             # A random duration.
-            iso_duration = Isolation(onset_to_isolation_delay = 1.0, duration = Exponential(7.0))
+            iso_duration = Isolation(delay = 1.0, duration = Exponential(7.0))
             @test_throws r"needs a fixed `duration`" extinction_probability(
                 ModelSpec(bp; interventions = [iso_duration], attributes = clinical)
             )
 
             # A test sensitivity that depends on the individual.
             iso_fn = Isolation(
-                onset_to_isolation_delay = 1.0, duration = Inf,
+                delay = 1.0, duration = Inf,
                 test_sensitivity = (rng, ind) -> 0.5
             )
             @test_throws r"not a function of the individual" extinction_probability(
@@ -2401,7 +2401,7 @@ _rep(p, delay = Dirac(0.0)) = [Reporting(; delay, probability = p, from = :infec
             # dispersion or a Poisson's rate, neither of which it has.
             offspring = NegBin(2.0, 0.5)
             gt = Exponential(5.0)
-            iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
+            iso = Isolation(delay = Exponential(1.0), duration = Inf)
             spec = ModelSpec(
                 BranchingProcess(offspring, gt); interventions = [iso],
                 attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.3))

@@ -131,7 +131,7 @@ end
     @testset "Default ContactTracing reproduces existing behaviour" begin
         # Tracing on isolated symptomatic parents, with quarantine.
         rng = StableRNG(42)
-        iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
+        iso = Isolation(delay = Exponential(1.0), duration = Inf)
         ct = ContactTracing(
             probability = 1.0, isolation_to_trace_delay = Exponential(0.5),
             action = Quarantine(duration = Inf)
@@ -201,7 +201,7 @@ end
         # A contact reached by two tracing systems was reached when the
         # first of them got there, so the recorded trace time must not
         # depend on the order the interventions sit in the stack.
-        iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
+        iso = Isolation(delay = Exponential(1.0), duration = Inf)
         fast = ContactTracing(
             probability = 1.0,
             isolation_to_trace_delay = Dirac(0.5), action = FlagOnly()
@@ -240,7 +240,7 @@ end
     @testset "A NaN trace time is never recorded" begin
         # A trigger time can be NaN, and `min` propagates NaN, so such a
         # time must not be written at all.
-        iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
+        iso = Isolation(delay = Exponential(1.0), duration = Inf)
         ct = ContactTracing(NaNForEvenIds(), 1.0, Exponential(1.0), Quarantine(duration = Inf))
         state = simulate(
             ModelSpec(
@@ -324,7 +324,7 @@ end
         # its own ring extends the ring only at a finite time when it was
         # itself reached at a finite time, whatever its own isolation.
         iso = Isolation(
-            onset_to_isolation_delay = Exponential(1.0),
+            delay = Exponential(1.0),
             test_sensitivity = 0.5, duration = Inf
         )
         ct = ContactTracing(OddIdSeeds(), 1.0, Exponential(0.5), Quarantine(duration = Inf); depth = 2)
@@ -801,7 +801,7 @@ end
 
     @testset "Isolation is not pulled forward by an out-of-window trace" begin
         ct = ContactTracing(OnSymptomOnset(), 1.0, Dirac(0.0), FlagOnly())
-        iso = Isolation(onset_to_isolation_delay = Dirac(100.0), duration = Inf)
+        iso = Isolation(delay = Dirac(100.0), duration = Inf)
         state = simulate(
             ModelSpec(
                 bp; interventions = [iso, Scheduled(ct; start_time = 1.0e6)], attributes = clinical

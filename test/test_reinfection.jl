@@ -328,7 +328,7 @@ using StableRNGs
         ]
         # The schedule only has the gate asked during the run; its isolation
         # comes too late to stop the exchanges.
-        iso = Isolation(onset_to_isolation_delay = 100.0, duration = Inf)
+        iso = Isolation(delay = 100.0, duration = Inf)
         spec = ModelSpec(
             PingPongModel(); progression,
             attributes = clinical_presentation(incubation_period = Dirac(0.2)),

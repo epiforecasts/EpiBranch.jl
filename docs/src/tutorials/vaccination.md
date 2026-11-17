@@ -27,7 +27,7 @@ clinical = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
 scenario(interventions = AbstractIntervention[], attributes = clinical) =
     ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0)); interventions, attributes)
 
-iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = Inf)
+iso = Isolation(delay = Exponential(2.0), duration = Inf)
 ct = ContactTracing(
     probability = 0.7, isolation_to_trace_delay = Exponential(1.0),
     action = Quarantine(duration = Inf)
@@ -661,7 +661,7 @@ repeated_campaign = GroupVaccination(efficacy = 0.8,
 
 campaign_model = ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0));
     attributes = [clinical, groups(3), willingness],
-    interventions = [Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf),
+    interventions = [Isolation(delay = Exponential(1.0), duration = Inf),
         repeated_campaign])
 
 println("Reached among willing people: $(round(campaign_reach, digits = 3)); ",

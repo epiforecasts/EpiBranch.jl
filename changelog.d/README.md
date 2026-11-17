@@ -16,7 +16,7 @@ The slug is yours; anything that will not collide with another open pull
 request does. The file holds the entry's text, without the leading `- `:
 
 ```markdown
-`Isolation`'s `onset_to_isolation_delay` accepts a `Real`, a `Distribution`,
+`Isolation`'s `delay` accepts a `Real`, a `Distribution`,
 or a function `(rng, ind) -> Real`.
 ```
 

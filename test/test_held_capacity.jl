@@ -81,7 +81,7 @@ EpiBranch.intervention_actions(::_Ward, state, candidates) = [
         @test_throws ArgumentError CapacityConstrained(
             rv; budget_per_period = 1.0, on_refusal = DeferRefused()
         )
-        iso = Isolation(onset_to_isolation_delay = Dirac(0.0), duration = Inf)
+        iso = Isolation(delay = Dirac(0.0), duration = Inf)
         @test_throws ArgumentError CapacityConstrained(
             iso; budget_per_period = 1.0, period = 1.0, on_refusal = DeferRefused()
         )
@@ -239,7 +239,7 @@ end
     end
 
     @testset "Caps how many are isolated at once" begin
-        iso = Isolation(onset_to_isolation_delay = Dirac(0.0), duration = 5.0)
+        iso = Isolation(delay = Dirac(0.0), duration = 5.0)
         hc = HeldCapacity(iso; capacity = 1)
         state = empty_state()
         people = [
@@ -266,7 +266,7 @@ end
             BranchingProcess(Poisson(3.0), Exponential(3.0));
             interventions = [
                 HeldCapacity(
-                    Isolation(onset_to_isolation_delay = Exponential(1.0), duration = 6.0);
+                    Isolation(delay = Exponential(1.0), duration = 6.0);
                     capacity = cap
                 ),
             ],
@@ -290,7 +290,7 @@ end
         @test_throws ArgumentError HeldCapacity(rv; capacity = -1)
         @test_throws ArgumentError HeldCapacity(rv; capacity = 1, hold = -1.0) |>
             x -> EpiBranch.apply_actions!(x, empty_state(), [_held_contact(rv, 1, 1.0)])
-        iso = Isolation(onset_to_isolation_delay = Dirac(0.0), duration = Inf)
+        iso = Isolation(delay = Dirac(0.0), duration = Inf)
         @test_throws ArgumentError HeldCapacity(iso; capacity = 1, on_refusal = DeferRefused())
     end
 end
