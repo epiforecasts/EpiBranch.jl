@@ -48,7 +48,7 @@ end
 # event.
 function _recorded_event_time(ind::Individual, name::Symbol)
     name === :infection && return ind.infection_time
-    t = _reported_state(ind, _resolved_key(name))
+    t = reported_value(Val(_resolved_key(name)), ind)
     return t isa Real ? t : NaN
 end
 
@@ -194,7 +194,7 @@ function _evaluation_times(def, ind::Individual, horizon = Inf)
         (k for k in keys(ind.state) if endswith(String(k), "_time") && !startswith(String(k), "_")) :
         (_resolved_key(e) for e in events if e !== :infection)
     for key in keys_
-        t = _reported_state(ind, key)
+        t = reported_value(Val(key), ind)
         t isa Real && isfinite(t) && t0 < t <= horizon && push!(times, t)
     end
     return sort!(unique!(times))
