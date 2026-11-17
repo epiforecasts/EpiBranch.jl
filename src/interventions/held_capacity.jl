@@ -23,7 +23,8 @@ HeldCapacity(
 ```
 
 # Arguments
-- `capacity`: the number of places, at most this many held at any one time.
+- `capacity`: the number of places, at most this many held at any one time. A
+  [`PerGroup`](@ref) gives each group of the population of the model its own number.
 - `hold`: how long a place is kept once taken, in days: a number, a
   `Distribution` or an `(rng, individual)` callable, as a delay is anywhere
   else. The default, `Inf`, keeps it until [`release_capacity!`](@ref) gives it
@@ -44,9 +45,9 @@ wrapper splits its places by [`resource_key`](@ref EpiBranch.resource_key) and
 composes with [`Scheduled`](@ref); the intervention must define
 [`capacity_key`](@ref EpiBranch.capacity_key).
 """
-struct HeldCapacity{I <: AbstractIntervention, H, F, P <: RefusalPolicy} <: InterventionWrapper
+struct HeldCapacity{I <: AbstractIntervention, C, H, F, P <: RefusalPolicy} <: _CapacityWrapper
     intervention::I
-    capacity::Float64
+    capacity::C
     hold::H
     priority::F
     on_refusal::P
@@ -54,13 +55,31 @@ end
 
 function HeldCapacity(
         intervention::AbstractIntervention;
-        capacity::Real, hold = Inf, priority = default_capacity_priority,
+        capacity, hold = Inf, priority = default_capacity_priority,
         on_refusal::RefusalPolicy = DropRefused()
     )
-    capacity >= 0 || throw(ArgumentError("capacity must be non-negative, got $capacity"))
     _check_refusal_policy(on_refusal, intervention)
-    return HeldCapacity(intervention, Float64(capacity), hold, priority, on_refusal)
+    return HeldCapacity(intervention, _prepared_capacity(capacity), hold, priority, on_refusal)
 end
+
+function _prepared_capacity(capacity::Real)
+    capacity >= 0 || throw(ArgumentError("capacity must be non-negative, got $capacity"))
+    return Float64(capacity)
+end
+function _prepared_capacity(pg::PerGroup)
+    return PerGroup(pg.groups, Any[_prepared_capacity(c) for c in pg.budgets])
+end
+function _prepared_capacity(capacity)
+    throw(
+        ArgumentError(
+            "capacity must be a number of places or a PerGroup of them, got $(typeof(capacity))"
+        )
+    )
+end
+
+# The places of the resource a person draws on: one count for everyone, or that
+# of the group under a `PerGroup`.
+_places(hc::HeldCapacity, resource) = _budget_of(hc.capacity, _resource_group(resource))
 
 # Everyone's stay, kept in `state.scratch` under the capacity key. Wrappers
 # that share a key share places, and a stay outlives the call that admitted it.
@@ -100,7 +119,7 @@ end
 function refused_action(::DeferRefused, hc::HeldCapacity, usage, action)
     stays, duration = usage.stays, usage.duration
     for t in sort!(unique([b for (_, b) in stays if action.time < b && isfinite(b)]))
-        _fits_stay(hc.capacity, stays, t, t + duration) || continue
+        _fits_stay(usage.capacity, stays, t, t + duration) || continue
         return InterventionAction(action.individual, t, action.effect!, action.claim!)
     end
     return nothing
@@ -120,7 +139,8 @@ function _admit_actions!(hc::HeldCapacity, state, actions, admitter = hc)
         a -> !_capacity_used(get(a.individual.state, key, nothing)) &&
             !haskey(stays, a.individual.id), actions
     )
-    _admit_actions!(hc.intervention, state, already_used, admitter)
+    _repeat_use_passes(hc.intervention) &&
+        _admit_actions!(hc.intervention, state, already_used, admitter)
     isempty(candidates) && return nothing
     group_idxs, group_keys = _resource_groups(hc, state, [a.individual for a in candidates])
     for (idxs, resource) in zip(group_idxs, group_keys)
@@ -131,8 +151,9 @@ function _admit_actions!(hc::HeldCapacity, state, actions, admitter = hc)
             haskey(stays, action.individual.id) && continue
             duration = _hold_duration(hc, action.individual, state)
             others = _stays_on(stays, resource)
-            if !_fits_stay(hc.capacity, others, action.time, action.time + duration)
-                usage = (; stays = others, duration)
+            places = _places(hc, resource)
+            if !_fits_stay(places, others, action.time, action.time + duration)
+                usage = (; stays = others, duration, capacity = places)
                 action = refused_action(hc.on_refusal, hc, usage, action)
                 action === nothing && continue
             end
@@ -179,31 +200,17 @@ the intervention of `hc` into more than one; the default, `nothing`, is the sing
 one everyone shares.
 """
 function held_usage(hc::HeldCapacity, state::SimulationState, at::Real, key = nothing)
-    stays = _stays_on(_held_stays(state, capacity_key(hc.intervention)), key)
-    return (held = count(((a, b),) -> a <= at < b, stays), capacity = hc.capacity)
+    resource = _user_resource(hc.capacity, key)
+    stays = _stays_on(_held_stays(state, capacity_key(hc.intervention)), resource)
+    return (held = count(((a, b),) -> a <= at < b, stays), capacity = _places(hc, resource))
 end
 
 # ── Delegation of every other hook ────────────────────────────────────
 
-function intervention_actions(hc::HeldCapacity, state, candidates)
-    capacity_key(hc.intervention)
-    return intervention_actions(hc.intervention, state, candidates)
-end
-_discovers_actions(hc::HeldCapacity) =
-    _discovers_actions(_hook_owner(intervention_actions, hc.intervention))
-function _proposes_actions(hc::HeldCapacity)
-    acts_on_population(hc) && return false
-    return !_resolves_under_capacity(hc.intervention)
-end
-
 # An intervention that sets its own effect, as `Isolation` does, holds a place
 # for as long as that effect lasts; one that does not fit its place is undone,
 # as `CapacityConstrained` does.
-function resolve_individual!(hc::HeldCapacity, ind, state)
-    resolve_individual!(hc.intervention, ind, state)
-    _resolves_under_capacity(hc.intervention) && _hold_or_reset!(hc, ind, state)
-    return nothing
-end
+_ration_own_effect!(hc::HeldCapacity, ind, state) = _hold_or_reset!(hc, ind, state)
 
 function _hold_or_reset!(hc::HeldCapacity, ind::Individual, state)
     key = capacity_key(hc.intervention)
@@ -212,8 +219,8 @@ function _hold_or_reset!(hc::HeldCapacity, ind::Individual, state)
     isfinite(s) || return nothing
     e = min(held_until(hc.intervention, ind), s + _hold_duration(hc, ind, state))
     stays = _held_stays(state, key)
-    resource = resource_key(hc.intervention, ind, state)
-    if _fits_stay(hc.capacity, _stays_on(stays, resource, ind.id), s, e)
+    resource = resource_key(hc, ind, state)
+    if _fits_stay(_places(hc, resource), _stays_on(stays, resource, ind.id), s, e)
         stays[ind.id] = (resource, s, e)
     else
         reset!(hc.intervention, ind)
@@ -232,18 +239,3 @@ For extension authors: the day the effect `intervention` set directly on
 """
 held_until(::AbstractIntervention, ind) = Inf
 held_until(::Isolation, ind) = isolation_release_time(ind)
-
-function trace_contacts!(hc::HeldCapacity, state, infector, contacts, not_before = nothing)
-    key = (:trace_admitter, _innermost(hc))
-    _with_scratch(state, key, hc) do
-        if not_before === nothing
-            trace_contacts!(hc.intervention, state, infector, contacts)
-        else
-            trace_contacts!(hc.intervention, state, infector, contacts, not_before)
-        end
-    end
-    return nothing
-end
-
-removal_gap_host_times(w::HeldCapacity) = removal_gap_host_times(w.intervention)
-removal_block_probability(w::HeldCapacity) = removal_block_probability(w.intervention)

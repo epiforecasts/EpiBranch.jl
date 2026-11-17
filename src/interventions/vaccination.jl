@@ -875,6 +875,7 @@ end
 function _abort_infection!(rv::RingVaccination, contact, vacc_t, rng)
     incubation = _state_real(contact.state, :incubation_period, NaN)
     isnan(incubation) && return nothing
+    is_asymptomatic(contact) && return nothing
     post = _post_exposure_efficacy(rv, contact)
     post > 0.0 || return nothing
     immunity = _immunity_time(rv, contact, vacc_t)
@@ -1252,6 +1253,9 @@ function _group_trigger_time(gv::GroupVaccination, state, group)
     t = Inf
     for id in _group_members(state, key, group)
         m = state.individuals[id]
+        # Contacts blocked by susceptibility or an intervention hold a
+        # provisional onset but never become cases.
+        is_infected(m) || continue
         is_eligible(gv.eligibility, m, m, state) || continue
         tt = trigger_time(gv.eligibility, m, state)
         isnan(tt) && continue
@@ -1390,6 +1394,26 @@ function _mass_vaccination_block(mv::MassVaccination)
         )
     )
     return mv.coverage * efficacy(mv)
+end
+
+_no_symptom_efficacy(mv::MassVaccination) =
+    symptom_efficacy(mv) isa Real && symptom_efficacy(mv) == 0
+
+# Probability that a case becomes asymptomatic because of the vaccine: it is
+# vaccinated with probability c(1 - e) / (1 - c e) (vaccination blocks
+# infection with probability e) and then loses its onset with probability
+# `symptom_efficacy`.
+function _breakthrough_symptom_loss(mv::MassVaccination)
+    c = _mass_vaccination_block(mv) # also checks the closed form applies
+    se = symptom_efficacy(mv)
+    se isa Real || se isa Distribution || throw(
+        ArgumentError(
+            "Isolation's analytic effect needs a number or a distribution for " *
+                "`symptom_efficacy`, not a function of the individual; simulate instead."
+        )
+    )
+    vaccinated = mv.coverage * (1 - efficacy(mv)) / (1 - c)
+    return vaccinated * _closed_form_value(se)
 end
 
 function analytic_offspring_effect(mv::MassVaccination, offspring::Union{NegativeBinomial, Poisson})

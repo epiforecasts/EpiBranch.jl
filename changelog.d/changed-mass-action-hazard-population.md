@@ -1,0 +1,1 @@
+`MassActionHazard` is frequency-dependent, `transmission_rate * I(t) / N`, as its documentation now says (it called it density-dependent before). It takes `N` as `population = Population(n)` (`population_size` stays as shorthand). Without one, it uses the people in the data, which are the mixing population when every household is included.
