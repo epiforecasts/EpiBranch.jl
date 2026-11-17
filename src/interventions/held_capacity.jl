@@ -34,6 +34,8 @@ HeldCapacity(
   places that open or close over the outbreak, read at each day as for the
   `budget_per_period` of [`CapacityConstrained`](@ref). A smooth schedule is
   refused because the days the capacity changes must be known.
+  [`PerGroup`](@ref) gives each group of the population of the model its own
+  number or schedule.
 - `hold`: how long a place is kept once taken, in days: a number, a
   `Distribution` or an `(rng, individual)` callable, as a delay is anywhere
   else. The default, `Inf`, keeps it until [`release_capacity!`](@ref) gives it
@@ -79,13 +81,16 @@ function _prepared_capacity(capacity::Real)
     capacity >= 0 || throw(ArgumentError("capacity must be non-negative, got $capacity"))
     return Float64(capacity)
 end
+function _prepared_capacity(pg::PerGroup)
+    return PerGroup(pg.groups, Any[_prepared_capacity(c) for c in pg.budgets])
+end
 # A schedule validates its own values when it is built. Its breaks must be
 # known to check a stay across them, so a smooth one is refused.
 function _prepared_capacity(schedule)
     hasmethod(calendar_multiplier, Tuple{typeof(schedule), Float64}) || throw(
         ArgumentError(
-            "capacity must be a number or a calendar schedule such as `Steps`, " *
-                "got a $(typeof(schedule))"
+            "capacity must be a number, a calendar schedule such as `Steps` or a " *
+                "PerGroup of them, got a $(typeof(schedule))"
         )
     )
     calendar_shape(schedule) isa PiecewiseConstantCalendar || throw(
@@ -111,6 +116,10 @@ function _capacity_breaks(schedule, s, e)
     end
     return out
 end
+
+# The places of the resource a person draws on: one count for everyone, or that
+# of the group under a `PerGroup`.
+_places(hc::HeldCapacity, resource) = _budget_of(hc.capacity, _resource_group(resource))
 
 # Everyone's stay, kept in `state.scratch` under the capacity key. Wrappers
 # that share a key share places, and a stay outlives the call that admitted it.
@@ -155,19 +164,20 @@ _next_break(schedule, t) = next_calendar_break(schedule, t)
 # release times and capacity breaks are tried.
 function refused_action(::DeferRefused, hc::HeldCapacity, usage, action)
     stays, duration = usage.stays, usage.duration
+    capacity = usage.capacity
     times = Float64[b for (_, b) in stays if action.time < b && isfinite(b)]
     last_release = isempty(times) ? action.time : maximum(times)
-    append!(times, _capacity_breaks(hc.capacity, action.time, nextfloat(last_release)))
+    append!(times, _capacity_breaks(capacity, action.time, nextfloat(last_release)))
     # After the last release only the capacity matters. Breaks are candidates
     # until one fits the whole stay, because a later fall can rule an earlier rise out.
-    t = _next_break(hc.capacity, max(last_release, action.time))
+    t = _next_break(capacity, max(last_release, action.time))
     while isfinite(t)
         push!(times, t)
-        _fits_stay(hc.capacity, stays, t, t + duration) && break
-        t = _next_break(hc.capacity, t)
+        _fits_stay(capacity, stays, t, t + duration) && break
+        t = _next_break(capacity, t)
     end
     for t in sort!(unique(times))
-        _fits_stay(hc.capacity, stays, t, t + duration) || continue
+        _fits_stay(capacity, stays, t, t + duration) || continue
         return InterventionAction(action.individual, t, action.effect!, action.claim!)
     end
     return nothing
@@ -187,7 +197,8 @@ function _admit_actions!(hc::HeldCapacity, state, actions, admitter = hc)
         a -> !_capacity_used(get(a.individual.state, key, nothing)) &&
             !haskey(stays, a.individual.id), actions
     )
-    _admit_actions!(hc.intervention, state, already_used, admitter)
+    _repeat_use_passes(hc.intervention) &&
+        _admit_actions!(hc.intervention, state, already_used, admitter)
     isempty(candidates) && return nothing
     group_idxs, group_keys = _resource_groups(hc, state, [a.individual for a in candidates])
     for (idxs, resource) in zip(group_idxs, group_keys)
@@ -198,8 +209,9 @@ function _admit_actions!(hc::HeldCapacity, state, actions, admitter = hc)
             haskey(stays, action.individual.id) && continue
             duration = _hold_duration(hc, action.individual, state)
             others = _stays_on(stays, resource)
-            if !_fits_stay(hc.capacity, others, action.time, action.time + duration)
-                usage = (; stays = others, duration)
+            places = _places(hc, resource)
+            if !_fits_stay(places, others, action.time, action.time + duration)
+                usage = (; stays = others, duration, capacity = places)
                 action = refused_action(hc.on_refusal, hc, usage, action)
                 action === nothing && continue
             end
@@ -246,8 +258,12 @@ the intervention of `hc` into more than one; the default, `nothing`, is the sing
 one everyone shares.
 """
 function held_usage(hc::HeldCapacity, state::SimulationState, at::Real, key = nothing)
-    stays = _stays_on(_held_stays(state, capacity_key(hc.intervention)), key)
-    return (held = count(((a, b),) -> a <= at < b, stays), capacity = _capacity_at(hc.capacity, at))
+    resource = _user_resource(hc.capacity, key)
+    stays = _stays_on(_held_stays(state, capacity_key(hc.intervention)), resource)
+    return (
+        held = count(((a, b),) -> a <= at < b, stays),
+        capacity = _capacity_at(_places(hc, resource), at),
+    )
 end
 
 # ── Delegation of every other hook ────────────────────────────────────
@@ -264,8 +280,8 @@ function _hold_or_reset!(hc::HeldCapacity, ind::Individual, state)
     isfinite(s) || return nothing
     e = min(held_until(hc.intervention, ind), s + _hold_duration(hc, ind, state))
     stays = _held_stays(state, key)
-    resource = resource_key(hc.intervention, ind, state)
-    if _fits_stay(hc.capacity, _stays_on(stays, resource, ind.id), s, e)
+    resource = resource_key(hc, ind, state)
+    if _fits_stay(_places(hc, resource), _stays_on(stays, resource, ind.id), s, e)
         stays[ind.id] = (resource, s, e)
     else
         reset!(hc.intervention, ind)

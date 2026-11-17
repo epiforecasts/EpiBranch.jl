@@ -174,23 +174,43 @@ function _per_type_counts(model::BranchingProcess, x, name::Symbol)
     return collect(Int, x)
 end
 
-# The size of the population of each type: `population_size` for a
-# single-type model and `population_by_type` (which must add up to it) for a
-# multi-type one, because a total can be split between types in many ways.
-_type_sizes(::BranchingProcess, ::NoPopulation, ::Nothing, nt) = NoPopulation()
-function _type_sizes(model::BranchingProcess, pop::Int, by_type, nt)
-    if nt == 1
-        by_type === nothing || throw(
-            ArgumentError("population_by_type is for a multi-type model; use population_size")
-        )
-        return pop
-    end
-    by_type === nothing && throw(
+# The size of the population of each type, read from the model's population: the
+# size of a single-type model, and the sizes by type of a multi-type one.
+# `population_by_type` is deprecated: it splits a model's `population_size`
+# between types, which a `Population(sizes)` now gives directly.
+_type_sizes(model::BranchingProcess, ::Nothing, nt) = _type_sizes(population(model), nt)
+_type_sizes(::NoPopulation, nt) = NoPopulation()
+function _type_sizes(p::SinglePopulation, nt)
+    nt == 1 && return p.size
+    throw(
         ArgumentError(
-            "a multi-type model with a population_size needs `population_by_type`, the " *
-                "size of each type's population, which must add up to population_size"
+            "a multi-type model with a population_size needs the size of each type's " *
+                "population: give it `population = Population(sizes)`"
         )
     )
+end
+_type_sizes(p::GroupedPopulation, nt) = nt == 1 ? only(p.sizes) : copy(p.sizes)
+function _type_sizes(model::BranchingProcess, by_type, nt)
+    Base.depwarn(
+        "`population_by_type` is deprecated; give the model its sizes by type, " *
+            "`BranchingProcess(...; population = Population(sizes))`.",
+        :simulate_by_generation; force = true
+    )
+    population(model) isa GroupedPopulation && throw(
+        ArgumentError(
+            "the model already has sizes by type in its population; drop `population_by_type`"
+        )
+    )
+    return _split_population(model, population_size(model), by_type, nt)
+end
+
+_split_population(::BranchingProcess, ::NoPopulation, by_type, nt) = throw(
+    ArgumentError("population_by_type needs a model with a finite population")
+)
+function _split_population(model::BranchingProcess, pop::Int, by_type, nt)
+    if nt == 1
+        throw(ArgumentError("population_by_type is for a multi-type model; use population_size"))
+    end
     by_type isa AbstractVector{<:Integer} && length(by_type) == nt || throw(
         ArgumentError("population_by_type needs a vector of $nt sizes, one per type")
     )
@@ -201,13 +221,6 @@ function _type_sizes(model::BranchingProcess, pop::Int, by_type, nt)
         )
     )
     return collect(Int, by_type)
-end
-function _type_sizes(::BranchingProcess, ::NoPopulation, by_type, nt)
-    throw(
-        ArgumentError(
-            "population_by_type needs a model with a finite population_size"
-        )
-    )
 end
 
 """
@@ -237,9 +250,9 @@ offspring matrix (`MultiTypeOffspring`); any other model raises an
 - `immune`: the number immune at the start, an `Int` or a vector with one
   entry per type, as for `n_initial` (none by default). The susceptibles of a
   type start at its population minus those immune and its index cases.
-- `population_by_type`: the size of the population of each type, for a
-  multi-type model with a finite `population_size`, to which they must add up.
-  The population of a single-type model is its `population_size`.
+- `population_by_type`: deprecated. The size of each type's population is read
+  from the model's [`Population`](@ref), `Population(sizes)` for a multi-type
+  model.
 - `depletion`: how contacts are thinned against the susceptibles left,
   [`PerContactDepletion`](@ref) (the default) or
   [`StartOfGenerationDepletion`](@ref). The second draws the kept contacts of
@@ -273,9 +286,10 @@ number.
 
 The doses of generation `g` cover `[g * generation_length, (g + 1) *
 generation_length)` and are applied after generation `g` is drawn and before
-`g + 1` is. Each type has the whole `budget_per_period` to itself, as in the
-individual-based simulation, where `GroupVaccination` keeps one budget per
-group. The doses are those of the periods that start in the interval; with
+`g + 1` is. The `budget_per_period` is shared by the types, as in every model:
+each dose goes to a type in proportion to its population, as it would to a
+person picked at random. A [`PerGroup`](@ref) budget gives each type the doses of its
+own budget instead. The doses are those of the periods that start in the interval; with
 `carry_over`, budget left from earlier periods, or from before a window opens,
 is given in the first interval open to it. A dose reaches a susceptible of a
 type with probability equal to the share of susceptibles in the population of
@@ -294,18 +308,13 @@ individual-based simulation only when the budget reaches everyone in the
 window. The simulation gives the doses of a `BranchingProcess` only to
 contacts as they are created. A budget below the number of contacts therefore
 covers a share of contacts, not `doses / population`, and the counts differ.
-The budget is also read per type here. In the mixing approximations the groups
-share one budget. In the individual-based simulation the budget is per group
-when the groups are types and shared otherwise. The place of the doses in the
-intervention specification is undecided, and the split of a budget between
-groups may change.
 
 # Examples
 
 ```julia
 using EpiBranch, Distributions, Random
 
-model = BranchingProcess(NegBin(2.0, 0.5); population_size = 200_000)
+model = BranchingProcess(NegBin(2.0, 0.5); population = Population(200_000))
 state = simulate_by_generation(
     model; n_initial = 10, max_generations = 30, rng = Xoshiro(1)
 )
@@ -321,21 +330,21 @@ state = simulate_by_generation(
 
 # A generation drawn in a fixed number of steps, however many cases it has,
 # with 10% immune at the start, in weekly generations
-model = BranchingProcess(Poisson(2.0); population_size = 2_500_000)
+model = BranchingProcess(Poisson(2.0); population = Population(2_500_000))
 state = simulate_by_generation(
     model; n_initial = 10, max_generations = 30, immune = 250_000,
     depletion = StartOfGenerationDepletion(), generation_length = 7.0,
     multiplier = Gamma(6.5, 1 / 6.5), rng = Xoshiro(1)
 )
 
-# A vaccination campaign of 2,000 doses a day to each type for a fortnight
+# A vaccination campaign of 2,000 doses a day for a fortnight
 model = BranchingProcess([2.0 0.5; 0.5 2.0], R -> Poisson(R), EpiBranch.NoGenerationTime();
-    population_size = 250_000)
+    population = Population([40_000, 210_000]))
 campaign = CapacityConstrained(GroupVaccination(efficacy = 0.9, group_key = :type);
     budget_per_period = Steps([140.0, 154.0], [0.0, 2_000.0, 0.0]), period = 1.0)
 state = simulate_by_generation(
     ModelSpec(model; interventions = [campaign]); n_initial = [10, 2], max_generations = 30,
-    population_by_type = [40_000, 210_000], immune = [20_000, 190_000],
+    immune = [20_000, 190_000],
     depletion = StartOfGenerationDepletion(), generation_length = 14.0
 )
 ```
@@ -382,7 +391,7 @@ function _initial_generation_state(
     nt = n_types(model)
     counts = _per_type_counts(model, n_initial, :n_initial)
     pop = population_size(model)
-    sizes = _type_sizes(model, pop, population_by_type, nt)
+    sizes = _type_sizes(model, population_by_type, nt)
     cumulative = counts isa Int ? counts : sum(counts)
     immune_counts = immune isa Integer && nt > 1 ? fill(Int(immune), nt) : immune
     susceptibles = _initial_susceptibles(
@@ -437,7 +446,7 @@ for a later `max_generations` to continue.
 
 ```julia
 using EpiBranch, Distributions
-model = BranchingProcess(NegBin(2.0, 0.5); population_size = 200_000)
+model = BranchingProcess(NegBin(2.0, 0.5); population = Population(200_000))
 state = simulate_by_generation(model; n_initial = 10, max_generations = 15)
 state = simulate(model, state; max_generations = 30)
 ```

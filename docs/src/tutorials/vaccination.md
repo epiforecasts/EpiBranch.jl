@@ -39,7 +39,7 @@ nothing # hide
 traces 70% of their contacts a mean of 1 day after the infector's isolation
 and quarantines them, also for good.
 
-## How a dose protects
+## Protection from a dose
 
 A dose protects from `delay_to_immunity` days after it is given (0 by
 default). It has up to five effects, each a probability; two of them,
@@ -60,6 +60,9 @@ proportion of vaccinated people fully protected and leaves the rest
 unprotected. In a branching process every exposure is a different person, and
 the two give the same results on average. They differ in models where a
 person can be exposed more than once, such as households and networks.
+
+!!! note "A fitted leaky `efficacy` is a hazard ratio"
+    In households, on networks and in the other continuous-time models, a leaky `efficacy` `e` blocks each contact along a pair with probability `e`, which multiplies the hazard of infection by `1 - e`. A person whose risk of infection would be `1 - S` then has risk `1 - S^(1 - e)`. Fitting `efficacy` with `loglikelihood(data, model)` therefore estimates the reduction in the hazard per contact, a hazard ratio of `1 - e`. The reduction in the risk of infection, such as the household secondary attack rate, is smaller. A published efficacy against the attack rate `VE = 1 - (1 - S^(1 - e)) / (1 - S)` is a different quantity. To use it as `efficacy`, solve for `e = 1 - log(1 - (1 - VE)(1 - S)) / log(S)`, or compare the two on the risk scale.
 
 `severity_efficacy` is the one effect the model does not apply on its own. It
 reaches the outbreak only through a clinical step in the model's `progression`
@@ -750,6 +753,8 @@ allowance to the next day's; `carry_over = false` discards it, so only that
 day's own `budget_per_period` is ever available. With `carry_over = true`
 admissions can bunch: a quiet spell builds an allowance that a later day
 spends at once, well above `budget_per_period` in a day.
+
+To give each group its own budget, such as separate dose series for the under 5s and the over 5s, pass a [`PerGroup`](@ref) as `budget_per_period`. Its groups are those of the [`Population`](@ref) of the model. See [What each model applies](@ref) for how every model reads it.
 
 !!! note "Which models support capacity limits"
     On the network and household models, capacity limits work for group

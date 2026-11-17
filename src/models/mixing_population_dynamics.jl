@@ -34,8 +34,20 @@ _group_key(ind, mixing_by::Tuple) = Tuple(get(ind.state, k, missing) for k in mi
 # id, say — is read exactly as the exact model would read it. A stochastic
 # assignment would make the group sizes themselves random on every draw,
 # which a fixed-size compartment cannot represent, so `attributes` is
-# expected to assign groups deterministically.
+# expected to assign groups deterministically. A population with sizes by
+# group assigns them itself, in exactly those sizes.
 function _mixing_group_layout(spec::ModelSpec, mixing_by::Tuple, rng::AbstractRNG)
+    bare = process(spec)
+    return _mixing_group_layout(population(bare), spec, mixing_by, rng)
+end
+
+# A population with sizes by group has its layout already: those groups, in
+# that order, in exactly those sizes.
+function _mixing_group_layout(pop::GroupedPopulation, spec, mixing_by, rng)
+    return _group_tuples(pop.groups, length(pop.sizes), length(mixing_by)), copy(pop.sizes)
+end
+
+function _mixing_group_layout(::Population, spec, mixing_by, rng)
     bare = process(spec)
     state = new_state(bare, progression(spec), attributes(spec), rng)
     add_individuals!(state, population_size(bare), (); setup = (ind, i) -> nothing)
@@ -378,7 +390,8 @@ settled by the intervention, so it is a choice: `allocation`, a
 [`DoseAllocation`](@ref). The default, [`TriggeredInPriority`](@ref), follows
 the exact model; [`SplitByGroupSize`](@ref) and
 [`SplitBySusceptibles`](@ref) share a budget's daily rate over the groups
-instead.
+instead. A [`PerGroup`](@ref) budget gives each mixing group its own doses
+under any allocation, with the groups named by the population.
 
 Pass the result to [`simulate`](@ref) for a [`MixingMeanFieldState`](@ref),
 and that state back to [`simulate`](@ref), with a later `max_time`, to continue

@@ -281,7 +281,7 @@ The log-likelihood of what a step did to one case: the log-probability that
 the step happened (or did not), plus the log-density of its delay when it did.
 [`progression_loglik`](@ref) calls it once per step per case. It is `0.0` when
 the case never reached the state the step starts from. A step that has not
-happened by `followup_end` is scored as censored there, by its survival
+happened by `followup_end` is treated as censored there, by its survival
 probability, rather than by a density; the built-in steps take this keyword.
 
 Defined for the built-in steps ([`Transition`](@ref), [`Reporting`](@ref),
@@ -458,7 +458,7 @@ end
 const _REINFECTION_PROBE_KEY = :_reinfection_probing
 
 function _transition_selected(rng, individual, start_time, probability)
-    _anchor_ok(start_time) || return false
+    isfinite(start_time) || return false
     probability === nothing && return true
     p = sample_value(probability, rng, individual)
     get(individual.state, _REINFECTION_PROBE_KEY, false) && return p > 0
@@ -474,14 +474,6 @@ _resolved_key(s::Symbol) = endswith(String(s), "_time") ? s : Symbol(s, :_time)
 # depends only on `from`, so the object that holds `from` builds it once.
 _from_key(from::Symbol) = _resolved_key(from)
 _from_key(from) = nothing
-
-# A transition occurs only from a finite anchor. An anchor is missing (`NaN`)
-# when the `from` key was never written, and non-finite (`Inf`) when the
-# upstream transition initialised the key but never occurred — both mean "the
-# `from` state was not reached", so the transition must be skipped. Guarding
-# on `isfinite` (not `isnan`) keeps the two subsystems in step; the generic
-# `Transition` uses the same check.
-_anchor_ok(anchor) = isfinite(anchor)
 
 # The key a transition's `required_fields` demands of its `from` anchor.
 # `:infection` is always available (the individual's own `infection_time`
@@ -499,7 +491,8 @@ _from_required(_) = Symbol[]
 
 After all `resolve_individual!`s have run, collect terminal candidates
 across all terminal transitions and set `:outcome` and `:outcome_time`
-to the earliest. If no terminal transition occurs, neither key is set.
+to the earliest. It also records the winner under its own state and
+`<label>_time` keys. If no terminal transition occurs, none of them is set.
 
 Once the outcome is set, [`censor_after_outcome!`](@ref
 EpiBranch.censor_after_outcome!) runs on every non-terminal transition: a
@@ -507,12 +500,20 @@ non-terminal event recorded after the outcome describes something that could
 not have happened to this individual.
 """
 function _finalise_terminal!(individual, transitions)
-    best_time, best_label, has_any = _earliest_terminal(
-        transitions, individual, (Inf, :none, false)
+    best_time, best_label, best_time_key, has_any = _earliest_terminal(
+        transitions, individual, (Inf, :none, nothing, false)
     )
     if has_any
         individual.state[:outcome_time] = best_time
         individual.state[:outcome] = best_label
+        # The winning outcome's own state and `*_time` key, as a terminal
+        # `Transition` writes them, so an infectious window listing the state
+        # in `until` closes there. A losing candidate writes nothing, and a
+        # winning `Transition`, which has written both already, gives no key.
+        if best_time_key !== nothing
+            individual.state[best_label] = true
+            individual.state[best_time_key] = best_time
+        end
         _each(transitions) do t
             is_terminal(t) || censor_after_outcome!(t, individual)
             return nothing
@@ -522,14 +523,22 @@ function _finalise_terminal!(individual, transitions)
 end
 
 # The earliest terminal event over `transitions`, folded through `best`, the
-# `(time, label, found)` so far. A `Tuple` is walked by recursion, as in `_each`.
+# `(time, label, time_key, found)` so far. A `Tuple` is walked by recursion, as
+# in `_each`.
 @inline function _earlier_terminal(t, individual, best)
     is_terminal(t) || return best
     ev = terminal_event(t, individual)
     ev === nothing && return best
     time, label = ev
-    return time < best[1] ? (time, label, true) : best
+    time < best[1] || return best
+    return (time, label, _terminal_time_key(t, label), true)
 end
+
+# The `*_time` key `_finalise_terminal!` records a winning outcome under, or
+# `nothing` for a transition that records its own when it resolves. Built-in
+# transitions know theirs; building one from the label interns a new `Symbol`,
+# which is slow enough to show on every case, so it is only the fallback.
+_terminal_time_key(t, label) = Symbol(label, :_time)
 _earliest_terminal(::Tuple{}, individual, best) = best
 @inline function _earliest_terminal(transitions::Tuple, individual, best)
     return _earliest_terminal(

@@ -16,6 +16,7 @@ public resolve
 # Intervention interface: a package subtyping `AbstractIntervention`
 # overrides these.
 public initialise_individual!
+public initialise_episode!
 public resolve_individual!
 public on_infection_settled!
 public trace_contacts!
@@ -39,6 +40,11 @@ public analytic_offspring_effect
 # End an infection early from any intervention hook, and read when it ended.
 public abort_infection!
 public infection_aborted_time
+
+# Testing: `trajectory_value` reads the within-host trajectory stored by
+# `within_host`. A new `AbstractAssay` defines `measure`.
+public trajectory_value
+public measure
 
 # Isolation eligibility: whether an isolation time counts as a detection.
 public records_isolation
@@ -89,6 +95,9 @@ public attributes
 public observation
 public recorder
 public population_size
+public population
+public SinglePopulation
+public GroupedPopulation
 public n_types
 public model_generation_time
 # The two remaining layers of a `ModelSpec`, alongside the four above: the
@@ -143,6 +152,9 @@ public pair_kernel
 public calendar_multiplier, next_calendar_break, calendar_shape,
     PiecewiseConstantCalendar, SmoothCalendar
 public infection_likelihood_compatible
+# Traits the closed forms ask instead of matching `Reporting` and
+# `clinical_presentation` by type.
+public reporting_probability, reporting_from, onset_law
 public susceptibility_components, susceptibility_host_times, HazardScaling
 public binding_release
 public removal_gap_host_times, removal_gap_host_times_withdrawn
@@ -232,6 +244,8 @@ public capacity_key
 public capacity_time_key
 public resource_key
 public held_until
+public count_dosing
+public GroupDosing
 public refused_action
 public InterventionWrapper
 
