@@ -15,6 +15,12 @@ HeldCapacity(
     capacity = 20, hold = 14.0
 )
 
+# Five places until day 30, twenty after
+HeldCapacity(
+    ContactTracing(OnSymptomOnset(), 0.8, Exponential(1.0), Quarantine(duration = 14.0));
+    capacity = Steps([30.0], [5.0, 20.0]), hold = 14.0
+)
+
 # Refused contacts wait for the first place to free up
 HeldCapacity(
     ContactTracing(OnSymptomOnset(), 0.8, Exponential(1.0), Quarantine(duration = 14.0));
@@ -24,7 +30,12 @@ HeldCapacity(
 
 # Arguments
 - `capacity`: the number of places, at most this many held at any one time. A
-  [`PerGroup`](@ref) gives each group of the population of the model its own number.
+  number, or a piecewise-constant calendar schedule such as [`Steps`](@ref) for
+  places that open or close over the outbreak, read at each day as for the
+  `budget_per_period` of [`CapacityConstrained`](@ref). A smooth schedule is
+  refused because the days the capacity changes must be known.
+  [`PerGroup`](@ref) gives each group of the population its own number or
+  schedule.
 - `hold`: how long a place is kept once taken, in days: a number, a
   `Distribution` or an `(rng, individual)` callable, as a delay is anywhere
   else. The default, `Inf`, keeps it until [`release_capacity!`](@ref) gives it
@@ -39,7 +50,11 @@ HeldCapacity(
 
 A place is held from the date of the admitted action. Each action is checked
 against every stay that overlaps its own, whatever order the engine admits
-actions in. A person already holding a place is not given a second.
+actions in, and a varying capacity must hold throughout the new stay, from its
+start to its end. When the capacity falls below the places already held, no stay
+is ended: new admissions are refused until the places held drop below the new
+capacity. [`DeferRefused`](@ref) moves an action to the first moment a place is
+free for its whole stay, which a release or a rise in capacity can bring about. A person holds at most one place.
 [`held_usage`](@ref) reports the places held. Like `CapacityConstrained`, the
 wrapper splits its places by [`resource_key`](@ref EpiBranch.resource_key) and
 composes with [`Scheduled`](@ref); the intervention must define
@@ -69,16 +84,41 @@ end
 function _prepared_capacity(pg::PerGroup)
     return PerGroup(pg.groups, Any[_prepared_capacity(c) for c in pg.budgets])
 end
-function _prepared_capacity(capacity)
-    throw(
+# A schedule validates its own values when it is built. Its breaks must be
+# known to check a stay across them, so a smooth one is refused.
+function _prepared_capacity(schedule)
+    hasmethod(calendar_multiplier, Tuple{typeof(schedule), Float64}) || throw(
         ArgumentError(
-            "capacity must be a number of places or a PerGroup of them, got $(typeof(capacity))"
+            "capacity must be a number, a calendar schedule such as `Steps` or a " *
+                "PerGroup of them, got a $(typeof(schedule))"
         )
     )
+    calendar_shape(schedule) isa PiecewiseConstantCalendar || throw(
+        ArgumentError(
+            "capacity as a schedule must be piecewise constant, like `Steps`, " *
+                "got a $(typeof(schedule))"
+        )
+    )
+    return schedule
 end
 
-# The places of the resource a person draws on: one count for everyone, or that
-# of the group under a `PerGroup`.
+_capacity_at(capacity::Real, t) = capacity
+_capacity_at(schedule, t) = calendar_multiplier(schedule, t)
+
+# The days in `(s, e)` on which the capacity changes.
+_capacity_breaks(::Real, s, e) = Float64[]
+function _capacity_breaks(schedule, s, e)
+    out = Float64[]
+    t = next_calendar_break(schedule, s)
+    while t < e
+        push!(out, t)
+        t = next_calendar_break(schedule, t)
+    end
+    return out
+end
+
+# The places of the resource a person draws on: one count for everyone, or the
+# count of their group under a `PerGroup`.
 _places(hc::HeldCapacity, resource) = _budget_of(hc.capacity, _resource_group(resource))
 
 # Everyone's stay, kept in `state.scratch` under the capacity key. Wrappers
@@ -100,26 +140,44 @@ function _stays_on(stays::_HeldStays, resource, exclude = nothing)
 end
 
 # Whether a stay over `[s, e)` keeps the resource within `capacity` throughout.
-# The busiest moment of the stay is its own start or the start of another stay
-# inside it, so only those are counted.
+# Occupancy only rises where another stay starts and the capacity only falls at
+# one of its breaks, so the tightest moments of the stay are its own start, the
+# start of another stay inside it and a capacity break inside it.
 function _fits_stay(capacity, stays, s, e)
     moments = Float64[s]
     for (a, _) in stays
         s < a < e && push!(moments, a)
     end
+    append!(moments, _capacity_breaks(capacity, s, e))
     for m in moments
         held = count(((a, b),) -> a <= m < b, stays)
-        held + 1 <= capacity || return false
+        held + 1 <= _capacity_at(capacity, m) || return false
     end
     return true
 end
 
-# The earliest moment after `action.time` that fits a stay of `duration`. Only
-# the release of a stay frees a place, so only release times are tried.
+_next_break(::Real, t) = Inf
+_next_break(schedule, t) = next_calendar_break(schedule, t)
+
+# The earliest moment after `action.time` that fits a stay of `duration`. A
+# place becomes free when a stay is released or the capacity rises, so only
+# release times and capacity breaks are tried.
 function refused_action(::DeferRefused, hc::HeldCapacity, usage, action)
     stays, duration = usage.stays, usage.duration
-    for t in sort!(unique([b for (_, b) in stays if action.time < b && isfinite(b)]))
-        _fits_stay(usage.capacity, stays, t, t + duration) || continue
+    capacity = usage.capacity
+    times = Float64[b for (_, b) in stays if action.time < b && isfinite(b)]
+    last_release = isempty(times) ? action.time : maximum(times)
+    append!(times, _capacity_breaks(capacity, action.time, nextfloat(last_release)))
+    # After the last release only the capacity matters. Breaks are candidates
+    # until one fits the whole stay, because a later fall can rule an earlier rise out.
+    t = _next_break(capacity, max(last_release, action.time))
+    while isfinite(t)
+        push!(times, t)
+        _fits_stay(capacity, stays, t, t + duration) && break
+        t = _next_break(capacity, t)
+    end
+    for t in sort!(unique(times))
+        _fits_stay(capacity, stays, t, t + duration) || continue
         return InterventionAction(action.individual, t, action.effect!, action.claim!)
     end
     return nothing
@@ -202,7 +260,10 @@ one everyone shares.
 function held_usage(hc::HeldCapacity, state::SimulationState, at::Real, key = nothing)
     resource = _user_resource(hc.capacity, key)
     stays = _stays_on(_held_stays(state, capacity_key(hc.intervention)), resource)
-    return (held = count(((a, b),) -> a <= at < b, stays), capacity = _places(hc, resource))
+    return (
+        held = count(((a, b),) -> a <= at < b, stays),
+        capacity = _capacity_at(_places(hc, resource), at),
+    )
 end
 
 # ── Delegation of every other hook ────────────────────────────────────
