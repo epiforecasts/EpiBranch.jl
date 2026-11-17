@@ -1255,9 +1255,10 @@ unless a natural-history step sets it. Every model over a fixed population,
 built in or written against [`contacts_of`](@ref), applies it to every settled
 member once its `progression` can reach `:susceptible_again`, with no change
 needed to how it names contacts. A model allows reinfection by adding a step
-to its `progression` that sets `:susceptible_again_time`; the earlier
-infection is then kept as a past episode (see [`close_episode!`](@ref)) when
-the person is reinfected."""
+to its `progression` that sets `:susceptible_again_time` and declares
+`:susceptible_again` through [`produced_states`](@ref). A step that sets the
+time without declaring the state is ignored. When the person is reinfected, the
+earlier infection is kept as a past episode (see [`close_episode!`](@ref))."""
 struct HostImmunity end
 function competing_risk(::HostImmunity, parent, contact, state)
     is_infected(contact) || return nothing

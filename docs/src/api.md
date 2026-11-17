@@ -185,6 +185,7 @@ exclusive_probabilities
 is_terminal
 terminal_event
 terminal_target
+produced_states
 progression_loglik
 ```
 
