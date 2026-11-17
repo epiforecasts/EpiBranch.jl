@@ -34,8 +34,8 @@ HeldCapacity(
   places that open or close over the outbreak, read at each day as for the
   `budget_per_period` of [`CapacityConstrained`](@ref). A smooth schedule is
   refused because the days the capacity changes must be known.
-  [`PerGroup`](@ref) gives each group of the population of the model its own
-  number or schedule.
+  [`PerGroup`](@ref) gives each group of the population its own number or
+  schedule.
 - `hold`: how long a place is kept once taken, in days: a number, a
   `Distribution` or an `(rng, individual)` callable, as a delay is anywhere
   else. The default, `Inf`, keeps it until [`release_capacity!`](@ref) gives it
@@ -117,8 +117,8 @@ function _capacity_breaks(schedule, s, e)
     return out
 end
 
-# The places of the resource a person draws on: one count for everyone, or that
-# of the group under a `PerGroup`.
+# The places of the resource a person draws on: one count for everyone, or the
+# count of their group under a `PerGroup`.
 _places(hc::HeldCapacity, resource) = _budget_of(hc.capacity, _resource_group(resource))
 
 # Everyone's stay, kept in `state.scratch` under the capacity key. Wrappers
