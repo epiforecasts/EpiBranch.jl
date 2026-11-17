@@ -146,9 +146,15 @@ SimOpts(stopping_rules = [MaxCases(1000), MyCustomRule()])
 """
 struct SimOpts
     n_initial::Int
+    n_initial_given::Bool
     initial_cases::Union{Nothing, Vector{Int}}
     index_types::Union{Nothing, Vector{Int}, Distribution}
     stopping_rules::Vector{AbstractStoppingRule}
+end
+
+# Positional form without `n_initial_given`; `n_initial_given` is then false.
+function SimOpts(n_initial, initial_cases, index_types, stopping_rules)
+    return SimOpts(n_initial, false, initial_cases, index_types, stopping_rules)
 end
 
 function SimOpts(;
@@ -192,13 +198,13 @@ function SimOpts(;
         # vector, leaving the caller's untouched.
         rules = collect(AbstractStoppingRule, stopping_rules)
         any(r -> r isa Extinction, rules) || pushfirst!(rules, Extinction())
-        return SimOpts(count, ids, types, rules)
+        return SimOpts(count, n_initial !== nothing, ids, types, rules)
     end
     rules = AbstractStoppingRule[Extinction()]
     max_cases !== nothing && push!(rules, MaxCases(max_cases))
     max_generations !== nothing && push!(rules, MaxGenerations(max_generations))
     max_time !== nothing && push!(rules, MaxTime(Float64(max_time)))
-    return SimOpts(count, ids, types, rules)
+    return SimOpts(count, n_initial !== nothing, ids, types, rules)
 end
 
 """The case cap set by `opts` (`typemax(Int)` if none), used to flag

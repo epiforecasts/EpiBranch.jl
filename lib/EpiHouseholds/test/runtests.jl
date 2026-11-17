@@ -1092,7 +1092,7 @@ struct _MaskLessRule <: EpiHouseholds.ConditionOn end
                 );
                 progression = latent, interventions, attributes = clinical
             )
-            d = household_infections(simulate(m; n_initial = 2, rng = StableRNG(seed)), m)
+            d = household_infections(simulate(m; rng = StableRNG(seed)), m)
             layout = compile_household_pairs(d; external = ext > 0)
             @test isfinite(loglikelihood(d, m))
             @test isfinite(
