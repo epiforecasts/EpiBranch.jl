@@ -53,7 +53,7 @@ has_competing_risk(::InterventionWrapper) = true
 # A wrapper that offers itself candidates (its own `intervention_actions`, or a
 # `discovers_actions` override) answers for itself. Otherwise the wrapped
 # intervention answers. A capacity wrapper inside `Scheduled` or `OnRoutes`
-# therefore still answers for itself.
+# still answers for itself.
 function proposes_actions(w::InterventionWrapper)
     acts_on_population(w) && return false
     return discovers_actions(w) || proposes_actions(w.intervention)
