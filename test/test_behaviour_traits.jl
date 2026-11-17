@@ -63,6 +63,10 @@ EpiBranch.intervention_time(::_UndeclaredWrapper, ind::Individual) = 1.0
 struct _DefaultWrapper{I <: EpiBranch.AbstractIntervention} <: EpiBranch.InterventionWrapper
     intervention::I
 end
+struct _ActingWrapper{I <: EpiBranch.AbstractIntervention} <: EpiBranch.InterventionWrapper
+    intervention::I
+end
+EpiBranch.intervention_actions(::_ActingWrapper, state, candidates) = nothing
 struct _UndeclaredTraceAction <: EpiBranch.TraceAction end
 EpiBranch.intervention_actions(::_UndeclaredTraceAction, state, candidates) = nothing
 
@@ -156,6 +160,13 @@ struct _Bare <: EpiBranch.AbstractIntervention end
         @test !EpiBranch.proposes_actions(
             CapacityConstrained(iso; budget_per_period = 1.0)
         )
+    end
+
+    @testset "a wrapper with actions of its own is offered candidates" begin
+        w = _ActingWrapper(iso)
+        @test EpiBranch.discovers_actions(w)
+        @test EpiBranch.proposes_actions(w)
+        @test !EpiBranch.proposes_actions(_DefaultWrapper(iso))
     end
 
     @testset "has_competing_risk" begin
