@@ -51,8 +51,8 @@ different routes, such as community and funeral transmission of Ebola.
   lockdown or a seasonal pattern that changes how quickly this window's
   contacts arrive. Unused where `kernel` draws no contact
   (`NoGenerationTime()`) or where `offspring` already timed them
-  (`OffspringTimes`). `incidence_moments`,
-  `end_of_outbreak_probability` and `Isolation`'s analytic effect all read a
+  (`OffspringTimes`). `end_of_outbreak_probability` and `Isolation`'s
+  analytic effect both read a
   window's `kernel` directly and throw an `ArgumentError` on a window with a
   `calendar` rather than ignoring it; simulate a model that needs one
   instead.
