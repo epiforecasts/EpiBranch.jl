@@ -5,7 +5,7 @@ using DataFrames
 using Dates
 using Distributions
 using ForwardDiff
-using LinearAlgebra: LinearAlgebra, Diagonal, I, Symmetric, cholesky, diag, eigvals, issuccess
+using LinearAlgebra: LinearAlgebra, Diagonal, I, Symmetric, eigvals
 using QuadGK
 using Random
 using SpecialFunctions
@@ -283,7 +283,6 @@ export probability_contain
 export OffspringCounts, ChainSizes, ChainSizeClasses, ChainLengths, IncidenceCounts
 export SignalSeries, SignalData
 export incidence_moments
-export IncidenceApproximation, NormalApproximation, LognormalApproximation
 # Entry points returning a Distribution that wraps a model; use with
 # Turing's `~`. `chain_size_distribution` is already exported above.
 export chain_length_distribution, offspring_distribution

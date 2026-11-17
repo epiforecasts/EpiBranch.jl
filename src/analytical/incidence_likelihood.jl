@@ -1,12 +1,12 @@
 # ── Incidence time-series likelihood ─────────────────────────────────
 #
 # A closed-form likelihood for the incidence time series a branching process
-# produces, in the spirit of Boudreau and St-Onge's calendar-time branching
-# process (arXiv:2610.17138): advance the probability generating function one
-# time step at a time, with one auxiliary variable per step, then read
-# the mean and covariance of the step counts off the cumulant generating
-# function (the log of that PGF) and match a multivariate normal or
-# lognormal to them.
+# produces. `incidence_moments` describes the model, in the spirit of
+# Boudreau and St-Onge's calendar-time branching process (arXiv:2610.17138):
+# advance the probability generating function one time step at a time, with
+# one auxiliary variable per step, then read the mean and covariance of the
+# step counts off the cumulant generating function (the log of that PGF). The
+# likelihood itself is the renewal count likelihood further down.
 #
 # One individual infected at step k (1 ≤ k ≤ n, the last observed step)
 # contributes u_k for itself, plus the PGF of its offspring's own
@@ -185,11 +185,9 @@ like the offspring parameters.
 Returns a `(mean, cov)` named tuple: `mean[t]` is the expected count at step
 `t`, and `cov` is their `n × n` covariance matrix, both ignoring susceptible
 depletion (see `loglikelihood` for the likelihood this feeds and its
-limits). Matching a `MvNormal(mean, cov)`
-or a moment-matched lognormal to these is what the `NormalApproximation`
-and `LognormalApproximation` of that likelihood do; call this directly for
-a forecast instead, or to compare against simulated incidence (`seeds`
-simulated introductions, summed into steps the same way `data` is).
+limits). It describes the model the likelihood scores and checks it: call it
+for a forecast, or to compare against simulated incidence (`seeds` simulated
+introductions, summed into steps the same way `data` is).
 
 # Examples
 
@@ -220,145 +218,204 @@ function incidence_moments(
     return _incidence_moments_from(K, n)
 end
 
-# ── Matching a distribution to the moments ────────────────────────────
+# ── Renewal count likelihood ──────────────────────────────────────────
+#
+# The counts are scored with the model that `incidence_moments` describes, in
+# its count form. The cases infected at step `s` are a cohort `C_s`. With
+# negative binomial offspring their combined offspring mean is
+# `V_s ~ Gamma(k * C_s, R / k)`, since gammas with a shared scale add, and the
+# count at step `t` is `Poisson(Σ_s V_s * w[t - s])`. Given the cohorts, the
+# count at step `t` is then a Poisson mixture with mean
+#
+#   μ_t = R * Σ_s w[t - s] * C_s
+#
+# and extra variance
+#
+#   e_t = (σ² - R) * Σ_s w[t - s]² * C_s,
+#
+# where σ² is the variance of the offspring law (R²/k for the negative
+# binomial, so the mean-variance relation is exact for it, and any law is
+# covered the same way: a case's offspring landing `j` steps later are its
+# offspring thinned by `w[j]`). A negative binomial with that mean and
+# variance, `μ_t + e_t`, scores the count, and a Poisson stands in where
+# `e_t = 0`. Each step is scored given the observed counts before it, so the
+# likelihood is the product over steps; it treats the steps as independent
+# given the past, which drops the correlation between the offspring of one
+# infector spread over several steps.
+#
+# With under-reporting the cohorts are not observed. The reports `Z_s` stand
+# in for them: a report probability `ρ` and delay `d` commute with the
+# generation-time convolution, so `R * Σ_s w[t - s] * Z_s` is the expected
+# count of reports at step `t`, plus the seeds' own reports. Thinning scales a
+# Poisson mixture's variance by `ρ²` and the cohort by `1 / ρ`, so `e_t`
+# carries a factor `ρ`. The seeds' own reports, a binomial draw, are scored as
+# if Poisson. Both are approximations that vanish without under-reporting.
 
-"""
-    IncidenceApproximation
-
-How `loglikelihood(::IncidenceCounts, ::Distribution)` turns the
-mean and covariance from [`incidence_moments`](@ref) into a likelihood:
-[`NormalApproximation`](@ref) matches a multivariate normal, and
-[`LognormalApproximation`](@ref) a multivariate lognormal. Dispatch on a new
-subtype to match something else.
-"""
-abstract type IncidenceApproximation end
-
-"""
-    NormalApproximation()
-
-Match a `MvNormal` with the mean and covariance from [`incidence_moments`](@ref).
-Defined for any observed counts, including zeros; see
-[`LognormalApproximation`](@ref) for the alternative that respects
-non-negativity.
-"""
-struct NormalApproximation <: IncidenceApproximation end
-
-"""
-    LognormalApproximation()
-
-Match a multivariate lognormal with the mean and covariance from
-[`incidence_moments`](@ref): the log-counts are matched to a `MvNormal` by
-the usual lognormal moment equations, `logpdf` adding the log-Jacobian
-`-Σ log(data)` for the change of variables. Needs every observed count to be
-strictly positive, since a lognormal puts no mass at 0; use
-[`NormalApproximation`](@ref) for data that includes zeros.
-
-The log-scale covariance, `log1p(Σ[t, u] / (μ[t] μ[u]))`, is not always
-positive definite, for example for long subcritical series. When it is not, a
-small multiple of the identity (starting at `1e-12` times the largest log-scale
-variance and doubling until the matrix factorises) is added to its diagonal,
-which slightly regularises the likelihood. If no such
-shift works, an `ArgumentError` is thrown.
-"""
-struct LognormalApproximation <: IncidenceApproximation end
-
-# A count that can only be zero, such as a type with no seeds in the first
-# step, or any count before a delayed report can arrive, has zero mean and
-# variance, which no approximation can be matched to. It is left out, and the
-# data are impossible unless they are zero there too.
-function _incidence_loglik_observed(approximation, data, μ, Σ)
-    keep = [Σ[t, t] > 0 for t in eachindex(data)]
-    all(keep) && return _incidence_loglik(approximation, data, μ, Σ)
-    T = float(eltype(μ))
-    any(t -> !keep[t] && data[t] != 0, eachindex(data)) && return T(-Inf)
-    any(keep) || return zero(T)
-    return _incidence_loglik(
-        approximation, data[keep], μ[keep], Symmetric(Matrix(Σ)[keep, keep])
-    )
-end
-
-function _incidence_loglik(::NormalApproximation, data::AbstractVector{<:Real}, μ, Σ)
-    return logpdf(MvNormal(μ, Σ), data)
-end
-
-function _incidence_loglik(::LognormalApproximation, data::AbstractVector{<:Real}, μ, Σ)
-    all(>(0), data) || throw(
-        ArgumentError(
-            "LognormalApproximation needs every observed count to be strictly positive " *
-                "(a lognormal puts no mass at 0); use NormalApproximation for data with zeros."
-        )
-    )
-    n = length(μ)
-    σ²_log = [log1p(Σ[t, t] / μ[t]^2) for t in 1:n]
-    μ_log = [log(μ[t]) - σ²_log[t] / 2 for t in 1:n]
-    Σ_log = Symmetric(
-        [
-            t == t′ ? σ²_log[t] : log1p(Σ[t, t′] / (μ[t] * μ[t′]))
-                for t in 1:n, t′ in 1:n
-        ]
-    )
-    Σ_log = _make_positive_definite(Σ_log)
-    return logpdf(MvNormal(μ_log, Σ_log), log.(data)) - sum(log, data)
-end
-
-# The log1p transform of a covariance matrix is not always positive definite,
-# for example for long subcritical series. Add the smallest power-of-two
-# multiple of 1e-12 times the largest variance to the diagonal that lets the
-# Cholesky factorisation succeed. A matrix that is already positive definite
-# is returned unchanged. The diagonal shift works with automatic differentiation.
-function _make_positive_definite(Σ::Symmetric)
-    issuccess(cholesky(Σ; check = false)) && return Σ
-    scale = maximum(diag(Σ))
-    ε = 1.0e-12 * scale
-    n = size(Σ, 1)
-    for _ in 1:60
-        Σ_shifted = Symmetric(Σ + ε * I(n))
-        issuccess(cholesky(Σ_shifted; check = false)) && return Σ_shifted
-        ε *= 2
+# Variance of an offspring law, with the same fallback as `_law_mean` for a
+# law that has no `var` method.
+function _law_var(d::DiscreteUnivariateDistribution)
+    try
+        return var(d)
+    catch err
+        err isa MethodError || rethrow()
     end
-    throw(
-        ArgumentError(
-            "LognormalApproximation: the log-scale covariance is not positive definite " *
-                "and could not be repaired with a diagonal term."
+    μ = _law_mean(d)
+    lo, hi = _series_range(d)
+    return sum((x - μ)^2 * pdf(d, x) for x in lo:hi)
+end
+function _law_var(o::GeneratingFunctionOffspring)
+    # G''(1) + G'(1) - G'(1)^2, the variance from the factorial moments.
+    g2 = ForwardDiff.derivative(s -> ForwardDiff.derivative(o.pgf, s), 1.0)
+    return g2 + o.mean - o.mean^2
+end
+
+# The excess of each law's variance over its mean, which is what separates its
+# counts from Poisson ones. A law below its mean is not a Poisson mixture.
+function _offspring_excess(laws)
+    return map(laws) do law
+        R, σ² = _law_mean(law), _law_var(law)
+        σ² >= R - 1.0e-8 * max(one(R), R) || throw(
+            ArgumentError(
+                "the incidence likelihood is a count likelihood for offspring laws " *
+                    "at least as dispersed as Poisson; this one has variance $σ² below " *
+                    "its mean $R"
+            )
         )
+        return (mean = R, excess = max(σ² - R, zero(σ²)))
+    end
+end
+
+# Conditional mean and extra variance of the count of each observed category
+# (rows of `P`, a map from types to categories: the identity for counts by
+# type, a row of ones for their total) at each step 1:n, given `Z`, the
+# cohorts (rows `s + 1` for step `s`, columns types) in place of the
+# unobserved infections. `alloc` is the child-type allocation.
+function _incidence_conditional(
+        Z::AbstractMatrix, P::AbstractMatrix, alloc::AbstractMatrix, laws,
+        seeds::AbstractVector, w::AbstractVector, d::AbstractVector, ρ::Real, n::Integer
     )
+    stats = _offspring_excess(laws)
+    A = P * alloc
+    q, m = size(A)
+    T = promote_type(
+        eltype(Z), eltype(A), eltype(w), eltype(d), typeof(ρ), eltype(seeds),
+        map(s -> typeof(s.mean), stats)..., map(s -> typeof(s.excess), stats)...
+    )
+    μ = zeros(T, n, q)
+    e = zeros(T, n, q)
+    for t in 1:n, c in 1:q
+        direct = t + 1 <= length(d) ? ρ * d[t + 1] * sum(P[c, j] * seeds[j] for j in 1:m) : zero(T)
+        mean_t = direct
+        extra_t = zero(T)
+        for j in 1:m
+            a = A[c, j]
+            iszero(a) && continue
+            s1 = zero(T)
+            s2 = zero(T)
+            for s in max(0, t - length(w)):(t - 1)
+                z = Z[s + 1, j]
+                s1 += w[t - s] * z
+                s2 += w[t - s]^2 * z
+            end
+            mean_t += a * stats[j].mean * s1
+            extra_t += ρ * a^2 * stats[j].excess * s2
+        end
+        μ[t, c] = mean_t
+        e[t, c] = extra_t
+    end
+    return μ, e
+end
+
+# Log-likelihood of counts `y` (steps by categories) given their conditional
+# mean `μ` and extra variance `e`: negative binomial with variance `μ + e`,
+# Poisson without extra variance. A count whose mean is 0, such as one before a
+# delayed report can arrive or of a type with no cohort yet, can only be zero.
+function _incidence_count_loglik(y::AbstractMatrix{<:Integer}, μ, e)
+    T = float(eltype(μ))
+    ll = zero(T)
+    for idx in eachindex(y)
+        yi, μi, ei = y[idx], μ[idx], e[idx]
+        if !(μi > 0)
+            yi == 0 || return T(-Inf)
+        elseif !(ei > 0)
+            ll += logpdf(Poisson(μi), yi)
+        else
+            r = μi^2 / ei
+            ll += logpdf(NegativeBinomial(r, r / (r + μi)), yi)
+        end
+    end
+    return ll
+end
+
+# The cohorts of every step as a matrix: the reports of step `s` by type in
+# row `s + 1`, and the seeds' own expected reports in row 1.
+function _incidence_cohorts(Y::AbstractMatrix, seeds, ρ, d)
+    return vcat(reshape(ρ * d[1] .* seeds, 1, :), Y)
+end
+
+# The cohorts when only the total over types is observed: each step's total is
+# split by the type shares of the model's expected counts at that step, which
+# is the model's own composition rather than an estimate from the data.
+function _incidence_cohorts(
+        y::AbstractVector, expected::AbstractMatrix, seeds, ρ, d
+    )
+    n, m = size(expected)
+    Y = zeros(promote_type(Float64, eltype(expected)), n, m)
+    for s in 1:n
+        tot = sum(expected[s, :])
+        shares = tot > 0 ? expected[s, :] ./ tot : seeds ./ sum(seeds)
+        Y[s, :] = y[s] .* shares
+    end
+    return _incidence_cohorts(Y, seeds, ρ, d)
 end
 
 # ── Unified loglikelihood interface ────────────────────────────────────
 
 """
-    loglikelihood(data::IncidenceCounts, offspring, generation_time::Distribution,
-        approximation::IncidenceApproximation = NormalApproximation();
+    loglikelihood(data::IncidenceCounts, offspring, generation_time::Distribution;
         reporting_probability = 1, reporting_delay = nothing)
 
-Closed-form, moment-matched log-likelihood of an incidence time series under
-a branching process with offspring law `offspring` and a `generation_time`
-distribution, both as in [`incidence_moments`](@ref), as are
-`reporting_probability` and `reporting_delay` for a series of reported
-cases. `approximation` chooses what [`incidence_moments`](@ref)'s mean and
-covariance are matched to; see [`NormalApproximation`](@ref) and
-[`LognormalApproximation`](@ref).
+Log-likelihood of an incidence time series under a branching process with
+offspring law `offspring` and a `generation_time` distribution, both as in
+[`incidence_moments`](@ref), as are `reporting_probability` and
+`reporting_delay` for a series of reported cases.
+
+It is a renewal count likelihood: given the counts before it, the count at
+step `t` is negative binomial with mean `R * Σ_s w[s] * C[t - s]`, `w` being
+the discretised generation time and `C` the cases infected at each step (the
+`seeds` at step 0). The dispersion comes from the offspring law's variance,
+`σ²`, so the count's variance is `μ + (σ² - R) * Σ_s w[s]² * C[t - s]`. For
+negative binomial offspring with mean `R` and dispersion `k` that is the
+variance of the count `Poisson(Σ_s V_s * w[t - s])`, where `V_s` is the
+combined offspring mean of the cohort `C_s`, `Gamma(k * C_s, R / k)`; a
+Poisson offspring law gives a Poisson count, the limit as `k` grows. Counts
+of zero are scored like any other.
+
+With `reporting_probability` below 1, or a `reporting_delay`, the counts are
+of reports and stand in for the unobserved infections: the mean is the
+expected reports given the earlier ones, and the extra variance is scaled by
+the reporting probability. That is exact for the mean and approximate for the
+variance.
 
 !!! warning "Limits"
-    This ignores susceptible depletion, so it holds only while the
-    population is effectively unsaturated. It models no interventions, and
+    The steps are scored one at a time given the past, so the correlation
+    between the offspring of one infector spread over several steps is
+    dropped. The model ignores susceptible depletion, so it holds only while
+    the population is effectively unsaturated. It models no interventions, and
     under-reporting only as each case reported independently with the same
-    probability. The `generation_time` distribution and `reporting_delay`
-    are discretised onto `data`'s own time step with each infection uniform
-    within its step. The recursion has no lag of 0, so generation times
-    shorter than a step lose their same-step mass and the estimate is biased
-    when the step is long compared with the generation time. The
-    likelihood itself is approximate, a moment-matched normal or lognormal
-    standing in for the true (unknown in closed form) distribution of the
-    counts; prediction intervals built from it can be too narrow,
-    particularly once the process is not far short of depletion.
+    probability. The
+    `generation_time` distribution and `reporting_delay` are discretised
+    onto `data`'s own time step with each infection uniform within its step.
+    The recursion has no lag of 0, so generation times shorter than a step
+    lose their same-step mass and the estimate is biased when the step is long
+    compared with the generation time. An offspring law with a variance below
+    its mean is not a Poisson mixture and throws an `ArgumentError`.
 
 # Examples
 
 ```julia
 data = IncidenceCounts([1, 2, 4, 5, 9, 12, 18])
 loglikelihood(data, NegBin(1.3, 0.5), LogNormal(1.6, 0.5))
-loglikelihood(data, NegBin(1.3, 0.5), LogNormal(1.6, 0.5), LognormalApproximation())
 # 60% of cases reported, on average 3 days after infection
 loglikelihood(data, NegBin(1.3, 0.5), LogNormal(1.6, 0.5);
     reporting_probability = 0.6, reporting_delay = Gamma(2.0, 1.5))
@@ -367,17 +424,22 @@ loglikelihood(data, NegBin(1.3, 0.5), LogNormal(1.6, 0.5);
 function loglikelihood(
         data::IncidenceCounts,
         offspring::Union{DiscreteUnivariateDistribution, GeneratingFunctionOffspring},
-        generation_time::Distribution,
-        approximation::IncidenceApproximation = NormalApproximation();
+        generation_time::Distribution;
         reporting_probability::Real = 1, reporting_delay = nothing,
         tol::Real = 1.0e-8, max_lag::Int = 10_000
     )
     y, seeds = _single_type_series(data)
-    μ, Σ = incidence_moments(
-        offspring, generation_time, length(y);
-        seeds, reporting_probability, reporting_delay, tol, max_lag
+    n = length(y)
+    0 < reporting_probability <= 1 ||
+        throw(ArgumentError("reporting_probability must be in (0, 1]"))
+    w = _discretize_generation_interval(generation_time; tol, max_lag)
+    d = _discretize_report_delay(reporting_delay; tol, max_lag)
+    Y = reshape(y, n, 1)
+    Z = _incidence_cohorts(Y, [seeds], reporting_probability, d)
+    μ, e = _incidence_conditional(
+        Z, ones(1, 1), ones(1, 1), [offspring], [seeds], w, d, reporting_probability, n
     )
-    return _incidence_loglik_observed(approximation, y, μ, Σ)
+    return _incidence_count_loglik(Y, μ, e)
 end
 
 _single_type_series(data::IncidenceCounts{Vector{Int}, Int}) = (data.data, data.seeds)
@@ -523,15 +585,23 @@ end
 
 """
     loglikelihood(data::IncidenceCounts, offspring::MultiTypeOffspring,
-        generation_time::Distribution,
-        approximation::IncidenceApproximation = NormalApproximation();
+        generation_time::Distribution;
         reporting_probability = 1, reporting_delay = nothing)
 
 Log-likelihood of an incidence time series under a multi-type branching
-process, from the moments of [`incidence_moments`](@ref). `data` holds the
-counts by type, one column per type, or their total over types as a vector;
-its `seeds` give the index cases of each type. The limits are those of the
-single-type method.
+process: the renewal count likelihood of the single-type method, with a count
+for each type at each step. A type-`j` cohort's offspring land in type `i`
+with probability `a[i, j]`, so the count of type `i` has mean
+`Σ_j a[i, j] * R_j * Σ_s w[s] * C_j[t - s]` and the dispersion of the type-`j`
+offspring law. The counts of different types at one step are scored as
+independent given the past, which drops their correlation through the shared
+parent.
+
+`data` holds the counts by type, one column per type, or their total over
+types as a vector; its `seeds` give the index cases of each type. The cohorts
+of a total are split by type in the proportions of the model's expected
+counts at each step, since the observed counts carry no split. The limits are
+those of the single-type method.
 
 # Examples
 
@@ -544,8 +614,7 @@ loglikelihood(IncidenceCounts([1, 2, 4, 6]; seeds = [0, 1]), offspring, gt)
 """
 function loglikelihood(
         data::IncidenceCounts, offspring::MultiTypeOffspring,
-        generation_time::Distribution,
-        approximation::IncidenceApproximation = NormalApproximation();
+        generation_time::Distribution;
         reporting_probability::Real = 1, reporting_delay = nothing,
         tol::Real = 1.0e-8, max_lag::Int = 10_000
     )
@@ -556,30 +625,38 @@ function loglikelihood(
         )
     )
     n = size(data.data, 1)
-    μ, Σ = incidence_moments(
-        offspring, generation_time, n;
-        seeds = data.seeds, reporting_probability, reporting_delay, tol, max_lag
-    )
-    y, μ_obs, Σ_obs = _observed_moments(data.data, μ, Σ)
-    return _incidence_loglik_observed(approximation, y, μ_obs, Σ_obs)
-end
-
-# The observed vector and its moments: the counts by type as they are, or
-# their total over types, whose mean and covariance sum the per-type blocks.
-function _observed_moments(data::AbstractMatrix, μ, Σ)
-    size(data) == size(μ) || throw(
+    m = _n_types(offspring)
+    data.data isa AbstractMatrix && size(data.data, 2) != m && throw(
         ArgumentError(
-            "counts by type have $(size(data, 2)) columns, but the process has " *
-                "$(size(μ, 2)) types"
+            "counts by type have $(size(data.data, 2)) columns, but the process has " *
+                "$m types"
         )
     )
-    return vec(data), vec(μ), Σ
-end
-function _observed_moments(data::AbstractVector, μ, Σ)
-    n, m = size(μ)
-    block(i) = ((i - 1) * n + 1):(i * n)
-    Σ_total = sum(Σ[block(i), block(i′)] for i in 1:m, i′ in 1:m)
-    return data, vec(sum(μ; dims = 2)), Symmetric(Σ_total)
+    length(data.seeds) == m || throw(
+        ArgumentError("seeds needs one entry per type ($m), got $(length(data.seeds))")
+    )
+    0 < reporting_probability <= 1 ||
+        throw(ArgumentError("reporting_probability must be in (0, 1]"))
+    w = _discretize_generation_interval(generation_time; tol, max_lag)
+    d = _discretize_report_delay(reporting_delay; tol, max_lag)
+    seeds = data.seeds
+    ρ = reporting_probability
+    laws = _total_count_laws(offspring)
+    if data.data isa AbstractMatrix
+        Y = data.data
+        Z = _incidence_cohorts(Y, seeds, ρ, d)
+        P = Matrix{Float64}(I, m, m)
+    else
+        Y = reshape(data.data, n, 1)
+        expected = incidence_moments(
+            offspring, generation_time, n; seeds, reporting_probability, reporting_delay,
+            tol, max_lag
+        ).mean
+        Z = _incidence_cohorts(data.data, expected, seeds, ρ, d)
+        P = ones(1, m)
+    end
+    μ, e = _incidence_conditional(Z, P, offspring.alloc_probs, laws, seeds, w, d, ρ, n)
+    return _incidence_count_loglik(Y, μ, e)
 end
 
 # A model's under-reporting as the direct method's keywords. An observation
@@ -706,8 +783,7 @@ function _check_onset_builders(builders)
 end
 
 """
-    loglikelihood(data::IncidenceCounts, model::Union{BranchingProcess, ModelSpec},
-        approximation::IncidenceApproximation = NormalApproximation())
+    loglikelihood(data::IncidenceCounts, model::Union{BranchingProcess, ModelSpec})
 
 Log-likelihood of an incidence time series under a model's own offspring and
 generation-time distributions, single-type or multi-type (a model built from
@@ -731,8 +807,7 @@ passing a weekly `condition`) and compare empirically for a model outside
 these limits.
 """
 function loglikelihood(
-        data::IncidenceCounts, model::Union{BranchingProcess, ModelSpec},
-        approximation::IncidenceApproximation = NormalApproximation(); kwargs...
+        data::IncidenceCounts, model::Union{BranchingProcess, ModelSpec}; kwargs...
     )
     isempty(interventions(model)) || throw(
         ArgumentError(
@@ -775,6 +850,6 @@ function loglikelihood(
         )
     )
     return loglikelihood(
-        data, _analytic_offspring(model), gt, approximation; reporting..., kwargs...
+        data, _analytic_offspring(model), gt; reporting..., kwargs...
     )
 end

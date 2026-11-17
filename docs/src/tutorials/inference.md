@@ -378,38 +378,32 @@ incidence = IncidenceCounts(cases; seeds = 20)
 println("Daily cases: ", cases)
 ```
 
-The likelihood is built from [`incidence_moments`](@ref), the mean and covariance of the daily counts under the model. It matches a distribution to them, and the third argument of `loglikelihood` selects which:
+The likelihood is a renewal count likelihood. Given the counts before it, the count on day t is negative binomial with mean R times the sum over earlier days s of w[t - s] times the cases infected on day s, where w is the generation time discretised to days. Its dispersion comes from k: the cases infected on one day have a combined offspring mean that is gamma distributed with a scale of R / k (gammas with a shared scale add), and the count is Poisson given that mean. Counts of zero are scored like any other, and as k grows the likelihood tends to a Poisson one. [`incidence_moments`](@ref) gives the mean and covariance of the counts under the same model, for a forecast or to check a fit against simulated series.
 
-- [`NormalApproximation`](@ref), the default, matches a multivariate normal. It accepts any counts, including zeros.
-- [`LognormalApproximation`](@ref) matches a multivariate lognormal, which cannot go negative, but needs every count to be at least 1.
-
-Either way the likelihood is an approximation to the true, unknown distribution of the counts. The profile-likelihood fit from above works unchanged; only the log-likelihood function differs. The approximation is passed as part of the `data` argument so the same code fits with either:
+The profile-likelihood fit from above works unchanged, with `loglikelihood` taking the series, the offspring distribution and the generation time:
 
 ```@example inference
-function incidence_loglik(θ, (series, approximation))
+function incidence_loglik(θ, series)
     offspring = NegBin(exp(θ[1]), exp(θ[2]))  # θ = [log R, log k]
-    return loglikelihood(series, offspring, generation_time, approximation)
+    return loglikelihood(series, offspring, generation_time)
 end
 
-function incidence_problem(series, approximation)
+function incidence_problem(series)
     return LikelihoodProblem(
         incidence_loglik, [0.0, 0.0];
-        data = (series, approximation),
+        data = series,
         syms = [:log_R, :log_k],
         f_kwargs = (adtype = AutoForwardDiff(),),
         prob_kwargs = (lb = log.([0.01, 0.01]), ub = log.([10.0, 100.0]))
     )
 end
 
-for approximation in (NormalApproximation(), LognormalApproximation())
-    println(nameof(typeof(approximation)))
-    print_intervals(incidence_problem(incidence, approximation))
-end
+print_intervals(incidence_problem(incidence))
 ```
 
-The two approximations can disagree, and here they do: the interval for R under the normal approximation contains the value used to simulate the data (R = 1.6), while the lognormal interval, fitted to counts that are mostly small, sits well below it. Start with the normal approximation, and check a fit against simulated series (simulate the fitted model, count the cases per day as above, and compare) before trusting either.
+The interval for R contains the value used to simulate the data (R = 1.6). The interval for k is wide and reaches its upper bound, as in the offspring-count fit, because four weeks of one outbreak say little about superspreading.
 
-The interval for k under the normal approximation is wide and reaches its upper bound, as in the offspring-count fit, because four weeks of one outbreak say little about superspreading.
+The likelihood scores each day given the earlier ones, so it drops the correlation between the offspring of one infector spread over several days, so it approximates the full distribution of the counts. Check a fit against simulated series (simulate the fitted model, count the cases per day as above, and compare) before relying on it.
 
 !!! note "What this fit covers"
     The likelihood assumes one constant R, a fixed number of seeds at step 0, and a known generation time. It ignores depletion of susceptibles and models no interventions. It can score cases by report date with `reporting_probability` and `reporting_delay`, which assume each case is reported independently with the same probability. A generation time that is short relative to the step, such as a few days against a weekly series, is binned coarsely and biases the fit. It does not estimate a time-varying R: for that, use a tool built for it, or the particle filter in [Filtering an outbreak over time](@ref) below, which follows an outbreak through a simulated model.

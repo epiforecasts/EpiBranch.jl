@@ -557,9 +557,6 @@ ignores.
 
 ```@docs
 incidence_moments
-IncidenceApproximation
-NormalApproximation
-LognormalApproximation
 ```
 
 ### Observation models

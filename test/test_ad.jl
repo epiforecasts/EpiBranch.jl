@@ -83,7 +83,7 @@ using StableRNGs
             ),
             [0.5], sizes_data
         ),
-        # Nested automatic differentiation: `incidence_moments` itself calls
+        # Nested automatic differentiation: `incidence_moments` calls
         # ForwardDiff on the calendar-time PGF, so this differentiates
         # ForwardDiff through ForwardDiff.
         scenario(

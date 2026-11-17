@@ -193,27 +193,99 @@ struct _RiskFromAge end
         gt = LogNormal(1.6, 0.5)
         offspring = NegBin(1.3, 0.5)
 
-        ll_normal = loglikelihood(data, offspring, gt)
-        @test isfinite(ll_normal)
-        m = incidence_moments(offspring, gt, length(data.data); seeds = data.seeds)
-        @test ll_normal ≈ logpdf(MvNormal(m.mean, m.cov), data.data)
-
-        ll_lognormal = loglikelihood(data, offspring, gt, LognormalApproximation())
-        @test isfinite(ll_lognormal)
-        @test ll_lognormal != ll_normal
+        @test isfinite(loglikelihood(data, offspring, gt))
 
         # GeneratingFunctionOffspring shares the same `_pgf` dispatch, so the
         # unified offspring argument covers it too.
         gfo = GeneratingFunctionOffspring(s -> exp(1.3 * (s - 1)), 1.3)
         @test loglikelihood(data, gfo, gt) ≈ loglikelihood(data, Poisson(1.3), gt)
 
-        mr = incidence_moments(
-            offspring, gt, length(data.data); seeds = data.seeds,
-            reporting_probability = 0.6, reporting_delay = Gamma(2.0, 1.5)
+        # Reporting runs through the same conditional counts.
+        @test isfinite(
+            loglikelihood(
+                data, offspring, gt;
+                reporting_probability = 0.6, reporting_delay = Gamma(2.0, 1.5)
+            )
         )
-        @test loglikelihood(
-            data, offspring, gt; reporting_probability = 0.6, reporting_delay = Gamma(2.0, 1.5)
-        ) ≈ logpdf(MvNormal(mr.mean, mr.cov), data.data)
+    end
+
+    @testset "The first step is exactly negative binomial" begin
+        # `seeds` cases each have NegBin(R, k) offspring, a share w[1] of them
+        # landing in step 1: the count is NegBin with size k * seeds.
+        gt = LogNormal(1.6, 0.5)
+        w1 = EpiBranch._discretize_generation_interval(gt)[1]
+        R, k, seeds = 1.3, 0.5, 3
+        for y in (0, 1, 4)
+            @test loglikelihood(IncidenceCounts([y]; seeds = seeds), NegBin(R, k), gt) ≈
+                logpdf(NegBin(seeds * R * w1, k * seeds), y)
+        end
+        # ... and matches the mean and variance `incidence_moments` gives.
+        m = incidence_moments(NegBin(R, k), gt, 1; seeds = seeds)
+        Z = EpiBranch._incidence_cohorts(reshape([0], 1, 1), [seeds], 1.0, [1.0])
+        μ, e = EpiBranch._incidence_conditional(
+            Z, ones(1, 1), ones(1, 1), [NegBin(R, k)], [seeds],
+            EpiBranch._discretize_generation_interval(gt), [1.0], 1.0, 1
+        )
+        @test μ[1] ≈ m.mean[1]
+        @test μ[1] + e[1] ≈ m.cov[1, 1]
+    end
+
+    @testset "Conditional counts match a cohort simulation" begin
+        # Step 3 given the observed cohorts at steps 1 and 2, against drawing
+        # each case's offspring and the step each lands in.
+        w = [0.5, 0.3, 0.2]
+        offspring = NegBin(1.4, 0.6)
+        seeds, c1, c2 = 2, 3, 4
+        Z = reshape(Float64[seeds, c1, c2], 3, 1)
+        μ, e = EpiBranch._incidence_conditional(
+            vcat(Z, 0.0), ones(1, 1), ones(1, 1), [offspring], [seeds], w, [1.0], 1.0, 3
+        )
+        rng = StableRNG(5)
+        n_sim = 200_000
+        draws = zeros(n_sim)
+        for i in 1:n_sim
+            total = 0
+            for (cohort, lag) in ((seeds, 3), (c1, 2), (c2, 1))
+                for _ in 1:cohort
+                    total += rand(rng, Binomial(rand(rng, offspring), w[lag]))
+                end
+            end
+            draws[i] = total
+        end
+        @test mean(draws) ≈ μ[3] rtol = 0.02
+        @test var(draws) ≈ μ[3] + e[3] rtol = 0.03
+    end
+
+    @testset "Reported counts follow the renewal identity" begin
+        # Plugging the expected reports in as the past returns the expected
+        # reports, with and without a delay, so the mean is exact.
+        gt, offspring = LogNormal(1.6, 0.5), NegBin(1.3, 0.5)
+        n, seeds = 8, 3
+        w = EpiBranch._discretize_generation_interval(gt)
+        for (ρ, rd) in ((1.0, nothing), (0.6, Gamma(2.0, 1.5)), (0.7, 2.0))
+            d = EpiBranch._discretize_report_delay(rd)
+            m = incidence_moments(
+                offspring, gt, n; seeds, reporting_probability = ρ, reporting_delay = rd
+            )
+            Z = EpiBranch._incidence_cohorts(reshape(m.mean, n, 1), [seeds], ρ, d)
+            μ, _ = EpiBranch._incidence_conditional(
+                Z, ones(1, 1), ones(1, 1), [offspring], [seeds], w, d, ρ, n
+            )
+            @test vec(μ) ≈ m.mean
+        end
+    end
+
+    @testset "Poisson offspring give Poisson counts, and zeros are scored" begin
+        data = IncidenceCounts([0, 2, 0, 5, 3])
+        gt = LogNormal(1.6, 0.5)
+        ll = loglikelihood(data, Poisson(1.2), gt)
+        @test isfinite(ll)
+        # A very dispersed offspring law approaches the Poisson one.
+        @test loglikelihood(data, NegBin(1.2, 1.0e6), gt) ≈ ll rtol = 1.0e-4
+        # Overdispersion changes the likelihood of the same counts.
+        @test loglikelihood(data, NegBin(1.2, 0.3), gt) != ll
+        # An offspring law below Poisson dispersion is not a Poisson mixture.
+        @test_throws ArgumentError loglikelihood(data, Dirac(1), gt)
     end
 
     @testset "ForwardDiff through the generation-time distribution" begin
@@ -221,21 +293,6 @@ struct _RiskFromAge end
         f(μ) = loglikelihood(data, Poisson(1.2), LogNormal(μ, 0.5))
         fd = (f(1.5 + 1.0e-6) - f(1.5 - 1.0e-6)) / 2.0e-6
         @test ForwardDiff.derivative(f, 1.5) ≈ fd rtol = 1.0e-4
-    end
-
-    @testset "LognormalApproximation needs strictly positive counts" begin
-        data = IncidenceCounts([0, 2, 4, 5])
-        @test_throws ArgumentError loglikelihood(
-            data, NegBin(1.3, 0.5), LogNormal(1.6, 0.5), LognormalApproximation()
-        )
-    end
-
-    @testset "LognormalApproximation with a non-positive-definite log-scale covariance" begin
-        data = IncidenceCounts(ones(Int, 30))
-        ll = loglikelihood(
-            data, NegBin(0.3, 1.0), Gamma(10, 0.5), LognormalApproximation()
-        )
-        @test isfinite(ll)
     end
 
     @testset "loglikelihood on a model" begin
@@ -246,8 +303,6 @@ struct _RiskFromAge end
 
         @test loglikelihood(data, model) ≈ loglikelihood(data, offspring, gt)
         @test loglikelihood(data, ModelSpec(model)) ≈ loglikelihood(data, offspring, gt)
-        @test loglikelihood(data, model, LognormalApproximation()) ≈
-            loglikelihood(data, offspring, gt, LognormalApproximation())
 
         @test_throws ArgumentError loglikelihood(data, BranchingProcess(offspring))
 
@@ -380,14 +435,19 @@ struct _RiskFromAge end
         total = IncidenceCounts(vec(sum(counts; dims = 2)); seeds = [0, 1])
         m = incidence_moments(o, gt, 5; seeds = [0, 1])
 
-        @test loglikelihood(by_type, o, gt) ≈
-            logpdf(MvNormal(vec(m.mean), m.cov), vec(counts))
-        # The total's moments sum the per-type blocks.
-        A = [Float64(t == s % 5 + 1) for t in 1:5, s in 0:9]
-        Σ_total = A * m.cov * A'
-        @test loglikelihood(total, o, gt) ≈
-            logpdf(MvNormal(A * vec(m.mean), (Σ_total + Σ_total') / 2), total.data)
-        @test isfinite(loglikelihood(total, o, gt, LognormalApproximation()))
+        @test isfinite(loglikelihood(by_type, o, gt))
+        @test isfinite(loglikelihood(total, o, gt))
+        # One type is the single-type likelihood.
+        one_type = EpiBranch.MultiTypeOffspring(fill(1.3, 1, 1), R -> NegBin(R, 0.5))
+        @test loglikelihood(IncidenceCounts(counts[:, 1:1]; seeds = [2]), one_type, gt) ≈
+            loglikelihood(IncidenceCounts(counts[:, 1]; seeds = 2), NegBin(1.3, 0.5), gt)
+        # Seeds of one type split their step-1 offspring over the types by
+        # the allocation, each count a thinned negative binomial of the same
+        # size.
+        w1 = EpiBranch._discretize_generation_interval(gt)[1]
+        first_step = IncidenceCounts([1 2]; seeds = [0, 3])
+        @test loglikelihood(first_step, o, gt) ≈
+            logpdf(NegBin(3 * M[1, 2] * w1, 1.5), 1) + logpdf(NegBin(3 * M[2, 2] * w1, 1.5), 2)
 
         model = BranchingProcess(M, R -> NegBin(R, 0.5), gt)
         @test loglikelihood(by_type, model) ≈ loglikelihood(by_type, o, gt)
@@ -411,9 +471,7 @@ struct _RiskFromAge end
         @test m.mean[1, 1] == 0
         @test m.cov[1, 1] == 0
         counts = [0 1; 1 1; 1 3; 2 4]
-        keep = 2:8
-        ll = loglikelihood(IncidenceCounts(counts; seeds = [0, 1]), o, gt; kw...)
-        @test ll ≈ logpdf(MvNormal(vec(m.mean)[keep], Matrix(m.cov)[keep, keep]), vec(counts)[keep])
+        @test isfinite(loglikelihood(IncidenceCounts(counts; seeds = [0, 1]), o, gt; kw...))
         @test loglikelihood(IncidenceCounts([1 1; 1 1; 1 3; 2 4]; seeds = [0, 1]), o, gt; kw...) ==
             -Inf
     end
