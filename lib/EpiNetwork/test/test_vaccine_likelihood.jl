@@ -31,7 +31,7 @@ end
         data = network_infections(state, m)
 
         recorded = coalesce.(data.host_times.immunity_time, Inf)
-        @test recorded == EpiBranch.immunity_time.(state.individuals)
+        @test recorded == EpiBranch.immunity_time.(individuals(state))
         @test any(isfinite, recorded)
 
         explicit = pairwise_surv_loglik(

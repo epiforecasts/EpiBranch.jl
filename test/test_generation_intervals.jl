@@ -5,16 +5,16 @@
         state = simulate(model; max_cases = 200, rng = rng)
 
         # Index cases have no parent.
-        for ind in state.individuals
+        for ind in individuals(state)
             if ind.parent_id == 0
                 @test isnan(realised_generation_interval(ind, state))
             end
         end
 
         # Infected non-index cases: interval equals the infection-time gap.
-        for ind in state.individuals
+        for ind in individuals(state)
             if is_infected(ind) && ind.parent_id != 0
-                parent = state.individuals[ind.parent_id]
+                parent = individuals(state)[ind.parent_id]
                 @test realised_generation_interval(ind, state) ≈
                     ind.infection_time - parent.infection_time
                 @test realised_generation_interval(ind, state) >= 0
@@ -30,7 +30,7 @@
         gts = realised_generation_intervals(state)
         expected = count(
             ind -> is_infected(ind) && ind.parent_id != 0,
-            state.individuals
+            individuals(state)
         )
         @test length(gts) == expected
         @test all(>=(0), gts)
@@ -105,8 +105,8 @@
         sis = realised_serial_intervals(state)
 
         pairs = [
-            (ind, state.individuals[ind.parent_id])
-                for ind in state.individuals if is_infected(ind) && ind.parent_id != 0
+            (ind, individuals(state)[ind.parent_id])
+                for ind in individuals(state) if is_infected(ind) && ind.parent_id != 0
         ]
         both = [
             onset_time(c) - onset_time(p) for (c, p) in pairs
@@ -118,9 +118,9 @@
 
         for (c, _) in pairs
             @test isnan(realised_serial_interval(c, state)) ==
-                (isnan(onset_time(c)) || isnan(onset_time(state.individuals[c.parent_id])))
+                (isnan(onset_time(c)) || isnan(onset_time(individuals(state)[c.parent_id])))
         end
-        idx = first(i for i in state.individuals if i.parent_id == 0)
+        idx = first(i for i in individuals(state) if i.parent_id == 0)
         @test isnan(realised_serial_interval(idx, state))
 
         states = simulate(model, 4; max_cases = 100, rng = StableRNG(12))

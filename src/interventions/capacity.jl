@@ -450,7 +450,7 @@ function _capacity_uses(iv, state)
     time_key = capacity_time_key(iv)
     return (
         (ind, resource_key(iv, ind, state), get(ind.state, time_key, -Inf))
-            for ind in state.individuals if _capacity_used(get(ind.state, key, nothing))
+            for ind in individuals(state) if _capacity_used(get(ind.state, key, nothing))
     )
 end
 
@@ -507,7 +507,7 @@ function _capacity_cache(cc::CapacityConstrained, state)
         (:capacity_cache, capacity_key(cc.intervention))
     )::_CapacityCache
     key = capacity_key(cc.intervention)
-    n = length(state.individuals)
+    n = length(individuals(state))
     if cache.scanned == 0
         for (ind, resource, t) in _capacity_uses(cc, state)
             push!(get!(Vector{Float64}, cache.times, resource), t)
@@ -523,7 +523,7 @@ function _capacity_cache(cc::CapacityConstrained, state)
         # relies on too), so the people appended since the last call are
         # exactly those past the watermark; few arrive between admissions.
         for i in (cache.scanned + 1):n
-            ind = state.individuals[i]
+            ind = individuals(state)[i]
             _capacity_used(get(ind.state, key, nothing)) && _record_capacity_use!(cache, ind, state)
         end
     end
@@ -599,7 +599,7 @@ function _drop_withdrawn!(cache::_CapacityCache, state)
     isempty(cache.recorded) && return nothing
     key = capacity_key(cache.intervention)
     for id in collect(keys(cache.recorded))
-        _capacity_used(get(state.individuals[id].state, key, nothing)) && continue
+        _capacity_used(get(individuals(state)[id].state, key, nothing)) && continue
         resource, t = pop!(cache.recorded, id)
         times = cache.times[resource]
         deleteat!(times, searchsortedfirst(times, t))

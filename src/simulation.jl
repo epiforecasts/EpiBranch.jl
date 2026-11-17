@@ -423,7 +423,7 @@ function _reconcile_sellke_bookkeeping!(state::SimulationState, extinct::Bool)
     max_time = 0.0
     max_generation = 0
     fill!(state.group_cases, 0)
-    for ind in state.individuals
+    for ind in individuals(state)
         get(ind.state, :infected, false) || continue
         cases += 1
         isempty(state.group_cases) || (state.group_cases[individual_type(ind)] += 1)
@@ -521,8 +521,8 @@ function _trace_source!(
         tracing_source = any(traces_source, interventions)
     )
     tracing_source || return nothing
-    1 <= case.parent_id <= length(state.individuals) || return nothing
-    infector = state.individuals[case.parent_id]
+    1 <= case.parent_id <= length(individuals(state)) || return nothing
+    infector = individuals(state)[case.parent_id]
     contacts = (infector,)
     was_isolated = is_isolated(infector)
     _each(interventions) do intervention
@@ -725,8 +725,8 @@ function add_individuals!(
         types = nothing, assign = _NoAssignment()
     )
     _check_group_budgets(interventions, state.population)
-    base = length(state.individuals)
-    added = eltype(state.individuals)[]
+    base = length(individuals(state))
+    added = eltype(individuals(state))[]
     for i in 1:n
         type_idx = n_types > 1 ? _draw_type(state.rng, types, i, n_types) : NoTypeLabels()
         ind = _create_individual(
@@ -736,7 +736,7 @@ function add_individuals!(
         _verify(assign, ind, i)
         setup(ind, i)
         _initialise!(interventions, ind, state)
-        push!(state.individuals, ind)
+        push!(individuals(state), ind)
         push!(added, ind)
     end
     return added
@@ -750,7 +750,7 @@ Set `state` up for `n` people none of which exist yet, in place of
 large relative to the outbreaks it simulates, such as `NetworkProcess` or
 `RoutedNetwork`, so that a run costs in proportion to the people the
 outbreak reaches rather than to the size of the population. Every slot in
-`state.individuals` starts out pointing to one placeholder, shared by every
+`individuals(state)` starts out pointing to one placeholder, shared by every
 slot and never mutated: it reads as never infected (`is_infected` false),
 untouched by any intervention, with susceptibility and infectiousness at
 their neutral value of 1. The engine replaces it with a real person, drawing
@@ -772,8 +772,8 @@ function lazily_populate!(
         0, 0, 0, 0, T(NaN), one(T), one(T), Int[], s, nothing
     )
     state.lazy = _LazyPopulation(placeholder, interventions, setup)
-    resize!(state.individuals, n)
-    fill!(state.individuals, placeholder)
+    resize!(individuals(state), n)
+    fill!(individuals(state), placeholder)
     return state
 end
 
@@ -782,7 +782,7 @@ end
 # upfront (`state.lazy === nothing`) never stores the placeholder, so this
 # is one pointer comparison for every model but the lazily populated ones.
 @inline function _realised!(state::SimulationState, id::Int)
-    ind = @inbounds state.individuals[id]
+    ind = @inbounds individuals(state)[id]
     lazy = state.lazy
     (lazy === nothing || ind !== lazy.placeholder) && return ind
     return _realise!(state, lazy, id)
@@ -792,7 +792,7 @@ function _realise!(state::SimulationState, lazy::_LazyPopulation, id::Int)
     ind = _create_individual(state, 0, id, id, NaN)
     lazy.setup(ind, id)
     _initialise!(lazy.interventions, ind, state)
-    state.individuals[id] = ind
+    individuals(state)[id] = ind
     return ind
 end
 
@@ -810,7 +810,7 @@ upfront, which is every model but these two.
 Call this when you need the characteristics of people the outbreak never
 reached, such as comparing susceptibility across the whole population rather
 than just the cases. Without it, `linelist(state; infected_only = false)`
-and anything else that reads every person in `state.individuals` sees an
+and anything else that reads every person in `individuals(state)` sees an
 unrealised person as never infected, with no population characteristics
 drawn and susceptibility and infectiousness both at their neutral value of
 1.
@@ -818,7 +818,7 @@ drawn and susceptibility and infectiousness both at their neutral value of
 function realise!(state::SimulationState)
     lazy = state.lazy
     lazy === nothing && return state
-    for id in eachindex(state.individuals)
+    for id in eachindex(individuals(state))
         _realised!(state, id)
     end
     return state
@@ -856,13 +856,13 @@ missing population characteristic gives a clear error.
 function seed!(state::SimulationState, ids, interventions, transitions)
     T = _timetype(state)
     for id in ids
-        ind = state.individuals[id]
+        ind = individuals(state)[id]
         ind.infection_time = zero(T)
         ind.state[:infected] = true
         _set_onset_from_incubation!(ind)
     end
     if !isempty(ids)
-        first_ind = state.individuals[first(ids)]
+        first_ind = individuals(state)[first(ids)]
         _validate_required_fields(first_ind, interventions)
         # Building the probe costs a copy of the case's state on every outbreak,
         # so it is built only when a transition has a field to check.
@@ -871,7 +871,7 @@ function seed!(state::SimulationState, ids, interventions, transitions)
         end
     end
     state.cumulative_cases = length(ids)
-    _reset_group_cases!(state, (state.individuals[id] for id in ids))
+    _reset_group_cases!(state, (individuals(state)[id] for id in ids))
     state.active_ids = collect(ids)
     state.extinct = isempty(ids)
     return state
@@ -1067,13 +1067,13 @@ function make_contact!(
         infection_time::Real;
         type_idx::Union{Int, NoTypeLabels} = NoTypeLabels()
     )
-    next_id = length(state.individuals) + 1
+    next_id = length(individuals(state)) + 1
     contact = _create_individual(
         state, parent.id, parent.chain_id,
         next_id, infection_time; type_idx
     )
     push!(parent.secondary_case_ids, next_id)
-    push!(state.individuals, contact)
+    push!(individuals(state), contact)
     return contact
 end
 

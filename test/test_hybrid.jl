@@ -82,7 +82,7 @@ using StableRNGs
         @test hybrid.exact.cumulative_cases == direct.cumulative_cases
         @test all(
             isequal(a.infection_time, b.infection_time) for
-                (a, b) in zip(hybrid.exact.individuals, direct.individuals)
+                (a, b) in zip(individuals(hybrid.exact), individuals(direct))
         )
     end
 

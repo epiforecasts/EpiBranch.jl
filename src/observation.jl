@@ -45,7 +45,7 @@ function _reporting_conflict(obs)
 end
 
 function apply_observation!(o::ChainDetection, state, rng)
-    cases = filter(is_infected, state.individuals)
+    cases = filter(is_infected, individuals(state))
     # A progression transition (such as `Reporting`) that records `:reported`
     # owns that key, and its likelihood reads what it wrote.
     any(case -> haskey(case.state, :reported), cases) && _reporting_conflict(o)

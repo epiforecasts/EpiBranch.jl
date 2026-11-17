@@ -597,7 +597,7 @@ function _handover_progress(c::GroupCampaign, es, t, cases)
         end
     end
     given = Dict{Tuple{Float64, Int}, Float64}()
-    for ind in es.individuals
+    for ind in individuals(es)
         dose_t = _dose_time(dose_label(c.vaccination), ind)
         dose_t !== nothing && dose_t <= t || continue
         entry = (dose_t, _budget_group(c, es, ind))

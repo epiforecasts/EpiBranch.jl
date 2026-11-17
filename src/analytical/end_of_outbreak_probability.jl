@@ -267,7 +267,7 @@ function end_of_outbreak_inputs(
 end
 
 function end_of_outbreak_inputs(state::SimulationState, at::Real; by::Symbol = :onset)
-    cases = [ind for ind in state.individuals if is_infected(ind)]
+    cases = [ind for ind in individuals(state) if is_infected(ind)]
     times = [_weekly_time(by, ind) for ind in cases]
     observed = findall(t -> isfinite(t) && t <= at, times)
     secondary_cases = Dict(cases[i].id => 0 for i in observed)

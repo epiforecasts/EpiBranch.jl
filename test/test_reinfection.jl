@@ -13,7 +13,7 @@ using StableRNGs
                 progression
             )
             s = simulate(m; n_initial = 1, max_time = 20.0, rng = StableRNG(1))
-            @test count(i -> get(i.state, :susceptible_again, false), s.individuals) > 0
+            @test count(i -> get(i.state, :susceptible_again, false), individuals(s)) > 0
         end
     end
 
@@ -142,7 +142,7 @@ using StableRNGs
         return state
     end
     function EpiBranch.contacts_of(::PingPongModel, parent, state::EpiBranch.SimulationState)
-        other = state.individuals[parent.id == 1 ? 2 : 1]
+        other = individuals(state)[parent.id == 1 ? 2 : 1]
         return [(other, parent.infection_time + 1.0)]
     end
 
@@ -240,7 +240,7 @@ using StableRNGs
         ]
         spec = ModelSpec(PingPongModel(); progression)
         state = simulate(spec; n_initial = 1, stopping_rules = [MaxGenerations(4)])
-        one, two = state.individuals
+        one, two = individuals(state)
 
         @test length(one.episodes) >= 1
         @test length(two.episodes) >= 1
@@ -288,7 +288,7 @@ using StableRNGs
             interventions = [_CountInitialisations()]
         )
         state = simulate(spec; n_initial = 1, stopping_rules = [MaxGenerations(4)])
-        one, two = state.individuals
+        one, two = individuals(state)
 
         @test length(one.episodes) >= 1
         @test one.state[:_init_count] == 1
@@ -335,11 +335,11 @@ using StableRNGs
             interventions = [Scheduled(iso; start_after = ReportedCases(3))]
         )
         state = simulate(spec; n_initial = 1, stopping_rules = [MaxGenerations(6)])
-        @test any(ind -> !isempty(ind.episodes), state.individuals)
+        @test any(ind -> !isempty(ind.episodes), individuals(state))
 
         due(st, clock) = get(st, :reported, false) && st[:reporting_time] <= clock
         function recount(clock)
-            return sum(state.individuals) do ind
+            return sum(individuals(state)) do ind
                 count(e -> due(e.state, clock), ind.episodes) + due(ind.state, clock)
             end
         end

@@ -568,7 +568,7 @@ record_kernel(k::PairKernel{F, Nothing}, state::SimulationState) where {F} = k
 function record_kernel(k::PairKernel, state::SimulationState)
     return PairKernel(
         k.callback,
-        [deepcopy(_pair_state(k.state, ind)) for ind in state.individuals],
+        [deepcopy(_pair_state(k.state, ind)) for ind in individuals(state)],
         k.calendar, ()
     )
 end

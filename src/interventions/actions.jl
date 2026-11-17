@@ -160,7 +160,7 @@ function _fire_action!(admitter, state, action)
 end
 
 function _fire_action!(admitter, state, action::_DeferredAction)
-    person = state.individuals[action.individual_id]
+    person = individuals(state)[action.individual_id]
     return _fire_action!(admitter, state, InterventionAction(person, action.time, action.effect!))
 end
 
@@ -433,7 +433,7 @@ function intervention_actions(gv::GroupVaccination, state, candidates)
         trigger = _group_trigger_time(gv, state, group)
         isfinite(trigger) || continue
         for id in _group_members(state, gv.group_key, group)
-            ind = state.individuals[id]
+            ind = individuals(state)[id]
             prior = get(action_cache(ind), _trigger_cache_key(gv), nothing)
             if prior !== nothing || get(ind.state, _vaccinated_key(dose_label(gv)), false)
                 # A settled member's dose keeps its date; a member still
@@ -578,7 +578,7 @@ function action_candidates(
     for id in _group_members(state, gv.group_key, group)
         id == current.id && continue
         is_pending(id) || continue
-        push!(candidates, state.individuals[id])
+        push!(candidates, individuals(state)[id])
     end
     return candidates
 end
@@ -594,7 +594,7 @@ function _reached_candidates(state, current, traced, is_pending, contacts)
     end
     for cid in traced
         is_pending(cid) || continue
-        push!(candidates, state.individuals[cid])
+        push!(candidates, individuals(state)[cid])
     end
     return candidates
 end

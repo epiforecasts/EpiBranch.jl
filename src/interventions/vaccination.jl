@@ -1255,7 +1255,7 @@ function _group_members(state::SimulationState, key::Symbol, group)
     seen, index = get!(state.scratch, (:group_members, key)) do
         (Ref(0), Dict{Any, Vector{Int}}())
     end::Tuple{Base.RefValue{Int}, Dict{Any, Vector{Int}}}
-    n = length(state.individuals)
+    n = length(individuals(state))
     for id in (seen[] + 1):n
         g = get(_realised!(state, id).state, key, nothing)
         g === nothing && continue
@@ -1275,7 +1275,7 @@ function _group_trigger_time(gv::GroupVaccination, state, group)
     key = gv.group_key
     t = Inf
     for id in _group_members(state, key, group)
-        m = state.individuals[id]
+        m = individuals(state)[id]
         # Contacts blocked by susceptibility or an intervention hold a
         # provisional onset but never become cases.
         is_infected(m) || continue

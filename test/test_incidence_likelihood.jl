@@ -588,7 +588,7 @@ struct _RiskFromAge end
         for i in 1:nsim
             rng = StableRNG(i)
             state = simulate(model; rng, max_time = n + 0.5)
-            for ind in state.individuals
+            for ind in individuals(state)
                 is_infected(ind) && get(ind.state, :reported, false) || continue
                 t = ceil(Int, ind.state[:reporting_time] - rand(rng))
                 1 <= t <= n && (sims[i, t] += 1)

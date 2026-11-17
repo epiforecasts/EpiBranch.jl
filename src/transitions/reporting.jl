@@ -103,7 +103,7 @@ _report_time(st) =
 # are one report, so the live one is kept only when its time differs.
 function _report_log(state::SimulationState{T}) where {T}
     times = T[]
-    for ind in state.individuals
+    for ind in individuals(state)
         for episode in ind.episodes
             t = _report_time(episode.state)
             isfinite(t) && push!(times, t)

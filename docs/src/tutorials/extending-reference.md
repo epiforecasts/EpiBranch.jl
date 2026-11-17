@@ -772,7 +772,7 @@ lost_model = ModelSpec(
     ]
 )
 lost_state = simulate(lost_model; n_initial = 20, rng = StableRNG(7))
-count(ind -> get(ind.state, :outcome, :none) == :lost, lost_state.individuals)
+count(ind -> get(ind.state, :outcome, :none) == :lost, individuals(lost_state))
 ```
 
 Each of the 20 cases is lost to follow-up on day 5 with probability 0.6, before

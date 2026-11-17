@@ -194,7 +194,7 @@ EpiBranch.trigger_time(e::_EligibleAt, infector, state) = e.time
                 spec; index_types = [fill(1, 10); fill(2, 2)], max_generations = generations,
                 rng = StableRNG(seed), max_cases = 10^6
             )
-            return count(i -> is_infected(i) && i.generation <= generations, state.individuals)
+            return count(i -> is_infected(i) && i.generation <= generations, individuals(state))
         end
         by_counts(spec, seed) = run_counts(spec; seed).cumulative_cases
         for ivs in ([], [campaign])
