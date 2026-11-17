@@ -60,10 +60,6 @@ struct Transition{D, P, F} <: AbstractClinicalTransition
     terminal::Bool
 end
 
-# Only writes `state`_time and whether/when it happened; never touches
-# susceptibility or infectiousness.
-offspring_law_unchanged(::Transition) = true
-
 function Transition(
         state::Symbol; delay = nothing, rate = nothing,
         from = :infection, probability = 1.0, terminal::Bool = false
@@ -109,12 +105,6 @@ _state_time(ind, from, ::Nothing) = _state_time(ind, from)
 
 required_fields(t::Transition) = _from_required(t.from)
 
-function initialise_individual!(t::Transition, individual, state)
-    individual.state[t.state] = false
-    individual.state[t.time_key] = Inf
-    return nothing
-end
-
 function resolve_individual!(t::Transition, individual, state)
     anchor = _state_time(individual, t.from, t.from_key)
     gate_rng = stream(state.rng, individual.id, (t.state, :selected))
@@ -133,28 +123,4 @@ function terminal_event(t::Transition, individual::Individual{T}) where {T}
     t.terminal || return nothing
     tm = _state_real(individual.state, t.time_key, T(Inf))
     return isfinite(tm) ? (tm, t.state) : nothing
-end
-
-function censor_after_outcome!(t::Transition, individual)
-    t.terminal && return nothing
-    _censor_event!(individual, t.state, t.time_key, t.from, t.from_key)
-    return nothing
-end
-
-function transition_loglik(t::Transition, individual::Individual; followup_end = Inf)
-    anchor = _state_time(individual, t.from, t.from_key)
-    _anchor_ok(anchor) || return 0.0
-    flag = individual.state[t.state]::Bool
-    time = flag ? individual.state[t.time_key] : Inf
-    censor = min(infection_aborted_time(individual), followup_end)
-    occurred = flag && time <= followup_end
-    if !t.terminal
-        if !_timed_from_outcome(individual, t.from, t.from_key)
-            occurred = occurred && time <= outcome_time(individual)
-            censor = min(censor, outcome_time(individual))
-        end
-    end
-    ll = transition_term(t.probability, t.delay, individual, anchor, occurred; censor = censor)
-    occurred || return ll
-    return ll + _delay_loglik(t.delay, time - anchor)
 end
