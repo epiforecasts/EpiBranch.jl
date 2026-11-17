@@ -54,6 +54,7 @@ const TEST_GROUPS = (
         "test_reinfection.jl",
         "test_reinfection_quarantine.jl",
         "test_abort_infection.jl",
+        "test_prevent_symptoms.jl",
         "test_homogeneous.jl",
         "test_mixing.jl",
         "test_population.jl",

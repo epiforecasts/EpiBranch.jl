@@ -41,6 +41,10 @@ public analytic_offspring_effect
 public abort_infection!
 public infection_aborted_time
 
+# Prevent symptoms from any intervention hook, and read from when.
+public prevent_symptoms!
+public symptoms_prevented_time
+
 # Testing: `trajectory_value` reads the within-host trajectory stored by
 # `within_host`. A new `AbstractAssay` defines `measure`.
 public trajectory_value
