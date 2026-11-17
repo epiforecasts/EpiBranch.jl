@@ -170,7 +170,7 @@ function draw_offspring(
         if individual.parent_id == 0
             rand(rng, offspring.mixing)
         else
-            state.individuals[individual.parent_id].state[:cluster_theta]
+            individuals(state)[individual.parent_id].state[:cluster_theta]
         end
     end
     return rand(rng, offspring.build(θ))

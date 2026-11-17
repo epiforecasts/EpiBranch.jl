@@ -121,6 +121,12 @@ using StableRNGs
     )
 end
 
+@testset "logsumexp differentiates through a generator" begin
+    f_gen(x) = EpiBranch.logsumexp(xi * x for xi in (1.0, 2.0))
+    f_vec(x) = EpiBranch.logsumexp([x, 2x])
+    @test ForwardDiff.derivative(f_gen, 1.0) ≈ ForwardDiff.derivative(f_vec, 1.0)
+end
+
 # Reverse-mode (Mooncake) coverage of the same analytical likelihoods. Each
 # gradient is taken with respect to the distribution parameters and must match
 # the ForwardDiff gradient — so the reverse path is exercised end to end without
@@ -158,7 +164,7 @@ end
             model; n_initial = 5, rng = StableRNG(20260701),
             stopping_rules = [Extinction(), MaxGenerations(6)]
         )
-        return sum(ind.infection_time for ind in state.individuals)
+        return sum(ind.infection_time for ind in individuals(state))
     end
 
     μ0 = 1.6
@@ -202,7 +208,7 @@ end
         state = simulate(build(β); n_initial = 5, rng = StableRNG(seed))
         return sum(
             ind.infection_time
-                for ind in state.individuals
+                for ind in individuals(state)
                 if get(ind.state, :infected, false)
         )
     end
@@ -219,7 +225,7 @@ end
     # is `NaN` on both sides.
     @test all(
         isequal(ForwardDiff.value(d.infection_time), p.infection_time)
-            for (d, p) in zip(dual.individuals, plain.individuals)
+            for (d, p) in zip(individuals(dual), individuals(plain))
     )
 
     grad = ForwardDiff.derivative(total_infection_time, β0)
@@ -247,7 +253,7 @@ end
             n_initial = 20, rng = StableRNG(20260701),
             stopping_rules = [Extinction(), MaxGenerations(5)]
         )
-        return sum(ind.infection_time for ind in state.individuals if is_infected(ind))
+        return sum(ind.infection_time for ind in individuals(state) if is_infected(ind))
     end
 
     μ0 = 1.6
@@ -279,7 +285,7 @@ end
             n_initial = 20, rng = StableRNG(20260701),
             stopping_rules = [Extinction(), MaxGenerations(5)]
         )
-        return sum(ind.infection_time for ind in state.individuals if is_infected(ind))
+        return sum(ind.infection_time for ind in individuals(state) if is_infected(ind))
     end
 
     θ0 = 2.0
@@ -308,7 +314,7 @@ end
             n_initial = 20, rng = StableRNG(20260701),
             stopping_rules = [Extinction(), MaxGenerations(5)]
         )
-        return sum(ind.infection_time for ind in state.individuals if is_infected(ind))
+        return sum(ind.infection_time for ind in individuals(state) if is_infected(ind))
     end
 
     μ0 = 1.6
@@ -337,7 +343,7 @@ end
             n_initial = 20, rng = StableRNG(20260701),
             stopping_rules = [Extinction(), MaxGenerations(5)]
         )
-        return sum(ind.infection_time for ind in state.individuals if is_infected(ind))
+        return sum(ind.infection_time for ind in individuals(state) if is_infected(ind))
     end
 
     μ0 = 1.6
@@ -397,7 +403,7 @@ end
         condition = 50:200, max_cases = 200, rng = StableRNG(31)
     )
     dosed(state, flag = :vaccinated_boost) = filter(
-        ind -> get(ind.state, flag, false), state.individuals
+        ind -> get(ind.state, flag, false), individuals(state)
     )
 
     # A dose with no prerequisite reaches the schedule validation by a different
@@ -460,7 +466,7 @@ end
                 spec; n_initial = 20, rng = StableRNG(20260701),
                 stopping_rules = [Extinction(), MaxGenerations(5)]
             )
-            doses = [ind.state[key] for ind in state.individuals if is_vaccinated(ind)]
+            doses = [ind.state[key] for ind in individuals(state) if is_vaccinated(ind)]
             return (sum(doses), length(doses))
         end
     end

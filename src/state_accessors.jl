@@ -24,8 +24,8 @@ simulated outbreak:
 
 ```julia
 state = simulate(model)
-count(is_isolated, state.individuals)                 # number isolated
-onsets = [onset_time(i) for i in state.individuals if is_infected(i)]
+count(is_isolated, individuals(state))                 # number isolated
+onsets = [onset_time(i) for i in individuals(state) if is_infected(i)]
 ```
 """
 function onset_time(ind::Individual{T}) where {T}
@@ -735,7 +735,7 @@ end
 # individuals, in first-seen order.
 function _lapsing_removal_keys(state::SimulationState)
     keys = Symbol[]
-    for ind in state.individuals, key in get(ind.state, :_lapsing_removal_keys, ())
+    for ind in individuals(state), key in get(ind.state, :_lapsing_removal_keys, ())
         key in keys || push!(keys, key)
     end
     return keys

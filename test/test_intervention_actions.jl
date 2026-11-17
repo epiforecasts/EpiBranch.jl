@@ -42,7 +42,7 @@ end
 function EpiBranch.action_candidates(
         iv::SoleTargetAction, state, current, traced, is_pending, members, contacts
     )
-    return [state.individuals[iv.target]]
+    return [individuals(state)[iv.target]]
 end
 
 # A `start_after` trigger written outside the package, gating each
@@ -76,7 +76,7 @@ end
             Individual(id = i, state = Dict{Symbol, Any}(:appointment_time => t))
                 for (i, t) in enumerate([9.0, 11.0, 13.0])
         ]
-        append!(state.individuals, contacts)
+        append!(individuals(state), contacts)
         iv = wrap(AppointmentAction())
         EpiBranch.apply_actions!(iv, state, contacts)
         @test [get(i.state, :attended, false) for i in contacts] == [false, true, false]
@@ -104,7 +104,7 @@ end
         )
     )
     EpiBranch.initialise_individual!(rv, ind, state)
-    push!(state.individuals, ind)
+    push!(individuals(state), ind)
     blocked = CapacityConstrained(rv; budget_per_period = 0.0)
     EpiBranch.apply_actions!(blocked, state, [ind])
     @test calls[] == 1
@@ -131,7 +131,7 @@ end
         )
     )
     EpiBranch.initialise_individual!(declined, other, state)
-    push!(state.individuals, other)
+    push!(individuals(state), other)
     EpiBranch.apply_actions!(declined, state, [other])
     EpiBranch.apply_actions!(declined, state, [other])
     @test calls[] == 3
@@ -151,7 +151,7 @@ end
         )
             for (i, cases) in enumerate((2, 9))
     )
-    append!(state.individuals, [low, high])
+    append!(individuals(state), [low, high])
     scheduled = Scheduled(AppointmentAction(); start_after = _DistrictTrigger(5))
 
     EpiBranch.apply_actions!(scheduled, state, [low, high])
@@ -176,7 +176,7 @@ end
     b = Individual(id = 2, state = Dict{Symbol, Any}())
     ind = Individual(id = 3, state = Dict{Symbol, Any}(:traced => true))
     EpiBranch.initialise_individual!(rv, ind, state)
-    append!(state.individuals, [a, b, ind])
+    append!(individuals(state), [a, b, ind])
     members = [1, 2, 3]
     processed = falses(3)
     # The walk's reach is passed as `traced`, so `contacts` only stands in for
@@ -208,7 +208,7 @@ end
     ind.state[EpiBranch._vaccinated_key(:prime)] = true
     ind.state[EpiBranch._vaccination_time_key(:prime)] = 10.0
     EpiBranch.initialise_individual!(rv, ind, state)
-    append!(state.individuals, [a, b, ind])
+    append!(individuals(state), [a, b, ind])
     members = [1, 2, 3]
     processed = falses(3)
     contacts(id, state) = Int[]
@@ -236,7 +236,7 @@ end
     ind = Individual(id = 1, state = Dict{Symbol, Any}(:traced => true))
     EpiBranch.initialise_individual!(rv, ind, state)
     ind.infection_time = NaN
-    push!(state.individuals, ind)
+    push!(individuals(state), ind)
 
     ind.state[:trace_time] = 20.0
     first_dose = only(EpiBranch.intervention_actions(rv, state, [ind]))
@@ -264,7 +264,7 @@ end
         ind = Individual(id = id, state = Dict{Symbol, Any}(:traced => true))
         EpiBranch.initialise_individual!(rv, ind, state)
         set_isolated!(ind, 5.0; release_time = Inf, unrecorded)
-        push!(state.individuals, ind)
+        push!(individuals(state), ind)
         return ind
     end
 
@@ -280,12 +280,12 @@ end
 function EpiBranch.action_candidates(
         ::AppointmentAction, state, current, traced, is_pending, members, contacts
     )
-    return [state.individuals[id] for id in members if id == current.id || is_pending(id)]
+    return [individuals(state)[id] for id in members if id == current.id || is_pending(id)]
 end
 @testset "Per-case action boundaries" begin
     state = empty_state(BranchingProcess(Poisson(0.0)); rng = StableRNG(18))
     append!(
-        state.individuals,
+        individuals(state),
         [
             Individual(id = i, state = Dict{Symbol, Any}(:appointment_time => t))
                 for (i, t) in enumerate([12.0, 12.0, 12.0, 10.0])
@@ -299,13 +299,13 @@ end
     # call with none, as a model without named contacts does on the race.
     contacts(id, state) = Int[]
     EpiBranch._apply_case_actions!(
-        state, state.individuals[1],
+        state, individuals(state)[1],
         [AppointmentAction()], [1, 2, 3, 4], [true, false, true, false], contacts
     )
-    @test [get(i.state, :attended, false) for i in state.individuals] ==
+    @test [get(i.state, :attended, false) for i in individuals(state)] ==
         [true, true, false, false]
     @test EpiBranch._apply_case_actions!(
-        state, state.individuals[1], [],
+        state, individuals(state)[1], [],
         [1, 2, 3, 4], [true, false, true, false], contacts
     ) === nothing
     @test EpiBranch.acts_on_population(MassVaccination(efficacy = 0.8, eligibility_time = 1.0))
@@ -321,7 +321,7 @@ end
         Scheduled(GroupVaccination(efficacy = 0.8); start_time = 1.0)
     )
     broken = Scheduled(AppointmentAction(), state -> error("predicate failed"))
-    @test_throws ErrorException EpiBranch.apply_actions!(broken, state, [state.individuals[3]])
+    @test_throws ErrorException EpiBranch.apply_actions!(broken, state, [individuals(state)[3]])
     @test state.max_infection_time == 11.0
 end
 
@@ -349,10 +349,10 @@ end
 @testset "is_settled reflects a continuous-time race's own round of discovery" begin
     state = empty_state(BranchingProcess(Poisson(0.0)); rng = StableRNG(1))
     append!(
-        state.individuals,
+        individuals(state),
         [Individual(id = i, state = Dict{Symbol, Any}(:appointment_time => 1.0)) for i in 1:2]
     )
-    current, other = state.individuals
+    current, other = individuals(state)
     @test !EpiBranch.is_settled(state, current)
     @test !EpiBranch.is_settled(state, other)
     EpiBranch._apply_case_actions!(
@@ -377,8 +377,8 @@ EpiBranch.intervention_actions(::_UndeclaredAction, state, candidates) = nothing
     pos = Dict(id => k for (k, id) in enumerate(members))
     is_pending = id -> EpiBranch._pending(id, members, processed, pos)
     state = empty_state(BranchingProcess(Poisson(0.0)); rng = StableRNG(1))
-    append!(state.individuals, [Individual(id = i) for i in 1:n])
-    current = state.individuals[1]
+    append!(individuals(state), [Individual(id = i) for i in 1:n])
+    current = individuals(state)[1]
 
     rv = RingVaccination(efficacy = 0.8)
     contacts = (id, st) -> id == 1 ? (2, 3) : ()
@@ -398,10 +398,10 @@ EpiBranch.intervention_actions(::_UndeclaredAction, state, candidates) = nothing
 
     gv = GroupVaccination(efficacy = 0.8)
     for i in 1:3
-        state.individuals[i].state[:group] = :A
+        individuals(state)[i].state[:group] = :A
     end
     for i in 4:n
-        state.individuals[i].state[:group] = i
+        individuals(state)[i].state[:group] = i
     end
     group_candidates = EpiBranch.action_candidates(
         gv, state, current, nothing, is_pending, members, contacts
@@ -424,11 +424,11 @@ end
     pos = Dict(id => k for (k, id) in enumerate(members))
     is_pending = id -> EpiBranch._pending(id, members, processed, pos)
     state = empty_state(BranchingProcess(Poisson(0.0)); rng = StableRNG(1))
-    append!(state.individuals, [Individual(id = i) for i in 1:n])
+    append!(individuals(state), [Individual(id = i) for i in 1:n])
 
     # `current` here is not the target: a custom method answers however it
     # likes, not just the default's "current plus its contacts".
-    current = state.individuals[2]
+    current = individuals(state)[2]
     candidates = EpiBranch.action_candidates(
         SoleTargetAction(1), state, current, nothing, is_pending, members, nothing
     )
@@ -453,7 +453,7 @@ end
                 :incubation_period => 10.0, :vaccinated => true, :vaccination_time => 2.0
             )
         )
-        push!(state.individuals, ind)
+        push!(individuals(state), ind)
         state.max_infection_time = 3.0
         iv = wrap(rv)
         actions = EpiBranch.intervention_actions(iv, state, [ind])
@@ -493,11 +493,11 @@ end
             ModelSpec(process; interventions = [iv]);
             max_generations = 1, rng = MersenneTwister(1)
         )
-        @test count(is_vaccinated, state.individuals) == 10
+        @test count(is_vaccinated, individuals(state)) == 10
         @test state.cumulative_cases == 1
-        contact = state.individuals[2]
+        contact = individuals(state)[2]
         state.max_infection_time = 30.0
-        risk = EpiBranch.competing_risk(iv, state.individuals[1], contact, state)
+        risk = EpiBranch.competing_risk(iv, individuals(state)[1], contact, state)
         @test risk.event_time == 10.0
         @test risk.block_probability == 1.0
     end
@@ -592,7 +592,7 @@ end
     mv = MassVaccination(efficacy = 0.9, eligibility_time = 0.0, coverage = 0.5)
     state = empty_state(; rng = StableRNG(3))
     candidates = [Individual(id = i, state = Dict{Symbol, Any}()) for i in 1:200]
-    append!(state.individuals, candidates)
+    append!(individuals(state), candidates)
 
     EpiBranch.apply_actions!(mv, state, candidates)
     first_round = Set(ind.id for ind in candidates if is_vaccinated(ind))
@@ -608,14 +608,14 @@ end
     # Full coverage keeps the previous, deterministic behaviour.
     full = MassVaccination(efficacy = 0.9, eligibility_time = 0.0)
     full_candidates = [Individual(id = i, state = Dict{Symbol, Any}()) for i in 1:20]
-    append!(state.individuals, full_candidates)
+    append!(individuals(state), full_candidates)
     EpiBranch.apply_actions!(full, state, full_candidates)
     @test all(is_vaccinated, full_candidates)
 
     # No coverage vaccinates nobody.
     none = MassVaccination(efficacy = 0.9, eligibility_time = 0.0, coverage = 0.0)
     none_candidates = [Individual(id = i, state = Dict{Symbol, Any}()) for i in 1:20]
-    append!(state.individuals, none_candidates)
+    append!(individuals(state), none_candidates)
     EpiBranch.apply_actions!(none, state, none_candidates)
     @test !any(is_vaccinated, none_candidates)
 end
@@ -628,7 +628,7 @@ end
         ModelSpec(BranchingProcess(Dirac(1), Dirac(5.0)); interventions = [DeferredCheckIn()]);
         n_initial = 1, max_generations = 1, rng = StableRNG(1)
     )
-    index = state.individuals[1]
+    index = individuals(state)[1]
     @test index.infection_time == 0.0
     @test index.state[:seen_max_infection_time] == 5.0
     @test index.state[:followed_up]

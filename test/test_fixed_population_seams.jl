@@ -102,7 +102,7 @@ struct _UndeclaredIntervention <: AbstractIntervention end
         state = simulate(spec; rng = StableRNG(1), n_initial = 2)
         cols = EpiBranch.infection_layer_columns(state, spec)
         @test keys(cols) == (:infection_time, :infectious_time, :removal_time, :is_index)
-        @test length(cols.is_index) == length(state.individuals)
+        @test length(cols.is_index) == length(individuals(state))
         @test count(cols.is_index) == 2
         @test EpiBranch.validate_infection_likelihood(spec) === nothing
         @test EpiBranch.layer_host_times(state, spec, ()) isa NamedTuple

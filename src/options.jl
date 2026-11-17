@@ -21,7 +21,7 @@ struct MaxChainLength <: AbstractStoppingRule
     n::Int
 end
 EpiBranch.should_stop(r::MaxChainLength, state::SimulationState) =
-    maximum(ind.generation for ind in state.individuals; init = 0) >= r.n
+    maximum(ind.generation for ind in individuals(state); init = 0) >= r.n
 ```
 
 The mass-action, network and household models run a continuous-time race

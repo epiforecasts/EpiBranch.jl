@@ -205,7 +205,7 @@ _resolve_kernel(k::ContinuousUnivariateDistribution, adjacency, i, pos, state, f
 _resolve_kernel(k::AbstractVector, adjacency, i, pos, state, from) = k[i][pos]
 function _resolve_kernel(k, adjacency, i, pos, state, from)
     return EpiBranch.pair_kernel(
-        k, i, adjacency[i][pos], state.individuals[i].infection_time,
-        EpiBranch._window_open(state.individuals[i], from), state
+        k, i, adjacency[i][pos], individuals(state)[i].infection_time,
+        EpiBranch._window_open(individuals(state)[i], from), state
     )
 end

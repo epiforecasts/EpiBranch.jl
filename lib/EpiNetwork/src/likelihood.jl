@@ -85,9 +85,9 @@ function network_infections(
     )
     adjacency = model.process.adjacency
     n = length(adjacency)
-    length(state.individuals) == n || throw(
+    length(individuals(state)) == n || throw(
         ArgumentError(
-            "the state has $(length(state.individuals)) individuals but the network " *
+            "the state has $(length(individuals(state))) individuals but the network " *
                 "has $n nodes"
         )
     )

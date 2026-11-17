@@ -246,7 +246,7 @@ route's `reach` holds, and give it:
   `route` itself, for `pending_beyond` to answer afterwards. The race submits
   each pair itself, dropping a target already settled or the infector itself,
   so `route` need not check either. It scales nothing further: read
-  `state.individuals[...].susceptibility` and `.infectiousness` directly if
+  `individuals(state)[...].susceptibility` and `.infectiousness` directly if
   `route`'s own contacts should depend on them.
 - [`EpiBranch.route_pair_kernel`](@ref)`(route, infector_id, target_id, state)`,
   the unscaled contact-interval kernel between one pair, asked only when a
@@ -405,7 +405,7 @@ continuous-time model on a fixed population), subtype `TransmissionModel` and
 reuse the rest of the package: interventions, natural history, line lists and
 fitting.
 
-### What your model must provide
+### Requirements for your model
 
 For **simulation** there are two routes, depending on whether your model can
 give each case's contacts one case at a time.
@@ -616,9 +616,9 @@ end
 function EpiBranch.contacts_of(m::HospitalBay, patient, state::EpiBranch.SimulationState)
     i = patient.id
     neighbours = (i == 1 ? m.beds : i - 1, i == m.beds ? 1 : i + 1)
-    result = Tuple{eltype(state.individuals), Float64}[]
+    result = Tuple{eltype(individuals(state)), Float64}[]
     for bed in neighbours
-        neighbour = state.individuals[bed]
+        neighbour = individuals(state)[bed]
         EpiBranch.is_infected(neighbour) && continue
         push!(result, (neighbour, patient.infection_time + rand(state.rng, Gamma(2.0, 2.5))))
     end
@@ -641,7 +641,7 @@ symptom onset on average:
 ```@example structures
 bay = HospitalBay(30, 0.6)
 stop = [Extinction(), MaxGenerations(50)]
-n_infected(s) = count(is_infected, s.individuals)
+n_infected(s) = count(is_infected, individuals(s))
 
 no_control = simulate(ModelSpec(bay), 200; n_initial = 1, stopping_rules = stop,
     rng = StableRNG(11))
@@ -796,7 +796,7 @@ model = ModelSpec(
 state = simulate(model; n_initial = 5, rng = MersenneTwister(1))
 
 attack_rate(b) = count(ind -> ind.state[:age_band] == b && is_infected(ind),
-    state.individuals) / n[b]
+    individuals(state)) / n[b]
 (band_1 = attack_rate(1), band_2 = attack_rate(2))
 ```
 
@@ -827,7 +827,7 @@ adjacency = [Int[] for _ in 1:5]
 process = NetworkProcess(adjacency, Exponential(2.0))
 chosen = [2, 4]
 state = simulate(ModelSpec(process); initial_cases = chosen, rng = Xoshiro(42))
-findall(is_infected, state.individuals)
+findall(is_infected, individuals(state))
 ```
 
 With no contacts, only people 2 and 4 are infected. The same keyword works with
@@ -886,7 +886,7 @@ end
 EpiBranch.observe(base, o::TruncatedAtSize) = CappedChainSize(base, o.cap)
 # A simulated case is observed if its whole chain is no larger than the cap.
 function EpiBranch.apply_observation!(o::TruncatedAtSize, state, rng)
-    cases = filter(is_infected, state.individuals)
+    cases = filter(is_infected, individuals(state))
     chain_size = Dict{Int, Int}()
     for case in cases
         chain_size[case.chain_id] = get(chain_size, case.chain_id, 0) + 1

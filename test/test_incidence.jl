@@ -39,7 +39,7 @@ using EpiBranch, Distributions, StableRNGs, DataFrames, Dates, Test
         g = incidence(st; by_generation = true)
         @test names(g) == ["date", "generation", "cases"]
         @test sum(g.cases) == sum(incidence(st).cases)
-        n_gen = maximum(i.generation for i in st.individuals) + 1
+        n_gen = maximum(i.generation for i in individuals(st)) + 1
         @test nrow(g) == nrow(incidence(st)) * n_gen
         gc = incidence(st; by_generation = true, cumulative = true)
         @test all(issorted(x.cases) for x in groupby(gc, :generation))

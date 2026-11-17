@@ -62,7 +62,7 @@ end
     for seed in 1:5
         state = simulate(model; n_initial = 1, max_cases = 1500, rng = StableRNG(seed))
         by_type = [
-            count(i -> EpiBranch.individual_type(i) == t && i.state[:infected], state.individuals)
+            count(i -> EpiBranch.individual_type(i) == t && i.state[:infected], individuals(state))
                 for t in 1:2
         ]
         @test state.group_cases == by_type
@@ -95,7 +95,7 @@ end
         first_run = simulate(spec; n_initial = 1, max_time = 6.0, max_cases = 10_000, rng = StableRNG(2))
         longer = simulate(spec, first_run; max_time = 30.0)
         @test longer.group_cases == [
-            count(i -> EpiBranch.individual_type(i) == t && i.state[:infected], longer.individuals)
+            count(i -> EpiBranch.individual_type(i) == t && i.state[:infected], individuals(longer))
                 for t in 1:2
         ]
         @test longer.group_cases[1] <= 5
@@ -127,7 +127,7 @@ end
     @test EpiBranch.population_size(model) == 100
     for seed in 1:3
         state = simulate(model; n_initial = 2, rng = StableRNG(seed))
-        bands = [i.state[:band] for i in state.individuals]
+        bands = [i.state[:band] for i in individuals(state)]
         @test count(==(1), bands) == 30
         @test count(==(2), bands) == 70
     end
@@ -138,7 +138,7 @@ end
             mixing_by = (:band,), rate = (from, to) -> 0.01
         )
         state = simulate(ModelSpec(named; progression = prog); n_initial = 1, rng = StableRNG(1))
-        bands = [i.state[:band] for i in state.individuals]
+        bands = [i.state[:band] for i in individuals(state)]
         @test count(==("young"), bands) == 30
         @test count(==("old"), bands) == 70
 
@@ -148,7 +148,7 @@ end
             mixing_by = (:band,), rate = (from, to) -> 0.01
         )
         state = simulate(ModelSpec(bare; progression = prog); n_initial = 1, rng = StableRNG(1))
-        @test count(==("young"), [i.state[:band] for i in state.individuals]) == 30
+        @test count(==("young"), [i.state[:band] for i in individuals(state)]) == 30
     end
 
     @testset "attributes read the assigned group" begin
@@ -178,7 +178,7 @@ end
             progression = prog, attributes = band
         )
         state = simulate(spec; n_initial = 1, rng = StableRNG(1))
-        @test length(state.individuals) == 100
+        @test length(individuals(state)) == 100
         @test EpiBranch.population_size(spec) == 100
     end
 
@@ -342,8 +342,8 @@ end
         b = simulate(ModelSpec(by_rate; progression = prog); n_initial = 3, rng = StableRNG(4))
         @test a.cumulative_cases == b.cumulative_cases
         @test isequal(
-            [i.infection_time for i in a.individuals],
-            [i.infection_time for i in b.individuals]
+            [i.infection_time for i in individuals(a)],
+            [i.infection_time for i in individuals(b)]
         )
     end
 end

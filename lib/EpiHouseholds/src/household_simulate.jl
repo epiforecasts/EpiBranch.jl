@@ -118,7 +118,7 @@ end
 function _seed_external!(best, members, state, extsrc, Tobs, rng, skip = ())
     for k in eachindex(members)
         members[k] in skip && continue
-        t = _ext_draw(rng, extsrc, members[k], state.individuals[members[k]].susceptibility)
+        t = _ext_draw(rng, extsrc, members[k], individuals(state)[members[k]].susceptibility)
         t <= Tobs && (best[k] = t)
     end
     return nothing
@@ -128,8 +128,8 @@ end
 # susceptible) pair: a shared distribution, or a callable for covariate models.
 function _pairkernel(k, i, j, state, from)
     return EpiBranch.pair_kernel(
-        k, i, j, state.individuals[i].infection_time,
-        EpiBranch._window_open(state.individuals[i], from), state
+        k, i, j, individuals(state)[i].infection_time,
+        EpiBranch._window_open(individuals(state)[i], from), state
     )
 end
 
