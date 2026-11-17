@@ -49,6 +49,7 @@ include("transitions/transition.jl")
 include("transitions/reporting.jl")
 include("transitions/hospitalisation.jl")
 include("transitions/outcome.jl")
+include("transitions/event_step.jl")
 include("transitions/testing.jl")
 
 # Signals: population quantities read off a simulated state, which every
