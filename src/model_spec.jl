@@ -458,7 +458,7 @@ function ModelSpec(
         attributes = attributes(process),
         observation = observation(process),
         recorder = recorder(process),
-        case_definition = case_definition(process)
+        case_definition = nothing
     )
     prog = _progvec(progression)
     _validate_process_windows(process, prog)
@@ -502,8 +502,16 @@ attributes(s::ModelSpec) = s.attributes
 observation(s::ModelSpec) = s.observation
 recorder(s::ModelSpec) = s.recorder
 progression(s::ModelSpec) = s.progression
+"""
+    case_definition(model)
+
+The case definition of a [`ModelSpec`](@ref), or `nothing` if it has none. A
+case definition is a layer of a `ModelSpec`, given through its
+`case_definition` keyword. A bare transmission model has none, and `simulate`
+on one classifies no cases; a method of this function for a process type is
+ignored.
+"""
 case_definition(s::ModelSpec) = s.case_definition
-# A bare process has no case definition.
 case_definition(::TransmissionModel) = nothing
 
 """The transmission model `spec` wraps. [`simulate`](@ref) and

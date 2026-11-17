@@ -355,6 +355,7 @@ event_time
 has_happened
 case_classification
 case_classification_changes
+EpiBranch.case_definition
 ```
 
 ## Information about each case
