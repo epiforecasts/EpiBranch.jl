@@ -50,9 +50,9 @@ function discovers_actions(w::InterventionWrapper)
     return _stored_traits(typeof(w)).discovers_actions || discovers_actions(w.intervention)
 end
 has_competing_risk(::InterventionWrapper) = true
-# A wrapper with an `intervention_actions` method of its own is offered
-# candidates. Otherwise the wrapped intervention answers, so a capacity wrapper
-# inside `Scheduled` or `OnRoutes` still answers for itself.
+# A wrapper with its own `intervention_actions` method is offered candidates.
+# Otherwise the wrapped intervention answers. A capacity wrapper inside
+# `Scheduled` or `OnRoutes` therefore still answers for itself.
 function proposes_actions(w::InterventionWrapper)
     acts_on_population(w) && return false
     return _stored_traits(typeof(w)).discovers_actions || proposes_actions(w.intervention)
