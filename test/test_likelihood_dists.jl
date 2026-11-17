@@ -345,6 +345,33 @@ EpiBranch.chain_size_distribution(d::BrokenExactOffspring) = throw(d.error)
             [Transition(:onset; delay = 1.0), Reporting(delay = 0.0)],
             clinical(0.5)
         )
+        # An onset the closed form cannot read is refused rather than misread.
+        cp = clinical(0.5)
+        refused = [
+            # nothing records the onset the step reports from
+            (),
+            # a per-case asymptomatic share
+            clinical_presentation(
+                incubation_period = LogNormal(1.6, 0.5), prob_asymptomatic = (rng, ind) -> 0.2
+            ),
+            # a builder of its own that records an onset
+            EpiBranch.attributes(ModelSpec(proc; attributes = [cp, (rng, ind) -> (ind.state[:onset_time] = 1.0)])),
+            # one that runs before clinical_presentation and fails on a probe
+            EpiBranch.attributes(ModelSpec(proc; attributes = [(rng, ind) -> ind.state[:missing], cp])),
+            # two onset laws
+            EpiBranch.attributes(ModelSpec(proc; attributes = [cp, cp])),
+        ]
+        for attrs in refused
+            @test_throws ArgumentError EpiBranch._effective_reporting_probability(
+                [Reporting(delay = 0.0, probability = 0.7)], attrs
+            )
+        end
+        @test_throws ArgumentError(
+            "The closed form supports a Reporting step from infection or onset, not from `:recovery`"
+        ) EpiBranch._infection_to(:recovery, ())
+        @test_throws ArgumentError(
+            "The closed form supports a Reporting step from infection or onset, not from a function"
+        ) EpiBranch._infection_to(ind -> ind.infection_time, ())
     end
 
     @testset "rand draws chain sizes from the underlying model" begin
