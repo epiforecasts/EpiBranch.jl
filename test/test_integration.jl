@@ -76,8 +76,7 @@ using Dates
         @test containment_difference(a, b[1:100]).paired == false
 
         # Runs sharing random numbers give the same difference with or without
-        # pairing. Pairing may or may not shrink the standard error, depending
-        # on the draws, so only the deterministic case above tests that.
+        # pairing.
         process = BranchingProcess(NegBin(1.5, 0.3), Exponential(5.0))
         attrs = clinical_presentation(incubation_period = LogNormal(1.6, 0.5))
         iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = Inf)
@@ -93,6 +92,19 @@ using Dates
         up = containment_difference(t, u; max_cases = 500)
         @test pt.difference == up.difference
         @test isfinite(pt.mcse) && pt.mcse >= 0
+
+        # An isolation delay longer than any run changes nothing, so the runs
+        # stay coupled: paired difference and MCSE are 0, unpaired MCSE is not.
+        late = Isolation(onset_to_isolation_delay = Exponential(1.0e12), duration = Inf)
+        l = simulate(
+            ModelSpec(process; attributes = attrs, interventions = [late]),
+            500; max_cases = 500, rng = CommonRandomNumbers(1)
+        )
+        pl = containment_difference(l, u; max_cases = 500, paired = true)
+        ul = containment_difference(l, u; max_cases = 500)
+        @test pl.difference == 0.0
+        @test pl.mcse == 0.0
+        @test ul.mcse > 0
     end
 
     @testset "weekly_incidence" begin

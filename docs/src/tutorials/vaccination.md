@@ -140,7 +140,7 @@ end
 
 ### Delay to immunity
 
-A vaccine that takes time to protect can be too late. Here protection starts 7 days after the dose, compared with no vaccination and same-day protection over more outbreaks. The three sets of runs share random numbers, so [`containment_difference`](@ref) with `paired = true` compares each with no vaccination, and its standard error is smaller than the two standard errors for the proportions suggest. Each estimate is shown with its Monte Carlo standard error (MCSE):
+A vaccine that takes time to protect can be too late. Here protection starts 7 days after the dose, compared with no vaccination and same-day protection over more outbreaks. The three sets of runs share random numbers, so [`containment_difference`](@ref) with `paired = true` compares each with no vaccination. Each estimate is shown with its Monte Carlo standard error (MCSE):
 
 ```@example vaccination
 rv_delayed = RingVaccination(efficacy = 0.8, delay_to_immunity = 7.0)
@@ -466,8 +466,7 @@ end
 ```
 
 Vaccinating about half the traced contacts raises containment a little. The
-runs share random numbers, so the paired standard error for each gain is much
-smaller than the two standard errors for the proportions suggest. To compare
+runs share random numbers. To compare
 clustered and independent refusal directly, apply
 [`containment_difference`](@ref) to those two sets of runs.
 
