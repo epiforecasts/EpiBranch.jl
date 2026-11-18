@@ -236,10 +236,10 @@ offspring matrix (`MultiTypeOffspring`); any other model raises an
   generation before each draws from it; `nothing` (the default) draws every
   case's offspring independently with no shared variation. A single
   `Distribution` is drawn once per generation and shared by every type. A
-  vector with one `Distribution` per type draws each type's multiplier
-  independently in each generation, giving the types independent
-  overdispersion, as in a model with separate noise for each group, and
-  letting them differ in it; its length must equal the number of types, or an
+  vector with one `Distribution` per type draws the multiplier of each type
+  independently in each generation. The types get independent overdispersion,
+  as in a model with separate noise for each group, and can differ in it. The
+  length of the vector must equal the number of types, otherwise an
   `ArgumentError` is raised. Only `Poisson` offspring has a known mean-scaling
   rule built in; giving `multiplier` with another offspring law raises an
   `ArgumentError`.
