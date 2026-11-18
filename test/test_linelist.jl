@@ -473,7 +473,7 @@ end
     m = ModelSpec(
         BranchingProcess(Poisson(0.5), Exponential(5.0));
         attributes = cp,
-        interventions = [Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)]
+        interventions = [Isolation(delay = Exponential(1.0), duration = Inf)]
     )
     states = simulate(m, 200; rng = StableRNG(5))
     per_run = linelist.(states)

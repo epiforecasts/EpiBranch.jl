@@ -382,7 +382,7 @@ end
     @testset "Contacts of a source-traced infector keep the given probability" begin
         cp = clinical_presentation(incubation_period = LogNormal(1.0, 0.4))
         bp = BranchingProcess(NegBin(2.0, 0.3), Gamma(4.0, 2.5))
-        iso = Isolation(onset_to_isolation_delay = 1.0, duration = Inf, test_sensitivity = 0.5)
+        iso = Isolation(delay = 1.0, duration = Inf, test_sensitivity = 0.5)
         st = SourceTracing(
             probability = 1.0, isolation_to_trace_delay = Dirac(0.0),
             action = Quarantine(duration = Inf)

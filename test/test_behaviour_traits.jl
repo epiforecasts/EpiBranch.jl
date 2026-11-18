@@ -102,7 +102,7 @@ end
 struct _Bare <: EpiBranch.AbstractIntervention end
 
 @testset "Behaviour traits" begin
-    iso = Isolation(onset_to_isolation_delay = 1.0, duration = 5.0)
+    iso = Isolation(delay = 1.0, duration = 5.0)
 
     @testset "time_aware" begin
         @test EpiBranch.time_aware(iso)
@@ -265,7 +265,7 @@ struct _Bare <: EpiBranch.AbstractIntervention end
         ivs = [
             Scheduled(_TimedUndo(); start_time = 1.0),
             Scheduled(_RecordsCandidates(); start_time = 0.0),
-            Isolation(onset_to_isolation_delay = 1.0, duration = 5.0),
+            Isolation(delay = 1.0, duration = 5.0),
         ]
         spec = ModelSpec(
             bp; interventions = ivs,

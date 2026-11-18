@@ -106,7 +106,7 @@ using Dates
         # pairing.
         process = BranchingProcess(NegBin(1.5, 0.3), Exponential(5.0))
         attrs = clinical_presentation(incubation_period = LogNormal(1.6, 0.5))
-        iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = Inf)
+        iso = Isolation(delay = Exponential(2.0), duration = Inf)
         t = simulate(
             ModelSpec(process; attributes = attrs, interventions = [iso]),
             500; max_cases = 500, rng = CommonRandomNumbers(1)
@@ -122,7 +122,7 @@ using Dates
 
         # An isolation delay longer than any run changes nothing, so the runs
         # stay coupled: paired difference and MCSE are 0, unpaired MCSE is not.
-        late = Isolation(onset_to_isolation_delay = Exponential(1.0e12), duration = Inf)
+        late = Isolation(delay = Exponential(1.0e12), duration = Inf)
         l = simulate(
             ModelSpec(process; attributes = attrs, interventions = [late]),
             500; max_cases = 500, rng = CommonRandomNumbers(1)
