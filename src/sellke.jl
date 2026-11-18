@@ -354,10 +354,10 @@ function _intervention_removal_time(ind::Individual{T}, interventions) where {T}
     return t
 end
 
-# The same over the typed tuple of every intervention, counting only those
-# `applies` marks, so each is read at its own concrete type. Filtering the
-# interventions per route would leave a vector of the abstract type, and
-# `infectious_removal_time` would be dispatched on at run time.
+# The same over the typed tuple of every intervention, using only those
+# `applies` marks, with each intervention read at its own concrete type.
+# Filtering the interventions per route would leave a vector of the abstract
+# type, and `infectious_removal_time` would dispatch at run time.
 function _intervention_removal_time(
         ind::Individual{T}, interventions::Tuple, applies::AbstractVector{Bool}
     ) where {T}

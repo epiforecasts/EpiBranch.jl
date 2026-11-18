@@ -21,9 +21,8 @@ JET.test_package(EpiBranch; target_modules = (EpiBranch,))
 # Run-time dispatch in the Sellke race. A check of all of `simulate` reports
 # dispatches that have nothing to do with the race, so the reports are limited
 # to those reached through `_open_route!`, which opens each route for a settled
-# case with the context the race builds once and reads at every case. An
-# untyped entry in that context shows up here as a dispatch on the case's hot
-# path.
+# case using a context the race builds once and reads at every case. An untyped
+# entry in that context shows up here as a dispatch on the hot path of the case.
 function open_route_reports(model)
     result = JET.report_opt(simulate, (typeof(model),); target_modules = (EpiBranch,))
     return filter(JET.get_reports(result)) do report
