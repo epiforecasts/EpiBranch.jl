@@ -23,28 +23,11 @@ function proportion_transmission(R::Real, k::Real; prop_cases::Real = 0.2)
     0.0 < prop_cases < 1.0 ||
         throw(ArgumentError("prop_cases must be in (0, 1), got $prop_cases"))
 
-    # The proportion of transmission from the top `prop_cases` fraction
-    # is 1 - I_x(k+1, 0) where x is the quantile of the Gamma distribution
-    # and I_x is the regularised incomplete beta function.
-    #
-    # The offspring NegBin(k, p) has the same top-fraction transmission as
-    # a Gamma(k, R/k) continuous approximation.
-    #
-    # Proportion of transmission from bottom `prop_cases` fraction:
-    # = 1 - beta_inc(k+1, 0, q) / B(k+1, 0)  — but this needs care
-    #
-    # Actually: use the Lorenz curve of the Gamma distribution.
-    # Bottom q fraction of cases (by infectiousness) produces fraction:
-    #   L(q) = gamma_inc_lower(k+1, gamma_inc_inv(k, q) * k/R * R/k) / Γ(k+1)
-    #        = regularised_gamma_lower(k+1, quantile(Gamma(k, R/k), q) * k/R)
-    #
-    # Simplification: for Gamma(k, θ) where θ = R/k,
-    #   L(q) = Γ_reg(k+1, Γ_inv(k, q))
-    # where Γ_inv(k, q) is the inverse of the regularised lower incomplete gamma.
-
-    # "Top prop_cases fraction" = top 20% of transmitters
-    # Lorenz curve L(q) = fraction of transmission from the bottom q fraction
-    # We want 1 - L(1 - prop_cases) = transmission from top prop_cases fraction
+    # The offspring NegBin(k, p) has the same top-fraction transmission as a
+    # Gamma(k, R/k) continuous approximation. Its Lorenz curve is
+    # L(q) = cdf(Gamma(k + 1, 1), quantile(Gamma(k, 1), q)), the fraction of
+    # transmission from the bottom `q` of cases, so the top `prop_cases`
+    # fraction transmits 1 - L(1 - prop_cases).
     g = Gamma(k, 1.0)
     x = quantile(g, 1.0 - prop_cases)
 
@@ -65,10 +48,7 @@ be negative binomial (or Poisson). A model whose offspring law is reshaped
 `transmission_traits` away from their neutral values) gives an error that
 points to simulation. The same holds for the other model methods in this file.
 
-For a `ModelSpec`, or a process that stores its own interventions, each
-intervention's [`EpiBranch.analytic_offspring_effect`](@ref) is applied to
-the offspring distribution first. If an intervention has no such method, this
-throws an error that names the simulation-based alternative.
+A `ModelSpec`, or a process that stores its own interventions, has them applied through [`EpiBranch.analytic_offspring_effect`](@ref).
 """
 function proportion_transmission(d::NegativeBinomial; prop_cases::Real = 0.2)
     return proportion_transmission(mean(d), d.r; prop_cases)
@@ -148,10 +128,7 @@ Proportion of cases responsible for a share `prop_transmission` of
 transmission, ranking by individual reproduction number, using the model's
 offspring distribution (negative binomial or Poisson).
 
-For a `ModelSpec`, or a process that stores its own interventions, each
-intervention's [`EpiBranch.analytic_offspring_effect`](@ref) is applied to
-the offspring distribution first. If an intervention has no such method, this
-throws an error that names the simulation-based alternative.
+A `ModelSpec`, or a process that stores its own interventions, has them applied through [`EpiBranch.analytic_offspring_effect`](@ref).
 """
 function proportion_cases_individual(model::Union{TransmissionModel, ModelSpec}; prop_transmission::Real = 0.8)
     off = _unreshaped_single_type_offspring(model, "proportion_cases_individual(model)")
@@ -224,10 +201,7 @@ Proportion of cases responsible for a share `prop_transmission` of
 transmission, ranking by number of people infected, using the model's
 offspring distribution.
 
-For a `ModelSpec`, or a process that stores its own interventions, each
-intervention's [`EpiBranch.analytic_offspring_effect`](@ref) is applied to
-the offspring distribution first. If an intervention has no such method, this
-throws an error that names the simulation-based alternative.
+A `ModelSpec`, or a process that stores its own interventions, has them applied through [`EpiBranch.analytic_offspring_effect`](@ref).
 """
 function proportion_cases_offspring(model::Union{TransmissionModel, ModelSpec}; prop_transmission::Real = 0.8)
     off = _unreshaped_single_type_offspring(model, "proportion_cases_offspring(model)")
@@ -285,10 +259,7 @@ end
 Proportion of secondary cases caused by cases who each infected at least
 `cluster_size` people, using the model's offspring distribution.
 
-For a `ModelSpec`, or a process that stores its own interventions, each
-intervention's [`EpiBranch.analytic_offspring_effect`](@ref) is applied to
-the offspring distribution first. If an intervention has no such method, this
-throws an error that names the simulation-based alternative.
+A `ModelSpec`, or a process that stores its own interventions, has them applied through [`EpiBranch.analytic_offspring_effect`](@ref).
 """
 function proportion_cluster_size(model::Union{TransmissionModel, ModelSpec}; cluster_size::Int = 10)
     off = _unreshaped_single_type_offspring(model, "proportion_cluster_size(model)")
@@ -296,13 +267,9 @@ function proportion_cluster_size(model::Union{TransmissionModel, ModelSpec}; clu
     return _proportion_cluster_size(off, cluster_size)
 end
 
+_proportion_cluster_size(d::NegativeBinomial, cluster_size) = proportion_cluster_size(d; cluster_size)
 function _proportion_cluster_size(d, cluster_size)
-    d isa NegativeBinomial || throw(
-        ArgumentError(
-            "proportion_cluster_size requires NegativeBinomial offspring"
-        )
-    )
-    return proportion_cluster_size(d; cluster_size)
+    throw(ArgumentError("proportion_cluster_size requires NegativeBinomial offspring"))
 end
 
 # ── Network-adjusted reproduction number ─────────────────────────────
@@ -318,7 +285,8 @@ suggests.
 - `mean_contacts`, `sd_contacts`: mean and standard deviation of the number
   of contacts one person makes per unit of time.
 - `duration`: duration of infectiousness, in the same unit of time.
-- `prob_transmission`: probability of transmission per contact.
+- `prob_transmission`: probability of transmission per partnership (see the
+  assumptions below).
 
 Returns `(R = ..., R_net = ...)`:
 
@@ -327,11 +295,24 @@ Returns `(R = ..., R_net = ...)`:
 - `R_net`: allowing for the variation in contacts,
   `prob_transmission × duration × (mean + variance / mean)`.
 
-This assumes contacts are formed at random given each person's number of
-contacts, with no clustering (friends of friends being friends). A
-simulation on an explicit network with clustering, such as `NetworkProcess`,
-can give a different answer. It is a port of `calc_network_R` in the R
-package superspreading (Lambert et al.,
+`R_net` is the degree-based formula for a static network, applied to the
+number of distinct partners a person has over their infectious period. It
+assumes:
+
+- Each contact counted is a different person. Repeated contacts with the
+  same person are not accounted for.
+- Each person's contact rate is a fixed trait that stays the same over the
+  infectious period. Rates that vary over time within one person break the
+  formula.
+- `prob_transmission` applies once per partner, however many contacts the
+  two have.
+- Contacts are formed at random given each person's number of contacts, with
+  no clustering (friends of friends being friends). A simulation on an
+  explicit network with clustering, such as `NetworkProcess`, can give a
+  different answer.
+
+It is a port of `calc_network_R` in the R
+package superspreading, which has the same caveats (Lambert et al.,
 https://github.com/epiverse-trace/superspreading, MIT).
 
 # Examples

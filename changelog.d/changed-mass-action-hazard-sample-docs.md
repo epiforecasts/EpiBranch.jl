@@ -1,0 +1,1 @@
+The `MassActionHazard` docstring now says that, for a layer that samples the mixing population, you can give the community force of infection directly as a `Steps` `external_hazard`, for instance from surveillance incidence.

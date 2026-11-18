@@ -35,7 +35,7 @@ EpiBranch.infection_likelihood_compatible(::_HalvedFrom) = true
         # immunity times are recorded from the simulated state because the
         # model composes a vaccination
         recorded = coalesce.(data.host_times.immunity_time, Inf)
-        @test recorded == EpiBranch.immunity_time.(state.individuals)
+        @test recorded == EpiBranch.immunity_time.(individuals(state))
         @test any(isfinite, recorded)
         # a model without one records no host times
         @test isempty(household_infections(state, ModelSpec(process)).host_times)
@@ -92,13 +92,13 @@ EpiBranch.infection_likelihood_compatible(::_HalvedFrom) = true
         state = simulate(plain; rng = StableRNG(34))
         halved = ModelSpec(
             process; progression, attributes = clinical,
-            interventions = [_HalvedFrom(2.0)]
+            interventions = [_HalvedFrom(0.1)]
         )
         data = household_infections(state, halved)
         @test haskey(data.host_times, :onset_time)
         explicit = pairwise_surv_loglik(
             process.kernel, data;
-            susceptibility = _HalvedFrom(2.0)
+            susceptibility = _HalvedFrom(0.1)
         )
         @test loglikelihood(data, halved) ≈ explicit
         @test loglikelihood(data, halved) != loglikelihood(data, plain)

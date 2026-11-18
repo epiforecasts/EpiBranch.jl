@@ -1,0 +1,70 @@
+module EpiBranchSSMProblemsExt
+
+# An outbreak as an SSMProblems.jl state-space model. The latent state is the
+# `SimulationState`, and the dynamics are `simulate(model, state; max_time)`,
+# the engine's continuation seam. A particle filter from a package built on
+# SSMProblems can therefore run on any model that supports it.
+
+using EpiBranch
+using EpiBranch: TransmissionModel, ModelSpec, SimulationState
+using Random: AbstractRNG
+using SSMProblems: StatePrior, LatentDynamics, ObservationProcess, StateSpaceModel
+import SSMProblems
+
+# A bare process or a `ModelSpec` is a model for `simulate`.
+const _Model = Union{TransmissionModel, ModelSpec}
+
+# Starts the outbreak at time zero, before any step of the dynamics has run.
+struct OutbreakPrior{M <: _Model, K <: NamedTuple} <: StatePrior
+    model::M
+    kwargs::K
+end
+
+# Continues a copy of the previous state by one step of length `dt`. A filter
+# resamples by reusing one state for several particles and continuation mutates
+# the state it is given, so the copy is required.
+struct OutbreakDynamics{M <: _Model, T <: Real} <: LatentDynamics
+    model::M
+    dt::T
+end
+
+# The distribution of the data at a step comes from the caller's
+# `observe(t, state)`. A `distribution` method on our own type works on SSMProblems
+# 0.6, which has no `DistributionObservation`, and on 0.7. The keywords are those
+# that 0.6 forwards.
+struct OutbreakObservation{F} <: ObservationProcess
+    observe::F
+end
+
+function SSMProblems.distribution(
+        obs::OutbreakObservation, t::Integer, x::SimulationState; kwargs...
+    )
+    return obs.observe(t, x)
+end
+
+function SSMProblems.simulate(rng::AbstractRNG, prior::OutbreakPrior)
+    return simulate(prior.model; prior.kwargs..., max_time = 0.0, rng)
+end
+
+function SSMProblems.simulate(
+        rng::AbstractRNG, dyn::OutbreakDynamics, t::Integer, x::SimulationState
+    )
+    return simulate(dyn.model, deepcopy(x); max_time = t * dyn.dt, rng)
+end
+
+function EpiBranch.outbreak_state_space(
+        model::_Model, observe; dt::Real = 1.0, simulate_kwargs...
+    )
+    dt > 0 || throw(ArgumentError("dt must be positive, got $dt"))
+    haskey(simulate_kwargs, :rng) &&
+        throw(ArgumentError("rng is supplied by the filter, not to outbreak_state_space"))
+    haskey(simulate_kwargs, :max_time) &&
+        throw(ArgumentError("max_time is set by each step of the dynamics"))
+    return StateSpaceModel(
+        OutbreakPrior(model, NamedTuple(simulate_kwargs)),
+        OutbreakDynamics(model, dt),
+        OutbreakObservation(observe)
+    )
+end
+
+end # module

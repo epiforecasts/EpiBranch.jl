@@ -1,0 +1,1 @@
+`extinction_probability` and `epidemic_probability` take an `n_initial` keyword for several independent introductions, raising the single-introduction extinction probability to that power as `probability_contain` does.

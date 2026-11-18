@@ -8,7 +8,7 @@
 # back to the existing `loglikelihood` methods so analytical fast
 # paths and simulation fallbacks are unchanged. `rand(d, n)` simulates
 # from the underlying model, applies the same reporting and observation
-# `logpdf` scores against, and projects to the relevant data type, so a
+# `logpdf` evaluates, and projects to the relevant data type, so a
 # prior or posterior predictive check draws from what the likelihood
 # evaluates rather than from the unobserved simulation. Each stored keyword
 # is forwarded only to the callee that accepts it: `rand` forwards only what
@@ -79,8 +79,8 @@ function Distributions.logpdf(
     )
     cs = _chain_sizes(data, d.seeds)
     # `loglikelihood(::ChainSizes, model)` itself picks the analytical or
-    # simulation-based route and, either way, now honours `prob_concluded`
-    # (the simulation-based route from its empirical tail).
+    # simulation-based route; either honours `prob_concluded` (the
+    # simulation-based route from its empirical tail).
     loglik_kwargs = _simulate_kwargs(d.kwargs, _CHAIN_SIZE_LOGLIK_KWARGS)
     return loglikelihood(cs, d.model; prob_concluded = d.prob_concluded, loglik_kwargs...)
 end
@@ -115,7 +115,7 @@ end
 # A bare process has no `ModelSpec`, so it gets the composition checks here.
 # A spec was already checked by its constructor and does not warn twice.
 function _check_composition(model::TransmissionModel)
-    _validate_process_windows(model, progression(model))
+    validate_process_windows(model, progression(model))
     _warn_incomplete_terminal_coverage(progression(model))
     return nothing
 end
@@ -131,7 +131,7 @@ function _rand_chain_size_setup(m::Union{TransmissionModel, ModelSpec}, sim_kwar
         get(sim_kwargs, :max_generations, _DEFAULT_MAX_GENERATIONS),
         get(sim_kwargs, :max_time, nothing), get(sim_kwargs, :stopping_rules, nothing)
     )
-    _validate_initial_cases(proc, sim_opts)
+    validate_initial_cases(proc, sim_opts)
     return (
         process = proc, sim_opts = sim_opts, interventions = interventions(m),
         attributes = attributes(m), recorder = recorder(m),
@@ -184,7 +184,7 @@ struct _ChainLengthLaw{M, K} <:
     kwargs::K
 
     function _ChainLengthLaw(model::M, kwargs::K) where {M, K}
-        _chain_length_assert_full_reporting(progression(model))
+        _chain_length_assert_full_reporting(progression(model), attributes(model))
         return new{M, K}(model, kwargs)
     end
 end
@@ -201,6 +201,12 @@ function Distributions.loglikelihood(
     )
     return logpdf(d, data)
 end
+
+# A single cluster length is scored as a one-element data vector. The
+# analytical chain-size laws (`Borel`, `HittingTimeChainSize`) take
+# one value at a time.
+Distributions.logpdf(d::_ChainLengthLaw, x::Integer) = logpdf(d, [x])
+Distributions.pdf(d::_ChainLengthLaw, x::Integer) = exp(logpdf(d, x))
 
 function Base.rand(rng::AbstractRNG, d::_ChainLengthLaw, n::Int)
     sim_kwargs = _simulate_kwargs(d.kwargs, _SIMULATE_BATCH_KWARGS)
@@ -238,8 +244,9 @@ end
 
 Without interventions, and with a single-type offspring distribution, this is
 the exact chain-size distribution (`Borel` or `GammaBorel`, adjusted for the
-observation model). It stays exact with `prob_concluded`, and with `seeds`
-unless the observation model also under-reports: there is no closed form for
+observation model). The chain-size terms stay exact with `prob_concluded` (the
+mixture over whether a cluster is over is an approximation, see below) and with
+`seeds` unless the observation model also under-reports: there is no closed form for
 several index cases under under-reporting, so that one combination is
 estimated from simulated outbreaks and its value moves from one call to the
 next. With interventions, or with a multi-type or multi-window model (no
@@ -251,9 +258,11 @@ estimated from simulated outbreaks instead. Keyword arguments:
   runs per distinct value in `seeds`.
 - `prob_concluded`: per-cluster probability the cluster is finished (its
   observed size is its final size), for real-time data with ongoing clusters —
-  see `end_of_outbreak_probability`. With interventions, the mixture is taken
-  against the simulated clusters' empirical P(X ≥ x) rather than an
-  analytical tail.
+  see `end_of_outbreak_probability`. The likelihood is the mixture
+  `π P(X = x) + (1 − π) P(X ≥ x)`, an approximation to the exact probability
+  of the data given the time since the last case. `π` depends on the model
+  parameters, so inside a fit compute it from them at each evaluation. With interventions, the mixture is taken against the
+  simulated clusters' empirical P(X ≥ x) rather than an analytical tail.
 - `n_sim`, …: forwarded to the underlying simulation-based `loglikelihood`
   when the analytical fast path does not apply.
 """
@@ -325,10 +334,7 @@ in Turing.jl:
 end
 ```
 
-For a `ModelSpec`, or a process that stores its own interventions, each
-intervention's [`EpiBranch.analytic_offspring_effect`](@ref) is applied to
-the offspring distribution first. If an intervention has no such method, this
-throws an error that names the simulation-based alternative.
+A `ModelSpec`, or a process that stores its own interventions, has them applied through [`EpiBranch.analytic_offspring_effect`](@ref).
 """
 function offspring_distribution(m::Union{TransmissionModel, ModelSpec})
     return _offspring_through_interventions(m, _per_case_offspring(process(m)))

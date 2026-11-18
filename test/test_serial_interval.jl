@@ -12,7 +12,7 @@
     @testset "mean is the generation time's: the incubation periods cancel" begin
         spec = ModelSpec(BranchingProcess(NegBin(2.5, 0.16), gt); attributes = clinical)
         state = simulate(spec; n_initial = 5, rng = StableRNG(1))
-        infector, infectee = state.individuals[1], state.individuals[2]
+        infector, infectee = individuals(state)[1], individuals(state)[2]
         si = serial_interval(spec, infector, infectee)
         @test mean(si) ≈ mean(gt)
         # Variances add: the generation time's, and the two incubation
@@ -23,7 +23,7 @@
     @testset "double_interval_censored gives a finite likelihood" begin
         spec = ModelSpec(BranchingProcess(NegBin(2.5, 0.16), gt); attributes = clinical)
         state = simulate(spec; n_initial = 5, rng = StableRNG(1))
-        infector, infectee = state.individuals[1], state.individuals[2]
+        infector, infectee = individuals(state)[1], individuals(state)[2]
         si = serial_interval(spec, infector, infectee)
         obs = double_interval_censored(si; interval = 1, upper = 21.0)
         @test isfinite(logpdf(obs, 6))
@@ -36,7 +36,7 @@
         bare = BranchingProcess(NegBin(2.5, 0.16), gt)
         spec = ModelSpec(bare; attributes = clinical)
         state = simulate(spec; n_initial = 2, rng = StableRNG(1))
-        infector, infectee = state.individuals[1], state.individuals[2]
+        infector, infectee = individuals(state)[1], individuals(state)[2]
         @test_throws "needs the incubation period" serial_interval(bare, infector, infectee)
     end
 
@@ -44,7 +44,7 @@
         spec = ModelSpec(BranchingProcess(NegBin(2.5, 0.16)); attributes = clinical)
         state = simulate(spec; n_initial = 2, rng = StableRNG(1))
         @test_throws "needs a fixed generation-time distribution" serial_interval(
-            spec, state.individuals[1], state.individuals[2]
+            spec, individuals(state)[1], individuals(state)[2]
         )
     end
 
@@ -55,7 +55,7 @@
         )
         state = simulate(spec; n_initial = 5, rng = StableRNG(1))
         @test_throws "not a per-case function" serial_interval(
-            spec, state.individuals[1], state.individuals[2]
+            spec, individuals(state)[1], individuals(state)[2]
         )
     end
 
@@ -63,7 +63,7 @@
         spec = ModelSpec(BranchingProcess(NegBin(2.5, 0.16), gt))
         state = simulate(spec; n_initial = 2, rng = StableRNG(1))
         @test_throws "needs the incubation period" serial_interval(
-            spec, state.individuals[1], state.individuals[2]
+            spec, individuals(state)[1], individuals(state)[2]
         )
     end
 
@@ -75,7 +75,7 @@
         spec = ModelSpec(BranchingProcess(windows...); attributes = clinical)
         state = simulate(spec; n_initial = 2, rng = StableRNG(1))
         @test_throws ArgumentError serial_interval(
-            spec, state.individuals[1], state.individuals[2]
+            spec, individuals(state)[1], individuals(state)[2]
         )
     end
 end

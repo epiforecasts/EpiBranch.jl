@@ -114,6 +114,9 @@ struct Scheduled{I <: AbstractIntervention, F, T <: Tuple, W} <: InterventionWra
     window::W
 end
 
+# The start condition reads the clock or case count of the population.
+gates_on_population_clock(::Scheduled) = true
+
 # The days between which a `Scheduled` built from `start_time` and
 # `end_time` alone acts.
 struct ClockWindow
@@ -131,14 +134,6 @@ function Scheduled(
         intervention, condition, start_time, can_lapse, triggers,
         _time_aware(intervention), window
     )
-end
-
-# Pre-existing callers build a `Scheduled` without the trigger record.
-function Scheduled(
-        intervention::AbstractIntervention, condition, start_time::Float64,
-        can_lapse::Bool
-    )
-    return Scheduled(intervention, condition, start_time, can_lapse, ())
 end
 
 # Whether `iv` has declared its own `intervention_time`, which by that hook's
@@ -298,7 +293,7 @@ function opened_at(t::Infections, state::SimulationState)
     T = typeof(state.max_infection_time)
     cached === nothing || return cached::T
     times = T[]
-    for ind in state.individuals
+    for ind in individuals(state)
         for episode in ind.episodes
             push!(times, episode.infection_time)
         end
@@ -315,13 +310,17 @@ end
 # and archives the episode holding it, and a report the health system has made
 # stays made. Read from a log of the reports, so a call costs a binary search
 # however large the run.
-function _reported_cases_due(state::SimulationState{T}) where {T}
-    log = get(state.scratch, (:report_log,), nothing)
-    if log === nothing
-        log = state.scratch[(:report_log,)] = _report_log(state)
-    end
-    _confirm_reports!(log::_ReportLog{T}, state.individuals)
-    return searchsortedlast(log.times, state.max_infection_time)
+function _reported_cases_due(state::SimulationState)
+    return searchsortedlast(_confirmed_report_log(state).times, state.max_infection_time)
+end
+
+# The run's report log, created on first use and brought up to date. The time
+# type is read from `state` because the callers leave it unparametrised.
+function _confirmed_report_log(state::SimulationState)
+    T = typeof(state.max_infection_time)
+    log = get!(() -> _report_log(state), state.scratch, (:report_log,))
+    _confirm_reports!(log::_ReportLog{T}, individuals(state))
+    return log
 end
 
 """
@@ -350,12 +349,7 @@ trigger_can_lapse(::ReportedCases) = false
 # `ReportedCases(n)` opened. `state` is left unparametrised, as `Infections`'s
 # own `opened_at` is, for the same reason given there.
 function opened_at(t::ReportedCases, state::SimulationState)
-    T = typeof(state.max_infection_time)
-    log = get(state.scratch, (:report_log,), nothing)
-    if log === nothing
-        log = state.scratch[(:report_log,)] = _report_log(state)
-    end
-    _confirm_reports!(log::_ReportLog{T}, state.individuals)
+    log = _confirmed_report_log(state)
     return length(log.times) >= t.n ? log.times[t.n] : nothing
 end
 
@@ -414,18 +408,10 @@ function Scheduled(
         start_after::Union{AbstractTrigger, Nothing} = nothing
     )
     conditions = Function[]
-    start_time !== nothing && push!(
-        conditions,
-        s -> s.max_infection_time >= start_time
-    )
-    end_time !== nothing && push!(
-        conditions,
-        s -> s.max_infection_time <= end_time
-    )
-    start_after_cases !== nothing && push!(
-        conditions,
-        s -> s.cumulative_cases >= start_after_cases
-    )
+    start_time !== nothing && push!(conditions, s -> s.max_infection_time >= start_time)
+    end_time !== nothing && push!(conditions, s -> s.max_infection_time <= end_time)
+    start_after_cases !== nothing &&
+        push!(conditions, s -> s.cumulative_cases >= start_after_cases)
 
     isempty(conditions) && start_after === nothing &&
         error("Scheduled requires at least one condition")
@@ -455,7 +441,7 @@ end
 # Predicate constructor: no individual-level reset. The predicate is opaque, so
 # it is assumed able to lapse.
 function Scheduled(intervention::AbstractIntervention, condition)
-    return Scheduled(intervention, condition, 0.0, true)
+    return Scheduled(intervention, condition, 0.0, true, ())
 end
 
 # ── Protocol delegation ──────────────────────────────────────────────
@@ -555,23 +541,30 @@ recorded and their dates, returning `nothing` before any effect is recorded.
 """
 persistent_competing_risks(::AbstractIntervention) = false
 persistent_competing_risks(::AbstractVaccination) = true
-function persistent_competing_risks(w::InterventionWrapper)
-    return persistent_competing_risks(w.intervention)
-end
 
-# Whether `iv`'s risk, once it has fired, could later be withdrawn by a
-# schedule's active window closing rather than standing for good. Only
-# `Scheduled` can withdraw a risk that has already fired, and only when the
-# intervention it wraps has not declared `persistent_competing_risks` — a
-# vaccination's protection has, since it derives from a recorded dose rather
-# than the schedule's own clock, so a `Scheduled` vaccination cannot lapse
-# either. Used by the continuous-time race to tell a standing block from one
-# that merely happens to be in force right now (see `_standing_risk`).
-_may_lapse(::AbstractIntervention) = false
-function _may_lapse(s::Scheduled)
-    return persistent_competing_risks(s.intervention) ? _may_lapse(s.intervention) : true
+"""
+    may_lapse(intervention) -> Bool
+
+Whether a block `intervention` has composed could later be lifted, so that a
+continuous-time race must not treat it as certain for good however sure it
+looks at one proposal. The default is `false`. A [`Scheduled`](@ref) answers
+`true` unless the intervention it wraps declares
+[`persistent_competing_risks`](@ref EpiBranch.persistent_competing_risks),
+since protection derived from a recorded dose does not depend on the
+clock of the schedule. A subtype of
+[`InterventionWrapper`](@ref EpiBranch.InterventionWrapper) forwards the
+answer of the intervention it wraps.
+
+For extension authors: a wrapper that can lift a block the intervention it
+wraps would keep, such as a seasonal closure, returns `true`. Without that, it
+inherits [`standing_block`](@ref EpiBranch.standing_block) from what it wraps
+and the race may stop proposing contacts for a pair although the block will
+later lift.
+"""
+may_lapse(::AbstractIntervention) = false
+function may_lapse(s::Scheduled)
+    return persistent_competing_risks(s.intervention) ? may_lapse(s.intervention) : true
 end
-_may_lapse(w::InterventionWrapper) = _may_lapse(w.intervention)
 
 # A schedule that cannot close again honours the inner removal's releases for
 # good, so its stretches can be read back; one with an end withdraws the block
@@ -584,7 +577,6 @@ function removal_gap_host_times(s::Scheduled)
     s.can_lapse && return ()
     return removal_gap_host_times(s.intervention)
 end
-removal_block_probability(s::Scheduled) = removal_block_probability(s.intervention)
 
 function competing_risk(s::Scheduled, parent, contact, state)
     (persistent_competing_risks(s.intervention) || is_active(s, state)) || return nothing

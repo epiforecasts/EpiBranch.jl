@@ -112,21 +112,22 @@ function chain_size_distribution(o::GeneratingFunctionOffspring)
 end
 
 """
-    extinction_probability(o::GeneratingFunctionOffspring; tol=1e-10, max_iter=1000)
+    extinction_probability(o::GeneratingFunctionOffspring; n_initial=1, tol=1e-10, max_iter=1000)
 
-Probability that transmission from a single introduced case dies out, for an
+Probability that transmission from `n_initial` introduced cases dies out, for an
 offspring law given by its generating function. Found by the same
 fixed-point iteration as [`extinction_probability(d::Poisson)`](@ref).
 """
 function extinction_probability(
-        o::GeneratingFunctionOffspring; tol::Real = 1.0e-10,
-        max_iter::Int = 1000
+        o::GeneratingFunctionOffspring; n_initial::Int = 1,
+        tol::Real = 1.0e-10, max_iter::Int = 1000
     )
+    _check_n_initial(n_initial)
     o.mean <= 1.0 && return 1.0
 
     q, converged = _contain_fixed_point(o; tol, max_iter)
     converged || @warn_unconverged_extinction(max_iter, "the reproduction number")
-    return q
+    return q^n_initial
 end
 
 """

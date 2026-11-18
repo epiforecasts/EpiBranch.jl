@@ -23,10 +23,22 @@ default:
 - [`Hospitalisation`](@ref): a proportion of cases are admitted after a delay.
 - [`Death`](@ref): a case dies after a delay, with a given probability.
 - [`Recovery`](@ref): every symptomatic case gets a recovery time.
+- [`Testing`](@ref): a sample is taken a delay after an event, and the case's own within-host trajectory ([`within_host`](@ref)) at that time goes through an [`Assay`](@ref) to give a reading (a Ct value, say) and a result. Each test has a `name` (`:test` by default), so a case can have several, such as a PCR test and a serology test.
+
+```julia
+curve(rng, ind) = t -> t < 5 ? 8t / 5 : 8exp(-0.4 * (t - 5))   # log10 copies per mL
+assay = Assay(value = load -> 40.0 - 3.3 * load, detect = 2.0)     # limit of detection
+progression = [Testing(assay = assay, delay = Gamma(2.0, 1.0))]
+attributes = [clinical_presentation(incubation_period = LogNormal(1.5, 0.5)), within_host(curve)]
+```
+
+The trajectory, the assay and the sampling rule are all supplied by the caller; the package builds in no pathogen.
 
 Death and recovery are final outcomes: each case ends with one of them (see
 [Competing outcomes](@ref) below). Each event has its own delay distribution
-and probability:
+and probability. Here recovery is written as a `Transition`, which makes the
+proportion dying exactly 5%. A plain `Recovery` next to `Death` would give a
+lower proportion (see [An exact case fatality ratio](@ref)):
 
 ```@example transitions
 using EpiBranch
@@ -36,11 +48,16 @@ using StableRNGs
 # incubation period, infection to onset: mean about 5 days
 clinical = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
 
+# 5% of cases die and the rest recover: exclusive_probabilities makes the two
+# outcomes mutually exclusive (see "An exact case fatality ratio" below)
+death_p, recovered_p = exclusive_probabilities([0.05, 0.95])
+
 progression = [
     Reporting(delay = LogNormal(1.0, 0.3)),                         # onset to report
     Hospitalisation(delay = LogNormal(2.0, 0.5), probability = 0.2), # onset to admission
-    Death(delay = LogNormal(2.5, 0.4), probability = 0.05),          # onset to death
-    Recovery(delay = LogNormal(2.0, 0.4)),                           # onset to recovery
+    Death(delay = LogNormal(2.5, 0.4), probability = death_p),       # onset to death
+    Transition(:recovered, from = :onset, delay = LogNormal(2.0, 0.4),
+        probability = recovered_p, terminal = true),                 # onset to recovery
 ]
 
 model = ModelSpec(
@@ -63,7 +80,7 @@ is a case, with the date of each event it reached and its final outcome.
 `Reporting` and `Hospitalisation` draw their own time independently of
 `Death` and `Recovery`, so a draw can fall after the case's outcome, although a
 report or an admission cannot happen to a person who has already died or
-recovered. The engine resets such an event to "did not occur"
+recovered. The simulation resets such an event to "did not occur"
 (`:reported`/`:admitted` back to `false`, their time back to `Inf`): see
 [`censor_after_outcome!`](@ref EpiBranch.censor_after_outcome!).
 
@@ -131,8 +148,8 @@ model = ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0));
 rng = StableRNG(42)
 state = simulate(model; max_cases = 2000, rng = rng)
 
-n_died = count(ind -> ind.state[:outcome] == :died, state.individuals)
-n_died_80plus = count(state.individuals) do ind
+n_died = count(ind -> ind.state[:outcome] == :died, individuals(state))
+n_died_80plus = count(individuals(state)) do ind
     ind.state[:outcome] == :died && ind.state[:age] >= 80
 end
 println("Deaths: $n_died, of which 80+: $n_died_80plus")
@@ -170,9 +187,9 @@ model = ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0));
 rng = StableRNG(42)
 state = simulate(model; max_cases = 200, rng = rng)
 
-n_admitted = count(ind -> ind.state[:admitted], state.individuals)
+n_admitted = count(ind -> ind.state[:admitted], individuals(state))
 n_admitted_unreported = count(ind -> ind.state[:admitted] && !ind.state[:reported],
-    state.individuals)
+    individuals(state))
 println("Admitted: $n_admitted, of which not reported: $n_admitted_unreported")
 ```
 
@@ -239,6 +256,37 @@ has a `date_reported` column in place of `date_reporting`, and
 when you want the standard reporting dates. Each event has its own `from`: a timeline can admit cases a delay after onset
 and time their outcome from admission.
 
+## Symptom onset that follows the case's load
+
+A delay can read the case's own within-host trajectory. As one possible link between load and symptoms, a case becomes symptomatic on the first day its load reaches a threshold, plus a short random lag. [`trajectory_value`](@ref EpiBranch.trajectory_value) reads the load stored by [`within_host`](@ref). A case that never reaches the threshold gets no onset because its `probability` is 0.
+
+```@example transitions
+# load (log10 copies per mL): linear rise to a peak at day 5, then exponential decline
+curve(rng, ind) = (peak = rand(rng, Uniform(2, 9));
+    t -> t < 5 ? peak * t / 5 : peak * exp(-0.4 * (t - 5)))
+
+function first_day_above(ind, threshold)
+    for t in 0.0:0.25:30.0
+        EpiBranch.trajectory_value(ind, t) >= threshold && return t
+    end
+    return nothing
+end
+
+onset = Transition(:symptomatic; from = :infection,
+    probability = (rng, ind) -> first_day_above(ind, 4.0) === nothing ? 0.0 : 1.0,
+    delay = (rng, ind) -> first_day_above(ind, 4.0) + rand(rng, Exponential(0.5)))
+
+model = ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0));
+    attributes = within_host(curve), progression = [onset])
+
+state = simulate(model; max_cases = 200, rng = StableRNG(42))
+infected = filter(is_infected, individuals(state))
+println("Symptomatic: ", count(ind -> ind.state[:symptomatic], infected),
+    " of ", length(infected))
+```
+
+This is one choice among many. For many pathogens load and symptoms are only loosely linked, and some people with high loads have no symptoms. The example does not define asymptomatic infection. The threshold, the lag and the shape of the curve are assumptions to replace with ones that suit the pathogen.
+
 ## Combining with multi-type models and population characteristics
 
 The disease timeline is separate from the transmission model. A
@@ -288,10 +336,10 @@ multitype = ModelSpec(
 rng = StableRNG(3)
 state = simulate(multitype; max_cases = 500, rng = rng)
 
-n_died_kids = count(state.individuals) do ind
+n_died_kids = count(individuals(state)) do ind
     ind.state[:outcome] == :died && ind.state[:type] == 1
 end
-n_died_adults = count(state.individuals) do ind
+n_died_adults = count(individuals(state)) do ind
     ind.state[:outcome] == :died && ind.state[:type] == 2
 end
 println("Deaths. Children: $n_died_kids. Adults: $n_died_adults.")
@@ -312,11 +360,14 @@ Death and recovery compete: each case ends with whichever final outcome
 happens first, the situation survival analysis calls competing risks. The
 outcome is recorded as `:outcome`, and its time as `:outcome_time`.
 
-This affects what the `probability` of `Death` means. It is the probability
-that a case would die if it did not recover first. When recovery tends to
-come sooner than death, as in the first example on this page, some of the
-cases that would have died recover first. The proportion of cases dying is
-then below the `probability` given.
+Next to a `Recovery`, the `probability` of `Death` is the probability that a
+case would die if it did not recover first. When
+recovery tends to come sooner than death, as in the example below, some of the
+cases that would have died recover first, and the proportion of cases dying is
+below the `probability` given. Here death comes a mean of about 13 days after
+onset and recovery about 8. Only about one in five cases drawn to die does
+so, giving a case fatality ratio near 1% rather than 5%. With equal delays it
+is half of `probability`.
 
 Further final outcomes join the competition through the general `Transition`
 with `terminal = true`. Here 10% of cases are lost to follow-up, a mean of
@@ -335,7 +386,7 @@ model = ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0));
 rng = StableRNG(42)
 state = simulate(model; max_cases = 2000, rng = rng)
 
-outcomes = [ind.state[:outcome] for ind in state.individuals if haskey(ind.state, :outcome)]
+outcomes = [ind.state[:outcome] for ind in individuals(state) if haskey(ind.state, :outcome)]
 println("Outcome counts: ",
     (died = count(==(:died), outcomes),
      recovered = count(==(:recovered), outcomes),
@@ -371,7 +422,7 @@ model = ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0));
 
 rng = StableRNG(42)
 state = simulate(model; max_cases = 300, rng = rng)
-symptomatic = [ind for ind in state.individuals if !isnan(onset_time(ind))]
+symptomatic = [ind for ind in individuals(state) if !isnan(onset_time(ind))]
 n_missing = count(ind -> !haskey(ind.state, :outcome), symptomatic)
 n_died = count(ind -> get(ind.state, :outcome, nothing) == :died, symptomatic)
 println("Symptomatic cases: ", length(symptomatic), ", missing an outcome: ", n_missing)
@@ -384,6 +435,47 @@ with the difference due to chance.
 `ModelSpec` warns when every final outcome has a fixed `probability` below 1,
 because some cases could then end without an outcome. Probabilities from
 `exclusive_probabilities` do not trigger the warning.
+
+## Transmission timing from a latent and infectious period
+
+So far transmission has been timed by a generation time, the days from a case's infection to each of its secondary infections. Where you know the natural history instead, [`transmission_timing`](@ref) builds the timing from it: a `latent_period` (infection until the case becomes infectious), an `infectious_period` (until it recovers) and a `contact_interval` (the days after a case becomes infectious at which it makes a contact, drawn independently of the infectious period). It returns the `Transition`s for `:infectious` and `:recovered` as `progression`, and the [`Infectiousness`](@ref) window that opens at `:infectious` and closes at `:recovered` as `window`. The window goes to the [`BranchingProcess`](@ref) and the progression to the [`ModelSpec`](@ref):
+
+```@example transitions
+using Statistics
+
+contacts = NegBin(2.5, 0.16)
+latent = LogNormal(1.6, 0.5)           # infection to infectious: mean about 5.6 days
+infectious = Gamma(5.0, 2.0)           # infectious to recovered: mean 10 days
+contact_interval = Exponential(4.0)    # infectious to each contact: mean 4 days
+
+timing = transmission_timing(contact_interval; contacts = contacts,
+    latent_period = latent, infectious_period = infectious)
+model = ModelSpec(BranchingProcess(timing.window); progression = timing.progression)
+```
+
+With `contacts`, a case makes that many contacts if it stayed infectious long enough, and any whose time falls after recovery is dropped. The reproduction number is therefore below `mean(contacts)`. [`implied_R`](@ref) gives the value it takes, the mean number of contacts times the probability that a contact interval falls before the infectious period:
+
+```@example transitions
+implied_R(contacts, contact_interval, infectious)
+```
+
+This is 2.17, against 2.5 contacts. The `offspring` form instead keeps the mean and dispersion of the number of secondary cases exactly as given, and conditions each contact time to fall inside the infectious period rather than dropping it (see [`transmission_timing`](@ref)).
+
+To check what a simulation produced, [`realised_generation_intervals`](@ref) returns the days from each infector's infection to the infection of each case it infected, for every case except the index cases. Compare their mean with the generation time put in, which is the latent period plus the contact interval. Compare the ratio of cases in successive generations with `implied_R`. Bounding the run by `max_generations` rather than `max_cases` leaves every case's contacts complete:
+
+```@example transitions
+state = simulate(model; n_initial = 100, max_cases = nothing,
+    max_generations = 4, rng = StableRNG(1))
+
+gi = realised_generation_intervals(state)
+ratios = generation_R(state).offspring_ratio
+println("Mean generation interval: ", round(mean(gi), digits = 1),
+    " days from ", length(gi), " cases; mean put in: ",
+    round(mean(latent) + mean(contact_interval), digits = 1))
+println("Mean cases per case across generations: ", round(mean(ratios), digits = 2))
+```
+
+The realised intervals are shorter than the 9.6 days put in, because recovery removes the contacts that would have come late in a long infectious period. The ratios scatter around `implied_R` rather than around 2.5; with a dispersion of 0.16 a few superspreading cases dominate each generation, and the ratios vary from run to run.
 
 ## Likelihood of the clinical timeline
 

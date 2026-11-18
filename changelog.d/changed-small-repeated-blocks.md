@@ -1,0 +1,1 @@
+Internal tidy-up of small repeated blocks in the interventions, observation and likelihood code, with no change to results. The `ChainSizes` log-likelihood of a `ClusterMixed` offspring now also accepts `prob_concluded`, as every other offspring does.

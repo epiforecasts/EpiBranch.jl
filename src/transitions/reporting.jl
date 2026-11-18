@@ -25,7 +25,13 @@ reported".
 
 `simulate`, [`progression_loglik`](@ref), the chain-size likelihood and
 [`end_of_outbreak_probability`](@ref) all read this step's reporting
-probability. It replaces the deprecated [`PerCaseObservation`](@ref).
+probability.
+
+The chain-size likelihood treats each observed cluster as all the reported
+cases of exactly one true chain. An unreported case in the middle of a chain is
+assumed not to split it into two observed clusters. Cluster data built from
+contact tracing can violate this when a link runs through an undetected case.
+Chains with no reported case are absent from the data.
 
 # Examples
 
@@ -40,17 +46,10 @@ Base.@kwdef struct Reporting{D, P, F} <: AbstractClinicalTransition
     from::F = :onset_time
 end
 
-# Only writes `:reported`/`:reporting_time`; never touches susceptibility or
-# infectiousness.
-offspring_law_unchanged(::Reporting) = true
+reporting_probability(r::Reporting) = r.probability
+reporting_from(r::Reporting) = r.from
 
 required_fields(r::Reporting) = _from_required(r.from)
-
-function initialise_individual!(::Reporting, individual, state)
-    individual.state[:reported] = false
-    individual.state[:reporting_time] = Inf
-    return nothing
-end
 
 function resolve_individual!(r::Reporting, individual, state)
     anchor = _state_time(individual, r.from)
@@ -63,26 +62,6 @@ function resolve_individual!(r::Reporting, individual, state)
     individual.state[:reporting_time] = time
     _log_report!(state, individual, time)
     return nothing
-end
-
-function censor_after_outcome!(r::Reporting, individual)
-    _censor_event!(individual, :reported, :reporting_time, r.from)
-    return nothing
-end
-
-function transition_loglik(r::Reporting, individual::Individual; followup_end = Inf)
-    anchor = _state_time(individual, r.from)
-    _anchor_ok(anchor) || return 0.0
-    flag = individual.state[:reported]::Bool
-    time = flag ? individual.state[:reporting_time] : Inf
-    cap = min(_timed_from_outcome(individual, r.from) ? Inf : outcome_time(individual), followup_end)
-    occurred = flag && time <= cap
-    ll = transition_term(
-        r.probability, r.delay, individual, anchor, occurred;
-        censor = min(infection_aborted_time(individual), cap)
-    )
-    occurred || return ll
-    return ll + _delay_loglik(r.delay, time - anchor)
 end
 
 # The reports `Reporting` has drawn in a run, so that `ReportedCases` can count
@@ -124,7 +103,7 @@ _report_time(st) =
 # are one report, so the live one is kept only when its time differs.
 function _report_log(state::SimulationState{T}) where {T}
     times = T[]
-    for ind in state.individuals
+    for ind in individuals(state)
         for episode in ind.episodes
             t = _report_time(episode.state)
             isfinite(t) && push!(times, t)
