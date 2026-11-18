@@ -231,3 +231,20 @@ end
     @test terminal - plain <= n + 10
     @test plain / n < 6
 end
+
+@testset "Seeding an outbreak: an intervention's fields do not cost a state copy" begin
+    # An intervention that finds its fields on the index case needs no probe of
+    # what the progression writes: the probe copies the case's state and runs
+    # every step's initialisation, about 25 allocations more at seeding.
+    transitions = [Transition(:recovered; delay = 3.0, terminal = true)]
+    model = BranchingProcess(NegBin(2.5, 0.16), LogNormal(1.6, 0.5))
+    attributes = [clinical_presentation(incubation_period = LogNormal(1.5, 0.5))]
+    interventions = [Isolation(delay = 1.0, duration = Inf)]
+    function seed()
+        state = EpiBranch.new_state(model, transitions, attributes, StableRNG(1))
+        EpiBranch.add_individuals!(state, 1, interventions)
+        return @allocations EpiBranch.seed!(state, 1:1, interventions, transitions)
+    end
+    seed()
+    @test seed() <= 20
+end

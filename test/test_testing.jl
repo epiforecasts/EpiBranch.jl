@@ -147,6 +147,23 @@ end
         )
     end
 
+    @testset "AfterPositiveTest without a Testing step of that name is refused" begin
+        iso(name) = Isolation(
+            delay = 1.0, duration = Inf,
+            trigger = AfterPositiveTest(name = name)
+        )
+        process = BranchingProcess(NegBin(2.5, 0.5), LogNormal(1.6, 0.5))
+        testing = Testing(assay = test_assay, delay = 0.0, name = :pcr)
+        @test_throws ArgumentError ModelSpec(process; interventions = [iso(:pcr)])
+        @test_throws ArgumentError ModelSpec(
+            process; progression = [testing], interventions = [iso(:test)]
+        )
+        @test ModelSpec(process; progression = [testing], interventions = [iso(:pcr)]) isa ModelSpec
+        @test_throws ArgumentError ModelSpec(
+            process; interventions = [OnRoutes(iso(:pcr), [:household])]
+        )
+    end
+
     @testset "missing trajectory is reported" begin
         spec = ModelSpec(
             BranchingProcess(NegBin(2.5, 0.5), LogNormal(1.6, 0.5));
