@@ -265,6 +265,8 @@ end
             for ind in individuals(s)
                 ind.parent_id == 0 && continue
                 isnan(ind.infection_time) && continue
+                # Withdrawn contacts are not listed.
+                EpiBranch._is_withdrawn(ind) && continue
                 ind.infection_time > stop_t && (listed_late += 1)
                 isnan(individuals(s)[ind.parent_id].infection_time) && (from_undecided += 1)
             end

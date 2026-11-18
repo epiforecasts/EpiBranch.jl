@@ -27,7 +27,6 @@ end
 function _support_counts(spec; seed = 1)
     return simulate_by_generation(
         spec; n_initial = [10, 2], max_generations = 3,
-        depletion = StartOfGenerationDepletion(),
         generation_length = 14.0, rng = StableRNG(seed)
     )
 end

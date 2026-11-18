@@ -191,8 +191,7 @@ _pg_mixing_vaccinated(state, name) = count(
         )
         run(budget) = simulate_by_generation(
             spec(budget); n_initial = [10, 2], max_generations = 3,
-            depletion = StartOfGenerationDepletion(), generation_length = 14.0,
-            rng = StableRNG(1)
+            generation_length = 14.0, rng = StableRNG(1)
         )
         campaigns = EpiBranch._generation_campaigns(
             spec(PerGroup(:under5 => 100.0, :over5 => 30.0)), 14.0, true

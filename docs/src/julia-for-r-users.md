@@ -4,7 +4,7 @@ This page covers the Julia syntax the EpiBranch documentation uses, each with
 its nearest R equivalent. It is not a Julia course; the
 [Julia manual](https://docs.julialang.org/en/v1/manual/getting-started/) and
 its [noteworthy differences from R](https://docs.julialang.org/en/v1/manual/noteworthy-differences/#Noteworthy-differences-from-R)
-cover more.
+cover more. If you come from simulist, epichains, ringbp or superspreading, [Coming from simulist, epichains, ringbp and superspreading](from-r-packages.md) maps their functions and arguments to EpiBranch.
 
 ## Loading packages: `using`
 

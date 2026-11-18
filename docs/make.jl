@@ -19,6 +19,7 @@ makedocs(;
         "Home" => "index.md",
         "Installation" => "installation.md",
         "Julia for R users" => "julia-for-r-users.md",
+        "Coming from R packages" => "from-r-packages.md",
         "Tutorials" => [
             "Getting started" => "tutorials/getting-started.md",
             "Interventions" => [

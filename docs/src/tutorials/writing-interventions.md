@@ -95,6 +95,7 @@ many people each case infects](@ref).
 | `on_infection_settled!(iv, individual, state, rng)` | Every built-in model: once a case's infection time is fixed, before its onset or clinical transitions read it | The case, and the random number generator to use | `nothing`; sets values on the case (default: does nothing) |
 | `risk_applies(iv, route)` | Every built-in model choosing the risks for a route or infectiousness window | The route's `RouteWindow`, or `nothing` for an introduction from outside | `Bool`; default `true` |
 | `standing_block(iv)` | Fixed-population models deciding whether a certain block ends a pair's contacts for good | Nothing | `Bool`; default `false` |
+| `prevents_contact(iv)` | Every built-in model, when an infection the intervention blocks is decided: whether the contact is kept or dropped | Nothing | `Bool`: whether a contact this intervention blocks never happened, so is left out of [`contacts`](@ref) and out of the reach of tracing. Default `false`; [`Isolation`](@ref) and [`Quarantine`](@ref) default to `true` and take it as a keyword |
 | `analytic_offspring_effect(iv, offspring)`, `analytic_offspring_effect(iv, offspring, spec)` | When an analytical function such as [`extinction_probability`](@ref) is called on a `ModelSpec` holding the intervention | The offspring distribution without the intervention (the three-argument form also receives the `ModelSpec`, for an effect that needs more than the offspring law) | The offspring distribution a case has under the intervention. Without a method of either arity the function stops with an error |
 
 `analytic_offspring_effect` is for the rare intervention whose effect on the
@@ -278,7 +279,7 @@ function resolve_individual!(iso::Isolation, individual, state)
     end
     # A contact traced before its onset was known has only the bare trace
     # time, so hold it back to the onset.
-    traced_time = max(get(individual.state, :_traced_isolation_time, Inf), onset)
+    traced_time = max(EpiBranch.traced_isolation_time(individual), onset)
     start = min(test_time, traced_time)
     isfinite(start) || return nothing
     duration = _removal_duration(
@@ -314,6 +315,20 @@ end
 
 The last call tells a `CapacityConstrained` sharing the action's resource that
 it was used, and does nothing when none is.
+
+A tracer of another shape works with the built-in ones through three public
+functions. To have a [`CapacityConstrained`](@ref) or [`HeldCapacity`](@ref)
+around it ration what it does, it collects its follow-up actions in a vector of
+[`EpiBranch.InterventionAction`](@ref) and ends its `trace_contacts!` with
+[`EpiBranch.admit_trace_actions!`](@ref)`(tracer, state, actions)`, which
+admits them against the budget of the wrapper when there is one. When a ring of
+contact tracing passes through an already-infected neighbour, it calls the
+`trace_contacts!` of every intervention from that neighbour, and
+[`EpiBranch.is_ring_hop`](@ref)`(infector)` is `true` there: a tracer that
+starts a trace from each eligible case reads it to trace from the neighbour as
+a ring member only. To have [`Isolation`](@ref) isolate a traced contact when
+symptoms begin, as `FlagOnly` does, call
+[`EpiBranch.flag_for_isolation!`](@ref)`(contact, time)`.
 
 `competing_risk`: see [A custom intervention: closing a border](@ref).
 

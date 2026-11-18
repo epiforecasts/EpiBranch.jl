@@ -243,13 +243,13 @@ end
     @test_throws ArgumentError SimOpts(; initial_cases = [0])
     @test_throws ArgumentError SimOpts(; initial_cases = [-1])
     @test_throws ArgumentError SimOpts(; initial_cases = [3], n_initial = 1)
-    @test EpiBranch._validate_initial_case_ids(opts, 9) === nothing
-    @test_throws ArgumentError EpiBranch._validate_initial_case_ids(opts, 8)
-    @test EpiBranch._validate_initial_case_ids(SimOpts(), 9) === nothing
+    @test EpiBranch.validate_initial_case_ids(opts, 9) === nothing
+    @test_throws ArgumentError EpiBranch.validate_initial_case_ids(opts, 8)
+    @test EpiBranch.validate_initial_case_ids(SimOpts(), 9) === nothing
     @test_throws ArgumentError simulate(BranchingProcess(Poisson(0.0)); initial_cases = [3])
     # Race positions differ from population IDs, as they do within households.
     best = fill(Inf, 3)
-    EpiBranch._seed_initial_cases!(best, [9, 3, 6], opts.initial_cases)
+    EpiBranch.seed_initial_cases!(best, [9, 3, 6], opts.initial_cases)
     @test best == [0.0, 0.0, Inf]
     empty_opts = SimOpts(; initial_cases = Int[], stopping_rules = [MaxCases(10)])
     @test empty_opts.n_initial == 0
@@ -260,7 +260,7 @@ end
 function seed_household_population!(best, chosen, n_households)
     for household in 1:n_households
         fill!(best, Inf)
-        EpiBranch._seed_initial_cases!(best, (2household - 1, 2household), chosen)
+        EpiBranch.seed_initial_cases!(best, (2household - 1, 2household), chosen)
     end
     return nothing
 end

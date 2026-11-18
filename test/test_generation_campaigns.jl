@@ -19,7 +19,7 @@ EpiBranch.trigger_time(e::_EligibleAt, infector, state) = e.time
     )
     run_counts(spec; seed = 1, kwargs...) = simulate_by_generation(
         spec; n_initial = [10, 2], max_generations = 7,
-        depletion = StartOfGenerationDepletion(), generation_length = 14.0, rng = StableRNG(seed), kwargs...
+        generation_length = 14.0, rng = StableRNG(seed), kwargs...
     )
 
     @testset "doses of a generation's interval" begin
@@ -117,7 +117,6 @@ EpiBranch.trigger_time(e::_EligibleAt, infector, state) = e.time
         whole = run_counts(spec)
         first_part = simulate_by_generation(
             spec; n_initial = [10, 2], max_generations = 3,
-            depletion = StartOfGenerationDepletion(),
             generation_length = 14.0, rng = StableRNG(1)
         )
         continued = simulate(spec, first_part; max_generations = 7)

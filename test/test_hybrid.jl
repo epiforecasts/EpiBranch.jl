@@ -1,6 +1,9 @@
 using Distributions
 using StableRNGs
 
+struct _HybridLatentStep <: EpiBranch.AbstractClinicalTransition end
+EpiBranch.produced_states(::_HybridLatentStep) = (:infectious,)
+
 @testset "HybridProcess" begin
     @testset "construction validates its two models" begin
         exact = ModelSpec(
@@ -58,6 +61,13 @@ using StableRNGs
             Transition(:recovered; from = :infectious, rate = 0.2, terminal = true),
         ]
         @test_throws ArgumentError HybridProcess(spec(; progression = seir), mf(); threshold = 10)
+        custom_latent = [
+            _HybridLatentStep(),
+            Transition(:recovered; from = :infectious, rate = 0.2, terminal = true),
+        ]
+        @test_throws ArgumentError HybridProcess(
+            spec(; progression = custom_latent), mf(); threshold = 10
+        )
         @test_throws ArgumentError HybridProcess(
             HomogeneousProcess(; transmission_rate = 0.4, population_size = 500), mf();
             threshold = 10
