@@ -400,7 +400,7 @@ EpiBranch.intervention_actions(::_UndeclaredAction, state, candidates) = nothing
     for i in 1:3
         individuals(state)[i].state[:group] = :A
     end
-    # The group's trigger comes from a confirmed member, `current`.
+    # The trigger for the group comes from a confirmed member, `current`.
     individuals(state)[1].state[:test_positive] = true
     set_isolated!(individuals(state)[1], 5.0; release_time = Inf)
     for i in 4:n
