@@ -111,6 +111,15 @@ function _read_observed_cases(cases::AbstractDataFrame)
     end
     onset = _optional_times(cases, :onset_time, NaN)
     isolation = _optional_times(cases, :isolation_time, Inf)
+    for i in 1:n
+        parent[i] == 0 && continue
+        inf[i] <= isolation[parent[i]] || throw(
+            ArgumentError(
+                "case $(labels[i]) is infected after its infector, $(labels[parent[i]]), " *
+                    "was isolated"
+            )
+        )
+    end
     return (; inf, parent, onset, isolation)
 end
 
@@ -243,7 +252,8 @@ probability that an outbreak is over under interventions with no closed form.
   place of the drawn incubation period, so a model that times its contacts or
   interventions from onset uses the observed one.
 - `isolation_time`: when the case was isolated, `missing` if it has not been.
-  The case infects no one from then on.
+  The case infects no one from then on, so no case may be infected after its
+  infector's isolation time.
 
 `now` is the time of the data, defaulting to the latest `infection_time`, and
 no case may be infected after it. The state is the outbreak at `now`: every

@@ -67,7 +67,7 @@ using StableRNGs
 
     @testset "an isolated case infects no one after isolation" begin
         iso = DataFrame(
-            infection_time = [0.0, 1.0], isolation_time = [0.5, missing],
+            infection_time = [0.0, 1.0], isolation_time = [1.5, missing],
             parent_id = [missing, 1]
         )
         m = BranchingProcess(Poisson(5.0), Gamma(2.5, 2.0))
@@ -108,6 +108,13 @@ using StableRNGs
         )
         @test_throws ArgumentError initialise_state(
             model, DataFrame(infection_time = [0.0, 5.0]); now = 2.0
+        )
+        @test_throws ArgumentError initialise_state(
+            model,
+            DataFrame(
+                parent_id = [missing, 1], infection_time = [0.0, 5.0],
+                isolation_time = [2.0, missing]
+            )
         )
         @test_throws ArgumentError initialise_state(
             model, DataFrame(infection_time = [0.0], other = [1])
