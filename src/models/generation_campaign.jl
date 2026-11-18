@@ -87,9 +87,10 @@ end
 
 _intervention_names(ivs) = join((nameof(typeof(iv)) for iv in ivs), ", ")
 
-# What the campaigns of a spec were built from, so a later call with the same
-# spec reuses them. A continuation is called once per step of a filter, for
-# every particle, and building the campaigns is far dearer than a generation.
+# The inputs the campaigns of a spec were built from. A later call with the
+# same spec reuses the campaigns. A filter calls a continuation for every
+# particle at every step, and building the campaigns costs far more than
+# simulating a generation.
 struct _CampaignCache{V}
     process::Any
     population::Any
@@ -98,9 +99,9 @@ struct _CampaignCache{V}
     campaigns::V
 end
 
-# Keyed by the identity of the spec's intervention vector, which lives as long
-# as the spec and which a spec shares with any copy of itself. `WeakKeyDict`
-# locks itself; two threads that miss together both build, and either result
+# Keyed by the identity of the intervention vector of the spec. The vector
+# lives as long as the spec and is shared with any copy of it. `WeakKeyDict`
+# locks itself. Two threads that miss together both build, and either result
 # is right.
 const _CAMPAIGN_CACHE = WeakKeyDict{Vector{AbstractIntervention}, _CampaignCache}()
 
@@ -114,9 +115,9 @@ function _cache_valid(c::_CampaignCache, spec::ModelSpec, generation_length::Flo
 end
 
 # As `_generation_campaigns`, built once per spec and reused. The checks of the
-# spec run on every call, and a spec that fails them is never cached, so the
-# errors are unchanged. The cache is rebuilt if the spec's interventions,
-# process or the `generation_length` differ from what it was built from.
+# spec run on every call. A spec that fails them is never cached, so the errors
+# are unchanged. The cache is rebuilt if the interventions or process of the
+# spec, or the `generation_length`, differ from what it was built from.
 function _cached_generation_campaigns(
         spec::ModelSpec, generation_length, finite_population::Bool
     )
