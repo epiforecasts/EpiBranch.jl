@@ -59,6 +59,16 @@ days throughout.
   outside `1:n_types` raises an error. A single-type model raises an error
   when given either here.
 
+A model with a discrete generation time on whole days and nothing about
+individuals feeding back on transmission (see
+[`EpiBranch.count_rule`](@ref)) runs on a count-level path when the run is
+bounded by `max_time` alone: pass `max_cases = nothing` and
+`max_generations = nothing`, and no `stopping_rules`, `condition`,
+`index_types` or `initial_cases`. The result is then a
+[`CountSimulationState`](@ref). Its daily counts have the same distribution as
+those of the individual simulation of the same model, and its people are built
+when they are asked for. Any other run returns a [`SimulationState`](@ref).
+
 The probability and delay of each step in a case's natural history are set
 on the transitions in the `progression` of a [`ModelSpec`](@ref). Each takes
 a constant or a function of the random number generator and the individual,
@@ -106,6 +116,12 @@ function simulate(
         model, n_initial, initial_cases, index_types, max_cases, max_generations,
         max_time, stopping_rules
     )
+    rule = _count_route(
+        model, initial_cases, index_types, max_cases, max_generations, max_time,
+        stopping_rules, condition, rng
+    )
+    rule === nothing ||
+        return _simulate_counts(model, rule, sim_opts.n_initial, max_time::Real, rng)
     return _run_once_or_retry(
         model, sim_opts, condition, max_attempts; _layers(model)..., rng
     )

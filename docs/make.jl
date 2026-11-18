@@ -36,6 +36,7 @@ makedocs(;
                 "Household models" => "tutorials/households.md",
                 "Homogeneous models" => "tutorials/homogeneous.md",
                 "Covariates and time-varying transmission" => "tutorials/covariate-transmission.md",
+                "Daily counts without individuals" => "tutorials/count-simulation.md",
             ],
             "Line lists and contacts" => "tutorials/linelist.md",
             "Analysis" => [
