@@ -164,6 +164,11 @@ SUITE["evaluation: chain size loglikelihood"] = @benchmarkable loglikelihood(
     $CHAIN_LAW, $(collect(1:50))
 )
 
+const CHAIN_SIZES_DATA = ChainSizes(repeat([1, 1, 1, 2, 3, 1, 5, 2, 1, 8], 100))
+SUITE["evaluation: ChainSizes loglikelihood"] = @benchmarkable loglikelihood(
+    $CHAIN_SIZES_DATA, $(NegBin(0.8, 0.5))
+)
+
 # The Poisson mixtures have no closed-form mass function, so each count costs
 # a quadrature. A large count is timed as well as a small one because the
 # integrand is narrower there.

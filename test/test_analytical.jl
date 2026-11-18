@@ -125,6 +125,19 @@ _rep(p, delay = Dirac(0.0)) = [Reporting(; delay, probability = p, from = :infec
             @test_throws ArgumentError rand(Borel(1.0))
         end
 
+        @testset "ChainSizes size table" begin
+            data = ChainSizes([1, 2, 1, 3, 2, 1]; seeds = [1, 1, 1, 2, 1, 1])
+            pairs = collect(zip(data.table_sizes, data.table_seeds, data.table_counts))
+            @test sort(pairs) == [(1, 1, 3), (2, 1, 2), (3, 2, 1)]
+            @test sum(data.table_counts) == length(data.data)
+            d = NegBin(0.7, 0.5)
+            direct = sum(
+                EpiBranch._chain_size_logpdf(chain_size_distribution(d), x, s)
+                    for (x, s) in zip(data.data, data.seeds)
+            )
+            @test loglikelihood(data, d) ≈ direct
+        end
+
         @testset "Poisson with mean 0" begin
             @test loglikelihood(ChainSizes([1, 1, 1]), Poisson(0.0)) == 0.0
             @test loglikelihood(ChainSizes([1, 1, 1]), NegativeBinomial(0.5, 1.0)) == 0.0
