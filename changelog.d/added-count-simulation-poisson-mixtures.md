@@ -1,0 +1,1 @@
+`simulate` also runs a branching process with a `PoissonLognormal` or `PoissonWeibull` offspring law as daily counts. The total infectiousness of a cohort is the sum of one draw per member, and the state keeps the members' values to share out the cohort's infections when its people are built.
