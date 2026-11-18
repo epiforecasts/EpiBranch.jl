@@ -838,7 +838,7 @@ EpiBranch.traces_source
 EpiBranch.has_effect
 EpiBranch.supplies_contacts
 EpiBranch.keep_active
-InterventionWrapper
+EpiBranch.InterventionWrapper
 EpiBranch.competing_risk
 Risk
 EpiBranch.HostSusceptibility
@@ -849,6 +849,7 @@ EpiBranch.HostImmunity
 EpiBranch.infectious_removal_time
 EpiBranch.risk_applies
 EpiBranch.standing_block
+EpiBranch.may_lapse
 EpiBranch.prevents_contact
 EpiBranch.infinite_draw_is_final
 intervention_time
