@@ -43,8 +43,8 @@
 
     # Correlation across lags of one infector's offspring when the offspring
     # number has mean `R` and variance `V` and is split over the lags by
-    # `weights`. Comparing each simulation with this removes the sampling
-    # error of the other simulation, which the heavy tail makes large.
+    # `weights`. Each simulation is compared with this value rather than with
+    # the other simulation, whose sampling error is large with a heavy tail.
     function split_correlation(R, V, weights)
         v = [w * R + w^2 * (V - R) for w in weights]
         return [i == j ? 1.0 : weights[i] * weights[j] * (V - R) / sqrt(v[i] * v[j])
