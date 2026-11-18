@@ -871,9 +871,9 @@ function seed!(state::SimulationState, ids, interventions, transitions)
     if !isempty(ids)
         first_ind = individuals(state)[first(ids)]
         # Building the probe costs a copy of the case's state on every outbreak,
-        # so it is built only when a transition has a field to check, or an
-        # intervention reads a field the case lacks that a transition could
-        # write, such as `Isolation` reading the keys of `Testing`.
+        # so it is built only if a transition has a field to check, or an
+        # intervention reads a field missing from the case that a transition
+        # could write (`Isolation` reads the keys of `Testing`).
         lacking = _first_lacking_field(first_ind, interventions)
         if !isempty(transitions) &&
                 (lacking !== nothing || any(t -> !isempty(required_fields(t)), transitions))
