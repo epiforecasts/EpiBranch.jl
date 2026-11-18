@@ -1,0 +1,1 @@
+A contact is offered forward tracing by a `ContactTracing` once. When `SourceTracing` found a case's infector, the infector's contacts were traced again whatever the eligibility, so those already offered tracing got a second attempt and were traced more often than the given probability.
