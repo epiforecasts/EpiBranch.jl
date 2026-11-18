@@ -194,7 +194,7 @@ function _fits_stay(capacity, occ::_Occupancy, s, e)
     _held_at(occ, s) + 1 <= _capacity_at(capacity, s) || return false
     (; starts, ends) = occ
     i = Base.searchsortedlast(starts, s) + 1
-    j = (Base.searchsortedfirst(starts, e)::Int) - 1
+    j = Base.searchsortedfirst(starts, e) - 1
     if i <= j
         # Where several starts tie, the last of them sees every one of them.
         ended = Base.searchsortedlast(ends, starts[i])
@@ -218,10 +218,11 @@ _next_break(schedule, t) = next_calendar_break(schedule, t)
 # place becomes free when a stay is released or the capacity rises, so only
 # release times and capacity breaks are tried.
 function refused_action(::DeferRefused, hc::HeldCapacity, usage, action)
-    occ, duration = usage.occupancy, usage.duration
+    occ = usage.occupancy::_Occupancy
+    duration = usage.duration
     capacity = usage.capacity
     first_release = Base.searchsortedlast(occ.ends, action.time) + 1
-    last_finite = (Base.searchsortedfirst(occ.ends, Inf)::Int) - 1
+    last_finite = Base.searchsortedfirst(occ.ends, Inf) - 1
     times = occ.ends[first_release:last_finite]
     last_release = isempty(times) ? action.time : maximum(times)
     append!(times, _capacity_breaks(capacity, action.time, nextfloat(last_release)))
