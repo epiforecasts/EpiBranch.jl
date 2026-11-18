@@ -510,3 +510,21 @@ end
     set_isolated!(later, 5.0; release_time = Inf)
     @test EpiBranch.trigger_time(OnIsolation(), later, state) == 5.0
 end
+
+@testset "Ring growth is not timed from before the member's infection" begin
+    state = EpiBranch.new_state(
+        BranchingProcess(Poisson(1.0), Exponential(5.0)),
+        EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
+    )
+    ct = ContactTracing(TraceEveryone(), 1.0, Dirac(0.0), Quarantine(duration = Inf); depth = 2)
+    # A ring member quarantined at 1.0, before its infection at 3.0, that has
+    # no recorded trace time (a trace with no arrival time records none).
+    member = Individual(id = 1, infection_time = 3.0)
+    member.state[:infected] = true
+    member.state[:_ring_remaining] = 1
+    set_isolated!(member, 1.0; release_time = Inf)
+    @test !haskey(member.state, :trace_time)
+    contact = Individual(id = 2)
+    EpiBranch._trace_pair!(ct, state, member, contact, state.rng, EpiBranch.InterventionAction[]; ring = true)
+    @test contact.state[:trace_time] == 3.0
+end
