@@ -140,32 +140,21 @@ end
 
 ### Delay to immunity
 
-A vaccine that takes time to protect can be too late. Here protection starts 7 days after the dose, and we compare it with no vaccination and with same-day protection over more outbreaks. The three sets of runs share random numbers, so [`containment_difference`](@ref) with `paired = true` compares each with no vaccination. Each estimate is shown with its Monte Carlo standard error (MCSE):
+A vaccine that takes time to protect can be too late. Here protection starts 7 days after the dose, and we compare it with no vaccination and with same-day protection over more outbreaks. [`containment_difference`](@ref) with `paired = true` runs each pair of models from the same random numbers and keeps only whether each run was contained. It reports the containment with each model and the difference with its Monte Carlo standard error (MCSE):
 
 ```@example vaccination
 rv_delayed = RingVaccination(efficacy = 0.8, delay_to_immunity = 7.0)
 
 n_delay = 4000
-delay_runs = Dict(
-    label => simulate(scenario(interventions), n_delay;
-        max_cases = 500, rng = CommonRandomNumbers(42))
-    for (label, interventions) in (
-        ("no vaccination", [iso, ct_onset]),
+base_delay = scenario([iso, ct_onset])
+for (label, interventions) in (
         ("same-day protection", [iso, ct_onset, rv]),
-        ("7-day delay", [iso, ct_onset, rv_delayed])))
-
-for label in ("no vaccination", "same-day protection", "7-day delay")
-    est = containment_probability(delay_runs[label]; max_cases = 500)
-    println(rpad(label, 22), round(est.proportion, digits = 3),
-        " (MCSE ", round(est.mcse, digits = 3), ")")
-end
-
-for label in ("same-day protection", "7-day delay")
-    diff = containment_difference(delay_runs[label], delay_runs["no vaccination"];
-        max_cases = 500, paired = true)
-    println(rpad(label, 22), "difference from no vaccination ",
-        round(diff.difference, digits = 3), " (MCSE ",
-        round(diff.mcse, digits = 3), ")")
+        ("7-day delay", [iso, ct_onset, rv_delayed]))
+    diff = containment_difference(scenario(interventions), base_delay, n_delay;
+        max_cases = 500, paired = true, seed = 42)
+    println(rpad(label, 22), "containment ", round(diff.a, digits = 3),
+        " against ", round(diff.b, digits = 3), " with no vaccination; difference ",
+        round(diff.difference, digits = 3), " (MCSE ", round(diff.mcse, digits = 3), ")")
 end
 ```
 
@@ -441,33 +430,29 @@ rv_independent_onward = RingVaccination(efficacy = 0.8, onward_efficacy = 0.8,
     coverage = 0.5)
 
 n_outbreaks = 10000
-runs(interventions) = simulate(
-    scenario(interventions, [clinical, community, acceptance]), n_outbreaks;
-    max_cases = 200, rng = CommonRandomNumbers(42))
+population = [clinical, community, acceptance]
+no_vaccination = scenario([iso, ct_noquarantine], population)
+clustered_model = scenario([iso, ct_noquarantine, rv_clustered_onward], population)
+independent_model = scenario([iso, ct_noquarantine, rv_independent_onward], population)
 
-for (label, interventions) in (
-        ("no vaccination", [iso, ct_noquarantine]),
-        ("clustered refusal", [iso, ct_noquarantine, rv_clustered_onward]),
-        ("independent refusal", [iso, ct_noquarantine, rv_independent_onward]))
-    est = containment_probability(runs(interventions); max_cases = 200)
-    println(rpad(label, 20), round(est.proportion, digits = 3),
-        " (MCSE ", round(est.mcse, digits = 3), ")")
-end
+compare(a, b) = containment_difference(a, b, n_outbreaks;
+    max_cases = 200, paired = true, seed = 42)
+gain_clustered = compare(clustered_model, no_vaccination)
+gain_independent = compare(independent_model, no_vaccination)
+clustered_vs_independent = compare(clustered_model, independent_model)
 
-base_runs = runs([iso, ct_noquarantine])
-for (label, rv_onward) in (("clustered refusal", rv_clustered_onward),
-        ("independent refusal", rv_independent_onward))
-    diff = containment_difference(runs([iso, ct_noquarantine, rv_onward]), base_runs;
-        max_cases = 200, paired = true)
-    println(rpad(label, 20), "gain over no vaccination ",
-        round(diff.difference, digits = 3), " (MCSE ",
-        round(diff.mcse, digits = 3), ")")
+for (label, d) in (("clustered refusal", gain_clustered),
+        ("independent refusal", gain_independent))
+    println(rpad(label, 20), "containment ", round(d.a, digits = 3),
+        " against ", round(d.b, digits = 3), " with no vaccination; gain ",
+        round(d.difference, digits = 3), " (MCSE ", round(d.mcse, digits = 3), ")")
 end
+println("Clustered minus independent: ",
+    round(clustered_vs_independent.difference, digits = 3),
+    " (MCSE ", round(clustered_vs_independent.mcse, digits = 3), ")")
 ```
 
-Vaccinating about half the traced contacts raises containment a little. The
-runs share random numbers. To compare clustered and independent refusal
-directly, apply [`containment_difference`](@ref) to those two sets of runs.
+Containment is 0.222 with clustered refusal and 0.224 with independent refusal, against 0.214 with no vaccination. Vaccinating about half the traced contacts gains 0.008 (MCSE 0.006) with clustered refusal and 0.010 (MCSE 0.006) with independent refusal, each within about two MCSEs of zero. Clustered minus independent refusal is -0.001 (MCSE 0.006), well within the noise: at this number of outbreaks the two kinds of refusal cannot be told apart. To compare any two scenarios in the same way, use [`containment_difference`](@ref) on the two models.
 
 Clustering has little effect here because `groups(20)` puts each person in a
 community independently of who infected them. A case's contacts are spread

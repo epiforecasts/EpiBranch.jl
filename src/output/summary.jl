@@ -3,12 +3,13 @@
 
 Containment probability: the proportion of simulated outbreaks that died out,
 from a vector of simulations such as `simulate(model, n)`. Returns a named
-tuple `(; n_contained, n, proportion, mcse, distribution)`: the number of
+tuple `(; n_contained, n, proportion, mcse, posterior)`: the number of
 outbreaks that were contained, the number simulated, their ratio, the Monte
-Carlo standard error `sqrt(p * (1 - p) / n)` of that ratio, and a
-`Beta(n_contained + 0.5, n - n_contained + 0.5)` distribution for the
-underlying probability, from which any quantiles can be taken. The `mcse` is 0
-when every run is contained, but the Beta still has width. Both reflect
+Carlo standard error `sqrt(p * (1 - p) / n)` of that ratio, and the posterior
+for the underlying probability, `Beta(n_contained + 0.5, n - n_contained + 0.5)`,
+which is the Jeffreys prior `Beta(0.5, 0.5)` updated with the runs. Any
+quantiles can be taken from it. The `mcse` is 0 when every run is contained,
+but the posterior still has width. Both reflect
 simulation error only and ignore uncertainty in the parameters of the model.
 To compare two scenarios, use [`containment_difference`](@ref). An outbreak still
 going when the simulation stopped (at `max_cases`, `max_time` or
@@ -122,6 +123,44 @@ function containment_difference(
     return _contained_difference(ca, cb, paired)
 end
 
+"""
+    containment_difference(model_a, model_b, n::Int; paired=false, seed=1, kwargs...)
+
+The difference in containment probability between two models, `model_a` minus
+`model_b`, over `n` outbreaks simulated from each. It returns the same named
+tuple as the method for vectors of simulations. Only whether each run was
+contained is kept, as in `containment_probability(model, n)`, so memory holds
+one outbreak at a time. The keywords of `simulate(model, n)` apply to both
+models.
+
+With `paired = true` both models run from `CommonRandomNumbers(seed)` (see
+[`CommonRandomNumbers`](@ref)), and `rng` cannot also be given. Otherwise the
+runs are independent and use `rng` for both, one after the other.
+
+# Examples
+
+```julia
+containment_difference(treated_model, model, 10_000; max_cases = 500, paired = true)
+```
+"""
+function containment_difference(
+        model_a::Union{TransmissionModel, ModelSpec},
+        model_b::Union{TransmissionModel, ModelSpec}, n::Int;
+        paired::Bool = false, seed::Integer = 1, kwargs...
+    )
+    if paired && haskey(kwargs, :rng)
+        throw(ArgumentError("`rng` cannot be set with `paired = true`; use `seed`."))
+    end
+    cap = something(get(kwargs, :max_cases, nothing), NoCases())
+    function contained(model)
+        opts = paired ? (; kwargs..., rng = CommonRandomNumbers(seed)) : (; kwargs...)
+        return _simulate_each(s -> _is_contained(s, cap), Bool, model, n; opts...)
+    end
+    ca = contained(model_a)
+    cb = contained(model_b)
+    return _contained_difference(ca, cb, paired)
+end
+
 function _contained_difference(
         ca::AbstractVector{Bool}, cb::AbstractVector{Bool}, paired::Bool
     )
@@ -149,7 +188,7 @@ function _binomial_estimate(k::Int, n::Int)
     p = k / n
     return (;
         n_contained = k, n, proportion = p, mcse = sqrt(p * (1 - p) / n),
-        distribution = Beta(k + 0.5, n - k + 0.5),
+        posterior = Beta(k + 0.5, n - k + 0.5),
     )
 end
 

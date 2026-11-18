@@ -46,7 +46,7 @@ using Dates
         @test cp > 0.5
     end
 
-    @testset "containment_probability mcse and distribution" begin
+    @testset "containment_probability mcse and posterior" begin
         model = BranchingProcess(NegBin(1.5, 0.3))
         results = simulate(model, 200; max_cases = 500, rng = StableRNG(42))
         est = containment_probability(results; max_cases = 500)
@@ -54,7 +54,7 @@ using Dates
         @test est.proportion == count(s -> s.extinct && s.cumulative_cases < 500, results) / 200
         @test est.n_contained == round(Int, est.proportion * 200)
         @test est.mcse ≈ sqrt(est.proportion * (1 - est.proportion) / 200)
-        @test est.distribution == Beta(est.n_contained + 0.5, 200 - est.n_contained + 0.5)
+        @test est.posterior == Beta(est.n_contained + 0.5, 200 - est.n_contained + 0.5)
 
         est_model = containment_probability(model, 200; max_cases = 500, rng = StableRNG(42))
         @test est_model.n_contained == est.n_contained
@@ -63,11 +63,11 @@ using Dates
         # Every run contained: no standard error, but the Beta still has width
         all_in = EpiBranch._binomial_estimate(50, 50)
         @test all_in.mcse == 0.0
-        @test all_in.distribution == Beta(50.5, 0.5)
-        @test std(all_in.distribution) > 0
+        @test all_in.posterior == Beta(50.5, 0.5)
+        @test std(all_in.posterior) > 0
         none_in = EpiBranch._binomial_estimate(0, 50)
         @test none_in.mcse == 0.0
-        @test none_in.distribution == Beta(0.5, 50.5)
+        @test none_in.posterior == Beta(0.5, 50.5)
         @test_throws ArgumentError EpiBranch._binomial_estimate(0, 0)
     end
 
@@ -132,6 +132,19 @@ using Dates
         @test pl.difference == 0.0
         @test pl.mcse == 0.0
         @test ul.mcse > 0
+
+        # From two models: the same as simulating and comparing, and paired
+        # runs of the same model do not differ.
+        tm = ModelSpec(process; attributes = attrs, interventions = [iso])
+        um = ModelSpec(process; attributes = attrs)
+        pm = containment_difference(tm, um, 500; max_cases = 500, paired = true, seed = 1)
+        @test pm == containment_difference(t, u; max_cases = 500, paired = true)
+        im = containment_difference(tm, um, 200; max_cases = 500, rng = StableRNG(3))
+        @test !im.paired
+        @test containment_difference(um, um, 200; max_cases = 500, paired = true).mcse == 0.0
+        @test_throws ArgumentError containment_difference(
+            tm, um, 10; paired = true, rng = StableRNG(1)
+        )
     end
 
     @testset "weekly_incidence" begin
