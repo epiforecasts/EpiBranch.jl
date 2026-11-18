@@ -70,9 +70,7 @@ end
         # from its own stream, so the unrelated noise changes nothing.
         baseline_crn = run_sim(AbstractIntervention[], CommonRandomNumbers(42))
         noisy_crn = run_sim([_NoiseForOne(1)], CommonRandomNumbers(42))
-        @test all(
-            onset_time(baseline_crn[i]) == onset_time(noisy_crn[i]) for i in 1:5
-        )
+        @test all(onset_time(baseline_crn[i]) == onset_time(noisy_crn[i]) for i in 1:5)
     end
 
     @testset "population characteristics draw from a per-person stream" begin

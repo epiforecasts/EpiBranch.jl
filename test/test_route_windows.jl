@@ -288,10 +288,7 @@ EpiBranch.records_contacts(::AlwaysRecord, parent, contact, state, t) = true
                 prog, onsets, rng
             )
             EpiBranch.add_individuals!(state, 3, interventions)
-            race!(
-                state, [1, 2, 3], rng; routes = routes,
-                interventions = interventions
-            )
+            race!(state, [1, 2, 3], rng; routes = routes, interventions = interventions)
             return [get(ind.state, :infected, false) for ind in individuals(state)]
         end
         edge(to) = (inf, st) -> inf == 1 &&
@@ -740,16 +737,10 @@ EpiBranch.records_contacts(::AlwaysRecord, parent, contact, state, t) = true
                 route
             ) == removes
             @test EpiBranch.risk_applies(
-                RingVaccination(
-                    efficacy = 1.0,
-                    onward_efficacy = 1.0
-                ), route
+                RingVaccination(efficacy = 1.0, onward_efficacy = 1.0), route
             )
             @test EpiBranch.risk_applies(
-                MassVaccination(
-                    efficacy = 1.0,
-                    eligibility_time = 0.0
-                ), route
+                MassVaccination(efficacy = 1.0, eligibility_time = 0.0), route
             )
         end
     end
@@ -1163,9 +1154,7 @@ end
         )
     )
     mixed_types = BranchingProcess(
-        (
-            Infectiousness(Poisson(0.0); kernel = Uniform(0, 1)), same_type.infectiousness...,
-        )
+        (Infectiousness(Poisson(0.0); kernel = Uniform(0, 1)), same_type.infectiousness...)
     )
     run_once(model) = simulate(
         ModelSpec(model; attributes = stop_soon);
