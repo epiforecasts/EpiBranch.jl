@@ -19,8 +19,8 @@
 # j = 0 term is offspring infected within the step of their infector, so Ψ_k
 # appears on both sides and is found by fixed-point iteration. The
 # `seeds` index cases at step 0 are not themselves observed, so their shared
-# PGF drops the `u_0` factor, Ψ_0(u) = f(Σ_{j≥0} w_j · Ψ_j(u)), under the same
-# rule for their own offspring, and because they
+# PGF drops the `u_0` factor, Ψ_0(u) = f(Σ_{j≥0} w_j · Ψ_j(u)), and their
+# own offspring follow the same rule. Because they
 # act independently the whole series has cumulant generating function
 # K(u) = log G(u) = seeds · log Ψ_0(u).
 #
@@ -370,9 +370,9 @@ Requires `using ForwardDiff` for the derivatives of the generating function.
     are discretised onto `data`'s own time step with each infection uniform
     within its step. Offspring infected in the same step as their infector
     are kept, as are those of the seeds, so a generation time shorter than a
-    step is fine; but when the expected number of infections within a step
-    is unbounded (a short generation time and a large reproduction number
-    against the step), an `ArgumentError` asks for a shorter step. The
+    step is fine. A short generation time with a large reproduction number
+    against the step makes the expected number of infections within a step
+    unbounded, and an `ArgumentError` then asks for a shorter step. The
     likelihood itself is approximate, a moment-matched normal or lognormal
     standing in for the true (unknown in closed form) distribution of the
     counts; prediction intervals built from it can be too narrow,
@@ -420,8 +420,8 @@ end
 #
 # A type-j case draws its total offspring from G_j = dist_fn(R_j) and gives
 # each child type i with probability a[i, j] (see `multi_type.jl`), and each
-# child independently lands w[l + 1] steps later (`w[1]` being the same step). Each type and step has its own
-# auxiliary variable, so with B_i(k) = Σ_{l≥0} w[l + 1] · Ψ_{k+l, i},
+# child independently lands w[l + 1] steps later (`w[1]` is the same step).
+# Each type and step has its own auxiliary variable, so with B_i(k) = Σ_{l≥0} w[l + 1] · Ψ_{k+l, i},
 #
 #   Ψ_{k, j}(u) = r_{k, j}(u) · G_j(Σ_i a[i, j] · B_i(k)),
 #
@@ -466,8 +466,8 @@ function _incidence_log_pgf(
     # Ψ_k depends on itself through the offspring infected in the same step
     # (weight w[1]), so it solves Ψ_{k,j} = r_{k,j} · G_j(Σ_i a[i,j] (w[1] Ψ_{k,i} + b_i))
     # by iterating from the value without same-step offspring. The iteration
-    # converges, derivatives included, when a case's expected same-step
-    # offspring are below one.
+    # converges, derivatives included, when the expected same-step
+    # offspring of a case are below one.
     function solve_step(k)
         b = [later(k, i) for i in 1:m]
         r = [report(k, j) for j in 1:m]
