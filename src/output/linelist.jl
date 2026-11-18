@@ -84,8 +84,8 @@ only when it counted as a detection (see [`is_isolated`](@ref)).
 
 # The line list as known on a date
 
-With `reported_only = true`, only the cases a [`Reporting`](@ref) or
-[`PerCaseObservation`](@ref) step marked as reported are kept. With
+With `reported_only = true`, only the cases a [`Reporting`](@ref) step
+marked as reported are kept. With
 `as_of = Date(...)`, the table is the one available on that date: it keeps
 the cases whose `date_reporting` is on or before `as_of` (so it implies
 `reported_only`), and every other date column, such as `date_outcome`, is
@@ -166,7 +166,7 @@ function linelist(
     any(ind -> haskey(ind.state, :reporting_time), cases) || throw(
         ArgumentError(
             "`as_of` and `reported_only` need a reporting time on each case; " *
-                "add a `Reporting` step (or `PerCaseObservation`) to the model."
+                "add a `Reporting` step to the model."
         )
     )
     return _as_known(df, as_of)
@@ -342,7 +342,7 @@ function _add_contact_attributes!(df::DataFrame, state::SimulationState)
         keys_
     )
     for key in sort!(collect(keys_))
-        raw = [_reported_state(ind, key) for ind in contacts_]
+        raw = [reported_value(Val(key), ind) for ind in contacts_]
         df[!, key] = _normalise_column(raw)
     end
     return df
