@@ -135,7 +135,7 @@ end
         )
         after_isolation(state) = let rows = contacts(state)
             count(
-                r -> r.infection_time >= _iso_time(state, r.from), eachrow(rows)
+                r -> r.exposure_time >= _iso_time(state, r.from), eachrow(rows)
             )
         end
         @test after_isolation(run(true)) == 0
