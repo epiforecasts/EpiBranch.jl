@@ -66,8 +66,11 @@ Columns always present:
 | `chain_id` | which index case the case descends from |
 | `date_infection` | date of infection |
 
-Further columns depend on the model and are added whenever any case has the
-information: for example `date_onset` and `asymptomatic` from
+Further columns depend on the model. A column is kept when every case's value
+is `missing`: a run in which every case is asymptomatic still has `date_onset`.
+A column for something the model records only when an event happens, such as
+`date_isolation` when no case is isolated, is absent from a run without that
+event. Examples are `date_onset` and `asymptomatic` from
 [`clinical_presentation`](@ref), `age` and `sex` from [`demographics`](@ref),
 `isolated` and `date_isolation` from [`Isolation`](@ref) (with
 `date_isolation_release` when isolation or quarantine has a finite
@@ -359,9 +362,8 @@ _to_date(::Date, _) = missing
 
 """Add a column for a single state key, applying the `_time` → `date_`
 convention for keys whose name ends in `_time` and which carry numeric
-values. Other keys pass through. Columns are omitted only if every
-case's value is `missing` (or, for `_time` keys, every value is
-non-finite/non-numeric)."""
+values. Other keys pass through. A column is kept when every case's value
+is `missing`."""
 function _add_state_column!(cols, cases, key::Symbol, reference_date)
     metadata = event_time_metadata(Val(key))
     if metadata !== nothing
@@ -373,12 +375,10 @@ function _add_state_column!(cols, cases, key::Symbol, reference_date)
             t isa Real ? _to_date(reference_date, t) : missing
         end
         values = Union{Date, Missing}[event_date(ind) for ind in cases]
-        all(ismissing, values) && return nothing
         cols[col_name] = values
     else
         key in keys(cols) && return nothing
         raw = [reported_value(Val(key), ind) for ind in cases]
-        all(ismissing, raw) && return nothing
         cols[key] = _normalise_column(raw)
     end
     return nothing

@@ -402,7 +402,7 @@ end
             BranchingProcess(Poisson(2.0), Exponential(5.0));
             interventions = [
                 vaccine,
-                Isolation(onset_to_isolation_delay = Dirac(1.0), duration = Inf),
+                Isolation(delay = Dirac(1.0), duration = Inf),
             ],
             attributes = clinical_presentation(
                 incubation_period = LogNormal(1.5, 0.3), prob_asymptomatic = 0.0

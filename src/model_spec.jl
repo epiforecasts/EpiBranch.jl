@@ -385,6 +385,26 @@ function _warn_unmet_trigger_requirements(interventions, progression)
     return nothing
 end
 
+# An `Isolation` that follows a test needs the `Testing` step of that name in
+# the progression; without it no case ever records a result.
+_wrapped_interventions(iv::AbstractIntervention) = (iv,)
+_wrapped_interventions(w::InterventionWrapper) = (w, _wrapped_interventions(w.intervention)...)
+
+function _validate_test_triggers(interventions, progression)
+    for iv in interventions, w in _wrapped_interventions(iv)
+        w isa Isolation && w.trigger isa AfterPositiveTest || continue
+        name = w.trigger.name
+        any(t -> t isa Testing && t.name === name, progression) && continue
+        throw(
+            ArgumentError(
+                "Isolation(trigger = AfterPositiveTest(name = :$name)) needs a " *
+                    "Testing(name = :$name) step in `progression`, and this model has none."
+            )
+        )
+    end
+    return nothing
+end
+
 # An `Isolation` with a `Testing` step as its `test_sensitivity` reads the
 # result that step writes into the progression. The progression must contain
 # a `Testing` step.
@@ -444,7 +464,7 @@ using EpiBranch, Distributions
 model = ModelSpec(
     BranchingProcess(NegBin(2.5, 0.16), Gamma(2.5, 2.0));
     attributes = clinical_presentation(incubation_period = LogNormal(1.6, 0.5)),
-    interventions = [Isolation(onset_to_isolation_delay = Exponential(2.0),
+    interventions = [Isolation(delay = Exponential(2.0),
         duration = 14.0)],
 )
 state = simulate(model; max_cases = 500)
@@ -464,6 +484,7 @@ function ModelSpec(
     _warn_incomplete_terminal_coverage(prog)
     ivs = _intervention_vector(interventions)
     _validate_dose_schedule(ivs)
+    _validate_test_triggers(ivs, prog)
     _validate_testing_sensitivity(ivs, prog)
     _warn_unmet_trigger_requirements(ivs, prog)
     _warn_inert_interventions(ivs)
@@ -551,13 +572,8 @@ function simulate(
         spec.process, n_initial, initial_cases, index_types, max_cases, max_generations,
         max_time, stopping_rules
     )
-    validate_initial_cases(spec.process, sim_opts)
-    _validate_index_types(spec.process, sim_opts)
     state = _run_once_or_retry(
-        spec.process, sim_opts, condition, max_attempts;
-        interventions = spec.interventions, attributes = spec.attributes,
-        progression = spec.progression, observation = spec.observation,
-        recorder = spec.recorder, rng
+        spec.process, sim_opts, condition, max_attempts; _layers(spec)..., rng
     )
     return _classify_cases!(state, spec.case_definition, _max_time(sim_opts))
 end
@@ -607,15 +623,10 @@ function _simulate_each(
         spec.process, n_initial, initial_cases, index_types, max_cases, max_generations,
         max_time, stopping_rules
     )
-    validate_initial_cases(spec.process, sim_opts)
-    _validate_index_types(spec.process, sim_opts)
     horizon = _max_time(sim_opts)
     classified(s) = each(_classify_cases!(s, spec.case_definition, horizon))
     return _simulate_n(
-        classified, T, spec.process, n, sim_opts;
-        interventions = spec.interventions, attributes = spec.attributes,
-        progression = spec.progression, observation = spec.observation,
-        recorder = spec.recorder, rng, parallel
+        classified, T, spec.process, n, sim_opts; _layers(spec)..., rng, parallel
     )
 end
 
