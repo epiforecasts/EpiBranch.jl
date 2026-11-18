@@ -252,8 +252,8 @@ probability that an outbreak is over under interventions with no closed form.
   place of the drawn incubation period, so a model that times its contacts or
   interventions from onset uses the observed one.
 - `isolation_time`: when the case was isolated, `missing` if it has not been.
-  The case infects no one from then on, so no case may be infected after its
-  infector's isolation time.
+  The case infects no one from then on, so a case infected after the isolation
+  time of its infector is an error.
 
 `now` is the time of the data, defaulting to the latest `infection_time`, and
 no case may be infected after it. The state is the outbreak at `now`: every
