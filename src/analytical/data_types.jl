@@ -118,6 +118,11 @@ loglikelihood(data, observe(chain_size_distribution(NegBin(0.8, 0.5)), MinimumSi
 struct ChainSizes
     data::Vector{Int}
     seeds::Vector{Int}
+    # Distinct (size, seeds) pairs with their counts, built once so that
+    # likelihood calls do not tabulate the data again.
+    table_sizes::Vector{Int}
+    table_seeds::Vector{Int}
+    table_counts::Vector{Int}
     function ChainSizes(
             data::AbstractVector{<:Integer};
             seeds::AbstractVector{<:Integer} = ones(Int, length(data))
@@ -128,7 +133,23 @@ struct ChainSizes
         all(s -> s >= 1, seeds) || throw(ArgumentError("seeds must be ≥ 1"))
         all(i -> data[i] >= seeds[i], eachindex(data)) ||
             throw(ArgumentError("chain size must be ≥ number of seeds"))
-        return new(convert(Vector{Int}, data), convert(Vector{Int}, seeds))
+        data_int = convert(Vector{Int}, data)
+        seeds_int = convert(Vector{Int}, seeds)
+        index = Dict{Tuple{Int, Int}, Int}()
+        table_sizes = Int[]
+        table_seeds = Int[]
+        table_counts = Int[]
+        for i in eachindex(data_int)
+            key = (data_int[i], seeds_int[i])
+            j = get!(index, key) do
+                push!(table_sizes, key[1])
+                push!(table_seeds, key[2])
+                push!(table_counts, 0)
+                length(table_counts)
+            end
+            table_counts[j] += 1
+        end
+        return new(data_int, seeds_int, table_sizes, table_seeds, table_counts)
     end
 end
 
