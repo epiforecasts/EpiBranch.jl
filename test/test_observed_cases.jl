@@ -66,8 +66,8 @@ using StableRNGs
     end
 
     @testset "later contacts do not depend on the number already listed" begin
-        # With Poisson offspring the contacts after `now` are independent of
-        # those before it, so the mean is R * P(T > now) whatever is listed.
+        # With Poisson offspring, contacts after `now` are independent of
+        # those before it. The mean is R * P(T > now) whatever is listed.
         R, mean_gt, now = 0.8, 2.0, 1.0
         m = BranchingProcess(Poisson(R), Exponential(mean_gt))
         expected = R * exp(-now / mean_gt)

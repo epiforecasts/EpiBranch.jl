@@ -274,9 +274,10 @@ on the observed data.
 Only a [`BranchingProcess`](@ref) with a single [`Infectiousness`](@ref)
 window and a single type is supported, bare or inside a [`ModelSpec`](@ref),
 and its offspring must draw a number of contacts rather than their times.
-A case whose listed offspring the model makes very unlikely, such as many
-more than its offspring law readily gives, raises an `ArgumentError` after
-100,000 rejected draws. Natural-history draws that the table gives no value for, such as the onset of
+Listed offspring that the model makes very unlikely, such as many more than
+the offspring law readily gives, raise an `ArgumentError` after 100,000
+rejected draws. Natural-history draws for which the table gives no value, such
+as the onset of
 a case with no `onset_time`, are made from the model as usual.
 
 ```julia
