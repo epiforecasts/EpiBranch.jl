@@ -1539,6 +1539,24 @@ _rep(p, delay = Dirac(0.0)) = [Reporting(; delay, probability = p, from = :infec
             )
         end
 
+        @testset "_empirical_ll censored at value has a geometric tail" begin
+            # Lengths drawn from the exact Poisson(0.9) law and censored at 25:
+            # lengths past the cap are scored by the fitted tail, not at the
+            # smoothing prior, and should match the exact log pmf.
+            d = chain_length_distribution(BranchingProcess(Poisson(0.9)))
+            rng = StableRNG(1)
+            cdf = cumsum([pdf(d, k) for k in 0:3000])
+            cap = 25
+            draws = [min(searchsortedfirst(cdf, rand(rng)) - 1, cap) for _ in 1:5000]
+            cens = Vector{Bool}(draws .>= cap)
+            for x in (30, 40, 60, 100)
+                ll = EpiBranch._empirical_ll(
+                    [x], draws; censored = cens, censored_at_value = true
+                )
+                @test ll ≈ logpdf(d, x) atol = 0.3
+            end
+        end
+
         @testset "Non-positive n_initial throws" begin
             @test_throws ArgumentError loglikelihood(
                 ChainLengths([0]), Poisson(0.8); n_initial = 0
