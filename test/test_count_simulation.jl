@@ -137,6 +137,10 @@
         @test state.cumulative_cases == straight.cumulative_cases
         @test isequal(linelist(state), linelist(straight))
         @test_throws ArgumentError simulate(model, state; max_time = 5)
+        # A different RNG type can take over the continuation.
+        other = count_run(model; max_time = 8, rng = StableRNG(11))
+        @test simulate(model, other; max_time = 12, rng = Xoshiro(2)) === other
+        @test other.rng isa Xoshiro
         @test_throws ArgumentError simulate(
             BranchingProcess(NegBin(1.4, 0.7), Gamma(2.0, 1.0)), state; max_time = 30
         )

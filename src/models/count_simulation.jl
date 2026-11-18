@@ -108,7 +108,7 @@ Fields:
 - `cumulative_cases`: the total number of cases.
 - `extinct`: whether transmission had died out.
 """
-mutable struct CountSimulationState{M, L, F, R <: AbstractRNG} <: AbstractSimulationState
+mutable struct CountSimulationState{M, L, F} <:AbstractSimulationState
     model::M
     layers::L
     rule::CountRule{F}
@@ -118,7 +118,7 @@ mutable struct CountSimulationState{M, L, F, R <: AbstractRNG} <: AbstractSimula
     day::Int
     cumulative_cases::Int
     extinct::Bool
-    rng::R
+    rng::AbstractRNG
     individual_stream::Xoshiro
     built::Union{Nothing, SimulationState}
 end
