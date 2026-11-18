@@ -46,11 +46,11 @@ compared = simulate(
 )
 ```
 
-Under a branching process a case is identified by its infector and its place
+Under a branching process each case is keyed by its infector and its place
 among that infector's contacts, and its offspring count and generation times
 come from streams of its own. An intervention that prevents an infection then
-removes only that person's subtree, and the rest of the outbreak is the same in
-both runs. A draw not routed through `stream` — which node is seeded
+removes only that person's subtree, and the rest of the outbreak is identical
+in both runs. A draw not routed through `stream` — which node is seeded
 first, anything a custom attribute or model reads from `rng` directly — still
 comes from one shared sequence, exactly as for any other `AbstractRNG`, so
 running the same model twice with the same `CommonRandomNumbers` reproduces
@@ -93,11 +93,10 @@ function stream(c::CommonRandomNumbers, id, purpose)
     end
 end
 
-# A person is keyed by who infected them and their place among that person's
-# contacts, not by the order the outbreak happened to number them in. An
-# intervention that prevents one infection then renumbers every later case but
-# leaves the key of everyone outside the prevented subtree unchanged. People
-# with no entry, such as index cases, are keyed by their id.
+# A person is keyed by their infector and their place among that infector's
+# contacts. Preventing one infection renumbers every later case but leaves the
+# keys of people outside the prevented subtree unchanged. Index cases have no
+# entry and are keyed by their id.
 _stream_key(c::CommonRandomNumbers, id::Integer) = get(c.lineage, Int(id), id)
 _stream_key(c::CommonRandomNumbers, id::Tuple) = map(i -> _stream_key(c, i), id)
 _stream_key(::CommonRandomNumbers, id) = id
@@ -106,10 +105,9 @@ _stream_key(::CommonRandomNumbers, id) = id
     register_lineage!(rng, id, parent_id, place)
 
 Tell `rng` that the new person `id` is the contact at `place` among those of
-`parent_id`, so that [`stream`](@ref) can key their draws on that rather than
-on `id`. Does nothing for an ordinary `AbstractRNG`; for
-[`CommonRandomNumbers`](@ref) it is what lets a prevented infection remove only
-its own subtree from a comparison. Called when a contact is created, before its
+`parent_id`, so that [`stream`](@ref) can key their draws on that. Does nothing
+for an ordinary `AbstractRNG`. For [`CommonRandomNumbers`](@ref) it lets a
+prevented infection remove only its own subtree from a comparison. Called when a contact is created, before its
 characteristics are drawn.
 """
 register_lineage!(::Random.AbstractRNG, id, parent_id, place) = nothing
@@ -118,10 +116,10 @@ function register_lineage!(c::CommonRandomNumbers, id, parent_id, place)
     return nothing
 end
 
-# The generator for replicate `i` of a run of many. Each replicate gets streams
-# of its own: sharing one set across replicates would leave a person who is
-# drawn for in one scenario and not in the other at different positions in every
-# later replicate that reuses their key. An ordinary generator carries on as
-# one sequence.
+# The generator for replicate `i` of a run of many. Each replicate gets its own
+# streams. Sharing one set across replicates would leave a person drawn for in
+# one scenario but not the other at different positions in every later
+# replicate that reuses their key. An ordinary generator continues as one
+# sequence.
 _replicate_rng(rng::Random.AbstractRNG, i) = rng
 _replicate_rng(c::CommonRandomNumbers, i) = CommonRandomNumbers(hash((c.seed, i)))
