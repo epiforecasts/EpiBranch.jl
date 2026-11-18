@@ -552,14 +552,8 @@ end
     clinical = clinical_presentation(incubation_period = LogNormal(1.4, 0.4))
     attributes = (rng, ind) -> (clinical(rng, ind); groups(1)(rng, ind))
     gv = GroupVaccination(efficacy = 1.0, eligibility = OnSymptomOnset(), dose_delay = 0.0)
-    function contained(ivs)
-        states = simulate(
-            ModelSpec(model; interventions = ivs, attributes), 200;
-            max_cases = 200, rng = StableRNG(11)
-        )
-        return containment_probability(states; max_cases = 200)
-    end
-    @test contained([gv]) > contained(AbstractIntervention[]) + 0.5
+    spec(ivs) = ModelSpec(model; interventions = ivs, attributes)
+    @test contained(spec([gv])) > contained(spec(AbstractIntervention[])) + 0.5
 end
 
 @testset "Group vaccination is triggered only by infected members" begin

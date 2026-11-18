@@ -321,7 +321,7 @@ EpiBranch.interventions(m::_ProcessWithInterventions) = m.interventions
 
     @testset "layers on the spec are applied" begin
         iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
-        attr = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
+        attr = CLINICAL
         bp = BranchingProcess(Poisson(2.0), Exponential(5.0))
 
         spec = ModelSpec(bp; interventions = [iso], attributes = attr)
@@ -346,7 +346,7 @@ EpiBranch.interventions(m::_ProcessWithInterventions) = m.interventions
         bp = BranchingProcess(Poisson(1.5), Exponential(5.0))
         prog = [Transition(:onset; from = :infection, delay = Exponential(3.0))]
         iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
-        attr = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
+        attr = CLINICAL
         spec = ModelSpec(
             bp; progression = prog, interventions = [iso], attributes = attr
         )

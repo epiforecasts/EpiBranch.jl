@@ -155,7 +155,7 @@ EpiBranch.transmission_risks(m::AbortPoolModel) = (RingRisk(m.p),)
             ),
             RingVaccination(efficacy = 0.0, post_exposure_efficacy = 0.5),
         ],
-        attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
+        attributes = CLINICAL
     )
     aborted = 0
     escaped = 0
@@ -203,7 +203,7 @@ end
             ContactTracing(OnSymptomOnset(), 1.0, Exponential(0.5), FlagOnly()),
             RingVaccination(efficacy = 0.0, post_exposure_efficacy = 0.5),
         ],
-        attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
+        attributes = CLINICAL
     )
     isolated = 0
     isolated_before_onset = 0
@@ -265,7 +265,7 @@ end
             RingVaccination(efficacy = 0.0, post_exposure_efficacy = 0.5),
             ExposureGenerations(),
         ],
-        attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
+        attributes = CLINICAL
     )
     aborted = 0
     not_aborted = 0

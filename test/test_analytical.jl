@@ -1752,7 +1752,7 @@ _rep(p, delay = Dirac(0.0)) = [Reporting(; delay, probability = p, from = :infec
             # `Reporting` step in `progression` must still thin the chain
             # sizes, not count every infected case as perfectly detected.
             iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
-            clinical = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
+            clinical = CLINICAL
             mk(progression) = ModelSpec(
                 BranchingProcess(NegBin(1.5, 0.5), Exponential(5.0));
                 progression, interventions = [iso], attributes = clinical

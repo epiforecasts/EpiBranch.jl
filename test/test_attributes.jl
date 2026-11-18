@@ -324,7 +324,7 @@ end
     end
 
     @testset "vaccine_acceptance draws once per group" begin
-        clinical = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
+        clinical = CLINICAL
         process = BranchingProcess(Poisson(1.0), Exponential(5.0))
         read_acceptance = (rng, ind) -> ind.state[:vaccine_acceptance]
 

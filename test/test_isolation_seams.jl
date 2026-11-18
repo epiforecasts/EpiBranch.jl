@@ -97,9 +97,8 @@ EpiBranch.infectious_removal_time(f::FixedRemoval, ::Individual) = f.time
                 )
                     for (name, to) in ((:community, 2), (:household, 3))
             )
-            EpiBranch._sellke_race!(
-                state, [1, 2, 3], rng; routes, interventions,
-                seed! = (best, members, r) -> (best[1] = 0.0)
+            race!(
+                state, [1, 2, 3], rng; routes, interventions
             )
             @test !is_infected(individuals(state)[2])
             @test is_infected(individuals(state)[3]) == restrict_routes
@@ -250,12 +249,11 @@ EpiBranch.infectious_removal_time(f::FixedRemoval, ::Individual) = f.time
                 BranchingProcess(Dirac(1), kernel), prog, attrs, rng
             )
             EpiBranch.add_individuals!(state, 2, [iso])
-            EpiBranch._sellke_race!(
+            race!(
                 state, [1, 2], rng; from = :infection, until = (:recovered,),
                 interventions = [iso],
                 targets = (inf, st) -> inf == 1 && !is_infected(individuals(st)[2]) ?
-                    ((2, kernel),) : (),
-                seed! = (best, members, r) -> (best[1] = 0.0)
+                    ((2, kernel),) : ()
             )
             return state
         end
@@ -303,12 +301,11 @@ EpiBranch.infectious_removal_time(f::FixedRemoval, ::Individual) = f.time
                 BranchingProcess(Dirac(1), kernel), prog, attrs, rng
             )
             EpiBranch.add_individuals!(state, 2, interventions)
-            EpiBranch._sellke_race!(
+            race!(
                 state, [1, 2], rng; from = :infection, until = (:recovered,),
                 interventions = interventions,
                 targets = (inf, st) -> inf == 1 && !is_infected(individuals(st)[2]) ?
-                    ((2, kernel),) : (),
-                seed! = (best, members, r) -> (best[1] = 0.0)
+                    ((2, kernel),) : ()
             )
             return state
         end
@@ -421,12 +418,11 @@ EpiBranch.infectious_removal_time(f::FixedRemoval, ::Individual) = f.time
             BranchingProcess(Dirac(1), Dirac(15.0)), prog, attrs, rng
         )
         EpiBranch.add_individuals!(state, 2, [iso])
-        EpiBranch._sellke_race!(
+        race!(
             state, [1, 2], rng; from = :infection, until = (:recovered,),
             interventions = [iso],
             targets = (inf, st) -> inf == 1 && !is_infected(individuals(st)[2]) ?
-                ((2, Dirac(15.0)),) : (),
-            seed! = (best, members, r) -> (best[1] = 0.0)
+                ((2, Dirac(15.0)),) : ()
         )
         @test isolation_time(individuals(state)[1]) == 4.0
         @test isolation_release_time(individuals(state)[1]) == 11.0
@@ -441,12 +437,11 @@ EpiBranch.infectious_removal_time(f::FixedRemoval, ::Individual) = f.time
             BranchingProcess(Dirac(1), Dirac(7.0)), prog, attrs, inside_rng
         )
         EpiBranch.add_individuals!(inside, 2, [iso])
-        EpiBranch._sellke_race!(
+        race!(
             inside, [1, 2], inside_rng; from = :infection, until = (:recovered,),
             interventions = [iso],
             targets = (inf, st) -> inf == 1 && !is_infected(individuals(st)[2]) ?
-                ((2, Dirac(7.0)),) : (),
-            seed! = (best, members, r) -> (best[1] = 0.0)
+                ((2, Dirac(7.0)),) : ()
         )
         @test isolation_time(individuals(inside)[1]) == 4.0
         @test isolation_release_time(individuals(inside)[1]) == 11.0
@@ -485,12 +480,11 @@ EpiBranch.infectious_removal_time(f::FixedRemoval, ::Individual) = f.time
             BranchingProcess(Dirac(1), Dirac(15.0)), prog, attrs, rng
         )
         EpiBranch.add_individuals!(state, 2, [iso])
-        EpiBranch._sellke_race!(
+        race!(
             state, [1, 2], rng; from = :infection, until = (:recovered,),
             interventions = [iso],
             targets = (inf, st) -> inf == 1 && !is_infected(individuals(st)[2]) ?
-                ((2, Dirac(15.0)),) : (),
-            seed! = (best, members, r) -> (best[1] = 0.0)
+                ((2, Dirac(15.0)),) : ()
         )
         @test isolation_time(individuals(state)[1]) == 4.0
         @test isolation_release_time(individuals(state)[1]) == Inf
@@ -501,12 +495,11 @@ EpiBranch.infectious_removal_time(f::FixedRemoval, ::Individual) = f.time
             BranchingProcess(Dirac(1), Dirac(7.0)), prog, attrs, inside_rng
         )
         EpiBranch.add_individuals!(inside, 2, [iso])
-        EpiBranch._sellke_race!(
+        race!(
             inside, [1, 2], inside_rng; from = :infection, until = (:recovered,),
             interventions = [iso],
             targets = (inf, st) -> inf == 1 && !is_infected(individuals(st)[2]) ?
-                ((2, Dirac(7.0)),) : (),
-            seed! = (best, members, r) -> (best[1] = 0.0)
+                ((2, Dirac(7.0)),) : ()
         )
         @test isolation_time(individuals(inside)[1]) == 4.0
         @test !is_infected(individuals(inside)[2])
@@ -535,12 +528,11 @@ EpiBranch.infectious_removal_time(f::FixedRemoval, ::Individual) = f.time
                 BranchingProcess(Dirac(1), Dirac(15.0)), prog, attrs, rng
             )
             EpiBranch.add_individuals!(state, 2, [wrapped])
-            EpiBranch._sellke_race!(
+            race!(
                 state, [1, 2], rng; from = :infection, until = (:recovered,),
                 interventions = [wrapped],
                 targets = (inf, st) -> inf == 1 && !is_infected(individuals(st)[2]) ?
-                    ((2, Dirac(15.0)),) : (),
-                seed! = (best, members, r) -> (best[1] = 0.0)
+                    ((2, Dirac(15.0)),) : ()
             )
             @test isolation_release_time(individuals(state)[1]) == 11.0
             @test is_infected(individuals(state)[2])

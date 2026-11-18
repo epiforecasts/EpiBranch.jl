@@ -23,7 +23,7 @@ EpiBranch.chain_size_distribution(d::BrokenExactOffspring) = throw(d.error)
         build(p) = ModelSpec(
             BranchingProcess(NegBin(0.8, 0.5), Gamma(2, 1));
             progression = [Reporting(delay = 1.0, probability = p)],
-            attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
+            attributes = CLINICAL
         )
         @test chain_size_distribution(build(ForwardDiff.Dual(0.5, 1.0))) isa ThinnedChainSize
         exact(p) = sum(logpdf(ThinnedChainSize(GammaBorel(0.5, 0.8), p), n) for n in sizes)
@@ -77,7 +77,7 @@ EpiBranch.chain_size_distribution(d::BrokenExactOffspring) = throw(d.error)
 
         # With interventions, prob_concluded routes through the
         # simulation-based likelihood.
-        clinical = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
+        clinical = CLINICAL
         iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
         d_iv = chain_size_distribution(
             ModelSpec(bp; interventions = [iso], attributes = clinical);

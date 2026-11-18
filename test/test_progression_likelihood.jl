@@ -26,7 +26,7 @@ end
 struct _UntrackedTransition <: EpiBranch.AbstractClinicalTransition end
 
 @testset "Progression likelihood" begin
-    clinical = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
+    clinical = CLINICAL
 
     @testset "matches a hand-computed sum over the progression" begin
         reporting_delay = LogNormal(1.0, 0.3)
@@ -562,7 +562,7 @@ end
             Death(delay = LogNormal(2.0, 0.4), probability = 0.4),
             Recovery(delay = LogNormal(2.0, 0.4)),
         ],
-        attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
+        attributes = CLINICAL
     )
     st = simulate(spec; max_cases = 300, rng = StableRNG(2))
     for c in filter(is_infected, individuals(st))

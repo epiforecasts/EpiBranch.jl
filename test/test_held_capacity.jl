@@ -270,7 +270,7 @@ end
                     capacity = cap
                 ),
             ],
-            attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
+            attributes = CLINICAL
         )
         for seed in 1:3
             state = simulate(model; max_cases = 60, rng = StableRNG(seed))

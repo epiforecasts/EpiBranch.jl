@@ -334,7 +334,7 @@ end
                     budget_per_period = 1.0
                 ),
             ],
-            attributes = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
+            attributes = CLINICAL
         )
         state = simulate(model; max_cases = 20, rng = StableRNG(2))
 
@@ -1022,7 +1022,7 @@ end
     end
 
     @testset "Fewer doses under a binding capacity constraint than without one" begin
-        clinical = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
+        clinical = CLINICAL
         iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = Inf)
         ct = ContactTracing(
             probability = 0.9, isolation_to_trace_delay = Exponential(1.0),
@@ -1054,7 +1054,7 @@ end
     # Cases settle in infection order, so a dose dated earlier is often
     # admitted after later ones; it must still leave every later day within
     # its cumulative allowance.
-    clinical = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
+    clinical = CLINICAL
     iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = Inf)
     ct = ContactTracing(
         probability = 0.7, isolation_to_trace_delay = Exponential(1.0),

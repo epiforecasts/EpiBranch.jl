@@ -221,9 +221,8 @@ end
             (RouteWindow(:one; until = (:late,), kernel = Dirac(1.0)), edge(1, 2, 1.0)),
             (RouteWindow(:two; until = (:late,), kernel = Dirac(3.0)), edge(2, 3, 3.0)),
         )
-        EpiBranch._sellke_race!(
-            state, [1, 2, 3], rng; routes, interventions,
-            seed! = (best, members, r) -> (best[1] = 0.0)
+        race!(
+            state, [1, 2, 3], rng; routes, interventions
         )
         return state
     end
