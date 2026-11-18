@@ -166,7 +166,7 @@ function _initialise_observed(
             "starting from observed cases is not supported for a multi-type process"
         )
     )
-    _validate_process_windows(process, progression)
+    validate_process_windows(process, progression)
     _check_population(process)
     obs = _read_observed_cases(cases)
     n = length(obs.inf)
