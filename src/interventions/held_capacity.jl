@@ -132,16 +132,16 @@ end
 _Occupancy() = _Occupancy(Float64[], Float64[])
 
 function _add_sorted!(v::Vector{Float64}, x)
-    insert!(v, searchsortedlast(v, x) + 1, x)
+    insert!(v, Base.searchsortedlast(v, x) + 1, x)
     return nothing
 end
 function _remove_sorted!(v::Vector{Float64}, x)
-    i = searchsortedfirst(v, x)
+    i = Base.searchsortedfirst(v, x)
     i <= length(v) && v[i] == x && deleteat!(v, i)
     return nothing
 end
 
-_held_at(occ::_Occupancy, m) = searchsortedlast(occ.starts, m) - searchsortedlast(occ.ends, m)
+_held_at(occ::_Occupancy, m) = Base.searchsortedlast(occ.starts, m) - Base.searchsortedlast(occ.ends, m)
 
 # Everyone's stay, kept in `state.scratch` under the capacity key. Wrappers
 # that share a key share places, and a stay outlives the call that admitted it.
@@ -193,11 +193,11 @@ _occupancy_on(h::_HeldStays, resource) = get(() -> _Occupancy(), h.occupancy, re
 function _fits_stay(capacity, occ::_Occupancy, s, e)
     _held_at(occ, s) + 1 <= _capacity_at(capacity, s) || return false
     (; starts, ends) = occ
-    i = searchsortedlast(starts, s) + 1
+    i = Base.searchsortedlast(starts, s) + 1
     j = (Base.searchsortedfirst(starts, e)::Int) - 1
     if i <= j
         # Where several starts tie, the last of them sees every one of them.
-        ended = searchsortedlast(ends, starts[i])
+        ended = Base.searchsortedlast(ends, starts[i])
         for k in i:j
             while ended < length(ends) && ends[ended + 1] <= starts[k]
                 ended += 1
@@ -220,7 +220,7 @@ _next_break(schedule, t) = next_calendar_break(schedule, t)
 function refused_action(::DeferRefused, hc::HeldCapacity, usage, action)
     occ, duration = usage.occupancy, usage.duration
     capacity = usage.capacity
-    first_release = searchsortedlast(occ.ends, action.time) + 1
+    first_release = Base.searchsortedlast(occ.ends, action.time) + 1
     last_finite = (Base.searchsortedfirst(occ.ends, Inf)::Int) - 1
     times = occ.ends[first_release:last_finite]
     last_release = isempty(times) ? action.time : maximum(times)
