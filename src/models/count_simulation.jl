@@ -108,7 +108,7 @@ Fields:
 - `cumulative_cases`: the total number of cases.
 - `extinct`: whether transmission had died out.
 """
-mutable struct CountSimulationState{M, L, F} <:AbstractSimulationState
+mutable struct CountSimulationState{M, L, F} <: AbstractSimulationState
     model::M
     layers::L
     rule::CountRule{F}
