@@ -1,0 +1,1 @@
+Continuing a `GenerationCounts` with a `ModelSpec` builds the spec's vaccination campaigns once and reuses them on later calls, instead of rebuilding them and the intervention names used only in error messages on every call. This makes each step of a particle filter that continues many states with the same spec cheaper.

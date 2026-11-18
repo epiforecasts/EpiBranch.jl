@@ -466,7 +466,7 @@ function simulate(
         spec::ModelSpec, state::GenerationCounts;
         max_generations::Integer, rng::AbstractRNG = state.rng, multiplier = nothing
     )
-    campaigns = _generation_campaigns(
+    campaigns = _cached_generation_campaigns(
         spec, state.generation_length, !(state.susceptibles isa NoPopulation)
     )
     return _continue_generations(
