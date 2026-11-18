@@ -20,19 +20,21 @@ struct _RiskFromAge end
         @test sum(w) ≈ 1.0
         @test all(>=(0), w)
 
-        # A generation time with (almost) all its mass on lag 1 gives a pmf
-        # concentrated there.
+        # A fixed generation time of one step puts the infectee in the next
+        # step with probability one half, or in the same step otherwise.
         w2 = EpiBranch._discretize_generation_interval(Dirac(1.0))
-        @test w2[1] ≈ 1.0
-        @test all(x -> x ≈ 0, w2[2:end])
+        @test sum(w2) ≈ 1.0
+        @test w2[1] ≈ 0.0 atol = 1.0e-6
 
         # The realised lag between the steps of an infector and an infectee
-        # has the mean of the continuous distribution.
-        # (Dropping the small same-step mass lengthens it slightly.)
-        for gt in (LogNormal(1.6, 0.5), Gamma(4.0, 0.6))
+        # has the mean of the continuous distribution, same-step mass included.
+        for gt in (LogNormal(1.6, 0.5), Gamma(4.0, 0.6), Gamma(2.0, 0.1))
             w = EpiBranch._discretize_generation_interval(gt)
-            @test sum((1:length(w)) .* w) ≈ mean(gt) atol = 0.1
+            @test sum((0:(length(w) - 1)) .* w) ≈ mean(gt) atol = 0.05
         end
+
+        # A generation time much shorter than a step is mostly the same step.
+        @test EpiBranch._discretize_generation_interval(Gamma(2.0, 0.05))[1] > 0.9
         d = EpiBranch._discretize_report_delay(Gamma(4.0, 0.6))
         @test sum((0:(length(d) - 1)) .* d) ≈ 2.4 atol = 0.03
     end
@@ -41,9 +43,12 @@ struct _RiskFromAge end
         R, gt, n, seeds = 1.4, LogNormal(1.0, 0.4), 8, 4
         w = EpiBranch._discretize_generation_interval(gt)
         μ_renewal = zeros(Float64, n)
-        get_μ(t) = t == 0 ? Float64(seeds) : (t < 0 ? 0.0 : μ_renewal[t])
+        # The seeds' own same-step offspring are infected at step 0 too.
+        get_μ(t) = t == 0 ? seeds / (1 - R * w[1]) : (t < 0 ? 0.0 : μ_renewal[t])
         for t in 1:n
-            μ_renewal[t] = R * sum(w[j] * get_μ(t - j) for j in 1:length(w))
+            # The same-step term puts μ_t on both sides.
+            μ_renewal[t] = R * sum(w[j + 1] * get_μ(t - j) for j in 1:(length(w) - 1)) /
+                (1 - R * w[1])
         end
 
         m = incidence_moments(Poisson(R), gt, n; seeds = seeds)
@@ -64,11 +69,12 @@ struct _RiskFromAge end
 
         function simulate_discrete(rng, R, w, n, seeds)
             cohort = Dict(0 => seeds)
-            for k in 0:(n - 1)
+            for k in 0:n
                 haskey(cohort, k) || continue
-                for _ in 1:cohort[k]
+                i = 0
+                while (i += 1) <= cohort[k]
                     for _ in 1:rand(rng, Poisson(R))
-                        day = k + rand(rng, Categorical(w))
+                        day = k + rand(rng, Categorical(w)) - 1
                         day <= n && (cohort[day] = get(cohort, day, 0) + 1)
                     end
                 end
@@ -88,6 +94,42 @@ struct _RiskFromAge end
 
         @test maximum(abs.(emp_mean .- m.mean)) < 0.3
         @test maximum(abs.(emp_cov .- m.cov)) < 0.8
+    end
+
+    @testset "R is recovered when the generation time is shorter than the step" begin
+        # Continuous-time branching with a mean generation time of half a
+        # step, counted in unit steps. The seeds are infected uniformly in
+        # step 0, which is not observed.
+        R_true, gt, n, seeds, nrep = 1.1, Gamma(2.0, 0.25), 6, 5, 150
+        function simulate_outbreak(rng)
+            counts = zeros(Int, n)
+            queue = collect(-rand(rng, seeds))
+            while !isempty(queue)
+                t = pop!(queue)
+                step = t < 0 ? 0 : floor(Int, t) + 1
+                step > n && continue
+                step >= 1 && (counts[step] += 1)
+                for _ in 1:rand(rng, Poisson(R_true))
+                    push!(queue, t + rand(rng, gt))
+                end
+            end
+            return counts
+        end
+        rng = StableRNG(2024)
+        series = [simulate_outbreak(rng) for _ in 1:nrep]
+        grid = 0.9:0.02:1.3
+        ll(R) = sum(loglikelihood(IncidenceCounts(y; seeds), Poisson(R), gt) for y in series)
+        R_hat = grid[argmax(ll.(grid))]
+        @test abs(R_hat - R_true) <= 0.04
+
+        # A substantial share of generations falls within a step here.
+        @test EpiBranch._discretize_generation_interval(gt)[1] > 0.2
+    end
+
+    @testset "Same-step offspring that cannot converge are rejected" begin
+        # The generation time is almost entirely within a step, so a
+        # reproduction number above one makes the count within a step unbounded.
+        @test_throws ArgumentError incidence_moments(Poisson(3.0), Gamma(2.0, 0.01), 4)
     end
 
     @testset "Discretised reporting delay" begin
@@ -138,7 +180,8 @@ struct _RiskFromAge end
         delayed = incidence_moments(
             Poisson(R), gt, n; seeds, reporting_probability = ρ, reporting_delay = delay
         )
-        infected(t) = t == 0 ? Float64(seeds) : (t < 0 ? 0.0 : inf.mean[t])
+        w0 = EpiBranch._discretize_generation_interval(gt)[1]
+        infected(t) = t == 0 ? seeds / (1 - R * w0) : (t < 0 ? 0.0 : inf.mean[t])
         expected = [
             ρ * sum(d[l + 1] * infected(t - l) for l in 0:(length(d) - 1)) for t in 1:n
         ]
@@ -159,14 +202,14 @@ struct _RiskFromAge end
             reports = zeros(Int, n)
             for k in 0:n
                 haskey(cohort, k) || continue
-                for _ in 1:cohort[k]
+                i = 0
+                while (i += 1) <= cohort[k]
                     if rand(rng) < ρ
                         day = k + rand(rng, Categorical(d)) - 1
                         1 <= day <= n && (reports[day] += 1)
                     end
-                    k < n || continue
                     for _ in 1:rand(rng, Poisson(R))
-                        day = k + rand(rng, Categorical(w))
+                        day = k + rand(rng, Categorical(w)) - 1
                         day <= n && (cohort[day] = get(cohort, day, 0) + 1)
                     end
                 end
@@ -324,9 +367,11 @@ struct _RiskFromAge end
         n, seeds = 7, [1, 2]
         m = incidence_moments(o, gt, n; seeds)
         μ = zeros(n, 2)
-        past(t) = t == 0 ? Float64.(seeds) : (t < 0 ? zeros(2) : μ[t, :])
+        past(t) = t == 0 ? inv(one(M) - w[1] * M) * Float64.(seeds) : (t < 0 ? zeros(2) : μ[t, :])
         for t in 1:n
-            μ[t, :] = M * sum(w[l] * past(t - l) for l in 1:length(w))
+            # The same-step term puts μ_t on both sides.
+            μ[t, :] = (one(M) - w[1] * M) \
+                (M * sum(w[l + 1] * past(t - l) for l in 1:(length(w) - 1)))
         end
         @test m.mean ≈ μ
         @test size(m.cov) == (2n, 2n)
@@ -346,13 +391,15 @@ struct _RiskFromAge end
             cohort = zeros(Int, n + 1, 2)
             cohort[1, :] = seeds
             reports = zeros(Int, n, 2)
-            for k in 0:n, j in 1:2
-                for _ in 1:cohort[k + 1, j]
+            for k in 0:n
+                done = zeros(Int, 2)
+                while any(j -> done[j] < cohort[k + 1, j], 1:2)
+                    j = findfirst(j -> done[j] < cohort[k + 1, j], 1:2)
+                    done[j] += 1
                     k >= 1 && rand(rng) < ρ && (reports[k, j] += 1)
-                    k < n || continue
                     for _ in 1:rand(rng, Poisson(o.R_by_type[j]))
                         i = rand(rng, Categorical(o.alloc_probs[:, j]))
-                        day = k + rand(rng, Categorical(w))
+                        day = k + rand(rng, Categorical(w)) - 1
                         day <= n && (cohort[day + 1, i] += 1)
                     end
                 end
@@ -402,19 +449,19 @@ struct _RiskFromAge end
     end
 
     @testset "Counts that can only be zero are left out" begin
-        # With no type-1 seed and every report delayed by a step, type 1 has
-        # no report in the first step: mean and variance 0 there.
+        # With every report delayed by two steps, no type has a report in the
+        # first step: mean and variance 0 there.
         o = EpiBranch.MultiTypeOffspring([1.2 0.4; 0.3 0.9], R -> NegBin(R, 0.5))
-        gt, rd = LogNormal(1.6, 0.5), 1.0
+        gt, rd = LogNormal(1.6, 0.5), 2.0
         kw = (reporting_probability = 0.7, reporting_delay = rd)
         m = incidence_moments(o, gt, 4; seeds = [0, 1], kw...)
-        @test m.mean[1, 1] == 0
+        @test all(m.mean[1, :] .== 0)
         @test m.cov[1, 1] == 0
-        counts = [0 1; 1 1; 1 3; 2 4]
-        keep = 2:8
+        counts = [0 0; 1 1; 1 3; 2 4]
+        keep = [2, 3, 4, 6, 7, 8]
         ll = loglikelihood(IncidenceCounts(counts; seeds = [0, 1]), o, gt; kw...)
         @test ll ≈ logpdf(MvNormal(vec(m.mean)[keep], Matrix(m.cov)[keep, keep]), vec(counts)[keep])
-        @test loglikelihood(IncidenceCounts([1 1; 1 1; 1 3; 2 4]; seeds = [0, 1]), o, gt; kw...) ==
+        @test loglikelihood(IncidenceCounts([1 0; 1 1; 1 3; 2 4]; seeds = [0, 1]), o, gt; kw...) ==
             -Inf
     end
 
