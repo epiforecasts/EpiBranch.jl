@@ -885,11 +885,12 @@ function _trace_pair!(
     end
     if is_infected(infector) && is_eligible(ct.eligibility, infector, ind, state) &&
             !is_ring_hop(infector)
-        # A contact is offered tracing by each tracer once. The race walks
-        # an infector's contacts again when tracing back isolates it, to reach
-        # those it was not yet eligible to trace; one it already offered must
-        # not get a second draw, which would raise the tracing probability
-        # above the one given. Stacked tracers each keep their own offers.
+        # Each tracer offers a contact tracing once. The race walks the
+        # contacts of an infector again when tracing back isolates it, to reach
+        # those it was not yet eligible to trace. A contact already offered
+        # must not get a second draw, because that would raise the tracing
+        # probability above the given one. Stacked tracers each keep their
+        # own offers.
         offered = get!(() -> Set{Tuple{UInt, Int}}(), infector.state, :_trace_offered)::Set{Tuple{UInt, Int}}
         if (objectid(ct), ind.id) ∉ offered
             push!(offered, (objectid(ct), ind.id))
