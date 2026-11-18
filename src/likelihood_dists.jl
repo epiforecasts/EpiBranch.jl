@@ -131,7 +131,6 @@ function _rand_chain_size_setup(m::Union{TransmissionModel, ModelSpec}, sim_kwar
         get(sim_kwargs, :max_generations, _DEFAULT_MAX_GENERATIONS),
         get(sim_kwargs, :max_time, nothing), get(sim_kwargs, :stopping_rules, nothing)
     )
-    validate_initial_cases(proc, sim_opts)
     return (
         process = proc, sim_opts = sim_opts, interventions = interventions(m),
         attributes = attributes(m), recorder = recorder(m),

@@ -21,7 +21,7 @@ EpiBranch.removal_block_probability(s::_LeakyShield) = s.block
 
 @testset "Infection likelihood compatibility" begin
     compatible = EpiBranch.infection_likelihood_compatible
-    iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
+    iso = Isolation(delay = Exponential(1.0), duration = Inf)
     clinical = clinical_presentation(incubation_period = Exponential(1.0))
     @test compatible(NoAttributes())
     @test compatible(clinical)
@@ -39,14 +39,14 @@ EpiBranch.removal_block_probability(s::_LeakyShield) = s.block
     # `removal_block_probability`, so it is compatible too.
     @test compatible(
         Isolation(
-            onset_to_isolation_delay = Exponential(1.0),
+            delay = Exponential(1.0),
             post_isolation_transmission = 0.5, duration = Inf
         )
     )
     @test EpiBranch.removal_block_probability(iso) == 1.0
     @test EpiBranch.removal_block_probability(
         Isolation(
-            onset_to_isolation_delay = Exponential(1.0),
+            delay = Exponential(1.0),
             post_isolation_transmission = 0.5, duration = Inf
         )
     ) == 0.5
@@ -178,9 +178,9 @@ EpiBranch.removal_block_probability(s::_LeakyShield) = s.block
 
     @testset "removal_gap_host_times_withdrawn for built-in components" begin
         withdrawn = EpiBranch.removal_gap_host_times_withdrawn
-        perfect = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = 5.0)
+        perfect = Isolation(delay = Exponential(1.0), duration = 5.0)
         leaky = Isolation(
-            onset_to_isolation_delay = Exponential(1.0),
+            delay = Exponential(1.0),
             post_isolation_transmission = 0.5, duration = 5.0
         )
         # Perfect isolation names its own key above; leaky isolation records

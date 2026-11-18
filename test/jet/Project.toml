@@ -1,3 +1,7 @@
 [deps]
+Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
 EpiBranch = "d1aa5d78-c683-4158-9743-7109392647a5"
+EpiHouseholds = "8b7e9a81-fac4-48f6-84d3-5750de169a00"
+EpiNetwork = "6a3f08e3-1d24-409d-b706-3344905be32e"
 JET = "c3a54625-cd67-489e-a8e7-0a5a0ff4e31b"
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"

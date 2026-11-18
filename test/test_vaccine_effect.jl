@@ -6,6 +6,9 @@ struct _TestCampaignVaccination{V <: VaccineEffect} <: AbstractVaccination
 end
 
 EpiBranch.vaccine_effect(v::_TestCampaignVaccination) = v.effect
+EpiBranch.time_aware(::_TestCampaignVaccination) = false
+EpiBranch.resolves_under_capacity(::_TestCampaignVaccination) = false
+EpiBranch.discovers_actions(::_TestCampaignVaccination) = true
 
 # An `AbstractEffectMode` defined outside the package: deterministic
 # instead of either `LeakyMode`'s identity or `AllOrNothingMode`'s Bernoulli
@@ -386,7 +389,7 @@ EpiBranch.realised_efficacy(::_TestBlockedMode, eff, rng) =
                 ),
                 2000; max_cases = 200, rng = StableRNG(seed)
             )
-            return containment_probability(results)
+            return containment_probability(results).proportion
         end
         unvaccinated = containment(0.0, LeakyMode(), 101)
         leaky = containment(0.4, LeakyMode(), 102)
@@ -402,7 +405,7 @@ end
             BranchingProcess(Poisson(2.0), Exponential(5.0));
             interventions = [
                 vaccine,
-                Isolation(onset_to_isolation_delay = Dirac(1.0), duration = Inf),
+                Isolation(delay = Dirac(1.0), duration = Inf),
             ],
             attributes = clinical_presentation(
                 incubation_period = LogNormal(1.5, 0.3), prob_asymptomatic = 0.0

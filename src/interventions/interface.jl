@@ -127,9 +127,7 @@ intervention written outside the package need not declare it. A type with a
 of tracing as [`CapacityConstrained`](@ref)'s does, defines
 `traces_contacts(::T) = false` itself.
 """
-function traces_contacts(iv::AbstractIntervention)
-    return _has_own_method(trace_contacts!, typeof(iv), AbstractIntervention)
-end
+traces_contacts(iv::AbstractIntervention) = _stored_traits(typeof(iv)).traces_contacts
 
 """
     traces_source(intervention) -> Bool
@@ -461,3 +459,157 @@ function has_effect(iv::AbstractIntervention)
         _has_own_method(f, T, AbstractIntervention, n)
     end
 end
+
+# The traits `time_aware`, `resolves_under_capacity`, `discovers_actions`,
+# `traces_contacts` and `has_competing_risk` are answered from the methods a
+# type defines. The method tables are read once per type, when a `ModelSpec` is
+# built (`_store_traits!`). The answer is stored here and a run reads it from
+# here. A trait method written for a type is more specific than the defaults
+# below and overrides the inferred answer.
+struct _InferredTraits
+    time_aware::Bool
+    resolves_under_capacity::Bool
+    discovers_actions::Bool
+    traces_contacts::Bool
+    has_competing_risk::Bool
+    world::UInt
+end
+
+# Replaced whole on every update, never mutated, so a run can read it without
+# the lock.
+const _STORED_TRAITS = Ref(Dict{Type, _InferredTraits}())
+const _STORED_TRAITS_LOCK = ReentrantLock()
+
+function _infer_traits(T::Type)
+    # The inherited forwarding methods of a wrapper are not the hooks of the
+    # type itself, so a wrapper is compared against `InterventionWrapper`; an
+    # action is compared against `TraceAction`, which has the same fallbacks.
+    base = T <: TraceAction ? TraceAction :
+        T <: InterventionWrapper ? InterventionWrapper : AbstractIntervention
+    own(hooks) = all(h -> _has_own_method(h, T, base), hooks)
+    return _InferredTraits(
+        own((intervention_time,)),
+        own((capacity_key, resolve_individual!)),
+        own((intervention_actions,)),
+        own((trace_contacts!,)),
+        own((competing_risk,)),
+        Base.get_world_counter()
+    )
+end
+
+# Infers the traits of `T` unless they were inferred in the current state of
+# the method tables. A method defined later, from an editor reload or a hook
+# rewritten in the REPL, advances the world counter. The next `ModelSpec` then
+# infers again.
+function _store_traits!(T::Type)
+    t = get(_STORED_TRAITS[], T, nothing)
+    t !== nothing && t.world == Base.get_world_counter() && return t
+    t = _infer_traits(T)
+    lock(_STORED_TRAITS_LOCK) do
+        d = copy(_STORED_TRAITS[])
+        d[T] = t
+        _STORED_TRAITS[] = d
+    end
+    return t
+end
+
+function _stored_traits(T::Type)
+    t = get(_STORED_TRAITS[], T, nothing)
+    return t !== nothing && t.world == Base.get_world_counter() ? t : _store_traits!(T)
+end
+
+# Every type whose own methods can supply an answer to a `ModelSpec`: the
+# intervention, the one a wrapper holds, and the action of a `ContactTracing`.
+function _store_traits!(iv::AbstractIntervention)
+    _store_traits!(typeof(iv))
+    iv isa InterventionWrapper && _store_traits!(iv.intervention)
+    iv isa ContactTracing && _store_traits!(typeof(iv.action))
+    return nothing
+end
+
+"""
+    time_aware(intervention) -> Bool
+
+Whether `intervention` has its own [`intervention_time`](@ref
+EpiBranch.intervention_time), which by the contract of that hook comes with a
+[`reset!`](@ref EpiBranch.reset!) that undoes whatever it names. If `true`,
+[`Scheduled`](@ref) runs the intervention unconditionally and afterwards undoes
+whatever falls outside the schedule. If `false`, it gates the intervention up
+front.
+
+The answer is inferred from the methods the type defines, and an intervention
+needs no declaration. Define `EpiBranch.time_aware(::MyIntervention)` to
+override the inferred answer. A wrapper without a method of its own asks the
+intervention it wraps.
+"""
+time_aware(iv::AbstractIntervention) = _stored_traits(typeof(iv)).time_aware
+
+"""
+    resolves_under_capacity(intervention) -> Bool
+
+Whether `intervention` writes its effect directly in
+[`resolve_individual!`](@ref EpiBranch.resolve_individual!), as [`Isolation`](@ref)
+does, or proposes it as an [`InterventionAction`](@ref
+EpiBranch.InterventionAction), as a dose does. [`CapacityConstrained`](@ref) and
+[`HeldCapacity`](@ref) ration the first kind by calling
+[`reset!`](@ref EpiBranch.reset!) to undo the effect for anyone the budget turns
+away. They ration the second kind through the action funnel.
+
+The answer is inferred from the methods the type defines: `true` for one with
+methods of its own for both [`capacity_key`](@ref EpiBranch.capacity_key) and
+`resolve_individual!`. Define `EpiBranch.resolves_under_capacity(::MyIntervention)`
+to override it, for an intervention that proposes its effect as an action
+despite having both. A wrapper without a method of its own asks the
+intervention it wraps.
+"""
+resolves_under_capacity(iv::AbstractIntervention) =
+    _stored_traits(typeof(iv)).resolves_under_capacity
+
+"""
+    discovers_actions(intervention) -> Bool
+
+Whether `intervention` finds actions of its own to propose. The race offers it
+candidates per settled case. An intervention answering `false` is never offered
+candidates and adds no per-case cost.
+
+The answer is inferred from the methods the type defines: `true` for one with an
+[`intervention_actions`](@ref EpiBranch.intervention_actions) method of its own.
+Define `EpiBranch.discovers_actions(::MyIntervention)` to override it, for a
+method that proposes nothing in some settings. A wrapper without a method of its
+own asks the intervention it wraps. [`ContactTracing`](@ref) asks its action,
+because it always forwards.
+"""
+discovers_actions(iv::AbstractIntervention) = _stored_traits(typeof(iv)).discovers_actions
+
+"""
+    proposes_actions(intervention) -> Bool
+
+Whether the simulation offers `intervention` candidates per settled case. This
+holds when [`discovers_actions`](@ref) does and the intervention is not offered
+the whole population at once ([`acts_on_population`](@ref
+EpiBranch.acts_on_population)). [`CapacityConstrained`](@ref) and
+[`HeldCapacity`](@ref) are asked for actions even when the intervention they wrap
+proposes none, so wrapping one with nothing to ration fails when the run starts.
+They answer `false` for an intervention that rations through
+[`resolves_under_capacity`](@ref) instead.
+"""
+function proposes_actions(iv::AbstractIntervention)
+    acts_on_population(iv) && return false
+    return discovers_actions(iv)
+end
+
+"""
+    has_competing_risk(intervention) -> Bool
+
+Whether `intervention` can supply a [`competing_risk`](@ref
+EpiBranch.competing_risk). When some intervention answers `true`, the
+continuous-time race keeps every proposal to a contact instead of only the
+earliest, because a blocked contact must then fall back to a later one. An
+intervention answering `false` adds no cost to a run without other risks.
+
+The answer is inferred from the methods the type defines: `true` for a type with
+a `competing_risk` method of its own. Every wrapper forwards the hook and
+answers `true`. Define `EpiBranch.has_competing_risk(::MyIntervention)` to
+override it, for a risk that comes through some other route.
+"""
+has_competing_risk(iv::AbstractIntervention) = _stored_traits(typeof(iv)).has_competing_risk

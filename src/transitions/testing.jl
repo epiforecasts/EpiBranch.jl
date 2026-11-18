@@ -85,8 +85,7 @@ An assay that maps the value in a sample to a reading and to a result.
   `(rng, value) -> Bool` gives a result that can be probabilistic, for example a
   detection probability that rises with the value.
 
-Neither has a default, because both belong to the assay and the pathogen being
-tested for.
+Neither has a default, as both depend on the assay and the pathogen tested for.
 
 # Examples
 
@@ -141,8 +140,8 @@ With the default name these are `:test_tested`, `:test_time`, `:test_value` and
 A case is not tested for an infection it was never infected with: the sample
 time is measured from the infection that is current when the step resolves.
 
-Use the step as `test_sensitivity` of [`Isolation`](@ref) to isolate the cases
-with a positive test.
+Use `trigger = AfterPositiveTest(name)` in [`Isolation`](@ref) to isolate the
+cases with a positive test.
 
 # Examples
 

@@ -172,12 +172,18 @@ _delay_loglik(x::Real, dt) = isapprox(dt, x) ? 0.0 : -Inf
 function _delay_loglik(f, dt)
     throw(
         ArgumentError(
-            "a `Function` or `Conditional` delay has no density to evaluate; " *
+            "a `Function` delay has no density to evaluate; " *
                 "`progression_loglik` needs a `Distribution` (or a fixed `Real`) " *
                 "for every delay it evaluates"
         )
     )
 end
+
+# A `Conditional` delay is resolved to its distribution for this individual
+# before scoring. Every other delay can be evaluated as it is.
+_resolved_delay(c::Conditional, ind) = resolve(c, ind)
+_resolved_delay(delay, ind) = delay
+_delay_loglik(delay, dt, ind) = _delay_loglik(_resolved_delay(delay, ind), dt)
 
 # Used only to evaluate a `probability` gate: it deliberately implements no
 # generation methods, so a callable that actually draws from its `rng`
@@ -269,8 +275,9 @@ end
 function _censored_loglik(probability, delay, ind, anchor, censor)
     p = _probability_value(probability, ind)
     elapsed = censor - anchor
-    isone(p) && return _delay_logccdf(delay, elapsed)
-    return log1p(-p * _delay_cdf(delay, elapsed))
+    d = _resolved_delay(delay, ind)
+    isone(p) && return _delay_logccdf(d, elapsed)
+    return log1p(-p * _delay_cdf(d, elapsed))
 end
 
 # A shared draw decides the group once, so the censored term reads the draw
@@ -279,18 +286,21 @@ end
 # in any other case.
 function _censored_loglik(g::_ExclusiveGate, delay, ind, anchor, censor)
     _exclusive_selected(g, ind) || return _probability_loglik(g, false, ind)
-    return log(g.hi - g.lo) + _delay_logccdf(delay, censor - anchor)
+    return log(g.hi - g.lo) + _delay_logccdf(_resolved_delay(delay, ind), censor - anchor)
 end
 
 _delay_cdf(d::Distribution, t) = cdf(d, t)
 _delay_cdf(x::Real, t) = x < t ? 1.0 : 0.0
 _delay_cdf(f, t) = _delay_loglik(f, t)             # a `Function` delay throws
+_delay_logcdf(d::Distribution, t) = logcdf(d, t)
+_delay_logcdf(x::Real, t) = x < t ? 0.0 : -Inf
+_delay_logcdf(f, t) = _delay_loglik(f, t)
 _delay_logccdf(d::Distribution, t) = logccdf(d, t)
 _delay_logccdf(x::Real, t) = x < t ? -Inf : 0.0
 _delay_logccdf(f, t) = _delay_loglik(f, t)
 
 """
-    transition_loglik(t::AbstractClinicalTransition, individual; followup_end = Inf) -> Float64
+    transition_loglik(t::AbstractClinicalTransition, individual; followup_end = Inf, truncated = false) -> Float64
 
 The log-likelihood of what a step did to one case: the log-probability that
 the step happened (or did not), plus the log-density of its delay when it did.
@@ -298,6 +308,13 @@ the step happened (or did not), plus the log-density of its delay when it did.
 the case never reached the state the step starts from. A step that has not
 happened by `followup_end` is treated as censored there, by its survival
 probability, rather than by a density; the built-in steps take this keyword.
+With `truncated = true`, a step that did happen is scored conditionally on
+having happened by `followup_end`, as for a case selected into the data by that
+event: the density of its delay divided by the probability the delay is at most
+`followup_end` minus its start time. [`Recovery`](@ref),
+[`Death`](@ref) and terminal [`Transition`](@ref)s compete with other
+outcomes, so they ignore it. A custom step needs the keyword only to be used
+with `truncated = true`.
 
 Defined for the built-in steps ([`Transition`](@ref), [`Reporting`](@ref),
 [`Hospitalisation`](@ref), [`Death`](@ref), [`Recovery`](@ref)). A custom step

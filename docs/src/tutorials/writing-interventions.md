@@ -91,6 +91,10 @@ many people each case infects](@ref).
 | `acts_on_population(iv)` | Once, before the simulation processes any case, and for each contact a branching process creates | Nothing | `Bool`: whether this intervention's actions belong to the whole population rather than a case's contacts or group, so `intervention_actions` is called once, upfront, with every member. Default `false`; [`MassVaccination`](@ref) declares it |
 | `needs_contacts(iv)` | Whenever the simulation decides whether an intervention can be offered actions on a model that names no contacts | Nothing | `Bool`: whether this intervention's candidates come from the model's named contacts. Default `true`, the conservative choice; [`GroupVaccination`](@ref) declares `false`, since its candidates come from a case's group |
 | `has_effect(iv)` | Once per intervention type, when a `ModelSpec` is built | Nothing | `Bool`: whether the intervention can change a simulation or a likelihood. The default is `true` for a type with a method of its own, with the right number of arguments, for a hook it can act through, such as `competing_risk` or `trace_contacts!`; `ModelSpec` warns on `false` |
+| `time_aware(iv)` | Once, when a [`Scheduled`](@ref) is built around the intervention | Nothing | `Bool`: whether `Scheduled` runs the intervention and undoes what falls outside its window with `reset!`, rather than gating it up front. Inferred when a `ModelSpec` is built: `true` for a type with an `intervention_time` method of its own. Define it only to override the inferred answer. A wrapper asks the intervention it wraps |
+| `resolves_under_capacity(iv)` | When [`CapacityConstrained`](@ref) or [`HeldCapacity`](@ref) is built or resolves a case | Nothing | `Bool`: whether the intervention writes its effect in `resolve_individual!` (rationed by `reset!`) rather than proposing it as an action. Inferred when a `ModelSpec` is built: `true` for a type with its own `capacity_key` and `resolve_individual!` methods. Define it only to override the inferred answer. A wrapper asks the intervention it wraps |
+| `discovers_actions(iv)`, `proposes_actions(iv)` | Whenever the simulation decides whether to offer an intervention candidates per settled case | Nothing | `Bool`: whether the intervention finds actions of its own, and whether it is offered candidates (`false` for `acts_on_population`). `discovers_actions` is inferred when a `ModelSpec` is built: `true` for a type with an `intervention_actions` method of its own. Define it only to override the inferred answer. A wrapper asks the intervention it wraps |
+| `has_competing_risk(iv)` | When the race is set up | Nothing | `Bool`: whether the intervention can supply a `competing_risk`, so the race keeps fallback proposals for a blocked contact. The default is `true` for a type with a `competing_risk` method of its own, which includes every wrapper |
 | `infectious_removal_time(iv, individual)` | Every built-in model: when a case's infectious period is closed | A person | The time this intervention removes them from onward transmission (default `Inf`) |
 | `on_infection_settled!(iv, individual, state, rng)` | Every built-in model: once a case's infection time is fixed, before its onset or clinical transitions read it | The case, and the random number generator to use | `nothing`; sets values on the case (default: does nothing) |
 | `risk_applies(iv, route)` | Every built-in model choosing the risks for a route or infectiousness window | The route's `RouteWindow`, or `nothing` for an introduction from outside | `Bool`; default `true` |
@@ -274,7 +278,7 @@ function resolve_individual!(iso::Isolation, individual, state)
     onset = onset_time(individual)
     # Self-isolation after a positive test.
     test_time = if is_test_positive(individual)
-        onset + sample_value(iso.onset_to_isolation_delay, state.rng, individual)
+        onset + sample_value(iso.delay, state.rng, individual)
     else
         Inf
     end
@@ -386,7 +390,7 @@ attrs = [
     clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
     (rng, ind) -> (ind.state[:region] = rand(rng, (:north, :south))),
 ]
-iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = 7.0)
+iso = Isolation(delay = Exponential(2.0), duration = 7.0)
 process = BranchingProcess(NegBin(2.5, 0.16), Exponential(5.0))
 
 isolation_only = simulate(ModelSpec(process; interventions = [iso], attributes = attrs),
@@ -394,8 +398,8 @@ isolation_only = simulate(ModelSpec(process; interventions = [iso], attributes =
 with_closure = simulate(
     ModelSpec(process; interventions = [iso, BorderClosure(10.0, 0.05)], attributes = attrs),
     200; max_cases = 500, rng = StableRNG(42))
-(isolation_only = containment_probability(isolation_only),
- with_closure = containment_probability(with_closure))
+(isolation_only = containment_probability(isolation_only).proportion,
+ with_closure = containment_probability(with_closure).proportion)
 ```
 
 Adding the closure raises the proportion of outbreaks contained, because from
@@ -427,7 +431,7 @@ end
 
 attrs = [clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
     demographics(age_distribution = Normal(50, 20))]
-iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = 7.0)
+iso = Isolation(delay = Exponential(2.0), duration = 7.0)
 process = BranchingProcess(NegBin(2.5, 0.16), Exponential(5.0))
 n_traced(runs) = sum(s -> count(ind -> get(ind.state, :traced, false), individuals(s)), runs)
 
@@ -734,6 +738,7 @@ methods:
 - `EpiBranch.intervention_time(intervention, individual)`: the time at which the
   intervention acts on the person (for example the isolation time).
 - `EpiBranch.reset!(intervention, individual)`: undo its effect on the person.
+- Optionally, `EpiBranch.time_aware(intervention)`: `Scheduled` infers that an intervention with an `intervention_time` method is time aware. Define it only to override that, for a type whose `intervention_time` is not paired with a `reset!`.
 
 A simplified version of the pair `Isolation` defines:
 

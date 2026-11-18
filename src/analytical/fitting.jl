@@ -116,20 +116,6 @@ function loglikelihood(
 end
 
 """
-    _tabulated_sum(f, xs)
-
-Equivalent to `sum(f, xs)`, but evaluates `f` once per distinct element of `xs`
-and weights it by its count. The order of summation is the only difference.
-"""
-function _tabulated_sum(f, xs)
-    counts = Dict{eltype(xs), Int}()
-    for x in xs
-        counts[x] = get(counts, x, 0) + 1
-    end
-    return sum(((x, c),) -> c * f(x), counts)
-end
-
-"""
     _chain_size_loglik(dist, data::ChainSizes; prob_concluded = nothing)
 
 Sum over clusters of the chain-size log-likelihood under `dist`: each
@@ -150,9 +136,15 @@ function _chain_size_loglik(
     end
     # Chain-size data repeat a few small sizes many times. Evaluate each
     # distinct (size, seeds) pair once.
-    prob_concluded === nothing && return _tabulated_sum(
-        ((x, s),) -> _chain_size_logpdf(dist, x, s), zip(data.data, data.seeds)
-    )
+    if prob_concluded === nothing
+        first_term = _chain_size_logpdf(dist, data.table_sizes[1], data.table_seeds[1])
+        total = data.table_counts[1] * first_term
+        for j in 2:length(data.table_sizes)
+            total += data.table_counts[j] *
+                _chain_size_logpdf(dist, data.table_sizes[j], data.table_seeds[j])
+        end
+        return total
+    end
     first_val = _chain_size_logpdf(dist, data.data[1], data.seeds[1])
     total = zero(first_val)
     for i in eachindex(data.data)
