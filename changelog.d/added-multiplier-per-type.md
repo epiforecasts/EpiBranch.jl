@@ -1,1 +1,0 @@
-`simulate_by_generation` and `simulate` on a `GenerationCounts` take `multiplier_per_type = true` to draw `multiplier` separately for each type in each generation, rather than once for the generation. The types then have independent overdispersion, as in a TSIR with separate noise for each age group. The default keeps one shared draw.

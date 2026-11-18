@@ -216,7 +216,7 @@ end
 """
     simulate_by_generation(model::BranchingProcess; n_initial = 1,
                            max_generations = 100, rng = Random.default_rng(),
-                           multiplier = nothing, multiplier_per_type = false,
+                           multiplier = nothing,
                            immune = 0,
                            population_by_type = nothing,
                            depletion = PerContactDepletion(),
@@ -232,17 +232,17 @@ offspring matrix (`MultiTypeOffspring`); any other model raises an
 - `n_initial`: the number of index cases, an `Int` for a single-type model or
   a vector of one count per type for a multi-type one (1 index case by
   default, which a multi-type model must override).
-- `multiplier`: a `Distribution` drawn once per generation and shared by every
-  case in it, scaling the mean of their offspring law before each draws from
-  it; `nothing` (the default) draws every case's offspring independently with
-  no shared variation. Only `Poisson` offspring has a known mean-scaling rule
-  built in; giving `multiplier` with another offspring law raises an
+- `multiplier`: scales the mean of the offspring law of the cases in a
+  generation before each draws from it; `nothing` (the default) draws every
+  case's offspring independently with no shared variation. A single
+  `Distribution` is drawn once per generation and shared by every type. A
+  vector with one `Distribution` per type draws each type's multiplier
+  independently in each generation, giving the types independent
+  overdispersion, as in a model with separate noise for each group, and
+  letting them differ in it; its length must equal the number of types, or an
+  `ArgumentError` is raised. Only `Poisson` offspring has a known mean-scaling
+  rule built in; giving `multiplier` with another offspring law raises an
   `ArgumentError`.
-- `multiplier_per_type`: with `true`, `multiplier` is drawn separately for each
-  type in each generation instead of once for the generation. The types then
-  have independent overdispersion, as in a model with separate noise for each
-  group. The default, `false`, shares one draw between the types. It makes no
-  difference for a single-type model. Without a `multiplier` it is ignored.
 - `immune`: the number immune at the start, an `Int` or a vector with one
   entry per type, as for `n_initial` (none by default). The susceptibles of a
   type start at its population minus those immune and its index cases.
@@ -349,7 +349,6 @@ function simulate_by_generation(
         max_generations::Integer = _DEFAULT_MAX_GENERATIONS,
         rng::AbstractRNG = Random.default_rng(),
         multiplier = nothing,
-        multiplier_per_type::Bool = false,
         immune::Union{Integer, AbstractVector{<:Integer}} = 0,
         population_by_type::Union{Nothing, AbstractVector{<:Integer}} = nothing,
         depletion::AbstractDepletion = PerContactDepletion(),
@@ -358,7 +357,7 @@ function simulate_by_generation(
     state = _initial_generation_state(
         model, n_initial, rng, immune, population_by_type, depletion, generation_length
     )
-    return simulate(model, state; max_generations, multiplier, multiplier_per_type)
+    return simulate(model, state; max_generations, multiplier)
 end
 
 function simulate_by_generation(
@@ -367,7 +366,6 @@ function simulate_by_generation(
         max_generations::Integer = _DEFAULT_MAX_GENERATIONS,
         rng::AbstractRNG = Random.default_rng(),
         multiplier = nothing,
-        multiplier_per_type::Bool = false,
         immune::Union{Integer, AbstractVector{<:Integer}} = 0,
         population_by_type::Union{Nothing, AbstractVector{<:Integer}} = nothing,
         depletion::AbstractDepletion = PerContactDepletion(),
@@ -377,7 +375,7 @@ function simulate_by_generation(
     state = _initial_generation_state(
         model, n_initial, rng, immune, population_by_type, depletion, generation_length
     )
-    return simulate(spec, state; max_generations, multiplier, multiplier_per_type)
+    return simulate(spec, state; max_generations, multiplier)
 end
 
 function _initial_generation_state(
@@ -429,14 +427,13 @@ end
 
 """
     simulate(model::BranchingProcess, state::GenerationCounts; max_generations,
-             rng::AbstractRNG = state.rng, multiplier = nothing,
-             multiplier_per_type = false)
+             rng::AbstractRNG = state.rng, multiplier = nothing)
 
 Continue `state`, a [`GenerationCounts`](@ref) returned by
 [`simulate_by_generation`](@ref) or by this method itself, up to a later
 `max_generations`, with the `depletion` and `generation_length` the state was
-started with. `multiplier` and `multiplier_per_type` are as in
-`simulate_by_generation` and are read on every call. A later continuation can
+started with. `multiplier` is as in
+`simulate_by_generation` and is read on every call. A later continuation can
 enable, disable or change it. `state` is returned unchanged if its current
 generation has gone extinct (every count 0), with no cases left
 for a later `max_generations` to continue.
@@ -450,18 +447,16 @@ state = simulate(model, state; max_generations = 30)
 """
 function simulate(
         model::BranchingProcess, state::GenerationCounts;
-        max_generations::Integer, rng::AbstractRNG = state.rng, multiplier = nothing,
-        multiplier_per_type::Bool = false
+        max_generations::Integer, rng::AbstractRNG = state.rng, multiplier = nothing
     )
     return _continue_generations(
-        model, state, _Campaign[]; max_generations, rng, multiplier, multiplier_per_type
+        model, state, _Campaign[]; max_generations, rng, multiplier
     )
 end
 
 """
     simulate(spec::ModelSpec, state::GenerationCounts; max_generations,
-             rng::AbstractRNG = state.rng, multiplier = nothing,
-             multiplier_per_type = false)
+             rng::AbstractRNG = state.rng, multiplier = nothing)
 
 Continue `state` as for a `BranchingProcess`, applying the vaccination
 campaigns of `spec` between generations as [`simulate_by_generation`](@ref)
@@ -470,22 +465,19 @@ bare model applies no campaign.
 """
 function simulate(
         spec::ModelSpec, state::GenerationCounts;
-        max_generations::Integer, rng::AbstractRNG = state.rng, multiplier = nothing,
-        multiplier_per_type::Bool = false
+        max_generations::Integer, rng::AbstractRNG = state.rng, multiplier = nothing
     )
     campaigns = _generation_campaigns(
         spec, state.generation_length, !(state.susceptibles isa NoPopulation)
     )
     return _continue_generations(
-        _generation_process(spec), state, campaigns; max_generations, rng, multiplier,
-        multiplier_per_type
+        _generation_process(spec), state, campaigns; max_generations, rng, multiplier
     )
 end
 
 function _continue_generations(
         model::BranchingProcess, state::GenerationCounts, campaigns;
-        max_generations::Integer, rng::AbstractRNG, multiplier,
-        multiplier_per_type::Bool
+        max_generations::Integer, rng::AbstractRNG, multiplier
     )
     _extinct(state.counts) && return state
     max_generations > state.generation || throw(
@@ -511,8 +503,14 @@ function _continue_generations(
         end
         m = if multiplier === nothing
             nothing
-        elseif multiplier_per_type
-            [rand(rng, multiplier) for _ in counts]
+        elseif multiplier isa AbstractVector
+            length(multiplier) == length(counts) || throw(
+                ArgumentError(
+                    "multiplier has $(length(multiplier)) distributions for " *
+                        "$(length(counts)) types"
+                )
+            )
+            [rand(rng, d) for d in multiplier]
         else
             rand(rng, multiplier)
         end
