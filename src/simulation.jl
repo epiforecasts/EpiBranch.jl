@@ -302,7 +302,7 @@ function _simulate_n(
     if parallel && Threads.nthreads() > 1
         return _simulate_n_threaded(run, T, n, rng)
     else
-        return [run(rng) for _ in 1:n]
+        return [run(_replicate_rng(rng, i)) for i in 1:n]
     end
 end
 # Separate from the `nthreads() > 1` check so that it can be tested on a single
@@ -506,10 +506,10 @@ end
 # A contact's infection time is the window's `from`-state time plus a draw
 # from its kernel (the contact interval measured from `from`), or the time
 # an `OffspringTimes` already gave.
-_window_infection_time(::NoGenerationTime, from_t::Real, state) = from_t
-_window_infection_time(offset::_FixedOffset, from_t::Real, state) = from_t + offset.offset
-function _window_infection_time(kernel::Distribution, from_t::Real, state)
-    return from_t + rand(state.rng, kernel)
+_window_infection_time(::NoGenerationTime, from_t::Real, rng) = from_t
+_window_infection_time(offset::_FixedOffset, from_t::Real, rng) = from_t + offset.offset
+function _window_infection_time(kernel::Distribution, from_t::Real, rng)
+    return from_t + rand(rng, kernel)
 end
 
 # Tag a contact with its window's `until` states so `WindowCensor` can
@@ -1014,7 +1014,8 @@ default every new `IndividualState` starts with.
 function _create_individual(
         state::SimulationState, parent_id::Int,
         chain_id::Int, next_id::Int, inf_time::Real;
-        type_idx::Union{Int, NoTypeLabels} = NoTypeLabels(), prepare = _no_prepare
+        type_idx::Union{Int, NoTypeLabels} = NoTypeLabels(), prepare = _no_prepare,
+        place = nothing
     )
     T = _timetype(state)
     s = IndividualState{T}()
@@ -1029,6 +1030,7 @@ function _create_individual(
         chain_id, convert(T, inf_time), one(T), one(T), Int[], s, nothing
     )
 
+    parent_id == 0 || register_lineage!(state.rng, next_id, parent_id, place)
     _set_type!(ind, type_idx)
     prepare(ind)
     _apply_attributes!(state.attributes, state.rng, ind)
@@ -1041,7 +1043,7 @@ _set_type!(contact, ::NoTypeLabels) = nothing
 _set_type!(contact, idx::Int) = (contact.state[:type] = idx)
 
 """
-    make_contact!(state, parent, infection_time; type_idx = NoTypeLabels())
+    make_contact!(state, parent, infection_time; type_idx = NoTypeLabels(), place)
 
 Add one new contact of the case `parent`, exposed at `infection_time` (days),
 to the outbreak, and return it. Its population characteristics are drawn
@@ -1072,12 +1074,13 @@ history of new cases and updates the case counts.
 function make_contact!(
         state::SimulationState, parent::Individual,
         infection_time::Real;
-        type_idx::Union{Int, NoTypeLabels} = NoTypeLabels()
+        type_idx::Union{Int, NoTypeLabels} = NoTypeLabels(),
+        place = length(parent.secondary_case_ids) + 1
     )
     next_id = length(individuals(state)) + 1
     contact = _create_individual(
         state, parent.id, parent.chain_id,
-        next_id, infection_time; type_idx
+        next_id, infection_time; type_idx, place
     )
     push!(parent.secondary_case_ids, next_id)
     push!(individuals(state), contact)

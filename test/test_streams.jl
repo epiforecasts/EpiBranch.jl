@@ -124,6 +124,24 @@ end
         end
     end
 
+    @testset "a prevented infection removes only its own subtree" begin
+        process = BranchingProcess(NegBin(1.5, 0.3), Exponential(5.0))
+        attrs = clinical_presentation(incubation_period = LogNormal(1.6, 0.5))
+        size_of(s) = count(is_infected, s.individuals)
+        runs(ivs) = size_of.(
+            simulate(
+                ModelSpec(process; attributes = attrs, interventions = ivs),
+                100; max_cases = 500, rng = CommonRandomNumbers(1)
+            )
+        )
+        none = runs(AbstractIntervention[])
+        no_effect = runs([Isolation(onset_to_isolation_delay = 1.0e6, duration = Inf)])
+        late = runs([Isolation(onset_to_isolation_delay = 10.0, duration = Inf)])
+        @test none == no_effect
+        @test all(late .<= none)
+        @test any(late .< none)
+    end
+
     @testset "copy is independent and keeps positions" begin
         c = CommonRandomNumbers(7)
         rand(c)

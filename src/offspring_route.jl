@@ -23,6 +23,7 @@ struct _Drawn{T <: Real}
     route::Int
     type::Int
     time::T
+    place::Int                 # among the infector's draws on this window
 end
 
 # The race's members for a branching process: a place for every contact drawn.
@@ -53,7 +54,7 @@ function _take_tree(::Type{T}, n_initial::Int, untils) where {T}
     tree.free = 0
     copyto!(resize!(tree.ids, n_initial), 1:n_initial)
     copyto!(resize!(tree.places, n_initial), 1:n_initial)
-    fill!(resize!(tree.drawn, n_initial), _Drawn(0, 0, 0, zero(T)))
+    fill!(resize!(tree.drawn, n_initial), _Drawn(0, 0, 0, zero(T), 0))
     fill!(resize!(tree.excluded, n_initial), false)
     append!(empty!(tree.untils), untils)
     append!(empty!(tree.tagged), map(u -> !isempty(u), untils))
@@ -72,9 +73,9 @@ _logs_blocked(::_Tree, source, ind) = false
 _population_members(t::_Tree) = copy(t.ids)
 
 # A new place for a contact `infector` drew on window `route`, at `time`.
-function _place!(tree::_Tree, race, infector, time, type_idx, route)
+function _place!(tree::_Tree, race, infector, time, type_idx, route, place)
     push!(tree.ids, 0)
-    drawn = _Drawn(infector.id, route, type_idx, time)
+    drawn = _Drawn(infector.id, route, type_idx, time, place)
     slot = tree.free
     if slot == 0
         push!(tree.drawn, drawn)
@@ -102,7 +103,7 @@ function _release_draw!(tree::_Tree{T}, j) where {T}
     slot = abs(tree.slots[j])
     slot == 0 && return nothing
     # A released record links to the next free slot through its infector field.
-    tree.drawn[slot] = _Drawn(tree.free, 0, 0, zero(T))
+    tree.drawn[slot] = _Drawn(tree.free, 0, 0, zero(T), 0)
     tree.free = slot
     tree.slots[j] = 0
     return nothing
@@ -137,8 +138,9 @@ function _birth!(tree::_Tree, race, k)
     end
     drawn = tree.drawn[abs(tree.slots[k])]
     parent = individuals(state)[drawn.infector]
-    contact = drawn.type == 0 ? make_contact!(state, parent, drawn.time) :
-        make_contact!(state, parent, drawn.time; type_idx = drawn.type)
+    place = (drawn.route, drawn.place)
+    contact = drawn.type == 0 ? make_contact!(state, parent, drawn.time; place) :
+        make_contact!(state, parent, drawn.time; type_idx = drawn.type, place)
     contact.generation = parent.generation + 1
     tree.tagged[drawn.route] && _tag_window!(contact, tree.untils[drawn.route])
     tree.ids[k] = contact.id
@@ -159,12 +161,13 @@ mutable struct _Offspring{W <: Infectiousness, T <: Real}
     route::Int
     tree::_Tree{T}
     pending::UnitRange{Int}
+    draw_start::Int            # first place of the draw in progress
     reached::Dict{Int, UnitRange{Int}}
     n_types::Int
 end
 function _Offspring(window::Infectiousness, route::Int, tree::_Tree{T}, n_types::Int) where {T}
     return _Offspring(
-        window, route, tree, 1:0, Dict{Int, UnitRange{Int}}(), n_types
+        window, route, tree, 1:0, 1, Dict{Int, UnitRange{Int}}(), n_types
     )
 end
 
@@ -339,7 +342,10 @@ function _draw_contacts!(o::_Offspring, race, ind, max_generation, born::Bool)
     from_t = _window_open_time(ind, o.window)
     isfinite(from_t) || return first_place:(first_place - 1)
     (; state) = race
-    counts = draw_offspring(state.rng, o.window.offspring, ind, state)
+    o.draw_start = first_place
+    counts = draw_offspring(
+        stream(state.rng, ind.id, :offspring), o.window.offspring, ind, state
+    )
     kernel = _window_kernel(counts, o.window.kernel, ind)
     kernel = _calendar_scaled_kernel(kernel, o.window.calendar, from_t)
     _draw_counts!(o, race, ind, counts, from_t, kernel, born)
@@ -407,9 +413,10 @@ end
 # A window timed from a later state, such as onset, can draw a time before the
 # case's own infection. No exposure happens then, so the draw gets no place.
 function _draw_contact!(o::_Offspring, race, ind, from_t, kernel, type_idx, born)
-    t = _window_infection_time(kernel, from_t, race.state)
+    rng = stream(race.state.rng, ind.id, (:generation_time, o.route))
+    t = _window_infection_time(kernel, from_t, rng)
     t < ind.infection_time && return nothing
-    k = _place!(o.tree, race, ind, t, type_idx, o.route)
+    k = _place!(o.tree, race, ind, t, type_idx, o.route, length(o.tree) + 2 - o.draw_start)
     born && _birth!(o.tree, race, k)
     return nothing
 end
