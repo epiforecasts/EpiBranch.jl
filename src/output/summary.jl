@@ -2,7 +2,16 @@
     containment_probability(states::Vector{<:SimulationState}; max_cases=NoCases())
 
 Containment probability: the proportion of simulated outbreaks that died out,
-from a vector of simulations such as `simulate(model, n)`. An outbreak still
+from a vector of simulations such as `simulate(model, n)`. Returns a named
+tuple `(; n_contained, n, proportion, mcse, posterior)`: the number of
+outbreaks that were contained, the number simulated, their ratio, the Monte
+Carlo standard error `sqrt(p * (1 - p) / n)` of that ratio, and the posterior
+for the underlying probability, `Beta(n_contained + 0.5, n - n_contained + 0.5)`,
+which is the Jeffreys prior `Beta(0.5, 0.5)` updated with the runs. Any
+quantile of it can be reported. The `mcse` is 0 when every run is contained,
+but the posterior still has width. Both reflect
+simulation error only and ignore uncertainty in the parameters of the model.
+To compare two scenarios, use [`containment_difference`](@ref). An outbreak still
 going when the simulation stopped (at `max_cases`, `max_time` or
 `max_generations`) counts as not contained.
 
@@ -35,23 +44,22 @@ model = ModelSpec(
         duration = Inf)]
 )
 states = simulate(model, 1000; max_cases = 5000)
-containment_probability(states; max_cases = 5000)
+containment_probability(states; max_cases = 5000).proportion
 ```
 """
 function containment_probability(
         states::Vector{<:SimulationState};
         max_cases::Union{Int, NoCases} = NoCases()
     )
-    n_extinct = count(s -> _is_contained(s, max_cases), states)
-    return n_extinct / length(states)
+    n_contained = count(s -> _is_contained(s, max_cases), states)
+    return _binomial_estimate(n_contained, length(states))
 end
 
 """
     containment_probability(model, n::Int; max_cases, rng, parallel=false, ...)
 
-The containment probability over `n` outbreaks simulated from `model`. It
-takes the keywords of `simulate(model, n)` and, for the same `rng`, gives the
-same answer as `containment_probability(simulate(model, n; kwargs...);
+The containment probability over `n` outbreaks simulated from `model`, returned
+as above. It takes the keywords of `simulate(model, n)`. For the same `rng` it gives the same answer as `containment_probability(simulate(model, n; kwargs...);
 max_cases)`. Each outbreak is checked once it has run and then discarded, so
 memory holds one outbreak at a time. Use it when only the containment
 probability is needed.
@@ -73,7 +81,115 @@ function containment_probability(
     )
     cap = something(get(kwargs, :max_cases, nothing), NoCases())
     contained = _simulate_each(s -> _is_contained(s, cap), Bool, model, n; kwargs...)
-    return count(contained) / n
+    return _binomial_estimate(count(contained), n)
+end
+
+"""
+    containment_difference(a, b; max_cases=NoCases(), paired=false)
+
+The difference in containment probability between two sets of simulations,
+`a` minus `b`, each a vector of [`SimulationState`](@ref)s. Returns a named
+tuple `(; difference, mcse, a, b, paired)`, where `a` and `b` are the
+proportions contained and `mcse` is the Monte Carlo standard error of the
+difference. It reflects simulation error only.
+
+Set `paired = true` when the two sets were run with shared random numbers
+(for example `rng = CommonRandomNumbers(1)`, see [`CommonRandomNumbers`](@ref))
+and so have the same number of runs in the same order. The `mcse` is then the
+standard deviation of the per-run differences over `sqrt(n)`. This is lower
+than the unpaired value only as far as the two sets of runs stay coupled, and
+at present they stop sharing draws at the first infection an intervention
+prevents (see
+[#1103](https://github.com/epiforecasts/EpiBranch.jl/issues/1103)). Otherwise
+the sets are treated as independent and may differ in size, and the `mcse` combines the
+standard errors of the two proportions.
+
+`max_cases` is applied to both sets, as in [`containment_probability`](@ref).
+
+# Examples
+
+```julia
+base = simulate(model, 500; max_cases = 500, rng = CommonRandomNumbers(1))
+treated = simulate(treated_model, 500; max_cases = 500, rng = CommonRandomNumbers(1))
+containment_difference(treated, base; max_cases = 500, paired = true)
+```
+"""
+function containment_difference(
+        a::Vector{<:SimulationState}, b::Vector{<:SimulationState};
+        max_cases::Union{Int, NoCases} = NoCases(), paired::Bool = false
+    )
+    ca = [_is_contained(s, max_cases) for s in a]
+    cb = [_is_contained(s, max_cases) for s in b]
+    return _contained_difference(ca, cb, paired)
+end
+
+"""
+    containment_difference(model_a, model_b, n::Int; paired=false, seed=1, kwargs...)
+
+The difference in containment probability between two models, `model_a` minus
+`model_b`, over `n` outbreaks simulated from each. It returns the same named
+tuple as the method for vectors of simulations. Only whether each run was
+contained is kept, as in `containment_probability(model, n)`, so memory holds
+one outbreak at a time. The keywords of `simulate(model, n)` apply to both
+models.
+
+With `paired = true` both models run from `CommonRandomNumbers(seed)` (see
+[`CommonRandomNumbers`](@ref)), and `rng` cannot also be given. Otherwise the
+runs are independent and use `rng` for both, one after the other.
+
+# Examples
+
+```julia
+containment_difference(treated_model, model, 10_000; max_cases = 500, paired = true)
+```
+"""
+function containment_difference(
+        model_a::Union{TransmissionModel, ModelSpec},
+        model_b::Union{TransmissionModel, ModelSpec}, n::Int;
+        paired::Bool = false, seed::Integer = 1, kwargs...
+    )
+    if paired && haskey(kwargs, :rng)
+        throw(ArgumentError("`rng` cannot be set with `paired = true`; use `seed`."))
+    end
+    cap = something(get(kwargs, :max_cases, nothing), NoCases())
+    function contained(model)
+        opts = paired ? (; kwargs..., rng = CommonRandomNumbers(seed)) : (; kwargs...)
+        return _simulate_each(s -> _is_contained(s, cap), Bool, model, n; opts...)
+    end
+    ca = contained(model_a)
+    cb = contained(model_b)
+    return _contained_difference(ca, cb, paired)
+end
+
+function _contained_difference(
+        ca::AbstractVector{Bool}, cb::AbstractVector{Bool}, paired::Bool
+    )
+    paired && length(ca) != length(cb) && throw(
+        ArgumentError(
+            "Paired comparison needs the same number of runs, got $(length(ca)) and $(length(cb))."
+        )
+    )
+    ea = _binomial_estimate(count(ca), length(ca))
+    eb = _binomial_estimate(count(cb), length(cb))
+    mcse = if paired
+        diffs = Int.(ca) .- Int.(cb)
+        length(diffs) > 1 ? std(diffs) / sqrt(length(diffs)) : 0.0
+    else
+        sqrt(ea.mcse^2 + eb.mcse^2)
+    end
+    return (;
+        difference = ea.proportion - eb.proportion, mcse,
+        a = ea.proportion, b = eb.proportion, paired,
+    )
+end
+
+function _binomial_estimate(k::Int, n::Int)
+    n > 0 || throw(ArgumentError("At least one simulation is needed."))
+    p = k / n
+    return (;
+        n_contained = k, n, proportion = p, mcse = sqrt(p * (1 - p) / n),
+        posterior = Beta(k + 0.5, n - k + 0.5),
+    )
 end
 
 _is_contained(s::SimulationState, cap) = s.extinct && !_check_max_cases(s, cap)
@@ -551,7 +667,7 @@ function scenario_sweep(
         end
         push!(
             rows[:containment_probability],
-            containment_probability(model, n_sim; rng = rng, sim_kwargs...)
+            containment_probability(model, n_sim; rng = rng, sim_kwargs...).proportion
         )
     end
 
@@ -604,7 +720,7 @@ function scenario_sweep(
     cap = something(get(sim_kwargs, :max_cases, nothing), NoCases())
     summarise = something(
         summary,
-        states -> (; containment_probability = containment_probability(states; max_cases = cap))
+        states -> (; containment_probability = containment_probability(states; max_cases = cap).proportion)
     )
     out = NamedTuple[]
     for row in rows

@@ -89,7 +89,7 @@ for (delay_name, delay_dist) in [("SARS-like", sars_delay), ("Wuhan-like", wuhan
                     rng = rng
                 )
 
-                cp = containment_probability(batch)
+                cp = containment_probability(batch).proportion
 
                 push!(
                     results,

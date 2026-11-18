@@ -30,7 +30,7 @@ addprocs(4; exeflags = "--project")   # four workers, using the current project
         ],
         attributes = clinical_presentation(incubation_period = LogNormal(1.6, 0.5))
     )
-    p = containment_probability(model, 1000; max_cases = 500, rng = Xoshiro(seed))
+    p = containment_probability(model, 1000; max_cases = 500, rng = Xoshiro(seed)).proportion
     return (; R, delay, containment = p)
 end
 
