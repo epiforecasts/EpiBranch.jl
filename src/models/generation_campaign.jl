@@ -58,7 +58,7 @@ end
 
 # The campaigns a spec holds, or an error naming every intervention that
 # cannot be applied, and the missing `generation_length` or population.
-function _generation_campaigns(spec::ModelSpec, generation_length, finite_population::Bool)
+function _check_spec_inputs(spec::ModelSpec)
     isempty(progression(spec)) && attributes(spec) isa NoAttributes &&
         observation(spec) isa NoObservation && recorder(spec) isa NoContactRecorder ||
         throw(
@@ -67,6 +67,11 @@ function _generation_campaigns(spec::ModelSpec, generation_length, finite_popula
                 "progression, attributes, observation or recorder"
         )
     )
+    return nothing
+end
+
+function _generation_campaigns(spec::ModelSpec, generation_length, finite_population::Bool)
+    _check_spec_inputs(spec)
     ivs = interventions(spec)
     isempty(ivs) && return _Campaign[]
     generation_length === nothing && throw(
@@ -121,6 +126,7 @@ end
 function _cached_generation_campaigns(
         spec::ModelSpec, generation_length, finite_population::Bool
     )
+    _check_spec_inputs(spec)
     ivs = interventions(spec)
     (isempty(ivs) || generation_length === nothing || !finite_population) &&
         return _generation_campaigns(spec, generation_length, finite_population)

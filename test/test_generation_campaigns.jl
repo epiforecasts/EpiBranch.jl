@@ -227,6 +227,13 @@ EpiBranch.trigger_time(e::_EligibleAt, infector, state) = e.time
         @test_throws ArgumentError EpiBranch._cached_generation_campaigns(spec, nothing, true)
         @test_throws ArgumentError EpiBranch._cached_generation_campaigns(spec, 14.0, false)
 
+        # A cache hit still rejects a spec that carries more than interventions.
+        shared = ModelSpec(
+            discrete(); interventions = EpiBranch.interventions(spec),
+            attributes = clinical_presentation(incubation_period = LogNormal(1.6, 0.5))
+        )
+        @test_throws ArgumentError EpiBranch._cached_generation_campaigns(shared, 7.0, true)
+
         state = run_counts(spec)
         again = simulate(spec, state; max_generations = state.generation + 2, rng = StableRNG(2))
         reference = simulate(
