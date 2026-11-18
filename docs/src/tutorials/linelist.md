@@ -7,9 +7,12 @@ in the format of the simulist R package. [`contacts`](@ref) gives the
 matching table of contacts, infected or not.
 
 Every line list has the columns `id`, `parent_id` (the infector's `id`),
-`generation`, `chain_id` and `date_infection`. Anything else the simulation
-records about a case, such as symptom onset, age or outcome, becomes a column
-as well. A recorded time whose name ends in `_time` becomes a date column, so
+`generation`, `chain_id` and `date_infection`. Anything else the model records
+about a case, such as symptom onset, age or outcome, becomes a column as well.
+The columns depend on the model alone: a column the model can produce is
+always present, with `missing` where a case has no value. A run in which every
+case is asymptomatic still has `date_onset`, with every value `missing`, so
+line lists of runs of one model always have the same columns. A recorded time whose name ends in `_time` becomes a date column, so
 `onset_time` appears as `date_onset`. A model with isolation or quarantine
 adds `isolated` and `date_isolation`, and when they last a finite time (a
 finite `duration`) also `date_isolation_release`, the date the person was
@@ -210,6 +213,17 @@ happen to a person whether or not they are infected are kept:
 
 Columns that are not dates, such as `asymptomatic`, `traced` or `vaccinated`,
 are shown unchanged.
+
+## Several runs
+
+A line list holds the cases of one outbreak. To analyse many runs together, build one line list per run and stack them with DataFrames, keeping the run in a `sim_id` column:
+
+```julia
+states = simulate(model, 200)
+all_cases = vcat(linelist.(states)...; cols = :union, source = :sim_id)
+```
+
+The same works for [`contacts`](@ref).
 
 ## Contacts table
 

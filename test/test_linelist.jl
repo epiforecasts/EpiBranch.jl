@@ -429,26 +429,20 @@ end
     @test event_time_metadata(Val(:custom_disease_time)).requires_infection
 end
 
-@testset "linelist and contacts of several runs" begin
+@testset "line list columns depend on the model alone" begin
     cp = clinical_presentation(
         incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.5
     )
-    m = ModelSpec(BranchingProcess(Poisson(0.5), Exponential(5.0)); attributes = cp)
+    m = ModelSpec(
+        BranchingProcess(Poisson(0.5), Exponential(5.0));
+        attributes = cp,
+        interventions = [Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)]
+    )
     states = simulate(m, 200; rng = StableRNG(5))
-    # Some runs lack `date_onset`, as every case in them is asymptomatic.
     per_run = linelist.(states)
-    @test length(unique(names.(filter(!isempty, per_run)))) > 1
-
-    df = linelist(states)
-    @test names(df)[1] == "sim_id"
-    @test "date_onset" in names(df)
-    @test nrow(df) == sum(nrow, per_run)
-    @test sort(unique(df.sim_id)) == [i for i in eachindex(states) if !isempty(per_run[i])]
-
-    ct = contacts(states)
-    @test names(ct)[1] == "sim_id"
-    @test nrow(ct) == sum(nrow ∘ contacts, states)
-
-    @test nrow(linelist(typeof(states[1])[])) == 0
-    @test nrow(contacts(typeof(states[1])[])) == 0
+    # Some runs have no symptomatic case, and so no onset.
+    @test any(ll -> all(ismissing, ll.date_onset), per_run)
+    @test any(ll -> !all(ismissing, ll.date_onset), per_run)
+    @test length(unique(names.(per_run))) == 1
+    @test "date_onset" in names(per_run[1])
 end

@@ -61,8 +61,10 @@ Columns always present:
 | `chain_id` | which index case the case descends from |
 | `date_infection` | date of infection |
 
-Further columns depend on the model and are added whenever any case has the
-information: for example `date_onset` and `asymptomatic` from
+Further columns depend on the model alone: a column the model can produce is
+always present, with `missing` where a case has no value. A run in which every
+case is asymptomatic still has `date_onset`, so line lists of runs of one model
+have the same columns. Examples are `date_onset` and `asymptomatic` from
 [`clinical_presentation`](@ref), `age` and `sex` from [`demographics`](@ref),
 `isolated` and `date_isolation` from [`Isolation`](@ref) (with
 `date_isolation_release` when isolation or quarantine has a finite
@@ -140,33 +142,6 @@ function linelist(
 end
 
 """
-    linelist(states::AbstractVector{<:SimulationState}; reference_date=Date(2020, 1, 1),
-             infected_only=true)
-
-The line lists of several simulated outbreaks, such as the output of
-`simulate(model, n)`, stacked into one DataFrame with a leading `sim_id`
-column (the position of the outbreak in `states`) and the columns of
-[`linelist`](@ref) for one outbreak.
-
-Runs of one model can differ in their columns: a run in which every case is
-asymptomatic has no `date_onset`, for instance. The table has every column
-that appears in any run, with `missing` where a run lacks it. The columns
-depend only on the set of runs, whatever their order. A run
-without cases adds no rows.
-"""
-function linelist(
-        states::AbstractVector{<:SimulationState};
-        reference_date::Date = Date(2020, 1, 1), infected_only::Bool = true
-    )
-    df = _stack_runs(
-        [linelist(s; reference_date, infected_only) for s in states],
-        DataFrame(sim_id = Int[])
-    )
-    ncol(df) > 1 || return df
-    return select(df, :sim_id, _column_order(Symbol.(names(df, Not(:sim_id)))))
-end
-
-"""
     contacts(state::SimulationState; reference_date=Date(2020, 1, 1))
 
 Who exposed whom in a simulated outbreak: a DataFrame with one row per
@@ -239,40 +214,7 @@ function contacts(
     return vcat(df, DataFrame(escaped))
 end
 
-"""
-    contacts(states::AbstractVector{<:SimulationState}; reference_date=Date(2020, 1, 1))
-
-The exposures of several simulated outbreaks, such as the output of
-`simulate(model, n)`, stacked into one DataFrame with a leading `sim_id`
-column (the position of the outbreak in `states`) and the columns of
-[`contacts`](@ref) for one outbreak.
-"""
-function contacts(
-        states::AbstractVector{<:SimulationState};
-        reference_date::Date = Date(2020, 1, 1)
-    )
-    return _stack_runs(
-        [contacts(s; reference_date) for s in states],
-        DataFrame(
-            sim_id = Int[], from = Int[], to = Int[], infected = Bool[],
-            generation = Int[], infection_time = Float64[], date_infection = Date[]
-        )
-    )
-end
-
 # ── Internal helpers ─────────────────────────────────────────────────
-
-"""Stack per-run tables under a leading `sim_id`, keeping the columns of every
-run. `empty` is returned when no run has a row."""
-function _stack_runs(tables, empty::DataFrame)
-    per_sim = [
-        insertcols(t, 1, :sim_id => fill(i, nrow(t)))
-            for (i, t) in enumerate(tables) if !isempty(t)
-    ]
-    isempty(per_sim) && return empty
-    df = reduce((a, b) -> vcat(a, b; cols = :union), per_sim)
-    return select(df, :sim_id, Not(:sim_id))
-end
 
 """Convert a simulation time (real number) to a `Date` offset from
 `reference_date`. Non-finite or non-numeric inputs return `missing`."""
@@ -297,12 +239,10 @@ function _add_state_column!(cols, cases, key::Symbol, reference_date)
             t isa Real ? _to_date(reference_date, t) : missing
         end
         values = Union{Date, Missing}[event_date(ind) for ind in cases]
-        all(ismissing, values) && return nothing
         cols[col_name] = values
     else
         key in keys(cols) && return nothing
         raw = [_reported_state(ind, key) for ind in cases]
-        all(ismissing, raw) && return nothing
         cols[key] = _normalise_column(raw)
     end
     return nothing
