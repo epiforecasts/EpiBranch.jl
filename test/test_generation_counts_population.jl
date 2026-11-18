@@ -216,8 +216,8 @@ using Statistics
 end
 
 @testset "simulate_by_generation agrees with the individual simulation for several types" begin
-    # Both deplete each type against its own population, so the number of
-    # cases of each type has the same mean and variance over many runs.
+    # Both deplete each type against its own population. The number of cases
+    # of each type then has the same mean and variance over many runs.
     function same_law(a, b)
         se = sqrt(var(a) / length(a) + var(b) / length(b))
         @test isapprox(mean(a), mean(b); atol = 5se)
