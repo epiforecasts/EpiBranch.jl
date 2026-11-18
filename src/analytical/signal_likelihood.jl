@@ -30,6 +30,11 @@ function loglikelihood(data::SignalData, state::SimulationState)
     return total
 end
 
+# A count-level run is scored on the people built from its counts.
+function loglikelihood(data::SignalData, state::CountSimulationState)
+    return loglikelihood(data, _realise!(state))
+end
+
 """
     loglikelihood(data::SignalData, model::TransmissionModel; rng = Random.default_rng(), kwargs...)
     loglikelihood(data::SignalData, spec::ModelSpec; rng = Random.default_rng(), kwargs...)
@@ -50,11 +55,6 @@ on).
     estimate and compares proposals against it. For longer series use a
     particle method, which evaluates the likelihood of the data step by step and resamples paths.
 """
-# A count-level run is scored on the people built from its counts.
-function loglikelihood(data::SignalData, state::CountSimulationState)
-    return loglikelihood(data, _realise!(state))
-end
-
 function loglikelihood(
         data::SignalData, model::TransmissionModel;
         rng::AbstractRNG = Random.default_rng(), kwargs...
