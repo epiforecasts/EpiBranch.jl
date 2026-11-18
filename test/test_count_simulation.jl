@@ -81,8 +81,8 @@
     end
 
     @testset "Poisson mixtures agree with the individual simulation" begin
-        # Their offspring numbers are correlated across the days of one
-        # infector, through a rate that is neither gamma nor constant.
+        # Offspring numbers are correlated across the days of one infector,
+        # through a rate that is neither gamma nor constant.
         lognormal = PoissonLognormal(log(1.3) - 0.245, 0.7)
         weibull = PoissonWeibull(1.4, 1.3 / mean(Weibull(1.4, 1.0)))
         for offspring in (lognormal, weibull)
@@ -95,8 +95,8 @@
     end
 
     @testset "the members of a cohort keep their infectiousness" begin
-        # With a mixed Poisson law the split of a cohort's infections among
-        # its members depends on its total, so the members are kept.
+        # With a mixed Poisson law the split of the infections of a cohort
+        # among its members depends on the total, so the members are kept.
         model = BranchingProcess(PoissonLognormal(-0.2, 0.9), gt)
         state = count_run(model; max_time = 6, rng = StableRNG(4))
         @test length(state.cohort_members) == state.day + 1

@@ -8,8 +8,8 @@
 # sum of its `ν`: `Gamma(n k, 1/k)` when `ν ~ Gamma(k, 1/k)` (a negative
 # binomial offspring law, or `RenewalOffspring` with a finite `k`), `n` when
 # every `ν` is one, and otherwise the sum of `n` draws of `ν` (a Poisson
-# lognormal or Poisson Weibull law, whose `ν` is the rate divided by its mean). The cohort infects `Poisson(Λ R(t) g(t - s))` people
-# on day `t`, independently for each `t`, with `R(t)` the mean offspring number
+# lognormal or Poisson Weibull law, whose `ν` is the rate divided by its
+# mean). The cohort infects `Poisson(Λ R(t) g(t - s))` people on day `t`, independently for each `t`, with `R(t)` the mean offspring number
 # at `t` and `g` the generation time on the daily lags.
 #
 # The result keeps, for each day, the count of the cohort, its `Λ` and the
@@ -17,8 +17,8 @@
 # continue the run and to build the people when they are asked for. The
 # infections caused by a cohort are shared among its members in proportion to
 # their `ν`, which are `Dirichlet(k, …, k)` given `Λ` for a gamma `ν` (equal
-# shares when every `ν` is one). For another `ν` the members' own values are
-# drawn at that point, which is the law of the `ν` given their sum.
+# shares when every `ν` is one). For another `ν` the values of the members are
+# drawn at that point, from their law given the sum.
 
 """
     EpiBranch.count_rule(model)
@@ -39,8 +39,8 @@ How a cohort of `n` people infected on one day infects people on later days
 ([`EpiBranch.count_rule`](@ref)): the number infected `lag` days later, on day
 `t`, is `Poisson(Λ R(t) g[lag])`. `Λ` is the total infectiousness of the cohort, the sum
 of the `n` infectiousnesses drawn from `ν`, a distribution of mean one:
-`Dirac(1.0)` when every member is alike, and `Gamma(k, 1/k)` for a negative
-binomial offspring law, which gives `Λ` in one draw as `Gamma(n k, 1/k)`. Any
+`Dirac(1.0)` when every member is alike and `Gamma(k, 1/k)` for a negative
+binomial offspring law, where `Λ` takes one draw as `Gamma(n k, 1/k)`. Any
 other `ν` takes `n` draws. `R` is a function of the day.
 """
 struct CountRule{F, D <: UnivariateDistribution}
@@ -145,9 +145,9 @@ end
 
 # The total infectiousness of a cohort of `n`, and the infectiousness of each
 # member where it has to be kept. A point mass or a gamma `ν` needs no members:
-# the split among them does not depend on the total, so it is drawn when the
-# people are built. Any other `ν` gives a split that does, so the members are
-# drawn first and the total is their sum.
+# the split among them is independent of the total, so it is drawn when the
+# people are built. Any other `ν` gives a split that depends on the total, so
+# the members are drawn first and the total is their sum.
 _draw_cohort(rule::CountRule, n::Int, rng) =
     n == 0 ? (0.0, Float64[]) : _draw_cohort(rule.ν, n, rng)
 _draw_cohort(::Dirac, n, rng) = (Float64(n), Float64[])
@@ -319,8 +319,8 @@ end
 # The cumulative share of the infections of the cohort that each of its `n`
 # members causes, in proportion to their infectiousness: equal when every
 # member has the same, `Dirichlet(k, …, k)` for a gamma `ν` (the split of a
-# `Gamma(n k)` total among `n` independent `Gamma(k)` parts), and the kept
-# values of `members` otherwise.
+# `Gamma(n k)` total among `n` independent `Gamma(k)` parts), and given by the
+# kept values of `members` otherwise.
 function _member_shares(rule::CountRule, n::Int, members, rng)
     weights = if !isempty(members)
         members
