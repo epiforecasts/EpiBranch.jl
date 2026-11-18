@@ -45,5 +45,5 @@ function transition_loglik(x::_EventStep, individual::Individual; followup_end =
         censor = min(infection_aborted_time(individual), cap)
     )
     occurred || return ll
-    return ll + _delay_loglik(x.delay, time - anchor)
+    return ll + _delay_loglik(x.delay, time - anchor, individual)
 end
