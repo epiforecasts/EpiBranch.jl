@@ -120,7 +120,7 @@ using StableRNGs
         spec = ModelSpec(
             model;
             attributes = clinical_presentation(incubation_period = LogNormal(1.6, 0.5)),
-            interventions = [Isolation(onset_to_isolation_delay = 1.0, duration = Inf)],
+            interventions = [Isolation(delay = 1.0, duration = Inf)],
         )
         with_onset = DataFrame(
             infection_time = [0.0, 2.0], parent_id = [missing, 1],

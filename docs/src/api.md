@@ -1019,7 +1019,6 @@ EpiBranch.logsumexp
 EpiBranch.required_fields
 EpiBranch._validate_required_fields
 EpiBranch._column_order
-EpiBranch._chain_length_ll_negbin
 EpiBranch._borel_logpdf
 EpiBranch._gammaborel_logpdf
 EpiBranch._chain_size_loglik
