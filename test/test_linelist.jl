@@ -466,6 +466,24 @@ end
     @test event_time_metadata(Val(:custom_disease_time)).requires_infection
 end
 
+@testset "line list keeps columns whose values are all missing" begin
+    cp = clinical_presentation(
+        incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.5
+    )
+    m = ModelSpec(
+        BranchingProcess(Poisson(0.5), Exponential(5.0));
+        attributes = cp,
+        interventions = [Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)]
+    )
+    states = simulate(m, 200; rng = StableRNG(5))
+    per_run = linelist.(states)
+    # Some runs have no symptomatic case and hence no onset.
+    @test any(ll -> all(ismissing, ll.date_onset), per_run)
+    @test any(ll -> !all(ismissing, ll.date_onset), per_run)
+    @test all(ll -> "date_onset" in names(ll), per_run)
+end
+
+
 @testset "Line list as known on a date and censored dates" begin
     model = ModelSpec(
         BranchingProcess(Poisson(2.0), Exponential(5.0));
