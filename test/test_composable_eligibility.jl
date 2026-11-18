@@ -362,7 +362,7 @@ elig(policy, infector) = is_eligible(policy, infector, _CONTACT, nothing)
         clinical = clinical_presentation(
             incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.3
         )
-        iso = Isolation(onset_to_isolation_delay = Exponential(2.0), test_sensitivity = 0.5, duration = Inf)
+        iso = Isolation(delay = Exponential(2.0), test_sensitivity = 0.5, duration = Inf)
         S, L, I, N = OnSymptomOnset(), OnLabConfirmation(), OnIsolation(), TraceNobody()
         function simulate_with(eligibility, seed)
             ct = ContactTracing(eligibility, 1.0, Exponential(1.0), Quarantine(duration = Inf))
@@ -396,7 +396,7 @@ elig(policy, infector) = is_eligible(policy, infector, _CONTACT, nothing)
         clinical = clinical_presentation(
             incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.5
         )
-        iso = Isolation(onset_to_isolation_delay = Exponential(1.0), eligibility = AllCases(), duration = Inf)
+        iso = Isolation(delay = Exponential(1.0), eligibility = AllCases(), duration = Inf)
         ct = ContactTracing(
             OnSymptomOnset() | OnLabConfirmation(), 1.0, Exponential(1.0),
             Quarantine(duration = Inf)
@@ -422,7 +422,7 @@ elig(policy, infector) = is_eligible(policy, infector, _CONTACT, nothing)
         clinical = clinical_presentation(
             incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.3
         )
-        iso = Isolation(onset_to_isolation_delay = Exponential(2.0), test_sensitivity = 0.5, duration = Inf)
+        iso = Isolation(delay = Exponential(2.0), test_sensitivity = 0.5, duration = Inf)
         function simulate_with(eligibility, action = Quarantine(duration = Inf))
             ct = ContactTracing(
                 eligibility, ConstantRate(1.0),
@@ -509,4 +509,22 @@ end
     later.state[:infected] = true
     set_isolated!(later, 5.0; release_time = Inf)
     @test EpiBranch.trigger_time(OnIsolation(), later, state) == 5.0
+end
+
+@testset "Ring growth is not timed from before the member's infection" begin
+    state = EpiBranch.new_state(
+        BranchingProcess(Poisson(1.0), Exponential(5.0)),
+        EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
+    )
+    ct = ContactTracing(TraceEveryone(), 1.0, Dirac(0.0), Quarantine(duration = Inf); depth = 2)
+    # A ring member quarantined at 1.0, before its infection at 3.0, that has
+    # no recorded trace time (a trace with no arrival time records none).
+    member = Individual(id = 1, infection_time = 3.0)
+    member.state[:infected] = true
+    member.state[:_ring_remaining] = 1
+    set_isolated!(member, 1.0; release_time = Inf)
+    @test !haskey(member.state, :trace_time)
+    contact = Individual(id = 2)
+    EpiBranch._trace_pair!(ct, state, member, contact, state.rng, EpiBranch.InterventionAction[]; ring = true)
+    @test contact.state[:trace_time] == 3.0
 end

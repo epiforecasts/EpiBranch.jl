@@ -101,7 +101,7 @@ applies them:
 
 ```@example gettingstarted
 # Symptomatic cases isolate on average 2 days after onset, for 7 days
-iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = 7.0)
+iso = Isolation(delay = Exponential(2.0), duration = 7.0)
 # Each contact of an isolated case is traced with probability 0.5, on average
 # 1.5 days after the case isolates, and quarantined for 7 days
 ct = ContactTracing(
@@ -144,7 +144,7 @@ One outbreak says little; the question is how often the measures work. Simulate
 ```@example gettingstarted
 rng = StableRNG(42)
 results = simulate(spec, 500; max_cases = 5000, rng = rng)
-println("Containment probability: $(round(containment_probability(results), digits=3))")
+println("Containment probability: $(round(containment_probability(results).proportion, digits=3))")
 ```
 
 The containment probability is the proportion of simulated outbreaks in which

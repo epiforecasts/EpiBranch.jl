@@ -78,7 +78,7 @@ EpiBranch.chain_size_distribution(d::BrokenExactOffspring) = throw(d.error)
         # With interventions, prob_concluded routes through the
         # simulation-based likelihood.
         clinical = CLINICAL
-        iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
+        iso = Isolation(delay = Exponential(1.0), duration = Inf)
         d_iv = chain_size_distribution(
             ModelSpec(bp; interventions = [iso], attributes = clinical);
             seeds = seeds, prob_concluded = pc, n_sim = 500, rng = StableRNG(1)
@@ -345,6 +345,33 @@ EpiBranch.chain_size_distribution(d::BrokenExactOffspring) = throw(d.error)
             [Transition(:onset; delay = 1.0), Reporting(delay = 0.0)],
             clinical(0.5)
         )
+        # An onset the closed form cannot read is refused rather than misread.
+        cp = clinical(0.5)
+        refused = [
+            # nothing records the onset the step reports from
+            (),
+            # a per-case asymptomatic share
+            clinical_presentation(
+                incubation_period = LogNormal(1.6, 0.5), prob_asymptomatic = (rng, ind) -> 0.2
+            ),
+            # a builder of its own that records an onset
+            EpiBranch.attributes(ModelSpec(proc; attributes = [cp, (rng, ind) -> (ind.state[:onset_time] = 1.0)])),
+            # one that runs before clinical_presentation and fails on a probe
+            EpiBranch.attributes(ModelSpec(proc; attributes = [(rng, ind) -> ind.state[:missing], cp])),
+            # two onset laws
+            EpiBranch.attributes(ModelSpec(proc; attributes = [cp, cp])),
+        ]
+        for attrs in refused
+            @test_throws ArgumentError EpiBranch._effective_reporting_probability(
+                [Reporting(delay = 0.0, probability = 0.7)], attrs
+            )
+        end
+        @test_throws ArgumentError(
+            "The closed form supports a Reporting step from infection or onset, not from `:recovery`"
+        ) EpiBranch._infection_to(:recovery, ())
+        @test_throws ArgumentError(
+            "The closed form supports a Reporting step from infection or onset, not from a function"
+        ) EpiBranch._infection_to(ind -> ind.infection_time, ())
     end
 
     @testset "rand draws chain sizes from the underlying model" begin
@@ -531,7 +558,7 @@ EpiBranch.offspring_law_unchanged(::OwnOnset) = true
     @test chain_size_distribution(class).detection_prob ≈ 0.4
 
     # Isolation's analytic effect reads the incubation period the same way.
-    iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
+    iso = Isolation(delay = Exponential(1.0), duration = Inf)
     builtin = ModelSpec(proc; interventions = [iso], attributes = inner)
     own = ModelSpec(proc; interventions = [iso], attributes = OwnOnset(inner))
     off = NegBin(0.8, 0.5)
@@ -539,21 +566,8 @@ EpiBranch.offspring_law_unchanged(::OwnOnset) = true
     @test eff(own).mean ≈ eff(builtin).mean
     @test eff(own).pgf(0.3) ≈ eff(builtin).pgf(0.3)
 
-    # The incidence likelihood reads the onset the same way.
-    data = IncidenceCounts([1, 2, 4, 5, 9, 12, 18]; seeds = 2)
-    rep = [Reporting(delay = Gamma(2.0, 1.5), probability = 0.7)]
-    @test loglikelihood(data, ModelSpec(proc; attributes = OwnOnset(inner), progression = rep)) ≈
-        loglikelihood(data, ModelSpec(proc; attributes = inner, progression = rep))
-
-    # A reporting step without a `delay` field gives the incidence
-    # likelihood no delay to read. Two onset laws are ambiguous.
-    @test_throws ArgumentError loglikelihood(
-        data, ModelSpec(proc; progression = [TestingReport(0.6)])
-    )
+    # Two onset laws are ambiguous.
     @test_throws ArgumentError EpiBranch.analytic_offspring_effect(
         iso, off, ModelSpec(proc; interventions = [iso], attributes = (inner, OwnOnset(inner)))
-    )
-    @test_throws ArgumentError loglikelihood(
-        data, ModelSpec(proc; attributes = (inner, OwnOnset(inner)), progression = rep)
     )
 end

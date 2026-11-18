@@ -63,6 +63,7 @@ end
     struct _RecordSettled <: EpiBranch.AbstractIntervention
         observed::Vector{Tuple{Int, Bool}}
     end
+    EpiBranch.discovers_actions(::_RecordSettled) = true
     function EpiBranch.intervention_actions(iv::_RecordSettled, state, candidates)
         for c in candidates
             c.infection_time == state.max_infection_time || continue

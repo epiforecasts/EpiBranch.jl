@@ -368,6 +368,17 @@ function _revisable_dose_action(v::AbstractVaccination, ind, trigger, time)
     return InterventionAction(ind, time, (person, at, state) -> nothing, claim!)
 end
 
+# A dose is proposed as an action: there is no `intervention_time` to undo
+# and no effect written in `resolve_individual!`. Each type declares these
+# rather than `AbstractVaccination`, because a vaccination written outside the
+# package is checked against its own methods.
+for T in (RingVaccination, GroupVaccination, MassVaccination)
+    @eval time_aware(::$T) = false
+    @eval resolves_under_capacity(::$T) = false
+    @eval discovers_actions(::$T) = true
+    @eval has_competing_risk(::$T) = true
+end
+
 # The delay before a dose and whether it is accepted are drawn once per person
 # and cached. A revisited dose reuses the same draw.
 _dose_delay!(v, ind, state) =
@@ -425,41 +436,52 @@ end
 
 function intervention_actions(gv::GroupVaccination, state, candidates)
     actions = InterventionAction[]
-    # `allowed` keeps a revised dose from reaching anyone outside this call's
-    # own `candidates`, such as a member already settled.
+    rec = _group_offers(gv, state)
+    groups_here = Any[]
+    for ind in candidates
+        group = get(ind.state, gv.group_key, nothing)
+        group === nothing && continue
+        _note_trigger!(rec, gv, state, ind, group)
+        group in groups_here || push!(groups_here, group)
+    end
+    # `allowed` stops a revised dose reaching a settled member outside the
+    # `candidates` of this call.
     allowed = Set(ind.id for ind in candidates)
-    groups_here = Set(
-        get(ind.state, gv.group_key, nothing)
-            for ind in candidates
-            if haskey(ind.state, gv.group_key)
-    )
+    label = dose_label(gv)
     for group in groups_here
-        trigger = _group_trigger_time(gv, state, group)
+        trigger = get(rec.trigger, group, Inf)
         isfinite(trigger) || continue
-        for id in _group_members(state, gv.group_key, group)
+        queue = _queued_members(rec, gv, state, group)
+        kept = Int[]
+        for id in queue
             ind = individuals(state)[id]
             prior = get(action_cache(ind), _trigger_cache_key(gv), nothing)
-            if prior !== nothing || get(ind.state, _vaccinated_key(dose_label(gv)), false)
-                # A settled member's dose keeps its date; a member still
-                # pending in a continuous-time race (or the member currently
-                # being settled, mid-round) can still be reached by a
-                # genuinely earlier trigger. `ind.id in allowed` keeps this
-                # within the members this call actually received.
-                (ind.id in allowed && !is_settled(state, ind)) || continue
-                (prior !== nothing && may_revise(gv, prior, trigger)) || continue
+            if prior !== nothing || get(ind.state, _vaccinated_key(label), false)
+                # A settled member's dose keeps its date. A member still
+                # pending in a continuous-time race (or the member being
+                # settled mid-round) can still move to an earlier trigger.
+                (prior !== nothing && !is_settled(state, ind) && may_revise(gv, prior, trigger)) ||
+                    continue
+                push!(kept, id)
+                id in allowed || continue
                 delay = _dose_delay!(gv, ind, state)
                 push!(actions, _revisable_dose_action(gv, ind, trigger, trigger + delay))
                 continue
             end
-            get(ind.state, _coverage_declined_key(dose_label(gv)), false) && continue
-            accepted = _accepts!(gv, ind, state)
-            if !accepted
-                ind.state[_coverage_declined_key(dose_label(gv))] = true
+            get(ind.state, _coverage_declined_key(label), false) && continue
+            # A settled member outside `candidates` cannot be reached.
+            (id in allowed || !is_settled(state, ind)) || continue
+            if !_accepts!(gv, ind, state)
+                ind.state[_coverage_declined_key(label)] = true
                 continue
             end
+            # Kept until a dose is recorded. A dose that was turned down
+            # (for capacity, say) is offered again on a later call.
+            push!(kept, id)
             delay = _dose_delay!(gv, ind, state)
             push!(actions, _revisable_dose_action(gv, ind, trigger, trigger + delay))
         end
+        rec.queue[group] = kept
     end
     return actions
 end
@@ -571,7 +593,11 @@ function action_candidates(
     candidates = [current]
     group = get(current.state, gv.group_key, nothing)
     group === nothing && return candidates
-    for id in _group_members(state, gv.group_key, group)
+    rec = _group_offers(gv, state)
+    _note_trigger!(rec, gv, state, current, group)
+    isfinite(get(rec.trigger, group, Inf)) || return candidates
+    # Visit only the members still queued.
+    for id in _queued_members(rec, gv, state, group)
         id == current.id && continue
         is_pending(id) || continue
         push!(candidates, individuals(state)[id])
@@ -605,7 +631,7 @@ function _apply_case_actions!(
     # cases — `action_candidates` is what keeps each intervention within
     # that boundary while choosing its own, much smaller, set of people to
     # visit. The caller passes only the interventions that propose actions
-    # (`_proposes_actions`).
+    # (`proposes_actions`).
     for iv in interventions
         # `needs_contacts` rather than `contacts !== nothing` alone, so an
         # intervention that needs no contacts (`GroupVaccination`) still
@@ -630,14 +656,6 @@ function _apply_case_actions!(
     # a trigger `current` itself just supplied) still sees it as pending.
     current.state[:_settled] = true
     return nothing
-end
-
-# Whether an intervention proposes actions per settled case: it has an
-# `intervention_actions` method of its own, found past any wrapper that only
-# forwards it, and is not one offered the whole population at once instead.
-function _proposes_actions(iv::AbstractIntervention)
-    acts_on_population(iv) && return false
-    return _discovers_actions(_hook_owner(intervention_actions, iv))
 end
 
 # Offer every intervention declaring `acts_on_population` its actions once,

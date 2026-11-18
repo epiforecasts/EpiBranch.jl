@@ -45,7 +45,7 @@ function contained(
         max_cases = 200, seed = 11, kwargs...
     )
     states = simulate(spec, n; max_cases, rng = StableRNG(seed), kwargs...)
-    return containment_probability(states; max_cases)
+    return containment_probability(states; max_cases).proportion
 end
 
 # Run the Sellke race over `members` (a vector of ids, or a count `n` for

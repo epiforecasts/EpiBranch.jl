@@ -27,7 +27,7 @@ clinical = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
 scenario(interventions = AbstractIntervention[], attributes = clinical) =
     ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0)); interventions, attributes)
 
-iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = Inf)
+iso = Isolation(delay = Exponential(2.0), duration = Inf)
 ct = ContactTracing(
     probability = 0.7, isolation_to_trace_delay = Exponential(1.0),
     action = Quarantine(duration = Inf)
@@ -95,11 +95,11 @@ rv = RingVaccination(efficacy = 0.8)
 
 rng = StableRNG(42)
 results = simulate(scenario([iso, ct]), 200; max_cases = 500, rng = rng)
-println("Isolation + tracing: $(round(containment_probability(results), digits=3))")
+println("Isolation + tracing: $(round(containment_probability(results).proportion, digits=3))")
 
 rng = StableRNG(42)
 results = simulate(scenario([iso, ct, rv]), 200; max_cases = 500, rng = rng)
-println("Isolation + tracing + ring vaccination: $(round(containment_probability(results), digits=3))")
+println("Isolation + tracing + ring vaccination: $(round(containment_probability(results).proportion, digits=3))")
 ```
 
 !!! warning "Under this tracing, vaccination makes no difference"
@@ -133,29 +133,28 @@ for (label, interventions) in (
         ("no vaccination", [iso, ct_onset]),
         ("ring vaccination", [iso, ct_onset, rv]))
     p = containment_probability(scenario(interventions), 1000;
-        max_cases = 500, rng = StableRNG(42))
+        max_cases = 500, rng = StableRNG(42)).proportion
     println(rpad(label, 20), round(p, digits = 3))
 end
 ```
 
 ### Delay to immunity
 
-A vaccine that takes time to protect can be too late. Here protection starts
-7 days after the dose, compared with no vaccination and same-day protection
-over more outbreaks, with the standard error of each:
+A vaccine that takes time to protect can be too late. Here protection starts 7 days after the dose, and we compare it with no vaccination and with same-day protection over more outbreaks. [`containment_difference`](@ref) with `paired = true` runs each pair of models from the same random numbers and keeps only whether each run was contained. It reports the containment with each model and the difference with its Monte Carlo standard error (MCSE):
 
 ```@example vaccination
 rv_delayed = RingVaccination(efficacy = 0.8, delay_to_immunity = 7.0)
 
 n_delay = 4000
+base_delay = scenario([iso, ct_onset])
 for (label, interventions) in (
-        ("no vaccination", [iso, ct_onset]),
         ("same-day protection", [iso, ct_onset, rv]),
         ("7-day delay", [iso, ct_onset, rv_delayed]))
-    p = containment_probability(scenario(interventions), n_delay;
-        max_cases = 500, rng = StableRNG(42))
-    println(rpad(label, 22), round(p, digits = 3),
-        " (standard error ", round(sqrt(p * (1 - p) / n_delay), digits = 3), ")")
+    diff = containment_difference(scenario(interventions), base_delay, n_delay;
+        max_cases = 500, paired = true, seed = 42)
+    println(rpad(label, 22), "containment ", round(diff.a, digits = 3),
+        " against ", round(diff.b, digits = 3), " with no vaccination; difference ",
+        round(diff.difference, digits = 3), " (MCSE ", round(diff.mcse, digits = 3), ")")
 end
 ```
 
@@ -283,7 +282,7 @@ for (label, vaccination) in [
     runs = simulate(scenario(interventions), 400; max_cases = 500, rng = StableRNG(42))
     println(rpad(label, 30), "secondary cases per traced case ",
         round(secondary_per_traced(traced_runs(interventions)), digits = 2),
-        ", containment ", round(containment_probability(runs), digits = 3))
+        ", containment ", round(containment_probability(runs).proportion, digits = 3))
 end
 ```
 
@@ -431,26 +430,29 @@ rv_independent_onward = RingVaccination(efficacy = 0.8, onward_efficacy = 0.8,
     coverage = 0.5)
 
 n_outbreaks = 10000
-containment(interventions) = containment_probability(
-    scenario(interventions, [clinical, community, acceptance]), n_outbreaks;
-    max_cases = 200, rng = StableRNG(42))
+population = [clinical, community, acceptance]
+no_vaccination = scenario([iso, ct_noquarantine], population)
+clustered_model = scenario([iso, ct_noquarantine, rv_clustered_onward], population)
+independent_model = scenario([iso, ct_noquarantine, rv_independent_onward], population)
 
-for (label, interventions) in (
-        ("no vaccination", [iso, ct_noquarantine]),
-        ("clustered refusal", [iso, ct_noquarantine, rv_clustered_onward]),
-        ("independent refusal", [iso, ct_noquarantine, rv_independent_onward]))
-    p = containment(interventions)
-    println(rpad(label, 20), round(p, digits = 3),
-        " (standard error ", round(sqrt(p * (1 - p) / n_outbreaks), digits = 3), ")")
+compare(a, b) = containment_difference(a, b, n_outbreaks;
+    max_cases = 200, paired = true, seed = 42)
+gain_clustered = compare(clustered_model, no_vaccination)
+gain_independent = compare(independent_model, no_vaccination)
+clustered_vs_independent = compare(clustered_model, independent_model)
+
+for (label, d) in (("clustered refusal", gain_clustered),
+        ("independent refusal", gain_independent))
+    println(rpad(label, 20), "containment ", round(d.a, digits = 3),
+        " against ", round(d.b, digits = 3), " with no vaccination; gain ",
+        round(d.difference, digits = 3), " (MCSE ", round(d.mcse, digits = 3), ")")
 end
+println("Clustered minus independent: ",
+    round(clustered_vs_independent.difference, digits = 3),
+    " (MCSE ", round(clustered_vs_independent.mcse, digits = 3), ")")
 ```
 
-Vaccinating about half the traced contacts raises containment a little, from
-0.212 to 0.226 with clustered refusal and 0.224 with independent refusal. The
-standard error of a difference between two scenarios is about 1.4 times that
-of each, about 0.006 here, so the gain from vaccination is around two and a
-half standard errors. The 0.002 between clustered and independent refusal is
-well within the noise of these runs.
+Containment is 0.222 with clustered refusal and 0.224 with independent refusal, against 0.214 with no vaccination. Vaccinating about half the traced contacts gains 0.008 (MCSE 0.006) with clustered refusal and 0.010 (MCSE 0.006) with independent refusal, each within about two MCSEs of zero. Clustered minus independent refusal is -0.001 (MCSE 0.006), well within the noise: at this number of outbreaks the two kinds of refusal are indistinguishable. To compare any two scenarios in the same way, use [`containment_difference`](@ref) on the two models.
 
 Clustering has little effect here because `groups(20)` puts each person in a
 community independently of who infected them. A case's contacts are spread
@@ -475,11 +477,11 @@ mv = MassVaccination(efficacy = 0.85, eligibility_time = 30.0,
 
 rng = StableRNG(42)
 results = simulate(scenario(), 200; max_cases = 500, rng = rng)
-println("No interventions: $(round(containment_probability(results), digits=3))")
+println("No interventions: $(round(containment_probability(results).proportion, digits=3))")
 
 rng = StableRNG(42)
 results = simulate(scenario([mv]), 200; max_cases = 500, rng = rng)
-println("Mass vaccination from day 30: $(round(containment_probability(results), digits=3))")
+println("Mass vaccination from day 30: $(round(containment_probability(results).proportion, digits=3))")
 ```
 
 With R = 3, an outbreak that takes off reaches the case cap well before
@@ -512,7 +514,7 @@ mv_age = MassVaccination(
 attrs = [clinical, demographics(age_distribution = Uniform(0, 90))]
 rng = StableRNG(42)
 results = simulate(scenario([mv_age], attrs), 200; max_cases = 500, rng = rng)
-println("Age-stratified rollout: $(round(containment_probability(results), digits=3))")
+println("Age-stratified rollout: $(round(containment_probability(results).proportion, digits=3))")
 ```
 
 Containment is at the no-intervention baseline again: the older group is
@@ -553,7 +555,7 @@ boost = MassVaccination(efficacy = 0.5, eligibility_time = 60.0,
 
 rng = StableRNG(42)
 results = simulate(scenario([prime, boost]), 200; max_cases = 500, rng = rng)
-println("Two-dose rollout: $(round(containment_probability(results), digits=3))")
+println("Two-dose rollout: $(round(containment_probability(results).proportion, digits=3))")
 ```
 
 This is the baseline again, for the same reason: the prime protects from day
@@ -591,7 +593,7 @@ boost_ring = RingVaccination(efficacy = 0.5, dose_delay = 28.0,
 rng = StableRNG(42)
 results = simulate(scenario([iso, ct, prime_ring, boost_ring]), 200;
     max_cases = 500, rng = rng)
-println("Two-dose ring: $(round(containment_probability(results), digits=3))")
+println("Two-dose ring: $(round(containment_probability(results).proportion, digits=3))")
 ```
 
 A protocol that gives the boost four to six weeks after the trace uses a
@@ -661,7 +663,7 @@ repeated_campaign = GroupVaccination(efficacy = 0.8,
 
 campaign_model = ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0));
     attributes = [clinical, groups(3), willingness],
-    interventions = [Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf),
+    interventions = [Isolation(delay = Exponential(1.0), duration = Inf),
         repeated_campaign])
 
 println("Reached among willing people: $(round(campaign_reach, digits = 3)); ",

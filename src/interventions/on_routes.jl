@@ -24,7 +24,7 @@ household = Infectiousness(NegBin(1.0, 0.3); name = :household, kernel = Uniform
 community = Infectiousness(NegBin(1.5, 0.3); name = :community, kernel = Uniform(0, 5))
 model = BranchingProcess(household, community)
 iso = OnRoutes(
-    Isolation(onset_to_isolation_delay = Exponential(2.0), duration = Inf),
+    Isolation(delay = Exponential(2.0), duration = Inf),
     (:community,),
 )
 spec = ModelSpec(
@@ -40,6 +40,12 @@ struct OnRoutes{I <: AbstractIntervention, R} <: InterventionWrapper
     intervention::I
     routes::R
 end
+
+# Every trait comes from the wrapped intervention, and the hook is forwarded.
+time_aware(o::OnRoutes) = time_aware(o.intervention)
+resolves_under_capacity(o::OnRoutes) = resolves_under_capacity(o.intervention)
+discovers_actions(o::OnRoutes) = discovers_actions(o.intervention)
+has_competing_risk(::OnRoutes) = true
 
 # A recorded removal stretch has no route. Reading it back would remove the host
 # from the exposure of every pair, while `OnRoutes` blocks only the routes it

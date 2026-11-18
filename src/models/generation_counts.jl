@@ -216,7 +216,8 @@ end
 """
     simulate_by_generation(model::BranchingProcess; n_initial = 1,
                            max_generations = 100, rng = Random.default_rng(),
-                           multiplier = nothing, immune = 0,
+                           multiplier = nothing,
+                           immune = 0,
                            population_by_type = nothing,
                            depletion = PerContactDepletion(),
                            generation_length = nothing)
@@ -231,11 +232,16 @@ offspring matrix (`MultiTypeOffspring`); any other model raises an
 - `n_initial`: the number of index cases, an `Int` for a single-type model or
   a vector of one count per type for a multi-type one (1 index case by
   default, which a multi-type model must override).
-- `multiplier`: a `Distribution` drawn once per generation and shared by every
-  case in it, scaling the mean of their offspring law before each draws from
-  it; `nothing` (the default) draws every case's offspring independently with
-  no shared variation. Only `Poisson` offspring has a known mean-scaling rule
-  built in; giving `multiplier` with another offspring law raises an
+- `multiplier`: scales the mean of the offspring law of the cases in a
+  generation before each draws from it; `nothing` (the default) draws every
+  case's offspring independently with no shared variation. A single
+  `Distribution` is drawn once per generation and shared by every type. A
+  vector with one `Distribution` per type draws the multiplier of each type
+  independently in each generation. The types get independent overdispersion,
+  as in a model with separate noise for each group, and can differ in it. The
+  length of the vector must equal the number of types, otherwise an
+  `ArgumentError` is raised. Only `Poisson` offspring has a known mean-scaling
+  rule built in; giving `multiplier` with another offspring law raises an
   `ArgumentError`.
 - `immune`: the number immune at the start, an `Int` or a vector with one
   entry per type, as for `n_initial` (none by default). The susceptibles of a
@@ -443,7 +449,9 @@ function simulate(
         model::BranchingProcess, state::GenerationCounts;
         max_generations::Integer, rng::AbstractRNG = state.rng, multiplier = nothing
     )
-    return _continue_generations(model, state, _Campaign[]; max_generations, rng, multiplier)
+    return _continue_generations(
+        model, state, _Campaign[]; max_generations, rng, multiplier
+    )
 end
 
 """
@@ -493,7 +501,19 @@ function _continue_generations(
             t0, t1 = _generation_interval(state.generation_length, gen)
             _vaccinate!(rng, campaign, t0, t1, susceptibles, sizes)
         end
-        m = multiplier === nothing ? nothing : rand(rng, multiplier)
+        m = if multiplier === nothing
+            nothing
+        elseif multiplier isa AbstractVector
+            length(multiplier) == length(counts) || throw(
+                ArgumentError(
+                    "multiplier has $(length(multiplier)) distributions for " *
+                        "$(length(counts)) types"
+                )
+            )
+            [rand(rng, d) for d in multiplier]
+        else
+            rand(rng, multiplier)
+        end
         potential = _generation_potential(
             rng, offspring, counts, m, susceptibles !== nothing
         )
@@ -558,6 +578,10 @@ function _contact_rate(rng::AbstractRNG, law::NegativeBinomial, n::Int)
 end
 _contact_rate(::AbstractRNG, ::Distribution, ::Int) = nothing
 
+# The multiplier of type `j`: one draw shared by every type, or one per type.
+_type_multiplier(m::Real, ::Int) = m
+_type_multiplier(m::AbstractVector, j::Int) = m[j]
+
 # One entry per type of the contacts made by the cases of the generation,
 # before any of them is thinned against the susceptibles. A single-type
 # offspring law draws its one total, after the shared multiplier `m`, when
@@ -569,7 +593,7 @@ function _generation_potential(
     )
     n = only(current)
     n == 0 && return [0]
-    law = m === nothing ? offspring : scale_mean(offspring, m)
+    law = m === nothing ? offspring : scale_mean(offspring, _type_multiplier(m, 1))
     rate = finite ? _contact_rate(rng, law, n) : nothing
     rate === nothing || return [Float64(rate)]
     return [sum_offspring(rng, law, n)]
@@ -596,7 +620,7 @@ function _generation_potential(
         R = offspring.R_by_type[j]
         R <= 0 && continue
         law = _type_law(offspring.dist_fn, R, j)
-        law = m === nothing ? law : scale_mean(law, m)
+        law = m === nothing ? law : scale_mean(law, _type_multiplier(m, j))
         rate = finite ? _contact_rate(rng, law, current[j]) : nothing
         if rate === nothing
             totals[j] = sum_offspring(rng, law, current[j])

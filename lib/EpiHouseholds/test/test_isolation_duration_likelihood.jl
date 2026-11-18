@@ -13,7 +13,7 @@
     process = HouseholdProcess(fill(5, 120), Exponential(2.0))
 
     finite = Isolation(
-        onset_to_isolation_delay = Dirac(1.0), duration = Dirac(7.0)
+        delay = Dirac(1.0), duration = Dirac(7.0)
     )
     m = ModelSpec(process; progression, attributes = clinical, interventions = [finite])
     state = simulate(m; rng = StableRNG(17))
@@ -53,7 +53,7 @@
 
     # A duration of `Inf` records nothing extra, its window closing at the
     # isolation's own start as before.
-    forever = Isolation(onset_to_isolation_delay = Dirac(1.0), duration = Inf)
+    forever = Isolation(delay = Dirac(1.0), duration = Inf)
     m_inf = ModelSpec(
         process; progression, attributes = clinical, interventions = [forever]
     )
@@ -150,7 +150,7 @@ end
     process = HouseholdProcess(fill(5, 120), Exponential(2.0))
 
     leaky = Isolation(
-        onset_to_isolation_delay = Dirac(1.0), duration = Dirac(7.0),
+        delay = Dirac(1.0), duration = Dirac(7.0),
         post_isolation_transmission = 0.3
     )
     m = ModelSpec(process; progression, attributes = clinical, interventions = [leaky])
@@ -189,7 +189,7 @@ end
 
 @testset "A wrapper forwards its stretches only when it cannot withdraw them" begin
     iso = Isolation(
-        onset_to_isolation_delay = Dirac(1.0), duration = Dirac(7.0)
+        delay = Dirac(1.0), duration = Dirac(7.0)
     )
     key = EpiBranch.ISOLATION_STRETCHES_KEY
 
@@ -258,7 +258,7 @@ end
     ]
     process = HouseholdProcess(fill(5, 60), Exponential(6.0))
     iso = Isolation(
-        onset_to_isolation_delay = (rng, ind) -> EpiBranch._isolation_in_force(ind) ? Inf : 1.0,
+        delay = (rng, ind) -> EpiBranch._isolation_in_force(ind) ? Inf : 1.0,
         duration = Inf
     )
     m = ModelSpec(process; progression, attributes = clinical, interventions = [iso, ct])

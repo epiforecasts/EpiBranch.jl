@@ -239,7 +239,7 @@ end
         clinical = clinical_presentation(
             incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0
         )
-        iso = Isolation(onset_to_isolation_delay = Exponential(0.5), duration = Inf)
+        iso = Isolation(delay = Exponential(0.5), duration = Inf)
         gv = GroupVaccination(
             efficacy = 0.9, eligibility = OnLabConfirmation(),
             dose_delay = 1.0
@@ -343,7 +343,7 @@ end
         clinical = clinical_presentation(
             incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0
         )
-        iso = Isolation(onset_to_isolation_delay = Exponential(0.5), duration = Inf)
+        iso = Isolation(delay = Exponential(0.5), duration = Inf)
         ct = ContactTracing(
             probability = 1.0, isolation_to_trace_delay = Exponential(0.5),
             action = Quarantine(duration = Inf)
@@ -384,7 +384,7 @@ end
         clinical = clinical_presentation(
             incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0
         )
-        iso = Isolation(onset_to_isolation_delay = Exponential(0.5), duration = Inf)
+        iso = Isolation(delay = Exponential(0.5), duration = Inf)
         ct = ContactTracing(
             probability = 0.3, isolation_to_trace_delay = Exponential(0.5),
             action = Quarantine(duration = Inf)
@@ -583,4 +583,36 @@ end
     end
     @test dosed > 0
     @test early == 0
+end
+
+# Counts how often the trigger of the group is worked out from a member.
+struct _CountedEligibility <: EpiBranch.TraceEligibility
+    calls::Base.RefValue{Int}
+end
+function EpiBranch.is_eligible(e::_CountedEligibility, infector, contact, state)
+    e.calls[] += 1
+    return true
+end
+EpiBranch.trigger_time(::_CountedEligibility, infector, state) = infector.infection_time
+
+@testset "Group vaccination costs time in the new members, not the group size" begin
+    n = 400
+    counter = _CountedEligibility(Ref(0))
+    gv = GroupVaccination(efficacy = 0.9, eligibility = counter, dose_delay = 0.0)
+    state = empty_state(; rng = StableRNG(1))
+    members = [_group_member(gv, i, :A) for i in 1:n]
+    for (i, m) in enumerate(members)
+        m.infection_time = Float64(i)
+    end
+    # Each case in turn joins the group and is offered its dose, as in a race
+    # that settles one case after another.
+    for m in members
+        push!(individuals(state), m)
+        EpiBranch.apply_actions!(gv, state, [m])
+    end
+    # Reading every member on every call would take about n^2 / 2 checks.
+    @test counter.calls[] <= 3n
+    # The trigger is that of the first case, and every member is dosed on it.
+    @test all(is_vaccinated, members)
+    @test all(m -> m.state[:vaccination_time] == 1.0, members)
 end

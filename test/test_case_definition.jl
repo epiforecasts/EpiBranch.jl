@@ -169,7 +169,7 @@ _acute_load(rng, ind) = t -> max(0.0, 8.0 - abs(t - 5.0) * 1.6)
         spec = ModelSpec(
             BranchingProcess(NegBin(2.5, 0.5), Gamma(2.0, 2.0));
             attributes = clinical_presentation(incubation_period = LogNormal(1.2, 0.4)),
-            interventions = [Isolation(onset_to_isolation_delay = 2.0, duration = 14.0)],
+            interventions = [Isolation(delay = 2.0, duration = 14.0)],
             case_definition = ClinicalCaseDefinition()
         )
         state = simulate(spec; max_cases = 100, rng = StableRNG(3))

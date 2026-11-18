@@ -303,7 +303,7 @@ onset, so a case without symptoms is not isolated under either rule.
 isolated = ModelSpec(HouseholdProcess(fill(4, 300), Weibull(1.5, 3.0));
     progression = [Transition(:onset; from = :infection, delay = 1.0),
         Transition(:recovered; from = :infection, delay = 6.0, terminal = true)],
-    interventions = [Isolation(onset_to_isolation_delay = Exponential(1.0),
+    interventions = [Isolation(delay = Exponential(1.0),
         eligibility = AllCases(), duration = Inf)])
 (without_isolation = reproduction_number(offspring),
     with_isolation = reproduction_number(household_offspring(isolated;
@@ -553,10 +553,11 @@ check convergence (for example the R-hat values in `summarize(chain)`).
     that date are treated as not yet recovered.
 
     `progression_loglik` takes the same date as `followup_end` and treats a
-    step that has not happened by then as censored. The delays of the steps
-    that did happen are not corrected for right truncation. A delay
-    distribution fitted to a line list cut at a date is still biased towards
-    short delays.
+    step that has not happened by then as censored, which is the right
+    likelihood when every infected case is in the data. If cases enter the data
+    because a later event, such as a report, happened by that date, pass
+    `truncated = true` to condition the observed delays on that; see the
+    `progression_loglik` docstring.
 
 !!! warning "Index-case ascertainment"
     Households are usually found through their first detected case, the
