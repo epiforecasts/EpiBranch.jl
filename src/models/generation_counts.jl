@@ -216,7 +216,8 @@ end
 """
     simulate_by_generation(model::BranchingProcess; n_initial = 1,
                            max_generations = 100, rng = Random.default_rng(),
-                           multiplier = nothing, immune = 0,
+                           multiplier = nothing, multiplier_per_type = false,
+                           immune = 0,
                            population_by_type = nothing,
                            depletion = PerContactDepletion(),
                            generation_length = nothing)
@@ -237,6 +238,12 @@ offspring matrix (`MultiTypeOffspring`); any other model raises an
   no shared variation. Only `Poisson` offspring has a known mean-scaling rule
   built in; giving `multiplier` with another offspring law raises an
   `ArgumentError`.
+- `multiplier_per_type`: with `true`, `multiplier` is drawn separately for each
+  type in each generation instead of once for the generation, so that the
+  overdispersion of the types is independent, as in a model with separate noise
+  for each group. The default, `false`, shares one draw between the types. It
+  makes no difference for a single-type model, and is ignored without a
+  `multiplier`.
 - `immune`: the number immune at the start, an `Int` or a vector with one
   entry per type, as for `n_initial` (none by default). The susceptibles of a
   type start at its population minus those immune and its index cases.
@@ -343,6 +350,7 @@ function simulate_by_generation(
         max_generations::Integer = _DEFAULT_MAX_GENERATIONS,
         rng::AbstractRNG = Random.default_rng(),
         multiplier = nothing,
+        multiplier_per_type::Bool = false,
         immune::Union{Integer, AbstractVector{<:Integer}} = 0,
         population_by_type::Union{Nothing, AbstractVector{<:Integer}} = nothing,
         depletion::AbstractDepletion = PerContactDepletion(),
@@ -351,7 +359,7 @@ function simulate_by_generation(
     state = _initial_generation_state(
         model, n_initial, rng, immune, population_by_type, depletion, generation_length
     )
-    return simulate(model, state; max_generations, multiplier)
+    return simulate(model, state; max_generations, multiplier, multiplier_per_type)
 end
 
 function simulate_by_generation(
@@ -360,6 +368,7 @@ function simulate_by_generation(
         max_generations::Integer = _DEFAULT_MAX_GENERATIONS,
         rng::AbstractRNG = Random.default_rng(),
         multiplier = nothing,
+        multiplier_per_type::Bool = false,
         immune::Union{Integer, AbstractVector{<:Integer}} = 0,
         population_by_type::Union{Nothing, AbstractVector{<:Integer}} = nothing,
         depletion::AbstractDepletion = PerContactDepletion(),
@@ -369,7 +378,7 @@ function simulate_by_generation(
     state = _initial_generation_state(
         model, n_initial, rng, immune, population_by_type, depletion, generation_length
     )
-    return simulate(spec, state; max_generations, multiplier)
+    return simulate(spec, state; max_generations, multiplier, multiplier_per_type)
 end
 
 function _initial_generation_state(
@@ -421,13 +430,14 @@ end
 
 """
     simulate(model::BranchingProcess, state::GenerationCounts; max_generations,
-             rng::AbstractRNG = state.rng, multiplier = nothing)
+             rng::AbstractRNG = state.rng, multiplier = nothing,
+             multiplier_per_type = false)
 
 Continue `state`, a [`GenerationCounts`](@ref) returned by
 [`simulate_by_generation`](@ref) or by this method itself, up to a later
 `max_generations`, with the `depletion` and `generation_length` the state was
-started with. `multiplier` is as in
-`simulate_by_generation` and is read on every call. A later continuation can
+started with. `multiplier` and `multiplier_per_type` are as in
+`simulate_by_generation` and are read on every call. A later continuation can
 enable, disable or change it. `state` is returned unchanged if its current
 generation has gone extinct (every count 0), with no cases left
 for a later `max_generations` to continue.
@@ -441,14 +451,18 @@ state = simulate(model, state; max_generations = 30)
 """
 function simulate(
         model::BranchingProcess, state::GenerationCounts;
-        max_generations::Integer, rng::AbstractRNG = state.rng, multiplier = nothing
+        max_generations::Integer, rng::AbstractRNG = state.rng, multiplier = nothing,
+        multiplier_per_type::Bool = false
     )
-    return _continue_generations(model, state, _Campaign[]; max_generations, rng, multiplier)
+    return _continue_generations(
+        model, state, _Campaign[]; max_generations, rng, multiplier, multiplier_per_type
+    )
 end
 
 """
     simulate(spec::ModelSpec, state::GenerationCounts; max_generations,
-             rng::AbstractRNG = state.rng, multiplier = nothing)
+             rng::AbstractRNG = state.rng, multiplier = nothing,
+             multiplier_per_type = false)
 
 Continue `state` as for a `BranchingProcess`, applying the vaccination
 campaigns of `spec` between generations as [`simulate_by_generation`](@ref)
@@ -457,19 +471,22 @@ bare model applies no campaign.
 """
 function simulate(
         spec::ModelSpec, state::GenerationCounts;
-        max_generations::Integer, rng::AbstractRNG = state.rng, multiplier = nothing
+        max_generations::Integer, rng::AbstractRNG = state.rng, multiplier = nothing,
+        multiplier_per_type::Bool = false
     )
     campaigns = _generation_campaigns(
         spec, state.generation_length, !(state.susceptibles isa NoPopulation)
     )
     return _continue_generations(
-        _generation_process(spec), state, campaigns; max_generations, rng, multiplier
+        _generation_process(spec), state, campaigns; max_generations, rng, multiplier,
+        multiplier_per_type
     )
 end
 
 function _continue_generations(
         model::BranchingProcess, state::GenerationCounts, campaigns;
-        max_generations::Integer, rng::AbstractRNG, multiplier
+        max_generations::Integer, rng::AbstractRNG, multiplier,
+        multiplier_per_type::Bool
     )
     _extinct(state.counts) && return state
     max_generations > state.generation || throw(
@@ -493,7 +510,13 @@ function _continue_generations(
             t0, t1 = _generation_interval(state.generation_length, gen)
             _vaccinate!(rng, campaign, t0, t1, susceptibles, sizes)
         end
-        m = multiplier === nothing ? nothing : rand(rng, multiplier)
+        m = if multiplier === nothing
+            nothing
+        elseif multiplier_per_type
+            [rand(rng, multiplier) for _ in counts]
+        else
+            rand(rng, multiplier)
+        end
         potential = _generation_potential(
             rng, offspring, counts, m, susceptibles !== nothing
         )
@@ -558,6 +581,10 @@ function _contact_rate(rng::AbstractRNG, law::NegativeBinomial, n::Int)
 end
 _contact_rate(::AbstractRNG, ::Distribution, ::Int) = nothing
 
+# The multiplier of type `j`: one draw shared by every type, or one per type.
+_type_multiplier(m::Real, ::Int) = m
+_type_multiplier(m::AbstractVector, j::Int) = m[j]
+
 # One entry per type of the contacts made by the cases of the generation,
 # before any of them is thinned against the susceptibles. A single-type
 # offspring law draws its one total, after the shared multiplier `m`, when
@@ -569,7 +596,7 @@ function _generation_potential(
     )
     n = only(current)
     n == 0 && return [0]
-    law = m === nothing ? offspring : scale_mean(offspring, m)
+    law = m === nothing ? offspring : scale_mean(offspring, _type_multiplier(m, 1))
     rate = finite ? _contact_rate(rng, law, n) : nothing
     rate === nothing || return [Float64(rate)]
     return [sum_offspring(rng, law, n)]
@@ -596,7 +623,7 @@ function _generation_potential(
         R = offspring.R_by_type[j]
         R <= 0 && continue
         law = _type_law(offspring.dist_fn, R, j)
-        law = m === nothing ? law : scale_mean(law, m)
+        law = m === nothing ? law : scale_mean(law, _type_multiplier(m, j))
         rate = finite ? _contact_rate(rng, law, current[j]) : nothing
         if rate === nothing
             totals[j] = sum_offspring(rng, law, current[j])

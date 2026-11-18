@@ -118,6 +118,45 @@
         @test state.cumulative_cases >= 10
     end
 
+    @testset "multiplier_per_type draws an independent multiplier for each type" begin
+        # Uncoupled types in an unlimited population: each type's count after
+        # one generation is its own total, so the counts correlate only through
+        # a shared multiplier.
+        I, k = 1000, 0.5
+        model = BranchingProcess(
+            [2.0 0.0; 0.0 2.0], R -> Poisson(R), EpiBranch.NoGenerationTime()
+        )
+        draw(; kwargs...) = reduce(
+            hcat, [
+                simulate_by_generation(
+                    model; n_initial = [I, I], max_generations = 1,
+                    multiplier = Gamma(k, 1 / k), rng = StableRNG(s), kwargs...
+                ).counts for s in 1:3000
+            ]
+        )
+        shared = draw()
+        per_type = draw(multiplier_per_type = true)
+        @test cor(shared[1, :], shared[2, :]) > 0.9
+        @test abs(cor(per_type[1, :], per_type[2, :])) < 0.1
+        # Each type's total keeps the shared multiplier's marginal law.
+        target = NegBin(I * 2.0, k)
+        for i in 1:2
+            @test isapprox(mean(per_type[i, :]), mean(target); rtol = 0.1)
+            @test isapprox(var(per_type[i, :]), var(target); rtol = 0.2)
+        end
+        # A single type has only one draw to make.
+        single = BranchingProcess(Poisson(2.0))
+        a = simulate_by_generation(
+            single; n_initial = 10, max_generations = 5, multiplier = Gamma(k, 1 / k),
+            rng = StableRNG(7)
+        )
+        b = simulate_by_generation(
+            single; n_initial = 10, max_generations = 5, multiplier = Gamma(k, 1 / k),
+            multiplier_per_type = true, rng = StableRNG(7)
+        )
+        @test a.counts == b.counts
+    end
+
     @testset "continuing a run matches running straight through" begin
         model = BranchingProcess(NegBin(2.0, 0.5); population_size = 5000)
         straight = simulate_by_generation(
