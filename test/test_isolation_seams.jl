@@ -118,6 +118,130 @@ EpiBranch.infectious_removal_time(f::FixedRemoval, ::Individual) = f.time
         @test iso.post_isolation_transmission == 0.0
     end
 
+    @testset "AfterSymptomOnset is the default trigger" begin
+        iso = Isolation(onset_to_isolation_delay = 1.0, duration = Inf)
+        @test iso.trigger isa AfterSymptomOnset
+    end
+
+    @testset "AfterPositiveTest isolates a case at its sampling time plus the turnaround" begin
+        asymptomatic = clinical_presentation(
+            incubation_period = Dirac(1.0), prob_asymptomatic = 1.0
+        )
+        curve(rng, ind) = t -> 8.0
+        assay(detect) = Assay(value = load -> 40.0 - 3.0 * load, detect = detect)
+        function first_case(iso; detect = 2.0)
+            state = simulate(
+                ModelSpec(
+                    BranchingProcess(Poisson(0.0), Exponential(5.0));
+                    interventions = [iso], attributes = [asymptomatic, within_host(curve)],
+                    progression = [Testing(assay = assay(detect), delay = 3.0, from = :infection)]
+                );
+                max_cases = 1, rng = StableRNG(1)
+            )
+            return state.individuals[1]
+        end
+        test_iso = Isolation(
+            onset_to_isolation_delay = 0.5, duration = Inf,
+            trigger = AfterPositiveTest(), eligibility = AllCases()
+        )
+        ind = first_case(test_iso)
+        @test is_isolated(ind)
+        @test isolation_time(ind) == 3.5
+
+        # The default trigger cannot isolate a case without symptoms.
+        @test !is_isolated(
+            first_case(Isolation(onset_to_isolation_delay = 0.5, duration = Inf, eligibility = AllCases()))
+        )
+
+        # A case the test misses is not isolated.
+        missed = Isolation(
+            onset_to_isolation_delay = 0.5, duration = Inf, test_sensitivity = 0.0,
+            trigger = AfterPositiveTest(), eligibility = AllCases()
+        )
+        @test !is_isolated(first_case(missed))
+
+        # A negative test result does not isolate the case.
+        @test !is_isolated(first_case(test_iso; detect = 10.0))
+    end
+
+    @testset "AfterPositiveTest follows only the test it names" begin
+        asymptomatic = clinical_presentation(
+            incubation_period = Dirac(1.0), prob_asymptomatic = 1.0
+        )
+        curve(rng, ind) = t -> 8.0
+        # :pcr samples at day 2 and detects; :serology samples at day 6 and detects.
+        progression = [
+            Testing(
+                assay = Assay(value = load -> 40.0 - 3.0 * load, detect = 2.0),
+                delay = 2.0, from = :infection, name = :pcr
+            ),
+            Testing(
+                assay = Assay(value = load -> 40.0 - 3.0 * load, detect = 2.0),
+                delay = 6.0, from = :infection, name = :serology
+            ),
+        ]
+        function isolated_at(trigger)
+            iso = Isolation(
+                onset_to_isolation_delay = 0.5, duration = Inf,
+                trigger = trigger, eligibility = AllCases()
+            )
+            state = simulate(
+                ModelSpec(
+                    BranchingProcess(Poisson(0.0), Exponential(5.0));
+                    interventions = [iso], attributes = [asymptomatic, within_host(curve)],
+                    progression = progression
+                );
+                max_cases = 1, rng = StableRNG(1)
+            )
+            return isolation_time(state.individuals[1])
+        end
+        @test isolated_at(AfterPositiveTest(name = :pcr)) == 2.5
+        @test isolated_at(AfterPositiveTest(name = :serology)) == 6.5
+        # The default name :test matches neither step.
+        @test_throws ArgumentError isolated_at(AfterPositiveTest())
+        @test EpiBranch.required_fields(AfterPositiveTest(name = :pcr)) ==
+            [:pcr_time, :pcr_result]
+    end
+
+    @testset "AfterPositiveTest needs no onset" begin
+        iso = Isolation(
+            onset_to_isolation_delay = 0.5, duration = Inf,
+            trigger = AfterPositiveTest(), eligibility = AllCases()
+        )
+        @test :onset_time ∉ EpiBranch.required_fields(iso)
+        @test :onset_time ∈ EpiBranch.required_fields(Isolation(onset_to_isolation_delay = 1.0, duration = Inf))
+        spec = ModelSpec(
+            BranchingProcess(Poisson(0.0), Exponential(5.0));
+            interventions = [iso], attributes = [within_host((rng, ind) -> t -> 8.0)],
+            progression = [
+                Testing(
+                    assay = Assay(value = load -> 40.0 - 3.0 * load, detect = 2.0),
+                    delay = 3.0, from = :infection
+                ),
+            ]
+        )
+        state = simulate(spec; max_cases = 1, rng = StableRNG(1))
+        @test isolation_time(state.individuals[1]) == 3.5
+    end
+
+    @testset "A trigger of one's own sets the isolation time" begin
+        struct AtInfection <: IsolationTrigger end
+        EpiBranch.isolation_reference_time(::AtInfection, ind, state) = ind.infection_time
+        iso = Isolation(
+            onset_to_isolation_delay = 2.0, duration = Inf,
+            trigger = AtInfection(), eligibility = AllCases()
+        )
+        state = simulate(
+            ModelSpec(
+                BranchingProcess(Poisson(0.0), Exponential(5.0));
+                interventions = [iso],
+                attributes = clinical_presentation(incubation_period = Dirac(1.0))
+            );
+            max_cases = 1, rng = StableRNG(1)
+        )
+        @test isolation_time(state.individuals[1]) == state.individuals[1].infection_time + 2.0
+    end
+
     @testset "AllCases eligibility tests asymptomatic individuals but does not isolate them" begin
         # Make the population partially asymptomatic, then with AllCases
         # eligibility (and full sensitivity) every case gets
