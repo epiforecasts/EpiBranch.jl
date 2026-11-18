@@ -21,7 +21,7 @@ struct MaxChainLength <: AbstractStoppingRule
     n::Int
 end
 EpiBranch.should_stop(r::MaxChainLength, state::SimulationState) =
-    maximum(ind.generation for ind in state.individuals; init = 0) >= r.n
+    maximum(ind.generation for ind in individuals(state); init = 0) >= r.n
 ```
 
 The mass-action, network and household models run a continuous-time race
@@ -146,9 +146,15 @@ SimOpts(stopping_rules = [MaxCases(1000), MyCustomRule()])
 """
 struct SimOpts
     n_initial::Int
+    n_initial_given::Bool
     initial_cases::Union{Nothing, Vector{Int}}
     index_types::Union{Nothing, Vector{Int}, Distribution}
     stopping_rules::Vector{AbstractStoppingRule}
+end
+
+# Positional form without `n_initial_given`; `n_initial_given` is then false.
+function SimOpts(n_initial, initial_cases, index_types, stopping_rules)
+    return SimOpts(n_initial, false, initial_cases, index_types, stopping_rules)
 end
 
 function SimOpts(;
@@ -161,16 +167,9 @@ function SimOpts(;
         stopping_rules::Union{Vector{<:AbstractStoppingRule}, Nothing} = nothing
     )
     initial_cases !== nothing && n_initial !== nothing &&
-        throw(
-        ArgumentError(
-            "provide either initial_cases or n_initial, not both"
-        )
-    )
-    index_types isa AbstractVector && n_initial !== nothing &&
-        throw(
-        ArgumentError(
-            "provide either index_types as a vector of types or n_initial, not both"
-        )
+        throw(ArgumentError("provide either initial_cases or n_initial, not both"))
+    index_types isa AbstractVector && n_initial !== nothing && throw(
+        ArgumentError("provide either index_types as a vector of types or n_initial, not both")
     )
     ids = initial_cases === nothing ? nothing : collect(Int, initial_cases)
     if ids !== nothing
@@ -183,11 +182,7 @@ function SimOpts(;
         all(>(0), types) || throw(ArgumentError("index_types must contain positive type indices"))
     end
     if ids !== nothing && types isa Vector{Int} && length(ids) != length(types)
-        throw(
-            ArgumentError(
-                "initial_cases and index_types must have the same length"
-            )
-        )
+        throw(ArgumentError("initial_cases and index_types must have the same length"))
     end
     count = if ids !== nothing
         length(ids)
@@ -203,13 +198,13 @@ function SimOpts(;
         # vector, leaving the caller's untouched.
         rules = collect(AbstractStoppingRule, stopping_rules)
         any(r -> r isa Extinction, rules) || pushfirst!(rules, Extinction())
-        return SimOpts(count, ids, types, rules)
+        return SimOpts(count, n_initial !== nothing, ids, types, rules)
     end
     rules = AbstractStoppingRule[Extinction()]
     max_cases !== nothing && push!(rules, MaxCases(max_cases))
     max_generations !== nothing && push!(rules, MaxGenerations(max_generations))
     max_time !== nothing && push!(rules, MaxTime(Float64(max_time)))
-    return SimOpts(count, ids, types, rules)
+    return SimOpts(count, n_initial !== nothing, ids, types, rules)
 end
 
 """The case cap set by `opts` (`typemax(Int)` if none), used to flag
@@ -221,17 +216,29 @@ function _case_cap(opts::SimOpts)
     return typemax(Int)
 end
 
-# Preserve the positional constructor used by external simulation methods.
-function SimOpts(n_initial, rules)
-    return SimOpts(n_initial, nothing, nothing, rules)
-end
+"""
+    supports_initial_cases(model::TransmissionModel) -> Bool
 
-function _validate_initial_cases(model::TransmissionModel, opts::SimOpts)
-    opts.initial_cases === nothing || throw(
-        ArgumentError(
-            "$(nameof(typeof(model))) does not support initial_cases"
-        )
-    )
+Whether `simulate(model; initial_cases = ids)` can seed the named hosts. The
+default is `false`, which makes [`validate_initial_cases`](@ref
+EpiBranch.validate_initial_cases) refuse the keyword. A model over a fixed
+population, whose hosts have stable IDs, returns `true` and seeds the chosen IDs
+with [`seed_initial_cases!`](@ref EpiBranch.seed_initial_cases!).
+"""
+supports_initial_cases(::TransmissionModel) = false
+
+"""
+    validate_initial_cases(model::TransmissionModel, opts::SimOpts)
+
+Called before a run starts. The default throws an `ArgumentError` when
+`opts.initial_cases` is set and `supports_initial_cases(model)` is `false`. A
+model that supports `initial_cases` extends this to check the IDs against its
+population, usually with [`validate_initial_case_ids`](@ref
+EpiBranch.validate_initial_case_ids).
+"""
+function validate_initial_cases(model::TransmissionModel, opts::SimOpts)
+    opts.initial_cases === nothing || supports_initial_cases(model) ||
+        throw(ArgumentError("$(nameof(typeof(model))) does not support initial_cases"))
     return nothing
 end
 
@@ -247,9 +254,7 @@ function _validate_index_types(model::TransmissionModel, opts::SimOpts)
     opts.index_types === nothing && return nothing
     nt = n_types(model)
     nt > 1 || throw(
-        ArgumentError(
-            "$(nameof(typeof(model))) does not support index_types (it has a single type)"
-        )
+        ArgumentError("$(nameof(typeof(model))) does not support index_types (it has a single type)")
     )
     types = opts.index_types
     types isa AbstractVector || return nothing
@@ -258,21 +263,30 @@ function _validate_index_types(model::TransmissionModel, opts::SimOpts)
     return nothing
 end
 
-function _validate_initial_case_ids(opts::SimOpts, n)
+"""
+    validate_initial_case_ids(opts::SimOpts, n)
+
+Check that every ID in `opts.initial_cases`, if given, lies in `1:n`, for a
+fixed population of `n` hosts.
+"""
+function validate_initial_case_ids(opts::SimOpts, n)
     ids = opts.initial_cases
     ids === nothing && return nothing
-    all(id -> id <= n, ids) || throw(
-        ArgumentError(
-            "initial_cases IDs must be in 1:$n"
-        )
-    )
+    all(id -> id <= n, ids) || throw(ArgumentError("initial_cases IDs must be in 1:$n"))
     return nothing
 end
 
-# Candidate times are local to a race; chosen IDs refer to the whole population.
-_seed_initial_cases!(best, members, ids) = _seed_initial_cases!(best, members, Set(ids))
+"""
+    seed_initial_cases!(best, members, ids)
 
-function _seed_initial_cases!(best, members, chosen::AbstractSet)
+Seed the hosts `ids` as index cases in the candidate buffer `best` of a Sellke
+race: each host in `members` that is in `ids` gets candidate time `0`. `members`
+lists the host IDs the race covers, in the order of `best`, so a race over part
+of a population still takes IDs that refer to the whole of it.
+"""
+seed_initial_cases!(best, members, ids) = seed_initial_cases!(best, members, Set(ids))
+
+function seed_initial_cases!(best, members, chosen::AbstractSet)
     for (k, id) in enumerate(members)
         id in chosen && (best[k] = 0)
     end

@@ -4,7 +4,7 @@ How much faster is EpiBranch.jl than the R packages it draws on? Speed matters w
 
 These timings are indicative only. Both the R and Julia implementations are under active development, so numbers will change over time.
 
-## How to run
+## Running the benchmarks
 
 The Julia benchmarks run on the copy of EpiBranch in the repository folder and need four other packages. Start Julia in that folder and set up a project for them once, outside the repository so that it leaves nothing behind in your checkout:
 

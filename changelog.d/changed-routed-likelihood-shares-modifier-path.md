@@ -1,0 +1,1 @@
+The routed network likelihood now scores an unmodified susceptible through the same code as a modified one, using the identity modifier. The weighted log-sum-exp of a susceptibility mixture is now one core helper shared by both packages. Likelihood values are unchanged.

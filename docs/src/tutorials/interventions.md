@@ -13,7 +13,7 @@ the moment a case is isolated. A secondary case is infected only if their
 infection would have happened before their infector was isolated: whichever
 happens first decides. Isolation follows symptom onset, and how much it
 prevents depends on how the incubation period compares with the generation
-time.
+time. With a plain generation-time distribution, as used on this page, each generation time is drawn independently of the case's incubation period. The share of transmission before onset is then `P(G < incubation)` for independent draws of the two. A short incubation period relative to the generation time leaves most transmission after onset, where isolation can stop it; a long one leaves most of it before onset, when isolation cannot act. To link the timing of transmission to each case's own onset instead, use [`incubation_linked_generation_time`](@ref). More generally, `generation_time` can be any `ind -> Distribution`. Such a function can place a custom infectiousness profile relative to each case's onset, for example `ind -> truncated(incubation_period(ind) + profile, 0, Inf)`. `clinical_presentation` draws an incubation period for asymptomatic cases too, as the time onset would have happened, so `incubation_period(ind)` is defined for them.
 
 All times on this page are in days. Everything here needs only keyword
 arguments; if Julia syntax such as `;` in a function call or `x -> ...` is new,
@@ -197,12 +197,7 @@ ContactTracing(
 )
 ```
 
-!!! note "`quarantine_on_trace` is deprecated"
-    Older code may use `quarantine_on_trace = true` or `false`. These still
-    run with a warning: `true` means `action = Quarantine(duration = Inf)` and
-    `false` means `action = FlagOnly()`. Write the `action` instead.
-
-### What triggers contact tracing
+### Default tracing trigger
 
 By default, a contact is traced once their infector has developed symptoms
 and been isolated, and the delay counts from the isolation. Real
@@ -250,13 +245,15 @@ nothing # hide
 ```
 
 To write a trigger of your own, such as one that depends on the infector's
-age, see [Who triggers contact tracing](@ref).
+age, see [Eligibility for contact tracing](@ref).
 
 ## Asymptomatic cases and test sensitivity
 
 A fraction `prob_asymptomatic` of cases never develop symptoms, and
 symptom-driven isolation misses them. Here asymptomatic cases are as
-infectious as symptomatic ones. `test_sensitivity` is the probability that a
+infectious as symptomatic ones, as `clinical_presentation` assumes by default.
+The end of this section shows how to lower it.
+`test_sensitivity` is the probability that a
 symptomatic case tests positive and is isolated; the rest are missed:
 
 ```@example interventions
@@ -283,6 +280,33 @@ case is traced in these runs, quarantined or not. Leaving out the contacts
 still undecided when a run reached the cap, the contacts of asymptomatic
 cases are the largest block of untraced contacts: 27,830 of 52,373.
 
+To make asymptomatic cases less infectious, list `transmission_traits` after `clinical_presentation`, with an infectiousness that depends on whether the case is asymptomatic:
+
+```julia
+disease_less_infectious = [
+    clinical_presentation(
+        incubation_period = LogNormal(1.5, 0.5),
+        prob_asymptomatic = 0.3,
+    ),
+    transmission_traits(infectiousness = (rng, ind) -> ind.state[:asymptomatic] ? 0.5 : 1.0),
+]
+```
+
+Use `transmission_traits` for traits known when the case is created (age, sex, whether the case is asymptomatic), because it draws its factor then. A change during the infection, such as tracing or quarantine, needs an intervention. Combining the two is tracked in #972.
+
+Asymptomatic cases can also have their own incubation period. Every case draws one, an asymptomatic case's included, and it sets the timing that [`incubation_linked_generation_time`](@ref) reads where there is no onset. Give `incubation_period` a function of the random number generator and the individual instead of a distribution. `:asymptomatic` is set before the draw, so the function can use it, or any trait set by an earlier attribute such as age:
+
+```julia
+disease_own_timing = clinical_presentation(
+    incubation_period = (rng, ind) -> rand(
+        rng, ind.state[:asymptomatic] ? LogNormal(1.2, 0.5) : LogNormal(1.5, 0.5)
+    ),
+    prob_asymptomatic = 0.3,
+)
+```
+
+The closed forms that read the incubation period directly, such as the analytic effect of `Isolation`, need a distribution and refuse a function with an error; simulate instead.
+
 ## Contact tracing workload
 
 The simulation keeps everyone each case could have infected, including those
@@ -300,16 +324,16 @@ rng = StableRNG(42)
 state = simulate(scenario([iso, ct]); condition = 50:200,
     max_cases = nothing, max_generations = 5, rng = rng)
 
-contacts = length(state.individuals)
-infected = count(is_infected, state.individuals)
-traced = count(is_traced, state.individuals)
+contacts = length(individuals(state))
+infected = count(is_infected, individuals(state))
+traced = count(is_traced, individuals(state))
 # Cases in the fifth generation drew no contacts to trace
-complete = count(ind -> is_infected(ind) && ind.generation < 5, state.individuals)
+complete = count(ind -> is_infected(ind) && ind.generation < 5, individuals(state))
 println("Contacts: $contacts, Infections: $infected, Traced: $traced")
 println("Traced contacts per case: $(round(traced / complete, digits=1))")
 ```
 
-`count(is_traced, state.individuals)` counts the people for whom `is_traced`
+`count(is_traced, individuals(state))` counts the people for whom `is_traced`
 is true, like `sum(is_traced(x))` in R. Every contact generated is
 infected unless an intervention prevents it. The gap between contacts and
 infections is the number of infections isolation and quarantine prevented.
@@ -390,7 +414,7 @@ model = ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
 state = simulate(model; max_cases = 500, rng = StableRNG(42))
 reported = count(
     ind -> get(ind.state, :reporting_time, Inf) <= state.max_infection_time,
-    state.individuals)
+    individuals(state))
 println("Cases: $(state.cumulative_cases), reported by the end: $(reported)")
 ```
 
@@ -428,6 +452,46 @@ iso_gen3 = Scheduled(
 )
 nothing # hide
 ```
+
+## Comparing many scenarios
+
+The loops above change one setting at a time. [`scenario_sweep`](@ref) runs every combination of the settings you list and returns a table with one row per combination and its containment probability. Each setting is a vector of the values to try, and `:offspring` is required. Each value of `:interventions` is a whole stack of interventions, given as one vector per scenario. Settings that apply to every run, such as `max_cases` and `rng`, are passed once:
+
+```@example interventions
+sweep = scenario_sweep(
+    Dict(
+        :offspring => [Poisson(1.5), Poisson(3.0)],
+        :interventions => [
+            [Isolation(onset_to_isolation_delay = Exponential(d), duration = 7.0)]
+                for d in [0.5, 2.0, 5.0]
+        ],
+        :attributes => [clinical],
+        :generation_time => [Exponential(5.0)],
+    );
+    n_sim = 200, max_cases = 500, rng = StableRNG(42),
+)
+sweep.R = mean.(sweep.offspring)
+sweep.mean_delay = [only(i).onset_to_isolation_delay.θ for i in sweep.interventions]
+sort(sweep[:, [:R, :mean_delay, :containment_probability]], [:R, :mean_delay])
+```
+
+The six rows are the two offspring distributions crossed with the three delays. The `R` and `mean_delay` columns are read back from the offspring distribution and isolation of each scenario. The table is sorted by R and then by delay. Containment is higher with R = 1.5 than with R = 3, and falls in both cases as isolation is delayed.
+
+### Containment by a chosen week
+
+A simulation that stops at `max_cases` is not extinct, but an outbreak can also be small or slow at a given time. Reports of ringbp results usually count an outbreak as contained when no case has symptom onset in a window of weeks. `is_extinct(state; by_week = ...)` does that: `by_week = 12:20` is `true` when no case has onset in weeks 12 to 20, counted in 7-day blocks from day 0, and a single week takes an integer. The simulation has to run to the end of the window, here day 140, so `max_time = 140.0`:
+
+```@example interventions
+model_r15 = ModelSpec(BranchingProcess(Poisson(1.5), Exponential(5.0));
+    interventions = [iso], attributes = clinical)
+states = simulate(model_r15, 200; max_cases = 500, max_time = 140.0, rng = StableRNG(42))
+
+extinct = mean(is_extinct.(states))
+quiet = mean(is_extinct.(states; by_week = 12:20, max_cases = 500))
+println("Extinct: $(round(extinct, digits=3)); no onsets in weeks 12-20: $(round(quiet, digits=3))")
+```
+
+The two shares differ because they define containment differently: an outbreak that has died out can still have a case with onset inside it, and one that is alive can have none. Pass the same `max_cases` to `is_extinct`: a run stopped at the cap before week 12 has no onsets in the window, and without `max_cases` it would be counted as contained.
 
 ## Writing your own intervention
 

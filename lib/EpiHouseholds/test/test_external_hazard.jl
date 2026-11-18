@@ -28,6 +28,20 @@
         )
     end
 
+    @testset "obs_end must be non-negative, Inf allowed" begin
+        for bad in (-5.0, NaN)
+            @test_throws ArgumentError HouseholdProcess(
+                fill(3, 5), Exponential(2.0); external_hazard = 0.01, obs_end = bad
+            )
+        end
+        @test HouseholdProcess(
+            fill(3, 5), Exponential(2.0); external_hazard = 0.01, obs_end = Inf
+        ).obs_end == Inf
+        @test HouseholdProcess(
+            fill(3, 5), Exponential(2.0); external_hazard = 0.01, obs_end = 0
+        ).obs_end == 0.0
+    end
+
     @testset "the same rate for everyone matches the shared rate" begin
         shared = ModelSpec(
             HouseholdProcess(sizes, Exponential(3.0); external_hazard = 0.02, obs_end = 30.0);
@@ -42,8 +56,8 @@
             )
             a = simulate(shared; rng = StableRNG(3))
             b = simulate(per_person; rng = StableRNG(3))
-            @test [i.infection_time for i in a.individuals] ==
-                [i.infection_time for i in b.individuals]
+            @test [i.infection_time for i in individuals(a)] ==
+                [i.infection_time for i in individuals(b)]
             data = household_infections(a, shared)
             @test loglikelihood(data, per_person) ≈ loglikelihood(data, shared)
         end
@@ -84,8 +98,8 @@
             progression = sir
         )
         state = simulate(model; rng = StableRNG(5))
-        @test any(is_infected, state.individuals[1:4])
-        @test !any(is_infected, state.individuals[5:end])
+        @test any(is_infected, individuals(state)[1:4])
+        @test !any(is_infected, individuals(state)[5:end])
         data = household_infections(state, model)
         @test isfinite(loglikelihood(data, model))
     end
@@ -174,7 +188,7 @@ end
             progression = sir
         )
         state = simulate(model; rng = StableRNG(1))
-        @test any(is_infected, state.individuals)
+        @test any(is_infected, individuals(state))
         data = household_infections(state, model)
         @test isfinite(loglikelihood(data, model))
     end

@@ -28,7 +28,7 @@ function test_contextual_simulation(make_process, extract)
         state = simulate(spec; rng = StableRNG(233))
         @test state.cumulative_cases == 3
         @test any(record -> record[3] > 0, seen)
-        @test all(record -> record[3] == state.individuals[record[1]].infection_time, seen)
+        @test all(record -> record[3] == individuals(state)[record[1]].infection_time, seen)
         data = extract(state, spec)
         contextual = ModelSpec(make_process(PairKernel(interval)); progression)
         frozen(i, j) = interval(PairContext(i, j, data.infection_time[i]))
@@ -45,8 +45,8 @@ function test_contextual_simulation(make_process, extract)
         context_spec = ModelSpec(make_process(fixed_context); progression)
         id_state = simulate(id_spec; rng = StableRNG(41))
         context_state = simulate(context_spec; rng = StableRNG(41))
-        @test [i.infection_time for i in id_state.individuals] ==
-            [i.infection_time for i in context_state.individuals]
+        @test [i.infection_time for i in individuals(id_state)] ==
+            [i.infection_time for i in individuals(context_state)]
         @test loglikelihood(extract(id_state, id_spec), id_spec) ≈
             loglikelihood(extract(context_state, context_spec), context_spec)
     end
@@ -125,7 +125,7 @@ end
 struct RecordKernelPolicy <: AbstractIntervention end
 function EpiBranch.resolve_individual!(::RecordKernelPolicy, ind, state)
     ind.id == 2 || return nothing
-    state.individuals[3].state[:policy_time] = ind.infection_time + 0.5
+    individuals(state)[3].state[:policy_time] = ind.infection_time + 0.5
     return nothing
 end
 
@@ -164,7 +164,7 @@ end
 # that moves.
 struct TickEveryCase <: AbstractIntervention end
 function EpiBranch.resolve_individual!(::TickEveryCase, ind, state)
-    for person in state.individuals
+    for person in individuals(state)
         person.state[:tick] = state.cumulative_cases
     end
     return nothing
@@ -175,7 +175,7 @@ tick_state(ind) = (tick = get(ind.state, :tick, 0)::Int,)
 # `nothing` before then reads a number afterwards.
 struct DoseEveryone <: AbstractIntervention end
 function EpiBranch.resolve_individual!(::DoseEveryone, ind, state)
-    for person in state.individuals
+    for person in individuals(state)
         get!(person.state, :dose_time, ind.infection_time + 0.5)
     end
     return nothing
@@ -186,7 +186,7 @@ end
 struct DoseAtSecondCase <: AbstractIntervention end
 function EpiBranch.resolve_individual!(::DoseAtSecondCase, ind, state)
     ind.id == 1 && return nothing
-    for person in state.individuals
+    for person in individuals(state)
         get!(person.state, :dose_time, ind.infection_time)
     end
     return nothing
@@ -227,8 +227,8 @@ function test_stateful_simulation(make_process, extract)
                 a = simulate(ordinary; initial_cases = [1], rng = StableRNG(seed))
                 b = simulate(stateful; initial_cases = [1], rng = StableRNG(seed))
                 @test isequal(
-                    [i.infection_time for i in a.individuals],
-                    [i.infection_time for i in b.individuals]
+                    [i.infection_time for i in individuals(a)],
+                    [i.infection_time for i in individuals(b)]
                 )
             end
         end
@@ -249,8 +249,8 @@ function test_stateful_simulation(make_process, extract)
             a = simulate(ordinary; initial_cases = [1], rng = StableRNG(seed))
             b = simulate(stateful; initial_cases = [1], rng = StableRNG(seed))
             @test isequal(
-                [i.infection_time for i in a.individuals],
-                [i.infection_time for i in b.individuals]
+                [i.infection_time for i in individuals(a)],
+                [i.infection_time for i in individuals(b)]
             )
         end
     end
@@ -266,7 +266,7 @@ function test_stateful_simulation(make_process, extract)
             interventions = [DoseEveryone()]
         )
         state = simulate(model; initial_cases = [1], rng = StableRNG(4))
-        @test all(i -> i.state[:dose_time] isa Float64, state.individuals)
+        @test all(i -> i.state[:dose_time] isa Float64, individuals(state))
     end
     @testset "A record change governs a contact due at the same clock" begin
         # Host 3's dose at t = 1 moves its contacts from one day after an
@@ -282,8 +282,8 @@ function test_stateful_simulation(make_process, extract)
             interventions = [DoseAtSecondCase(), BlockOneToThree()]
         )
         state = simulate(model; initial_cases = [1], rng = StableRNG(1))
-        @test [i.infection_time for i in state.individuals] == [0.0, 1.0, 3.0]
-        @test state.individuals[3].parent_id == 2
+        @test [i.infection_time for i in individuals(state)] == [0.0, 1.0, 3.0]
+        @test individuals(state)[3].parent_id == 2
     end
     @testset "A moved record keeps an atom at the current clock" begin
         # Contacts at one and three days are equally likely. Stamping a date the
@@ -299,7 +299,7 @@ function test_stateful_simulation(make_process, extract)
         n = 4000
         early = count(1:n) do seed
             state = simulate(live; initial_cases = [1], rng = StableRNG(seed))
-            state.individuals[3].infection_time == 1.0
+            individuals(state)[3].infection_time == 1.0
         end
         @test isapprox(early / n, 0.5; atol = 0.03)
     end
@@ -312,7 +312,7 @@ function test_stateful_simulation(make_process, extract)
         n = 2000
         at_one(model) = count(1:n) do seed
             state = simulate(model; initial_cases = [1], rng = StableRNG(seed))
-            state.individuals[2].infection_time == 1.0
+            individuals(state)[2].infection_time == 1.0
         end / n
         two_atoms = DiscreteNonParametric([1.0, 2.0], [0.5, 0.5])
         kernel = PairKernel(
@@ -338,7 +338,7 @@ function test_stateful_simulation(make_process, extract)
             interventions = [TickEveryCase()]
         )
         state = simulate(model; initial_cases = [1], rng = StableRNG(1))
-        @test [i.infection_time for i in state.individuals] == [0.0, 1.0, 1.0]
+        @test [i.infection_time for i in individuals(state)] == [0.0, 1.0, 1.0]
     end
     @testset "A live kernel timed from onset serves simulation and likelihood" begin
         # Infectiousness starts at the infector's symptom onset. The same
@@ -353,11 +353,11 @@ function test_stateful_simulation(make_process, extract)
             progression = [Transition(:recovered; delay = 6.0, terminal = true)]
         )
         state = simulate(model; initial_cases = [1], rng = StableRNG(7))
-        infected = filter(is_infected, state.individuals)
+        infected = filter(is_infected, individuals(state))
         @test length(infected) > 1
         @test all(infected) do ind
             ind.parent_id == 0 ||
-                ind.infection_time >= state.individuals[ind.parent_id].state[:onset_time]
+                ind.infection_time >= individuals(state)[ind.parent_id].state[:onset_time]
         end
         data = extract(state, model; host_times = (:onset_time,))
         onsets = data.host_times.onset_time
@@ -408,7 +408,7 @@ function test_stateful_simulation(make_process, extract)
         asym_state = simulate(asym_model; initial_cases = [1], rng = StableRNG(7))
         @test any(
             ind -> is_infected(ind) && isnan(ind.state[:onset_time]),
-            asym_state.individuals
+            individuals(asym_state)
         )
         asym_data = extract(asym_state, asym_model; host_times = (:onset_time,))
         @test loglikelihood(asym_data, make_process(asym_kernel)) ≈
@@ -434,9 +434,9 @@ function test_stateful_simulation(make_process, extract)
         a = simulate(ModelSpec(make_process(records); progression); initial_cases = [1], rng = StableRNG(9))
         b = simulate(ModelSpec(make_process(expected); progression); initial_cases = [1], rng = StableRNG(9))
         @test isequal(
-            [i.infection_time for i in a.individuals], [
+            [i.infection_time for i in individuals(a)], [
                 i.infection_time
-                    for i in b.individuals
+                    for i in individuals(b)
             ]
         )
     end
@@ -495,7 +495,7 @@ function test_stateful_simulation(make_process, extract)
         infected = 0
         for seed in 1:500
             state = simulate(model; rng = StableRNG(seed))
-            cases = filter(is_infected, state.individuals)
+            cases = filter(is_infected, individuals(state))
             @test all(i -> 1.0 <= i.infection_time <= 3.0, cases)
             infected += length(cases)
         end
@@ -520,12 +520,12 @@ function test_stateful_simulation(make_process, extract)
         by_policy = 0
         for seed in 1:n
             state = simulate(spec; initial_cases = [1], rng = StableRNG(seed))
-            @test state.individuals[2].infection_time == 1.0
+            @test individuals(state)[2].infection_time == 1.0
             records = record_kernel(kernel, state)
             @test records.state[3].policy_time == 1.5
-            t = state.individuals[3].infection_time
-            by_three += is_infected(state.individuals[3]) && t <= 3.0
-            by_policy += is_infected(state.individuals[3]) && t <= 1.5
+            t = individuals(state)[3].infection_time
+            by_three += is_infected(individuals(state)[3]) && t <= 3.0
+            by_policy += is_infected(individuals(state)[3]) && t <= 1.5
         end
         @test by_three / n ≈ 1 - exp(-0.1 * 1.5 - 1.0 * 1.5) atol = 0.04
         @test by_policy / n ≈ 1 - exp(-0.1 * 1.5) atol = 0.03

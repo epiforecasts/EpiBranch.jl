@@ -1,0 +1,1 @@
+The warning in the inference tutorial now says which interventions `offspring_distribution` of a `ModelSpec` accepts: `Isolation` and a completed `MassVaccination` have a closed-form effect. Interventions without one, such as contact tracing and its quarantine, throw an error.

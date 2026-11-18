@@ -127,12 +127,7 @@ end
 end
 Base.setindex!(s::IndividualState{T}, v, k) where {T} = setindex!(s, v, convert(Symbol, k)::Symbol)
 
-function Base.get!(s::IndividualState, k, default)
-    i = _slot(s, k)
-    i == 0 || return _slot_value(s, i)
-    s[k] = default
-    return default
-end
+Base.get!(s::IndividualState, k, default) = get!(() -> default, s, k)
 
 function Base.get!(f::Base.Callable, s::IndividualState, k)
     i = _slot(s, k)
@@ -148,20 +143,21 @@ function Base.delete!(s::IndividualState, k)
     return s
 end
 
-function Base.pop!(s::IndividualState, k)
-    i = _slot(s, k)
-    i == 0 && throw(KeyError(k))
+function _pop_slot!(s::IndividualState, i::Int)
     v = _slot_value(s, i)
     deleteat!(s.slots, i)
     return v
 end
 
+function Base.pop!(s::IndividualState, k)
+    i = _slot(s, k)
+    i == 0 && throw(KeyError(k))
+    return _pop_slot!(s, i)
+end
+
 function Base.pop!(s::IndividualState, k, default)
     i = _slot(s, k)
-    i == 0 && return default
-    v = _slot_value(s, i)
-    deleteat!(s.slots, i)
-    return v
+    return i == 0 ? default : _pop_slot!(s, i)
 end
 
 Base.empty!(s::IndividualState) = (empty!(s.slots); s)

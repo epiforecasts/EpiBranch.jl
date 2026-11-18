@@ -1,0 +1,1 @@
+The clinical transitions tutorial builds transmission timing from a latent period, an infectious period and a contact interval with `transmission_timing`, gives the reproduction number that implies with `implied_R`, and compares `realised_generation_intervals` from a simulation with the generation time put in.

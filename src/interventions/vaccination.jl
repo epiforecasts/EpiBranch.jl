@@ -294,38 +294,21 @@ function _check_effect_keywords(T, own, effect)
     return nothing
 end
 
-function _vaccinated_key(label::Symbol)
-    return label === :default ? :vaccinated : Symbol("vaccinated_", label)
-end
-function _vaccination_time_key(label::Symbol)
-    return label === :default ? :vaccination_time : Symbol("vaccination_time_", label)
-end
-function _vaccine_efficacy_key(label::Symbol)
-    return label === :default ? :vaccine_efficacy : Symbol("vaccine_efficacy_", label)
-end
-function _post_exposure_efficacy_key(label::Symbol)
-    return label === :default ? :post_exposure_efficacy : Symbol("post_exposure_efficacy_", label)
-end
-function _onward_efficacy_key(label::Symbol)
-    return label === :default ? :onward_efficacy : Symbol("onward_efficacy_", label)
-end
-function _coverage_declined_key(label::Symbol)
-    return label === :default ? :coverage_declined : Symbol("coverage_declined_", label)
-end
-function _immunity_time_key(label::Symbol)
-    return label === :default ? :immunity_time : Symbol("immunity_time_", label)
-end
-function _severity_efficacy_key(label::Symbol)
-    return label === :default ? :severity_efficacy : Symbol("severity_efficacy_", label)
-end
+# Each per-dose key is its base name, with the dose label appended unless it
+# is `:default`.
+_labelled_key(base::Symbol, label::Symbol) =
+    label === :default ? base : Symbol(base, "_", label)
 
-function _symptom_efficacy_key(label::Symbol)
-    return label === :default ? :symptom_efficacy : Symbol("symptom_efficacy_", label)
-end
-function _symptom_protection_key(label::Symbol)
-    return label === :default ? :symptom_protection_time :
-        Symbol("symptom_protection_time_", label)
-end
+_vaccinated_key(label::Symbol) = _labelled_key(:vaccinated, label)
+_vaccination_time_key(label::Symbol) = _labelled_key(:vaccination_time, label)
+_vaccine_efficacy_key(label::Symbol) = _labelled_key(:vaccine_efficacy, label)
+_post_exposure_efficacy_key(label::Symbol) = _labelled_key(:post_exposure_efficacy, label)
+_onward_efficacy_key(label::Symbol) = _labelled_key(:onward_efficacy, label)
+_coverage_declined_key(label::Symbol) = _labelled_key(:coverage_declined, label)
+_immunity_time_key(label::Symbol) = _labelled_key(:immunity_time, label)
+_severity_efficacy_key(label::Symbol) = _labelled_key(:severity_efficacy, label)
+_symptom_efficacy_key(label::Symbol) = _labelled_key(:symptom_efficacy, label)
+_symptom_protection_key(label::Symbol) = _labelled_key(:symptom_protection_time, label)
 
 # Time dose `label` was given to `ind`, or `nothing` if it has not been.
 function _dose_time(label::Symbol, ind)
@@ -794,9 +777,6 @@ function RingVaccination(;
 end
 
 vaccine_effect(rv::RingVaccination) = getfield(rv, :effect)
-Base.getproperty(rv::RingVaccination, name::Symbol) = _effect_getproperty(rv, name)
-Base.propertynames(rv::RingVaccination, ::Bool = false) = _effect_propertynames(rv)
-Base.show(io::IO, rv::RingVaccination) = _show_keywords(io, rv)
 
 function required_fields(rv::RingVaccination)
     return _maybe_positive(rv.post_exposure_efficacy) ? [:traced, :incubation_period] : [:traced]
@@ -831,8 +811,6 @@ end
 # parent's `:vaccination_time` is set by ring vaccination when the parent
 # was traced, and the onward immunity takes effect at that time plus
 # `delay_to_immunity`, as on the susceptibility side.
-_onward_risk(rv::RingVaccination, parent) = _onward_risk(rv, parent, nothing)
-
 function _onward_risk(rv::RingVaccination, parent, contact)
     # A community introduction has no infector within the population, so
     # vaccination cannot reduce its source's onward transmission.
@@ -897,6 +875,7 @@ end
 function _abort_infection!(rv::RingVaccination, contact, vacc_t, rng)
     incubation = _state_real(contact.state, :incubation_period, NaN)
     isnan(incubation) && return nothing
+    is_asymptomatic(contact) && return nothing
     post = _post_exposure_efficacy(rv, contact)
     post > 0.0 || return nothing
     immunity = _immunity_time(rv, contact, vacc_t)
@@ -984,14 +963,6 @@ function competing_risk(rv::RingVaccination, parent, contact, state)
     return (exposure, onward)
 end
 
-# Scalar defaults short-circuit without drawing from the rng so that
-# coverage = 1.0 and eligibility_window = Inf reproduce the previous
-# deterministic behaviour exactly.
-_within_eligibility_window(w::Real, ind, vacc_t, rng) = _within_window(w, ind, vacc_t)
-function _within_eligibility_window(w, ind, vacc_t, rng)
-    return _within_window(sample_value(w, rng, ind), ind, vacc_t)
-end
-
 # A contact with no exposure yet (a `NaN` infection time) has not exceeded any
 # window, so a pre-exposure dose is always within it.
 function _within_window(w, ind, vacc_t)
@@ -1032,7 +1003,7 @@ function _validate_dose_schedule(interventions)
     # derivative passes through the schedule unconverted.
     given = Dict{Symbol, Any}()
     for iv in interventions
-        vacc = _unwrap_scheduled(iv)
+        vacc = _innermost(iv)
         vacc isa AbstractVaccination || continue
         label = dose_label(vacc)
         req = required_dose(vacc)
@@ -1136,9 +1107,6 @@ for a vaccination not timed from the trace. [`RingVaccination`](@ref) is the onl
 one timed from it."""
 _dose_offset(::AbstractVaccination) = nothing
 _dose_offset(rv::RingVaccination) = rv.dose_delay
-
-# The intervention inside a wrapper; `InterventionWrapper` adds a method.
-_unwrap_scheduled(iv) = iv
 
 # ── GroupVaccination ─────────────────────────────────────────────────
 
@@ -1245,9 +1213,6 @@ function GroupVaccination(;
 end
 
 vaccine_effect(gv::GroupVaccination) = getfield(gv, :effect)
-Base.getproperty(gv::GroupVaccination, name::Symbol) = _effect_getproperty(gv, name)
-Base.propertynames(gv::GroupVaccination, ::Bool = false) = _effect_propertynames(gv)
-Base.show(io::IO, gv::GroupVaccination) = _show_keywords(io, gv)
 
 function required_fields(gv::GroupVaccination)
     return union([gv.group_key], required_fields(gv.eligibility))
@@ -1267,7 +1232,7 @@ function _group_members(state::SimulationState, key::Symbol, group)
     seen, index = get!(state.scratch, (:group_members, key)) do
         (Ref(0), Dict{Any, Vector{Int}}())
     end::Tuple{Base.RefValue{Int}, Dict{Any, Vector{Int}}}
-    n = length(state.individuals)
+    n = length(individuals(state))
     for id in (seen[] + 1):n
         g = get(_realised!(state, id).state, key, nothing)
         g === nothing && continue
@@ -1287,7 +1252,10 @@ function _group_trigger_time(gv::GroupVaccination, state, group)
     key = gv.group_key
     t = Inf
     for id in _group_members(state, key, group)
-        m = state.individuals[id]
+        m = individuals(state)[id]
+        # Contacts blocked by susceptibility or an intervention hold a
+        # provisional onset but never become cases.
+        is_infected(m) || continue
         is_eligible(gv.eligibility, m, m, state) || continue
         tt = trigger_time(gv.eligibility, m, state)
         isnan(tt) && continue
@@ -1402,10 +1370,6 @@ end
 
 vaccine_effect(mv::MassVaccination) = getfield(mv, :effect)
 
-Base.getproperty(mv::MassVaccination, name::Symbol) = _effect_getproperty(mv, name)
-Base.propertynames(mv::MassVaccination, ::Bool = false) = _effect_propertynames(mv)
-Base.show(io::IO, mv::MassVaccination) = _show_keywords(io, mv)
-
 required_fields(::MassVaccination) = Symbol[]
 
 # The per-contact probability a dose of `mv` blocks an exposure, for the
@@ -1432,6 +1396,32 @@ function _mass_vaccination_block(mv::MassVaccination)
     return mv.coverage * efficacy(mv)
 end
 
+_no_symptom_efficacy(mv::MassVaccination) =
+    symptom_efficacy(mv) isa Real && symptom_efficacy(mv) == 0
+
+# Probability that a case becomes asymptomatic because of the vaccine: it is
+# vaccinated with probability c(1 - e) / (1 - c e) (vaccination blocks
+# infection with probability e) and then loses its onset with probability
+# `symptom_efficacy`.
+function _breakthrough_symptom_loss(mv::MassVaccination)
+    c = _mass_vaccination_block(mv) # also checks the closed form applies
+    se = symptom_efficacy(mv)
+    se isa Real || se isa Distribution || throw(
+        ArgumentError(
+            "Isolation's analytic effect needs a number or a distribution for " *
+                "`symptom_efficacy`, not a function of the individual; simulate instead."
+        )
+    )
+    vaccinated = mv.coverage * (1 - efficacy(mv)) / (1 - c)
+    return vaccinated * _closed_form_value(se)
+end
+
 function analytic_offspring_effect(mv::MassVaccination, offspring::Union{NegativeBinomial, Poisson})
     return scale_distribution(offspring, 1 - _mass_vaccination_block(mv))
 end
+
+# One block serves the three built-in vaccinations, defined once all exist.
+const _EffectVaccination = Union{RingVaccination, GroupVaccination, MassVaccination}
+Base.getproperty(v::_EffectVaccination, name::Symbol) = _effect_getproperty(v, name)
+Base.propertynames(v::_EffectVaccination, ::Bool = false) = _effect_propertynames(v)
+Base.show(io::IO, v::_EffectVaccination) = _show_keywords(io, v)

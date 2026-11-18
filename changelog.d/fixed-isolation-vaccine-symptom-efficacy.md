@@ -1,0 +1,1 @@
+The closed-form effect of `Isolation` now accounts for a vaccine's `symptom_efficacy` in a `MassVaccination` on the same model. Breakthrough cases that the vaccine makes asymptomatic never self-report, so `reproduction_number` and `extinction_probability` were too low for such models.

@@ -51,6 +51,23 @@ function _eligible_fraction(elig::IsolationEligibility, prob_asymptomatic)
     )
 end
 
+# Share of cases with no onset time. A vaccine with a `symptom_efficacy` makes
+# some breakthrough cases asymptomatic on top of `prob_asymptomatic`. Breakthrough
+# cases are a larger share of cases than of the population, which lowers the share
+# that can self-report.
+function _asymptomatic_among_cases(prob_asymptomatic, ivs)
+    pa = _closed_form_value(prob_asymptomatic)
+    mvs = [iv for iv in ivs if iv isa MassVaccination && !_no_symptom_efficacy(iv)]
+    isempty(mvs) && return pa
+    length(mvs) == 1 || throw(
+        ArgumentError(
+            "Isolation's analytic effect covers at most one MassVaccination with " *
+                "a non-zero `symptom_efficacy`; simulate instead."
+        )
+    )
+    return pa + (1.0 - pa) * _breakthrough_symptom_loss(only(mvs))
+end
+
 # `duration` enters the keep-probability nonlinearly (through F_g(T + D)), so
 # unlike `test_sensitivity` and `prob_asymptomatic` above, its mean would not
 # give an exact answer: it must be a fixed value.
@@ -64,15 +81,37 @@ function _isolation_duration(D)
     )
 end
 
-# The `ClinicalPresentation` among a model's `attributes`, or `nothing` if
-# there is none.
-_clinical_presentation(::NoAttributes) = nothing
-_clinical_presentation(c::ClinicalPresentation) = c
-function _clinical_presentation(attrs::Union{Tuple, AbstractVector})
-    i = findfirst(a -> a isa ClinicalPresentation, attrs)
-    return i === nothing ? nothing : attrs[i]
+# The `onset_law` of the single attribute in `attributes` that defines one,
+# or `nothing` if none does.
+_onset_law(attrs::Union{Tuple, AbstractVector}) = _onset_law_of(attrs)
+_onset_law(::NoAttributes) = nothing
+_onset_law(attr) = onset_law(attr)
+function _onset_law_of(attrs)
+    laws = filter(!isnothing, map(onset_law, attrs))
+    isempty(laws) && return nothing
+    length(laws) == 1 || throw(
+        ArgumentError(
+            "Isolation's analytic effect needs exactly one attribute that defines " *
+                "`onset_law`; this model has $(length(laws))"
+        )
+    )
+    return only(laws)
 end
-_clinical_presentation(::Any) = nothing
+
+# The incubation period that a closed form reads directly. A function of the
+# individual has no distribution to integrate over, and the error here names
+# that cause.
+function _closed_form_incubation(cp, what)
+    inc = cp.incubation_period
+    inc isa Union{Real, Distribution} && return inc
+    throw(
+        ArgumentError(
+            "$what reads the incubation period directly and needs a number or " *
+                "a distribution, not a function of the individual (got $(typeof(inc))); " *
+                "simulate instead."
+        )
+    )
+end
 
 # Expectation of `f` over a fixed value, over a continuous distribution or a
 # discrete-nonparametric one (`_mixture_expectation`, shared with
@@ -150,7 +189,7 @@ default throws, pointing at simulation instead.
 function analytic_offspring_effect(
         iso::Isolation, offspring::DiscreteUnivariateDistribution, spec
     )
-    cp = _clinical_presentation(attributes(spec))
+    cp = _onset_law(attributes(spec))
     cp === nothing && throw(
         ArgumentError(
             "Isolation's analytic effect needs the incubation period, from " *
@@ -165,11 +204,13 @@ function analytic_offspring_effect(
                 "model that needs one instead."
         )
     )
-    incubation = cp.incubation_period
+    incubation = _closed_form_incubation(cp, "Isolation's analytic effect")
     delay = iso.onset_to_isolation_delay
     ε = iso.post_isolation_transmission
     D = _isolation_duration(iso.duration)
-    q = _eligible_fraction(iso.eligibility, cp.prob_asymptomatic) *
+    q = _eligible_fraction(
+        iso.eligibility, _asymptomatic_among_cases(cp.prob_asymptomatic, interventions(spec))
+    ) *
         _closed_form_value(iso.test_sensitivity)
 
     # The keep probability for a case whose incubation period is `a` and

@@ -171,8 +171,9 @@ open.
 
 A route listing [`EpiBranch.INTERVENTION_REMOVAL`](@ref) also closes when the
 `interventions` remove the case for good (perfect isolation, or quarantine,
-with no end); leaky or time-limited isolation acts on each contact instead. Pass the interventions the
-simulation used to get the same closing time as the simulation.
+with no end); leaky or time-limited isolation acts on each contact instead. Pass
+the interventions the simulation used to get the same closing time as the
+simulation.
 """
 function window_close(ind::Individual, w::RouteWindow, interventions = ())
     return _route_close(ind, w, interventions)

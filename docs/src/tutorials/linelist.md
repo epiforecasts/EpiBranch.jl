@@ -27,8 +27,8 @@ incubation period with a median of about 4.5 days. `Exponential(θ)` has mean θ
 
 After symptom onset each case is reported (mean 3 days after onset), admitted
 to hospital with probability 0.2, and is due to die with probability 0.05.
-Every case also gets a recovery time. Death and recovery are competing
-outcomes: whichever comes first ends the case's course.
+Every case ends in death or recovery. [`exclusive_probabilities`](@ref)
+makes the two outcomes mutually exclusive, and exactly 5% of cases die.
 
 ```@example linelist
 using EpiBranch
@@ -39,11 +39,14 @@ using StableRNGs
 
 attrs = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
 
+death_p, recovered_p = exclusive_probabilities([0.05, 0.95])
+
 progression = [
     Reporting(delay = Exponential(3.0)),
     Hospitalisation(delay = Exponential(5.0), probability = 0.2),
-    Death(delay = Exponential(14.0), probability = 0.05),
-    Recovery(delay = Exponential(14.0)),
+    Death(delay = Exponential(14.0), probability = death_p),
+    Transition(:recovered, from = :onset, delay = Exponential(14.0),
+        probability = recovered_p, terminal = true),
 ]
 
 # Secondary cases: NegBin(R = 1.5, k = 0.5); generation time: LogNormal (days)
@@ -212,7 +215,7 @@ are shown unchanged.
 
 [`contacts`](@ref) returns one row per contact: the case (`from`), the
 contact (`to`), whether the contact was infected (`infected`), and the
-contact's generation and infection date:
+contact's generation, the time and date of exposure (the infection date when the contact was infected), and the contact's attributes such as age and sex:
 
 ```@example linelist
 ct = contacts(state; reference_date = Date(2024, 1, 1))

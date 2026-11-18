@@ -1,0 +1,1 @@
+Several output helpers in `src/output` are shorter, with the same results: `chain_statistics`, `realised_generation_intervals`, `weekly_incidence`, `contacts`, `linelist` column ordering and `compute_trace_level!`.

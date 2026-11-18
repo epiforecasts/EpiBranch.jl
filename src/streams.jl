@@ -18,8 +18,7 @@ ordered pair of them) and `purpose` (a `Symbol` or tag telling apart the
 different things drawn for the same `id`, such as `:susceptibility` and
 `:infectiousness` for one person, or `:contact` for one pair). The default
 method, for any ordinary `AbstractRNG`, returns `rng` itself: every draw still
-comes from the one sequence, in the order the engine asks for it, exactly as
-before `stream` existed.
+comes from the one sequence, in the order the engine asks for it.
 
 [`CommonRandomNumbers`](@ref) is the opt-in alternative: it returns a
 generator kept just for `(id, purpose)`, and a run built from it draws the
@@ -68,6 +67,13 @@ end
 # any type, `randn`, `randexp`, ranges, arrays — to work generically off it.
 Random.rng_native_52(c::CommonRandomNumbers) = Random.rng_native_52(c.rng)
 Random.rand(c::CommonRandomNumbers, sp::Random.SamplerType{UInt64}) = rand(c.rng, sp)
+
+# Probing a progression runs it on a copy of the generator. The copy must
+# include the positions of the substreams, and the original must stay untouched.
+function Base.copy(c::CommonRandomNumbers)
+    substreams = Dict{Any, Random.Xoshiro}(k => copy(v) for (k, v) in c.substreams)
+    return CommonRandomNumbers(c.seed, copy(c.rng), substreams)
+end
 
 # A fresh generator per `(id, purpose)`, seeded independently of the shared
 # sequence and of each other, so creating one costs nothing from `c.rng` and

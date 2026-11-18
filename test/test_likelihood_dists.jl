@@ -122,7 +122,7 @@ EpiBranch.chain_size_distribution(d::BrokenExactOffspring) = throw(d.error)
     end
 
     @testset "chain_size_distribution — bare-pgf GeneratingFunctionOffspring falls back" begin
-        # Regression: a GeneratingFunctionOffspring has a chain_size_distribution
+        # A GeneratingFunctionOffspring has a chain_size_distribution
         # method, so has_single_type_law's hasmethod check passes, but calling
         # it on a bare-pgf instance (no stored pmf) throws ArgumentError.
         # The analytical fast path checks for the missing pmf and uses the
@@ -139,6 +139,52 @@ EpiBranch.chain_size_distribution(d::BrokenExactOffspring) = throw(d.error)
         d = chain_length_distribution(bp)
         data = [0, 1, 2, 0, 3, 1]
         @test logpdf(d, data) ≈ loglikelihood(ChainLengths(data), Poisson(0.5))
+
+        @testset "Scalar pdf and logpdf" begin
+            @test logpdf(d, 2) ≈ logpdf(d, [2])
+            @test pdf(d, 2) ≈ exp(logpdf(d, [2]))
+            @test sum(pdf(d, k) for k in 0:60) ≈ 1 atol = 1.0e-6
+        end
+
+        @testset "Onset-timed Reporting misses asymptomatic cases" begin
+            message = "per-case detection does not give a well-defined chain length"
+            cp(p) = clinical_presentation(
+                incubation_period = Gamma(2.0, 2.0), prob_asymptomatic = p
+            )
+            onset = [Reporting(probability = 1.0, delay = 1.0)]
+            asym = ModelSpec(bp; progression = onset, attributes = cp(0.4))
+            @test_throws message loglikelihood(ChainLengths(data), asym)
+            @test_throws message chain_length_distribution(asym)
+            sympt = ModelSpec(bp; progression = onset, attributes = cp(0.0))
+            @test isfinite(loglikelihood(ChainLengths(data), sympt))
+
+            # The symptomatic share must be a fixed number from one presentation.
+            @test_throws "needs exactly one" loglikelihood(
+                ChainLengths(data), ModelSpec(bp; progression = onset)
+            )
+            @test_throws "needs exactly one" loglikelihood(
+                ChainLengths(data),
+                ModelSpec(bp; progression = onset, attributes = (cp(0.0), cp(0.0)))
+            )
+            @test_throws "fixed prob_asymptomatic" loglikelihood(
+                ChainLengths(data),
+                ModelSpec(bp; progression = onset, attributes = cp(ind -> 0.0))
+            )
+
+            # A terminal step with full reporting is not a reporting fraction.
+            terminal = ModelSpec(
+                bp;
+                progression = [
+                    Reporting(probability = 1.0, delay = 1.0, from = :infection),
+                    Recovery(delay = 5.0),
+                ]
+            )
+            @test isfinite(
+                loglikelihood(
+                    ChainLengths(data), terminal; n_sim = 50, rng = StableRNG(1)
+                )
+            )
+        end
 
         @testset "Reporting requires full detection" begin
             message = "per-case detection does not give a well-defined chain length"
@@ -169,12 +215,11 @@ EpiBranch.chain_size_distribution(d::BrokenExactOffspring) = throw(d.error)
         end
     end
 
-    @testset "chain_size_distribution — per-case observation" begin
+    @testset "chain_size_distribution — Reporting step" begin
         data = [1, 2, 1, 3, 1]
         obs = ModelSpec(
-            BranchingProcess(Poisson(0.5)); observation = PerCaseObservation(;
-                detection_prob = 0.7
-            )
+            BranchingProcess(Poisson(0.5));
+            progression = [Reporting(delay = Dirac(0.0), probability = 0.7, from = :infection)]
         )
         d = chain_size_distribution(obs; n_sim = 0)
         # n_sim=0 forces the wrapper path; logpdf should still match the
@@ -201,7 +246,6 @@ EpiBranch.chain_size_distribution(d::BrokenExactOffspring) = throw(d.error)
         pc = fill(1.0, length(data))
         specs = (
             ModelSpec(bp; observation = MinimumSize(2)),
-            ModelSpec(bp; observation = PerCaseObservation(; detection_prob = 0.5)),
             ModelSpec(bp; observation = ChainDetection(0.4)),
             ModelSpec(bp; progression = [Reporting(delay = Dirac(0.0), probability = 0.5, from = :infection)]),
         )
@@ -422,7 +466,7 @@ EpiBranch.chain_size_distribution(d::BrokenExactOffspring) = throw(d.error)
         bp = BranchingProcess(Poisson(0.5))
         bp_obs = ModelSpec(
             BranchingProcess(Poisson(0.5));
-            observation = PerCaseObservation(detection_prob = 0.6)
+            progression = [Reporting(delay = Dirac(0.0), probability = 0.6, from = :infection)]
         )
         bp_cm = BranchingProcess(ClusterMixed(Poisson, Gamma(2.0, 0.4)))
         bp_mt = BranchingProcess(
@@ -442,10 +486,8 @@ EpiBranch.chain_size_distribution(d::BrokenExactOffspring) = throw(d.error)
 
         @testset "chain_length_distribution" begin
             @test chain_length_distribution(bp) isa Distribution
-            # per-case detection has no well-defined chain length; the
-            # refusal surfaces when the law is evaluated, not at construction.
-            dl = chain_length_distribution(bp_obs)
-            @test_throws ArgumentError logpdf(dl, [0, 1, 2])
+            # per-case reporting has no well-defined chain length.
+            @test_throws ArgumentError chain_length_distribution(bp_obs)
         end
 
         @testset "offspring_distribution" begin
@@ -454,4 +496,64 @@ EpiBranch.chain_size_distribution(d::BrokenExactOffspring) = throw(d.error)
             @test_throws ArgumentError offspring_distribution(bp_mt)
         end
     end
+end
+
+# A reporting step and an onset builder of the user's own, recognised by the
+# `reporting_probability` and `onset_law` traits rather than by type.
+struct TestingReport <: EpiBranch.AbstractClinicalTransition
+    rate::Float64
+end
+EpiBranch.offspring_law_unchanged(::TestingReport) = true
+EpiBranch.reporting_probability(t::TestingReport) = t.rate
+EpiBranch.reporting_from(::TestingReport) = :infection
+
+struct OwnOnset
+    inner::Any
+end
+(o::OwnOnset)(rng, ind) = o.inner(rng, ind)
+EpiBranch.onset_law(o::OwnOnset) = EpiBranch.onset_law(o.inner)
+EpiBranch.offspring_law_unchanged(::OwnOnset) = true
+
+@testset "closed forms recognise reporting and onset by trait" begin
+    proc = BranchingProcess(NegBin(0.8, 0.5), LogNormal(1.6, 0.5))
+    own_inc = LogNormal(1.5, 0.5)
+    inner = clinical_presentation(incubation_period = own_inc, prob_asymptomatic = 0.5)
+
+    d = chain_size_distribution(ModelSpec(proc; progression = [TestingReport(0.6)]))
+    @test d isa EpiBranch.ThinnedChainSize
+    @test d.detection_prob ≈ 0.6
+
+    # From onset, the share that reaches onset comes from `onset_law`.
+    class = ModelSpec(
+        proc; progression = [Reporting(delay = 0.0, probability = 0.8)],
+        attributes = OwnOnset(inner)
+    )
+    @test chain_size_distribution(class).detection_prob ≈ 0.4
+
+    # Isolation's analytic effect reads the incubation period the same way.
+    iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
+    builtin = ModelSpec(proc; interventions = [iso], attributes = inner)
+    own = ModelSpec(proc; interventions = [iso], attributes = OwnOnset(inner))
+    off = NegBin(0.8, 0.5)
+    eff(spec) = EpiBranch.analytic_offspring_effect(iso, off, spec)
+    @test eff(own).mean ≈ eff(builtin).mean
+    @test eff(own).pgf(0.3) ≈ eff(builtin).pgf(0.3)
+
+    # The incidence likelihood reads the onset the same way.
+    data = IncidenceCounts([1, 2, 4, 5, 9, 12, 18]; seeds = 2)
+    rep = [Reporting(delay = Gamma(2.0, 1.5), probability = 0.7)]
+    @test loglikelihood(data, ModelSpec(proc; attributes = OwnOnset(inner), progression = rep)) ≈
+        loglikelihood(data, ModelSpec(proc; attributes = inner, progression = rep))
+
+    # A reporting step without a `delay` field gives the incidence
+    # likelihood no delay to read. Two onset laws are ambiguous.
+    @test_throws ArgumentError loglikelihood(
+        data, ModelSpec(proc; progression = [TestingReport(0.6)])
+    )
+    @test_throws ArgumentError EpiBranch.analytic_offspring_effect(
+        iso, off, ModelSpec(proc; interventions = [iso], attributes = (inner, OwnOnset(inner)))
+    )
+    @test_throws ArgumentError loglikelihood(
+        data, ModelSpec(proc; attributes = (inner, OwnOnset(inner)), progression = rep)
+    )
 end

@@ -17,19 +17,15 @@ them at once. A person traced only along a cycle that no such case leads into is
 given no level.
 """
 function compute_trace_level!(state::SimulationState)
-    individuals = state.individuals
+    people = individuals(state)
 
-    # id → position lookup (don't assume id == index).
-    byid = Dict{Int, Int}()
-    for (i, ind) in pairs(individuals)
-        byid[ind.id] = i
-    end
+    known = Set(ind.id for ind in people)
 
     # Edges tracer → traced, and the untraced tracers the search starts from.
     # A hand-set `:traced_by` with no `:tracers` counts as the one tracer.
     children = Dict{Int, Vector{Int}}()
     traced = Set{Int}()
-    for ind in individuals
+    for ind in people
         tracers = get(ind.state, :tracers, nothing)
         if tracers === nothing
             src = get(ind.state, :traced_by, nothing)
@@ -38,18 +34,13 @@ function compute_trace_level!(state::SimulationState)
         end
         push!(traced, ind.id)
         for t in tracers
-            haskey(byid, t) || continue             # dangling reference
+            t in known || continue             # dangling reference
             push!(get!(() -> Int[], children, t), ind.id)
         end
     end
 
-    levels = Dict{Int, Int}()
-    queue = Int[]
-    for id in keys(children)
-        id in traced && continue
-        levels[id] = 0
-        push!(queue, id)
-    end
+    queue = [id for id in keys(children) if !(id in traced)]
+    levels = Dict{Int, Int}(id => 0 for id in queue)
 
     head = 1
     while head <= length(queue)
@@ -62,7 +53,7 @@ function compute_trace_level!(state::SimulationState)
         end
     end
 
-    for ind in individuals
+    for ind in people
         lvl = get(levels, ind.id, nothing)
         lvl === nothing || (ind.state[:trace_level] = lvl)
     end

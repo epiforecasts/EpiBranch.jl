@@ -1,0 +1,1 @@
+The documentation of `MassActionHazard` now says that `I(t)` counts only the people in the infection layer. `transmission_rate` is therefore identified only when the layer covers every infectious person in the mixing population. It also says that the infectious household members of a susceptible count in both `I(t)` and their pairwise rows.

@@ -1,0 +1,1 @@
+Unused internal helpers and methods that repeated a default are removed, among them the `NegativeBinomialChainSize` alias, the two-argument `SimOpts` constructor and the four-argument `Scheduled` constructor. None was exported or documented.

@@ -3,7 +3,7 @@
 # A homogeneously-mixing closed population of fixed size N: every infectious
 # individual exerts the same force of infection on every susceptible, so the
 # outbreak depletes a finite population with no structure beyond its size. It
-# runs on the continuous-time race as mass action (`_MassAction`), every pair
+# runs on the continuous-time race as mass action (`MassAction`), every pair
 # meeting at β/N, which reproduces the exact stochastic SIR final-size law and
 # yields infection times, not just the final size. It describes the transmission
 # alone: the natural history (progression), interventions, attributes and
@@ -11,10 +11,11 @@
 # is resolved from that progression when the model is simulated.
 
 """
-    HomogeneousProcess(; transmission_rate, population_size,
+    HomogeneousProcess(; transmission_rate, population,
                        from = nothing, until = (:recovered, :died, :isolated))
 
-A closed population of `population_size` individuals that mix homogeneously:
+A closed population of individuals that mix homogeneously, given as
+`population = Population(n)` or as `population_size = n`:
 every infectious person exerts the same force of infection on every susceptible.
 It is simulated in continuous time as mass action, every pair meeting at the
 same rate, which reproduces the exact stochastic SIR final-size law.
@@ -79,7 +80,7 @@ model = ModelSpec(
 state = simulate(model; n_initial = 5)
 ```
 """
-struct HomogeneousProcess{T <: Real, R} <: TransmissionModel
+struct HomogeneousProcess{T <: Real, R} <: FixedPopulationProcess
     population_size::Int
     transmission_rate::R            # β, fixed or a calendar schedule
     from::Union{Symbol, Nothing}   # infectious-window start; nothing → derive
@@ -88,19 +89,20 @@ end
 
 function HomogeneousProcess(;
         transmission_rate,
-        population_size::Integer,
+        population = NoPopulation(),
+        population_size = NoPopulation(),
         from = nothing,
         until = (:recovered, :died, :isolated)
     )
-    population_size >= 1 || throw(ArgumentError("population_size must be ≥ 1"))
+    pop = _single_population(_closed_population(population, population_size), "HomogeneousProcess")
     rate = _prepared_transmission_rate(transmission_rate)
     T = _rate_time_type(rate)
     return HomogeneousProcess{T, typeof(rate)}(
-        Int(population_size), rate, from, Tuple(until)
+        pop.size, rate, from, Tuple(until)
     )
 end
 
-# A fixed β is validated and floated as before; a calendar schedule validates
+# A fixed β is validated and floated; a calendar schedule validates
 # itself when it is built (`Steps`'s own values, say), so nothing further is
 # checked here.
 function _prepared_transmission_rate(β::Real)
@@ -135,17 +137,6 @@ _homogeneous_calendar(schedule) = schedule
 
 population_size(m::HomogeneousProcess) = m.population_size
 
-# The race honours a `stopping_rules` entry, or a non-default `max_cases` or
-# `max_generations`, but leaves those two keywords' defaults off, so an
-# existing run over the fixed population keeps going to extinction or
-# `max_time` unless a cap is explicitly asked for (`_drop_default_shortcuts`).
-_honours_termination_controls(::HomogeneousProcess) = false
-
-# See `_warn_uncovered_terminal_states` in branching_process.jl.
-function _validate_process_windows(m::HomogeneousProcess, progression)
-    return _warn_uncovered_terminal_states(m.until, progression; from = m.from)
-end
-
 # The state's timing type follows β's type, so a dual β makes `Individual{Dual}`
 # members and gradients flow through the contact times.
 _time_type(::HomogeneousProcess{T}) where {T} = T
@@ -162,41 +153,61 @@ end
                   progression, observation, recorder, rng)
 
 Simulate the homogeneous population on the continuous-time race, as mass action
-among its members (`_MassAction`), with the modelling layers supplied by the
+among its members (`MassAction`), with the modelling layers supplied by the
 caller (a bare process, or a `ModelSpec`). The infectious window's `from` state
 is resolved here from the composed `progression`.
 """
 function simulate_once(
-        model::HomogeneousProcess, sim_opts::SimOpts;
-        interventions, attributes, progression, observation, recorder, rng
+        model::HomogeneousProcess, sim_opts::SimOpts; layers...
     )
-    n_initial = sim_opts.n_initial
-    n_initial >= 1 || throw(ArgumentError("n_initial must be ≥ 1"))
-    n_initial <= model.population_size ||
-        throw(ArgumentError("n_initial cannot exceed population_size"))
-
-    from = something(model.from, infectious_from(progression))
-    β = model.transmission_rate
-
-    state = new_state(model, progression, attributes, rng)
-    add_individuals!(
-        state, model.population_size, interventions;
-        setup = (ind, i) -> nothing
-    )
-
     # Homogeneous mixing is mass action with a single group: every pair meets at
     # β/N, scaled by the two members' infectiousness and susceptibility. A
     # schedule stands for β itself, so the route's own rate is just 1/N and the
     # schedule supplies the calendar day's value.
+    β = model.transmission_rate
     N = model.population_size
+    return _simulate_mass_action(
+        model, sim_opts, (), _homogeneous_rate(β, N), _homogeneous_calendar(β);
+        layers...
+    )
+end
+
+"""
+    _simulate_mass_action(model, sim_opts, mixing_by, rate, calendar;
+                          interventions, attributes, progression, observation,
+                          recorder, rng)
+
+The race shared by the models that simulate as mass action among
+the members of `population(model)` (`HomogeneousProcess`, `MixingProcess`). The
+model supplies only how members are grouped (`mixing_by`), the pairwise `rate`
+and the `calendar`; `new_state` and `transmission_risks` still dispatch on the
+concrete model type.
+"""
+function _simulate_mass_action(
+        model, sim_opts::SimOpts, mixing_by, rate, calendar;
+        interventions, attributes, progression, observation, recorder, rng
+    )
+    n_initial = sim_opts.n_initial
+    pop = population(model)
+    N = total_size(pop)
+    n_initial >= 1 || throw(ArgumentError("n_initial must be ≥ 1"))
+    n_initial <= N ||
+        throw(ArgumentError("n_initial cannot exceed population_size"))
+
+    from = something(model.from, infectious_from(progression))
+
+    state = new_state(model, progression, attributes, rng)
+    state.scratch[:_mixing_by] = mixing_by
+    add_individuals!(
+        state, N, interventions;
+        setup = (ind, i) -> nothing, assign = _group_assignment(pop, rng, mixing_by)
+    )
+
     members = collect(1:N)
     sellke_race!(
         state, members, rng, sim_opts;
         seed! = (best, _, r) -> (best[randperm(r, N)[1:n_initial]] .= 0),
-        targets = _MassAction(
-            state, members; rate = _homogeneous_rate(β, N),
-            calendar = _homogeneous_calendar(β), from
-        ),
+        targets = MassAction(state, members; mixing_by, rate, calendar, from),
         from = from, until = model.until, interventions,
         risks = transmission_risks(model), recorder
     )
@@ -219,8 +230,5 @@ that first and falls back to this only when it is `nothing`, as
 `something(model.from, infectious_from(progression))`.
 """
 function infectious_from(progression)
-    return any(
-            t -> hasproperty(t, :state) && getfield(t, :state) === :infectious,
-            progression
-        ) ? :infectious : :infection
+    return any(t -> :infectious in produced_states(t), progression) ? :infectious : :infection
 end
