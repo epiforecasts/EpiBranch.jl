@@ -1265,13 +1265,13 @@ function _group_trigger_time(gv::GroupVaccination, state, group)
 end
 
 # What `GroupVaccination` remembers of each group between calls, kept in the
-# run's `scratch` so a call costs time in the members it has not yet dealt
-# with rather than in the group's size: the group's trigger time so far, and a
-# queue of the members still to be offered a dose at that trigger. Only a case
-# settling can bring a trigger forward, so each call folds in the members it is
-# handed and nothing else. A member leaves the queue once it has nothing left
-# to be offered; a trigger that moves earlier puts the whole group back, since
-# a dose already given may then move (see `may_revise`).
+# run's `scratch` so that a call costs time in the members not yet dealt with
+# and not in the size of the group. It holds the trigger time of the group so
+# far and a queue of the members still to be offered a dose at that trigger.
+# Only a case settling can bring a trigger forward, so each call folds in just
+# the members it is handed. A member leaves the queue once it has nothing left
+# to be offered. A trigger that moves earlier puts the whole group back in the
+# queue, because a dose already given may then move (see `may_revise`).
 mutable struct _GroupOffers
     gv::Any
     trigger::Dict{Any, Float64}
@@ -1306,8 +1306,7 @@ function _note_trigger!(rec::_GroupOffers, gv::GroupVaccination, state, m, group
     return nothing
 end
 
-# The group's queue, with the members the group has gained since the last
-# call added to it.
+# The queue of the group, with any members gained since the last call added.
 function _queued_members(rec::_GroupOffers, gv::GroupVaccination, state, group)
     ids = _group_members(state, gv.group_key, group)
     queue = get!(rec.queue, group, Int[])

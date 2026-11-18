@@ -591,7 +591,7 @@ end
     @test early == 0
 end
 
-# Counts how often the group's trigger is worked out from a member.
+# Counts how often the trigger of the group is worked out from a member.
 struct _CountedEligibility <: EpiBranch.TraceEligibility
     calls::Base.RefValue{Int}
 end
@@ -610,15 +610,15 @@ EpiBranch.trigger_time(::_CountedEligibility, infector, state) = infector.infect
     for (i, m) in enumerate(members)
         m.infection_time = Float64(i)
     end
-    # Each case in turn joins the group and is offered its dose, as the race
-    # settles one case after another.
+    # Each case in turn joins the group and is offered its dose, as in a race
+    # that settles one case after another.
     for m in members
         push!(individuals(state), m)
         EpiBranch.apply_actions!(gv, state, [m])
     end
     # Reading every member on every call would take about n^2 / 2 checks.
     @test counter.calls[] <= 3n
-    # The trigger is the first case's, and everybody is dosed on it.
+    # The trigger is that of the first case, and every member is dosed on it.
     @test all(is_vaccinated, members)
     @test all(m -> m.state[:vaccination_time] == 1.0, members)
 end

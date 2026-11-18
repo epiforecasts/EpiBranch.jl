@@ -433,8 +433,8 @@ function intervention_actions(gv::GroupVaccination, state, candidates)
         _note_trigger!(rec, gv, state, ind, group)
         group in groups_here || push!(groups_here, group)
     end
-    # `allowed` keeps a revised dose from reaching a member outside this
-    # call's own `candidates` once it is settled.
+    # `allowed` stops a revised dose reaching a settled member outside the
+    # `candidates` of this call.
     allowed = Set(ind.id for ind in candidates)
     label = dose_label(gv)
     for group in groups_here
@@ -446,10 +446,9 @@ function intervention_actions(gv::GroupVaccination, state, candidates)
             ind = individuals(state)[id]
             prior = get(action_cache(ind), _trigger_cache_key(gv), nothing)
             if prior !== nothing || get(ind.state, _vaccinated_key(label), false)
-                # A settled member's dose keeps its date; a member still
-                # pending in a continuous-time race (or the member currently
-                # being settled, mid-round) can still be reached by a
-                # genuinely earlier trigger.
+                # A settled member's dose keeps its date. A member still
+                # pending in a continuous-time race (or the member being
+                # settled mid-round) can still move to an earlier trigger.
                 (prior !== nothing && !is_settled(state, ind) && may_revise(gv, prior, trigger)) ||
                     continue
                 push!(kept, id)
@@ -459,14 +458,14 @@ function intervention_actions(gv::GroupVaccination, state, candidates)
                 continue
             end
             get(ind.state, _coverage_declined_key(label), false) && continue
-            # A settled member outside `candidates` is out of reach.
+            # A settled member outside `candidates` cannot be reached.
             (id in allowed || !is_settled(state, ind)) || continue
             if !_accepts!(gv, ind, state)
                 ind.state[_coverage_declined_key(label)] = true
                 continue
             end
-            # Kept until a dose is recorded, so a dose that was turned down
-            # (capacity, say) is offered again on a later call.
+            # Kept until a dose is recorded. A dose that was turned down
+            # (for capacity, say) is offered again on a later call.
             push!(kept, id)
             delay = _dose_delay!(gv, ind, state)
             push!(actions, _revisable_dose_action(gv, ind, trigger, trigger + delay))
@@ -586,7 +585,7 @@ function action_candidates(
     rec = _group_offers(gv, state)
     _note_trigger!(rec, gv, state, current, group)
     isfinite(get(rec.trigger, group, Inf)) || return candidates
-    # Only the members still queued are visited, not the whole group.
+    # Visit only the members still queued.
     for id in _queued_members(rec, gv, state, group)
         id == current.id && continue
         is_pending(id) || continue
