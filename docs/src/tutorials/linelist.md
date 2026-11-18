@@ -13,7 +13,7 @@ A column is kept when every case's value is `missing`: a run in which every
 case is asymptomatic still has `date_onset`, with every value `missing`. A
 column for something the model records only when an event happens, such as
 `date_isolation` when no case is isolated, is absent from a run without that
-event, so stack runs with `cols = :union`.
+event. Stack such runs with `cols = :union`.
 
 A recorded time whose name ends in `_time` becomes a date column, so
 `onset_time` appears as `date_onset`. A model with isolation or quarantine
