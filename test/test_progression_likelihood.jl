@@ -570,6 +570,24 @@ struct _UntrackedTransition <: EpiBranch.AbstractClinicalTransition end
         @test progression_loglik(spec, [unreported]; followup_end = 5.0, truncated = true) ≈
             progression_loglik(spec, [unreported]; followup_end = 5.0)
 
+        # a fixed delay is certain once the cut-off is past it, so the
+        # correction vanishes
+        fixed = ModelSpec(
+            BranchingProcess(Poisson(1.0));
+            progression = [Reporting(delay = 2.0, from = :infection)]
+        )
+        @test progression_loglik(fixed, [reported(3.0)]; followup_end = 5.0, truncated = true) ==
+            progression_loglik(fixed, [reported(3.0)]; truncated = true)
+
+        # a Function delay has no density to condition on
+        fn = ModelSpec(
+            BranchingProcess(Poisson(1.0));
+            progression = [Reporting(delay = (rng, ind) -> 2.0, from = :infection)]
+        )
+        @test_throws "has no density to evaluate" progression_loglik(
+            fn, [reported(3.0)]; followup_end = 5.0, truncated = true
+        )
+
         # the corrected likelihood recovers the delay from a cut sample, the
         # plain one does not
         rng = StableRNG(11)
