@@ -15,8 +15,8 @@
 #   Ψ_k(u) = u_k · f(Σ_{j≥0} w_j · Ψ_{k+j}(u)),   Ψ_m(u) ≡ 1 for m > n
 #
 # (`Ψ_m ≡ 1` beyond the horizon marginalises out what is not observed.) The
-# j = 0 term is offspring infected within the step of their infector, so Ψ_k
-# appears on both sides and is found by fixed-point iteration. The
+# j = 0 term covers offspring infected in the step of their infector. Ψ_k
+# therefore appears on both sides and is found by fixed-point iteration. The
 # `seeds` index cases at step 0 are not themselves observed, so their shared
 # PGF drops the `u_0` factor, Ψ_0(u) = f(Σ_{j≥0} w_j · Ψ_j(u)), and their
 # own offspring follow the same rule. Because they
