@@ -1,0 +1,1 @@
+`progression_loglik` takes `truncated = true` for line lists whose cases were selected because a step happened by `followup_end`. Each observed reporting, hospitalisation or non-terminal transition is then scored as its delay density divided by the probability that the delay is at most `followup_end` minus its start time, which removes the bias towards short delays.

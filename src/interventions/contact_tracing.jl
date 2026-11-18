@@ -879,14 +879,29 @@ function _trace_pair!(
     # `_ring_hop`, so it is traced from as a ring member only, rather than
     # reseeding a second time.
     if ring
-        base = _state_real(infector.state, :trace_time, _recorded_isolation_time(infector))
+        # Without a recorded trace time the isolation time of the member stands
+        # in, capped at its infection time as in `trigger_time`. A quarantine
+        # from before the infection therefore cannot start ring growth.
+        base = _state_real(
+            infector.state, :trace_time, trigger_time(TraceEveryone(), infector, state)
+        )
         remaining = get(infector.state, :_ring_remaining, 0)::Int - 1
         _trace_attempt!(ct, state, infector, ind, rng, base, remaining, not_before, actions)
     end
     if is_infected(infector) && is_eligible(ct.eligibility, infector, ind, state) &&
             !is_ring_hop(infector)
-        base = trigger_time(ct.eligibility, infector, ind, state)
-        _trace_attempt!(ct, state, infector, ind, rng, base, ct.depth - 1, not_before, actions)
+        # Each tracer offers a contact tracing once. The race walks the
+        # contacts of an infector again when tracing back isolates it, to reach
+        # those it was not yet eligible to trace. A contact already offered
+        # must not get a second draw, because that would raise the tracing
+        # probability above the given one. Stacked tracers each keep their
+        # own offers.
+        offered = get!(() -> Set{Tuple{UInt, Int}}(), infector.state, :_trace_offered)::Set{Tuple{UInt, Int}}
+        if (objectid(ct), ind.id) ∉ offered
+            push!(offered, (objectid(ct), ind.id))
+            base = trigger_time(ct.eligibility, infector, ind, state)
+            _trace_attempt!(ct, state, infector, ind, rng, base, ct.depth - 1, not_before, actions)
+        end
     end
     return nothing
 end
@@ -1011,16 +1026,14 @@ function intervention_actions(ct::ContactTracing, state, candidates)
 end
 
 # `ContactTracing` always defines its own `intervention_actions` method,
-# forwarding to `ct.action` above, so checking `ct` directly would credit
-# every instance with discovering actions regardless of whether its action
-# does: a plain `Quarantine` or `FlagOnly`, neither of which overrides
-# `intervention_actions`, would still pay the race's per-settled-case cost
-# for nothing. Checking the action's own method instead, against the
-# fallback `TraceAction` declares, avoids that for actions with nothing to
-# propose.
-function _discovers_actions(ct::ContactTracing)
-    return _has_own_method(intervention_actions, typeof(ct.action), TraceAction)
-end
+# forwarding to `ct.action` above. It asks the action whether it has anything
+# to propose: a plain `Quarantine` or `FlagOnly` has nothing, and would
+# otherwise cost the race a per-settled-case call. An action that
+# defines `intervention_actions` is inferred to discover actions, as an
+# intervention is.
+discovers_actions(ct::ContactTracing) = discovers_actions(ct.action)
+
+discovers_actions(a::TraceAction) = _stored_traits(typeof(a)).discovers_actions
 
 # Forwarded so a `TraceAction` can read what a contact's own settlement
 # fixes, such as a test result that depends on whether the contact turned out
@@ -1212,6 +1225,15 @@ end
 # route instead (see `trace_contacts!`'s docstring).
 traces_contacts(::SourceTracing) = false
 traces_source(::SourceTracing) = true
+
+# Both write `intervention_time` for the isolation they set. They ask for a
+# capacity key but write no `resolve_individual!` of their own.
+for T in (ContactTracing, SourceTracing)
+    @eval time_aware(::$T) = true
+    @eval resolves_under_capacity(::$T) = false
+    @eval has_competing_risk(::$T) = true
+end
+discovers_actions(::SourceTracing) = false
 
 """Trace `case` back to its own infector, named in `contacts` as the race
 offers it (see [`traces_source`](@ref EpiBranch.traces_source)): the same

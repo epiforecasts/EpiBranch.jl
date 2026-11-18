@@ -191,7 +191,7 @@ end
         Transition(:recovered; from = :infection, delay = Exponential(5.0), terminal = true),
     ]
     isolation = Isolation(
-        onset_to_isolation_delay = Exponential(0.5), duration = Inf,
+        delay = Exponential(0.5), duration = Inf,
         test_sensitivity = 0.3
     )
     pool = HomogeneousProcess(; transmission_rate = 1.5, population_size = N)
@@ -226,7 +226,7 @@ end
     clinical = clinical_presentation(
         incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0
     )
-    iso = Isolation(onset_to_isolation_delay = Exponential(0.1), duration = Inf)
+    iso = Isolation(delay = Exponential(0.1), duration = Inf)
     st = SourceTracing(
         probability = 1.0, isolation_to_trace_delay = Dirac(0.0),
         action = Quarantine(duration = Inf)
@@ -252,7 +252,7 @@ end
     clinical = clinical_presentation(
         incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.0
     )
-    iso = Isolation(onset_to_isolation_delay = Exponential(0.5), duration = Inf)
+    iso = Isolation(delay = Exponential(0.5), duration = Inf)
     ct = ContactTracing(
         probability = 1.0, isolation_to_trace_delay = Exponential(0.5),
         action = Quarantine(duration = Inf)
@@ -290,7 +290,7 @@ end
 @testset "A source found by SourceTracing is traced forward under OnIsolation" begin
     cp = clinical_presentation(incubation_period = LogNormal(1.0, 0.4))
     bp = BranchingProcess(NegBin(2.0, 0.3), Gamma(4.0, 2.5))
-    iso = Isolation(onset_to_isolation_delay = 1.0, duration = Inf, test_sensitivity = 0.5)
+    iso = Isolation(delay = 1.0, duration = Inf, test_sensitivity = 0.5)
     st = SourceTracing(
         probability = 1.0, isolation_to_trace_delay = Dirac(0.0),
         action = Quarantine(duration = Inf)
@@ -322,7 +322,7 @@ end
 @testset "Contacts traced forward from a source reach a ring action" begin
     cp = clinical_presentation(incubation_period = LogNormal(1.0, 0.4))
     bp = BranchingProcess(NegBin(2.0, 0.3), Gamma(4.0, 2.5))
-    iso = Isolation(onset_to_isolation_delay = 1.0, duration = Inf, test_sensitivity = 0.5)
+    iso = Isolation(delay = 1.0, duration = Inf, test_sensitivity = 0.5)
     st = SourceTracing(
         probability = 1.0, isolation_to_trace_delay = Dirac(0.0),
         action = Quarantine(duration = Inf)
@@ -354,4 +354,57 @@ end
     # some traced children are not vaccinated. If these contacts missed the
     # action pass, fewer than half would be.
     @test vaccinated > 0.8 * traced
+end
+
+@testset "A contact is offered forward tracing from an infector once" begin
+    @testset "A second trace of the same contacts draws nothing" begin
+        ct = ContactTracing(
+            probability = 0.5, isolation_to_trace_delay = Dirac(0.0),
+            action = Quarantine(duration = Inf), eligibility = SymptomaticParent()
+        )
+        n = 4000
+        infector = Individual(id = 1)
+        infector.infection_time = 0.0
+        infector.state[:asymptomatic] = false
+        set_isolated!(infector, 1.0; release_time = Inf)
+        contacts = [Individual(id = i + 1) for i in 1:n]
+        state = SimulationState(
+            vcat([infector], contacts), Int[], 0, StableRNG(1), 0, false, nothing, Inf,
+            nothing, AbstractClinicalTransition[]
+        )
+        EpiBranch.trace_contacts!(ct, state, infector, contacts)
+        first_share = count(is_traced, contacts) / n
+        EpiBranch.trace_contacts!(ct, state, infector, contacts)
+        @test count(is_traced, contacts) / n == first_share
+        @test 0.45 < first_share < 0.55
+    end
+
+    @testset "Contacts of a source-traced infector keep the given probability" begin
+        cp = clinical_presentation(incubation_period = LogNormal(1.0, 0.4))
+        bp = BranchingProcess(NegBin(2.0, 0.3), Gamma(4.0, 2.5))
+        iso = Isolation(delay = 1.0, duration = Inf, test_sensitivity = 0.5)
+        st = SourceTracing(
+            probability = 1.0, isolation_to_trace_delay = Dirac(0.0),
+            action = Quarantine(duration = Inf)
+        )
+        ct = ContactTracing(
+            probability = 0.5, isolation_to_trace_delay = Dirac(0.0),
+            action = Quarantine(duration = Inf), eligibility = OnSymptomOnset()
+        )
+        spec = ModelSpec(
+            bp; interventions = AbstractIntervention[iso, ct, st], attributes = cp
+        )
+        res = simulate(spec, 4000; max_generations = 2, max_cases = nothing, rng = StableRNG(1))
+        traced = 0
+        total = 0
+        for s in res
+            idx = s.individuals[1]
+            get(idx.state, :source_traced_by, 0) == 0 && continue
+            kids = [i for i in s.individuals if i.parent_id == 1]
+            total += length(kids)
+            traced += count(is_traced, kids)
+        end
+        # Two independent attempts would trace about 0.6 of them.
+        @test traced / total < 0.5
+    end
 end

@@ -175,15 +175,15 @@ end
 The offspring law under isolation: a case drawn from `offspring`, thinned by
 the probability that each of its secondary cases still happens (see the
 comment above this method for the formula), averaged over `spec`'s incubation
-period and this isolation's own `onset_to_isolation_delay`, and over whether
+period and this isolation's own `delay`, and over whether
 the case is isolated at all (`eligibility` and `test_sensitivity`). Returns a
 [`GeneratingFunctionOffspring`](@ref).
 
 Needs `spec`'s `attributes` to include [`clinical_presentation`](@ref) and its
 process to have a generation-time distribution; `duration` must be a fixed
-number (or `Inf`), `onset_to_isolation_delay` and `test_sensitivity` each a
+number (or `Inf`), `delay` and `test_sensitivity` each a
 number or a distribution, and `eligibility` [`SymptomaticOnly`](@ref) or
-[`AllCases`](@ref). Anything else has no closed form here, and the generic
+[`AllCases`](@ref), and `trigger` [`AfterSymptomOnset`](@ref). Anything else has no closed form here, and the generic
 default throws, pointing at simulation instead.
 """
 function analytic_offspring_effect(
@@ -204,8 +204,14 @@ function analytic_offspring_effect(
                 "model that needs one instead."
         )
     )
+    iso.trigger isa AfterSymptomOnset || throw(
+        ArgumentError(
+            "Isolation's analytic effect assumes isolation after symptom onset; " *
+                "simulate a model with another trigger instead."
+        )
+    )
     incubation = _closed_form_incubation(cp, "Isolation's analytic effect")
-    delay = iso.onset_to_isolation_delay
+    delay = iso.delay
     ε = iso.post_isolation_transmission
     D = _isolation_duration(iso.duration)
     q = _eligible_fraction(

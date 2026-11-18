@@ -93,7 +93,7 @@ end
                 progression = [testing],
                 interventions = [
                     Isolation(
-                        onset_to_isolation_delay = 1.0, duration = Inf,
+                        delay = 1.0, duration = Inf,
                         test_sensitivity = testing,
                     ),
                 ]
@@ -113,7 +113,7 @@ end
             progression = AbstractClinicalTransition[],
             interventions = [
                 Isolation(
-                    onset_to_isolation_delay = 1.0, duration = Inf,
+                    delay = 1.0, duration = Inf,
                     test_sensitivity = testing,
                 ),
             ],
@@ -122,13 +122,13 @@ end
 
     @testset "numeric test_sensitivity is unchanged and keeps its closed form" begin
         iso = Isolation(
-            onset_to_isolation_delay = Exponential(2.0), duration = Inf,
+            delay = Exponential(2.0), duration = Inf,
             test_sensitivity = 0.8
         )
         @test iso.test_sensitivity == 0.8
         testing = Testing(assay = test_assay, delay = 0.0)
         iso_t = Isolation(
-            onset_to_isolation_delay = Exponential(2.0), duration = Inf,
+            delay = Exponential(2.0), duration = Inf,
             test_sensitivity = testing
         )
         @test_throws ArgumentError EpiBranch._closed_form_value(iso_t.test_sensitivity)
@@ -140,10 +140,27 @@ end
             progression = [],
             interventions = [
                 Isolation(
-                    onset_to_isolation_delay = 1.0, duration = Inf,
+                    delay = 1.0, duration = Inf,
                     test_sensitivity = testing,
                 ),
             ]
+        )
+    end
+
+    @testset "AfterPositiveTest without a Testing step of that name is refused" begin
+        iso(name) = Isolation(
+            delay = 1.0, duration = Inf,
+            trigger = AfterPositiveTest(name = name)
+        )
+        process = BranchingProcess(NegBin(2.5, 0.5), LogNormal(1.6, 0.5))
+        testing = Testing(assay = test_assay, delay = 0.0, name = :pcr)
+        @test_throws ArgumentError ModelSpec(process; interventions = [iso(:pcr)])
+        @test_throws ArgumentError ModelSpec(
+            process; progression = [testing], interventions = [iso(:test)]
+        )
+        @test ModelSpec(process; progression = [testing], interventions = [iso(:pcr)]) isa ModelSpec
+        @test_throws ArgumentError ModelSpec(
+            process; interventions = [OnRoutes(iso(:pcr), [:household])]
         )
     end
 

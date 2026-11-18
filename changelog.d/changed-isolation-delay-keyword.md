@@ -1,0 +1,1 @@
+`Isolation` takes its delay as `delay`, the days from the event that triggers isolation, rather than `onset_to_isolation_delay`, which named only the default trigger. `onset_to_isolation_delay` still works as a deprecated alias that warns once.

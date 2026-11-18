@@ -169,7 +169,7 @@ end
             prob_asymptomatic = 0.0
         )
         iso = Isolation(
-            onset_to_isolation_delay = Exponential(1.0),
+            delay = Exponential(1.0),
             test_sensitivity = 1.0, duration = Inf
         )
         adj = _random_graph(3000, 12000, StableRNG(14))
@@ -209,7 +209,7 @@ end
             prob_asymptomatic = 0.0
         )
         iso = Isolation(
-            onset_to_isolation_delay = Exponential(1.0),
+            delay = Exponential(1.0),
             test_sensitivity = 1.0, duration = Inf
         )
         for seed in 1:4, (ext, Tobs) in ((0.0, Inf), (0.03, 10.0)),
