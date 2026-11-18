@@ -1,1 +1,1 @@
-The core test suite gains shared helpers for the progression tests: `tsim` accepts `progression` and `observation` keywords, `CLINICAL` holds the common incubation attributes, and `contained` and `race!` replace repeated local set-ups.
+Added shared helpers for the progression tests in the core test suite. `tsim` accepts `progression` and `observation` keywords, `CLINICAL` holds the common incubation attributes, and `contained` and `race!` replace repeated local set-ups.
