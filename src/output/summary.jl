@@ -8,7 +8,7 @@ outbreaks that were contained, the number simulated, their ratio, the Monte
 Carlo standard error `sqrt(p * (1 - p) / n)` of that ratio, and the posterior
 for the underlying probability, `Beta(n_contained + 0.5, n - n_contained + 0.5)`,
 which is the Jeffreys prior `Beta(0.5, 0.5)` updated with the runs. Any
-quantiles can be taken from it. The `mcse` is 0 when every run is contained,
+quantile of it can be reported. The `mcse` is 0 when every run is contained,
 but the posterior still has width. Both reflect
 simulation error only and ignore uncertainty in the parameters of the model.
 To compare two scenarios, use [`containment_difference`](@ref). An outbreak still

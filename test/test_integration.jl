@@ -133,8 +133,8 @@ using Dates
         @test pl.mcse == 0.0
         @test ul.mcse > 0
 
-        # From two models: the same as simulating and comparing, and paired
-        # runs of the same model do not differ.
+        # From two models: the result matches simulating and comparing, and
+        # paired runs of one model are identical.
         tm = ModelSpec(process; attributes = attrs, interventions = [iso])
         um = ModelSpec(process; attributes = attrs)
         pm = containment_difference(tm, um, 500; max_cases = 500, paired = true, seed = 1)

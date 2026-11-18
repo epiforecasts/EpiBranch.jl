@@ -452,7 +452,7 @@ println("Clustered minus independent: ",
     " (MCSE ", round(clustered_vs_independent.mcse, digits = 3), ")")
 ```
 
-Containment is 0.222 with clustered refusal and 0.224 with independent refusal, against 0.214 with no vaccination. Vaccinating about half the traced contacts gains 0.008 (MCSE 0.006) with clustered refusal and 0.010 (MCSE 0.006) with independent refusal, each within about two MCSEs of zero. Clustered minus independent refusal is -0.001 (MCSE 0.006), well within the noise: at this number of outbreaks the two kinds of refusal cannot be told apart. To compare any two scenarios in the same way, use [`containment_difference`](@ref) on the two models.
+Containment is 0.222 with clustered refusal and 0.224 with independent refusal, against 0.214 with no vaccination. Vaccinating about half the traced contacts gains 0.008 (MCSE 0.006) with clustered refusal and 0.010 (MCSE 0.006) with independent refusal, each within about two MCSEs of zero. Clustered minus independent refusal is -0.001 (MCSE 0.006), well within the noise: at this number of outbreaks the two kinds of refusal are indistinguishable. To compare any two scenarios in the same way, use [`containment_difference`](@ref) on the two models.
 
 Clustering has little effect here because `groups(20)` puts each person in a
 community independently of who infected them. A case's contacts are spread
