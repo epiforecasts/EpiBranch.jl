@@ -99,8 +99,8 @@ standard deviation of the per-run differences over `sqrt(n)`. This is lower
 than the unpaired value only as far as the two sets of runs stay coupled, and
 at present they stop sharing draws at the first infection an intervention
 prevents (see
-[#1103](https://github.com/epiforecasts/EpiBranch.jl/issues/1103)). Otherwise the sets are treated as
-independent and may differ in size, and the `mcse` combines the
+[#1103](https://github.com/epiforecasts/EpiBranch.jl/issues/1103)). Otherwise
+the sets are treated as independent and may differ in size, and the `mcse` combines the
 standard errors of the two proportions.
 
 `max_cases` is applied to both sets, as in [`containment_probability`](@ref).
