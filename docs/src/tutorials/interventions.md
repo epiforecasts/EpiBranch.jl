@@ -292,7 +292,7 @@ disease_less_infectious = [
 ]
 ```
 
-Use `transmission_traits` for traits known when the case is created (age, sex, whether the case is asymptomatic), because it draws its factor then. A change during the infection, such as tracing or quarantine, needs an intervention. Combining the two is tracked in #972.
+Use `transmission_traits` for traits known when the case is created (age, sex, whether the case is asymptomatic), because it draws its factor then. A change during the infection, such as tracing or quarantine, needs an intervention. Combining the two is tracked in #972. Other links between symptoms and infectiousness, such as more contacts, a shorter infectious period or a within-host trajectory, are stated in [Asymptomatic cases and how symptoms link to infectiousness](asymptomatic.md).
 
 Asymptomatic cases can also have their own incubation period. Every case draws one, an asymptomatic case's included, and it sets the timing that [`incubation_linked_generation_time`](@ref) reads where there is no onset. Give `incubation_period` a function of the random number generator and the individual instead of a distribution. `:asymptomatic` is set before the draw, so the function can use it, or any trait set by an earlier attribute such as age:
 

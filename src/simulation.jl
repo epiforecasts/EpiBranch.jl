@@ -1551,6 +1551,12 @@ Use `transmission_traits` for traits known when the case is created (age, sex,
 whether the case is asymptomatic), because it draws its factor then. A change
 during the infection, such as tracing or quarantine, needs an intervention.
 The tutorial "Making cases more or less infectious" compares the options.
+Other links between symptoms and
+infectiousness (more contacts, a shorter infectious period, a within-host
+trajectory that drives onset) are written by the user; the asymptomatic-cases
+tutorial shows each. A builder that replaces this one sets `:asymptomatic` and
+`:incubation_period` (the time onset happens, or would have happened for an
+asymptomatic case), from which the onset time follows.
 
 # Examples
 
