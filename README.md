@@ -44,7 +44,7 @@ results = simulate(model, 500; max_cases = 5000)
 containment_probability(results)
 ```
 
-## Why Julia?
+## What EpiBranch.jl unifies
 
 EpiBranch.jl unifies a set of R packages that share the same underlying branching-process model. ringbp, epichains, superspreading, simulist, and pepbp each re-implement that model — offspring distribution, generation time, often interventions — for whichever analysis they're built around. EpiBranch.jl has one model that all the analyses run on.
 

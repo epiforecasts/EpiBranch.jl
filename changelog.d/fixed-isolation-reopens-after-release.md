@@ -3,15 +3,15 @@ On the continuous-time (Sellke) models, a finite `Isolation` `duration` or
 good at the removal's own start, even when its release fell well before the
 rest of the infectious period: a case isolated for a week part-way through a
 month of infectiousness stayed out of transmission for the remaining three
-weeks instead of resuming at the release, disagreeing with the generation
-engine, which already let it go. `infectious_removal_time` for `Isolation` now
+weeks instead of resuming at the release, disagreeing with
+generation-based simulation, which already let it go. `infectious_removal_time` for `Isolation` now
 leaves the window open on the case's other removal states when its own
 removal is due to lapse, and the release-aware per-contact `competing_risk`
-blocks exactly the isolated stretches instead, matching the generation engine.
+blocks exactly the isolated stretches instead, matching generation-based simulation.
 A removal with no release still closes the window at its own start, as before.
 `ContactTracing`'s `Quarantine` behaves the same way, gaining a per-contact
 risk of its own so a finite duration hands the case back once released, and a
-duration of `Inf` now reduces onward transmission on the generation engine as
+duration of `Inf` now reduces onward transmission in generation-based simulation as
 well.
 
 Because the window stays open across a removal that lapses, a blocked contact
