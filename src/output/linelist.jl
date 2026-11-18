@@ -84,8 +84,8 @@ only when it counted as a detection (see [`is_isolated`](@ref)).
 
 # The line list as known on a date
 
-With `reported_only = true`, the table keeps only the cases that a
-[`Reporting`](@ref) step marked as reported. With
+With `reported_only = true`, only the cases a [`Reporting`](@ref) step
+marked as reported are kept. With
 `as_of = Date(...)`, the table is the one available on that date: it keeps
 the cases whose `date_reporting` is on or before `as_of` (so it implies
 `reported_only`), and every other date column, such as `date_outcome`, is
