@@ -645,8 +645,8 @@ end
 # The contacts kept after thinning `potential` against `susceptibles`, which
 # is lowered by what is kept. Each potential contact is decided in turn
 # against the susceptible share of its type at that moment, as
-# `_offspring_builtin_risk_blocks` does on the individual-based race for a
-# single type; the draws below give that law without visiting every contact.
+# `_offspring_builtin_risk_blocks` does on the individual-based race; the
+# draws below give that law without visiting every contact.
 
 # Poisson contacts with mean `potential[i]`, spread at random over the `sizes[i]`
 # people of the type. Each receives an independent Poisson number of them.
