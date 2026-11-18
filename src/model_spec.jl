@@ -572,13 +572,8 @@ function simulate(
         spec.process, n_initial, initial_cases, index_types, max_cases, max_generations,
         max_time, stopping_rules
     )
-    validate_initial_cases(spec.process, sim_opts)
-    _validate_index_types(spec.process, sim_opts)
     state = _run_once_or_retry(
-        spec.process, sim_opts, condition, max_attempts;
-        interventions = spec.interventions, attributes = spec.attributes,
-        progression = spec.progression, observation = spec.observation,
-        recorder = spec.recorder, rng
+        spec.process, sim_opts, condition, max_attempts; _layers(spec)..., rng
     )
     return _classify_cases!(state, spec.case_definition, _max_time(sim_opts))
 end
@@ -628,15 +623,10 @@ function _simulate_each(
         spec.process, n_initial, initial_cases, index_types, max_cases, max_generations,
         max_time, stopping_rules
     )
-    validate_initial_cases(spec.process, sim_opts)
-    _validate_index_types(spec.process, sim_opts)
     horizon = _max_time(sim_opts)
     classified(s) = each(_classify_cases!(s, spec.case_definition, horizon))
     return _simulate_n(
-        classified, T, spec.process, n, sim_opts;
-        interventions = spec.interventions, attributes = spec.attributes,
-        progression = spec.progression, observation = spec.observation,
-        recorder = spec.recorder, rng, parallel
+        classified, T, spec.process, n, sim_opts; _layers(spec)..., rng, parallel
     )
 end
 
