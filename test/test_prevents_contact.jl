@@ -39,8 +39,8 @@ end
     @testset "the trait and the built-in defaults" begin
         @test !EpiBranch.prevents_contact(PlainWard())
         @test EpiBranch.prevents_contact(Ward(true, 0.5))
-        iso = Isolation(onset_to_isolation_delay = 1.0, duration = Inf)
-        home = Isolation(onset_to_isolation_delay = 1.0, duration = Inf, prevents_contact = false)
+        iso = Isolation(delay = 1.0, duration = Inf)
+        home = Isolation(delay = 1.0, duration = Inf, prevents_contact = false)
         @test EpiBranch.prevents_contact(iso)
         @test !EpiBranch.prevents_contact(home)
         @test EpiBranch.prevents_contact(Quarantine(duration = 7.0))
@@ -125,7 +125,7 @@ end
                 model;
                 interventions = [
                     Isolation(
-                        onset_to_isolation_delay = 0.0, duration = Inf,
+                        delay = 0.0, duration = Inf,
                         prevents_contact = prevents
                     ),
                 ],
@@ -149,7 +149,7 @@ end
                 model;
                 interventions = [
                     Isolation(
-                        onset_to_isolation_delay = 0.0, duration = Inf,
+                        delay = 0.0, duration = Inf,
                         prevents_contact = prevents
                     ),
                     ContactTracing(

@@ -61,7 +61,7 @@ end
 
     # Held back to the onset when the flag precedes it, and not applied at all
     # to a contact with no onset.
-    iso = Isolation(onset_to_isolation_delay = Dirac(100.0), duration = Inf)
+    iso = Isolation(delay = Dirac(100.0), duration = Inf)
     ind.state[:onset_time] = 5.0
     EpiBranch.resolve_individual!(iso, ind, state)
     @test isolation_time(ind) == 5.0

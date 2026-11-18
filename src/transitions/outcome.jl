@@ -81,7 +81,7 @@ function transition_loglik(r::Recovery, individual::Individual; followup_end = I
     end
     t <= followup_end ||
         return transition_term(1.0, r.delay, individual, anchor, false; censor = censor)
-    return _delay_loglik(r.delay, t - anchor)
+    return _delay_loglik(r.delay, t - anchor, individual)
 end
 
 """
@@ -193,5 +193,5 @@ function transition_loglik(d::Death, individual::Individual; followup_end = Inf)
         censor = min(competing, infection_aborted_time(individual), followup_end)
     )
     candidate || return ll
-    return ll + _delay_loglik(d.delay, t - anchor)
+    return ll + _delay_loglik(d.delay, t - anchor, individual)
 end

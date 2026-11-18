@@ -30,6 +30,7 @@ const TEST_GROUPS = (
         "test_streams.jl",
         "test_branching_process.jl",
         "test_attributes.jl",
+        "test_asymptomatic_links.jl",
         "test_interventions.jl",
         "test_settle_case.jl",
         "test_case_hooks.jl",
@@ -64,6 +65,7 @@ const TEST_GROUPS = (
         "test_population.jl",
         "test_contact_matrices.jl",
         "test_continuation.jl",
+        "test_observed_cases.jl",
         "test_state_space.jl",
         "test_population_dynamics.jl",
         "test_mixing_population_dynamics.jl",
@@ -102,6 +104,7 @@ const TEST_GROUPS = (
         "test_ad.jl",
         "test_stochastic_ad.jl",
         "test_pair_kernels.jl",
+        "test_seeding_helpers.jl",
         "test_examples.jl",
     ],
 )

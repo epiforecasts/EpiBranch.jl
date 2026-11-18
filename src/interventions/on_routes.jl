@@ -24,7 +24,7 @@ household = Infectiousness(NegBin(1.0, 0.3); name = :household, kernel = Uniform
 community = Infectiousness(NegBin(1.5, 0.3); name = :community, kernel = Uniform(0, 5))
 model = BranchingProcess(household, community)
 iso = OnRoutes(
-    Isolation(onset_to_isolation_delay = Exponential(2.0), duration = Inf),
+    Isolation(delay = Exponential(2.0), duration = Inf),
     (:community,),
 )
 spec = ModelSpec(
