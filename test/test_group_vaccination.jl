@@ -590,3 +590,35 @@ end
     @test dosed > 0
     @test early == 0
 end
+
+# Counts how often the group's trigger is worked out from a member.
+struct _CountedEligibility <: EpiBranch.TraceEligibility
+    calls::Base.RefValue{Int}
+end
+function EpiBranch.is_eligible(e::_CountedEligibility, infector, contact, state)
+    e.calls[] += 1
+    return true
+end
+EpiBranch.trigger_time(::_CountedEligibility, infector, state) = infector.infection_time
+
+@testset "Group vaccination costs time in the new members, not the group size" begin
+    n = 400
+    counter = _CountedEligibility(Ref(0))
+    gv = GroupVaccination(efficacy = 0.9, eligibility = counter, dose_delay = 0.0)
+    state = empty_state(; rng = StableRNG(1))
+    members = [_group_member(gv, i, :A) for i in 1:n]
+    for (i, m) in enumerate(members)
+        m.infection_time = Float64(i)
+    end
+    # Each case in turn joins the group and is offered its dose, as the race
+    # settles one case after another.
+    for m in members
+        push!(individuals(state), m)
+        EpiBranch.apply_actions!(gv, state, [m])
+    end
+    # Reading every member on every call would take about n^2 / 2 checks.
+    @test counter.calls[] <= 3n
+    # The trigger is the first case's, and everybody is dosed on it.
+    @test all(is_vaccinated, members)
+    @test all(m -> m.state[:vaccination_time] == 1.0, members)
+end
