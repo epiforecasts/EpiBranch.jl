@@ -341,6 +341,55 @@ end
         @test_throws ArgumentError HeldCapacity(rv; capacity = "two")
     end
 
+    @testset "Each group follows its own capacity schedule" begin
+        rv = RingVaccination(efficacy = 0.9)
+        capacity = PerGroup(
+            :a => Steps([5.0], [2.0, 1.0]),
+            :b => Steps([5.0], [1.0, 3.0])
+        )
+        hc = HeldCapacity(rv; capacity, hold = 2.0)
+        state = empty_state(
+            BranchingProcess(
+                [1.0 0.0; 0.0 1.0], R -> Poisson(R), Exponential(5.0);
+                population = Population([100, 100]; groups = [:a, :b])
+            )
+        )
+        days_a = [1.0, 2.0, 3.0, 6.0, 6.5]
+        days_b = [1.0, 1.5, 6.0, 6.5, 7.0, 7.5]
+        contacts = [
+            [_held_contact(rv, i, d) for (i, d) in enumerate(days_a)];
+            [
+                begin
+                    c = _held_contact(rv, length(days_a) + i, d)
+                    c.state[:type] = 2
+                    c
+                end for (i, d) in enumerate(days_b)
+            ]
+        ]
+        append!(individuals(state), contacts)
+        state.max_infection_time = 1.0
+        EpiBranch.apply_actions!(hc, state, contacts)
+
+        # In `a` the second place is free until day 5 and the single one after
+        # it; in `b` the single place is replaced by three after day 5.
+        @test [c.id for c in contacts if is_vaccinated(c)] == [1, 2, 3, 4, 6, 8, 9, 10]
+        for (group, per_day) in (
+                (:a, [(1.5, 1, 2), (2.5, 2, 2), (4.5, 1, 2), (6.2, 1, 1), (6.7, 1, 1)]),
+                (:b, [(1.2, 1, 1), (1.7, 1, 1), (6.2, 1, 3), (7.2, 3, 3), (7.7, 3, 3), (8.2, 2, 3)]),
+            )
+            for (t, held, cap) in per_day
+                usage = held_usage(hc, state, t, group)
+                @test usage.held == held
+                @test usage.capacity == cap
+            end
+        end
+        @test all(
+            t -> held_usage(hc, state, t, :a).held <= held_usage(hc, state, t, :a).capacity &&
+                held_usage(hc, state, t, :b).held <= held_usage(hc, state, t, :b).capacity,
+            0.0:0.25:12.0
+        )
+    end
+
     @testset "Constructor validates its arguments" begin
         rv = RingVaccination(efficacy = 0.9)
         @test_throws ArgumentError HeldCapacity(rv; capacity = -1)
