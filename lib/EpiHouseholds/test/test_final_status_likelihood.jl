@@ -69,7 +69,7 @@
             progression = [Transition(:recovered; from = :infection, delay = L, terminal = true)]
         )
         state = simulate(spec; rng = StableRNG(11))
-        infected = reshape(is_infected.(state.individuals), 3, n)
+        infected = reshape(is_infected.(individuals(state)), 3, n)
 
         process = HouseholdProcess(
             [3], Exponential(1 / β); external_hazard = α, obs_end = T

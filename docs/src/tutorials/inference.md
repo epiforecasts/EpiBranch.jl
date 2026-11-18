@@ -370,7 +370,7 @@ state = simulate(
 )
 # day t holds the infections in (t - 1, t]
 cases = zeros(Int, n_days)
-for ind in state.individuals
+for ind in individuals(state)
     day = ceil(Int, ind.infection_time)
     1 <= day <= n_days && (cases[day] += 1)
 end

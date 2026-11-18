@@ -1,0 +1,1 @@
+`ForwardDiff` is now a weak dependency. `incidence_moments` and the incidence `loglikelihood` need it, so load it with `using ForwardDiff` before calling them; without it they throw an `ArgumentError` saying so. Users who only simulate no longer install it.

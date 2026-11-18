@@ -30,24 +30,24 @@
 
     # An infected case transmitted at the funeral if its infector had died
     # and it was infected at or after that death.
-    funeral_kids = filter(s.individuals) do ind
+    funeral_kids = filter(individuals(s)) do ind
         (ind.parent_id == 0 || !is_infected(ind)) && return false
-        p = s.individuals[ind.parent_id]
+        p = individuals(s)[ind.parent_id]
         get(p.state, :died, false) && ind.infection_time >= get(p.state, :died_time, Inf)
     end
     @test !isempty(funeral_kids)
 
     for ind in funeral_kids
-        p = s.individuals[ind.parent_id]
+        p = individuals(s)[ind.parent_id]
         @test p.state[:died] == true                          # from-gate: only the dead
         @test ind.infection_time < p.state[:buried_time]      # censor: before burial
     end
 
     # No infected contact of a recovered (never-dead) case is a funeral
     # contact: the funeral window never opened for them.
-    for ind in s.individuals
+    for ind in individuals(s)
         (ind.parent_id == 0 || !is_infected(ind)) && continue
-        p = s.individuals[ind.parent_id]
+        p = individuals(s)[ind.parent_id]
         if get(p.state, :recovered, false) && !get(p.state, :died, false)
             @test ind.infection_time < get(p.state, :recovered_time, Inf)
         end

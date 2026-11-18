@@ -16,7 +16,7 @@
 # below certainty: with none that always occurs, a case can clear every gate
 # and reach no terminal state at all — `:outcome` stays unset and, on a
 # structure-driven model, the infectious window this case opened never closes
-# (a different symptom of the same gap that `_warn_uncovered_terminal_states`,
+# (a different symptom of the same gap that `warn_uncovered_terminal_states`,
 # in branching_process.jl, catches for states missing from `until`). Skipped
 # when any terminal's `terminal_certainty` is `missing`: unknowable without an
 # individual (or a transition type that hasn't declared it), so silence over a
@@ -428,8 +428,7 @@ not stored in the model).
 - `recorder`: rarely needed; see [`ContactRecorder`](@ref).
 - `case_definition`: how each case is classified (confirmed, probable,
   suspected, ...) from what has happened to them, such as a
-  [`ClinicalCaseDefinition`](@ref), a [`FixedProportionConfirmed`](@ref), a
-  type of your own (see [`EpiBranch.classify_case`](@ref)) or a function
+  [`ClinicalCaseDefinition`](@ref), a type of your own (see [`EpiBranch.classify_case`](@ref)) or a function
   `history -> label`. It is re-evaluated at each event recorded on a case, so
   the classification changes over time; read the changes with
   [`case_classification_changes`](@ref). `nothing` (the default) classifies
@@ -461,7 +460,7 @@ function ModelSpec(
         case_definition = nothing
     )
     prog = _progvec(progression)
-    _validate_process_windows(process, prog)
+    validate_process_windows(process, prog)
     _warn_incomplete_terminal_coverage(prog)
     ivs = _intervention_vector(interventions)
     _validate_dose_schedule(ivs)
@@ -502,8 +501,16 @@ attributes(s::ModelSpec) = s.attributes
 observation(s::ModelSpec) = s.observation
 recorder(s::ModelSpec) = s.recorder
 progression(s::ModelSpec) = s.progression
+"""
+    case_definition(model)
+
+The case definition of a [`ModelSpec`](@ref), or `nothing` if it has none. A
+case definition is a layer of a `ModelSpec`, given through its
+`case_definition` keyword. A bare transmission model has none, and `simulate`
+on one classifies no cases; a method of this function for a process type is
+ignored.
+"""
 case_definition(s::ModelSpec) = s.case_definition
-# A bare process has no case definition.
 case_definition(::TransmissionModel) = nothing
 
 """The transmission model `spec` wraps. [`simulate`](@ref) and
@@ -544,7 +551,7 @@ function simulate(
         spec.process, n_initial, initial_cases, index_types, max_cases, max_generations,
         max_time, stopping_rules
     )
-    _validate_initial_cases(spec.process, sim_opts)
+    validate_initial_cases(spec.process, sim_opts)
     _validate_index_types(spec.process, sim_opts)
     state = _run_once_or_retry(
         spec.process, sim_opts, condition, max_attempts;
@@ -552,7 +559,7 @@ function simulate(
         progression = spec.progression, observation = spec.observation,
         recorder = spec.recorder, rng
     )
-    return _classify_cases!(state, spec.case_definition)
+    return _classify_cases!(state, spec.case_definition, _max_time(sim_opts))
 end
 
 simulate(spec::ModelSpec, n::Int; kwargs...) =
@@ -565,11 +572,22 @@ function simulate(
         spec::ModelSpec, state::SimulationState; max_time::Real,
         rng::AbstractRNG = state.rng
     )
+    # A run not cut by `max_time` is not resumed. One stopped by `max_cases` or
+    # a stopping rule keeps its classification: a new horizon would read events
+    # the race never simulated, or drop ones it did. One that went extinct has
+    # nothing left to simulate, so a run straight to the later `max_time` would
+    # classify up to it, and so does this one.
+    continuation = state.continuation
+    if continuation === nothing || !continuation.cut_by_max_time
+        state.extinct && max_time > get(state.scratch, _CLASSIFICATION_HORIZON_KEY, Inf) &&
+            _classify_cases!(state, spec.case_definition, max_time)
+        return state
+    end
     _continue_sellke!(
         state, rng, max_time, spec.interventions, transmission_risks(spec.process),
         spec.recorder
     )
-    return _classify_cases!(state, spec.case_definition)
+    return _classify_cases!(state, spec.case_definition, max_time)
 end
 
 function _simulate_each(
@@ -589,9 +607,10 @@ function _simulate_each(
         spec.process, n_initial, initial_cases, index_types, max_cases, max_generations,
         max_time, stopping_rules
     )
-    _validate_initial_cases(spec.process, sim_opts)
+    validate_initial_cases(spec.process, sim_opts)
     _validate_index_types(spec.process, sim_opts)
-    classified(s) = each(_classify_cases!(s, spec.case_definition))
+    horizon = _max_time(sim_opts)
+    classified(s) = each(_classify_cases!(s, spec.case_definition, horizon))
     return _simulate_n(
         classified, T, spec.process, n, sim_opts;
         interventions = spec.interventions, attributes = spec.attributes,

@@ -32,14 +32,14 @@ _logs_blocked(::_Grown, source, ind) = !_created_by(ind, source)
 # offered what a new person is offered.
 function _grow!(g::_Grown, race)
     (; state) = race
-    while g.n < length(state.individuals)
+    while g.n < length(individuals(state))
         g.n += 1
         push!(race.best, oftype(first(race.best), Inf))
         push!(race.processed, false)
         push!(race.represents, 0)
         race.may_block && push!(race.head, 0)
         isempty(race.interventions) && continue
-        contact = state.individuals[g.n]
+        contact = individuals(state)[g.n]
         _initialise!(race.interventions, contact, state)
         _apply_population_actions!(state, race.interventions, (contact.id,))
         _apply_creation_actions!(state, race.creating, contact)
@@ -88,6 +88,18 @@ function _record_infection!(::_ContactsOf, infector, ind, w, named)
     return nothing
 end
 
+# An exposure the race found was never a contact leaves the case's contacts,
+# for a person the case's own `contacts_of` created. Someone who already
+# existed this route does not take back.
+function _withdraw_contact!(c::_ContactsOf, race, parent, contact)
+    _created_by(contact, parent) || return nothing
+    _unmake_contact!(parent, contact)
+    delete!(c.minted, contact.id)
+    reached = get(c.reached, parent.id, nothing)
+    reached === nothing || filter!(!=(contact.id), reached)
+    return nothing
+end
+
 # Ask the model whom the settling case exposes, or take what a ring already
 # asked for, timed from the infection now known. A case at the generation bound
 # transmits to nobody.
@@ -106,8 +118,8 @@ function _mint!(c::_ContactsOf, race, ind, max_generation)
     else
         for (id, delay) in early
             t = ind.infection_time + delay
-            if _created_by(state.individuals[id], ind)
-                state.individuals[id].infection_time = t
+            if _created_by(individuals(state)[id], ind)
+                individuals(state)[id].infection_time = t
                 c.minted[id] = t
             end
             push!(c.pending, (id, t))
@@ -139,7 +151,7 @@ function _case_contacts(
         named = get(c.reached, id, nothing)
         named === nothing || return named
         race.processed[id] && return ()
-        ind = state.individuals[id]
+        ind = individuals(state)[id]
         # A person at the generation bound exposes nobody; the model is not
         # asked to create anyone for them.
         ind.generation >= max_generation && return ()
@@ -150,7 +162,7 @@ function _case_contacts(
         _grow!(race.members, race)
         # Only `ind` can infect someone the model created for it.
         for (cid, _) in exposures
-            contact = state.individuals[cid]
+            contact = individuals(state)[cid]
             _created_by(contact, ind) || continue
             contact.infection_time = oftype(contact.infection_time, NaN)
             contact.generation = ind.generation + 1
@@ -185,7 +197,7 @@ end
 # cut wrote. One the model named rather than created has no such record, and
 # keeps whatever an earlier cut already decided for it.
 function _finish!(c::_ContactsOf, race, stop_t, extinct, cut_by_max_time)
-    for ind in race.state.individuals
+    for ind in individuals(race.state)
         is_infected(ind) && continue
         if isnan(ind.infection_time)
             minted = get(c.minted, ind.id, nothing)
@@ -195,7 +207,7 @@ function _finish!(c::_ContactsOf, race, stop_t, extinct, cut_by_max_time)
     end
     (extinct || !cut_by_max_time) && empty!(c.minted)
     isempty(race.interventions) && return nothing
-    for ind in race.state.individuals
+    for ind in individuals(race.state)
         _drop_stale_abort!(ind)
     end
     return nothing
@@ -214,9 +226,9 @@ function _simulate_contacts_of(
     fill!(state.group_cases, 0)
     T = _timetype(state)
     route = _ContactsOf(model, T)
-    seeds = [is_infected(ind) for ind in state.individuals]
+    seeds = [is_infected(ind) for ind in individuals(state)]
     sellke_race!(
-        state, _Grown(length(state.individuals)), rng, sim_opts;
+        state, _Grown(length(individuals(state))), rng, sim_opts;
         seed! = (best, _, _) -> (best[seeds] .= zero(T)),
         routes = ((_contacts_window(), route),), interventions,
         contacts = (id, state) -> get(route.reached, id, ()),

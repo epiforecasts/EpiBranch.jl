@@ -56,8 +56,8 @@
             )
             a = simulate(shared; rng = StableRNG(3))
             b = simulate(per_person; rng = StableRNG(3))
-            @test [i.infection_time for i in a.individuals] ==
-                [i.infection_time for i in b.individuals]
+            @test [i.infection_time for i in individuals(a)] ==
+                [i.infection_time for i in individuals(b)]
             data = household_infections(a, shared)
             @test loglikelihood(data, per_person) ≈ loglikelihood(data, shared)
         end
@@ -98,8 +98,8 @@
             progression = sir
         )
         state = simulate(model; rng = StableRNG(5))
-        @test any(is_infected, state.individuals[1:4])
-        @test !any(is_infected, state.individuals[5:end])
+        @test any(is_infected, individuals(state)[1:4])
+        @test !any(is_infected, individuals(state)[5:end])
         data = household_infections(state, model)
         @test isfinite(loglikelihood(data, model))
     end
@@ -188,7 +188,7 @@ end
             progression = sir
         )
         state = simulate(model; rng = StableRNG(1))
-        @test any(is_infected, state.individuals)
+        @test any(is_infected, individuals(state))
         data = household_infections(state, model)
         @test isfinite(loglikelihood(data, model))
     end

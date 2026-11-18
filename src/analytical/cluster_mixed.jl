@@ -73,10 +73,6 @@ struct ChainSizeMixture{F, D <: Distribution} <: ChainSizeLaw
     mixing::D
 end
 
-Distributions.minimum(::ChainSizeMixture) = 1
-Distributions.maximum(::ChainSizeMixture) = Inf
-Distributions.insupport(::ChainSizeMixture, n::Integer) = n >= 1
-
 function Distributions.logpdf(d::ChainSizeMixture, n::Integer)
     n < 1 && return -Inf
     # No absolute tolerance: chain size probabilities can be far below 1e-10.
@@ -86,15 +82,8 @@ function Distributions.logpdf(d::ChainSizeMixture, n::Integer)
     return prob > 0.0 ? log(prob) : -Inf
 end
 
-Distributions.pdf(d::ChainSizeMixture, n::Integer) = exp(logpdf(d, n))
-
 function _chain_size_logpdf(d::ChainSizeMixture, x::Integer, s::Integer)
     return _independent_chain_size_logpdf(d, x, s)
-end
-
-Distributions.cdf(d::ChainSizeMixture, n::Integer) = _chain_size_cdf(d, n)
-function Distributions.logccdf(d::ChainSizeMixture, n::Integer)
-    return _chain_size_right_tail_logprob(d, n + 1, 1)
 end
 
 """
@@ -170,7 +159,7 @@ function draw_offspring(
         if individual.parent_id == 0
             rand(rng, offspring.mixing)
         else
-            state.individuals[individual.parent_id].state[:cluster_theta]
+            individuals(state)[individual.parent_id].state[:cluster_theta]
         end
     end
     return rand(rng, offspring.build(θ))
@@ -242,11 +231,13 @@ end
 reproduction_number(o::ClusterMixed{PoissonFamily}) = mean(o.mixing)
 
 """
-    extinction_probability(o::ClusterMixed; tol=1e-10, max_iter=1000)
+    extinction_probability(o::ClusterMixed; n_initial=1, tol=1e-10, max_iter=1000)
 
-Probability that a chain started by a single index case dies out when the
-reproduction number varies between chains: the extinction probability of
-`build(θ)`, averaged over `θ` drawn from `mixing`. Chains whose `θ` gives a
+Probability that chains started by `n_initial` index cases die out. For one
+index case it is the extinction probability of `build(θ)`, averaged over `θ`
+drawn from `mixing`. Each index case draws its own `θ`, so the chains are
+independent and the result is that average raised to the power `n_initial`,
+not the average of the power. Chains whose `θ` gives a
 mean of at most 1 die out with certainty (assuming the number of secondary
 cases is not fixed).
 
@@ -254,11 +245,13 @@ cases is not fixed).
 distribution over a set of values.
 """
 function extinction_probability(
-        o::ClusterMixed; tol::Real = 1.0e-10,
+        o::ClusterMixed; n_initial::Int = 1, tol::Real = 1.0e-10,
         max_iter::Int = 1000
     )
-    return _mixture_expectation(
+    _check_n_initial(n_initial)
+    q = _mixture_expectation(
         θ -> _extinction_at_fixed_law(o.build(θ); tol, max_iter), o.mixing;
         atol = tol
     )
+    return q^n_initial
 end

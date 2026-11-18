@@ -113,7 +113,7 @@ end
 # public single-outbreak `simulate`'s checks (and any `@warn` it raises) on
 # every attempt.
 function _rand_chain_size_setup(model::TransmissionModel, sim_kwargs::NamedTuple)
-    _validate_process_windows(model, progression(model))
+    validate_process_windows(model, progression(model))
     _warn_incomplete_terminal_coverage(progression(model))
     sim_opts = _build_sim_opts(
         model, get(sim_kwargs, :n_initial, nothing),
@@ -122,7 +122,7 @@ function _rand_chain_size_setup(model::TransmissionModel, sim_kwargs::NamedTuple
         get(sim_kwargs, :max_generations, _DEFAULT_MAX_GENERATIONS),
         get(sim_kwargs, :max_time, nothing), get(sim_kwargs, :stopping_rules, nothing)
     )
-    _validate_initial_cases(model, sim_opts)
+    validate_initial_cases(model, sim_opts)
     return (
         process = model, sim_opts = sim_opts, interventions = interventions(model),
         attributes = attributes(model), recorder = recorder(model),
@@ -140,7 +140,7 @@ function _rand_chain_size_setup(spec::ModelSpec, sim_kwargs::NamedTuple)
         get(sim_kwargs, :max_generations, _DEFAULT_MAX_GENERATIONS),
         get(sim_kwargs, :max_time, nothing), get(sim_kwargs, :stopping_rules, nothing)
     )
-    _validate_initial_cases(spec.process, sim_opts)
+    validate_initial_cases(spec.process, sim_opts)
     return (
         process = spec.process, sim_opts = sim_opts, interventions = spec.interventions,
         attributes = spec.attributes, recorder = spec.recorder,

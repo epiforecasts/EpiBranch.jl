@@ -300,7 +300,7 @@ end
 # afterwards for an observation model, or both.
 function _reported_chain_sizes(state)
     counts = Dict{Int, Int}()
-    for ind in state.individuals
+    for ind in individuals(state)
         (is_infected(ind) && get(ind.state, :reported, false)) || continue
         counts[ind.chain_id] = get(counts, ind.chain_id, 0) + 1
     end

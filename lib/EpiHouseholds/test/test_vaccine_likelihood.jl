@@ -35,7 +35,7 @@ EpiBranch.infection_likelihood_compatible(::_HalvedFrom) = true
         # immunity times are recorded from the simulated state because the
         # model composes a vaccination
         recorded = coalesce.(data.host_times.immunity_time, Inf)
-        @test recorded == EpiBranch.immunity_time.(state.individuals)
+        @test recorded == EpiBranch.immunity_time.(individuals(state))
         @test any(isfinite, recorded)
         # a model without one records no host times
         @test isempty(household_infections(state, ModelSpec(process)).host_times)

@@ -116,6 +116,47 @@ end
 
 # ── The campaign read from a ModelSpec ───────────────────────────────
 
+"""
+    GroupDosing
+
+The description of an intervention that gives doses to groups, as read by a
+model that keeps counts or compartments rather than individuals: the `group_key`
+whose values are the groups, the `efficacy` and `mode` of the dose, the
+`coverage` of a group reached, the `dose_delay` after the trigger, and the
+`delay_to_immunity` and `waning` of the dose. See [`count_dosing`](@ref EpiBranch.count_dosing).
+"""
+struct GroupDosing{E, M, C, D, I, W}
+    group_key::Symbol
+    efficacy::E
+    mode::M
+    coverage::C
+    dose_delay::D
+    delay_to_immunity::I
+    waning::W
+end
+
+"""
+    count_dosing(intervention) -> Union{Nothing, GroupDosing}
+
+For extension authors: the effect of `intervention` on a model that keeps counts
+of cases by type or compartments by mixing group, such as `simulate_by_generation`
+and the approximations for mixing populations. These models have no individual to
+offer an intervention to, so they apply only an intervention that describes its
+effect on a group: it returns a [`GroupDosing`](@ref EpiBranch.GroupDosing). The
+default, `nothing`, means it has no such description. The model then refuses it in
+the same words as any other intervention it cannot apply. [`GroupVaccination`](@ref)
+defines it; a new intervention that gives doses to groups opts in by defining it.
+A model that hands an individual-based run over to a mixing approximation also
+needs `EpiBranch._group_trigger_time` for the intervention.
+"""
+count_dosing(::AbstractIntervention) = nothing
+function count_dosing(gv::GroupVaccination)
+    return GroupDosing(
+        gv.group_key, efficacy(gv), effect_mode(gv), gv.coverage, gv.dose_delay,
+        delay_to_immunity(gv), waning(gv)
+    )
+end
+
 # A model with no vaccination, so no doses flow between compartments.
 struct NoCampaign end
 
@@ -124,7 +165,7 @@ struct NoCampaign end
 # (a value of `group_key`) mixing group `m` belongs to, `members[v]` the
 # mixing groups in vaccination group `v`. `budget` is the
 # `CapacityConstrained` wrapper, or `nothing` for unlimited doses.
-struct GroupCampaign{B, A <: DoseAllocation, GV <: GroupVaccination}
+struct GroupCampaign{B, A <: DoseAllocation, GV <: AbstractIntervention}
     vaccination::GV
     key::Symbol
     values::Vector{Any}
@@ -139,6 +180,10 @@ struct GroupCampaign{B, A <: DoseAllocation, GV <: GroupVaccination}
     window_stop::Float64
     budget::B
     allocation::A
+    # The budget of each mixing group and the name the population gives it,
+    # when the budget is per group; `nothing` for one pool shared by all.
+    group_budgets::Union{Nothing, Vector{CapacityConstrained}}
+    group_names::Vector{Any}
 end
 
 # What every engine that reads a campaign rather than simulating individuals
@@ -146,7 +191,7 @@ end
 # wording of their refusals.
 const _CAMPAIGN_SUPPORT = "a GroupVaccination, alone or under Scheduled (a " *
     "start_time and end_time only) and CapacityConstrained (one per campaign, " *
-    "with a shared budget and `on_refusal = DropRefused()`)"
+    "with a shared or `PerGroup` budget and `on_refusal = DropRefused()`)"
 
 function _refuse_campaign(engine, what, reason = "")
     throw(
@@ -206,8 +251,9 @@ function _read_campaign(ivs::AbstractVector, mixing_by, groups, allocation, what
     isempty(ivs) && return NoCampaign()
     length(ivs) == 1 || _refuse_campaign(what, "a model with $(length(ivs)) interventions")
     iv, window, budget = _unwrap_campaign(only(ivs), (-Inf, Inf), nothing, what)
-    iv isa GroupVaccination || _refuse_campaign(what, nameof(typeof(iv)))
-    key = iv.group_key
+    dosing = count_dosing(iv)
+    dosing === nothing && _refuse_campaign(what, nameof(typeof(iv)))
+    key = dosing.group_key
     position = findfirst(==(key), mixing_by)
     position === nothing && throw(
         ArgumentError(
@@ -216,8 +262,8 @@ function _read_campaign(ivs::AbstractVector, mixing_by, groups, allocation, what
                 "mixing groups the compartments are kept for"
         )
     )
-    _check_dose_inputs(iv)
-    outcome = _dose_outcome(effect_mode(iv), efficacy(iv))
+    _check_dose_inputs(dosing)
+    outcome = _dose_outcome(dosing.mode, dosing.efficacy)
     _check_allocation(allocation, budget)
     values = Any[]
     group_of = Int[]
@@ -230,21 +276,32 @@ function _read_campaign(ivs::AbstractVector, mixing_by, groups, allocation, what
         push!(group_of, v)
     end
     members = [findall(==(v), group_of) for v in eachindex(values)]
+    names = Any[_group_name(g) for g in groups]
     return GroupCampaign(
         iv, key, values, group_of, members,
         Float64(outcome.immune), Float64(outcome.vaccinated), Float64(outcome.hazard),
-        Float64(iv.coverage), Float64(iv.dose_delay), Float64(window[1]), Float64(window[2]),
-        budget, allocation
+        Float64(dosing.coverage), Float64(dosing.dose_delay), Float64(window[1]), Float64(window[2]),
+        budget, allocation, _group_budget_wrappers(budget, names), names
     )
+end
+
+# One wrapper per mixing group, each with the budget `PerGroup` gives it, in
+# the order of `names`; `nothing` when the budget is shared.
+_group_budget_wrappers(budget, names) = nothing
+function _group_budget_wrappers(cc::CapacityConstrained, names)
+    pg = cc.budget_per_period
+    pg isa PerGroup || return nothing
+    _group_budgets(pg, names)
+    return CapacityConstrained[_for_resource(cc, name) for name in names]
 end
 
 # The inputs a compartment can only take as numbers. A distribution or a
 # function varies from person to person, and an average cannot stand in for
 # it without a choice by the caller.
-function _check_dose_inputs(iv::GroupVaccination)
+function _check_dose_inputs(dosing::GroupDosing)
     for (name, x, lo, hi) in (
-            ("efficacy", efficacy(iv), 0.0, 1.0), ("coverage", iv.coverage, 0.0, 1.0),
-            ("dose_delay", iv.dose_delay, 0.0, Inf),
+            ("efficacy", dosing.efficacy, 0.0, 1.0), ("coverage", dosing.coverage, 0.0, 1.0),
+            ("dose_delay", dosing.dose_delay, 0.0, Inf),
         )
         x isa Real && lo <= x <= hi || throw(
             ArgumentError(
@@ -253,14 +310,14 @@ function _check_dose_inputs(iv::GroupVaccination)
             )
         )
     end
-    delay = delay_to_immunity(iv)
+    delay = dosing.delay_to_immunity
     (delay isa Real && delay == 0) || throw(
         ArgumentError(
             "the approximations do not model `delay_to_immunity`: a dose protects " *
                 "from the day it is given, so it must be 0, got $delay"
         )
     )
-    waning(iv) === nothing || throw(
+    dosing.waning === nothing || throw(
         ArgumentError("the approximations do not model `waning`, so it must be `nothing`")
     )
     return nothing
@@ -273,18 +330,19 @@ end
 # until it is triggered) and `fired[v]` whether they have been offered;
 # `baseline[v]` is the expected number of cases already counted when the
 # trigger started to be watched for; `log` holds each batch of doses as
-# `(time, doses)`, which a budget with `carry_over = false` reads back.
+# `(time, doses, group)`, which a budget with `carry_over = false` reads back;
+# `group` is the mixing group of a budget per group and `0` for a shared one.
 struct CampaignProgress
     dose_time::Vector{Float64}
     fired::Vector{Bool}
     baseline::Vector{Float64}
-    log::Vector{Tuple{Float64, Float64}}
+    log::Vector{Tuple{Float64, Float64, Int}}
 end
 
-_new_progress(::NoCampaign) = CampaignProgress(Float64[], Bool[], Float64[], Tuple{Float64, Float64}[])
+_new_progress(::NoCampaign) = CampaignProgress(Float64[], Bool[], Float64[], Tuple{Float64, Float64, Int}[])
 function _new_progress(c::GroupCampaign)
     n = length(c.values)
-    return CampaignProgress(fill(Inf, n), fill(false, n), zeros(n), Tuple{Float64, Float64}[])
+    return CampaignProgress(fill(Inf, n), fill(false, n), zeros(n), Tuple{Float64, Float64, Int}[])
 end
 
 function _copy(p::CampaignProgress)
@@ -305,9 +363,13 @@ function _dose_rate(alloc::Union{SplitByGroupSize, SplitBySusceptibles}, c, mode
     c.window_start <= t <= c.window_stop || return zeros(G)
     cc = c.budget
     period_start = floor(t / cc.period + 1.0e-9) * cc.period
-    total = _period_budget(cc.budget_per_period, period_start) / cc.period
     N = Float64.(model.group_sizes)
     reachable = c.coverage .* N .- D .> 1.0e-9
+    c.group_budgets === nothing || return [
+        reachable[m] ? _period_budget(b.budget_per_period, period_start) / b.period : 0.0
+            for (m, b) in enumerate(c.group_budgets)
+    ]
+    total = _period_budget(cc.budget_per_period, period_start) / cc.period
     weight = _split_weight(alloc, N, S) .* reachable
     sum(weight) > 0 || return zeros(G)
     return total .* weight ./ sum(weight)
@@ -351,16 +413,18 @@ end
 # `CapacityConstrained` wrapper counts them for one more person: those
 # available through the end of the period `d` falls in (with `carry_over`,
 # including everything unspent before it), less those already given.
-_budget_left(::Nothing, log, d) = Inf
-function _budget_left(cc::CapacityConstrained, log, d)
+# `group` is the mixing group of the budget, or `0` for a shared one.
+_budget_left(::Nothing, log, d, group = 0) = Inf
+function _budget_left(cc::CapacityConstrained, log, d, group = 0)
     period_start, period_end = _period_bounds(cc, d)
+    mine = ((t, n) for (t, n, g) in log if g == group)
     if cc.carry_over
         available = isinf(cc.period) ? _period_budget(cc.budget_per_period, period_start) :
             _cumulative_budget(cc, period_end)
-        used = sum((n for (t, n) in log if t < period_end); init = 0.0)
+        used = sum((n for (t, n) in mine if t < period_end); init = 0.0)
     else
         available = _period_budget(cc.budget_per_period, period_start)
-        used = sum((n for (t, n) in log if period_start <= t < period_end); init = 0.0)
+        used = sum((n for (t, n) in mine if period_start <= t < period_end); init = 0.0)
     end
     return max(available - used, 0.0)
 end
@@ -391,12 +455,34 @@ function _fire_doses!(c::GroupCampaign, model, x, Σ, progress, t)
         c.window_start <= d <= c.window_stop || continue
         S, _, _, _, D = _unpack(x, G)
         reach = [max(c.coverage * N[m] - D[m], 0.0) for m in c.members[v]]
-        given = min(sum(reach), _budget_left(c.budget, progress.log, d))
+        _give_batch!(c, c.group_budgets, v, reach, x, Σ, progress, d, N)
+    end
+    return nothing
+end
+
+# One pool for the groups of a batch: it gives the smaller of the number of
+# people it can reach and the doses left, spread over the groups in proportion
+# to their reach.
+function _give_batch!(c, ::Nothing, v, reach, x, Σ, progress, d, N)
+    given = min(sum(reach), _budget_left(c.budget, progress.log, d))
+    given > 0 || return nothing
+    G = length(N)
+    for (k, m) in enumerate(c.members[v])
+        _dose_group!(c, x, Σ, G, m, given * reach[k] / sum(reach), N[m])
+    end
+    push!(progress.log, (d, given, 0))
+    return nothing
+end
+
+# A budget per group: each group takes what it can reach or its own budget
+# allows.
+function _give_batch!(c, budgets::Vector, v, reach, x, Σ, progress, d, N)
+    G = length(N)
+    for (k, m) in enumerate(c.members[v])
+        given = min(reach[k], _budget_left(budgets[m], progress.log, d, m))
         given > 0 || continue
-        for (k, m) in enumerate(c.members[v])
-            _dose_group!(c, x, Σ, G, m, given * reach[k] / sum(reach), N[m])
-        end
-        push!(progress.log, (d, given))
+        _dose_group!(c, x, Σ, G, m, given, N[m])
+        push!(progress.log, (d, given, m))
     end
     return nothing
 end
@@ -478,6 +564,12 @@ function _dose_given(c::GroupCampaign, ind, t)
     return dose_t !== nothing && dose_t <= t
 end
 
+# The mixing group of the budget a dose to `ind` was drawn from: `0` for a budget
+# shared by all.
+_budget_group(c::GroupCampaign, es, ind) = _budget_group(c.group_budgets, c, es, ind)
+_budget_group(::Nothing, c, es, ind) = 0
+_budget_group(::Vector, c, es, ind) = findfirst(isequal(_group_of(es, ind)), c.group_names)
+
 _dose_protects(::NoCampaign, ind) = false
 function _dose_protects(c::GroupCampaign, ind)
     c.immune > 0 || return false
@@ -504,12 +596,13 @@ function _handover_progress(c::GroupCampaign, es, t, cases)
             end
         end
     end
-    given = Dict{Float64, Float64}()
-    for ind in es.individuals
+    given = Dict{Tuple{Float64, Int}, Float64}()
+    for ind in individuals(es)
         dose_t = _dose_time(dose_label(c.vaccination), ind)
-        dose_t !== nothing && dose_t <= t &&
-            (given[dose_t] = get(given, dose_t, 0.0) + 1.0)
+        dose_t !== nothing && dose_t <= t || continue
+        entry = (dose_t, _budget_group(c, es, ind))
+        given[entry] = get(given, entry, 0.0) + 1.0
     end
-    append!(progress.log, [(k, v) for (k, v) in sort!(collect(given))])
+    append!(progress.log, [(k[1], v, k[2]) for (k, v) in sort!(collect(given))])
     return progress
 end
