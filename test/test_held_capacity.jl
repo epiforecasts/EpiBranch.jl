@@ -214,6 +214,8 @@ end
 
         deferring = HeldCapacity(ct; capacity = 1, hold = 4.0, on_refusal = DeferRefused())
         state = empty_state()
+        infector = Individual(id = 1)
+        set_isolated!(infector, 0.0; release_time = Inf)
         contacts = [Individual(id = i) for i in 2:4]
         append!(individuals(state), contacts)
         EpiBranch.trace_contacts!(deferring, state, infector, contacts, [1.0, 2.0, 3.0])
