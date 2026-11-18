@@ -1,1 +1,1 @@
-The `PerContactDepletion` docstring no longer says `simulate_by_generation` and the individual simulation differ for several types. Each type is depleted against its own population on both paths, and a test now checks that the two agree for several two-type models.
+The `PerContactDepletion` docstring no longer says that `simulate_by_generation` and the individual simulation differ for several types. Both paths deplete each type against its own population, and a test now checks that they agree for several two-type models.
