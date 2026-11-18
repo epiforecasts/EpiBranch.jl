@@ -266,67 +266,6 @@ struct ChainLengths
 end
 
 """
-    IncidenceCounts(data; seeds = 1)
-
-Observed incidence: the number of new cases in each successive time step
-(day, week, or whatever unit `data` is recorded in) of a single outbreak,
-starting one step after the `seeds` index cases. Pass it to `loglikelihood`
-with an offspring distribution and a generation-time distribution, or with a
-model that already has its own, to fit a branching process to a case or
-admission time series without simulating it.
-
-- `data`: the incidence count for each step, in calendar order. For a
-  multi-type process ([`MultiTypeOffspring`](@ref EpiBranch.MultiTypeOffspring)),
-  a vector holds the total over types, and a matrix with one row per step and
-  one column per type holds the counts by type.
-- `seeds`: the number of index cases introduced at step 0, 1 by default. For
-  a multi-type process, a vector with the number of each type.
-
-# Examples
-
-```julia
-data = IncidenceCounts([1, 2, 4, 5, 9, 12, 18])
-loglikelihood(data, NegBin(1.3, 0.5), LogNormal(1.6, 0.5))
-
-# children and adults, one column each, started by one adult
-by_type = IncidenceCounts([0 1; 1 1; 1 3; 2 4]; seeds = [0, 1])
-```
-"""
-struct IncidenceCounts{D <: VecOrMat{Int}, S <: Union{Int, Vector{Int}}}
-    data::D
-    seeds::S
-    function IncidenceCounts(
-            data::AbstractVecOrMat{<:Integer};
-            seeds::Union{Integer, AbstractVector{<:Integer}} = 1
-        )
-        isempty(data) && throw(ArgumentError("data must be non-empty"))
-        all(x -> x >= 0, data) || throw(ArgumentError("incidence counts must be non-negative"))
-        if seeds isa Integer
-            seeds >= 1 || throw(ArgumentError("seeds must be ≥ 1"))
-            data isa AbstractMatrix && throw(
-                ArgumentError(
-                    "counts by type (a matrix) need `seeds` by type, a vector with one " *
-                        "entry per column"
-                )
-            )
-            seeds = convert(Int, seeds)
-        else
-            all(>=(0), seeds) && sum(seeds) >= 1 ||
-                throw(ArgumentError("seeds by type must be ≥ 0 and sum to at least 1"))
-            data isa AbstractMatrix && size(data, 2) != length(seeds) && throw(
-                ArgumentError(
-                    "counts by type have $(size(data, 2)) columns but `seeds` has " *
-                        "$(length(seeds)) entries; give one per type"
-                )
-            )
-            seeds = convert(Vector{Int}, seeds)
-        end
-        d = data isa AbstractMatrix ? convert(Matrix{Int}, data) : convert(Vector{Int}, data)
-        return new{typeof(d), typeof(seeds)}(d, seeds)
-    end
-end
-
-"""
     SignalSeries(signal, density, data)
 
 One observed series, compared with a [`Signal`](@ref): for each step a
@@ -366,8 +305,8 @@ weekly steps from day 0; every series' `data` holds one value per step
 Pass it to `loglikelihood` with a model: several series observed together
 need one simulated path shared by all of them, because separate `~`
 statements in Turing would simulate a fresh outbreak for each. Unlike
-[`IncidenceCounts`](@ref) and the chain-size and chain-length data, there is
-no closed form here yet, only simulation.
+the chain-size and chain-length data, there is no closed form here, only
+simulation.
 
 # Examples
 
@@ -468,57 +407,4 @@ ChainSizes(state::SimulationState) = ChainSizes(linelist(state))
 function ChainSizes(states::AbstractVector{<:SimulationState})
     isempty(states) && throw(ArgumentError("states must be non-empty"))
     return ChainSizes(reduce(vcat, [ChainSizes(s).data for s in states]))
-end
-
-"""
-    IncidenceCounts(df::AbstractDataFrame; date = :date_onset, step = 7)
-    IncidenceCounts(state::SimulationState; by = :onset, step = 7)
-
-Incidence from case dates. Cases are counted in consecutive steps of `step`
-days starting at the earliest date, with empty steps counted as 0. The cases
-in the first step are the `seeds` (index cases at step 0), and `data` holds
-the counts of the later steps, as [`IncidenceCounts`](@ref) expects. The
-first step needs at least one case and the table at least two steps. Rows with a `missing` date are left out.
-
-From a `SimulationState`, `by` chooses the time as in
-[`weekly_incidence`](@ref), counted in days from simulation day 0.
-
-# Examples
-
-```julia
-using Dates
-df = DataFrame(date_onset = Date(2024, 3, 1) .+ Day.([0, 1, 3, 4, 4, 8, 9, 9, 10, 12]))
-IncidenceCounts(df; step = 3)
-```
-"""
-function IncidenceCounts(
-        df::AbstractDataFrame; date::Symbol = :date_onset, step::Integer = 7
-    )
-    dates = Date.(collect(skipmissing(df[!, date])))
-    isempty(dates) && throw(ArgumentError("no case has a date in column `$date`"))
-    return _incidence_from_days(Dates.value.(dates .- minimum(dates)), step)
-end
-
-function IncidenceCounts(state::SimulationState; by::Symbol = :onset, step::Integer = 7)
-    times = filter(
-        isfinite, [_weekly_time(by, ind) for ind in individuals(state) if is_infected(ind)]
-    )
-    isempty(times) && throw(ArgumentError("no case has a finite `$by` time"))
-    return _incidence_from_days(floor.(Int, times .- minimum(times)), step)
-end
-
-function _incidence_from_days(days::AbstractVector{<:Integer}, step::Integer)
-    step >= 1 || throw(ArgumentError("step must be at least 1 day"))
-    bins = div.(days, step) .+ 1
-    counts = zeros(Int, maximum(bins))
-    for b in bins
-        counts[b] += 1
-    end
-    length(counts) >= 2 || throw(
-        ArgumentError(
-            "the cases span a single step of $step days; the first step holds the " *
-                "seeds, so at least two steps are needed (reduce `step`)"
-        )
-    )
-    return IncidenceCounts(counts[2:end]; seeds = counts[1])
 end
