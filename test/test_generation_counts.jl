@@ -118,6 +118,48 @@
         @test state.cumulative_cases >= 10
     end
 
+    @testset "a vector of multipliers draws one independently for each type" begin
+        # Uncoupled types in an unlimited population: the count of each type
+        # after one generation is its own total, so the counts correlate only
+        # through a shared multiplier.
+        I, k = 1000, 0.5
+        model = BranchingProcess(
+            [2.0 0.0; 0.0 2.0], R -> Poisson(R), EpiBranch.NoGenerationTime()
+        )
+        draw(multiplier) = reduce(
+            hcat, [
+                simulate_by_generation(
+                    model; n_initial = [I, I], max_generations = 1,
+                    multiplier, rng = StableRNG(s)
+                ).counts for s in 1:3000
+            ]
+        )
+        shared = draw(Gamma(k, 1 / k))
+        per_type = draw([Gamma(k, 1 / k), Gamma(k, 1 / k)])
+        @test cor(shared[1, :], shared[2, :]) > 0.9
+        @test abs(cor(per_type[1, :], per_type[2, :])) < 0.1
+        # The total of each type keeps the marginal law of the shared multiplier.
+        target = NegBin(I * 2.0, k)
+        for i in 1:2
+            @test isapprox(mean(per_type[i, :]), mean(target); rtol = 0.1)
+            @test isapprox(var(per_type[i, :]), var(target); rtol = 0.2)
+        end
+        # A single type has only one draw to make.
+        single = BranchingProcess(Poisson(2.0))
+        a = simulate_by_generation(
+            single; n_initial = 10, max_generations = 5, multiplier = Gamma(k, 1 / k),
+            rng = StableRNG(7)
+        )
+        b = simulate_by_generation(
+            single; n_initial = 10, max_generations = 5, multiplier = [Gamma(k, 1 / k)],
+            rng = StableRNG(7)
+        )
+        @test a.counts == b.counts
+        @test_throws ArgumentError simulate_by_generation(
+            model; n_initial = [I, I], max_generations = 1, multiplier = [Gamma(k, 1 / k)]
+        )
+    end
+
     @testset "continuing a run matches running straight through" begin
         model = BranchingProcess(NegBin(2.0, 0.5); population_size = 5000)
         straight = simulate_by_generation(
