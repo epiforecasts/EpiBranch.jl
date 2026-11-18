@@ -8,7 +8,7 @@
 # hand-built outbreak; see the design notes in `docs/src/design.md`.
 
 """
-    progression_loglik(spec::ModelSpec, individuals; followup_end = Inf) -> Float64
+    progression_loglik(spec::ModelSpec, individuals; followup_end = Inf, truncated = false) -> Float64
 
 The log-likelihood of the cases' clinical timelines under the steps of the
 model's `progression` (reporting, hospitalisation, death or recovery, each
@@ -27,13 +27,25 @@ nothing. The result is the sum over cases and steps of
 (whether it was drawn to occur later, or not to occur at all) is treated as
 censored: the probability that it had not happened by `followup_end`, in place
 of a density. This matters when infection times are imputed, because a case
-infected shortly before the cut-off may have no onset or report yet. Steps
-that did happen enter with their plain density, without conditioning on
-having happened before `followup_end`. Right truncation of the observed delays
-is not yet handled, and a delay distribution fitted to a line list cut at a
-date is biased towards short delays. A custom
-[`transition_loglik`](@ref EpiBranch.transition_loglik) method needs a
-`followup_end` keyword to be used with a finite `followup_end`.
+infected shortly before the cut-off may have no onset or report yet. By
+default, steps that did happen enter with their plain density, without
+conditioning on having happened before `followup_end`. That is the right
+likelihood when every case infected by then is in the data, with its later
+steps still to come censored, as above.
+
+Set `truncated = true` when cases enter the data because a step happened by
+`followup_end`, for example a line list of cases selected by the date they were
+reported. Each observed [`Reporting`](@ref), [`Hospitalisation`](@ref) or
+non-terminal [`Transition`](@ref) is then scored as its delay density divided
+by the probability that the delay is at most `followup_end` minus the time the
+step starts from. Fitting a delay to such a line list without this is biased
+towards short delays, because long delays are cut off. The correction applies
+only to observed steps, so the cases must all be selected on that step; do not
+use it together with the censored form for the same step. [`Recovery`](@ref),
+[`Death`](@ref) and terminal transitions compete with other outcomes and are
+scored as before. A custom [`transition_loglik`](@ref EpiBranch.transition_loglik)
+method needs a `followup_end` keyword to be used with a finite `followup_end`,
+and a `truncated` keyword to be used with `truncated = true`.
 
 A line list holds only the outcome that happened. With competing outcomes
 such as [`Death`](@ref) and [`Recovery`](@ref), a case that has an `:outcome`
@@ -65,7 +77,8 @@ progression_loglik(spec, state)
 ```
 """
 function progression_loglik(
-        spec::ModelSpec, individuals::AbstractVector{<:Individual}; followup_end::Real = Inf
+        spec::ModelSpec, individuals::AbstractVector{<:Individual};
+        followup_end::Real = Inf, truncated::Bool = false
     )
     isnan(followup_end) && throw(ArgumentError("followup_end must not be NaN"))
     ll = 0.0
@@ -75,8 +88,13 @@ function progression_loglik(
             # Only the keyword form is passed `followup_end`, so a custom
             # `transition_loglik` without the keyword still works when there
             # is no follow-up end.
-            ll += isinf(followup_end) ? transition_loglik(t, ind) :
+            ll += if truncated
+                transition_loglik(t, ind; followup_end = followup_end, truncated = true)
+            elseif isinf(followup_end)
+                transition_loglik(t, ind)
+            else
                 transition_loglik(t, ind; followup_end = followup_end)
+            end
         end
     end
     return ll
