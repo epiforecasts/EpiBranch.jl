@@ -147,7 +147,7 @@ known cases are quarantined through [`ContactTracing`](@ref).
   the random number generator and the individual, `(rng, ind) -> ...`, drawn
   for each case. The function can read information another intervention has
   recorded on the case, for example to shorten the delay once a case in the
-  same household has been detected. `delay` is a
+  same household has been detected. `onset_to_isolation_delay` is a
   deprecated alias that warns once.
 - `duration` (required): days a case stays isolated before release.
   A number, a distribution or a function `(rng, ind) -> ...`. `Inf` isolates
