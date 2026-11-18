@@ -239,11 +239,10 @@ offspring matrix (`MultiTypeOffspring`); any other model raises an
   built in; giving `multiplier` with another offspring law raises an
   `ArgumentError`.
 - `multiplier_per_type`: with `true`, `multiplier` is drawn separately for each
-  type in each generation instead of once for the generation, so that the
-  overdispersion of the types is independent, as in a model with separate noise
-  for each group. The default, `false`, shares one draw between the types. It
-  makes no difference for a single-type model, and is ignored without a
-  `multiplier`.
+  type in each generation instead of once for the generation. The types then
+  have independent overdispersion, as in a model with separate noise for each
+  group. The default, `false`, shares one draw between the types. It makes no
+  difference for a single-type model. Without a `multiplier` it is ignored.
 - `immune`: the number immune at the start, an `Int` or a vector with one
   entry per type, as for `n_initial` (none by default). The susceptibles of a
   type start at its population minus those immune and its index cases.
