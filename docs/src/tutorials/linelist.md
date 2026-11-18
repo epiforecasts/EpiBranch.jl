@@ -9,10 +9,13 @@ matching table of contacts, infected or not.
 Every line list has the columns `id`, `parent_id` (the infector's `id`),
 `generation`, `chain_id` and `date_infection`. Anything else the model records
 about a case, such as symptom onset, age or outcome, becomes a column as well.
-The columns depend on the model alone: a column the model can produce is
-always present, with `missing` where a case has no value. A run in which every
-case is asymptomatic still has `date_onset`, with every value `missing`. Line
-lists of runs of one model therefore always have the same columns. A recorded time whose name ends in `_time` becomes a date column, so
+A column is kept when every case's value is `missing`: a run in which every
+case is asymptomatic still has `date_onset`, with every value `missing`. A
+column for something the model records only when an event happens, such as
+`date_isolation` when no case is isolated, is absent from a run without that
+event, so stack runs with `cols = :union`.
+
+A recorded time whose name ends in `_time` becomes a date column, so
 `onset_time` appears as `date_onset`. A model with isolation or quarantine
 adds `isolated` and `date_isolation`, and when they last a finite time (a
 finite `duration`) also `date_isolation_release`, the date the person was

@@ -466,7 +466,7 @@ end
     @test event_time_metadata(Val(:custom_disease_time)).requires_infection
 end
 
-@testset "line list columns depend on the model alone" begin
+@testset "line list keeps columns whose values are all missing" begin
     cp = clinical_presentation(
         incubation_period = LogNormal(1.5, 0.5), prob_asymptomatic = 0.5
     )
@@ -480,8 +480,7 @@ end
     # Some runs have no symptomatic case and hence no onset.
     @test any(ll -> all(ismissing, ll.date_onset), per_run)
     @test any(ll -> !all(ismissing, ll.date_onset), per_run)
-    @test length(unique(names.(per_run))) == 1
-    @test "date_onset" in names(per_run[1])
+    @test all(ll -> "date_onset" in names(ll), per_run)
 end
 
 
