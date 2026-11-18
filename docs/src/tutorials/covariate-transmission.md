@@ -431,7 +431,7 @@ This needs a small custom intervention (see
 struct TwoCasePolicy <: AbstractIntervention end
 function EpiBranch.resolve_individual!(::TwoCasePolicy, ind, state)
     state.cumulative_cases == 2 || return nothing
-    for person in state.individuals
+    for person in individuals(state)
         person.state[:policy_time] = ind.infection_time + 0.5
     end
     return nothing

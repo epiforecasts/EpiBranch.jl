@@ -324,16 +324,16 @@ rng = StableRNG(42)
 state = simulate(scenario([iso, ct]); condition = 50:200,
     max_cases = nothing, max_generations = 5, rng = rng)
 
-contacts = length(state.individuals)
-infected = count(is_infected, state.individuals)
-traced = count(is_traced, state.individuals)
+contacts = length(individuals(state))
+infected = count(is_infected, individuals(state))
+traced = count(is_traced, individuals(state))
 # Cases in the fifth generation drew no contacts to trace
-complete = count(ind -> is_infected(ind) && ind.generation < 5, state.individuals)
+complete = count(ind -> is_infected(ind) && ind.generation < 5, individuals(state))
 println("Contacts: $contacts, Infections: $infected, Traced: $traced")
 println("Traced contacts per case: $(round(traced / complete, digits=1))")
 ```
 
-`count(is_traced, state.individuals)` counts the people for whom `is_traced`
+`count(is_traced, individuals(state))` counts the people for whom `is_traced`
 is true, like `sum(is_traced(x))` in R. Every contact generated is
 infected unless an intervention prevents it. The gap between contacts and
 infections is the number of infections isolation and quarantine prevented.
@@ -414,7 +414,7 @@ model = ModelSpec(BranchingProcess(Poisson(3.0), Exponential(5.0));
 state = simulate(model; max_cases = 500, rng = StableRNG(42))
 reported = count(
     ind -> get(ind.state, :reporting_time, Inf) <= state.max_infection_time,
-    state.individuals)
+    individuals(state))
 println("Cases: $(state.cumulative_cases), reported by the end: $(reported)")
 ```
 

@@ -107,6 +107,19 @@ end
         end
     end
 
+    @testset "a Testing sensitivity without a Testing step is an error" begin
+        testing = Testing(assay = Assay(value = load -> 30.0, detect = 0.0), delay = 0.0)
+        @test_throws ArgumentError testing_spec(
+            progression = AbstractClinicalTransition[],
+            interventions = [
+                Isolation(
+                    onset_to_isolation_delay = 1.0, duration = Inf,
+                    test_sensitivity = testing,
+                ),
+            ],
+        )
+    end
+
     @testset "numeric test_sensitivity is unchanged and keeps its closed form" begin
         iso = Isolation(
             onset_to_isolation_delay = Exponential(2.0), duration = Inf,
@@ -123,7 +136,7 @@ end
 
     @testset "Isolation with a Testing step absent from the progression is reported" begin
         testing = Testing(assay = test_assay, delay = 0.0)
-        spec = testing_spec(
+        @test_throws ArgumentError testing_spec(
             progression = [],
             interventions = [
                 Isolation(
@@ -132,7 +145,6 @@ end
                 ),
             ]
         )
-        @test_throws ArgumentError simulate(spec; max_cases = 20, rng = StableRNG(7), n_initial = 20)
     end
 
     @testset "missing trajectory is reported" begin

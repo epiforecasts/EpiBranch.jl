@@ -145,7 +145,8 @@ covariates need the kernel given as a function, even a constant one such as
 `(i, j) -> Exponential(3.0)`.
 
 Each household is simulated on its own timeline, so interventions cannot be
-wrapped in `Scheduled`. To see what switching a policy on does, calculate this
+wrapped in `Scheduled` or `CapacityConstrained`, directly or inside another
+wrapper such as `OnRoutes`. To see what switching a policy on does, calculate this
 twice, once without the intervention and once with it (unwrapped): the two R*
 values are the reproduction numbers before and after the switch.
 
@@ -175,9 +176,10 @@ function household_offspring(
     # epidemic at its own time, so a gate on the population's clock or case count
     # has no counterpart; in the pooled sample it would switch on at an
     # arbitrary point set by `n_samples`.
-    any(iv -> iv isa Scheduled, spec.interventions) && throw(
+    any(EpiBranch.gates_on_population_clock, spec.interventions) && throw(
         ArgumentError(
-            "a `Scheduled` intervention gates on the population's clock or case count, " *
+            "a `Scheduled`, `CapacityConstrained` or `HeldCapacity` intervention, alone or " *
+                "inside a wrapper, gates on the population's clock or case count, " *
                 "which the branching process over households does not have. For R* before " *
                 "and after the policy starts, call `household_offspring` once without the " *
                 "intervention and once with it unwrapped"
@@ -492,7 +494,7 @@ function _simulated_person_time(
         recorder = spec.recorder
     )
     state = simulate(sample_spec; rng)
-    _validate_removal_gap_keys(state, sample_spec)
+    validate_removal_gap_keys(state, sample_spec)
 
     from = something(process.from, infectious_from(spec.progression))
     window = EpiBranch._shorthand_window(from, process.until)
@@ -502,7 +504,7 @@ function _simulated_person_time(
     # through the same stretches the intervention recorded.
     gap_fractions = _removal_gap_fractions(spec.interventions)
     person_time = zeros(length(sample.members))
-    for (i, ind) in enumerate(state.individuals)
+    for (i, ind) in enumerate(individuals(state))
         is_infected(ind) || continue
         opened = window_open(ind, window)
         closed = window_close(ind, window, spec.interventions)
@@ -557,7 +559,7 @@ end
 
 # How much of `ind`'s community-infectious window its recorded removals take
 # out. Keys sharing a fraction have their stretches merged into a union
-# first, the way `_layer_host_times` merges removal keys for the likelihood:
+# first, the way `layer_host_times` merges removal keys for the likelihood:
 # `ContactTracing`'s `Quarantine` always records its own key and, through
 # `set_isolated!`, the identical stretch under the default key too, so
 # summing the two keys' durations apart would count that stretch twice. Two
@@ -824,5 +826,5 @@ end
 
 # Whether `transition` moves a case into one of `states`.
 function _enters(transition, states::Tuple)
-    return hasproperty(transition, :state) && getfield(transition, :state) in states
+    return any(in(states), produced_states(transition))
 end

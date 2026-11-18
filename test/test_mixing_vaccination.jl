@@ -50,8 +50,8 @@ _vacc_infected(model, s) = sum(model.group_sizes) - sum(s.S) - sum(s.V) - sum(s.
                 simulate(spec; n_initial = 20, max_time = 80.0, rng = StableRNG(seed))
                     for seed in 1:4
             ]
-            cases = [count(i -> isfinite(i.infection_time), r.individuals) for r in runs]
-            doses = [count(is_vaccinated, r.individuals) for r in runs]
+            cases = [count(i -> isfinite(i.infection_time), individuals(r)) for r in runs]
+            doses = [count(is_vaccinated, individuals(r)) for r in runs]
             # The exact doses are the budget, whole people, so the batches
             # the approximation gives add up to the same number.
             @test sum(approx.D) ≈ 2_800
