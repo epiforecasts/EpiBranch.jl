@@ -106,13 +106,8 @@ function simulate(
         model, n_initial, initial_cases, index_types, max_cases, max_generations,
         max_time, stopping_rules
     )
-    validate_initial_cases(model, sim_opts)
-    _validate_index_types(model, sim_opts)
     return _run_once_or_retry(
-        model, sim_opts, condition, max_attempts;
-        interventions = interventions(model), attributes = attributes(model),
-        progression = progression(model), observation = observation(model),
-        recorder = recorder(model), rng
+        model, sim_opts, condition, max_attempts; _layers(model)..., rng
     )
 end
 
@@ -275,14 +270,7 @@ function _simulate_each(
         model, n_initial, initial_cases, index_types, max_cases, max_generations,
         max_time, stopping_rules
     )
-    validate_initial_cases(model, sim_opts)
-    _validate_index_types(model, sim_opts)
-    return _simulate_n(
-        each, T, model, n, sim_opts; interventions = interventions(model),
-        attributes = attributes(model), progression = progression(model),
-        observation = observation(model), recorder = recorder(model), rng,
-        parallel
-    )
+    return _simulate_n(each, T, model, n, sim_opts; _layers(model)..., rng, parallel)
 end
 
 _simulate_n(model::TransmissionModel, n::Int, sim_opts::SimOpts; kwargs...) =
@@ -383,9 +371,18 @@ function _drop_default_shortcuts(model, sim_opts, max_cases, max_generations, st
     )
 end
 
-# Shared by all four `simulate` entry points (a bare process or a `ModelSpec`,
-# each for one outbreak or `n`): build the `SimOpts` the termination keywords
-# describe, with the defaults dropped per `_drop_default_shortcuts`.
+# The five layer keywords of `simulate_once` and `_simulate_n`, read from a
+# process or a `ModelSpec` through the shared accessors.
+_layers(model) = (
+    interventions = interventions(model), attributes = attributes(model),
+    progression = progression(model), observation = observation(model),
+    recorder = recorder(model),
+)
+
+# Builds the `SimOpts` from the termination keywords for every caller that
+# simulates (a bare process or a `ModelSpec`, one outbreak or `n`, and the
+# likelihood paths). It drops the defaults through `_drop_default_shortcuts`
+# and checks the seeding options against `model`. A new check goes in here once.
 function _build_sim_opts(
         model, n_initial, initial_cases, index_types, max_cases, max_generations,
         max_time, stopping_rules
@@ -394,7 +391,10 @@ function _build_sim_opts(
         n_initial, initial_cases, index_types, max_cases, max_generations, max_time,
         stopping_rules
     )
-    return _drop_default_shortcuts(model, sim_opts, max_cases, max_generations, stopping_rules)
+    validate_initial_cases(model, sim_opts)
+    _validate_index_types(model, sim_opts)
+    sim_opts = _drop_default_shortcuts(model, sim_opts, max_cases, max_generations, stopping_rules)
+    return sim_opts
 end
 
 """
@@ -870,11 +870,18 @@ function seed!(state::SimulationState, ids, interventions, transitions)
     end
     if !isempty(ids)
         first_ind = individuals(state)[first(ids)]
-        _validate_required_fields(first_ind, interventions)
         # Building the probe costs a copy of the case's state on every outbreak,
-        # so it is built only when a transition has a field to check.
-        if any(t -> !isempty(required_fields(t)), transitions)
-            _validate_required_fields(_transition_probe(first_ind, transitions, state), transitions)
+        # so it is built only if a transition has a field to check, or an
+        # intervention reads a field missing from the case that a transition
+        # could write (`Isolation` reads the keys of `Testing`).
+        lacking = _first_lacking_field(first_ind, interventions)
+        if !isempty(transitions) &&
+                (lacking !== nothing || any(t -> !isempty(required_fields(t)), transitions))
+            probe = _transition_probe(first_ind, transitions, state)
+            _validate_required_fields(probe, interventions)
+            _validate_required_fields(probe, transitions)
+        elseif lacking !== nothing
+            _throw_lacking_field(lacking...)
         end
     end
     state.cumulative_cases = length(ids)
@@ -1544,6 +1551,12 @@ Use `transmission_traits` for traits known when the case is created (age, sex,
 whether the case is asymptomatic), because it draws its factor then. A change
 during the infection, such as tracing or quarantine, needs an intervention.
 The tutorial "Making cases more or less infectious" compares the options.
+Other links between symptoms and
+infectiousness (more contacts, a shorter infectious period, a within-host
+trajectory that drives onset) are written by the user; the asymptomatic-cases
+tutorial shows each. A builder that replaces this one sets `:asymptomatic` and
+`:incubation_period` (the time onset happens, or would have happened for an
+asymptomatic case), from which the onset time follows.
 
 # Examples
 
@@ -1889,10 +1902,9 @@ attributes = [
 
 For rules this function does not cover, an `attributes` entry can set the
 fields directly, as in `(rng, ind) -> (ind.susceptibility = ...)`. Such a
-closure sends `loglikelihood(::ChainSizes, model)`, `chain_size_distribution`
-and the closed-form incidence likelihood to simulation rather than their
-analytical path, since [`EpiBranch.offspring_law_unchanged`](@ref) cannot
-tell what a bare function does; wrap it in its own callable type with a
+closure sends `loglikelihood(::ChainSizes, model)` and `chain_size_distribution`
+to simulation rather than their analytical path, since
+[`EpiBranch.offspring_law_unchanged`](@ref) cannot tell what a bare function does; wrap it in its own callable type with a
 method on that trait to get the analytical path back.
 
 See also [`clinical_presentation`](@ref), [`demographics`](@ref).
@@ -2029,16 +2041,21 @@ required_fields(::AbstractIntervention) = Symbol[]
 """Check that a person has all the information the interventions or
 natural-history steps need (their [`required_fields`](@ref EpiBranch.required_fields)),
 and raise an error naming the missing one and how to provide it."""
-function _validate_required_fields(individual, items)
-    for item in items
-        for field in required_fields(item)
-            if !haskey(individual.state, field)
-                itype = typeof(item)
-                hint = _field_hint(field)
-                error("$itype requires field :$field on individuals. $hint")
-            end
-        end
+function _first_lacking_field(individual, items)
+    for item in items, field in required_fields(item)
+        haskey(individual.state, field) || return (item, field)
     end
+    return nothing
+end
+
+function _throw_lacking_field(item, field)
+    hint = _field_hint(field)
+    return error("$(typeof(item)) requires field :$field on individuals. $hint")
+end
+
+function _validate_required_fields(individual, items)
+    lacking = _first_lacking_field(individual, items)
+    lacking === nothing || _throw_lacking_field(lacking...)
     return
 end
 

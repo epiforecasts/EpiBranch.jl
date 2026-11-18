@@ -161,7 +161,7 @@
         with_iv = ModelSpec(
             process;
             progression = [Transition(:recovered; from = :infection, delay = L, terminal = true)],
-            interventions = [Isolation(onset_to_isolation_delay = Exponential(1.0), duration = 1.0)]
+            interventions = [Isolation(delay = Exponential(1.0), duration = 1.0)]
         )
         @test_throws ArgumentError loglikelihood(data, with_iv)
     end

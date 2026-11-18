@@ -3,7 +3,7 @@ quarantined and never infected, then infected later through another route,
 stayed blocked from onward transmission by a quarantine that would have
 lapsed long before. `Isolation` now takes a `duration` and
 `ContactTracing`'s `Quarantine` action a `duration` (a value, a distribution,
-or a function of the individual, matching `onset_to_isolation_delay`), giving
+or a function of the individual, matching `delay`), giving
 each removal a release time (`EpiBranch.isolation_release_time`) after which
 the block lapses. Both are required, 0.1.0 having had no equivalent of either,
 so reproducing its never-releasing behaviour takes an explicit `Inf` rather

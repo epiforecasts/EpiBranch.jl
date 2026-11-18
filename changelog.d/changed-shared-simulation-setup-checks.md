@@ -1,0 +1,1 @@
+The simulation set-up checks on `initial_cases` and `index_types` now run inside one shared helper. The five layer keywords are passed through a single `_layers(model)` accessor. Every `simulate` and `_simulate_each` method, and the likelihood set-up, applies the same seeding checks, and a new check needs adding in one place only. Every input accepted before is still accepted.

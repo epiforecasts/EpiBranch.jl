@@ -147,7 +147,7 @@ EpiBranch.transmission_risks(m::AbortPoolModel) = (RingRisk(m.p),)
     spec = ModelSpec(
         AbortPoolModel(300, 4, 0.4);
         interventions = [
-            Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf),
+            Isolation(delay = Exponential(1.0), duration = Inf),
             ContactTracing(
                 probability = 1.0,
                 isolation_to_trace_delay = Exponential(0.5),
@@ -199,7 +199,7 @@ end
     spec = ModelSpec(
         AbortPoolModel(300, 4, 0.4);
         interventions = [
-            Isolation(onset_to_isolation_delay = Exponential(1.0), test_sensitivity = 0.0, duration = Inf),
+            Isolation(delay = Exponential(1.0), test_sensitivity = 0.0, duration = Inf),
             ContactTracing(OnSymptomOnset(), 1.0, Exponential(0.5), FlagOnly()),
             RingVaccination(efficacy = 0.0, post_exposure_efficacy = 0.5),
         ],
@@ -256,7 +256,7 @@ end
     spec = ModelSpec(
         AbortPoolModel(300, 4, 0.4);
         interventions = [
-            Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf),
+            Isolation(delay = Exponential(1.0), duration = Inf),
             ContactTracing(
                 probability = 1.0,
                 isolation_to_trace_delay = Exponential(0.5),
@@ -387,7 +387,7 @@ end
 
 @testset "A ring grows past an uninfected person on a model that says it can" begin
     ct = ContactTracing(OnIsolation(), 1.0, Dirac(0.1), Quarantine(duration = Inf); depth = 2)
-    iso = Isolation(onset_to_isolation_delay = Dirac(0.1), duration = Inf)
+    iso = Isolation(delay = Dirac(0.1), duration = Inf)
     attributes = clinical_presentation(incubation_period = Dirac(0.2))
     for (model, reached) in ((LineEarly(), true), (LineLate(), false))
         s = simulate(
@@ -411,7 +411,7 @@ EpiBranch.generate_offspring(::_CountModel, parent, state) = rand(state.rng, Poi
 
 @testset "A model that counts its contacts can let a ring grow early" begin
     ct = ContactTracing(OnIsolation(), 0.8, Exponential(0.5), Quarantine(duration = Inf); depth = 2)
-    iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
+    iso = Isolation(delay = Exponential(1.0), duration = Inf)
     attributes = clinical_presentation(incubation_period = Gamma(3.0, 1.0))
     run(model, seed) = simulate(
         ModelSpec(model; interventions = [iso, ct], attributes);
@@ -432,7 +432,7 @@ EpiBranch.contacts_of(::MintEarly, parent, state::EpiBranch.SimulationState) =
 
 @testset "A ring that asks early names the contacts a case goes on to expose" begin
     ct = ContactTracing(OnIsolation(), 1.0, Dirac(0.1), Quarantine(duration = Inf); depth = 2)
-    iso = Isolation(onset_to_isolation_delay = Dirac(0.1), duration = Inf)
+    iso = Isolation(delay = Dirac(0.1), duration = Inf)
     attributes = clinical_presentation(incubation_period = Dirac(0.2))
     early = 0
     for seed in 1:10

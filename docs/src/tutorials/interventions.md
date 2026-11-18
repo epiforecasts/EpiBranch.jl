@@ -59,11 +59,11 @@ that died out before reaching that cap (see the
 ## Isolation
 
 [`Isolation`](@ref) isolates symptomatic cases after a delay from symptom
-onset. `onset_to_isolation_delay = Exponential(2.0)` is a delay with mean 2
+onset. `delay = Exponential(2.0)` is a delay with mean 2
 days, and `duration = 7.0` releases each case after 7 days:
 
 ```@example interventions
-iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = 7.0)
+iso = Isolation(delay = Exponential(2.0), duration = 7.0)
 
 rng = StableRNG(42)
 results = simulate(scenario([iso]), 200; max_cases = 500, rng = rng)
@@ -76,7 +76,7 @@ secondary cases are infected. Varying the mean delay:
 ```@example interventions
 for d in [0.5, 2.0, 10.0]
     # `let` keeps the loop's own `iso` and `rng` apart from the ones above.
-    let iso = Isolation(onset_to_isolation_delay = Exponential(d), duration = 7.0),
+    let iso = Isolation(delay = Exponential(d), duration = 7.0),
         rng = StableRNG(42)
         results = simulate(scenario([iso]), 200; max_cases = 500, rng = rng)
         println("Mean delay $d days: containment = $(round(containment_probability(results), digits=3))")
@@ -94,7 +94,7 @@ exposed. `post_isolation_transmission = 0.3` makes an isolated case 30% as
 infectious as before. Imperfect isolation like this is called leaky:
 
 ```@example interventions
-iso_leaky = Isolation(onset_to_isolation_delay = Exponential(2.0), post_isolation_transmission = 0.3, duration = 7.0)
+iso_leaky = Isolation(delay = Exponential(2.0), post_isolation_transmission = 0.3, duration = 7.0)
 
 rng = StableRNG(42)
 results = simulate(scenario([iso_leaky]), 200; max_cases = 500, rng = rng)
@@ -113,7 +113,7 @@ of what isolation achieves without undoing it.
 the length of isolation is a modelling choice. It takes a number of days,
 a distribution, or a function of the random number generator and the
 individual, `(rng, ind) -> ...`, in the same way as
-`onset_to_isolation_delay`. `Inf` keeps a case isolated for good. A finite
+`delay`. `Inf` keeps a case isolated for good. A finite
 value releases them. A released case who is still infectious transmits again:
 a secondary case whose infection would fall after the release is not
 prevented. A duration of 0 stops no transmission at all.
@@ -164,7 +164,7 @@ Until the section on scheduled interventions, isolation and quarantine last
 indefinitely (`duration = Inf`), to keep the comparisons about tracing.
 
 ```@example interventions
-iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = Inf)
+iso = Isolation(delay = Exponential(2.0), duration = Inf)
 ct = ContactTracing(
     probability = 0.7, isolation_to_trace_delay = Exponential(1.0),
     action = Quarantine(duration = Inf)
@@ -261,7 +261,7 @@ disease_hard = clinical_presentation(
     incubation_period = LogNormal(1.5, 0.5),
     prob_asymptomatic = 0.3,
 )
-iso_imperfect = Isolation(onset_to_isolation_delay = Exponential(2.0), test_sensitivity = 0.8, duration = Inf)
+iso_imperfect = Isolation(delay = Exponential(2.0), test_sensitivity = 0.8, duration = Inf)
 rng = StableRNG(42)
 results = simulate(scenario([iso_imperfect, ct], disease_hard), 200; max_cases = 500, rng = rng)
 println("30% asymptomatic, 80% test sensitivity: $(round(containment_probability(results), digits=3))")
@@ -292,7 +292,7 @@ disease_less_infectious = [
 ]
 ```
 
-Use `transmission_traits` for traits known when the case is created (age, sex, whether the case is asymptomatic), because it draws its factor then. A change during the infection, such as tracing or quarantine, needs an intervention. Combining the two is tracked in #972.
+Use `transmission_traits` for traits known when the case is created (age, sex, whether the case is asymptomatic), because it draws its factor then. A change during the infection, such as tracing or quarantine, needs an intervention. Combining the two is tracked in #972. Other links between symptoms and infectiousness, such as more contacts, a shorter infectious period or a within-host trajectory, are stated in [Asymptomatic cases and how symptoms link to infectiousness](asymptomatic.md).
 
 Asymptomatic cases can also have their own incubation period. Every case draws one, an asymptomatic case's included, and it sets the timing that [`incubation_linked_generation_time`](@ref) reads where there is no onset. Give `incubation_period` a function of the random number generator and the individual instead of a distribution. `:asymptomatic` is set before the draw, so the function can use it, or any trait set by an earlier attribute such as age:
 
@@ -359,7 +359,7 @@ infected on.
 
 ```@example interventions
 # Testing starts on day 10
-iso_delayed = Scheduled(Isolation(onset_to_isolation_delay = Exponential(2.0), duration = 7.0); start_time = 10.0)
+iso_delayed = Scheduled(Isolation(delay = Exponential(2.0), duration = 7.0); start_time = 10.0)
 
 rng = StableRNG(42)
 results = simulate(scenario([iso_delayed]), 200; max_cases = 500, rng = rng)
@@ -373,7 +373,7 @@ A start can also follow the case count:
 
 ```@example interventions
 # Start contact tracing after 20 cumulative cases
-iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = 7.0)
+iso = Isolation(delay = Exponential(2.0), duration = 7.0)
 ct_triggered = Scheduled(
     ContactTracing(probability = 0.7, isolation_to_trace_delay = Exponential(1.0),
         action = Quarantine(duration = Inf));
@@ -427,7 +427,7 @@ Start and end times can be combined:
 
 ```@example interventions
 # Isolation only for cases whose own isolation falls between day 5 and day 30
-iso_window = Scheduled(Isolation(onset_to_isolation_delay = Exponential(1.0), duration = 7.0);
+iso_window = Scheduled(Isolation(delay = Exponential(1.0), duration = 7.0);
     start_time = 5.0, end_time = 30.0)
 nothing # hide
 ```
@@ -447,7 +447,7 @@ programme observes but which is useful for exploring the model:
 
 ```@example interventions
 iso_gen3 = Scheduled(
-    Isolation(onset_to_isolation_delay = Exponential(2.0), duration = 7.0),
+    Isolation(delay = Exponential(2.0), duration = 7.0),
     state -> state.current_generation >= 3,
 )
 nothing # hide
@@ -462,7 +462,7 @@ sweep = scenario_sweep(
     Dict(
         :offspring => [Poisson(1.5), Poisson(3.0)],
         :interventions => [
-            [Isolation(onset_to_isolation_delay = Exponential(d), duration = 7.0)]
+            [Isolation(delay = Exponential(d), duration = 7.0)]
                 for d in [0.5, 2.0, 5.0]
         ],
         :attributes => [clinical],
@@ -471,7 +471,7 @@ sweep = scenario_sweep(
     n_sim = 200, max_cases = 500, rng = StableRNG(42),
 )
 sweep.R = mean.(sweep.offspring)
-sweep.mean_delay = [only(i).onset_to_isolation_delay.θ for i in sweep.interventions]
+sweep.mean_delay = [only(i).delay.θ for i in sweep.interventions]
 sort(sweep[:, [:R, :mean_delay, :containment_probability]], [:R, :mean_delay])
 ```
 

@@ -221,7 +221,7 @@ end
     end
 
     @testset "Rations isolation through intervention_time and reset!, like Scheduled" begin
-        iso = Isolation(onset_to_isolation_delay = Dirac(0.0), duration = Inf)
+        iso = Isolation(delay = Dirac(0.0), duration = Inf)
         cc = CapacityConstrained(iso; budget_per_period = 1.0)
         state = empty_state()
         earlier = Individual(
@@ -254,7 +254,7 @@ end
         EpiBranch.resource_key(::_DistrictIsolation, individual, state) =
             individual.state[:district]
 
-        iso = Isolation(onset_to_isolation_delay = Dirac(0.0), duration = Inf)
+        iso = Isolation(delay = Dirac(0.0), duration = Inf)
         cc = CapacityConstrained(_DistrictIsolation(iso); budget_per_period = 1.0)
         state = empty_state()
         a = Individual(
@@ -313,7 +313,9 @@ end
         EpiBranch.trace_contacts!(cc, state, infector, [a], [9.0])
         # `b` is refused in the period `a` used up; the earlier repeat trace
         # of `a` neither adds an entry nor moves the use to the week before.
-        EpiBranch.trace_contacts!(cc, state, infector, [b, a], [10.0, 2.0])
+        other = Individual(id = 4)
+        set_isolated!(other, 0.0; release_time = Inf)
+        EpiBranch.trace_contacts!(cc, state, other, [b, a], [10.0, 2.0])
         @test EpiBranch.removal_stretches(a, EpiBranch.QUARANTINE_STRETCHES_KEY) == [(9.0, Inf)]
         @test a.state[:_quarantine_start] == 9.0
         @test !is_quarantined(b)
@@ -325,7 +327,7 @@ end
         model = ModelSpec(
             BranchingProcess(Poisson(2.0), Exponential(5.0));
             interventions = [
-                Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf),
+                Isolation(delay = Exponential(1.0), duration = Inf),
                 CapacityConstrained(
                     ContactTracing(
                         probability = 1.0, isolation_to_trace_delay = Dirac(0.0),
@@ -393,7 +395,7 @@ end
         @test EpiBranch.capacity_time_key(Scheduled(rv; start_time = 1.0)) ==
             EpiBranch.capacity_time_key(rv)
 
-        iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
+        iso = Isolation(delay = Exponential(1.0), duration = Inf)
         @test EpiBranch.capacity_key(iso) == :_isolation_handle
         @test EpiBranch.capacity_time_key(iso) == :_isolation_start
 
@@ -1023,7 +1025,7 @@ end
 
     @testset "Fewer doses under a binding capacity constraint than without one" begin
         clinical = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
-        iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = Inf)
+        iso = Isolation(delay = Exponential(2.0), duration = Inf)
         ct = ContactTracing(
             probability = 0.9, isolation_to_trace_delay = Exponential(1.0),
             action = Quarantine(duration = Inf)
@@ -1055,7 +1057,7 @@ end
     # admitted after later ones; it must still leave every later day within
     # its cumulative allowance.
     clinical = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
-    iso = Isolation(onset_to_isolation_delay = Exponential(2.0), duration = Inf)
+    iso = Isolation(delay = Exponential(2.0), duration = Inf)
     ct = ContactTracing(
         probability = 0.7, isolation_to_trace_delay = Exponential(1.0),
         action = Quarantine(duration = Inf)
@@ -1082,7 +1084,7 @@ end
 end
 
 @testset "gates_on_population_clock is found through wrappers" begin
-    iso = Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf)
+    iso = Isolation(delay = Exponential(1.0), duration = Inf)
     routes = (:transmission,)
     @test !EpiBranch.gates_on_population_clock(iso)
     @test !EpiBranch.gates_on_population_clock(OnRoutes(iso, routes))

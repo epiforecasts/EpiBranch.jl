@@ -4,8 +4,7 @@ the support previously limited to `PairKernel`. `HomogeneousProcess` and
 `transmission_rate` or `calendar`,
 and `Infectiousness` takes one as `calendar` for branching-process
 offspring windows; each route samples its contacts against it exactly,
-as `PairKernel` already did. `loglikelihood(IncidenceCounts, ...)`,
-`end_of_outbreak_probability` and the analytic effect of `Isolation` (and
+as `PairKernel` already did. `end_of_outbreak_probability` and the analytic effect of `Isolation` (and
 everything that applies it, such as `extinction_probability` and the
 superspreading and multi-type analytics) now throw an `ArgumentError` for a
 window with a `calendar`, instead of silently reading its bare kernel.

@@ -137,7 +137,7 @@ end
     @test calls[] == 3
     @test !is_vaccinated(other)
     @test_throws ArgumentError EpiBranch.apply_actions!(
-        Isolation(onset_to_isolation_delay = Exponential(1.0), duration = Inf), state, [other]
+        Isolation(delay = Exponential(1.0), duration = Inf), state, [other]
     )
 end
 
@@ -569,7 +569,7 @@ end
     # An intervention with no method of its own gets the no-op default, so the
     # engine needs no knowledge of which types take part.
     for iv in (
-            Isolation(onset_to_isolation_delay = Dirac(0.0), duration = Inf),
+            Isolation(delay = Dirac(0.0), duration = Inf),
             ContactTracing(OnIsolation(), 1.0, Dirac(0.0), Quarantine(duration = Inf)),
             AppointmentAction(),
         )

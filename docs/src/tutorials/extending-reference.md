@@ -61,6 +61,7 @@ underscore are internal.
 | `:_isolation_handle` | `Int` | — | `Isolation` | `resolve_individual!`; internal. The handle of `Isolation`'s own entry, so `reset!` can withdraw exactly it |
 | `:_quarantine_removal_handles` | `Vector{Int}` | — | `ContactTracing`/`SourceTracing`'s `Quarantine` | `apply_trace!`; internal. The handles of every entry a quarantine has recorded, so a reset of the shared bookkeeping can withdraw each one. The `reset!` of a tracer withdraws only the entries listed under its own handles key |
 | `:_quarantine_start` | `Float64` | — | `ContactTracing`/`SourceTracing`'s `Quarantine` | `apply_trace!`; internal. The start of the earliest quarantine entry still standing, which is the day a capacity is charged on |
+| `:_trace_offered` | `Set{Tuple{UInt,Int}}` | — | `ContactTracing` | `trace_contacts!`; internal. The `(tracer, contact)` pairs already offered forward tracing. A later walk of the same contacts skips them and draws no new random numbers for them |
 | `:test_positive` | `Bool` | `false` | `Isolation` | `initialise_individual!` and `initialise_episode!` |
 | `:case_classification` | any | — | `ModelSpec`'s `case_definition` | After the run. The classification at the end of it, from the events up to `max_time` when the run has one; absent for a case never classified |
 | `:_case_classification_changes` | `Vector{Tuple{Float64,Any}}` | — | `ModelSpec`'s `case_definition` | After the run; internal. Each change of classification with its time, read by `case_classification_changes` |
@@ -99,9 +100,9 @@ underscore are internal.
 | `:admission_time` | `Float64` | `Inf` | `Hospitalisation` transition | `resolve_individual!`; reset to `Inf` by `censor_after_outcome!` if it falls after `:outcome_time` |
 | `:trajectory` | `Function` | — | `within_host` attribute builder | Read through `trajectory_value`; a function of the days since infection returning the measured quantity (a load, a titre) |
 | `:test_tested` | `Bool` | `false` | `Testing` transition | `resolve_individual!`; reset to `false` by `censor_after_outcome!` if `:test_time` falls after `:outcome_time` |
-| `:test_time` | `Float64` | `Inf` | `Testing` transition | `resolve_individual!`; reset to `Inf` by `censor_after_outcome!` if it falls after `:outcome_time` |
+| `:test_time` | `Float64` | `Inf` | `Testing` transition | `resolve_individual!`, `Isolation` with `AfterPositiveTest`; reset to `Inf` by `censor_after_outcome!` if it falls after `:outcome_time` |
 | `:test_value` | `Float64` | `NaN` | `Testing` transition | `resolve_individual!` |
-| `:test_result` | `Bool` | `false` | `Testing` transition | `resolve_individual!`; the four `:test_*` keys are for the default `name = :test`; a test called `:pcr` writes `:pcr_tested`, `:pcr_time`, `:pcr_value` and `:pcr_result` instead |
+| `:test_result` | `Bool` | `false` | `Testing` transition | `resolve_individual!`, `Isolation` with `AfterPositiveTest`; the four `:test_*` keys apply to the default `name = :test`, while a test called `:pcr` writes `:pcr_tested`, `:pcr_time`, `:pcr_value` and `:pcr_result` instead |
 | `:death_candidate_time` | `Float64` | `Inf` | `Death` transition | `resolve_individual!` |
 | `:recovery_candidate_time` | `Float64` | `Inf` | `Recovery` transition | `resolve_individual!` |
 | `:outcome` | `Symbol` | — | Any terminal transition (`Death`, `Recovery`, `Transition(...; terminal = true)`, your own) | `resolve_individual!` (terminal) |
@@ -1088,8 +1089,8 @@ before.
 | A capacity limit per district, centre or other split of your own | `resource_key(iv, individual, state)` for `iv` | When actions are admitted, once per case |
 | The effect of an intervention on counts of cases or compartments | `EpiBranch.count_dosing(iv)`, returning an `EpiBranch.GroupDosing` | When a model of counts or compartments reads the specification |
 | An exact effect on the offspring distribution | `analytic_offspring_effect` for an intervention | Closed-form results on a `ModelSpec` |
-| A model, attribute or progression transition that leaves the single-type offspring law exactly as drawn | `EpiBranch.offspring_law_unchanged` | The chain-size and incidence likelihoods' analytical path |
-| A progression transition that reports cases with a fixed probability, and the time it reports from | `EpiBranch.reporting_probability`, `EpiBranch.reporting_from` | The chain-size and incidence closed forms, which thin by it |
+| A model, attribute or progression transition that leaves the single-type offspring law exactly as drawn | `EpiBranch.offspring_law_unchanged` | The chain-size likelihood's analytical path |
+| A progression transition that reports cases with a fixed probability, and the time it reports from | `EpiBranch.reporting_probability`, `EpiBranch.reporting_from` | The chain-size closed forms and `end_of_outbreak_probability`, which thin by it |
 | An attribute that sets the onset time, with its incubation period and asymptomatic share | `EpiBranch.onset_law` | The analytic effect of `Isolation` and the closed forms for reporting timed from onset |
 | A stopping rule | A type `<: AbstractStoppingRule` and `should_stop` | Each step |
 | A case definition | A type `<: AbstractCaseDefinition` and `EpiBranch.classify_case`, or a function `history -> label`; `relevant_events` to name the events it reads | After the run, at each time an event was recorded on a case |
