@@ -200,7 +200,7 @@ introductions stop at a single case.
 
 ## End of outbreak
 
-After the last case, how likely is it that transmission has stopped? [`end_of_outbreak_probability`](@ref) gives the probability that a case causes no further cases, `τ` days after it occurred, for `NegBin(R, k)` offspring and a generation time distribution (Thompson et al. 2019, Phil Trans B). It assumes every case is reported. It rises from the chance of infecting nobody at `τ = 0` towards 1:
+After the last case, how likely is it that transmission has stopped? [`end_of_outbreak_probability`](@ref) gives the probability that a case causes no further cases, `τ` days after it occurred, for `NegBin(R, k)` offspring and a generation time distribution (Thompson et al. 2019, Phil Trans B). It assumes every case is reported and that there is no delay between infection and report, so when reports lag it overstates the probability that the cluster is over. With a delay, measure `τ` to the last date by which reports are complete, or simulate. It rises from the chance of infecting nobody at `τ = 0` towards 1:
 
 ```@example analytical
 gt = Gamma(2.0, 3.0)  # mean 6 days
