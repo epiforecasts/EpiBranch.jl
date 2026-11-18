@@ -310,11 +310,11 @@ end
 const _CHECKED_INTERVENTIONS = Dict{Type, UInt}()
 const _CHECKED_INTERVENTIONS_LOCK = ReentrantLock()
 
-function _first_sight(T::Type)
+function _first_sight(T::Type, seen::Dict{Type, UInt} = _CHECKED_INTERVENTIONS)
     world = Base.get_world_counter()
     return lock(_CHECKED_INTERVENTIONS_LOCK) do
-        get(_CHECKED_INTERVENTIONS, T, nothing) == world && return false
-        _CHECKED_INTERVENTIONS[T] = world
+        get(seen, T, nothing) == world && return false
+        seen[T] = world
         return true
     end
 end
@@ -484,6 +484,7 @@ function ModelSpec(
     _warn_incomplete_terminal_coverage(prog)
     ivs = _intervention_vector(interventions)
     _validate_dose_schedule(ivs)
+    foreach(_store_traits!, ivs)
     _validate_test_triggers(ivs, prog)
     _validate_testing_sensitivity(ivs, prog)
     _warn_unmet_trigger_requirements(ivs, prog)

@@ -242,6 +242,7 @@ function _record_exposure_generation!(t, at, state)
     get!(t.state, :vaccination_generation, state.current_generation)
     return nothing
 end
+EpiBranch.discovers_actions(::ExposureGenerations) = true
 function EpiBranch.intervention_actions(::ExposureGenerations, state, targets)
     return [
         EpiBranch.InterventionAction(t, state.max_infection_time, _record_exposure_generation!)

@@ -16,7 +16,8 @@ public sample_value, resolve
 # overrides these.
 public initialise_individual!, initialise_episode!, resolve_individual!,
     on_infection_settled!, trace_contacts!, traces_contacts, traces_source,
-    has_effect, supplies_contacts, competing_risk, persistent_competing_risks,
+    has_effect, time_aware, resolves_under_capacity, discovers_actions,
+    proposes_actions, has_competing_risk, supplies_contacts, competing_risk, persistent_competing_risks,
     reset!, required_fields, infectious_removal_time, risk_applies,
     standing_block, analytic_offspring_effect, may_lapse, prevents_contact
 # What a tracer written outside the package needs to work with the built-in

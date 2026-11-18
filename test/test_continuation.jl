@@ -4,6 +4,7 @@ using StableRNGs
 
 struct ContinuationAction <: EpiBranch.AbstractIntervention end
 EpiBranch.needs_contacts(::ContinuationAction) = false
+EpiBranch.discovers_actions(::ContinuationAction) = true
 function EpiBranch.intervention_actions(::ContinuationAction, state, candidates)
     return [
         EpiBranch.InterventionAction(

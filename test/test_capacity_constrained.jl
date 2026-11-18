@@ -6,6 +6,7 @@
 struct _ClinicVisit <: EpiBranch.AbstractIntervention end
 EpiBranch.capacity_key(::_ClinicVisit) = :attended
 EpiBranch.capacity_time_key(::_ClinicVisit) = :appointment_time
+EpiBranch.discovers_actions(::_ClinicVisit) = true
 function _attend!(person, time, state)
     person.state[:attended] = true
     person.state[:appointment_time] = time
@@ -992,6 +993,7 @@ end
 
     @testset "resource_key splits the budget per group" begin
         struct _GroupedAppointment <: EpiBranch.AbstractIntervention end
+        EpiBranch.discovers_actions(::_GroupedAppointment) = true
         function EpiBranch.intervention_actions(::_GroupedAppointment, state, candidates)
             return [
                 EpiBranch.InterventionAction(
