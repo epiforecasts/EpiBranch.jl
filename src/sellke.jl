@@ -354,6 +354,23 @@ function _intervention_removal_time(ind::Individual{T}, interventions) where {T}
     return t
 end
 
+# The same over the typed tuple of every intervention, counting only those
+# `applies` marks, so each is read at its own concrete type. Filtering the
+# interventions per route would leave a vector of the abstract type, and
+# `infectious_removal_time` would be dispatched on at run time.
+function _intervention_removal_time(
+        ind::Individual{T}, interventions::Tuple, applies::AbstractVector{Bool}
+    ) where {T}
+    t = T(Inf)
+    k = 0
+    for iv in interventions
+        k += 1
+        applies[k] || continue
+        t = min(t, convert(T, infectious_removal_time(iv, ind))::T)
+    end
+    return t
+end
+
 """
     standing_block(source) -> Bool
 
@@ -639,6 +656,16 @@ end
 function _route_close(ind, keys, removable::Bool, interventions)
     t = _close_at(ind, keys)
     removable && (t = min(t, _intervention_removal_time(ind, interventions)))
+    return min(t, infection_aborted_time(ind))
+end
+
+# The race's form of the above: every intervention as a typed tuple, with
+# `applies` marking the ones that reach this route.
+function _route_close(
+        ind, keys, removable::Bool, interventions::Tuple, applies::AbstractVector{Bool}
+    )
+    t = _close_at(ind, keys)
+    removable && (t = min(t, _intervention_removal_time(ind, interventions, applies)))
     return min(t, infection_aborted_time(ind))
 end
 
@@ -1018,6 +1045,7 @@ function _sellke_race_typed!(
         filter(iv -> risk_applies(iv, w), interventions)
             for (w, _) in rts
     ]
+    route_applies = [Bool[risk_applies(iv, w) for iv in typed_interventions] for (w, _) in rts]
     close_keys = map(
         ((w, _),) -> Symbol[_time_keys(filter(!=(INTERVENTION_REMOVAL), w.until))...], rts
     )
@@ -1467,7 +1495,7 @@ function _sellke_race_typed!(
         open_ctx = (;
             race, ind, members, openings, j, max_generation, close_keys,
             removable, watch, live, live_route, route_projections,
-            full_snapshot, traits, route_interventions,
+            full_snapshot, traits, interventions = typed_interventions, route_applies,
         )
         self_proposing && (
             capped_generation = _open_routes!(rts, open_ctx, capped_generation, true)
@@ -1771,7 +1799,7 @@ function _open_route!(w, route_targets::R, ri, ctx, capped, only_proposing) wher
     (;
         race, ind, members, openings, j, max_generation, close_keys, removable,
         watch, live, live_route, route_projections, full_snapshot, traits,
-        route_interventions,
+        interventions, route_applies,
     ) = ctx
     # Read from the state. Stored in `ctx` as a value, the type is only a
     # `DataType` and the `convert` below would dispatch at run time.
@@ -1784,7 +1812,7 @@ function _open_route!(w, route_targets::R, ri, ctx, capped, only_proposing) wher
     # route it censors.
     ind.generation >= max_generation && return true
     close_t = convert(
-        T, _route_close(ind, close_keys[ri], removable[ri], route_interventions[ri])
+        T, _route_close(ind, close_keys[ri], removable[ri], interventions, route_applies[ri])
     )
     opening_id = _store_opening!(members, openings, members[j], ri, open_t, close_t)
     live && _watch_opening!(watch, j, live_route[ri])

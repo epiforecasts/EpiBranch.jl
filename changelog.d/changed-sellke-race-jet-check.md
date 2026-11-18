@@ -1,0 +1,1 @@
+The JET suite now checks the Sellke race for run-time dispatch on a branching-process, a household and a network model, limited to `_open_route!` and what it calls. Opening a route no longer dispatches at run time on the interventions that cut its window. Seeded results are unchanged.
