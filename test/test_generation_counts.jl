@@ -184,3 +184,31 @@
         @test simulate(model, state; max_generations = 200) === state
     end
 end
+
+@testset "A single type allocates nothing per generation" begin
+    finite = BranchingProcess(NegBin(2.0, 0.5); population = Population(200_000))
+    unlimited = BranchingProcess(Poisson(0.9))
+    vaccinated = ModelSpec(
+        BranchingProcess(Poisson(1.5); population = Population(100_000));
+        interventions = [
+            CapacityConstrained(
+                GroupVaccination(efficacy = 0.9, group_key = :type);
+                budget_per_period = 500.0, period = 1.0
+            ),
+        ]
+    )
+    continue_to(model, state, n; kw...) = simulate(model, state; max_generations = n, kw...)
+    for (model, kw) in (
+            (finite, (;)), (unlimited, (;)), (unlimited, (; multiplier = Gamma(5, 1 / 5))),
+            (vaccinated, (; generation_length = 7.0)),
+        )
+        state = simulate_by_generation(
+            model; n_initial = 10, max_generations = 2, rng = StableRNG(1), kw...
+        )
+        cont = (; (k => v for (k, v) in pairs(kw) if k === :multiplier)...)
+        continue_to(model, state, 4; cont...)
+        short = @allocated continue_to(model, state, 4; cont...)
+        long = @allocated continue_to(model, state, 14; cont...)
+        @test long == short
+    end
+end
