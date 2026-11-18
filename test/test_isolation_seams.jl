@@ -56,8 +56,8 @@ EpiBranch.infectious_removal_time(f::FixedRemoval, ::Individual) = f.time
                 state = EpiBranch.new_state(
                     model.process, EpiBranch.AbstractClinicalTransition[], NoAttributes(), StableRNG(1)
                 )
-                push!(state.individuals, parent)
-                times = EpiBranch._layer_host_times(state, model, ())
+                push!(individuals(state), parent)
+                times = EpiBranch.layer_host_times(state, model, ())
                 @test times[EpiBranch.REMOVAL_STRETCHES_KEY] == [[(6.0, 22.0)]]
             end
             EpiBranch.reset!(iso, parent)
@@ -85,8 +85,8 @@ EpiBranch.infectious_removal_time(f::FixedRemoval, ::Individual) = f.time
                 clinical_presentation(incubation_period = Dirac(1.0)), rng
             )
             EpiBranch.add_individuals!(state, 3, interventions)
-            EpiBranch.apply_trace!(q, state.individuals[1], state, 6.0, rng)
-            edge(to) = (inf, st) -> inf == 1 && !is_infected(st.individuals[to]) ?
+            EpiBranch.apply_trace!(q, individuals(state)[1], state, 6.0, rng)
+            edge(to) = (inf, st) -> inf == 1 && !is_infected(individuals(st)[to]) ?
                 ((to, Dirac(10.0)),) : ()
             routes = Tuple(
                 (
@@ -101,8 +101,8 @@ EpiBranch.infectious_removal_time(f::FixedRemoval, ::Individual) = f.time
                 state, [1, 2, 3], rng; routes, interventions,
                 seed! = (best, members, r) -> (best[1] = 0.0)
             )
-            @test !is_infected(state.individuals[2])
-            @test is_infected(state.individuals[3]) == restrict_routes
+            @test !is_infected(individuals(state)[2])
+            @test is_infected(individuals(state)[3]) == restrict_routes
         end
     end
 
@@ -138,11 +138,11 @@ EpiBranch.infectious_removal_time(f::FixedRemoval, ::Individual) = f.time
         )
         # AllCases + sensitivity = 1.0 means every individual tests
         # positive, including asymptomatic ones.
-        @test all(get(ind.state, :test_positive, false) for ind in state.individuals)
-        asymptomatic = filter(is_asymptomatic, state.individuals)
+        @test all(get(ind.state, :test_positive, false) for ind in individuals(state))
+        asymptomatic = filter(is_asymptomatic, individuals(state))
         @test !isempty(asymptomatic)
         @test !any(is_isolated, asymptomatic)
-        @test any(is_isolated, filter(!is_asymptomatic, state.individuals))
+        @test any(is_isolated, filter(!is_asymptomatic, individuals(state)))
     end
 
     @testset "test_sensitivity accepts a function" begin
@@ -161,7 +161,7 @@ EpiBranch.infectious_removal_time(f::FixedRemoval, ::Individual) = f.time
             max_cases = 100,
             rng = rng
         )
-        for ind in state.individuals
+        for ind in individuals(state)
             expected = !is_asymptomatic(ind) && ind.state[:age] >= 50
             @test get(ind.state, :test_positive, false) == expected
         end
@@ -188,7 +188,7 @@ EpiBranch.infectious_removal_time(f::FixedRemoval, ::Individual) = f.time
         # individual, which does not happen for every case before the run
         # stops at `max_cases`; restrict the check to those it did reach.
         checked = 0
-        for ind in state.individuals
+        for ind in individuals(state)
             is_test_positive(ind) || continue
             isfinite(isolation_time(ind)) || continue
             checked += 1
@@ -225,7 +225,7 @@ EpiBranch.infectious_removal_time(f::FixedRemoval, ::Individual) = f.time
             max_cases = 100,
             rng = rng
         )
-        for ind in state.individuals
+        for ind in individuals(state)
             ind.state[:test_positive] && @test ind.state[:age] >= 50
         end
     end
@@ -253,7 +253,7 @@ EpiBranch.infectious_removal_time(f::FixedRemoval, ::Individual) = f.time
             EpiBranch._sellke_race!(
                 state, [1, 2], rng; from = :infection, until = (:recovered,),
                 interventions = [iso],
-                targets = (inf, st) -> inf == 1 && !is_infected(st.individuals[2]) ?
+                targets = (inf, st) -> inf == 1 && !is_infected(individuals(st)[2]) ?
                     ((2, kernel),) : (),
                 seed! = (best, members, r) -> (best[1] = 0.0)
             )
@@ -263,15 +263,15 @@ EpiBranch.infectious_removal_time(f::FixedRemoval, ::Individual) = f.time
         # Isolated on day 4, released on day 11, past the kernel's support: no
         # contact after day 4 can transmit, so the pair ends rather than erroring.
         covered = race(Dirac(7.0))
-        @test isolation_release_time(covered.individuals[1]) == 11.0
-        @test !is_infected(covered.individuals[2])
+        @test isolation_release_time(individuals(covered)[1]) == 11.0
+        @test !is_infected(individuals(covered)[2])
 
         # Released on day 7 instead, inside the support: the same seed infects
         # the contact after the release.
         lapses = race(Dirac(3.0))
-        @test isolation_release_time(lapses.individuals[1]) == 7.0
-        @test is_infected(lapses.individuals[2])
-        @test lapses.individuals[2].infection_time > 7.0
+        @test isolation_release_time(individuals(lapses)[1]) == 7.0
+        @test is_infected(individuals(lapses)[2])
+        @test individuals(lapses)[2].infection_time > 7.0
     end
 
     @testset "Only a binding release can end a pair, and wrappers forward it" begin
@@ -306,7 +306,7 @@ EpiBranch.infectious_removal_time(f::FixedRemoval, ::Individual) = f.time
             EpiBranch._sellke_race!(
                 state, [1, 2], rng; from = :infection, until = (:recovered,),
                 interventions = interventions,
-                targets = (inf, st) -> inf == 1 && !is_infected(st.individuals[2]) ?
+                targets = (inf, st) -> inf == 1 && !is_infected(individuals(st)[2]) ?
                     ((2, kernel),) : (),
                 seed! = (best, members, r) -> (best[1] = 0.0)
             )
@@ -318,8 +318,8 @@ EpiBranch.infectious_removal_time(f::FixedRemoval, ::Individual) = f.time
         # fix this threw, the gate having read whether the wrapper could lapse
         # rather than whether its releases bind.
         wrapped = race([Scheduled(iso; start_time = 0.0)])
-        @test isolation_release_time(wrapped.individuals[1]) == 11.0
-        @test !is_infected(wrapped.individuals[2])
+        @test isolation_release_time(individuals(wrapped)[1]) == 11.0
+        @test !is_infected(individuals(wrapped)[2])
 
         # The ward's block looks certain at this proposal and lifts at day 5, so
         # ending the pair would lose the contacts after it. The race says so
@@ -424,13 +424,13 @@ EpiBranch.infectious_removal_time(f::FixedRemoval, ::Individual) = f.time
         EpiBranch._sellke_race!(
             state, [1, 2], rng; from = :infection, until = (:recovered,),
             interventions = [iso],
-            targets = (inf, st) -> inf == 1 && !is_infected(st.individuals[2]) ?
+            targets = (inf, st) -> inf == 1 && !is_infected(individuals(st)[2]) ?
                 ((2, Dirac(15.0)),) : (),
             seed! = (best, members, r) -> (best[1] = 0.0)
         )
-        @test isolation_time(state.individuals[1]) == 4.0
-        @test isolation_release_time(state.individuals[1]) == 11.0
-        @test is_infected(state.individuals[2])
+        @test isolation_time(individuals(state)[1]) == 4.0
+        @test isolation_release_time(individuals(state)[1]) == 11.0
+        @test is_infected(individuals(state)[2])
 
         # The other half of the same seam: a contact due inside [4, 11) is
         # blocked, which is what the per-contact risk has to do now that the
@@ -444,13 +444,13 @@ EpiBranch.infectious_removal_time(f::FixedRemoval, ::Individual) = f.time
         EpiBranch._sellke_race!(
             inside, [1, 2], inside_rng; from = :infection, until = (:recovered,),
             interventions = [iso],
-            targets = (inf, st) -> inf == 1 && !is_infected(st.individuals[2]) ?
+            targets = (inf, st) -> inf == 1 && !is_infected(individuals(st)[2]) ?
                 ((2, Dirac(7.0)),) : (),
             seed! = (best, members, r) -> (best[1] = 0.0)
         )
-        @test isolation_time(inside.individuals[1]) == 4.0
-        @test isolation_release_time(inside.individuals[1]) == 11.0
-        @test !is_infected(inside.individuals[2])
+        @test isolation_time(individuals(inside)[1]) == 4.0
+        @test isolation_release_time(individuals(inside)[1]) == 11.0
+        @test !is_infected(individuals(inside)[2])
 
         # The same isolation and fixed contact time through `simulate`.
         gen_state = simulate(
@@ -460,7 +460,7 @@ EpiBranch.infectious_removal_time(f::FixedRemoval, ::Individual) = f.time
             );
             max_cases = 2, rng = StableRNG(1)
         )
-        secondary = [ind for ind in gen_state.individuals if ind.parent_id != 0]
+        secondary = [ind for ind in individuals(gen_state) if ind.parent_id != 0]
         @test length(secondary) == 1
         @test is_infected(only(secondary))
     end
@@ -488,13 +488,13 @@ EpiBranch.infectious_removal_time(f::FixedRemoval, ::Individual) = f.time
         EpiBranch._sellke_race!(
             state, [1, 2], rng; from = :infection, until = (:recovered,),
             interventions = [iso],
-            targets = (inf, st) -> inf == 1 && !is_infected(st.individuals[2]) ?
+            targets = (inf, st) -> inf == 1 && !is_infected(individuals(st)[2]) ?
                 ((2, Dirac(15.0)),) : (),
             seed! = (best, members, r) -> (best[1] = 0.0)
         )
-        @test isolation_time(state.individuals[1]) == 4.0
-        @test isolation_release_time(state.individuals[1]) == Inf
-        @test is_infected(state.individuals[2])
+        @test isolation_time(individuals(state)[1]) == 4.0
+        @test isolation_release_time(individuals(state)[1]) == Inf
+        @test is_infected(individuals(state)[2])
 
         inside_rng = StableRNG(1)
         inside = EpiBranch.new_state(
@@ -504,12 +504,12 @@ EpiBranch.infectious_removal_time(f::FixedRemoval, ::Individual) = f.time
         EpiBranch._sellke_race!(
             inside, [1, 2], inside_rng; from = :infection, until = (:recovered,),
             interventions = [iso],
-            targets = (inf, st) -> inf == 1 && !is_infected(st.individuals[2]) ?
+            targets = (inf, st) -> inf == 1 && !is_infected(individuals(st)[2]) ?
                 ((2, Dirac(7.0)),) : (),
             seed! = (best, members, r) -> (best[1] = 0.0)
         )
-        @test isolation_time(inside.individuals[1]) == 4.0
-        @test !is_infected(inside.individuals[2])
+        @test isolation_time(individuals(inside)[1]) == 4.0
+        @test !is_infected(individuals(inside)[2])
     end
 
     @testset "A schedule that never lapses still hands the case back" begin
@@ -538,12 +538,12 @@ EpiBranch.infectious_removal_time(f::FixedRemoval, ::Individual) = f.time
             EpiBranch._sellke_race!(
                 state, [1, 2], rng; from = :infection, until = (:recovered,),
                 interventions = [wrapped],
-                targets = (inf, st) -> inf == 1 && !is_infected(st.individuals[2]) ?
+                targets = (inf, st) -> inf == 1 && !is_infected(individuals(st)[2]) ?
                     ((2, Dirac(15.0)),) : (),
                 seed! = (best, members, r) -> (best[1] = 0.0)
             )
-            @test isolation_release_time(state.individuals[1]) == 11.0
-            @test is_infected(state.individuals[2])
+            @test isolation_release_time(individuals(state)[1]) == 11.0
+            @test is_infected(individuals(state)[2])
         end
     end
 end

@@ -122,7 +122,7 @@ model = ModelSpec(HouseholdProcess([3, 4, 2], Weibull(1.5, 3.0));
     progression = [Transition(:recovered; from = :infection, delay = 6.0, terminal = true)])
 ```
 """
-struct HouseholdProcess{K, E} <: TransmissionModel
+struct HouseholdProcess{K, E} <: FixedPopulationProcess
     household_of::Vector{Int}        # household_of[i] = household id of individual i
     members::Vector{Vector{Int}}     # members[h] = individual ids in household h
     kernel::K                        # within-household contact interval (required)
@@ -193,17 +193,6 @@ The end, in days, of the window in which `model`'s community introductions can
 happen. `Inf` when `model` has no `external_hazard`.
 """
 observation_end(m::HouseholdProcess) = m.obs_end
-
-# The race honours a `stopping_rules` entry, or a non-default `max_cases` or
-# `max_generations`, but leaves those two keywords' defaults off, so an
-# existing run over the fixed membership keeps going to extinction or
-# `max_time` unless a cap is explicitly asked for (`_drop_default_shortcuts`).
-_honours_termination_controls(::HouseholdProcess) = false
-
-# See `_warn_uncovered_terminal_states` in EpiBranch's branching_process.jl.
-function _validate_process_windows(m::HouseholdProcess, progression)
-    return _warn_uncovered_terminal_states(m.until, progression; from = m.from)
-end
 
 # A case's contacts are its household-mates, so contact tracing has a set to act
 # along here (see `EpiBranch.trace_contacts!`).

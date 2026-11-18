@@ -30,9 +30,9 @@ end
 function EpiBranch.contacts_of(m::RingModel, parent, state::EpiBranch.SimulationState)
     i = parent.id
     neighbours = (i == 1 ? m.n : i - 1, i == m.n ? 1 : i + 1)
-    result = Tuple{eltype(state.individuals), Float64}[]
+    result = Tuple{eltype(individuals(state)), Float64}[]
     for nb in neighbours
-        target = state.individuals[nb]
+        target = individuals(state)[nb]
         EpiBranch.is_infected(target) && continue
         push!(result, (target, parent.infection_time + rand(state.rng)))
     end
@@ -56,8 +56,8 @@ end
         RingModel(50, 0.5); n_initial = 1, rng = StableRNG(11),
         stopping_rules = [Extinction(), MaxGenerations(50)]
     )
-    infected = count(ind -> get(ind.state, :infected, false), state.individuals)
-    @test length(state.individuals) == 50            # fixed, pre-instantiated pool
+    infected = count(ind -> get(ind.state, :infected, false), individuals(state))
+    @test length(individuals(state)) == 50            # fixed, pre-instantiated pool
     @test 1 <= infected <= 50
     @test EpiBranch._timetype(state) === Float64     # generic (non-BranchingProcess)
 
@@ -66,7 +66,7 @@ end
         RingModel(20, 1.0); n_initial = 1, rng = StableRNG(3),
         stopping_rules = [Extinction(), MaxGenerations(50)]
     )
-    @test count(ind -> get(ind.state, :infected, false), full.individuals) == 20
+    @test count(ind -> get(ind.state, :infected, false), individuals(full)) == 20
 end
 
 # A structure-driven model whose `contacts_of` *mints* fresh contacts with
@@ -77,7 +77,7 @@ struct MintModel <: EpiBranch.TransmissionModel
 end
 EpiBranch.population_size(::MintModel) = EpiBranch.NoPopulation()
 function EpiBranch.contacts_of(m::MintModel, parent, state::EpiBranch.SimulationState)
-    result = Tuple{eltype(state.individuals), Float64}[]
+    result = Tuple{eltype(individuals(state)), Float64}[]
     for _ in 1:(m.k)
         t = parent.infection_time + rand(state.rng)
         push!(result, (EpiBranch.make_contact!(state, parent, t), t))
@@ -90,7 +90,7 @@ end
         MintModel(2); n_initial = 1, rng = StableRNG(7),
         stopping_rules = [Extinction(), MaxGenerations(4)]
     )
-    @test length(state.individuals) > 1            # fresh contacts were minted
+    @test length(individuals(state)) > 1            # fresh contacts were minted
     @test EpiBranch._timetype(state) === Float64
 end
 
@@ -133,9 +133,9 @@ function EpiBranch.initialise_state(
     return state
 end
 function EpiBranch.contacts_of(m::AbortPoolModel, parent, state::EpiBranch.SimulationState)
-    result = Tuple{eltype(state.individuals), Float64}[]
+    result = Tuple{eltype(individuals(state)), Float64}[]
     for _ in 1:(m.k)
-        target = state.individuals[rand(state.rng, 1:(m.n))]
+        target = individuals(state)[rand(state.rng, 1:(m.n))]
         (EpiBranch.is_infected(target) || target.id == parent.id) && continue
         push!(result, (target, parent.infection_time + rand(state.rng, Exponential(4.0))))
     end
@@ -167,7 +167,7 @@ EpiBranch.transmission_risks(m::AbortPoolModel) = (RingRisk(m.p),)
             spec; n_initial = 3, rng = StableRNG(seed),
             stopping_rules = [Extinction(), MaxGenerations(30)]
         )
-        for ind in state.individuals
+        for ind in individuals(state)
             t = get(ind.state, :infection_aborted_time, nothing)
             if !EpiBranch.is_infected(ind)
                 escaped += 1
@@ -214,7 +214,7 @@ end
             spec; n_initial = 3, rng = StableRNG(seed),
             stopping_rules = [Extinction(), MaxGenerations(30)]
         )
-        for ind in state.individuals
+        for ind in individuals(state)
             EpiBranch.is_infected(ind) || continue
             if haskey(ind.state, :infection_aborted_time)
                 aborted += 1
@@ -274,7 +274,7 @@ end
             spec; n_initial = 3, rng = StableRNG(seed),
             stopping_rules = [Extinction(), MaxGenerations(30)]
         )
-        for ind in state.individuals
+        for ind in individuals(state)
             EpiBranch.is_infected(ind) || continue
             dosed = get(ind.state, :vaccination_generation, nothing)
             dosed !== nothing && dosed < ind.state[:exposure_generation] || continue
@@ -303,13 +303,13 @@ function EpiBranch.initialise_state(
     state = EpiBranch.new_state(m, transitions, attributes, rng)
     EpiBranch.add_individuals!(state, 3, interventions)
     EpiBranch.seed!(state, 1:2, interventions, transitions)
-    state.individuals[3].susceptibility = 0.5
+    individuals(state)[3].susceptibility = 0.5
     return state
 end
 function EpiBranch.contacts_of(::TwoToOneModel, parent, state::EpiBranch.SimulationState)
-    result = Tuple{eltype(state.individuals), Float64}[]
+    result = Tuple{eltype(individuals(state)), Float64}[]
     parent.id == 3 && return result
-    push!(result, (state.individuals[3], parent.infection_time + parent.id))
+    push!(result, (individuals(state)[3], parent.infection_time + parent.id))
     return result
 end
 
@@ -320,7 +320,7 @@ end
             TwoToOneModel(); n_initial = 2, rng = StableRNG(seed),
             stopping_rules = [Extinction(), MaxGenerations(5)]
         )
-        is_infected(s.individuals[3])
+        is_infected(individuals(s)[3])
     end
     # Each exposure gets through with probability 0.5, so at least one does
     # with probability 0.75.
@@ -334,7 +334,7 @@ end
             MintModel(2); n_initial = 1, rng = StableRNG(seed), max_time = 2.0,
             max_cases = 10^6, max_generations = 100
         )
-        late += count(i -> i.infection_time > 2.0, s.individuals)
+        late += count(i -> i.infection_time > 2.0, individuals(s))
     end
     @test late == 0
 end
@@ -355,10 +355,10 @@ end
             model; n_initial = 1, rng = StableRNG(seed), max_time = 6.0,
             max_cases = 10^4, max_generations = 100
         )
-        @test length(continued.individuals) == length(direct.individuals)
+        @test length(individuals(continued)) == length(individuals(direct))
         @test all(
             isequal(a.infection_time, b.infection_time) for
-                (a, b) in zip(continued.individuals, direct.individuals)
+                (a, b) in zip(individuals(continued), individuals(direct))
         )
     end
 end
@@ -376,13 +376,13 @@ function EpiBranch.initialise_state(
     )
     state = EpiBranch.new_state(m, transitions, attributes, rng)
     EpiBranch.add_individuals!(state, 4, interventions)
-    state.individuals[2].susceptibility = 0.0
+    individuals(state)[2].susceptibility = 0.0
     EpiBranch.seed!(state, [1], interventions, transitions)
     return state
 end
 function EpiBranch.contacts_of(::AbstractLine, parent, state::EpiBranch.SimulationState)
     neighbours = filter(in(1:4), [parent.id - 1, parent.id + 1])
-    return [(state.individuals[j], parent.infection_time + 1.0) for j in neighbours]
+    return [(individuals(state)[j], parent.infection_time + 1.0) for j in neighbours]
 end
 
 @testset "A ring grows past an uninfected person on a model that says it can" begin
@@ -394,8 +394,8 @@ end
             ModelSpec(model; interventions = [iso, ct], attributes);
             n_initial = 1, rng = StableRNG(1), max_generations = 10
         )
-        @test is_traced(s.individuals[2]) && !is_infected(s.individuals[2])
-        @test is_traced(s.individuals[3]) == reached
+        @test is_traced(individuals(s)[2]) && !is_infected(individuals(s)[2])
+        @test is_traced(individuals(s)[3]) == reached
     end
 end
 
@@ -440,14 +440,14 @@ EpiBranch.contacts_of(::MintEarly, parent, state::EpiBranch.SimulationState) =
             ModelSpec(MintEarly(); interventions = [iso, ct], attributes);
             n_initial = 1, rng = StableRNG(seed), max_generations = 6
         )
-        for ind in s.individuals
+        for ind in individuals(s)
             # Each person the model is asked about has two contacts, however
             # often it is asked.
             @test length(ind.secondary_case_ids) in (0, 2)
             is_infected(ind) || isempty(ind.secondary_case_ids) || (early += 1)
             # A contact's exposure follows its case's infection.
             for cid in ind.secondary_case_ids
-                c = s.individuals[cid]
+                c = individuals(s)[cid]
                 is_infected(c) && @test c.infection_time > ind.infection_time
             end
         end
@@ -460,7 +460,7 @@ EpiBranch.contacts_of(::MintEarly, parent, state::EpiBranch.SimulationState) =
             ModelSpec(MintEarly(); interventions = [iso, ct], attributes);
             n_initial = 1, rng = StableRNG(seed), max_generations = 3
         )
-        for ind in s.individuals
+        for ind in individuals(s)
             ind.generation >= 3 && @test isempty(ind.secondary_case_ids)
         end
     end

@@ -742,7 +742,7 @@ final_state = simulate(
         progression = [Transition(:recovered; from = :infection, delay = 6.0,
             terminal = true)]);
     rng = StableRNG(11))
-statuses = [is_infected(ind) for ind in final_state.individuals]
+statuses = [is_infected(ind) for ind in individuals(final_state)]
 
 # log-likelihood of an exponential contact interval with mean `scale` days
 ll(scale) = loglikelihood(

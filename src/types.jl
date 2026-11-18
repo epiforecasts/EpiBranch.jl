@@ -491,6 +491,24 @@ end
 # ── Simulation state ───────────────────────────────────────────────
 
 """
+Supertype of the results of [`simulate`](@ref). Code should read the people in a
+run through [`individuals`](@ref). A result that builds its people on request can
+then stand in for a [`SimulationState`](@ref).
+"""
+abstract type AbstractSimulationState end
+
+"""
+    individuals(state)
+
+The [`Individual`](@ref)s of a simulated outbreak, one per person in the
+simulation. For a [`BranchingProcess`](@ref) these are the cases and the contacts
+they exposed; for models with a fixed population they are everyone. Use this
+function rather than reading a field of the state.
+"""
+function individuals end
+
+
+"""
 One simulated outbreak, as returned by [`simulate`](@ref). Turn it into
 tables with [`linelist`](@ref) (one row per case), [`contacts`](@ref) (one
 row per exposure), [`chain_statistics`](@ref) or [`weekly_incidence`](@ref).
@@ -523,7 +541,7 @@ some other reason; nothing outside the simulation engine reads or writes it.
 a population created as the race reaches it, `nothing` for one built
 upfront; nothing outside the simulation engine reads or writes it either.
 """
-mutable struct SimulationState{T <: Real, R <: AbstractRNG, P, A}
+mutable struct SimulationState{T <: Real, R <: AbstractRNG, P, A} <: AbstractSimulationState
     individuals::Union{Vector{Individual{T}}, _SharedPeople{T}}
     active_ids::Vector{Int}
     current_generation::Int
@@ -539,6 +557,8 @@ mutable struct SimulationState{T <: Real, R <: AbstractRNG, P, A}
     lazy::Union{Nothing, _LazyPopulation}
     group_cases::Vector{Int}
 end
+
+individuals(state::SimulationState) = state.individuals
 
 # Pre-existing callers construct a `SimulationState` without `scratch`,
 # `continuation`, `lazy` or `group_cases`; they start absent (`group_cases`
@@ -563,7 +583,7 @@ function Base.show(io::IO, s::SimulationState)
     status = s.extinct ? "extinct" : "active"
     return print(
         io,
-        "SimulationState(cases=$(s.cumulative_cases), individuals=$(length(s.individuals)), gen=$(s.current_generation), $(status))"
+        "SimulationState(cases=$(s.cumulative_cases), individuals=$(length(individuals(s))), gen=$(s.current_generation), $(status))"
     )
 end
 

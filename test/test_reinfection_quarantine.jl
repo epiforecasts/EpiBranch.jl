@@ -11,7 +11,7 @@ using StableRNGs
         BranchingProcess(Poisson(0.0)), Transition[], NoAttributes(), StableRNG(1)
     )
     EpiBranch.add_individuals!(state, 1, interventions)
-    ind = state.individuals[1]
+    ind = individuals(state)[1]
     ind.state[:test_positive] = false
 
     # Quarantined between episodes, then reinfected inside the quarantine.

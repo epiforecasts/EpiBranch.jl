@@ -61,7 +61,7 @@ model = ModelSpec(
     attributes = clinical_presentation(incubation_period = LogNormal(1.6, 0.5))
 )
 state = simulate(model; n_initial = 5, rng = StableRNG(1))
-infector, infectee = state.individuals[1], state.individuals[2]
+infector, infectee = individuals(state)[1], individuals(state)[2]
 
 si = serial_interval(model, infector, infectee)
 obs = double_interval_censored(si; interval = 1, upper = 21.0)

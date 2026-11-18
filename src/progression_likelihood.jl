@@ -83,5 +83,5 @@ function progression_loglik(
 end
 
 function progression_loglik(spec::ModelSpec, state::SimulationState; kwargs...)
-    return progression_loglik(spec, state.individuals; kwargs...)
+    return progression_loglik(spec, individuals(state); kwargs...)
 end

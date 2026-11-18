@@ -279,7 +279,7 @@ elig(policy, infector) = is_eligible(policy, infector, _CONTACT, nothing)
         )
         traced = filter(
             ind -> haskey(ind.state, :recorded_trace_time) && !isnan(ind.infection_time),
-            state.individuals
+            individuals(state)
         )
         @test !isempty(traced)
         @test all(
@@ -383,9 +383,9 @@ elig(policy, infector) = is_eligible(policy, infector, _CONTACT, nothing)
             for seed in 1:3
                 a = simulate_with(flat, seed)
                 b = simulate_with(nested, seed)
-                @test count(is_traced, a.individuals) > 0
+                @test count(is_traced, individuals(a)) > 0
                 @test a.cumulative_cases == b.cumulative_cases
-                @test isequal(isolation_time.(a.individuals), isolation_time.(b.individuals))
+                @test isequal(isolation_time.(individuals(a)), isolation_time.(individuals(b)))
             end
         end
     end
@@ -409,11 +409,11 @@ elig(policy, infector) = is_eligible(policy, infector, _CONTACT, nothing)
             n_initial = 20, max_cases = 300, rng = StableRNG(42)
         )
 
-        traced = filter(is_traced, state.individuals)
+        traced = filter(is_traced, individuals(state))
         @test !isempty(traced)
         @test !any(ind -> isnan(isolation_time(ind)), traced)
         via_asymptomatic = filter(
-            ind -> is_asymptomatic(state.individuals[ind.parent_id]), traced
+            ind -> is_asymptomatic(individuals(state)[ind.parent_id]), traced
         )
         @test count(ind -> isfinite(isolation_time(ind)), via_asymptomatic) > 0
     end
@@ -439,11 +439,11 @@ elig(policy, infector) = is_eligible(policy, infector, _CONTACT, nothing)
 
         everyone = simulate_with(TraceEveryone())
         negated = simulate_with(!TraceNobody())
-        @test count(is_traced, negated.individuals) > 0
+        @test count(is_traced, individuals(negated)) > 0
         @test negated.cumulative_cases == everyone.cumulative_cases
         @test isequal(
-            isolation_time.(negated.individuals),
-            isolation_time.(everyone.individuals)
+            isolation_time.(individuals(negated)),
+            isolation_time.(individuals(everyone))
         )
 
         # Under `!OnIsolation()` only infectors not yet isolated are eligible,
@@ -451,11 +451,11 @@ elig(policy, infector) = is_eligible(policy, infector, _CONTACT, nothing)
         recorded = simulate_with(!OnIsolation(), RecordTraceTime())
         traced = filter(
             ind -> haskey(ind.state, :recorded_trace_time),
-            recorded.individuals
+            individuals(recorded)
         )
         @test !isempty(traced)
         @test all(traced) do ind
-            infector = recorded.individuals[ind.parent_id]
+            infector = individuals(recorded)[ind.parent_id]
             ind.state[:recorded_trace_time] >= isolation_time(infector)
         end
     end

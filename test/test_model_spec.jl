@@ -330,7 +330,7 @@ EpiBranch.interventions(m::_ProcessWithInterventions) = m.interventions
 
         # The isolation layer takes effect: some cases are isolated.
         state = simulate(spec; max_cases = 500, rng = StableRNG(7))
-        @test count(is_isolated, state.individuals) > 0
+        @test count(is_isolated, individuals(state)) > 0
     end
 
     @testset "keywords set the layers; default to none" begin

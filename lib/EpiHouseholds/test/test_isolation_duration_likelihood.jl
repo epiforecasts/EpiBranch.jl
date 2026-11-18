@@ -23,16 +23,16 @@
     @test haskey(data.host_times, :_removal_stretches)
     recorded = data.host_times._removal_stretches
     @test recorded == EpiBranch.removal_stretches.(
-        state.individuals, EpiBranch.ISOLATION_STRETCHES_KEY
+        individuals(state), EpiBranch.ISOLATION_STRETCHES_KEY
     )
     @test any(!isempty, recorded)
 
     # The window runs to the natural-history close now, so an isolated case is
     # removed at recovery and not at its isolation time.
-    isolated = findall(i -> isfinite(EpiBranch.isolation_time(i)), state.individuals)
+    isolated = findall(i -> isfinite(EpiBranch.isolation_time(i)), individuals(state))
     @test !isempty(isolated)
     @test all(
-        i -> data.removal_time[i] > EpiBranch.isolation_time(state.individuals[i]),
+        i -> data.removal_time[i] > EpiBranch.isolation_time(individuals(state)[i]),
         isolated
     )
 
@@ -45,7 +45,7 @@
     @test pairwise_surv_loglik(process.kernel, data) > pairwise_surv_loglik(
         process.kernel,
         HouseholdInfections(
-            [ind.state[:household]::Int for ind in state.individuals],
+            [ind.state[:household]::Int for ind in individuals(state)],
             data.infection_time, data.infectious_time, data.removal_time,
             data.is_index; obs_end = data.obs_end
         )
@@ -165,7 +165,7 @@ end
 
     @test isfinite(loglikelihood(data, m))
 
-    households = [ind.state[:household]::Int for ind in state.individuals]
+    households = [ind.state[:household]::Int for ind in individuals(state)]
     plain = HouseholdInfections(
         households, data.infection_time, data.infectious_time, data.removal_time,
         data.is_index; obs_end = data.obs_end
@@ -224,7 +224,7 @@ end
     state = simulate(m; rng = StableRNG(21))
     data = household_infections(state, m)
     @test data.host_times._removal_stretches == EpiBranch.removal_stretches.(
-        state.individuals, EpiBranch.ISOLATION_STRETCHES_KEY
+        individuals(state), EpiBranch.ISOLATION_STRETCHES_KEY
     )
     @test isfinite(loglikelihood(data, m))
 
@@ -269,7 +269,7 @@ end
     # contact traced twice has its two seven-day quarantines merged, so a
     # stretch runs for seven days or longer and never for less.
     recorded = EpiBranch.removal_stretches.(
-        state.individuals, EpiBranch.QUARANTINE_STRETCHES_KEY
+        individuals(state), EpiBranch.QUARANTINE_STRETCHES_KEY
     )
     @test data.host_times._removal_stretches == recorded
     quarantined = findall(!isempty, recorded)
@@ -278,7 +278,7 @@ end
     @test all(len -> len > 7.0 || len ≈ 7.0, lengths)
     @test any(len -> len ≈ 7.0, lengths)
 
-    households = [ind.state[:household]::Int for ind in state.individuals]
+    households = [ind.state[:household]::Int for ind in individuals(state)]
     plain = HouseholdInfections(
         households, data.infection_time, data.infectious_time, data.removal_time,
         data.is_index; obs_end = data.obs_end

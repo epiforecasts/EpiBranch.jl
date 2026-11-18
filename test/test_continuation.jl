@@ -14,7 +14,7 @@ end
 function EpiBranch.action_candidates(
         ::ContinuationAction, state, current, traced, is_pending, members, contacts
     )
-    return current.infection_time == 0.0 ? [state.individuals[1]] : Individual[]
+    return current.infection_time == 0.0 ? [individuals(state)[1]] : Individual[]
 end
 
 # A tiny observation model that only counts how often it ran, to check that
@@ -157,7 +157,7 @@ end
         @test continued.cumulative_cases == direct.cumulative_cases
         @test all(
             isequal(a.infection_time, b.infection_time) for
-                (a, b) in zip(continued.individuals, direct.individuals)
+                (a, b) in zip(individuals(continued), individuals(direct))
         )
     end
 
@@ -173,7 +173,7 @@ end
         @test chained.cumulative_cases == direct.cumulative_cases
         @test all(
             isequal(a.infection_time, b.infection_time) for
-                (a, b) in zip(chained.individuals, direct.individuals)
+                (a, b) in zip(individuals(chained), individuals(direct))
         )
     end
 
@@ -239,11 +239,11 @@ end
         state = simulate(model; max_time = 5.0, max_cases = 10_000, rng = StableRNG(6))
         continued = simulate(model, state; max_time = 20.0)
         direct = simulate(model; max_time = 20.0, max_cases = 10_000, rng = StableRNG(6))
-        @test length(continued.individuals) == length(direct.individuals)
+        @test length(individuals(continued)) == length(individuals(direct))
         @test continued.cumulative_cases == direct.cumulative_cases
         @test all(
             isequal(a.infection_time, b.infection_time) for
-                (a, b) in zip(continued.individuals, direct.individuals)
+                (a, b) in zip(individuals(continued), individuals(direct))
         )
     end
 
@@ -270,7 +270,7 @@ end
             @test continued.cumulative_cases == direct.cumulative_cases
             @test all(
                 isequal(a.infection_time, b.infection_time) for
-                    (a, b) in zip(continued.individuals, direct.individuals)
+                    (a, b) in zip(individuals(continued), individuals(direct))
             )
         end
     end
@@ -441,9 +441,9 @@ end
         progression = [Transition(:recovered; rate = 0.2, terminal = true)]
     )
     start() = simulate(model; max_time = 5.0, n_initial = 5, rng = StableRNG(11))
-    times(s) = [ind.infection_time for ind in s.individuals]
+    times(s) = [ind.infection_time for ind in individuals(s)]
     same(a, b) = a.cumulative_cases == b.cumulative_cases &&
-        length(a.individuals) == length(b.individuals) &&
+        length(individuals(a)) == length(individuals(b)) &&
         all(isequal(x, y) for (x, y) in zip(times(a), times(b)))
 
     @testset "pending actions affect only the continued population" begin
@@ -459,12 +459,12 @@ end
             copied = copy(state)
             first, second = original_first ? (state, copied) : (copied, state)
             simulate(action_model, first; max_time = 12.0)
-            @test get(first.individuals[1].state, :continued_action, nothing) == 10.0
-            @test !haskey(second.individuals[1].state, :continued_action)
+            @test get(individuals(first)[1].state, :continued_action, nothing) == 10.0
+            @test !haskey(individuals(second)[1].state, :continued_action)
             simulate(action_model, second; max_time = 12.0)
             simulate(action_model, deep; max_time = 12.0)
-            @test get(second.individuals[1].state, :continued_action, nothing) == 10.0
-            @test get(deep.individuals[1].state, :continued_action, nothing) == 10.0
+            @test get(individuals(second)[1].state, :continued_action, nothing) == 10.0
+            @test get(individuals(deep)[1].state, :continued_action, nothing) == 10.0
             @test same(state, deep)
             @test same(copied, deep)
         end
@@ -507,15 +507,15 @@ end
     @testset "a copy shares people until one side looks at them" begin
         state = start()
         copied = copy(state)
-        n = length(state.individuals)
-        @test n == length(copied.individuals)
-        @test state.individuals.people[3] === copied.individuals.people[3]
-        @test copied.individuals[3] !== state.individuals[3]
+        n = length(individuals(state))
+        @test n == length(individuals(copied))
+        @test individuals(state).people[3] === individuals(copied).people[3]
+        @test individuals(copied)[3] !== individuals(state)[3]
         @test isequal(
-            copied.individuals[3].infection_time,
-            state.individuals[3].infection_time
+            individuals(copied)[3].infection_time,
+            individuals(state)[3].infection_time
         )
-        @test state.individuals.people[4] === copied.individuals.people[4]
+        @test individuals(state).people[4] === individuals(copied).people[4]
         @test copied.rng !== state.rng
         @test copied.active_ids !== state.active_ids
     end
@@ -526,32 +526,32 @@ end
         cases = state.cumulative_cases
         copied = copy(state)
         simulate(model, copied; max_time = 30.0)
-        copied.individuals[1].state[:marker] = true
+        individuals(copied)[1].state[:marker] = true
         @test isequal(times(state), before)
         @test state.cumulative_cases == cases
-        @test !haskey(state.individuals[1].state, :marker)
-        state.individuals[2].infection_time = -1.0
-        @test copied.individuals[2].infection_time != -1.0
+        @test !haskey(individuals(state)[1].state, :marker)
+        individuals(state)[2].infection_time = -1.0
+        @test individuals(copied)[2].infection_time != -1.0
     end
 
     @testset "copies of copies stay independent" begin
         state = start()
         a = copy(state)
         b = copy(a)
-        a.individuals[1].state[:marker] = :a
-        b.individuals[1].state[:marker] = :b
-        @test !haskey(state.individuals[1].state, :marker)
-        @test a.individuals[1].state[:marker] == :a
-        @test b.individuals[1].state[:marker] == :b
+        individuals(a)[1].state[:marker] = :a
+        individuals(b)[1].state[:marker] = :b
+        @test !haskey(individuals(state)[1].state, :marker)
+        @test individuals(a)[1].state[:marker] == :a
+        @test individuals(b)[1].state[:marker] == :b
     end
 
     @testset "appending to a copy does not grow the original" begin
         state = start()
-        n = length(state.individuals)
+        n = length(individuals(state))
         copied = copy(state)
-        push!(copied.individuals, copied.individuals[1])
-        @test length(state.individuals) == n
-        @test length(copied.individuals) == n + 1
+        push!(individuals(copied), individuals(copied)[1])
+        @test length(individuals(state)) == n
+        @test length(individuals(copied)) == n + 1
     end
 end
 
@@ -562,14 +562,14 @@ end
     )
     state = simulate(model; max_time = 5.0, n_initial = 5, rng = StableRNG(11))
     copied = copy(state)
-    people = copied.individuals
+    people = individuals(copied)
     n = length(people)
 
     @testset "setindex! takes ownership of the replacement" begin
         replacement = Individual(; id = 1, infection_time = -2.0)
         people[1] = replacement
         @test people[1] === replacement
-        @test state.individuals[1] !== replacement
+        @test individuals(state)[1] !== replacement
     end
 
     @testset "resize! grows and shrinks both vectors together" begin
@@ -579,6 +579,6 @@ end
         @test all(people.owned[(n + 1):(n + 2)])
         resize!(people, n - 1)
         @test length(people) == n - 1
-        @test length(state.individuals) == n
+        @test length(individuals(state)) == n
     end
 end

@@ -36,7 +36,7 @@ end
         infected = findall(!isnan, data.infection_time)
         @test !isempty(infected)
         for (r, w) in enumerate(windows), i in infected
-            ind = state.individuals[i]
+            ind = individuals(state)[i]
             @test data.infectious_time[r][i] == window_open(ind, w)
             @test data.removal_time[r][i] == window_close(ind, w, ())
         end
@@ -119,8 +119,8 @@ end
         )
         a = simulate(shared; rng = StableRNG(4))
         b = simulate(per_node; rng = StableRNG(4))
-        @test [i.infection_time for i in a.individuals] ==
-            [i.infection_time for i in b.individuals]
+        @test [i.infection_time for i in individuals(a)] ==
+            [i.infection_time for i in individuals(b)]
         data = routed_network_infections(a, shared)
         @test loglikelihood(data, per_node) ≈ loglikelihood(data, shared)
         # a node without a community hazard has no external term
