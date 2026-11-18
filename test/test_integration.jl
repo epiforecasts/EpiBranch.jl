@@ -2,7 +2,7 @@ using DataFrames
 using Dates
 
 @testset "Integration" begin
-    clinical = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
+    clinical = CLINICAL
 
     @testset "threaded runs match one seeded outbreak per index" begin
         model = BranchingProcess(Poisson(0.8), Exponential(5.0))

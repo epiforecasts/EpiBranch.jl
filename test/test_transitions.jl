@@ -320,7 +320,7 @@ EpiBranch.observation(m::SingleSpawnModel) = m.observation
         rng = StableRNG(11)
         # Demographics + clinical so :age and :onset_time are both set.
         attrs = [
-            clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
+            CLINICAL,
             demographics(age_distribution = Uniform(0, 90)),
         ]
         model = BranchingProcess(Poisson(1.5), Exponential(5.0))
@@ -355,7 +355,7 @@ EpiBranch.observation(m::SingleSpawnModel) = m.observation
         # respect the rule.
         rng = StableRNG(13)
         attrs = [
-            clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
+            CLINICAL,
             demographics(age_distribution = Uniform(0, 90)),
         ]
         model = BranchingProcess(Poisson(1.5), Exponential(5.0))
@@ -572,7 +572,7 @@ end
         # independently at p and 1 - p leave some cases with neither outcome
         # (about p(1 - p) of them). `exclusive_probabilities` fixes that: no
         # case has both, or neither.
-        clinical = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
+        clinical = CLINICAL
         rng = StableRNG(21)
         model = BranchingProcess(Poisson(1.5), Exponential(5.0))
         died_p, recovered_p = exclusive_probabilities([0.36, 0.64])

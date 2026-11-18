@@ -238,7 +238,7 @@ end
     # every step's initialisation, about 25 allocations more at seeding.
     transitions = [Transition(:recovered; delay = 3.0, terminal = true)]
     model = BranchingProcess(NegBin(2.5, 0.16), LogNormal(1.6, 0.5))
-    attributes = [clinical_presentation(incubation_period = LogNormal(1.5, 0.5))]
+    attributes = [CLINICAL]
     interventions = [Isolation(delay = 1.0, duration = Inf)]
     function seed()
         state = EpiBranch.new_state(model, transitions, attributes, StableRNG(1))

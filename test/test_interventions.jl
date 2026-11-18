@@ -1272,7 +1272,7 @@ Distributions.logpdf(::_UnboundedDelay, ::Real) = 0.0
     @testset "attribute list works" begin
         rng = StableRNG(42)
         init_fn = [
-            clinical_presentation(incubation_period = LogNormal(1.5, 0.5)),
+            CLINICAL,
             demographics(age_distribution = Normal(40, 15)),
         ]
 
