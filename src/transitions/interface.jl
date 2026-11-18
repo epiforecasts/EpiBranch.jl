@@ -179,8 +179,8 @@ function _delay_loglik(f, dt)
     )
 end
 
-# A `Conditional` delay is resolved to the distribution it stands for in this
-# individual before it is scored; every other delay is already evaluable.
+# A `Conditional` delay is resolved to its distribution for this individual
+# before scoring. Every other delay can be evaluated as it is.
 _resolved_delay(c::Conditional, ind) = resolve(c, ind)
 _resolved_delay(delay, ind) = delay
 _delay_loglik(delay, dt, ind) = _delay_loglik(_resolved_delay(delay, ind), dt)

@@ -1,1 +1,1 @@
-`progression_loglik` now evaluates a `Conditional` transition delay, resolving it for each case and scoring it like the distribution it returns. Before, it threw an error.
+`progression_loglik` now evaluates a `Conditional` transition delay: it resolves the delay for each case and scores it as the distribution it returns. It previously threw an error.
