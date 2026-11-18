@@ -148,8 +148,8 @@ model = ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0));
 rng = StableRNG(42)
 state = simulate(model; max_cases = 2000, rng = rng)
 
-n_died = count(ind -> ind.state[:outcome] == :died, state.individuals)
-n_died_80plus = count(state.individuals) do ind
+n_died = count(ind -> ind.state[:outcome] == :died, individuals(state))
+n_died_80plus = count(individuals(state)) do ind
     ind.state[:outcome] == :died && ind.state[:age] >= 80
 end
 println("Deaths: $n_died, of which 80+: $n_died_80plus")
@@ -187,9 +187,9 @@ model = ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0));
 rng = StableRNG(42)
 state = simulate(model; max_cases = 200, rng = rng)
 
-n_admitted = count(ind -> ind.state[:admitted], state.individuals)
+n_admitted = count(ind -> ind.state[:admitted], individuals(state))
 n_admitted_unreported = count(ind -> ind.state[:admitted] && !ind.state[:reported],
-    state.individuals)
+    individuals(state))
 println("Admitted: $n_admitted, of which not reported: $n_admitted_unreported")
 ```
 
@@ -280,7 +280,7 @@ model = ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0));
     attributes = within_host(curve), progression = [onset])
 
 state = simulate(model; max_cases = 200, rng = StableRNG(42))
-infected = filter(is_infected, state.individuals)
+infected = filter(is_infected, individuals(state))
 println("Symptomatic: ", count(ind -> ind.state[:symptomatic], infected),
     " of ", length(infected))
 ```
@@ -336,10 +336,10 @@ multitype = ModelSpec(
 rng = StableRNG(3)
 state = simulate(multitype; max_cases = 500, rng = rng)
 
-n_died_kids = count(state.individuals) do ind
+n_died_kids = count(individuals(state)) do ind
     ind.state[:outcome] == :died && ind.state[:type] == 1
 end
-n_died_adults = count(state.individuals) do ind
+n_died_adults = count(individuals(state)) do ind
     ind.state[:outcome] == :died && ind.state[:type] == 2
 end
 println("Deaths. Children: $n_died_kids. Adults: $n_died_adults.")
@@ -386,7 +386,7 @@ model = ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0));
 rng = StableRNG(42)
 state = simulate(model; max_cases = 2000, rng = rng)
 
-outcomes = [ind.state[:outcome] for ind in state.individuals if haskey(ind.state, :outcome)]
+outcomes = [ind.state[:outcome] for ind in individuals(state) if haskey(ind.state, :outcome)]
 println("Outcome counts: ",
     (died = count(==(:died), outcomes),
      recovered = count(==(:recovered), outcomes),
@@ -422,7 +422,7 @@ model = ModelSpec(BranchingProcess(Poisson(2.0), Exponential(5.0));
 
 rng = StableRNG(42)
 state = simulate(model; max_cases = 300, rng = rng)
-symptomatic = [ind for ind in state.individuals if !isnan(onset_time(ind))]
+symptomatic = [ind for ind in individuals(state) if !isnan(onset_time(ind))]
 n_missing = count(ind -> !haskey(ind.state, :outcome), symptomatic)
 n_died = count(ind -> get(ind.state, :outcome, nothing) == :died, symptomatic)
 println("Symptomatic cases: ", length(symptomatic), ", missing an outcome: ", n_missing)

@@ -53,6 +53,21 @@ default `nothing` is skipped by that warning. Non-terminal steps never need it.
 """
 terminal_target(::AbstractClinicalTransition) = nothing
 
+"""
+    produced_states(transition::AbstractClinicalTransition) -> Tuple{Vararg{Symbol}}
+
+The states this step can move a case into, known before any case is
+simulated, such as `(:infectious,)`. The engine reads it to find where an
+infectious window opens (`infectious_from`), to warn about a window whose
+`from` no step produces, and to see whether a progression can make a host
+susceptible again (`:susceptible_again`, which lets the host be infected once
+more from [`susceptible_again_time`](@ref)). A step written outside the
+package declares what it produces by defining a method; a step that leaves
+the default `()` is invisible to those checks. [`Transition`](@ref) returns
+`(its state,)`.
+"""
+produced_states(::AbstractClinicalTransition) = ()
+
 # Whether a terminal transition, taken alone, is guaranteed to occur once its
 # anchor is reached: `true` when nothing can stop it, `false` when a constant
 # gate sits below certainty (including a gate fixed at 0, which never lets a
@@ -448,20 +463,10 @@ function transition_time(
     return start_time + sample_value(delay, delay_rng, individual)
 end
 
-# Set on an individual's own state by `_reinfection_probe` (sellke.jl) to
-# mark its disposable probe individual: every `probability` gate the probe
-# meets is then taken unless its probability is exactly zero, rather than
-# left to the probe's one real draw. Carried on the individual rather than
-# `rng`, since a custom transition's gate is only ever reached through
-# `transition_time(rng, individual, ...)`, which has no `state` argument
-# through which it could otherwise learn it is being probed.
-const _REINFECTION_PROBE_KEY = :_reinfection_probing
-
 function _transition_selected(rng, individual, start_time, probability)
-    _anchor_ok(start_time) || return false
+    isfinite(start_time) || return false
     probability === nothing && return true
     p = sample_value(probability, rng, individual)
-    get(individual.state, _REINFECTION_PROBE_KEY, false) && return p > 0
     return rand(rng) < p
 end
 
@@ -474,14 +479,6 @@ _resolved_key(s::Symbol) = endswith(String(s), "_time") ? s : Symbol(s, :_time)
 # depends only on `from`, so the object that holds `from` builds it once.
 _from_key(from::Symbol) = _resolved_key(from)
 _from_key(from) = nothing
-
-# A transition occurs only from a finite anchor. An anchor is missing (`NaN`)
-# when the `from` key was never written, and non-finite (`Inf`) when the
-# upstream transition initialised the key but never occurred — both mean "the
-# `from` state was not reached", so the transition must be skipped. Guarding
-# on `isfinite` (not `isnan`) keeps the two subsystems in step; the generic
-# `Transition` uses the same check.
-_anchor_ok(anchor) = isfinite(anchor)
 
 # The key a transition's `required_fields` demands of its `from` anchor.
 # `:infection` is always available (the individual's own `infection_time`
@@ -508,17 +505,20 @@ non-terminal event recorded after the outcome describes something that could
 not have happened to this individual.
 """
 function _finalise_terminal!(individual, transitions)
-    best_time, best_label, has_any = _earliest_terminal(
-        transitions, individual, (Inf, :none, false)
+    best_time, best_label, best_time_key, has_any = _earliest_terminal(
+        transitions, individual, (Inf, :none, nothing, false)
     )
     if has_any
         individual.state[:outcome_time] = best_time
         individual.state[:outcome] = best_label
         # The winning outcome's own state and `*_time` key, as a terminal
         # `Transition` writes them, so an infectious window listing the state
-        # in `until` closes there. A losing candidate writes nothing.
-        individual.state[best_label] = true
-        individual.state[Symbol(best_label, :_time)] = best_time
+        # in `until` closes there. A losing candidate writes nothing, and a
+        # winning `Transition`, which has written both already, gives no key.
+        if best_time_key !== nothing
+            individual.state[best_label] = true
+            individual.state[best_time_key] = best_time
+        end
         _each(transitions) do t
             is_terminal(t) || censor_after_outcome!(t, individual)
             return nothing
@@ -528,14 +528,22 @@ function _finalise_terminal!(individual, transitions)
 end
 
 # The earliest terminal event over `transitions`, folded through `best`, the
-# `(time, label, found)` so far. A `Tuple` is walked by recursion, as in `_each`.
+# `(time, label, time_key, found)` so far. A `Tuple` is walked by recursion, as
+# in `_each`.
 @inline function _earlier_terminal(t, individual, best)
     is_terminal(t) || return best
     ev = terminal_event(t, individual)
     ev === nothing && return best
     time, label = ev
-    return time < best[1] ? (time, label, true) : best
+    time < best[1] || return best
+    return (time, label, _terminal_time_key(t, label), true)
 end
+
+# The `*_time` key `_finalise_terminal!` records a winning outcome under, or
+# `nothing` for a transition that records its own when it resolves. Built-in
+# transitions know theirs; building one from the label interns a new `Symbol`,
+# which is slow enough to show on every case, so it is only the fallback.
+_terminal_time_key(t, label) = Symbol(label, :_time)
 _earliest_terminal(::Tuple{}, individual, best) = best
 @inline function _earliest_terminal(transitions::Tuple, individual, best)
     return _earliest_terminal(

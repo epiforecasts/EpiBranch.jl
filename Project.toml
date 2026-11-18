@@ -9,7 +9,6 @@ DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
 Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
 Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
 DocStringExtensions = "ffbed154-4ef7-542d-bbb7-c09d3a79fcae"
-ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 QuadGK = "1fd47b50-473d-5c70-9696-f719f8f3bcdc"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
@@ -17,6 +16,7 @@ SpecialFunctions = "276daf66-3868-5448-9aa4-cd146d93841b"
 SurvivalDistributions = "7121986e-ae89-4673-ae4e-1cb822919a18"
 
 [weakdeps]
+ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210"
 CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
 CensoredDistributions = "b2eeebe4-5992-4301-9193-7ebc9f62c855"
 ConvolvedDistributions = "f5b942c9-bc5b-4664-8486-7f531bb06742"
@@ -24,6 +24,7 @@ NCDatasets = "85f8d34a-cbdd-5861-8df4-14fed0d494ab"
 SSMProblems = "26aad666-b158-4e64-9d35-0e672562fa48"
 
 [extensions]
+EpiBranchForwardDiffExt = "ForwardDiff"
 EpiBranchCSVExt = "CSV"
 EpiBranchCensoredDistributionsExt = ["CensoredDistributions", "ConvolvedDistributions"]
 EpiBranchNCDatasetsExt = "NCDatasets"

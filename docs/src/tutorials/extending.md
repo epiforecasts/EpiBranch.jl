@@ -234,7 +234,7 @@ attrs = [
 
 model = ModelSpec(BranchingProcess(NegBin(2.5, 0.16), Exponential(5.0)); attributes = attrs)
 runs = simulate(model, 200; max_cases = 100, rng = StableRNG(42))
-people = reduce(vcat, [s.individuals for s in runs])
+people = reduce(vcat, [individuals(s) for s in runs])
 high_share(group) = count(ind -> ind.state[:risk_group] == :high, group) / length(group)
 (all_contacts = high_share(people), infected = high_share(filter(is_infected, people)))
 ```
@@ -259,7 +259,7 @@ combined = [
 model_combined = ModelSpec(BranchingProcess(NegBin(2.5, 0.16), Exponential(5.0));
     attributes = combined)
 state = simulate(model_combined; max_cases = 100, rng = StableRNG(42))
-ind = state.individuals[1]
+ind = individuals(state)[1]
 (age = ind.state[:age], sex = ind.state[:sex], risk = ind.state[:risk_group])
 ```
 
@@ -334,13 +334,13 @@ struct MaxChainLength <: AbstractStoppingRule
     n::Int
 end
 EpiBranch.should_stop(r::MaxChainLength, state::SimulationState) =
-    maximum(ind.generation for ind in state.individuals; init = 0) >= r.n
+    maximum(ind.generation for ind in individuals(state); init = 0) >= r.n
 
 chain_model = BranchingProcess(NegBin(2.5, 0.16), Exponential(5.0))
 chain_state = simulate(
     chain_model; stopping_rules = [Extinction(), MaxChainLength(5)], rng = StableRNG(3)
 )
-maximum(ind.generation for ind in chain_state.individuals; init = 0)
+maximum(ind.generation for ind in individuals(chain_state); init = 0)
 ```
 
 The printed value is the last generation reached: 5 if the rule stopped the

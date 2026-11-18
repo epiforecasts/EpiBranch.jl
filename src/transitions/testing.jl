@@ -222,3 +222,23 @@ function censor_after_outcome!(t::Testing, individual)
     end
     return nothing
 end
+
+# `Testing` as the `test_sensitivity` of an `Isolation` (see `isolation.jl`): the
+# case's own test has not been taken when the case is created, so the result is
+# read from it once the progression has resolved.
+_draw_test_positive(::Testing, rng, individual) = false
+
+function _read_test_positive!(t::Testing, iso, individual, state)
+    k = _test_keys(t)
+    st = individual.state
+    haskey(st, k.tested) || throw(
+        ArgumentError(
+            "Isolation(test_sensitivity = Testing(name = :$(t.name))) needs the " *
+                "same Testing step in the model's progression; none writes :$(k.tested)."
+        )
+    )
+    st[:test_positive] = is_eligible_for_isolation(iso.eligibility, individual, state) &&
+        st[k.tested]::Bool &&
+        st[k.result]::Bool
+    return nothing
+end

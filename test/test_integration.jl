@@ -4,6 +4,33 @@ using Dates
 @testset "Integration" begin
     clinical = clinical_presentation(incubation_period = LogNormal(1.5, 0.5))
 
+    @testset "threaded runs match one seeded outbreak per index" begin
+        model = BranchingProcess(Poisson(0.8), Exponential(5.0))
+        sim_opts = EpiBranch._build_sim_opts(
+            model, 1, nothing, nothing, 50, nothing, Inf, nothing
+        )
+        kw = (
+            interventions = EpiBranch.interventions(model),
+            attributes = EpiBranch.attributes(model),
+            progression = EpiBranch.progression(model),
+            observation = EpiBranch.observation(model),
+            recorder = EpiBranch.recorder(model),
+        )
+        run(rng) = EpiBranch.simulate_once(model, sim_opts; kw..., rng)
+        results = EpiBranch._simulate_n_threaded(
+            run, SimulationState, 20, StableRNG(3)
+        )
+        @test length(results) == 20
+        rng = StableRNG(3)
+        seeds = [rand(rng, UInt64) for _ in 1:20]
+        for i in 1:20
+            expected = EpiBranch.simulate_once(
+                model, sim_opts; kw..., rng = Random.Xoshiro(seeds[i])
+            )
+            @test length(results[i].individuals) == length(expected.individuals)
+        end
+    end
+
     @testset "simulate(model, n) returns correct count" begin
         rng = StableRNG(42)
         model = BranchingProcess(Poisson(0.8), Exponential(5.0))
@@ -51,7 +78,7 @@ using Dates
         )
         df = weekly_incidence(state; by = :reporting)
         @test df isa DataFrame
-        n_reported = count(ind -> get(ind.state, :reported, false), state.individuals)
+        n_reported = count(ind -> get(ind.state, :reported, false), individuals(state))
         @test sum(df.cases) == n_reported
         @test 0 < n_reported < state.cumulative_cases    # some, not all, reported
     end
@@ -156,15 +183,15 @@ using Dates
         gs = Float64[]
         ga = Float64[]
         states = simulate(spec, 1500; max_generations = 2, max_cases = nothing, rng = StableRNG(1))
-        for s in states, ind in s.individuals
+        for s in states, ind in individuals(s)
             (is_infected(ind) && ind.parent_id != 0) || continue
-            p = s.individuals[ind.parent_id]
+            p = individuals(s)[ind.parent_id]
             push!(is_asymptomatic(p) ? ga : gs, ind.infection_time - p.infection_time)
         end
         @test isapprox(mean(ga), mean(gs); rtol = 0.1)
 
         asymp = [
-            i for s in states for i in s.individuals if is_infected(i) && is_asymptomatic(i)
+            i for s in states for i in individuals(s) if is_infected(i) && is_asymptomatic(i)
         ]
         @test all(i -> isnan(i.state[:onset_time]), asymp)
         @test all(i -> i.state[:incubation_period] > 0, asymp)
@@ -344,7 +371,7 @@ using Dates
 
         # Check infected individuals only — non-infected contacts may have
         # later generation times but were never active
-        infected = filter(is_infected, state.individuals)
+        infected = filter(is_infected, individuals(state))
         max_inf_time = maximum(ind.infection_time for ind in infected)
         @test max_inf_time <= 40.0  # allow overshoot from last generation
     end
@@ -383,21 +410,21 @@ using Dates
             NoAttributes(), StableRNG(1)
         )
         push!(
-            st.individuals,
+            individuals(st),
             Individual(
                 id = 1,
                 state = Dict{Symbol, Any}(:infected => true, :onset_time => 6.9)
             )
         )  # week 1
         push!(
-            st.individuals,
+            individuals(st),
             Individual(
                 id = 2,
                 state = Dict{Symbol, Any}(:infected => true, :onset_time => 7.0)
             )
         )  # week 2
         push!(
-            st.individuals,
+            individuals(st),
             Individual(
                 id = 3, infection_time = 14.0,
                 state = Dict{Symbol, Any}(:infected => true)

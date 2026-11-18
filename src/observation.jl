@@ -45,7 +45,7 @@ function _reporting_conflict(obs)
 end
 
 function apply_observation!(o::ChainDetection, state, rng)
-    cases = filter(is_infected, state.individuals)
+    cases = filter(is_infected, individuals(state))
     # A progression transition (such as `Reporting`) that records `:reported`
     # owns that key, and its likelihood reads what it wrote.
     any(case -> haskey(case.state, :reported), cases) && _reporting_conflict(o)
@@ -99,10 +99,6 @@ function ThinnedChainSize(base::D, detection_prob) where {D <: DiscreteUnivariat
     log_prob_any_detected = _log_prob_any_detected(base, p)
     return ThinnedChainSize{D, typeof(p), typeof(log_prob_any_detected)}(base, p, log_prob_any_detected)
 end
-
-Distributions.minimum(::ThinnedChainSize) = 1
-Distributions.maximum(::ThinnedChainSize) = Inf
-Distributions.insupport(::ThinnedChainSize, n::Integer) = n >= 1
 
 """
 Streaming log-sum-exp of `term(n)` for `n = n_start, n_start + 1, …`:
@@ -161,13 +157,6 @@ function Distributions.logpdf(d::ThinnedChainSize, obs::Integer)
     return unconditioned - d.log_prob_any_detected
 end
 
-Distributions.pdf(d::ThinnedChainSize, n::Integer) = exp(logpdf(d, n))
-
-Distributions.cdf(d::ThinnedChainSize, n::Integer) = _chain_size_cdf(d, n)
-function Distributions.logccdf(d::ThinnedChainSize, n::Integer)
-    return _chain_size_right_tail_logprob(d, n + 1, 1)
-end
-
 """
 Sample an observed chain size: draw a true size from `base`, thin it to a
 `Binomial(n, detection_prob)` number of detected cases, and redraw when none
@@ -216,10 +205,6 @@ function DetectedChainSize(base::D, recording_probability::F) where
     )
 end
 
-Distributions.minimum(::DetectedChainSize) = 1
-Distributions.maximum(::DetectedChainSize) = Inf
-Distributions.insupport(::DetectedChainSize, n::Integer) = n >= 1
-
 _log_recording_probability(f, n) =
 let p = f(n)
     p > 0 ? log(p) : oftype(float(p), -Inf)
@@ -229,13 +214,6 @@ function Distributions.logpdf(d::DetectedChainSize, n::Integer)
     n < 1 && return -Inf
     return logpdf(d.base, n) + _log_recording_probability(d.recording_probability, n) -
         d.log_prob_recorded
-end
-
-Distributions.pdf(d::DetectedChainSize, n::Integer) = exp(logpdf(d, n))
-
-Distributions.cdf(d::DetectedChainSize, n::Integer) = _chain_size_cdf(d, n)
-function Distributions.logccdf(d::DetectedChainSize, n::Integer)
-    return _chain_size_right_tail_logprob(d, n + 1, 1)
 end
 
 """

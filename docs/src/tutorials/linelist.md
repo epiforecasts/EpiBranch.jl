@@ -215,7 +215,7 @@ are shown unchanged.
 
 [`contacts`](@ref) returns one row per contact: the case (`from`), the
 contact (`to`), whether the contact was infected (`infected`), and the
-contact's generation and infection date:
+contact's generation, the time and date of exposure (the infection date when the contact was infected), and the contact's attributes such as age and sex:
 
 ```@example linelist
 ct = contacts(state; reference_date = Date(2024, 1, 1))

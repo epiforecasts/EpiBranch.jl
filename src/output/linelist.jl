@@ -19,7 +19,7 @@ EpiBranch.event_time_metadata(::Val{:appointment_time}) =
     (column = :date_appointment, requires_infection = false)
 ```
 
-Tracing, vaccination and immunity dates, including those of named doses, are
+Tracing, vaccination, immunity, isolation and quarantine dates, including those of named doses, are
 shown whether or not the person was infected. This setting changes only the
 line list, not the simulation.
 """
@@ -39,13 +39,18 @@ function event_time_metadata(::Val{key}) where {key}
     endswith(name, "_time") || return nothing
     return (
         column = Symbol("date_", name[1:(end - length("_time"))]),
-        requires_infection = !(key in (:trace_time, :vaccination_time, :immunity_time)),
+        requires_infection = !(
+            key in (
+                :trace_time, :vaccination_time, :immunity_time,
+                :isolation_time, :isolation_release_time,
+            )
+        ),
     )
 end
 
 """
     linelist(state::SimulationState; reference_date=Date(2020, 1, 1),
-             infected_only=true)
+             infected_only=true, as_of=nothing, reported_only=false)
 
 The line list of a simulated outbreak: a DataFrame with one row per case,
 with event times converted to calendar dates counted from `reference_date`
@@ -76,6 +81,19 @@ internal to an intervention and never shown. To add your own date columns see
 
 `isolated`, `date_isolation` and `date_isolation_release` show an isolation
 only when it counted as a detection (see [`is_isolated`](@ref)).
+
+# The line list as known on a date
+
+With `reported_only = true`, only the cases a [`Reporting`](@ref) or
+[`PerCaseObservation`](@ref) step marked as reported are kept. With
+`as_of = Date(...)`, the table is the one available on that date: it keeps
+the cases whose `date_reporting` is on or before `as_of` (so it implies
+`reported_only`), and every other date column, such as `date_outcome`, is
+`missing` where the date falls after `as_of`, because that event had not yet
+been seen. `isolated` and `outcome` are `missing` where `date_isolation` or
+`date_outcome` falls after `as_of`. Both options need a reporting step in the
+model and throw an `ArgumentError` without one. To coarsen the dates as well,
+pass the result to [`censor_linelist`](@ref).
 
 # Including people who were not infected
 
@@ -110,9 +128,16 @@ first(ll, 5)
 """
 function linelist(
         state::SimulationState;
-        reference_date::Date = Date(2020, 1, 1), infected_only::Bool = true
+        reference_date::Date = Date(2020, 1, 1), infected_only::Bool = true,
+        as_of::Union{Date, Nothing} = nothing, reported_only::Bool = false
     )
-    cases = infected_only ? filter(is_infected, state.individuals) : state.individuals
+    # A contact the interventions stopped from ever meeting its infector was
+    # never exposed, so it is no more a person in the outbreak than a contact
+    # never drawn.
+    cases = filter(
+        ind -> is_infected(ind) || !(infected_only || _is_withdrawn(ind)),
+        individuals(state)
+    )
     isempty(cases) && return DataFrame()
 
     cols = Dict{Symbol, Vector}(
@@ -136,7 +161,74 @@ function linelist(
     end
 
     ordered_keys = _column_order(keys(cols))
-    return DataFrame([k => cols[k] for k in ordered_keys])
+    df = DataFrame([k => cols[k] for k in ordered_keys])
+    (as_of === nothing && !reported_only) && return df
+    any(ind -> haskey(ind.state, :reporting_time), cases) || throw(
+        ArgumentError(
+            "`as_of` and `reported_only` need a reporting time on each case; " *
+                "add a `Reporting` step (or `PerCaseObservation`) to the model."
+        )
+    )
+    return _as_known(df, as_of)
+end
+
+# Keep the reported cases, only those reported by `as_of` if it is given, and
+# blank the dates after `as_of`. A case never reported has no `date_reporting`
+# and is dropped.
+function _as_known(df::DataFrame, as_of)
+    isempty(df) && return df
+    hasproperty(df, :date_reporting) || return df[Int[], :]
+    reported = [!ismissing(d) && (as_of === nothing || d <= as_of) for d in df.date_reporting]
+    out = df[reported, :]
+    as_of === nothing && return out
+    # Blank `isolated` and `outcome` before their dates are blanked.
+    for (name, date_name) in (("isolated", "date_isolation"), ("outcome", "date_outcome"))
+        (hasproperty(out, name) && hasproperty(out, date_name)) || continue
+        late = [!ismissing(d) && d > as_of for d in out[!, date_name]]
+        out[!, name] = Union{eltype(out[!, name]), Missing}[
+            l ? missing : v for (v, l) in zip(out[!, name], late)
+        ]
+    end
+    for name in names(out)
+        startswith(name, "date_") || continue
+        col = out[!, name]
+        out[!, name] = Union{Date, Missing}[
+            ismissing(d) || d > as_of ? missing : d for d in col
+        ]
+    end
+    return out
+end
+
+"""
+    censor_linelist(df::DataFrame, interval=Week(1))
+
+Coarsen the date columns of a [`linelist`](@ref) to `interval`, so that each
+date becomes the first day of the interval it falls in. This mimics data
+released as weeks rather than days. Only columns whose name starts with
+`date_` are changed, and `missing` stays `missing`. Returns a new DataFrame.
+
+`interval` is a `Dates.Period`, such as `Week(1)` (weeks starting on a
+Monday), `Month(1)` or `Year(1)`, or a function from a `Date` to a `Date` for
+anything else, such as epidemiological weeks starting on a Sunday:
+
+```julia
+using Dates
+ll = linelist(state; as_of = Date(2020, 3, 1))
+weekly = censor_linelist(ll)
+epiweeks = censor_linelist(ll, d -> Dates.toprev(d, Sunday; same = true))
+```
+"""
+function censor_linelist(df::DataFrame, interval::Dates.Period = Week(1))
+    return censor_linelist(df, d -> floor(d, interval))
+end
+
+function censor_linelist(df::DataFrame, f)
+    out = copy(df)
+    for name in names(out)
+        startswith(name, "date_") || continue
+        out[!, name] = Union{Date, Missing}[ismissing(d) ? missing : f(d)::Date for d in out[!, name]]
+    end
+    return out
 end
 
 """
@@ -161,11 +253,21 @@ neighbour who was exposed but not infected does not appear. Attach an
 [`ExposedContactRecorder`](@ref) as the `ModelSpec`'s `recorder` to have such
 a pair listed too, with `infected = false`.
 
+A contact that an intervention stopped from happening at all, such as one that
+would have fallen after the infector's isolation in hospital, is not an
+exposure and is left out. Tracing does not reach it. An intervention
+decides this through [`prevents_contact`](@ref EpiBranch.prevents_contact);
+isolation at home, which blocks the infection but not the meeting, keeps the
+contact.
+
 Columns: `from` (`id` of the case), `to` (`id` of the person exposed),
 `infected` (whether that exposure infected them), `generation` (generation of
-the person exposed), `infection_time` (day of exposure, which is the day of
-infection when `infected` is true) and `date_infection` (the same as a date
-counted from `reference_date`).
+the person exposed), `exposure_time` (day of exposure, which is also the day
+of infection when `infected` is true) and `date_exposure` (the same as a date
+counted from `reference_date`). A contact's attributes, such as `age` and `sex`
+from [`demographics`](@ref), follow as further columns, `missing` for a contact
+without them. Event times are not repeated here: see [`linelist`](@ref) with
+`infected_only = false` for those.
 
 # Examples
 
@@ -180,36 +282,70 @@ function contacts(
         state::SimulationState;
         reference_date::Date = Date(2020, 1, 1)
     )
-    individuals = state.individuals
+    people = individuals(state)
     # A contact whose exposure fell after the run stopped was never exposed
     # within it.
     exposures = (
-        (ind.id, individuals[child_id])
-            for ind in individuals for child_id in ind.secondary_case_ids
-            if child_id <= length(individuals)
+        (ind.id, people[child_id])
+            for ind in people for child_id in ind.secondary_case_ids
+            if child_id <= length(people)
     )
-    df = DataFrame(
-        [
-            (
-                from = from_id, to = child.id, infected = is_infected(child),
-                generation = child.generation,
-                infection_time = child.infection_time,
-                date_infection = _to_date(reference_date, child.infection_time)::Date,
-            )
-                for (from_id, child) in exposures if !isnan(child.infection_time)
-        ]
-    )
-    log = get(state.scratch, EXPOSED_CONTACTS_KEY, nothing)
-    log === nothing && return df
-    escaped = [
+    rows = NamedTuple[
         (
-            from = from_id, to = to_id, infected = false,
-            generation = generation, infection_time = t,
-            date_infection = _to_date(reference_date, t)::Date,
+            from = from_id, to = child.id, infected = is_infected(child),
+            generation = child.generation,
+            exposure_time = child.infection_time,
+            date_exposure = _to_date(reference_date, child.infection_time)::Date,
         )
-            for (from_id, to_id, t, generation) in (log::_ExposedContactLog).events
+            for (from_id, child) in exposures if !isnan(child.infection_time)
     ]
-    return vcat(df, DataFrame(escaped))
+    log = get(state.scratch, EXPOSED_CONTACTS_KEY, nothing)
+    if log !== nothing
+        for (from_id, to_id, t, generation) in (log::_ExposedContactLog).events
+            push!(
+                rows, (
+                    from = from_id, to = to_id, infected = false,
+                    generation = generation, exposure_time = t,
+                    date_exposure = _to_date(reference_date, t)::Date,
+                )
+            )
+        end
+    end
+    df = DataFrame(
+        from = Int[r.from for r in rows],
+        to = Int[r.to for r in rows],
+        infected = Bool[r.infected for r in rows],
+        generation = Int[r.generation for r in rows],
+        exposure_time = Float64[r.exposure_time for r in rows],
+        date_exposure = Date[r.date_exposure for r in rows]
+    )
+    _add_contact_attributes!(df, state)
+    return df
+end
+
+"""Add the attributes recorded on each contact as columns, `missing` where a
+contact has none. Event times and bookkeeping keys are left out: on a contact
+who escaped infection they describe an infection that never happened, or the
+state of an intervention."""
+function _add_contact_attributes!(df::DataFrame, state::SimulationState)
+    individuals = state.individuals
+    nrow(df) == 0 && return df
+    contacts_ = [individuals[id] for id in df.to]
+    keys_ = Set{Symbol}()
+    for ind in contacts_
+        union!(keys_, keys(ind.state))
+    end
+    filter!(
+        key -> !startswith(String(key), "_") && key !== :infected &&
+            event_time_metadata(Val(key)) === nothing &&
+            !hasproperty(df, key),
+        keys_
+    )
+    for key in sort!(collect(keys_))
+        raw = [_reported_state(ind, key) for ind in contacts_]
+        df[!, key] = _normalise_column(raw)
+    end
+    return df
 end
 
 # ── Internal helpers ─────────────────────────────────────────────────
@@ -232,7 +368,7 @@ function _add_state_column!(cols, cases, key::Symbol, reference_date)
         col_name = metadata.column
         col_name in keys(cols) && return nothing  # don't shadow core columns
         event_date(ind) = begin
-            t = is_infected(ind) ? _reported_state(ind, key) :
+            t = is_infected(ind) ? reported_value(Val(key), ind) :
                 _uninfected_event_time(ind, key, metadata)
             t isa Real ? _to_date(reference_date, t) : missing
         end
@@ -241,7 +377,7 @@ function _add_state_column!(cols, cases, key::Symbol, reference_date)
         cols[col_name] = values
     else
         key in keys(cols) && return nothing
-        raw = [_reported_state(ind, key) for ind in cases]
+        raw = [reported_value(Val(key), ind) for ind in cases]
         all(ismissing, raw) && return nothing
         cols[key] = _normalise_column(raw)
     end
@@ -266,27 +402,55 @@ being quarantined. An isolation written by `Isolation` came from the
 provisional onset; where one replaced a recorded quarantine, that quarantine's
 time, and its release time, are reported in its place."""
 function _uninfected_event_time(ind, key::Symbol, metadata)
-    if key === :isolation_time || key === :isolation_release_time
-        handle = get(ind.state, :_isolation_handle, nothing)
-        handle === nothing && return _reported_state(ind, key)
-        span = _isolation_span_excluding(ind, handle)
-        span === nothing && return missing
-        start, release, unrecorded = span
-        unrecorded && return missing
-        return key === :isolation_time ? start : release
-    end
-    return metadata.requires_infection ? missing : _reported_state(ind, key)
+    return metadata.requires_infection ? missing : reported_value(Val(key), ind)
 end
 
-# The value a state key reports in the line list. The isolation columns report
-# detections, so an isolation that removes the case from transmission without
-# being recorded (see `records_isolation`) reads as no isolation.
-function _reported_state(ind, key::Symbol)
+"""
+    reported_value(::Val{key}, individual)
+
+What [`linelist`](@ref) shows for the state `key` of `individual`, or `missing`
+for none. The default is the value stored under `key`. Define a method when an
+intervention keeps a key whose stored value is not what should be reported,
+such as one that must be read together with other state, as the isolation
+columns are:
+
+```julia
+EpiBranch.reported_value(::Val{:test_results}, ind) =
+    length(get(ind.state, :test_results, ()))
+```
+
+It is read for an infected person, and, for a key whose
+[`event_time_metadata`](@ref) says its date applies to people who were never
+infected, for them too. Dates are made from the number it returns.
+"""
+function reported_value(::Val{key}, ind) where {key}
     haskey(ind.state, key) || return missing
-    key === :isolated && return is_isolated(ind)
-    (key === :isolation_time || key === :isolation_release_time) &&
-        _isolation_unrecorded(ind) && return missing
     return ind.state[key]
+end
+
+# The isolation columns report detections, so an isolation that removes the
+# case from transmission without being recorded (see `records_isolation`)
+# reads as no isolation.
+reported_value(::Val{:isolated}, ind) = haskey(ind.state, :isolated) ? is_isolated(ind) : missing
+
+reported_value(::Val{:isolation_time}, ind) = _reported_isolation(ind, :isolation_time)
+reported_value(::Val{:isolation_release_time}, ind) = _reported_isolation(ind, :isolation_release_time)
+
+# A person who was never infected can have been isolated only through a
+# recorded quarantine. The column shows the span of that quarantine, leaving
+# out any isolation that `Isolation` wrote from a provisional onset.
+function _reported_isolation(ind, key::Symbol)
+    handle = get(ind.state, :_isolation_handle, nothing)
+    if is_infected(ind) || handle === nothing
+        haskey(ind.state, key) || return missing
+        _isolation_unrecorded(ind) && return missing
+        return ind.state[key]
+    end
+    span = _isolation_span_excluding(ind, handle)
+    span === nothing && return missing
+    start, release, unrecorded = span
+    unrecorded && return missing
+    return key === :isolation_time ? start : release
 end
 
 """Convert `Symbol` entries to `String` so DataFrames serialises cleanly;
